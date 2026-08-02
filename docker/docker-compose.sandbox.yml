@@ -1,0 +1,49 @@
+# Ephemeral Odoo sandbox for Phase 6 module install validation (matching-major).
+# Image: set ODOO_SANDBOX_IMAGE (default odoo:19). API passes odoo:16|17|18|19.
+# Host port **18069** — deliberately not 8070 (reserved for permanent Odoo 18 stack).
+# Always use project name `odoo-sandbox` so `down -v` never hits the primary stack:
+#   docker compose -p odoo-sandbox -f docker/docker-compose.sandbox.yml up -d
+# Or via API: POST /api/connections/{id}/sandbox/run
+
+services:
+  db:
+    image: postgres:15
+    container_name: odoo-custom-sandbox-db
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: odoo
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  odoo:
+    image: ${ODOO_SANDBOX_IMAGE:-odoo:19}
+    container_name: odoo-custom-sandbox-odoo
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "18069:8069"
+    environment:
+      HOST: db
+      USER: odoo
+      PASSWORD: odoo
+    volumes:
+      - sandbox-web-data:/var/lib/odoo
+      - ./sandbox-addons:/mnt/extra-addons
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8069/web/login', timeout=5)\"",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 40s
+
+volumes:
+  sandbox-web-data:

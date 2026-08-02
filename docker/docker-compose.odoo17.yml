@@ -1,0 +1,51 @@
+# Optional Odoo 17 Community stack for M3 multi-version gates.
+# Ports: host 8071 → container 8069
+#   docker compose -p odoo17 -f docker/docker-compose.odoo17.yml up -d
+#   ./docker/init-db-17.sh
+
+services:
+  db17:
+    image: postgres:15
+    container_name: odoo-custom-db17
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: odoo
+    volumes:
+      - odoo17-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  odoo17:
+    image: odoo:17
+    container_name: odoo-custom-odoo17
+    depends_on:
+      db17:
+        condition: service_healthy
+    ports:
+      - "8071:8069"
+    environment:
+      HOST: db17
+      USER: odoo
+      PASSWORD: odoo
+    volumes:
+      - odoo17-web-data:/var/lib/odoo
+      - odoo17-addons:/mnt/extra-addons
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8069/web/login', timeout=5)\"",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 40s
+
+volumes:
+  odoo17-db-data:
+  odoo17-web-data:
+  odoo17-addons:

@@ -1,0 +1,37 @@
+---
+description: Session defaults — read memory files, follow pipeline seats, Odoo 19 constraints
+alwaysApply: true
+---
+
+# Session defaults (No-Code Odoo Customization Platform)
+
+## Before writing code
+1. Read `AGENTS.md`, `MEMORY.md`, `ERRORS.md`, and `STATE.md`.
+2. Do not contradict `MEMORY.md` without flagging it first.
+3. Check `ERRORS.md` before retrying a failed approach pattern.
+
+## Behavior (Karpathy layer)
+- Ask, don't assume. Simplest solution first. Stay in scope.
+- Flag uncertainty — especially Odoo API / view XML / `base.automation` claims.
+- Confirm before destructive or external actions (including non-sandbox Odoo writes).
+- Significant tasks: show 2–3 approaches and wait, unless the obvious path is faster.
+- After coding: list files changed (one line each), files not touched, follow-up needed.
+
+## Roles
+Never wear all four hats alone without separation: Orchestrator / Worker / Checker / Judge.
+Workers get a **card** (`skills/team-brief-and-cards.md`). Gate (tests/build/RPC smoke) before checker. Maker is never the checker (`skills/verifier-subagent.md`).
+
+## Locked constraints
+- Target: **Odoo Community 19 + 18 + 17 = GA**; **16 = experimental** (compat registry).
+- Public ORM/RPC only — never Studio Enterprise source.
+- Python code path = Option A (module → sandbox → promote). Advanced/destructive actions
+  need Odoo-style confirm + API confirmation flag. Snapshot before risky mutations; rollback when possible.
+- Sandbox before prod module install.
+- Majors ≤15 refused until a future MEMORY unlock.
+
+## Session end
+Update `STATE.md` retro (≤15 lines). Log decisions → `MEMORY.md`. Failures (>2 attempts) → `ERRORS.md`.
+
+Canonical rules: `RULES.md`. Loop/team: `PIPELINE.md`. Routing: `skills/model-routing.md`.
+Odoo-facing work must pass `skills/odoo-rpc-gate.md`.
+Product/UX parity targets: `skills/studio-parity.md` (public docs + clean-room OSS only).

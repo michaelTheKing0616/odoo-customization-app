@@ -1,0 +1,45 @@
+[project]
+name = "odoo-custom-api"
+version = "0.1.0"
+description = "FastAPI backend for the no-code Odoo customization platform"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.34",
+  "python-multipart>=0.0.9",
+  "pydantic>=2.10",
+  "pydantic-settings>=2.7",
+  "odoo-client",
+  "module-generator",
+  "sqlalchemy>=2.0",
+  "psycopg[binary]>=3.2",
+  "cryptography>=44",
+  "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "httpx>=0.28",
+]
+# Local MiniLM embeddings for domain-pack RAG (Apple Silicon friendly)
+ai-rag = [
+  "sentence-transformers>=3.0",
+]
+
+[tool.uv.sources]
+odoo-client = { workspace = true }
+module-generator = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]

@@ -1,0 +1,3 @@
+{% for model in spec.models %}
+from . import {{ model.module_basename() }}
+{% endfor %}

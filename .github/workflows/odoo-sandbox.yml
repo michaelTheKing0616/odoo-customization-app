@@ -1,0 +1,126 @@
+name: Odoo sandbox (manual + nightly extension)
+
+# Heavy job: live Odoo + sandbox compose.
+# - workflow_dispatch: smoke | extension | library | major-matrix
+#   - smoke/extension/library: primary Odoo 19 on host 8069 + gates via run-sandbox-gate*.sh
+#   - major-matrix: ephemeral sandbox only (no permanent 16/17/18 stacks); host **18069**
+#     Permanent Odoo 18 dev stack is **8070** — do not conflate with sandbox port.
+#     Local proof green for run-sandbox-major-gate.sh on majors 16–18 (2026).
+# - schedule: weekly extension gate (optional CI signal; may be skipped on free runners)
+on:
+  workflow_dispatch:
+    inputs:
+      gate:
+        description: "Which sandbox gate to run"
+        type: choice
+        options:
+          - smoke
+          - extension
+          - library
+          - major-matrix
+        default: smoke
+      sandbox_major:
+        description: "Matching-major sandbox (only when gate = major-matrix)"
+        type: choice
+        options:
+          - matrix
+          - "16"
+          - "17"
+          - "18"
+          - "19"
+        default: matrix
+  schedule:
+    # Sundays 06:00 UTC — extension gate (sale+account)
+    - cron: "0 6 * * 0"
+
+jobs:
+  sandbox-gate:
+    name: Sandbox ${{ inputs.gate || 'extension' }} gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve gate
+        id: gate
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "name=extension" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${{ inputs.gate }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Start primary Odoo stack
+        if: steps.gate.outputs.name != 'major-matrix'
+        working-directory: docker
+        run: |
+          docker compose up -d --wait || docker compose up -d
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8069/web/login >/dev/null; then
+              echo "Odoo is up"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Odoo did not become ready"
+          docker compose logs --tail=200
+          exit 1
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --all-packages
+
+      - name: Pull matching-major Odoo images
+        if: steps.gate.outputs.name == 'major-matrix'
+        run: |
+          set -euo pipefail
+          major="${{ inputs.sandbox_major }}"
+          if [ "$major" = "matrix" ]; then
+            majors="16 17 18"
+          else
+            majors="$major"
+          fi
+          for m in $majors; do
+            docker pull "odoo:${m}"
+          done
+
+      - name: Run matching-major sandbox gate(s)
+        if: steps.gate.outputs.name == 'major-matrix'
+        run: |
+          set -euo pipefail
+          chmod +x docker/run-sandbox-major-gate.sh
+          major="${{ inputs.sandbox_major }}"
+          if [ "$major" = "matrix" ]; then
+            for m in 16 17 18; do
+              echo "=== major ${m} ==="
+              ./docker/run-sandbox-major-gate.sh "$m"
+            done
+          else
+            ./docker/run-sandbox-major-gate.sh "$major"
+          fi
+
+      - name: Run smoke sandbox gate
+        if: steps.gate.outputs.name == 'smoke'
+        run: |
+          chmod +x docker/run-sandbox-gate.sh
+          ./docker/run-sandbox-gate.sh
+
+      - name: Run extension sandbox gate (sale+account)
+        if: steps.gate.outputs.name == 'extension'
+        run: |
+          chmod +x docker/run-sandbox-extension-gate.sh
+          ./docker/run-sandbox-extension-gate.sh
+
+      - name: Run library sandbox gate (contacts+mail)
+        if: steps.gate.outputs.name == 'library'
+        run: |
+          chmod +x docker/run-sandbox-library-gate.sh docker/run-library-uat.sh
+          ./docker/run-library-uat.sh
+          ./docker/run-sandbox-library-gate.sh
+
+      - name: Tear down ephemeral sandbox project
+        if: always()
+        run: |
+          docker compose -p odoo-sandbox -f docker/docker-compose.sandbox.yml down -v || true

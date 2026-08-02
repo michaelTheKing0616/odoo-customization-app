@@ -1,0 +1,70 @@
+# Local Odoo 19 Community + Postgres for RPC gates / Phase 0–6 sandbox target.
+# Usage (from repo root):
+#   docker compose -f docker/docker-compose.yml up -d
+#   ./docker/wait-for-odoo.sh
+#   ./docker/init-db.sh
+
+services:
+  app-db:
+    image: postgres:15
+    container_name: odoo-custom-app-db
+    environment:
+      POSTGRES_DB: odoo_custom
+      POSTGRES_USER: odoo_custom
+      POSTGRES_PASSWORD: odoo_custom
+    ports:
+      - "5433:5432"
+    volumes:
+      - app-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo_custom -d odoo_custom"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  db:
+    image: postgres:15
+    container_name: odoo-custom-db
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: odoo
+    volumes:
+      - odoo-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  odoo:
+    image: odoo:19
+    container_name: odoo-custom-odoo
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8069:8069"
+    environment:
+      HOST: db
+      USER: odoo
+      PASSWORD: odoo
+    volumes:
+      - odoo-web-data:/var/lib/odoo
+      - odoo-addons:/mnt/extra-addons
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8069/web/login', timeout=5)\"",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 40s
+
+volumes:
+  odoo-db-data:
+  odoo-web-data:
+  odoo-addons:
+  app-db-data:

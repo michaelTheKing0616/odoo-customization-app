@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+{% for tpl in spec.mail_templates %}
+    <record id="{{ tpl.resolved_xml_id() }}" model="mail.template">
+        <field name="name">{{ tpl.name | xml }}</field>
+        <field name="model_id" search="[('model','=','{{ tpl.model | xml }}')]"/>
+        <field name="subject">{{ tpl.subject | xml }}</field>
+        <field name="email_to">{{ tpl.email_to | xml }}</field>
+        {% if tpl.description %}
+        <field name="description">{{ tpl.description | xml }}</field>
+        {% endif %}
+        {# type=html requires real element children (Odoo import_xml.rng); CDATA-only fails #}
+        <field name="body_html" type="html">
+{{ tpl.body_html }}
+        </field>
+    </record>
+{% endfor %}
+</odoo>

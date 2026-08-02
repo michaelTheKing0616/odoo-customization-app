@@ -1,0 +1,16 @@
+# .cursorrules — entrypoint for all models
+
+Read and follow these project files at the start of every session:
+
+- `AGENTS.md` — session defaults, stack lock, permanent constraints
+- `RULES.md` — full agentic ruleset (roles, gates, memory, stop conditions)
+- `PIPELINE.md` — loop + team architecture (brief/card, barbell, failure modes)
+- `MEMORY.md` — decision log (do not contradict without flagging)
+- `ERRORS.md` — failure log (check before similar approaches)
+- `STATE.md` — current run status and next actions
+
+Skills: `skills/model-routing.md`, `skills/team-brief-and-cards.md`,
+`skills/verifier-subagent.md`, `skills/vision-verify-ui.md`, `skills/failure-modes.md`,
+`skills/odoo-rpc-gate.md`, `skills/studio-parity.md`, `skills/advanced-actions.md`.
+
+Modern Cursor also loads `.cursor/rules/session-defaults.mdc` (alwaysApply).

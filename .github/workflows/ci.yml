@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Sync workspace
+        run: uv sync --all-packages
+      - name: Module generator
+        run: uv run --directory packages/module-generator pytest -q
+      - name: Odoo client (unit)
+        run: uv run --directory packages/odoo-client pytest -q tests/test_models.py tests/test_view_arch.py tests/test_automation_models.py
+
+  api-unit:
+    name: API unit (no Odoo)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: odoo_custom
+          POSTGRES_PASSWORD: odoo_custom
+          POSTGRES_DB: odoo_custom
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U odoo_custom -d odoo_custom"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql+psycopg://odoo_custom:odoo_custom@127.0.0.1:5433/odoo_custom
+      FERNET_KEY: dev-only-ci-fernet-key
+      AUTH_MODE: "off"
+      RATE_LIMIT_PER_MINUTE: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --all-packages
+      - name: API unit suite
+        run: >
+          uv run --directory apps/api pytest -q
+          tests/test_auth.py
+          tests/test_rate_limit.py
+          tests/test_audit.py
+          tests/test_module_inspect.py
+          tests/test_zip_safety.py
+          tests/test_crypto.py
+          tests/test_snapshots_scope.py
+          tests/test_wave_b_confirm.py
+          tests/test_sandbox_extra_modules.py
+          tests/test_adversarial_security.py
+          tests/test_phase1_api.py::test_health
+          tests/test_phase1_api.py::test_sandbox_smoke_zip_unit
+
+  web-unit:
+    name: Web unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm --filter @odoo-custom/web test
+
+  web-e2e:
+    name: Web Playwright (confirm flows)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install
+      - name: Install Chromium
+        run: pnpm --filter @odoo-custom/web exec playwright install chromium --with-deps
+      - name: Confirm dialog e2e
+        run: pnpm --filter @odoo-custom/web test:e2e
+        env:
+          CI: "true"
+          NEXT_PUBLIC_E2E: "1"

@@ -1,0 +1,2127 @@
+{
+  "technical_name": "hospital_management",
+  "display_name": "Hospital Management",
+  "depends": [
+    "base",
+    "contacts",
+    "mail"
+  ],
+  "domain_pack": "hospital",
+  "tags": [
+    "hospital",
+    "inpatient",
+    "outpatient",
+    "ward",
+    "bed",
+    "icu",
+    "emergency",
+    "er",
+    "pharmacy",
+    "laboratory",
+    "radiology",
+    "surgery",
+    "operating",
+    "theatre",
+    "admission",
+    "discharge",
+    "encounter",
+    "patient",
+    "doctor",
+    "nurse",
+    "clinical",
+    "healthcare",
+    "medical",
+    "triage",
+    "prescription",
+    "insurance",
+    "billing"
+  ],
+  "models": [
+    {
+      "model": "x_department",
+      "description": "Department / Service Line",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Name",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Code"
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        },
+        {
+          "name": "x_floor",
+          "ttype": "char",
+          "string": "Floor / Wing"
+        },
+        {
+          "name": "x_active",
+          "ttype": "boolean",
+          "string": "Active"
+        }
+      ]
+    },
+    {
+      "model": "x_ward",
+      "description": "Ward / Unit",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Ward Name",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Code"
+        },
+        {
+          "name": "x_department_id",
+          "ttype": "many2one",
+          "string": "Department",
+          "relation": "x_department"
+        },
+        {
+          "name": "x_ward_type",
+          "ttype": "selection",
+          "string": "Type",
+          "selection": "[('general', 'General'), ('icu', 'ICU'), ('nicu', 'NICU'), ('maternity', 'Maternity'), ('pediatric', 'Pediatric'), ('surgical', 'Surgical'), ('isolation', 'Isolation')]"
+        },
+        {
+          "name": "x_capacity",
+          "ttype": "integer",
+          "string": "Bed Capacity"
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        }
+      ]
+    },
+    {
+      "model": "x_bed",
+      "description": "Bed",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Bed Label",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Sequence / reference code (e.g. RNT/00001) \u2014 wire ir.sequence later"
+        },
+        {
+          "name": "x_ward_id",
+          "ttype": "many2one",
+          "string": "Ward",
+          "relation": "x_ward",
+          "required": true
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('available', 'Available'), ('occupied', 'Occupied'), ('blocked', 'Blocked'), ('cleaning', 'Cleaning'), ('maintenance', 'Maintenance')]",
+          "required": true
+        },
+        {
+          "name": "x_notes",
+          "ttype": "char",
+          "string": "Notes"
+        }
+      ],
+      "is_workflow": true,
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ]
+    },
+    {
+      "model": "x_doctor",
+      "description": "Physician / Practitioner",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Name",
+          "required": true
+        },
+        {
+          "name": "x_partner_id",
+          "ttype": "many2one",
+          "string": "Contact",
+          "relation": "res.partner"
+        },
+        {
+          "name": "x_user_id",
+          "ttype": "many2one",
+          "string": "Login User",
+          "relation": "res.users"
+        },
+        {
+          "name": "x_specialty",
+          "ttype": "selection",
+          "string": "Specialty",
+          "selection": "[('general', 'General Medicine'), ('cardiology', 'Cardiology'), ('pediatrics', 'Pediatrics'), ('orthopedics', 'Orthopedics'), ('obgyn', 'Obstetrics & Gynecology'), ('neurology', 'Neurology'), ('oncology', 'Oncology'), ('emergency', 'Emergency Medicine'), ('anesthesiology', 'Anesthesiology'), ('radiology', 'Radiology'), ('surgery', 'General Surgery'), ('icu', 'Critical Care / ICU'), ('psychiatry', 'Psychiatry'), ('other', 'Other')]"
+        },
+        {
+          "name": "x_department_id",
+          "ttype": "many2one",
+          "string": "Primary Department",
+          "relation": "x_department"
+        },
+        {
+          "name": "x_license_no",
+          "ttype": "char",
+          "string": "License No."
+        },
+        {
+          "name": "x_active",
+          "ttype": "boolean",
+          "string": "Active"
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        }
+      ]
+    },
+    {
+      "model": "x_nurse",
+      "description": "Nurse / Clinical Staff",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Name",
+          "required": true
+        },
+        {
+          "name": "x_partner_id",
+          "ttype": "many2one",
+          "string": "Contact",
+          "relation": "res.partner"
+        },
+        {
+          "name": "x_ward_id",
+          "ttype": "many2one",
+          "string": "Home Ward",
+          "relation": "x_ward"
+        },
+        {
+          "name": "x_shift",
+          "ttype": "char",
+          "string": "Default Shift"
+        },
+        {
+          "name": "x_active",
+          "ttype": "boolean",
+          "string": "Active"
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        }
+      ]
+    },
+    {
+      "model": "x_patient",
+      "description": "Patient",
+      "mode": "new",
+      "is_workflow": true,
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ],
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Full Name",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "MRN",
+          "help": "Medical record number \u2014 wire ir.sequence (e.g. MRN/00001)"
+        },
+        {
+          "name": "x_partner_id",
+          "ttype": "many2one",
+          "string": "Contact",
+          "relation": "res.partner"
+        },
+        {
+          "name": "x_gender",
+          "ttype": "selection",
+          "string": "Gender",
+          "selection": "[('male', 'Male'), ('female', 'Female'), ('other', 'Other'), ('unknown', 'Unknown')]"
+        },
+        {
+          "name": "x_dob",
+          "ttype": "date",
+          "string": "Date of Birth"
+        },
+        {
+          "name": "x_blood_type",
+          "ttype": "selection",
+          "string": "Blood Type",
+          "selection": "[('o_pos', 'O+'), ('o_neg', 'O-'), ('a_pos', 'A+'), ('a_neg', 'A-'), ('b_pos', 'B+'), ('b_neg', 'B-'), ('ab_pos', 'AB+'), ('ab_neg', 'AB-'), ('unknown', 'Unknown')]"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('registered', 'Registered'), ('outpatient', 'Outpatient'), ('admitted', 'Admitted'), ('discharged', 'Discharged'), ('deceased', 'Deceased')]",
+          "required": true
+        },
+        {
+          "name": "x_primary_doctor_id",
+          "ttype": "many2one",
+          "string": "Primary Physician",
+          "relation": "x_doctor"
+        },
+        {
+          "name": "x_emergency_contact_id",
+          "ttype": "many2one",
+          "string": "Emergency Contact",
+          "relation": "res.partner"
+        },
+        {
+          "name": "x_national_id",
+          "ttype": "char",
+          "string": "National ID"
+        },
+        {
+          "name": "x_notes",
+          "ttype": "text",
+          "string": "Alerts / Notes"
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        }
+      ]
+    },
+    {
+      "model": "x_allergy",
+      "description": "Allergy / Intolerance",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Allergen",
+          "required": true
+        },
+        {
+          "name": "x_patient_id",
+          "ttype": "many2one",
+          "string": "Patient",
+          "relation": "x_patient",
+          "required": true
+        },
+        {
+          "name": "x_severity",
+          "ttype": "selection",
+          "string": "Severity",
+          "selection": "[('mild', 'Mild'), ('moderate', 'Moderate'), ('severe', 'Severe'), ('life_threatening', 'Life-threatening')]"
+        },
+        {
+          "name": "x_reaction",
+          "ttype": "char",
+          "string": "Reaction"
+        },
+        {
+          "name": "x_active",
+          "ttype": "boolean",
+          "string": "Active"
+        }
+      ]
+    },
+    {
+      "model": "x_appointment",
+      "description": "Outpatient Appointment",
+      "mode": "new",
+      "is_workflow": true,
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ],
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Subject",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Appointment reference \u2014 wire ir.sequence (e.g. APT/00001)"
+        },
+        {
+          "name": "x_patient_id",
+          "ttype": "many2one",
+          "string": "Patient",
+          "relation": "x_patient",
+          "required": true
+        },
+        {
+          "name": "x_doctor_id",
+          "ttype": "many2one",
+          "string": "Doctor",
+          "relation": "x_doctor",
+          "required": true
+        },
+        {
+          "name": "x_department_id",
+          "ttype": "many2one",
+          "string": "Department",
+          "relation": "x_department"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('draft', 'Draft'), ('scheduled', 'Scheduled'), ('confirmed', 'Confirmed'), ('checked_in', 'Checked in'), ('in_progress', 'In progress'), ('completed', 'Completed'), ('no_show', 'No-show'), ('cancelled', 'Cancelled')]",
+          "required": true
+        },
+        {
+          "name": "x_start",
+          "ttype": "datetime",
+          "string": "Start",
+          "required": true
+        },
+        {
+          "name": "x_end",
+          "ttype": "datetime",
+          "string": "End"
+        },
+        {
+          "name": "x_reason",
+          "ttype": "char",
+          "string": "Chief Complaint"
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        }
+      ]
+    },
+    {
+      "model": "x_encounter",
+      "description": "Encounter / Admission",
+      "mode": "new",
+      "is_workflow": true,
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ],
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Label",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Encounter No.",
+          "help": "Encounter / admission number \u2014 wire ir.sequence (e.g. ENC/00001)"
+        },
+        {
+          "name": "x_patient_id",
+          "ttype": "many2one",
+          "string": "Patient",
+          "relation": "x_patient",
+          "required": true
+        },
+        {
+          "name": "x_attending_doctor_id",
+          "ttype": "many2one",
+          "string": "Attending Physician",
+          "relation": "x_doctor"
+        },
+        {
+          "name": "x_type",
+          "ttype": "selection",
+          "string": "Type",
+          "selection": "[('outpatient', 'Outpatient'), ('inpatient', 'Inpatient'), ('emergency', 'Emergency'), ('day_surgery', 'Day surgery')]",
+          "required": true
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('open', 'Open'), ('in_care', 'In care'), ('awaiting_discharge', 'Awaiting discharge'), ('discharged', 'Discharged'), ('transferred', 'Transferred'), ('cancelled', 'Cancelled')]",
+          "required": true
+        },
+        {
+          "name": "x_triage",
+          "ttype": "selection",
+          "string": "Triage",
+          "selection": "[('1', '1 \u2014 Resuscitation'), ('2', '2 \u2014 Emergency'), ('3', '3 \u2014 Urgent'), ('4', '4 \u2014 Semi-urgent'), ('5', '5 \u2014 Non-urgent')]"
+        },
+        {
+          "name": "x_ward_id",
+          "ttype": "many2one",
+          "string": "Ward",
+          "relation": "x_ward"
+        },
+        {
+          "name": "x_bed_id",
+          "ttype": "many2one",
+          "string": "Bed",
+          "relation": "x_bed"
+        },
+        {
+          "name": "x_admit_datetime",
+          "ttype": "datetime",
+          "string": "Admit"
+        },
+        {
+          "name": "x_discharge_datetime",
+          "ttype": "datetime",
+          "string": "Discharge"
+        },
+        {
+          "name": "x_chief_complaint",
+          "ttype": "text",
+          "string": "Chief Complaint"
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        }
+      ]
+    },
+    {
+      "model": "x_vital_sign",
+      "description": "Vital Signs",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Label",
+          "required": true
+        },
+        {
+          "name": "x_patient_id",
+          "ttype": "many2one",
+          "string": "Patient",
+          "relation": "x_patient",
+          "required": true
+        },
+        {
+          "name": "x_encounter_id",
+          "ttype": "many2one",
+          "string": "Encounter",
+          "relation": "x_encounter"
+        },
+        {
+          "name": "x_taken_at",
+          "ttype": "datetime",
+          "string": "Taken At",
+          "required": true
+        },
+        {
+          "name": "x_pulse",
+          "ttype": "integer",
+          "string": "Pulse (bpm)"
+        },
+        {
+          "name": "x_bp_systolic",
+          "ttype": "integer",
+          "string": "BP Systolic"
+        },
+        {
+          "name": "x_bp_diastolic",
+          "ttype": "integer",
+          "string": "BP Diastolic"
+        },
+        {
+          "name": "x_temp_c",
+          "ttype": "float",
+          "string": "Temp \u00b0C"
+        },
+        {
+          "name": "x_spo2",
+          "ttype": "integer",
+          "string": "SpO2 %"
+        },
+        {
+          "name": "x_resp_rate",
+          "ttype": "integer",
+          "string": "Resp. Rate"
+        },
+        {
+          "name": "x_nurse_id",
+          "ttype": "many2one",
+          "string": "Recorded By",
+          "relation": "x_nurse"
+        }
+      ]
+    },
+    {
+      "model": "x_medical_record",
+      "description": "Clinical Note / Chart Entry",
+      "mode": "new",
+      "mixins": [
+        "mail.thread"
+      ],
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Title",
+          "required": true
+        },
+        {
+          "name": "x_patient_id",
+          "ttype": "many2one",
+          "string": "Patient",
+          "relation": "x_patient",
+          "required": true
+        },
+        {
+          "name": "x_encounter_id",
+          "ttype": "many2one",
+          "string": "Encounter",
+          "relation": "x_encounter"
+        },
+        {
+          "name": "x_doctor_id",
+          "ttype": "many2one",
+          "string": "Author",
+          "relation": "x_doctor"
+        },
+        {
+          "name": "x_note_datetime",
+          "ttype": "datetime",
+          "string": "Note Time"
+        },
+        {
+          "name": "x_diagnosis",
+          "ttype": "text",
+          "string": "Diagnosis / ICD notes"
+        },
+        {
+          "name": "x_soap_subjective",
+          "ttype": "text",
+          "string": "SOAP \u2014 Subjective"
+        },
+        {
+          "name": "x_soap_objective",
+          "ttype": "text",
+          "string": "SOAP \u2014 Objective"
+        },
+        {
+          "name": "x_soap_assessment",
+          "ttype": "text",
+          "string": "SOAP \u2014 Assessment"
+        },
+        {
+          "name": "x_soap_plan",
+          "ttype": "text",
+          "string": "SOAP \u2014 Plan"
+        },
+        {
+          "name": "x_treatment_plan",
+          "ttype": "text",
+          "string": "Treatment Plan"
+        }
+      ]
+    },
+    {
+      "model": "x_lab_order",
+      "description": "Laboratory Order",
+      "mode": "new",
+      "is_workflow": true,
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ],
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Test / Panel",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Order No.",
+          "help": "Lab order reference \u2014 wire ir.sequence (e.g. LAB/00001)"
+        },
+        {
+          "name": "x_patient_id",
+          "ttype": "many2one",
+          "string": "Patient",
+          "relation": "x_patient",
+          "required": true
+        },
+        {
+          "name": "x_encounter_id",
+          "ttype": "many2one",
+          "string": "Encounter",
+          "relation": "x_encounter"
+        },
+        {
+          "name": "x_ordering_doctor_id",
+          "ttype": "many2one",
+          "string": "Ordering Physician",
+          "relation": "x_doctor"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('ordered', 'Ordered'), ('collected', 'Sample collected'), ('processing', 'Processing'), ('resulted', 'Resulted'), ('cancelled', 'Cancelled')]",
+          "required": true
+        },
+        {
+          "name": "x_ordered_at",
+          "ttype": "datetime",
+          "string": "Ordered At"
+        },
+        {
+          "name": "x_result_summary",
+          "ttype": "text",
+          "string": "Result Summary"
+        },
+        {
+          "name": "x_resulted_at",
+          "ttype": "datetime",
+          "string": "Resulted At"
+        }
+      ]
+    },
+    {
+      "model": "x_imaging_order",
+      "description": "Imaging / Radiology Order",
+      "mode": "new",
+      "is_workflow": true,
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ],
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Study",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Sequence / reference code (e.g. RNT/00001) \u2014 wire ir.sequence later"
+        },
+        {
+          "name": "x_patient_id",
+          "ttype": "many2one",
+          "string": "Patient",
+          "relation": "x_patient",
+          "required": true
+        },
+        {
+          "name": "x_encounter_id",
+          "ttype": "many2one",
+          "string": "Encounter",
+          "relation": "x_encounter"
+        },
+        {
+          "name": "x_modality",
+          "ttype": "selection",
+          "string": "Modality",
+          "selection": "[('xray', 'X-Ray'), ('ct', 'CT'), ('mri', 'MRI'), ('ultrasound', 'Ultrasound'), ('other', 'Other')]"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('ordered', 'Ordered'), ('collected', 'Sample collected'), ('processing', 'Processing'), ('resulted', 'Resulted'), ('cancelled', 'Cancelled')]",
+          "required": true
+        },
+        {
+          "name": "x_ordering_doctor_id",
+          "ttype": "many2one",
+          "string": "Ordering Physician",
+          "relation": "x_doctor"
+        },
+        {
+          "name": "x_findings",
+          "ttype": "text",
+          "string": "Findings"
+        }
+      ]
+    },
+    {
+      "model": "x_prescription",
+      "description": "Prescription",
+      "mode": "new",
+      "is_workflow": true,
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ],
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Label",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Rx No.",
+          "help": "Prescription number \u2014 wire ir.sequence (e.g. RX/00001)"
+        },
+        {
+          "name": "x_patient_id",
+          "ttype": "many2one",
+          "string": "Patient",
+          "relation": "x_patient",
+          "required": true
+        },
+        {
+          "name": "x_doctor_id",
+          "ttype": "many2one",
+          "string": "Prescriber",
+          "relation": "x_doctor",
+          "required": true
+        },
+        {
+          "name": "x_encounter_id",
+          "ttype": "many2one",
+          "string": "Encounter",
+          "relation": "x_encounter"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('draft', 'Draft'), ('prescribed', 'Prescribed'), ('dispensed', 'Dispensed'), ('cancelled', 'Cancelled')]",
+          "required": true
+        },
+        {
+          "name": "x_prescribed_at",
+          "ttype": "datetime",
+          "string": "Prescribed At"
+        },
+        {
+          "name": "x_notes",
+          "ttype": "text",
+          "string": "Pharmacy Notes"
+        }
+      ]
+    },
+    {
+      "model": "x_prescription_line",
+      "description": "Prescription Line",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Medication",
+          "required": true
+        },
+        {
+          "name": "x_prescription_id",
+          "ttype": "many2one",
+          "string": "Prescription",
+          "relation": "x_prescription",
+          "required": true
+        },
+        {
+          "name": "x_dose",
+          "ttype": "char",
+          "string": "Dose"
+        },
+        {
+          "name": "x_route",
+          "ttype": "char",
+          "string": "Route"
+        },
+        {
+          "name": "x_frequency",
+          "ttype": "char",
+          "string": "Frequency"
+        },
+        {
+          "name": "x_duration_days",
+          "ttype": "integer",
+          "string": "Duration (days)"
+        },
+        {
+          "name": "x_qty",
+          "ttype": "float",
+          "string": "Quantity"
+        }
+      ]
+    },
+    {
+      "model": "x_surgery",
+      "description": "Surgery / Procedure",
+      "mode": "new",
+      "is_workflow": true,
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ],
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Procedure",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Sequence / reference code (e.g. RNT/00001) \u2014 wire ir.sequence later"
+        },
+        {
+          "name": "x_patient_id",
+          "ttype": "many2one",
+          "string": "Patient",
+          "relation": "x_patient",
+          "required": true
+        },
+        {
+          "name": "x_encounter_id",
+          "ttype": "many2one",
+          "string": "Encounter",
+          "relation": "x_encounter"
+        },
+        {
+          "name": "x_surgeon_id",
+          "ttype": "many2one",
+          "string": "Surgeon",
+          "relation": "x_doctor"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('planned', 'Planned'), ('pre_op', 'Pre-op'), ('in_or', 'In OR'), ('recovery', 'Recovery'), ('completed', 'Completed'), ('cancelled', 'Cancelled')]",
+          "required": true
+        },
+        {
+          "name": "x_scheduled_start",
+          "ttype": "datetime",
+          "string": "Scheduled Start"
+        },
+        {
+          "name": "x_or_room",
+          "ttype": "char",
+          "string": "OR / Theatre"
+        },
+        {
+          "name": "x_notes",
+          "ttype": "text",
+          "string": "Operative Notes"
+        }
+      ]
+    },
+    {
+      "model": "x_insurance",
+      "description": "Patient Insurance Cover",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Plan / Payer",
+          "required": true
+        },
+        {
+          "name": "x_patient_id",
+          "ttype": "many2one",
+          "string": "Patient",
+          "relation": "x_patient",
+          "required": true
+        },
+        {
+          "name": "x_policy_no",
+          "ttype": "char",
+          "string": "Policy No."
+        },
+        {
+          "name": "x_valid_from",
+          "ttype": "date",
+          "string": "Valid From"
+        },
+        {
+          "name": "x_valid_to",
+          "ttype": "date",
+          "string": "Valid To"
+        },
+        {
+          "name": "x_payer_id",
+          "ttype": "many2one",
+          "string": "Payer Contact",
+          "relation": "res.partner"
+        }
+      ]
+    },
+    {
+      "model": "x_payment",
+      "description": "Patient Charge / Payment",
+      "mode": "new",
+      "is_workflow": true,
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Description",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Billing reference \u2014 wire ir.sequence (e.g. INV/00001)"
+        },
+        {
+          "name": "x_patient_id",
+          "ttype": "many2one",
+          "string": "Patient",
+          "relation": "x_patient",
+          "required": true
+        },
+        {
+          "name": "x_encounter_id",
+          "ttype": "many2one",
+          "string": "Encounter",
+          "relation": "x_encounter"
+        },
+        {
+          "name": "x_amount",
+          "ttype": "float",
+          "string": "Amount",
+          "required": true
+        },
+        {
+          "name": "x_currency_id",
+          "ttype": "many2one",
+          "string": "Currency",
+          "relation": "res.currency"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('draft', 'Draft'), ('posted', 'Posted'), ('partial', 'Partially paid'), ('paid', 'Paid'), ('written_off', 'Written off'), ('cancelled', 'Cancelled')]",
+          "required": true
+        },
+        {
+          "name": "x_date",
+          "ttype": "date",
+          "string": "Date"
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        }
+      ],
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ]
+    }
+  ],
+  "smart_buttons": [
+    {
+      "on_model": "x_patient",
+      "label": "Appointments",
+      "related_model": "x_appointment",
+      "relation_field": "x_patient_id",
+      "icon": "fa-calendar"
+    },
+    {
+      "on_model": "x_patient",
+      "label": "Encounters",
+      "related_model": "x_encounter",
+      "relation_field": "x_patient_id",
+      "icon": "fa-hospital-o"
+    },
+    {
+      "on_model": "x_patient",
+      "label": "Notes",
+      "related_model": "x_medical_record",
+      "relation_field": "x_patient_id",
+      "icon": "fa-stethoscope"
+    },
+    {
+      "on_model": "x_patient",
+      "label": "Allergies",
+      "related_model": "x_allergy",
+      "relation_field": "x_patient_id",
+      "icon": "fa-exclamation-triangle"
+    },
+    {
+      "on_model": "x_patient",
+      "label": "Vitals",
+      "related_model": "x_vital_sign",
+      "relation_field": "x_patient_id",
+      "icon": "fa-heartbeat"
+    },
+    {
+      "on_model": "x_patient",
+      "label": "Labs",
+      "related_model": "x_lab_order",
+      "relation_field": "x_patient_id",
+      "icon": "fa-flask"
+    },
+    {
+      "on_model": "x_patient",
+      "label": "Imaging",
+      "related_model": "x_imaging_order",
+      "relation_field": "x_patient_id",
+      "icon": "fa-picture-o"
+    },
+    {
+      "on_model": "x_patient",
+      "label": "Rx",
+      "related_model": "x_prescription",
+      "relation_field": "x_patient_id",
+      "icon": "fa-medkit"
+    },
+    {
+      "on_model": "x_patient",
+      "label": "Surgeries",
+      "related_model": "x_surgery",
+      "relation_field": "x_patient_id",
+      "icon": "fa-scissors"
+    },
+    {
+      "on_model": "x_patient",
+      "label": "Billing",
+      "related_model": "x_payment",
+      "relation_field": "x_patient_id",
+      "icon": "fa-money"
+    },
+    {
+      "on_model": "x_patient",
+      "label": "Insurance",
+      "related_model": "x_insurance",
+      "relation_field": "x_patient_id",
+      "icon": "fa-shield"
+    },
+    {
+      "on_model": "x_doctor",
+      "label": "Appointments",
+      "related_model": "x_appointment",
+      "relation_field": "x_doctor_id",
+      "icon": "fa-calendar"
+    },
+    {
+      "on_model": "x_ward",
+      "label": "Beds",
+      "related_model": "x_bed",
+      "relation_field": "x_ward_id",
+      "icon": "fa-bed"
+    },
+    {
+      "on_model": "x_encounter",
+      "label": "Vitals",
+      "related_model": "x_vital_sign",
+      "relation_field": "x_encounter_id",
+      "icon": "fa-heartbeat"
+    },
+    {
+      "on_model": "x_prescription",
+      "label": "Lines",
+      "related_model": "x_prescription_line",
+      "relation_field": "x_prescription_id",
+      "icon": "fa-list"
+    },
+    {
+      "on_model": "res.partner",
+      "label": "Patient",
+      "related_model": "x_patient",
+      "relation_field": "x_partner_id",
+      "icon": "fa-user",
+      "requires_inherit_view": true,
+      "note": "Applied as inherit on Contacts button_box"
+    },
+    {
+      "on_model": "res.partner",
+      "label": "Doctor",
+      "related_model": "x_doctor",
+      "relation_field": "x_partner_id",
+      "icon": "fa-user-md",
+      "requires_inherit_view": true,
+      "note": "Applied as inherit on Contacts button_box"
+    },
+    {
+      "on_model": "res.partner",
+      "label": "Nurse / Clinical Staff",
+      "related_model": "x_nurse",
+      "relation_field": "x_partner_id",
+      "icon": "fa-list",
+      "requires_inherit_view": true,
+      "note": "Applied as inherit on Contacts button_box"
+    },
+    {
+      "on_model": "res.partner",
+      "label": "Patient",
+      "related_model": "x_patient",
+      "relation_field": "x_emergency_contact_id",
+      "icon": "fa-list",
+      "requires_inherit_view": true,
+      "note": "Applied as inherit on Contacts button_box"
+    },
+    {
+      "on_model": "res.partner",
+      "label": "Patient Insurance Cover",
+      "related_model": "x_insurance",
+      "relation_field": "x_payer_id",
+      "icon": "fa-list",
+      "requires_inherit_view": true,
+      "note": "Applied as inherit on Contacts button_box"
+    }
+  ],
+  "automations": [
+    {
+      "name": "Activity: confirm new appointment",
+      "model": "x_appointment",
+      "trigger": "on_create",
+      "description": "Create follow-up activity when appointment is booked",
+      "safe_actions": [
+        {
+          "kind": "next_activity",
+          "summary": "Confirm appointment with patient"
+        }
+      ]
+    },
+    {
+      "name": "Mark patient admitted on inpatient encounter",
+      "model": "x_encounter",
+      "trigger": "on_create_or_write",
+      "description": "When encounter is inpatient/open \u2192 patient status admitted",
+      "filter_domain": "[('x_type', '=', 'inpatient'), ('x_status', 'in', ['open', 'in_care'])]",
+      "safe_actions": [
+        {
+          "kind": "related_write",
+          "relation_field": "x_patient_id",
+          "field": "x_status",
+          "value": "admitted"
+        }
+      ]
+    },
+    {
+      "name": "Mark patient discharged on encounter discharge",
+      "model": "x_encounter",
+      "trigger": "on_write",
+      "description": "When encounter discharged \u2192 patient discharged",
+      "filter_domain": "[('x_status', '=', 'discharged')]",
+      "safe_actions": [
+        {
+          "kind": "related_write",
+          "relation_field": "x_patient_id",
+          "field": "x_status",
+          "value": "discharged"
+        }
+      ]
+    },
+    {
+      "name": "Occupy bed on admit",
+      "model": "x_encounter",
+      "trigger": "on_write",
+      "description": "When bed assigned and encounter open \u2192 bed occupied",
+      "filter_domain": "[('x_bed_id', '!=', False), ('x_status', '=', 'in_care')]",
+      "safe_actions": [
+        {
+          "kind": "related_write",
+          "relation_field": "x_bed_id",
+          "field": "x_status",
+          "value": "occupied"
+        }
+      ]
+    },
+    {
+      "name": "Lab result follow-up",
+      "model": "x_lab_order",
+      "trigger": "on_write",
+      "description": "Activity when lab resulted",
+      "filter_domain": "[('x_status', '=', 'resulted')]",
+      "safe_actions": [
+        {
+          "kind": "next_activity",
+          "summary": "Review lab results with patient"
+        }
+      ]
+    }
+  ],
+  "reuse_hints": [
+    {
+      "model": "res.partner",
+      "reason": "Patients, doctors, nurses, emergency contacts, and payers as Contacts"
+    },
+    {
+      "model": "res.users",
+      "reason": "Map clinicians to login users for assignment / activities"
+    },
+    {
+      "model": "res.company",
+      "reason": "Multi-hospital / multi-company isolation via x_company_id"
+    },
+    {
+      "model": "res.currency",
+      "reason": "Billing amounts"
+    },
+    {
+      "model": "account.move",
+      "reason": "Optional later: formal invoices from x_payment (accounting stub)",
+      "optional": true
+    }
+  ],
+  "actions": [
+    {
+      "name": "Department / Service Line",
+      "model": "x_department",
+      "view_mode": "list,form",
+      "technical_name": "action_x_department"
+    },
+    {
+      "name": "Ward / Unit",
+      "model": "x_ward",
+      "view_mode": "list,form",
+      "technical_name": "action_x_ward"
+    },
+    {
+      "name": "Bed",
+      "model": "x_bed",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_bed"
+    },
+    {
+      "name": "Physician / Practitioner",
+      "model": "x_doctor",
+      "view_mode": "list,form",
+      "technical_name": "action_x_doctor"
+    },
+    {
+      "name": "Nurse / Clinical Staff",
+      "model": "x_nurse",
+      "view_mode": "list,form",
+      "technical_name": "action_x_nurse"
+    },
+    {
+      "name": "Patient",
+      "model": "x_patient",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_patient"
+    },
+    {
+      "name": "Allergy / Intolerance",
+      "model": "x_allergy",
+      "view_mode": "list,form",
+      "technical_name": "action_x_allergy"
+    },
+    {
+      "name": "Outpatient Appointment",
+      "model": "x_appointment",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_appointment"
+    },
+    {
+      "name": "Encounter / Admission",
+      "model": "x_encounter",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_encounter"
+    },
+    {
+      "name": "Vital Signs",
+      "model": "x_vital_sign",
+      "view_mode": "list,form",
+      "technical_name": "action_x_vital_sign"
+    },
+    {
+      "name": "Clinical Note / Chart Entry",
+      "model": "x_medical_record",
+      "view_mode": "list,form",
+      "technical_name": "action_x_medical_record"
+    },
+    {
+      "name": "Laboratory Order",
+      "model": "x_lab_order",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_lab_order"
+    },
+    {
+      "name": "Imaging / Radiology Order",
+      "model": "x_imaging_order",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_imaging_order"
+    },
+    {
+      "name": "Prescription",
+      "model": "x_prescription",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_prescription"
+    },
+    {
+      "name": "Prescription Line",
+      "model": "x_prescription_line",
+      "view_mode": "list,form",
+      "technical_name": "action_x_prescription_line"
+    },
+    {
+      "name": "Surgery / Procedure",
+      "model": "x_surgery",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_surgery"
+    },
+    {
+      "name": "Patient Insurance Cover",
+      "model": "x_insurance",
+      "view_mode": "list,form",
+      "technical_name": "action_x_insurance"
+    },
+    {
+      "name": "Patient Charge / Payment",
+      "model": "x_payment",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_payment"
+    }
+  ],
+  "menus": [
+    {
+      "name": "Hospital Management",
+      "sequence": 10,
+      "technical_name": "root_hospital_management",
+      "xml_id": "menu_root_hospital_management"
+    },
+    {
+      "name": "Department / Service Line",
+      "action_xml_id": "action_x_department",
+      "parent_xml_id": "menu_root_hospital_management",
+      "sequence": 10,
+      "technical_name": "menu_x_department"
+    },
+    {
+      "name": "Ward / Unit",
+      "action_xml_id": "action_x_ward",
+      "parent_xml_id": "menu_root_hospital_management",
+      "sequence": 11,
+      "technical_name": "menu_x_ward"
+    },
+    {
+      "name": "Bed",
+      "action_xml_id": "action_x_bed",
+      "parent_xml_id": "menu_root_hospital_management",
+      "sequence": 12,
+      "technical_name": "menu_x_bed"
+    },
+    {
+      "name": "Physician / Practitioner",
+      "action_xml_id": "action_x_doctor",
+      "parent_xml_id": "menu_root_hospital_management",
+      "sequence": 13,
+      "technical_name": "menu_x_doctor"
+    },
+    {
+      "name": "Nurse / Clinical Staff",
+      "action_xml_id": "action_x_nurse",
+      "parent_xml_id": "menu_root_hospital_management",
+      "sequence": 14,
+      "technical_name": "menu_x_nurse"
+    },
+    {
+      "name": "Patient",
+      "action_xml_id": "action_x_patient",
+      "parent_xml_id": "menu_root_hospital_management",
+      "sequence": 15,
+      "technical_name": "menu_x_patient"
+    },
+    {
+      "name": "Allergy / Intolerance",
+      "action_xml_id": "action_x_allergy",
+      "parent_xml_id": "menu_root_hospital_management",
+      "sequence": 16,
+      "technical_name": "menu_x_allergy"
+    },
+    {
+      "name": "Outpatient Appointment",
+      "action_xml_id": "action_x_appointment",
+      "parent_xml_id": "menu_root_hospital_management",
+      "sequence": 17,
+      "technical_name": "menu_x_appointment"
+    },
+    {
+      "name": "Encounter / Admission",
+      "action_xml_id": "action_x_encounter",
+      "parent_xml_id": "menu_root_hospital_management",
+      "sequence": 18,
+      "technical_name": "menu_x_encounter"
+    },
+    {
+      "name": "Vital Signs",
+      "action_xml_id": "action_x_vital_sign",
+      "parent_xml_id": "menu_root_hospital_management",
+      "sequence": 19,
+      "technical_name": "menu_x_vital_sign"
+    },
+    {
+      "name": "Clinical Note / Chart Entry",
+      "action_xml_id": "action_x_medical_record",
+      "parent_xml_id": "menu_root_hospital_management",
+      "sequence": 20,
+      "technical_name": "menu_x_medical_record"
+    },
+    {
+      "name": "Laboratory Order",
+      "action_xml_id": "action_x_lab_order",
+      "parent_xml_id": "menu_root_hospital_management",
+      "sequence": 21,
+      "technical_name": "menu_x_lab_order"
+    },
+    {
+      "name": "Imaging / Radiology Order",
+      "action_xml_id": "action_x_imaging_order",
+      "parent_xml_id": "menu_root_hospital_management",
+      "sequence": 22,
+      "technical_name": "menu_x_imaging_order"
+    },
+    {
+      "name": "Prescription",
+      "action_xml_id": "action_x_prescription",
+      "parent_xml_id": "menu_root_hospital_management",
+      "sequence": 23,
+      "technical_name": "menu_x_prescription"
+    },
+    {
+      "name": "Prescription Line",
+      "action_xml_id": "action_x_prescription_line",
+      "parent_xml_id": "menu_root_hospital_management",
+      "sequence": 24,
+      "technical_name": "menu_x_prescription_line"
+    },
+    {
+      "name": "Surgery / Procedure",
+      "action_xml_id": "action_x_surgery",
+      "parent_xml_id": "menu_root_hospital_management",
+      "sequence": 25,
+      "technical_name": "menu_x_surgery"
+    },
+    {
+      "name": "Patient Insurance Cover",
+      "action_xml_id": "action_x_insurance",
+      "parent_xml_id": "menu_root_hospital_management",
+      "sequence": 26,
+      "technical_name": "menu_x_insurance"
+    },
+    {
+      "name": "Patient Charge / Payment",
+      "action_xml_id": "action_x_payment",
+      "parent_xml_id": "menu_root_hospital_management",
+      "sequence": 27,
+      "technical_name": "menu_x_payment"
+    }
+  ],
+  "views": [
+    {
+      "name": "x_department.list",
+      "model": "x_department",
+      "type": "list",
+      "arch": "<list string=\"Department / Service Line\"><field name=\"x_name\"/><field name=\"x_code\"/><field name=\"x_company_id\"/><field name=\"x_floor\"/><field name=\"x_active\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_department.form",
+      "model": "x_department",
+      "type": "form",
+      "arch": "<form string=\"Department / Service Line\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_company_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_floor\"/><field name=\"x_active\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_ward.list",
+      "model": "x_ward",
+      "type": "list",
+      "arch": "<list string=\"Ward / Unit\"><field name=\"x_name\"/><field name=\"x_code\"/><field name=\"x_department_id\"/><field name=\"x_ward_type\"/><field name=\"x_capacity\"/><field name=\"x_company_id\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_ward.form",
+      "model": "x_ward",
+      "type": "form",
+      "arch": "<form string=\"Ward / Unit\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_department_id\"/><field name=\"x_company_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_ward_type\"/><field name=\"x_capacity\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_bed.list",
+      "model": "x_bed",
+      "type": "list",
+      "arch": "<list string=\"Bed\"><field name=\"x_name\"/><field name=\"x_ward_id\"/><field name=\"x_status\"/><field name=\"x_notes\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_bed.form",
+      "model": "x_bed",
+      "type": "form",
+      "arch": "<form string=\"Bed\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"available,occupied,blocked,cleaning,maintenance\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_ward_id\"/></group><group string=\"Details\"><field name=\"x_notes\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_bed.kanban",
+      "model": "x_bed",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/></t></templates></kanban>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_doctor.list",
+      "model": "x_doctor",
+      "type": "list",
+      "arch": "<list string=\"Physician / Practitioner\"><field name=\"x_name\"/><field name=\"x_partner_id\"/><field name=\"x_user_id\"/><field name=\"x_specialty\"/><field name=\"x_department_id\"/><field name=\"x_license_no\"/><field name=\"x_active\"/><field name=\"x_company_id\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_doctor.form",
+      "model": "x_doctor",
+      "type": "form",
+      "arch": "<form string=\"Physician / Practitioner\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_partner_id\"/><field name=\"x_user_id\"/><field name=\"x_department_id\"/><field name=\"x_company_id\"/></group><group string=\"Details\"><field name=\"x_specialty\"/><field name=\"x_license_no\"/><field name=\"x_active\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_nurse.list",
+      "model": "x_nurse",
+      "type": "list",
+      "arch": "<list string=\"Nurse / Clinical Staff\"><field name=\"x_name\"/><field name=\"x_partner_id\"/><field name=\"x_ward_id\"/><field name=\"x_shift\"/><field name=\"x_active\"/><field name=\"x_company_id\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_nurse.form",
+      "model": "x_nurse",
+      "type": "form",
+      "arch": "<form string=\"Nurse / Clinical Staff\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_partner_id\"/><field name=\"x_ward_id\"/><field name=\"x_company_id\"/></group><group string=\"Details\"><field name=\"x_shift\"/><field name=\"x_active\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_patient.list",
+      "model": "x_patient",
+      "type": "list",
+      "arch": "<list string=\"Patient\"><field name=\"x_name\"/><field name=\"x_code\"/><field name=\"x_partner_id\"/><field name=\"x_gender\"/><field name=\"x_dob\"/><field name=\"x_blood_type\"/><field name=\"x_status\"/><field name=\"x_primary_doctor_id\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_patient.form",
+      "model": "x_patient",
+      "type": "form",
+      "arch": "<form string=\"Patient\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"registered,outpatient,admitted,discharged,deceased\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_partner_id\"/><field name=\"x_primary_doctor_id\"/><field name=\"x_emergency_contact_id\"/><field name=\"x_company_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_gender\"/><field name=\"x_dob\"/><field name=\"x_blood_type\"/><field name=\"x_national_id\"/><field name=\"x_notes\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_patient.kanban",
+      "model": "x_patient",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/></t></templates></kanban>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_allergy.list",
+      "model": "x_allergy",
+      "type": "list",
+      "arch": "<list string=\"Allergy / Intolerance\"><field name=\"x_name\"/><field name=\"x_patient_id\"/><field name=\"x_severity\"/><field name=\"x_reaction\"/><field name=\"x_active\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_allergy.form",
+      "model": "x_allergy",
+      "type": "form",
+      "arch": "<form string=\"Allergy / Intolerance\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_patient_id\"/></group><group string=\"Details\"><field name=\"x_severity\"/><field name=\"x_reaction\"/><field name=\"x_active\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_appointment.list",
+      "model": "x_appointment",
+      "type": "list",
+      "arch": "<list string=\"Outpatient Appointment\" decoration-danger=\"x_status == 'cancelled'\" decoration-muted=\"x_status == 'draft'\"><field name=\"x_name\"/><field name=\"x_code\"/><field name=\"x_patient_id\"/><field name=\"x_doctor_id\"/><field name=\"x_department_id\"/><field name=\"x_status\"/><field name=\"x_start\"/><field name=\"x_end\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_appointment.form",
+      "model": "x_appointment",
+      "type": "form",
+      "arch": "<form string=\"Outpatient Appointment\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"draft,scheduled,confirmed,checked_in,in_progress,completed\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_patient_id\"/><field name=\"x_doctor_id\"/><field name=\"x_department_id\"/><field name=\"x_company_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_start\"/><field name=\"x_end\"/><field name=\"x_reason\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_appointment.kanban",
+      "model": "x_appointment",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/></t></templates></kanban>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_encounter.list",
+      "model": "x_encounter",
+      "type": "list",
+      "arch": "<list string=\"Encounter / Admission\" decoration-danger=\"x_status == 'cancelled'\"><field name=\"x_name\"/><field name=\"x_code\"/><field name=\"x_patient_id\"/><field name=\"x_attending_doctor_id\"/><field name=\"x_type\"/><field name=\"x_status\"/><field name=\"x_triage\"/><field name=\"x_ward_id\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_encounter.form",
+      "model": "x_encounter",
+      "type": "form",
+      "arch": "<form string=\"Encounter / Admission\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"open,in_care,awaiting_discharge,discharged,transferred,cancelled\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_patient_id\"/><field name=\"x_attending_doctor_id\"/><field name=\"x_ward_id\"/><field name=\"x_bed_id\"/><field name=\"x_company_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_type\"/><field name=\"x_triage\"/><field name=\"x_admit_datetime\"/><field name=\"x_discharge_datetime\"/><field name=\"x_chief_complaint\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_encounter.kanban",
+      "model": "x_encounter",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/></t></templates></kanban>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_vital_sign.list",
+      "model": "x_vital_sign",
+      "type": "list",
+      "arch": "<list string=\"Vital Signs\"><field name=\"x_name\"/><field name=\"x_patient_id\"/><field name=\"x_encounter_id\"/><field name=\"x_taken_at\"/><field name=\"x_pulse\"/><field name=\"x_bp_systolic\"/><field name=\"x_bp_diastolic\"/><field name=\"x_temp_c\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_vital_sign.form",
+      "model": "x_vital_sign",
+      "type": "form",
+      "arch": "<form string=\"Vital Signs\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_patient_id\"/><field name=\"x_encounter_id\"/><field name=\"x_nurse_id\"/></group><group string=\"Details\"><field name=\"x_taken_at\"/><field name=\"x_pulse\"/><field name=\"x_bp_systolic\"/><field name=\"x_bp_diastolic\"/><field name=\"x_temp_c\"/><field name=\"x_spo2\"/><field name=\"x_resp_rate\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_medical_record.list",
+      "model": "x_medical_record",
+      "type": "list",
+      "arch": "<list string=\"Clinical Note / Chart Entry\"><field name=\"x_name\"/><field name=\"x_patient_id\"/><field name=\"x_encounter_id\"/><field name=\"x_doctor_id\"/><field name=\"x_note_datetime\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_medical_record.form",
+      "model": "x_medical_record",
+      "type": "form",
+      "arch": "<form string=\"Clinical Note / Chart Entry\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_patient_id\"/><field name=\"x_encounter_id\"/><field name=\"x_doctor_id\"/></group><group string=\"Details\"><field name=\"x_note_datetime\"/><field name=\"x_diagnosis\"/><field name=\"x_soap_subjective\"/><field name=\"x_soap_objective\"/><field name=\"x_soap_assessment\"/><field name=\"x_soap_plan\"/><field name=\"x_treatment_plan\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lab_order.list",
+      "model": "x_lab_order",
+      "type": "list",
+      "arch": "<list string=\"Laboratory Order\" decoration-danger=\"x_status == 'cancelled'\"><field name=\"x_name\"/><field name=\"x_code\"/><field name=\"x_patient_id\"/><field name=\"x_encounter_id\"/><field name=\"x_ordering_doctor_id\"/><field name=\"x_status\"/><field name=\"x_ordered_at\"/><field name=\"x_resulted_at\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lab_order.form",
+      "model": "x_lab_order",
+      "type": "form",
+      "arch": "<form string=\"Laboratory Order\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"ordered,collected,processing,resulted,cancelled\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_patient_id\"/><field name=\"x_encounter_id\"/><field name=\"x_ordering_doctor_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_ordered_at\"/><field name=\"x_result_summary\"/><field name=\"x_resulted_at\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lab_order.kanban",
+      "model": "x_lab_order",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/></t></templates></kanban>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_imaging_order.list",
+      "model": "x_imaging_order",
+      "type": "list",
+      "arch": "<list string=\"Imaging / Radiology Order\" decoration-danger=\"x_status == 'cancelled'\"><field name=\"x_name\"/><field name=\"x_patient_id\"/><field name=\"x_encounter_id\"/><field name=\"x_modality\"/><field name=\"x_status\"/><field name=\"x_ordering_doctor_id\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_imaging_order.form",
+      "model": "x_imaging_order",
+      "type": "form",
+      "arch": "<form string=\"Imaging / Radiology Order\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"ordered,collected,processing,resulted,cancelled\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_patient_id\"/><field name=\"x_encounter_id\"/><field name=\"x_ordering_doctor_id\"/></group><group string=\"Details\"><field name=\"x_modality\"/><field name=\"x_findings\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_imaging_order.kanban",
+      "model": "x_imaging_order",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/></t></templates></kanban>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_prescription.list",
+      "model": "x_prescription",
+      "type": "list",
+      "arch": "<list string=\"Prescription\" decoration-danger=\"x_status == 'cancelled'\" decoration-muted=\"x_status == 'draft'\"><field name=\"x_name\"/><field name=\"x_code\"/><field name=\"x_patient_id\"/><field name=\"x_doctor_id\"/><field name=\"x_encounter_id\"/><field name=\"x_status\"/><field name=\"x_prescribed_at\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_prescription.form",
+      "model": "x_prescription",
+      "type": "form",
+      "arch": "<form string=\"Prescription\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"draft,prescribed,dispensed,cancelled\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_patient_id\"/><field name=\"x_doctor_id\"/><field name=\"x_encounter_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_prescribed_at\"/><field name=\"x_notes\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_prescription.kanban",
+      "model": "x_prescription",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/></t></templates></kanban>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_prescription_line.list",
+      "model": "x_prescription_line",
+      "type": "list",
+      "arch": "<list string=\"Prescription Line\"><field name=\"x_name\"/><field name=\"x_prescription_id\"/><field name=\"x_dose\"/><field name=\"x_route\"/><field name=\"x_frequency\"/><field name=\"x_duration_days\"/><field name=\"x_qty\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_prescription_line.form",
+      "model": "x_prescription_line",
+      "type": "form",
+      "arch": "<form string=\"Prescription Line\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_prescription_id\"/></group><group string=\"Details\"><field name=\"x_dose\"/><field name=\"x_route\"/><field name=\"x_frequency\"/><field name=\"x_duration_days\"/><field name=\"x_qty\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_surgery.list",
+      "model": "x_surgery",
+      "type": "list",
+      "arch": "<list string=\"Surgery / Procedure\" decoration-danger=\"x_status == 'cancelled'\"><field name=\"x_name\"/><field name=\"x_patient_id\"/><field name=\"x_encounter_id\"/><field name=\"x_surgeon_id\"/><field name=\"x_status\"/><field name=\"x_scheduled_start\"/><field name=\"x_or_room\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_surgery.form",
+      "model": "x_surgery",
+      "type": "form",
+      "arch": "<form string=\"Surgery / Procedure\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"planned,pre_op,in_or,recovery,completed,cancelled\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_patient_id\"/><field name=\"x_encounter_id\"/><field name=\"x_surgeon_id\"/></group><group string=\"Details\"><field name=\"x_scheduled_start\"/><field name=\"x_or_room\"/><field name=\"x_notes\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_surgery.kanban",
+      "model": "x_surgery",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/></t></templates></kanban>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_insurance.list",
+      "model": "x_insurance",
+      "type": "list",
+      "arch": "<list string=\"Patient Insurance Cover\"><field name=\"x_name\"/><field name=\"x_patient_id\"/><field name=\"x_policy_no\"/><field name=\"x_valid_from\"/><field name=\"x_valid_to\"/><field name=\"x_payer_id\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_insurance.form",
+      "model": "x_insurance",
+      "type": "form",
+      "arch": "<form string=\"Patient Insurance Cover\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_patient_id\"/><field name=\"x_payer_id\"/></group><group string=\"Details\"><field name=\"x_policy_no\"/><field name=\"x_valid_from\"/><field name=\"x_valid_to\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_payment.list",
+      "model": "x_payment",
+      "type": "list",
+      "arch": "<list string=\"Patient Charge / Payment\" decoration-danger=\"x_status == 'cancelled'\" decoration-muted=\"x_status == 'draft'\"><field name=\"x_name\"/><field name=\"x_code\"/><field name=\"x_patient_id\"/><field name=\"x_encounter_id\"/><field name=\"x_amount\"/><field name=\"x_currency_id\"/><field name=\"x_status\"/><field name=\"x_date\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_payment.form",
+      "model": "x_payment",
+      "type": "form",
+      "arch": "<form string=\"Patient Charge / Payment\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"draft,posted,partial,paid,written_off,cancelled\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_patient_id\"/><field name=\"x_encounter_id\"/><field name=\"x_currency_id\"/><field name=\"x_company_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_amount\"/><field name=\"x_date\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_payment.kanban",
+      "model": "x_payment",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/></t></templates></kanban>",
+      "mode": "primary"
+    }
+  ],
+  "_meta": {
+    "model_count": 18,
+    "view_count": 45,
+    "menu_count": 19,
+    "smart_button_count": 17,
+    "automation_count": 5,
+    "domain_pack": "hospital"
+  },
+  "access_rules": [
+    {
+      "id": "access_x_department_user",
+      "name": "Department / Service Line user",
+      "model": "model_x_department",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_ward_user",
+      "name": "Ward / Unit user",
+      "model": "model_x_ward",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_bed_user",
+      "name": "Bed user",
+      "model": "model_x_bed",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_doctor_user",
+      "name": "Physician / Practitioner user",
+      "model": "model_x_doctor",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_nurse_user",
+      "name": "Nurse / Clinical Staff user",
+      "model": "model_x_nurse",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_patient_user",
+      "name": "Patient user",
+      "model": "model_x_patient",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_allergy_user",
+      "name": "Allergy / Intolerance user",
+      "model": "model_x_allergy",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_appointment_user",
+      "name": "Outpatient Appointment user",
+      "model": "model_x_appointment",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_encounter_user",
+      "name": "Encounter / Admission user",
+      "model": "model_x_encounter",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_vital_sign_user",
+      "name": "Vital Signs user",
+      "model": "model_x_vital_sign",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_medical_record_user",
+      "name": "Clinical Note / Chart Entry user",
+      "model": "model_x_medical_record",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_lab_order_user",
+      "name": "Laboratory Order user",
+      "model": "model_x_lab_order",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_imaging_order_user",
+      "name": "Imaging / Radiology Order user",
+      "model": "model_x_imaging_order",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_prescription_user",
+      "name": "Prescription user",
+      "model": "model_x_prescription",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_prescription_line_user",
+      "name": "Prescription Line user",
+      "model": "model_x_prescription_line",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_surgery_user",
+      "name": "Surgery / Procedure user",
+      "model": "model_x_surgery",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_insurance_user",
+      "name": "Patient Insurance Cover user",
+      "model": "model_x_insurance",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_payment_user",
+      "name": "Patient Charge / Payment user",
+      "model": "model_x_payment",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    }
+  ],
+  "_completeness": [
+    {
+      "id": "has_models",
+      "ok": true,
+      "detail": "18 model(s)"
+    },
+    {
+      "id": "has_menus",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "has_views",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "has_workflow",
+      "ok": true,
+      "detail": "x_bed,x_patient,x_appointment,x_encounter,x_lab_order,x_imaging_order,x_prescription,x_surgery,x_payment"
+    },
+    {
+      "id": "kanban_for_workflow",
+      "ok": true,
+      "detail": "kanban present"
+    },
+    {
+      "id": "mail_thread",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "sequence_on_workflow",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "has_access_stubs",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "has_smart_buttons",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "contacts_link",
+      "ok": true,
+      "detail": "res.partner M2O present"
+    }
+  ]
+}

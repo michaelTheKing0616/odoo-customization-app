@@ -1,0 +1,33 @@
+[project]
+name = "odoo-client"
+version = "0.1.0"
+description = "Typed Odoo Community 19 XML-RPC client for the no-code customization platform"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2.10",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.25",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/odoo_client"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "integration: requires local Odoo 16–19 (docker compose stacks)",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

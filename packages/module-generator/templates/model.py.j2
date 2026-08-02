@@ -1,0 +1,29 @@
+# -*- coding: utf-8 -*-
+from odoo import fields, models
+
+
+class {{ model.class_name() }}(models.Model):
+{% if model.is_inherit() %}
+    _inherit = {{ (model.inherit or model.model) | py }}
+{% if model.description %}
+    _description = {{ model.description | py }}
+{% endif %}
+{% else %}
+    _name = {{ model.model | py }}
+    _description = {{ model.description | py }}
+{% if model.has_mixins() %}
+    _inherit = {{ model.mixins | py }}
+{% endif %}
+{% endif %}
+
+{% for f in model.fields %}
+{{ f.python_assignment() }}
+{% else %}
+{% if not model.is_inherit() %}
+    x_name = fields.Char(string="Name", required=True)
+{% endif %}
+{% endfor %}
+{% if model.extra_python %}
+
+{{ model.extra_python }}
+{% endif %}

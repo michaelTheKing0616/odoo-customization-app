@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+{% for auto in spec.python_automations %}
+    <record id="{{ auto.xml_id() }}_server" model="ir.actions.server">
+        <field name="name">{{ auto.name | xml }} (code)</field>
+        <field name="model_id" search="[('model','=','{{ auto.model | xml }}')]"/>
+        <field name="state">code</field>
+        <field name="code"><![CDATA[{{ auto.code }}]]></field>
+    </record>
+    <record id="{{ auto.xml_id() }}" model="base.automation">
+        <field name="name">{{ auto.name | xml }}</field>
+        <field name="model_id" search="[('model','=','{{ auto.model | xml }}')]"/>
+        <field name="trigger">{{ auto.trigger | xml }}</field>
+        {% if auto.filter_domain %}
+        <field name="filter_domain">{{ auto.filter_domain | xml }}</field>
+        {% endif %}
+        <field name="action_server_ids" eval="[(4, ref('{{ auto.xml_id() }}_server'))]"/>
+    </record>
+{% endfor %}
+</odoo>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+{% for rule in spec.record_rules %}
+    <record id="{{ rule.xml_id() }}" model="ir.rule">
+        <field name="name">{{ rule.name | xml }}</field>
+        <field name="model_id" ref="{{ rule.model_xml_id }}"/>
+        <field name="domain_force">{{ rule.domain_force | xml }}</field>
+        <field name="perm_read" eval="{{ 'True' if rule.perm_read else 'False' }}"/>
+        <field name="perm_write" eval="{{ 'True' if rule.perm_write else 'False' }}"/>
+        <field name="perm_create" eval="{{ 'True' if rule.perm_create else 'False' }}"/>
+        <field name="perm_unlink" eval="{{ 'True' if rule.perm_unlink else 'False' }}"/>
+        {% if rule.group_xml_ids %}
+        <field name="groups" eval="[(6, 0, [{% for g in rule.group_xml_ids %}ref('{{ g }}'){% if not loop.last %}, {% endif %}{% endfor %}])]"/>
+        {% endif %}
+    </record>
+{% endfor %}
+</odoo>

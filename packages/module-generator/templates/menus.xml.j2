@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+{% for action in spec.actions %}
+    <record id="{{ action.xml_id() }}" model="ir.actions.act_window">
+        <field name="name">{{ action.name | xml }}</field>
+        <field name="res_model">{{ action.model | xml }}</field>
+        <field name="view_mode">{{ action.view_mode | xml }}</field>
+        {% if action.domain %}
+        <field name="domain">{{ action.domain | xml }}</field>
+        {% endif %}
+        {% if action.context %}
+        <field name="context">{{ action.context | xml }}</field>
+        {% endif %}
+    </record>
+{% endfor %}
+{% for menu in spec.menus %}
+    <menuitem id="{{ menu.xml_id() }}" name="{{ menu.name | xml }}"{% if menu.parent_xml_id %} parent="{{ menu.parent_xml_id | xml }}"{% endif %}{% if menu.action_xml_id %} action="{{ menu.action_xml_id | xml }}"{% endif %} sequence="{{ menu.sequence }}"/>
+{% endfor %}
+</odoo>

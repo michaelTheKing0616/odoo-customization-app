@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+{% for view in spec.views %}
+    <record id="{{ view.xml_id() }}" model="ir.ui.view">
+        <field name="name">{{ view.name | xml }}</field>
+        <field name="model">{{ view.model | xml }}</field>
+        <field name="type">{{ view.type | xml }}</field>
+        <field name="priority">{{ view.priority }}</field>
+{% if view.inherit_xml_id %}
+        <field name="inherit_id" ref="{{ view.inherit_xml_id | xml }}"/>
+        <field name="mode">{{ view.mode | xml }}</field>
+{% endif %}
+        <field name="arch" type="xml">
+{{ view.arch }}
+        </field>
+    </record>
+{% endfor %}
+</odoo>

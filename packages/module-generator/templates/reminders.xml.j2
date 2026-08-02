@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+{% for cron in spec.cron_jobs %}
+    <record id="{{ cron.resolved_xml_id() }}" model="ir.cron">
+        <field name="name">{{ cron.name | xml }}</field>
+        <field name="model_id" search="[('model','=','{{ cron.model | xml }}')]"/>
+        <field name="state">code</field>
+        <field name="code"><![CDATA[{{ cron.code }}]]></field>
+        <field name="interval_number">{{ cron.interval_number }}</field>
+        <field name="interval_type">{{ cron.interval_type | xml }}</field>
+        <field name="active" eval="{{ 'True' if cron.active else 'False' }}"/>
+        <field name="user_id" ref="{{ cron.user_id_xml | xml }}"/>
+    </record>
+{% endfor %}
+</odoo>

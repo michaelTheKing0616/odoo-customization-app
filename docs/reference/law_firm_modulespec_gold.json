@@ -1,0 +1,1615 @@
+{
+  "technical_name": "law_firm_management",
+  "display_name": "Law Firm Management",
+  "depends": [
+    "base",
+    "contacts",
+    "mail"
+  ],
+  "models": [
+    {
+      "model": "x_lf_attorney",
+      "description": "Attorney / Fee Earner",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Name",
+          "required": true
+        },
+        {
+          "name": "x_partner_id",
+          "ttype": "many2one",
+          "string": "Contact",
+          "relation": "res.partner"
+        },
+        {
+          "name": "x_user_id",
+          "ttype": "many2one",
+          "string": "Login User",
+          "relation": "res.users"
+        },
+        {
+          "name": "x_practice_area",
+          "ttype": "selection",
+          "string": "Practice Area",
+          "selection": "[('litigation', 'Litigation'), ('corporate', 'Corporate'), ('ip', 'Intellectual Property'), ('employment', 'Employment'), ('real_estate', 'Real Estate'), ('family', 'Family'), ('criminal', 'Criminal'), ('tax', 'Tax'), ('other', 'Other')]"
+        },
+        {
+          "name": "x_bar_number",
+          "ttype": "char",
+          "string": "Bar / License No."
+        },
+        {
+          "name": "x_hourly_rate",
+          "ttype": "float",
+          "string": "Default Hourly Rate"
+        },
+        {
+          "name": "x_currency_id",
+          "ttype": "many2one",
+          "string": "Currency",
+          "relation": "res.currency"
+        },
+        {
+          "name": "x_active",
+          "ttype": "boolean",
+          "string": "Active"
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        }
+      ]
+    },
+    {
+      "model": "x_lf_matter",
+      "description": "Matter / Case",
+      "mode": "new",
+      "is_workflow": true,
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ],
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Matter Title",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Matter No.",
+          "help": "Matter reference \u2014 wire ir.sequence (e.g. MTR/00001)"
+        },
+        {
+          "name": "x_client_id",
+          "ttype": "many2one",
+          "string": "Primary Client",
+          "relation": "res.partner",
+          "required": true
+        },
+        {
+          "name": "x_responsible_id",
+          "ttype": "many2one",
+          "string": "Responsible Attorney",
+          "relation": "x_lf_attorney",
+          "required": true
+        },
+        {
+          "name": "x_practice_area",
+          "ttype": "selection",
+          "string": "Practice Area",
+          "selection": "[('litigation', 'Litigation'), ('corporate', 'Corporate'), ('ip', 'Intellectual Property'), ('employment', 'Employment'), ('real_estate', 'Real Estate'), ('family', 'Family'), ('criminal', 'Criminal'), ('tax', 'Tax'), ('other', 'Other')]"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('intake', 'Intake'), ('conflict_check', 'Conflict check'), ('open', 'Open'), ('discovery', 'Discovery'), ('trial', 'Trial / Hearing'), ('settlement', 'Settlement'), ('closed', 'Closed'), ('on_hold', 'On hold')]",
+          "required": true
+        },
+        {
+          "name": "x_priority",
+          "ttype": "selection",
+          "string": "Priority",
+          "selection": "[('low', 'Low'), ('normal', 'Normal'), ('high', 'High'), ('critical', 'Critical')]"
+        },
+        {
+          "name": "x_open_date",
+          "ttype": "date",
+          "string": "Opened"
+        },
+        {
+          "name": "x_close_date",
+          "ttype": "date",
+          "string": "Closed"
+        },
+        {
+          "name": "x_limitation_date",
+          "ttype": "date",
+          "string": "Limitation / Deadline"
+        },
+        {
+          "name": "x_court",
+          "ttype": "char",
+          "string": "Court / Forum"
+        },
+        {
+          "name": "x_docket",
+          "ttype": "char",
+          "string": "Docket / File No."
+        },
+        {
+          "name": "x_description",
+          "ttype": "text",
+          "string": "Synopsis"
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        }
+      ]
+    },
+    {
+      "model": "x_lf_matter_party",
+      "description": "Matter Party / Role",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Label",
+          "required": true
+        },
+        {
+          "name": "x_matter_id",
+          "ttype": "many2one",
+          "string": "Matter",
+          "relation": "x_lf_matter",
+          "required": true
+        },
+        {
+          "name": "x_partner_id",
+          "ttype": "many2one",
+          "string": "Party Contact",
+          "relation": "res.partner",
+          "required": true
+        },
+        {
+          "name": "x_role",
+          "ttype": "selection",
+          "string": "Role",
+          "selection": "[('client', 'Client'), ('opposing', 'Opposing party'), ('opposing_counsel', 'Opposing counsel'), ('witness', 'Witness'), ('expert', 'Expert'), ('court', 'Court / Tribunal'), ('other', 'Other')]",
+          "required": true
+        },
+        {
+          "name": "x_notes",
+          "ttype": "char",
+          "string": "Notes"
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        }
+      ]
+    },
+    {
+      "model": "x_lf_time_entry",
+      "description": "Time Entry (Billable)",
+      "mode": "new",
+      "is_workflow": true,
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ],
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Narrative",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Time entry ref \u2014 wire ir.sequence (e.g. TE/00001)"
+        },
+        {
+          "name": "x_matter_id",
+          "ttype": "many2one",
+          "string": "Matter",
+          "relation": "x_lf_matter",
+          "required": true
+        },
+        {
+          "name": "x_attorney_id",
+          "ttype": "many2one",
+          "string": "Fee Earner",
+          "relation": "x_lf_attorney",
+          "required": true
+        },
+        {
+          "name": "x_date",
+          "ttype": "date",
+          "string": "Work Date",
+          "required": true
+        },
+        {
+          "name": "x_hours",
+          "ttype": "float",
+          "string": "Hours",
+          "required": true
+        },
+        {
+          "name": "x_rate",
+          "ttype": "float",
+          "string": "Rate"
+        },
+        {
+          "name": "x_amount",
+          "ttype": "float",
+          "string": "Amount"
+        },
+        {
+          "name": "x_currency_id",
+          "ttype": "many2one",
+          "string": "Currency",
+          "relation": "res.currency"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('draft', 'Draft'), ('submitted', 'Submitted'), ('approved', 'Approved'), ('billed', 'Billed'), ('written_off', 'Written off')]",
+          "required": true
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        }
+      ]
+    },
+    {
+      "model": "x_lf_expense",
+      "description": "Matter Expense / Disbursement",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Description",
+          "required": true
+        },
+        {
+          "name": "x_matter_id",
+          "ttype": "many2one",
+          "string": "Matter",
+          "relation": "x_lf_matter",
+          "required": true
+        },
+        {
+          "name": "x_date",
+          "ttype": "date",
+          "string": "Date"
+        },
+        {
+          "name": "x_amount",
+          "ttype": "float",
+          "string": "Amount",
+          "required": true
+        },
+        {
+          "name": "x_currency_id",
+          "ttype": "many2one",
+          "string": "Currency",
+          "relation": "res.currency"
+        },
+        {
+          "name": "x_billable",
+          "ttype": "boolean",
+          "string": "Billable to Client"
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        }
+      ]
+    },
+    {
+      "model": "x_lf_task",
+      "description": "Matter Task / Deadline",
+      "mode": "new",
+      "is_workflow": true,
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ],
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Task",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Task ref \u2014 wire ir.sequence (e.g. TSK/00001)"
+        },
+        {
+          "name": "x_matter_id",
+          "ttype": "many2one",
+          "string": "Matter",
+          "relation": "x_lf_matter",
+          "required": true
+        },
+        {
+          "name": "x_assignee_id",
+          "ttype": "many2one",
+          "string": "Assignee",
+          "relation": "x_lf_attorney"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('todo', 'To do'), ('in_progress', 'In progress'), ('done', 'Done'), ('cancelled', 'Cancelled')]",
+          "required": true
+        },
+        {
+          "name": "x_due_date",
+          "ttype": "date",
+          "string": "Due Date"
+        },
+        {
+          "name": "x_priority",
+          "ttype": "selection",
+          "string": "Priority",
+          "selection": "[('low', 'Low'), ('normal', 'Normal'), ('high', 'High'), ('critical', 'Critical')]"
+        },
+        {
+          "name": "x_notes",
+          "ttype": "text",
+          "string": "Notes"
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        }
+      ]
+    },
+    {
+      "model": "x_lf_hearing",
+      "description": "Hearing / Court Diary",
+      "mode": "new",
+      "is_workflow": true,
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ],
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Hearing",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Hearing ref \u2014 wire ir.sequence (e.g. HRG/00001)"
+        },
+        {
+          "name": "x_matter_id",
+          "ttype": "many2one",
+          "string": "Matter",
+          "relation": "x_lf_matter",
+          "required": true
+        },
+        {
+          "name": "x_attorney_id",
+          "ttype": "many2one",
+          "string": "Appearing Counsel",
+          "relation": "x_lf_attorney"
+        },
+        {
+          "name": "x_start",
+          "ttype": "datetime",
+          "string": "Start",
+          "required": true
+        },
+        {
+          "name": "x_end",
+          "ttype": "datetime",
+          "string": "End"
+        },
+        {
+          "name": "x_location",
+          "ttype": "char",
+          "string": "Court / Location"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('scheduled', 'Scheduled'), ('completed', 'Completed'), ('adjourned', 'Adjourned'), ('cancelled', 'Cancelled')]",
+          "required": true
+        },
+        {
+          "name": "x_notes",
+          "ttype": "text",
+          "string": "Notes"
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        }
+      ]
+    },
+    {
+      "model": "x_lf_document",
+      "description": "Matter Document",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Title",
+          "required": true
+        },
+        {
+          "name": "x_matter_id",
+          "ttype": "many2one",
+          "string": "Matter",
+          "relation": "x_lf_matter",
+          "required": true
+        },
+        {
+          "name": "x_doc_type",
+          "ttype": "selection",
+          "string": "Type",
+          "selection": "[('pleading', 'Pleading'), ('contract', 'Contract'), ('correspondence', 'Correspondence'), ('evidence', 'Evidence'), ('opinion', 'Opinion'), ('other', 'Other')]"
+        },
+        {
+          "name": "x_version",
+          "ttype": "char",
+          "string": "Version"
+        },
+        {
+          "name": "x_date",
+          "ttype": "date",
+          "string": "Document Date"
+        },
+        {
+          "name": "x_confidential",
+          "ttype": "boolean",
+          "string": "Confidential"
+        },
+        {
+          "name": "x_notes",
+          "ttype": "text",
+          "string": "Notes"
+        }
+      ]
+    },
+    {
+      "model": "x_lf_conflict",
+      "description": "Conflict Check",
+      "mode": "new",
+      "is_workflow": true,
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ],
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Subject",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Conflict check ref \u2014 wire ir.sequence (e.g. CFC/00001)"
+        },
+        {
+          "name": "x_matter_id",
+          "ttype": "many2one",
+          "string": "Related Matter",
+          "relation": "x_lf_matter"
+        },
+        {
+          "name": "x_client_id",
+          "ttype": "many2one",
+          "string": "Prospective Client",
+          "relation": "res.partner",
+          "required": true
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('pending', 'Pending'), ('cleared', 'Cleared'), ('blocked', 'Conflict \u2014 blocked')]",
+          "required": true
+        },
+        {
+          "name": "x_checked_at",
+          "ttype": "datetime",
+          "string": "Checked At"
+        },
+        {
+          "name": "x_notes",
+          "ttype": "text",
+          "string": "Findings"
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        }
+      ]
+    },
+    {
+      "model": "x_lf_invoice",
+      "description": "Fee Invoice / Bill",
+      "mode": "new",
+      "is_workflow": true,
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ],
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Description",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Invoice No.",
+          "help": "Fee invoice ref \u2014 wire ir.sequence (e.g. INV/00001)"
+        },
+        {
+          "name": "x_matter_id",
+          "ttype": "many2one",
+          "string": "Matter",
+          "relation": "x_lf_matter",
+          "required": true
+        },
+        {
+          "name": "x_client_id",
+          "ttype": "many2one",
+          "string": "Bill To",
+          "relation": "res.partner",
+          "required": true
+        },
+        {
+          "name": "x_date",
+          "ttype": "date",
+          "string": "Invoice Date"
+        },
+        {
+          "name": "x_amount",
+          "ttype": "float",
+          "string": "Fees Total",
+          "required": true
+        },
+        {
+          "name": "x_disbursements",
+          "ttype": "float",
+          "string": "Disbursements"
+        },
+        {
+          "name": "x_currency_id",
+          "ttype": "many2one",
+          "string": "Currency",
+          "relation": "res.currency"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('draft', 'Draft'), ('sent', 'Sent'), ('partial', 'Partially paid'), ('paid', 'Paid'), ('void', 'Void')]",
+          "required": true
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        }
+      ]
+    },
+    {
+      "model": "x_lf_payment",
+      "description": "Client Payment",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Label",
+          "required": true
+        },
+        {
+          "name": "x_invoice_id",
+          "ttype": "many2one",
+          "string": "Invoice",
+          "relation": "x_lf_invoice",
+          "required": true
+        },
+        {
+          "name": "x_date",
+          "ttype": "date",
+          "string": "Payment Date"
+        },
+        {
+          "name": "x_amount",
+          "ttype": "float",
+          "string": "Amount",
+          "required": true
+        },
+        {
+          "name": "x_currency_id",
+          "ttype": "many2one",
+          "string": "Currency",
+          "relation": "res.currency"
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        }
+      ]
+    },
+    {
+      "model": "x_lf_trust",
+      "description": "Trust / Retainer Movement",
+      "mode": "new",
+      "is_workflow": true,
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Label",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Trust movement ref \u2014 wire ir.sequence (e.g. TRU/00001)"
+        },
+        {
+          "name": "x_matter_id",
+          "ttype": "many2one",
+          "string": "Matter",
+          "relation": "x_lf_matter",
+          "required": true
+        },
+        {
+          "name": "x_client_id",
+          "ttype": "many2one",
+          "string": "Client",
+          "relation": "res.partner",
+          "required": true
+        },
+        {
+          "name": "x_date",
+          "ttype": "date",
+          "string": "Date"
+        },
+        {
+          "name": "x_amount",
+          "ttype": "float",
+          "string": "Amount",
+          "required": true
+        },
+        {
+          "name": "x_currency_id",
+          "ttype": "many2one",
+          "string": "Currency",
+          "relation": "res.currency"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('held', 'Held'), ('applied', 'Applied to fees'), ('refunded', 'Refunded')]",
+          "required": true
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        }
+      ],
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ]
+    }
+  ],
+  "smart_buttons": [
+    {
+      "on_model": "x_lf_matter",
+      "label": "Parties",
+      "related_model": "x_lf_matter_party",
+      "relation_field": "x_matter_id",
+      "icon": "fa-users"
+    },
+    {
+      "on_model": "x_lf_matter",
+      "label": "Time",
+      "related_model": "x_lf_time_entry",
+      "relation_field": "x_matter_id",
+      "icon": "fa-clock-o"
+    },
+    {
+      "on_model": "x_lf_matter",
+      "label": "Expenses",
+      "related_model": "x_lf_expense",
+      "relation_field": "x_matter_id",
+      "icon": "fa-money"
+    },
+    {
+      "on_model": "x_lf_matter",
+      "label": "Tasks",
+      "related_model": "x_lf_task",
+      "relation_field": "x_matter_id",
+      "icon": "fa-check-square-o"
+    },
+    {
+      "on_model": "x_lf_matter",
+      "label": "Hearings",
+      "related_model": "x_lf_hearing",
+      "relation_field": "x_matter_id",
+      "icon": "fa-gavel"
+    },
+    {
+      "on_model": "x_lf_matter",
+      "label": "Documents",
+      "related_model": "x_lf_document",
+      "relation_field": "x_matter_id",
+      "icon": "fa-file-text-o"
+    },
+    {
+      "on_model": "x_lf_matter",
+      "label": "Invoices",
+      "related_model": "x_lf_invoice",
+      "relation_field": "x_matter_id",
+      "icon": "fa-file-text"
+    },
+    {
+      "on_model": "x_lf_matter",
+      "label": "Trust",
+      "related_model": "x_lf_trust",
+      "relation_field": "x_matter_id",
+      "icon": "fa-university"
+    },
+    {
+      "on_model": "x_lf_attorney",
+      "label": "Matters",
+      "related_model": "x_lf_matter",
+      "relation_field": "x_responsible_id",
+      "icon": "fa-briefcase"
+    },
+    {
+      "on_model": "x_lf_invoice",
+      "label": "Payments",
+      "related_model": "x_lf_payment",
+      "relation_field": "x_invoice_id",
+      "icon": "fa-credit-card"
+    },
+    {
+      "on_model": "res.partner",
+      "label": "Matters (Client)",
+      "related_model": "x_lf_matter",
+      "relation_field": "x_client_id",
+      "icon": "fa-briefcase",
+      "requires_inherit_view": true
+    },
+    {
+      "on_model": "res.partner",
+      "label": "Attorney / Fee Earner",
+      "related_model": "x_lf_attorney",
+      "relation_field": "x_partner_id",
+      "icon": "fa-list",
+      "requires_inherit_view": true,
+      "note": "Applied as inherit on Contacts button_box"
+    },
+    {
+      "on_model": "res.partner",
+      "label": "Matter Party / Role",
+      "related_model": "x_lf_matter_party",
+      "relation_field": "x_partner_id",
+      "icon": "fa-list",
+      "requires_inherit_view": true,
+      "note": "Applied as inherit on Contacts button_box"
+    },
+    {
+      "on_model": "res.partner",
+      "label": "Conflict Check",
+      "related_model": "x_lf_conflict",
+      "relation_field": "x_client_id",
+      "icon": "fa-list",
+      "requires_inherit_view": true,
+      "note": "Applied as inherit on Contacts button_box"
+    },
+    {
+      "on_model": "res.partner",
+      "label": "Fee Invoice / Bill",
+      "related_model": "x_lf_invoice",
+      "relation_field": "x_client_id",
+      "icon": "fa-list",
+      "requires_inherit_view": true,
+      "note": "Applied as inherit on Contacts button_box"
+    },
+    {
+      "on_model": "res.partner",
+      "label": "Trust / Retainer Movement",
+      "related_model": "x_lf_trust",
+      "relation_field": "x_client_id",
+      "icon": "fa-list",
+      "requires_inherit_view": true,
+      "note": "Applied as inherit on Contacts button_box"
+    },
+    {
+      "on_model": "x_lf_attorney",
+      "label": "Time Entry (Billable)",
+      "related_model": "x_lf_time_entry",
+      "relation_field": "x_attorney_id",
+      "icon": "fa-list",
+      "source": "depth_synthesize"
+    },
+    {
+      "on_model": "x_lf_attorney",
+      "label": "Matter Task / Deadline",
+      "related_model": "x_lf_task",
+      "relation_field": "x_assignee_id",
+      "icon": "fa-list",
+      "source": "depth_synthesize"
+    },
+    {
+      "on_model": "x_lf_attorney",
+      "label": "Hearing / Court Diary",
+      "related_model": "x_lf_hearing",
+      "relation_field": "x_attorney_id",
+      "icon": "fa-list",
+      "source": "depth_synthesize"
+    },
+    {
+      "on_model": "x_lf_matter",
+      "label": "Conflict Check",
+      "related_model": "x_lf_conflict",
+      "relation_field": "x_matter_id",
+      "icon": "fa-list",
+      "source": "depth_synthesize"
+    }
+  ],
+  "automations": [
+    {
+      "name": "Activity when matter opened",
+      "model": "x_lf_matter",
+      "trigger": "on_create",
+      "description": "Kick off intake follow-up",
+      "safe_actions": [
+        {
+          "kind": "next_activity",
+          "summary": "Complete matter intake checklist"
+        }
+      ]
+    },
+    {
+      "name": "Activity before limitation date",
+      "model": "x_lf_matter",
+      "trigger": "on_time",
+      "trg_date_field_name": "x_limitation_date",
+      "description": "Remind counsel of approaching limitation",
+      "filter_domain": "[('x_status', 'not in', ['closed'])]",
+      "safe_actions": [
+        {
+          "kind": "next_activity",
+          "summary": "Limitation date approaching"
+        }
+      ]
+    },
+    {
+      "name": "Mark invoice paid when payment posted",
+      "model": "x_lf_payment",
+      "trigger": "on_create",
+      "description": "Related write invoice \u2192 paid (simple stub)",
+      "safe_actions": [
+        {
+          "kind": "related_write",
+          "relation_field": "x_invoice_id",
+          "field": "x_status",
+          "value": "paid"
+        }
+      ]
+    },
+    {
+      "name": "Task overdue activity",
+      "model": "x_lf_task",
+      "trigger": "on_time",
+      "trg_date_field_name": "x_due_date",
+      "filter_domain": "[('x_status', 'not in', ['done','cancelled'])]",
+      "safe_actions": [
+        {
+          "kind": "next_activity",
+          "summary": "Overdue matter task"
+        }
+      ]
+    }
+  ],
+  "reuse_hints": [
+    {
+      "model": "res.partner",
+      "reason": "Clients, opposing parties, courts, and counsel contacts"
+    },
+    {
+      "model": "res.users",
+      "reason": "Map attorneys to logins for assignment / activities"
+    },
+    {
+      "model": "res.company",
+      "reason": "Multi-office / multi-company firms"
+    },
+    {
+      "model": "account.move",
+      "reason": "Optional later: formal accounting invoices from fee bills",
+      "optional": true
+    }
+  ],
+  "actions": [
+    {
+      "name": "Attorney / Fee Earner",
+      "model": "x_lf_attorney",
+      "view_mode": "list,form",
+      "technical_name": "action_x_lf_attorney"
+    },
+    {
+      "name": "Matter / Case",
+      "model": "x_lf_matter",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_lf_matter"
+    },
+    {
+      "name": "Matter Party / Role",
+      "model": "x_lf_matter_party",
+      "view_mode": "list,form",
+      "technical_name": "action_x_lf_matter_party"
+    },
+    {
+      "name": "Time Entry (Billable)",
+      "model": "x_lf_time_entry",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_lf_time_entry"
+    },
+    {
+      "name": "Matter Expense / Disbursement",
+      "model": "x_lf_expense",
+      "view_mode": "list,form",
+      "technical_name": "action_x_lf_expense"
+    },
+    {
+      "name": "Matter Task / Deadline",
+      "model": "x_lf_task",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_lf_task"
+    },
+    {
+      "name": "Hearing / Court Diary",
+      "model": "x_lf_hearing",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_lf_hearing"
+    },
+    {
+      "name": "Matter Document",
+      "model": "x_lf_document",
+      "view_mode": "list,form",
+      "technical_name": "action_x_lf_document"
+    },
+    {
+      "name": "Conflict Check",
+      "model": "x_lf_conflict",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_lf_conflict"
+    },
+    {
+      "name": "Fee Invoice / Bill",
+      "model": "x_lf_invoice",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_lf_invoice"
+    },
+    {
+      "name": "Client Payment",
+      "model": "x_lf_payment",
+      "view_mode": "list,form",
+      "technical_name": "action_x_lf_payment"
+    },
+    {
+      "name": "Trust / Retainer Movement",
+      "model": "x_lf_trust",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_lf_trust"
+    }
+  ],
+  "menus": [
+    {
+      "name": "Law Firm Management",
+      "sequence": 10,
+      "technical_name": "root_law_firm_management",
+      "xml_id": "menu_root_law_firm_management"
+    },
+    {
+      "name": "Attorney / Fee Earner",
+      "action_xml_id": "action_x_lf_attorney",
+      "parent_xml_id": "menu_root_law_firm_management",
+      "sequence": 10,
+      "technical_name": "menu_x_lf_attorney"
+    },
+    {
+      "name": "Matter / Case",
+      "action_xml_id": "action_x_lf_matter",
+      "parent_xml_id": "menu_root_law_firm_management",
+      "sequence": 11,
+      "technical_name": "menu_x_lf_matter"
+    },
+    {
+      "name": "Matter Party / Role",
+      "action_xml_id": "action_x_lf_matter_party",
+      "parent_xml_id": "menu_root_law_firm_management",
+      "sequence": 12,
+      "technical_name": "menu_x_lf_matter_party"
+    },
+    {
+      "name": "Time Entry (Billable)",
+      "action_xml_id": "action_x_lf_time_entry",
+      "parent_xml_id": "menu_root_law_firm_management",
+      "sequence": 13,
+      "technical_name": "menu_x_lf_time_entry"
+    },
+    {
+      "name": "Matter Expense / Disbursement",
+      "action_xml_id": "action_x_lf_expense",
+      "parent_xml_id": "menu_root_law_firm_management",
+      "sequence": 14,
+      "technical_name": "menu_x_lf_expense"
+    },
+    {
+      "name": "Matter Task / Deadline",
+      "action_xml_id": "action_x_lf_task",
+      "parent_xml_id": "menu_root_law_firm_management",
+      "sequence": 15,
+      "technical_name": "menu_x_lf_task"
+    },
+    {
+      "name": "Hearing / Court Diary",
+      "action_xml_id": "action_x_lf_hearing",
+      "parent_xml_id": "menu_root_law_firm_management",
+      "sequence": 16,
+      "technical_name": "menu_x_lf_hearing"
+    },
+    {
+      "name": "Matter Document",
+      "action_xml_id": "action_x_lf_document",
+      "parent_xml_id": "menu_root_law_firm_management",
+      "sequence": 17,
+      "technical_name": "menu_x_lf_document"
+    },
+    {
+      "name": "Conflict Check",
+      "action_xml_id": "action_x_lf_conflict",
+      "parent_xml_id": "menu_root_law_firm_management",
+      "sequence": 18,
+      "technical_name": "menu_x_lf_conflict"
+    },
+    {
+      "name": "Fee Invoice / Bill",
+      "action_xml_id": "action_x_lf_invoice",
+      "parent_xml_id": "menu_root_law_firm_management",
+      "sequence": 19,
+      "technical_name": "menu_x_lf_invoice"
+    },
+    {
+      "name": "Client Payment",
+      "action_xml_id": "action_x_lf_payment",
+      "parent_xml_id": "menu_root_law_firm_management",
+      "sequence": 20,
+      "technical_name": "menu_x_lf_payment"
+    },
+    {
+      "name": "Trust / Retainer Movement",
+      "action_xml_id": "action_x_lf_trust",
+      "parent_xml_id": "menu_root_law_firm_management",
+      "sequence": 21,
+      "technical_name": "menu_x_lf_trust"
+    }
+  ],
+  "views": [
+    {
+      "name": "x_lf_attorney.list",
+      "model": "x_lf_attorney",
+      "type": "list",
+      "arch": "<list string=\"Attorney / Fee Earner\"><field name=\"x_name\"/><field name=\"x_partner_id\"/><field name=\"x_user_id\"/><field name=\"x_practice_area\"/><field name=\"x_bar_number\"/><field name=\"x_hourly_rate\"/><field name=\"x_currency_id\"/><field name=\"x_active\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_attorney.form",
+      "model": "x_lf_attorney",
+      "type": "form",
+      "arch": "<form string=\"Attorney / Fee Earner\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_partner_id\"/><field name=\"x_user_id\"/><field name=\"x_currency_id\"/><field name=\"x_company_id\"/></group><group string=\"Details\"><field name=\"x_practice_area\"/><field name=\"x_bar_number\"/><field name=\"x_hourly_rate\"/><field name=\"x_active\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_matter.list",
+      "model": "x_lf_matter",
+      "type": "list",
+      "arch": "<list string=\"Matter / Case\"><field name=\"x_name\"/><field name=\"x_code\"/><field name=\"x_client_id\"/><field name=\"x_responsible_id\"/><field name=\"x_practice_area\"/><field name=\"x_status\"/><field name=\"x_priority\"/><field name=\"x_open_date\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_matter.form",
+      "model": "x_lf_matter",
+      "type": "form",
+      "arch": "<form string=\"Matter / Case\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"intake,conflict_check,open,discovery,trial,settlement\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_client_id\"/><field name=\"x_responsible_id\"/><field name=\"x_company_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_practice_area\"/><field name=\"x_priority\"/><field name=\"x_open_date\"/><field name=\"x_close_date\"/><field name=\"x_limitation_date\"/><field name=\"x_court\"/><field name=\"x_docket\"/><field name=\"x_description\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_matter.kanban",
+      "model": "x_lf_matter",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/></t></templates></kanban>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_matter_party.list",
+      "model": "x_lf_matter_party",
+      "type": "list",
+      "arch": "<list string=\"Matter Party / Role\"><field name=\"x_name\"/><field name=\"x_matter_id\"/><field name=\"x_partner_id\"/><field name=\"x_role\"/><field name=\"x_notes\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_matter_party.form",
+      "model": "x_lf_matter_party",
+      "type": "form",
+      "arch": "<form string=\"Matter Party / Role\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_matter_id\"/><field name=\"x_partner_id\"/></group><group string=\"Details\"><field name=\"x_role\"/><field name=\"x_notes\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_time_entry.list",
+      "model": "x_lf_time_entry",
+      "type": "list",
+      "arch": "<list string=\"Time Entry (Billable)\" decoration-muted=\"x_status == 'draft'\"><field name=\"x_name\"/><field name=\"x_code\"/><field name=\"x_matter_id\"/><field name=\"x_attorney_id\"/><field name=\"x_date\"/><field name=\"x_hours\"/><field name=\"x_rate\"/><field name=\"x_amount\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_time_entry.form",
+      "model": "x_lf_time_entry",
+      "type": "form",
+      "arch": "<form string=\"Time Entry (Billable)\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"draft,submitted,approved,billed,written_off\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_matter_id\"/><field name=\"x_attorney_id\"/><field name=\"x_currency_id\"/><field name=\"x_company_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_date\"/><field name=\"x_hours\"/><field name=\"x_rate\"/><field name=\"x_amount\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_time_entry.kanban",
+      "model": "x_lf_time_entry",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/></t></templates></kanban>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_expense.list",
+      "model": "x_lf_expense",
+      "type": "list",
+      "arch": "<list string=\"Matter Expense / Disbursement\"><field name=\"x_name\"/><field name=\"x_matter_id\"/><field name=\"x_date\"/><field name=\"x_amount\"/><field name=\"x_currency_id\"/><field name=\"x_billable\"/><field name=\"x_company_id\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_expense.form",
+      "model": "x_lf_expense",
+      "type": "form",
+      "arch": "<form string=\"Matter Expense / Disbursement\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_matter_id\"/><field name=\"x_currency_id\"/><field name=\"x_company_id\"/></group><group string=\"Details\"><field name=\"x_date\"/><field name=\"x_amount\"/><field name=\"x_billable\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_task.list",
+      "model": "x_lf_task",
+      "type": "list",
+      "arch": "<list string=\"Matter Task / Deadline\" decoration-danger=\"x_status == 'cancelled'\"><field name=\"x_name\"/><field name=\"x_code\"/><field name=\"x_matter_id\"/><field name=\"x_assignee_id\"/><field name=\"x_status\"/><field name=\"x_due_date\"/><field name=\"x_priority\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_task.form",
+      "model": "x_lf_task",
+      "type": "form",
+      "arch": "<form string=\"Matter Task / Deadline\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"todo,in_progress,done,cancelled\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_matter_id\"/><field name=\"x_assignee_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_due_date\"/><field name=\"x_priority\"/><field name=\"x_notes\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_task.kanban",
+      "model": "x_lf_task",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/></t></templates></kanban>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_hearing.list",
+      "model": "x_lf_hearing",
+      "type": "list",
+      "arch": "<list string=\"Hearing / Court Diary\" decoration-danger=\"x_status == 'cancelled'\"><field name=\"x_name\"/><field name=\"x_code\"/><field name=\"x_matter_id\"/><field name=\"x_attorney_id\"/><field name=\"x_start\"/><field name=\"x_end\"/><field name=\"x_location\"/><field name=\"x_status\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_hearing.form",
+      "model": "x_lf_hearing",
+      "type": "form",
+      "arch": "<form string=\"Hearing / Court Diary\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"scheduled,completed,adjourned,cancelled\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_matter_id\"/><field name=\"x_attorney_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_start\"/><field name=\"x_end\"/><field name=\"x_location\"/><field name=\"x_notes\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_hearing.kanban",
+      "model": "x_lf_hearing",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/></t></templates></kanban>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_document.list",
+      "model": "x_lf_document",
+      "type": "list",
+      "arch": "<list string=\"Matter Document\"><field name=\"x_name\"/><field name=\"x_matter_id\"/><field name=\"x_doc_type\"/><field name=\"x_version\"/><field name=\"x_date\"/><field name=\"x_confidential\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_document.form",
+      "model": "x_lf_document",
+      "type": "form",
+      "arch": "<form string=\"Matter Document\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_matter_id\"/></group><group string=\"Details\"><field name=\"x_doc_type\"/><field name=\"x_version\"/><field name=\"x_date\"/><field name=\"x_confidential\"/><field name=\"x_notes\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_conflict.list",
+      "model": "x_lf_conflict",
+      "type": "list",
+      "arch": "<list string=\"Conflict Check\"><field name=\"x_name\"/><field name=\"x_code\"/><field name=\"x_matter_id\"/><field name=\"x_client_id\"/><field name=\"x_status\"/><field name=\"x_checked_at\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_conflict.form",
+      "model": "x_lf_conflict",
+      "type": "form",
+      "arch": "<form string=\"Conflict Check\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"pending,cleared,blocked\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_matter_id\"/><field name=\"x_client_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_checked_at\"/><field name=\"x_notes\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_conflict.kanban",
+      "model": "x_lf_conflict",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/></t></templates></kanban>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_invoice.list",
+      "model": "x_lf_invoice",
+      "type": "list",
+      "arch": "<list string=\"Fee Invoice / Bill\" decoration-muted=\"x_status == 'draft'\"><field name=\"x_name\"/><field name=\"x_code\"/><field name=\"x_matter_id\"/><field name=\"x_client_id\"/><field name=\"x_date\"/><field name=\"x_amount\"/><field name=\"x_disbursements\"/><field name=\"x_currency_id\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_invoice.form",
+      "model": "x_lf_invoice",
+      "type": "form",
+      "arch": "<form string=\"Fee Invoice / Bill\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"draft,sent,partial,paid,void\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_matter_id\"/><field name=\"x_client_id\"/><field name=\"x_currency_id\"/><field name=\"x_company_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_date\"/><field name=\"x_amount\"/><field name=\"x_disbursements\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_invoice.kanban",
+      "model": "x_lf_invoice",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/></t></templates></kanban>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_payment.list",
+      "model": "x_lf_payment",
+      "type": "list",
+      "arch": "<list string=\"Client Payment\"><field name=\"x_name\"/><field name=\"x_invoice_id\"/><field name=\"x_date\"/><field name=\"x_amount\"/><field name=\"x_currency_id\"/><field name=\"x_company_id\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_payment.form",
+      "model": "x_lf_payment",
+      "type": "form",
+      "arch": "<form string=\"Client Payment\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_invoice_id\"/><field name=\"x_currency_id\"/><field name=\"x_company_id\"/></group><group string=\"Details\"><field name=\"x_date\"/><field name=\"x_amount\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_trust.list",
+      "model": "x_lf_trust",
+      "type": "list",
+      "arch": "<list string=\"Trust / Retainer Movement\"><field name=\"x_name\"/><field name=\"x_code\"/><field name=\"x_matter_id\"/><field name=\"x_client_id\"/><field name=\"x_date\"/><field name=\"x_amount\"/><field name=\"x_currency_id\"/><field name=\"x_status\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_trust.form",
+      "model": "x_lf_trust",
+      "type": "form",
+      "arch": "<form string=\"Trust / Retainer Movement\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"held,applied,refunded\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_matter_id\"/><field name=\"x_client_id\"/><field name=\"x_currency_id\"/><field name=\"x_company_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_date\"/><field name=\"x_amount\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lf_trust.kanban",
+      "model": "x_lf_trust",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/></t></templates></kanban>",
+      "mode": "primary"
+    }
+  ],
+  "_meta": {
+    "model_count": 12,
+    "view_count": 31,
+    "menu_count": 13,
+    "smart_button_count": 11,
+    "automation_count": 4,
+    "domain_pack": null
+  },
+  "access_rules": [
+    {
+      "id": "access_x_lf_attorney_user",
+      "name": "Attorney / Fee Earner user",
+      "model": "model_x_lf_attorney",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_lf_matter_user",
+      "name": "Matter / Case user",
+      "model": "model_x_lf_matter",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_lf_matter_party_user",
+      "name": "Matter Party / Role user",
+      "model": "model_x_lf_matter_party",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_lf_time_entry_user",
+      "name": "Time Entry (Billable) user",
+      "model": "model_x_lf_time_entry",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_lf_expense_user",
+      "name": "Matter Expense / Disbursement user",
+      "model": "model_x_lf_expense",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_lf_task_user",
+      "name": "Matter Task / Deadline user",
+      "model": "model_x_lf_task",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_lf_hearing_user",
+      "name": "Hearing / Court Diary user",
+      "model": "model_x_lf_hearing",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_lf_document_user",
+      "name": "Matter Document user",
+      "model": "model_x_lf_document",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_lf_conflict_user",
+      "name": "Conflict Check user",
+      "model": "model_x_lf_conflict",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_lf_invoice_user",
+      "name": "Fee Invoice / Bill user",
+      "model": "model_x_lf_invoice",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_lf_payment_user",
+      "name": "Client Payment user",
+      "model": "model_x_lf_payment",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_lf_trust_user",
+      "name": "Trust / Retainer Movement user",
+      "model": "model_x_lf_trust",
+      "group": "base.group_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    }
+  ],
+  "_completeness": [
+    {
+      "id": "has_models",
+      "ok": true,
+      "detail": "12 model(s)"
+    },
+    {
+      "id": "has_menus",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "has_views",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "has_workflow",
+      "ok": true,
+      "detail": "x_lf_matter,x_lf_time_entry,x_lf_task,x_lf_hearing,x_lf_conflict,x_lf_invoice,x_lf_trust"
+    },
+    {
+      "id": "kanban_for_workflow",
+      "ok": true,
+      "detail": "kanban present"
+    },
+    {
+      "id": "mail_thread",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "sequence_on_workflow",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "has_access_stubs",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "has_smart_buttons",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "contacts_link",
+      "ok": true,
+      "detail": "res.partner M2O present"
+    },
+    {
+      "id": "depth_models",
+      "ok": true,
+      "detail": "12/10 substantive models (comprehensive; raw=12, hollow=0)"
+    },
+    {
+      "id": "depth_fields_avg",
+      "ok": true,
+      "detail": "avg 8.83/6 fields/model"
+    },
+    {
+      "id": "depth_relations",
+      "ok": true,
+      "detail": "38/10 many2one links"
+    },
+    {
+      "id": "depth_workflows",
+      "ok": true,
+      "detail": "7/3 workflow models"
+    },
+    {
+      "id": "depth_smart_buttons",
+      "ok": true,
+      "detail": "20/6 smart buttons"
+    },
+    {
+      "id": "depth_automations",
+      "ok": true,
+      "detail": "4/2 automations"
+    }
+  ],
+  "_ambition": "comprehensive",
+  "_depth": {
+    "ambition": "comprehensive",
+    "metrics": {
+      "model_count": 12,
+      "model_count_raw": 12,
+      "hollow_model_count": 0,
+      "field_total": 106,
+      "fields_avg": 8.83,
+      "m2o_count": 38,
+      "workflow_count": 7,
+      "smart_button_count": 20,
+      "automation_count": 4
+    },
+    "gaps": [],
+    "targets": {
+      "min_models": 10,
+      "min_fields_avg": 6,
+      "min_m2o": 10,
+      "min_workflows": 3,
+      "min_smart_buttons": 6,
+      "min_automations": 2,
+      "max_entities_staged": 18
+    },
+    "ok": true
+  }
+}

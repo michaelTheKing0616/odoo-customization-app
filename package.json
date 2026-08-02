@@ -1,0 +1,10 @@
+{
+  "name": "odoo-customization-app",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev:web": "pnpm --filter @odoo-custom/web dev",
+    "build:web": "pnpm --filter @odoo-custom/web build",
+    "lint:web": "pnpm --filter @odoo-custom/web lint"
+  }
+}

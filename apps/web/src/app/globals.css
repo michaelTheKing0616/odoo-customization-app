@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0c090b;
+  --foreground: #f4eef2;
+
+  /* Odoo backend-familiar Config Ops tokens */
+  --odoo-primary: #714b67;
+  --odoo-primary-hover: #5d3e55;
+  --odoo-primary-light: #c9a9c0;
+  --odoo-success: #017e84;
+  --odoo-danger: #d23f3a;
+  --odoo-warning: #f0ad4e;
+  --odoo-sheet: #ffffff;
+  --odoo-sheet-fg: #1f1f1f;
+  --odoo-border: #d8dadd;
+  --odoo-muted: #6b6d70;
+  --odoo-canvas: #f8f9fa;
+  --odoo-statusbar: #714b67;
+  --odoo-button-box: #f0eeeb;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+.odoo-shell {
+  background:
+    radial-gradient(ellipse at top, #3d2a38 0%, #1a1218 45%, #0c090b 100%);
+  color: #f4eef2;
+}
+
+.odoo-sheet {
+  background: var(--odoo-sheet);
+  color: var(--odoo-sheet-fg);
+  border: 1px solid var(--odoo-border);
+  border-radius: 2px;
+}
+
+.odoo-form-canvas {
+  background: var(--odoo-canvas);
+  border: 1px solid var(--odoo-border);
+  color: var(--odoo-sheet-fg);
+}
+
+.odoo-form-header {
+  background: linear-gradient(180deg, #faf9f8 0%, #f0eeeb 100%);
+  border-bottom: 1px solid var(--odoo-border);
+  padding: 0.5rem 0.75rem;
+}
+
+.odoo-button-box {
+  background: var(--odoo-button-box);
+  border: 1px solid var(--odoo-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.odoo-stat-button {
+  background: #fff;
+  border: 1px solid var(--odoo-border);
+  padding: 0.35rem 0.6rem;
+  font-size: 0.75rem;
+  color: var(--odoo-primary);
+}
+
+.odoo-primary-btn {
+  background: var(--odoo-primary);
+  color: #fff;
+  font-weight: 600;
+}
+
+.odoo-primary-btn:hover {
+  background: var(--odoo-primary-hover);
+}
+
+.odoo-kanban-canvas {
+  background: var(--odoo-canvas);
+  border: 1px solid var(--odoo-border);
+  color: var(--odoo-sheet-fg);
+}
+
+.odoo-kanban-card {
+  border-radius: 2px;
+}

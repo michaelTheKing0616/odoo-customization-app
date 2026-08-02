@@ -1,0 +1,51 @@
+# Optional Odoo 16 Community stack for M3 multi-version gates.
+# Ports: host 8072 → container 8069
+#   docker compose -p odoo16 -f docker/docker-compose.odoo16.yml up -d
+#   ./docker/init-db-16.sh
+
+services:
+  db16:
+    image: postgres:15
+    container_name: odoo-custom-db16
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: odoo
+    volumes:
+      - odoo16-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  odoo16:
+    image: odoo:16
+    container_name: odoo-custom-odoo16
+    depends_on:
+      db16:
+        condition: service_healthy
+    ports:
+      - "8072:8069"
+    environment:
+      HOST: db16
+      USER: odoo
+      PASSWORD: odoo
+    volumes:
+      - odoo16-web-data:/var/lib/odoo
+      - odoo16-addons:/mnt/extra-addons
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8069/web/login', timeout=5)\"",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 40s
+
+volumes:
+  odoo16-db-data:
+  odoo16-web-data:
+  odoo16-addons:

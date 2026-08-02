@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+{% for model in spec.models %}
+{% if not model.is_inherit() %}
+    <record id="{{ model.model_xml_id() }}" model="ir.model">
+        <field name="name">{{ model.description | xml }}</field>
+        <field name="model">{{ model.model | xml }}</field>
+        <field name="state">manual</field>
+    </record>
+{% endif %}
+{% for f in model.fields %}
+    <record id="field_{{ model.model | replace('.', '_') }}_{{ f.name }}" model="ir.model.fields">
+        <field name="name">{{ f.name | xml }}</field>
+        <field name="field_description">{{ f.string | xml }}</field>
+{% if model.is_inherit() %}
+        <field name="model">{{ (model.inherit or model.model) | xml }}</field>
+        <field name="model_id" search="[('model','=','{{ (model.inherit or model.model) | xml }}')]"/>
+{% else %}
+        <field name="model_id" ref="{{ model.model_xml_id() }}"/>
+{% endif %}
+        <field name="ttype">{{ f.odoo_ttype() | xml }}</field>
+        <field name="state">manual</field>
+        {% if f.required %}<field name="required" eval="True"/>{% endif %}
+        {% if f.readonly or f.related %}<field name="readonly" eval="True"/>{% endif %}
+        {% if f.relation %}<field name="relation">{{ f.relation | xml }}</field>{% endif %}
+        {% if f.relation_field %}<field name="relation_field">{{ f.relation_field | xml }}</field>{% endif %}
+        {% if f.selection %}<field name="selection">{{ f.selection | xml }}</field>{% endif %}
+        {% if f.help %}<field name="help">{{ f.help | xml }}</field>{% endif %}
+        {% if f.related %}<field name="related">{{ f.related | xml }}</field>{% endif %}
+        {% if f.currency_field %}<field name="currency_field">{{ f.currency_field | xml }}</field>{% endif %}
+    </record>
+{% endfor %}
+{% endfor %}
+</odoo>
