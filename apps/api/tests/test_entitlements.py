@@ -74,7 +74,8 @@ def test_free_solo_blocks_bulk_suite(client: TestClient, monkeypatch: pytest.Mon
         assert denied.status_code in {403, 404}
 
 
-def test_entitlements_bypass_when_auth_off(client: TestClient) -> None:
+def test_entitlements_bypass_when_auth_off(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "auth_mode", "off")
     db = SessionLocal()
     try:
         ws_id = _workspace(db)

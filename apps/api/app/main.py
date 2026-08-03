@@ -18,6 +18,7 @@ from app.routers import (
     access,
     accounts,
     actions,
+    admin,
     ai,
     apps,
     audit,
@@ -76,6 +77,9 @@ async def lifespan(_app: FastAPI):
         from app.entitlements import seed_plan_features
 
         seed_plan_features(db)
+        from app.admin_bootstrap import bootstrap_superadmin_from_env
+
+        bootstrap_superadmin_from_env(db)
     finally:
         db.close()
     yield
@@ -103,6 +107,7 @@ _protected = [Depends(require_app_auth)]
 app.include_router(auth.router, prefix="/api")
 app.include_router(accounts.router, prefix="/api")
 app.include_router(billing.router, prefix="/api")
+app.include_router(admin.router, prefix="/api", dependencies=[Depends(require_app_auth)])
 app.include_router(audit.router, prefix="/api", dependencies=_protected)
 app.include_router(jobs.router, prefix="/api", dependencies=_protected)
 app.include_router(connections.router, prefix="/api", dependencies=_protected)

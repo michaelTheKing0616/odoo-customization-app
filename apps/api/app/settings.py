@@ -102,6 +102,9 @@ class Settings(BaseSettings):
     # OAuth (MON-1) — off by default; [SKIPPED] implementation until configured
     oauth_providers: str = ""
 
+    app_admin_email: str = ""
+    app_admin_password: str = ""
+
     # MON-2 — billing (Stripe + Paystack)
     billing_mode: str = "off"  # off | fake | live
     stripe_secret_key: str = ""
