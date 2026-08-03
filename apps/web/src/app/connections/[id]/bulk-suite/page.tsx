@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -13,11 +12,34 @@ import {
   ModelRow,
   SecurityPreviewOut,
 } from "@/lib/api";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
+import { BulkResultTable, type BulkRunResult } from "@/components/ui/BulkResultTable";
+import { Callout } from "@/components/ui/Callout";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { Card, PageHeader } from "@/components/ui/layout-primitives";
 import { ScanToFieldPanel } from "@/components/scanner/ScanToFieldPanel";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 
 const CONFIRM_PHRASE = "I understand the risks";
+
+function bulkRunToTable(result: BulkRunOut): BulkRunResult {
+  return {
+    run_id: result.run_id,
+    operation: result.operation,
+    model: result.model,
+    total: result.total,
+    succeeded: result.succeeded,
+    failed: result.failed,
+    per_record: result.per_record.map((r) => ({
+      record_id: r.id,
+      display_name: r.display_name,
+      ok: r.ok,
+      error: r.error,
+    })),
+    dry_run: result.dry_run,
+    message: result.message,
+  };
+}
 
 export default function BulkSuitePage() {
   const params = useParams<{ id: string }>();
@@ -499,56 +521,21 @@ export default function BulkSuitePage() {
   }
 
   return (
-    <main className="odoo-shell min-h-screen px-6 py-10">
-      <div className="mx-auto max-w-5xl">
-        <div className="flex flex-wrap gap-3 text-sm">
-          <Link
-            href={`/connections/${connectionId}`}
-            className="text-[var(--odoo-primary-light)] hover:underline"
-          >
-            ← Metadata
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/power-ops`}
-            className="text-[var(--odoo-primary-light)] hover:underline"
-          >
-            Power Ops
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/cron-manager`}
-            className="text-[var(--odoo-primary-light)] hover:underline"
-          >
-            Cron Manager
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/housekeeping`}
-            className="text-[var(--odoo-primary-light)] hover:underline"
-          >
-            Housekeeping
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/cron-manager`}
-            className="text-[var(--odoo-primary-light)] hover:underline"
-          >
-            Cron Manager
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/housekeeping`}
-            className="text-[var(--odoo-primary-light)] hover:underline"
-          >
-            Housekeeping
-          </Link>
-        </div>
-        <h1 className="mt-4 font-[family-name:var(--font-display)] text-3xl text-[var(--odoo-sheet-fg)]">
-          Bulk Suite
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm text-[var(--odoo-muted)]">
-          Discover form-view workflow buttons per model and run them in bulk with dry-run first.
-          Runs as the connected Odoo user — partial failures are reported per record.
-        </p>
-        <VersionAwarenessBanner capabilities={connection?.capabilities} />
+    <div className="mx-auto max-w-5xl" data-testid="bulk-suite-page">
+      <PageHeader
+        title="Bulk Suite"
+        description="Discover form-view workflow buttons per model and run them in bulk with dry-run first. Runs as the connected Odoo user — partial failures are reported per record."
+      />
+      <VersionAwarenessBanner capabilities={connection?.capabilities} />
 
-        <section className="odoo-sheet mt-6 space-y-4 p-4">
+      {error ? <ErrorNotice message={error} className="mt-4" /> : null}
+      {notice ? (
+        <Callout variant="info" title="Notice" className="mt-4">
+          {notice}
+        </Callout>
+      ) : null}
+
+        <Card className="mt-6 space-y-4 p-4">
           <label className="block text-sm">
             Model
             <input
@@ -667,9 +654,9 @@ export default function BulkSuitePage() {
               Execute
             </button>
           </div>
-        </section>
+        </Card>
 
-        <section className="odoo-sheet mt-6 space-y-4 p-4">
+        <Card className="mt-6 space-y-4 p-4">
           <h2 className="text-lg font-semibold">Mass field edit</h2>
           <p className="text-sm text-[var(--odoo-muted)]">
             One write per batch — validates field types and protected-module policy before apply.
@@ -701,9 +688,9 @@ export default function BulkSuitePage() {
               Apply mass edit
             </button>
           </div>
-        </section>
+        </Card>
 
-        <section className="odoo-sheet mt-6 space-y-4 p-4">
+        <Card className="mt-6 space-y-4 p-4">
           <h2 className="text-lg font-semibold">Duplicate detection & merge</h2>
           <p className="text-sm text-[var(--odoo-muted)]">
             Scan by field(s), pick a winner per group, relink inbound FKs, then archive losers.
@@ -800,9 +787,9 @@ export default function BulkSuitePage() {
               </div>
             </div>
           )}
-        </section>
+        </Card>
 
-        <section className="odoo-sheet mt-6 space-y-4 p-4">
+        <Card className="mt-6 space-y-4 p-4">
           <h2 className="text-lg font-semibold">Bulk activities</h2>
           <p className="text-sm text-[var(--odoo-muted)]">
             Schedule mail.activity rows on the selected model records (requires mail.activity.mixin).
@@ -854,9 +841,9 @@ export default function BulkSuitePage() {
               Schedule
             </button>
           </div>
-        </section>
+        </Card>
 
-        <section className="odoo-sheet mt-6 space-y-4 p-4">
+        <Card className="mt-6 space-y-4 p-4">
           <h2 className="text-lg font-semibold">Bulk security</h2>
           <p className="text-sm text-[var(--odoo-muted)]">
             Preview group membership changes first — implied groups are warned, never edited.
@@ -943,9 +930,9 @@ export default function BulkSuitePage() {
               ))}
             </div>
           )}
-        </section>
+        </Card>
 
-        <section className="odoo-sheet mt-6 space-y-4 p-4">
+        <Card className="mt-6 space-y-4 p-4">
           <h2 className="text-lg font-semibold">Bulk portal access</h2>
           <p className="text-sm text-[var(--odoo-muted)]">
             Grant or revoke portal access for partners — missing email fails per partner, not the batch.
@@ -978,9 +965,9 @@ export default function BulkSuitePage() {
               Execute
             </button>
           </div>
-        </section>
+        </Card>
 
-        <section className="odoo-sheet mt-6 space-y-4 p-4">
+        <Card className="mt-6 space-y-4 p-4">
           <h2 className="text-lg font-semibold">Bulk send message</h2>
           <p className="text-sm text-[var(--odoo-muted)]">
             Post one threaded message per record via message_post — not Odoo mass-mail composer.
@@ -1020,9 +1007,9 @@ export default function BulkSuitePage() {
               Send
             </button>
           </div>
-        </section>
+        </Card>
 
-        <section className="odoo-sheet mt-6 space-y-4 p-4">
+        <Card className="mt-6 space-y-4 p-4">
           <h2 className="text-lg font-semibold">Mass field edit</h2>
           <p className="text-sm text-[var(--odoo-muted)]">
             One write per batch — validates field types and protected-module policy before apply.
@@ -1054,9 +1041,9 @@ export default function BulkSuitePage() {
               Apply mass edit
             </button>
           </div>
-        </section>
+        </Card>
 
-        <section className="odoo-sheet mt-6 space-y-4 p-4">
+        <Card className="mt-6 space-y-4 p-4">
           <h2 className="text-lg font-semibold">Duplicate detection & merge</h2>
           <p className="text-sm text-[var(--odoo-muted)]">
             Scan by field(s), pick a winner per group, relink inbound FKs, then archive losers.
@@ -1153,9 +1140,9 @@ export default function BulkSuitePage() {
               </div>
             </div>
           )}
-        </section>
+        </Card>
 
-        <section className="odoo-sheet mt-6 space-y-4 p-4">
+        <Card className="mt-6 space-y-4 p-4">
           <h2 className="text-lg font-semibold">Bulk activities</h2>
           <p className="text-sm text-[var(--odoo-muted)]">
             Schedule mail.activity rows on the selected model records (requires mail.activity.mixin).
@@ -1207,9 +1194,9 @@ export default function BulkSuitePage() {
               Schedule
             </button>
           </div>
-        </section>
+        </Card>
 
-        <section className="odoo-sheet mt-6 space-y-4 p-4">
+        <Card className="mt-6 space-y-4 p-4">
           <h2 className="text-lg font-semibold">Bulk security</h2>
           <p className="text-sm text-[var(--odoo-muted)]">
             Preview group membership changes first — implied groups are warned, never edited.
@@ -1296,9 +1283,9 @@ export default function BulkSuitePage() {
               ))}
             </div>
           )}
-        </section>
+        </Card>
 
-        <section className="odoo-sheet mt-6 space-y-4 p-4">
+        <Card className="mt-6 space-y-4 p-4">
           <h2 className="text-lg font-semibold">Bulk portal access</h2>
           <p className="text-sm text-[var(--odoo-muted)]">
             Grant or revoke portal access for partners — missing email fails per partner, not the batch.
@@ -1331,9 +1318,9 @@ export default function BulkSuitePage() {
               Execute
             </button>
           </div>
-        </section>
+        </Card>
 
-        <section className="odoo-sheet mt-6 space-y-4 p-4">
+        <Card className="mt-6 space-y-4 p-4">
           <h2 className="text-lg font-semibold">Bulk send message</h2>
           <p className="text-sm text-[var(--odoo-muted)]">
             Post one threaded message per record via message_post — not Odoo mass-mail composer.
@@ -1373,29 +1360,15 @@ export default function BulkSuitePage() {
               Send
             </button>
           </div>
-        </section>
+        </Card>
 
-        {error && (
-          <p className="mt-4 text-sm text-[var(--odoo-danger)]" role="alert">
-            {error}
-          </p>
-        )}
-        {notice && !error && (
-          <p className="mt-4 text-sm text-[var(--odoo-success)]">{notice}</p>
-        )}
-
-        {result && (
-          <section className="odoo-sheet mt-6 overflow-x-auto p-4">
-            <h2 className="text-lg font-semibold">Results</h2>
-            <p className="mt-1 text-sm text-[var(--odoo-muted)]">
-              Run {result.run_id.slice(0, 8)}… · {result.dry_run ? "dry-run" : "live"} ·{" "}
-              {result.succeeded}/{result.total} ok
-              {result.failed ? ` · ${result.failed} failed` : ""}
-            </p>
-            {result.preview && result.preview.length > 0 && (
+        {result ? (
+          <Card className="mt-6 overflow-x-auto p-4">
+            <h2 className="text-lg font-semibold text-ink">Results</h2>
+            {result.preview && result.preview.length > 0 ? (
               <table className="mt-3 w-full text-left text-sm">
                 <thead>
-                  <tr className="border-b border-[var(--odoo-border)]">
+                  <tr className="border-b border-border-subtle">
                     <th className="py-1 pr-2">Id</th>
                     <th className="py-1 pr-2">Record</th>
                     <th className="py-1 pr-2">Before</th>
@@ -1404,7 +1377,7 @@ export default function BulkSuitePage() {
                 </thead>
                 <tbody>
                   {result.preview.map((row) => (
-                    <tr key={row.id} className="border-b border-[var(--odoo-border)]/50">
+                    <tr key={row.id} className="border-b border-border-subtle/50">
                       <td className="py-1 pr-2 font-mono">{row.id}</td>
                       <td className="py-1 pr-2">{row.display_name}</td>
                       <td className="py-1 pr-2 font-mono text-xs">
@@ -1415,11 +1388,11 @@ export default function BulkSuitePage() {
                   ))}
                 </tbody>
               </table>
-            )}
-            {result.relinks && result.relinks.length > 0 && (
+            ) : null}
+            {result.relinks && result.relinks.length > 0 ? (
               <table className="mt-3 w-full text-left text-sm">
                 <thead>
-                  <tr className="border-b border-[var(--odoo-border)]">
+                  <tr className="border-b border-border-subtle">
                     <th className="py-1 pr-2">Model</th>
                     <th className="py-1 pr-2">Field</th>
                     <th className="py-1 pr-2">Type</th>
@@ -1430,7 +1403,7 @@ export default function BulkSuitePage() {
                   {result.relinks.map((row) => (
                     <tr
                       key={`${row.model}.${row.field}`}
-                      className="border-b border-[var(--odoo-border)]/50"
+                      className="border-b border-border-subtle/50"
                     >
                       <td className="py-1 pr-2 font-mono">{row.model}</td>
                       <td className="py-1 pr-2 font-mono">{row.field}</td>
@@ -1440,33 +1413,16 @@ export default function BulkSuitePage() {
                   ))}
                 </tbody>
               </table>
-            )}
-            <table className="mt-3 w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-[var(--odoo-border)]">
-                  <th className="py-1 pr-2">Id</th>
-                  <th className="py-1 pr-2">Record</th>
-                  <th className="py-1 pr-2">Ok</th>
-                  <th className="py-1">Error</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.per_record.map((row) => (
-                  <tr key={row.id} className="border-b border-[var(--odoo-border)]/50">
-                    <td className="py-1 pr-2 font-mono">{row.id}</td>
-                    <td className="py-1 pr-2">{row.display_name}</td>
-                    <td className="py-1 pr-2">{row.ok ? "yes" : "no"}</td>
-                    <td className="py-1 text-[var(--odoo-danger)]">{row.error || ""}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        )}
-      </div>
+            ) : null}
+            <div className="mt-4">
+              <BulkResultTable result={bulkRunToTable(result)} />
+            </div>
+          </Card>
+        ) : null}
 
-      <ConfirmDialog
+      <ConfirmDialogV2
         open={confirmOpen}
+        riskLevel="danger"
         phrase={CONFIRM_PHRASE}
         title={
           confirmMode === "mass_edit"
@@ -1555,6 +1511,6 @@ export default function BulkSuitePage() {
         }
       />
       <ScanToFieldPanel connectionId={connectionId} connection={connection} defaultModel={model} />
-    </main>
+    </div>
   );
 }

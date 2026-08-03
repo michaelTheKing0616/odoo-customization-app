@@ -57,7 +57,7 @@ CHECKLIST. Claiming done without both updated = failed card.
 - [x] UIX-3 App shell: sidebar nav, top bar, command palette, Expert panel mount
 - [x] UIX-4a Page migrations: landing, connect, overview, Draft Studio
 - [x] UIX-4b Page migrations: designer, projects diff, automations, access
-- [ ] UIX-4c Page migrations: power-ops/bulk, journal, remaining pages
+- [~] UIX-4c Page migrations: power-ops/bulk, journal, remaining pages (power-ops, journal, bulk-suite, import, settings, pipelines, reminders done; menus/config/reports/modulespec/id-generator pending)
 - [ ] UIX-5 Copy guide application pass + iconography audit
 
 ## Wave 7 — CMP (compendium completions)

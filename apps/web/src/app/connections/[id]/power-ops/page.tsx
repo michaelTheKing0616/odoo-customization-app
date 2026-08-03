@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -11,12 +10,50 @@ import {
   PowerOpsRecipe,
   PowerOpsRunOut,
 } from "@/lib/api";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import { belowMinMajor, connectionMajor } from "@/lib/capabilities";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { BulkResultTable, type BulkRunResult } from "@/components/ui/BulkResultTable";
+import { Callout } from "@/components/ui/Callout";
+import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { Input } from "@/components/ui/Input";
+import { Card, PageHeader } from "@/components/ui/layout-primitives";
+import { Textarea } from "@/components/ui/Textarea";
 
 const CONFIRM_PHRASE = "I understand the risks";
+
+function isDangerRecipe(recipe: PowerOpsRecipe): boolean {
+  const tags = (recipe.tags ?? []).map((t) => t.toLowerCase());
+  if (tags.some((t) => t.includes("danger") || t.includes("destructive"))) return true;
+  const id = recipe.id.toLowerCase();
+  return id.includes("purge") || id.includes("delete") || id.includes("unlink");
+}
+
+function toBulkResult(
+  result: PowerOpsRunOut,
+  recipeId: string,
+  model: string,
+): BulkRunResult {
+  return {
+    run_id: "power-ops",
+    operation: recipeId,
+    model,
+    total: result.processed,
+    succeeded: result.succeeded,
+    failed: result.failed,
+    per_record: result.logs.map((l) => ({
+      record_id: l.record_id,
+      display_name: l.step,
+      ok: l.ok,
+      error: l.error,
+    })),
+    dry_run: result.dry_run,
+    message: result.message,
+  };
+}
 
 export default function PowerOpsPage() {
   const params = useParams<{ id: string }>();
@@ -34,8 +71,10 @@ export default function PowerOpsPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [result, setResult] = useState<PowerOpsRunOut | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [dryRunKey, setDryRunKey] = useState<string | null>(null);
 
   const major = connectionMajor(connection);
+  const runKey = `${recipeId}|${model}|${domainText}`;
 
   const availableRecipes = useMemo(() => {
     const byId = new Map(
@@ -51,7 +90,7 @@ export default function PowerOpsPage() {
         : blockedModule
           ? probe?.reason || "module unavailable"
           : null;
-      return { recipe: r, blocked, blockReason };
+      return { recipe: r, blocked, blockReason, danger: isDangerRecipe(r) };
     });
   }, [recipes, connection, caps]);
 
@@ -59,6 +98,10 @@ export default function PowerOpsPage() {
   const selected = selectedEntry?.recipe;
   const selectedBlocked = Boolean(selectedEntry?.blocked);
   const selectedBlockReason = selectedEntry?.blockReason;
+  const canExecute = dryRunKey === runKey && !selectedBlocked;
+
+  const safeRecipes = availableRecipes.filter((e) => !e.danger);
+  const dangerRecipes = availableRecipes.filter((e) => e.danger);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,9 +116,12 @@ export default function PowerOpsPage() {
         setRecipes(r.recipes);
         setCaps(c);
         setConnection(conn);
-        // Prefer first recipe that meets min_major
         const firstOk = r.recipes.find(
-          (row) => !(conn.capabilities?.major != null && (row.min_major ?? 16) > conn.capabilities.major),
+          (row) =>
+            !(
+              conn.capabilities?.major != null &&
+              (row.min_major ?? 16) > conn.capabilities.major
+            ),
         );
         if (firstOk) setRecipeId(firstOk.id);
       } catch (err) {
@@ -94,7 +140,12 @@ export default function PowerOpsPage() {
     if (selected && selected.model !== "*") {
       setModel(selected.model);
     }
-  }, [selected]);
+    setDryRunKey(null);
+  }, [selected, recipeId]);
+
+  useEffect(() => {
+    setDryRunKey(null);
+  }, [model, domainText]);
 
   async function run(dryRun: boolean, phrase?: string) {
     if (selectedBlocked) {
@@ -124,6 +175,7 @@ export default function PowerOpsPage() {
       });
       setResult(res);
       setNotice(res.message);
+      if (dryRun) setDryRunKey(runKey);
       setConfirmOpen(false);
     } catch (err) {
       if (err instanceof ConfirmationRequiredError) {
@@ -137,185 +189,219 @@ export default function PowerOpsPage() {
     }
   }
 
-  return (
-    <main className="odoo-shell min-h-screen px-6 py-10">
-      <div className="mx-auto max-w-5xl">
-        <div className="flex flex-wrap gap-3 text-sm">
-          <Link href={`/connections/${connectionId}`} className="text-[var(--odoo-primary-light)] hover:underline">
-            ← Metadata
-          </Link>
-          <Link href={`/connections/${connectionId}/import`} className="text-[var(--odoo-primary-light)] hover:underline">
-            Bulk import
-          </Link>
-          <Link href={`/connections/${connectionId}/bulk-suite`} className="text-[var(--odoo-primary-light)] hover:underline">
-            Bulk Suite
-          </Link>
-          <Link href={`/connections/${connectionId}/cron-manager`} className="text-[var(--odoo-primary-light)] hover:underline">
-            Cron Manager
-          </Link>
-          <Link href={`/connections/${connectionId}/housekeeping`} className="text-[var(--odoo-primary-light)] hover:underline">
-            Housekeeping
-          </Link>
-          <Link href={`/connections/${connectionId}/cron-manager`} className="text-[var(--odoo-primary-light)] hover:underline">
-            Cron Manager
-          </Link>
-          <Link href={`/connections/${connectionId}/housekeeping`} className="text-[var(--odoo-primary-light)] hover:underline">
-            Housekeeping
-          </Link>
+  function RecipeCard({
+    entry,
+  }: {
+    entry: (typeof availableRecipes)[number];
+  }) {
+    const { recipe: r, blocked, blockReason, danger } = entry;
+    const active = recipeId === r.id;
+    return (
+      <button
+        type="button"
+        disabled={blocked}
+        onClick={() => setRecipeId(r.id)}
+        className={`w-full rounded-md border p-4 text-left transition ${
+          active
+            ? "border-accent bg-accent-subtle/30 ring-2 ring-accent"
+            : "border-border-subtle bg-surface hover:border-accent/50"
+        } ${blocked ? "cursor-not-allowed opacity-50" : ""}`}
+        data-testid={`power-ops-recipe-${r.id}`}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <p className="font-semibold text-ink">{r.name}</p>
+          <div className="flex flex-wrap gap-1">
+            {danger ? <Badge variant="danger">Danger zone</Badge> : null}
+            {r.min_major != null ? (
+              <Badge variant="info">Odoo ≥{r.min_major}</Badge>
+            ) : null}
+            {blocked && blockReason ? (
+              <Badge variant="warning">{blockReason}</Badge>
+            ) : null}
+          </div>
         </div>
-        <h1 className="mt-4 font-[family-name:var(--font-display)] text-3xl text-[var(--odoo-sheet-fg)]">
-          Power Ops
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm text-[var(--odoo-muted)]">
-          Multi-step bulk RPC recipes — the same class of power as Odoo.sh scripts, usable on
-          Odoo Online when the API allows. Example: reset journal entries to draft, then delete.
-        </p>
-        <VersionAwarenessBanner capabilities={connection?.capabilities} />
-        <CapabilityProbePanel
-          capabilities={connection?.capabilities}
-          defaultOpen={false}
-          className="mt-2"
-          refreshing={probing}
-          onRefresh={() => {
-            void (async () => {
-              setProbing(true);
-              setError(null);
-              try {
-                const result = await api.probeConnection(connectionId);
-                setConnection((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        server_version: result.server_version,
-                        capabilities: result.capabilities,
-                      }
-                    : prev,
-                );
-              } catch (err) {
-                setError(err instanceof Error ? err.message : "Probe failed");
-              } finally {
-                setProbing(false);
-              }
-            })();
-          }}
-        />
-        {caps?.philosophy && (
-          <p className="mt-2 text-sm text-[var(--odoo-success)]">{caps.philosophy}</p>
-        )}
+        <p className="mt-2 text-sm text-muted">{r.description}</p>
+        {(r.tags?.length || r.requires_modules?.length) ? (
+          <p className="mt-2 flex flex-wrap gap-1">
+            {r.tags?.map((t) => (
+              <Badge key={t} variant="default">
+                {t}
+              </Badge>
+            ))}
+            {r.requires_modules?.map((m) => (
+              <Badge key={m} variant="lock">
+                {m}
+              </Badge>
+            ))}
+          </p>
+        ) : null}
+      </button>
+    );
+  }
 
-        <section className="odoo-sheet mt-6 space-y-4 p-4">
-          <label className="block text-sm">
-            Recipe
-            <select
-              className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5"
-              value={recipeId}
-              onChange={(e) => setRecipeId(e.target.value)}
-            >
-              {availableRecipes.map(({ recipe: r, blocked, blockReason }) => (
-                <option key={r.id} value={r.id} disabled={blocked}>
-                  {blocked ? "⚠ " : ""}
-                  {r.name}
-                  {r.tags?.length ? ` [${r.tags.join(", ")}]` : ""}
-                  {blocked && blockReason ? ` (${blockReason})` : ""}
-                </option>
+  return (
+    <div className="mx-auto max-w-5xl" data-testid="power-ops-page">
+      <PageHeader
+        title="Power Ops"
+        description="Multi-step bulk RPC recipes — the same class of power as Odoo.sh scripts, usable on Odoo Online when the API allows."
+      />
+      <VersionAwarenessBanner capabilities={connection?.capabilities} />
+      <CapabilityProbePanel
+        capabilities={connection?.capabilities}
+        defaultOpen={false}
+        className="mt-2"
+        refreshing={probing}
+        onRefresh={() => {
+          void (async () => {
+            setProbing(true);
+            setError(null);
+            try {
+              const probeResult = await api.probeConnection(connectionId);
+              setConnection((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      server_version: probeResult.server_version,
+                      capabilities: probeResult.capabilities,
+                    }
+                  : prev,
+              );
+            } catch (err) {
+              setError(err instanceof Error ? err.message : "Probe failed");
+            } finally {
+              setProbing(false);
+            }
+          })();
+        }}
+      />
+      {caps?.philosophy ? (
+        <Callout variant="info" title="Philosophy" className="mt-4">
+          {caps.philosophy}
+        </Callout>
+      ) : null}
+
+      {error ? <ErrorNotice message={error} className="mt-4" /> : null}
+      {notice ? (
+        <Callout variant="info" title="Notice" className="mt-4">
+          {notice}
+        </Callout>
+      ) : null}
+
+      <section className="mt-8 space-y-4">
+        <h2 className="text-lg font-semibold text-ink">Recipes</h2>
+        {safeRecipes.length > 0 ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {safeRecipes.map((entry) => (
+              <RecipeCard key={entry.recipe.id} entry={entry} />
+            ))}
+          </div>
+        ) : null}
+        {dangerRecipes.length > 0 ? (
+          <>
+            <Callout variant="danger" title="Danger zone">
+              Destructive recipes — dry-run first, then confirm with phrase.
+            </Callout>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {dangerRecipes.map((entry) => (
+                <RecipeCard key={entry.recipe.id} entry={entry} />
               ))}
-            </select>
-          </label>
-          {selectedBlocked && (
-            <p className="text-sm text-[var(--odoo-danger)]">
-              {selectedBlockReason?.startsWith("needs")
-                ? `This recipe requires Odoo major ≥${selected?.min_major}. Connected major: ${major ?? "unknown (re-probe)"}.`
-                : selectedBlockReason || "Recipe unavailable on this database."}
-            </p>
-          )}
-          {selected && (
-            <div className="text-sm text-[var(--odoo-muted)]">
-              <p>{selected.description}</p>
-              {(selected.tags?.length || selected.requires_modules?.length) && (
-                <p className="mt-1 text-xs">
-                  {selected.tags?.length ? (
-                    <span>Tags: {selected.tags.join(", ")}. </span>
-                  ) : null}
-                  {selected.requires_modules?.length ? (
-                    <span>Requires modules: {selected.requires_modules.join(", ")}.</span>
-                  ) : null}
-                  {selected.min_major != null ? (
-                    <span> Min Odoo major: {selected.min_major}.</span>
-                  ) : null}
-                </p>
-              )}
-              <ul className="mt-2 list-disc pl-5">
-                {selected.steps.map((s) => (
-                  <li key={s.label}>
-                    {s.label} ({s.kind}
-                    {s.method ? `:${s.method}` : ""})
-                  </li>
-                ))}
-              </ul>
             </div>
-          )}
-          <label className="block text-sm">
-            Model
-            <input
-              className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-            />
-          </label>
-          <label className="block text-sm">
-            Domain (JSON list)
-            <textarea
-              className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5 font-mono text-xs"
-              rows={3}
-              value={domainText}
-              onChange={(e) => setDomainText(e.target.value)}
-            />
-          </label>
+          </>
+        ) : null}
+      </section>
+
+      {selectedBlocked && selectedBlockReason ? (
+        <Callout variant="warning" title="Recipe blocked" className="mt-4">
+          {selectedBlockReason.startsWith("needs")
+            ? `This recipe requires Odoo major ≥${selected?.min_major}. Connected major: ${major ?? "unknown (re-probe)"}.`
+            : selectedBlockReason}
+        </Callout>
+      ) : null}
+
+      {selected ? (
+        <Card className="mt-6 space-y-4 p-6">
+          <h2 className="text-lg font-semibold text-ink">Run · {selected.name}</h2>
+          <ul className="list-disc space-y-1 pl-5 text-sm text-muted">
+            {selected.steps.map((s) => (
+              <li key={s.label}>
+                {s.label} ({s.kind}
+                {s.method ? `:${s.method}` : ""})
+              </li>
+            ))}
+          </ul>
+          <Input
+            label="Model"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            className="font-mono text-sm"
+          />
+          <Textarea
+            label="Domain (JSON list)"
+            rows={3}
+            value={domainText}
+            onChange={(e) => setDomainText(e.target.value)}
+            className="font-mono text-xs"
+          />
           <div className="flex flex-wrap gap-2">
-            <button
+            <Button
               type="button"
+              variant="secondary"
               disabled={busy || selectedBlocked}
+              loading={busy}
               onClick={() => void run(true)}
-              className="border border-[var(--odoo-primary)] px-3 py-1.5 text-sm text-[var(--odoo-primary)] disabled:opacity-50"
             >
               Dry-run
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              disabled={busy || selectedBlocked}
+              variant="primary"
+              disabled={busy || !canExecute}
+              title={
+                !canExecute && !selectedBlocked
+                  ? "Run dry-run first for this recipe, model, and domain"
+                  : undefined
+              }
               onClick={() => setConfirmOpen(true)}
-              className="bg-[var(--odoo-danger)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
             >
               Execute
-            </button>
+            </Button>
           </div>
-          {notice && <p className="text-sm text-[var(--odoo-success)]">{notice}</p>}
-          {error && <p className="text-sm text-[var(--odoo-danger)]">{error}</p>}
-          {result && (
-            <pre className="max-h-64 overflow-auto bg-[#f8f9fa] p-2 text-xs text-[#1f1f1f]">
-              {JSON.stringify(result, null, 2)}
-            </pre>
-          )}
-        </section>
+          {!canExecute && !selectedBlocked ? (
+            <p className="text-xs text-muted">
+              Execute unlocks after a successful dry-run with the same recipe, model, and domain.
+            </p>
+          ) : null}
+        </Card>
+      ) : null}
 
-        <ConfirmDialog
-          open={confirmOpen}
-          title="Execute Power Ops recipe"
-          warning={
-            selected
-              ? `This will run “${selected.name}” against live records. Dry-run first when unsure.`
-              : "Destructive bulk RPC on live data."
-          }
-          risks={[
-            "Bulk writes or deletes on live ERP data",
-            "Rollback may be incomplete for some operations",
-          ]}
-          phrase={CONFIRM_PHRASE}
-          busy={busy}
-          onCancel={() => setConfirmOpen(false)}
-          onConfirm={(typed) => void run(false, typed)}
-        />
-      </div>
-    </main>
+      {result && result.logs.length > 0 ? (
+        <Card className="mt-6 p-6">
+          <BulkResultTable result={toBulkResult(result, recipeId, model)} />
+        </Card>
+      ) : result ? (
+        <Card className="mt-6 p-4">
+          <p className="text-sm text-muted">{result.message}</p>
+        </Card>
+      ) : null}
+
+      <ConfirmDialogV2
+        open={confirmOpen}
+        riskLevel="danger"
+        title="Execute Power Ops recipe"
+        warning={
+          selected
+            ? `This will run “${selected.name}” against live records. Dry-run first when unsure.`
+            : "Destructive bulk RPC on live data."
+        }
+        risks={[
+          "Bulk writes or deletes on live ERP data",
+          "Rollback may be incomplete for some operations",
+        ]}
+        phrase={CONFIRM_PHRASE}
+        busy={busy}
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={(typed) => void run(false, typed)}
+      />
+    </div>
   );
 }

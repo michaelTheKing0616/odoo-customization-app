@@ -1,20 +1,32 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, Connection, ConfirmationRequiredError } from "@/lib/api";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import {
   isExperimentalMajor,
   mutationAllowed,
   mutationBlockedReason,
 } from "@/lib/capabilities";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Callout } from "@/components/ui/Callout";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Card, PageHeader } from "@/components/ui/layout-primitives";
 
 const CONFIRM_PHRASE = "I understand the risks";
 
 const MATCHING_MAJOR_SANDBOX =
   "Sandbox hop uses matching-major ephemeral Docker on :18069 — align staging/prod majors before promote.";
+
+const HOPS = [
+  { id: "sandbox" as const, step: 1, label: "Sandbox", desc: "Ephemeral Docker gate" },
+  { id: "staging" as const, step: 2, label: "Staging", desc: "Staging connection install" },
+  { id: "prod" as const, step: 3, label: "Prod", desc: "Production connection install" },
+];
 
 export default function PipelinesPage() {
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -143,34 +155,34 @@ export default function PipelinesPage() {
   const canPromote = mutationAllowed(focusConnection);
   const promoteBlocked = mutationBlockedReason(focusConnection);
 
+  const selectedPipeline = pipelines.find((p) => p.id === selectedId);
+
   return (
-    <main className="odoo-shell min-h-screen px-6 py-10">
-      <div className="mx-auto max-w-5xl">
-        <div className="flex flex-wrap gap-4 text-sm">
-          <Link href="/" className="text-[#c9a9c0] hover:underline">
-            ← Home
-          </Link>
-        </div>
-        <h1 className="mt-4 font-[family-name:var(--font-display)] text-3xl text-[#faf6f9]">
-          Multi-env promote
-        </h1>
-        <p className="mt-1 text-sm text-[#8f7a88]">
-          Sandbox (ephemeral) → staging connection → Online / prod connection. Same zip
-          sha256 required across hops.
-        </p>
-        <VersionAwarenessBanner
-          capabilities={focusConnection?.capabilities}
-          caveat={pipelineCaveat}
-        />
-        {promoteBlocked && (
-          <p className="mt-2 text-sm text-[#e8d09f]">{promoteBlocked}</p>
-        )}
+    <div className="mx-auto max-w-5xl" data-testid="pipelines-page">
+      <PageHeader
+        title="Multi-env promote"
+        description="Sandbox (ephemeral) → staging connection → prod connection. Same zip sha256 required across hops."
+      />
+      <VersionAwarenessBanner
+        capabilities={focusConnection?.capabilities}
+        caveat={pipelineCaveat}
+      />
+      {promoteBlocked ? (
+        <Callout variant="warning" title="Promote blocked" className="mt-4">
+          {promoteBlocked}
+        </Callout>
+      ) : null}
 
-        {error && <p className="mt-4 text-sm text-[#f0a8a0]">{error}</p>}
-        {notice && <p className="mt-4 text-sm text-[#c9a9c0]">{notice}</p>}
+      {error ? <ErrorNotice message={error} className="mt-4" /> : null}
+      {notice ? (
+        <Callout variant="info" title="Notice" className="mt-4">
+          {notice}
+        </Callout>
+      ) : null}
 
+      <Card className="mt-8 p-5">
         <form
-          className="mt-8 space-y-3 border border-[#3d2a38] bg-[#0f1a16]/70 p-5"
+          className="space-y-4"
           onSubmit={async (e) => {
             e.preventDefault();
             setBusy(true);
@@ -186,123 +198,148 @@ export default function PipelinesPage() {
             }
           }}
         >
-          <h2 className="font-[family-name:var(--font-display)] text-xl">New pipeline</h2>
-          <input
+          <h2 className="text-xl font-semibold text-ink">New pipeline</h2>
+          <Input
+            label="Name"
             required
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
-            className="w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 text-sm"
           />
-          <label className="block text-sm">
-            <span className="text-[#a8909e]">Staging connection</span>
-            <select
-              required
-              value={form.staging_connection_id}
-              onChange={(e) =>
-                setForm({ ...form, staging_connection_id: e.target.value })
-              }
-              className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
-            >
-              {connections.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-sm">
-            <span className="text-[#a8909e]">Prod connection</span>
-            <select
-              required
-              value={form.prod_connection_id}
-              onChange={(e) => setForm({ ...form, prod_connection_id: e.target.value })}
-              className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
-            >
-              {connections.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
+          <Select
+            label="Staging connection"
+            required
+            options={connections.map((c) => ({ value: c.id, label: c.name }))}
+            value={form.staging_connection_id}
+            onChange={(e) =>
+              setForm({ ...form, staging_connection_id: e.target.value })
+            }
+          />
+          <Select
+            label="Prod connection"
+            required
+            options={connections.map((c) => ({ value: c.id, label: c.name }))}
+            value={form.prod_connection_id}
+            onChange={(e) => setForm({ ...form, prod_connection_id: e.target.value })}
+          />
+          <Button
             type="submit"
+            variant="primary"
             disabled={busy || connections.length < 1}
-            className="h-10 bg-[#714B67] px-4 text-sm font-semibold text-white"
+            loading={busy}
           >
             Create pipeline
-          </button>
+          </Button>
         </form>
+      </Card>
 
-        <section className="mt-8 border border-[#3d2a38] p-5">
-          <h2 className="font-[family-name:var(--font-display)] text-xl">Pipelines</h2>
-          <ul className="mt-3 space-y-2 text-sm">
-            {pipelines.map((p) => (
-              <li key={p.id}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedId(p.id)}
-                  className={`w-full border px-3 py-2 text-left ${
-                    selectedId === p.id
-                      ? "border-[#c9a9c0] bg-[#0f1a16]"
-                      : "border-[#3d2a38]"
-                  }`}
-                >
-                  <span className="font-medium">{p.name}</span>
-                  <span className="mt-1 block text-xs text-[#8f7a88]">
-                    staging={connName(p.staging_connection_id)} · prod=
-                    {connName(p.prod_connection_id)}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+      <section className="mt-8">
+        <h2 className="text-xl font-semibold text-ink">Pipelines</h2>
+        <ul className="mt-3 space-y-2">
+          {pipelines.map((p) => (
+            <li key={p.id}>
+              <button
+                type="button"
+                onClick={() => setSelectedId(p.id)}
+                className={`w-full rounded-md border px-3 py-2 text-left text-sm ${
+                  selectedId === p.id
+                    ? "border-accent bg-accent-subtle/20"
+                    : "border-border-subtle bg-surface"
+                }`}
+              >
+                <span className="font-medium text-ink">{p.name}</span>
+                <span className="mt-1 block text-xs text-muted">
+                  staging={connName(p.staging_connection_id)} · prod=
+                  {connName(p.prod_connection_id)}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
 
-          {selectedId && (
-            <div className="mt-6 space-y-3">
+        {selectedPipeline ? (
+          <div className="mt-6 space-y-4">
+            <Card className="p-4">
               <label className="block text-sm">
-                <span className="text-[#a8909e]">Module zip</span>
+                <span className="font-medium text-ink">Module zip</span>
                 <input
                   type="file"
                   accept=".zip"
-                  className="mt-1 block w-full text-sm"
+                  className="mt-2 block w-full text-sm"
                   onChange={(e) => void onFile(e.target.files?.[0] ?? null)}
                 />
               </label>
-              {validationId && (
-                <p className="font-mono text-xs text-[#8f7a88]">
+              {validationId ? (
+                <p className="mt-2 font-mono text-xs text-muted">
                   validation_id={validationId}
                 </p>
-              )}
-              <div className="flex flex-wrap gap-2">
-                {(["sandbox", "staging", "prod"] as const).map((hop) => (
-                  <button
-                    key={hop}
-                    type="button"
-                    disabled={busy || !zipB64 || !canPromote}
-                    title={promoteBlocked ?? undefined}
-                    onClick={() => setPendingHop(hop)}
-                    className="border border-[#c9a9c0] px-3 py-2 text-sm capitalize text-[#c9a9c0] disabled:opacity-40"
-                  >
-                    {hop === "sandbox" ? "1. Sandbox" : hop === "staging" ? "2. Staging" : "3. Prod"}
-                  </button>
-                ))}
-              </div>
-              <ul className="max-h-48 space-y-1 overflow-auto text-xs text-[#8f7a88]">
-                {hops.map((h) => (
-                  <li key={h.id} className="border-t border-[#1e2f29] py-1 font-mono">
-                    {h.hop} · {h.status} · {h.module_name} · {h.zip_sha256.slice(0, 10)}…
-                    <span className="block text-[#a8909e]">{h.message}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </section>
-      </div>
+              ) : null}
+            </Card>
 
-      <ConfirmDialog
+            <div className="grid gap-3 md:grid-cols-3">
+              {HOPS.map((hop) => {
+                const hopHistory = hops.filter((h) => h.hop === hop.id);
+                const last = hopHistory[hopHistory.length - 1];
+                return (
+                  <Card key={hop.id} className="flex flex-col p-4">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="info">{hop.step}</Badge>
+                      <h3 className="font-semibold text-ink">{hop.label}</h3>
+                    </div>
+                    <p className="mt-1 text-xs text-muted">{hop.desc}</p>
+                    {last ? (
+                      <p className="mt-2 text-xs">
+                        <Badge
+                          variant={
+                            last.status === "ok" || last.status === "complete"
+                              ? "success"
+                              : "warning"
+                          }
+                        >
+                          {last.status}
+                        </Badge>
+                        <span className="ml-2 font-mono text-muted">
+                          {last.zip_sha256.slice(0, 10)}…
+                        </span>
+                      </p>
+                    ) : (
+                      <p className="mt-2 text-xs text-muted">No hops yet</p>
+                    )}
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="mt-auto pt-4"
+                      disabled={busy || !zipB64 || !canPromote}
+                      title={promoteBlocked ?? undefined}
+                      onClick={() => setPendingHop(hop.id)}
+                    >
+                      Promote to {hop.label}
+                    </Button>
+                  </Card>
+                );
+              })}
+            </div>
+
+            {hops.length > 0 ? (
+              <Card className="max-h-48 overflow-auto p-4">
+                <h3 className="text-sm font-semibold text-ink">Hop history</h3>
+                <ul className="mt-2 space-y-1 font-mono text-xs text-muted">
+                  {hops.map((h) => (
+                    <li key={h.id} className="border-t border-border-subtle py-1">
+                      {h.hop} · {h.status} · {h.module_name} · {h.zip_sha256.slice(0, 10)}…
+                      <span className="block text-muted">{h.message}</span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
+
+      <ConfirmDialogV2
         open={!!pendingHop}
+        riskLevel="danger"
         title={`Promote: ${pendingHop}`}
         warning="Installs the module zip on the selected hop target."
         risks={[
@@ -317,6 +354,6 @@ export default function PipelinesPage() {
           if (pendingHop) void runHop(pendingHop, phrase);
         }}
       />
-    </main>
+    </div>
   );
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -11,7 +10,14 @@ import {
   ImageImportCommitOut,
   ImageImportPreviewOut,
 } from "@/lib/api";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Callout } from "@/components/ui/Callout";
+import { DataTable, type DataTableColumn } from "@/components/ui/DataTable";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { Input } from "@/components/ui/Input";
+import { Card, PageHeader } from "@/components/ui/layout-primitives";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 
 const CONFIRM_PHRASE = "I understand the risks";
@@ -36,20 +42,22 @@ function SeedPackPicker({
   }, [connectionId]);
 
   if (error) return <p className="text-xs text-[#f0a8a0]">{error}</p>;
-  if (!packs.length) return <p className="text-xs text-[var(--odoo-muted)]">Loading packs…</p>;
+  if (!packs.length) return <p className="text-xs text-muted">Loading packs…</p>;
 
   return (
-    <ul className="space-y-3">
+    <div className="grid gap-3 sm:grid-cols-2">
       {packs.map((p) => (
-        <li key={p.id} className="border border-[var(--odoo-border)] p-3 text-sm">
-          <p className="font-medium">{p.name}</p>
-          <p className="text-xs text-[var(--odoo-muted)]">{p.description}</p>
+        <Card key={p.id} className="p-3 text-sm">
+          <p className="font-medium text-ink">{p.name}</p>
+          <p className="text-xs text-muted">{p.description}</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {p.models.map((m) => (
-              <button
+              <Button
                 key={m}
                 type="button"
-                className="border border-[var(--odoo-primary)] px-2 py-1 font-mono text-xs text-[var(--odoo-primary)]"
+                variant="secondary"
+                size="sm"
+                className="font-mono text-xs"
                 onClick={async () => {
                   const detail = await api.getSeedPack(connectionId, p.id);
                   const entry = detail.models.find((x) => x.model === m);
@@ -57,12 +65,12 @@ function SeedPackPicker({
                 }}
               >
                 {m}
-              </button>
+              </Button>
             ))}
           </div>
-        </li>
+        </Card>
       ))}
-    </ul>
+    </div>
   );
 }
 
@@ -231,28 +239,37 @@ export default function DataImportPage() {
     }
   }
 
-  return (
-    <main className="odoo-shell min-h-screen px-6 py-10">
-      <div className="mx-auto max-w-5xl">
-        <div className="flex flex-wrap gap-3 text-sm">
-          <Link href={`/connections/${connectionId}`} className="text-[var(--odoo-primary-light)] hover:underline">
-            ← Metadata
-          </Link>
-          <Link href={`/connections/${connectionId}/power-ops`} className="text-[var(--odoo-primary-light)] hover:underline">
-            Power Ops
-          </Link>
-        </div>
-        <h1 className="mt-4 font-[family-name:var(--font-display)] text-3xl text-[var(--odoo-sheet-fg)]">
-          Bulk data import
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm text-[var(--odoo-muted)]">
-          Upload CSV/XLSX → map columns → dry-run → create or upsert contacts, products, or any model.
-          Writes require typing the risk phrase.
-        </p>
-        <VersionAwarenessBanner capabilities={connection?.capabilities} />
+  const importStep =
+    rows.length === 0 ? 1 : !lastResult ? 2 : lastResult.dry_run ? 3 : 4;
+  const steps = ["Upload", "Map", "Validate", "Commit"];
 
-        <section className="odoo-sheet mt-6 space-y-4 p-4">
-          <h2 className="text-sm font-semibold text-[var(--odoo-primary)]">Industry seed packs</h2>
+  return (
+    <div className="mx-auto max-w-5xl" data-testid="import-page">
+      <PageHeader
+        title="Bulk data import"
+        description="Upload CSV/XLSX → map columns → dry-run → create or upsert. Writes require the risk phrase."
+      />
+      <VersionAwarenessBanner capabilities={connection?.capabilities} />
+
+      <ol className="mt-6 flex flex-wrap gap-2">
+        {steps.map((label, i) => (
+          <li key={label}>
+            <Badge variant={importStep === i + 1 ? "info" : importStep > i + 1 ? "success" : "default"}>
+              {i + 1}. {label}
+            </Badge>
+          </li>
+        ))}
+      </ol>
+
+      {error ? <ErrorNotice message={error} className="mt-4" /> : null}
+      {notice ? (
+        <Callout variant="info" title="Notice" className="mt-4">
+          {notice}
+        </Callout>
+      ) : null}
+
+        <Card className="mt-6 space-y-4 p-4">
+          <h2 className="text-sm font-semibold text-ink">Industry seed packs</h2>
           <SeedPackPicker
             connectionId={connectionId}
             onPick={(m, csv) => {
@@ -265,9 +282,9 @@ export default function DataImportPage() {
               setNotice(`Loaded seed for ${m} — click Parse to preview`);
             }}
           />
-        </section>
+        </Card>
 
-        <section className="odoo-sheet mt-6 space-y-4 p-4">
+        <Card className="mt-6 space-y-4 p-4">
           <label className="block text-sm">
             Target model
             <input
@@ -408,10 +425,10 @@ export default function DataImportPage() {
               )}
             </div>
           )}
-        </section>
+        </Card>
 
-        <section className="odoo-sheet mt-6 space-y-4 p-4" data-testid="image-import-panel">
-          <h2 className="text-sm font-semibold text-[var(--odoo-primary)]">Bulk image import</h2>
+        <Card className="mt-6 space-y-4 p-4" data-testid="image-import-panel">
+          <h2 className="text-sm font-semibold text-ink">Bulk image import</h2>
           <p className="text-xs text-[var(--odoo-muted)]">
             CSV manifest (<code>match,name,filename</code>) + ZIP of images → writes base64 to an
             image/binary field. Images are downscaled server-side (max {1920}px, 5MB guard).
@@ -517,120 +534,11 @@ export default function DataImportPage() {
               </table>
             </div>
           )}
-        </section>
+        </Card>
 
-        <section className="odoo-sheet mt-6 space-y-4 p-4" data-testid="image-import-panel">
-          <h2 className="text-sm font-semibold text-[var(--odoo-primary)]">Bulk image import</h2>
-          <p className="text-xs text-[var(--odoo-muted)]">
-            CSV manifest (<code>match,name,filename</code>) + ZIP of images → writes base64 to an
-            image/binary field. Images are downscaled server-side (max {1920}px, 5MB guard).
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <label className="text-xs">
-              Manifest CSV
-              <input
-                type="file"
-                accept=".csv,.txt"
-                className="mt-1 block text-sm"
-                onChange={(e) => setImgManifest(e.target.files?.[0] ?? null)}
-              />
-            </label>
-            <label className="text-xs">
-              Images ZIP
-              <input
-                type="file"
-                accept=".zip"
-                className="mt-1 block text-sm"
-                onChange={(e) => setImgZip(e.target.files?.[0] ?? null)}
-              />
-            </label>
-            <button
-              type="button"
-              disabled={busy || !imgManifest || !imgZip}
-              onClick={() => void onImagePreview()}
-              className="self-end border border-[var(--odoo-primary)] px-3 py-1.5 text-sm text-[var(--odoo-primary)] disabled:opacity-50"
-            >
-              Preview manifest
-            </button>
-          </div>
-          {imgPreview && (
-            <>
-              <div className="grid gap-2 sm:grid-cols-2 text-sm">
-                <label>
-                  Match field
-                  <input
-                    value={imgMatchField}
-                    onChange={(e) => setImgMatchField(e.target.value)}
-                    className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1 font-mono text-xs"
-                  />
-                </label>
-                <label>
-                  Image field
-                  <input
-                    value={imgField}
-                    onChange={(e) => setImgField(e.target.value)}
-                    placeholder={imgPreview.image_field}
-                    className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1 font-mono text-xs"
-                  />
-                </label>
-              </div>
-              <pre className="max-h-32 overflow-auto bg-[#f8f9fa] p-2 text-xs text-[#1f1f1f]">
-                {JSON.stringify(imgPreview.sample_rows, null, 2)}
-              </pre>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void runImageCommit(true)}
-                  className="border border-[var(--odoo-primary)] px-3 py-1.5 text-sm text-[var(--odoo-primary)] disabled:opacity-50"
-                >
-                  Dry-run images
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setImgConfirmOpen(true)}
-                  className="bg-[var(--odoo-danger)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-                >
-                  Commit image writes
-                </button>
-              </div>
-            </>
-          )}
-          {imgResult && (
-            <div className="overflow-x-auto text-sm" data-testid="image-import-results">
-              <p>
-                updated={imgResult.updated} failed={imgResult.failed} skipped={imgResult.skipped}
-              </p>
-              <table className="mt-2 w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-[var(--odoo-border)]">
-                    <th className="py-1">#</th>
-                    <th className="py-1">match</th>
-                    <th className="py-1">file</th>
-                    <th className="py-1">ok</th>
-                    <th className="py-1">error</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {imgResult.results.map((r) => (
-                    <tr key={r.row_index} className="border-b border-[var(--odoo-border)]/60">
-                      <td className="py-1">{r.row_index}</td>
-                      <td className="py-1 font-mono">{r.match_value}</td>
-                      <td className="py-1 font-mono">{r.filename}</td>
-                      <td className="py-1">{r.ok ? "yes" : "no"}</td>
-                      <td className="py-1 text-[var(--odoo-danger)]">{r.error ?? ""}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      </div>
-
-      <ConfirmDialog
+      <ConfirmDialogV2
         open={confirmOpen}
+        riskLevel="danger"
         title="Commit bulk import"
         warning={`Write ${rows.length} row(s) to ${model} on this live Odoo connection.`}
         risks={[
@@ -643,8 +551,9 @@ export default function DataImportPage() {
         onCancel={() => setConfirmOpen(false)}
         onConfirm={(phrase) => void runCommit(false, phrase)}
       />
-      <ConfirmDialog
+      <ConfirmDialogV2
         open={imgConfirmOpen}
+        riskLevel="danger"
         title="Commit bulk image import"
         warning={`Write images to ${model} on this live Odoo connection.`}
         risks={[
@@ -657,6 +566,6 @@ export default function DataImportPage() {
         onCancel={() => setImgConfirmOpen(false)}
         onConfirm={(phrase) => void runImageCommit(false, phrase)}
       />
-    </main>
+    </div>
   );
 }

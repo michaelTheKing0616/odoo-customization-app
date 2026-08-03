@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import {
   api,
@@ -15,6 +14,12 @@ import {
   advancedMutationAllowed,
   advancedMutationBlockedReason,
 } from "@/lib/capabilities";
+import { Button } from "@/components/ui/Button";
+import { Callout } from "@/components/ui/Callout";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Card, PageHeader } from "@/components/ui/layout-primitives";
 
 const CONFIRM_PHRASE = "I understand the risks";
 
@@ -81,142 +86,91 @@ export default function RemindersPage() {
     }
   }
 
-  // Reminder create is confirm-gated (mail.template + optional cron) → advanced.
   const canCreate = advancedMutationAllowed(connection);
   const createBlocked = advancedMutationBlockedReason(connection);
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#3d2a38_0%,_#1a1218_50%,_#0c090b_100%)] px-6 py-10 text-[#f4eef2]">
-      <div className="mx-auto max-w-2xl">
-        <div className="flex flex-wrap gap-4 text-sm">
-          <Link
-            href={`/connections/${connectionId}`}
-            className="text-[#c9a9c0] hover:underline"
-          >
-            ← Metadata
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/wizard`}
-            className="text-[#8f7a88] hover:underline"
-          >
-            Wizard
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/automations`}
-            className="text-[#8f7a88] hover:underline"
-          >
-            Automations
-          </Link>
-        </div>
+    <div className="mx-auto max-w-2xl" data-testid="reminders-page">
+      <PageHeader
+        title="Reminder wizard"
+        description={`${connection?.name ?? connectionId} · mail.template + optional ir.cron`}
+      />
+      <VersionAwarenessBanner capabilities={connection?.capabilities} />
+      {createBlocked ? (
+        <Callout variant="warning" title="Mutations blocked" className="mt-4">
+          {createBlocked}
+        </Callout>
+      ) : null}
 
-        <h1 className="mt-4 font-[family-name:var(--font-display)] text-3xl text-[#faf6f9]">
-          Reminder wizard
-        </h1>
-        <p className="mt-1 text-sm text-[#8f7a88]">
-          {connection
-            ? `${connection.name} · mail.template + optional ir.cron`
-            : connectionId}
-        </p>
-        <VersionAwarenessBanner capabilities={connection?.capabilities} />
-        {createBlocked && (
-          <p className="mt-2 text-sm text-[#e8d09f]">{createBlocked}</p>
-        )}
+      {error ? <ErrorNotice message={error} className="mt-4" /> : null}
 
-        {error && <p className="mt-4 text-sm text-[#f0a8a0]">{error}</p>}
-
-        <form
-          onSubmit={onSubmit}
-          className="mt-8 space-y-4 border border-[#3d2a38] bg-[#0f1a16]/70 p-6"
-        >
-          <label className="block text-sm">
-            <span className="text-[#a8909e]">Name</span>
-            <input
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
+      <Card className="mt-8 p-6">
+        <form onSubmit={onSubmit} className="space-y-4">
+          <Input label="Name" required value={name} onChange={(e) => setName(e.target.value)} />
+          <Input
+            label="Model"
+            required
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            placeholder="x_lib_loan"
+            className="font-mono text-sm"
+          />
+          <Input
+            label="Date field"
+            required
+            value={dateField}
+            onChange={(e) => setDateField(e.target.value)}
+            placeholder="x_due_date"
+            className="font-mono text-sm"
+          />
+          <Select
+            label="Mode"
+            options={[
+              { value: "overdue", label: "overdue" },
+              { value: "due_soon", label: "due_soon" },
+            ]}
+            value={mode}
+            onChange={(e) => setMode(e.target.value as "overdue" | "due_soon")}
+          />
+          {mode === "due_soon" ? (
+            <Input
+              label="Due soon days"
+              type="number"
+              min={1}
+              max={30}
+              value={String(dueSoonDays)}
+              onChange={(e) => setDueSoonDays(Number(e.target.value) || 2)}
             />
-          </label>
-          <label className="block text-sm">
-            <span className="text-[#a8909e]">Model</span>
-            <input
-              required
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              placeholder="x_lib_loan"
-              className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="text-[#a8909e]">Date field</span>
-            <input
-              required
-              value={dateField}
-              onChange={(e) => setDateField(e.target.value)}
-              placeholder="x_due_date"
-              className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="text-[#a8909e]">Mode</span>
-            <select
-              value={mode}
-              onChange={(e) => setMode(e.target.value as "overdue" | "due_soon")}
-              className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
-            >
-              <option value="overdue">overdue</option>
-              <option value="due_soon">due_soon</option>
-            </select>
-          </label>
-          {mode === "due_soon" && (
-            <label className="block text-sm">
-              <span className="text-[#a8909e]">Due soon days</span>
-              <input
-                type="number"
-                min={1}
-                max={30}
-                value={dueSoonDays}
-                onChange={(e) => setDueSoonDays(Number(e.target.value) || 2)}
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
-              />
-            </label>
-          )}
+          ) : null}
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block text-sm">
-              <span className="text-[#a8909e]">Interval number</span>
-              <input
-                type="number"
-                min={1}
-                max={365}
-                value={intervalNumber}
-                onChange={(e) => setIntervalNumber(Number(e.target.value) || 1)}
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="text-[#a8909e]">Interval type</span>
-              <select
-                value={intervalType}
-                onChange={(e) => setIntervalType(e.target.value)}
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
-              >
-                <option value="minutes">minutes</option>
-                <option value="hours">hours</option>
-                <option value="days">days</option>
-                <option value="weeks">weeks</option>
-                <option value="months">months</option>
-              </select>
-            </label>
-          </div>
-          <label className="block text-sm">
-            <span className="text-[#a8909e]">Email to</span>
-            <input
-              value={emailTo}
-              onChange={(e) => setEmailTo(e.target.value)}
-              className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+            <Input
+              label="Interval number"
+              type="number"
+              min={1}
+              max={365}
+              value={String(intervalNumber)}
+              onChange={(e) => setIntervalNumber(Number(e.target.value) || 1)}
             />
-          </label>
-          <label className="flex items-start gap-2 text-sm">
+            <Select
+              label="Interval type"
+              options={[
+                { value: "minutes", label: "minutes" },
+                { value: "hours", label: "hours" },
+                { value: "days", label: "days" },
+                { value: "weeks", label: "weeks" },
+                { value: "months", label: "months" },
+              ]}
+              value={intervalType}
+              onChange={(e) => setIntervalType(e.target.value)}
+            />
+          </div>
+          <Input
+            label="Email to"
+            value={emailTo}
+            onChange={(e) => setEmailTo(e.target.value)}
+            className="font-mono text-sm"
+          />
+          <label className="flex items-start gap-2 text-sm text-ink">
             <input
               type="checkbox"
               checked={createCron}
@@ -224,55 +178,52 @@ export default function RemindersPage() {
               className="mt-1"
             />
             <span>
-              <span className="text-[#a8909e]">Create cron</span>
-              <span className="mt-0.5 block text-xs text-[#8f7a88]">
-                Schedules an ir.cron that searches by date field and sends the
-                template.
+              Create cron
+              <span className="mt-0.5 block text-xs text-muted">
+                Schedules an ir.cron that searches by date field and sends the template.
               </span>
             </span>
           </label>
-          <button
+          <Button
             type="submit"
+            variant="primary"
             disabled={busy || !canCreate}
             title={createBlocked ?? undefined}
-            className="h-11 bg-[#714B67] px-5 text-sm font-semibold text-white disabled:opacity-60"
+            loading={busy}
           >
             Create reminder
-          </button>
+          </Button>
         </form>
+      </Card>
 
-        {result && (
-          <section className="mt-6 border border-[#3d2a38] bg-[#0f1a16]/70 p-5">
-            <h2 className="font-[family-name:var(--font-display)] text-xl text-[#faf6f9]">
-              Created
-            </h2>
-            <p className="mt-2 text-sm text-[#c9a9c0]">{result.message}</p>
-            <p className="mt-1 text-sm text-[#8f7a88]">
-              Template{" "}
-              <code className="text-[#c9a9c0]">
-                {result.mail_template_id ?? "—"}
-              </code>
-              {result.cron_id != null && (
-                <>
-                  {" "}
-                  · Cron{" "}
-                  <code className="text-[#c9a9c0]">{result.cron_id}</code>
-                </>
-              )}
-            </p>
-            {result.warnings && result.warnings.length > 0 && (
-              <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-[#f0c090]">
+      {result ? (
+        <Card className="mt-6 p-5">
+          <h2 className="text-xl font-semibold text-ink">Created</h2>
+          <p className="mt-2 text-sm text-muted">{result.message}</p>
+          <p className="mt-1 text-sm text-muted">
+            Template <code className="text-ink">{result.mail_template_id ?? "—"}</code>
+            {result.cron_id != null ? (
+              <>
+                {" "}
+                · Cron <code className="text-ink">{result.cron_id}</code>
+              </>
+            ) : null}
+          </p>
+          {result.warnings && result.warnings.length > 0 ? (
+            <Callout variant="warning" title="Warnings" className="mt-3">
+              <ul className="list-disc space-y-1 pl-5">
                 {result.warnings.map((w) => (
                   <li key={w}>{w}</li>
                 ))}
               </ul>
-            )}
-          </section>
-        )}
-      </div>
+            </Callout>
+          ) : null}
+        </Card>
+      ) : null}
 
-      <ConfirmDialog
+      <ConfirmDialogV2
         open={confirmOpen}
+        riskLevel="danger"
         title="Create reminder on Odoo"
         warning="Creates a mail.template and optionally an ir.cron on the live Odoo database. Emails may be queued depending on outgoing mail config."
         risks={[
@@ -285,6 +236,6 @@ export default function RemindersPage() {
         onCancel={() => setConfirmOpen(false)}
         onConfirm={onConfirm}
       />
-    </main>
+    </div>
   );
 }
