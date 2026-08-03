@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.db_models import CustomizationProject
+from app.entitlements import assert_active_project_slot, assert_feature
 from app.odoo_service import OdooClientError, client_from_connection, get_connection_or_404
 from app.project_apply import apply_project_spec, diff_project_spec
 from app.schemas import (
@@ -24,6 +25,7 @@ from app.snapshots import (
     ConfirmationRequired,
     require_advanced_confirmation,
 )
+from app.workspace_auth import WorkspaceAuth, get_workspace_auth
 
 router = APIRouter(prefix="/connections/{connection_id}/projects", tags=["projects"])
 
@@ -40,6 +42,7 @@ def _project_out(row: CustomizationProject) -> ProjectOut:
         template_id=row.template_id,
         spec_json=spec if isinstance(spec, dict) else {},
         status=row.status,
+        lifecycle_status=getattr(row, "lifecycle_status", "active") or "active",
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -55,6 +58,14 @@ def _confirm_http(exc: ConfirmationRequired) -> HTTPException:
             "risks": exc.risks,
         },
     )
+
+
+def _connection_workspace_id(db: Session, connection_id: str) -> str | None:
+    try:
+        conn = get_connection_or_404(db, connection_id)
+        return conn.workspace_id
+    except LookupError:
+        return None
 
 
 @router.get("", response_model=list[ProjectOut])
@@ -74,14 +85,19 @@ def list_projects(connection_id: str, db: Session = Depends(get_db)) -> list[Pro
 
 @router.post("", response_model=ProjectOut, status_code=201)
 def create_project(
-    connection_id: str, body: ProjectCreate, db: Session = Depends(get_db)
+    connection_id: str,
+    body: ProjectCreate,
+    db: Session = Depends(get_db),
+    auth: WorkspaceAuth = Depends(get_workspace_auth),
 ) -> ProjectOut:
     try:
-        get_connection_or_404(db, connection_id)
+        conn = get_connection_or_404(db, connection_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    # Prefer portable library ModuleSpec when template_id=library and spec empty
+    workspace_id = conn.workspace_id or auth.workspace_id
+    assert_active_project_slot(db, workspace_id, auth=auth)
+
     spec = dict(body.spec_json or {})
     if body.template_id == "library" and not spec.get("models"):
         try:
@@ -123,12 +139,61 @@ def create_project(
 
     row = CustomizationProject(
         connection_id=connection_id,
+        workspace_id=workspace_id,
         name=body.name,
         template_id=body.template_id,
         spec_json=json.dumps(spec),
         status="draft",
+        lifecycle_status="active",
     )
     db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _project_out(row)
+
+
+@router.post("/{project_id}/archive", response_model=ProjectOut)
+def archive_project(
+    connection_id: str,
+    project_id: str,
+    db: Session = Depends(get_db),
+) -> ProjectOut:
+    row = (
+        db.query(CustomizationProject)
+        .filter(
+            CustomizationProject.id == project_id,
+            CustomizationProject.connection_id == connection_id,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Project not found")
+    row.lifecycle_status = "archived"
+    db.commit()
+    db.refresh(row)
+    return _project_out(row)
+
+
+@router.post("/{project_id}/unarchive", response_model=ProjectOut)
+def unarchive_project(
+    connection_id: str,
+    project_id: str,
+    db: Session = Depends(get_db),
+    auth: WorkspaceAuth = Depends(get_workspace_auth),
+) -> ProjectOut:
+    row = (
+        db.query(CustomizationProject)
+        .filter(
+            CustomizationProject.id == project_id,
+            CustomizationProject.connection_id == connection_id,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Project not found")
+    workspace_id = row.workspace_id or _connection_workspace_id(db, connection_id)
+    assert_active_project_slot(db, workspace_id, auth=auth, excluding_project_id=project_id)
+    row.lifecycle_status = "active"
     db.commit()
     db.refresh(row)
     return _project_out(row)
@@ -157,6 +222,7 @@ def update_project(
     project_id: str,
     body: ProjectUpdate,
     db: Session = Depends(get_db),
+    auth: WorkspaceAuth = Depends(get_workspace_auth),
 ) -> ProjectOut:
     row = (
         db.query(CustomizationProject)
@@ -168,6 +234,8 @@ def update_project(
     )
     if not row:
         raise HTTPException(status_code=404, detail="Project not found")
+    if body.spec_json is not None:
+        assert_feature(db, row.workspace_id or auth.workspace_id, "designer", auth)
     if body.name is not None:
         row.name = body.name
     if body.template_id is not None:
@@ -203,7 +271,6 @@ def delete_project(
 def diff_project(
     connection_id: str, project_id: str, db: Session = Depends(get_db)
 ) -> ProjectDiffOut:
-    """Pre-apply conflict report vs live Odoo introspection."""
     try:
         get_connection_or_404(db, connection_id)
     except LookupError as exc:
@@ -242,11 +309,28 @@ def apply_project(
     project_id: str,
     body: ProjectApplyBody,
     db: Session = Depends(get_db),
+    auth: WorkspaceAuth = Depends(get_workspace_auth),
 ) -> ProjectApplyOut:
     try:
         get_connection_or_404(db, connection_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    row = (
+        db.query(CustomizationProject)
+        .filter(
+            CustomizationProject.id == project_id,
+            CustomizationProject.connection_id == connection_id,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if row.lifecycle_status == "archived":
+        raise HTTPException(status_code=403, detail="Un-archive this project before applying changes.")
+
+    assert_feature(db, row.workspace_id or auth.workspace_id, "module_export", auth)
 
     try:
         require_advanced_confirmation(
@@ -264,17 +348,6 @@ def apply_project(
         )
     except ConfirmationRequired as exc:
         raise _confirm_http(exc) from exc
-
-    row = (
-        db.query(CustomizationProject)
-        .filter(
-            CustomizationProject.id == project_id,
-            CustomizationProject.connection_id == connection_id,
-        )
-        .first()
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="Project not found")
 
     try:
         spec = json.loads(row.spec_json or "{}")

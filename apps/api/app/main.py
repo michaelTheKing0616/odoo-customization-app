@@ -12,6 +12,7 @@ from app.audit import AuditLogMiddleware
 from app.auth import ensure_env_bootstrap_key
 from app.db import SessionLocal, init_db
 from app.rate_limit import RateLimitMiddleware
+from app.entitlements import require_feature
 from app.workspace_auth import require_app_auth
 from app.routers import (
     access,
@@ -22,6 +23,7 @@ from app.routers import (
     audit,
     auth,
     automations,
+    billing,
     builder,
     bulk_suite,
     config_ops,
@@ -71,6 +73,9 @@ async def lifespan(_app: FastAPI):
             from app.account_service import ensure_default_workspace_for_legacy_rows
 
             ensure_default_workspace_for_legacy_rows(db)
+        from app.entitlements import seed_plan_features
+
+        seed_plan_features(db)
     finally:
         db.close()
     yield
@@ -97,43 +102,40 @@ _protected = [Depends(require_app_auth)]
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(accounts.router, prefix="/api")
+app.include_router(billing.router, prefix="/api")
 app.include_router(audit.router, prefix="/api", dependencies=_protected)
 app.include_router(jobs.router, prefix="/api", dependencies=_protected)
 app.include_router(connections.router, prefix="/api", dependencies=_protected)
-app.include_router(health_check.router, prefix="/api", dependencies=_protected)
+app.include_router(health_check.router, prefix="/api", dependencies=_protected + [Depends(require_feature("health_check"))])
 app.include_router(ee_drivers.router, prefix="/api", dependencies=_protected)
-app.include_router(approvals.router, prefix="/api", dependencies=_protected)
-app.include_router(health_check.router, prefix="/api", dependencies=_protected)
-app.include_router(ee_drivers.router, prefix="/api", dependencies=_protected)
-app.include_router(approvals.router, prefix="/api", dependencies=_protected)
+app.include_router(approvals.router, prefix="/api", dependencies=_protected + [Depends(require_feature("approvals"))])
 app.include_router(apps.router, prefix="/api", dependencies=_protected)
-app.include_router(ai.router, prefix="/api", dependencies=_protected)
-app.include_router(expert.router, prefix="/api", dependencies=_protected)
+app.include_router(ai.router, prefix="/api", dependencies=_protected + [Depends(require_feature("ai_draft"))])
+app.include_router(expert.router, prefix="/api", dependencies=_protected + [Depends(require_feature("expert"))])
 app.include_router(module_spec.router, prefix="/api", dependencies=_protected)
-app.include_router(module_spec.import_router, prefix="/api", dependencies=_protected)
+app.include_router(module_spec.import_router, prefix="/api", dependencies=_protected + [Depends(require_feature("import"))])
 app.include_router(introspection.router, prefix="/api", dependencies=_protected)
 app.include_router(builder.router, prefix="/api", dependencies=_protected)
 app.include_router(projects.router, prefix="/api", dependencies=_protected)
 app.include_router(reminders.router, prefix="/api", dependencies=_protected)
-app.include_router(views.router, prefix="/api", dependencies=_protected)
+app.include_router(views.router, prefix="/api", dependencies=_protected + [Depends(require_feature("designer"))])
 app.include_router(actions.router, prefix="/api", dependencies=_protected)
-app.include_router(preview_proxy.router, prefix="/api", dependencies=_protected)
-app.include_router(automations.router, prefix="/api", dependencies=_protected)
+app.include_router(preview_proxy.router, prefix="/api", dependencies=_protected + [Depends(require_feature("designer"))])
+app.include_router(automations.router, prefix="/api", dependencies=_protected + [Depends(require_feature("automations"))])
 app.include_router(access.router, prefix="/api", dependencies=_protected)
 app.include_router(snapshots.router, prefix="/api", dependencies=_protected)
-app.include_router(export_sandbox.router, prefix="/api", dependencies=_protected)
-app.include_router(data_import.router, prefix="/api", dependencies=_protected)
-app.include_router(power_ops.router, prefix="/api", dependencies=_protected)
-app.include_router(bulk_suite.router, prefix="/api", dependencies=_protected)
-app.include_router(bulk_suite.router, prefix="/api", dependencies=_protected)
+app.include_router(export_sandbox.router, prefix="/api", dependencies=_protected + [Depends(require_feature("module_export"))])
+app.include_router(data_import.router, prefix="/api", dependencies=_protected + [Depends(require_feature("import"))])
+app.include_router(power_ops.router, prefix="/api", dependencies=_protected + [Depends(require_feature("power_ops"))])
+app.include_router(bulk_suite.router, prefix="/api", dependencies=_protected + [Depends(require_feature("bulk_suite"))])
 app.include_router(ee_playbooks.router, prefix="/api", dependencies=_protected)
 app.include_router(domain_playbooks.router, prefix="/api", dependencies=_protected)
 app.include_router(studio_feature_recipes.router, prefix="/api", dependencies=_protected)
 app.include_router(config_ops.router, prefix="/api", dependencies=_protected)
 app.include_router(menus_builder.router, prefix="/api", dependencies=_protected)
-app.include_router(reports.router, prefix="/api", dependencies=_protected)
-app.include_router(id_generator.router, prefix="/api", dependencies=_protected)
-app.include_router(environments.router, prefix="/api", dependencies=_protected)
+app.include_router(reports.router, prefix="/api", dependencies=_protected + [Depends(require_feature("reports_designer"))])
+app.include_router(id_generator.router, prefix="/api", dependencies=_protected + [Depends(require_feature("id_generator"))])
+app.include_router(environments.router, prefix="/api", dependencies=_protected + [Depends(require_feature("pipelines"))])
 app.include_router(website.router, prefix="/api", dependencies=_protected)
 
 

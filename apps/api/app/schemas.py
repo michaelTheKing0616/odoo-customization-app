@@ -1004,6 +1004,7 @@ class ProjectOut(BaseModel):
     template_id: str | None
     spec_json: dict
     status: str
+    lifecycle_status: str = "active"
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

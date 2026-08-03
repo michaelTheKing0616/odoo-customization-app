@@ -102,6 +102,18 @@ class Settings(BaseSettings):
     # OAuth (MON-1) — off by default; [SKIPPED] implementation until configured
     oauth_providers: str = ""
 
+    # MON-2 — billing (Stripe + Paystack)
+    billing_mode: str = "off"  # off | fake | live
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_price_pro: str = ""
+    stripe_price_business: str = ""
+    stripe_price_agency: str = ""
+    stripe_price_project_pass: str = ""
+    paystack_secret_key: str = ""
+    paystack_price_pro_kobo: int = 0
+    paystack_price_business_kobo: int = 0
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
@@ -113,6 +125,18 @@ class Settings(BaseSettings):
     @property
     def accounts_auth_enabled(self) -> bool:
         return self.auth_mode.strip().lower() == "accounts"
+
+    def stripe_price_map(self) -> dict[str, str]:
+        out: dict[str, str] = {}
+        if self.stripe_price_pro:
+            out["pro"] = self.stripe_price_pro
+        if self.stripe_price_business:
+            out["business"] = self.stripe_price_business
+        if self.stripe_price_agency:
+            out["agency"] = self.stripe_price_agency
+        if self.stripe_price_project_pass:
+            out["project_pass"] = self.stripe_price_project_pass
+        return out
 
     def sandbox_extra_module_list(self) -> list[str]:
         return [m.strip() for m in self.sandbox_extra_modules.split(",") if m.strip()]

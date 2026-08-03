@@ -824,6 +824,18 @@ export type AuthStatus = {
   bootstrap_available: boolean;
 };
 
+export type EntitlementsOut = {
+  workspace_id: string;
+  plan_id: string;
+  subscription_status: string;
+  features: Record<string, string>;
+  extra_project_slots: number;
+  active_projects: number;
+  active_project_limit: number | null;
+  trial_ends_at: string | null;
+  current_period_end: string | null;
+};
+
 export type AccountSession = {
   user: {
     id: string;
@@ -960,6 +972,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ token, password }),
     }),
+  billingEntitlements: () => request<EntitlementsOut>("/api/billing/entitlements"),
+  billingPlans: () => request<Array<{ id: string; display_name: string; features: Record<string, string> }>>("/api/billing/plans"),
   bootstrapApiKey: () =>
     request<{ api_key: string; key_id: string; name: string; note: string }>(
       "/api/auth/bootstrap",

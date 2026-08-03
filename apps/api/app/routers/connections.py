@@ -9,6 +9,7 @@ from app.capabilities import capabilities_from_version, probe_web_base_url, samp
 from app.crypto import encrypt_secret
 from app.db import get_db
 from app.db_models import OdooConnection
+from app.entitlements import assert_connection_limit
 from app.odoo_service import OdooClientError, client_from_connection, probe_credentials
 from app.workspace_auth import WorkspaceAuth, get_scoped_connection_or_404, get_workspace_auth, require_admin, require_builder, scoped_connection_query
 from app.schemas import (
@@ -77,6 +78,7 @@ def create_connection(
     db: Session = Depends(get_db),
     auth: WorkspaceAuth = Depends(require_builder),
 ) -> ConnectionOut:
+    assert_connection_limit(db, auth.workspace_id if auth.workspace_scoped else None, auth)
     server_version: str | None = None
     if body.verify:
         try:

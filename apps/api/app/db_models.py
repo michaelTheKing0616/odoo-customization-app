@@ -12,6 +12,7 @@ from app.db import Base
 
 # Register account models on the same metadata (MON-1).
 from app import account_models as _account_models  # noqa: F401
+from app import billing_models as _billing_models  # noqa: F401
 
 
 class OdooConnection(Base):
@@ -262,6 +263,8 @@ class CustomizationProject(Base):
     spec_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
     # draft | applied
+    lifecycle_status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    # active | archived — slot counting (MON-2)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

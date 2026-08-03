@@ -59,6 +59,7 @@ def init_db(*, bootstrap: bool = True) -> None:
         return
     if bootstrap:
         from app import account_models  # noqa: F401
+        from app import billing_models  # noqa: F401
 
         Base.metadata.create_all(bind=engine)
         _ensure_schema_columns()
@@ -109,6 +110,12 @@ def _ensure_schema_columns() -> None:
             if "workspace_id" not in cols:
                 conn.execute(
                     text("ALTER TABLE customization_projects ADD COLUMN workspace_id VARCHAR(36)")
+                )
+            if "lifecycle_status" not in cols:
+                conn.execute(
+                    text(
+                        "ALTER TABLE customization_projects ADD COLUMN lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'active'"
+                    )
                 )
 
     _ensure_connection_fks(inspector)
