@@ -147,16 +147,16 @@ TASK: Curated Q/A eval set + harness rewarding grounding and calibrated uncertai
 INPUT: EXP-1..3; the 8-document master reference (source of verified answers).
 
 CHECKLIST:
-- [ ] `apps/api/tests/expert_eval/eval_set.jsonl`: ≥40 items — {question, must_contain[],
+- [x] `apps/api/tests/expert_eval/eval_set.jsonl`: ≥40 items — {question, must_contain[],
       must_not_contain[], expect_decline: bool, expect_caution: bool, version_scope}.
       Coverage: doc-grounded facts (≥15), instance-grounded (≥5, fixture-driven),
       protected-category caution (≥5), should-decline no-source questions (≥5),
       version-differing answers (≥5), bulk-tool routing (≥5).
-- [ ] Harness `tests/test_expert_eval.py`: runs against fake provider deterministically in CI
+- [x] Harness `tests/test_expert_eval.py`: runs against fake provider deterministically in CI
       mode; `EXPERT_EVAL_LIVE=1` mode runs real model + reports score (not hard-fail) —
       scoring: grounding rate, citation presence, decline correctness, contamination
       (must_not_contain hits).
-- [ ] Baseline recorded: one live run's scores committed to
+- [x] Baseline recorded: one live run's scores committed to
       `docs/research/expert_eval_baseline_<date>.md`; MASTER note: re-run on any change to
       chunking/retrieval/model.
 

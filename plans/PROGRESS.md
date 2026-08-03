@@ -48,7 +48,7 @@ CHECKLIST. Claiming done without both updated = failed card.
 - [x] EXP-1 Docs ingestion + chunking + version-tagged embedding store
 - [x] EXP-2 Live-instance grounding context assembly
 - [x] EXP-3 /api/expert/ask generation endpoint (ground-or-decline, citations)
-- [ ] EXP-4 Evaluation regression set + harness
+- [x] EXP-4 Evaluation regression set + harness
 - [ ] EXP-5 Expert UX surfaces (chat panel, explain-this, error mode, review companion)
 
 ## Wave 6 — UIX (UI/UX revamp)

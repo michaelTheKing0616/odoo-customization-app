@@ -170,17 +170,25 @@ def detect_tier1_logic_request(
     manifest: dict[str, Any],
 ) -> tuple[str, str] | None:
     """Return (model, safe_alternative) when the question asks for tier-1 write logic."""
-    from app.expert.grounding import extract_model_field_refs
+    from app.expert.grounding import _MODEL_RE, extract_model_field_refs
 
-    if not _TIER1_LOGIC_VERBS.search(question or ""):
+    qtext = question or ""
+    if not _TIER1_LOGIC_VERBS.search(qtext):
         return None
-    for model, _fld in extract_model_field_refs(question):
+    seen: set[str] = set()
+    for model, _fld in extract_model_field_refs(qtext):
+        if model in seen:
+            continue
+        seen.add(model)
         if protected_models_for(manifest, model) == "tier_1":
             return model, safe_alternative_for(model)
-    q = (question or "").lower()
-    for token in ("account.move", "account.payment", "hr.payslip", "payment.transaction"):
-        if token in q and protected_models_for(manifest, token) == "tier_1":
-            return token, safe_alternative_for(token)
+    for match in _MODEL_RE.finditer(qtext):
+        model = match.group(1).lower()
+        if model in seen:
+            continue
+        seen.add(model)
+        if protected_models_for(manifest, model) == "tier_1":
+            return model, safe_alternative_for(model)
     return None
 
 
