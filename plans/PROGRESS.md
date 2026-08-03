@@ -46,7 +46,7 @@ CHECKLIST. Claiming done without both updated = failed card.
 
 ## Wave 5 — EXP (Odoo Expert)
 - [x] EXP-1 Docs ingestion + chunking + version-tagged embedding store
-- [ ] EXP-2 Live-instance grounding context assembly
+- [x] EXP-2 Live-instance grounding context assembly
 - [ ] EXP-3 /api/expert/ask generation endpoint (ground-or-decline, citations)
 - [ ] EXP-4 Evaluation regression set + harness
 - [ ] EXP-5 Expert UX surfaces (chat panel, explain-this, error mode, review companion)

@@ -63,23 +63,23 @@ INPUT: PCM-2 manifest cache, TIER-1 matrix, introspection endpoints, BLK-1 disco
 frontend context contract (route, connection id, current model/ModuleSpec draft).
 
 CHECKLIST:
-- [ ] `app/expert/grounding.py`: `assemble_context(connection_id?, ui_context?) -> GroundingBundle`
+- [x] `app/expert/grounding.py`: `assemble_context(connection_id?, ui_context?) -> GroundingBundle`
       — installed modules summary (names count + notable flags: base_automation, web_studio,
       account, l10n_*), detected version + hosting/edition, capability highlights relevant to
       the question (matrix rows matched by query keywords), current-screen context (model
       being edited: its fields/selections from draft or live), protected-tier flags for any
       model mentioned in the query.
-- [ ] Schema-aware error mode: if the query contains an RPC error pattern (model/field names,
+- [x] Schema-aware error mode: if the query contains an RPC error pattern (model/field names,
       access error signatures), cross-check referenced model/field existence live and inject
       findings ("x_matter.x_status exists; x_mattr does not — likely typo").
-- [ ] Bulk-tool routing: query intent matching against our bulk suite registry — when the
+- [x] Bulk-tool routing: query intent matching against our bulk suite registry — when the
       question is "how do I do X to many records", the bundle includes the matching in-app
       tool + deep link.
-- [ ] Version-filtered retrieval: grounding bundle sets the retrieval version filter from the
+- [x] Version-filtered retrieval: grounding bundle sets the retrieval version filter from the
       connection (fallback: ask-user note in response when no connection given).
-- [ ] Token budget: bundle serializer caps sections (documented limits) so context stays
+- [x] Token budget: bundle serializer caps sections (documented limits) so context stays
       within model window with retrieval chunks.
-- [ ] Tests: bundle assembly with fake caches; error-pattern extraction; intent routing table.
+- [x] Tests: bundle assembly with fake caches; error-pattern extraction; intent routing table.
 
 DONE MEANS: bundle for a docker-19 connection contains correct modules/version/capabilities;
 error cross-check works live.
