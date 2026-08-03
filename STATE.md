@@ -11,10 +11,10 @@
 - Fixed replay corruption: `ai_rag.py` cosine recursion, `tier_matrix.py` dupes, `builder.py`
   duplicate route blocks (~380 lines removed), missing `safe_alternative_for`.
 - Gates green: recovery battery **95 passed**; PCM-4+bulk+expert **139 passed**.
+- **Committed:** `f01c4a1` — 278 files, **zero path deletions** (854 lines removed inside edits only).
 - **EXP-1** still shipped: expert ingest + 7940+ chunks in Postgres (cache gitignored).
 
 ## Next
-- **Commit recovered work** (single baseline commit risk — strongly recommended before EXP-2).
 - **EXP-2** — live-instance grounding context assembly (`plans/PROGRESS.md`).
 
 ## Rules
