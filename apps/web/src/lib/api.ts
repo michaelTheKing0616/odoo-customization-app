@@ -783,6 +783,18 @@ function isConfirmationDetail(detail: unknown): detail is ConfirmationRequiredDe
   );
 }
 
+export class FeatureGatedError extends Error {
+  featureKey: string;
+  planId?: string;
+
+  constructor(detail: { message?: string; feature_key?: string; plan_id?: string }) {
+    super(detail.message ?? "Feature not available on your plan");
+    this.name = "FeatureGatedError";
+    this.featureKey = detail.feature_key ?? "";
+    this.planId = detail.plan_id;
+  }
+}
+
 function formatDetailMessage(detail: unknown): string {
   if (typeof detail === "string") return detail;
   if (detail == null) return "";
@@ -935,6 +947,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (isConfirmationDetail(detail)) {
       throw new ConfirmationRequiredError(detail, res.status);
     }
+    if (
+      typeof detail === "object" &&
+      detail !== null &&
+      (detail as { error?: string }).error === "feature_gated"
+    ) {
+      throw new FeatureGatedError(detail as { message?: string; feature_key?: string; plan_id?: string });
+    }
     throw new Error(formatDetailMessage(detail) || `Request failed (${res.status})`);
   }
   if (res.status === 204) {
@@ -974,6 +993,17 @@ export const api = {
     }),
   billingEntitlements: () => request<EntitlementsOut>("/api/billing/entitlements"),
   billingPlans: () => request<Array<{ id: string; display_name: string; features: Record<string, string> }>>("/api/billing/plans"),
+  stripeCheckout: (body: {
+    plan_id: string;
+    seat_quantity: number;
+    success_url: string;
+    cancel_url: string;
+  }) =>
+    request<{ checkout_url: string; session_id: string; mode: string }>("/api/billing/checkout/stripe", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  stripePortal: () => request<{ portal_url: string }>("/api/billing/portal/stripe", { method: "POST" }),
   bootstrapApiKey: () =>
     request<{ api_key: string; key_id: string; name: string; note: string }>(
       "/api/auth/bootstrap",
@@ -1266,10 +1296,19 @@ export const api = {
         template_id: string | null;
         spec_json: Record<string, unknown>;
         status: string;
+        lifecycle_status?: string;
         created_at?: string | null;
         updated_at?: string | null;
       }[]
     >(`/api/connections/${id}/projects`),
+  archiveProject: (id: string, projectId: string) =>
+    request<{ lifecycle_status: string }>(`/api/connections/${id}/projects/${projectId}/archive`, {
+      method: "POST",
+    }),
+  unarchiveProject: (id: string, projectId: string) =>
+    request<{ lifecycle_status: string }>(`/api/connections/${id}/projects/${projectId}/unarchive`, {
+      method: "POST",
+    }),
   createProject: (
     id: string,
     body: {

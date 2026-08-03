@@ -48,11 +48,21 @@ export default function Home() {
             <Link href="/connect">Connect your Odoo</Link>
           </Button>
           <Button variant="secondary" size="md" asChild>
+            <Link href="/pricing">See pricing</Link>
+          </Button>
+          <Button variant="secondary" size="md" asChild>
             <Link href="/pipelines">Multi-env promote</Link>
           </Button>
           <Button variant="ghost" size="md" asChild>
             <Link href="/settings">API settings</Link>
           </Button>
+        </div>
+
+        <div className="mt-8 flex flex-wrap gap-2 text-xs text-muted">
+          <span className="rounded-full border border-border-subtle px-3 py-1">Free solo</span>
+          <span className="rounded-full border border-border-subtle px-3 py-1">Pro $39/mo</span>
+          <span className="rounded-full border border-border-subtle px-3 py-1">Business $149/mo</span>
+          <span className="rounded-full border border-border-subtle px-3 py-1">Agency $399/mo</span>
         </div>
 
         <div className="mt-16 grid gap-4 sm:grid-cols-3">
@@ -65,6 +75,10 @@ export default function Home() {
         </div>
 
         <footer className="mt-16 border-t border-border-subtle pt-6 text-sm text-muted">
+          <Link href="/pricing" className="text-accent hover:underline">
+            Pricing
+          </Link>
+          {" · "}
           <Link href="/connect" className="text-accent hover:underline">
             Get started
           </Link>

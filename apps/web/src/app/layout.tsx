@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Fraunces, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { AppProviders } from "@/components/AppProviders";
 import { ThemeScript } from "@/components/theme/ThemeScript";
 
 const display = Fraunces({
@@ -38,7 +39,7 @@ export default function RootLayout({
         className={`${display.variable} ${sans.variable} ${mono.variable} antialiased bg-surface text-ink`}
         suppressHydrationWarning
       >
-        {children}
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   );

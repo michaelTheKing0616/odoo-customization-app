@@ -18,8 +18,11 @@ import {
   api,
   ConfirmationRequiredError,
   Connection,
+  FeatureGatedError,
   ProjectDiffOut,
 } from "@/lib/api";
+import { useEntitlements } from "@/lib/useEntitlements";
+import { useUpgrade } from "@/lib/upgrade-context";
 import {
   mutationAllowed,
   mutationBlockedReason,
@@ -35,6 +38,7 @@ type ProjectRow = {
   name: string;
   template_id: string | null;
   status: string;
+  lifecycle_status?: string;
   spec_json: Record<string, unknown>;
   created_at?: string | null;
 };
@@ -55,6 +59,8 @@ export default function ProjectsPage() {
   const [confirmPhrase, setConfirmPhrase] = useState(CONFIRM_PHRASE);
   const [diffTargetId, setDiffTargetId] = useState<string | null>(null);
   const [diff, setDiff] = useState<ProjectDiffOut | null>(null);
+  const { data: entitlements } = useEntitlements();
+  const { openUpgrade } = useUpgrade();
 
   const refresh = useCallback(async () => {
     const [conn, rows] = await Promise.all([
@@ -88,6 +94,9 @@ export default function ProjectsPage() {
       setName("Library draft");
       await refresh();
     } catch (err) {
+      if (err instanceof FeatureGatedError) {
+        openUpgrade(err.featureKey);
+      }
       setError(err instanceof Error ? err.message : "Create project failed");
     } finally {
       setBusy(false);
@@ -183,6 +192,13 @@ export default function ProjectsPage() {
         </Callout>
       ) : null}
 
+      {entitlements?.active_project_limit != null ? (
+        <Callout variant="info" title="Active project slots" className="mt-4">
+          {entitlements.active_projects} of {entitlements.active_project_limit} active — archive anytime to free a
+          slot; history stays readable. Un-archive whenever you have a free slot.
+        </Callout>
+      ) : null}
+
       <Card className="mt-8 p-6">
         <form onSubmit={onCreate} className="space-y-4">
           <h2 className="text-xl font-semibold text-ink">New draft</h2>
@@ -226,7 +242,7 @@ export default function ProjectsPage() {
                 <div>
                   <p className="text-lg font-semibold text-ink">{p.name}</p>
                   <p className="text-xs text-muted">
-                    {p.status} · {p.template_id ?? "custom"} · {models} model(s) ·{" "}
+                    {p.status} · {p.lifecycle_status ?? "active"} · {p.template_id ?? "custom"} · {models} model(s) ·{" "}
                     <span className="font-mono">{p.id.slice(0, 8)}</span>
                   </p>
                   {applyBlocked ? (
@@ -269,6 +285,30 @@ export default function ProjectsPage() {
                     }}
                   >
                     Apply
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy}
+                    onClick={async () => {
+                      setBusy(true);
+                      try {
+                        if ((p.lifecycle_status ?? "active") === "archived") {
+                          await api.unarchiveProject(connectionId, p.id);
+                        } else {
+                          await api.archiveProject(connectionId, p.id);
+                        }
+                        await refresh();
+                      } catch (err) {
+                        if (err instanceof FeatureGatedError) openUpgrade(err.featureKey);
+                        setError(err instanceof Error ? err.message : "Archive failed");
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  >
+                    {(p.lifecycle_status ?? "active") === "archived" ? "Un-archive" : "Archive"}
                   </Button>
                   <Button
                     type="button"

@@ -24,9 +24,9 @@ export default function AdminPage() {
   }, []);
 
   const columns: DataTableColumn<AdminUser>[] = [
-    { key: "email", header: "Email", render: (r) => r.email },
-    { key: "verified", header: "Verified", render: (r) => (r.email_verified ? "Yes" : "No") },
-    { key: "super", header: "Superadmin", render: (r) => (r.is_superadmin ? "Yes" : "No") },
+    { id: "email", header: "Email", accessor: (r) => r.email },
+    { id: "verified", header: "Verified", accessor: (r) => (r.email_verified ? "Yes" : "No") },
+    { id: "super", header: "Superadmin", accessor: (r) => (r.is_superadmin ? "Yes" : "No") },
   ];
 
   return (
@@ -34,7 +34,7 @@ export default function AdminPage() {
       <PageHeader title="Admin console" description="Superadmin-only workspace and user management." />
       {error ? <ErrorNotice message={error} /> : null}
       <Card>
-        <DataTable columns={columns} rows={users} getRowKey={(r) => r.id} />
+        <DataTable columns={columns} rows={users} rowKey={(r) => r.id} />
       </Card>
     </div>
   );

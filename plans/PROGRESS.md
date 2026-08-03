@@ -87,4 +87,4 @@ CHECKLIST. Claiming done without both updated = failed card.
 - [x] MON-1 Auth accounts: users/workspaces/roles/sessions/2FA
 - [x] MON-2 Billing: Stripe + Paystack, entitlements, feature gating
 - [x] MON-3 Admin console + internal-plan bootstrap (env-seeded admin)
-- [ ] MON-4 Pricing page + upgrade/trial UX
+- [x] MON-4 Pricing page + upgrade/trial UX
