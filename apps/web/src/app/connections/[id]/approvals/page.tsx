@@ -1,10 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import { ApprovalProcessesPanel } from "@/components/approvals/ApprovalProcessesPanel";
+import { Callout } from "@/components/ui/Callout";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { Card, PageHeader } from "@/components/ui/layout-primitives";
 import {
   api,
   ApprovalButton,
@@ -131,75 +133,73 @@ export default function ApprovalsPage() {
   }
 
   return (
-    <main className="odoo-shell min-h-screen px-6 py-10">
-      <div className="mx-auto max-w-5xl">
-        <Link href={`/connections/${connectionId}`} className="text-sm text-[#c9a9c0] hover:underline">
-          ← Metadata
-        </Link>
-        <h1 className="mt-4 font-[family-name:var(--font-display)] text-3xl text-[#faf6f9]">
-          Approvals
-        </h1>
-        <p className="mt-1 text-sm text-[#8f7a88]">
-          Two distinct patterns: button gating (CMP-5) vs standalone approval processes (CMP-10).
-        </p>
-        <div className="mt-4 flex gap-4 text-sm">
-          <button
-            type="button"
-            onClick={() => setTab("buttons")}
-            className={
-              tab === "buttons"
-                ? "border-b-2 border-[#c9a9c0] pb-1 text-[#faf6f9]"
-                : "text-[#8f7a88]"
-            }
-          >
-            Button approvals
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("processes")}
-            className={
-              tab === "processes"
-                ? "border-b-2 border-[#c9a9c0] pb-1 text-[#faf6f9]"
-                : "text-[#8f7a88]"
-            }
-          >
-            Approval processes
-          </button>
-        </div>
-        <VersionAwarenessBanner capabilities={connection?.capabilities} />
+    <div className="mx-auto max-w-5xl" data-testid="approvals-page">
+      <PageHeader
+        title="Approvals"
+        description="Button gating (CMP-5) and standalone approval processes (CMP-10)"
+      />
+      <div className="mt-4 flex gap-4 border-b border-border-subtle pb-2 text-sm">
+        <button
+          type="button"
+          onClick={() => setTab("buttons")}
+          className={
+            tab === "buttons"
+              ? "rounded-md bg-accent-subtle px-3 py-1.5 text-ink"
+              : "px-3 py-1.5 text-muted"
+          }
+        >
+          Button approvals
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("processes")}
+          className={
+            tab === "processes"
+              ? "rounded-md bg-accent-subtle px-3 py-1.5 text-ink"
+              : "px-3 py-1.5 text-muted"
+          }
+        >
+          Approval processes
+        </button>
+      </div>
+      <VersionAwarenessBanner capabilities={connection?.capabilities} className="mt-4" />
 
         {tab === "processes" ? (
           <ApprovalProcessesPanel connectionId={connectionId} connection={connection} />
         ) : (
           <>
-        <p className="mt-3 text-sm text-[#8f7a88]">
+        <p className="mt-3 text-sm text-muted">
           Studio-style button gating — Community engine by default; Studio native when detected.
         </p>
 
         {gate && (
-          <p className="mt-3 text-sm text-[#c9a9c0]">
+          <p className="mt-3 text-sm text-muted">
             Engine:{" "}
-            <span className="font-medium text-[#faf6f9]">
+            <span className="font-medium text-ink">
               {gate.engine === "studio" ? "Enterprise Studio" : "Community"}
             </span>
             {gate.studio_note ? (
-              <span className="mt-1 block text-xs text-[#e8d09f]">{gate.studio_note}</span>
+              <span className="mt-1 block text-xs text-warning">{gate.studio_note}</span>
             ) : null}
           </p>
         )}
 
-        {error && <p className="mt-4 text-sm text-[#f0a8a0]">{error}</p>}
-        {notice && <p className="mt-4 text-sm text-[#c9a9c0]">{notice}</p>}
+        {error ? <ErrorNotice message={error} className="mt-4" /> : null}
+        {notice ? (
+          <Callout variant="info" title="Notice" className="mt-4">
+            {notice}
+          </Callout>
+        ) : null}
 
-        <section className="mt-8 border border-[#3d2a38] bg-[#0f1a16]/70 p-4">
-          <h2 className="font-[family-name:var(--font-display)] text-xl text-[#faf6f9]">
+        <Card className="mt-8 p-4">
+          <h2 className="text-xl font-semibold text-ink">
             New rule
           </h2>
           <form onSubmit={(e) => void onCreate(e)} className="mt-4 space-y-3 text-sm">
             <label className="block">
-              <span className="text-[#8f7a88]">Model</span>
+              <span className="text-muted">Model</span>
               <input
-                className="mt-1 w-full border border-[#3d2a38] bg-[#120e14] px-2 py-1.5 text-[#faf6f9]"
+                className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-2 py-1.5 text-ink"
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
               />
@@ -207,14 +207,14 @@ export default function ApprovalsPage() {
             <button
               type="button"
               onClick={() => void loadButtons()}
-              className="border border-[#5a3d4a] px-3 py-1 text-xs text-[#c9a9c0]"
+              className="rounded-md border border-border-subtle px-3 py-1 text-xs text-muted"
             >
               Discover buttons
             </button>
             <label className="block">
-              <span className="text-[#8f7a88]">Button method</span>
+              <span className="text-muted">Button method</span>
               <select
-                className="mt-1 w-full border border-[#3d2a38] bg-[#120e14] px-2 py-1.5 text-[#faf6f9]"
+                className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-2 py-1.5 text-ink"
                 value={buttonMethod}
                 onChange={(e) => setButtonMethod(e.target.value)}
               >
@@ -227,17 +227,17 @@ export default function ApprovalsPage() {
               </select>
             </label>
             <label className="block">
-              <span className="text-[#8f7a88]">Rule name</span>
+              <span className="text-muted">Rule name</span>
               <input
-                className="mt-1 w-full border border-[#3d2a38] bg-[#120e14] px-2 py-1.5 text-[#faf6f9]"
+                className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-2 py-1.5 text-ink"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
             </label>
             <label className="block">
-              <span className="text-[#8f7a88]">Approver user id</span>
+              <span className="text-muted">Approver user id</span>
               <input
-                className="mt-1 w-full border border-[#3d2a38] bg-[#120e14] px-2 py-1.5 text-[#faf6f9]"
+                className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-2 py-1.5 text-ink"
                 value={approverUserId}
                 onChange={(e) => setApproverUserId(e.target.value)}
               />
@@ -245,27 +245,27 @@ export default function ApprovalsPage() {
             <button
               type="submit"
               disabled={busy || !buttonMethod}
-              className="border border-[#c9a9c0] px-3 py-1.5 text-xs text-[#c9a9c0] disabled:opacity-40"
+              className="border border-accent px-3 py-1.5 text-xs text-muted disabled:opacity-40"
             >
               Create rule
             </button>
           </form>
-        </section>
+        </Card>
 
         <section className="mt-8">
-          <h2 className="font-[family-name:var(--font-display)] text-xl text-[#faf6f9]">Rules</h2>
+          <h2 className="font-[family-name:var(--font-display)] text-xl text-ink">Rules</h2>
           <ul className="mt-4 space-y-3">
             {rules.map((r) => (
-              <li key={r.id} className="border border-[#3d2a38] bg-[#0f1a16]/70 p-4 text-sm">
-                <p className="font-medium text-[#faf6f9]">
+              <li key={r.id} className="rounded-md border border-border-subtle bg-surface p-4 text-sm">
+                <p className="font-medium text-ink">
                   {r.name}{" "}
-                  <span className="text-xs text-[#8f7a88]">
+                  <span className="text-xs text-muted">
                     ({r.engine}) · {r.target_model}.{r.button_method}
                   </span>
                 </p>
-                <div className="mt-2 flex flex-wrap gap--2">
+                <div className="mt-2 flex flex-wrap gap-2">
                   <input
-                    className="w-24 border border-[#3d2a38] bg-[#120e14] px-2 py-1 text-xs text-[#faf6f9]"
+                    className="w-24 rounded-md border border-border-subtle bg-surface-raised px-2 py-1 text-xs text-ink"
                     value={testRecordId}
                     onChange={(e) => setTestRecordId(e.target.value)}
                     aria-label="Test record id"
@@ -274,7 +274,7 @@ export default function ApprovalsPage() {
                     type="button"
                     disabled={busy}
                     onClick={() => void simulateCheck(r.id)}
-                    className="border border-[#5a3d4a] px-2 py-1 text-xs text-[#c9a9c0]"
+                    className="border border-border-subtle px-2 py-1 text-xs text-muted"
                   >
                     Simulate click
                   </button>
@@ -282,29 +282,29 @@ export default function ApprovalsPage() {
               </li>
             ))}
             {rules.length === 0 && (
-              <li className="text-sm text-[#8f7a88]">No approval rules yet.</li>
+              <li className="text-sm text-muted">No approval rules yet.</li>
             )}
           </ul>
         </section>
 
         <section className="mt-10">
-          <h2 className="font-[family-name:var(--font-display)] text-xl text-[#faf6f9]">
+          <h2 className="font-[family-name:var(--font-display)] text-xl text-ink">
             Entries / audit
           </h2>
           <ul className="mt-4 space-y-2 text-sm">
             {entries.map((e) => (
-              <li key={e.id} className="border border-[#3d2a38] bg-[#0f1a16]/70 p-3">
-                <p className="text-[#faf6f9]">
+              <li key={e.id} className="rounded-md border border-border-subtle bg-surface p-3">
+                <p className="text-ink">
                   {e.record_model} #{e.record_id} · step {e.step_order} · {e.status}
                 </p>
-                <p className="text-xs text-[#8f7a88]">{e.message}</p>
+                <p className="text-xs text-muted">{e.message}</p>
                 {e.status === "pending" && (
                   <div className="mt-2 flex gap-2">
                     <button
                       type="button"
                       disabled={busy}
                       onClick={() => void approveEntry(e.id, true)}
-                      className="border border-[#c9a9c0] px-2 py-1 text-xs text-[#c9a9c0]"
+                      className="border border-accent px-2 py-1 text-xs text-muted"
                     >
                       Approve
                     </button>
@@ -312,7 +312,7 @@ export default function ApprovalsPage() {
                       type="button"
                       disabled={busy}
                       onClick={() => void approveEntry(e.id, false)}
-                      className="border border-[#5a3d4a] px-2 py-1 text-xs text-[#8f7a88]"
+                      className="border border-border-subtle px-2 py-1 text-xs text-muted"
                     >
                       Reject
                     </button>
@@ -321,13 +321,12 @@ export default function ApprovalsPage() {
               </li>
             ))}
             {entries.length === 0 && (
-              <li className="text-[#8f7a88]">No approval entries yet.</li>
+              <li className="text-muted">No approval entries yet.</li>
             )}
           </ul>
         </section>
           </>
         )}
-      </div>
-    </main>
+    </div>
   );
 }

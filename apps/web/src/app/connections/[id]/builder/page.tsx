@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { api, ConfirmationRequiredError, Connection, FieldRow, ModelRow } from "@/lib/api";
@@ -22,7 +21,9 @@ import {
   selectionRowsToString,
 } from "@/components/SelectionEditor";
 import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
+import { Callout } from "@/components/ui/Callout";
+import { PageHeader } from "@/components/ui/layout-primitives";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import { PropertyFieldsPanel } from "@/components/builder/PropertyFieldsPanel";
 import { InvoicingConnectPanel } from "@/components/builder/InvoicingConnectPanel";
@@ -431,33 +432,12 @@ export default function BuilderPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#3d2a38_0%,_#1a1218_50%,_#0c090b_100%)] px-6 py-10 text-[#f4eef2]">
-      <div className="mx-auto max-w-5xl">
-        <div className="flex flex-wrap items-center gap-4 text-sm">
-          <Link href={`/connections/${connectionId}`} className="text-[#c9a9c0] hover:underline">
-            ← Metadata
-          </Link>
-          <Link href="/connect" className="text-[#8f7a88] hover:underline">
-            Connections
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/reminders`}
-            className="text-[#8f7a88] hover:underline"
-          >
-            Reminders
-          </Link>
-        </div>
-        <h1 className="mt-4 font-[family-name:var(--font-display)] text-3xl text-[#faf6f9]">
-          Model & field builder
-        </h1>
-        <p className="mt-1 text-sm text-[#8f7a88]">
-          {connection
-            ? `${connection.name} · ${connection.server_version ?? ""}`
-            : connectionId}
-          {" · "}
-          writes live metadata to Odoo (sandbox instance recommended)
-        </p>
-        <VersionAwarenessBanner capabilities={connection?.capabilities} />
+    <div className="mx-auto max-w-5xl" data-testid="builder-page">
+      <PageHeader
+        title="Model & field builder"
+        description={`${connection ? `${connection.name} · ${connection.server_version ?? ""}` : connectionId} · writes live metadata to Odoo (sandbox instance recommended)`}
+      />
+      <VersionAwarenessBanner capabilities={connection?.capabilities} />
         <CapabilityProbePanel
           capabilities={connection?.capabilities}
           defaultOpen={false}
@@ -488,37 +468,41 @@ export default function BuilderPage() {
         />
 
         {error ? <ErrorNotice message={error} className="mt-4" /> : null}
-        {notice && <p className="mt-4 text-sm text-[#c9a9c0]">{notice}</p>}
+        {notice ? (
+          <Callout variant="info" title="Notice" className="mt-4">
+            {notice}
+          </Callout>
+        ) : null}
 
         {pendingDelete && (
-          <div className="mt-6 border border-[#a85b4a] bg-[#2a1512] p-5">
-            <h2 className="font-[family-name:var(--font-display)] text-xl text-[#f0a8a0]">
+          <div className="mt-6 rounded-md border border-danger bg-danger-subtle p-5">
+            <h2 className="font-[family-name:var(--font-display)] text-xl text-danger">
               Warning
             </h2>
-            <p className="mt-2 text-sm text-[#e8cfc9]">
+            <p className="mt-2 text-sm text-muted">
               {pendingDelete.kind === "model"
                 ? `Delete model ${pendingDelete.model}? This often cannot be fully undone.`
                 : `Delete field ${pendingDelete.name}? Column data may be unrestorable.`}
             </p>
-            <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-[#e8cfc9]">
+            <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-muted">
               {pendingDelete.risks.map((r) => (
                 <li key={r}>{r}</li>
               ))}
             </ul>
             <label className="mt-4 block text-sm">
-              <span className="text-[#e8cfc9]">
-                Type <code className="text-[#f0a8a0]">{CONFIRM_PHRASE}</code> to continue
+              <span className="text-muted">
+                Type <code className="text-danger">{CONFIRM_PHRASE}</code> to continue
               </span>
               <input
                 value={confirmTyped}
                 onChange={(e) => setConfirmTyped(e.target.value)}
-                className="mt-1 w-full border border-[#5a3a36] bg-[#0c090b] px-3 py-2"
+                className="mt-1 w-full border border-border-subtle bg-surface-raised px-3 py-2"
               />
             </label>
             <div className="mt-4 flex gap-3">
               <button
                 type="button"
-                className="border border-[#8f7a88] px-4 py-2 text-sm"
+                className="border border-border-subtle px-4 py-2 text-sm"
                 onClick={() => {
                   setPendingDelete(null);
                   setConfirmTyped("");
@@ -529,7 +513,7 @@ export default function BuilderPage() {
               <button
                 type="button"
                 disabled={busy || confirmTyped !== CONFIRM_PHRASE}
-                className="bg-[#a85b4a] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className="bg-danger px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                 onClick={() => proceedDelete()}
               >
                 Proceed
@@ -541,18 +525,18 @@ export default function BuilderPage() {
         <div className="mt-10 grid gap-8 lg:grid-cols-2">
           <form
             onSubmit={onCreateModel}
-            className="space-y-4 border border-[#3d2a38] bg-[#0f1a16]/70 p-6"
+            className="space-y-4 rounded-md border border-border-subtle bg-surface p-6"
           >
             <h2 className="font-[family-name:var(--font-display)] text-xl">
               New model
             </h2>
-            <p className="text-sm text-[#8f7a88]">
-              Creates an <code className="text-[#c9a9c0]">x_*</code> model,{" "}
-              <code className="text-[#c9a9c0]">x_name</code>, and default
+            <p className="text-sm text-muted">
+              Creates an <code className="text-muted">x_*</code> model,{" "}
+              <code className="text-muted">x_name</code>, and default
               list/form/search views.
             </p>
             <label className="block text-sm">
-              <span className="text-[#a8909e]">Label</span>
+              <span className="text-muted">Label</span>
               <input
                 required
                 value={modelForm.name}
@@ -564,19 +548,19 @@ export default function BuilderPage() {
                     model: slugifyTechnical(name),
                   }));
                 }}
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
+                className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2"
                 placeholder="Project Ticket"
               />
             </label>
             <label className="block text-sm">
-              <span className="text-[#a8909e]">Technical name</span>
+              <span className="text-muted">Technical name</span>
               <input
                 required
                 value={modelForm.model}
                 onChange={(e) =>
                   setModelForm({ ...modelForm, model: e.target.value })
                 }
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2 font-mono text-sm"
                 pattern="x_[a-z0-9_]+"
               />
             </label>
@@ -593,8 +577,8 @@ export default function BuilderPage() {
                 }
               />
               <span>
-                <span className="text-[#a8909e]">Chatter &amp; activities (mail)</span>
-                <span className="mt-0.5 block text-xs text-[#8f7a88]">
+                <span className="text-muted">Chatter &amp; activities (mail)</span>
+                <span className="mt-0.5 block text-xs text-muted">
                   Ensures mail is installed; full chatter needs Python export with
                   mail.thread mixins.
                 </span>
@@ -603,25 +587,25 @@ export default function BuilderPage() {
             <button
               type="submit"
               disabled={busy}
-              className="h-11 bg-[#714B67] px-5 text-sm font-semibold text-white disabled:opacity-60"
+              className="h-11 bg-accent px-5 text-sm font-semibold text-white disabled:opacity-60"
             >
               Create model
             </button>
 
             {customModels.length > 0 && (
               <div className="pt-4">
-                <p className="text-xs uppercase tracking-wide text-[#8f7a88]">
+                <p className="text-xs uppercase tracking-wide text-muted">
                   Custom models on this instance
                 </p>
                 <ul className="mt-2 max-h-48 space-y-2 overflow-auto text-sm">
                   {customModels.map((m) => (
                     <li
                       key={m.id}
-                      className="flex flex-wrap items-center justify-between gap-2 border border-[#1e2f29] px-2 py-1.5"
+                      className="flex flex-wrap items-center justify-between gap-2 border border-border-subtle px-2 py-1.5"
                     >
                       <button
                         type="button"
-                        className="text-left text-[#c9a9c0] hover:underline"
+                        className="text-left text-muted hover:underline"
                         onClick={() => {
                           setFieldForm((f) => ({ ...f, model: m.model }));
                           loadFieldsForModel(m.model).catch((err: Error) =>
@@ -630,12 +614,12 @@ export default function BuilderPage() {
                         }}
                       >
                         {m.name}{" "}
-                        <span className="font-mono text-[#8f7a88]">{m.model}</span>
+                        <span className="font-mono text-muted">{m.model}</span>
                       </button>
                       <button
                         type="button"
                         disabled={busy}
-                        className="text-xs text-[#f0a8a0] hover:underline disabled:opacity-50"
+                        className="text-xs text-danger hover:underline disabled:opacity-50"
                         onClick={() =>
                           setPendingDelete({
                             kind: "model",
@@ -659,25 +643,25 @@ export default function BuilderPage() {
 
           <form
             onSubmit={onCreateField}
-            className="space-y-4 border border-[#3d2a38] bg-[#0f1a16]/70 p-6"
+            className="space-y-4 rounded-md border border-border-subtle bg-surface p-6"
           >
             <h2 className="font-[family-name:var(--font-display)] text-xl">
               New field
             </h2>
             <label className="block text-sm">
-              <span className="text-[#a8909e]">Target model</span>
+              <span className="text-muted">Target model</span>
               <input
                 required
                 value={fieldForm.model}
                 onChange={(e) =>
                   setFieldForm({ ...fieldForm, model: e.target.value })
                 }
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2 font-mono text-sm"
                 placeholder="res.partner or x_…"
               />
             </label>
             <label className="block text-sm">
-              <span className="text-[#a8909e]">Label</span>
+              <span className="text-muted">Label</span>
               <input
                 required
                 value={fieldForm.field_description}
@@ -689,23 +673,23 @@ export default function BuilderPage() {
                     name: slugifyTechnical(field_description),
                   });
                 }}
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
+                className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2"
               />
             </label>
             <label className="block text-sm">
-              <span className="text-[#a8909e]">Technical name</span>
+              <span className="text-muted">Technical name</span>
               <input
                 required
                 value={fieldForm.name}
                 onChange={(e) =>
                   setFieldForm({ ...fieldForm, name: e.target.value })
                 }
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2 font-mono text-sm"
                 pattern="x_[A-Za-z0-9_]+"
               />
             </label>
             <label className="block text-sm">
-              <span className="flex items-center gap-1 text-[#a8909e]">
+              <span className="flex items-center gap-1 text-muted">
                 Type
                 <ExplainThisButton
                   question={`Explain many2one vs many2many vs one2many for a new field on ${fieldForm.model}`}
@@ -717,7 +701,7 @@ export default function BuilderPage() {
                 onChange={(e) =>
                   setFieldForm({ ...fieldForm, ttype: e.target.value })
                 }
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
+                className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2"
               >
                 {FIELD_TYPES.map((t) => (
                   <option key={t} value={t}>
@@ -729,35 +713,35 @@ export default function BuilderPage() {
 
             {needsRelation && (
               <label className="block text-sm">
-                <span className="text-[#a8909e]">Relation model</span>
+                <span className="text-muted">Relation model</span>
                 <input
                   required
                   value={fieldForm.relation}
                   onChange={(e) =>
                     setFieldForm({ ...fieldForm, relation: e.target.value })
                   }
-                  className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                  className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2 font-mono text-sm"
                   placeholder="res.partner"
                 />
               </label>
             )}
             {fieldForm.ttype === "one2many" && (
               <label className="block text-sm">
-                <span className="text-[#a8909e]">Relation field</span>
+                <span className="text-muted">Relation field</span>
                 <input
                   required
                   value={fieldForm.relation_field}
                   onChange={(e) =>
                     setFieldForm({ ...fieldForm, relation_field: e.target.value })
                   }
-                  className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                  className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2 font-mono text-sm"
                   placeholder="x_parent_id"
                 />
               </label>
             )}
             {needsOnDelete && (
               <label className="block text-sm">
-                <span className="text-[#a8909e]">On delete</span>
+                <span className="text-muted">On delete</span>
                 <select
                   value={fieldForm.on_delete}
                   onChange={(e) =>
@@ -769,20 +753,20 @@ export default function BuilderPage() {
                         | "cascade",
                     })
                   }
-                  className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
+                  className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2"
                 >
                   <option value="restrict">restrict</option>
                   <option value="cascade">cascade</option>
                   <option value="set null">set null</option>
                 </select>
-                <span className="mt-1 block text-xs text-[#8f7a88]">
+                <span className="mt-1 block text-xs text-muted">
                   Odoo 19: required many2one cannot use set null — prefer restrict.
                 </span>
               </label>
             )}
             {needsSelection && (
               <div className="block text-sm">
-                <span className="text-[#a8909e]">Selection options</span>
+                <span className="text-muted">Selection options</span>
                 <div className="mt-1">
                   <SelectionEditor
                     value={fieldForm.selectionRows}
@@ -791,9 +775,9 @@ export default function BuilderPage() {
                     }
                   />
                 </div>
-                <p className="mt-1 text-xs text-[#8f7a88]">
+                <p className="mt-1 text-xs text-muted">
                   Serialized:{" "}
-                  <code className="text-[#c9a9c0]">
+                  <code className="text-muted">
                     {selectionRowsToString(fieldForm.selectionRows)}
                   </code>
                 </p>
@@ -801,7 +785,7 @@ export default function BuilderPage() {
             )}
             {widgetOptions.length > 0 && (
               <label className="block text-sm">
-                <span className="text-[#a8909e]">Form widget hint</span>
+                <span className="text-muted">Form widget hint</span>
                 <select
                   value={fieldForm.view_widget}
                   onChange={(e) =>
@@ -810,7 +794,7 @@ export default function BuilderPage() {
                       view_widget: e.target.value,
                     })
                   }
-                  className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
+                  className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2"
                 >
                   <option value="">Default</option>
                   {widgetOptions.map((w) => (
@@ -819,21 +803,21 @@ export default function BuilderPage() {
                     </option>
                   ))}
                 </select>
-                <span className="mt-1 block text-xs text-[#8f7a88]">
+                <span className="mt-1 block text-xs text-muted">
                   When injecting into form views, sets{" "}
-                  <code className="text-[#c9a9c0]">widget=&quot;…&quot;</code> on the field.
+                  <code className="text-muted">widget=&quot;…&quot;</code> on the field.
                 </span>
               </label>
             )}
             <label className="block text-sm">
-              <span className="text-[#a8909e]">Related path (optional)</span>
+              <span className="text-muted">Related path (optional)</span>
               {relatedPaths.length > 0 ? (
                 <select
                   value={fieldForm.related}
                   onChange={(e) =>
                     setFieldForm({ ...fieldForm, related: e.target.value })
                   }
-                  className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                  className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2 font-mono text-sm"
                 >
                   <option value="">— none —</option>
                   {relatedPaths.map((p) => (
@@ -848,11 +832,11 @@ export default function BuilderPage() {
                   onChange={(e) =>
                     setFieldForm({ ...fieldForm, related: e.target.value })
                   }
-                  className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                  className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2 font-mono text-sm"
                   placeholder="partner_id.country_id"
                 />
               )}
-              <span className="mt-1 block text-xs text-[#8f7a88]">
+              <span className="mt-1 block text-xs text-muted">
                 When set, Odoo stores a readonly related field using the type above
                 (there is no ttype=related).
               </span>
@@ -860,18 +844,18 @@ export default function BuilderPage() {
             {needsCurrency && (
               <div className="space-y-2">
                 <label className="block text-sm">
-                  <span className="text-[#a8909e]">Currency field</span>
+                  <span className="text-muted">Currency field</span>
                   <input
                     value={fieldForm.currency_field}
                     onChange={(e) =>
                       setFieldForm({ ...fieldForm, currency_field: e.target.value })
                     }
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                    className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2 font-mono text-sm"
                     placeholder="currency_id"
                   />
                 </label>
                 {!currencyFieldSupported(connection) && (
-                  <p className="text-xs text-[#e8d09f]">
+                  <p className="text-xs text-warning">
                     {currencyFieldUnsupportedReason(connection)}
                   </p>
                 )}
@@ -921,7 +905,7 @@ export default function BuilderPage() {
               </label>
             </div>
             <label className="block text-sm">
-              <span className="text-[#a8909e]">Inject strategy</span>
+              <span className="text-muted">Inject strategy</span>
               <select
                 value={fieldForm.inject_strategy}
                 onChange={(e) =>
@@ -930,7 +914,7 @@ export default function BuilderPage() {
                     inject_strategy: e.target.value as "inherit" | "mutate",
                   })
                 }
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2 text-sm"
               >
                 <option
                   value="inherit"
@@ -953,13 +937,13 @@ export default function BuilderPage() {
               </select>
             </label>
             {!canInjectStrategy && (
-              <p className="text-xs text-[#e8d09f]">
+              <p className="text-xs text-warning">
                 {connectionUnsupportedReason(connection, injectCap)}
               </p>
             )}
             {fieldForm.inject_strategy === "mutate" &&
               connectionSupports(connection, "view_inject_mutate") && (
-                <p className="text-xs text-[#e8d09f]">
+                <p className="text-xs text-warning">
                   Mutate overwrites parent view arch — requires advanced confirm on
                   create.
                 </p>
@@ -968,27 +952,27 @@ export default function BuilderPage() {
             <button
               type="submit"
               disabled={busy}
-              className="h-11 bg-[#714B67] px-5 text-sm font-semibold text-white disabled:opacity-60"
+              className="h-11 bg-accent px-5 text-sm font-semibold text-white disabled:opacity-60"
             >
               Create field
             </button>
 
             {(modelFields.length > 0 || createdFields.length > 0) && (
-              <ul className="space-y-1 pt-2 text-sm text-[#d4c4ce]">
+              <ul className="space-y-1 pt-2 text-sm text-muted">
                 {(modelFields.length > 0 ? modelFields : createdFields).map((f) => (
                   <li
                     key={f.id}
                     className="flex flex-wrap items-center justify-between gap-2"
                   >
                     <span>
-                      <span className="font-mono text-[#c9a9c0]">{f.name}</span> ·{" "}
+                      <span className="font-mono text-muted">{f.name}</span> ·{" "}
                       {f.ttype} · {f.field_description}
                     </span>
                     {f.name.startsWith("x_") && (
                       <button
                         type="button"
                         disabled={busy}
-                        className="text-xs text-[#f0a8a0] hover:underline disabled:opacity-50"
+                        className="text-xs text-danger hover:underline disabled:opacity-50"
                         onClick={() =>
                           setPendingDelete({
                             kind: "field",
@@ -1014,82 +998,82 @@ export default function BuilderPage() {
 
         <form
           onSubmit={onCreateO2m}
-          className="mt-8 space-y-4 border border-[#3d2a38] bg-[#0f1a16]/70 p-6"
+          className="mt-8 space-y-4 rounded-md border border-border-subtle bg-surface p-6"
         >
           <h2 className="font-[family-name:var(--font-display)] text-xl">
             Link one2many
           </h2>
-          <p className="text-sm text-[#8f7a88]">
+          <p className="text-sm text-muted">
             Creates a required M2O on the child (on_delete=restrict) and an O2M on
             the parent pointing at it — e.g. Book → Loans.
           </p>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block text-sm">
-              <span className="text-[#a8909e]">Parent model</span>
+              <span className="text-muted">Parent model</span>
               <input
                 required
                 value={o2mForm.parent_model}
                 onChange={(e) =>
                   setO2mForm({ ...o2mForm, parent_model: e.target.value })
                 }
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2 font-mono text-sm"
                 placeholder="x_lib_book"
               />
             </label>
             <label className="block text-sm">
-              <span className="text-[#a8909e]">Child model</span>
+              <span className="text-muted">Child model</span>
               <input
                 required
                 value={o2mForm.child_model}
                 onChange={(e) =>
                   setO2mForm({ ...o2mForm, child_model: e.target.value })
                 }
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2 font-mono text-sm"
                 placeholder="x_lib_loan"
               />
             </label>
             <label className="block text-sm">
-              <span className="text-[#a8909e]">Parent O2M name</span>
+              <span className="text-muted">Parent O2M name</span>
               <input
                 required
                 value={o2mForm.parent_o2m_name}
                 onChange={(e) =>
                   setO2mForm({ ...o2mForm, parent_o2m_name: e.target.value })
                 }
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2 font-mono text-sm"
               />
             </label>
             <label className="block text-sm">
-              <span className="text-[#a8909e]">Child M2O name</span>
+              <span className="text-muted">Child M2O name</span>
               <input
                 required
                 value={o2mForm.child_m2o_name}
                 onChange={(e) =>
                   setO2mForm({ ...o2mForm, child_m2o_name: e.target.value })
                 }
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2 font-mono text-sm"
               />
             </label>
             <label className="block text-sm">
-              <span className="text-[#a8909e]">Parent O2M label</span>
+              <span className="text-muted">Parent O2M label</span>
               <input
                 required
                 value={o2mForm.parent_o2m_string}
                 onChange={(e) =>
                   setO2mForm({ ...o2mForm, parent_o2m_string: e.target.value })
                 }
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
+                className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2"
               />
             </label>
             <label className="block text-sm">
-              <span className="text-[#a8909e]">Child M2O label</span>
+              <span className="text-muted">Child M2O label</span>
               <input
                 required
                 value={o2mForm.child_m2o_string}
                 onChange={(e) =>
                   setO2mForm({ ...o2mForm, child_m2o_string: e.target.value })
                 }
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
+                className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2"
               />
             </label>
           </div>
@@ -1116,12 +1100,11 @@ export default function BuilderPage() {
           <button
             type="submit"
             disabled={busy}
-            className="h-11 bg-[#714B67] px-5 text-sm font-semibold text-white disabled:opacity-60"
+            className="h-11 bg-accent px-5 text-sm font-semibold text-white disabled:opacity-60"
           >
             Create relational pair
           </button>
         </form>
-      </div>
 
       <PropertyFieldsPanel
         connectionId={connectionId}
@@ -1141,8 +1124,9 @@ export default function BuilderPage() {
         defaultModel={fieldForm.model || o2mForm.parent_model}
       />
 
-      <ConfirmDialog
+      <ConfirmDialogV2
         open={confirmMutateOpen}
+        riskLevel="danger"
         title="Mutate parent view arch"
         warning="Mutating parent view arch overwrites existing module XML. Prefer inherit (default) for interop with installed modules."
         risks={[
@@ -1160,6 +1144,6 @@ export default function BuilderPage() {
           })
         }
       />
-    </main>
+    </div>
   );
 }

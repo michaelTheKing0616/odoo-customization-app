@@ -1,11 +1,13 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { api, CompanyRow, Connection, SequenceRow } from "@/lib/api";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
+import { Callout } from "@/components/ui/Callout";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { PageHeader } from "@/components/ui/layout-primitives";
 
 const CONFIRM_PHRASE = "I understand the risks";
 
@@ -161,39 +163,23 @@ export default function ConfigPage() {
   }
 
   return (
-    <main className="odoo-shell min-h-screen px-6 py-10">
-      <div className="mx-auto max-w-5xl">
-        <div className="flex flex-wrap gap-4 text-sm">
-          <Link href={`/connections/${connectionId}`} className="text-[#c9a9c0] hover:underline">
-            ← Metadata
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/menus`}
-            className="text-[#8f7a88] hover:underline"
-          >
-            Menus &amp; actions
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/reports`}
-            className="text-[#8f7a88] hover:underline"
-          >
-            Reports
-          </Link>
-        </div>
-        <h1 className="mt-4 font-[family-name:var(--font-display)] text-3xl text-[#faf6f9]">
-          Settings
-        </h1>
-        <p className="mt-1 text-sm text-[#8f7a88]">
-          Company · sequences · mail · paperformat · defaults · cron · website
-        </p>
-        <VersionAwarenessBanner capabilities={connection?.capabilities} />
+    <div className="mx-auto max-w-5xl" data-testid="config-page">
+      <PageHeader
+        title="Settings"
+        description="Company · sequences · mail · paperformat · defaults · cron · website"
+      />
+      <VersionAwarenessBanner capabilities={connection?.capabilities} />
 
-        {error && <p className="mt-4 text-sm text-[#f0a8a0]">{error}</p>}
-        {notice && <p className="mt-4 text-sm text-[#c9a9c0]">{notice}</p>}
+      {error ? <ErrorNotice message={error} className="mt-4" /> : null}
+      {notice ? (
+        <Callout variant="info" title="Notice" className="mt-4">
+          {notice}
+        </Callout>
+      ) : null}
 
         <form
           onSubmit={saveCompany}
-          className="mt-8 space-y-3 border border-[#3d2a38] bg-[#0f1a16]/70 p-5"
+          className="mt-8 space-y-3 border border-border-subtle bg-surface p-5 rounded-md"
         >
           <h2 className="font-[family-name:var(--font-display)] text-xl">Company</h2>
           {companies.length > 1 && (
@@ -202,7 +188,7 @@ export default function ConfigPage() {
               onChange={(e) =>
                 setCompany(companies.find((c) => c.id === Number(e.target.value)) ?? null)
               }
-              className="border border-[#3d2a38] bg-[#0c090b] px-3 py-2 text-sm"
+              className="rounded-md border border-border-subtle bg-surface-raised px-3 py-2 text-sm"
             >
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -228,13 +214,13 @@ export default function ConfigPage() {
                 ] as const
               ).map(([key, label]) => (
                 <label key={key} className="block text-sm">
-                  <span className="text-[#a8909e]">{label}</span>
+                  <span className="text-muted">{label}</span>
                   <input
                     value={company[key] ?? ""}
                     onChange={(e) =>
                       setCompany({ ...company, [key]: e.target.value || null })
                     }
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2 text-sm"
                   />
                 </label>
               ))}
@@ -243,13 +229,13 @@ export default function ConfigPage() {
           <button
             type="submit"
             disabled={busy || !company}
-            className="h-10 bg-[#714B67] px-4 text-sm font-semibold text-white disabled:opacity-60"
+            className="h-10 bg-accent px-4 text-sm font-semibold text-white disabled:opacity-60"
           >
             Save company
           </button>
         </form>
 
-        <section className="mt-8 border border-[#3d2a38] bg-[#0f1a16]/70 p-5">
+        <section className="mt-8 rounded-md border border-border-subtle bg-surface p-5">
           <h2 className="font-[family-name:var(--font-display)] text-xl">Sequences</h2>
           <form
             className="mt-3 flex flex-wrap gap-2"
@@ -278,24 +264,24 @@ export default function ConfigPage() {
               placeholder="Name"
               value={seqForm.name}
               onChange={(e) => setSeqForm({ ...seqForm, name: e.target.value })}
-              className="border border-[#3d2a38] bg-[#0c090b] px-2 py-1 text-sm"
+              className="rounded-md border border-border-subtle bg-surface-raised px-2 py-1 text-sm"
             />
             <input
               placeholder="code"
               value={seqForm.code}
               onChange={(e) => setSeqForm({ ...seqForm, code: e.target.value })}
-              className="w-28 border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono text-sm"
+              className="w-28 rounded-md border border-border-subtle bg-surface-raised px-2 py-1 font-mono text-sm"
             />
             <input
               placeholder="prefix"
               value={seqForm.prefix}
               onChange={(e) => setSeqForm({ ...seqForm, prefix: e.target.value })}
-              className="w-24 border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono text-sm"
+              className="w-24 rounded-md border border-border-subtle bg-surface-raised px-2 py-1 font-mono text-sm"
             />
             <button
               type="submit"
               disabled={busy}
-              className="border border-[#c9a9c0] px-3 text-sm text-[#c9a9c0]"
+              className="border border-accent px-3 text-sm text-muted"
             >
               Create
             </button>
@@ -305,22 +291,22 @@ export default function ConfigPage() {
               value={seqQuery}
               onChange={(e) => setSeqQuery(e.target.value)}
               placeholder="Filter"
-              className="border border-[#3d2a38] bg-[#0c090b] px-3 py-2 text-sm"
+              className="rounded-md border border-border-subtle bg-surface-raised px-3 py-2 text-sm"
             />
             <button
               type="button"
               onClick={() => void refresh()}
-              className="border border-[#8f7a88] px-3 text-sm"
+              className="border border-border-subtle px-3 text-sm"
             >
               Refresh
             </button>
           </div>
           <ul className="mt-4 max-h-64 space-y-2 overflow-auto text-sm">
             {sequences.map((s) => (
-              <li key={s.id} className="flex flex-wrap items-center gap-2 border-t border-[#1e2f29] py-2">
+              <li key={s.id} className="flex flex-wrap items-center gap-2 border-t border-border-subtle py-2">
                 <span className="font-medium">
                   {s.name}{" "}
-                  <span className="font-mono text-xs text-[#8f7a88]">{s.code}</span>
+                  <span className="font-mono text-xs text-muted">{s.code}</span>
                 </span>
                 <input
                   value={s.prefix ?? ""}
@@ -331,7 +317,7 @@ export default function ConfigPage() {
                       ),
                     )
                   }
-                  className="w-24 border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono text-xs"
+                  className="w-24 rounded-md border border-border-subtle bg-surface-raised px-2 py-1 font-mono text-xs"
                 />
                 <input
                   type="number"
@@ -345,7 +331,7 @@ export default function ConfigPage() {
                       ),
                     )
                   }
-                  className="w-20 border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono text-xs"
+                  className="w-20 rounded-md border border-border-subtle bg-surface-raised px-2 py-1 font-mono text-xs"
                 />
                 <button
                   type="button"
@@ -366,7 +352,7 @@ export default function ConfigPage() {
                       setBusy(false);
                     }
                   }}
-                  className="text-xs text-[#c9a9c0]"
+                  className="text-xs text-muted"
                 >
                   Save
                 </button>
@@ -376,7 +362,7 @@ export default function ConfigPage() {
         </section>
 
         <section className="mt-8 grid gap-6 lg:grid-cols-2">
-          <div className="border border-[#3d2a38] bg-[#0f1a16]/70 p-5">
+          <div className="rounded-md border border-border-subtle bg-surface p-5">
             <h2 className="font-[family-name:var(--font-display)] text-xl">Mail templates</h2>
             <form
               className="mt-3 space-y-2"
@@ -404,17 +390,17 @@ export default function ConfigPage() {
                 ] as const
               ).map(([key, label]) => (
                 <label key={key} className="block text-xs">
-                  <span className="text-[#a8909e]">{label}</span>
+                  <span className="text-muted">{label}</span>
                   <input
                     required={key !== "email_to"}
                     value={mailForm[key]}
                     onChange={(e) => setMailForm({ ...mailForm, [key]: e.target.value })}
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 text-sm"
+                    className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-2 py-1.5 text-sm"
                   />
                 </label>
               ))}
               <label className="block text-xs">
-                <span className="text-[#a8909e]">Body HTML</span>
+                <span className="text-muted">Body HTML</span>
                 <textarea
                   required
                   value={mailForm.body_html}
@@ -422,18 +408,18 @@ export default function ConfigPage() {
                     setMailForm({ ...mailForm, body_html: e.target.value })
                   }
                   rows={3}
-                  className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 font-mono text-xs"
+                  className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-2 py-1.5 font-mono text-xs"
                 />
               </label>
               <button
                 type="submit"
                 disabled={busy}
-                className="h-9 bg-[#714B67] px-3 text-sm font-semibold text-white"
+                className="h-9 bg-accent px-3 text-sm font-semibold text-white"
               >
                 Create template
               </button>
             </form>
-            <ul className="mt-4 max-h-48 space-y-1 overflow-auto text-xs text-[#8f7a88]">
+            <ul className="mt-4 max-h-48 space-y-1 overflow-auto text-xs text-muted">
               {mailTemplates.map((t) => (
                 <li key={t.id}>
                   #{t.id} {t.name} · {t.model} · {t.subject}
@@ -442,7 +428,7 @@ export default function ConfigPage() {
             </ul>
           </div>
 
-          <div className="border border-[#3d2a38] bg-[#0f1a16]/70 p-5">
+          <div className="rounded-md border border-border-subtle bg-surface p-5">
             <h2 className="font-[family-name:var(--font-display)] text-xl">Activity types</h2>
             <form
               className="mt-3 flex gap-2"
@@ -468,17 +454,17 @@ export default function ConfigPage() {
                 value={activityName}
                 onChange={(e) => setActivityName(e.target.value)}
                 placeholder="Type name"
-                className="flex-1 border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 text-sm"
+                className="flex-1 rounded-md border border-border-subtle bg-surface-raised px-2 py-1.5 text-sm"
               />
               <button
                 type="submit"
                 disabled={busy}
-                className="border border-[#c9a9c0] px-3 text-sm text-[#c9a9c0]"
+                className="border border-accent px-3 text-sm text-muted"
               >
                 Add
               </button>
             </form>
-            <ul className="mt-4 max-h-48 space-y-1 overflow-auto text-xs text-[#8f7a88]">
+            <ul className="mt-4 max-h-48 space-y-1 overflow-auto text-xs text-muted">
               {activityTypes.map((a) => (
                 <li key={a.id}>
                   #{a.id} {a.name}
@@ -490,7 +476,7 @@ export default function ConfigPage() {
         </section>
 
         <section className="mt-8 grid gap-6 lg:grid-cols-2">
-          <div className="border border-[#3d2a38] bg-[#0f1a16]/70 p-5">
+          <div className="rounded-md border border-border-subtle bg-surface p-5">
             <h2 className="font-[family-name:var(--font-display)] text-xl">Paperformats</h2>
             <form
               className="mt-3 flex flex-wrap gap-2"
@@ -518,23 +504,23 @@ export default function ConfigPage() {
                 placeholder="Name"
                 value={paperForm.name}
                 onChange={(e) => setPaperForm({ ...paperForm, name: e.target.value })}
-                className="border border-[#3d2a38] bg-[#0c090b] px-2 py-1 text-sm"
+                className="rounded-md border border-border-subtle bg-surface-raised px-2 py-1 text-sm"
               />
               <input
                 placeholder="format"
                 value={paperForm.format}
                 onChange={(e) => setPaperForm({ ...paperForm, format: e.target.value })}
-                className="w-24 border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono text-sm"
+                className="w-24 rounded-md border border-border-subtle bg-surface-raised px-2 py-1 font-mono text-sm"
               />
               <button
                 type="submit"
                 disabled={busy}
-                className="border border-[#c9a9c0] px-3 text-sm text-[#c9a9c0]"
+                className="border border-accent px-3 text-sm text-muted"
               >
                 Create
               </button>
             </form>
-            <ul className="mt-4 max-h-40 space-y-1 overflow-auto text-xs text-[#8f7a88]">
+            <ul className="mt-4 max-h-40 space-y-1 overflow-auto text-xs text-muted">
               {paperformats.map((p) => (
                 <li key={p.id}>
                   #{p.id} {p.name} · {p.format} · top {p.margin_top}
@@ -543,20 +529,20 @@ export default function ConfigPage() {
             </ul>
           </div>
 
-          <div className="border border-[#3d2a38] bg-[#0f1a16]/70 p-5">
+          <div className="rounded-md border border-border-subtle bg-surface p-5">
             <h2 className="font-[family-name:var(--font-display)] text-xl">Field defaults</h2>
-            <p className="mt-1 text-xs text-[#8f7a88]">ir.default for a model</p>
+            <p className="mt-1 text-xs text-muted">ir.default for a model</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <input
                 value={defaultModel}
                 onChange={(e) => setDefaultModel(e.target.value)}
-                className="border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono text-sm"
+                className="rounded-md border border-border-subtle bg-surface-raised px-2 py-1 font-mono text-sm"
               />
               <button
                 type="button"
                 disabled={busy}
                 onClick={() => void refresh()}
-                className="border border-[#8f7a88] px-3 text-sm"
+                className="border border-border-subtle px-3 text-sm"
               >
                 Load
               </button>
@@ -586,24 +572,24 @@ export default function ConfigPage() {
                 placeholder="field"
                 value={defaultField}
                 onChange={(e) => setDefaultField(e.target.value)}
-                className="w-28 border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono text-sm"
+                className="w-28 rounded-md border border-border-subtle bg-surface-raised px-2 py-1 font-mono text-sm"
               />
               <input
                 required
                 placeholder="value"
                 value={defaultValue}
                 onChange={(e) => setDefaultValue(e.target.value)}
-                className="flex-1 border border-[#3d2a38] bg-[#0c090b] px-2 py-1 text-sm"
+                className="flex-1 rounded-md border border-border-subtle bg-surface-raised px-2 py-1 text-sm"
               />
               <button
                 type="submit"
                 disabled={busy}
-                className="border border-[#c9a9c0] px-3 text-sm text-[#c9a9c0]"
+                className="border border-accent px-3 text-sm text-muted"
               >
                 Upsert
               </button>
             </form>
-            <ul className="mt-4 max-h-40 space-y-1 overflow-auto text-xs text-[#8f7a88]">
+            <ul className="mt-4 max-h-40 space-y-1 overflow-auto text-xs text-muted">
               {defaults.map((d) => (
                 <li key={d.id}>
                   #{d.id} {d.field_name} = {d.json_value}
@@ -613,20 +599,20 @@ export default function ConfigPage() {
           </div>
         </section>
 
-        <section className="mt-8 border border-[#3d2a38] bg-[#0f1a16]/70 p-5">
+        <section className="mt-8 rounded-md border border-border-subtle bg-surface p-5">
           <h2 className="font-[family-name:var(--font-display)] text-xl">Scheduled actions</h2>
-          <p className="mt-1 text-xs text-[#8f7a88]">
+          <p className="mt-1 text-xs text-muted">
             Deactivate requires confirm phrase <code>{CONFIRM_PHRASE}</code>
           </p>
           <ul className="mt-4 max-h-56 space-y-2 overflow-auto text-sm">
             {crons.map((c) => (
               <li
                 key={c.id}
-                className="flex flex-wrap items-center justify-between gap-2 border-t border-[#1e2f29] py-2"
+                className="flex flex-wrap items-center justify-between gap-2 border-t border-border-subtle py-2"
               >
                 <span>
                   #{c.id} {c.name}{" "}
-                  <span className="font-mono text-xs text-[#8f7a88]">
+                  <span className="font-mono text-xs text-muted">
                     {c.model_name} · every {c.interval_number} {c.interval_type}
                   </span>
                 </span>
@@ -635,7 +621,7 @@ export default function ConfigPage() {
                     type="button"
                     disabled={busy}
                     onClick={() => setDeactivateCron(c)}
-                    className="text-xs text-[#f0a8a0]"
+                    className="text-xs text-danger"
                   >
                     Deactivate
                   </button>
@@ -655,7 +641,7 @@ export default function ConfigPage() {
                         setBusy(false);
                       }
                     }}
-                    className="text-xs text-[#c9a9c0]"
+                    className="text-xs text-muted"
                   >
                     Activate
                   </button>
@@ -665,23 +651,23 @@ export default function ConfigPage() {
           </ul>
         </section>
 
-        <section className="mt-8 border border-[#3d2a38] bg-[#0f1a16]/70 p-5">
+        <section className="mt-8 rounded-md border border-border-subtle bg-surface p-5">
           <h2 className="font-[family-name:var(--font-display)] text-xl">
             Website &amp; properties
           </h2>
-          <p className="mt-2 text-sm text-[#a8909e]">
+          <p className="mt-2 text-sm text-muted">
             Website: {websiteNote ?? "—"}
           </p>
-          <p className="mt-1 text-sm text-[#a8909e]">
+          <p className="mt-1 text-sm text-muted">
             ir.property: {propertyNote ?? "—"}
           </p>
         </section>
 
-        <section className="mt-8 border border-[#3d2a38] bg-[#0f1a16]/70 p-5">
+        <section className="mt-8 rounded-md border border-border-subtle bg-surface p-5">
           <h2 className="font-[family-name:var(--font-display)] text-xl">
             Translations CSV
           </h2>
-          <p className="mt-1 text-xs text-[#8f7a88]">
+          <p className="mt-1 text-xs text-muted">
             Lang-scoped field labels + root menu names (Odoo 19 context lang=). Confirm phrase
             not required for label writes — still prefer sandbox first.
           </p>
@@ -689,12 +675,12 @@ export default function ConfigPage() {
             <input
               value={labelModel}
               onChange={(e) => setLabelModel(e.target.value)}
-              className="border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+              className="rounded-md border border-border-subtle bg-surface-raised px-3 py-2 font-mono text-sm"
             />
             <select
               value={lang}
               onChange={(e) => setLang(e.target.value)}
-              className="border border-[#3d2a38] bg-[#0c090b] px-3 py-2 text-sm"
+              className="rounded-md border border-border-subtle bg-surface-raised px-3 py-2 text-sm"
             >
               {langs.map((l) => (
                 <option key={l.code} value={l.code}>
@@ -722,7 +708,7 @@ export default function ConfigPage() {
                   setBusy(false);
                 }
               }}
-              className="border border-[#c9a9c0] px-3 text-sm text-[#c9a9c0]"
+              className="border border-accent px-3 text-sm text-muted"
             >
               Export
             </button>
@@ -762,7 +748,7 @@ export default function ConfigPage() {
                   setBusy(false);
                 }
               }}
-              className="border border-[#8f7a88] px-3 text-sm"
+              className="border border-border-subtle px-3 text-sm"
             >
               Dry-run
             </button>
@@ -802,7 +788,7 @@ export default function ConfigPage() {
                   setBusy(false);
                 }
               }}
-              className="bg-[#714B67] px-3 text-sm font-semibold text-white"
+              className="bg-accent px-3 text-sm font-semibold text-white"
             >
               Commit
             </button>
@@ -811,16 +797,16 @@ export default function ConfigPage() {
             value={translationCsv}
             onChange={(e) => setTranslationCsv(e.target.value)}
             rows={8}
-            className="mt-3 w-full border border-[#3d2a38] bg-[#0c090b] p-3 font-mono text-xs"
+            className="mt-3 w-full rounded-md border border-border-subtle bg-surface-raised p-3 font-mono text-xs"
             placeholder="type,model,name,lang,source,value"
           />
         </section>
 
-        <section className="mt-8 border border-[#3d2a38] bg-[#0f1a16]/70 p-5">
+        <section className="mt-8 rounded-md border border-border-subtle bg-surface p-5">
           <h2 className="font-[family-name:var(--font-display)] text-xl">
             ModuleSpec translations (CMP-11)
           </h2>
-          <p className="mt-1 text-xs text-[#8f7a88]">
+          <p className="mt-1 text-xs text-muted">
             {i18nProbe
               ? `Probe: ${i18nProbe.method} (Odoo ${i18nProbe.major ?? "?"}). ${i18nProbe.message}`
               : "Loading i18n probe…"}
@@ -829,7 +815,7 @@ export default function ConfigPage() {
             value={specJson}
             onChange={(e) => setSpecJson(e.target.value)}
             rows={6}
-            className="mt-3 w-full border border-[#3d2a38] bg-[#0c090b] p-3 font-mono text-xs"
+            className="mt-3 w-full rounded-md border border-border-subtle bg-surface-raised p-3 font-mono text-xs"
             placeholder='{"models":[{"model":"x_lib_book","fields":[]}]}'
           />
           <div className="mt-3 flex flex-wrap gap-2">
@@ -849,7 +835,7 @@ export default function ConfigPage() {
                   setBusy(false);
                 }
               }}
-              className="border border-[#c9a9c0] px-3 text-sm text-[#c9a9c0]"
+              className="border border-accent px-3 text-sm text-muted"
             >
               Export spec CSV
             </button>
@@ -872,16 +858,15 @@ export default function ConfigPage() {
                   setBusy(false);
                 }
               }}
-              className="border border-[#c9a9c0] px-3 text-sm text-[#c9a9c0]"
+              className="border border-accent px-3 text-sm text-muted"
             >
               Spec import dry-run
             </button>
           </div>
         </section>
-      </div>
-
-      <ConfirmDialog
+      <ConfirmDialogV2
         open={deactivateCron != null}
+        riskLevel="danger"
         title="Deactivate scheduled action"
         warning={
           deactivateCron
@@ -916,6 +901,6 @@ export default function ConfigPage() {
           })();
         }}
       />
-    </main>
+    </div>
   );
 }

@@ -1,10 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { api, Connection } from "@/lib/api";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import {
   advancedMutationAllowed,
@@ -14,6 +13,12 @@ import {
   mutationBlockedReason,
   connectionSupports,
 } from "@/lib/capabilities";
+import { Button } from "@/components/ui/Button";
+import { Callout } from "@/components/ui/Callout";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Card, PageHeader } from "@/components/ui/layout-primitives";
 
 const MENUS_REPORTS_CAVEAT =
   "Menus / QWeb reports are experimental on Odoo 16 — verify in Open-in-Odoo after create.";
@@ -97,7 +102,6 @@ export default function MenusBuilderPage() {
   }, [refresh]);
 
   const menusCaveat = useMemo(() => {
-    // tree-era majors (no list_as_list_type) — same surface caveat as Reports
     if (
       mutationAllowed(connection) &&
       !connectionSupports(connection, "list_as_list_type")
@@ -159,18 +163,18 @@ export default function MenusBuilderPage() {
         <button
           type="button"
           onClick={() => setSelectedId(m.id)}
-          className={`flex w-full items-center gap-2 px-2 py-1 text-left text-sm ${
+          className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm ${
             selectedId === m.id
-              ? "bg-[var(--odoo-primary)]/20 text-[#faf6f9]"
-              : "text-[#d4c4ce] hover:bg-[#1a2e28]"
+              ? "bg-accent-subtle text-ink ring-1 ring-accent"
+              : "text-muted hover:bg-surface-muted"
           }`}
           style={{ paddingLeft: 8 + depth * 14 }}
         >
-          <span className="font-medium">{m.name}</span>
-          <span className="font-mono text-[10px] text-[#8f7a88]">#{m.id}</span>
-          {m.action_id && (
-            <span className="text-[10px] text-[#c9a9c0]">act:{m.action_id}</span>
-          )}
+          <span className="font-medium text-ink">{m.name}</span>
+          <span className="font-mono text-[10px] text-muted">#{m.id}</span>
+          {m.action_id ? (
+            <span className="text-[10px] text-accent">act:{m.action_id}</span>
+          ) : null}
         </button>
         <ul>{renderTree(childrenOf(m.id), depth + 1)}</ul>
       </li>
@@ -178,176 +182,167 @@ export default function MenusBuilderPage() {
   }
 
   return (
-    <main className="odoo-shell min-h-screen px-6 py-10">
-      <div className="mx-auto max-w-6xl">
-        <div className="flex flex-wrap gap-4 text-sm">
-          <Link href={`/connections/${connectionId}`} className="text-[#c9a9c0] hover:underline">
-            ← Metadata
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/config`}
-            className="text-[#8f7a88] hover:underline"
-          >
-            Settings
-          </Link>
-        </div>
-        <h1 className="mt-4 font-[family-name:var(--font-display)] text-3xl text-[#faf6f9]">
-          Menus &amp; actions
-        </h1>
-        <p className="mt-1 text-sm text-[#8f7a88]">
-          Visual tree for <code>ir.ui.menu</code> + <code>ir.actions.act_window</code>
-        </p>
-        <VersionAwarenessBanner
-          capabilities={connection?.capabilities}
-          caveat={menusCaveat}
-        />
-        {mutateBlocked && (
-          <p className="mt-2 text-sm text-[#e8d09f]">{mutateBlocked}</p>
-        )}
+    <div className="mx-auto max-w-6xl" data-testid="menus-page">
+      <PageHeader
+        title="Menus and actions"
+        description="Visual tree for ir.ui.menu + ir.actions.act_window"
+      />
+      <VersionAwarenessBanner
+        capabilities={connection?.capabilities}
+        caveat={menusCaveat}
+      />
+      {mutateBlocked ? (
+        <Callout variant="warning" title="Mutations blocked" className="mt-4">
+          {mutateBlocked}
+        </Callout>
+      ) : null}
 
-        {error && <p className="mt-4 text-sm text-[#f0a8a0]">{error}</p>}
-        {notice && <p className="mt-4 text-sm text-[#c9a9c0]">{notice}</p>}
+      {error ? <ErrorNotice message={error} className="mt-4" /> : null}
+      {notice ? (
+        <Callout variant="info" title="Notice" className="mt-4">
+          {notice}
+        </Callout>
+      ) : null}
 
-        <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_320px]">
-          <div className="border border-[#3d2a38] bg-[#0f1a16]/70 p-4">
-            <h2 className="text-sm font-semibold text-[#c9a9c0]">Menu tree</h2>
-            <ul className="mt-3 max-h-[28rem] overflow-auto">{renderTree(roots)}</ul>
-          </div>
+      <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_320px]">
+        <Card className="p-4">
+          <h2 className="text-sm font-semibold text-ink">Menu tree</h2>
+          <ul className="mt-3 max-h-[28rem] overflow-auto">{renderTree(roots)}</ul>
+        </Card>
 
-          <div className="space-y-4">
-            <form
-              onSubmit={createMenu}
-              className="space-y-2 border border-[#3d2a38] bg-[#0f1a16]/70 p-4"
-            >
-              <h2 className="text-sm font-semibold">New menu</h2>
-              <input
+        <div className="space-y-4">
+          <Card className="p-4">
+            <form onSubmit={createMenu} className="space-y-3">
+              <h2 className="text-sm font-semibold text-ink">New menu</h2>
+              <Input
                 required
                 value={menuForm.name}
                 onChange={(e) => setMenuForm({ ...menuForm, name: e.target.value })}
                 placeholder="Label"
-                className="w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 text-sm"
               />
-              <select
+              <Select
+                options={[
+                  { value: "", label: "— root app —" },
+                  ...menus.map((m) => ({
+                    value: String(m.id),
+                    label: `${m.name} (#${m.id})`,
+                  })),
+                ]}
                 value={menuForm.parent_id}
                 onChange={(e) => setMenuForm({ ...menuForm, parent_id: e.target.value })}
-                className="w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 text-sm"
-              >
-                <option value="">— root app —</option>
-                {menus.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name} (#{m.id})
-                  </option>
-                ))}
-              </select>
-              <input
+              />
+              <Input
                 type="number"
-                value={menuForm.sequence}
+                value={String(menuForm.sequence)}
                 onChange={(e) =>
                   setMenuForm({ ...menuForm, sequence: Number(e.target.value) })
                 }
-                className="w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 text-sm"
               />
-              <button
+              <Button
                 type="submit"
+                variant="primary"
+                className="w-full"
                 disabled={busy || !canMutate}
                 title={mutateBlocked ?? undefined}
-                className="h-9 w-full bg-[#714B67] text-sm font-semibold text-white disabled:opacity-50"
+                loading={busy}
               >
                 Create menu
-              </button>
+              </Button>
             </form>
+          </Card>
 
-            <form
-              onSubmit={createAction}
-              className="space-y-2 border border-[#3d2a38] bg-[#0f1a16]/70 p-4"
-            >
-              <h2 className="text-sm font-semibold">New window action</h2>
-              <input
+          <Card className="p-4">
+            <form onSubmit={createAction} className="space-y-3">
+              <h2 className="text-sm font-semibold text-ink">New window action</h2>
+              <Input
                 required
                 value={actionForm.name}
                 onChange={(e) => setActionForm({ ...actionForm, name: e.target.value })}
                 placeholder="Action name"
-                className="w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 text-sm"
               />
-              <input
+              <Input
                 required
                 value={actionForm.model}
                 onChange={(e) => setActionForm({ ...actionForm, model: e.target.value })}
                 placeholder="model"
-                className="w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 font-mono text-sm"
+                className="font-mono text-sm"
               />
-              <input
+              <Input
                 value={actionForm.view_mode}
                 onChange={(e) =>
                   setActionForm({ ...actionForm, view_mode: e.target.value })
                 }
-                className="w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 font-mono text-sm"
+                className="font-mono text-sm"
               />
-              <button
+              <Button
                 type="submit"
+                variant="secondary"
+                className="w-full"
                 disabled={busy || !canMutate}
                 title={mutateBlocked ?? undefined}
-                className="h-9 w-full border border-[#c9a9c0] text-sm text-[#c9a9c0] disabled:opacity-50"
+                loading={busy}
               >
                 Create action
-              </button>
+              </Button>
             </form>
+          </Card>
 
-            {selected && (
-              <div className="space-y-2 border border-[#3d2a38] bg-[#0f1a16]/70 p-4">
-                <h2 className="text-sm font-semibold">Selected #{selected.id}</h2>
-                <p className="text-xs text-[#8f7a88]">{selected.name}</p>
-                <select
-                  value={bindActionId}
-                  onChange={(e) => setBindActionId(e.target.value)}
-                  className="w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 text-sm"
-                >
-                  <option value="">Bind action…</option>
-                  {actions.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      #{a.id} {a.name} ({a.res_model})
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  disabled={busy || !bindActionId || !canMutate}
-                  title={mutateBlocked ?? undefined}
-                  onClick={async () => {
-                    setBusy(true);
-                    try {
-                      await api.updateBuilderMenu(connectionId, selected.id, {
-                        action_id: Number(bindActionId),
-                      });
-                      setNotice(`Bound action ${bindActionId}`);
-                      await refresh();
-                    } catch (err) {
-                      setError(err instanceof Error ? err.message : "Bind failed");
-                    } finally {
-                      setBusy(false);
-                    }
-                  }}
-                  className="h-9 w-full border border-[#c9a9c0] text-sm text-[#c9a9c0] disabled:opacity-50"
-                >
-                  Bind action
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || !canAdvanced}
-                  title={advancedBlocked ?? undefined}
-                  onClick={() => setConfirmDelete(true)}
-                  className="h-9 w-full border border-[#a85b4a] text-sm text-[#f0a8a0] disabled:opacity-50"
-                >
-                  Delete menu
-                </button>
-              </div>
-            )}
-          </div>
+          {selected ? (
+            <Card className="space-y-3 p-4">
+              <h2 className="text-sm font-semibold text-ink">Selected #{selected.id}</h2>
+              <p className="text-xs text-muted">{selected.name}</p>
+              <Select
+                options={[
+                  { value: "", label: "Bind action…" },
+                  ...actions.map((a) => ({
+                    value: String(a.id),
+                    label: `#${a.id} ${a.name} (${a.res_model})`,
+                  })),
+                ]}
+                value={bindActionId}
+                onChange={(e) => setBindActionId(e.target.value)}
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full"
+                disabled={busy || !bindActionId || !canMutate}
+                title={mutateBlocked ?? undefined}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    await api.updateBuilderMenu(connectionId, selected.id, {
+                      action_id: Number(bindActionId),
+                    });
+                    setNotice(`Bound action ${bindActionId}`);
+                    await refresh();
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : "Bind failed");
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Bind action
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full text-danger"
+                disabled={busy || !canAdvanced}
+                title={advancedBlocked ?? undefined}
+                onClick={() => setConfirmDelete(true)}
+              >
+                Delete menu
+              </Button>
+            </Card>
+          ) : null}
         </div>
       </div>
 
-      <ConfirmDialog
+      <ConfirmDialogV2
         open={confirmDelete}
+        riskLevel="danger"
         title="Delete menu"
         warning="Removes this menu from Odoo."
         risks={["Child menus may cascade", "Action remains but is harder to find"]}
@@ -373,6 +368,6 @@ export default function MenusBuilderPage() {
           }
         }}
       />
-    </main>
+    </div>
   );
 }

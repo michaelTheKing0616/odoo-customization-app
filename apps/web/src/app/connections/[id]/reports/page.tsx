@@ -1,10 +1,13 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { api, Connection } from "@/lib/api";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
+import { Button } from "@/components/ui/Button";
+import { Callout } from "@/components/ui/Callout";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { Card, PageHeader } from "@/components/ui/layout-primitives";
 import { ReportDesigner } from "@/components/reports/ReportDesigner";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import {
@@ -169,76 +172,64 @@ export default function ReportsPage() {
   }
 
   return (
-    <main className="odoo-shell min-h-screen px-6 py-10">
-      <div className="mx-auto max-w-5xl">
-        <div className="flex flex-wrap gap-4 text-sm">
-          <Link href={`/connections/${connectionId}`} className="text-[#c9a9c0] hover:underline">
-            ← Metadata
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/menus`}
-            className="text-[#8f7a88] hover:underline"
-          >
-            Menus
-          </Link>
-        </div>
-        <h1 className="mt-4 font-[family-name:var(--font-display)] text-3xl text-[#faf6f9]">
-          Report layout lite
-        </h1>
-        <p className="mt-1 text-sm text-[#8f7a88]">
-          QWeb PDF reports + paper formats via <code>ir.actions.report</code>
-        </p>
-        <VersionAwarenessBanner
-          capabilities={connection?.capabilities}
-          caveat={reportsCaveat}
-        />
-        {mutateBlocked && (
-          <p className="mt-2 text-sm text-[#e8d09f]">{mutateBlocked}</p>
-        )}
+    <div className="mx-auto max-w-5xl" data-testid="reports-page">
+      <PageHeader
+        title="Report layout lite"
+        description="QWeb PDF reports + paper formats via ir.actions.report"
+      />
+      <VersionAwarenessBanner
+        capabilities={connection?.capabilities}
+        caveat={reportsCaveat}
+      />
+      {mutateBlocked ? (
+        <Callout variant="warning" title="Mutations blocked" className="mt-4">
+          {mutateBlocked}
+        </Callout>
+      ) : null}
 
-        {error && <p className="mt-4 text-sm text-[#f0a8a0]">{error}</p>}
-        {notice && <p className="mt-4 text-sm text-[#c9a9c0]">{notice}</p>}
+      {error ? <ErrorNotice message={error} className="mt-4" /> : null}
+      {notice ? (
+        <Callout variant="info" title="Notice" className="mt-4">
+          {notice}
+        </Callout>
+      ) : null}
 
-        <form
-          onSubmit={onCreate}
-          className="mt-8 grid gap-3 border border-[#3d2a38] bg-[#0f1a16]/70 p-5 sm:grid-cols-2"
-        >
-          <h2 className="sm:col-span-2 font-[family-name:var(--font-display)] text-xl">
-            New report
-          </h2>
+      <Card className="mt-8 p-5">
+        <form onSubmit={onCreate} className="grid gap-3 sm:grid-cols-2">
+          <h2 className="sm:col-span-2 text-xl font-semibold text-ink">New report</h2>
           <label className="text-sm">
-            <span className="text-[#a8909e]">Name</span>
+            <span className="text-muted">Name</span>
             <input
               required
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
+              className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2"
             />
           </label>
           <label className="text-sm">
-            <span className="text-[#a8909e]">Model</span>
+            <span className="text-muted">Model</span>
             <input
               required
               value={form.model}
               onChange={(e) => setForm({ ...form, model: e.target.value })}
-              className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono"
+              className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2 font-mono"
             />
           </label>
           <label className="text-sm">
-            <span className="text-[#a8909e]">Report key (QWeb)</span>
+            <span className="text-muted">Report key (QWeb)</span>
             <input
               required
               value={form.report_key}
               onChange={(e) => setForm({ ...form, report_key: e.target.value })}
-              className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono"
+              className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2 font-mono"
             />
           </label>
           <label className="text-sm">
-            <span className="text-[#a8909e]">Paper format</span>
+            <span className="text-muted">Paper format</span>
             <select
               value={form.paperformat_id}
               onChange={(e) => setForm({ ...form, paperformat_id: e.target.value })}
-              className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
+              className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2"
             >
               <option value="">— default —</option>
               {papers.map((p) => (
@@ -252,44 +243,45 @@ export default function ReportsPage() {
             type="submit"
             disabled={busy || !canMutate}
             title={mutateBlocked ?? undefined}
-            className="sm:col-span-2 h-10 bg-[#714B67] text-sm font-semibold text-white disabled:opacity-50"
+            className="sm:col-span-2 h-10 bg-accent text-sm font-semibold text-white disabled:opacity-50"
           >
             Create report
           </button>
         </form>
+      </Card>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[280px_1fr]">
-          <ul className="max-h-96 space-y-1 overflow-auto border border-[#3d2a38] p-3 text-sm">
+          <ul className="max-h-96 space-y-1 overflow-auto border border-border-subtle p-3 text-sm">
             {reports.map((r) => (
               <li key={r.id}>
                 <button
                   type="button"
                   onClick={() => setSelectedId(r.id)}
                   className={`w-full px-2 py-1.5 text-left ${
-                    selectedId === r.id ? "bg-[#3d2a38] text-[#faf6f9]" : "text-[#d4c4ce]"
+                    selectedId === r.id ? "bg-surface-raised text-ink" : "text-muted"
                   }`}
                 >
                   {r.name}
-                  <span className="block font-mono text-[10px] text-[#8f7a88]">
+                  <span className="block font-mono text-[10px] text-muted">
                     {r.model} · {r.report_name}
                   </span>
                 </button>
               </li>
             ))}
             {reports.length === 0 && (
-              <li className="text-xs text-[#8f7a88]">No reports yet.</li>
+              <li className="text-xs text-muted">No reports yet.</li>
             )}
           </ul>
 
-          <div className="border border-[#3d2a38] bg-[#0f1a16]/70 p-4">
-            <div className="flex gap-2 border-b border-[#3d2a38] pb-2">
+          <div className="rounded-md border border-border-subtle bg-surface p-4">
+            <div className="flex gap-2 border-b border-border-subtle pb-2">
               <button
                 type="button"
                 onClick={() => setEditorTab("visual")}
                 className={`px-3 py-1 text-sm ${
                   editorTab === "visual"
-                    ? "bg-[#714B67] text-white"
-                    : "text-[#c9a9c0] hover:underline"
+                    ? "bg-accent text-white"
+                    : "text-muted hover:underline"
                 }`}
               >
                 Visual designer
@@ -299,8 +291,8 @@ export default function ReportsPage() {
                 onClick={() => setEditorTab("code")}
                 className={`px-3 py-1 text-sm ${
                   editorTab === "code"
-                    ? "bg-[#714B67] text-white"
-                    : "text-[#c9a9c0] hover:underline"
+                    ? "bg-accent text-white"
+                    : "text-muted hover:underline"
                 }`}
               >
                 QWeb code
@@ -309,7 +301,7 @@ export default function ReportsPage() {
             {editorTab === "visual" ? (
               <div className="mt-4">
                 {!selectedId ? (
-                  <p className="text-sm text-[#8f7a88]">
+                  <p className="text-sm text-muted">
                     Create or select a report to open the visual designer.
                   </p>
                 ) : (
@@ -328,13 +320,13 @@ export default function ReportsPage() {
               </div>
             ) : (
               <>
-                <h2 className="mt-4 text-sm font-semibold text-[#c9a9c0]">QWeb arch</h2>
+                <h2 className="mt-4 text-sm font-semibold text-muted">QWeb arch</h2>
                 <textarea
                   value={arch}
                   onChange={(e) => setArch(e.target.value)}
                   rows={16}
                   disabled={!selectedId}
-                  className="mt-2 w-full border border-[#3d2a38] bg-[#0c090b] p-3 font-mono text-xs disabled:opacity-40"
+                  className="mt-2 w-full rounded-md border border-border-subtle bg-surface-raised p-3 font-mono text-xs disabled:opacity-40"
                 />
               </>
             )}
@@ -356,7 +348,7 @@ export default function ReportsPage() {
                     setBusy(false);
                   }
                 }}
-                className="h-9 bg-[#714B67] px-4 text-sm font-semibold text-white disabled:opacity-50"
+                className="h-9 bg-accent px-4 text-sm font-semibold text-white disabled:opacity-50"
               >
                 Save arch
               </button>
@@ -365,7 +357,7 @@ export default function ReportsPage() {
                 disabled={busy || !selectedId || !canAdvanced}
                 title={advancedBlocked ?? undefined}
                 onClick={() => setConfirmDelete(true)}
-                className="h-9 border border-[#a85b4a] px-4 text-sm text-[#f0a8a0] disabled:opacity-50"
+                className="h-9 border border-danger px-4 text-sm text-danger disabled:opacity-50"
               >
                 Delete
               </button>
@@ -373,11 +365,11 @@ export default function ReportsPage() {
           </div>
         </div>
 
-        <section className="mt-8 border border-[#3d2a38] bg-[#0f1a16]/70 p-4">
-          <h2 className="font-[family-name:var(--font-display)] text-xl text-[#faf6f9]">
+        <section className="mt-8 rounded-md border border-border-subtle bg-surface p-4">
+          <h2 className="font-[family-name:var(--font-display)] text-xl text-ink">
             Combined print
           </h2>
-          <p className="mt-1 text-sm text-[#8f7a88]">
+          <p className="mt-1 text-sm text-muted">
             Render different QWeb PDF reports server-side and merge into one download — uses
             authenticated HTTP <code>/report/pdf</code> when RPC render is unavailable.
           </p>
@@ -385,9 +377,9 @@ export default function ReportsPage() {
             {mergeRows.map((row, idx) => (
               <div key={idx} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
                 <label className="text-sm">
-                  <span className="text-[#a8909e]">Report</span>
+                  <span className="text-muted">Report</span>
                   <select
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5"
+                    className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-2 py-1.5"
                     value={row.reportId}
                     onChange={(e) => {
                       const next = [...mergeRows];
@@ -404,9 +396,9 @@ export default function ReportsPage() {
                   </select>
                 </label>
                 <label className="text-sm">
-                  <span className="text-[#a8909e]">Record ids</span>
+                  <span className="text-muted">Record ids</span>
                   <input
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 font-mono"
+                    className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-2 py-1.5 font-mono"
                     value={row.recordIds}
                     onChange={(e) => {
                       const next = [...mergeRows];
@@ -418,7 +410,7 @@ export default function ReportsPage() {
                 </label>
                 <button
                   type="button"
-                  className="self-end border border-[#3d2a38] px-3 py-1.5 text-sm text-[#f0a8a0]"
+                  className="self-end border border-border-subtle px-3 py-1.5 text-sm text-danger"
                   disabled={mergeRows.length <= 1}
                   onClick={() => setMergeRows(mergeRows.filter((_, i) => i !== idx))}
                 >
@@ -430,14 +422,14 @@ export default function ReportsPage() {
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
-              className="h-9 border border-[#3d2a38] px-3 text-sm"
+              className="h-9 border border-border-subtle px-3 text-sm"
               onClick={() => setMergeRows([...mergeRows, { reportId: "", recordIds: "" }])}
             >
               Add report
             </button>
             <button
               type="button"
-              className="h-9 border border-[#3d2a38] px-3 text-sm"
+              className="h-9 border border-border-subtle px-3 text-sm"
               disabled={busy}
               onClick={() => void probeRenderPath()}
             >
@@ -445,7 +437,7 @@ export default function ReportsPage() {
             </button>
             <button
               type="button"
-              className="h-9 bg-[#714B67] px-4 text-sm font-semibold text-white disabled:opacity-50"
+              className="h-9 bg-accent px-4 text-sm font-semibold text-white disabled:opacity-50"
               disabled={busy}
               onClick={() => void downloadMergedPdf()}
             >
@@ -453,13 +445,13 @@ export default function ReportsPage() {
             </button>
           </div>
           {renderProbe && (
-            <p className="mt-3 text-xs text-[#8f7a88]">{renderProbe}</p>
+            <p className="mt-3 text-xs text-muted">{renderProbe}</p>
           )}
         </section>
-      </div>
 
-      <ConfirmDialog
+      <ConfirmDialogV2
         open={confirmDelete}
+        riskLevel="danger"
         title="Delete report"
         warning="Removes the print action from this model."
         risks={["Users lose Print menu entry", "QWeb view may remain orphaned"]}
@@ -485,6 +477,6 @@ export default function ReportsPage() {
           }
         }}
       />
-    </main>
+    </div>
   );
 }

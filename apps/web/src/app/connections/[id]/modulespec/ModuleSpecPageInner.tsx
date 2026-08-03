@@ -1,9 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
+import { Callout } from "@/components/ui/Callout";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { PageHeader } from "@/components/ui/layout-primitives";
 import {
   ModuleSpecDoc,
   ModuleSpecEditor,
@@ -182,48 +184,26 @@ export default function ModuleSpecPageInner() {
   const barcodeModuleAllowed = connectionSupports(connection, "barcode_scan_module");
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#3d2a38_0%,_#1a1218_50%,_#0c090b_100%)] px-6 py-10 text-[#f4eef2]">
-      <div className="mx-auto max-w-6xl">
-        <div className="flex flex-wrap gap-4 text-sm">
-          <Link
-            href={`/connections/${connectionId}`}
-            className="text-[#c9a9c0] hover:underline"
-          >
-            ← Metadata
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/wizard`}
-            className="text-[#8f7a88] hover:underline"
-          >
-            Wizard
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/projects`}
-            className="text-[#8f7a88] hover:underline"
-          >
-            Drafts
-          </Link>
-        </div>
+    <div className="mx-auto max-w-6xl" data-testid="modulespec-page">
+      <PageHeader
+        title="ModuleSpec builder"
+        description={`${connection?.name ?? connectionId}${projectName ? ` · project “${projectName}”` : " · session draft"} — single contract for AI drafts, Code→UI import, and Generate UI.`}
+      />
+      <VersionAwarenessBanner capabilities={connection?.capabilities} />
+      {(applyBlocked || saveBlocked) ? (
+        <Callout variant="warning" title="Blocked" className="mt-4">
+          {applyBlocked ?? saveBlocked}
+        </Callout>
+      ) : null}
 
-        <h1 className="mt-4 font-[family-name:var(--font-display)] text-3xl text-[#faf6f9]">
-          ModuleSpec builder
-        </h1>
-        <p className="mt-1 text-sm text-[#8f7a88]">
-          {connection?.name ?? connectionId}
-          {projectName ? ` · project “${projectName}”` : " · session draft"} — single
-          contract for AI drafts, Code→UI import, and Generate UI.
-        </p>
-        <VersionAwarenessBanner capabilities={connection?.capabilities} />
-        {(applyBlocked || saveBlocked) && (
-          <p className="mt-2 text-sm text-[#e8d09f]">
-            {applyBlocked ?? saveBlocked}
-          </p>
-        )}
-
-        {error && <p className="mt-4 text-sm text-[#f0a8a0]">{error}</p>}
-        {notice && <p className="mt-4 text-sm text-[#c9a9c0]">{notice}</p>}
+      {error ? <ErrorNotice message={error} className="mt-4" /> : null}
+      {notice ? (
+        <Callout variant="info" title="Notice" className="mt-4">
+          {notice}
+        </Callout>
+      ) : null}
         {importWarnings.length > 0 && (
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-[#f0c090]">
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-warning">
             {importWarnings.slice(0, 10).map((w, i) => (
               <li key={`${i}-${w}`}>{w}</li>
             ))}
@@ -231,7 +211,7 @@ export default function ModuleSpecPageInner() {
         )}
 
         <div className="mt-6 flex flex-wrap items-center gap-3">
-          <label className="cursor-pointer border border-[#c9a96e] px-3 py-1.5 text-sm text-[#c9a96e]">
+          <label className="cursor-pointer border border-warning px-3 py-1.5 text-sm text-warning">
             {busy ? "Working…" : "Import zip / .py / .xml / .meta.json"}
             <input
               type="file"
@@ -250,7 +230,7 @@ export default function ModuleSpecPageInner() {
             disabled={busy || !canSave}
             title={saveBlocked ?? undefined}
             onClick={() => onSaveProject()}
-            className="border border-[#c9a9c0] px-3 py-1.5 text-sm text-[#c9a9c0] disabled:opacity-50"
+            className="border border-accent px-3 py-1.5 text-sm text-muted disabled:opacity-50"
           >
             {projectId ? "Save project" : "Save as project"}
           </button>
@@ -264,14 +244,14 @@ export default function ModuleSpecPageInner() {
             }
             title={applyBlocked ?? undefined}
             onClick={() => setGenConfirmOpen(true)}
-            className="bg-[#714B67] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+            className="bg-accent px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
           >
             Generate UI from ModuleSpec
           </button>
         </div>
 
         {barcodeModuleAllowed ? (
-          <label className="mt-4 flex items-center gap-2 text-sm text-[#c9a9c0]">
+          <label className="mt-4 flex items-center gap-2 text-sm text-muted">
             <input
               type="checkbox"
               checked={Boolean(spec.include_barcode_scan_widget)}
@@ -283,7 +263,7 @@ export default function ModuleSpecPageInner() {
             (our add-on — not native Odoo; Apache-2 ZXing attribution in README)
           </label>
         ) : (
-          <p className="mt-4 text-xs text-[#8f7a88]">
+          <p className="mt-4 text-xs text-muted">
             Exported barcode widget module is unavailable on Odoo Online — use Bulk Suite in-app
             scanner instead.
           </p>
@@ -292,10 +272,10 @@ export default function ModuleSpecPageInner() {
         <div className="mt-6">
           <ModuleSpecEditor value={spec} onChange={setSpec} />
         </div>
-      </div>
 
-      <ConfirmDialog
+      <ConfirmDialogV2
         open={genConfirmOpen}
+        riskLevel="danger"
         title="Generate UI from ModuleSpec"
         warning="Creates models, fields, views, menus, and smart buttons on this live Odoo connection."
         risks={[
@@ -309,6 +289,6 @@ export default function ModuleSpecPageInner() {
         onCancel={() => setGenConfirmOpen(false)}
         onConfirm={onGenerateUi}
       />
-    </main>
+    </div>
   );
 }

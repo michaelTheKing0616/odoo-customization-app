@@ -4,12 +4,11 @@
 
 ## Last run
 - Date: 2026-08-03
-- Commit (pending): **UIX-4c partial** — power-ops (recipe cards, dry-run-first, BulkResultTable), journal (merged timeline + filter chips + rollback badges), bulk-suite (section Cards + BulkResultTable), import (stepper + seed cards), settings, pipelines (stage-flow cards), reminders.
-- Prior: `44cb7b3` UIX-4b complete.
-- Gates: `pnpm test` 78 passed; `pnpm build` ok.
+- Commit (pending): **UIX-4c complete** — menus, id-generator, reports, config, modulespec, builder, approvals, cron-manager, housekeeping onto kit; legacy hex/`odoo-shell`/`radial-gradient` purge on UIX-4c pages; ConfirmDialogV2 throughout.
+- Prior: `d710521` UIX-4c partial (power-ops, journal, bulk-suite, import, settings, pipelines, reminders).
+- Gates: `pnpm test` 78 passed; `pnpm build` ok. E2e smoke not re-run this session (Playwright install locally if needed).
 
 ## Next (prescribed wave order)
-- **UIX-4c finish** — menus, config, reports, modulespec, id-generator, builder shell; legacy-style grep purge; e2e smoke.
 - **UIX-5** — copy guide pass + iconography audit.
 
 ## Rules

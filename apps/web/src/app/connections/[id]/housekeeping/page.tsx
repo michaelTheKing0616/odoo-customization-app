@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
@@ -13,7 +12,10 @@ import {
   LargeOldScanOut,
   OrphanScanOut,
 } from "@/lib/api";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
+import { Callout } from "@/components/ui/Callout";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { Card, PageHeader } from "@/components/ui/layout-primitives";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 
 const CONFIRM_PHRASE = "I understand the risks";
@@ -255,50 +257,21 @@ export default function HousekeepingPage() {
 
 
   return (
-    <main className="odoo-shell min-h-screen px-6 py-10">
-      <div className="mx-auto max-w-5xl">
-        <div className="flex flex-wrap gap-3 text-sm">
-          <Link
-            href={`/connections/${connectionId}`}
-            className="text-[var(--odoo-primary-light)] hover:underline"
-          >
-            ← Metadata
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/bulk-suite`}
-            className="text-[var(--odoo-primary-light)] hover:underline"
-          >
-            Bulk Suite
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/cron-manager`}
-            className="text-[var(--odoo-primary-light)] hover:underline"
-          >
-            Cron Manager
-          </Link>
-        </div>
-        <h1 className="mt-4 font-[family-name:var(--font-display)] text-3xl text-[var(--odoo-sheet-fg)]">
-          Attachment housekeeping
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm text-[var(--odoo-muted)]">
-          Scan orphaned files, checksum duplicates, and large old attachments. Review findings
-          first — deletion requires the confirm phrase and never targets standalone uploads or view
-          assets.
-        </p>
-        <VersionAwarenessBanner capabilities={connection?.capabilities} />
+    <div className="mx-auto max-w-5xl" data-testid="housekeeping-page">
+      <PageHeader
+        title="Attachment housekeeping"
+        description="Scan orphaned files, checksum duplicates, and large old attachments. Review findings first — deletion requires confirm phrase and never targets standalone uploads or view assets."
+      />
+      <VersionAwarenessBanner capabilities={connection?.capabilities} />
 
-        {error && (
-          <p className="mt-4 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
-            {error}
-          </p>
-        )}
-        {notice && (
-          <p className="mt-4 rounded border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-900">
+        {error ? <ErrorNotice message={error} className="mt-4" /> : null}
+        {notice ? (
+          <Callout variant="info" title="Notice" className="mt-4">
             {notice}
-          </p>
-        )}
+          </Callout>
+        ) : null}
 
-        <section className="odoo-sheet mt-6 space-y-3 p-4">
+        <Card className="mt-6 space-y-3 p-4">
           <h2 className="text-lg font-semibold">Orphan scan</h2>
           <p className="text-sm text-[var(--odoo-muted)]">
             Attachments whose parent record no longer exists.
@@ -339,9 +312,9 @@ export default function HousekeepingPage() {
               )}
             </>
           )}
-        </section>
+        </Card>
 
-        <section className="odoo-sheet mt-6 space-y-3 p-4">
+        <Card className="mt-6 space-y-3 p-4">
           <h2 className="text-lg font-semibold">Duplicate scan</h2>
           <p className="text-sm text-[var(--odoo-muted)]">
             Groups by checksum — keep-newest default; select duplicate losers to reclaim space.
@@ -376,9 +349,9 @@ export default function HousekeepingPage() {
               ))}
             </>
           )}
-        </section>
+        </Card>
 
-        <section className="odoo-sheet mt-6 space-y-3 p-4">
+        <Card className="mt-6 space-y-3 p-4">
           <h2 className="text-lg font-semibold">Large / old scan</h2>
           <div className="flex flex-wrap gap-3">
             <label className="block text-sm">
@@ -428,9 +401,9 @@ export default function HousekeepingPage() {
               </button>
             </>
           )}
-        </section>
+        </Card>
 
-        <section className="odoo-sheet mt-6 space-y-3 p-4">
+        <Card className="mt-6 space-y-3 p-4">
           <h2 className="text-lg font-semibold">Stored compute recompute</h2>
           <p className="text-sm text-[var(--odoo-muted)]">
             Refresh stored computed fields by touching dependencies with tracking disabled. Probe
@@ -498,9 +471,9 @@ export default function HousekeepingPage() {
               )}
             </div>
           )}
-        </section>
+        </Card>
 
-        <section className="odoo-sheet mt-6 space-y-3 p-4">
+        <Card className="mt-6 space-y-3 p-4">
           <h2 className="text-lg font-semibold">Stored compute recompute</h2>
           <p className="text-sm text-[var(--odoo-muted)]">
             Refresh stored computed fields by touching dependencies with tracking disabled. Probe
@@ -568,9 +541,9 @@ export default function HousekeepingPage() {
               )}
             </div>
           )}
-        </section>
+        </Card>
 
-        <section className="odoo-sheet mt-6 space-y-3 p-4">
+        <Card className="mt-6 space-y-3 p-4">
           <h2 className="text-lg font-semibold">Clean selected ({selected.size})</h2>
           <div className="flex flex-wrap gap-2">
             <button
@@ -600,11 +573,11 @@ export default function HousekeepingPage() {
               )}
             </div>
           )}
-        </section>
-      </div>
+        </Card>
 
-      <ConfirmDialog
+      <ConfirmDialogV2
         open={confirmOpen}
+        riskLevel="danger"
         phrase={CONFIRM_PHRASE}
         title={confirmKind === "recompute" ? "Confirm recompute" : "Delete attachments"}
         warning={
@@ -629,6 +602,6 @@ export default function HousekeepingPage() {
         onCancel={() => setConfirmOpen(false)}
         busy={busy}
       />
-    </main>
+    </div>
   );
 }
