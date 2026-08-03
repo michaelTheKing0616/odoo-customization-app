@@ -22,8 +22,35 @@ import { AskWhyButton } from "@/components/expert/AskWhyButton";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { reportApiError } from "@/lib/api-error";
+import { Button } from "@/components/ui/Button";
+import { Callout } from "@/components/ui/Callout";
+import { Card, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Textarea } from "@/components/ui/Textarea";
+import { Badge } from "@/components/ui/Badge";
+import { CodeBlock } from "@/components/ui/CodeBlock";
 
 const CONFIRM_PHRASE = "I understand the risks";
+
+const PIPELINE_STEPS = [
+  "Entities",
+  "Fields",
+  "Relationships",
+  "Workflow",
+  "Automations",
+  "Views",
+] as const;
+
+function pipelineStepIndex(draft: Record<string, unknown> | null): number {
+  if (!draft) return 0;
+  if (Array.isArray(draft.views) && draft.views.length > 0) return 5;
+  if (Array.isArray(draft.automations) && draft.automations.length > 0) return 4;
+  if (draft.workflow || draft.states) return 3;
+  if (Array.isArray(draft.models) && draft.models.length > 1) return 2;
+  if (Array.isArray(draft.models) && draft.models.length > 0) return 1;
+  return 0;
+}
 
 const REUSE_SUGGESTIONS = [
   "res.partner",
@@ -342,70 +369,51 @@ export default function AppWizardPage() {
     }
   }
 
+  const activeStep = pipelineStepIndex(aiDraft);
+
   return (
-    <main className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#3d2a38_0%,_#1a1218_50%,_#0c090b_100%)] px-6 py-10 text-[#f4eef2]">
-      <div className="mx-auto max-w-4xl">
-        <div className="flex flex-wrap gap-4 text-sm">
-          <Link
-            href={`/connections/${connectionId}`}
-            className="text-[#c9a9c0] hover:underline"
-          >
-            ← Metadata
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/builder`}
-            className="text-[#8f7a88] hover:underline"
-          >
-            Builder
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/designer`}
-            className="text-[#8f7a88] hover:underline"
-          >
-            Designer
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/reminders`}
-            className="text-[#8f7a88] hover:underline"
-          >
-            Reminders
-          </Link>
-        </div>
+    <div className="mx-auto max-w-4xl" data-testid="draft-studio">
+      <PageHeader
+        title="Draft Studio"
+        description={
+          connection
+            ? `${connection.name} · describe an app or pick a template to scaffold`
+            : connectionId
+        }
+      />
+      <VersionAwarenessBanner capabilities={connection?.capabilities} />
 
-        <h1 className="mt-4 font-[family-name:var(--font-display)] text-3xl text-[#faf6f9]">
-          App wizard
-        </h1>
-        <p className="mt-1 text-sm text-[#8f7a88]">
-          {connection
-            ? `${connection.name} · scaffold a starter app onto this Odoo`
-            : connectionId}
-        </p>
-        <VersionAwarenessBanner capabilities={connection?.capabilities} />
+      <ol className="mb-6 flex flex-wrap gap-2 text-xs">
+        {PIPELINE_STEPS.map((step, i) => (
+          <li
+            key={step}
+            className={
+              i <= activeStep
+                ? "rounded-full border border-accent/30 bg-accent-subtle px-2.5 py-1 font-medium text-accent"
+                : "rounded-full border border-border-subtle px-2.5 py-1 text-muted"
+            }
+          >
+            {step}
+          </li>
+        ))}
+      </ol>
 
-        <label className="mt-6 block max-w-md text-sm">
-          <span className="text-[#a8909e]">Display name</span>
-          <input
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="e.g. Acme Library"
-            className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
-          />
-        </label>
-
-        <label className="mt-4 block max-w-md text-sm">
-          <span className="text-[#a8909e]">Technical prefix (optional)</span>
-          <input
-            value={technicalPrefix}
-            onChange={(e) => setTechnicalPrefix(e.target.value)}
-            placeholder="e.g. lib_demo → x_lib_demo_book"
-            className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
-          />
-          <span className="mt-0.5 block text-xs text-[#8f7a88]">
-            Omit for fixed template model names (library: x_lib_book, …).
-          </span>
-        </label>
-
-        <label className="mt-4 flex max-w-md items-start gap-2 text-sm">
+      <Card className="mb-6 space-y-4 p-5">
+        <Input
+          label="Display name"
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+          placeholder="e.g. Acme Library"
+        />
+        <Input
+          label="Technical prefix (optional)"
+          value={technicalPrefix}
+          onChange={(e) => setTechnicalPrefix(e.target.value)}
+          placeholder="e.g. lib_demo → x_lib_demo_book"
+          hint="Omit for fixed template model names (library: x_lib_book, …)."
+          className="font-mono"
+        />
+        <label className="flex max-w-md items-start gap-2 text-sm text-ink">
           <input
             type="checkbox"
             checked={multiCompany}
@@ -413,23 +421,19 @@ export default function AppWizardPage() {
             className="mt-1"
           />
           <span>
-            <span className="text-[#a8909e]">Multi-company aware</span>
-            <span className="mt-0.5 block text-xs text-[#8f7a88]">
-              Applies to template scaffold, AI draft Generate UI, and library zip export.
-              Adds company field + record rules so each Odoo company sees its own workflow
-              records. Requires companies configured under Odoo Settings.
+            <span className="font-medium">Multi-company aware</span>
+            <span className="mt-0.5 block text-xs text-muted">
+              Adds company field + record rules for template scaffold, Generate UI, and library export.
             </span>
           </span>
         </label>
+      </Card>
 
         {componentGallery.length > 0 && (
-          <section className="mt-8 border border-[#3d2a38] bg-[#0f1a16]/70 p-5">
-            <h2 className="font-[family-name:var(--font-display)] text-xl text-[#faf6f9]">
-              Component gallery
-            </h2>
-            <p className="mt-1 text-xs text-[#8f7a88]">
-              Reusable slices that attach to stock or custom hosts — warranty, inspection,
-              compliance, document expiry.
+          <Card className="mb-6 p-5">
+            <h2 className="text-xl font-semibold text-ink">Component gallery</h2>
+            <p className="mt-1 text-xs text-muted">
+              Reusable slices that attach to stock or custom hosts.
             </p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {componentGallery.map((c) => (
@@ -440,59 +444,49 @@ export default function AppWizardPage() {
                     setSelectedGalleryId(c.id);
                     setNlPrompt(`Add ${c.name.toLowerCase()} to my ${c.host_slot.replace(".", " ")}s`);
                   }}
-                  className={`border p-3 text-left text-sm ${
+                  className={`rounded-md border p-3 text-left text-sm transition ${
                     selectedGalleryId === c.id
-                      ? "border-[#c9a9c0] bg-[#1a1218]"
-                      : "border-[#3d2a38] hover:border-[#4a3550]"
+                      ? "border-accent bg-accent-subtle"
+                      : "border-border-subtle hover:bg-surface-muted"
                   }`}
                 >
-                  <span className="font-semibold text-[#faf6f9]">{c.name}</span>
-                  <span className="mt-1 block text-xs text-[#8f7a88]">{c.description}</span>
-                  <span className="mt-1 block font-mono text-[10px] text-[#c9a9c0]">
+                  <span className="font-semibold text-ink">{c.name}</span>
+                  <span className="mt-1 block text-xs text-muted">{c.description}</span>
+                  <span className="mt-1 block font-mono text-[10px] text-accent">
                     Host: {c.host_slot}
                   </span>
                 </button>
               ))}
             </div>
-          </section>
+          </Card>
         )}
 
-        <section className="mt-8 border border-[#3d2a38] bg-[#0f1a16]/70 p-5">
-          <h2 className="font-[family-name:var(--font-display)] text-xl text-[#faf6f9]">
-            Describe your app
-          </h2>
-          <p className="mt-1 text-sm text-[#8f7a88]">
-            NL → robust ModuleSpec via Ollama ({aiEnabled ? "enabled" : "off"}
-            {ollamaDetail ? ` · ${ollamaDetail}` : ""}). Domain packs (e.g. car
-            rental) expand thin prompts even when AI is off. Draft never applies
-            until you click Generate UI.
+        <Card className="mb-6 p-5">
+          <h2 className="text-xl font-semibold text-ink">Describe your app</h2>
+          <p className="mt-1 text-sm text-muted">
+            NL → ModuleSpec via Ollama ({aiEnabled ? "enabled" : "off"}
+            {ollamaDetail ? ` · ${ollamaDetail}` : ""}). Draft never applies until Generate UI.
           </p>
-          <textarea
+          <Textarea
+            className="mt-3"
             value={nlPrompt}
             onChange={(e) => setNlPrompt(e.target.value)}
             rows={3}
             placeholder="Car rental fleet: vehicles, contracts, deposits, overdue returns…"
-            className="mt-3 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 text-sm"
           />
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-            <label className="text-[#a8909e]">
-              Grain override
-              <select
-                value={grainOverride}
-                onChange={(e) => setGrainOverride(e.target.value)}
-                className="ml-2 border border-[#3d2a38] bg-[#0c090b] px-2 py-1 text-xs"
-              >
-                <option value="">Auto-detect</option>
-                <option value="field_pack">Field pack</option>
-                <option value="feature_slice">Component / feature slice</option>
-                <option value="full_app">Full app</option>
-              </select>
-            </label>
-            {grainLabel && (
-              <span className="rounded border border-[#714B67] px-2 py-0.5 text-xs text-[#c9a9c0]">
-                Detected: {grainLabel}
-              </span>
-            )}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Select
+              label="Grain override"
+              options={[
+                { value: "", label: "Auto-detect" },
+                { value: "field_pack", label: "Field pack" },
+                { value: "feature_slice", label: "Component / feature slice" },
+                { value: "full_app", label: "Full app" },
+              ]}
+              value={grainOverride}
+              onChange={(e) => setGrainOverride(e.target.value)}
+            />
+            {grainLabel ? <Badge variant="info">Detected: {grainLabel}</Badge> : null}
           </div>
 
           <div className="mt-4">
@@ -555,25 +549,27 @@ export default function AppWizardPage() {
           </div>
 
           <div className="mt-3 flex flex-wrap gap-3">
-            <button
+            <Button
               type="button"
+              variant="primary"
               disabled={aiBusy || nlPrompt.trim().length < 3}
+              loading={aiBusy}
               onClick={() => onDraftFromPrompt()}
-              className="border border-[#c9a9c0] px-3 py-1.5 text-sm text-[#c9a9c0] disabled:opacity-50"
             >
-              {aiBusy ? "Drafting…" : "Draft ModuleSpec"}
-            </button>
-            <button
+              Draft ModuleSpec
+            </Button>
+            <Button
               type="button"
+              variant="secondary"
               disabled={!aiDraft || busy || !canGenerateUi}
               title={generateUiBlocked ?? undefined}
               onClick={() => void onPrepareGenerateUi()}
-              className="border border-[#c9a96e] px-3 py-1.5 text-sm text-[#c9a96e] disabled:opacity-50"
             >
               Generate UI from JSON
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="secondary"
               disabled={!aiDraft}
               onClick={() => {
                 if (!aiDraft) return;
@@ -597,52 +593,46 @@ export default function AppWizardPage() {
                 }
                 window.location.href = `/connections/${connectionId}/modulespec`;
               }}
-              className="border border-[#c9a9c0] px-3 py-1.5 text-sm text-[#c9a9c0] disabled:opacity-50"
             >
-              Open in ModuleSpec builder
-            </button>
-            <button
+              Open in ModuleSpec
+            </Button>
+            <Button
               type="button"
+              variant="ghost"
               onClick={() => {
                 setAiDraft(null);
                 setNlPrompt("");
                 setAiWarnings([]);
                 setAiNote("Use a template card below.");
               }}
-              className="text-sm text-[#8f7a88] hover:underline"
             >
               Clear draft
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => onExportLibraryWithFines()}
-              className="text-sm text-[#c9a9c0] hover:underline disabled:opacity-50"
-            >
-              Export library zip (fines=true)
-            </button>
-            {aiDraft && (
-              <SuggestTemplateButton
-                spec={aiDraft}
-                connectionId={connectionId}
-                disabled={aiBusy || busy}
-              />
-            )}
+            </Button>
           </div>
-          {aiDraft && generateUiBlocked && (
-            <p className="mt-3 text-sm text-[#e8d09f]">{generateUiBlocked}</p>
-          )}
-          {aiNote && <p className="mt-3 text-sm text-[#c9a9c0]">{aiNote}</p>}
-          {genUiResult && (
-            <p className="mt-2 text-sm text-[#c9a96e]">{genUiResult}</p>
-          )}
-          {aiWarnings.length > 0 && (
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-[#f0c090]">
-              {aiWarnings.slice(0, 12).map((w, i) => (
-                <li key={`${i}-${w}`}>{w}</li>
-              ))}
-            </ul>
-          )}
+          {aiDraft && generateUiBlocked ? (
+            <Callout variant="warning" title="Generate UI blocked" className="mt-3">
+              {generateUiBlocked}
+            </Callout>
+          ) : null}
+          {aiNote ? (
+            <Callout variant="info" title="Note" className="mt-3">
+              {aiNote}
+            </Callout>
+          ) : null}
+          {genUiResult ? (
+            <Callout variant="info" title="Generate UI" className="mt-2">
+              {genUiResult}
+            </Callout>
+          ) : null}
+          {aiWarnings.length > 0 ? (
+            <Callout variant="warning" title="Draft warnings" className="mt-2">
+              <ul className="list-disc space-y-1 pl-5">
+                {aiWarnings.slice(0, 12).map((w, i) => (
+                  <li key={`${i}-${w}`}>{w}</li>
+                ))}
+              </ul>
+            </Callout>
+          ) : null}
           {connectPoints && (
             <section className="mt-4 border border-[#3d2a38] bg-[#0c090b] p-4">
               <h3 className="text-sm font-semibold text-[#c9a9c0]">Connect points</h3>
@@ -727,14 +717,21 @@ export default function AppWizardPage() {
                   )}
                 </ul>
               ) : null}
-              <pre className="mt-2 max-h-64 overflow-auto border border-[#1e2f29] bg-[#0c090b] p-3 text-xs text-[#d4c4ce]">
-                {JSON.stringify(aiDraft, null, 2)}
-              </pre>
+              <CodeBlock
+                className="mt-2"
+                language="json"
+                code={JSON.stringify(aiDraft, null, 2)}
+              />
             </>
           )}
-        </section>
+        </Card>
 
-        {loading && <p className="mt-4 text-sm text-[#8f7a88]">Loading templates…</p>}
+        {loading ? (
+          <div className="mt-4 space-y-2">
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-24 w-full" />
+          </div>
+        ) : null}
         {error ? <ErrorNotice message={error} className="mt-4" /> : null}
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -754,52 +751,47 @@ export default function AppWizardPage() {
                   if (!canScaffold) return;
                   openConfirm(tpl);
                 }}
-                className={`border p-4 text-left transition ${
+                className={`rounded-md border p-4 text-left transition ${
                   !canScaffold
-                    ? "cursor-not-allowed border-[#3d2a38] bg-[#0f1a16]/40 opacity-50"
+                    ? "cursor-not-allowed border-border-subtle bg-surface-muted opacity-50"
                     : active
-                      ? "border-[#c9a9c0] bg-[#1a1218]"
-                      : "border-[#3d2a38] bg-[#0f1a16]/60 hover:border-[#4a3550]"
+                      ? "border-accent bg-accent-subtle"
+                      : "border-border-subtle bg-surface-raised hover:bg-surface-muted"
                 }`}
               >
-                <p className="font-[family-name:var(--font-display)] text-lg text-[#faf6f9]">
-                  {tpl.name}
-                </p>
-                <p className="mt-1 font-mono text-xs text-[#c9a9c0]">{tpl.id}</p>
-                <p className="mt-2 text-sm text-[#8f7a88]">{tpl.description}</p>
-                {blocked && (
-                  <p className="mt-2 text-xs text-[#e8d09f]">{blocked}</p>
-                )}
+                <p className="text-lg font-semibold text-ink">{tpl.name}</p>
+                <p className="mt-1 font-mono text-xs text-accent">{tpl.id}</p>
+                <p className="mt-2 text-sm text-muted">{tpl.description}</p>
+                {blocked ? (
+                  <p className="mt-2 text-xs text-warning">{blocked}</p>
+                ) : null}
               </button>
             );
           })}
         </div>
 
-        {result && (
-          <section
-            data-testid="scaffold-result"
-            className="mt-8 border border-[#3d2a38] bg-[#0f1a16]/70 p-5"
-          >
-            <h2 className="font-[family-name:var(--font-display)] text-xl text-[#faf6f9]">
-              Scaffold result
-            </h2>
-            <p className="mt-2 text-sm text-[#c9a9c0]">
+        {result ? (
+          <Card className="mt-8 p-5" data-testid="scaffold-result">
+            <h2 className="text-xl font-semibold text-ink">Scaffold result</h2>
+            <p className="mt-2 text-sm text-ink">
               {result.ok ? "OK" : "Partial"} · {result.message}
             </p>
-            <p className="mt-1 text-sm text-[#8f7a88]">
-              Template <code className="text-[#c9a9c0]">{result.template_id}</code> ·{" "}
+            <p className="mt-1 text-sm text-muted">
+              Template <code className="font-mono text-accent">{result.template_id}</code> ·{" "}
               {result.fields_created} fields created
               {typeof result.view_injects === "number"
                 ? ` · ${result.view_injects} view inject(s)`
                 : ""}
             </p>
-            {result.warnings && result.warnings.length > 0 && (
-              <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-[#f0c090]">
-                {result.warnings.map((w, i) => (
-                  <li key={`${i}-${w}`}>{w}</li>
-                ))}
-              </ul>
-            )}
+            {result.warnings && result.warnings.length > 0 ? (
+              <Callout variant="warning" title="Warnings" className="mt-3">
+                <ul className="list-disc space-y-1 pl-5">
+                  {result.warnings.map((w, i) => (
+                    <li key={`${i}-${w}`}>{w}</li>
+                  ))}
+                </ul>
+              </Callout>
+            ) : null}
 
             <ol
               data-testid="scaffold-checklist"
@@ -900,23 +892,16 @@ export default function AppWizardPage() {
                 <li className="text-[#8f7a88]">No models reported.</li>
               )}
             </ul>
-            <div className="mt-4 flex flex-wrap gap-3 text-sm">
-              <Link
-                href={`/connections/${connectionId}`}
-                className="border border-[#c9a9c0] px-3 py-1.5 text-[#c9a9c0]"
-              >
-                Back to connection
-              </Link>
-              <Link
-                href={`/connections/${connectionId}/builder`}
-                className="bg-[#714B67] px-3 py-1.5 font-semibold text-white"
-              >
-                Open builder
-              </Link>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button variant="secondary" asChild>
+                <Link href={`/connections/${connectionId}`}>Back to overview</Link>
+              </Button>
+              <Button variant="primary" asChild>
+                <Link href={`/connections/${connectionId}/builder`}>Open builder</Link>
+              </Button>
             </div>
-          </section>
-        )}
-      </div>
+          </Card>
+        ) : null}
 
       <ConfirmDialog
         open={confirmOpen}
@@ -962,6 +947,6 @@ export default function AppWizardPage() {
           void onGenerateUiFromDraft(phrase, forceSkip);
         }}
       />
-    </main>
+    </div>
   );
 }

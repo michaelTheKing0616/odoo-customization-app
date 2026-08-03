@@ -19,6 +19,16 @@ import {
   DeploymentPanel,
 } from "@/lib/api";
 import { JobPollError, pollJob } from "@/lib/jobs";
+import { Button } from "@/components/ui/Button";
+import { Callout } from "@/components/ui/Callout";
+import { DataTable, type DataTableColumn } from "@/components/ui/DataTable";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Card, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
+import { StatusPill } from "@/components/ui/StatusPill";
+import { Badge } from "@/components/ui/Badge";
+import { CodeBlock } from "@/components/ui/CodeBlock";
 
 type Tab = "modules" | "models" | "fields" | "views";
 
@@ -462,171 +472,118 @@ export default function BrowserPage() {
     { id: "views", label: "Views" },
   ];
 
+  const moduleColumns: DataTableColumn<ModuleRow>[] = [
+    {
+      id: "label",
+      header: "Name",
+      accessor: (m) => m.shortdesc ?? m.name,
+      sortValue: (m) => m.shortdesc ?? m.name,
+    },
+    {
+      id: "name",
+      header: "Technical",
+      accessor: (m) => <span className="font-mono text-accent">{m.name}</span>,
+      sortValue: (m) => m.name,
+    },
+    {
+      id: "state",
+      header: "State",
+      accessor: (m) => m.state ?? "—",
+      sortValue: (m) => m.state ?? "",
+    },
+  ];
+
+  const modelColumns: DataTableColumn<ModelRow>[] = [
+    {
+      id: "label",
+      header: "Label",
+      accessor: (m) => m.name,
+      sortValue: (m) => m.name,
+    },
+    {
+      id: "model",
+      header: "Model",
+      accessor: (m) => <span className="font-mono text-accent">{m.model}</span>,
+      sortValue: (m) => m.model,
+    },
+    {
+      id: "state",
+      header: "State",
+      accessor: (m) => m.state ?? "—",
+      sortValue: (m) => m.state ?? "",
+    },
+  ];
+
+  const fieldColumns: DataTableColumn<FieldRow>[] = [
+    {
+      id: "label",
+      header: "Label",
+      accessor: (f) => f.field_description,
+      sortValue: (f) => f.field_description,
+    },
+    {
+      id: "name",
+      header: "Name",
+      accessor: (f) => <span className="font-mono text-accent">{f.name}</span>,
+      sortValue: (f) => f.name,
+    },
+    {
+      id: "type",
+      header: "Type",
+      accessor: (f) => (
+        <>
+          {f.ttype}
+          {f.relation ? ` → ${f.relation}` : ""}
+        </>
+      ),
+      sortValue: (f) => f.ttype,
+    },
+    {
+      id: "flags",
+      header: "Flags",
+      accessor: (f) => (
+        <span className="text-muted">
+          {[f.required && "required", f.readonly && "readonly", f.state]
+            .filter(Boolean)
+            .join(", ") || "—"}
+        </span>
+      ),
+    },
+  ];
+
   return (
-    <main className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#3d2a38_0%,_#1a1218_50%,_#0c090b_100%)] px-6 py-10 text-[#f4eef2]">
-      <div className="mx-auto max-w-6xl">
-        <div className="mt-4 flex flex-wrap items-center gap-4">
-          <Link href="/connect" className="text-sm text-[#c9a9c0] hover:underline">
-            ← Connections
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/wizard`}
-            className="text-sm text-[#c9a9c0] hover:underline"
-          >
-            Wizard
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/builder`}
-            className="text-sm text-[#c9a9c0] hover:underline"
-          >
-            Builder
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/projects`}
-            className="text-sm text-[#c9a9c0] hover:underline"
-          >
-            Drafts
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/modulespec`}
-            className="text-sm text-[#c9a9c0] hover:underline"
-          >
-            ModuleSpec
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/designer`}
-            className="text-sm text-[#c9a9c0] hover:underline"
-          >
-            View designer
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/automations`}
-            className="text-sm text-[#c9a9c0] hover:underline"
-          >
-            Automations
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/approvals`}
-            className="text-sm text-[#c9a9c0] hover:underline"
-          >
-            Approvals
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/approvals`}
-            className="text-sm text-[#c9a9c0] hover:underline"
-          >
-            Approvals
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/access`}
-            className="text-sm text-[#c9a9c0] hover:underline"
-          >
-            Access
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/reminders`}
-            className="text-sm text-[#c9a9c0] hover:underline"
-          >
-            Reminders
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/import`}
-            className="text-sm text-[#c9a9c0] hover:underline"
-          >
-            Bulk import
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/id-generator`}
-            className="text-sm text-[#c9a9c0] hover:underline"
-          >
-            ID Generator
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/id-generator`}
-            className="text-sm text-[#c9a9c0] hover:underline"
-          >
-            ID Generator
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/power-ops`}
-            className="text-sm font-semibold text-[#c9a9c0] hover:underline"
-          >
-            Power Ops
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/bulk-suite`}
-            className="text-sm text-[#c9a9c0] hover:underline"
-          >
-            Bulk Suite
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/cron-manager`}
-            className="text-sm text-[#c9a9c0] hover:underline"
-          >
-            Cron Manager
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/housekeeping`}
-            className="text-sm text-[#c9a9c0] hover:underline"
-          >
-            Housekeeping
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/bulk-suite`}
-            className="text-sm text-[#c9a9c0] hover:underline"
-          >
-            Bulk Suite
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/cron-manager`}
-            className="text-sm text-[#c9a9c0] hover:underline"
-          >
-            Cron Manager
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/housekeeping`}
-            className="text-sm text-[#c9a9c0] hover:underline"
-          >
-            Housekeeping
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/journal`}
-            className="text-sm text-[#c9a9c0] hover:underline"
-          >
-            Change journal
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/config`}
-            className="text-sm text-[#c9a9c0] hover:underline"
-          >
-            Settings
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/menus`}
-            className="text-sm text-[#c9a9c0] hover:underline"
-          >
-            Menus
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/reports`}
-            className="text-sm text-[#c9a9c0] hover:underline"
-          >
-            Reports
-          </Link>
-          <Link href="/pipelines" className="text-sm text-[#c9a9c0] hover:underline">
-            Multi-env promote
-          </Link>
+    <div className="mx-auto max-w-6xl" data-testid="connection-overview">
+      <PageHeader
+        title="Overview"
+        description={
+          connection
+            ? `${connection.name} · ${connection.url} · ${connection.server_version ?? "version unknown"}`
+            : connectionId
+        }
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="primary" size="sm" asChild>
+              <Link href={`/connections/${connectionId}/builder`}>Build</Link>
+            </Button>
+            <Button variant="secondary" size="sm" asChild>
+              <Link href={`/connections/${connectionId}/wizard`}>Draft Studio</Link>
+            </Button>
+            <Button variant="ghost" size="sm" asChild>
+              <Link href={`/connections/${connectionId}/journal`}>Journal</Link>
+            </Button>
+          </div>
+        }
+      />
+
+      {connection ? (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          {connection.capabilities?.ga ? <StatusPill kind="ga" /> : null}
+          {!connection.capabilities?.ga ? <StatusPill kind="experimental" /> : null}
+          {connection.capabilities?.edition ? (
+            <Badge variant="info">{connection.capabilities.edition}</Badge>
+          ) : null}
         </div>
-        <h1 className="mt-4 font-[family-name:var(--font-display)] text-3xl text-[#faf6f9]">
-          Metadata browser
-        </h1>
-        <p className="mt-1 text-sm text-[#8f7a88]">
-          {connection
-            ? `${connection.name} · ${connection.url} · ${connection.server_version ?? ""}`
-            : connectionId}
-          {" · "}
-          read-only
-        </p>
+      ) : null}
         {connection && (
           <CapabilityProbePanel
             capabilities={connection.capabilities}
@@ -659,61 +616,67 @@ export default function BrowserPage() {
             }}
           />
         )}
+
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            { label: "Models", value: models.length },
+            { label: "Apps", value: modules.length },
+            { label: "Promoted", value: promoted.length },
+            { label: "Fields (current)", value: tab === "fields" ? fields.length : "—" },
+          ].map((stat) => (
+            <Card key={stat.label} className="p-4">
+              <p className="text-xs text-muted">{stat.label}</p>
+              <p className="mt-1 text-2xl font-semibold text-ink">{stat.value}</p>
+            </Card>
+          ))}
+        </div>
         <EePlaybooksPanel connectionId={connectionId} className="mt-3" />
         <DomainPlaybooksPanel connectionId={connectionId} className="mt-3" />
         <StudioFeatureRecipesPanel className="mt-3" />
 
         {libraryStats?.available && (
-          <div className="mt-6 flex flex-wrap gap-6 border border-[#3d2a38] bg-[#0f1a16]/60 px-4 py-3 text-sm">
-            <span className="text-[#a8909e]">Library</span>
+          <Card className="mt-6 flex flex-wrap gap-6 p-4 text-sm">
+            <span className="font-medium text-ink">Library</span>
             <span>
-              <span className="text-[#8f7a88]">Books </span>
-              <span className="font-mono text-[#c9a9c0]">{libraryStats.books ?? "—"}</span>
+              <span className="text-muted">Books </span>
+              <span className="font-mono text-accent">{libraryStats.books ?? "—"}</span>
             </span>
             <span>
-              <span className="text-[#8f7a88]">Loans </span>
-              <span className="font-mono text-[#c9a9c0]">{libraryStats.loans ?? "—"}</span>
+              <span className="text-muted">Loans </span>
+              <span className="font-mono text-accent">{libraryStats.loans ?? "—"}</span>
             </span>
             <span>
-              <span className="text-[#8f7a88]">Active </span>
-              <span className="font-mono text-[#c9a9c0]">
-                {libraryStats.active_loans ?? "—"}
-              </span>
+              <span className="text-muted">Active </span>
+              <span className="font-mono text-accent">{libraryStats.active_loans ?? "—"}</span>
             </span>
             <span>
-              <span className="text-[#8f7a88]">Overdue </span>
-              <span className="font-mono text-[#f0a8a0]">
-                {libraryStats.overdue_loans ?? "—"}
-              </span>
+              <span className="text-muted">Overdue </span>
+              <span className="font-mono text-danger">{libraryStats.overdue_loans ?? "—"}</span>
             </span>
-          </div>
+          </Card>
         )}
 
-        <div className="mt-8 flex flex-wrap gap-2 border-b border-[#3d2a38] pb-3">
+        <div className="mt-8 flex flex-wrap gap-2 border-b border-border-subtle pb-3">
           {tabs.map((t) => (
-            <button
+            <Button
               key={t.id}
               type="button"
+              variant={tab === t.id ? "primary" : "secondary"}
+              size="sm"
               onClick={() => setTab(t.id)}
-              className={`px-3 py-1.5 text-sm ${
-                tab === t.id
-                  ? "bg-[#714B67] text-white"
-                  : "border border-[#3d2a38] text-[#d4c4ce]"
-              }`}
             >
               {t.label}
-            </button>
+            </Button>
           ))}
         </div>
 
         {(tab === "fields" || tab === "views") && (
-          <label className="mt-4 block max-w-md text-sm">
-            <span className="text-[#a8909e]">Model</span>
-            <input
+          <div className="mt-4 max-w-md">
+            <Input
+              label="Model"
               list="model-options"
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value)}
-              className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
             />
             <datalist id="model-options">
               {models.slice(0, 500).map((m) => (
@@ -722,14 +685,20 @@ export default function BrowserPage() {
                 </option>
               ))}
             </datalist>
-          </label>
+          </div>
         )}
 
-        {error && <p className="mt-4 text-sm text-[#f0a8a0]">{error}</p>}
-        {exportNotice && <p className="mt-4 text-sm text-[#c9a9c0]">{exportNotice}</p>}
-        {suggestNotice && (
-          <p className="mt-4 text-sm text-[#c9a9c0]">{suggestNotice}</p>
-        )}
+        {error ? <ErrorNotice message={error} className="mt-4" /> : null}
+        {exportNotice ? (
+          <Callout variant="info" title="Export" className="mt-4">
+            {exportNotice}
+          </Callout>
+        ) : null}
+        {suggestNotice ? (
+          <Callout variant="info" title="Depends" className="mt-4">
+            {suggestNotice}
+          </Callout>
+        ) : null}
         {jobBanner && (
           <div
             className="mt-4 flex flex-wrap items-center gap-3 border border-[#3d2a38] bg-[#1a1218]/80 px-3 py-2 text-sm text-[#c9a9c0]"
@@ -758,21 +727,18 @@ export default function BrowserPage() {
             </pre>
           </details>
         )}
-        {loading && <p className="mt-4 text-sm text-[#8f7a88]">Loading…</p>}
+        {loading ? (
+          <div className="mt-4 space-y-2">
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+          </div>
+        ) : null}
 
-        <section className="mt-8 border border-[#3d2a38] bg-[#0f1a16]/60 p-5">
-          <h2 className="font-[family-name:var(--font-display)] text-xl text-[#faf6f9]">
-            Export, sandbox &amp; promote
-          </h2>
-          <p className="mt-1 text-sm text-[#8f7a88]">
-            Package new <code className="text-[#c9a9c0]">x_*</code> models and/or extensions to
-            stock models (inherit) → sandbox → promote after validation + confirm. One zip per
-            connection major (manifest{" "}
-            {connection?.capabilities?.major
-              ? `${connection.capabilities.major}.0.x`
-              : "from probe"}
-            ). Local sandbox uses matching-major Docker (odoo:16–19) on :18069.
-            See <span className="text-[#c9a9c0]">skills/module-interop.md</span>.
+        <Card className="mt-8 p-5">
+          <h2 className="text-xl font-semibold text-ink">Export, sandbox &amp; promote</h2>
+          <p className="mt-1 text-sm text-muted">
+            Package new <code className="font-mono text-accent">x_*</code> models and/or extensions to
+            stock models (inherit) → sandbox → promote after validation + confirm.
           </p>
           {deploymentPanel ? (
             <div
@@ -900,36 +866,28 @@ export default function BrowserPage() {
             </div>
           ) : null}
           <div className="mt-4 flex flex-wrap items-end gap-3">
-            <label className="text-sm">
-              <span className="text-[#a8909e]">Technical name</span>
-              <input
-                value={techName}
-                onChange={(e) => setTechName(e.target.value)}
-                className="mt-1 block w-48 border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
-              />
-            </label>
-            <label className="text-sm">
-              <span className="text-[#a8909e]">Display name</span>
-              <input
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                className="mt-1 block w-56 border border-[#3d2a38] bg-[#0c090b] px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="text-sm">
-              <span className="text-[#a8909e]">Install mode</span>
-              <select
-                value={installMode}
-                onChange={(e) =>
-                  setInstallMode(e.target.value as "python" | "data")
-                }
-                className="mt-1 block border border-[#3d2a38] bg-[#0c090b] px-3 py-2 text-sm"
-              >
-                <option value="python">python (local Docker)</option>
-                <option value="data">data (remote import)</option>
-              </select>
-            </label>
-            <label className="flex items-center gap-2 text-sm text-[#d4c4ce]">
+            <Input
+              label="Technical name"
+              value={techName}
+              onChange={(e) => setTechName(e.target.value)}
+              className="w-48"
+            />
+            <Input
+              label="Display name"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              className="w-56"
+            />
+            <Select
+              label="Install mode"
+              options={[
+                { value: "python", label: "python (local Docker)" },
+                { value: "data", label: "data (remote import)" },
+              ]}
+              value={installMode}
+              onChange={(e) => setInstallMode(e.target.value as "python" | "data")}
+            />
+            <label className="flex items-center gap-2 text-sm text-ink">
               <input
                 type="checkbox"
                 checked={includeExtensions}
@@ -937,55 +895,46 @@ export default function BrowserPage() {
               />
               Include stock-model extensions
             </label>
-            <label className="text-sm">
-              <span className="text-[#a8909e]">Extend models</span>
-              <input
-                value={extendModels}
-                onChange={(e) => setExtendModels(e.target.value)}
-                placeholder="res.partner, sale.order"
-                className="mt-1 block w-64 border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
-              />
-            </label>
-            <label className="flex items-center gap-2 text-sm text-[#d4c4ce]">
+            <Input
+              label="Extend models"
+              value={extendModels}
+              onChange={(e) => setExtendModels(e.target.value)}
+              placeholder="res.partner, sale.order"
+              className="w-64 font-mono"
+            />
+            <label className="flex items-center gap-2 text-sm text-ink">
               <input
                 type="checkbox"
                 checked={storeReadyExport}
                 onChange={(e) => setStoreReadyExport(e.target.checked)}
               />
-              Apps Store packaging assist (icon, listing page, readiness report)
+              Apps Store packaging assist
             </label>
-            <label className="flex items-center gap-2 text-sm text-[#d4c4ce]">
-              <input
-                type="checkbox"
-                checked={storeReadyExport}
-                onChange={(e) => setStoreReadyExport(e.target.checked)}
-              />
-              Apps Store packaging assist (icon, listing page, readiness report)
-            </label>
-            <button
+            <Button
               type="button"
+              variant="secondary"
               disabled={exportBusy}
               onClick={onExportModule}
-              className="h-10 border border-[#c9a9c0] px-4 text-sm text-[#c9a9c0] disabled:opacity-60"
             >
               Download zip
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="primary"
+              loading={exportBusy}
               disabled={exportBusy}
               onClick={onSandboxRun}
-              className="h-10 bg-[#714B67] px-4 text-sm font-semibold text-white disabled:opacity-60"
             >
-              {exportBusy ? "Running…" : "Sandbox install"}
-            </button>
-            <button
+              Sandbox install
+            </Button>
+            <Button
               type="button"
+              variant="secondary"
               disabled={exportBusy || !validationId}
               onClick={() => setShowPromoteConfirm(true)}
-              className="h-10 border border-[#f0c090] px-4 text-sm text-[#f0c090] disabled:opacity-40"
             >
               Promote to connection
-            </button>
+            </Button>
           </div>
           <div className="mt-4 w-full max-w-2xl">
             <div className="flex flex-wrap items-center gap-3">
@@ -1104,13 +1053,11 @@ export default function BrowserPage() {
               </div>
             </div>
           )}
-        </section>
+        </Card>
 
-        <section className="mt-6 border border-[#3d2a38] bg-[#0f1a16]/40 p-5">
-          <h2 className="font-[family-name:var(--font-display)] text-xl text-[#faf6f9]">
-            Promoted modules
-          </h2>
-          <p className="mt-1 text-sm text-[#8f7a88]">
+        <Card className="mt-6 p-5">
+          <h2 className="text-xl font-semibold text-ink">Promoted modules</h2>
+          <p className="mt-1 text-sm text-muted">
             History of modules installed via promote. Uninstall requires confirmation.
           </p>
           <ul className="mt-4 space-y-2 text-sm">
@@ -1178,109 +1125,66 @@ export default function BrowserPage() {
               </div>
             </div>
           )}
-        </section>
+        </Card>
 
-        {!loading && tab === "modules" && (
-          <table className="mt-6 w-full text-left text-sm">
-            <thead className="text-[#8f7a88]">
-              <tr>
-                <th className="py-2 pr-4">Name</th>
-                <th className="py-2 pr-4">Technical</th>
-                <th className="py-2">State</th>
-              </tr>
-            </thead>
-            <tbody>
-              {modules.map((m) => (
-                <tr key={m.id} className="border-t border-[#1e2f29]">
-                  <td className="py-2 pr-4">{m.shortdesc ?? m.name}</td>
-                  <td className="py-2 pr-4 font-mono text-[#c9a9c0]">{m.name}</td>
-                  <td className="py-2">{m.state}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        {!loading && tab === "modules" ? (
+          <div className="mt-6">
+            <DataTable
+              columns={moduleColumns}
+              rows={modules}
+              rowKey={(m) => String(m.id)}
+            />
+          </div>
+        ) : null}
 
-        {!loading && tab === "models" && (
-          <>
-            <input
+        {!loading && tab === "models" ? (
+          <div className="mt-6 space-y-4">
+            <Input
+              placeholder="Filter models…"
               value={modelQuery}
               onChange={(e) => setModelQuery(e.target.value)}
-              placeholder="Filter models…"
-              className="mt-4 w-full max-w-md border border-[#3d2a38] bg-[#0c090b] px-3 py-2 text-sm"
+              className="max-w-md"
             />
-            <table className="mt-4 w-full text-left text-sm">
-              <thead className="text-[#8f7a88]">
-                <tr>
-                  <th className="py-2 pr-4">Label</th>
-                  <th className="py-2 pr-4">Model</th>
-                  <th className="py-2">State</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredModels.map((m) => (
-                  <tr key={m.id} className="border-t border-[#1e2f29]">
-                    <td className="py-2 pr-4">{m.name}</td>
-                    <td className="py-2 pr-4 font-mono text-[#c9a9c0]">{m.model}</td>
-                    <td className="py-2">{m.state}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </>
-        )}
+            <DataTable
+              columns={modelColumns}
+              rows={filteredModels}
+              rowKey={(m) => String(m.id)}
+            />
+          </div>
+        ) : null}
 
-        {!loading && tab === "fields" && (
-          <table className="mt-6 w-full text-left text-sm">
-            <thead className="text-[#8f7a88]">
-              <tr>
-                <th className="py-2 pr-4">Label</th>
-                <th className="py-2 pr-4">Name</th>
-                <th className="py-2 pr-4">Type</th>
-                <th className="py-2">Flags</th>
-              </tr>
-            </thead>
-            <tbody>
-              {fields.map((f) => (
-                <tr key={f.id} className="border-t border-[#1e2f29]">
-                  <td className="py-2 pr-4">{f.field_description}</td>
-                  <td className="py-2 pr-4 font-mono text-[#c9a9c0]">{f.name}</td>
-                  <td className="py-2 pr-4">
-                    {f.ttype}
-                    {f.relation ? ` → ${f.relation}` : ""}
-                  </td>
-                  <td className="py-2 text-[#8f7a88]">
-                    {[f.required && "required", f.readonly && "readonly", f.state]
-                      .filter(Boolean)
-                      .join(", ")}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        {!loading && tab === "fields" ? (
+          <div className="mt-6">
+            <DataTable
+              columns={fieldColumns}
+              rows={fields}
+              rowKey={(f) => String(f.id)}
+            />
+          </div>
+        ) : null}
 
-        {!loading && tab === "views" && (
+        {!loading && tab === "views" ? (
           <ul className="mt-6 space-y-4">
             {views.map((v) => (
-              <li key={v.id} className="border border-[#3d2a38] p-4">
-                <p className="font-medium">
+              <Card key={v.id} className="p-4">
+                <p className="font-medium text-ink">
                   {v.name}{" "}
-                  <span className="text-[#8f7a88]">
+                  <span className="text-muted">
                     · {v.type} · #{v.id}
                   </span>
                 </p>
-                <pre className="mt-3 max-h-64 overflow-auto bg-[#0c090b] p-3 text-xs text-[#d4c4ce]">
-                  {v.arch ?? "(no arch)"}
-                </pre>
-              </li>
+                <CodeBlock
+                  className="mt-3"
+                  language="xml"
+                  code={v.arch ?? "(no arch)"}
+                />
+              </Card>
             ))}
-            {views.length === 0 && (
-              <li className="text-sm text-[#8f7a88]">No views for this model.</li>
-            )}
+            {views.length === 0 ? (
+              <p className="text-sm text-muted">No views for this model.</p>
+            ) : null}
           </ul>
-        )}
-      </div>
-    </main>
+        ) : null}
+    </div>
   );
 }
