@@ -22,6 +22,7 @@ from app.db import get_db
 from app.entitlements import (
     WorkspaceEntitlements,
     count_active_projects,
+    plan_feature_diff,
     resolve_entitlements,
     seed_plan_features,
 )
@@ -54,6 +55,12 @@ class EntitlementsOut(BaseModel):
     active_project_limit: int | None
     trial_ends_at: str | None = None
     current_period_end: str | None = None
+
+
+@router.get("/plan-diff")
+def get_plan_diff(from_plan: str, to_plan: str = "free_solo", db: Session = Depends(get_db)) -> dict:
+    lost = plan_feature_diff(db, from_plan, to_plan)
+    return {"from_plan": from_plan, "to_plan": to_plan, "lost_features": lost}
 
 
 @router.get("/entitlements", response_model=EntitlementsOut)

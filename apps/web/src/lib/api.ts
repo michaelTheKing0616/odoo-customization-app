@@ -993,6 +993,10 @@ export const api = {
     }),
   billingEntitlements: () => request<EntitlementsOut>("/api/billing/entitlements"),
   billingPlans: () => request<Array<{ id: string; display_name: string; features: Record<string, string> }>>("/api/billing/plans"),
+  billingPlanDiff: (fromPlan: string, toPlan = "free_solo") =>
+    request<{ from_plan: string; to_plan: string; lost_features: Array<{ feature_key: string; from: string; to: string }> }>(
+      `/api/billing/plan-diff?from_plan=${encodeURIComponent(fromPlan)}&to_plan=${encodeURIComponent(toPlan)}`,
+    ),
   stripeCheckout: (body: {
     plan_id: string;
     seat_quantity: number;

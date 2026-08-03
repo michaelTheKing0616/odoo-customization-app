@@ -172,6 +172,52 @@ def grant_plan(
     return {"workspace_id": ws.id, "plan_id": body.plan_id}
 
 
+@router.post("/users/{user_id}/deactivate", status_code=204)
+def deactivate_user(
+    user_id: str,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> None:
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.email_verified = False
+    user.locked_until = datetime(2099, 1, 1, tzinfo=timezone.utc)
+    db.add(user)
+    _audit(db, method="POST", path=f"/api/admin/users/{user_id}/deactivate", status_code=204, actor=admin.email, detail="deactivate")
+    db.commit()
+
+
+@router.get("/feature-flags")
+def list_feature_flags(_admin: User = Depends(require_superadmin), db: Session = Depends(get_db)) -> list[dict]:
+    from app.billing_models import FeatureFlag
+
+    rows = db.query(FeatureFlag).order_by(FeatureFlag.key).all()
+    return [{"key": r.key, "enabled": r.enabled} for r in rows]
+
+
+@router.put("/feature-flags/{key}")
+def set_feature_flag(
+    key: str,
+    body: dict[str, bool],
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    from app.billing_models import FeatureFlag
+
+    row = db.get(FeatureFlag, key)
+    enabled = bool(body.get("enabled", True))
+    if row is None:
+        row = FeatureFlag(key=key, enabled=enabled)
+        db.add(row)
+    else:
+        row.enabled = enabled
+        db.add(row)
+    _audit(db, method="PUT", path=f"/api/admin/feature-flags/{key}", status_code=200, actor=admin.email, detail=str(enabled))
+    db.commit()
+    return {"key": key, "enabled": str(enabled)}
+
+
 @router.get("/billing-events")
 def billing_events(
     _admin: User = Depends(require_superadmin),

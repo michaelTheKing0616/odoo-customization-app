@@ -10,6 +10,7 @@ import { Kbd } from "@/components/ui/layout-primitives";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import { useShell } from "@/context/ShellContext";
 import { breadcrumbForPath } from "@/lib/nav";
+import { WorkspacePlanBadge } from "@/components/billing/WorkspacePlanBadge";
 import type { Connection } from "@/lib/api";
 
 type Props = {
@@ -55,6 +56,7 @@ export function TopBar({ connection, connections, pathname }: Props) {
               <Badge>{caps.hosting_hint.replace("_", " ")}</Badge>
             ) : null}
             {caps?.edition ? <Badge>{caps.edition}</Badge> : null}
+            <WorkspacePlanBadge />
           </div>
         </div>
         <div className="flex items-center gap-2">

@@ -55,3 +55,48 @@ def test_admin_forbidden_for_non_superadmin(monkeypatch: pytest.MonkeyPatch) -> 
         client.post("/api/accounts/login", json={"email": email, "password": "user-pass-99"})
         res = client.get("/api/admin/users")
         assert res.status_code == 403
+
+
+def test_admin_feature_flags_and_deactivate(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "auth_mode", "accounts")
+    monkeypatch.setattr(settings, "rate_limit_per_minute", 0)
+    admin_email = f"admin-{uuid.uuid4().hex[:6]}@test.local"
+    monkeypatch.setattr(settings, "app_admin_email", admin_email)
+    monkeypatch.setattr(settings, "app_admin_password", "admin-pass-99-xyz")
+    init_db()
+    db = SessionLocal()
+    try:
+        for u in db.query(User).filter(User.is_superadmin.is_(True)).all():
+            db.delete(u)
+        db.commit()
+        assert bootstrap_superadmin_from_env(db) is True
+    finally:
+        db.close()
+
+    victim_email = f"victim-{uuid.uuid4().hex[:8]}@example.com"
+    db = SessionLocal()
+    try:
+        victim, _, _ = signup_user(db, email=victim_email, password="victim-pass-99")
+        victim.email_verified = True
+        db.add(victim)
+        db.commit()
+        victim_id = victim.id
+    finally:
+        db.close()
+
+    with TestClient(app) as client:
+        login_admin = client.post("/api/accounts/login", json={"email": admin_email, "password": "admin-pass-99-xyz"})
+        assert login_admin.status_code == 200
+        flags = client.get("/api/admin/feature-flags")
+        assert flags.status_code == 200
+        client.put("/api/admin/feature-flags/designer", json={"enabled": False})
+        deactivate = client.post(f"/api/admin/users/{victim_id}/deactivate")
+        assert deactivate.status_code == 204
+
+    db = SessionLocal()
+    try:
+        victim = db.get(User, victim_id)
+        assert victim is not None
+        assert victim.locked_until is not None
+    finally:
+        db.close()

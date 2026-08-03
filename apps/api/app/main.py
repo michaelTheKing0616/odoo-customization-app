@@ -80,6 +80,9 @@ async def lifespan(_app: FastAPI):
         from app.admin_bootstrap import bootstrap_superadmin_from_env
 
         bootstrap_superadmin_from_env(db)
+        from app.billing_jobs import run_billing_jobs_on_boot
+
+        run_billing_jobs_on_boot(db)
     finally:
         db.close()
     yield

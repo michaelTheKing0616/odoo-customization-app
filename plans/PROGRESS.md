@@ -88,3 +88,7 @@ CHECKLIST. Claiming done without both updated = failed card.
 - [x] MON-2 Billing: Stripe + Paystack, entitlements, feature gating
 - [x] MON-3 Admin console + internal-plan bootstrap (env-seeded admin)
 - [x] MON-4 Pricing page + upgrade/trial UX
+
+## Wave 10 — LAUNCH (post-monetization)
+- [x] LAUNCH-1 Deploy smoke script + DEPLOY.md operator checklist
+- [x] LAUNCH-2 Operator runbook (`docs/OPERATOR.md`)

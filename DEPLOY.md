@@ -39,6 +39,34 @@ The deploy profile starts **api + web + app-db** only. It does **not** replace t
 
 Back up the `deploy-app-db-data` volume before upgrades (app metadata, connections, audit rows — not customer Odoo DBs).
 
+## LAUNCH-1 — Post-deploy smoke
+
+After `docker compose … up` (or any deploy), run from the repo root:
+
+```bash
+chmod +x scripts/launch_smoke.sh
+API_URL=http://127.0.0.1:8000 WEB_URL=http://127.0.0.1:3000 bash scripts/launch_smoke.sh
+```
+
+The script checks:
+
+1. `GET /health` — API + database connectivity
+2. `GET /api/billing/plans` — public billing registry (no auth)
+3. Web `/pricing` and `/` — HTTP 200
+
+Exit code is non-zero on any failure (CI-friendly). When the stack is not running, skip or expect failure — do not treat as a code defect.
+
+### Accounts + billing env (Wave 9)
+
+| Var | Notes |
+|-----|-------|
+| `AUTH_MODE` | `accounts` for SaaS; `api_key` for programmatic-only deploys |
+| `APP_ADMIN_EMAIL` / `APP_ADMIN_PASSWORD` | Bootstrap superadmin once (never commit) |
+| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Optional until live checkout; test keys for checkout smoke |
+| `PAYSTACK_SECRET_KEY` | Optional NGN path |
+| `BUSINESS_TRIAL_ENABLED` | Default `true` — 14-day business trial on new workspaces |
+| Alembic | Run migrations before first traffic: `uv run alembic upgrade head` in `apps/api` |
+
 ## Required before exposing the API
 
 1. Set a real Fernet key (never `dev-only-*` outside local):

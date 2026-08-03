@@ -116,6 +116,8 @@ class Settings(BaseSettings):
     paystack_secret_key: str = ""
     paystack_price_pro_kobo: int = 0
     paystack_price_business_kobo: int = 0
+    business_trial_enabled: bool = True
+    business_trial_days: int = 14
 
     @property
     def cors_origin_list(self) -> list[str]:

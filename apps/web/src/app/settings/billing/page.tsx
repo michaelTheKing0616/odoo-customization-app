@@ -24,9 +24,16 @@ function BillingContent() {
   const { openUpgrade } = useUpgrade();
   const [error, setError] = useState<string | null>(null);
   const [portalBusy, setPortalBusy] = useState(false);
+  const [lostFeatures, setLostFeatures] = useState<Array<{ feature_key: string; from: string; to: string }>>([]);
 
   const trialDays = daysUntil(data?.trial_ends_at ?? null);
   const showTrialBanner = trialDays != null && trialDays <= 3 && trialDays >= 0;
+
+  useEffect(() => {
+    if (data?.plan_id && data.plan_id !== "free_solo") {
+      api.billingPlanDiff(data.plan_id, "free_solo").then((r) => setLostFeatures(r.lost_features)).catch(() => setLostFeatures([]));
+    }
+  }, [data?.plan_id]);
 
   async function openPortal() {
     setPortalBusy(true);
@@ -117,6 +124,15 @@ function BillingContent() {
           Downgrading re-gates build features (designer, automations, export). Operate tools stay available. Your
           connections and project history remain.
         </p>
+        {lostFeatures.length > 0 ? (
+          <ul className="mt-3 list-inside list-disc text-sm text-muted">
+            {lostFeatures.slice(0, 8).map((f) => (
+              <li key={f.feature_key}>
+                {f.feature_key}: {f.from} → {f.to}
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <Button variant="ghost" className="mt-3" onClick={openPortal}>
           Change plan in portal
         </Button>

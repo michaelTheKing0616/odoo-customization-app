@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import Depends, HTTPException, Request
@@ -131,11 +131,52 @@ def ensure_workspace_subscription(db: Session, workspace_id: str) -> WorkspaceSu
         return row
     ws = db.get(Workspace, workspace_id)
     plan_id = ws.plan if ws and ws.plan in {p["id"] for p in PLAN_SEED} else "free_solo"
-    row = WorkspaceSubscription(workspace_id=workspace_id, plan_id=plan_id, status="active")
+    trial_end = None
+    status = "active"
+    if settings.business_trial_enabled and plan_id == "free_solo":
+        plan_id = "business"
+        status = "trialing"
+        trial_end = _now() + timedelta(days=settings.business_trial_days)
+        if ws:
+            ws.plan = "business"
+            db.add(ws)
+    row = WorkspaceSubscription(
+        workspace_id=workspace_id,
+        plan_id=plan_id,
+        status=status,
+        trial_ends_at=trial_end,
+    )
     db.add(row)
     db.commit()
     db.refresh(row)
     return row
+
+
+def plan_feature_diff(db: Session, from_plan: str, to_plan: str) -> list[dict[str, str]]:
+    """Features lost when downgrading from_plan → to_plan (for honest downgrade UX)."""
+    seed_plan_features(db)
+    rows = db.query(PlanFeature).filter(PlanFeature.plan_id.in_([from_plan, to_plan])).all()
+    by_plan: dict[str, dict[str, str]] = {from_plan: {}, to_plan: {}}
+    for r in rows:
+        by_plan.setdefault(r.plan_id, {})[r.feature_key] = r.value
+    lost: list[dict[str, str]] = []
+    for key in FEATURE_KEYS:
+        fv = by_plan.get(from_plan, {}).get(key, "false")
+        tv = by_plan.get(to_plan, {}).get(key, "false")
+        if _feature_value_rank(fv) > _feature_value_rank(tv):
+            lost.append({"feature_key": key, "from": fv, "to": tv})
+    return lost
+
+
+def _feature_value_rank(val: str) -> int:
+    if val == "unlimited":
+        return 3
+    if val == "true":
+        return 2
+    try:
+        return 1 if int(val) > 0 else 0
+    except ValueError:
+        return 0
 
 
 def effective_plan_id(sub: WorkspaceSubscription) -> str:
@@ -254,6 +295,18 @@ def count_connections(db: Session, workspace_id: str) -> int:
 def assert_feature(db: Session, workspace_id: str | None, feature_key: str, auth: WorkspaceAuth | None = None) -> None:
     if entitlements_bypassed(auth) or (workspace_id and require_entitlements_bypass_internal(db, workspace_id)):
         return
+    from app.billing_models import FeatureFlag
+
+    flag = db.get(FeatureFlag, feature_key)
+    if flag is not None and not flag.enabled:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "feature_disabled",
+                "feature_key": feature_key,
+                "message": "This feature is temporarily disabled.",
+            },
+        )
     if not workspace_id:
         raise HTTPException(
             status_code=403,

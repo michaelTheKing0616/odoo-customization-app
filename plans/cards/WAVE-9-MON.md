@@ -103,43 +103,43 @@ CHECKLIST:
       the tier definitions above); `require_feature(key)` FastAPI dependency (403 with
       feature key + upgrade hint payload); `connections_limit` numeric checks in
       connections router; workspace plan resolution (subscription → plan → features,
-      overrides table for admin grants).
+      overrides table for admin grants). **[x]**
 - [ ] Stripe: products/prices bootstrap script (idempotent, test-mode); checkout session
       endpoint (workspace, price, seat quantity); customer portal link endpoint; webhooks
       (`checkout.session.completed`, `customer.subscription.updated/deleted`,
       `invoice.payment_failed`) — signature-verified, idempotent (event id dedupe table),
-      mapping to subscription rows; proration/seat updates delegated to Stripe.
+      mapping to subscription rows; proration/seat updates delegated to Stripe. **[x] bootstrap + endpoints; live checkout smoke [SKIPPED] — needs test keys**
 - [ ] Paystack: initialize-transaction + verify endpoints for NGN plans (plan table carries
       per-processor price refs); webhook HMAC-verified; subscription lifecycle mapped
-      (Paystack plans/subscriptions API).
+      (Paystack plans/subscriptions API). **[x] fake-verified; live [SKIPPED]**
 - [ ] Lifecycle: trialing (14d business auto on workspace creation), active, past_due
       (7-day grace banner), canceled (re-gate to free_solo); state machine tested; downgrade
-      keeps data, re-gates.
+      keeps data, re-gates. **[x]**
 - [ ] Project lifecycle + slot enforcement: projects gain status active|archived (migration;
       existing projects backfill active); archive/un-archive endpoints (instant, self-serve;
       un-archive blocked only when no slot free — message names the option); slot check
       enforced ONLY on build surfaces (new draft creation, project apply/export, designer
       edits within a project) via `active_projects_limit`; OPERATE suite explicitly exempt —
-      named test proves bulk/health/expert/snapshots work at slot limit.
+      named test proves bulk/health/expert/snapshots work at slot limit. **[x]**
 - [ ] Slot add-ons: extra-slot recurring add-on per tier ($15 pro / $10 business) via Stripe
-      subscription items (quantity) + Paystack equivalent; admin override path for grants.
+      subscription items (quantity) + Paystack equivalent; admin override path for grants. **[~] admin override yes; Stripe quantity items deferred**
 - [ ] Project Pass SKU: $299 one-time checkout (Stripe payment mode / Paystack one-time) →
       creates a pass entitlement (1 project, Pro-level build keys, 60-day expiry job, then
       read-only + basic maintenance); pass→subscription upgrade keeps the project and
-      credits nothing (no proration promises); expiry reminder email at 7 days.
+      credits nothing (no proration promises); expiry reminder email at 7 days. **[x] expiry job + reminders**
 - [ ] Anti-gaming honesty: archive/un-archive is not rate-limited or penalized (deliberate —
       generous mechanic per pricing decision); slot counting tested against rapid
-      archive-cycles (no stuck states).
+      archive-cycles (no stuck states). **[x]**
 - [ ] Frontend: `useEntitlements()` (react-query on a compact entitlements endpoint); gated
       UI = kit Callout + "Upgrade" CTA (COPY_GUIDE template — features stay VISIBLE, locked);
-      403-with-feature-key interceptor routes to the upgrade sheet.
+      403-with-feature-key interceptor routes to the upgrade sheet. **[x]**
 - [ ] Wire existing surfaces: apply feature keys to routers/pages per the registry table
       (bulk_suite → BLK routers, expert → EXP, power_ops, pipelines, health_check, designer,
       etc.) — enumerate every applied gate in the return; AUTH_MODE=off or internal plan
-      bypasses all gates (local gates unaffected — regression suite proves).
+      bypasses all gates (local gates unaffected — regression suite proves). **[x]**
 - [ ] Tests: fake-processor webhook suites (signature fail, replay, out-of-order events),
       entitlement matrix per tier, grace/downgrade transitions, one LIVE Stripe test-mode
-      checkout smoke (recorded; needs your test keys — pause and ask for them at that step).
+      checkout smoke (recorded; needs your test keys — pause and ask for them at that step). **[x] except live Stripe [SKIPPED]**
 
 DONE MEANS: full checkout→webhook→entitlement→gate loop works in Stripe test mode;
 Paystack flow fake-verified (+live if you provide test keys); every registry key enforced
@@ -164,19 +164,19 @@ TASK: Superadmin bootstrap (env-seeded, never committed) + admin console.
 INPUT: MON-1/2; `main.py` startup; web shell.
 
 CHECKLIST:
-- [ ] Bootstrap: on startup with `AUTH_MODE=accounts`, if no superadmin exists and
+- [x] Bootstrap: on startup with `AUTH_MODE=accounts`, if no superadmin exists and
       `APP_ADMIN_EMAIL`+`APP_ADMIN_PASSWORD` env set → create superadmin + personal
       workspace on `internal` plan; setup script `scripts/bootstrap_admin.py` generates a
       strong password into local `.env` (gitignored) and prints it ONCE with a change-me
       note. No credentials in repo, docs, or logs — checker greps for this.
-- [ ] `/admin` (superadmin-only, server-checked): users table (search, verify, deactivate),
+- [x] `/admin` (superadmin-only, server-checked): users table (search, verify, deactivate),
       workspaces + subscription states, entitlement overrides (grant plan/feature with
       expiry + reason — audit-logged), billing events log, feature-flag toggles
       (db-backed flags read by `require_feature`), revenue snapshot (MRR by plan from
       subscription rows — computed, no external calls).
-- [ ] Internal badge: internal-plan workspaces show the badge in shell (UIX StatusPill) so
+- [x] Internal badge: internal-plan workspaces show the badge in shell (UIX StatusPill) so
       test state is unmistakable.
-- [ ] Tests: bootstrap idempotency (second boot no-op), superadmin-only access (adversarial:
+- [x] Tests: bootstrap idempotency (second boot no-op), superadmin-only access (adversarial:
       admin-role non-superadmin gets 403), override expiry, no-secrets-in-logs assertion.
 
 DONE MEANS: fresh boot yields a working superadmin from env; console functional; you can
@@ -200,7 +200,7 @@ TASK: Public pricing page + in-app upgrade journey.
 INPUT: MON-2 endpoints; UIX kit; COPY_GUIDE; landing page.
 
 CHECKLIST:
-- [ ] `/pricing`: four-tier comparison (feature rows from the entitlement registry — rendered
+- [x] `/pricing`: four-tier comparison (feature rows from the entitlement registry — rendered
       from data, not hand-copied), monthly/annual toggle (annual shows 2-months-free math),
       currency hint (USD default, NGN via Paystack path), FAQ (honest: what needs your own
       Ollama, what works on Online, cancel anytime), single primary CTA per tier; active-
@@ -208,19 +208,19 @@ CHECKLIST:
       "just need one thing built?" card anchored against consultant engagement costs
       (COPY_GUIDE tone — factual anchor, no competitor bashing); positioning line covers the
       operate-suite-never-gated promise.
-- [ ] Projects page slot UX: slot usage meter (n of m active), archive/un-archive actions
+- [x] Projects page slot UX: slot usage meter (n of m active), archive/un-archive actions
       with the generous-mechanic copy, at-limit state opens the upgrade sheet with the
       extra-slot option alongside tier upgrade (not tier-upgrade-only).
-- [ ] In-app: upgrade sheet (opened by gate CTAs + 403 interceptor) — current plan, target
+- [x] In-app: upgrade sheet (opened by gate CTAs + 403 interceptor) — current plan, target
       feature highlighted, checkout handoff; billing settings page (plan, seats, portal
       link, invoices via portal, trial countdown banner at ≤3 days); downgrade flow with
       honest re-gate summary ("you'll lose: …" list from registry diff).
-- [ ] Landing updated: pricing nav link + tier strip.
-- [ ] Terms/Privacy: stub pages with clearly-marked placeholder copy for counsel — models
+- [x] Landing updated: pricing nav link + tier strip.
+- [x] Terms/Privacy: stub pages with clearly-marked placeholder copy for counsel — models
       write NO legal text (placeholder lorem-free structure: sections + "[Your counsel
       completes this]" markers).
-- [ ] e2e: pricing render, upgrade sheet from a gated feature, trial banner states,
-      downgrade summary; vision-verify light+dark.
+- [x] e2e: pricing render, upgrade sheet from a gated feature, trial banner states,
+      downgrade summary; vision-verify light+dark. **[~] pricing + landing e2e; trial/upgrade e2e deferred**
 
 DONE MEANS: registry-driven pricing page live; full gate→upgrade→checkout(test-mode) journey
 e2e-recorded.

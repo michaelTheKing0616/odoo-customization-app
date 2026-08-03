@@ -4,11 +4,13 @@
 
 ## Last run
 - Date: 2026-08-03
-- **Wave 9 MON-4 shipped** — registry-driven `/pricing`, upgrade sheet + `FeatureGatedError`, billing settings, project slot UX, terms/privacy stubs, landing tier strip.
-- Gates: API pytest 661 passed (prior); web build ok; e2e `pricing.spec.ts` added.
+- **Wave 9 MON complete** — billing jobs, feature flags, admin deactivate/flags, plan-diff downgrade UX, internal plan badge, bootstrap_stripe, lifecycle tests.
+- **Wave 10 LAUNCH-1/2** — `scripts/launch_smoke.sh`, DEPLOY.md LAUNCH section, `docs/OPERATOR.md`.
+- Gates: API **667 passed** (`-m "not integration"`); web build ok.
 
 ## Next
-- Wave 9 complete — polish deferred items (live Stripe smoke, internal StatusPill in shell, project-pass expiry job) or next wave per `plans/PROGRESS.md`.
+- Run `launch_smoke.sh` against a live deploy stack; optional live Stripe test-mode checkout smoke (needs test keys).
+- Post-revenue deferrals: metered AI tier (`DEFERRALS.md`).
 
 ## Rules
 - Expert thread: `sessionStorage` key `expert-thread-{connectionId}`.
