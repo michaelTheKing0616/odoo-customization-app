@@ -40,7 +40,9 @@ export function Callout({
       <div className="flex gap-2">
         <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
         <div className="min-w-0 flex-1">
-          <p className="font-medium">{title}</p>
+          <p className="font-medium" data-testid={testId === "gating-callout" ? "gating-title" : undefined}>
+            {title}
+          </p>
           {children ? <div className="mt-2 text-muted">{children}</div> : null}
           {actions ? <div className="mt-3 flex flex-wrap gap-2">{actions}</div> : null}
         </div>

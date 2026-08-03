@@ -774,7 +774,7 @@ export default function AppWizardPage() {
           <Card className="mt-8 p-5" data-testid="scaffold-result">
             <h2 className="text-xl font-semibold text-ink">Scaffold result</h2>
             <p className="mt-2 text-sm text-ink">
-              {result.ok ? "OK" : "Partial"} · {result.message}
+              {result.ok ? "Complete" : "Partial"} · {result.message}
             </p>
             <p className="mt-1 text-sm text-muted">
               Template <code className="font-mono text-accent">{result.template_id}</code> ·{" "}

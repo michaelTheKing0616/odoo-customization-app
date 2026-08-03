@@ -162,12 +162,16 @@
   --color-on-accent: var(--on-accent);
   --color-success: var(--success);
   --color-success-subtle: var(--success-subtle);
+  --color-success-strong: var(--success-strong);
   --color-warning: var(--warning);
   --color-warning-subtle: var(--warning-subtle);
+  --color-warning-strong: var(--warning-strong);
   --color-danger: var(--danger);
   --color-danger-subtle: var(--danger-subtle);
+  --color-danger-strong: var(--danger-strong);
   --color-info: var(--info);
   --color-info-subtle: var(--info-subtle);
+  --color-info-strong: var(--info-strong);
   --radius-sm: var(--r-sm);
   --radius-md: var(--r-md);
   --radius-lg: var(--r-lg);

@@ -6,19 +6,21 @@ import { diagnoseWithExpert } from "@/lib/expert-diagnostics";
 
 type ErrorNoticeProps = {
   message: string;
+  title?: string;
   className?: string;
   showDiagnose?: boolean;
 };
 
 export function ErrorNotice({
   message,
+  title = "Request failed",
   className,
   showDiagnose = true,
 }: ErrorNoticeProps) {
   return (
     <Callout
       variant="danger"
-      title="Something went wrong"
+      title={title}
       className={className}
       testId="error-notice"
       actions={

@@ -29,14 +29,14 @@ type BulkResultTableProps = {
   onRetryFailed?: () => void;
 };
 
-type Filter = "all" | "ok" | "error";
+type Filter = "all" | "succeeded" | "failed";
 
 export function BulkResultTable({ result, onRetryFailed }: BulkResultTableProps) {
   const [filter, setFilter] = useState<Filter>("all");
 
   const rows = useMemo(() => {
-    if (filter === "ok") return result.per_record.filter((r) => r.ok);
-    if (filter === "error") return result.per_record.filter((r) => !r.ok);
+    if (filter === "succeeded") return result.per_record.filter((r) => r.ok);
+    if (filter === "failed") return result.per_record.filter((r) => !r.ok);
     return result.per_record;
   }, [filter, result.per_record]);
 
@@ -56,7 +56,7 @@ export function BulkResultTable({ result, onRetryFailed }: BulkResultTableProps)
       id: "status",
       header: "Status",
       accessor: (r) => (
-        <Badge variant={r.ok ? "success" : "danger"}>{r.ok ? "OK" : "Error"}</Badge>
+        <Badge variant={r.ok ? "success" : "danger"}>{r.ok ? "Succeeded" : "Failed"}</Badge>
       ),
       sortValue: (r) => (r.ok ? 0 : 1),
     },
@@ -77,15 +77,21 @@ export function BulkResultTable({ result, onRetryFailed }: BulkResultTableProps)
           {result.dry_run ? " · dry run" : ""}
         </span>
         <div className="ml-auto flex gap-2">
-          {(["all", "ok", "error"] as const).map((f) => (
+          {(
+            [
+              { id: "all" as const, label: "All" },
+              { id: "succeeded" as const, label: "Succeeded" },
+              { id: "failed" as const, label: "Failed" },
+            ] as const
+          ).map((f) => (
             <Button
-              key={f}
-              variant={filter === f ? "secondary" : "ghost"}
+              key={f.id}
+              variant={filter === f.id ? "secondary" : "ghost"}
               size="sm"
               type="button"
-              onClick={() => setFilter(f)}
+              onClick={() => setFilter(f.id)}
             >
-              {f}
+              {f.label}
             </Button>
           ))}
           {onRetryFailed && result.failed > 0 ? (

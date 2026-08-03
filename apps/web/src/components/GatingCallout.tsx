@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@/components/ui/Button";
+import { Callout } from "@/components/ui/Callout";
 import type { GatingCallout as GatingCalloutType, GatingChoiceId } from "@/lib/api";
 
 type Props = {
@@ -20,41 +22,38 @@ export function GatingCallout({
   }
 
   return (
-    <div
-      className={`rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 ${className}`}
-      data-testid="gating-callout"
-      role="status"
+    <Callout
+      variant="warning"
+      title={gating.title}
+      className={className}
+      testId="gating-callout"
+      actions={
+        gating.gating_choices.length > 0 ? (
+          <>
+            {gating.gating_choices.map((choice) => (
+              <Button
+                key={choice.id}
+                type="button"
+                size="sm"
+                variant={selectedChoice === choice.id ? "secondary" : "ghost"}
+                data-testid={`gating-choice-${choice.id}`}
+                onClick={() => onSelectChoice(choice.id as GatingChoiceId)}
+              >
+                {choice.label}
+              </Button>
+            ))}
+          </>
+        ) : undefined
+      }
     >
-      <p className="font-medium" data-testid="gating-title">
-        {gating.title}
-      </p>
-      <p className="mt-2 text-amber-900" data-testid="gating-why">
-        {gating.why}
-      </p>
-      <ul className="mt-3 list-disc space-y-1 pl-5" data-testid="gating-options">
-        {gating.options.map((opt) => (
-          <li key={opt}>{opt}</li>
-        ))}
-      </ul>
-      {gating.gating_choices.length > 0 ? (
-        <div className="mt-4 flex flex-wrap gap-2" data-testid="gating-choices">
-          {gating.gating_choices.map((choice) => (
-            <button
-              key={choice.id}
-              type="button"
-              data-testid={`gating-choice-${choice.id}`}
-              className={`rounded border px-3 py-1.5 text-sm ${
-                selectedChoice === choice.id
-                  ? "border-amber-800 bg-amber-200 font-medium"
-                  : "border-amber-400 bg-white hover:bg-amber-100"
-              }`}
-              onClick={() => onSelectChoice(choice.id as GatingChoiceId)}
-            >
-              {choice.label}
-            </button>
+      <p data-testid="gating-why">{gating.why}</p>
+      {gating.options.length > 0 ? (
+        <ul className="mt-3 list-disc space-y-1 pl-5" data-testid="gating-options">
+          {gating.options.map((opt) => (
+            <li key={opt}>{opt}</li>
           ))}
-        </div>
+        </ul>
       ) : null}
-    </div>
+    </Callout>
   );
 }

@@ -4,12 +4,12 @@
 
 ## Last run
 - Date: 2026-08-03
-- Commit (pending): **UIX-4c complete** — menus, id-generator, reports, config, modulespec, builder, approvals, cron-manager, housekeeping onto kit; legacy hex/`odoo-shell`/`radial-gradient` purge on UIX-4c pages; ConfirmDialogV2 throughout.
-- Prior: `d710521` UIX-4c partial (power-ops, journal, bulk-suite, import, settings, pipelines, reminders).
-- Gates: `pnpm test` 78 passed; `pnpm build` ok. E2e smoke not re-run this session (Playwright install locally if needed).
+- Commit (pending): **UIX-5 complete** — COPY_GUIDE copy fixes, `copy-guide.ts` empty/honesty strings, EmptyStates (automations/journal/bulk-suite/projects), GatingCallout + HealthCheckBanner + VersionAwarenessBanner on kit, Badge contrast tokens, `@axe-core/playwright` + 8-page axe e2e, audit in `plans/UIX-5-AUDIT.md`.
+- Prior: `75cb19d` UIX-4c complete.
+- Gates: `pnpm test` 78 passed; `pnpm build` ok; e2e `a11y-primary` + `automation-gating` 9 passed.
 
 ## Next (prescribed wave order)
-- **UIX-5** — copy guide pass + iconography audit.
+- **Wave 7 CMP** — already marked complete in PROGRESS; next unstarted work is post-UIX backlog or new cards.
 
 ## Rules
 - Expert thread: `sessionStorage` key `expert-thread-{connectionId}`.

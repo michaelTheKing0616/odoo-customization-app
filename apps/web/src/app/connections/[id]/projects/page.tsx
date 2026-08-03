@@ -10,6 +10,7 @@ import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { Card, EmptyState, PageHeader } from "@/components/ui/layout-primitives";
+import { EMPTY_STATES } from "@/lib/copy-guide";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -302,7 +303,7 @@ export default function ProjectsPage() {
         {projects.length === 0 ? (
           <EmptyState
             title="No drafts yet"
-            description="Create a draft from a template or start blank, then edit in ModuleSpec."
+            description={EMPTY_STATES.projects}
           />
         ) : null}
       </ul>

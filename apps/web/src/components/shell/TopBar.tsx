@@ -63,6 +63,7 @@ export function TopBar({ connection, connections, pathname }: Props) {
             size="sm"
             onClick={() => setCommandOpen(true)}
             data-testid="open-command-palette"
+            aria-label="Open command palette"
           >
             <Command className="h-4 w-4" />
             <span className="hidden sm:inline">Command</span>

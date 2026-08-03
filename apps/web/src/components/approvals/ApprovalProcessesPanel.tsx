@@ -254,7 +254,7 @@ export function ApprovalProcessesPanel({
                     onClick={() => void runAction(r.id, "submit")}
                     className="border border-[#c9a9c0] px-2 py-1 text-xs"
                   >
-                    Submit
+                    Send for approval
                   </button>
                 )}
                 {r.state === "submitted" && (

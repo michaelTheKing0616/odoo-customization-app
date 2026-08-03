@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api, Connection, HealthCheckRun } from "@/lib/api";
 import { JobPollError, pollJob } from "@/lib/jobs";
+import { Button } from "@/components/ui/Button";
+import { Callout } from "@/components/ui/Callout";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 
 type Props = {
   connectionId: string;
@@ -77,82 +80,77 @@ export function HealthCheckBanner({
     return null;
   }
 
+  const variant = showBroken ? "danger" : showUpgrade ? "warning" : "info";
+  const title = showBroken
+    ? `${broken} broken artifact${broken === 1 ? "" : "s"} after last sweep`
+    : showUpgrade
+      ? `Odoo upgrade detected${
+          connection?.last_seen_version && connection?.server_version
+            ? ` (${connection.last_seen_version} → ${connection.server_version})`
+            : ""
+        }`
+      : "Post-upgrade health";
+
   return (
-    <div
-      className={`mt-4 space-y-3 border border-[#5a3d4a] bg-[#1a1218]/80 p-4 text-sm ${className}`}
-    >
-      {showUpgrade && (
-        <div>
-          <p className="font-medium text-[#f0c4bc]">
-            Odoo upgrade detected
-            {connection?.last_seen_version && connection?.server_version
-              ? ` (${connection.last_seen_version} → ${connection.server_version})`
-              : ""}
-          </p>
-          <p className="mt-1 text-[#c9a9c0]">
+    <div className={`mt-4 space-y-3 ${className}`}>
+      <Callout variant={variant} title={title}>
+        {showUpgrade && (
+          <p>
             {isOnline
               ? "Odoo Online upgrades automatically — run a health sweep to verify your customizations still work."
               : "Re-probe detected a version change. Run a health sweep to verify tracked artifacts."}
           </p>
-        </div>
-      )}
+        )}
 
-      {latest?.status === "running" && (
-        <p className="text-[#c9a9c0]">Health sweep in progress…</p>
-      )}
+        {latest?.status === "running" && <p>Health sweep in progress…</p>}
 
-      {showBroken && (
-        <div>
-          <p className="font-medium text-[#f0a8a0]">
-            {broken} broken artifact{broken === 1 ? "" : "s"} after last sweep
-          </p>
+        {showBroken && (
           <ul className="mt-2 space-y-1">
             {latest?.items
               .filter((i) => i.status === "broken")
               .slice(0, 5)
               .map((item) => (
-                <li key={item.artifact_id} className="text-[#c9a9c0]">
-                  <Link href={item.deep_link} className="underline hover:text-[#faf6f9]">
+                <li key={item.artifact_id}>
+                  <Link href={item.deep_link} className="text-accent hover:underline">
                     {item.label}
                   </Link>
-                  <span className="text-[#8f7a88]"> — {item.reason}</span>
+                  <span className="text-muted"> — {item.reason}</span>
                 </li>
               ))}
           </ul>
-          {broken > 5 && (
-            <Link
-              href={`/connections/${connectionId}/journal`}
-              className="mt-2 inline-block text-[#c9a9c0] underline"
-            >
-              View full report in journal
-            </Link>
-          )}
-        </div>
-      )}
+        )}
+        {showBroken && broken > 5 ? (
+          <Link
+            href={`/connections/${connectionId}/journal`}
+            className="mt-2 inline-block text-accent hover:underline"
+          >
+            View full report in journal
+          </Link>
+        ) : null}
 
-      {latest?.status === "complete" && broken === 0 && !showUpgrade && (
-        <p className="text-[#c9a9c0]">
-          Last health sweep: {latest.ok_count} artifact{latest.ok_count === 1 ? "" : "s"} OK
-        </p>
-      )}
+        {latest?.status === "complete" && broken === 0 && !showUpgrade && (
+          <p>
+            Last health sweep: {latest.ok_count} artifact{latest.ok_count === 1 ? "" : "s"}{" "}
+            passed
+          </p>
+        )}
+      </Callout>
 
-      {error && <p className="text-[#f0a8a0]">{error}</p>}
-      {notice && !error && <p className="text-[#c9a9c0]">{notice}</p>}
+      {error ? <ErrorNotice message={error} showDiagnose={false} /> : null}
+      {notice && !error ? (
+        <Callout variant="info" title="Health sweep">
+          {notice}
+        </Callout>
+      ) : null}
 
-      <div className="flex flex-wrap gap-3 pt-1">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void runCheck()}
-          className="border border-[#c9a9c0] px-3 py-1.5 text-xs text-[#c9a9c0] disabled:opacity-40"
-        >
+      <div className="flex flex-wrap gap-3">
+        <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={() => void runCheck()}>
           {busy ? "Running…" : "Run health sweep"}
-        </button>
-        <Link
-          href={`/connections/${connectionId}/journal`}
-          className="border border-[#5a3d4a] px-3 py-1.5 text-xs text-[#8f7a88] hover:text-[#c9a9c0]"
-        >
-          Change journal
+        </Button>
+        <Link href={`/connections/${connectionId}/journal`}>
+          <Button type="button" variant="ghost" size="sm">
+            Change journal
+          </Button>
         </Link>
       </div>
     </div>

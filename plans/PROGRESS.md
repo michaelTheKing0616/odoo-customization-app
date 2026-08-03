@@ -58,7 +58,7 @@ CHECKLIST. Claiming done without both updated = failed card.
 - [x] UIX-4a Page migrations: landing, connect, overview, Draft Studio
 - [x] UIX-4b Page migrations: designer, projects diff, automations, access
 - [x] UIX-4c Page migrations: power-ops/bulk, journal, remaining pages (menus, config, reports, modulespec, id-generator, builder, approvals, cron-manager, housekeeping; legacy hex purge on UIX-4c surfaces)
-- [ ] UIX-5 Copy guide application pass + iconography audit
+- [x] UIX-5 Copy guide application pass + iconography audit
 
 ## Wave 7 — CMP (compendium completions)
 - [x] CMP-1 Manifest ordering tests + xpath move/$0 + ir.sequence verification

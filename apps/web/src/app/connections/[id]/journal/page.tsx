@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
-import { Card, PageHeader } from "@/components/ui/layout-primitives";
+import { Card, EmptyState, PageHeader } from "@/components/ui/layout-primitives";
+import { EMPTY_STATES, REVERSIBILITY } from "@/lib/copy-guide";
 
 type TimelineFilter = "all" | "snapshot" | "audit" | "health";
 
@@ -20,17 +21,16 @@ type TimelineEntry =
   | { kind: "health"; at: string; run: HealthCheckRun };
 
 function reversibilityBadge(reversible: string) {
-  if (reversible === "yes") return <Badge variant="success">Rollback yes</Badge>;
+  if (reversible === "yes") return <Badge variant="success">{REVERSIBILITY.yes}</Badge>;
   if (reversible === "partial")
-    return <Badge variant="warning">Rollback partial</Badge>;
-  return <Badge variant="danger">Rollback no</Badge>;
+    return <Badge variant="warning">{REVERSIBILITY.partial}</Badge>;
+  return <Badge variant="danger">{REVERSIBILITY.none}</Badge>;
 }
 
 function reversibilityNote(reversible: string): string {
-  if (reversible === "yes") return "Snapshot can restore this metadata definition.";
-  if (reversible === "partial")
-    return "Partial restore — some fields or side effects may remain.";
-  return "Not reversible — undo is disabled for this snapshot.";
+  if (reversible === "yes") return REVERSIBILITY.yes + ".";
+  if (reversible === "partial") return REVERSIBILITY.partial + ".";
+  return REVERSIBILITY.none + ".";
 }
 
 export default function ChangeJournalPage() {
@@ -227,7 +227,7 @@ export default function ChangeJournalPage() {
                   {run.broken_count > 0 ? (
                     <span className="text-danger"> · {run.broken_count} broken</span>
                   ) : run.status === "complete" ? (
-                    <span className="text-muted"> · {run.ok_count} OK</span>
+                    <span className="text-muted"> · {run.ok_count} succeeded</span>
                   ) : null}
                 </p>
                 <p className="mt-1 text-xs text-muted">
@@ -256,8 +256,11 @@ export default function ChangeJournalPage() {
           );
         })}
         {timeline.length === 0 ? (
-          <li className="text-sm text-muted">
-            No entries for this filter. Destructive edits create snapshots automatically.
+          <li>
+            <EmptyState
+              title="No journal entries yet"
+              description={EMPTY_STATES.journal}
+            />
           </li>
         ) : null}
       </ul>

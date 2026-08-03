@@ -16,7 +16,8 @@ import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { BulkResultTable, type BulkRunResult } from "@/components/ui/BulkResultTable";
 import { Callout } from "@/components/ui/Callout";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
-import { Card, PageHeader } from "@/components/ui/layout-primitives";
+import { Card, EmptyState, PageHeader } from "@/components/ui/layout-primitives";
+import { EMPTY_STATES } from "@/lib/copy-guide";
 import { ScanToFieldPanel } from "@/components/scanner/ScanToFieldPanel";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 
@@ -533,6 +534,15 @@ export default function BulkSuitePage() {
         <Callout variant="info" title="Notice" className="mt-4">
           {notice}
         </Callout>
+      ) : null}
+
+      {!result && !busy ? (
+        <div className="mt-6">
+        <EmptyState
+          title="Bulk operations"
+          description={EMPTY_STATES.bulkSuite}
+        />
+        </div>
       ) : null}
 
         <Card className="mt-6 space-y-4 p-4">

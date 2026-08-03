@@ -6,7 +6,8 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
-import { Card, PageHeader } from "@/components/ui/layout-primitives";
+import { Card, EmptyState, PageHeader } from "@/components/ui/layout-primitives";
+import { EMPTY_STATES } from "@/lib/copy-guide";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
@@ -1128,10 +1129,15 @@ export default function AutomationsPage() {
 
         <section className="mt-10">
           <h2 className="text-2xl font-semibold text-ink">Existing rules</h2>
+          {rows.length === 0 ? (
+            <div className="mt-4">
+            <EmptyState
+              title="No automations yet"
+              description={EMPTY_STATES.automations}
+            />
+            </div>
+          ) : (
           <ul className="mt-4 space-y-2 text-sm">
-            {rows.length === 0 && (
-              <li className="text-muted">None yet on this connection.</li>
-            )}
             {rows.map((r) => (
               <li key={r.id}>
                 <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
@@ -1209,6 +1215,7 @@ export default function AutomationsPage() {
               </li>
             ))}
           </ul>
+          )}
         </section>
 
         <section className="mt-10">

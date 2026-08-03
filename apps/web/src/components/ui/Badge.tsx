@@ -8,13 +8,13 @@ type BadgeProps = {
 
 const styles: Record<NonNullable<BadgeProps["variant"]>, string> = {
   default: "bg-surface-muted text-ink border-border-subtle",
-  success: "bg-success-subtle text-success border-success/20",
-  warning: "bg-warning-subtle text-warning border-warning/20",
-  danger: "bg-danger-subtle text-danger border-danger/20",
-  info: "bg-info-subtle text-info border-info/20",
-  lock: "bg-warning-subtle text-warning border-warning/30",
-  ga: "bg-success-subtle text-success border-success/20",
-  experimental: "bg-warning-subtle text-warning border-warning/20",
+  success: "bg-success-subtle text-success-strong border-success/20",
+  warning: "bg-warning-subtle text-warning-strong border-warning/20",
+  danger: "bg-danger-subtle text-danger-strong border-danger/20",
+  info: "bg-info-subtle text-info-strong border-info/20",
+  lock: "bg-warning-subtle text-warning-strong border-warning/30",
+  ga: "bg-success-subtle text-success-strong border-success/20",
+  experimental: "bg-warning-subtle text-warning-strong border-warning/20",
 };
 
 export function Badge({ variant = "default", children, className }: BadgeProps) {
