@@ -4,16 +4,16 @@
 
 ## Last run
 - Date: 2026-08-03
-- **EXP-2 shipped:** `apps/api/app/expert/grounding.py` — `assemble_context()` →
-  `GroundingBundle` (instance summary, tier capabilities, UI/draft context, protected-tier
-  flags, RPC error cross-check, bulk-tool deep links, version filter + token-capped sections).
-- Gate: `test_expert_grounding` 8 passed (+1 live skip); `test_expert_ingest` 10 passed.
-- Prior: recovery commits `f01c4a1` / `ef1cb80`; EXP-1 ingest store (~7940+ chunks).
+- **EXP-3 shipped:** `POST /api/expert/ask` — `apps/api/app/expert/ask.py` +
+  `apps/api/app/routers/expert.py` (retrieval + grounding + ground-or-decline generation,
+  citation enforcement + one regenerate, tier-1 PCM-consistent refusal, legal/tax flag).
+- Gate: `test_expert_ask` 10 passed; expert suite 28 passed (+1 live skip).
+- Prior: EXP-2 `c2f6eb9`; EXP-1 ingest store (~7940+ chunks).
 
 ## Next
-- **EXP-3** — `POST /api/expert/ask` ground-or-decline + citations (`plans/PROGRESS.md`).
+- **EXP-4** — evaluation regression set + harness (`plans/PROGRESS.md`).
 
 ## Rules
 - Expert ingest cache: `.cache/expert/` (gitignored). CLI: `python -m app.expert.ingest --version 19.0`.
 - Community Q&A: `EXPERT_COMMUNITY_SOURCE=dir` + `EXPERT_COMMUNITY_DIR=…` (off default).
-- Grounding: pass `connection_id`, optional `ui_context`, `question`; live RPC checks capped at 8 refs.
+- Expert ask: `POST /api/expert/ask` requires `AI_ASSIST`; optional live E2E → `docs/research/expert_runs_<date>/`.

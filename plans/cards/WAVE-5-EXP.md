@@ -104,25 +104,25 @@ INPUT: EXP-1 store, EXP-2 grounding, AI-1 provider (ladder + thinking), PCM guar
 reasoning, COPY_GUIDE tone.
 
 CHECKLIST:
-- [ ] Request: {question, connection_id?, ui_context?, conversation: prior turns (capped)}.
+- [x] Request: {question, connection_id?, ui_context?, conversation: prior turns (capped)}.
       Response: {answer_markdown, citations: [{source, version, breadcrumb, chunk_id}],
       grounded: bool, declined: bool, suggested_tools: [], caution_flags: []}.
-- [ ] Routing: factual lookup → bulk model, thinking off; multi-step walkthrough/diagnosis →
+- [x] Routing: factual lookup → bulk model, thinking off; multi-step walkthrough/diagnosis →
       reasoning model, thinking on (intent classifier: cheap heuristic + doc-length of
       retrieval; documented). Temperature 0.15.
-- [ ] System prompt: Odoo Expert persona + Doc 8 §6 ground-or-decline text VERBATIM +
+- [x] System prompt: Odoo Expert persona + Doc 8 §6 ground-or-decline text VERBATIM +
       citation requirement + protected-category caution behavior (explain why the constraint
       exists, point to the legitimate path incl. our tools, stop short of bypass
       instructions) + no definitive legal/tax/compliance conclusions rule.
-- [ ] Grounding enforcement is structural, not just prompted: if top retrieval scores below
+- [x] Grounding enforcement is structural, not just prompted: if top retrieval scores below
       threshold → `declined: true` with the honest low-confidence message (COPY_GUIDE);
       every answer paragraph must map to ≥1 citation — post-parse check strips/flags
       uncited claims (regenerate once with stricter instruction, then flag).
-- [ ] Consistency with generator: a question asking for tier-1 logic returns the same
+- [x] Consistency with generator: a question asking for tier-1 logic returns the same
       reasoning PCM-3's refusal gives (shared category text) — named test.
-- [ ] Conversation memory: last N turns included (cap by tokens); no server-side profile
+- [x] Conversation memory: last N turns included (cap by tokens); no server-side profile
       building in v1.
-- [ ] Tests: fake-provider suite — grounded answer with citations, decline path,
+- [x] Tests: fake-provider suite — grounded answer with citations, decline path,
       protected-category path, legal-question deflection, bulk-tool routing surfaced.
 
 DONE MEANS: all behavior tests green + 3 real end-to-end asks against docker 19 + local

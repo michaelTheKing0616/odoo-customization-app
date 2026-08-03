@@ -1224,3 +1224,35 @@ class ModuleSpecImportOut(BaseModel):
     note: str = (
         "Imported into ModuleSpec — review in visual editor before Generate UI / Apply."
     )
+
+
+class ExpertConversationTurn(BaseModel):
+    role: Literal["user", "assistant"] = "user"
+    content: str = Field(..., min_length=1, max_length=4000)
+
+
+class ExpertAskBody(BaseModel):
+    question: str = Field(..., min_length=1, max_length=8000)
+    connection_id: str | None = None
+    ui_context: dict | None = None
+    conversation: list[ExpertConversationTurn] = Field(default_factory=list)
+
+
+class ExpertCitationOut(BaseModel):
+    source: str
+    version: str
+    breadcrumb: str
+    chunk_id: str
+
+
+class ExpertAskOut(BaseModel):
+    answer_markdown: str
+    citations: list[ExpertCitationOut] = Field(default_factory=list)
+    grounded: bool = False
+    declined: bool = False
+    suggested_tools: list[dict] = Field(default_factory=list)
+    caution_flags: list[str] = Field(default_factory=list)
+    retrieval_version: str | None = None
+    model_used: str | None = None
+    reasoning: bool = False
+    uncited_warning: bool = False

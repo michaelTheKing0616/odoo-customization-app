@@ -28,6 +28,7 @@ from app.routers import (
     ee_playbooks,
     studio_feature_recipes,
     environments,
+    expert,
     export_sandbox,
     ee_drivers,
     approvals,
@@ -91,6 +92,7 @@ app.include_router(ee_drivers.router, prefix="/api", dependencies=_protected)
 app.include_router(approvals.router, prefix="/api", dependencies=_protected)
 app.include_router(apps.router, prefix="/api", dependencies=_protected)
 app.include_router(ai.router, prefix="/api", dependencies=_protected)
+app.include_router(expert.router, prefix="/api", dependencies=_protected)
 app.include_router(module_spec.router, prefix="/api", dependencies=_protected)
 app.include_router(module_spec.import_router, prefix="/api", dependencies=_protected)
 app.include_router(introspection.router, prefix="/api", dependencies=_protected)

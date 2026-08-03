@@ -5,10 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 __all__ = [
+    "ask_expert",
+    "assemble_context",
     "chunk_document",
     "chunk_file",
     "fetch_documentation",
-    "assemble_context",
     "GroundingBundle",
     "retrieve_expert_chunks",
     "run_ingest",
@@ -16,6 +17,7 @@ __all__ = [
 ]
 
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
+    "ask_expert": ("app.expert.ask", "ask_expert"),
     "chunk_document": ("app.expert.chunker", "chunk_document"),
     "chunk_file": ("app.expert.chunker", "chunk_file"),
     "fetch_documentation": ("app.expert.fetcher", "fetch_documentation"),
