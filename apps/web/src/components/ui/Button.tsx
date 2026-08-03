@@ -38,6 +38,21 @@ export function Button({
   ...props
 }: ButtonProps) {
   const Comp = asChild ? Slot : "button";
+  if (asChild) {
+    return (
+      <Comp
+        className={cn(
+          "inline-flex items-center justify-center rounded-md font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none",
+          variants[variant],
+          sizes[size],
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </Comp>
+    );
+  }
   return (
     <Comp
       className={cn(

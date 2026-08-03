@@ -4,18 +4,18 @@
 
 ## Last run
 - Date: 2026-08-03
-- **UIX-1:** Design tokens (`globals.css`), Inter + JetBrains Mono, dark mode (`ThemeProvider`), `/e2e/tokens`.
-- **UIX-2 (core):** `components/ui/*` kit subset (Button, Sheet, Callout, Badge, Toast, CommandPalette, icons, layout primitives); `/e2e/kit`.
-- **UIX-3:** `connections/[id]/layout.tsx` app shell — sidebar (`nav.ts`), top bar, Cmd+K palette, React Query, Expert mount slot.
-- **EXP-5:** `ExpertPanel` (chat, citations, error paste, sessionStorage thread), `ExplainThisButton` + `AskWhyButton`, wired on builder/designer/automations/wizard; `api.expertAsk`.
-- Recovery cleanup: deduped replay corruption in 10+ web pages + `api.ts` so `pnpm build` passes.
-- Gates: `pnpm test` 74 passed; `pnpm build` ok; Playwright `shell-expert` 2/3 (expert open selector fix pending re-run).
+- **UIX-2 (full kit):** Input, Textarea, Select, Combobox, Dialog, Tabs, DataTable, CodeBlock, DiffView, BulkResultTable, ConfirmDialogV2, StatusPill, ErrorNotice, useCommand registry; `/e2e/kit` expanded; `kit.test.ts`.
+- **EXP-5 follow-up:** `ErrorNotice` + `reportApiError` + toast listener wired on builder/automations/wizard/designer; mutation failures toast with Diagnose action.
+- **UIX-4a (partial):** Landing + Connect restyled on tokens/kit (3-step connect flow, summary step).
+- **E2E:** `shell-expert.spec.ts` 3/3 green (fixed API mocks for overview sub-routes).
+- Gates: `pnpm test` 78 passed; `pnpm build` ok.
 
 ## Next
-- **UIX-2 remainder** — full 20-component kit + per-component Vitest (DataTable, DiffView, ConfirmDialog v2, etc.).
-- **UIX-4a** — page migrations (landing, connect, overview, Draft Studio).
+- **UIX-4a remainder** — Overview hub + Draft Studio wizard rebuild on kit.
+- **UIX-4b/c** — designer, automations, remaining page migrations + per-page nav strip removal.
+- Vision-verify screenshots (tokens/kit/shell light+dark).
 
 ## Rules
 - Expert thread: `sessionStorage` key `expert-thread-{connectionId}`.
 - Shell context: `useSyncShellContext` on builder/designer/automations/wizard.
-- Diagnose errors: `diagnoseWithExpert(text)` from toast handlers.
+- Diagnose errors: `ErrorNotice` inline + `reportApiError(..., { toast: true })` for mutations.

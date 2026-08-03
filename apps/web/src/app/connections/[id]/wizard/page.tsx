@@ -20,6 +20,8 @@ import {
 } from "@/lib/capabilities";
 import { AskWhyButton } from "@/components/expert/AskWhyButton";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { reportApiError } from "@/lib/api-error";
 
 const CONFIRM_PHRASE = "I understand the risks";
 
@@ -198,7 +200,7 @@ export default function AppWizardPage() {
       if (err instanceof ConfirmationRequiredError) {
         setError(err.warning);
       } else {
-        setError(err instanceof Error ? err.message : "Scaffold failed");
+        reportApiError(err, setError, { fallback: "Scaffold failed", toast: true });
       }
     } finally {
       setBusy(false);
@@ -221,7 +223,7 @@ export default function AppWizardPage() {
       setAiWarnings(res.warnings ?? []);
     } catch (err) {
       setAiDraft(null);
-      setError(err instanceof Error ? err.message : "AI draft failed");
+      reportApiError(err, setError, { fallback: "AI draft failed", toast: true });
       setAiNote(
         "Use Car Rental / Library template below if Ollama is unavailable. " +
           "Domain prompts like “car rental” still work offline via curated packs.",
@@ -260,7 +262,7 @@ export default function AppWizardPage() {
       if (err instanceof ConfirmationRequiredError) {
         setError(err.warning);
       } else {
-        setError(err instanceof Error ? err.message : "Generate UI failed");
+        reportApiError(err, setError, { fallback: "Generate UI failed", toast: true });
       }
     } finally {
       setBusy(false);
@@ -287,7 +289,7 @@ export default function AppWizardPage() {
         setSkipValidateLive(false);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Validate-live failed");
+      reportApiError(err, setError, { fallback: "Validate-live failed", toast: true });
     } finally {
       setBusy(false);
     }
@@ -334,7 +336,7 @@ export default function AppWizardPage() {
       URL.revokeObjectURL(url);
       setAiNote(mod.note);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Export failed");
+      reportApiError(err, setError, { fallback: "Export failed", toast: true });
     } finally {
       setBusy(false);
     }
@@ -733,7 +735,7 @@ export default function AppWizardPage() {
         </section>
 
         {loading && <p className="mt-4 text-sm text-[#8f7a88]">Loading templates…</p>}
-        {error && <p className="mt-4 text-sm text-[#f0a8a0]">{error}</p>}
+        {error ? <ErrorNotice message={error} className="mt-4" /> : null}
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {templates.map((tpl) => {

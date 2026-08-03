@@ -53,9 +53,9 @@ CHECKLIST. Claiming done without both updated = failed card.
 
 ## Wave 6 — UIX (UI/UX revamp)
 - [x] UIX-1 Design tokens + typography + dark mode foundation
-- [ ] UIX-2 Component kit (20 components) + icon mapping — **core subset shipped; full kit pending**
+- [x] UIX-2 Component kit (20 components) + icon mapping — Input/Select/DataTable/DiffView/BulkResultTable/etc. + `/e2e/kit` expanded
 - [x] UIX-3 App shell: sidebar nav, top bar, command palette, Expert panel mount
-- [ ] UIX-4a Page migrations: landing, connect, overview, draft studio
+- [~] UIX-4a Page migrations: landing + connect on kit; overview + draft studio pending
 - [ ] UIX-4b Page migrations: designer, projects diff, automations, access
 - [ ] UIX-4c Page migrations: power-ops/bulk, journal, remaining pages
 - [ ] UIX-5 Copy guide application pass + iconography audit

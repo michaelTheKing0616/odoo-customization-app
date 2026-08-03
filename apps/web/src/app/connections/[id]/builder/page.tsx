@@ -27,6 +27,8 @@ import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import { PropertyFieldsPanel } from "@/components/builder/PropertyFieldsPanel";
 import { InvoicingConnectPanel } from "@/components/builder/InvoicingConnectPanel";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { reportApiError } from "@/lib/api-error";
 
 const FIELD_TYPES = [
   "char",
@@ -252,7 +254,7 @@ export default function BuilderPage() {
       await refresh();
       await loadFieldsForModel(created.model);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Create model failed");
+      reportApiError(err, setError, { fallback: "Create model failed", toast: true });
     } finally {
       setBusy(false);
     }
@@ -337,7 +339,7 @@ export default function BuilderPage() {
         setConfirmMutateOpen(true);
         setError(`${err.warning} Type “${err.confirm_phrase}” and retry.`);
       } else {
-        setError(err instanceof Error ? err.message : "Create field failed");
+        reportApiError(err, setError, { fallback: "Create field failed", toast: true });
       }
     } finally {
       setBusy(false);
@@ -381,7 +383,7 @@ export default function BuilderPage() {
         await loadFieldsForModel(o2mForm.parent_model);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Relational pair failed");
+      reportApiError(err, setError, { fallback: "Relational pair failed", toast: true });
     } finally {
       setBusy(false);
     }
@@ -422,7 +424,7 @@ export default function BuilderPage() {
       setConfirmTyped("");
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      reportApiError(err, setError, { fallback: "Delete failed", toast: true });
     } finally {
       setBusy(false);
     }
@@ -485,7 +487,7 @@ export default function BuilderPage() {
           }}
         />
 
-        {error && <p className="mt-4 text-sm text-[#f0a8a0]">{error}</p>}
+        {error ? <ErrorNotice message={error} className="mt-4" /> : null}
         {notice && <p className="mt-4 text-sm text-[#c9a9c0]">{notice}</p>}
 
         {pendingDelete && (

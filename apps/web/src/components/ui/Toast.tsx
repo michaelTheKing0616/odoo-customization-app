@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { diagnoseWithExpert } from "@/lib/expert-diagnostics";
 import { cn } from "@/lib/cn";
 
 type ToastVariant = "success" | "error" | "info";
@@ -19,6 +20,26 @@ type ToastContextValue = {
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
+function ApiErrorToastListener({ toast }: { toast: ToastContextValue["toast"] }) {
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const { message } = (event as CustomEvent<{ message: string }>).detail;
+      toast({
+        variant: "error",
+        title: "Request failed",
+        description: message,
+        action: {
+          label: "Diagnose with Expert",
+          onClick: () => diagnoseWithExpert(message),
+        },
+      });
+    };
+    window.addEventListener("app:api-error", handler);
+    return () => window.removeEventListener("app:api-error", handler);
+  }, [toast]);
+  return null;
+}
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
 
@@ -34,6 +55,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <ToastContext.Provider value={value}>
+      <ApiErrorToastListener toast={toast} />
       {children}
       <div
         className="pointer-events-none fixed bottom-4 right-4 z-[100] flex w-full max-w-sm flex-col gap-2"

@@ -31,6 +31,7 @@ import { DesignerFieldInspector } from "@/components/designer/DesignerFieldInspe
 import { ExplainThisButton } from "@/components/expert/ExplainThisButton";
 import { fallbackWidgetsForTtype, type WidgetOption } from "@/lib/widgetCatalog";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import {
   bindModeSupported,
   bindModeUnsupportedReason,
@@ -2660,14 +2661,7 @@ export default function DesignerPage() {
           is best-effort. Save defaults to <strong>inherit</strong> extension views.
           {archOverride ? " Arch override active — Save will POST raw inherit arch." : ""}
         </p>
-        {error && (
-          <p
-            role="alert"
-            className="mt-4 border border-[#7a3030] bg-[#2a1212] px-3 py-2 text-sm text-[#f0a8a0]"
-          >
-            {error}
-          </p>
-        )}
+        {error ? <ErrorNotice message={error} className="mt-4" /> : null}
         {notice && (
           <p
             role="status"

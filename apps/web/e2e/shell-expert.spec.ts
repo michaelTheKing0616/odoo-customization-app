@@ -33,66 +33,131 @@ test.describe("App shell & Expert (mocked API)", () => {
 
     await page.route("**/api/connections/**", async (route) => {
       const url = route.request().url();
+      const conn = {
+        id: "demo-conn",
+        name: "Demo",
+        url: "http://127.0.0.1:8069",
+        db_name: "odoo",
+        username: "admin",
+        server_version: "19.0",
+        created_at: null,
+        updated_at: null,
+        capabilities: {
+          major: 19,
+          edition: "community",
+          server_version: "19.0",
+          supported: ["view_inject_inherit", "base_automation_safe_triggers"],
+          unsupported: [],
+          ga: true,
+          message: "ok",
+        },
+      };
       if (url.endsWith("/connections") || url.match(/\/api\/connections$/)) {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify([
-            {
-              id: "demo-conn",
-              name: "Demo",
-              url: "http://127.0.0.1:8069",
-              db_name: "odoo",
-              username: "admin",
-              server_version: "19.0",
-              created_at: null,
-              updated_at: null,
-              capabilities: {
-                major: 19,
-                edition: "community",
-                server_version: "19.0",
-                supported: ["view_inject_inherit", "base_automation_safe_triggers"],
-                unsupported: [],
-                ga: true,
-                message: "ok",
-              },
-            },
-          ]),
+          body: JSON.stringify([conn]),
         });
         return;
       }
-      if (url.includes("/demo-conn") && !url.includes("/models")) {
+      if (url.match(/\/models(\?|$)/)) {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify({
-            id: "demo-conn",
-            name: "Demo",
-            url: "http://127.0.0.1:8069",
-            db_name: "odoo",
-            username: "admin",
-            server_version: "19.0",
-            created_at: null,
-            updated_at: null,
-            capabilities: {
-              major: 19,
-              edition: "community",
-              server_version: "19.0",
-              supported: ["view_inject_inherit", "base_automation_safe_triggers"],
-              unsupported: [],
-              ga: true,
-              message: "ok",
-            },
-          }),
+          body: JSON.stringify([]),
         });
         return;
       }
-      await route.continue();
+      if (url.match(/\/modules(\?|$)/)) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([]),
+        });
+        return;
+      }
+      if (url.match(/\/fields(\?|$)/)) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([]),
+        });
+        return;
+      }
+      if (url.match(/\/views(\?|$)/)) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([]),
+        });
+        return;
+      }
+      if (url.match(/\/promoted-modules(\?|$)/)) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([]),
+        });
+        return;
+      }
+      if (url.match(/\/snapshots(\?|$)/)) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([]),
+        });
+        return;
+      }
+      if (url.match(/\/audit/)) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([]),
+        });
+        return;
+      }
+      if (url.match(/\/health/)) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([]),
+        });
+        return;
+      }
+      if (url.match(/\/migration-assist(\?|$)/)) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(null),
+        });
+        return;
+      }
+      if (url.match(/\/deployment-panel(\?|$)/)) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(null),
+        });
+        return;
+      }
+      if (url.match(/\/demo-conn$/)) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(conn),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([]),
+      });
     });
 
-    await page.goto("/connections/demo-conn/builder");
+    await page.goto("/connections/demo-conn");
     await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 60_000 });
-    await page.getByRole("button", { name: "Open Odoo Expert" }).click();
+    await page.getByTestId("open-expert").click();
     await expect(page.getByTestId("expert-panel")).toBeVisible();
     await page.getByTestId("expert-input").fill("What is xpath inheritance?");
     await page.getByRole("button", { name: "Ask Expert" }).click();

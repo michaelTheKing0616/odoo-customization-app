@@ -1,47 +1,83 @@
+import Link from "next/link";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/layout-primitives";
+import { StatusPill } from "@/components/ui/StatusPill";
+
+const features = [
+  {
+    title: "Build",
+    body: "Models, fields, views, menus, and automations — live on your Odoo via public RPC.",
+  },
+  {
+    title: "Operate",
+    body: "Bulk tools, snapshots, sandbox validation, and module export when you need an escape hatch.",
+  },
+  {
+    title: "Expert",
+    body: "Grounded answers from Odoo docs with citations — explain fields, triggers, and errors in context.",
+  },
+];
+
 export default function Home() {
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(ellipse_at_top,_#3d2a38_0%,_#1a1218_45%,_#0c090b_100%)] text-[#f4eef2]">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-[0.12]"
-        style={{
-          backgroundImage:
-            "linear-gradient(rgba(244,238,242,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(244,238,242,0.08) 1px, transparent 1px)",
-          backgroundSize: "64px 64px",
-          maskImage: "radial-gradient(ellipse at center, black 20%, transparent 75%)",
-        }}
-      />
-      <div className="relative mx-auto flex min-h-screen max-w-5xl flex-col justify-center px-6 py-16 sm:px-10">
-        <p className="font-[family-name:var(--font-display)] text-5xl tracking-tight text-[#c9a9c0] sm:text-7xl">
+    <main className="min-h-screen bg-surface">
+      <div className="mx-auto flex min-h-screen max-w-5xl flex-col justify-center px-6 py-16 sm:px-10">
+        <p className="font-[family-name:var(--font-display)] text-sm uppercase tracking-widest text-accent">
           Odoo Custom
         </p>
-        <h1 className="mt-6 max-w-2xl font-[family-name:var(--font-display)] text-3xl leading-tight text-[#faf6f9] sm:text-5xl">
+        <h1 className="mt-4 max-w-2xl font-[family-name:var(--font-display)] text-4xl leading-tight text-ink sm:text-5xl">
           No-code Odoo customization for Community — without Enterprise Studio.
         </h1>
-        <p className="mt-5 max-w-xl font-[family-name:var(--font-sans)] text-base leading-relaxed text-[#d4c4ce] sm:text-lg">
-          Connect any Odoo 19 instance. Build models, fields, views, and
-          automations. Sandbox-test, then export a real installable module.
+        <p className="mt-5 max-w-xl text-base leading-relaxed text-muted sm:text-lg">
+          Connect any Odoo 17–19 instance. Build models, fields, views, and automations.
+          Sandbox-test, then export a real installable module.
         </p>
-        <div className="mt-10 flex flex-wrap gap-3 font-[family-name:var(--font-sans)]">
-          <a
-            href="/connect"
-            className="inline-flex h-12 items-center justify-center bg-[#714B67] px-6 text-sm font-semibold text-white transition hover:bg-[#5d3e55]"
-          >
-            Connect your Odoo
-          </a>
-          <a
-            href="/pipelines"
-            className="inline-flex h-12 items-center justify-center border border-[#3d2a38] px-6 text-sm text-[#d4c4ce] transition hover:border-[#c9a9c0] hover:text-[#c9a9c0]"
-          >
-            Multi-env promote
-          </a>
-          <a
-            href="/settings"
-            className="inline-flex h-12 items-center justify-center border border-[#3d2a38] px-6 text-sm text-[#d4c4ce] transition hover:border-[#c9a9c0] hover:text-[#c9a9c0]"
-          >
-            API settings
-          </a>
+
+        <div className="mt-8 flex flex-wrap items-center gap-2">
+          <StatusPill kind="ga" />
+          <StatusPill kind="hosting-onprem" />
+          <StatusPill kind="hosting-sh" />
+          <StatusPill kind="experimental" />
+          <span className="text-xs text-muted">
+            Community GA on 17–19 · 16 experimental · Online/sh/on-prem supported where RPC allows
+          </span>
         </div>
+
+        <div className="mt-10 flex flex-wrap gap-3">
+          <Button variant="primary" size="md" asChild>
+            <Link href="/connect">Connect your Odoo</Link>
+          </Button>
+          <Button variant="secondary" size="md" asChild>
+            <Link href="/pipelines">Multi-env promote</Link>
+          </Button>
+          <Button variant="ghost" size="md" asChild>
+            <Link href="/settings">API settings</Link>
+          </Button>
+        </div>
+
+        <div className="mt-16 grid gap-4 sm:grid-cols-3">
+          {features.map((f) => (
+            <Card key={f.title} className="p-5">
+              <h2 className="text-md font-semibold text-ink">{f.title}</h2>
+              <p className="mt-2 text-sm leading-relaxed text-muted">{f.body}</p>
+            </Card>
+          ))}
+        </div>
+
+        <footer className="mt-16 border-t border-border-subtle pt-6 text-sm text-muted">
+          <Link href="/connect" className="text-accent hover:underline">
+            Get started
+          </Link>
+          {" · "}
+          <a
+            href="https://www.odoo.com/documentation/19.0/"
+            className="hover:text-ink"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Odoo 19 docs
+          </a>
+        </footer>
       </div>
     </main>
   );

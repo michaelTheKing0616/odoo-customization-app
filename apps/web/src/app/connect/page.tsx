@@ -4,6 +4,13 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
+import { Button } from "@/components/ui/Button";
+import { Callout } from "@/components/ui/Callout";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { Input } from "@/components/ui/Input";
+import { Card, PageHeader } from "@/components/ui/layout-primitives";
+import { StatusPill } from "@/components/ui/StatusPill";
+import { reportApiError } from "@/lib/api-error";
 import { api, Connection } from "@/lib/api";
 
 type EditForm = {
@@ -14,11 +21,14 @@ type EditForm = {
   password: string;
 };
 
+type Step = 1 | 2 | 3;
+
 export default function ConnectPage() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [step, setStep] = useState<Step>(1);
   const [form, setForm] = useState({
     name: "Local Odoo 19",
     url: "http://127.0.0.1:8069",
@@ -38,6 +48,7 @@ export default function ConnectPage() {
   const [busy, setBusy] = useState(false);
   const [probingId, setProbingId] = useState<string | null>(null);
   const [lastSavedCaps, setLastSavedCaps] = useState<Connection["capabilities"]>(null);
+  const [lastSavedId, setLastSavedId] = useState<string | null>(null);
 
   async function refresh() {
     const rows = await api.listConnections();
@@ -53,10 +64,12 @@ export default function ConnectPage() {
     setSaving(true);
     setError(null);
     setNotice(null);
+    setStep(2);
     try {
       const created = await api.createConnection({ ...form, verify: true });
       setForm((f) => ({ ...f, password: "" }));
       setLastSavedCaps(created.capabilities ?? null);
+      setLastSavedId(created.id);
       setNotice(
         created.capabilities?.message
           ? `Connection saved. ${created.capabilities.message}`
@@ -65,8 +78,10 @@ export default function ConnectPage() {
             : "Connection saved.",
       );
       await refresh();
+      setStep(3);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save connection");
+      reportApiError(err, setError, { fallback: "Failed to save connection", toast: false });
+      setStep(1);
     } finally {
       setSaving(false);
     }
@@ -121,7 +136,7 @@ export default function ConnectPage() {
       );
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Update failed");
+      reportApiError(err, setError, { fallback: "Update failed", toast: false });
     } finally {
       setSaving(false);
     }
@@ -132,13 +147,12 @@ export default function ConnectPage() {
     setBusy(true);
     setError(null);
     try {
-      // Delete connection does not require phrase on API; ConfirmDialog still gates UX.
       await api.deleteConnection(deleteTargetId);
       setDeleteTargetId(null);
       setNotice("Connection removed from app metadata.");
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      reportApiError(err, setError, { fallback: "Delete failed", toast: false });
     } finally {
       setBusy(false);
     }
@@ -152,95 +166,154 @@ export default function ConnectPage() {
       setLastSavedCaps(result.capabilities ?? null);
       setNotice(
         result.capabilities?.message ??
-          (result.server_version
-            ? `Probe ok — ${result.server_version}`
-            : "Probe ok."),
+          (result.server_version ? `Probe ok — ${result.server_version}` : "Probe ok."),
       );
-      // Refresh list so server_version + derived capabilities are not stale.
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Probe failed");
+      reportApiError(err, setError, { fallback: "Probe failed", toast: false });
     } finally {
       setProbingId(null);
     }
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#3d2a38_0%,_#1a1218_50%,_#0c090b_100%)] px-6 py-12 text-[#f4eef2]">
+    <main className="min-h-screen bg-surface px-6 py-12">
       <div className="mx-auto max-w-3xl">
-        <Link href="/" className="text-sm text-[#c9a9c0] hover:underline">
-          ← Odoo Custom
-        </Link>
-        <Link href="/settings" className="ml-4 text-sm text-[#8f7a88] hover:underline">
-          API settings
-        </Link>
-        <h1 className="mt-4 font-[family-name:var(--font-display)] text-4xl text-[#faf6f9]">
-          Connect your Odoo
-        </h1>
-        <p className="mt-2 max-w-xl text-[#d4c4ce]">
-          URL, database, and API key (or password). Credentials are encrypted at
-          rest. Verified against Odoo 19 before save.
-        </p>
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <Link href="/" className="text-accent hover:underline">
+            ← Odoo Custom
+          </Link>
+          <Link href="/settings" className="text-muted hover:text-ink">
+            API settings
+          </Link>
+        </div>
 
-        <form
-          onSubmit={onSubmit}
-          className="mt-10 space-y-4 border border-[#3d2a38] bg-[#0f1a16]/80 p-6"
-        >
-          {(
-            [
-              ["name", "Label", "text"],
-              ["url", "Odoo URL", "url"],
-              ["db_name", "Database", "text"],
-              ["username", "Username", "text"],
-              ["password", "Password / API key", "password"],
-            ] as const
-          ).map(([key, label, type]) => (
-            <label key={key} className="block text-sm">
-              <span className="text-[#a8909e]">{label}</span>
-              <input
-                type={type}
-                required
-                value={form[key]}
-                onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 text-[#f4eef2] outline-none focus:border-[#c9a9c0]"
-              />
-            </label>
+        <div className="mt-4">
+          <PageHeader
+            title="Connect your Odoo"
+            description="URL, database, and API key (or password). Credentials are encrypted at rest and verified before save."
+          />
+        </div>
+
+        <ol className="mb-8 flex flex-wrap gap-4 text-sm">
+          {[
+            [1, "Credentials"],
+            [2, "Probe"],
+            [3, "Summary"],
+          ].map(([n, label]) => (
+            <li
+              key={n}
+              className={
+                step === n
+                  ? "font-medium text-accent"
+                  : step > (n as number)
+                    ? "text-ink"
+                    : "text-muted"
+              }
+            >
+              {n}. {label}
+            </li>
           ))}
-          {error && <p className="text-sm text-[#f0a8a0]">{error}</p>}
-          {notice && <p className="text-sm text-[#c9a9c0]">{notice}</p>}
-          {lastSavedCaps && (
-            <CapabilityProbePanel
-              capabilities={lastSavedCaps}
-              defaultOpen
-              className="pt-1"
+        </ol>
+
+        {step === 3 && lastSavedId ? (
+          <Card className="mb-8 space-y-4 p-6">
+            <Callout variant="info" title="You're connected">
+              Your instance was probed successfully. Open Overview to browse models or jump
+              straight into Build.
+            </Callout>
+            {lastSavedCaps ? (
+              <CapabilityProbePanel capabilities={lastSavedCaps} defaultOpen />
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <Button variant="primary" asChild>
+                <Link href={`/connections/${lastSavedId}`}>Go to Overview</Link>
+              </Button>
+              <Button variant="secondary" asChild>
+                <Link href={`/connections/${lastSavedId}/builder`}>Build models</Link>
+              </Button>
+              <Button variant="ghost" type="button" onClick={() => setStep(1)}>
+                Add another connection
+              </Button>
+            </div>
+          </Card>
+        ) : null}
+
+        <Card className="p-6">
+          <form onSubmit={onSubmit} className="space-y-4">
+            <Input
+              label="Label"
+              required
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
             />
-          )}
-          <button
-            type="submit"
-            disabled={saving}
-            className="h-11 bg-[#714B67] px-5 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            {saving ? "Verifying…" : "Save connection"}
-          </button>
-        </form>
+            <Input
+              label="Odoo URL"
+              type="url"
+              required
+              hint="Example: http://127.0.0.1:8069"
+              value={form.url}
+              onChange={(e) => setForm({ ...form, url: e.target.value })}
+            />
+            <Input
+              label="Database"
+              required
+              value={form.db_name}
+              onChange={(e) => setForm({ ...form, db_name: e.target.value })}
+            />
+            <Input
+              label="Username"
+              required
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
+            />
+            <Input
+              label="Password / API key"
+              type="password"
+              required
+              hint="Use an Odoo API key when available — Settings → Users → API keys."
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+            />
+
+            {step === 2 && saving ? (
+              <Callout variant="info" title="Probing your instance">
+                Checking version, edition, hosting, and capability matrix…
+              </Callout>
+            ) : null}
+
+            {error ? <ErrorNotice message={error} showDiagnose={false} /> : null}
+            {notice ? (
+              <Callout variant="info" title="Saved">
+                {notice}
+              </Callout>
+            ) : null}
+            {lastSavedCaps && step !== 3 ? (
+              <CapabilityProbePanel capabilities={lastSavedCaps} defaultOpen className="pt-1" />
+            ) : null}
+
+            <Button type="submit" variant="primary" loading={saving} disabled={saving}>
+              {saving ? "Verifying…" : "Save connection"}
+            </Button>
+          </form>
+        </Card>
 
         <section className="mt-12">
-          <h2 className="font-[family-name:var(--font-display)] text-2xl">
-            Saved connections
-          </h2>
+          <h2 className="text-xl font-semibold text-ink">Saved connections</h2>
           <ul className="mt-4 space-y-3">
             {connections.length === 0 && (
-              <li className="text-sm text-[#8f7a88]">None yet.</li>
+              <li className="text-sm text-muted">None yet.</li>
             )}
             {connections.map((c) => (
-              <li
-                key={c.id}
-                className="border border-[#3d2a38] px-4 py-3"
-              >
+              <Card key={c.id} className="p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="font-medium text-[#faf6f9]">{c.name}</p>
-                    <p className="text-sm text-[#8f7a88]">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium text-ink">{c.name}</p>
+                      {c.capabilities?.ga ? <StatusPill kind="ga" /> : null}
+                      {!c.capabilities?.ga ? <StatusPill kind="experimental" /> : null}
+                    </div>
+                    <p className="text-sm text-muted">
                       {c.url} · {c.db_name} · {c.server_version ?? "version unknown"}
                     </p>
                     <CapabilityProbePanel
@@ -250,104 +323,80 @@ export default function ConnectPage() {
                       refreshing={probingId === c.id}
                     />
                   </div>
-                  <div className="flex flex-wrap gap-2 text-sm">
-                    <Link
-                      href={`/connections/${c.id}/builder`}
-                      className="bg-[#714B67] px-3 py-1.5 font-semibold text-white"
-                    >
-                      Build
-                    </Link>
-                    <Link
-                      href={`/connections/${c.id}/designer`}
-                      className="border border-[#c9a9c0] px-3 py-1.5 text-[#c9a9c0]"
-                    >
-                      Views
-                    </Link>
-                    <Link
-                      href={`/connections/${c.id}/automations`}
-                      className="border border-[#c9a9c0] px-3 py-1.5 text-[#c9a9c0]"
-                    >
-                      Automations
-                    </Link>
-                    <Link
-                      href={`/connections/${c.id}/access`}
-                      className="border border-[#c9a9c0] px-3 py-1.5 text-[#c9a9c0]"
-                    >
-                      Access
-                    </Link>
-                    <Link
-                      href={`/connections/${c.id}`}
-                      className="border border-[#3d2a38] px-3 py-1.5 text-[#d4c4ce]"
-                    >
-                      Browse
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={() => startEdit(c)}
-                      className="border border-[#3d2a38] px-3 py-1.5 text-[#d4c4ce]"
-                    >
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="primary" size="sm" asChild>
+                      <Link href={`/connections/${c.id}`}>Overview</Link>
+                    </Button>
+                    <Button variant="secondary" size="sm" asChild>
+                      <Link href={`/connections/${c.id}/builder`}>Build</Link>
+                    </Button>
+                    <Button variant="ghost" size="sm" type="button" onClick={() => startEdit(c)}>
                       Edit
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
                       type="button"
                       onClick={() => setDeleteTargetId(c.id)}
-                      className="border border-[#5a3a36] px-3 py-1.5 text-[#f0a8a0]"
                     >
                       Delete
-                    </button>
+                    </Button>
                   </div>
                 </div>
 
-                {editingId === c.id && (
-                  <form
-                    onSubmit={onUpdate}
-                    className="mt-4 space-y-3 border-t border-[#3d2a38] pt-4"
-                  >
-                    <p className="text-sm text-[#a8909e]">
+                {editingId === c.id ? (
+                  <form onSubmit={onUpdate} className="mt-4 space-y-3 border-t border-border-subtle pt-4">
+                    <p className="text-sm text-muted">
                       Update connection (password optional — leave blank to keep current)
                     </p>
-                    {(
-                      [
-                        ["name", "Label", "text"],
-                        ["url", "Odoo URL", "url"],
-                        ["db_name", "Database", "text"],
-                        ["username", "Username", "text"],
-                        ["password", "New password / API key", "password"],
-                      ] as const
-                    ).map(([key, label, type]) => (
-                      <label key={key} className="block text-sm">
-                        <span className="text-[#a8909e]">{label}</span>
-                        <input
-                          type={type}
-                          required={key !== "password"}
-                          value={editForm[key]}
-                          onChange={(e) =>
-                            setEditForm({ ...editForm, [key]: e.target.value })
-                          }
-                          className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 text-[#f4eef2] outline-none focus:border-[#c9a9c0]"
-                          autoComplete={key === "password" ? "new-password" : "off"}
-                        />
-                      </label>
-                    ))}
+                    <Input
+                      label="Label"
+                      required
+                      value={editForm.name}
+                      onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                    />
+                    <Input
+                      label="Odoo URL"
+                      type="url"
+                      required
+                      value={editForm.url}
+                      onChange={(e) => setEditForm({ ...editForm, url: e.target.value })}
+                    />
+                    <Input
+                      label="Database"
+                      required
+                      value={editForm.db_name}
+                      onChange={(e) => setEditForm({ ...editForm, db_name: e.target.value })}
+                    />
+                    <Input
+                      label="Username"
+                      required
+                      value={editForm.username}
+                      onChange={(e) => setEditForm({ ...editForm, username: e.target.value })}
+                    />
+                    <Input
+                      label="New password / API key"
+                      type="password"
+                      value={editForm.password}
+                      onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+                      autoComplete="new-password"
+                    />
                     <div className="flex gap-2">
-                      <button
-                        type="submit"
-                        disabled={saving}
-                        className="h-10 bg-[#714B67] px-4 text-sm font-semibold text-white disabled:opacity-60"
-                      >
-                        {saving ? "Saving…" : "Save changes"}
-                      </button>
-                      <button
+                      <Button type="submit" variant="primary" size="sm" loading={saving}>
+                        Save changes
+                      </Button>
+                      <Button
                         type="button"
+                        variant="ghost"
+                        size="sm"
                         onClick={() => setEditingId(null)}
-                        className="h-10 border border-[#3d2a38] px-4 text-sm text-[#d4c4ce]"
                       >
                         Cancel
-                      </button>
+                      </Button>
                     </div>
                   </form>
-                )}
-              </li>
+                ) : null}
+              </Card>
             ))}
           </ul>
         </section>

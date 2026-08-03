@@ -24,6 +24,8 @@ import {
 import { AutomationActionKindSelect } from "@/components/AutomationActionKindSelect";
 import { ExplainThisButton } from "@/components/expert/ExplainThisButton";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { reportApiError } from "@/lib/api-error";
 
 const LIBRARY_FINE_SNIPPET = `# Library fine on return — Option A (state=code in generated module / sandbox).
 # Available: env, model, record, records, time, datetime, dateutil, timezone, log, Warning
@@ -391,7 +393,7 @@ export default function AutomationsPage() {
         );
         setError("Advanced confirmation required — review risks and type the phrase.");
       } else {
-        setError(err instanceof Error ? err.message : "Create failed");
+        reportApiError(err, setError, { fallback: "Create failed", toast: true });
       }
     } finally {
       setBusy(false);
@@ -422,7 +424,7 @@ export default function AutomationsPage() {
       setNotice(`Restored ${res.restored} #${res.id}`);
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Rollback failed");
+      reportApiError(err, setError, { fallback: "Rollback failed", toast: true });
     } finally {
       setBusy(false);
     }
@@ -452,7 +454,7 @@ export default function AutomationsPage() {
           setConfirmPhrase(err.confirm_phrase);
           setError("Confirmation rejected or required again.");
         } else {
-          setError(err instanceof Error ? err.message : "Delete failed");
+          reportApiError(err, setError, { fallback: "Delete failed", toast: true });
         }
       } finally {
         setBusy(false);
@@ -475,7 +477,7 @@ export default function AutomationsPage() {
         setConfirmMode(null);
         await refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Update failed");
+        reportApiError(err, setError, { fallback: "Update failed", toast: true });
       } finally {
         setBusy(false);
       }
@@ -576,7 +578,7 @@ export default function AutomationsPage() {
           }}
         />
 
-        {error && <p className="mt-4 text-sm text-[#f0a8a0]">{error}</p>}
+        {error ? <ErrorNotice message={error} className="mt-4" /> : null}
         {notice && <p className="mt-4 text-sm text-[#c9a9c0]">{notice}</p>}
 
         {automationsGate && !automationsGate.automations.available ? (
