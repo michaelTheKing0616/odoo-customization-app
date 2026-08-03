@@ -5,7 +5,6 @@ import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
 import { HealthCheckBanner } from "@/components/HealthCheckBanner";
-import { HealthCheckBanner } from "@/components/HealthCheckBanner";
 import { EePlaybooksPanel } from "@/components/EePlaybooksPanel";
 import { DomainPlaybooksPanel } from "@/components/DomainPlaybooksPanel";
 import { StudioFeatureRecipesPanel } from "@/components/StudioFeatureRecipesPanel";
@@ -17,6 +16,7 @@ import {
   ModuleRow,
   PromotedModuleRow,
   ViewRow,
+  DeploymentPanel,
 } from "@/lib/api";
 import { JobPollError, pollJob } from "@/lib/jobs";
 
@@ -73,13 +73,6 @@ export default function BrowserPage() {
   const [sandboxLogTail, setSandboxLogTail] = useState<string | null>(null);
   const [suggestNotice, setSuggestNotice] = useState<string | null>(null);
   const [deploymentPanel, setDeploymentPanel] = useState<DeploymentPanel | null>(null);
-  const [storeReadiness, setStoreReadiness] = useState<
-    import("@/lib/api").StoreReadinessReport | null
-  >(null);
-  const [storeReadyExport, setStoreReadyExport] = useState(false);
-  const [migrationAssist, setMigrationAssist] = useState<
-    import("@/lib/api").MigrationAssist | null
-  >(null);
   const [storeReadiness, setStoreReadiness] = useState<
     import("@/lib/api").StoreReadinessReport | null
   >(null);

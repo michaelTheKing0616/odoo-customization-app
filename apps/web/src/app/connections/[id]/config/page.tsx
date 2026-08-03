@@ -50,13 +50,6 @@ export default function ConfigPage() {
     message: string;
     major: number | null;
   } | null>(null);
-  const [specJson, setSpecJson] = useState('{"models":[{"model":"x_demo","fields":[]}]}');
-  const [i18nProbe, setI18nProbe] = useState<{
-    ok: boolean;
-    method: string;
-    message: string;
-    major: number | null;
-  } | null>(null);
   const [mailForm, setMailForm] = useState({
     name: "",
     model: "res.partner",

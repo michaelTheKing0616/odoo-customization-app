@@ -38,85 +38,26 @@ export type AutomationsGateResponse = {
   approvals: GatingCallout;
 };
 
-export type DeploymentPanel = {
-  tier: "onprem" | "sh" | "online" | "unknown";
-  title: string;
-  body: string;
-  options: string[];
-  include_deploy_doc: boolean;
+export type ProtectedTier = "tier_1" | "tier_2";
+
+export type ExpertCitation = {
+  source: string;
+  version: string;
+  breadcrumb: string;
+  chunk_id: string;
 };
 
-export type ValidateLiveItem = {
-  item_id: string;
-  category: string;
-  status: "pass" | "warn" | "fail";
-  message: string;
-};
-
-export type ValidateLiveResult = {
-  ok: boolean;
-  items: ValidateLiveItem[];
-  fail_count: number;
-  warn_count: number;
-  message: string;
-};
-
-export type StoreReadinessItem = {
-  key: string;
-  label: string;
-  status: "pass" | "warn" | "fail";
-  message: string;
-};
-
-export type StoreReadinessReport = {
-  ok: boolean;
-  items: StoreReadinessItem[];
-  fail_count: number;
-  warn_count: number;
-  disclaimer: string;
-  message: string;
-};
-
-export type MigrationUnlock = {
-  key: string;
-  label: string;
-  online_status: string;
-  sh_status: string;
-  unlocks: boolean;
-  reason: string;
-};
-
-export type MigrationAssist = {
-  eligible: boolean;
-  hosting: string;
-  title: string;
-  body: string;
-  unlocks: MigrationUnlock[];
-  docs_links: { label: string; url: string }[];
-  disclaimer: string;
-  message: string;
-};
-
-export type GatingChoiceId =
-  | "upgrade_plan"
-  | "export_module"
-  | "install_module"
-  | "leave_out"
-  | "use_staging";
-
-export type GatingCallout = {
-  feature: string;
-  title: string;
-  why: string;
-  options: string[];
-  available: boolean;
-  capability_key: string;
-  gating_choices: { id: GatingChoiceId; label: string }[];
-};
-
-export type AutomationsGateResponse = {
-  automations: GatingCallout;
-  approvals: GatingCallout;
+export type ExpertAskResponse = {
+  answer_markdown: string;
+  citations: ExpertCitation[];
+  grounded: boolean;
+  declined: boolean;
+  suggested_tools: Array<{ id?: string; label?: string; deep_link?: string }>;
+  caution_flags: string[];
+  retrieval_version?: string | null;
+  model_used?: string | null;
+  reasoning: boolean;
+  uncited_warning: boolean;
 };
 
 export type DeploymentPanel = {
@@ -177,6 +118,16 @@ export type MigrationAssist = {
   disclaimer: string;
   message: string;
 };
+
+
+
+
+
+
+
+
+
+
 
 export type Connection = {
   id: string;
@@ -282,59 +233,10 @@ export type ApprovalButton = {
   in_header: boolean;
 };
 
-export type ApprovalStep = {
-  order: number;
-  approver_user_ids?: number[];
-  approver_group_id?: number | null;
-  exclusive?: boolean;
-  domain?: string | null;
-};
 
-export type ApprovalRule = {
-  id: string;
-  connection_id: string;
-  engine: "community" | "studio" | string;
-  name: string;
-  target_model: string;
-  button_method: string;
-  button_label?: string | null;
-  steps: ApprovalStep[];
-  active: boolean;
-  deployed: boolean;
-  odoo_wrapper_action_id?: number | null;
-  odoo_studio_rule_id?: number | null;
-  created_at?: string | null;
-};
 
-export type ApprovalEntry = {
-  id: string;
-  rule_id: string;
-  record_model: string;
-  record_id: number;
-  step_order: number;
-  status: string;
-  approver_user_id?: number | null;
-  message: string;
-  created_at?: string | null;
-  resolved_at?: string | null;
-};
 
-export type ApprovalsGateResponse = {
-  engine: string;
-  studio_available: boolean;
-  studio_verify_state: string;
-  community_available: boolean;
-  studio_note?: string | null;
-  gating: GatingCallout;
-};
 
-export type ApprovalButton = {
-  name: string;
-  label: string;
-  bulk_safe: boolean;
-  reason: string;
-  in_header: boolean;
-};
 
 export type ProcessGateResponse = {
   engine: string;
@@ -464,38 +366,12 @@ export type NicheWidgetEntry = {
   } | null;
 };
 
-export type AutomationTriggersResponse = {
-  major: number;
-  source: string;
-  supported_triggers: string[];
-  probe_table: Array<{
-    major: number;
-    source: string;
-    on_webhook: boolean;
-    on_change: boolean;
-    on_change_field_ids?: boolean;
-    trigger_count?: number | null;
-  }>;
-};
 
 export type NicheWidgetsResponse = {
   widgets: NicheWidgetEntry[];
   color_palette: Array<{ index: number; name: string }>;
 };
 
-export type NicheWidgetEntry = {
-  id: string;
-  label: string;
-  recommended_ttypes: string[];
-  view_types?: string[];
-  hint?: string;
-  supporting_field?: {
-    name: string;
-    ttype: string;
-    string?: string;
-    relation?: string;
-  } | null;
-};
 
 export type PropertyFieldsProbeOut = {
   major: number;
@@ -581,55 +457,11 @@ export type InvoicingModuleSpecOut = {
   fragment: Record<string, unknown>;
 };
 
-export type InvoicingPreflightOut = {
-  ok: boolean;
-  account_installed: boolean;
-  l10n_installed: boolean;
-  company_country?: string | null;
-  l10n_modules: string[];
-  message: string;
-};
 
-export type InvoicingConnectOut = {
-  ok: boolean;
-  path: string;
-  invoice_field: string;
-  field_created: boolean;
-  count_field?: string | null;
-  count_field_created?: boolean | null;
-  window_action_id: number;
-  button_spec: Record<string, unknown>;
-  form_view_id?: number | null;
-  form_view_name?: string | null;
-};
 
-export type InvoicingMergeSpecOut = {
-  ok: boolean;
-  merged: Record<string, unknown>;
-};
 
-export type ScanFindOut = {
-  ok: boolean;
-  model: string;
-  field: string;
-  value: string;
-  count: number;
-  records: Array<{ id: number; display_name?: string | null }>;
-};
 
-export type InvoicingDraftInvoiceOut = {
-  ok: boolean;
-  move_id: number;
-  move_name?: string | null;
-  state?: string | null;
-  source_model: string;
-  record_id: number;
-};
 
-export type InvoicingModuleSpecOut = {
-  ok: boolean;
-  fragment: Record<string, unknown>;
-};
 
 export type SandboxRunResult = {
   ok: boolean;
@@ -1167,27 +999,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  generalizePack: (body: {
-    spec_json?: Record<string, unknown>;
-    project_id?: string;
-    connection_id?: string;
-    pack_slug?: string;
-    consent_share_template: boolean;
-  }) =>
-    request<{
-      ok: boolean;
-      filename: string;
-      source: string;
-      domain_pack: string;
-      suggested_tags: string[];
-      anti_patterns: string[];
-      model_count: number;
-      warnings: string[];
-      note: string;
-    }>("/api/ai/generalize-pack", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
   validateModuleSpecLive: (connectionId: string, body: { spec: Record<string, unknown> }) =>
     request<ValidateLiveResult>(
       `/api/connections/${connectionId}/module-spec/validate-live`,
@@ -1682,107 +1493,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  getInvoicingPreflight: (id: string) =>
-    request<InvoicingPreflightOut>(`/api/connections/${id}/builder/invoicing/preflight`),
-  connectInvoicing: (
-    id: string,
-    body: {
-      model: string;
-      invoice_field?: string;
-      smart_button_name?: string;
-      confirm_advanced?: boolean;
-      confirm_phrase?: string | null;
-    },
-  ) =>
-    request<InvoicingConnectOut>(`/api/connections/${id}/builder/invoicing/connect`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  createDraftInvoice: (
-    id: string,
-    body: {
-      source_model: string;
-      record_id: number;
-      invoice_field?: string;
-      partner_field?: string;
-      amount_field?: string;
-      description_field?: string;
-      confirm_advanced?: boolean;
-      confirm_phrase?: string | null;
-    },
-  ) =>
-    request<InvoicingDraftInvoiceOut>(`/api/connections/${id}/builder/invoicing/draft-invoice`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  getInvoicingModuleSpec: (
-    id: string,
-    body: {
-      model: string;
-      invoice_field?: string;
-      origin_field_on_move?: string;
-      partner_field?: string;
-    },
-  ) =>
-    request<InvoicingModuleSpecOut>(`/api/connections/${id}/builder/invoicing/module-spec`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  mergeInvoicingIntoSpec: (
-    id: string,
-    body: {
-      base_spec?: Record<string, unknown>;
-      model: string;
-      invoice_field?: string;
-      origin_field_on_move?: string;
-      partner_field?: string;
-    },
-  ) =>
-    request<InvoicingMergeSpecOut>(`/api/connections/${id}/builder/invoicing/merge-into-spec`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  getDocumentsGate: (id: string) =>
-    request<{
-      ok: boolean;
-      available: boolean;
-      verify_state?: string | null;
-      folder_model?: string | null;
-      message?: string | null;
-      note?: string | null;
-    }>(`/api/connections/${id}/builder/documents/gate`),
-  getDocumentsFolderMap: (id: string) =>
-    request<{ ok: boolean; mapping: Record<string, number> }>(
-      `/api/connections/${id}/builder/documents/folder-map`,
-    ),
-  setDocumentsFolder: (
-    id: string,
-    body: { model: string; folder_id?: number | null },
-  ) =>
-    request<{ ok: boolean; mapping: Record<string, number> }>(
-      `/api/connections/${id}/builder/documents/folder-map`,
-      { method: "POST", body: JSON.stringify(body) },
-    ),
-  mergeDocumentsIntoSpec: (
-    id: string,
-    body: {
-      base_spec?: Record<string, unknown>;
-      model: string;
-      folder_id: number;
-    },
-  ) =>
-    request<{ ok: boolean; merged: Record<string, unknown> }>(
-      `/api/connections/${id}/builder/documents/merge-into-spec`,
-      { method: "POST", body: JSON.stringify(body) },
-    ),
-  bulkScanFind: (
-    id: string,
-    body: { model: string; field: string; value: string; limit?: number },
-  ) =>
-    request<ScanFindOut>(`/api/connections/${id}/bulk/scan-find`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
   updateField: (
     id: string,
     fieldId: number,
@@ -2030,27 +1740,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ models }),
     }),
-  getMultiCompanyGuidance: (id: string) =>
-    request<{ title: string; body: string }>(
-      `/api/connections/${id}/access/multi-company/guidance`,
-    ),
-  applyMultiCompanyDraft: (id: string, draft: Record<string, unknown>) =>
-    request<{ ok: boolean; draft: Record<string, unknown> }>(
-      `/api/connections/${id}/access/multi-company/apply-draft`,
-      { method: "POST", body: JSON.stringify({ draft }) },
-    ),
-  applyMultiCompanyLive: (id: string, models: string[]) =>
-    request<{
-      ok: boolean;
-      models: string[];
-      fields_created: number;
-      rules_created: number;
-      warnings: string[];
-    }>(`/api/connections/${id}/access/multi-company/apply-live`, {
-      method: "POST",
-      body: JSON.stringify({ models }),
-    }),
-
   previewViewArch: (id: string, view_type: string, spec: unknown) =>
     request<{ arch: string }>(`/api/connections/${id}/views/preview`, {
       method: "POST",
@@ -2572,10 +2261,6 @@ export const api = {
     request<PowerOpsCapabilities>(`/api/connections/${id}/power-ops/capabilities`),
   listEePlaybooks: (id: string) =>
     request<EePlaybook[]>(`/api/connections/${id}/ee-playbooks`),
-  listDocumentsFolders: (id: string) =>
-    request<Array<{ id: number; name: string | null }>>(
-      `/api/connections/${id}/ee-playbooks/documents/folders`,
-    ),
   listDocumentsFolders: (id: string) =>
     request<Array<{ id: number; name: string | null }>>(
       `/api/connections/${id}/ee-playbooks/documents/folders`,
@@ -3134,49 +2819,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  probeI18n: (id: string) =>
-    request<{
-      ok: boolean;
-      major: number | null;
-      method: string;
-      context_lang_reads: boolean;
-      ir_translation_model: boolean;
-      message: string;
-    }>(`/api/connections/${id}/config/i18n/probe`),
-  exportSpecTranslationsCsv: async (
-    id: string,
-    spec: Record<string, unknown>,
-    lang: string,
-  ) => {
-    const storedKey = getStoredApiKey();
-    const res = await fetch(
-      `${API_BASE}/api/connections/${id}/config/i18n/spec-export`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(storedKey ? { Authorization: `Bearer ${storedKey}` } : {}),
-        },
-        body: JSON.stringify({ spec, lang }),
-      },
-    );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.text();
-  },
-  importSpecTranslations: (
-    id: string,
-    body: { csv_text: string; dry_run?: boolean },
-  ) =>
-    request<{
-      ok: boolean;
-      dry_run: boolean;
-      updated: number;
-      skipped: number;
-      preview: Array<{ model: string; name: string; lang: string; value: string }>;
-    }>(`/api/connections/${id}/config/i18n/spec-import`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
   listConfigPaperformats: (id: string) =>
     request<
       Array<{
@@ -3491,33 +3133,6 @@ export const api = {
       `/api/connections/${id}/reports/design/to-module-spec`,
       { method: "POST", body: JSON.stringify(body) },
     ),
-  getReportDesignPalette: (id: string) =>
-    request<Array<{ type: string; label: string; hint: string }>>(
-      `/api/connections/${id}/reports/design/palette`,
-    ),
-  compileReportDesign: (id: string, body: { spec: Record<string, unknown> }) =>
-    request<{ ok: boolean; arch: string; body_html: string }>(
-      `/api/connections/${id}/reports/design/compile`,
-      { method: "POST", body: JSON.stringify(body) },
-    ),
-  previewReportDesign: (
-    id: string,
-    body: { spec: Record<string, unknown>; report_id: number; record_id: number },
-  ) =>
-    request<{
-      ok: boolean;
-      content_base64: string;
-      render_path: string;
-      message: string;
-    }>(`/api/connections/${id}/reports/design/preview`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  reportDesignToModuleSpec: (id: string, body: { spec: Record<string, unknown> }) =>
-    request<{ ok: boolean; fragment: Record<string, unknown> }>(
-      `/api/connections/${id}/reports/design/to-module-spec`,
-      { method: "POST", body: JSON.stringify(body) },
-    ),
   mergePrintReports: async (
     id: string,
     body: {
@@ -3619,6 +3234,18 @@ export const api = {
       description: string;
       models: Array<{ model: string; filename: string; csv: string }>;
     }>(`/api/connections/${id}/data-import/seed-packs/${packId}`),
+  listComponentGallery: () =>
+    request<Array<{ id: string; name: string; description: string; host_slot: string }>>("/api/ai/component-gallery"),
+  expertAsk: (body: {
+    question: string;
+    connection_id?: string;
+    ui_context?: Record<string, unknown>;
+    conversation?: Array<{ role: string; content: string }>;
+  }) =>
+    request<ExpertAskResponse>("/api/expert/ask", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };
 
 export type DataImportPreviewOut = {
@@ -3663,37 +3290,8 @@ export type IdGeneratorRunOut = {
   assignments: IdGeneratorAssignmentOut[];
 };
 
-export type IdGeneratorAssignmentOut = {
-  row_id: string | number;
-  name: string;
-  existing_code: string | null;
-  new_code: string | null;
-  changed: boolean;
-  initials?: string | null;
-};
 
-export type IdGeneratorPreviewOut = {
-  total: number;
-  changed: number;
-  skipped: number;
-  assignments: IdGeneratorAssignmentOut[];
-  headers?: string[] | null;
-  message: string;
-};
 
-export type IdGeneratorRunOut = {
-  run_id: string;
-  operation: string;
-  model: string;
-  total: number;
-  succeeded: number;
-  failed: number;
-  changed: number;
-  skipped: number;
-  dry_run: boolean;
-  message: string;
-  assignments: IdGeneratorAssignmentOut[];
-};
 
 export type DataImportCommitOut = {
   ok: boolean;
@@ -3824,13 +3422,6 @@ export type ReportRenderProbeOut = {
   message: string;
 };
 
-export type ReportRenderProbeOut = {
-  major: number;
-  rpc_methods: Record<string, string>;
-  http_report_pdf: boolean;
-  primary_path: string;
-  message: string;
-};
 
 export type BulkRunOut = {
   run_id: string;

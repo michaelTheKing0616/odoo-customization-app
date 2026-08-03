@@ -9,16 +9,13 @@ import {
   type WidgetOption,
 } from "@/lib/widgetCatalog";
 import {
-  fallbackWidgetsForTtype,
-  type WidgetOption,
-} from "@/lib/widgetCatalog";
-import {
   connectionSupports,
   connectionUnsupportedReason,
   currencyFieldSupported,
   currencyFieldUnsupportedReason,
   injectStrategyCapabilityId,
 } from "@/lib/capabilities";
+import { ExplainThisButton } from "@/components/expert/ExplainThisButton";
 import {
   SelectionEditor,
   SelectionRow,
@@ -29,8 +26,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import { PropertyFieldsPanel } from "@/components/builder/PropertyFieldsPanel";
 import { InvoicingConnectPanel } from "@/components/builder/InvoicingConnectPanel";
-import { PropertyFieldsPanel } from "@/components/builder/PropertyFieldsPanel";
-import { InvoicingConnectPanel } from "@/components/builder/InvoicingConnectPanel";
+import { useSyncShellContext } from "@/lib/use-sync-shell-context";
 
 const FIELD_TYPES = [
   "char",
@@ -125,6 +121,8 @@ export default function BuilderPage() {
 
   const [createdFields, setCreatedFields] = useState<FieldRow[]>([]);
   const [confirmMutateOpen, setConfirmMutateOpen] = useState(false);
+
+  useSyncShellContext({ model: fieldForm.model });
 
   const refresh = useCallback(async () => {
     const [conns, customs] = await Promise.all([
@@ -705,7 +703,13 @@ export default function BuilderPage() {
               />
             </label>
             <label className="block text-sm">
-              <span className="text-[#a8909e]">Type</span>
+              <span className="flex items-center gap-1 text-[#a8909e]">
+                Type
+                <ExplainThisButton
+                  question={`Explain many2one vs many2many vs one2many for a new field on ${fieldForm.model}`}
+                  label="Explain field types"
+                />
+              </span>
               <select
                 value={fieldForm.ttype}
                 onChange={(e) =>

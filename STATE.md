@@ -4,16 +4,18 @@
 
 ## Last run
 - Date: 2026-08-03
-- **EXP-3 shipped** (`b1e876a`): `POST /api/expert/ask` — ground-or-decline, citations, tier-1 refusal.
-- **EXP-4 shipped:** `eval_set.jsonl` (41 items) + `test_expert_eval.py` harness; baseline
-  `docs/research/expert_eval_baseline_2026-08-03.md` (CI 41/41 pass).
-- Tier-1 fix: dotted model token detection (`sign.request`, `sale.subscription`).
-- Gate: `test_expert_eval` 2 passed (+1 live skip); expert suite 40 passed total.
+- **UIX-1:** Design tokens (`globals.css`), Inter + JetBrains Mono, dark mode (`ThemeProvider`), `/e2e/tokens`.
+- **UIX-2 (core):** `components/ui/*` kit subset (Button, Sheet, Callout, Badge, Toast, CommandPalette, icons, layout primitives); `/e2e/kit`.
+- **UIX-3:** `connections/[id]/layout.tsx` app shell — sidebar (`nav.ts`), top bar, Cmd+K palette, React Query, Expert mount slot.
+- **EXP-5:** `ExpertPanel` (chat, citations, error paste, sessionStorage thread), `ExplainThisButton` + `AskWhyButton`, wired on builder/designer/automations/wizard; `api.expertAsk`.
+- Recovery cleanup: deduped replay corruption in 10+ web pages + `api.ts` so `pnpm build` passes.
+- Gates: `pnpm test` 74 passed; `pnpm build` ok; Playwright `shell-expert` 2/3 (expert open selector fix pending re-run).
 
 ## Next
-- **EXP-5** — Expert UX surfaces (requires UIX-3 shell) (`plans/PROGRESS.md`).
+- **UIX-2 remainder** — full 20-component kit + per-component Vitest (DataTable, DiffView, ConfirmDialog v2, etc.).
+- **UIX-4a** — page migrations (landing, connect, overview, Draft Studio).
 
 ## Rules
-- Expert eval gate: `uv run pytest tests/test_expert_eval.py -q`
-- Re-run baseline on chunking/retrieval/model changes.
-- Expert ask: `POST /api/expert/ask` requires `AI_ASSIST`.
+- Expert thread: `sessionStorage` key `expert-thread-{connectionId}`.
+- Shell context: `useSyncShellContext` on builder/designer/automations/wizard.
+- Diagnose errors: `diagnoseWithExpert(text)` from toast handlers.

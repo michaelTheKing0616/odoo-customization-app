@@ -1,14 +1,20 @@
 import type { Metadata } from "next";
-import { Fraunces, Manrope } from "next/font/google";
+import { Fraunces, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { ThemeScript } from "@/components/theme/ThemeScript";
 
 const display = Fraunces({
   variable: "--font-display",
   subsets: ["latin"],
 });
 
-const sans = Manrope({
+const sans = Inter({
   variable: "--font-sans",
+  subsets: ["latin"],
+});
+
+const mono = JetBrains_Mono({
+  variable: "--font-mono",
   subsets: ["latin"],
 });
 
@@ -25,8 +31,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <ThemeScript />
+      </head>
       <body
-        className={`${display.variable} ${sans.variable} antialiased`}
+        className={`${display.variable} ${sans.variable} ${mono.variable} antialiased bg-surface text-ink`}
         suppressHydrationWarning
       >
         {children}

@@ -163,38 +163,6 @@ export function InvoicingConnectPanel({
     }
   }
 
-  async function mergeIntoModuleSpecDraft() {
-    if (!model.startsWith("x_")) {
-      setError("Model must be custom x_* to merge");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const draftKey = `modulespec-draft:${connectionId}`;
-      let base: Record<string, unknown> = {};
-      try {
-        const raw = sessionStorage.getItem(draftKey);
-        if (raw) base = JSON.parse(raw) as Record<string, unknown>;
-      } catch {
-        base = {};
-      }
-      const res = await api.mergeInvoicingIntoSpec(connectionId, {
-        base_spec: base,
-        model,
-        invoice_field: invoiceField,
-        partner_field: partnerField,
-      });
-      sessionStorage.setItem(draftKey, JSON.stringify(res.merged));
-      setModuleSpec(JSON.stringify(res.merged, null, 2));
-      setNotice("Merged invoicing fragment into ModuleSpec session draft — open ModuleSpec editor to export.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Merge failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <section className="mt-8 border border-[#E5E5E5] bg-white p-6">
       <h2 className="text-lg font-semibold text-[#212529]">Connect to Invoicing (§19)</h2>

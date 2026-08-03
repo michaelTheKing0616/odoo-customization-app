@@ -181,22 +181,22 @@ INPUT: UIX-3 shell (right slide-over mount + context provider), EXP-3 endpoint, 
 builder + designer + automations pages, COPY_GUIDE.
 
 CHECKLIST:
-- [ ] Chat panel: slide-over on every connection page — thread UI, markdown rendering with
+- [x] Chat panel: slide-over on every connection page — thread UI, markdown rendering with
       citation chips (hover → source/breadcrumb/version), grounded/declined states styled per
       kit, suggested-tool deep links, conversation persists per connection
       (sessionStorage v1).
-- [ ] Context wiring: panel auto-sends ui_context (route, model under edit, draft summary)
+- [x] Context wiring: panel auto-sends ui_context (route, model under edit, draft summary)
       from the shell provider; visible "Using context: x_matter (draft)" chip the user can
       toggle off.
-- [ ] Explain-this affordances: small help icon next to field-type picker (builder), widget
+- [x] Explain-this affordances: small help icon next to field-type picker (builder), widget
       picker (designer), trigger picker (automations) → opens panel pre-filled with the
       contextual question ("Explain many2one vs many2many for this field on x_matter").
-- [ ] Error mode: paste-an-error box in the panel (and a "Diagnose" button on API error
+- [x] Error mode: paste-an-error box in the panel (and a "Diagnose" button on API error
       toasts) → routes through EXP-2's schema cross-check path; renders diagnosis +
       existence-check results distinctly.
-- [ ] Review companion: after a wizard draft completes, "Ask why" per model/automation row →
+- [x] Review companion: after a wizard draft completes, "Ask why" per model/automation row →
       pre-filled question with the draft context.
-- [ ] Playwright: panel open/ask/citation render (mocked API), explain-this from builder,
+- [x] Playwright: panel open/ask/citation render (mocked API), explain-this from builder,
       error mode flow; vision-verify screenshots.
 
 DONE MEANS: all four surfaces working against the live endpoint locally; Playwright green.

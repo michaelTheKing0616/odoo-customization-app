@@ -28,9 +28,9 @@ import {
   SnapshotRow,
 } from "@/lib/api";
 import { DesignerFieldInspector } from "@/components/designer/DesignerFieldInspector";
+import { ExplainThisButton } from "@/components/expert/ExplainThisButton";
 import { fallbackWidgetsForTtype, type WidgetOption } from "@/lib/widgetCatalog";
-import { DesignerFieldInspector } from "@/components/designer/DesignerFieldInspector";
-import { fallbackWidgetsForTtype, type WidgetOption } from "@/lib/widgetCatalog";
+import { useSyncShellContext } from "@/lib/use-sync-shell-context";
 import {
   bindModeSupported,
   bindModeUnsupportedReason,
@@ -292,6 +292,7 @@ export default function DesignerPage() {
   const [probing, setProbing] = useState(false);
   const [model, setModel] = useState("");
   const [viewType, setViewType] = useState<ViewType>("form");
+  useSyncShellContext({ model, viewType });
   const [title, setTitle] = useState("Form");
   const [fields, setFields] = useState<FieldRow[]>([]);
   const [fieldsModel, setFieldsModel] = useState("");
@@ -338,14 +339,6 @@ export default function DesignerPage() {
   const [listDefaultOrder, setListDefaultOrder] = useState("");
   const [kanbanCanCreate, setKanbanCanCreate] = useState(true);
   const [kanbanQuickCreate, setKanbanQuickCreate] = useState(true);
-  const [viewSample, setViewSample] = useState(false);
-  const [widgetAdvanced, setWidgetAdvanced] = useState(false);
-  const [inspectorWidgets, setInspectorWidgets] = useState<WidgetOption[]>([]);
-  const [nicheWidgets, setNicheWidgets] = useState<NicheWidgetEntry[]>([]);
-  const [colorPalette, setColorPalette] = useState<Array<{ index: number; name: string }>>(
-    [],
-  );
-  const [previewTheme, setPreviewTheme] = useState<PreviewTheme | null>(null);
   const [viewSample, setViewSample] = useState(false);
   const [widgetAdvanced, setWidgetAdvanced] = useState(false);
   const [inspectorWidgets, setInspectorWidgets] = useState<WidgetOption[]>([]);
@@ -977,7 +970,6 @@ export default function DesignerPage() {
       delete: listCanDelete,
       multi_edit: listMultiEdit,
       default_order: listDefaultOrder || null,
-      sample: viewSample || null,
       sample: viewSample || null,
       columns: listColumns.map(fieldSpec),
       decoration_danger: listDecorationDanger || null,
@@ -2826,7 +2818,13 @@ export default function DesignerPage() {
                     <span>Readonly</span>
                   </label>
                   <label className="block text-xs">
-                    Widget
+                    <span className="flex items-center gap-1">
+                      Widget
+                      <ExplainThisButton
+                        question={`Explain widget choices for ${selectedField.name} on ${model}`}
+                        label="Explain widgets"
+                      />
+                    </span>
                     <input
                       value={selectedField.widget ?? ""}
                       onChange={(e) =>

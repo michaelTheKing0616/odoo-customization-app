@@ -2,22 +2,28 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import { DomainBuilder } from "@/components/DomainBuilder";
+import { GatingCallout } from "@/components/GatingCallout";
 import {
   ActivityTypeRow,
   api,
   AutomationActionKind,
   AutomationRow,
   ConfirmationRequiredError,
+  AutomationsGateResponse,
   Connection,
+  GatingChoiceId,
+  MigrationAssist,
   ModuleExport,
   SnapshotRow,
 } from "@/lib/api";
 import { AutomationActionKindSelect } from "@/components/AutomationActionKindSelect";
+import { ExplainThisButton } from "@/components/expert/ExplainThisButton";
+import { useSyncShellContext } from "@/lib/use-sync-shell-context";
 
 const LIBRARY_FINE_SNIPPET = `# Library fine on return — Option A (state=code in generated module / sandbox).
 # Available: env, model, record, records, time, datetime, dateutil, timezone, log, Warning
@@ -197,18 +203,29 @@ export default function AutomationsPage() {
   const [mailTemplates, setMailTemplates] = useState<
     Array<{ id: number; name: string; model: string | null; subject: string | null }>
   >([]);
+  const [automationsGate, setAutomationsGate] = useState<AutomationsGateResponse | null>(
+    null,
+  );
+  const [gatingChoice, setGatingChoice] = useState<GatingChoiceId | null>(null);
+  const [migrationAssist, setMigrationAssist] = useState<MigrationAssist | null>(null);
+
+  useSyncShellContext({ model: form.model, triggerType: form.trigger });
 
   const refresh = useCallback(async () => {
-    const [conns, autos, types, snaps] = await Promise.all([
+    const [conns, autos, types, snaps, gate, migration] = await Promise.all([
       api.listConnections(),
       api.listAutomations(connectionId),
       api.listActivityTypes(connectionId).catch(() => [] as ActivityTypeRow[]),
       api.listSnapshots(connectionId).catch(() => [] as SnapshotRow[]),
+      api.getAutomationsGate(connectionId).catch(() => null),
+      api.getMigrationAssist(connectionId).catch(() => null),
     ]);
     setConnection(conns.find((c) => c.id === connectionId) ?? null);
     setRows(autos);
     setActivityTypes(types);
     setSnapshots(snaps);
+    setAutomationsGate(gate);
+    setMigrationAssist(migration);
     setForm((f) =>
       types[0] && !f.activity_type_id
         ? { ...f, activity_type_id: types[0].id }
@@ -471,6 +488,13 @@ export default function AutomationsPage() {
     });
   }
 
+  const supportedTriggers = useMemo(() => {
+    const supported = connection?.capabilities?.supported;
+    if (!supported) return null;
+    if (supported.includes("base_automation_safe_triggers")) return null;
+    return new Set<string>();
+  }, [connection]);
+
   const automationsBlocked = automationsGate != null && !automationsGate.automations.available;
   const canSubmitAutomation =
     !automationsBlocked ||
@@ -604,7 +628,13 @@ export default function AutomationsPage() {
             />
           </label>
           <label className="block text-sm">
-            <span className="text-[#a8909e]">When (trigger)</span>
+            <span className="flex items-center gap-1 text-[#a8909e]">
+              When (trigger)
+              <ExplainThisButton
+                question={`Explain automation trigger "${form.trigger}" for model ${form.model}`}
+                label="Explain triggers"
+              />
+            </span>
             <select
               value={form.trigger}
               onChange={(e) => setForm({ ...form, trigger: e.target.value })}

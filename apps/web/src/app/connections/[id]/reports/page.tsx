@@ -53,11 +53,6 @@ export default function ReportsPage() {
   >([{ reportId: "", recordIds: "1" }]);
   const [renderProbe, setRenderProbe] = useState<string | null>(null);
   const [editorTab, setEditorTab] = useState<"visual" | "code">("visual");
-  const [mergeRows, setMergeRows] = useState<
-    Array<{ reportId: string; recordIds: string }>
-  >([{ reportId: "", recordIds: "1" }]);
-  const [renderProbe, setRenderProbe] = useState<string | null>(null);
-  const [editorTab, setEditorTab] = useState<"visual" | "code">("visual");
 
   const refresh = useCallback(async () => {
     const [r, p] = await Promise.all([
@@ -116,58 +111,6 @@ export default function ReportsPage() {
       setSelectedId(created.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Create failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function downloadMergedPdf() {
-    const items = mergeRows
-      .map((row) => ({
-        report_id: Number(row.reportId),
-        record_ids: row.recordIds
-          .split(/[\s,]+/)
-          .map((s) => s.trim())
-          .filter(Boolean)
-          .map((s) => Number(s))
-          .filter((n) => Number.isFinite(n) && n > 0),
-      }))
-      .filter((item) => item.report_id > 0 && item.record_ids.length > 0);
-    if (items.length < 1) {
-      setError("Pick at least one report and record id(s) for combined print.");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const { blob, totalPages, renderPath } = await api.mergePrintReports(connectionId, {
-        items,
-        filename: "combined-report.pdf",
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "combined-report.pdf";
-      a.click();
-      URL.revokeObjectURL(url);
-      setNotice(
-        `Downloaded merged PDF (${totalPages ?? "?"} pages via ${renderPath ?? "render"})`,
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Combined print failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function probeRenderPath() {
-    setBusy(true);
-    setError(null);
-    try {
-      const probe = await api.reportRenderProbe(connectionId);
-      setRenderProbe(`${probe.primary_path} — ${probe.message}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Render probe failed");
     } finally {
       setBusy(false);
     }

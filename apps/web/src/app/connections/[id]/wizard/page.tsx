@@ -18,6 +18,8 @@ import {
   scaffoldApplyBlockedReason,
   scaffoldOptsFromSpec,
 } from "@/lib/capabilities";
+import { AskWhyButton } from "@/components/expert/AskWhyButton";
+import { useSyncShellContext } from "@/lib/use-sync-shell-context";
 
 const CONFIRM_PHRASE = "I understand the risks";
 
@@ -71,6 +73,10 @@ export default function AppWizardPage() {
 
   const [nlPrompt, setNlPrompt] = useState("");
   const [aiDraft, setAiDraft] = useState<Record<string, unknown> | null>(null);
+  const draftSummary = aiDraft
+    ? String(aiDraft.display_name ?? aiDraft.technical_name ?? "draft")
+    : undefined;
+  useSyncShellContext({ draftSummary });
   const [aiNote, setAiNote] = useState<string | null>(null);
   const [aiWarnings, setAiWarnings] = useState<string[]>([]);
   const [aiBusy, setAiBusy] = useState(false);
@@ -80,20 +86,6 @@ export default function AppWizardPage() {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [genUiConfirmOpen, setGenUiConfirmOpen] = useState(false);
   const [genUiResult, setGenUiResult] = useState<string | null>(null);
-  const [validateLiveResult, setValidateLiveResult] = useState<
-    import("@/lib/api").ValidateLiveResult | null
-  >(null);
-  const [skipValidateLive, setSkipValidateLive] = useState(false);
-  const [grainLabel, setGrainLabel] = useState<string | null>(null);
-  const [grainOverride, setGrainOverride] = useState<string>("");
-  const [connectPoints, setConnectPoints] = useState<Record<string, unknown> | null>(null);
-  const [hostCandidates, setHostCandidates] = useState<
-    Array<{ model: string; label: string; score: number; reason?: string }>
-  >([]);
-  const [componentGallery, setComponentGallery] = useState<
-    Array<{ id: string; name: string; description: string; host_slot: string }>
-  >([]);
-  const [selectedGalleryId, setSelectedGalleryId] = useState("");
   const [validateLiveResult, setValidateLiveResult] = useState<
     import("@/lib/api").ValidateLiveResult | null
   >(null);
@@ -149,7 +141,6 @@ export default function AppWizardPage() {
           setConnection(conn);
         }
         setTemplates(tpls.length ? tpls : FALLBACK_TEMPLATES);
-        setComponentGallery(gallery || []);
         setComponentGallery(gallery || []);
         setAiEnabled(Boolean(status?.enabled));
         setAvailableModels(
@@ -302,31 +293,6 @@ export default function AppWizardPage() {
     }
   }
 
-  async function onPrepareGenerateUi() {
-    const spec = draftWithMultiCompany();
-    if (!spec) return;
-    setBusy(true);
-    setError(null);
-    setValidateLiveResult(null);
-    setSkipValidateLive(false);
-    try {
-      const validation = await api.validateModuleSpecLive(connectionId, { spec });
-      setValidateLiveResult(validation);
-      if (validation.ok) {
-        setGenUiConfirmOpen(true);
-      } else {
-        setError(
-          `${validation.message} — fix the draft or confirm override in the dialog.`,
-        );
-        setGenUiConfirmOpen(true);
-        setSkipValidateLive(false);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Validate-live failed");
-    } finally {
-      setBusy(false);
-    }
-  }
 
   function toggleReuse(model: string) {
     setReuseModels((prev) =>
@@ -744,6 +710,21 @@ export default function AppWizardPage() {
                     : ""}
                 </p>
               )}
+              {Array.isArray(aiDraft.models) ? (
+                <ul className="mt-3 space-y-1 text-sm" data-testid="draft-model-review">
+                  {(aiDraft.models as Array<{ model?: string; description?: string }>).map(
+                    (m) => (
+                      <li key={String(m.model)} className="flex items-center gap-2">
+                        <span className="font-mono text-[#c9a9c0]">{m.model}</span>
+                        <AskWhyButton
+                          subject={String(m.model)}
+                          context={`Draft model ${m.model}${m.description ? `: ${m.description}` : ""}`}
+                        />
+                      </li>
+                    ),
+                  )}
+                </ul>
+              ) : null}
               <pre className="mt-2 max-h-64 overflow-auto border border-[#1e2f29] bg-[#0c090b] p-3 text-xs text-[#d4c4ce]">
                 {JSON.stringify(aiDraft, null, 2)}
               </pre>
@@ -898,6 +879,7 @@ export default function AppWizardPage() {
                   className="flex flex-wrap items-center gap-3 border border-[#1e2f29] px-3 py-2"
                 >
                   <span className="font-mono text-[#c9a9c0]">{model}</span>
+                  <AskWhyButton subject={model} context={`Scaffold created model ${model}`} />
                   <Link
                     href={`/connections/${connectionId}/builder`}
                     className="text-xs text-[#c9a9c0] hover:underline"

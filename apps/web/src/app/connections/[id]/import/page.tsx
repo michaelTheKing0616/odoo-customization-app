@@ -92,14 +92,6 @@ export default function DataImportPage() {
   const [imgResult, setImgResult] = useState<ImageImportCommitOut | null>(null);
   const [imgConfirmOpen, setImgConfirmOpen] = useState(false);
 
-  const [imgManifest, setImgManifest] = useState<File | null>(null);
-  const [imgZip, setImgZip] = useState<File | null>(null);
-  const [imgPreview, setImgPreview] = useState<ImageImportPreviewOut | null>(null);
-  const [imgMatchField, setImgMatchField] = useState("x_name");
-  const [imgField, setImgField] = useState("");
-  const [imgResult, setImgResult] = useState<ImageImportCommitOut | null>(null);
-  const [imgConfirmOpen, setImgConfirmOpen] = useState(false);
-
   useEffect(() => {
     api
       .getConnection(connectionId)

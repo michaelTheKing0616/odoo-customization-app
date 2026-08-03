@@ -10,14 +10,14 @@ type Props = {
 
 export function BarcodeScanner({ onScan, onError, className }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const readerRef = useRef<{ reset: () => void } | null>(null);
+  const readerRef = useRef<{ reset?: () => void } | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [active, setActive] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const stop = useCallback(() => {
-    readerRef.current?.reset();
+    readerRef.current?.reset?.();
     readerRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
@@ -35,7 +35,7 @@ export function BarcodeScanner({ onScan, onError, className }: Props) {
     try {
       const { BrowserMultiFormatReader } = await import("@zxing/browser");
       const reader = new BrowserMultiFormatReader();
-      readerRef.current = reader;
+      readerRef.current = reader as { reset?: () => void };
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: "environment" } },
       });
@@ -74,7 +74,7 @@ export function BarcodeScanner({ onScan, onError, className }: Props) {
       return;
     }
     const next = !torchOn;
-    await track.applyConstraints({ advanced: [{ torch: next }] as MediaTrackConstraintSet[] });
+    await track.applyConstraints({ advanced: [{ torch: next }] as unknown as MediaTrackConstraintSet[] });
     setTorchOn(next);
   }
 

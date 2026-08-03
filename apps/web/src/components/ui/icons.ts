@@ -1,0 +1,42 @@
+/** Central icon mapping — import lucide icons only from here (UIX-2). */
+export {
+  Brush as IconHousekeeping,
+  CheckCheck as IconApprovals,
+  Clock as IconCron,
+  Columns3 as IconFields,
+  Combine as IconDedupe,
+  Database as IconModels,
+  FileText as IconReports,
+  FlaskConical as IconSandbox,
+  GitBranch as IconPipelines,
+  Hash as IconIdGenerator,
+  History as IconSnapshots,
+  Layers as IconBulk,
+  LayoutPanelTop as IconViews,
+  PanelsTopLeft as IconMenus,
+  Plug as IconConnection,
+  Settings2 as IconConfig,
+  Shield as IconAccess,
+  Sparkles as IconExpert,
+  Upload as IconImport,
+  Zap as IconAutomations,
+  Search,
+  Moon,
+  Sun,
+  Menu,
+  ChevronRight,
+  ChevronDown,
+  X,
+  Loader2,
+  HelpCircle,
+  Command,
+  AlertTriangle,
+  Info,
+  CircleAlert,
+  Copy,
+  ExternalLink,
+} from "lucide-react";
+
+import type { ComponentType } from "react";
+
+export type IconComponent = ComponentType<{ className?: string; "aria-hidden"?: boolean }>;

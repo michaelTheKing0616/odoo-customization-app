@@ -122,31 +122,31 @@ INPUT: UIX-1/2; `apps/web/src/app/connections/[id]/` (add `layout.tsx`); `src/li
 TIER-1 matrix endpoint; @tanstack/react-query.
 
 CHECKLIST:
-- [ ] `connections/[id]/layout.tsx`: left sidebar with grouped nav — Overview · Build
+- [x] `connections/[id]/layout.tsx`: left sidebar with grouped nav — Overview · Build
       (Models & Fields, View Designer, Menus, Automations, Approvals, Reports, Access) ·
       AI (Draft Studio, ModuleSpec, Projects, Odoo Expert) · Data (Import, Seed Packs,
       ID Generator) · Operate (Bulk Suite, Power Ops, Cron Manager, Housekeeping, Reminders) ·
       Govern (Snapshots & Journal, Config, Pipelines). Collapsible (icon-only mode,
       persisted); active states; icons from the mapping.
-- [ ] Capability-aware nav: matrix-gated items render with a lock badge and open a Callout
+- [x] Capability-aware nav: matrix-gated items render with a lock badge and open a Callout
       explaining why + options (never hidden). Items for not-yet-built pages (Approvals,
       Bulk Suite, etc.) appear only once their wave ships — nav config is data-driven
       (`src/lib/nav.ts`) so later cards add one entry.
-- [ ] Top bar: connection switcher (name, version pill, hosting badge, GA/experimental);
+- [x] Top bar: connection switcher (name, version pill, hosting badge, GA/experimental);
       Cmd+K button; Expert toggle; dark-mode toggle; settings avatar menu. Breadcrumbs row
       beneath (route-driven).
-- [ ] Command palette: navigation (all nav items), jump-to-model (introspection-fed, cached
+- [x] Command palette: navigation (all nav items), jump-to-model (introspection-fed, cached
       via react-query), actions registered by pages (Snapshot now, New field…); shortcuts:
       Cmd+K, g+letter group jumps, ? opens shortcut sheet.
-- [ ] Expert mount: right Sheet slot + `ShellContext` provider (route, connectionId,
+- [x] Expert mount: right Sheet slot + `ShellContext` provider (route, connectionId,
       currentModel?, draftSummary?) that pages can populate — EXP-5 consumes; renders a
       placeholder "Expert arrives in Wave 5" state if EXP not yet shipped (honest, not
       broken).
-- [ ] React Query provider at shell level; connection meta + capability matrix fetched once,
+- [x] React Query provider at shell level; connection meta + capability matrix fetched once,
       shared; error boundary + offline banner.
 - [ ] Old per-page header/nav removed where the shell now provides it (pages keep content
       only — minimal edits here; full migrations are UIX-4*).
-- [ ] Playwright: nav all groups, palette navigation, keyboard shortcuts, gated-item callout,
+- [x] Playwright: nav all groups, palette navigation, keyboard shortcuts, gated-item callout,
       theme toggle; vision-verify light+dark.
 
 DONE MEANS: every existing page reachable through the new shell with zero functional

@@ -166,7 +166,7 @@ export function ScanToFieldPanel({
       {moduleWidgetAllowed && (
         <p className="mt-4 text-xs text-[#6C757D]">
           Module export: enable <code>include_barcode_scan_widget</code> in ModuleSpec to emit{" "}
-          <code>widget="x_barcode_scan"</code> assets (LGPL-3 + Apache-2 ZXing attribution in README).
+          <code>widget=&quot;x_barcode_scan&quot;</code> assets (LGPL-3 + Apache-2 ZXing attribution in README).
         </p>
       )}
 

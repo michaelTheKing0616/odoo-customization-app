@@ -253,50 +253,6 @@ export default function HousekeepingPage() {
     }
   }
 
-  function parseIdList(raw: string, label: string): number[] {
-    const parts = raw
-      .split(/[,\s]+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (!parts.length) throw new Error(`Enter at least one ${label} id.`);
-    const ids = parts.map((p) => {
-      const n = Number(p);
-      if (!Number.isInteger(n) || n <= 0) throw new Error(`Invalid ${label} id: ${p}`);
-      return n;
-    });
-    return ids;
-  }
-
-  async function runRecompute(dryRun: boolean, phrase?: string) {
-    if (!recomputeModel.trim() || !recomputeField.trim()) {
-      setError("Model and field are required for recompute.");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await api.bulkRecompute(connectionId, {
-        model: recomputeModel.trim(),
-        field: recomputeField.trim(),
-        ...(recomputeIds.trim() ? { ids: parseIdList(recomputeIds, "record") } : {}),
-        dry_run: dryRun,
-        ...(dryRun ? {} : { confirm_advanced: true, confirm_phrase: phrase || CONFIRM_PHRASE }),
-      });
-      setRecomputeResult(res);
-      setNotice(res.message);
-      setConfirmOpen(false);
-    } catch (err) {
-      if (err instanceof ConfirmationRequiredError) {
-        setConfirmKind("recompute");
-        setConfirmOpen(true);
-        setError(err.warning);
-      } else {
-        setError(err instanceof Error ? err.message : "Recompute failed");
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
 
   return (
     <main className="odoo-shell min-h-screen px-6 py-10">

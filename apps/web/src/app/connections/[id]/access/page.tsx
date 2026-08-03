@@ -55,18 +55,6 @@ export default function AccessPage() {
   >([]);
   const [docsFolderId, setDocsFolderId] = useState("");
   const [docsMapping, setDocsMapping] = useState<Record<string, number>>({});
-  const [mcGuidance, setMcGuidance] = useState<{ title: string; body: string } | null>(
-    null,
-  );
-  const [docsGate, setDocsGate] = useState<{
-    available: boolean;
-    message?: string | null;
-  } | null>(null);
-  const [docsFolders, setDocsFolders] = useState<
-    Array<{ id: number; name: string | null }>
-  >([]);
-  const [docsFolderId, setDocsFolderId] = useState("");
-  const [docsMapping, setDocsMapping] = useState<Record<string, number>>({});
 
   const [accessForm, setAccessForm] = useState({
     name: "",
