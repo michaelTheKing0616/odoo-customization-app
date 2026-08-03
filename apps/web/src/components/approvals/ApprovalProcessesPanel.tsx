@@ -122,13 +122,13 @@ export function ApprovalProcessesPanel({
 
   return (
     <div>
-      <p className="mt-2 text-sm text-[#8f7a88]">
+      <p className="mt-2 text-sm text-muted">
         Standalone request/approve workflows (multi-level chains, min-approvals). Distinct from
         button gating above — compendium §17.
       </p>
 
       {gate && (
-        <p className="mt-3 text-sm text-[#c9a9c0]">
+        <p className="mt-3 text-sm text-muted">
           Process engine:{" "}
           <span className="font-medium text-[#faf6f9]">
             {gate.engine === "enterprise" ? "Enterprise approvals" : "Community x_approval_*"}
@@ -145,27 +145,27 @@ export function ApprovalProcessesPanel({
           type="button"
           disabled={busy}
           onClick={() => setConfirmOpen(true)}
-          className="border border-[#c9a9c0] px-3 py-1.5 text-sm text-[#c9a9c0] disabled:opacity-50"
+          className="border border-border-subtle px-3 py-1.5 text-sm text-muted disabled:opacity-50"
         >
           Scaffold Approval Requests
         </button>
         <Link
           href={`/connections/${connectionId}/wizard`}
-          className="border border-[#5a3d4a] px-3 py-1.5 text-sm text-[#8f7a88]"
+          className="border border-[#5a3d4a] px-3 py-1.5 text-sm text-muted"
         >
           Wizard templates
         </Link>
       </div>
 
-      <section className="mt-8 border border-[#3d2a38] bg-[#0f1a16]/70 p-4">
+      <section className="mt-8 border border-border-subtle bg-surface-muted/70 p-4">
         <h3 className="font-[family-name:var(--font-display)] text-lg text-[#faf6f9]">
           New request
         </h3>
         <div className="mt-3 grid gap-3 md:grid-cols-2 text-sm">
           <label className="block">
-            <span className="text-[#8f7a88]">Type</span>
+            <span className="text-muted">Type</span>
             <select
-              className="mt-1 w-full border border-[#3d2a38] bg-[#120e14] px-2 py-1.5 text-[#faf6f9]"
+              className="mt-1 w-full border border-border-subtle bg-[#120e14] px-2 py-1.5 text-[#faf6f9]"
               value={typeId}
               onChange={(e) => setTypeId(e.target.value)}
             >
@@ -178,25 +178,25 @@ export function ApprovalProcessesPanel({
             </select>
           </label>
           <label className="block">
-            <span className="text-[#8f7a88]">Subject</span>
+            <span className="text-muted">Subject</span>
             <input
-              className="mt-1 w-full border border-[#3d2a38] bg-[#120e14] px-2 py-1.5 text-[#faf6f9]"
+              className="mt-1 w-full border border-border-subtle bg-[#120e14] px-2 py-1.5 text-[#faf6f9]"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
             />
           </label>
           <label className="block">
-            <span className="text-[#8f7a88]">Amount</span>
+            <span className="text-muted">Amount</span>
             <input
-              className="mt-1 w-full border border-[#3d2a38] bg-[#120e14] px-2 py-1.5 text-[#faf6f9]"
+              className="mt-1 w-full border border-border-subtle bg-[#120e14] px-2 py-1.5 text-[#faf6f9]"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
             />
           </label>
           <label className="block">
-            <span className="text-[#8f7a88]">Actor user id</span>
+            <span className="text-muted">Actor user id</span>
             <input
-              className="mt-1 w-full border border-[#3d2a38] bg-[#120e14] px-2 py-1.5 text-[#faf6f9]"
+              className="mt-1 w-full border border-border-subtle bg-[#120e14] px-2 py-1.5 text-[#faf6f9]"
               value={actorUserId}
               onChange={(e) => setActorUserId(e.target.value)}
             />
@@ -206,7 +206,7 @@ export function ApprovalProcessesPanel({
           type="button"
           disabled={busy || !gate?.community_models_ready}
           onClick={() => void createRequest()}
-          className="mt-3 border border-[#c9a9c0] px-3 py-1.5 text-xs text-[#c9a9c0] disabled:opacity-40"
+          className="mt-3 border border-border-subtle px-3 py-1.5 text-xs text-muted disabled:opacity-40"
         >
           Create draft request
         </button>
@@ -218,9 +218,9 @@ export function ApprovalProcessesPanel({
         </h3>
         <ul className="mt-3 space-y-2 text-sm">
           {types.map((t) => (
-            <li key={t.id} className="border border-[#3d2a38] bg-[#0f1a16]/70 p-3">
+            <li key={t.id} className="border border-border-subtle bg-surface-muted/70 p-3">
               <span className="text-[#faf6f9]">{t.name}</span>
-              <span className="text-xs text-[#8f7a88]">
+              <span className="text-xs text-muted">
                 {" "}
                 · {t.levels} level(s)
                 {t.chain[0]?.min_approvals
@@ -230,7 +230,7 @@ export function ApprovalProcessesPanel({
             </li>
           ))}
           {types.length === 0 && (
-            <li className="text-[#8f7a88]">No types — scaffold the template first.</li>
+            <li className="text-muted">No types — scaffold the template first.</li>
           )}
         </ul>
       </section>
@@ -241,7 +241,7 @@ export function ApprovalProcessesPanel({
         </h3>
         <ul className="mt-3 space-y-2 text-sm">
           {requests.map((r) => (
-            <li key={r.id} className="border border-[#3d2a38] bg-[#0f1a16]/70 p-3">
+            <li key={r.id} className="border border-border-subtle bg-surface-muted/70 p-3">
               <p className="text-[#faf6f9]">
                 #{r.id} {r.subject ?? r.name} · {r.state}
                 {r.current_level ? ` · level ${r.current_level}` : ""}
@@ -252,7 +252,7 @@ export function ApprovalProcessesPanel({
                     type="button"
                     disabled={busy}
                     onClick={() => void runAction(r.id, "submit")}
-                    className="border border-[#c9a9c0] px-2 py-1 text-xs"
+                    className="border border-border-subtle px-2 py-1 text-xs"
                   >
                     Send for approval
                   </button>
@@ -263,7 +263,7 @@ export function ApprovalProcessesPanel({
                       type="button"
                       disabled={busy}
                       onClick={() => void runAction(r.id, "approve")}
-                      className="border border-[#c9a9c0] px-2 py-1 text-xs"
+                      className="border border-border-subtle px-2 py-1 text-xs"
                     >
                       Approve
                     </button>
@@ -271,7 +271,7 @@ export function ApprovalProcessesPanel({
                       type="button"
                       disabled={busy}
                       onClick={() => void runAction(r.id, "refuse")}
-                      className="border border-[#5a3d4a] px-2 py-1 text-xs text-[#8f7a88]"
+                      className="border border-[#5a3d4a] px-2 py-1 text-xs text-muted"
                     >
                       Refuse
                     </button>
@@ -281,13 +281,13 @@ export function ApprovalProcessesPanel({
             </li>
           ))}
           {requests.length === 0 && (
-            <li className="text-[#8f7a88]">No approval requests yet.</li>
+            <li className="text-muted">No approval requests yet.</li>
           )}
         </ul>
       </section>
 
-      {notice && <p className="mt-4 text-sm text-[#c9a9c0]">{notice}</p>}
-      {error && <p className="mt-4 text-sm text-[#f0a8a0]">{error}</p>}
+      {notice && <p className="mt-4 text-sm text-muted">{notice}</p>}
+      {error && <p className="mt-4 text-sm text-danger">{error}</p>}
 
       <ConfirmDialog
         open={confirmOpen}

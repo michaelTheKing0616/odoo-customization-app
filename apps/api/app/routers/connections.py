@@ -305,6 +305,22 @@ def get_protected_modules(connection_id: str, db: Session = Depends(get_db)) -> 
     )
 
 
+@router.get("/{connection_id}/model-tier")
+def get_model_protection_tier(
+    connection_id: str,
+    model: str,
+    db: Session = Depends(get_db),
+) -> dict[str, str | None]:
+    from app.protected_modules import manifest_from_json, protected_models_for
+
+    row = db.get(OdooConnection, connection_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Connection not found")
+    manifest = manifest_from_json(row.protected_manifest_json) or {}
+    tier = protected_models_for(manifest, model.strip())
+    return {"model": model.strip(), "tier": tier}
+
+
 @router.get("/{connection_id}/capability-matrix", response_model=TierMatrixOut)
 def get_capability_matrix(connection_id: str, db: Session = Depends(get_db)) -> TierMatrixOut:
     row = db.get(OdooConnection, connection_id)

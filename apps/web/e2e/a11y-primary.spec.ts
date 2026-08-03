@@ -1,82 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-
-const DEMO_CONN = {
-  id: "demo-conn",
-  name: "Demo",
-  url: "http://127.0.0.1:8069",
-  db_name: "odoo",
-  username: "admin",
-  server_version: "19.0",
-  created_at: null,
-  updated_at: null,
-  capabilities: {
-    major: 19,
-    edition: "community",
-    server_version: "19.0",
-    supported: [
-      "view_inject_inherit",
-      "base_automation_safe_triggers",
-      "bulk_transition",
-      "power_ops",
-    ],
-    unsupported: [],
-    ga: true,
-    message: "ok",
-    hosting_hint: "self_hosted",
-  },
-};
-
-async function mockConnectionApi(page: Page) {
-  await page.route("**/api/connections/**", async (route) => {
-    const url = route.request().url();
-    if (url.endsWith("/connections") || url.match(/\/api\/connections$/)) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify([DEMO_CONN]),
-      });
-      return;
-    }
-    if (url.match(/\/automations\/gate(\?|$)/)) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          automations: {
-            available: true,
-            title: "",
-            why: "",
-            options: [],
-            gating_choices: [],
-          },
-        }),
-      });
-      return;
-    }
-    if (url.match(/\/power-ops\/recipes(\?|$)/)) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify([]),
-      });
-      return;
-    }
-    if (url.match(/\/demo-conn(\?|$)/) && !url.includes("/demo-conn/")) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(DEMO_CONN),
-      });
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify([]),
-    });
-  });
-}
+import { mockConnectionApi } from "./helpers/mockConnectionApi";
 
 async function expectNoSeriousAxeViolations(page: Page, label: string) {
   const results = await new AxeBuilder({ page })
@@ -103,6 +27,8 @@ const PRIMARY_PAGES = [
 ] as const;
 
 test.describe("UIX-5 a11y — primary pages (mocked API)", () => {
+  test.describe.configure({ timeout: 90_000 });
+
   test.beforeEach(async ({ page }) => {
     await mockConnectionApi(page);
   });
@@ -110,7 +36,7 @@ test.describe("UIX-5 a11y — primary pages (mocked API)", () => {
   for (const { path, testId, label } of PRIMARY_PAGES) {
     test(`${label} renders and passes axe`, async ({ page }) => {
       await page.goto(path);
-      await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 60_000 });
+      await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 45_000 });
       await expect(page.getByTestId(testId)).toBeVisible({ timeout: 30_000 });
       await expectNoSeriousAxeViolations(page, label);
     });

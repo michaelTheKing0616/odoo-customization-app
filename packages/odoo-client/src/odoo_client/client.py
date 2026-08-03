@@ -1321,6 +1321,30 @@ class OdooClient:
 
         self.ensure_module_installed("base_automation")
         self.execute_kw("base.automation", "write", [[automation_id], {"active": active}])
+        return self._read_automation_info(automation_id)
+
+    def update_automation_model(self, automation_id: int, model: str) -> Any:
+        from odoo_client.automation import AutomationInfo
+
+        self.ensure_module_installed("base_automation")
+        model_id = self.execute_kw(
+            "ir.model",
+            "search",
+            [[("model", "=", model)]],
+            {"limit": 1},
+        )
+        if not model_id:
+            raise OdooClientError(f"Model {model!r} not found")
+        self.execute_kw(
+            "base.automation",
+            "write",
+            [[automation_id], {"model_id": model_id[0]}],
+        )
+        return self._read_automation_info(automation_id)
+
+    def _read_automation_info(self, automation_id: int) -> Any:
+        from odoo_client.automation import AutomationInfo
+
         for row in self.list_automations():
             if row.id == automation_id:
                 return row

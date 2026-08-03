@@ -11,7 +11,7 @@ import logging
 import threading
 import traceback
 import uuid
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Protocol
@@ -31,7 +31,31 @@ JOB_TIMEOUTS: dict[str, float | None] = {
     "expert_ingest": 1200.0,
 }
 
+_TERMINAL_STATUSES = frozenset(
+    {"succeeded", "failed", "cancelled", "interrupted", "timeout"}
+)
+
 MAX_CONCURRENT_JOBS = 2
+
+
+def _execute_with_timeout(
+    fn: Callable[[], dict[str, Any]],
+    *,
+    timeout_s: float | None,
+    cancel_ev: threading.Event,
+) -> dict[str, Any]:
+    """Run job callable; honour cancel flag and per-kind timeout."""
+    if cancel_ev.is_set():
+        raise RuntimeError("Cancelled before start")
+    if timeout_s is None:
+        return fn()
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="odoo-job-inner") as inner:
+        fut = inner.submit(fn)
+        try:
+            return fut.result(timeout=timeout_s)
+        except FuturesTimeoutError as exc:
+            cancel_ev.set()
+            raise TimeoutError(f"Job exceeded {timeout_s:g}s limit") from exc
 
 
 class JobRunner(Protocol):
@@ -89,12 +113,18 @@ class InProcessJobRunner:
                 if cancel_ev.is_set():
                     _set_status(job_id, "cancelled", error="Cancelled before start")
                     return
-                result = fn()
+                result = _execute_with_timeout(fn, timeout_s=timeout, cancel_ev=cancel_ev)
                 if cancel_ev.is_set():
                     _set_status(job_id, "cancelled", error="Cancelled during run")
                     return
                 _set_status(job_id, "succeeded", result=result)
                 logger.info("job.succeeded", extra={"job_id": job_id, "kind": kind})
+            except TimeoutError as exc:
+                logger.warning(
+                    "job.timeout",
+                    extra={"job_id": job_id, "kind": kind, "timeout_s": timeout},
+                )
+                _set_status(job_id, "timeout", error=str(exc))
             except Exception as exc:  # noqa: BLE001
                 if cancel_ev.is_set():
                     _set_status(job_id, "cancelled", error=f"Cancelled: {exc}")
@@ -189,7 +219,7 @@ def cancel_job(db: Session, job_id: str) -> BackgroundJob | None:
     row = db.get(BackgroundJob, job_id)
     if row is None:
         return None
-    if row.status in {"succeeded", "failed", "cancelled", "interrupted"}:
+    if row.status in {"succeeded", "failed", "cancelled", "interrupted", "timeout"}:
         return row
     get_job_runner().cancel(job_id)
     row.status = "cancelled"
@@ -231,7 +261,7 @@ def _set_status(
             row.result_json = json.dumps(result)
         if error is not None:
             row.error = error[:4000]
-        if status in {"succeeded", "failed", "cancelled", "interrupted"}:
+        if status in _TERMINAL_STATUSES:
             row.finished_at = datetime.now(timezone.utc)
         db.add(row)
         db.commit()

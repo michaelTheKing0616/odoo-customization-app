@@ -13,7 +13,7 @@ from app.ai_self_consistency import (
     selection_literal_from_states,
     self_consistency_enabled,
 )
-from app.llm_provider import LLMError, LLMProvider
+from app.llm_provider import FORMAT_SCHEMA_WORKFLOW, LLMError, LLMProvider
 
 TEMP_WORKFLOW = STEP_TEMPERATURES["pipeline.relationships"]  # 0.15
 TERMINAL_STATES = frozenset(
@@ -188,6 +188,7 @@ def _llm_workflow_sample(
         prompt,
         system=system,
         reasoning=True,
+        format_schema=FORMAT_SCHEMA_WORKFLOW,
         temperature=TEMP_WORKFLOW,
     )
     data = _extract_json(raw)

@@ -265,6 +265,26 @@ def _dedupe_warnings(warnings: list[str]) -> list[str]:
     return out
 
 
+def _apply_pcm_strip(
+    draft: dict[str, Any],
+    *,
+    protected_manifest: dict[str, Any] | None,
+    odoo_version: str | None,
+    client: Any | None,
+    warnings: list[str],
+) -> tuple[dict[str, Any], list[str], list[dict[str, Any]]]:
+    from app.ai_rules import strip_protected_module_effects
+    from app.protected_modules import refresh_connection_protected_manifest
+
+    manifest = protected_manifest or refresh_connection_protected_manifest(
+        server_version=odoo_version,
+        client=client,
+    )
+    cleaned, refusals, pcm_w = strip_protected_module_effects(draft, manifest=manifest)
+    warnings.extend(pcm_w)
+    return cleaned, _dedupe_warnings(warnings), refusals
+
+
 def draft_module_from_prompt(
     prompt: str,
     *,
@@ -326,7 +346,10 @@ def draft_module_from_prompt(
     if mode == "staged":
         try:
             draft, raw, warnings = run_staged_pipeline(
-                prompt, reuse_models=effective_reuse
+                prompt,
+                reuse_models=effective_reuse,
+                protected_manifest=protected_manifest,
+                odoo_version=odoo_version,
             )
             warnings.extend(apply_reuse_plan(draft, reuse_plan))
             if expand:
@@ -367,7 +390,14 @@ def draft_module_from_prompt(
                 )
                 warnings.extend(depth_w2)
             warnings.extend(validate_draft_module_spec(draft))
-            return draft, raw, _dedupe_warnings(warnings), [], []
+            draft, warnings, refusals = _apply_pcm_strip(
+                draft,
+                protected_manifest=protected_manifest,
+                odoo_version=odoo_version,
+                client=client,
+                warnings=warnings,
+            )
+            return draft, raw, warnings, refusals
         except LLMError as exc:
             raise AiAssistUnavailable(str(exc), status_code=exc.status_code) from exc
 
@@ -508,7 +538,14 @@ def draft_module_from_prompt(
         warnings.extend(apply_reuse_plan(draft, reuse_plan))
 
     warnings.extend(validate_draft_module_spec(draft))
-    return draft, raw, _dedupe_warnings(warnings), []
+    draft, warnings, refusals = _apply_pcm_strip(
+        draft,
+        protected_manifest=protected_manifest,
+        odoo_version=odoo_version,
+        client=client,
+        warnings=warnings,
+    )
+    return draft, raw, warnings, refusals
 
 
 # Re-export for status endpoint

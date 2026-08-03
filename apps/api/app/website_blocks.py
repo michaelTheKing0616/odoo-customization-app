@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-BlockKind = Literal["heading", "paragraph", "image", "link", "section", "locked"]
+BlockKind = Literal["heading", "paragraph", "image", "link", "button", "section", "locked"]
 
 
 @dataclass
@@ -39,9 +39,15 @@ class WebsiteBlock:
 
 _HEADING_RE = re.compile(r"<h([1-6])([^>]*)>(.*?)</h\1>", re.I | re.S)
 _PARA_RE = re.compile(r"<p([^>]*)>(.*?)</p>", re.I | re.S)
-_IMG_RE = re.compile(r'<img([^>]*)\bsrc=["\']([^"\']+)["\']', re.I)
+_IMG_RE = re.compile(
+    r'<img([^>]*)\bsrc=["\']([^"\']+)["\'][^>]*/?>', re.I
+)
 _LINK_RE = re.compile(
     r'<a([^>]*)\bhref=["\']([^"\']+)["\'][^>]*>(.*?)</a>', re.I | re.S
+)
+_BUTTON_RE = re.compile(r"<button([^>]*)>(.*?)</button>", re.I | re.S)
+_BUTTON_HREF_RE = re.compile(
+    r'\b(?:formaction|data-href|href)=["\']([^"\']+)["\']', re.I
 )
 _SECTION_RE = re.compile(r"<section([^>]*)>(.*?)</section>", re.I | re.S)
 _TAG_RE = re.compile(r"<[^>]+>")
@@ -69,6 +75,7 @@ def parse_website_arch(arch: str) -> list[WebsiteBlock]:
         (_SECTION_RE, "section"),
         (_HEADING_RE, "heading"),
         (_PARA_RE, "paragraph"),
+        (_BUTTON_RE, "button"),
         (_LINK_RE, "link"),
         (_IMG_RE, "image"),
     ]
@@ -108,6 +115,17 @@ def parse_website_arch(arch: str) -> list[WebsiteBlock]:
                 WebsiteBlock(
                     id=next_id("p"),
                     kind="paragraph",
+                    text=_strip_tags(m.group(2)),
+                )
+            )
+        elif kind == "button":
+            attrs = m.group(1)
+            href_m = _BUTTON_HREF_RE.search(attrs)
+            blocks.append(
+                WebsiteBlock(
+                    id=next_id("btn"),
+                    kind="button",
+                    href=href_m.group(1) if href_m else "",
                     text=_strip_tags(m.group(2)),
                 )
             )
@@ -153,8 +171,13 @@ def render_website_arch(blocks: list[WebsiteBlock]) -> str:
             parts.append(
                 f'<a href="{_escape_attr(b.href)}">{_escape(b.text)}</a>'
             )
+        elif b.kind == "button":
+            href_attr = (
+                f' formaction="{_escape_attr(b.href)}"' if b.href else ""
+            )
+            parts.append(f"<button{href_attr}>{_escape(b.text)}</button>")
         elif b.kind == "image":
-            parts.append(f'<img src="{_escape_attr(b.src)}" alt=""/>')
+            parts.append(f'<img src="{_escape_attr(b.src)}"/>')
         elif b.kind == "section":
             inner = render_website_arch(b.children)
             parts.append(f"<section>{inner}</section>")
@@ -171,3 +194,27 @@ def _escape(text: str) -> str:
 
 def _escape_attr(text: str) -> str:
     return text.replace('"', "&quot;").replace("'", "&#39;")
+
+
+def blocks_from_dicts(raw: list[dict[str, Any]]) -> list[WebsiteBlock]:
+    """Deserialize API block payloads (recursive children)."""
+
+    def one(b: dict[str, Any], i: int) -> WebsiteBlock:
+        children_raw = b.get("children") or []
+        children = [
+            one(c, j)
+            for j, c in enumerate(children_raw)
+            if isinstance(c, dict)
+        ]
+        return WebsiteBlock(
+            id=str(b.get("id") or f"b-{i}"),
+            kind=b.get("kind") or "locked",
+            text=str(b.get("text") or ""),
+            href=str(b.get("href") or ""),
+            src=str(b.get("src") or ""),
+            level=int(b.get("level") or 2),
+            locked_xml=str(b.get("locked_xml") or ""),
+            children=children,
+        )
+
+    return [one(b, i) for i, b in enumerate(raw) if isinstance(b, dict)]

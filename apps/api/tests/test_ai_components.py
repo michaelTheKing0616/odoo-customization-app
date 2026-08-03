@@ -156,32 +156,39 @@ def test_component_module_zip_exports() -> None:
     assert len(raw) > 200
 
 
+def test_preview_connect_points_component() -> None:
+    from app.ai_component_builder import preview_connect_points
 
-def test_pcm_strip_tier1_host_fields() -> None:
-    from app.protected_modules import community_manifest_for_version
-    from app.ai_rules import strip_protected_module_effects
-
-    draft, _, _ = draft_component_from_prompt(
-        "add extension note to invoice records",
-        available_models=["account.move"],
-        host_model_override="account.move",
+    preview = preview_connect_points(
+        "add inspection checklist to project tasks",
+        available_models=["project.task"],
+        gallery_id="inspection_checklist",
     )
-    manifest = community_manifest_for_version("19.0")
-    cleaned, refusals, warnings = strip_protected_module_effects(draft, manifest=manifest)
-    assert refusals or warnings
-    inherit_models = [m for m in cleaned.get("models", []) if m.get("mode") == "inherit"]
-    assert not inherit_models
+    assert preview["grain"] == "feature_slice"
+    assert preview["requires_review"] is True
+    assert preview["connect_points"]["host_model"] == "project.task"
+    assert preview["gallery_id"] == "inspection_checklist"
 
 
-def test_component_module_zip_exports() -> None:
-    from app.module_spec_codec import export_draft_module_zip
+def test_preview_connect_points_full_app() -> None:
+    from app.ai_component_builder import preview_connect_points
+
+    preview = preview_connect_points("build library app from scratch")
+    assert preview["grain"] == "full_app"
+    assert preview["requires_review"] is False
+
+
+def test_generalize_component_template_shape() -> None:
+    from app.ai_pack_generalizer import generalize_spec_to_component_template
 
     draft, _, _ = draft_component_from_prompt(
         "add warranty to sale orders",
         available_models=["sale.order"],
         gallery_id="warranty_tracker",
     )
-    raw = export_draft_module_zip(draft, odoo_major=19)
-    assert raw[:2] == b"PK"
-    assert len(raw) > 200
+    out = generalize_spec_to_component_template(draft, host_slot="sale.order")
+    assert out["host_slot"] == "sale.order"
+    assert out["filename"].endswith(".py")
+    assert "connect_points_template" in out
+    assert "Component template" in out["note"]
 

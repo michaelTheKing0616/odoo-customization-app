@@ -170,6 +170,13 @@ def create_relational_pair(
     connection_id: str, body: RelationalPairBody, db: Session = Depends(get_db)
 ) -> RelationalPairOut:
     """Create child M2O + parent O2M pair (Studio-like one2many-from-parent)."""
+    _row, manifest = _connection_and_manifest(connection_id, db)
+    pair_viol = check_relational_pair(
+        manifest, parent_model=body.parent_model, child_model=body.child_model
+    )
+    if pair_viol:
+        raise _protected_http(pair_viol)
+
     client = _client(connection_id, db)
     warnings: list[str] = []
     m2o_created = False
@@ -347,6 +354,17 @@ def related_paths(
 def create_field(
     connection_id: str, body: CreateFieldBody, db: Session = Depends(get_db)
 ) -> FieldCreateOut:
+    _row, manifest = _connection_and_manifest(connection_id, db)
+    field_viol = check_field_create(
+        manifest,
+        model=body.model,
+        ttype=body.ttype,
+        relation=body.relation,
+        field_name=body.name,
+    )
+    if field_viol:
+        raise _protected_http(field_viol)
+
     strategy = body.inject_strategy or "inherit"
     if body.inject_into_views and strategy == "mutate":
         try:

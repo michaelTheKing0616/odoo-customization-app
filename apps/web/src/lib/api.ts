@@ -40,6 +40,16 @@ export type AutomationsGateResponse = {
 
 export type ProtectedTier = "tier_1" | "tier_2";
 
+export type ProtectedModuleRefusal = {
+  protected_module_conflict: boolean;
+  requested_capability: string;
+  protected_module: string;
+  safe_alternative: string;
+  kind?: string;
+  model?: string | null;
+  reason?: string;
+};
+
 export type ExpertCitation = {
   source: string;
   version: string;
@@ -848,6 +858,21 @@ export type EntitlementsOut = {
   current_period_end: string | null;
 };
 
+export type BillingPlanRow = {
+  id: string;
+  display_name: string;
+  features: Record<string, string>;
+  monthly_usd: number | null;
+  extra_slot_monthly_usd: number | null;
+};
+
+export type BillingPlansCatalog = {
+  tier_order: string[];
+  display_features: Array<{ key: string; label: string }>;
+  project_pass: { display_name: string; one_time_usd: number };
+  plans: BillingPlanRow[];
+};
+
 export type AccountSession = {
   user: {
     id: string;
@@ -992,7 +1017,7 @@ export const api = {
       body: JSON.stringify({ token, password }),
     }),
   billingEntitlements: () => request<EntitlementsOut>("/api/billing/entitlements"),
-  billingPlans: () => request<Array<{ id: string; display_name: string; features: Record<string, string> }>>("/api/billing/plans"),
+  billingPlans: () => request<BillingPlansCatalog>("/api/billing/plans"),
   billingPlanDiff: (fromPlan: string, toPlan = "free_solo") =>
     request<{ from_plan: string; to_plan: string; lost_features: Array<{ feature_key: string; from: string; to: string }> }>(
       `/api/billing/plan-diff?from_plan=${encodeURIComponent(fromPlan)}&to_plan=${encodeURIComponent(toPlan)}`,
@@ -1007,6 +1032,18 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  stripeExtraSlotsCheckout: (body: {
+    slot_quantity: number;
+    success_url: string;
+    cancel_url: string;
+  }) =>
+    request<{ checkout_url: string; session_id: string; mode: string }>(
+      "/api/billing/checkout/stripe/extra-slots",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
   stripePortal: () => request<{ portal_url: string }>("/api/billing/portal/stripe", { method: "POST" }),
   bootstrapApiKey: () =>
     request<{ api_key: string; key_id: string; name: string; note: string }>(
@@ -1051,6 +1088,10 @@ export const api = {
       reuse_view_ids?: number[];
       reuse_action_ids?: number[];
       expand?: boolean;
+      grain?: string | null;
+      gallery_id?: string | null;
+      host_model?: string | null;
+      connect_points?: Record<string, unknown> | null;
     },
   ) =>
     request<{
@@ -1059,7 +1100,17 @@ export const api = {
       raw_response?: string | null;
       note?: string;
       warnings?: string[];
+      refusals?: ProtectedModuleRefusal[];
       domain_pack?: string | null;
+      grain?: string | null;
+      grain_label?: string | null;
+      connect_points?: Record<string, unknown> | null;
+      host_candidates?: Array<{
+        model: string;
+        label: string;
+        score: number;
+        reason?: string;
+      }>;
     }>("/api/ai/draft-module", {
       method: "POST",
       body: JSON.stringify({
@@ -1069,7 +1120,56 @@ export const api = {
         reuse_view_ids: opts?.reuse_view_ids ?? [],
         reuse_action_ids: opts?.reuse_action_ids ?? [],
         expand: opts?.expand ?? true,
+        grain: opts?.grain || undefined,
+        gallery_id: opts?.gallery_id || undefined,
+        host_model: opts?.host_model || undefined,
+        connect_points: opts?.connect_points ?? undefined,
       }),
+    }),
+  proposeConnectPoints: (body: {
+    prompt: string;
+    connection_id?: string;
+    grain?: string | null;
+    gallery_id?: string | null;
+    host_model?: string | null;
+    connect_points?: Record<string, unknown> | null;
+  }) =>
+    request<{
+      ok: boolean;
+      grain: string;
+      grain_label: string;
+      connect_points?: Record<string, unknown> | null;
+      host_candidates?: Array<{
+        model: string;
+        label: string;
+        score: number;
+        reason?: string;
+      }>;
+      requires_review: boolean;
+      warnings?: string[];
+      gallery_id?: string | null;
+    }>("/api/ai/propose-connect-points", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  generalizeComponent: (body: {
+    spec_json: Record<string, unknown>;
+    consent_share_template: boolean;
+    host_slot?: string | null;
+    pack_slug?: string | null;
+  }) =>
+    request<{
+      ok: boolean;
+      filename: string;
+      source: string;
+      domain_pack: string;
+      host_slot: string;
+      connect_points_template?: Record<string, unknown>;
+      note: string;
+      warnings: string[];
+    }>("/api/ai/generalize-component", {
+      method: "POST",
+      body: JSON.stringify(body),
     }),
   generalizePack: (body: {
     spec_json?: Record<string, unknown>;
@@ -1245,6 +1345,10 @@ export const api = {
   },
   listModels: (id: string, customOnly = false) =>
     request<ModelRow[]>(`/api/connections/${id}/models?custom_only=${customOnly}`),
+  modelTier: (connectionId: string, model: string) =>
+    request<{ model: string; tier: ProtectedTier | null }>(
+      `/api/connections/${connectionId}/model-tier?model=${encodeURIComponent(model)}`,
+    ),
   listFields: (id: string, model: string) =>
     request<FieldRow[]>(`/api/connections/${id}/models/${encodeURIComponent(model)}/fields`),
   listViews: (id: string, model: string) =>
@@ -1971,6 +2075,44 @@ export const api = {
     },
   ) =>
     request<XPathPreviewOut>(`/api/connections/${id}/views/xpath/preview`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getPrimaryView: (id: string, model: string, view_type: string) =>
+    request<ViewRow>(
+      `/api/connections/${id}/views/primary?model=${encodeURIComponent(model)}&view_type=${encodeURIComponent(view_type)}`,
+    ),
+  resolveFieldNode: (
+    id: string,
+    body: { view_type: string; arch: string; field_name: string },
+  ) =>
+    request<{
+      field_name: string;
+      candidates: Array<{ xpath: string; match?: string; from_spec?: boolean }>;
+      ambiguous: boolean;
+    }>(`/api/connections/${id}/views/resolve-field`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  overlayPreview: (
+    id: string,
+    body: Record<string, unknown>,
+  ) =>
+    request<{ xpath_arch: string; issues: string[] }>(
+      `/api/connections/${id}/views/overlay/preview`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  applyOverlayOp: (
+    id: string,
+    body: Record<string, unknown>,
+  ) =>
+    request<{
+      xpath_arch: string;
+      issues: string[];
+      view_id?: number | null;
+      snapshot_id?: string | null;
+      inherit_name?: string | null;
+    }>(`/api/connections/${id}/views/overlay/apply`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
@@ -3052,6 +3194,37 @@ export const api = {
         sequence: number;
       }> | null;
     }>(`/api/connections/${id}/config/website/menus`),
+  getWebsitePageBlocks: (id: string, pageId: number) =>
+    request<{
+      page_id: number;
+      view_id: number;
+      name: string;
+      url: string | null;
+      is_published: boolean;
+      blocks: Array<Record<string, unknown>>;
+    }>(`/api/connections/${id}/website/pages/${pageId}/blocks`),
+  saveWebsitePageBlocks: (
+    id: string,
+    pageId: number,
+    body: { page_id: number; view_id: number; blocks: Array<Record<string, unknown>> },
+  ) =>
+    request<{ ok: boolean; view_id: number; arch_len: number }>(
+      `/api/connections/${id}/website/pages/${pageId}/blocks`,
+      { method: "PUT", body: JSON.stringify(body) },
+    ),
+  publishWebsitePage: (id: string, pageId: number, publish: boolean) =>
+    request<{ ok: boolean; page_id: number; is_published: boolean }>(
+      `/api/connections/${id}/website/pages/${pageId}/publish`,
+      { method: "POST", body: JSON.stringify({ page_id: pageId, publish }) },
+    ),
+  uploadWebsiteImage: (id: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return requestForm<{ attachment_id: number; src: string; name: string }>(
+      `/api/connections/${id}/website/upload-image`,
+      form,
+    );
+  },
   listMenuTree: (id: string, opts?: { rootsOnly?: boolean; parentId?: number }) => {
     const q = new URLSearchParams();
     if (opts?.rootsOnly) q.set("roots_only", "true");

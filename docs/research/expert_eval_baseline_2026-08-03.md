@@ -41,5 +41,6 @@ Live mode scores a stratified sample against the real model; not hard-fail in CI
 ## Notes
 
 - Eval set: `apps/api/tests/expert_eval/eval_set.jsonl`
-- MASTER reference bundle not yet ingested — doc-grounded items use fixture chunks in CI
+- MASTER reference ingested via `ingest_project_docs()` — see `test_master_reference_ingest.py`
+- Live transcripts: `docs/research/expert_runs_2026-08-03/` (re-record with `EXPERT_RUNS_LIVE=1`)
 - Tier-1 detection uses full dotted model tokens (`sign.request`, `sale.subscription`, etc.)

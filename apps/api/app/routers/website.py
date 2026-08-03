@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+import base64
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.odoo_service import OdooClientError, client_from_connection, get_connection_or_404
 from app.snapshots import snapshot_view
-from app.website_blocks import WebsiteBlock, parse_website_arch, render_website_arch
+from app.website_blocks import blocks_from_dicts, parse_website_arch, render_website_arch
 
 router = APIRouter(prefix="/connections/{connection_id}/website", tags=["website"])
 
@@ -34,6 +35,15 @@ class WebsiteBlocksSaveBody(BaseModel):
 class PublishBody(BaseModel):
     page_id: int
     publish: bool = True
+
+
+class UploadImageOut(BaseModel):
+    attachment_id: int
+    src: str
+    name: str
+
+
+_MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 
 def _client_or_404(connection_id: str, db: Session):
@@ -108,32 +118,7 @@ def save_page_blocks(
     if not _website_installed(client):
         raise HTTPException(status_code=409, detail="website module not installed")
 
-    blocks = [
-        WebsiteBlock(
-            id=str(b.get("id") or f"b-{i}"),
-            kind=b.get("kind") or "locked",
-            text=str(b.get("text") or ""),
-            href=str(b.get("href") or ""),
-            src=str(b.get("src") or ""),
-            level=int(b.get("level") or 2),
-            locked_xml=str(b.get("locked_xml") or ""),
-            children=[
-                WebsiteBlock(
-                    id=str(c.get("id") or ""),
-                    kind=c.get("kind") or "locked",
-                    text=str(c.get("text") or ""),
-                    href=str(c.get("href") or ""),
-                    src=str(c.get("src") or ""),
-                    level=int(c.get("level") or 2),
-                    locked_xml=str(c.get("locked_xml") or ""),
-                )
-                for c in (b.get("children") or [])
-                if isinstance(c, dict)
-            ],
-        )
-        for i, b in enumerate(body.blocks)
-        if isinstance(b, dict)
-    ]
+    blocks = blocks_from_dicts(body.blocks)
     new_arch = render_website_arch(blocks)
     snapshot_view(db, connection_id, client, body.view_id)
     client.execute_kw(
@@ -152,9 +137,50 @@ def publish_page(
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     _row, client = _client_or_404(connection_id, db)
+    if not _website_installed(client):
+        raise HTTPException(status_code=409, detail="website module not installed")
     client.execute_kw(
         "website.page",
         "write",
         [[page_id], {"is_published": body.publish}],
     )
     return {"ok": True, "page_id": page_id, "is_published": body.publish}
+
+
+@router.post("/upload-image", response_model=UploadImageOut)
+async def upload_website_image(
+    connection_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> UploadImageOut:
+    """Upload image → ir.attachment (public) → /web/image/{id} src."""
+    _row, client = _client_or_404(connection_id, db)
+    if not _website_installed(client):
+        raise HTTPException(status_code=409, detail="website module not installed")
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="empty file")
+    if len(raw) > _MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="file exceeds 5MB limit")
+
+    filename = file.filename or "upload.png"
+    mimetype = file.content_type or "application/octet-stream"
+    b64 = base64.b64encode(raw).decode("ascii")
+    att_id = client.execute_kw(
+        "ir.attachment",
+        "create",
+        [
+            {
+                "name": filename,
+                "type": "binary",
+                "datas": b64,
+                "mimetype": mimetype,
+                "public": True,
+            }
+        ],
+    )
+    if isinstance(att_id, list):
+        att_id = att_id[0]
+    src = f"/web/image/{int(att_id)}"
+    return UploadImageOut(attachment_id=int(att_id), src=src, name=filename)

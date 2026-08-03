@@ -1,0 +1,11 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0
+rootdir: /Users/temitopeolaitanmichael/Odoo_Customization_App/apps/api
+configfile: pytest.ini
+plugins: anyio-4.14.2
+collected 1 item
+
+tests/test_expert_runs_live.py .
+
+============================== 1 passed in 1.34s ===============================
+Expert runs written under docs/research/expert_runs_2026-08-03/

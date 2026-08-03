@@ -14,6 +14,7 @@ import {
   currencyFieldUnsupportedReason,
   injectStrategyCapabilityId,
 } from "@/lib/capabilities";
+import { ModelTierInline } from "@/components/ModelTierInline";
 import { ExplainThisButton } from "@/components/expert/ExplainThisButton";
 import {
   SelectionEditor,
@@ -659,6 +660,9 @@ export default function BuilderPage() {
                 className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-3 py-2 font-mono text-sm"
                 placeholder="res.partner or x_…"
               />
+              <div className="mt-1">
+                <ModelTierInline connectionId={connectionId} model={fieldForm.model} />
+              </div>
             </label>
             <label className="block text-sm">
               <span className="text-muted">Label</span>

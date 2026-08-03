@@ -1,0 +1,19 @@
+{
+  "prompt": "Simple task tracker",
+  "trace": "step1:entities=1\nstep2:models=1\nstep3:rels=1\nstep4:workflows\nstep5:autos=1\nstep6:views\nrules",
+  "warnings": [
+    "step1: ambition=thin max_entities=6",
+    "added 1 default action(s)",
+    "added root + 1 menu(s)",
+    "added 3 default view arch(es)",
+    "rules: suggested overdue automation for x_support_ticket",
+    "rules: partner back-ref smart button for x_support_ticket",
+    "rules: mail.thread mixin on x_support_ticket",
+    "rules: added 1 access rule stub(s)",
+    "completeness gaps: depth_models"
+  ],
+  "model_count": 1,
+  "pipeline_mode": "staged",
+  "guardrail_steps": 7,
+  "llm_calls": 7
+}

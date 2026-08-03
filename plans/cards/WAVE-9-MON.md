@@ -71,7 +71,8 @@ CHECKLIST:
 - [x] `AUTH_MODE=accounts`: web login/signup/verify/reset/2FA pages (UIX kit); api-key mode
       + off mode regression-tested unchanged.
 - [x] Invitations: admin invites email → role; accept flow creates user/membership.
-- [ ] OAuth (Google/GitHub) via authlib: **[SKIPPED]** — `OAUTH_PROVIDERS` env stub only; needs user approval to implement.
+- [ ] OAuth (Google/GitHub) via authlib: skip resolved 2026-08-03 — user SCHEDULED it as
+      card REM-13 (WAVE-11-REM.md); `OAUTH_PROVIDERS` env stub remains until then.
 - [x] Security tests: authz matrix per role, session fixation/rotation, token reuse, lockout,
       workspace isolation (user A cannot read workspace B's connections — adversarial suite
       extension).

@@ -25,6 +25,7 @@ from odoo_client.automation import AutomationTrigger, MailPostAction
 
 from app.db import get_db
 from app.odoo_service import OdooClientError, client_from_connection, get_connection_or_404
+from app.protected_enforcement import check_automation_create, manifest_for_connection
 from app.schemas import AutomationsGateOut, AutomationTriggersOut, GatingCalloutOut, GatingOptionOut
 from app.capabilities import probe_web_base_url, sample_installed_modules
 from app.tier_gating import approvals_gating, automations_gating, gating_context_for_connection
@@ -188,7 +189,12 @@ class ActivityTypeOut(BaseModel):
 
 
 class UpdateAutomationBody(BaseModel):
-    active: bool
+    active: bool | None = None
+    model: str | None = None
+    action_kind: str | None = None
+    field_name: str | None = None
+    value: str | None = None
+    target_model: str | None = None
 
 
 class ConfirmAdvancedBody(BaseModel):
@@ -451,6 +457,21 @@ def create_automation(
     else:
         raise HTTPException(status_code=422, detail=f"Unknown action_kind {body.action_kind}")
 
+    try:
+        conn = get_connection_or_404(db, connection_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    manifest = manifest_for_connection(conn)
+    target_model = body.target_model if body.action_kind == "create_record" else None
+    pcm_viol = check_automation_create(
+        manifest,
+        model=body.model,
+        action_kind=body.action_kind,
+        target_model=target_model,
+    )
+    if pcm_viol is not None:
+        raise HTTPException(status_code=422, detail=pcm_viol.http_detail())
+
     client = _client(connection_id, db)
     try:
         trigger = AutomationTrigger(body.trigger)
@@ -554,9 +575,41 @@ def update_automation(
     body: UpdateAutomationBody,
     db: Session = Depends(get_db),
 ) -> AutomationOut:
+    if body.active is None and body.model is None and body.action_kind is None:
+        raise HTTPException(status_code=422, detail="Provide active and/or definition fields to update")
+
+    try:
+        conn = get_connection_or_404(db, connection_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    if body.model is not None or body.action_kind is not None:
+        manifest = manifest_for_connection(conn)
+        target_model = body.target_model if body.action_kind == "create_record" else None
+        pcm_viol = check_automation_create(
+            manifest,
+            model=body.model or "",
+            action_kind=body.action_kind or "update_field",
+            target_model=target_model,
+        )
+        if pcm_viol is not None:
+            raise HTTPException(status_code=422, detail=pcm_viol.http_detail())
+
     client = _client(connection_id, db)
     try:
-        updated = client.set_automation_active(automation_id, body.active)
+        if body.model is not None:
+            client.update_automation_model(automation_id, body.model)
+        if body.active is not None:
+            updated = client.set_automation_active(automation_id, body.active)
+        else:
+            updated = next(
+                (row for row in client.list_automations() if row.id == automation_id),
+                None,
+            )
+            if updated is None:
+                raise HTTPException(status_code=404, detail=f"Automation {automation_id} not found")
+    except HTTPException:
+        raise
     except OdooClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001

@@ -212,6 +212,10 @@ class DedupeMergeBody(ConfirmAdvancedBody):
     loser_ids: list[int] = Field(..., min_length=1)
     dry_run: bool = True
     archive_or_delete: str = Field("archive", pattern="^(archive|unlink)$")
+    force_generic_merge: bool = Field(
+        False,
+        description="When res.partner and Odoo partner-merge wizard exists, still run generic engine",
+    )
 
 
 class CronRowOut(BaseModel):
@@ -435,6 +439,10 @@ class DedupeMergeBody(ConfirmAdvancedBody):
     loser_ids: list[int] = Field(..., min_length=1)
     dry_run: bool = True
     archive_or_delete: str = Field("archive", pattern="^(archive|unlink)$")
+    force_generic_merge: bool = Field(
+        False,
+        description="When res.partner and Odoo partner-merge wizard exists, still run generic engine",
+    )
 
 
 class CronRowOut(BaseModel):
@@ -696,6 +704,7 @@ class BulkRunOut(BaseModel):
     relinks: list[RelinkOut] | None = None
     snapshot_id: str | None = None
     reversibility: str | None = None
+    partner_merge_recommended: bool | None = None
     cron_ids: list[int] | None = None
     run_via: str | None = None
     attachment_ids: list[int] | None = None
@@ -805,6 +814,7 @@ def _to_out(
     loser_ids = None
     snapshot_id = None
     reversibility = None
+    partner_merge_recommended = None
     cron_ids = None
     run_via = None
     attachment_ids = None
@@ -838,6 +848,7 @@ def _to_out(
         loser_ids = list(result.loser_ids)
         snapshot_id = result.snapshot_id
         reversibility = result.reversibility
+        partner_merge_recommended = result.partner_merge_recommended
         relinks = [
             RelinkOut(model=r.model, field=r.field, ttype=r.ttype, count=r.count)
             for r in result.relinks
@@ -884,6 +895,7 @@ def _to_out(
         relinks=relinks,
         snapshot_id=snapshot_id,
         reversibility=reversibility,
+        partner_merge_recommended=partner_merge_recommended,
         cron_ids=cron_ids,
         run_via=run_via,
         attachment_ids=attachment_ids,
@@ -1325,6 +1337,7 @@ def dedupe_merge(
             archive_or_delete=body.archive_or_delete,  # type: ignore[arg-type]
             snapshot_id=snapshot_id,
             manifest=manifest,
+            force_generic_merge=body.force_generic_merge,
         )
     except DedupeValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

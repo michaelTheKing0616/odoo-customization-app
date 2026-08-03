@@ -198,8 +198,8 @@ export function ReportDesigner({
 
   return (
     <div className="grid gap-4 lg:grid-cols-[200px_1fr_220px]">
-      <aside className="space-y-2 border border-[#3d2a38] p-3 text-sm">
-        <h3 className="font-semibold text-[#c9a9c0]">Blocks</h3>
+      <aside className="space-y-2 border border-border-subtle p-3 text-sm">
+        <h3 className="font-semibold text-muted">Blocks</h3>
         {palette.map((p) => (
           <button
             key={p.type}
@@ -207,12 +207,12 @@ export function ReportDesigner({
             title={p.hint}
             disabled={busy}
             onClick={() => setBlocks((prev) => [...prev, newBlock(p.type as ReportBlockType)])}
-            className="block w-full border border-[#3d2a38] px-2 py-1 text-left text-xs hover:bg-[#1a1218]"
+            className="block w-full border border-border-subtle px-2 py-1 text-left text-xs hover:bg-surface-raised"
           >
             + {p.label}
           </button>
         ))}
-        <p className="pt-2 text-xs text-[#8f7a88]">
+        <p className="pt-2 text-xs text-muted">
           t-lang: set partner language field below; see Config → ModuleSpec translations for
           label CSV round-trip.
         </p>
@@ -232,21 +232,21 @@ export function ReportDesigner({
             type="button"
             disabled={busy}
             onClick={() => compile().then(() => onNotice?.("QWeb synced to Code tab"))}
-            className="border border-[#c9a9c0] px-3 py-1 text-sm text-[#c9a9c0]"
+            className="border border-border-subtle px-3 py-1 text-sm text-muted"
           >
             Sync QWeb
           </button>
           <input
             value={previewRecordId}
             onChange={(e) => setPreviewRecordId(e.target.value)}
-            className="w-20 border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono text-xs"
+            className="w-20 border border-border-subtle bg-surface px-2 py-1 font-mono text-xs"
             placeholder="rec id"
           />
           <button
             type="button"
             disabled={busy || !reportId}
             onClick={() => void onPreview()}
-            className="border border-[#c9a9c0] px-3 py-1 text-sm text-[#c9a9c0]"
+            className="border border-border-subtle px-3 py-1 text-sm text-muted"
           >
             Live PDF preview
           </button>
@@ -254,7 +254,7 @@ export function ReportDesigner({
             type="button"
             disabled={busy}
             onClick={() => void onExportModuleFragment()}
-            className="border border-[#8f7a88] px-3 py-1 text-sm text-[#8f7a88]"
+            className="border border-border-subtle px-3 py-1 text-sm text-muted"
           >
             Export ModuleSpec fragment
           </button>
@@ -263,13 +263,13 @@ export function ReportDesigner({
           <iframe
             title="Report preview"
             src={previewUrl}
-            className="mt-4 h-96 w-full border border-[#3d2a38] bg-white"
+            className="mt-4 h-96 w-full border border-border-subtle bg-white"
           />
         )}
       </div>
 
-      <aside className="space-y-3 border border-[#3d2a38] p-3 text-sm">
-        <h3 className="font-semibold text-[#c9a9c0]">Layout</h3>
+      <aside className="space-y-3 border border-border-subtle p-3 text-sm">
+        <h3 className="font-semibold text-muted">Layout</h3>
         <label className="flex items-center gap-2 text-xs">
           <input
             type="checkbox"
@@ -284,7 +284,7 @@ export function ReportDesigner({
             value={tLang}
             onChange={(e) => setTLang(e.target.value)}
             placeholder="o.partner_id.lang"
-            className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono text-xs"
+            className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono text-xs"
           />
         </label>
         <label className="block text-xs">
@@ -292,7 +292,7 @@ export function ReportDesigner({
           <select
             value={mode}
             onChange={(e) => setMode(e.target.value as "primary" | "inherit")}
-            className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1"
+            className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1"
           >
             <option value="primary">New report</option>
             <option value="inherit">Inherit existing</option>
@@ -306,7 +306,7 @@ export function ReportDesigner({
                 value={inheritBase}
                 onChange={(e) => setInheritBase(e.target.value)}
                 placeholder="account.report_invoice"
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono text-xs"
+                className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono text-xs"
               />
             </label>
             <label className="block text-xs">
@@ -314,21 +314,21 @@ export function ReportDesigner({
               <input
                 value={inheritXpath}
                 onChange={(e) => setInheritXpath(e.target.value)}
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono text-xs"
+                className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono text-xs"
               />
             </label>
           </>
         )}
         {selected && (
           <>
-            <h3 className="font-semibold text-[#c9a9c0]">Block</h3>
+            <h3 className="font-semibold text-muted">Block</h3>
             {(selected.type === "heading" || selected.type === "text") && (
               <label className="block text-xs">
                 Text
                 <input
                   value={selected.text || ""}
                   onChange={(e) => updateSelected({ text: e.target.value })}
-                  className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1"
+                  className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1"
                 />
               </label>
             )}
@@ -346,7 +346,7 @@ export function ReportDesigner({
                         : { field: e.target.value },
                     )
                   }
-                  className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono"
+                  className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono"
                 />
               </label>
             )}
@@ -356,7 +356,7 @@ export function ReportDesigner({
                 <input
                   value={selected.label || ""}
                   onChange={(e) => updateSelected({ label: e.target.value })}
-                  className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1"
+                  className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1"
                 />
               </label>
             )}
@@ -366,13 +366,13 @@ export function ReportDesigner({
                 <input
                   value={selected.o2m_field || ""}
                   onChange={(e) => updateSelected({ o2m_field: e.target.value })}
-                  className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono"
+                  className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono"
                 />
               </label>
             )}
             <button
               type="button"
-              className="text-xs text-[#f0a8a0]"
+              className="text-xs text-danger"
               onClick={() => {
                 setBlocks((prev) => prev.filter((b) => b.id !== selectedId));
                 setSelectedId(null);

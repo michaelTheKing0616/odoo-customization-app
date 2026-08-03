@@ -62,9 +62,9 @@ export function SelectionEditor({ value, onChange, className }: Props) {
 
   return (
     <div className={className ?? "space-y-2"}>
-      <p className="text-xs text-[#8f7a88]">
+      <p className="text-xs text-muted">
         Selection options →{" "}
-        <code className="text-[#c9a9c0]">{selectionRowsToString(rows)}</code>
+        <code className="text-muted">{selectionRowsToString(rows)}</code>
       </p>
       {rows.map((row, i) => (
         <div key={i} className="flex flex-wrap gap-2">
@@ -72,18 +72,18 @@ export function SelectionEditor({ value, onChange, className }: Props) {
             value={row.value}
             onChange={(e) => updateRow(i, { value: e.target.value })}
             placeholder="value"
-            className="min-w-[7rem] flex-1 border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 font-mono text-sm"
+            className="min-w-[7rem] flex-1 border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm"
           />
           <input
             value={row.label}
             onChange={(e) => updateRow(i, { label: e.target.value })}
             placeholder="Label"
-            className="min-w-[7rem] flex-1 border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 text-sm"
+            className="min-w-[7rem] flex-1 border border-border-subtle bg-surface px-2 py-1.5 text-sm"
           />
           <button
             type="button"
             onClick={() => removeRow(i)}
-            className="text-xs text-[#f0a8a0] hover:underline"
+            className="text-xs text-danger hover:underline"
           >
             Remove
           </button>
@@ -92,7 +92,7 @@ export function SelectionEditor({ value, onChange, className }: Props) {
       <button
         type="button"
         onClick={addRow}
-        className="text-xs text-[#c9a9c0] hover:underline"
+        className="text-xs text-muted hover:underline"
       >
         + Add option
       </button>

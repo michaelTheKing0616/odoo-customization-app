@@ -22,6 +22,7 @@ from app.snapshots import (
     ConfirmationRequired,
     require_advanced_confirmation,
 )
+from app.protected_enforcement import manifest_for_connection, scrub_spec_for_protected_apply
 from app.spec_apply_ui import apply_module_spec_ui
 
 router = APIRouter(
@@ -216,9 +217,11 @@ def apply_module_spec(
                 )
             except ConfirmationRequired as exc:
                 raise _confirm_http(exc) from exc
+        manifest = manifest_for_connection(conn)
+        spec_clean, pcm_skips = scrub_spec_for_protected_apply(body.spec, manifest)
         result = apply_module_spec_ui(
             client,
-            body.spec,
+            spec_clean,
             apply_views=body.apply_views,
             apply_menus=body.apply_menus,
             apply_smart_buttons=body.apply_smart_buttons,
@@ -229,6 +232,11 @@ def apply_module_spec(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    skipped = list(result.skipped) + pcm_skips
+    warnings = list(result.warnings)
+    if pcm_skips:
+        warnings.append(f"PCM: skipped {len(pcm_skips)} protected item(s)")
+
     return ModuleSpecApplyOut(
         ok=True,
         models_created=result.models_created,
@@ -238,7 +246,7 @@ def apply_module_spec(
         menus_created=result.menus_created,
         smart_buttons=result.smart_buttons,
         automations_created=result.automations_created,
-        skipped=result.skipped,
-        warnings=result.warnings,
+        skipped=skipped,
+        warnings=warnings,
         message=result.message,
     )

@@ -154,7 +154,7 @@ export function PropertyFieldsPanel({
 
   return (
     <section className="odoo-sheet mt-6 space-y-4 p-4" data-testid="property-fields-panel">
-      <h2 className="text-sm font-semibold text-[var(--odoo-primary)]">Properties field (§18)</h2>
+      <h2 className="text-sm font-semibold text-accent">Properties field (§18)</h2>
       <p className="text-xs text-[var(--odoo-muted)]">
         Same field everywhere on every record → use a <strong>regular field</strong>. Different
         values per parent record → use a <strong>Properties</strong> field bound to a parent m2o.
@@ -212,7 +212,7 @@ export function PropertyFieldsPanel({
               setConfirmMode("setup");
               setConfirmOpen(true);
             }}
-            className="bg-[var(--odoo-primary)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+            className="bg-accent px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
           >
             Create properties field pair
           </button>
@@ -299,7 +299,7 @@ export function PropertyFieldsPanel({
             <div className="mt-2 flex flex-wrap gap-2">
               <button
                 type="button"
-                className="border border-[var(--odoo-primary)] px-2 py-1 text-xs text-[var(--odoo-primary)]"
+                className="border border-accent px-2 py-1 text-xs text-accent"
                 onClick={() => setEntries((rows) => [...rows, EMPTY_ENTRY()])}
               >
                 Add property
@@ -311,7 +311,7 @@ export function PropertyFieldsPanel({
                   setConfirmMode("definition");
                   setConfirmOpen(true);
                 }}
-                className="bg-[var(--odoo-primary)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+                className="bg-accent px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
               >
                 Write definition
               </button>

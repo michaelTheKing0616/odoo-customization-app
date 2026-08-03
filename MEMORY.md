@@ -13,7 +13,15 @@
 
 ## Log
 
-### 2026-08-03 — MON-1: Accounts auth mode
+### 2026-08-03 — REM-1: staged pipeline guard + step wiring
+**Decided:** Define `guard = guardrail_prompt(manifest)` at top of `run_staged_pipeline`;
+pass `protected_manifest`/`odoo_version` from `draft_module_from_prompt`; step3/5 use
+`reasoning=True`, `STEP_TEMPERATURES`, `append_prompt_blocks`, `FORMAT_SCHEMA_RELATIONSHIPS`
+on step3; dedupe duplicate `_PACK_FACTORIES` block; `test_ai_staged_pipeline.py` with
+RecordingProvider executes all steps.
+**Why:** NameError crashed staged LLM path; AI-1/2 temps/reasoning were missing on steps 3/5.
+**Rejected:** Mocking step functions in the gate test (RecordingProvider calls real step code).
+
 **Decided:** `AUTH_MODE=accounts` with cookie-first sessions (`oc_session`), argon2id passwords,
 server-side session records, workspace scoping on connections/projects; API key fallback in
 accounts mode for CI; OAuth deferred [SKIPPED].
@@ -95,6 +103,54 @@ skips require user approval; checker diffs checklist vs code first.
 **Why:** User approved the plan and requires cheap-model execution without quality drift.
 **Rejected:** Deferring the promoted seven; auth-SaaS dependencies; deciding the 4 remaining
 DEFERRALS.md candidates without the user.
+
+### 2026-08-03 — Wave 13 DEV: first-class developer Python path (user-directed)
+**Decided:** Three gated developer lanes (WAVE-13-DEV.md): DEV-1 Code Studio — live
+`state=code` server actions/automations where a per-instance PROBE proves support (never
+assumed by tier), editor + one-record test-run + advanced confirm/snapshot; DEV-2 —
+`custom_code_blocks` become writable (developer role) with lint + one-click sandbox loop,
+live-apply exclusion intact; DEV-3 — Script Runner: ad-hoc Python against the typed RPC
+client in an isolated subprocess (resource limits, import allowlist, no fs/network), journaled
+with write counts. All behind `developer` role + `dev_tools` entitlement + SafetyGate risk
+class `code`; observer mode refuses. Completes (not contradicts) 2026-07-27 Option A +
+advanced-confirm decisions: no-code stays default, code is explicit opt-in.
+**Why:** User requires that developers can always write Python directly where instances
+allow it.
+**Rejected:** Assuming code-action availability by hosting tier; executing scripts in the
+API process; letting code blocks into the live apply path.
+
+### 2026-08-03 — Production-trust posture + Wave 12 TRUST (user-directed)
+**Decided:** Honest posture: architecture is safety-first (ORM/RPC-only as the user's own
+credentials, no SQL — damage bounded to what the user's account can do; corruption-level
+damage structurally out of reach) but NOT yet marketable as production-trustworthy: known
+enforcement gaps (REM-2), unverified-live bulk paths, clean-instance-only validation,
+partial-apply risk. Plan: Wave 11 REM first, then Wave 12 TRUST (WAVE-12-TRUST.md):
+observer-mode default + least-privilege onboarding; SafetyGate single choke point with a
+route-enumeration meta-test (no mutating endpoint ships ungated); sample-first execution +
+caps + anomaly auto-pause + kill switch; backup-artifact-before-destructive + restore
+drills; dirty-instance/chaos/concurrency gates; coverage floors + settings-matrix execution
+policy; IDOR/supply-chain/app-DB-restore hardening; SAFETY.md trust contract + production
+readiness checklist gating production write mode; design-partner beta with written GA
+criteria. "Fool-proof" explicitly rejected as a claim — defense-in-depth with honest limits
+is the standard.
+**Why:** User asked whether live customer DBs are safe; review evidence says structural
+safety yes, earned trust not yet.
+**Rejected:** Marketing production-readiness now; per-router safety discipline (proven to
+fail silently — choke point instead); external analytics SaaS for telemetry.
+
+### 2026-08-03 — Orchestrator review verdict: gates real, claims inflated (Wave 11 REM)
+**Decided / proved:** Full-board review after the implementation run claimed all 57 cards
+done. Gates independently re-run and CONFIRMED green (API 667/2skip, lint 0 err, vitest 78,
+build OK). Code-level diff of every checklist found: PCM-3/PCM-4/UIX-6 FAIL (refusal contract
+absent in code, enforcement functions with zero call sites, overlay editor select-only);
+confirmed `guard` NameError crashes staged pipeline (never executed by tests); stub tests
+masquerading as gates (`kit.test.ts` name list; slot-gate test hits `/health`); BLK-2..7 live
+smokes never run; CMP-9 widget lacks bundled zxing. Remediation = WAVE-11-REM.md (REM-1..12),
+REM-1 (runtime bug) then REM-2 (security wiring) first. PROGRESS downgraded honestly.
+**Why:** Maker-is-never-checker; checkbox discipline requires evidence, not marks.
+**Rejected:** Accepting PROGRESS/STATE claims at face value; deleting the [x] history
+(annotated downgrades instead); treating green suites as proof when the failing paths were
+simply uncovered.
 
 ### 2026-08-03 — Hybrid pricing: active-project slots + Project Pass (user-approved)
 **Decided:** Value metric = subscription tiers (unchanged) + ACTIVE-PROJECT SLOTS per tier
@@ -559,3 +615,12 @@ proxied frames), optionally themed from the connected instance's own extracted p
 ### 2026-07-28 — B2 FULL-SCALE Library 19-primary (confirmed)
 **Decided:** `docs/FULL-SCALE-LIBRARY-AND-SPEED-PLAN.md` §1.3 unchanged — platform multi-version live; Library reference vertical smoke, UAT, and CI gates remain **19-centric** (19-primary).
 **Why:** CARD B2 confirmation; compat layer serves other majors without moving Library full-scale gates off 19.
+
+### 2026-08-03 — REM-14 live-evidence deviations
+**Decided:**
+1. Staged live run uses `qwen3:8b` with 300s step timeout (`docs/research/staged_run_fixed_2026-08-03.json`, `"mode":"live"`).
+2. Stripe extra-slot checkout already `mode=subscription` — no SKU rename (A7 satisfied as-is).
+3. `test_inspection_checklist_live_odoo19` skipped — docker-19 lacks `project` module; unit + sandbox paths cover AI-8.
+4. Deploy-stack `LAUNCH-1` partial — `/health` OK but `/api/billing/plans` 404 on deploy API image (log: `docs/research/launch_compose_smoke_2026-08-03.log`).
+5. Playwright e2e harness requires fresh build with `NEXT_PUBLIC_E2E=1` — reusing deploy :3000 serves 404 on `/e2e/*`.
+**Why:** Honest live gates without fixture relabeling; deviations are env gaps not code stubs.

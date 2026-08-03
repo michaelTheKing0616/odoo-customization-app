@@ -6,6 +6,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { ProjectDiffPanel } from "@/components/projects/ProjectDiffPanel";
 import { SuggestTemplateButton } from "@/components/SuggestTemplateButton";
+import { SaveAsComponentButton } from "@/components/SaveAsComponentButton";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
@@ -256,12 +257,22 @@ export default function ProjectsPage() {
                     </Link>
                   </Button>
                   {models > 0 ? (
-                    <SuggestTemplateButton
-                      spec={p.spec_json}
-                      connectionId={connectionId}
-                      projectId={p.id}
-                      disabled={busy}
-                    />
+                    <>
+                      <SuggestTemplateButton
+                        spec={p.spec_json}
+                        connectionId={connectionId}
+                        projectId={p.id}
+                        disabled={busy}
+                      />
+                      {(p.spec_json as { _component?: boolean; grain?: string })._component ||
+                      ((p.spec_json as { grain?: string }).grain &&
+                        (p.spec_json as { grain?: string }).grain !== "full_app") ? (
+                        <SaveAsComponentButton
+                          spec={p.spec_json as Record<string, unknown>}
+                          disabled={busy}
+                        />
+                      ) : null}
+                    </>
                   ) : null}
                   <Button
                     type="button"

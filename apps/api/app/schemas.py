@@ -872,7 +872,12 @@ class DeleteModelOut(BaseModel):
 
 
 class UpdateAutomationBody(BaseModel):
-    active: bool
+    active: bool | None = None
+    model: str | None = None
+    action_kind: str | None = None
+    field_name: str | None = None
+    value: str | None = None
+    target_model: str | None = None
 
 
 class DeleteAutomationOut(BaseModel):
@@ -1100,10 +1105,13 @@ class LibraryExportBody(BaseModel):
 
 
 class ProtectedModuleRefusal(BaseModel):
+    protected_module_conflict: bool = True
+    requested_capability: str
+    protected_module: str
+    safe_alternative: str
     kind: str = "refusal"
     model: str | None = None
-    reason: str
-    safe_alternative: str | None = None
+    reason: str = ""
 
 
 class AiDraftModuleBody(BaseModel):
@@ -1148,22 +1156,33 @@ class AiDraftModuleBody(BaseModel):
         None,
         description="Operator-edited connect points from wizard review step",
     )
-    grain: str | None = Field(
-        None,
-        description="Override grain: field_pack | feature_slice | full_app",
-    )
-    gallery_id: str | None = Field(
-        None,
-        description="Apply a built-in component gallery seed",
-    )
-    host_model: str | None = Field(
-        None,
-        description="Override detected host model for component grain",
-    )
-    connect_points: dict | None = Field(
-        None,
-        description="Operator-edited connect points from wizard review step",
-    )
+
+
+class AiProposeConnectPointsBody(BaseModel):
+    prompt: str = Field(..., min_length=3)
+    connection_id: str | None = None
+    grain: str | None = None
+    gallery_id: str | None = None
+    host_model: str | None = None
+    connect_points: dict | None = None
+
+
+class AiProposeConnectPointsOut(BaseModel):
+    ok: bool = True
+    grain: str
+    grain_label: str
+    connect_points: dict | None = None
+    host_candidates: list[dict] = Field(default_factory=list)
+    requires_review: bool = False
+    warnings: list[str] = Field(default_factory=list)
+    gallery_id: str | None = None
+
+
+class GeneralizeComponentBody(BaseModel):
+    spec_json: dict
+    consent_share_template: bool = False
+    host_slot: str | None = None
+    pack_slug: str | None = None
 
 
 class AiDraftModuleOut(BaseModel):
@@ -1191,10 +1210,6 @@ class ModuleSpecApplyBody(BaseModel):
     apply_automations: bool = True
     confirm_advanced: bool = False
     confirm_phrase: str | None = None
-    skip_validate_live: bool = Field(
-        False,
-        description="Skip pre-apply validate-live (requires confirm_advanced when failures exist)",
-    )
     skip_validate_live: bool = Field(
         False,
         description="Skip pre-apply validate-live (requires confirm_advanced when failures exist)",

@@ -13,19 +13,15 @@ from typing import Any
 from app.ai_domain_packs import merge_domain_pack, retrieve_domain_pack
 from app.ai_depth import AMBITION_TARGETS, classify_ambition
 from app.ai_enrich import enrich_draft_module_spec
-from app.ai_model_quality import MODEL_CREATION_RULES, min_fields_for_ambition, seed_missing_core_scaffold_models, seed_missing_core_scaffold_models
+from app.ai_model_quality import MODEL_CREATION_RULES, min_fields_for_ambition, seed_missing_core_scaffold_models
 from app.ai_rules import validate_and_enrich_draft
 from app.ai_workflow import step4_workflow_models
-from app.ai_workflow import step4_workflow_models
-from app.ai_prompt_constants import (
-    STEP_TEMPERATURES,
-    append_prompt_blocks,
-)
 from app.ai_prompt_constants import (
     STEP_TEMPERATURES,
     append_prompt_blocks,
 )
 from app.llm_provider import (
+    FORMAT_SCHEMA_AUTOMATIONS,
     FORMAT_SCHEMA_ENTITIES,
     FORMAT_SCHEMA_FIELDS,
     FORMAT_SCHEMA_RELATIONSHIPS,
@@ -33,6 +29,7 @@ from app.llm_provider import (
     LLMProvider,
     get_llm_provider,
 )
+from app.protected_modules import guardrail_prompt, refresh_connection_protected_manifest
 
 
 def _extract_json(text: str) -> Any:
@@ -73,6 +70,7 @@ def _llm_json(
     reasoning: bool = False,
     format_schema: dict[str, Any] | None = None,
     temperature: float | None = None,
+    timeout_s: float = 120.0,
 ) -> Any:
     raw = provider.generate_json(
         prompt,
@@ -80,6 +78,7 @@ def _llm_json(
         reasoning=reasoning,
         format_schema=format_schema,
         temperature=temperature,
+        timeout_s=timeout_s,
     )
     return _extract_json(raw)
 
@@ -175,12 +174,13 @@ def step2_fields(
     scaffold_fields: list[dict[str, Any]] | None,
     *,
     min_fields: int = 6,
+    guardrail: str = "",
 ) -> list[dict[str, Any]]:
     hint = ""
     if scaffold_fields:
         hint = "Baseline fields (adapt/extend): " + json.dumps(scaffold_fields)[:2000]
     need = min_fields + (2 if entity.get("is_workflow") else 0)
-    system = (
+    system = append_prompt_blocks(
         "Reply ONLY with JSON array of fields for one Odoo custom model. "
         'Each: {"name":"x_field","ttype":"char|selection|many2one|date|datetime|text|float|boolean",'
         '"string":"Label","required":false,"selection":"[(\'a\',\'A\')]",'
@@ -190,7 +190,8 @@ def step2_fields(
         "If workflow: include x_status (+ rich selection) and x_code. "
         "Put type/priority/stage as selection fields — never imply a separate catalog model. "
         "Selection as Odoo python-literal string.\n"
-        + MODEL_CREATION_RULES
+        + MODEL_CREATION_RULES,
+        guardrail=guardrail,
     )
     prompt = (
         f"Entity: {entity['name']}\nPurpose: {entity['purpose']}\n"
@@ -256,6 +257,8 @@ def step2_fields(
 def step3_relationships(
     provider: LLMProvider,
     models: list[dict[str, Any]],
+    *,
+    guardrail: str = "",
 ) -> list[dict[str, Any]]:
     summary = [
         {
@@ -264,14 +267,19 @@ def step3_relationships(
         }
         for m in models
     ]
+    system = append_prompt_blocks(
+        "Reply ONLY with JSON array of relationship fixes: "
+        '[{"model":"x_a","field":"x_b_id","ttype":"many2one","relation":"x_b",'
+        '"string":"B"}]. Only additions/corrections.',
+        guardrail=guardrail,
+    )
     data = _llm_json(
         provider,
-        system=(
-            "Reply ONLY with JSON array of relationship fixes: "
-            '[{"model":"x_a","field":"x_b_id","ttype":"many2one","relation":"x_b",'
-            '"string":"B"}]. Only additions/corrections.'
-        ),
+        system=system,
         prompt=f"Models so far:\n{json.dumps(summary)}",
+        reasoning=True,
+        format_schema=FORMAT_SCHEMA_RELATIONSHIPS,
+        temperature=STEP_TEMPERATURES["pipeline.relationships"],
     )
     if isinstance(data, dict):
         data = data.get("relationships") or []
@@ -281,17 +289,24 @@ def step3_relationships(
 def step5_automations(
     provider: LLMProvider,
     draft: dict[str, Any],
+    *,
+    guardrail: str = "",
 ) -> list[dict[str, Any]]:
+    system = append_prompt_blocks(
+        "Reply ONLY with JSON array of automations: "
+        '[{"name":"...","model":"x_...","trigger":"on_write|on_time",'
+        '"description":"...","filter_domain":"[]",'
+        '"safe_actions":[{"kind":"object_write","field":"x_status","value":"..."}]}]. '
+        "No Python code. Prefer object_write / next_activity / mail_post.",
+        guardrail=guardrail,
+    )
     data = _llm_json(
         provider,
-        system=(
-            "Reply ONLY with JSON array of automations: "
-            '[{"name":"...","model":"x_...","trigger":"on_write|on_time",'
-            '"description":"...","filter_domain":"[]",'
-            '"safe_actions":[{"kind":"object_write","field":"x_status","value":"..."}]}]. '
-            "No Python code. Prefer object_write / next_activity / mail_post."
-        ),
+        system=system,
         prompt=f"ModuleSpec models/workflows:\n{json.dumps(draft.get('models'), default=str)[:4000]}",
+        reasoning=True,
+        format_schema=FORMAT_SCHEMA_AUTOMATIONS,
+        temperature=STEP_TEMPERATURES["pipeline.automations"],
     )
     if isinstance(data, dict):
         data = data.get("automations") or []
@@ -303,11 +318,19 @@ def run_staged_pipeline(
     *,
     provider: LLMProvider | None = None,
     reuse_models: list[str] | None = None,
+    protected_manifest: dict[str, Any] | None = None,
+    odoo_version: str | None = None,
 ) -> tuple[dict[str, Any], str, list[str]]:
     """Full Step 0–6 (+ rules). Returns (draft, raw_trace, warnings)."""
     warnings: list[str] = []
     trace: list[str] = []
     provider = provider if provider is not None else get_llm_provider()
+
+    manifest = protected_manifest or refresh_connection_protected_manifest(
+        server_version=odoo_version,
+        client=None,
+    )
+    guard = guardrail_prompt(manifest)
 
     # Step 0 — retrieval
     retrieved = retrieve_domain_pack(prompt, provider=provider)
@@ -364,6 +387,7 @@ def run_staged_pipeline(
                         ent,
                         (sc or {}).get("fields") if sc else None,
                         min_fields=min_fields_for_ambition(ambition),
+                        guardrail=guard,
                     )
                     models.append(
                         {
@@ -380,7 +404,7 @@ def run_staged_pipeline(
 
                 # Step 3 relationships
                 try:
-                    rels = step3_relationships(provider, models)
+                    rels = step3_relationships(provider, models, guardrail=guard)
                     by_model = {m["model"]: m for m in models}
                     for rel in rels:
                         m = by_model.get(rel.get("model"))
@@ -438,7 +462,7 @@ def run_staged_pipeline(
 
                 # Step 5 automations
                 try:
-                    autos = step5_automations(provider, draft)
+                    autos = step5_automations(provider, draft, guardrail=guard)
                     if autos:
                         draft["automations"] = autos
                     elif scaffold and scaffold.get("automations"):

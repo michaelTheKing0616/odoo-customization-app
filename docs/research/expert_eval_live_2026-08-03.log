@@ -1,0 +1,27 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0
+rootdir: /Users/temitopeolaitanmichael/Odoo_Customization_App/apps/api
+configfile: pytest.ini
+plugins: anyio-4.14.2
+collected 1 item
+
+tests/test_expert_eval.py 
+EXPERT_EVAL_LIVE summary: {
+  "total": 5,
+  "passed": 5,
+  "pass_rate": 1.0,
+  "grounding_rate": 0.8,
+  "decline_correct": 1.0,
+  "citation_presence": 0.6,
+  "category_pass_rate": {
+    "doc_grounded": 1.0,
+    "protected_caution": 1.0,
+    "should_decline": 1.0,
+    "version_diff": 1.0,
+    "bulk_routing": 1.0
+  },
+  "failures": []
+}
+.
+
+============================== 1 passed in 46.67s ==============================

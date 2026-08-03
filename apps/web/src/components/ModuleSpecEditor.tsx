@@ -159,7 +159,7 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
   ];
 
   return (
-    <div className="border border-[#3d2a38] bg-[#0f1a16]/70">
+    <div className="border border-border-subtle bg-surface-muted/70">
       <div className="flex flex-wrap items-end gap-3 border-b border-[#1e2f29] p-4">
         <label className="min-w-[10rem] flex-1 text-sm">
           <span className="text-[#a8909e]">Display name</span>
@@ -167,7 +167,7 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
             disabled={readOnly}
             value={String(value.display_name ?? "")}
             onChange={(e) => patch({ display_name: e.target.value })}
-            className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
+            className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2"
           />
         </label>
         <label className="min-w-[10rem] flex-1 text-sm">
@@ -176,10 +176,10 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
             disabled={readOnly}
             value={String(value.technical_name ?? "")}
             onChange={(e) => patch({ technical_name: e.target.value })}
-            className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+            className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
           />
         </label>
-        <p className="pb-2 text-xs text-[#8f7a88]">
+        <p className="pb-2 text-xs text-muted">
           {summary.fields} fields · {summary.views} views · ModuleSpec contract
         </p>
       </div>
@@ -192,8 +192,8 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
             onClick={() => setTab(t.id)}
             className={`px-3 py-2 text-sm ${
               tab === t.id
-                ? "border-b-2 border-[#c9a9c0] text-[#c9a9c0]"
-                : "text-[#8f7a88] hover:text-[#d4c4ce]"
+                ? "border-b-2 border-border-subtle text-muted"
+                : "text-muted hover:text-muted"
             }`}
           >
             {t.label}
@@ -212,8 +212,8 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
                     onClick={() => setSelectedModel(i)}
                     className={`w-full truncate px-2 py-1.5 text-left font-mono text-xs ${
                       selectedModel === i
-                        ? "bg-[#1a1218] text-[#c9a9c0]"
-                        : "text-[#d4c4ce] hover:bg-[#1a1218]"
+                        ? "bg-surface-raised text-muted"
+                        : "text-muted hover:bg-surface-raised"
                     }`}
                   >
                     {m.model}
@@ -225,7 +225,7 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
               <button
                 type="button"
                 onClick={addModel}
-                className="mt-3 w-full border border-[#3d2a38] px-2 py-1.5 text-xs text-[#c9a9c0]"
+                className="mt-3 w-full border border-border-subtle px-2 py-1.5 text-xs text-muted"
               >
                 + Add model
               </button>
@@ -233,7 +233,7 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
           </aside>
           <div className="p-4">
             {!model ? (
-              <p className="text-sm text-[#8f7a88]">No models yet.</p>
+              <p className="text-sm text-muted">No models yet.</p>
             ) : (
               <>
                 <div className="flex flex-wrap gap-3">
@@ -245,7 +245,7 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
                       onChange={(e) =>
                         updateModel(selectedModel, { ...model, model: e.target.value })
                       }
-                      className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 font-mono text-sm"
+                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm"
                     />
                   </label>
                   <label className="min-w-[12rem] flex-1 text-sm">
@@ -259,14 +259,14 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
                           description: e.target.value,
                         })
                       }
-                      className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 text-sm"
+                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
                     />
                   </label>
                   {!readOnly && (
                     <button
                       type="button"
                       onClick={() => removeModel(selectedModel)}
-                      className="self-end border border-[#f0a8a0] px-3 py-1.5 text-xs text-[#f0a8a0]"
+                      className="self-end border border-danger/50 px-3 py-1.5 text-xs text-danger"
                     >
                       Remove model
                     </button>
@@ -275,7 +275,7 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
 
                 <div className="mt-4 overflow-x-auto">
                   <table className="w-full min-w-[36rem] text-left text-sm">
-                    <thead className="text-xs uppercase text-[#8f7a88]">
+                    <thead className="text-xs uppercase text-muted">
                       <tr>
                         <th className="py-1 pr-2">Name</th>
                         <th className="py-1 pr-2">Type</th>
@@ -295,7 +295,7 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
                               onChange={(e) =>
                                 updateField(fi, { ...f, name: e.target.value })
                               }
-                              className="w-full border border-[#3d2a38] bg-[#0c090b] px-1.5 py-1 font-mono text-xs"
+                              className="w-full border border-border-subtle bg-surface px-1.5 py-1 font-mono text-xs"
                             />
                           </td>
                           <td className="py-1 pr-2">
@@ -305,7 +305,7 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
                               onChange={(e) =>
                                 updateField(fi, { ...f, ttype: e.target.value })
                               }
-                              className="w-full border border-[#3d2a38] bg-[#0c090b] px-1.5 py-1 text-xs"
+                              className="w-full border border-border-subtle bg-surface px-1.5 py-1 text-xs"
                             >
                               {TTYPES.map((t) => (
                                 <option key={t} value={t}>
@@ -321,7 +321,7 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
                               onChange={(e) =>
                                 updateField(fi, { ...f, string: e.target.value })
                               }
-                              className="w-full border border-[#3d2a38] bg-[#0c090b] px-1.5 py-1 text-xs"
+                              className="w-full border border-border-subtle bg-surface px-1.5 py-1 text-xs"
                             />
                           </td>
                           <td className="py-1 pr-2">
@@ -335,7 +335,7 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
                                 })
                               }
                               placeholder="res.partner"
-                              className="w-full border border-[#3d2a38] bg-[#0c090b] px-1.5 py-1 font-mono text-xs"
+                              className="w-full border border-border-subtle bg-surface px-1.5 py-1 font-mono text-xs"
                             />
                           </td>
                           <td className="py-1">
@@ -353,7 +353,7 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
                               <button
                                 type="button"
                                 onClick={() => removeField(fi)}
-                                className="text-xs text-[#f0a8a0]"
+                                className="text-xs text-danger"
                               >
                                 ×
                               </button>
@@ -367,7 +367,7 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
                     <button
                       type="button"
                       onClick={addField}
-                      className="mt-3 border border-[#3d2a38] px-3 py-1.5 text-xs text-[#c9a9c0]"
+                      className="mt-3 border border-border-subtle px-3 py-1.5 text-xs text-muted"
                     >
                       + Add field
                     </button>
@@ -381,10 +381,10 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
 
       {tab === "relations" && (
         <div className="space-y-2 p-4 text-sm">
-          <p className="text-[#8f7a88]">
+          <p className="text-muted">
             Relational fields across models (many2one / one2many / many2many).
           </p>
-          <ul className="space-y-1 font-mono text-xs text-[#d4c4ce]">
+          <ul className="space-y-1 font-mono text-xs text-muted">
             {models.flatMap((m) =>
               (m.fields || [])
                 .filter((f) =>
@@ -406,13 +406,13 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
         <div className="grid gap-4 p-4 md:grid-cols-2">
           <div>
             <h3 className="text-sm text-[#a8909e]">Smart buttons</h3>
-            <pre className="mt-2 max-h-48 overflow-auto border border-[#1e2f29] bg-[#0c090b] p-2 text-xs text-[#d4c4ce]">
+            <pre className="mt-2 max-h-48 overflow-auto border border-[#1e2f29] bg-surface p-2 text-xs text-muted">
               {JSON.stringify(value.smart_buttons ?? [], null, 2)}
             </pre>
           </div>
           <div>
             <h3 className="text-sm text-[#a8909e]">Automations (metadata)</h3>
-            <pre className="mt-2 max-h-48 overflow-auto border border-[#1e2f29] bg-[#0c090b] p-2 text-xs text-[#d4c4ce]">
+            <pre className="mt-2 max-h-48 overflow-auto border border-[#1e2f29] bg-surface p-2 text-xs text-muted">
               {JSON.stringify(value.automations ?? [], null, 2)}
             </pre>
           </div>
@@ -429,7 +429,7 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
                     .filter(Boolean),
                 })
               }
-              className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+              className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
             />
           </div>
         </div>
@@ -437,25 +437,25 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
 
       {tab === "custom_code" && (
         <div className="p-4">
-          <p className="text-sm text-[#8f7a88]">
+          <p className="text-sm text-muted">
             Custom logic preserved from Code→UI import — compute methods, constraints,
             and opaque XML. These blocks are not editable visually; export the module
             to keep them verbatim, or edit the generated Python/XML source directly.
           </p>
           {customBlocks.length === 0 ? (
-            <p className="mt-3 text-sm text-[#c9a9c0]">None — full visual fidelity.</p>
+            <p className="mt-3 text-sm text-muted">None — full visual fidelity.</p>
           ) : (
             <ul className="mt-3 space-y-3">
               {customBlocks.map((u, i) => (
                 <li
                   key={i}
-                  className="border border-[#3d2a38] bg-[#0c090b] p-3 text-xs text-[#d4c4ce]"
+                  className="border border-border-subtle bg-surface p-3 text-xs text-muted"
                 >
                   <p className="font-mono text-[#c9a96e]">
                     {String(u.kind || "opaque")} ·{" "}
                     {String(u.source_file || u.path || u.model || "")}
                   </p>
-                  <p className="mt-1 text-[#8f7a88]">
+                  <p className="mt-1 text-muted">
                     {String(u.reason || "custom_logic_not_editable_visually")}
                   </p>
                   <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap">
@@ -486,7 +486,7 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
               }
             }}
             rows={18}
-            className="w-full border border-[#3d2a38] bg-[#0c090b] p-3 font-mono text-xs text-[#d4c4ce]"
+            className="w-full border border-border-subtle bg-surface p-3 font-mono text-xs text-muted"
           />
         </div>
       )}

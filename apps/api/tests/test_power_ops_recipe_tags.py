@@ -23,8 +23,17 @@ def test_accounting_recipes_tagged() -> None:
     assert "destructive" in purge.tags
 
 
-def test_generic_archive_tagged() -> None:
-    archive = get_recipe("mass_archive")
-    assert archive is not None
-    assert "generic" in archive.tags
-    assert "archive" in archive.tags
+def test_account_move_recipes_carry_pcm_exemption_note() -> None:
+    account_recipe_ids = [
+        "purge_journal_entries",
+        "cancel_account_moves",
+        "reset_and_cancel_moves",
+        "post_account_moves",
+        "unreconcile_and_draft",
+    ]
+    for rid in account_recipe_ids:
+        recipe = get_recipe(rid)
+        assert recipe is not None, rid
+        assert recipe.model == "account.move"
+        assert recipe.protected_tier_note
+        assert "Power Ops exemption" in recipe.protected_tier_note

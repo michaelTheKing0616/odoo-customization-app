@@ -1,0 +1,20 @@
+{
+  "recorded_at": "2026-08-03",
+  "mode": "live",
+  "connection_id": "785c4729-3e99-4610-b8aa-d4444c3550fc",
+  "question": "Diagnose this error on my connection\n\nError log:\nAccessError: You are not allowed to modify 'res.partner' records.",
+  "ui_context": {
+    "route": "/builder",
+    "model": "res.partner",
+    "pasted_error": "AccessError: You are not allowed to modify 'res.partner' records."
+  },
+  "response": {
+    "answer_markdown": "I don't have enough grounded sources to answer that confidently. Try rephrasing, connect an Odoo instance so I can filter docs to your version, or check the official Odoo documentation for your edition.",
+    "citations": [],
+    "grounded": false,
+    "declined": true,
+    "caution_flags": [
+      "low_retrieval"
+    ]
+  }
+}

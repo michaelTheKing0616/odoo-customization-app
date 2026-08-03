@@ -1,0 +1,25 @@
+{
+  "date": "2026-08-03",
+  "source": "deterministic test_protected_guardrail.py",
+  "refusal_shape_example": {
+    "protected_module_conflict": true,
+    "requested_capability": "automation 'update_field'",
+    "protected_module": "account.move",
+    "safe_alternative": "Link to account.move via many2one from a custom x_* model only; do not generate write/automation logic on tier-1 records.",
+    "kind": "automation_strip",
+    "model": "account.move",
+    "reason": "Cannot create non-chatter automation on tier-1 model account.move."
+  },
+  "cases_verified": [
+    "tier1_automation_stripped",
+    "link_only_m2o_allowed",
+    "inherit_on_tier1_refused",
+    "webhook_mechanism_swap_blocked",
+    "chatter_allowed",
+    "full_app_refusals_non_empty",
+    "api_automation_create_422",
+    "api_builder_field_create_422",
+    "api_builder_link_only_201",
+    "api_module_spec_apply_skips"
+  ]
+}

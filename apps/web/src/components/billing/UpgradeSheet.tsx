@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { Sheet } from "@/components/ui/Sheet";
-import { api } from "@/lib/api";
+import { api, type BillingPlanRow } from "@/lib/api";
 import { useEntitlements } from "@/lib/useEntitlements";
 
 const FEATURE_LABELS: Record<string, string> = {
@@ -27,7 +27,9 @@ type UpgradeSheetProps = {
 
 export function UpgradeSheet({ open, onOpenChange, featureKey }: UpgradeSheetProps) {
   const { data: entitlements } = useEntitlements();
-  const [plans, setPlans] = useState<Array<{ id: string; display_name: string; features: Record<string, string> }>>([]);
+  const [plans, setPlans] = useState<BillingPlanRow[]>([]);
+  const [slotAddonUsd, setSlotAddonUsd] = useState<number | null>(null);
+  const [slotQty, setSlotQty] = useState(1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,12 +37,17 @@ export function UpgradeSheet({ open, onOpenChange, featureKey }: UpgradeSheetPro
     if (!open) return;
     api
       .billingPlans()
-      .then(setPlans)
+      .then((catalog) => {
+        setPlans(catalog.plans);
+        const current = catalog.plans.find((p) => p.id === (entitlements?.plan_id ?? "free_solo"));
+        setSlotAddonUsd(current?.extra_slot_monthly_usd ?? null);
+      })
       .catch(() => setPlans([]));
-  }, [open]);
+  }, [open, entitlements?.plan_id]);
 
   const featureLabel = featureKey ? FEATURE_LABELS[featureKey] ?? featureKey : "this feature";
   const currentPlan = entitlements?.plan_id ?? "free_solo";
+  const isSlotLimit = featureKey === "active_projects_limit";
 
   async function checkout(planId: string) {
     setBusy(true);
@@ -51,6 +58,26 @@ export function UpgradeSheet({ open, onOpenChange, featureKey }: UpgradeSheetPro
         plan_id: planId,
         seat_quantity: 1,
         success_url: `${origin}/settings/billing?upgraded=1`,
+        cancel_url: `${origin}/pricing`,
+      });
+      if (res.checkout_url) {
+        window.location.href = res.checkout_url;
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Checkout failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function checkoutExtraSlots() {
+    setBusy(true);
+    setError(null);
+    try {
+      const origin = window.location.origin;
+      const res = await api.stripeExtraSlotsCheckout({
+        slot_quantity: slotQty,
+        success_url: `${origin}/settings/billing?slots=1`,
         cancel_url: `${origin}/pricing`,
       });
       if (res.checkout_url) {
@@ -84,12 +111,39 @@ export function UpgradeSheet({ open, onOpenChange, featureKey }: UpgradeSheetPro
             {entitlements.active_project_limit != null
               ? ` · ${entitlements.active_projects}/${entitlements.active_project_limit} active projects`
               : null}
+            {entitlements.extra_project_slots > 0 ? ` · +${entitlements.extra_project_slots} purchased slots` : null}
           </Callout>
         ) : null}
 
         {error ? <p className="text-sm text-danger">{error}</p> : null}
 
-        {suggested ? (
+        {isSlotLimit && slotAddonUsd != null ? (
+          <div className="rounded-lg border border-border-subtle p-4" data-testid="extra-slots-panel">
+            <p className="font-semibold text-ink">Add active-project slots</p>
+            <p className="mt-1 text-sm text-muted">
+              ${slotAddonUsd}/mo per slot on your current plan — no tier change required.
+            </p>
+            <div className="mt-3 flex items-center gap-2">
+              <label className="text-sm text-muted" htmlFor="slot-qty">
+                Quantity
+              </label>
+              <input
+                id="slot-qty"
+                type="number"
+                min={1}
+                max={20}
+                value={slotQty}
+                onChange={(e) => setSlotQty(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
+                className="w-16 rounded border border-border-subtle px-2 py-1 text-sm"
+              />
+            </div>
+            <Button className="mt-3" variant="primary" disabled={busy} onClick={checkoutExtraSlots}>
+              {busy ? "Redirecting…" : `Add ${slotQty} slot${slotQty === 1 ? "" : "s"}`}
+            </Button>
+          </div>
+        ) : null}
+
+        {suggested && !isSlotLimit ? (
           <div className="rounded-lg border border-border-subtle p-4">
             <p className="font-semibold text-ink">{suggested.display_name}</p>
             <p className="mt-1 text-sm text-muted">Includes {featureLabel} and related build features.</p>
@@ -104,9 +158,20 @@ export function UpgradeSheet({ open, onOpenChange, featureKey }: UpgradeSheetPro
           </div>
         ) : null}
 
+        {isSlotLimit && suggested && suggested.id !== currentPlan ? (
+          <div className="rounded-lg border border-border-subtle p-4">
+            <p className="font-semibold text-ink">Or upgrade tier</p>
+            <p className="mt-1 text-sm text-muted">
+              {suggested.display_name} includes more base slots and {featureLabel}.
+            </p>
+            <Button className="mt-3" variant="secondary" disabled={busy} onClick={() => checkout(suggested.id)}>
+              Upgrade to {suggested.display_name}
+            </Button>
+          </div>
+        ) : null}
+
         <div className="space-y-2 text-sm text-muted">
-          <p>Need just one project built? Consider the Project Pass ($299 one-time).</p>
-          <p>Add extra active-project slots on Pro ($15/mo) or Business ($10/mo) without changing tier.</p>
+          <p>Need just one project built? See Project Pass on the pricing page.</p>
         </div>
 
         <Button variant="secondary" asChild>

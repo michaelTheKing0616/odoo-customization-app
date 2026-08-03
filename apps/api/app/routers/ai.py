@@ -22,8 +22,16 @@ from app.ai_self_consistency import self_consistency_status
 from app.db import get_db
 from app.llm_provider import llm_routing_status
 from app.odoo_service import OdooClientError, client_from_connection, get_connection_or_404
+from app.protected_enforcement import normalize_refusal_dict
 from app.protected_modules import manifest_from_json
-from app.schemas import AiDraftModuleBody, AiDraftModuleOut, ProtectedModuleRefusal
+from app.schemas import (
+    AiDraftModuleBody,
+    AiDraftModuleOut,
+    AiProposeConnectPointsBody,
+    AiProposeConnectPointsOut,
+    GeneralizeComponentBody,
+    ProtectedModuleRefusal,
+)
 from app.settings import settings
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -167,6 +175,67 @@ def component_gallery() -> list[dict[str, str]]:
     return list_gallery()
 
 
+@router.post("/propose-connect-points", response_model=AiProposeConnectPointsOut)
+def propose_connect_points_route(
+    body: AiProposeConnectPointsBody, db: Session = Depends(get_db)
+) -> AiProposeConnectPointsOut:
+    from app.ai_component_builder import preview_connect_points
+    from app.ai_grain import classify_grain
+
+    available: list[str] | None = None
+    if body.connection_id:
+        available, _installed, _views, _actions = _load_reuse_catalog(
+            db,
+            AiDraftModuleBody(
+                prompt=body.prompt,
+                connection_id=body.connection_id,
+            ),
+        )
+    grain = body.grain or classify_grain(body.prompt)
+    preview = preview_connect_points(
+        body.prompt,
+        grain=grain,  # type: ignore[arg-type]
+        available_models=available,
+        gallery_id=body.gallery_id,
+        host_model_override=body.host_model,
+        connect_points_override=body.connect_points,
+    )
+    return AiProposeConnectPointsOut(
+        grain=str(preview["grain"]),
+        grain_label=str(preview["grain_label"]),
+        connect_points=preview.get("connect_points")
+        if isinstance(preview.get("connect_points"), dict)
+        else None,
+        host_candidates=list(preview.get("host_candidates") or []),
+        requires_review=bool(preview.get("requires_review")),
+        warnings=list(preview.get("warnings") or []),
+        gallery_id=preview.get("gallery_id"),
+    )
+
+
+@router.post("/generalize-component")
+def generalize_component(body: GeneralizeComponentBody) -> dict[str, object]:
+    if not body.consent_share_template:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "requires_consent": True,
+                "message": "Set consent_share_template=true to export a component template.",
+            },
+        )
+    from app.ai_pack_generalizer import generalize_spec_to_component_template
+
+    try:
+        result = generalize_spec_to_component_template(
+            body.spec_json,
+            host_slot=body.host_slot or "any",
+            pack_slug=body.pack_slug,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"ok": True, **result}
+
+
 @router.post("/generalize-pack")
 def generalize_pack(body: GeneralizePackBody) -> dict[str, object]:
     if not body.consent_share_template:
@@ -244,7 +313,11 @@ def draft_module(
         draft=draft,
         raw_response=raw,
         warnings=warnings,
-        refusals=[ProtectedModuleRefusal(**r) for r in refusals if isinstance(r, dict)],
+        refusals=[
+            ProtectedModuleRefusal(**normalize_refusal_dict(r))
+            for r in refusals
+            if isinstance(r, dict)
+        ],
         domain_pack=str(domain_pack) if domain_pack else None,
         grain=str(draft.get("grain")) if isinstance(draft, dict) and draft.get("grain") else None,
         grain_label=str(draft.get("grain_label")) if draft.get("grain_label") else None,

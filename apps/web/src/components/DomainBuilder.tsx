@@ -134,9 +134,9 @@ export function DomainBuilder({ value, onChange, label, className }: Props) {
   return (
     <div className={className ?? "space-y-2"}>
       {label && <span className="text-sm text-[#a8909e]">{label}</span>}
-      <p className="text-xs text-[#8f7a88]">
+      <p className="text-xs text-muted">
         Simple AND domain →{" "}
-        <code className="text-[#c9a9c0]">{domainRulesToString(rules)}</code>
+        <code className="text-muted">{domainRulesToString(rules)}</code>
       </p>
       {rules.map((rule, i) => (
         <div key={i} className="flex flex-wrap items-center gap-2">
@@ -144,12 +144,12 @@ export function DomainBuilder({ value, onChange, label, className }: Props) {
             value={rule.field}
             onChange={(e) => updateRule(i, { field: e.target.value })}
             placeholder="field"
-            className="min-w-[8rem] flex-1 border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 font-mono text-sm"
+            className="min-w-[8rem] flex-1 border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm"
           />
           <select
             value={rule.op}
             onChange={(e) => updateRule(i, { op: e.target.value as DomainOp })}
-            className="border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 text-sm"
+            className="border border-border-subtle bg-surface px-2 py-1.5 text-sm"
           >
             {OPS.map((op) => (
               <option key={op} value={op}>
@@ -161,7 +161,7 @@ export function DomainBuilder({ value, onChange, label, className }: Props) {
             value={rule.value}
             onChange={(e) => updateRule(i, { value: e.target.value })}
             placeholder="value"
-            className="min-w-[8rem] flex-1 border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 font-mono text-sm"
+            className="min-w-[8rem] flex-1 border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm"
           />
           <button
             type="button"
@@ -169,7 +169,7 @@ export function DomainBuilder({ value, onChange, label, className }: Props) {
               const next = rules.filter((_, j) => j !== i);
               commit(next.length ? next : [{ field: "", op: "=", value: "" }]);
             }}
-            className="text-xs text-[#f0a8a0] hover:underline"
+            className="text-xs text-danger hover:underline"
           >
             Remove
           </button>
@@ -179,14 +179,14 @@ export function DomainBuilder({ value, onChange, label, className }: Props) {
         <button
           type="button"
           onClick={() => commit([...rules, { field: "", op: "=", value: "" }])}
-          className="text-[#c9a9c0] hover:underline"
+          className="text-muted hover:underline"
         >
           + Add rule
         </button>
         <button
           type="button"
           onClick={() => setShowRaw((s) => !s)}
-          className="text-[#8f7a88] hover:underline"
+          className="text-muted hover:underline"
         >
           {showRaw ? "Hide raw" : "Edit raw"}
         </button>
@@ -198,7 +198,7 @@ export function DomainBuilder({ value, onChange, label, className }: Props) {
             onChange(e.target.value);
             setRules(parseDomainString(e.target.value));
           }}
-          className="w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+          className="w-full border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
         />
       )}
     </div>

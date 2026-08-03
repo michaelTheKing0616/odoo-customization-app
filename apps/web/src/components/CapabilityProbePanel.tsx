@@ -35,7 +35,7 @@ export function CapabilityProbePanel({
 
   if (!capabilities) {
     return (
-      <p className={`text-xs text-[#8f7a88] ${className}`}>
+      <p className={`text-xs text-muted ${className}`}>
         Version capabilities unknown — probe the connection after save.
       </p>
     );
@@ -60,14 +60,14 @@ export function CapabilityProbePanel({
         <span
           className={
             capabilities.ga
-              ? "border border-[#3d6b5a] bg-[#143029] px-2 py-0.5 text-xs font-medium text-[#c9a9c0]"
+              ? "border border-[#3d6b5a] bg-[#143029] px-2 py-0.5 text-xs font-medium text-muted"
               : "border border-[#6b5a3d] bg-[#2a2414] px-2 py-0.5 text-xs font-medium text-[#e8d09f]"
           }
         >
           {badge}
         </span>
         {hosting && (
-          <span className="border border-[#3d2a38] bg-[#120e14] px-2 py-0.5 text-xs text-[#d4c4ce]">
+          <span className="border border-border-subtle bg-[#120e14] px-2 py-0.5 text-xs text-muted">
             {hosting}
           </span>
         )}
@@ -76,7 +76,7 @@ export function CapabilityProbePanel({
             No Python module install
           </span>
         )}
-        <span className="text-xs text-[#8f7a88]">
+        <span className="text-xs text-muted">
           {capabilities.supported.length} capabilities
           {capabilities.unsupported.length > 0
             ? ` · ${capabilities.unsupported.length} unavailable`
@@ -85,7 +85,7 @@ export function CapabilityProbePanel({
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="text-xs text-[#c9a9c0] underline-offset-2 hover:underline"
+          className="text-xs text-muted underline-offset-2 hover:underline"
         >
           {open ? "Hide details" : "Show details"}
         </button>
@@ -94,7 +94,7 @@ export function CapabilityProbePanel({
             type="button"
             onClick={onRefresh}
             disabled={refreshing}
-            className="text-xs text-[#d4c4ce] underline-offset-2 hover:underline disabled:opacity-50"
+            className="text-xs text-muted underline-offset-2 hover:underline disabled:opacity-50"
           >
             {refreshing ? "Probing…" : "Re-probe"}
           </button>
@@ -108,8 +108,8 @@ export function CapabilityProbePanel({
         </ul>
       )}
       {open && (
-        <div className="mt-2 space-y-2 border border-[#3d2a38] bg-[#120e14] px-3 py-2">
-          <p className="text-xs text-[#d4c4ce]">{capabilities.message}</p>
+        <div className="mt-2 space-y-2 border border-border-subtle bg-[#120e14] px-3 py-2">
+          <p className="text-xs text-muted">{capabilities.message}</p>
           {capabilities.installed_modules_sample &&
             capabilities.installed_modules_sample.length > 0 && (
               <p className="text-[11px] text-[#6b5a66]">
@@ -120,13 +120,13 @@ export function CapabilityProbePanel({
             )}
           <ul className="space-y-1">
             {capabilities.supported.map((id) => (
-              <li key={id} className="flex gap-2 text-xs text-[#c9a9c0]">
+              <li key={id} className="flex gap-2 text-xs text-muted">
                 <span aria-hidden>✓</span>
                 <span>{LABELS[id] ?? id}</span>
               </li>
             ))}
             {capabilities.unsupported.map((u) => (
-              <li key={u.id} className="flex gap-2 text-xs text-[#8f7a88]">
+              <li key={u.id} className="flex gap-2 text-xs text-muted">
                 <span aria-hidden className="text-[#6b5a66]">
                   –
                 </span>

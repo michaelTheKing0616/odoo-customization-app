@@ -13,6 +13,7 @@ import {
   currencyFieldSupported,
   currencyFieldUnsupportedReason,
   defaultWindowViewMode,
+  gridViewAllowed,
   injectStrategyCapabilityId,
   isEnterpriseEdition,
   isExperimentalMajor,
@@ -217,9 +218,17 @@ describe("edition / experimental helpers", () => {
     const ent = mockGaMajor(19, { edition: "enterprise" });
     expect(isEnterpriseEdition(ent.capabilities)).toBe(true);
     expect(mutationAllowed(ent)).toBe(true);
+    expect(gridViewAllowed(ent)).toBe(true);
     expect(advancedMutationAllowed(ent)).toBe(true);
     expect(scaffoldApplyAllowed(ent)).toBe(true);
     expect(scaffoldApplyAllowed(ent, { requireObjectWrite: true })).toBe(true);
+  });
+
+  it("gridViewAllowed requires enterprise edition", () => {
+    const ce = mockGaMajor(19, { edition: "community" });
+    expect(gridViewAllowed(ce)).toBe(false);
+    const ent = mockGaMajor(19, { edition: "enterprise" });
+    expect(gridViewAllowed(ent)).toBe(true);
   });
 });
 

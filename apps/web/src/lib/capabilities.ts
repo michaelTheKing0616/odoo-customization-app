@@ -33,6 +33,11 @@ export function isEnterpriseEdition(caps: CapabilityMatrix | null | undefined): 
   return (caps?.edition ?? "").toLowerCase() === "enterprise";
 }
 
+/** Grid/planning views are EE-gated in product — arch helpers exist but UI locks without EE. */
+export function gridViewAllowed(connection: Connection | null | undefined): boolean {
+  return mutationAllowed(connection) && isEnterpriseEdition(connection?.capabilities);
+}
+
 export function isExperimentalMajor(caps: CapabilityMatrix | null | undefined): boolean {
   return Boolean(caps && !caps.ga);
 }

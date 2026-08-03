@@ -96,6 +96,45 @@ FEATURE_MATRIX: dict[str, dict[str, str]] = {
     "workspaces_multi": {"free_solo": "false", "pro": "false", "business": "false", "agency": "true", "internal": "true", "project_pass": "false"},
 }
 
+# Public pricing catalog — display amounts; processor price IDs live in settings / BillingPlan.
+PLAN_PRICING: dict[str, dict[str, int | None]] = {
+    "free_solo": {"monthly_usd": 0, "extra_slot_monthly_usd": None},
+    "pro": {"monthly_usd": 39, "extra_slot_monthly_usd": 15},
+    "business": {"monthly_usd": 149, "extra_slot_monthly_usd": 10},
+    "agency": {"monthly_usd": 399, "extra_slot_monthly_usd": None},
+    "internal": {"monthly_usd": 0, "extra_slot_monthly_usd": None},
+    "project_pass": {"monthly_usd": None, "extra_slot_monthly_usd": None},
+}
+
+PROJECT_PASS_ONE_TIME_USD = 299
+PUBLIC_TIER_ORDER = ["free_solo", "pro", "business", "agency"]
+
+DISPLAY_FEATURE_CATALOG: list[dict[str, str]] = [
+    {"key": "connections_limit", "label": "Odoo connections"},
+    {"key": "active_projects_limit", "label": "Active projects"},
+    {"key": "designer", "label": "View designer"},
+    {"key": "automations", "label": "Automations"},
+    {"key": "module_export", "label": "Module export + sandbox"},
+    {"key": "bulk_suite", "label": "Bulk suite"},
+    {"key": "expert", "label": "Odoo Expert"},
+]
+
+
+def extra_slot_price_usd(plan_id: str) -> int | None:
+    return PLAN_PRICING.get(plan_id, {}).get("extra_slot_monthly_usd")  # type: ignore[return-value]
+
+
+def grant_extra_project_slots(db: Session, workspace_id: str, quantity: int) -> WorkspaceSubscription:
+    """Increment purchased extra active-project slots (billing webhook or admin grant)."""
+    if quantity < 1:
+        raise ValueError("quantity must be >= 1")
+    sub = ensure_workspace_subscription(db, workspace_id)
+    sub.extra_project_slots = (sub.extra_project_slots or 0) + quantity
+    db.add(sub)
+    db.commit()
+    db.refresh(sub)
+    return sub
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)

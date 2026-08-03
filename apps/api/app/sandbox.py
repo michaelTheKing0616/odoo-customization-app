@@ -38,11 +38,20 @@ SUPPORTED_SANDBOX_MAJORS = frozenset({16, 17, 18, 19})
 # Serialize sandbox runs — shared addons dir + fixed compose project name.
 _sandbox_lock = threading.Lock()
 _active_sandbox_job_id: str | None = None
+_sandbox_subprocesses: dict[str, subprocess.Popen[str]] = {}
 
 
 def cancel_sandbox_if_running(job_id: str) -> None:
     """Tear down ephemeral sandbox when a background job is cancelled."""
     global _active_sandbox_job_id
+    proc = _sandbox_subprocesses.pop(job_id, None)
+    if proc is not None and proc.poll() is None:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
     if _active_sandbox_job_id != job_id:
         return
     try:
@@ -102,6 +111,7 @@ def _compose(
     *args: str,
     check: bool = True,
     odoo_major: int = 19,
+    job_id: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     env = {
         **os.environ,
@@ -117,6 +127,24 @@ def _compose(
         *args,
     ]
     logger.info("sandbox: %s (image=%s)", " ".join(cmd), env["ODOO_SANDBOX_IMAGE"])
+    if job_id:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(REPO_ROOT),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+        )
+        _sandbox_subprocesses[job_id] = proc
+        try:
+            stdout, stderr = proc.communicate()
+            cp = subprocess.CompletedProcess(cmd, proc.returncode or 0, stdout, stderr)
+            if check and cp.returncode != 0:
+                raise subprocess.CalledProcessError(cp.returncode, cmd, cp.stdout, cp.stderr)
+            return cp
+        finally:
+            _sandbox_subprocesses.pop(job_id, None)
     return subprocess.run(
         cmd,
         cwd=str(REPO_ROOT),
@@ -473,10 +501,10 @@ def _run_sandbox_install_unlocked(
             f"(target major={odoo_major}, image={sandbox_image_for_major(odoo_major)})"
         )
 
-        down = _compose("down", "-v", check=False, odoo_major=odoo_major)
+        down = _compose("down", "-v", check=False, odoo_major=odoo_major, job_id=job_id)
         logs.append(down.stdout[-500:] if down.stdout else down.stderr[-500:])
 
-        up = _compose("up", "-d", odoo_major=odoo_major)
+        up = _compose("up", "-d", odoo_major=odoo_major, job_id=job_id)
         logs.append(up.stdout[-500:] if up.stdout else "")
 
         _wait_http(f"{SANDBOX_URL}/web/login", timeout_s=180)

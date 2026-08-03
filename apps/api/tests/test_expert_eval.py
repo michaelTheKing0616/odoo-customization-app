@@ -266,16 +266,33 @@ def test_expert_eval_live_report(
     }
     subset = [i for i in eval_items if i["id"] in sample_ids]
 
-    scores: list[EvalScore] = []
-    for item in subset:
-        monkeypatch.setattr("app.expert.ask.retrieve_expert_chunks", _chunks_from_item(item))
-        result = ask_expert(
-            _FakeDb(),  # type: ignore[arg-type]
-            question=str(item["question"]),
-            connection_id=item.get("connection_id"),
-            ui_context=item.get("ui_context"),
-        )
-        scores.append(score_eval_item(item, result))
+    from app.db import SessionLocal, init_db
+    from app.db_models import OdooConnection
+
+    init_db()
+    db = SessionLocal()
+    try:
+        conn = db.query(OdooConnection).order_by(OdooConnection.created_at.desc()).first()
+        scores: list[EvalScore] = []
+        for item in subset:
+            item_chunks = _chunks_from_item(item)
+
+            def _retrieve(_db, _q, *, version=None, top_k=8, min_score=0.35, item_chunks=item_chunks):
+                return item_chunks
+
+            monkeypatch.setattr("app.expert.ask.retrieve_expert_chunks", _retrieve)
+            connection_id = item.get("connection_id")
+            if connection_id and connection_id.startswith("eval-"):
+                connection_id = conn.id if conn else None
+            result = ask_expert(
+                db,
+                question=str(item["question"]),
+                connection_id=connection_id,
+                ui_context=item.get("ui_context"),
+            )
+            scores.append(score_eval_item(item, result))
+    finally:
+        db.close()
 
     summary = summarize_scores(scores)
     print("\nEXPERT_EVAL_LIVE summary:", json.dumps(summary, indent=2))

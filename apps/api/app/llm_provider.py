@@ -62,6 +62,49 @@ FORMAT_SCHEMA_RELATIONSHIPS: dict[str, Any] = {
     },
 }
 
+FORMAT_SCHEMA_WORKFLOW: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "states": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "value": {"type": "string"},
+                    "label": {"type": "string"},
+                },
+                "required": ["value"],
+            },
+        },
+        "transitions": {
+            "type": "array",
+            "items": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 2,
+                "maxItems": 2,
+            },
+        },
+    },
+    "required": ["states", "transitions"],
+}
+
+FORMAT_SCHEMA_AUTOMATIONS: dict[str, Any] = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "model": {"type": "string"},
+            "trigger": {"type": "string"},
+            "description": {"type": "string"},
+            "filter_domain": {"type": "string"},
+            "safe_actions": {"type": "array"},
+        },
+        "required": ["name", "model"],
+    },
+}
+
 _caps_lock = threading.Lock()
 _caps_cache: dict[str, dict[str, Any]] = {}
 

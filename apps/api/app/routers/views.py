@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session
 from odoo_client import CreateViewRequest, parse_arch, render_arch, render_inherit_replace_arch
 from odoo_client.blueprint import apply_form_layout, auto_form_layout_for_model
 from odoo_client.view_arch import (
+    merge_inherit_data_arch,
     render_inherit_xpath_arch,
+    render_overlay_operation_arch,
     render_xpath_wrap_arch,
     validate_xpath_arch,
 )
@@ -153,7 +155,34 @@ class XPathPreviewBody(BaseModel):
     ] = "inside"
     body_xml: str = ""
     wrapper_xml: str | None = None
-    wrapper_xml: str | None = None
+
+
+class OverlayApplyBody(BaseModel):
+    model: str
+    view_type: str = Field(..., examples=["form", "list"])
+    operation: Literal[
+        "hide", "move", "relabel", "add_field", "set_widget", "group_label"
+    ]
+    expr: str
+    field_name: str | None = None
+    anchor_expr: str | None = None
+    move_position: Literal["before", "after"] | None = None
+    add_field_name: str | None = None
+    add_position: Literal["before", "after", "inside"] = "after"
+    string: str | None = None
+    placeholder: str | None = None
+    help_text: str | None = None
+    widget: str | None = None
+    label_target: Literal["field", "group", "page"] = "field"
+    preview_only: bool = False
+
+
+class OverlayApplyOut(BaseModel):
+    xpath_arch: str
+    issues: list[str] = Field(default_factory=list)
+    view_id: int | None = None
+    snapshot_id: str | None = None
+    inherit_name: str | None = None
 
 
 class XPathPreviewOut(BaseModel):
@@ -251,6 +280,142 @@ def xpath_preview(connection_id: str, body: XPathPreviewBody) -> XPathPreviewOut
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return XPathPreviewOut(arch=arch, issues=validate_xpath_arch(arch))
+
+
+class ResolveFieldBody(BaseModel):
+    view_type: str
+    arch: str
+    field_name: str
+
+
+@router.post("/resolve-field")
+def resolve_field_node(body: ResolveFieldBody) -> dict[str, object]:
+    """Map overlay field descriptor → candidate arch nodes (UIX-6)."""
+    import re
+
+    name = body.field_name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="field_name required")
+    pattern = re.compile(
+        rf'<field\b[^>]*\bname=["\']{re.escape(name)}["\'][^>]*/?>',
+        re.I,
+    )
+    candidates = [{"xpath": f"//field[@name='{name}']", "match": m.group(0)} for m in pattern.finditer(body.arch)]
+    if not candidates:
+        try:
+            spec = parse_arch(body.view_type, body.arch)
+            fields = []
+            if isinstance(spec, dict):
+                for key in ("fields", "columns", "children"):
+                    val = spec.get(key)
+                    if isinstance(val, list):
+                        fields.extend(val)
+            for f in fields:
+                if isinstance(f, dict) and f.get("name") == name:
+                    candidates.append({"xpath": f"//field[@name='{name}']", "from_spec": True})
+        except Exception:  # noqa: BLE001
+            pass
+    return {"field_name": name, "candidates": candidates, "ambiguous": len(candidates) > 1}
+
+
+def _overlay_child_name(model: str, view_type: str) -> str:
+    vt = "list" if view_type == "tree" else view_type
+    return f"{model}.overlay.{vt}"
+
+
+def _build_overlay_fragment(body: OverlayApplyBody) -> str:
+    return render_overlay_operation_arch(
+        body.operation,
+        expr=body.expr,
+        view_type=body.view_type,
+        field_name=body.field_name,
+        anchor_expr=body.anchor_expr,
+        move_position=body.move_position,
+        add_field_name=body.add_field_name,
+        add_position=body.add_position,
+        string=body.string,
+        placeholder=body.placeholder,
+        help_text=body.help_text,
+        widget=body.widget,
+        label_target=body.label_target,
+    )
+
+
+@router.get("/primary", response_model=ViewOut)
+def get_primary_view(
+    connection_id: str,
+    model: str,
+    view_type: str = "form",
+    db: Session = Depends(get_db),
+) -> ViewOut:
+    """Return the primary (non-extension) view arch for overlay mapping."""
+    client = _client(connection_id, db)
+    vt = "list" if view_type == "tree" else view_type
+    try:
+        primary = client.find_view(model, vt, primary_only=True) or client.find_view(model, vt)
+    except OdooClientError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if primary is None:
+        raise HTTPException(status_code=404, detail=f"No {vt} view for {model}")
+    return ViewOut.model_validate(primary.model_dump())
+
+
+@router.post("/overlay/preview", response_model=OverlayApplyOut)
+def overlay_preview(connection_id: str, body: OverlayApplyBody) -> OverlayApplyOut:
+    """Build xpath inherit fragment for an overlay operation (no Odoo write)."""
+    _ = connection_id
+    try:
+        arch = _build_overlay_fragment(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return OverlayApplyOut(xpath_arch=arch, issues=validate_xpath_arch(arch))
+
+
+@router.post("/overlay/apply", response_model=OverlayApplyOut)
+def overlay_apply(
+    connection_id: str, body: OverlayApplyBody, db: Session = Depends(get_db)
+) -> OverlayApplyOut:
+    """Apply one overlay operation as an appended xpath on ``{model}.overlay.{type}`` inherit."""
+    from app.snapshots import snapshot_view
+
+    if body.preview_only:
+        return overlay_preview(connection_id, body)
+
+    client = _client(connection_id, db)
+    vt = "list" if body.view_type == "tree" else body.view_type
+    try:
+        fragment = _build_overlay_fragment(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    issues = validate_xpath_arch(fragment)
+    primary = client.find_view(body.model, vt, primary_only=True) or client.find_view(
+        body.model, vt
+    )
+    if primary is None:
+        raise HTTPException(status_code=404, detail=f"No {vt} view for {body.model}")
+
+    snap = snapshot_view(db, connection_id, client, primary.id)
+    child_name = _overlay_child_name(body.model, vt)
+    existing = client._find_view_by_exact_name(child_name)
+    if existing is not None and existing.arch:
+        merged = merge_inherit_data_arch(existing.arch, fragment)
+        view = client.update_view_arch(existing.id, merged)
+    else:
+        view = client.create_inherit_view(
+            model=body.model,
+            name=child_name,
+            view_type=vt,
+            inherit_id=primary.id,
+            arch=fragment,
+        )
+    return OverlayApplyOut(
+        xpath_arch=fragment,
+        issues=issues,
+        view_id=view.id,
+        snapshot_id=snap.id,
+        inherit_name=child_name,
+    )
 
 
 @router.get("/{view_id}", response_model=ViewOut)
@@ -406,40 +571,4 @@ def save_view(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
-class ResolveFieldBody(BaseModel):
-    view_type: str
-    arch: str
-    field_name: str
-
-
-@router.post("/resolve-field")
-def resolve_field_node(body: ResolveFieldBody) -> dict[str, object]:
-    """Map overlay field descriptor → candidate arch nodes (UIX-6)."""
-    import re
-
-    name = body.field_name.strip()
-    if not name:
-        raise HTTPException(status_code=422, detail="field_name required")
-    pattern = re.compile(
-        rf'<field\b[^>]*\bname=["\']{re.escape(name)}["\'][^>]*/?>',
-        re.I,
-    )
-    candidates = [{"xpath": f"//field[@name='{name}']", "match": m.group(0)} for m in pattern.finditer(body.arch)]
-    if not candidates:
-        try:
-            spec = parse_arch(body.view_type, body.arch)
-            fields = []
-            if isinstance(spec, dict):
-                for key in ("fields", "columns", "children"):
-                    val = spec.get(key)
-                    if isinstance(val, list):
-                        fields.extend(val)
-            for f in fields:
-                if isinstance(f, dict) and f.get("name") == name:
-                    candidates.append({"xpath": f"//field[@name='{name}']", "from_spec": True})
-        except Exception:  # noqa: BLE001
-            pass
-    return {"field_name": name, "candidates": candidates, "ambiguous": len(candidates) > 1}
 

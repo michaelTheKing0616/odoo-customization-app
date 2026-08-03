@@ -439,6 +439,46 @@ def scrub_spec_for_protected_apply(
     return out, skips
 
 
+def pcm_refusal(
+    *,
+    requested_capability: str,
+    protected_module: str,
+    safe_alternative: str | None = None,
+    kind: str = "refusal",
+    model: str | None = None,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    """PCM-3 refusal object shape for API + UI."""
+    alt = safe_alternative or safe_alternative_for(protected_module)
+    cap = requested_capability.strip()
+    mod = protected_module.strip()
+    return {
+        "protected_module_conflict": True,
+        "requested_capability": cap,
+        "protected_module": mod,
+        "safe_alternative": alt,
+        "kind": kind,
+        "model": model or mod,
+        "reason": reason or cap,
+    }
+
+
+def normalize_refusal_dict(raw: dict[str, Any]) -> dict[str, Any]:
+    """Coerce legacy refusals (kind/model/reason only) into the PCM-3 contract."""
+    if raw.get("protected_module_conflict") and raw.get("requested_capability"):
+        return raw
+    model = str(raw.get("model") or raw.get("protected_module") or "unknown")
+    reason = str(raw.get("reason") or "protected module effect")
+    return pcm_refusal(
+        requested_capability=reason,
+        protected_module=model,
+        safe_alternative=str(raw.get("safe_alternative") or safe_alternative_for(model)),
+        kind=str(raw.get("kind") or "refusal"),
+        model=model,
+        reason=reason,
+    )
+
+
 __all__ = [
     "PROTECTED_DOCS_LINK",
     "ProtectedViolation",
@@ -451,6 +491,8 @@ __all__ = [
     "is_custom_field",
     "is_custom_model",
     "manifest_for_connection",
+    "pcm_refusal",
+    "normalize_refusal_dict",
     "protected_models_for",
     "scrub_spec_for_protected_apply",
 ]

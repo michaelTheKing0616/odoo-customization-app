@@ -10,9 +10,12 @@ from sqlalchemy.orm import Session
 
 from app.billing_service import (
     apply_stripe_event,
+    apply_paystack_charge_success,
     create_stripe_checkout_session,
+    create_stripe_extra_slot_checkout,
     create_stripe_portal_link,
     paystack_initialize,
+    paystack_initialize_extra_slots,
     paystack_verify,
     record_webhook,
     verify_paystack_signature,
@@ -20,14 +23,19 @@ from app.billing_service import (
 )
 from app.db import get_db
 from app.entitlements import (
+    DISPLAY_FEATURE_CATALOG,
+    PLAN_PRICING,
+    PROJECT_PASS_ONE_TIME_USD,
+    PUBLIC_TIER_ORDER,
     WorkspaceEntitlements,
     count_active_projects,
+    extra_slot_price_usd,
     plan_feature_diff,
     resolve_entitlements,
     seed_plan_features,
 )
 from app.settings import settings
-from app.workspace_auth import WorkspaceAuth, require_app_auth
+from app.workspace_auth import WorkspaceAuth, require_admin, require_app_auth
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 
@@ -42,6 +50,18 @@ class CheckoutBody(BaseModel):
 class PaystackInitBody(BaseModel):
     plan_id: str
     email: str
+    callback_url: str
+
+
+class ExtraSlotsCheckoutBody(BaseModel):
+    slot_quantity: int = Field(1, ge=1, le=50)
+    success_url: str
+    cancel_url: str
+
+
+class ExtraSlotsPaystackBody(BaseModel):
+    email: str
+    slot_quantity: int = Field(1, ge=1, le=50)
     callback_url: str
 
 
@@ -86,28 +106,39 @@ def get_entitlements(
 
 
 @router.get("/plans")
-def list_plans(db: Session = Depends(get_db)) -> list[dict]:
+def list_plans(db: Session = Depends(get_db)) -> dict:
     seed_plan_features(db)
     from app.billing_models import BillingPlan, PlanFeature
 
     plans = db.query(BillingPlan).filter(BillingPlan.is_public.is_(True)).order_by(BillingPlan.sort_order).all()
-    out = []
+    plan_rows = []
     for p in plans:
         feats = db.query(PlanFeature).filter(PlanFeature.plan_id == p.id).all()
-        out.append(
+        pricing = PLAN_PRICING.get(p.id, {})
+        plan_rows.append(
             {
                 "id": p.id,
                 "display_name": p.display_name,
                 "features": {f.feature_key: f.value for f in feats},
+                "monthly_usd": pricing.get("monthly_usd"),
+                "extra_slot_monthly_usd": pricing.get("extra_slot_monthly_usd"),
             }
         )
-    return out
+    return {
+        "tier_order": PUBLIC_TIER_ORDER,
+        "display_features": DISPLAY_FEATURE_CATALOG,
+        "project_pass": {
+            "display_name": "Project Pass",
+            "one_time_usd": PROJECT_PASS_ONE_TIME_USD,
+        },
+        "plans": plan_rows,
+    }
 
 
 @router.post("/checkout/stripe")
 def stripe_checkout(
     body: CheckoutBody,
-    auth: WorkspaceAuth = Depends(require_app_auth),
+    auth: WorkspaceAuth = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
     if not auth.workspace_id:
@@ -124,9 +155,37 @@ def stripe_checkout(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@router.post("/checkout/stripe/extra-slots")
+def stripe_extra_slots_checkout(
+    body: ExtraSlotsCheckoutBody,
+    auth: WorkspaceAuth = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    if not auth.workspace_id:
+        raise HTTPException(status_code=400, detail="Workspace required")
+    from app.entitlements import ensure_workspace_subscription
+
+    sub = ensure_workspace_subscription(db, auth.workspace_id)
+    if extra_slot_price_usd(sub.plan_id) is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Plan {sub.plan_id} does not support extra project slot add-ons",
+        )
+    try:
+        return create_stripe_extra_slot_checkout(
+            workspace_id=auth.workspace_id,
+            plan_id=sub.plan_id,
+            slot_quantity=body.slot_quantity,
+            success_url=body.success_url,
+            cancel_url=body.cancel_url,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.post("/portal/stripe")
 def stripe_portal(
-    auth: WorkspaceAuth = Depends(require_app_auth),
+    auth: WorkspaceAuth = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
     if not auth.workspace_id:
@@ -146,7 +205,7 @@ def stripe_portal(
 @router.post("/checkout/paystack")
 async def paystack_checkout(
     body: PaystackInitBody,
-    auth: WorkspaceAuth = Depends(require_app_auth),
+    auth: WorkspaceAuth = Depends(require_admin),
 ) -> dict:
     if not auth.workspace_id:
         raise HTTPException(status_code=400, detail="Workspace required")
@@ -165,22 +224,39 @@ async def paystack_checkout(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@router.post("/checkout/paystack/extra-slots")
+async def paystack_extra_slots_checkout(
+    body: ExtraSlotsPaystackBody,
+    auth: WorkspaceAuth = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    if not auth.workspace_id:
+        raise HTTPException(status_code=400, detail="Workspace required")
+    from app.entitlements import ensure_workspace_subscription
+
+    sub = ensure_workspace_subscription(db, auth.workspace_id)
+    if extra_slot_price_usd(sub.plan_id) is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Plan {sub.plan_id} does not support extra project slot add-ons",
+        )
+    try:
+        return await paystack_initialize_extra_slots(
+            email=body.email,
+            workspace_id=auth.workspace_id,
+            plan_id=sub.plan_id,
+            slot_quantity=body.slot_quantity,
+            callback_url=body.callback_url,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.get("/paystack/verify/{reference}")
 async def paystack_verify_route(reference: str, db: Session = Depends(get_db)) -> dict:
     data = await paystack_verify(reference)
     if data.get("status") == "success":
-        meta = data.get("metadata") or {}
-        workspace_id = meta.get("workspace_id")
-        plan_id = meta.get("plan_id", "pro")
-        if workspace_id:
-            from app.entitlements import ensure_workspace_subscription
-
-            sub = ensure_workspace_subscription(db, workspace_id)
-            sub.plan_id = plan_id
-            sub.status = "active"
-            sub.processor = "paystack"
-            db.add(sub)
-            db.commit()
+        apply_paystack_charge_success(db, data)
     return data
 
 
@@ -212,17 +288,5 @@ async def paystack_webhook(request: Request, db: Session = Depends(get_db)) -> d
         return {"status": "duplicate"}
     # Minimal mapping — charge.success upgrades plan from metadata
     if event.get("event") == "charge.success":
-        data = event.get("data") or {}
-        meta = data.get("metadata") or {}
-        workspace_id = meta.get("workspace_id")
-        plan_id = meta.get("plan_id", "pro")
-        if workspace_id:
-            from app.entitlements import ensure_workspace_subscription
-
-            sub = ensure_workspace_subscription(db, workspace_id)
-            sub.plan_id = plan_id
-            sub.status = "active"
-            sub.processor = "paystack"
-            db.add(sub)
-            db.commit()
+        apply_paystack_charge_success(db, event.get("data") or {})
     return {"status": "ok"}

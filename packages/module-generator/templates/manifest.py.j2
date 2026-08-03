@@ -17,6 +17,7 @@
 {% if spec.include_barcode_scan_widget %}
     "assets": {
         "web.assets_backend": [
+            "{{ spec.technical_name }}/static/lib/zxing-browser.min.js",
             "{{ spec.technical_name }}/static/src/js/x_barcode_scan_field.js",
             "{{ spec.technical_name }}/static/src/xml/x_barcode_scan_field.xml",
         ],

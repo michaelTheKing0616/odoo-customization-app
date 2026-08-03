@@ -49,6 +49,13 @@ WORLD-CLASS OPS DEPTH (comprehensive / world-class prompts — meet this bar):
     never res.users (login link stays x_user_id on the staff master only).
 17) Party/role-link models are NOT is_workflow. Header workflows include terminal
     statuses (closed/done/cancelled/on_hold).
+
+PROTECTED MODULES (PCM — effect not mechanism):
+18) Tier-1 (account, payment, payroll, sign, subscriptions, stock valuation, IAP): never
+    generate writes, automations, or field mutations ON those models. Link-only many2one/
+    one2many FROM custom x_* models INTO tier-1 is allowed. Chatter/activity on tier-1 OK.
+19) Tier-2 (l10n_*, base, web, auth_*, mail): extend via additive x_* fields only — never
+    delete/rename stock fields or replace core behaviour.
 """.strip()
 
 _FEW_SHOT_EXEMPLAR = {

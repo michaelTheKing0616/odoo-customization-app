@@ -1,0 +1,47 @@
+{
+  "date": "2026-08-03",
+  "majors": {
+    "17": {
+      "cron_run_now": {
+        "major": 17,
+        "primary": "method_direct_trigger",
+        "primary_available": true,
+        "fallback": "model_method",
+        "note": "Assumed available on GA majors until first failure"
+      },
+      "report_render": {
+        "primary_path": "http_session:/report/pdf",
+        "http_report_pdf": true,
+        "major": 17
+      }
+    },
+    "18": {
+      "cron_run_now": {
+        "major": 18,
+        "primary": "method_direct_trigger",
+        "primary_available": true,
+        "fallback": "model_method",
+        "note": "Assumed available on GA majors until first failure"
+      },
+      "report_render": {
+        "primary_path": "http_session:/report/pdf",
+        "http_report_pdf": true,
+        "major": 18
+      }
+    },
+    "19": {
+      "cron_run_now": {
+        "major": 19,
+        "primary": "method_direct_trigger",
+        "primary_available": true,
+        "fallback": "model_method",
+        "note": "Assumed available on GA majors until first failure"
+      },
+      "report_render": {
+        "primary_path": "http_session:/report/pdf",
+        "http_report_pdf": true,
+        "major": 19
+      }
+    }
+  }
+}

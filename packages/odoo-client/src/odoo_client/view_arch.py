@@ -1569,3 +1569,184 @@ def validate_xpath_arch(arch: str) -> list[str]:
         if pos != "move" and not list(xp) and not (xp.text or "").strip():
             issues.append("xpath body is empty")
     return issues
+
+
+def _xml_attr(value: str) -> str:
+    from xml.sax.saxutils import escape
+
+    return escape(value, {'"': "&quot;"})
+
+
+def merge_inherit_data_arch(existing_arch: str, fragment_arch: str) -> str:
+    """Append xpath nodes from ``fragment_arch`` into an existing ``<data>`` inherit arch."""
+    from xml.etree.ElementTree import Element, fromstring, tostring
+
+    def parse_data(arch: str) -> Element:
+        cleaned = arch.strip()
+        if not cleaned:
+            return Element("data")
+        root = fromstring(cleaned)
+        if root.tag != "data":
+            raise ValueError("inherit arch must have <data> root")
+        return root
+
+    existing_root = parse_data(existing_arch)
+    frag_root = parse_data(fragment_arch)
+    for child in list(frag_root):
+        existing_root.append(child)
+    return tostring(existing_root, encoding="unicode")
+
+
+def render_overlay_hide_arch(expr: str, *, view_type: str) -> str:
+    vt = "list" if view_type == "tree" else view_type
+    attr = "column_invisible" if vt == "list" else "invisible"
+    return render_inherit_xpath_arch(
+        expr=expr,
+        position="attributes",
+        body_xml=f'<attribute name="{attr}">1</attribute>',
+    )
+
+
+def render_overlay_relabel_arch(
+    expr: str,
+    *,
+    string: str | None = None,
+    placeholder: str | None = None,
+    help_text: str | None = None,
+) -> str:
+    parts: list[str] = []
+    if string:
+        parts.append(f'<attribute name="string">{_xml_attr(string)}</attribute>')
+    if placeholder:
+        parts.append(f'<attribute name="placeholder">{_xml_attr(placeholder)}</attribute>')
+    if help_text:
+        parts.append(f'<attribute name="help">{_xml_attr(help_text)}</attribute>')
+    if not parts:
+        raise ValueError("relabel requires string, placeholder, or help")
+    return render_inherit_xpath_arch(
+        expr=expr,
+        position="attributes",
+        body_xml="\n".join(parts),
+    )
+
+
+def render_overlay_set_widget_arch(expr: str, widget: str) -> str:
+    widget_clean = widget.strip()
+    if not widget_clean:
+        raise ValueError("widget is required")
+    return render_inherit_xpath_arch(
+        expr=expr,
+        position="attributes",
+        body_xml=f'<attribute name="widget">{_xml_attr(widget_clean)}</attribute>',
+    )
+
+
+def render_overlay_add_field_arch(
+    anchor_expr: str,
+    *,
+    field_name: str,
+    position: Literal["before", "after", "inside"] = "after",
+    widget: str | None = None,
+) -> str:
+    name = field_name.strip()
+    if not name:
+        raise ValueError("field_name is required")
+    widget_attr = f' widget="{_xml_attr(widget)}"' if widget else ""
+    body = f'<field name="{name}"{widget_attr}/>'
+    return render_inherit_xpath_arch(expr=anchor_expr, position=position, body_xml=body)
+
+
+def render_overlay_move_arch(
+    field_expr: str,
+    anchor_expr: str,
+    *,
+    position: Literal["before", "after"],
+) -> str:
+    return (
+        "<data>\n"
+        f'  <xpath expr="{anchor_expr.strip()}" position="{position}">\n'
+        f'    <xpath expr="{field_expr.strip()}" position="move"/>\n'
+        "  </xpath>\n"
+        "</data>"
+    )
+
+
+def render_overlay_group_label_arch(
+    field_name: str,
+    *,
+    string: str,
+    target: Literal["group", "page"] = "group",
+) -> str:
+    name = field_name.strip()
+    label = string.strip()
+    if not name or not label:
+        raise ValueError("field_name and string are required")
+    if target == "page":
+        expr = f"//page[.//field[@name='{name}']]"
+    else:
+        expr = f"//group[.//field[@name='{name}']]"
+    return render_inherit_xpath_arch(
+        expr=expr,
+        position="attributes",
+        body_xml=f'<attribute name="string">{_xml_attr(label)}</attribute>',
+    )
+
+
+def render_overlay_operation_arch(
+    operation: str,
+    *,
+    expr: str,
+    view_type: str,
+    field_name: str | None = None,
+    anchor_expr: str | None = None,
+    move_position: Literal["before", "after"] | None = None,
+    add_field_name: str | None = None,
+    add_position: Literal["before", "after", "inside"] = "after",
+    string: str | None = None,
+    placeholder: str | None = None,
+    help_text: str | None = None,
+    widget: str | None = None,
+    label_target: Literal["field", "group", "page"] = "field",
+) -> str:
+    """Build a single-operation inherit ``<data>`` arch for the live overlay editor."""
+    op = operation.strip()
+    if op == "hide":
+        return render_overlay_hide_arch(expr, view_type=view_type)
+    if op == "relabel":
+        if label_target != "field":
+            if not field_name or not string:
+                raise ValueError("group/page relabel needs field_name and string")
+            return render_overlay_group_label_arch(
+                field_name,
+                string=string,
+                target="page" if label_target == "page" else "group",
+            )
+        return render_overlay_relabel_arch(
+            expr,
+            string=string,
+            placeholder=placeholder,
+            help_text=help_text,
+        )
+    if op == "set_widget":
+        if not widget:
+            raise ValueError("widget is required")
+        return render_overlay_set_widget_arch(expr, widget)
+    if op == "add_field":
+        if not add_field_name:
+            raise ValueError("add_field_name is required")
+        anchor = anchor_expr or expr
+        return render_overlay_add_field_arch(
+            anchor,
+            field_name=add_field_name,
+            position=add_position,
+            widget=widget,
+        )
+    if op == "move":
+        if not anchor_expr or not move_position:
+            raise ValueError("move requires anchor_expr and move_position")
+        return render_overlay_move_arch(expr, anchor_expr, position=move_position)
+    if op == "group_label":
+        if not field_name or not string:
+            raise ValueError("group_label requires field_name and string")
+        return render_overlay_group_label_arch(field_name, string=string, target="group")
+    raise ValueError(f"Unsupported overlay operation: {operation!r}")

@@ -42,6 +42,8 @@ import {
   injectStrategyCapabilityId,
   mutationAllowed,
   mutationBlockedReason,
+  gridViewAllowed,
+  isEnterpriseEdition,
 } from "@/lib/capabilities";
 import { odooViewUrl, pickStandaloneWindowAction, sameOriginPreviewUrl } from "@/lib/odoo-urls";
 
@@ -56,7 +58,8 @@ type ViewType =
   | "map"
   | "activity"
   | "gantt"
-  | "cohort";
+  | "cohort"
+  | "grid";
 
 type AxisDesignerField = {
   id: string;
@@ -314,6 +317,7 @@ export default function DesignerPage() {
   const [graphFields, setGraphFields] = useState<AxisDesignerField[]>([]);
   const [pivotFields, setPivotFields] = useState<AxisDesignerField[]>([]);
   const [mapResPartner, setMapResPartner] = useState("");
+  const [mapRouting, setMapRouting] = useState(false);
   const [mapFields, setMapFields] = useState<DesignerField[]>([]);
   const [activityFields, setActivityFields] = useState<DesignerField[]>([]);
   const [windowActionId, setWindowActionId] = useState<number | null>(null);
@@ -322,6 +326,8 @@ export default function DesignerPage() {
   const [ganttGroupBy, setGanttGroupBy] = useState("");
   const [ganttColor, setGanttColor] = useState("");
   const [ganttProgress, setGanttProgress] = useState("");
+  const [ganttDefaultScale, setGanttDefaultScale] = useState("");
+  const [ganttDependencyField, setGanttDependencyField] = useState("");
   const [ganttFields, setGanttFields] = useState<DesignerField[]>([]);
   const [cohortDateStart, setCohortDateStart] = useState("");
   const [cohortDateStop, setCohortDateStop] = useState("");
@@ -331,6 +337,13 @@ export default function DesignerPage() {
   const [cohortMode, setCohortMode] = useState<"retention" | "churn" | "">("retention");
   const [cohortTimeline, setCohortTimeline] = useState<"forward" | "backward" | "">("");
   const [cohortMeasure, setCohortMeasure] = useState("");
+  const [gridRowField, setGridRowField] = useState("");
+  const [gridColField, setGridColField] = useState("");
+  const [gridMeasure, setGridMeasure] = useState("");
+  const [gridAdjustment, setGridAdjustment] = useState("");
+  const [gridDateStart, setGridDateStart] = useState("");
+  const [gridDateStop, setGridDateStop] = useState("");
+  const [gridFields, setGridFields] = useState<DesignerField[]>([]);
   const [formCanCreate, setFormCanCreate] = useState(true);
   const [formCanEdit, setFormCanEdit] = useState(true);
   const [formCanDelete, setFormCanDelete] = useState(true);
@@ -547,6 +560,7 @@ export default function DesignerPage() {
     setMapFields(nodes.map((n) => ({ ...n, id: uid("f") })));
     setActivityFields(nodes.map((n) => ({ ...n, id: uid("f") })));
     setGanttFields(nodes.map((n) => ({ ...n, id: uid("f") })));
+    setGridFields(nodes.map((n) => ({ ...n, id: uid("f") })));
     const { dateStart, dateStop } = pickTemporalDefaults(rows);
     setCalendarDateStart(dateStart);
     setCalendarDateStop(dateStop);
@@ -557,6 +571,8 @@ export default function DesignerPage() {
     setGanttGroupBy("");
     setGanttColor("");
     setGanttProgress("");
+    setGanttDefaultScale("week");
+    setGanttDependencyField("");
     setCohortDateStart(dateStart || "create_date");
     setCohortDateStop(dateStop);
     setCohortInterval("week");
@@ -572,6 +588,7 @@ export default function DesignerPage() {
       rows.find((f) => f.ttype === "many2one" && f.relation === "res.partner")?.name ??
         "",
     );
+    setMapRouting(false);
     setFormCanCreate(true);
     setFormCanEdit(true);
     setFormCanDelete(true);
@@ -606,6 +623,12 @@ export default function DesignerPage() {
     if (measureField)
       seededPivot.push({ id: uid("af"), name: measureField, type: "measure" });
     setPivotFields(seededPivot);
+    setGridRowField(rowField ?? "");
+    setGridColField(dateStart ?? "");
+    setGridMeasure(measureField ?? "");
+    setGridAdjustment("");
+    setGridDateStart(dateStart);
+    setGridDateStop(dateStop);
     setSelected(null);
   }
 
@@ -840,6 +863,7 @@ export default function DesignerPage() {
             setMapResPartner(
               typeof spec.res_partner === "string" ? spec.res_partner : "",
             );
+            setMapRouting(asSpecBool(spec.routing) ?? false);
             setMapFields(
               ((spec.fields as Array<Record<string, unknown>> | undefined) ?? []).map((c) => ({
                 kind: "field" as const,
@@ -867,6 +891,12 @@ export default function DesignerPage() {
             );
             setGanttColor(typeof spec.color === "string" ? spec.color : "");
             setGanttProgress(typeof spec.progress === "string" ? spec.progress : "");
+            setGanttDefaultScale(
+              typeof spec.default_scale === "string" ? spec.default_scale : "",
+            );
+            setGanttDependencyField(
+              typeof spec.dependency_field === "string" ? spec.dependency_field : "",
+            );
             setGanttFields(
               ((spec.fields as Array<Record<string, unknown>> | undefined) ?? []).map((c) => ({
                 kind: "field" as const,
@@ -888,6 +918,22 @@ export default function DesignerPage() {
             const tl = spec.timeline;
             setCohortTimeline(tl === "forward" || tl === "backward" ? tl : "");
             setCohortMeasure(typeof spec.measure === "string" ? spec.measure : "");
+            if (typeof spec.string === "string") setTitle(spec.string);
+          } else if (viewType === "grid") {
+            setGridRowField(typeof spec.row_field === "string" ? spec.row_field : "");
+            setGridColField(typeof spec.col_field === "string" ? spec.col_field : "");
+            setGridMeasure(typeof spec.measure === "string" ? spec.measure : "");
+            setGridAdjustment(typeof spec.adjustment === "string" ? spec.adjustment : "");
+            setGridDateStart(typeof spec.date_start === "string" ? spec.date_start : "");
+            setGridDateStop(typeof spec.date_stop === "string" ? spec.date_stop : "");
+            setGridFields(
+              ((spec.fields as Array<Record<string, unknown>> | undefined) ?? []).map((c) => ({
+                kind: "field" as const,
+                id: uid("f"),
+                name: String(c.name || ""),
+                string: c.string ? String(c.string) : undefined,
+              })),
+            );
             if (typeof spec.string === "string") setTitle(spec.string);
           }
           setNotice(`Loaded ${full.type} view #${full.id} with structure (round-trip parse).`);
@@ -1076,9 +1122,10 @@ export default function DesignerPage() {
     () => ({
       string: title,
       res_partner: mapResPartner || null,
+      routing: mapRouting ? true : null,
       fields: mapFields.map((f) => fieldSpec(f)),
     }),
-    [mapFields, mapResPartner, title],
+    [mapFields, mapResPartner, mapRouting, title],
   );
 
   const activitySpec = useMemo(
@@ -1095,6 +1142,8 @@ export default function DesignerPage() {
       date_start: ganttDateStart || "date_start",
       date_stop: ganttDateStop || null,
       default_group_by: ganttGroupBy || null,
+      default_scale: ganttDefaultScale || null,
+      dependency_field: ganttDependencyField || null,
       color: ganttColor || null,
       progress: ganttProgress || null,
       fields: ganttFields.map((f) => fieldSpec(f)),
@@ -1103,9 +1152,34 @@ export default function DesignerPage() {
       ganttColor,
       ganttDateStart,
       ganttDateStop,
+      ganttDefaultScale,
+      ganttDependencyField,
       ganttFields,
       ganttGroupBy,
       ganttProgress,
+      title,
+    ],
+  );
+
+  const gridSpec = useMemo(
+    () => ({
+      string: title,
+      row_field: gridRowField || null,
+      col_field: gridColField || null,
+      measure: gridMeasure || null,
+      adjustment: gridAdjustment || null,
+      date_start: gridDateStart || null,
+      date_stop: gridDateStop || null,
+      fields: gridFields.map((f) => fieldSpec(f)),
+    }),
+    [
+      gridAdjustment,
+      gridColField,
+      gridDateStart,
+      gridDateStop,
+      gridFields,
+      gridMeasure,
+      gridRowField,
       title,
     ],
   );
@@ -1142,6 +1216,7 @@ export default function DesignerPage() {
     if (viewType === "activity") return activitySpec;
     if (viewType === "gantt") return ganttSpec;
     if (viewType === "cohort") return cohortSpec;
+    if (viewType === "grid") return gridSpec;
     return searchSpec;
   }, [
     viewType,
@@ -1155,6 +1230,7 @@ export default function DesignerPage() {
     activitySpec,
     ganttSpec,
     cohortSpec,
+    gridSpec,
     searchSpec,
   ]);
 
@@ -2130,14 +2206,14 @@ export default function DesignerPage() {
               onBlur={() => {
                 if (model.trim()) void ensureFieldsForModel(model);
               }}
-              className="mt-1 block w-64 border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+              className="mt-1 block w-64 border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
               placeholder="x_ticket"
             />
           </label>
           <button
             type="button"
             onClick={() => model && loadModelFields(model)}
-            className="h-10 border border-[#c9a9c0] px-4 text-sm text-[#c9a9c0]"
+            className="h-10 border border-border-subtle px-4 text-sm text-muted"
           >
             Load fields
           </button>
@@ -2145,7 +2221,7 @@ export default function DesignerPage() {
             type="button"
             disabled={busy || !model}
             onClick={loadExistingView}
-            className="h-10 border border-[#3d2a38] px-4 text-sm text-[#d4c4ce] disabled:opacity-60"
+            className="h-10 border border-border-subtle px-4 text-sm text-muted disabled:opacity-60"
           >
             Load existing view
           </button>
@@ -2162,13 +2238,14 @@ export default function DesignerPage() {
                   (next === "calendar" ||
                     next === "gantt" ||
                     next === "cohort" ||
+                    next === "grid" ||
                     next === "activity" ||
                     next === "map")
                 ) {
                   void ensureFieldsForModel(model);
                 }
               }}
-              className="mt-1 block border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
+              className="mt-1 block border border-border-subtle bg-surface px-3 py-2"
             >
               <option value="form">form</option>
               <option value="list">
@@ -2207,6 +2284,14 @@ export default function DesignerPage() {
                 cohort
                 {!mutationAllowed(connection) ? " (probe connection)" : ""}
               </option>
+              <option value="grid" disabled={!gridViewAllowed(connection)}>
+                grid
+                {!gridViewAllowed(connection)
+                  ? !isEnterpriseEdition(connection?.capabilities)
+                    ? " (Enterprise edition)"
+                    : " (probe connection)"
+                  : ""}
+              </option>
             </select>
             {!mutationAllowed(connection) && (
               <p className="mt-1 text-xs text-[#c9a227]">
@@ -2221,7 +2306,7 @@ export default function DesignerPage() {
               <select
                 value={kanbanGroupBy}
                 onChange={(e) => setKanbanGroupBy(e.target.value)}
-                className="mt-1 block border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
               >
                 <option value="">(none)</option>
                 {fields.map((f) => (
@@ -2239,7 +2324,7 @@ export default function DesignerPage() {
                 <select
                   value={calendarDateStart}
                   onChange={(e) => setCalendarDateStart(e.target.value)}
-                  className="mt-1 block border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
                 >
                   <option value="">(required)</option>
                   {dateFieldsForSelect.map((f) => (
@@ -2267,7 +2352,7 @@ export default function DesignerPage() {
                 <select
                   value={calendarDateStop}
                   onChange={(e) => setCalendarDateStop(e.target.value)}
-                  className="mt-1 block border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
                 >
                   <option value="">(optional)</option>
                   {dateFieldsForSelect.map((f) => (
@@ -2283,7 +2368,7 @@ export default function DesignerPage() {
                 <select
                   value={calendarColor}
                   onChange={(e) => setCalendarColor(e.target.value)}
-                  className="mt-1 block border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
                 >
                   <option value="">(optional)</option>
                   {fields.map((f) => (
@@ -2298,7 +2383,7 @@ export default function DesignerPage() {
                 <select
                   value={calendarMode}
                   onChange={(e) => setCalendarMode(e.target.value)}
-                  className="mt-1 block border border-[#3d2a38] bg-[#0c090b] px-3 py-2 text-sm"
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 text-sm"
                 >
                   <option value="">(default)</option>
                   <option value="day">day</option>
@@ -2317,7 +2402,7 @@ export default function DesignerPage() {
                 onChange={(e) =>
                   setGraphType(e.target.value as "bar" | "line" | "pie")
                 }
-                className="mt-1 block border border-[#3d2a38] bg-[#0c090b] px-3 py-2 text-sm"
+                className="mt-1 block border border-border-subtle bg-surface px-3 py-2 text-sm"
               >
                 <option value="bar">bar</option>
                 <option value="line">line</option>
@@ -2347,12 +2432,14 @@ export default function DesignerPage() {
             </label>
           )}
           {viewType === "map" && (
+            <>
             <label className="text-sm">
               <span className="text-[#a8909e]">res_partner</span>
               <select
                 value={mapResPartner}
                 onChange={(e) => setMapResPartner(e.target.value)}
-                className="mt-1 block border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
+                data-testid="designer-map-res-partner"
               >
                 <option value="">(required — partner m2o)</option>
                 {fields
@@ -2366,6 +2453,16 @@ export default function DesignerPage() {
                   ))}
               </select>
             </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={mapRouting}
+                onChange={(e) => setMapRouting(e.target.checked)}
+                data-testid="designer-map-routing"
+              />
+              routing (directions)
+            </label>
+            </>
           )}
           {viewType === "gantt" && (
             <>
@@ -2374,7 +2471,7 @@ export default function DesignerPage() {
                 <select
                   value={ganttDateStart}
                   onChange={(e) => setGanttDateStart(e.target.value)}
-                  className="mt-1 block border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
                 >
                   <option value="">(required)</option>
                   {dateFieldsForSelect.map((f) => (
@@ -2389,7 +2486,7 @@ export default function DesignerPage() {
                 <select
                   value={ganttDateStop}
                   onChange={(e) => setGanttDateStop(e.target.value)}
-                  className="mt-1 block border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
                 >
                   <option value="">(optional)</option>
                   {dateFieldsForSelect.map((f) => (
@@ -2404,7 +2501,7 @@ export default function DesignerPage() {
                 <select
                   value={ganttGroupBy}
                   onChange={(e) => setGanttGroupBy(e.target.value)}
-                  className="mt-1 block border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
                 >
                   <option value="">(optional)</option>
                   {fields.map((f) => (
@@ -2419,7 +2516,7 @@ export default function DesignerPage() {
                 <select
                   value={ganttColor}
                   onChange={(e) => setGanttColor(e.target.value)}
-                  className="mt-1 block border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
                 >
                   <option value="">(optional)</option>
                   {fields.map((f) => (
@@ -2434,7 +2531,8 @@ export default function DesignerPage() {
                 <select
                   value={ganttProgress}
                   onChange={(e) => setGanttProgress(e.target.value)}
-                  className="mt-1 block border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
+                  data-testid="designer-gantt-progress"
                 >
                   <option value="">(optional)</option>
                   {fields.map((f) => (
@@ -2442,6 +2540,39 @@ export default function DesignerPage() {
                       {f.name} · {f.ttype}
                     </option>
                   ))}
+                </select>
+              </label>
+              <label className="text-sm">
+                <span className="text-[#a8909e]">default_scale</span>
+                <select
+                  value={ganttDefaultScale}
+                  onChange={(e) => setGanttDefaultScale(e.target.value)}
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 text-sm"
+                  data-testid="designer-gantt-default-scale"
+                >
+                  <option value="">(optional)</option>
+                  <option value="day">day</option>
+                  <option value="week">week</option>
+                  <option value="month">month</option>
+                  <option value="year">year</option>
+                </select>
+              </label>
+              <label className="text-sm">
+                <span className="text-[#a8909e]">dependency_field</span>
+                <select
+                  value={ganttDependencyField}
+                  onChange={(e) => setGanttDependencyField(e.target.value)}
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
+                  data-testid="designer-gantt-dependency"
+                >
+                  <option value="">(optional)</option>
+                  {fields
+                    .filter((f) => f.ttype === "many2many" || f.ttype === "one2many")
+                    .map((f) => (
+                      <option key={f.id} value={f.name}>
+                        {f.name} · {f.ttype}
+                      </option>
+                    ))}
                 </select>
               </label>
             </>
@@ -2453,7 +2584,7 @@ export default function DesignerPage() {
                 <select
                   value={cohortDateStart}
                   onChange={(e) => setCohortDateStart(e.target.value)}
-                  className="mt-1 block border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
                 >
                   <option value="">(required)</option>
                   {dateFieldsForSelect.map((f) => (
@@ -2468,7 +2599,7 @@ export default function DesignerPage() {
                 <select
                   value={cohortDateStop}
                   onChange={(e) => setCohortDateStop(e.target.value)}
-                  className="mt-1 block border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
                 >
                   <option value="">(optional)</option>
                   {dateFieldsForSelect.map((f) => (
@@ -2487,7 +2618,7 @@ export default function DesignerPage() {
                       e.target.value as "day" | "week" | "month" | "year" | "",
                     )
                   }
-                  className="mt-1 block border border-[#3d2a38] bg-[#0c090b] px-3 py-2 text-sm"
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 text-sm"
                 >
                   <option value="day">day</option>
                   <option value="week">week</option>
@@ -2502,7 +2633,8 @@ export default function DesignerPage() {
                   onChange={(e) =>
                     setCohortMode(e.target.value as "retention" | "churn" | "")
                   }
-                  className="mt-1 block border border-[#3d2a38] bg-[#0c090b] px-3 py-2 text-sm"
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 text-sm"
+                  data-testid="designer-cohort-mode"
                 >
                   <option value="retention">retention</option>
                   <option value="churn">churn</option>
@@ -2515,7 +2647,7 @@ export default function DesignerPage() {
                   onChange={(e) =>
                     setCohortTimeline(e.target.value as "forward" | "backward" | "")
                   }
-                  className="mt-1 block border border-[#3d2a38] bg-[#0c090b] px-3 py-2 text-sm"
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 text-sm"
                 >
                   <option value="">(default)</option>
                   <option value="forward">forward</option>
@@ -2527,7 +2659,7 @@ export default function DesignerPage() {
                 <select
                   value={cohortMeasure}
                   onChange={(e) => setCohortMeasure(e.target.value)}
-                  className="mt-1 block border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
                 >
                   <option value="">(optional)</option>
                   {fields.map((f) => (
@@ -2539,12 +2671,114 @@ export default function DesignerPage() {
               </label>
             </>
           )}
+          {viewType === "grid" && (
+            <>
+              <label className="text-sm">
+                <span className="text-[#a8909e]">row_field</span>
+                <select
+                  value={gridRowField}
+                  onChange={(e) => setGridRowField(e.target.value)}
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
+                  data-testid="designer-grid-row-field"
+                >
+                  <option value="">(optional)</option>
+                  {fields.map((f) => (
+                    <option key={f.id} value={f.name}>
+                      {f.name} · {f.ttype}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm">
+                <span className="text-[#a8909e]">col_field</span>
+                <select
+                  value={gridColField}
+                  onChange={(e) => setGridColField(e.target.value)}
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
+                  data-testid="designer-grid-col-field"
+                >
+                  <option value="">(optional)</option>
+                  {dateFieldsForSelect.map((f) => (
+                    <option key={f.id} value={f.name}>
+                      {f.name} · {f.ttype}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm">
+                <span className="text-[#a8909e]">measure</span>
+                <select
+                  value={gridMeasure}
+                  onChange={(e) => setGridMeasure(e.target.value)}
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
+                  data-testid="designer-grid-measure"
+                >
+                  <option value="">(optional)</option>
+                  {fields
+                    .filter(
+                      (f) =>
+                        f.ttype === "integer" ||
+                        f.ttype === "float" ||
+                        f.ttype === "monetary",
+                    )
+                    .map((f) => (
+                      <option key={f.id} value={f.name}>
+                        {f.name} · {f.ttype}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="text-sm">
+                <span className="text-[#a8909e]">adjustment</span>
+                <select
+                  value={gridAdjustment}
+                  onChange={(e) => setGridAdjustment(e.target.value)}
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 text-sm"
+                  data-testid="designer-grid-adjustment"
+                >
+                  <option value="">(optional)</option>
+                  <option value="increment">increment</option>
+                  <option value="value">value</option>
+                </select>
+              </label>
+              <label className="text-sm">
+                <span className="text-[#a8909e]">date_start</span>
+                <select
+                  value={gridDateStart}
+                  onChange={(e) => setGridDateStart(e.target.value)}
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
+                >
+                  <option value="">(optional)</option>
+                  {dateFieldsForSelect.map((f) => (
+                    <option key={f.id} value={f.name}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm">
+                <span className="text-[#a8909e]">date_stop</span>
+                <select
+                  value={gridDateStop}
+                  onChange={(e) => setGridDateStop(e.target.value)}
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
+                >
+                  <option value="">(optional)</option>
+                  {dateFieldsForSelect.map((f) => (
+                    <option key={f.id} value={f.name}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
           <label className="text-sm">
             <span className="text-[#a8909e]">Title</span>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="mt-1 block w-48 border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
+              className="mt-1 block w-48 border border-border-subtle bg-surface px-3 py-2"
             />
           </label>
           <label className="text-sm">
@@ -2552,7 +2786,7 @@ export default function DesignerPage() {
             <select
               value={saveStrategy}
               onChange={(e) => setSaveStrategy(e.target.value as "inherit" | "overwrite")}
-              className="mt-1 block w-40 border border-[#3d2a38] bg-[#0c090b] px-2 py-2 text-sm"
+              className="mt-1 block w-40 border border-border-subtle bg-surface px-2 py-2 text-sm"
             >
               <option value="inherit">Inherit (safe)</option>
               <option value="overwrite">Overwrite primary</option>
@@ -2562,7 +2796,7 @@ export default function DesignerPage() {
             type="button"
             disabled={busy || !model}
             onClick={() => void onSave()}
-            className="h-10 bg-[#714B67] px-5 text-sm font-semibold text-white disabled:opacity-60"
+            className="h-10 bg-accent px-5 text-sm font-semibold text-white disabled:opacity-60"
           >
             {busy ? "Saving…" : archOverride ? "Save arch override" : "Save to Odoo"}
           </button>
@@ -2579,7 +2813,7 @@ export default function DesignerPage() {
                 setError(err instanceof Error ? err.message : "Polish failed");
               } finally { setBusy(false); }
             }}
-            className="h-10 border border-[#c9a9c0] px-4 text-sm text-[#c9a9c0] disabled:opacity-40"
+            className="h-10 border border-border-subtle px-4 text-sm text-muted disabled:opacity-40"
           >
             Polish form layout
           </button>
@@ -2587,7 +2821,7 @@ export default function DesignerPage() {
             type="button"
             disabled={busy || !lastSnapshotId}
             onClick={onUndo}
-            className="h-10 border border-[#f0a8a0] px-4 text-sm text-[#f0a8a0] disabled:opacity-40"
+            className="h-10 border border-danger/50 px-4 text-sm text-danger disabled:opacity-40"
           >
             Undo last save
           </button>
@@ -2599,7 +2833,7 @@ export default function DesignerPage() {
             onClick={(e) => {
               if (!liveOdooUrl) e.preventDefault();
             }}
-            className={`inline-flex h-10 items-center border border-[#c9a9c0] px-4 text-sm text-[#c9a9c0] ${
+            className={`inline-flex h-10 items-center border border-border-subtle px-4 text-sm text-muted ${
               !liveOdooUrl ? "pointer-events-none opacity-40" : ""
             }`}
           >
@@ -2609,7 +2843,7 @@ export default function DesignerPage() {
             type="button"
             disabled={!liveOdooUrl}
             onClick={() => setShowIframePreview((v) => !v)}
-            className="h-10 border border-[#3d2a38] px-4 text-sm text-[#d4c4ce] disabled:opacity-40"
+            className="h-10 border border-border-subtle px-4 text-sm text-muted disabled:opacity-40"
           >
             {showIframePreview ? "Hide preview" : "Toggle preview"}
           </button>
@@ -2621,14 +2855,14 @@ export default function DesignerPage() {
               setPreviewKey((k) => k + 1);
               setNotice("Preview refreshed. Open in Odoo remains authoritative.");
             }}
-            className="h-10 border border-[#3d2a38] px-4 text-sm text-[#d4c4ce] disabled:opacity-40"
+            className="h-10 border border-border-subtle px-4 text-sm text-muted disabled:opacity-40"
           >
             Refresh preview
           </button>
         </Card>
         <p className="mt-2 text-xs text-muted">
           Preview uses a same-origin proxy (strips X-Frame-Options).{" "}
-          <strong className="text-[#c9a9c0]">Open in Odoo is authoritative</strong> — the iframe
+          <strong className="text-muted">Open in Odoo is authoritative</strong> — the iframe
           is best-effort. Save defaults to <strong>inherit</strong> extension views.
           {archOverride ? " Arch override active — Save will POST raw inherit arch." : ""}
         </p>
@@ -2659,7 +2893,7 @@ export default function DesignerPage() {
               />
             </div>
             <div>
-              <h2 className="mb-2 text-sm font-semibold text-[var(--odoo-primary-light)]">
+              <h2 className="mb-2 text-sm font-semibold text-accent">
                 Odoo-style canvas
               </h2>
               <PreviewThemeScope previewVars={previewTheme?.preview_vars}>
@@ -2765,7 +2999,7 @@ export default function DesignerPage() {
             <PropsInspector title="Field properties">
               {selectedField ? (
                 <div className="space-y-3 text-sm text-[#1a1a1a]">
-                  <p className="font-mono text-[var(--odoo-primary)]">{selectedField.name}</p>
+                  <p className="font-mono text-accent">{selectedField.name}</p>
                   <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -2825,7 +3059,7 @@ export default function DesignerPage() {
               />
             </div>
             <div>
-              <h2 className="mb-2 text-sm font-semibold text-[var(--odoo-primary-light)]">
+              <h2 className="mb-2 text-sm font-semibold text-accent">
                 Kanban card preview
               </h2>
               <PreviewThemeScope previewVars={previewTheme?.preview_vars}>
@@ -2857,7 +3091,7 @@ export default function DesignerPage() {
             <PropsInspector title="Card field">
               {selectedField && selected?.scope === "kanban" ? (
                 <div className="space-y-3 text-sm text-[#1a1a1a]">
-                  <p className="font-mono text-[var(--odoo-primary)]">
+                  <p className="font-mono text-accent">
                     {selectedField.name}
                   </p>
                   <p className="text-xs text-[var(--odoo-muted)]">
@@ -2870,14 +3104,14 @@ export default function DesignerPage() {
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      className="text-xs text-[var(--odoo-primary)]"
+                      className="text-xs text-accent"
                       onClick={() => moveKanbanField(selectedField.id, -1)}
                     >
                       Move up
                     </button>
                     <button
                       type="button"
-                      className="text-xs text-[var(--odoo-primary)]"
+                      className="text-xs text-accent"
                       onClick={() => moveKanbanField(selectedField.id, 1)}
                     >
                       Move down
@@ -2899,28 +3133,29 @@ export default function DesignerPage() {
           viewType === "map" ||
           viewType === "activity" ||
           viewType === "gantt" ||
-          viewType === "cohort") &&
+          viewType === "cohort" ||
+          viewType === "grid") &&
           model && (
-          <div className="mt-6 border border-[#3d2a38] bg-[#0b1210] p-4">
-            <h2 className="mb-2 text-sm font-semibold text-[#c9a9c0]">
+          <div className="mt-6 border border-border-subtle bg-[#0b1210] p-4">
+            <h2 className="mb-2 text-sm font-semibold text-muted">
               {viewType} view fields
             </h2>
-            <p className="mb-3 text-xs text-[#8f7a88]">
+            <p className="mb-3 text-xs text-muted">
               Arch preview updates from these fields. Drag from the palette into
               form/list is unchanged — use the buttons below for reporting axes.
             </p>
             {viewType === "map" && (
               <p className="mb-3 border border-[#c9a227]/40 bg-[#1a1810] px-3 py-2 text-xs text-[#e8d09f]">
-                Map views need a <code className="text-[#c9a9c0]">res.partner</code>{" "}
-                many2one (<code className="text-[#c9a9c0]">res_partner</code> attr).
+                Map views need a <code className="text-muted">res.partner</code>{" "}
+                many2one (<code className="text-muted">res_partner</code> attr).
                 Without a partner field, Odoo will not render the map.
               </p>
             )}
             {viewType === "gantt" && (
               <p className="mb-3 border border-[#c9a227]/40 bg-[#1a1810] px-3 py-2 text-xs text-[#e8d09f]">
                 Gantt arch is Community-safe metadata, but the client often needs{" "}
-                <code className="text-[#c9a9c0]">web_gantt</code> /{" "}
-                <code className="text-[#c9a9c0]">project</code> (Enterprise or installed
+                <code className="text-muted">web_gantt</code> /{" "}
+                <code className="text-muted">project</code> (Enterprise or installed
                 modules). We do not claim EE live — save may succeed while Open in Odoo
                 shows nothing without the module.
               </p>
@@ -2932,14 +3167,20 @@ export default function DesignerPage() {
                 live claim.
               </p>
             )}
+            {viewType === "grid" && (
+              <p className="mb-3 border border-[#c9a227]/40 bg-[#1a1810] px-3 py-2 text-xs text-[#e8d09f]">
+                Grid/planning views are Enterprise-gated. Arch emission is supported; live
+                Open in Odoo requires EE modules on the instance.
+              </p>
+            )}
             {viewType === "calendar" && (
-              <ul className="space-y-1 font-mono text-sm text-[#d4c4ce]">
+              <ul className="space-y-1 font-mono text-sm text-muted">
                 {calendarFields.map((f) => (
                   <li key={f.id} className="flex items-center justify-between gap-2">
                     <span>{f.name}</span>
                     <button
                       type="button"
-                      className="text-xs text-[#f0a8a0]"
+                      className="text-xs text-danger"
                       onClick={() =>
                         setCalendarFields((cols) => cols.filter((c) => c.id !== f.id))
                       }
@@ -2949,30 +3190,37 @@ export default function DesignerPage() {
                   </li>
                 ))}
                 {!calendarFields.length && (
-                  <li className="text-[#8f7a88]">No display fields yet</li>
+                  <li className="text-muted">No display fields yet</li>
                 )}
               </ul>
             )}
-            {(viewType === "map" || viewType === "activity" || viewType === "gantt") && (
-              <ul className="space-y-1 font-mono text-sm text-[#d4c4ce]">
+            {(viewType === "map" ||
+              viewType === "activity" ||
+              viewType === "gantt" ||
+              viewType === "grid") && (
+              <ul className="space-y-1 font-mono text-sm text-muted">
                 {(viewType === "map"
                   ? mapFields
                   : viewType === "activity"
                     ? activityFields
-                    : ganttFields
+                    : viewType === "gantt"
+                      ? ganttFields
+                      : gridFields
                 ).map((f) => (
                   <li key={f.id} className="flex items-center justify-between gap-2">
                     <span>{f.name}</span>
                     <button
                       type="button"
-                      className="text-xs text-[#f0a8a0]"
+                      className="text-xs text-danger"
                       onClick={() => {
                         if (viewType === "map") {
                           setMapFields((cols) => cols.filter((c) => c.id !== f.id));
                         } else if (viewType === "activity") {
                           setActivityFields((cols) => cols.filter((c) => c.id !== f.id));
-                        } else {
+                        } else if (viewType === "gantt") {
                           setGanttFields((cols) => cols.filter((c) => c.id !== f.id));
+                        } else {
+                          setGridFields((cols) => cols.filter((c) => c.id !== f.id));
                         }
                       }}
                     >
@@ -2984,19 +3232,21 @@ export default function DesignerPage() {
                   ? mapFields
                   : viewType === "activity"
                     ? activityFields
-                    : ganttFields
+                    : viewType === "gantt"
+                      ? ganttFields
+                      : gridFields
                 ).length === 0 && (
-                  <li className="text-[#8f7a88]">No display fields yet</li>
+                  <li className="text-muted">No display fields yet</li>
                 )}
               </ul>
             )}
             {viewType === "cohort" && (
-              <p className="text-xs text-[#8f7a88]">
+              <p className="text-xs text-muted">
                 Cohort uses date_start / measure from the toolbar — no field list required.
               </p>
             )}
             {viewType === "graph" && (
-              <ul className="space-y-2 font-mono text-sm text-[#d4c4ce]">
+              <ul className="space-y-2 font-mono text-sm text-muted">
                 {graphFields.map((f) => (
                   <li key={f.id} className="flex flex-wrap items-center gap-2">
                     <span className="min-w-[8rem]">{f.name}</span>
@@ -3015,7 +3265,7 @@ export default function DesignerPage() {
                           ),
                         );
                       }}
-                      className="border border-[#3d2a38] bg-[#0c090b] px-2 py-1 text-xs"
+                      className="border border-border-subtle bg-surface px-2 py-1 text-xs"
                     >
                       <option value="">(role)</option>
                       <option value="row">row</option>
@@ -3023,7 +3273,7 @@ export default function DesignerPage() {
                     </select>
                     <button
                       type="button"
-                      className="text-xs text-[#f0a8a0]"
+                      className="text-xs text-danger"
                       onClick={() =>
                         setGraphFields((cols) => cols.filter((c) => c.id !== f.id))
                       }
@@ -3035,7 +3285,7 @@ export default function DesignerPage() {
               </ul>
             )}
             {viewType === "pivot" && (
-              <ul className="space-y-2 font-mono text-sm text-[#d4c4ce]">
+              <ul className="space-y-2 font-mono text-sm text-muted">
                 {pivotFields.map((f) => (
                   <li key={f.id} className="flex flex-wrap items-center gap-2">
                     <span className="min-w-[8rem]">{f.name}</span>
@@ -3054,7 +3304,7 @@ export default function DesignerPage() {
                           ),
                         );
                       }}
-                      className="border border-[#3d2a38] bg-[#0c090b] px-2 py-1 text-xs"
+                      className="border border-border-subtle bg-surface px-2 py-1 text-xs"
                     >
                       <option value="">(role)</option>
                       <option value="row">row</option>
@@ -3074,12 +3324,12 @@ export default function DesignerPage() {
                             ),
                           )
                         }
-                        className="w-24 border border-[#3d2a38] bg-[#0c090b] px-2 py-1 text-xs"
+                        className="w-24 border border-border-subtle bg-surface px-2 py-1 text-xs"
                       />
                     )}
                     <button
                       type="button"
-                      className="text-xs text-[#f0a8a0]"
+                      className="text-xs text-danger"
                       onClick={() =>
                         setPivotFields((cols) => cols.filter((c) => c.id !== f.id))
                       }
@@ -3092,8 +3342,8 @@ export default function DesignerPage() {
             )}
             {viewType !== "cohort" && (
             <div className="mt-3 space-y-2">
-              <p className="text-[11px] text-[#8f7a88]">
-                Click <span className="font-mono text-[#c9a9c0]">+ field</span> to include an
+              <p className="text-[11px] text-muted">
+                Click <span className="font-mono text-muted">+ field</span> to include an
                 existing model field. Custom <span className="font-mono">x_*</span> fields are
                 listed first (do not use Create field — that creates new columns).
               </p>
@@ -3109,7 +3359,7 @@ export default function DesignerPage() {
                 <button
                   key={f.id}
                   type="button"
-                  className="border border-[#3d2a38] px-2 py-0.5 font-mono text-[11px] text-[#c9a9c0]"
+                  className="border border-border-subtle px-2 py-0.5 font-mono text-[11px] text-muted"
                   onClick={() => {
                     const nextField: DesignerField = {
                       kind: "field",
@@ -3131,6 +3381,10 @@ export default function DesignerPage() {
                       );
                     } else if (viewType === "gantt") {
                       setGanttFields((cols) =>
+                        cols.some((c) => c.name === f.name) ? cols : [...cols, nextField],
+                      );
+                    } else if (viewType === "grid") {
+                      setGridFields((cols) =>
                         cols.some((c) => c.name === f.name) ? cols : [...cols, nextField],
                       );
                     } else if (viewType === "graph") {
@@ -3174,9 +3428,9 @@ export default function DesignerPage() {
         )}
 
         {bindMode !== "closed" && (
-          <div className="mt-4 border border-[#c9a9c0]/40 bg-[#0f1a16] p-4">
+          <div className="mt-4 border border-border-subtle/40 bg-surface-muted p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-[#c9a9c0]">
+              <p className="text-sm text-muted">
                 Bind {bindPlacement} button to a real Odoo action
               </p>
               <div className="flex flex-wrap gap-2 text-xs">
@@ -3202,8 +3456,8 @@ export default function DesignerPage() {
                         !allowed
                           ? "cursor-not-allowed text-[#4a5c54] opacity-50"
                           : bindMode === mode
-                            ? "text-[#c9a9c0]"
-                            : "text-[#8f7a88]"
+                            ? "text-muted"
+                            : "text-muted"
                       }
                       onClick={() => {
                         if (!allowed) return;
@@ -3227,7 +3481,7 @@ export default function DesignerPage() {
                 <input
                   value={bindLabel}
                   onChange={(e) => setBindLabel(e.target.value)}
-                  className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 text-sm"
+                  className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
                 />
               </label>
               {bindMode === "create_update" && (
@@ -3243,7 +3497,7 @@ export default function DesignerPage() {
                         const opts = parseSelectionOptions(meta?.selection);
                         if (opts[0]) setBindValue(opts[0].value);
                       }}
-                      className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 font-mono text-sm"
+                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm"
                     >
                       <option value="">Select field…</option>
                       {fields
@@ -3270,7 +3524,7 @@ export default function DesignerPage() {
                           <select
                             value={bindValue}
                             onChange={(e) => setBindValue(e.target.value)}
-                            className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 text-sm"
+                            className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
                           >
                             {opts.map((o) => (
                               <option key={o.value} value={o.value}>
@@ -3284,7 +3538,7 @@ export default function DesignerPage() {
                         <input
                           value={bindValue}
                           onChange={(e) => setBindValue(e.target.value)}
-                          className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 text-sm"
+                          className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
                         />
                       );
                     })()}
@@ -3298,7 +3552,7 @@ export default function DesignerPage() {
                     <input
                       value={bindTargetModel}
                       onChange={(e) => setBindTargetModel(e.target.value)}
-                      className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 font-mono text-sm"
+                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm"
                     />
                   </label>
                   <label className="text-xs text-[#a8909e]">
@@ -3306,7 +3560,7 @@ export default function DesignerPage() {
                     <input
                       value={bindRelationField}
                       onChange={(e) => setBindRelationField(e.target.value)}
-                      className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 font-mono text-sm"
+                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm"
                     />
                   </label>
                   {(bindPlacement === "button_box" || bindMode === "create_smart") && (
@@ -3315,7 +3569,7 @@ export default function DesignerPage() {
                       <input
                         value={bindIcon}
                         onChange={(e) => setBindIcon(e.target.value)}
-                        className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 font-mono text-sm"
+                        className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm"
                       />
                     </label>
                   )}
@@ -3339,7 +3593,7 @@ export default function DesignerPage() {
                           value={bindOne2manyField}
                           onChange={(e) => setBindOne2manyField(e.target.value)}
                           placeholder="x_loan_ids"
-                          className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 font-mono text-sm"
+                          className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm"
                         />
                       </label>
                       <label className="text-xs text-[#a8909e]">
@@ -3348,7 +3602,7 @@ export default function DesignerPage() {
                           value={bindCountFieldName}
                           onChange={(e) => setBindCountFieldName(e.target.value)}
                           placeholder="x_loan_count"
-                          className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 font-mono text-sm"
+                          className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm"
                         />
                       </label>
                       <label className="text-xs text-[#a8909e] sm:col-span-2">
@@ -3357,7 +3611,7 @@ export default function DesignerPage() {
                           value={bindSmartConfirmPhrase}
                           onChange={(e) => setBindSmartConfirmPhrase(e.target.value)}
                           placeholder={CONFIRM_PHRASE}
-                          className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 text-sm"
+                          className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
                         />
                       </label>
                     </>
@@ -3373,7 +3627,7 @@ export default function DesignerPage() {
                       onChange={(e) =>
                         setBindActivityTypeId(e.target.value ? Number(e.target.value) : "")
                       }
-                      className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 text-sm"
+                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
                     >
                       <option value="">Select…</option>
                       {activityTypes.map((t) => (
@@ -3388,7 +3642,7 @@ export default function DesignerPage() {
                     <input
                       value={bindActivitySummary}
                       onChange={(e) => setBindActivitySummary(e.target.value)}
-                      className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 text-sm"
+                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
                     />
                   </label>
                   <label className="text-xs text-[#a8909e] sm:col-span-2">
@@ -3396,7 +3650,7 @@ export default function DesignerPage() {
                     <input
                       value={bindActivityNote}
                       onChange={(e) => setBindActivityNote(e.target.value)}
-                      className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 text-sm"
+                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
                     />
                   </label>
                 </>
@@ -3410,7 +3664,7 @@ export default function DesignerPage() {
                       onChange={(e) =>
                         setBindMailTemplateId(e.target.value ? Number(e.target.value) : "")
                       }
-                      className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 text-sm"
+                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
                     >
                       <option value="">None</option>
                       {mailTemplates.map((t) => (
@@ -3427,7 +3681,7 @@ export default function DesignerPage() {
                       onChange={(e) =>
                         setBindMailMethod(e.target.value as "email" | "comment" | "note")
                       }
-                      className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 text-sm"
+                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
                     >
                       <option value="email">email</option>
                       <option value="comment">comment</option>
@@ -3439,7 +3693,7 @@ export default function DesignerPage() {
                     <input
                       value={bindMailSubject}
                       onChange={(e) => setBindMailSubject(e.target.value)}
-                      className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 text-sm"
+                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
                     />
                   </label>
                   <label className="text-xs text-[#a8909e]">
@@ -3447,7 +3701,7 @@ export default function DesignerPage() {
                     <input
                       value={bindMailEmailTo}
                       onChange={(e) => setBindMailEmailTo(e.target.value)}
-                      className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 text-sm"
+                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
                     />
                   </label>
                   <label className="text-xs text-[#a8909e] sm:col-span-2">
@@ -3456,7 +3710,7 @@ export default function DesignerPage() {
                       value={bindMailBody}
                       onChange={(e) => setBindMailBody(e.target.value)}
                       rows={3}
-                      className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 font-mono text-xs"
+                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-xs"
                     />
                   </label>
                 </>
@@ -3469,7 +3723,7 @@ export default function DesignerPage() {
                     onChange={(e) =>
                       setSelectedActionId(e.target.value ? Number(e.target.value) : "")
                     }
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 text-sm"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
                   >
                     <option value="">Select…</option>
                     {bindableActions.map((a) => (
@@ -3482,7 +3736,7 @@ export default function DesignerPage() {
                 </label>
               )}
             </div>
-            <p className="mt-2 text-xs text-[#8f7a88]">
+            <p className="mt-2 text-xs text-muted">
               Uses type=&quot;action&quot; + action id. Python methods (type=object) need Option A
               modules. Code/webhook server actions stay blocked here. Form-bound mail/activity
               live here; model automations live under Automations.
@@ -3504,14 +3758,14 @@ export default function DesignerPage() {
                       : undefined,
                   )
                 }
-                className="border border-[#c9a9c0] px-3 py-1.5 text-sm text-[#c9a9c0] disabled:opacity-50"
+                className="border border-border-subtle px-3 py-1.5 text-sm text-muted disabled:opacity-50"
               >
                 Create &amp; bind
               </button>
               <button
                 type="button"
                 onClick={() => setBindMode("closed")}
-                className="border border-[#3d2a38] px-3 py-1.5 text-sm text-[#d4c4ce]"
+                className="border border-border-subtle px-3 py-1.5 text-sm text-muted"
               >
                 Cancel
               </button>
@@ -3520,14 +3774,25 @@ export default function DesignerPage() {
         )}
 
         {showIframePreview && proxyPreviewUrl && (
-          <div className="mt-4 border border-[#3d2a38] bg-[#0c090b]">
+          <div className="mt-4 border border-border-subtle bg-surface">
             <OverlayEditor
               iframeRef={previewIframeRef}
-              onSelect={(fieldName) => {
-                setNotice(`Overlay selected field: ${fieldName}`);
+              connectionId={connectionId}
+              model={model}
+              viewType={viewType}
+              fields={fields}
+              onSaved={({ snapshotId, viewId }) => {
+                if (snapshotId) setLastSnapshotId(snapshotId);
+                setPreviewKey((k) => k + 1);
+                setNotice(
+                  viewId
+                    ? `Overlay saved inherit view #${viewId}. Preview reloaded.`
+                    : "Overlay saved — preview reloaded.",
+                );
+                void refreshSnapshots();
               }}
             />
-            <p className="border-b border-[#3d2a38] px-3 py-2 text-xs text-[#8f7a88]">
+            <p className="border-b border-border-subtle px-3 py-2 text-xs text-muted">
               Iframe preview is best-effort — use Open in Odoo for the authoritative client.
             </p>
             <iframe
@@ -3542,26 +3807,26 @@ export default function DesignerPage() {
         )}
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[220px_1fr_280px]">
-          <aside className="border border-[#3d2a38] bg-[#0f1a16]/70 p-4">
-            <p className="text-xs uppercase tracking-wide text-[#8f7a88]">Fields</p>
-            <div className="mt-3 space-y-2 border border-[#3d2a38] p-2 text-xs">
-              <p className="text-[#8f7a88]">Create field on model</p>
+          <aside className="border border-border-subtle bg-surface-muted/70 p-4">
+            <p className="text-xs uppercase tracking-wide text-muted">Fields</p>
+            <div className="mt-3 space-y-2 border border-border-subtle p-2 text-xs">
+              <p className="text-muted">Create field on model</p>
               <input
                 value={newFieldName}
                 onChange={(e) => setNewFieldName(e.target.value)}
                 placeholder="x_my_field"
-                className="w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono"
+                className="w-full border border-border-subtle bg-surface px-2 py-1 font-mono"
               />
               <input
                 value={newFieldLabel}
                 onChange={(e) => setNewFieldLabel(e.target.value)}
                 placeholder="Label"
-                className="w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1"
+                className="w-full border border-border-subtle bg-surface px-2 py-1"
               />
               <select
                 value={newFieldType}
                 onChange={(e) => setNewFieldType(e.target.value)}
-                className="w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1"
+                className="w-full border border-border-subtle bg-surface px-2 py-1"
               >
                 <option value="char">char</option>
                 <option value="text">text</option>
@@ -3580,7 +3845,7 @@ export default function DesignerPage() {
                   onChange={(e) =>
                     setInjectStrategy(e.target.value as "inherit" | "mutate")
                   }
-                  className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1 text-sm text-[#faf6f9]"
+                  className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 text-sm text-[#faf6f9]"
                 >
                   <option
                     value="inherit"
@@ -3627,7 +3892,7 @@ export default function DesignerPage() {
                 value={confirmPhrase}
                 onChange={(e) => setConfirmPhrase(e.target.value)}
                 placeholder="I understand the risks"
-                className="w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1"
+                className="w-full border border-border-subtle bg-surface px-2 py-1"
               />
               <button
                 type="button"
@@ -3646,7 +3911,7 @@ export default function DesignerPage() {
                     injectStrategyCapabilityId(injectStrategy),
                   ) ?? undefined
                 }
-                className="w-full border border-[#c9a9c0] px-2 py-1 text-[#c9a9c0] disabled:opacity-40"
+                className="w-full border border-border-subtle px-2 py-1 text-muted disabled:opacity-40"
                 onClick={() => void createNewFieldWithInject()}
               >
                 Create + inject
@@ -3666,21 +3931,21 @@ export default function DesignerPage() {
                     if (viewType === "search") addSearchField(f.name);
                     if (viewType === "kanban") addKanbanField(f.name);
                   }}
-                  className="cursor-grab border border-transparent px-2 py-1.5 hover:border-[#3d2a38]"
+                  className="cursor-grab border border-transparent px-2 py-1.5 hover:border-border-subtle"
                 >
-                  <span className="font-mono text-[#c9a9c0]">{f.name}</span>
-                  <span className="block text-xs text-[#8f7a88]">
+                  <span className="font-mono text-muted">{f.name}</span>
+                  <span className="block text-xs text-muted">
                     {f.field_description} · {f.ttype}
                   </span>
                 </li>
               ))}
               {fields.length === 0 && (
-                <li className="text-[#8f7a88]">Load a model to populate.</li>
+                <li className="text-muted">Load a model to populate.</li>
               )}
             </ul>
           </aside>
 
-          <section className="border border-[#3d2a38] bg-[#0f1a16]/50 p-4">
+          <section className="border border-border-subtle bg-surface-muted/50 p-4">
             <div className="mb-4 flex flex-wrap gap-2">
               {viewType === "form" && (
                 <>
@@ -3689,8 +3954,8 @@ export default function DesignerPage() {
                     onClick={addGroup}
                     className={`border px-3 py-1 text-xs ${
                       toolbarFlash === "group"
-                        ? "border-[#c9a9c0] bg-[#3d2a38] text-[#f5eef3]"
-                        : "border-[#3d2a38] text-[#d4c4ce]"
+                        ? "border-border-subtle bg-surface-muted text-ink"
+                        : "border-border-subtle text-muted"
                     }`}
                   >
                     {toolbarFlash === "group" ? "✓ Group added" : "+ Group"}
@@ -3700,8 +3965,8 @@ export default function DesignerPage() {
                     onClick={addNotebook}
                     className={`border px-3 py-1 text-xs ${
                       toolbarFlash === "notebook"
-                        ? "border-[#c9a9c0] bg-[#3d2a38] text-[#f5eef3]"
-                        : "border-[#3d2a38] text-[#d4c4ce]"
+                        ? "border-border-subtle bg-surface-muted text-ink"
+                        : "border-border-subtle text-muted"
                     }`}
                   >
                     {toolbarFlash === "notebook" ? "✓ Notebook added" : "+ Notebook"}
@@ -3719,8 +3984,8 @@ export default function DesignerPage() {
                     }}
                     className={`border px-3 py-1 text-xs disabled:opacity-40 ${
                       toolbarFlash === "header"
-                        ? "border-[#c9a9c0] bg-[#3d2a38] text-[#f5eef3]"
-                        : "border-[#c9a9c0] text-[#c9a9c0]"
+                        ? "border-border-subtle bg-surface-muted text-ink"
+                        : "border-border-subtle text-muted"
                     }`}
                   >
                     {toolbarFlash === "header" ? "✓ Header binder" : "+ Header button"}
@@ -3738,8 +4003,8 @@ export default function DesignerPage() {
                     }}
                     className={`border px-3 py-1 text-xs disabled:opacity-40 ${
                       toolbarFlash === "smart"
-                        ? "border-[#c9a9c0] bg-[#3d2a38] text-[#f5eef3]"
-                        : "border-[#c9a9c0] text-[#c9a9c0]"
+                        ? "border-border-subtle bg-surface-muted text-ink"
+                        : "border-border-subtle text-muted"
                     }`}
                   >
                     {toolbarFlash === "smart" ? "✓ Smart binder" : "+ Smart button"}
@@ -3752,8 +4017,8 @@ export default function DesignerPage() {
                     }}
                     className={`border px-3 py-1 text-xs ${
                       toolbarFlash === "inline"
-                        ? "border-[#c9a9c0] bg-[#3d2a38] text-[#f5eef3]"
-                        : "border-[#3d2a38] text-[#d4c4ce]"
+                        ? "border-border-subtle bg-surface-muted text-ink"
+                        : "border-border-subtle text-muted"
                     }`}
                   >
                     {toolbarFlash === "inline" ? "✓ Inline binder" : "+ Inline button"}
@@ -3764,7 +4029,7 @@ export default function DesignerPage() {
 
             {viewType === "form" && (
               <div className="mb-4 space-y-3">
-                <div className="flex flex-wrap gap-4 border border-dashed border-[#4a3550] p-3 text-sm text-[#d4c4ce]">
+                <div className="flex flex-wrap gap-4 border border-dashed border-[#4a3550] p-3 text-sm text-muted">
                   <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -3804,7 +4069,7 @@ export default function DesignerPage() {
                     <select
                       value={statusbarField}
                       onChange={(e) => setStatusbarField(e.target.value)}
-                      className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 font-mono text-sm"
+                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm"
                     >
                       <option value="">(none)</option>
                       {fields
@@ -3823,27 +4088,27 @@ export default function DesignerPage() {
                       onChange={(e) => setStatusbarVisible(e.target.value)}
                       placeholder="draft,confirmed,done"
                       disabled={!statusbarField}
-                      className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 font-mono text-sm disabled:opacity-40"
+                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm disabled:opacity-40"
                     />
                   </label>
                 </div>
                 <div className="min-h-12 border border-dashed border-[#4a3550] p-3">
-                  <p className="mb-2 text-xs uppercase text-[#8f7a88]">Header buttons</p>
+                  <p className="mb-2 text-xs uppercase text-muted">Header buttons</p>
                   <ul className="space-y-1">
                     {headerButtons.map((b) => (
                       <li
                         key={b.id}
-                        className="flex items-center justify-between bg-[#0c090b] px-2 py-1.5 text-sm"
+                        className="flex items-center justify-between bg-surface px-2 py-1.5 text-sm"
                       >
                         <span className="text-[#c9b89f]">
                           {b.string}{" "}
-                          <span className="font-mono text-xs text-[#8f7a88]">
+                          <span className="font-mono text-xs text-muted">
                             type={b.type || "action"} name={b.name || "?"}
                           </span>
                         </span>
                         <button
                           type="button"
-                          className="text-xs text-[#f0a8a0]"
+                          className="text-xs text-danger"
                           onClick={() =>
                             setHeaderButtons((all) => all.filter((x) => x.id !== b.id))
                           }
@@ -3853,30 +4118,30 @@ export default function DesignerPage() {
                       </li>
                     ))}
                     {headerButtons.length === 0 && (
-                      <li className="text-xs text-[#8f7a88]">
+                      <li className="text-xs text-muted">
                         Bound to real ir.actions.* via type=&quot;action&quot;.
                       </li>
                     )}
                   </ul>
                 </div>
                 <div className="min-h-12 border border-dashed border-[#4a3550] p-3">
-                  <p className="mb-2 text-xs uppercase text-[#8f7a88]">Smart button box</p>
+                  <p className="mb-2 text-xs uppercase text-muted">Smart button box</p>
                   <ul className="space-y-1">
                     {buttonBox.map((b) => (
                       <li
                         key={b.id}
-                        className="flex items-center justify-between bg-[#0c090b] px-2 py-1.5 text-sm"
+                        className="flex items-center justify-between bg-surface px-2 py-1.5 text-sm"
                       >
                         <span className="text-[#c9b89f]">
                           {b.string}{" "}
-                          <span className="font-mono text-xs text-[#8f7a88]">
+                          <span className="font-mono text-xs text-muted">
                             {b.icon || "fa-list"} · action {b.name || "?"}
                             {b.count_field ? ` · count ${b.count_field}` : ""}
                           </span>
                         </span>
                         <button
                           type="button"
-                          className="text-xs text-[#f0a8a0]"
+                          className="text-xs text-danger"
                           onClick={() => setButtonBox((all) => all.filter((x) => x.id !== b.id))}
                         >
                           remove
@@ -3884,7 +4149,7 @@ export default function DesignerPage() {
                       </li>
                     ))}
                     {buttonBox.length === 0 && (
-                      <li className="text-xs text-[#8f7a88]">
+                      <li className="text-xs text-muted">
                         Opens related records (window action + active_id domain).
                       </li>
                     )}
@@ -3903,22 +4168,22 @@ export default function DesignerPage() {
                       onDragOver={(e) => e.preventDefault()}
                       onDrop={() => dropOnGroup(child.id)}
                       className={`mb-4 min-h-24 border border-dashed border-[#4a3550] p-3 ${
-                        canvasFlashId === child.id ? "ring-2 ring-[#c9a9c0]" : ""
+                        canvasFlashId === child.id ? "ring-2 ring-accent" : ""
                       }`}
                     >
                       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                        <label className="flex min-w-0 flex-1 items-center gap-2 text-xs uppercase text-[#8f7a88]">
+                        <label className="flex min-w-0 flex-1 items-center gap-2 text-xs uppercase text-muted">
                           Group
                           <input
                             value={child.string || ""}
                             onChange={(e) => renameGroup(child.id, e.target.value)}
-                            className="min-w-0 flex-1 border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-sans text-sm normal-case text-[#d4c4ce]"
+                            className="min-w-0 flex-1 border border-border-subtle bg-surface px-2 py-1 font-sans text-sm normal-case text-muted"
                             placeholder="untitled"
                           />
                         </label>
                         <button
                           type="button"
-                          className="shrink-0 text-xs text-[#f0a8a0]"
+                          className="shrink-0 text-xs text-danger"
                           onClick={() => removeFormChild(child.id)}
                         >
                           remove group
@@ -3928,8 +4193,8 @@ export default function DesignerPage() {
                         {child.children.map((f) => (
                           <li
                             key={f.id}
-                            className={`flex items-center justify-between bg-[#0c090b] px-2 py-1.5 text-sm ${
-                              selected?.fieldId === f.id ? "ring-1 ring-[#c9a9c0]" : ""
+                            className={`flex items-center justify-between bg-surface px-2 py-1.5 text-sm ${
+                              selected?.fieldId === f.id ? "ring-1 ring-accent" : ""
                             }`}
                           >
                             <button
@@ -3946,20 +4211,20 @@ export default function DesignerPage() {
                               {f.kind === "button" ? (
                                 <span className="text-[#c9b89f]">
                                   Btn · {f.string}{" "}
-                                  <span className="font-mono text-xs text-[#8f7a88]">
+                                  <span className="font-mono text-xs text-muted">
                                     {f.type || "action"}:{f.name || "?"}
                                   </span>
                                 </span>
                               ) : (
                                 <>
-                                  <span className="font-mono text-[#c9a9c0]">{f.name}</span>
+                                  <span className="font-mono text-muted">{f.name}</span>
                                   {f.string ? ` — ${f.string}` : ""}
                                 </>
                               )}
                             </button>
                             <button
                               type="button"
-                              className="text-xs text-[#f0a8a0]"
+                              className="text-xs text-danger"
                               onClick={() => removeFormField("group", child.id, f.id)}
                             >
                               remove
@@ -3967,7 +4232,7 @@ export default function DesignerPage() {
                           </li>
                         ))}
                         {child.children.length === 0 && (
-                          <li className="text-xs text-[#8f7a88]">Drop fields here</li>
+                          <li className="text-xs text-muted">Drop fields here</li>
                         )}
                       </ul>
                     </div>
@@ -3977,23 +4242,23 @@ export default function DesignerPage() {
                   <div
                     key={child.id}
                     data-canvas-id={child.id}
-                    className={`mb-4 border border-[#3d2a38] p-3 ${
-                      canvasFlashId === child.id ? "ring-2 ring-[#c9a9c0]" : ""
+                    className={`mb-4 border border-border-subtle p-3 ${
+                      canvasFlashId === child.id ? "ring-2 ring-accent" : ""
                     }`}
                   >
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs uppercase text-[#8f7a88]">Notebook</p>
+                      <p className="text-xs uppercase text-muted">Notebook</p>
                       <div className="flex gap-3">
                         <button
                           type="button"
-                          className="text-xs text-[#c9a9c0]"
+                          className="text-xs text-muted"
                           onClick={() => addPageToNotebook(child.id)}
                         >
                           + Page
                         </button>
                         <button
                           type="button"
-                          className="text-xs text-[#f0a8a0]"
+                          className="text-xs text-danger"
                           onClick={() => removeFormChild(child.id)}
                         >
                           remove notebook
@@ -4007,24 +4272,24 @@ export default function DesignerPage() {
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={() => dropOnPage(child.id, page.id)}
                         className={`mb-3 min-h-20 border border-dashed border-[#4a3550] p-3 ${
-                          canvasFlashId === page.id ? "ring-2 ring-[#c9a9c0]" : ""
+                          canvasFlashId === page.id ? "ring-2 ring-accent" : ""
                         }`}
                       >
                         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                          <label className="flex min-w-0 flex-1 items-center gap-2 text-sm text-[#d4c4ce]">
+                          <label className="flex min-w-0 flex-1 items-center gap-2 text-sm text-muted">
                             Page
                             <input
                               value={page.string}
                               onChange={(e) =>
                                 renameNotebookPage(child.id, page.id, e.target.value)
                               }
-                              className="min-w-0 flex-1 border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono text-sm"
+                              className="min-w-0 flex-1 border border-border-subtle bg-surface px-2 py-1 font-mono text-sm"
                               placeholder="Tab title"
                             />
                           </label>
                           <button
                             type="button"
-                            className="shrink-0 text-xs text-[#f0a8a0]"
+                            className="shrink-0 text-xs text-danger"
                             onClick={() => removeNotebookPage(child.id, page.id)}
                           >
                             remove page
@@ -4034,8 +4299,8 @@ export default function DesignerPage() {
                           {page.children.map((f) => (
                             <li
                               key={f.id}
-                              className={`flex items-center justify-between bg-[#0c090b] px-2 py-1.5 text-sm ${
-                                selected?.fieldId === f.id ? "ring-1 ring-[#c9a9c0]" : ""
+                              className={`flex items-center justify-between bg-surface px-2 py-1.5 text-sm ${
+                                selected?.fieldId === f.id ? "ring-1 ring-accent" : ""
                               }`}
                             >
                               <button
@@ -4056,10 +4321,10 @@ export default function DesignerPage() {
                                   <span className="text-[#c9b89f]">Btn · {f.string}</span>
                                 ) : (
                                   <>
-                                    <span className="text-[#d4c4ce]">
+                                    <span className="text-muted">
                                       {resolveFieldLabel(f.name, f.string, fields) || f.name}
                                     </span>
-                                    <span className="ml-2 font-mono text-xs text-[#8f7a88]">
+                                    <span className="ml-2 font-mono text-xs text-muted">
                                       {f.name}
                                     </span>
                                   </>
@@ -4067,7 +4332,7 @@ export default function DesignerPage() {
                               </button>
                               <button
                                 type="button"
-                                className="text-xs text-[#f0a8a0]"
+                                className="text-xs text-danger"
                                 onClick={() =>
                                   removeFormField("page", page.id, f.id, child.id)
                                 }
@@ -4077,7 +4342,7 @@ export default function DesignerPage() {
                             </li>
                           ))}
                           {page.children.length === 0 && (
-                            <li className="text-xs text-[#8f7a88]">Drop fields here</li>
+                            <li className="text-xs text-muted">Drop fields here</li>
                           )}
                         </ul>
                       </div>
@@ -4088,7 +4353,7 @@ export default function DesignerPage() {
 
             {viewType === "list" && (
               <div className="min-h-40 border border-dashed border-[#4a3550] p-3">
-                <div className="mb-3 flex flex-wrap gap-4 text-sm text-[#d4c4ce]">
+                <div className="mb-3 flex flex-wrap gap-4 text-sm text-muted">
                   <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -4131,53 +4396,53 @@ export default function DesignerPage() {
                     sample data
                   </label>
                 </div>
-                <label className="mb-3 block text-xs text-[#8f7a88]">
+                <label className="mb-3 block text-xs text-muted">
                   default_order (Sort By)
                   <input
                     value={listDefaultOrder}
                     onChange={(e) => setListDefaultOrder(e.target.value)}
                     placeholder="name asc, id desc"
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono"
                   />
                 </label>
                 <div className="mb-3 grid gap-2 sm:grid-cols-3">
-                  <label className="block text-xs text-[#8f7a88]">
+                  <label className="block text-xs text-muted">
                     decoration-danger
                     <input
                       value={listDecorationDanger}
                       onChange={(e) => setListDecorationDanger(e.target.value)}
                       placeholder="not x_returned"
-                      className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono"
+                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono"
                     />
                   </label>
-                  <label className="block text-xs text-[#8f7a88]">
+                  <label className="block text-xs text-muted">
                     decoration-info
                     <input
                       value={listDecorationInfo}
                       onChange={(e) => setListDecorationInfo(e.target.value)}
                       placeholder="x_priority == 'high'"
-                      className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono"
+                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono"
                     />
                   </label>
-                  <label className="block text-xs text-[#8f7a88]">
+                  <label className="block text-xs text-muted">
                     decoration-muted
                     <input
                       value={listDecorationMuted}
                       onChange={(e) => setListDecorationMuted(e.target.value)}
                       placeholder="x_active == False"
-                      className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono"
+                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono"
                     />
                   </label>
                 </div>
-                <p className="mb-2 text-xs uppercase text-[#8f7a88]">
+                <p className="mb-2 text-xs uppercase text-muted">
                   List columns (click a field to add)
                 </p>
                 <ul className="space-y-1">
                   {listColumns.map((f, idx) => (
                     <li
                       key={f.id}
-                      className={`flex items-center justify-between bg-[#0c090b] px-2 py-1.5 text-sm ${
-                        selected?.fieldId === f.id ? "ring-1 ring-[#c9a9c0]" : ""
+                      className={`flex items-center justify-between bg-surface px-2 py-1.5 text-sm ${
+                        selected?.fieldId === f.id ? "ring-1 ring-accent" : ""
                       }`}
                     >
                       <button
@@ -4186,11 +4451,11 @@ export default function DesignerPage() {
                         onClick={() => setSelected({ scope: "list", fieldId: f.id })}
                       >
                         {idx + 1}.{" "}
-                        <span className="font-mono text-[#c9a9c0]">{f.name}</span>
+                        <span className="font-mono text-muted">{f.name}</span>
                       </button>
                       <button
                         type="button"
-                        className="text-xs text-[#f0a8a0]"
+                        className="text-xs text-danger"
                         onClick={() => {
                           setListColumns((cols) => cols.filter((c) => c.id !== f.id));
                           setSelected((sel) => (sel?.fieldId === f.id ? null : sel));
@@ -4206,12 +4471,12 @@ export default function DesignerPage() {
 
             {viewType === "search" && (
               <div className="min-h-40 border border-dashed border-[#4a3550] p-3">
-                <p className="mb-2 text-xs uppercase text-[#8f7a88]">
+                <p className="mb-2 text-xs uppercase text-muted">
                   Search fields (click a field to add)
                 </p>
                 <button
                   type="button"
-                  className="mb-2 text-xs text-[#c9a9c0]"
+                  className="mb-2 text-xs text-muted"
                   onClick={() =>
                     setSearchFilters((f) => [
                       ...f,
@@ -4227,7 +4492,7 @@ export default function DesignerPage() {
                   + Add search filter
                 </button>
                 {searchFilters.length > 0 && (
-                  <ul className="mb-3 space-y-3 text-xs text-[#d4c4ce]">
+                  <ul className="mb-3 space-y-3 text-xs text-muted">
                     {searchFilters.map((f) => (
                       <li key={f.id} className="border border-[#1e2f29] p-2">
                         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -4240,11 +4505,11 @@ export default function DesignerPage() {
                                 ),
                               )
                             }
-                            className="min-w-[8rem] flex-1 border border-[#3d2a38] bg-[#0c090b] px-2 py-1"
+                            className="min-w-[8rem] flex-1 border border-border-subtle bg-surface px-2 py-1"
                           />
                           <button
                             type="button"
-                            className="text-[#c9a9c0]"
+                            className="text-muted"
                             onClick={() =>
                               setEditingFilterId((id) => (id === f.id ? null : f.id))
                             }
@@ -4253,7 +4518,7 @@ export default function DesignerPage() {
                           </button>
                           <button
                             type="button"
-                            className="text-[#f0a8a0]"
+                            className="text-danger"
                             onClick={() =>
                               setSearchFilters((all) => all.filter((x) => x.id !== f.id))
                             }
@@ -4271,7 +4536,7 @@ export default function DesignerPage() {
                             }
                           />
                         ) : (
-                          <span className="font-mono text-[#8f7a88]">{f.domain || "[]"}</span>
+                          <span className="font-mono text-muted">{f.domain || "[]"}</span>
                         )}
                       </li>
                     ))}
@@ -4279,10 +4544,10 @@ export default function DesignerPage() {
                 )}
                 <div className="mb-3 border border-[#1e2f29] p-2">
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs uppercase text-[#8f7a88]">Group-by filters</p>
+                    <p className="text-xs uppercase text-muted">Group-by filters</p>
                     <button
                       type="button"
-                      className="text-xs text-[#c9a9c0]"
+                      className="text-xs text-muted"
                       onClick={() =>
                         setSearchGroupByFilters((f) => [
                           ...f,
@@ -4299,14 +4564,14 @@ export default function DesignerPage() {
                     </button>
                   </div>
                   {searchGroupByFilters.length === 0 ? (
-                    <p className="text-xs text-[#8f7a88]">
+                    <p className="text-xs text-muted">
                       No group-by filters. Context example:{" "}
-                      <code className="text-[#c9a9c0]">{"{'group_by': 'x_stage'}"}</code>
+                      <code className="text-muted">{"{'group_by': 'x_stage'}"}</code>
                     </p>
                   ) : (
-                    <ul className="space-y-2 text-xs text-[#d4c4ce]">
+                    <ul className="space-y-2 text-xs text-muted">
                       {searchGroupByFilters.map((f) => (
-                        <li key={f.id} className="grid gap-2 border border-[#3d2a38] p-2 sm:grid-cols-3">
+                        <li key={f.id} className="grid gap-2 border border-border-subtle p-2 sm:grid-cols-3">
                           <label className="block">
                             name
                             <input
@@ -4318,7 +4583,7 @@ export default function DesignerPage() {
                                   ),
                                 )
                               }
-                              className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono"
+                              className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono"
                             />
                           </label>
                           <label className="block">
@@ -4332,7 +4597,7 @@ export default function DesignerPage() {
                                   ),
                                 )
                               }
-                              className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1"
+                              className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1"
                             />
                           </label>
                           <label className="block">
@@ -4349,12 +4614,12 @@ export default function DesignerPage() {
                                 )
                               }
                               placeholder="{'group_by': 'field'}"
-                              className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono"
+                              className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono"
                             />
                           </label>
                           <button
                             type="button"
-                            className="justify-self-start text-[#f0a8a0] sm:col-span-3"
+                            className="justify-self-start text-danger sm:col-span-3"
                             onClick={() =>
                               setSearchGroupByFilters((all) =>
                                 all.filter((x) => x.id !== f.id),
@@ -4372,8 +4637,8 @@ export default function DesignerPage() {
                   {searchFields.map((f, idx) => (
                     <li
                       key={f.id}
-                      className={`flex items-center justify-between bg-[#0c090b] px-2 py-1.5 text-sm ${
-                        selected?.fieldId === f.id ? "ring-1 ring-[#c9a9c0]" : ""
+                      className={`flex items-center justify-between bg-surface px-2 py-1.5 text-sm ${
+                        selected?.fieldId === f.id ? "ring-1 ring-accent" : ""
                       }`}
                     >
                       <button
@@ -4382,11 +4647,11 @@ export default function DesignerPage() {
                         onClick={() => setSelected({ scope: "search", fieldId: f.id })}
                       >
                         {idx + 1}.{" "}
-                        <span className="font-mono text-[#c9a9c0]">{f.name}</span>
+                        <span className="font-mono text-muted">{f.name}</span>
                       </button>
                       <button
                         type="button"
-                        className="text-xs text-[#f0a8a0]"
+                        className="text-xs text-danger"
                         onClick={() => {
                           setSearchFields((cols) => cols.filter((c) => c.id !== f.id));
                           setSelected((sel) => (sel?.fieldId === f.id ? null : sel));
@@ -4402,7 +4667,7 @@ export default function DesignerPage() {
 
             {viewType === "kanban" && (
               <div className="min-h-40 space-y-3">
-                <div className="flex flex-wrap gap-4 border border-dashed border-[#4a3550] p-3 text-sm text-[#d4c4ce]">
+                <div className="flex flex-wrap gap-4 border border-dashed border-[#4a3550] p-3 text-sm text-muted">
                   <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -4458,11 +4723,11 @@ export default function DesignerPage() {
                     onDropFieldName={(fieldName) => addKanbanField(fieldName)}
                   />
                 )}
-                <div className="border border-[#4a3550] bg-[#0c090b]/80 p-3">
-                  <p className="mb-2 text-xs uppercase tracking-wide text-[#8f7a88]">
+                <div className="border border-[#4a3550] bg-surface/80 p-3">
+                  <p className="mb-2 text-xs uppercase tracking-wide text-muted">
                     Card field order
                     {kanbanGroupBy ? (
-                      <span className="ml-2 rounded bg-[#714b67] px-1.5 py-0.5 text-[10px] normal-case text-white">
+                      <span className="ml-2 rounded bg-accent px-1.5 py-0.5 text-[10px] normal-case text-white">
                         group by {kanbanGroupBy}
                       </span>
                     ) : null}
@@ -4473,7 +4738,7 @@ export default function DesignerPage() {
                         key={f.id}
                         className={`flex items-center justify-between gap-2 px-2 py-1.5 text-sm ${
                           selected?.scope === "kanban" && selected.fieldId === f.id
-                            ? "bg-[#1a2e28] ring-1 ring-[#c9a9c0]"
+                            ? "bg-surface-muted ring-1 ring-accent"
                             : "bg-[#0c1210]"
                         }`}
                       >
@@ -4484,10 +4749,10 @@ export default function DesignerPage() {
                             setSelected({ scope: "kanban", fieldId: f.id })
                           }
                         >
-                          <span className="text-[#8f7a88]">{idx + 1}.</span>{" "}
-                          <span className="font-mono text-[#c9a9c0]">{f.name}</span>
+                          <span className="text-muted">{idx + 1}.</span>{" "}
+                          <span className="font-mono text-muted">{f.name}</span>
                           {f.string ? (
-                            <span className="ml-2 text-xs text-[#8f7a88]">
+                            <span className="ml-2 text-xs text-muted">
                               {f.string}
                             </span>
                           ) : null}
@@ -4495,7 +4760,7 @@ export default function DesignerPage() {
                         <span className="flex shrink-0 items-center gap-2">
                           <button
                             type="button"
-                            className="text-xs text-[#c9a9c0] disabled:opacity-30"
+                            className="text-xs text-muted disabled:opacity-30"
                             disabled={idx === 0}
                             aria-label={`Move ${f.name} up`}
                             onClick={() => moveKanbanField(f.id, -1)}
@@ -4504,7 +4769,7 @@ export default function DesignerPage() {
                           </button>
                           <button
                             type="button"
-                            className="text-xs text-[#c9a9c0] disabled:opacity-30"
+                            className="text-xs text-muted disabled:opacity-30"
                             disabled={idx >= kanbanFields.length - 1}
                             aria-label={`Move ${f.name} down`}
                             onClick={() => moveKanbanField(f.id, 1)}
@@ -4513,7 +4778,7 @@ export default function DesignerPage() {
                           </button>
                           <button
                             type="button"
-                            className="text-xs text-[#f0a8a0]"
+                            className="text-xs text-danger"
                             onClick={() => {
                               setKanbanFields((cols) =>
                                 cols.filter((c) => c.id !== f.id),
@@ -4531,7 +4796,7 @@ export default function DesignerPage() {
                       </li>
                     ))}
                     {kanbanFields.length === 0 && (
-                      <li className="text-xs text-[#8f7a88]">
+                      <li className="text-xs text-muted">
                         Click or drop fields from the palette to build the card.
                       </li>
                     )}
@@ -4542,13 +4807,13 @@ export default function DesignerPage() {
           </section>
 
           <aside className="space-y-4">
-            <div className="border border-[#3d2a38] bg-[#0f1a16]/70 p-4">
-              <p className="text-xs uppercase tracking-wide text-[#8f7a88]">
+            <div className="border border-border-subtle bg-surface-muted/70 p-4">
+              <p className="text-xs uppercase tracking-wide text-muted">
                 Field properties
               </p>
               {selectedField ? (
                 <>
-                  <p className="mt-3 font-mono text-[#c9a9c0]">{selectedField.name}</p>
+                  <p className="mt-3 font-mono text-muted">{selectedField.name}</p>
                   <DesignerFieldInspector
                     field={selectedField}
                     widgetOptions={inspectorWidgets}
@@ -4558,14 +4823,14 @@ export default function DesignerPage() {
                   />
                 </>
               ) : (
-                <p className="mt-3 text-xs text-[#8f7a88]">
+                <p className="mt-3 text-xs text-muted">
                   Select a field on the canvas to edit properties.
                 </p>
               )}
             </div>
 
-            <div className="border border-[#3d2a38] bg-[#0f1a16]/70 p-4">
-              <p className="text-xs uppercase tracking-wide text-[#8f7a88]">
+            <div className="border border-border-subtle bg-surface-muted/70 p-4">
+              <p className="text-xs uppercase tracking-wide text-muted">
                 XPath inherit editor
               </p>
               <div className="mt-3 space-y-2 text-sm">
@@ -4574,7 +4839,7 @@ export default function DesignerPage() {
                   <input
                     value={xpathExpr}
                     onChange={(e) => setXpathExpr(e.target.value)}
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 font-mono text-xs"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-xs"
                   />
                 </label>
                 <label className="block text-xs text-[#a8909e]">
@@ -4591,7 +4856,7 @@ export default function DesignerPage() {
                           | "attributes",
                       )
                     }
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 text-xs"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-xs"
                   >
                     <option value="inside">inside</option>
                     <option value="after">after</option>
@@ -4606,7 +4871,7 @@ export default function DesignerPage() {
                     value={xpathBody}
                     onChange={(e) => setXpathBody(e.target.value)}
                     rows={4}
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 font-mono text-xs"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-xs"
                   />
                 </label>
                 <div className="flex flex-wrap gap-2">
@@ -4614,7 +4879,7 @@ export default function DesignerPage() {
                     type="button"
                     disabled={busy}
                     onClick={() => void runXpathPreview()}
-                    className="border border-[#c9a9c0] px-2 py-1 text-xs text-[#c9a9c0] disabled:opacity-40"
+                    className="border border-border-subtle px-2 py-1 text-xs text-muted disabled:opacity-40"
                   >
                     Preview
                   </button>
@@ -4626,7 +4891,7 @@ export default function DesignerPage() {
                       setArchOverride(xpathArchPreview);
                       setNotice("Arch override set from XPath preview. Save will use inherit arch.");
                     }}
-                    className="border border-[#3d2a38] px-2 py-1 text-xs text-[#d4c4ce] disabled:opacity-40"
+                    className="border border-border-subtle px-2 py-1 text-xs text-muted disabled:opacity-40"
                   >
                     Use as arch override
                   </button>
@@ -4636,7 +4901,7 @@ export default function DesignerPage() {
                     onClick={() =>
                       void onSave({ arch: xpathArchPreview, strategy: "inherit" })
                     }
-                    className="border border-[#c9a9c0] px-2 py-1 text-xs text-[#c9a9c0] disabled:opacity-40"
+                    className="border border-border-subtle px-2 py-1 text-xs text-muted disabled:opacity-40"
                   >
                     Save xpath inherit
                   </button>
@@ -4647,44 +4912,44 @@ export default function DesignerPage() {
                         setArchOverride(null);
                         setNotice("Cleared arch override — Save uses canvas spec again.");
                       }}
-                      className="border border-[#f0a8a0] px-2 py-1 text-xs text-[#f0a8a0]"
+                      className="border border-danger/50 px-2 py-1 text-xs text-danger"
                     >
                       Clear override
                     </button>
                   )}
                 </div>
                 {xpathIssues.length > 0 && (
-                  <ul className="space-y-1 text-xs text-[#f0a8a0]">
+                  <ul className="space-y-1 text-xs text-danger">
                     {xpathIssues.map((issue, i) => (
                       <li key={i}>• {issue}</li>
                     ))}
                   </ul>
                 )}
                 {xpathArchPreview && (
-                  <pre className="max-h-32 overflow-auto text-xs text-[#d4c4ce]">
+                  <pre className="max-h-32 overflow-auto text-xs text-muted">
                     {xpathArchPreview}
                   </pre>
                 )}
               </div>
             </div>
 
-            <div className="border border-[#3d2a38] bg-[#0c090b] p-4">
-              <p className="text-xs uppercase tracking-wide text-[#8f7a88]">
+            <div className="border border-border-subtle bg-surface p-4">
+              <p className="text-xs uppercase tracking-wide text-muted">
                 Generated arch
               </p>
-              <pre className="mt-3 max-h-48 overflow-auto text-xs text-[#d4c4ce]">
+              <pre className="mt-3 max-h-48 overflow-auto text-xs text-muted">
                 {arch || "—"}
               </pre>
             </div>
 
-            <div className="border border-[#3d2a38] bg-[#0f1a16]/70 p-4">
+            <div className="border border-border-subtle bg-surface-muted/70 p-4">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs uppercase tracking-wide text-[#8f7a88]">
+                <p className="text-xs uppercase tracking-wide text-muted">
                   Snapshots / undo
                 </p>
                 <button
                   type="button"
-                  className="text-xs text-[#c9a9c0] hover:underline"
+                  className="text-xs text-muted hover:underline"
                   onClick={() => refreshSnapshots()}
                 >
                   Refresh
@@ -4692,7 +4957,7 @@ export default function DesignerPage() {
               </div>
               <ul className="mt-3 max-h-48 space-y-2 overflow-auto text-xs">
                 {snapshots.length === 0 && (
-                  <li className="text-[#8f7a88]">No view snapshots yet.</li>
+                  <li className="text-muted">No view snapshots yet.</li>
                 )}
                 {snapshots.map((s) => (
                   <li
@@ -4701,7 +4966,7 @@ export default function DesignerPage() {
                   >
                     <div>
                       <p className="text-[#faf6f9]">{s.label}</p>
-                      <p className="text-[#8f7a88]">
+                      <p className="text-muted">
                         {s.reversible} · {s.created_at}
                       </p>
                     </div>
@@ -4709,7 +4974,7 @@ export default function DesignerPage() {
                       type="button"
                       disabled={busy || s.reversible === "no"}
                       onClick={() => onRollback(s.id)}
-                      className="shrink-0 border border-[#c9a9c0] px-2 py-0.5 text-[#c9a9c0] disabled:opacity-40"
+                      className="shrink-0 border border-border-subtle px-2 py-0.5 text-muted disabled:opacity-40"
                     >
                       Undo
                     </button>

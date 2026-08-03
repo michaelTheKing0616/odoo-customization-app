@@ -1,0 +1,27 @@
+.......Fs.                                                               [100%]
+=================================== FAILURES ===================================
+____________________ test_inspection_checklist_live_odoo19 _____________________
+
+    @pytest.mark.integration
+    def test_inspection_checklist_live_odoo19() -> None:
+        """Live docker-19: apply inspection checklist onto project.task when Odoo is up."""
+        import os
+    
+        if not os.environ.get("ODOO_URL"):
+            pytest.skip("ODOO_URL not set")
+    
+        from odoo_client import CreateFieldRequest, FieldType
+        from odoo_client.client import OdooClient
+    
+        url = os.environ.get("ODOO_URL", "http://127.0.0.1:8069")
+        db = os.environ.get("ODOO_DB", "odoo_dev")
+        user = os.environ.get("ODOO_USER", "admin")
+        password = os.environ.get("ODOO_PASSWORD", "admin")
+>       client = OdooClient(url=url, db=db, username=user, password=password)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: OdooClient.__init__() got an unexpected keyword argument 'url'
+
+tests/test_ai_components_live.py:98: TypeError
+=========================== short test summary info ============================
+FAILED tests/test_ai_components_live.py::test_inspection_checklist_live_odoo19
+1 failed, 8 passed, 1 skipped, 1 deselected in 54.04s

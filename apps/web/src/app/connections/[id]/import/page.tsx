@@ -41,7 +41,7 @@ function SeedPackPicker({
       .catch((err: Error) => setError(err.message));
   }, [connectionId]);
 
-  if (error) return <p className="text-xs text-[#f0a8a0]">{error}</p>;
+  if (error) return <p className="text-xs text-danger">{error}</p>;
   if (!packs.length) return <p className="text-xs text-muted">Loading packs…</p>;
 
   return (
@@ -298,7 +298,7 @@ export default function DataImportPage() {
             <button
               type="button"
               onClick={() => void downloadTemplate()}
-              className="border border-[var(--odoo-primary)] px-3 py-1.5 text-sm text-[var(--odoo-primary)]"
+              className="border border-accent px-3 py-1.5 text-sm text-accent"
             >
               Download template
             </button>
@@ -312,7 +312,7 @@ export default function DataImportPage() {
               type="button"
               disabled={busy || !file}
               onClick={() => void onPreview()}
-              className="bg-[var(--odoo-primary)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+              className="bg-accent px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
             >
               Parse file
             </button>
@@ -380,7 +380,7 @@ export default function DataImportPage() {
                   type="button"
                   disabled={busy}
                   onClick={() => void runCommit(true)}
-                  className="border border-[var(--odoo-primary)] px-3 py-1.5 text-sm text-[var(--odoo-primary)] disabled:opacity-50"
+                  className="border border-accent px-3 py-1.5 text-sm text-accent disabled:opacity-50"
                 >
                   Dry-run
                 </button>
@@ -407,7 +407,7 @@ export default function DataImportPage() {
               {lastResult.error_csv && (
                 <button
                   type="button"
-                  className="mt-2 text-[var(--odoo-primary)] underline"
+                  className="mt-2 text-accent underline"
                   onClick={() => {
                     const blob = new Blob([lastResult.error_csv!], {
                       type: "text/csv",
@@ -456,7 +456,7 @@ export default function DataImportPage() {
               type="button"
               disabled={busy || !imgManifest || !imgZip}
               onClick={() => void onImagePreview()}
-              className="self-end border border-[var(--odoo-primary)] px-3 py-1.5 text-sm text-[var(--odoo-primary)] disabled:opacity-50"
+              className="self-end border border-accent px-3 py-1.5 text-sm text-accent disabled:opacity-50"
             >
               Preview manifest
             </button>
@@ -490,7 +490,7 @@ export default function DataImportPage() {
                   type="button"
                   disabled={busy}
                   onClick={() => void runImageCommit(true)}
-                  className="border border-[var(--odoo-primary)] px-3 py-1.5 text-sm text-[var(--odoo-primary)] disabled:opacity-50"
+                  className="border border-accent px-3 py-1.5 text-sm text-accent disabled:opacity-50"
                 >
                   Dry-run images
                 </button>

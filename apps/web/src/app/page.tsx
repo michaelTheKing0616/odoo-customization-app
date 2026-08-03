@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/layout-primitives";
 import { StatusPill } from "@/components/ui/StatusPill";
@@ -17,6 +18,24 @@ const features = [
     body: "Grounded answers from Odoo docs with citations — explain fields, triggers, and errors in context.",
   },
 ];
+
+const screenshots = [
+  {
+    src: "/landing/designer-form.png",
+    alt: "Form view designer with field palette and Odoo-style canvas",
+    caption: "Form designer",
+  },
+  {
+    src: "/landing/designer-list.png",
+    alt: "List view designer with column decorations and reorder",
+    caption: "List designer",
+  },
+  {
+    src: "/landing/designer-kanban.png",
+    alt: "Kanban designer with group-by and card field layout",
+    caption: "Kanban designer",
+  },
+] as const;
 
 export default function Home() {
   return (
@@ -43,19 +62,23 @@ export default function Home() {
           </span>
         </div>
 
-        <div className="mt-10 flex flex-wrap gap-3">
+        <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center">
           <Button variant="primary" size="md" asChild>
             <Link href="/connect">Connect your Odoo</Link>
           </Button>
-          <Button variant="secondary" size="md" asChild>
-            <Link href="/pricing">See pricing</Link>
-          </Button>
-          <Button variant="secondary" size="md" asChild>
-            <Link href="/pipelines">Multi-env promote</Link>
-          </Button>
-          <Button variant="ghost" size="md" asChild>
-            <Link href="/settings">API settings</Link>
-          </Button>
+          <p className="text-sm text-muted">
+            <Link href="/pricing" className="text-accent hover:underline">
+              See pricing
+            </Link>
+            {" · "}
+            <Link href="/pipelines" className="text-accent hover:underline">
+              Multi-env promote
+            </Link>
+            {" · "}
+            <Link href="/settings" className="text-accent hover:underline">
+              API settings
+            </Link>
+          </p>
         </div>
 
         <div className="mt-8 flex flex-wrap gap-2 text-xs text-muted">
@@ -64,6 +87,30 @@ export default function Home() {
           <span className="rounded-full border border-border-subtle px-3 py-1">Business $149/mo</span>
           <span className="rounded-full border border-border-subtle px-3 py-1">Agency $399/mo</span>
         </div>
+
+        <section className="mt-16" aria-labelledby="product-screenshots">
+          <h2 id="product-screenshots" className="text-lg font-semibold text-ink">
+            View designer
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm text-muted">
+            Form, list, and kanban builders with Odoo-familiar structure and our calm precision
+            shell — sandbox-tested before anything touches production.
+          </p>
+          <div className="mt-6 grid gap-4 sm:grid-cols-3">
+            {screenshots.map((shot) => (
+              <figure key={shot.src} className="overflow-hidden rounded-md border border-border-subtle bg-surface-raised">
+                <Image
+                  src={shot.src}
+                  alt={shot.alt}
+                  width={480}
+                  height={320}
+                  className="h-auto w-full border-b border-border-subtle"
+                />
+                <figcaption className="px-3 py-2 text-xs text-muted">{shot.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        </section>
 
         <div className="mt-16 grid gap-4 sm:grid-cols-3">
           {features.map((f) => (

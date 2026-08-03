@@ -70,6 +70,12 @@ class GrantPlanBody(BaseModel):
     reason: str = Field(..., min_length=1, max_length=500)
 
 
+class GrantSlotsBody(BaseModel):
+    workspace_id: str
+    slots: int = Field(..., ge=1, le=100)
+    reason: str = Field(..., min_length=1, max_length=500)
+
+
 @router.get("/users", response_model=list[UserAdminOut])
 def list_users(
     q: str = "",
@@ -170,6 +176,30 @@ def grant_plan(
     _audit(db, method="POST", path="/api/admin/grant-plan", status_code=200, actor=admin.email, detail=f"grant {body.plan_id}")
     db.commit()
     return {"workspace_id": ws.id, "plan_id": body.plan_id}
+
+
+@router.post("/grant-slots")
+def grant_slots(
+    body: GrantSlotsBody,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> dict[str, int | str]:
+    from app.entitlements import grant_extra_project_slots
+
+    ws = db.get(Workspace, body.workspace_id)
+    if ws is None:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    sub = grant_extra_project_slots(db, body.workspace_id, body.slots)
+    _audit(
+        db,
+        method="POST",
+        path="/api/admin/grant-slots",
+        status_code=200,
+        actor=admin.email,
+        detail=f"+{body.slots} slots: {body.reason[:80]}",
+    )
+    db.commit()
+    return {"workspace_id": ws.id, "extra_project_slots": sub.extra_project_slots}
 
 
 @router.post("/users/{user_id}/deactivate", status_code=204)

@@ -46,6 +46,20 @@ with this rationale).
   16). Listed here only for completeness; changing this requires an explicit MEMORY unlock.
 - DECISION: ______ (recommend: keep refused)
 
+## 5. Live Stripe + Paystack checkout smokes (deferred by user, 2026-08-03)
+- What: one recorded real test-mode checkout per processor (Stripe checkout session;
+  Paystack initialize+verify) proving the full checkout→webhook→entitlement loop against the
+  real processor sandboxes.
+- Why deferred: the user has not yet set up processor test keys. Everything else in
+  MON-2/REM-10 proceeds: fake-webhook suites (signature-fail, replay, out-of-order),
+  idempotent price-bootstrap scripts, and entitlement gating are fully testable without keys.
+- Unblock condition: user provides `STRIPE_TEST_SECRET_KEY` (+ webhook signing secret) and
+  Paystack test keys via env — then run the smoke, record the transcript to
+  `docs/research/`, and check the corresponding REM-10 item.
+- Risk while deferred: processor-side config drift (price IDs, webhook endpoints) is only
+  fake-verified; do NOT launch paid tiers before this smoke passes.
+- DECISION: DEFER until keys exist (user, 2026-08-03).
+
 ---
 
 Previously proposed candidates PROMOTED to cards by user decision (2026-08-02): generic

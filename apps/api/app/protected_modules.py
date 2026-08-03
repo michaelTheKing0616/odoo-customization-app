@@ -39,8 +39,8 @@ PROTECTED_PATTERNS: dict[str, re.Pattern[str]] = {
     ),
     "payment_processing": re.compile(r"^payment($|_)"),
     "pos_financial": re.compile(
-        r"^pos_(account_tax_python|(.*?_)?(stripe|adyen|razorpay|paytm|pine_labs|six)|"
-        r"online_payment.*)"
+        r"^pos_(account_tax_python|online_payment.*|stripe|adyen|razorpay|paytm|pine_labs|six|"
+        r".*_(stripe|adyen|razorpay|paytm|pine_labs|six))"
     ),
     "payroll": re.compile(r"^hr_payroll"),
     "esign": re.compile(r"^sign"),

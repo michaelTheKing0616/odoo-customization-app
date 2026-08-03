@@ -44,7 +44,7 @@ export function EePlaybooksPanel({ connectionId, className = "" }: Props) {
         Greyed out when the required module is not installed. Public ORM only — never
         Studio source.
       </p>
-      {loading && <p className="mt-2 text-xs text-[#8f7a88]">Loading…</p>}
+      {loading && <p className="mt-2 text-xs text-muted">Loading…</p>}
       {error && <p className="mt-2 text-xs text-[#e8a0a0]">{error}</p>}
       {!loading && !error && (
         <ul className="mt-2 space-y-1">
@@ -55,8 +55,8 @@ export function EePlaybooksPanel({ connectionId, className = "" }: Props) {
               data-available={pb.available ? "true" : "false"}
               className={
                 pb.available
-                  ? "border border-[#3d2a38] bg-[#120e14] px-2 py-1.5 text-xs text-[#c9a9c0]"
-                  : "border border-[#1a2a24] bg-[#0c090b] px-2 py-1.5 text-xs text-[#6b5a66] opacity-60"
+                  ? "border border-border-subtle bg-[#120e14] px-2 py-1.5 text-xs text-muted"
+                  : "border border-[#1a2a24] bg-surface px-2 py-1.5 text-xs text-[#6b5a66] opacity-60"
               }
               aria-disabled={!pb.available}
             >
@@ -67,7 +67,7 @@ export function EePlaybooksPanel({ connectionId, className = "" }: Props) {
               {pb.warn_only && pb.available && (
                 <span className="ml-2 text-[10px] text-[#e8d09f]">Warn only</span>
               )}
-              <span className="mt-0.5 block text-[11px] text-[#8f7a88]">{pb.reason}</span>
+              <span className="mt-0.5 block text-[11px] text-muted">{pb.reason}</span>
             </li>
           ))}
         </ul>

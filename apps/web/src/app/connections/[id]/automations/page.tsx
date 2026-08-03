@@ -28,6 +28,7 @@ import {
   SnapshotRow,
 } from "@/lib/api";
 import { AutomationActionKindSelect } from "@/components/AutomationActionKindSelect";
+import { ModelTierInline } from "@/components/ModelTierInline";
 import { ExplainThisButton } from "@/components/expert/ExplainThisButton";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
@@ -612,6 +613,7 @@ export default function AutomationsPage() {
               onChange={(e) => setForm({ ...form, model: e.target.value })}
               className="font-mono text-sm"
             />
+            <ModelTierInline connectionId={connectionId} model={form.model} />
             <Select
               label="When (trigger)"
               options={TRIGGERS.filter(
@@ -659,7 +661,7 @@ export default function AutomationsPage() {
                 })
               }
             />
-            <p className="text-xs text-[#8f7a88]">
+            <p className="text-xs text-muted">
               Records must match this domain for the action to run. Use with On
               update to limit which writes fire the rule.
             </p>
@@ -746,7 +748,7 @@ export default function AutomationsPage() {
               connection={connection}
               value={form.action_kind}
               onChange={(action_kind) => setForm({ ...form, action_kind })}
-              className="w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 text-sm"
+              className="w-full border border-border-subtle bg-surface px-3 py-2 text-sm"
             />
 
             {form.action_kind === "related_write" && (
@@ -759,7 +761,7 @@ export default function AutomationsPage() {
                     onChange={(e) =>
                       setForm({ ...form, relation_field: e.target.value })
                     }
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
                     placeholder="x_vehicle_id"
                   />
                 </label>
@@ -769,7 +771,7 @@ export default function AutomationsPage() {
                     required
                     value={form.field_name}
                     onChange={(e) => setForm({ ...form, field_name: e.target.value })}
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
                     placeholder="x_status"
                   />
                 </label>
@@ -779,11 +781,11 @@ export default function AutomationsPage() {
                     required
                     value={form.value}
                     onChange={(e) => setForm({ ...form, value: e.target.value })}
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
                     placeholder="rented"
                   />
                 </label>
-                <p className="text-xs text-[#8f7a88]">
+                <p className="text-xs text-muted">
                   Car rental example: on contract confirm → write{" "}
                   <code>x_vehicle_id.x_status = rented</code>.
                 </p>
@@ -798,7 +800,7 @@ export default function AutomationsPage() {
                     required
                     value={form.field_name}
                     onChange={(e) => setForm({ ...form, field_name: e.target.value })}
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
                   />
                 </label>
                 <label className="block text-sm">
@@ -807,7 +809,7 @@ export default function AutomationsPage() {
                     required
                     value={form.value}
                     onChange={(e) => setForm({ ...form, value: e.target.value })}
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2"
                   />
                 </label>
               </>
@@ -823,7 +825,7 @@ export default function AutomationsPage() {
                     onChange={(e) =>
                       setForm({ ...form, activity_type_id: Number(e.target.value) })
                     }
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2"
                   >
                     {activityTypes.map((t) => (
                       <option key={t.id} value={t.id}>
@@ -840,7 +842,7 @@ export default function AutomationsPage() {
                     onChange={(e) =>
                       setForm({ ...form, activity_summary: e.target.value })
                     }
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2"
                   />
                 </label>
               </>
@@ -854,13 +856,13 @@ export default function AutomationsPage() {
                     required
                     value={form.target_model}
                     onChange={(e) => setForm({ ...form, target_model: e.target.value })}
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
                     placeholder="mail.activity"
                   />
                 </label>
                 <label className="block text-sm">
                   <span className="text-[#a8909e]">
-                    Field values (one <code className="text-[#c9a9c0]">key=value</code> per
+                    Field values (one <code className="text-muted">key=value</code> per
                     line)
                   </span>
                   <textarea
@@ -869,7 +871,7 @@ export default function AutomationsPage() {
                     onChange={(e) =>
                       setForm({ ...form, field_values_text: e.target.value })
                     }
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-xs"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2 font-mono text-xs"
                     placeholder={"summary=Follow up\nnote=Hello"}
                   />
                 </label>
@@ -888,7 +890,7 @@ export default function AutomationsPage() {
                         mail_template_id: e.target.value ? Number(e.target.value) : "",
                       })
                     }
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2"
                   >
                     <option value="">None — use subject/body below</option>
                     {mailTemplates.map((t) => (
@@ -909,7 +911,7 @@ export default function AutomationsPage() {
                         mail_post_method: e.target.value as "email" | "comment" | "note",
                       })
                     }
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2"
                   >
                     <option value="email">email</option>
                     <option value="comment">comment</option>
@@ -921,7 +923,7 @@ export default function AutomationsPage() {
                   <input
                     value={form.mail_subject}
                     onChange={(e) => setForm({ ...form, mail_subject: e.target.value })}
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2"
                   />
                 </label>
                 <label className="block text-sm">
@@ -929,7 +931,7 @@ export default function AutomationsPage() {
                   <input
                     value={form.mail_email_to}
                     onChange={(e) => setForm({ ...form, mail_email_to: e.target.value })}
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2"
                     placeholder="optional; template may set recipients"
                   />
                 </label>
@@ -939,7 +941,7 @@ export default function AutomationsPage() {
                     rows={5}
                     value={form.mail_body_html}
                     onChange={(e) => setForm({ ...form, mail_body_html: e.target.value })}
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-xs"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2 font-mono text-xs"
                   />
                 </label>
               </>
@@ -954,7 +956,7 @@ export default function AutomationsPage() {
                     type="url"
                     value={form.webhook_url}
                     onChange={(e) => setForm({ ...form, webhook_url: e.target.value })}
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
                     placeholder="https://example.com/hooks/odoo"
                   />
                 </label>
@@ -967,7 +969,7 @@ export default function AutomationsPage() {
                     onChange={(e) =>
                       setForm({ ...form, webhook_field_names: e.target.value })
                     }
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
                     placeholder="name, email, phone"
                   />
                 </label>
@@ -988,7 +990,7 @@ export default function AutomationsPage() {
                         sms_template_id: e.target.value ? Number(e.target.value) : "",
                       })
                     }
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
                     placeholder="Leave empty to create from body"
                   />
                 </label>
@@ -998,7 +1000,7 @@ export default function AutomationsPage() {
                     rows={3}
                     value={form.sms_body}
                     onChange={(e) => setForm({ ...form, sms_body: e.target.value })}
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2"
                     placeholder="Hello {{ object.name }}"
                   />
                 </label>
@@ -1012,7 +1014,7 @@ export default function AutomationsPage() {
                         sms_method: e.target.value as "sms" | "comment" | "note",
                       })
                     }
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2"
                   >
                     <option value="sms">sms</option>
                     <option value="comment">comment</option>
@@ -1034,7 +1036,7 @@ export default function AutomationsPage() {
                     onChange={(e) =>
                       setForm({ ...form, partner_ids_text: e.target.value })
                     }
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
                     placeholder="3, 7, 12"
                   />
                 </label>
@@ -1050,7 +1052,7 @@ export default function AutomationsPage() {
                             followers_type: e.target.value as "specific" | "generic",
                           })
                         }
-                        className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
+                        className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2"
                       >
                         <option value="specific">specific partners</option>
                         <option value="generic">generic (from field)</option>
@@ -1068,7 +1070,7 @@ export default function AutomationsPage() {
                               followers_partner_field_name: e.target.value,
                             })
                           }
-                          className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                          className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
                           placeholder="user_id.partner_id"
                         />
                       </label>
@@ -1090,7 +1092,7 @@ export default function AutomationsPage() {
                       onChange={(e) =>
                         setForm({ ...form, module_technical_name: e.target.value })
                       }
-                      className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                      className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
                       pattern="[a-z][a-z0-9_]*"
                     />
                   </label>
@@ -1102,7 +1104,7 @@ export default function AutomationsPage() {
                     rows={8}
                     value={form.python_code}
                     onChange={(e) => setForm({ ...form, python_code: e.target.value })}
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-xs"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-3 py-2 font-mono text-xs"
                   />
                 </label>
               </>

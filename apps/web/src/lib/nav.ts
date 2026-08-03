@@ -17,6 +17,7 @@ import {
   IconReports,
   IconSnapshots,
   IconViews,
+  IconWebsite,
 } from "@/components/ui/icons";
 
 export type NavGroupId =
@@ -33,6 +34,8 @@ export type NavItem = {
   href: (connectionId: string) => string;
   group: NavGroupId;
   icon: IconComponent;
+  /** Odoo module name — locks nav when not in installed_modules_sample */
+  moduleKey?: string;
   /** Capability id from connection.capabilities.supported — when set, item locks if unsupported */
   capabilityKey?: string;
   /** When false, hide until feature ships */
@@ -87,6 +90,18 @@ export const NAV_ITEMS: NavItem[] = [
     group: "build",
     icon: IconMenus,
     shipped: true,
+  },
+  {
+    id: "website",
+    label: "Website",
+    href: (id) => `/connections/${id}/website`,
+    group: "build",
+    icon: IconWebsite,
+    moduleKey: "website",
+    shipped: true,
+    gatingTitle: "Website module required",
+    gatingWhy: "Page content editing needs the Odoo website module installed on this instance.",
+    gatingOptions: ["Install website in Odoo Apps", "Use Odoo's native website editor"],
   },
   {
     id: "automations",
@@ -233,7 +248,12 @@ export const NAV_ITEMS: NavItem[] = [
 export function navItemLocked(
   item: NavItem,
   supported: string[] | undefined,
+  installedModules?: string[] | undefined,
 ): boolean {
+  if (item.moduleKey) {
+    if (!installedModules?.length) return true;
+    if (!installedModules.includes(item.moduleKey)) return true;
+  }
   if (!item.capabilityKey) return false;
   if (!supported) return true;
   return !supported.includes(item.capabilityKey);

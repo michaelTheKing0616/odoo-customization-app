@@ -16,7 +16,7 @@ export function SuggestTemplateButton({
   connectionId,
   projectId,
   disabled,
-  className = "border border-[#8f7a88] px-3 py-1.5 text-sm text-[#d4c4ce] disabled:opacity-50",
+  className = "border border-border-subtle px-3 py-1.5 text-sm text-muted disabled:opacity-50",
 }: Props) {
   const [open, setOpen] = useState(false);
   const [consent, setConsent] = useState(false);
@@ -84,28 +84,28 @@ export function SuggestTemplateButton({
 
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#0c090b]/80 px-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-surface/80 px-4"
           role="dialog"
           aria-modal="true"
         >
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto border border-[#3d2a38] bg-[#1a1218] p-5">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto border border-border-subtle bg-surface-raised p-5">
             <h2 className="font-[family-name:var(--font-display)] text-xl text-[#faf6f9]">
               Suggest as template
             </h2>
             {!result ? (
               <>
-                <p className="mt-2 text-sm text-[#d4c4ce]">
+                <p className="mt-2 text-sm text-muted">
                   With your permission, we generalize this ModuleSpec structure (model
                   names, fields, workflows, automations) into a candidate domain-pack file
                   for human review. Customer record data is not included. The file is
                   download-only and is never auto-registered in the app.
                 </p>
-                <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-[#8f7a88]">
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-muted">
                   <li>Operational patterns may be reused in the shared template library</li>
                   <li>You review and commit the Python file manually if approved</li>
                   <li>No live Odoo changes from this action</li>
                 </ul>
-                <label className="mt-4 flex items-start gap-2 text-sm text-[#d4c4ce]">
+                <label className="mt-4 flex items-start gap-2 text-sm text-muted">
                   <input
                     type="checkbox"
                     checked={consent}
@@ -117,20 +117,20 @@ export function SuggestTemplateButton({
                     only, not customer data).
                   </span>
                 </label>
-                {error && <p className="mt-3 text-sm text-[#f0a8a0]">{error}</p>}
+                {error && <p className="mt-3 text-sm text-danger">{error}</p>}
                 <div className="mt-5 flex flex-wrap gap-3">
                   <button
                     type="button"
                     disabled={!consent || busy}
                     onClick={() => onGenerate()}
-                    className="border border-[#c9a9c0] px-3 py-1.5 text-sm text-[#c9a9c0] disabled:opacity-50"
+                    className="border border-border-subtle px-3 py-1.5 text-sm text-muted disabled:opacity-50"
                   >
                     {busy ? "Generating…" : "Generate candidate pack"}
                   </button>
                   <button
                     type="button"
                     onClick={() => setOpen(false)}
-                    className="text-sm text-[#8f7a88] hover:underline"
+                    className="text-sm text-muted hover:underline"
                   >
                     Cancel
                   </button>
@@ -138,8 +138,8 @@ export function SuggestTemplateButton({
               </>
             ) : (
               <>
-                <p className="mt-2 text-sm text-[#c9a9c0]">{result.note}</p>
-                <p className="mt-1 font-mono text-xs text-[#8f7a88]">
+                <p className="mt-2 text-sm text-muted">{result.note}</p>
+                <p className="mt-1 font-mono text-xs text-muted">
                   {result.filename} · domain_pack={result.domain_pack}
                 </p>
                 {result.warnings.length > 0 && (
@@ -153,7 +153,7 @@ export function SuggestTemplateButton({
                   readOnly
                   value={result.source}
                   rows={12}
-                  className="mt-3 w-full border border-[#3d2a38] bg-[#0c090b] p-2 font-mono text-xs text-[#f4eef2]"
+                  className="mt-3 w-full border border-border-subtle bg-surface p-2 font-mono text-xs text-ink"
                 />
                 <div className="mt-4 flex flex-wrap gap-3">
                   <button
@@ -168,14 +168,14 @@ export function SuggestTemplateButton({
                     onClick={() => {
                       void navigator.clipboard.writeText(result.source);
                     }}
-                    className="border border-[#3d2a38] px-3 py-1.5 text-sm text-[#d4c4ce]"
+                    className="border border-border-subtle px-3 py-1.5 text-sm text-muted"
                   >
                     Copy source
                   </button>
                   <button
                     type="button"
                     onClick={() => setOpen(false)}
-                    className="text-sm text-[#8f7a88] hover:underline"
+                    className="text-sm text-muted hover:underline"
                   >
                     Close
                   </button>

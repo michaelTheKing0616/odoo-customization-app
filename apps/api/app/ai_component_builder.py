@@ -8,7 +8,7 @@ from typing import Any
 from odoo_client.client import OdooClient
 
 from app.ai_connect_points import detect_field_collisions, propose_connect_points
-from app.ai_grain import Grain, HostCandidate, classify_grain, discover_hosts, grain_display, module_for_model, module_for_model
+from app.ai_grain import Grain, HostCandidate, classify_grain, discover_hosts, grain_display, module_for_model
 from app.component_gallery import get_gallery_seed, list_gallery
 
 
@@ -285,4 +285,91 @@ def draft_component_from_prompt(
     return draft, hosts, warnings
 
 
-__all__ = ["draft_component_from_prompt", "build_component_draft", "list_gallery"]
+def preview_connect_points(
+    prompt: str,
+    *,
+    grain: Grain | None = None,
+    available_models: list[str] | None = None,
+    gallery_id: str | None = None,
+    host_model_override: str | None = None,
+    connect_points_override: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Wizard pre-draft step: classify grain + propose connect points without building spec."""
+    resolved_grain: Grain = grain or classify_grain(prompt)
+    if resolved_grain == "full_app":
+        return {
+            "grain": "full_app",
+            "grain_label": grain_display("full_app", None),
+            "connect_points": None,
+            "host_candidates": [],
+            "requires_review": False,
+            "warnings": [],
+            "gallery_id": gallery_id,
+        }
+
+    hosts = discover_hosts(prompt, available_models=available_models)
+    if host_model_override:
+        hosts = [
+            HostCandidate(
+                model=host_model_override,
+                label=host_model_override,
+                score=1.0,
+                module=module_for_model(host_model_override),
+                reason="operator override",
+            ),
+            *hosts,
+        ]
+
+    gallery_seed = get_gallery_seed(gallery_id) if gallery_id else _match_gallery(prompt)
+    resolved_gallery_id = gallery_id or (gallery_seed["id"] if gallery_seed else None)
+    if gallery_seed and gallery_seed.get("host_slot") not in ("any", None):
+        slot = str(gallery_seed["host_slot"])
+        hosts = [
+            HostCandidate(
+                model=slot,
+                label=slot,
+                score=1.0,
+                module=module_for_model(slot),
+                reason="gallery host slot",
+            ),
+            *hosts,
+        ]
+
+    warnings: list[str] = []
+    if not hosts:
+        return {
+            "grain": resolved_grain,
+            "grain_label": grain_display(resolved_grain, None),
+            "connect_points": None,
+            "host_candidates": [],
+            "requires_review": True,
+            "warnings": [
+                "No host model candidates — connect to Odoo or specify host in prompt."
+            ],
+            "gallery_id": resolved_gallery_id,
+        }
+
+    host = hosts[0]
+    cp = connect_points_override or propose_connect_points(
+        prompt, grain=resolved_grain, host=host, gallery_seed=gallery_seed
+    )
+    return {
+        "grain": resolved_grain,
+        "grain_label": grain_display(resolved_grain, host),
+        "connect_points": cp,
+        "host_candidates": [
+            {"model": h.model, "label": h.label, "score": h.score, "reason": h.reason}
+            for h in hosts
+        ],
+        "requires_review": True,
+        "warnings": warnings,
+        "gallery_id": resolved_gallery_id,
+    }
+
+
+__all__ = [
+    "draft_component_from_prompt",
+    "build_component_draft",
+    "list_gallery",
+    "preview_connect_points",
+]

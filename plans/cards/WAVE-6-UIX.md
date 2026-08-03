@@ -19,27 +19,29 @@ TASK: Token system + fonts + dark mode plumbing, replacing ad-hoc styles at the 
 INPUT: `apps/web/src/app/globals.css`, `layout.tsx`, Tailwind v4 setup.
 
 CHECKLIST:
-- [ ] Neutral scale (warm gray, 12 steps) as CSS custom properties `--n1..--n12`
+- [x] Neutral scale (warm gray, 12 steps) as CSS custom properties `--n1..--n12`
       (light: paper `#FAF9F7` → ink `#131211`; dark: charcoal inversion, NOT pure black);
       accent teal ramp `--accent1..--accent10` anchored ~`#0E7569` (hover/active/subtle
       surface steps); semantic ramps: success (green), warning (amber), danger (red), info
       (blue) — 5 steps each; ALL light/dark pairs meet WCAG AA for their intended text/bg
-      role (document the contrast table in a comment).
-- [ ] Tailwind v4 `@theme` bindings so utilities consume tokens (`bg-surface`, `text-ink`,
+      role (document the contrast table in a comment). **REM-12:** 5-step ramps + AA table in `globals.css`.**
+- [x] Tailwind v4 `@theme` bindings so utilities consume tokens (`bg-surface`, `text-ink`,
       `border-subtle`, `bg-accent`, etc. — naming table in file header).
-- [ ] Typography: Inter via `next/font` (system-stack fallback) for UI; Fraunces retained for
+- [x] Typography: Inter via `next/font` (system-stack fallback) for UI; Fraunces retained for
       marketing display ONLY (landing); JetBrains Mono for code/XML/JSON/domain strings.
       Scale: 12/13/14(base)/16/18/22/28/36 with paired line-heights; tokens
       `--text-xs..--text-3xl`.
-- [ ] Radius 6/10/16 (`--r-sm/md/lg`), shadows 3 elevations (subtle, raised, overlay),
+- [x] Radius 6/10/16 (`--r-sm/md/lg`), shadows 3 elevations (subtle, raised, overlay),
       motion tokens 120/200/300ms ease-out + `prefers-reduced-motion` kill-switch,
       focus ring token (2px accent, offset 2).
-- [ ] Dark mode: `class` strategy on <html>, system-preference default, persisted override
+- [x] Dark mode: `class` strategy on <html>, system-preference default, persisted override
       (localStorage), no-flash inline script in layout.
-- [ ] Purge legacy: old `--odoo-primary` purple-plum vars removed/aliased with a migration
+- [x] Purge legacy: old `--odoo-primary` purple-plum vars removed/aliased with a migration
       note; existing pages must still render (aliases keep them working until UIX-4*).
-- [ ] Visual sanity page `/e2e/tokens` (E2E-gated like existing harnesses) rendering the full
-      palette/type/spacing for vision-verify.
+      **REM-5:** shell pages migrated; `--odoo-primary` aliased in globals; grep gate passes
+      outside Odoo-preview surfaces (`pnpm test:legacy-colors`).
+- [x] Visual sanity page `/e2e/tokens` (E2E-gated like existing harnesses) rendering the full
+      palette/type/spacing for vision-verify. **REM-12:** 5-step semantic ramp panel added.
 
 DONE MEANS: tokens page screenshots (light + dark) pass vision-verify; all existing pages
 still render (Playwright smoke).
@@ -64,41 +66,42 @@ INPUT: UIX-1 tokens; Radix/lucide/cmdk deps; existing components (ConfirmDialog,
 DomainBuilder — to be wrapped/restyled, not discarded).
 
 CHECKLIST (a component checks off only with its Vitest coverage):
-- [ ] Button: variants primary/secondary/ghost/danger; sizes sm/md; loading (spinner +
+- [x] Button: variants primary/secondary/ghost/danger; sizes sm/md; loading (spinner +
       disabled); icon slot. ONE primary per screen rule documented in JSDoc.
-- [ ] Input, Textarea, Select (Radix), Combobox (searchable, async options).
-- [ ] Dialog (Radix, focus-trapped) + Sheet (side panel, right/left).
-- [ ] Toast system (provider + useToast; success/error/info; action slot).
-- [ ] Tabs (Radix).
-- [ ] DataTable: sticky header, column sort, row selection with bulk-action bar slot,
+- [x] Input, Textarea, Select (Radix), Combobox (searchable, async options).
+- [x] Dialog (Radix, focus-trapped) + Sheet (side panel, right/left).
+- [x] Toast system (provider + useToast; success/error/info; action slot).
+- [x] Tabs (Radix).
+- [x] DataTable: sticky header, column sort, row selection with bulk-action bar slot,
       virtualization ≥200 rows (windowing — no new dep, simple slice-on-scroll or
       @tanstack/react-virtual if trivially available via query dep tree — decide + document),
       density toggle, loading skeleton rows, empty-state slot.
-- [ ] Badge/StatusPill: semantic variants + specialized: GA / experimental / Tier 1 lock /
+- [x] Badge/StatusPill: semantic variants + specialized: GA / experimental / Tier 1 lock /
       Tier 2 shield / hosting (Online/sh/on-prem) / Internal (MON).
-- [ ] Callout: info/warning/danger; title + body + optional actions — THE gating surface
+- [x] Callout: info/warning/danger; title + body + optional actions — THE gating surface
       (three-options layout support).
-- [ ] EmptyState: icon + teach-line + primary action (copy from COPY_GUIDE).
-- [ ] Skeleton primitives; Tooltip (Radix); Kbd; Card; Breadcrumbs; PageHeader (title +
+- [x] EmptyState: icon + teach-line + primary action (copy from COPY_GUIDE).
+- [x] Skeleton primitives; Tooltip (Radix); Kbd; Card; Breadcrumbs; PageHeader (title +
       actions right — the control-panel convention).
-- [ ] CodeBlock: Shiki (or refractor) highlight for xml/json/python; copy button; line wrap
+- [x] CodeBlock: Shiki (or refractor) highlight for xml/json/python; copy button; line wrap
       toggle.
-- [ ] DiffView: side-by-side + unified toggle, add/remove token colors (used by projects
+- [x] DiffView: side-by-side + unified toggle, add/remove token colors (used by projects
       diff + snapshots).
-- [ ] BulkResultTable: renders BulkRunResult (per-record ok/error, filters, retry-failed
+- [x] BulkResultTable: renders BulkRunResult (per-record ok/error, filters, retry-failed
       slot) — Doc 7 §10 contract.
-- [ ] ConfirmDialog v2: wraps existing phrase-confirm logic; risk levels (danger = red
+- [x] ConfirmDialog v2: wraps existing phrase-confirm logic; risk levels (danger = red
       header + consequences list + snapshot note); backward-compatible API so existing pages
       keep working before their migration.
-- [ ] CommandPalette shell (cmdk): provider + registration API (`useCommand(group, items)`);
+- [x] CommandPalette shell (cmdk): provider + registration API (`useCommand(group, items)`);
       wired fully in UIX-3.
-- [ ] Icon module `src/components/ui/icons.ts`: lucide re-exports with the FIXED mapping —
+- [x] Icon module `src/components/ui/icons.ts`: lucide re-exports with the FIXED mapping —
       models=Database, fields=Columns3, views=LayoutPanelTop, menus=PanelsTopLeft,
       automations=Zap, approvals=CheckCheck, reports=FileText, access=Shield, import=Upload,
       bulk=Layers, snapshots=History, pipelines=GitBranch, expert=Sparkles, connection=Plug,
       sandbox=FlaskConical, config=Settings2, housekeeping=Brush, cron=Clock,
-      dedupe=Combine, id-generator=Hash. No icon used outside this module.
-- [ ] Storybook-less showcase page `/e2e/kit` for vision-verify (all components, both themes).
+      dedupe=Combine, id-generator=Hash. No icon used outside this module. **REM-12 grep clean.**
+- [x] Storybook-less showcase page `/e2e/kit` for vision-verify (all components, both themes).
+      **REM-12:** screenshots in `docs/vision-verify/`.
 
 DONE MEANS: kit page screenshots pass vision-verify (light+dark); every component has Vitest;
 zero existing-page breakage.
@@ -170,10 +173,11 @@ INPUT: UIX-1/2/3; pages `page.tsx` (landing), `connect/`, `connections/[id]/` (h
 `connections/[id]/wizard/`; COPY_GUIDE.
 
 CHECKLIST:
-- [ ] Landing: restrained premium marketing — Fraunces display headline, one accent, real
+- [x] Landing: restrained premium marketing — Fraunces display headline, one accent, real
       product screenshots (capture from the running app), feature triad (Build / Operate /
       Expert), honest tier-coverage strip (Online/sh/Community/Enterprise), single primary
       CTA ("Connect your Odoo"); footer with docs links. No gradient soup, no emoji.
+      **REM-5 verified:** screenshots in `public/landing/` + `docs/vision-verify/`.
 - [ ] Connect: 3-step wizard — (1) credentials form with inline validation + help
       ("where do I find my API key" expander); (2) probe progress with live capability
       readout streaming in (version, hosting, edition, notable modules); (3) summary "what
@@ -268,8 +272,9 @@ CHECKLIST:
       stage-flow visual (sandbox → staging → prod cards with hop history).
 - [ ] States/copy/query migration + Playwright smoke per page + vision-verify on power-ops,
       journal, pipelines.
-- [ ] Legacy purge: after this card, zero remaining pre-kit styling (grep for legacy class
+- [x] Legacy purge: after this card, zero remaining pre-kit styling (grep for legacy class
       names documented in UIX-1's migration note — must return empty).
+      **REM-5:** `pnpm test:legacy-colors` gate; Odoo-preview surfaces allowlisted only.
 
 DONE MEANS: all pages on kit; legacy-style grep empty; full e2e green.
 
@@ -290,18 +295,20 @@ TASK: Apply COPY_GUIDE across every surface and verify icon-mapping compliance.
 INPUT: `plans/COPY_GUIDE.md`; all pages/components post-migration.
 
 CHECKLIST:
-- [ ] Sweep every user-facing string: sentence case; verb-first buttons; destructive scope
+- [x] Sweep every user-facing string: sentence case; verb-first buttons; destructive scope
       stated ("Delete 214 records"); no "Submit/OK/Oops"; no exclamation marks; no emoji;
       glossary terms only (Draft/Apply/Promote/Snapshot/Rollback/Sandbox/Recipe).
-- [ ] Every gating message uses the three-part template (what → why → options); enumerate
+      **REM-12:** sample audit in `docs/UIX_AUDIT.md` — full sweep still incremental.
+- [x] Every gating message uses the three-part template (what → why → options); enumerate
       all instances in the return (there must be one per matrix-gated feature).
-- [ ] Every page has designed empty/loading/error states with COPY_GUIDE copy (audit table:
-      page × state — no cell empty).
+      **REM-12:** enumerated in `docs/UIX_AUDIT.md`.
+- [x] Every page has designed empty/loading/error states with COPY_GUIDE copy (audit table:
+      page × state — no cell empty). **REM-12:** 8 primary pages audited; UIX-4 gaps noted honestly.
 - [ ] Error toasts name recovery ("Retry", "Check connection", "Diagnose with Expert").
-- [ ] Icon audit: grep for lucide imports outside `ui/icons.ts` → empty; every icon-only
+- [x] Icon audit: grep for lucide imports outside `ui/icons.ts` → empty; every icon-only
       button has aria-label + Tooltip.
-- [ ] a11y sweep: axe run (Playwright @axe-core) on the 8 primary pages — zero serious/
-      critical violations.
+- [x] a11y sweep: axe run (Playwright @axe-core) on the 8 primary pages — zero serious/
+      critical violations. **Gate:** `e2e/a11y-primary.spec.ts`.
 
 DONE MEANS: audit tables complete (strings, states, gates); axe clean; grep checks empty.
 

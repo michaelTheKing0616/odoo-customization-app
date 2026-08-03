@@ -22,6 +22,7 @@ import { JobPollError, pollJob } from "@/lib/jobs";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { DataTable, type DataTableColumn } from "@/components/ui/DataTable";
+import { ModelTierInline } from "@/components/ModelTierInline";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -507,6 +508,11 @@ export default function BrowserPage() {
       sortValue: (m) => m.model,
     },
     {
+      id: "tier",
+      header: "PCM",
+      accessor: (m) => <ModelTierInline connectionId={connectionId} model={m.model} />,
+    },
+    {
       id: "state",
       header: "State",
       accessor: (m) => m.state ?? "—",
@@ -701,7 +707,7 @@ export default function BrowserPage() {
         ) : null}
         {jobBanner && (
           <div
-            className="mt-4 flex flex-wrap items-center gap-3 border border-[#3d2a38] bg-[#1a1218]/80 px-3 py-2 text-sm text-[#c9a9c0]"
+            className="mt-4 flex flex-wrap items-center gap-3 border border-border-subtle bg-surface-raised/80 px-3 py-2 text-sm text-muted"
             role="status"
           >
             <span>{jobBanner}</span>
@@ -710,7 +716,7 @@ export default function BrowserPage() {
                 <button
                   type="button"
                   onClick={() => onCancelJob()}
-                  className="border border-[#f0a8a0] px-2 py-0.5 text-xs text-[#f0a8a0]"
+                  className="border border-danger/50 px-2 py-0.5 text-xs text-danger"
                 >
                   Cancel
                 </button>
@@ -718,11 +724,11 @@ export default function BrowserPage() {
           </div>
         )}
         {sandboxLogTail && (
-          <details className="mt-4 border border-[#3d2a38] bg-[#0c090b]/80 p-3">
-            <summary className="cursor-pointer text-sm text-[#f0a8a0]">
+          <details className="mt-4 border border-border-subtle bg-surface/80 p-3">
+            <summary className="cursor-pointer text-sm text-danger">
               Sandbox log
             </summary>
-            <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-xs text-[#d4c4ce]">
+            <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-xs text-muted">
               {sandboxLogTail}
             </pre>
           </details>
@@ -742,12 +748,12 @@ export default function BrowserPage() {
           </p>
           {deploymentPanel ? (
             <div
-              className="mt-4 rounded border border-[#3d2a38] bg-[#0c090b]/80 p-4 text-sm"
+              className="mt-4 rounded border border-border-subtle bg-surface/80 p-4 text-sm"
               data-testid="deployment-panel"
             >
               <p className="font-medium text-[#faf6f9]">{deploymentPanel.title}</p>
               <p className="mt-2 text-[#a8909e]">{deploymentPanel.body}</p>
-              <ul className="mt-2 list-disc pl-5 text-[#8f7a88]">
+              <ul className="mt-2 list-disc pl-5 text-muted">
                 {deploymentPanel.options.map((opt) => (
                   <li key={opt}>{opt}</li>
                 ))}
@@ -767,13 +773,13 @@ export default function BrowserPage() {
           ) : null}
           {storeReadiness ? (
             <div
-              className="mt-4 rounded border border-[#3d2a38] bg-[#0c090b]/80 p-4 text-sm"
+              className="mt-4 rounded border border-border-subtle bg-surface/80 p-4 text-sm"
               data-testid="store-readiness-report"
             >
               <p className="font-medium text-[#faf6f9]">
                 Store readiness — {storeReadiness.message}
               </p>
-              <p className="mt-1 text-xs text-[#8f7a88]">{storeReadiness.disclaimer}</p>
+              <p className="mt-1 text-xs text-muted">{storeReadiness.disclaimer}</p>
               <ul className="mt-2 space-y-1 text-[#a8909e]">
                 {storeReadiness.items.map((item) => (
                   <li key={item.key}>
@@ -785,13 +791,13 @@ export default function BrowserPage() {
           ) : null}
           {migrationAssist?.eligible ? (
             <div
-              className="mt-4 rounded border border-[#3d2a38] bg-[#0c090b]/80 p-4 text-sm"
+              className="mt-4 rounded border border-border-subtle bg-surface/80 p-4 text-sm"
               data-testid="migration-assist-panel"
             >
               <p className="font-medium text-[#faf6f9]">{migrationAssist.title}</p>
               <p className="mt-2 text-[#a8909e]">{migrationAssist.body}</p>
               {migrationAssist.unlocks.length > 0 ? (
-                <ul className="mt-3 list-disc pl-5 text-[#8f7a88]">
+                <ul className="mt-3 list-disc pl-5 text-muted">
                   {migrationAssist.unlocks.map((u) => (
                     <li key={u.key}>
                       {u.label}: {u.online_status} → {u.sh_status} — {u.reason}
@@ -799,7 +805,7 @@ export default function BrowserPage() {
                   ))}
                 </ul>
               ) : null}
-              <p className="mt-2 text-xs text-[#8f7a88]">{migrationAssist.disclaimer}</p>
+              <p className="mt-2 text-xs text-muted">{migrationAssist.disclaimer}</p>
               <div className="mt-2 flex flex-wrap gap-3">
                 {migrationAssist.docs_links.map((link) => (
                   <a
@@ -807,7 +813,7 @@ export default function BrowserPage() {
                     href={link.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-[#c9a9c0] hover:underline"
+                    className="text-muted hover:underline"
                   >
                     {link.label}
                   </a>
@@ -817,13 +823,13 @@ export default function BrowserPage() {
           ) : null}
           {storeReadiness ? (
             <div
-              className="mt-4 rounded border border-[#3d2a38] bg-[#0c090b]/80 p-4 text-sm"
+              className="mt-4 rounded border border-border-subtle bg-surface/80 p-4 text-sm"
               data-testid="store-readiness-report"
             >
               <p className="font-medium text-[#faf6f9]">
                 Store readiness — {storeReadiness.message}
               </p>
-              <p className="mt-1 text-xs text-[#8f7a88]">{storeReadiness.disclaimer}</p>
+              <p className="mt-1 text-xs text-muted">{storeReadiness.disclaimer}</p>
               <ul className="mt-2 space-y-1 text-[#a8909e]">
                 {storeReadiness.items.map((item) => (
                   <li key={item.key}>
@@ -835,13 +841,13 @@ export default function BrowserPage() {
           ) : null}
           {migrationAssist?.eligible ? (
             <div
-              className="mt-4 rounded border border-[#3d2a38] bg-[#0c090b]/80 p-4 text-sm"
+              className="mt-4 rounded border border-border-subtle bg-surface/80 p-4 text-sm"
               data-testid="migration-assist-panel"
             >
               <p className="font-medium text-[#faf6f9]">{migrationAssist.title}</p>
               <p className="mt-2 text-[#a8909e]">{migrationAssist.body}</p>
               {migrationAssist.unlocks.length > 0 ? (
-                <ul className="mt-3 list-disc pl-5 text-[#8f7a88]">
+                <ul className="mt-3 list-disc pl-5 text-muted">
                   {migrationAssist.unlocks.map((u) => (
                     <li key={u.key}>
                       {u.label}: {u.online_status} → {u.sh_status} — {u.reason}
@@ -849,7 +855,7 @@ export default function BrowserPage() {
                   ))}
                 </ul>
               ) : null}
-              <p className="mt-2 text-xs text-[#8f7a88]">{migrationAssist.disclaimer}</p>
+              <p className="mt-2 text-xs text-muted">{migrationAssist.disclaimer}</p>
               <div className="mt-2 flex flex-wrap gap-3">
                 {migrationAssist.docs_links.map((link) => (
                   <a
@@ -857,7 +863,7 @@ export default function BrowserPage() {
                     href={link.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-[#c9a9c0] hover:underline"
+                    className="text-muted hover:underline"
                   >
                     {link.label}
                   </a>
@@ -943,7 +949,7 @@ export default function BrowserPage() {
                 type="button"
                 disabled={exportBusy}
                 onClick={() => onSuggestDepends()}
-                className="border border-[#c9a9c0] px-2 py-0.5 text-xs text-[#c9a9c0] disabled:opacity-50"
+                className="border border-border-subtle px-2 py-0.5 text-xs text-muted disabled:opacity-50"
               >
                 Suggest depends
               </button>
@@ -955,7 +961,7 @@ export default function BrowserPage() {
                     key={name}
                     type="button"
                     onClick={() => toggleDepend(name)}
-                    className="border border-[#4a3a48] bg-[#1a1218] px-2 py-1 font-mono text-xs text-[#c9a9c0]"
+                    className="border border-[#4a3a48] bg-surface-raised px-2 py-1 font-mono text-xs text-muted"
                     title="Click to remove"
                   >
                     {name} ×
@@ -967,15 +973,15 @@ export default function BrowserPage() {
               value={dependsQuery}
               onChange={(e) => setDependsQuery(e.target.value)}
               placeholder="Search installed modules…"
-              className="mt-2 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 text-sm"
+              className="mt-2 w-full border border-border-subtle bg-surface px-3 py-2 text-sm"
             />
-            <div className="mt-2 max-h-40 overflow-y-auto border border-[#1e2f29] bg-[#0c090b]/80">
+            <div className="mt-2 max-h-40 overflow-y-auto border border-[#1e2f29] bg-surface/80">
               {filteredInstalledModules.map((m) => {
                 const checked = selectedDepends.includes(m.name);
                 return (
                   <label
                     key={m.id}
-                    className="flex cursor-pointer items-start gap-2 border-b border-[#1e2f29] px-3 py-2 text-sm last:border-b-0 hover:bg-[#1a1218]/60"
+                    className="flex cursor-pointer items-start gap-2 border-b border-[#1e2f29] px-3 py-2 text-sm last:border-b-0 hover:bg-surface-raised/60"
                   >
                     <input
                       type="checkbox"
@@ -984,16 +990,16 @@ export default function BrowserPage() {
                       className="mt-1"
                     />
                     <span>
-                      <span className="font-mono text-[#c9a9c0]">{m.name}</span>
+                      <span className="font-mono text-muted">{m.name}</span>
                       {m.shortdesc ? (
-                        <span className="ml-2 text-[#8f7a88]">{m.shortdesc}</span>
+                        <span className="ml-2 text-muted">{m.shortdesc}</span>
                       ) : null}
                     </span>
                   </label>
                 );
               })}
               {filteredInstalledModules.length === 0 && (
-                <p className="px-3 py-2 text-xs text-[#8f7a88]">
+                <p className="px-3 py-2 text-xs text-muted">
                   No installed modules match.
                 </p>
               )}
@@ -1006,12 +1012,12 @@ export default function BrowserPage() {
                 value={extraDepends}
                 onChange={(e) => setExtraDepends(e.target.value)}
                 placeholder="peer_custom_mod, another_mod"
-                className="mt-1 block w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                className="mt-1 block w-full border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
               />
             </label>
           </div>
           {validationId && (
-            <p className="mt-3 text-xs text-[#8f7a88]">
+            <p className="mt-3 text-xs text-muted">
               Validated · {validationId.slice(0, 8)}… · mode={installMode} · local Docker
               uses filesystem for python; remote promote needs data mode.
             </p>
@@ -1031,7 +1037,7 @@ export default function BrowserPage() {
                 <input
                   value={confirmPhrase}
                   onChange={(e) => setConfirmPhrase(e.target.value)}
-                  className="mt-1 w-full max-w-md border border-[#5a3a2a] bg-[#0c090b] px-3 py-2 text-sm"
+                  className="mt-1 w-full max-w-md border border-[#5a3a2a] bg-surface px-3 py-2 text-sm"
                 />
               </label>
               <div className="mt-3 flex gap-2">
@@ -1039,7 +1045,7 @@ export default function BrowserPage() {
                   type="button"
                   disabled={exportBusy}
                   onClick={onPromote}
-                  className="h-9 bg-[#f0c090] px-4 text-sm font-semibold text-[#1a100c] disabled:opacity-60"
+                  className="h-9 bg-[#f0c090] px-4 text-sm font-semibold text-white disabled:opacity-60"
                 >
                   Proceed
                 </button>
@@ -1067,8 +1073,8 @@ export default function BrowserPage() {
                 className="flex flex-wrap items-center justify-between gap-2 border border-[#1e2f29] px-3 py-2"
               >
                 <span>
-                  <span className="font-mono text-[#c9a9c0]">{p.module_name}</span>{" "}
-                  <span className="text-[#8f7a88]">
+                  <span className="font-mono text-muted">{p.module_name}</span>{" "}
+                  <span className="text-muted">
                     · {p.method} · {p.status}
                   </span>
                 </span>
@@ -1080,7 +1086,7 @@ export default function BrowserPage() {
                       setUninstallTarget(p.module_name);
                       setUninstallPhrase("");
                     }}
-                    className="border border-[#f0a8a0] px-2 py-1 text-xs text-[#f0a8a0] disabled:opacity-40"
+                    className="border border-danger/50 px-2 py-1 text-xs text-danger disabled:opacity-40"
                   >
                     Uninstall
                   </button>
@@ -1088,7 +1094,7 @@ export default function BrowserPage() {
               </li>
             ))}
             {promoted.length === 0 && (
-              <li className="text-[#8f7a88]">No promotions recorded yet.</li>
+              <li className="text-muted">No promotions recorded yet.</li>
             )}
           </ul>
           {uninstallTarget && (
@@ -1103,7 +1109,7 @@ export default function BrowserPage() {
                 <input
                   value={uninstallPhrase}
                   onChange={(e) => setUninstallPhrase(e.target.value)}
-                  className="mt-1 w-full max-w-md border border-[#5a3a2a] bg-[#0c090b] px-3 py-2 text-sm"
+                  className="mt-1 w-full max-w-md border border-[#5a3a2a] bg-surface px-3 py-2 text-sm"
                 />
               </label>
               <div className="mt-3 flex gap-2">
@@ -1111,7 +1117,7 @@ export default function BrowserPage() {
                   type="button"
                   disabled={exportBusy}
                   onClick={onUninstall}
-                  className="h-9 bg-[#f0a8a0] px-4 text-sm font-semibold text-[#1a100c] disabled:opacity-60"
+                  className="h-9 bg-danger px-4 text-sm font-semibold text-white disabled:opacity-60"
                 >
                   Uninstall
                 </button>

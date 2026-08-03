@@ -98,6 +98,7 @@ class DedupeMergeResult(BulkRunResult):
     relinks: list[RelinkStat] = field(default_factory=list)
     snapshot_id: str | None = None
     reversibility: str = "partial"
+    partner_merge_recommended: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         data = super().to_dict()
@@ -116,6 +117,7 @@ class DedupeMergeResult(BulkRunResult):
                 ],
                 "snapshot_id": self.snapshot_id,
                 "reversibility": self.reversibility,
+                "partner_merge_recommended": self.partner_merge_recommended,
             }
         )
         return data
@@ -474,6 +476,7 @@ def merge_duplicates(
     run_id: str | None = None,
     snapshot_id: str | None = None,
     manifest: dict[str, Any] | None = None,
+    force_generic_merge: bool = False,
 ) -> DedupeMergeResult:
     run_id = run_id or str(uuid.uuid4())
     losers = [int(i) for i in loser_ids if int(i) != int(winner_id)]
@@ -483,10 +486,32 @@ def merge_duplicates(
     if manifest is not None:
         check_dedupe_allowed(manifest, model)
 
-    if model == "res.partner" and partner_merge_available(client) and not dry_run:
-        raise DedupeValidationError(
-            "res.partner merge is available via Odoo's base.partner.merge wizard on this "
-            "instance — prefer that for partners; generic merge blocked when wizard exists."
+    if (
+        model == "res.partner"
+        and partner_merge_available(client)
+        and not dry_run
+        and not force_generic_merge
+    ):
+        return DedupeMergeResult(
+            run_id=run_id,
+            operation="dedupe_merge",
+            model=model,
+            total=len(losers),
+            succeeded=0,
+            failed=0,
+            per_record=[],
+            dry_run=False,
+            message=(
+                "Odoo's partner merge wizard (base.partner.merge.automatic.wizard) is "
+                "available on this instance — use it for res.partner merges, or set "
+                "force_generic_merge=true to run the generic FK-relink engine."
+            ),
+            winner_id=winner_id,
+            loser_ids=losers,
+            relinks=[],
+            snapshot_id=snapshot_id,
+            reversibility="partial",
+            partner_merge_recommended=True,
         )
 
     references = discover_inbound_references(client, model)

@@ -30,6 +30,7 @@ export function Sidebar({ connection }: Props) {
   );
   const [lockedItem, setLockedItem] = useState<NavItem | null>(null);
   const supported = connection.capabilities?.supported ?? [];
+  const installedModules = connection.capabilities?.installed_modules_sample ?? [];
 
   return (
     <>
@@ -82,7 +83,7 @@ export function Sidebar({ connection }: Props) {
                   items.map((item) => {
                     const href = item.href(connection.id);
                     const active = pathname === href || pathname.startsWith(`${href}/`);
-                    const locked = navItemLocked(item, supported);
+                    const locked = navItemLocked(item, supported, installedModules);
                     const Icon = item.icon;
                     const link = (
                       <Link

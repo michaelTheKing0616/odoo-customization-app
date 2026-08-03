@@ -92,7 +92,7 @@ export function BarcodeScanner({ onScan, onError, className }: Props) {
             type="button"
             disabled={busy}
             onClick={() => void start()}
-            className="h-10 bg-[#714B67] px-4 text-sm font-semibold text-white disabled:opacity-50"
+            className="h-10 bg-accent px-4 text-sm font-semibold text-white disabled:opacity-50"
           >
             {busy ? "Starting…" : "Start camera"}
           </button>

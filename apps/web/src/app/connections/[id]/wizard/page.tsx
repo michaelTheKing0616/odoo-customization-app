@@ -5,12 +5,14 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { SuggestTemplateButton } from "@/components/SuggestTemplateButton";
+import { SaveAsComponentButton } from "@/components/SaveAsComponentButton";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import {
   api,
   AppTemplate,
   Connection,
   ConfirmationRequiredError,
+  ProtectedModuleRefusal,
   ScaffoldResult,
 } from "@/lib/api";
 import {
@@ -108,6 +110,7 @@ export default function AppWizardPage() {
   useSyncShellContext({ draftSummary });
   const [aiNote, setAiNote] = useState<string | null>(null);
   const [aiWarnings, setAiWarnings] = useState<string[]>([]);
+  const [aiRefusals, setAiRefusals] = useState<ProtectedModuleRefusal[]>([]);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [ollamaDetail, setOllamaDetail] = useState<string | null>(null);
@@ -129,6 +132,14 @@ export default function AppWizardPage() {
     Array<{ id: string; name: string; description: string; host_slot: string }>
   >([]);
   const [selectedGalleryId, setSelectedGalleryId] = useState("");
+  const [connectPointsApproved, setConnectPointsApproved] = useState(false);
+  const [connectReviewBusy, setConnectReviewBusy] = useState(false);
+  const [effectiveGrain, setEffectiveGrain] = useState<string>("");
+
+  const needsConnectReview = grainOverride !== "full_app";
+  const canDraftModule =
+    nlPrompt.trim().length >= 3 &&
+    (grainOverride === "full_app" || (connectPointsApproved && connectPoints !== null));
 
   useEffect(() => {
     let cancelled = false;
@@ -234,20 +245,70 @@ export default function AppWizardPage() {
     }
   }
 
+  async function onReviewConnectPoints() {
+    if (nlPrompt.trim().length < 3) return;
+    setConnectReviewBusy(true);
+    setError(null);
+    setConnectPointsApproved(false);
+    setAiDraft(null);
+    try {
+      const res = await api.proposeConnectPoints({
+        prompt: nlPrompt.trim(),
+        connection_id: connectionId,
+        grain: grainOverride || undefined,
+        gallery_id: selectedGalleryId || undefined,
+        connect_points: connectPoints ?? undefined,
+      });
+      setEffectiveGrain(res.grain);
+      setGrainLabel(res.grain_label);
+      setConnectPoints(res.connect_points ?? null);
+      setHostCandidates(res.host_candidates ?? []);
+      if (res.gallery_id && !selectedGalleryId) {
+        setSelectedGalleryId(res.gallery_id);
+      }
+      if (res.warnings?.length) {
+        setAiWarnings(res.warnings);
+      }
+      if (!res.requires_review) {
+        setConnectPointsApproved(true);
+      }
+    } catch (err) {
+      reportApiError(err, setError, {
+        fallback: "Connect-points review failed",
+        toast: true,
+      });
+    } finally {
+      setConnectReviewBusy(false);
+    }
+  }
+
   async function onDraftFromPrompt() {
+    if (!canDraftModule) return;
     setAiBusy(true);
     setError(null);
     setAiNote(null);
     setAiWarnings([]);
+    setAiRefusals([]);
     setGenUiResult(null);
     try {
       const res = await api.draftModuleFromPrompt(nlPrompt.trim(), {
         connection_id: connectionId,
         reuse_models: reuseModels,
+        grain: grainOverride || undefined,
+        gallery_id: selectedGalleryId || undefined,
+        host_model: connectPoints?.host_model
+          ? String(connectPoints.host_model)
+          : undefined,
+        connect_points: connectPoints ?? undefined,
       });
       setAiDraft(res.draft);
       setAiNote(res.note ?? "Draft only — does not apply.");
       setAiWarnings(res.warnings ?? []);
+      setAiRefusals(res.refusals ?? []);
+      if (res.grain_label) setGrainLabel(res.grain_label);
+      if (res.grain) setEffectiveGrain(res.grain);
+      if (res.connect_points) setConnectPoints(res.connect_points);
+      if (res.host_candidates?.length) setHostCandidates(res.host_candidates);
     } catch (err) {
       setAiDraft(null);
       reportApiError(err, setError, { fallback: "AI draft failed", toast: true });
@@ -443,6 +504,8 @@ export default function AppWizardPage() {
                   onClick={() => {
                     setSelectedGalleryId(c.id);
                     setNlPrompt(`Add ${c.name.toLowerCase()} to my ${c.host_slot.replace(".", " ")}s`);
+                    setConnectPointsApproved(false);
+                    setConnectPoints(null);
                   }}
                   className={`rounded-md border p-3 text-left text-sm transition ${
                     selectedGalleryId === c.id
@@ -470,7 +533,11 @@ export default function AppWizardPage() {
           <Textarea
             className="mt-3"
             value={nlPrompt}
-            onChange={(e) => setNlPrompt(e.target.value)}
+            onChange={(e) => {
+              setNlPrompt(e.target.value);
+              setConnectPointsApproved(false);
+              setConnectPoints(null);
+            }}
             rows={3}
             placeholder="Car rental fleet: vehicles, contracts, deposits, overdue returns…"
           />
@@ -484,16 +551,85 @@ export default function AppWizardPage() {
                 { value: "full_app", label: "Full app" },
               ]}
               value={grainOverride}
-              onChange={(e) => setGrainOverride(e.target.value)}
+              onChange={(e) => {
+                setGrainOverride(e.target.value);
+                setConnectPointsApproved(e.target.value === "full_app");
+                setConnectPoints(null);
+              }}
             />
             {grainLabel ? <Badge variant="info">Detected: {grainLabel}</Badge> : null}
           </div>
 
+          {connectPoints && needsConnectReview ? (
+            <section
+              className="mt-4 rounded-md border border-border-subtle bg-surface-muted p-4"
+              data-testid="connect-points-review"
+            >
+              <h3 className="text-sm font-semibold text-ink">Connect points (review before draft)</h3>
+              <p className="mt-1 text-xs text-muted">
+                Confirm host model and form placement. Edit below, then approve before drafting.
+              </p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2 text-xs">
+                <label>
+                  Host model
+                  <input
+                    value={String(connectPoints.host_model ?? "")}
+                    onChange={(e) => {
+                      setConnectPoints({ ...connectPoints, host_model: e.target.value });
+                      setConnectPointsApproved(false);
+                    }}
+                    className="mt-1 w-full rounded border border-border-subtle bg-surface px-2 py-1 font-mono"
+                  />
+                </label>
+                <label>
+                  Form xpath
+                  <input
+                    value={String(connectPoints.form_xpath ?? "//sheet")}
+                    onChange={(e) => {
+                      setConnectPoints({ ...connectPoints, form_xpath: e.target.value });
+                      setConnectPointsApproved(false);
+                    }}
+                    className="mt-1 w-full rounded border border-border-subtle bg-surface px-2 py-1 font-mono"
+                  />
+                </label>
+              </div>
+              {hostCandidates.length > 1 ? (
+                <p className="mt-2 text-xs text-muted">
+                  Other hosts:{" "}
+                  {hostCandidates
+                    .slice(1, 4)
+                    .map((h) => `${h.label} (${h.model})`)
+                    .join(" · ")}
+                </p>
+              ) : null}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  disabled={connectPointsApproved}
+                  onClick={() => setConnectPointsApproved(true)}
+                >
+                  {connectPointsApproved ? "Approved" : "Approve connect points"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  loading={connectReviewBusy}
+                  onClick={() => void onReviewConnectPoints()}
+                >
+                  Re-run review
+                </Button>
+              </div>
+            </section>
+          ) : null}
+
           <div className="mt-4">
-            <p className="text-xs uppercase tracking-wide text-[#8f7a88]">
+            <p className="text-xs uppercase tracking-wide text-muted">
               Reuse existing Odoo models
             </p>
-            <p className="mt-1 text-xs text-[#8f7a88]">
+            <p className="mt-1 text-xs text-muted">
               Link these instead of inventing duplicates (Contacts, products, invoices…).
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -506,8 +642,8 @@ export default function AppWizardPage() {
                     onClick={() => toggleReuse(m)}
                     className={`border px-2 py-1 font-mono text-xs ${
                       on
-                        ? "border-[#c9a9c0] bg-[#1a1218] text-[#c9a9c0]"
-                        : "border-[#3d2a38] text-[#8f7a88] hover:border-[#4a3550]"
+                        ? "border-border-subtle bg-surface-raised text-muted"
+                        : "border-border-subtle text-muted hover:border-[#4a3550]"
                     }`}
                   >
                     {on ? "✓ " : ""}
@@ -517,10 +653,10 @@ export default function AppWizardPage() {
               })}
             </div>
             {availableModels.length > 0 && (
-              <label className="mt-3 block text-xs text-[#8f7a88]">
+              <label className="mt-3 block text-xs text-muted">
                 Or pick from this connection
                 <select
-                  className="mt-1 w-full max-w-md border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 font-mono text-xs text-[#f4eef2]"
+                  className="mt-1 w-full max-w-md border border-border-subtle bg-surface px-2 py-1.5 font-mono text-xs text-ink"
                   defaultValue=""
                   onChange={(e) => {
                     const v = e.target.value;
@@ -542,19 +678,36 @@ export default function AppWizardPage() {
               </label>
             )}
             {reuseModels.length > 0 && (
-              <p className="mt-2 font-mono text-xs text-[#c9a9c0]">
+              <p className="mt-2 font-mono text-xs text-muted">
                 Selected: {reuseModels.join(", ")}
               </p>
             )}
           </div>
 
           <div className="mt-3 flex flex-wrap gap-3">
+            {needsConnectReview ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={connectReviewBusy || nlPrompt.trim().length < 3}
+                loading={connectReviewBusy}
+                onClick={() => void onReviewConnectPoints()}
+                data-testid="review-connect-points"
+              >
+                Review connect points
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="primary"
-              disabled={aiBusy || nlPrompt.trim().length < 3}
+              disabled={aiBusy || !canDraftModule}
               loading={aiBusy}
-              onClick={() => onDraftFromPrompt()}
+              title={
+                needsConnectReview && !connectPointsApproved
+                  ? "Review and approve connect points first"
+                  : undefined
+              }
+              onClick={() => void onDraftFromPrompt()}
             >
               Draft ModuleSpec
             </Button>
@@ -603,12 +756,21 @@ export default function AppWizardPage() {
                 setAiDraft(null);
                 setNlPrompt("");
                 setAiWarnings([]);
+                setConnectPoints(null);
+                setConnectPointsApproved(false);
+                setGrainLabel(null);
+                setEffectiveGrain("");
                 setAiNote("Use a template card below.");
               }}
             >
               Clear draft
             </Button>
           </div>
+          {needsConnectReview && !connectPointsApproved ? (
+            <Callout variant="info" title="Component grain" className="mt-3">
+              Run connect-points review and approve before drafting a component ModuleSpec.
+            </Callout>
+          ) : null}
           {aiDraft && generateUiBlocked ? (
             <Callout variant="warning" title="Generate UI blocked" className="mt-3">
               {generateUiBlocked}
@@ -633,50 +795,32 @@ export default function AppWizardPage() {
               </ul>
             </Callout>
           ) : null}
-          {connectPoints && (
-            <section className="mt-4 border border-[#3d2a38] bg-[#0c090b] p-4">
-              <h3 className="text-sm font-semibold text-[#c9a9c0]">Connect points</h3>
-              <p className="mt-1 text-xs text-[#8f7a88]">
-                Review host + form placement before Generate UI. Edit host model and re-draft
-                if needed.
+          {connectPoints && !needsConnectReview ? (
+            <section className="mt-4 border border-border-subtle bg-surface p-4">
+              <h3 className="text-sm font-semibold text-muted">Connect points</h3>
+              <p className="mt-1 text-xs text-muted">
+                Full-app draft — connect points not required.
               </p>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2 text-xs">
-                <label>
-                  Host model
-                  <input
-                    value={String(connectPoints.host_model ?? "")}
-                    onChange={(e) =>
-                      setConnectPoints({ ...connectPoints, host_model: e.target.value })
-                    }
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono"
-                  />
-                </label>
-                <label>
-                  Form xpath
-                  <input
-                    value={String(connectPoints.form_xpath ?? "//sheet")}
-                    onChange={(e) =>
-                      setConnectPoints({ ...connectPoints, form_xpath: e.target.value })
-                    }
-                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono"
-                  />
-                </label>
-              </div>
-              {hostCandidates.length > 1 && (
-                <p className="mt-2 text-xs text-[#8f7a88]">
-                  Other hosts:{" "}
-                  {hostCandidates
-                    .slice(1, 4)
-                    .map((h) => `${h.label} (${h.model})`)
-                    .join(" · ")}
-                </p>
-              )}
             </section>
-          )}
+          ) : null}
+          {aiRefusals.length > 0 ? (
+            <div className="mt-4 space-y-2" data-testid="protected-refusals">
+              {aiRefusals.map((r, i) => (
+                <Callout key={`${r.protected_module}-${i}`} variant="warning" title="Protected module">
+                  <p className="text-sm">
+                    <strong>{r.requested_capability}</strong>
+                  </p>
+                  <p className="mt-1 text-sm text-muted">Model: {r.protected_module}</p>
+                  <p className="mt-1 text-sm">{r.reason || r.requested_capability}</p>
+                  <p className="mt-2 text-sm text-accent">{r.safe_alternative}</p>
+                </Callout>
+              ))}
+            </div>
+          ) : null}
           {aiDraft && (
             <>
               {Boolean(aiDraft._component) || (aiDraft.grain && aiDraft.grain !== "full_app") ? (
-                <p className="mt-3 text-xs text-[#c9a9c0]">
+                <p className="mt-3 text-xs text-muted">
                   Component summary — host{" "}
                   <span className="font-mono">
                     {String(
@@ -689,7 +833,7 @@ export default function AppWizardPage() {
                   · depends {JSON.stringify(aiDraft.depends ?? [])} · no new app root
                 </p>
               ) : (
-                <p className="mt-3 text-xs text-[#8f7a88]">
+                <p className="mt-3 text-xs text-muted">
                   {Array.isArray(aiDraft.models) ? aiDraft.models.length : "?"} models
                   · {Array.isArray(aiDraft.views) ? aiDraft.views.length : 0} views
                   ·{" "}
@@ -707,7 +851,7 @@ export default function AppWizardPage() {
                   {(aiDraft.models as Array<{ model?: string; description?: string }>).map(
                     (m) => (
                       <li key={String(m.model)} className="flex items-center gap-2">
-                        <span className="font-mono text-[#c9a9c0]">{m.model}</span>
+                        <span className="font-mono text-muted">{m.model}</span>
                         <AskWhyButton
                           subject={String(m.model)}
                           context={`Draft model ${m.model}${m.description ? `: ${m.description}` : ""}`}
@@ -722,6 +866,14 @@ export default function AppWizardPage() {
                 language="json"
                 code={JSON.stringify(aiDraft, null, 2)}
               />
+              <div className="mt-3 flex flex-wrap gap-2">
+                <SuggestTemplateButton spec={aiDraft} connectionId={connectionId} />
+                {(aiDraft._component ||
+                  (typeof aiDraft.grain === "string" &&
+                    aiDraft.grain !== "full_app")) && (
+                  <SaveAsComponentButton spec={aiDraft} />
+                )}
+              </div>
             </>
           )}
         </Card>
@@ -800,7 +952,7 @@ export default function AppWizardPage() {
               <li className="flex items-start gap-2 border border-[#1e2f29] px-3 py-2">
                 <span
                   className={
-                    result.models.length > 0 ? "text-[#c9a9c0]" : "text-[#8f7a88]"
+                    result.models.length > 0 ? "text-muted" : "text-muted"
                   }
                   aria-hidden
                 >
@@ -820,8 +972,8 @@ export default function AppWizardPage() {
                 <span
                   className={
                     (result.menus_created ?? 0) > 0
-                      ? "text-[#c9a9c0]"
-                      : "text-[#8f7a88]"
+                      ? "text-muted"
+                      : "text-muted"
                   }
                   aria-hidden
                 >
@@ -835,7 +987,7 @@ export default function AppWizardPage() {
                 </span>
               </li>
               <li className="flex items-start gap-2 border border-[#1e2f29] px-3 py-2">
-                <span className="text-[#c9a9c0]" aria-hidden>
+                <span className="text-muted" aria-hidden>
                   →
                 </span>
                 <Link
@@ -844,22 +996,22 @@ export default function AppWizardPage() {
                       ? `/connections/${connectionId}/designer?model=${encodeURIComponent(result.models[0])}`
                       : `/connections/${connectionId}/designer`
                   }
-                  className="text-[#c9a9c0] hover:underline"
+                  className="text-muted hover:underline"
                 >
                   Open designer
                 </Link>
               </li>
               <li className="flex items-start gap-2 border border-[#1e2f29] px-3 py-2">
-                <span className="text-[#c9a9c0]" aria-hidden>
+                <span className="text-muted" aria-hidden>
                   →
                 </span>
                 <Link
                   href={`/connections/${connectionId}`}
-                  className="text-[#c9a9c0] hover:underline"
+                  className="text-muted hover:underline"
                 >
                   Run sandbox
                 </Link>
-                <span className="text-[#8f7a88]">(on connection page)</span>
+                <span className="text-muted">(on connection page)</span>
               </li>
             </ol>
 
@@ -872,24 +1024,24 @@ export default function AppWizardPage() {
                   key={model}
                   className="flex flex-wrap items-center gap-3 border border-[#1e2f29] px-3 py-2"
                 >
-                  <span className="font-mono text-[#c9a9c0]">{model}</span>
+                  <span className="font-mono text-muted">{model}</span>
                   <AskWhyButton subject={model} context={`Scaffold created model ${model}`} />
                   <Link
                     href={`/connections/${connectionId}/builder`}
-                    className="text-xs text-[#c9a9c0] hover:underline"
+                    className="text-xs text-muted hover:underline"
                   >
                     Builder
                   </Link>
                   <Link
                     href={`/connections/${connectionId}/designer?model=${encodeURIComponent(model)}`}
-                    className="text-xs text-[#c9a9c0] hover:underline"
+                    className="text-xs text-muted hover:underline"
                   >
                     Designer
                   </Link>
                 </li>
               ))}
               {result.models.length === 0 && (
-                <li className="text-[#8f7a88]">No models reported.</li>
+                <li className="text-muted">No models reported.</li>
               )}
             </ul>
             <div className="mt-4 flex flex-wrap gap-2">

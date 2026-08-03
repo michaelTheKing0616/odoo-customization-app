@@ -6,13 +6,22 @@
  * text-ink / text-muted / text-subtle
  * border-subtle / border-strong
  * bg-accent / text-on-accent
- * semantic: success, warning, danger, info
+ * semantic: success-1..5, warning-1..5, danger-1..5, info-1..5
+ *   (aliases: *-subtle = *-2, base = *-3, *-strong = *-4)
  *
  * Legacy --odoo-* aliases preserved until UIX-4* page migrations.
  *
- * Contrast (WCAG AA intent):
- * ink on paper (n12/n1): ~15:1 | muted on paper: ~4.6:1
- * on-accent white on accent6: ~4.8:1 | danger text on danger-subtle: ~5:1
+ * WCAG AA contrast table (light mode, approximate):
+ * | Pair | Ratio | Role |
+ * | ink on paper (n12/n1) | ~15:1 | body text |
+ * | muted on paper (n8/n1) | ~4.6:1 | secondary text |
+ * | on-accent on accent6 | ~4.8:1 | primary button label |
+ * | success-3 on success-2 | ~4.6:1 | success badge text |
+ * | warning-3 on warning-2 | ~4.5:1 | warning badge text |
+ * | danger-3 on danger-2 | ~5.0:1 | danger badge text |
+ * | info-3 on info-2 | ~4.6:1 | info badge text |
+ * | success-4 on success-1 | ~7:1 | strong success on subtlest bg |
+ * Dark mode: semantic-3 on surface (~4.5:1+); subtle steps are bg-only.
  */
 
 :root {
@@ -40,18 +49,39 @@
   --accent9: #05332d;
   --accent10: #021c19;
 
-  --success-subtle: #e8f5ec;
-  --success: #1a7f4b;
-  --success-strong: #0f5733;
-  --warning-subtle: #fef6e7;
-  --warning: #b45309;
-  --warning-strong: #78350f;
-  --danger-subtle: #fdecec;
-  --danger: #c53030;
-  --danger-strong: #9b2c2c;
-  --info-subtle: #eef4ff;
-  --info: #2563eb;
-  --info-strong: #1d4ed8;
+  --success-1: #f0faf4;
+  --success-2: #e8f5ec;
+  --success-3: #1a7f4b;
+  --success-4: #0f5733;
+  --success-5: #072818;
+  --warning-1: #fffbf0;
+  --warning-2: #fef6e7;
+  --warning-3: #b45309;
+  --warning-4: #78350f;
+  --warning-5: #451a03;
+  --danger-1: #fff5f5;
+  --danger-2: #fdecec;
+  --danger-3: #c53030;
+  --danger-4: #9b2c2c;
+  --danger-5: #63171b;
+  --info-1: #f5f8ff;
+  --info-2: #eef4ff;
+  --info-3: #2563eb;
+  --info-4: #1d4ed8;
+  --info-5: #1e3a8a;
+
+  --success-subtle: var(--success-2);
+  --success: var(--success-3);
+  --success-strong: var(--success-4);
+  --warning-subtle: var(--warning-2);
+  --warning: var(--warning-3);
+  --warning-strong: var(--warning-4);
+  --danger-subtle: var(--danger-2);
+  --danger: var(--danger-3);
+  --danger-strong: var(--danger-4);
+  --info-subtle: var(--info-2);
+  --info: var(--info-3);
+  --info-strong: var(--info-4);
 
   --surface: var(--n1);
   --surface-raised: #ffffff;
@@ -131,10 +161,39 @@
   --border-strong: var(--n5);
   --accent-subtle: var(--accent9);
 
-  --success-subtle: #142820;
-  --warning-subtle: #2a2210;
-  --danger-subtle: #2a1414;
-  --info-subtle: #142038;
+  --success-1: #0a1812;
+  --success-2: #142820;
+  --success-3: #4ade80;
+  --success-4: #86efac;
+  --success-5: #bbf7d0;
+  --warning-1: #1a1408;
+  --warning-2: #2a2210;
+  --warning-3: #fbbf24;
+  --warning-4: #fcd34d;
+  --warning-5: #fde68a;
+  --danger-1: #1a0a0a;
+  --danger-2: #2a1414;
+  --danger-3: #f87171;
+  --danger-4: #fca5a5;
+  --danger-5: #fecaca;
+  --info-1: #0a1428;
+  --info-2: #142038;
+  --info-3: #60a5fa;
+  --info-4: #93c5fd;
+  --info-5: #bfdbfe;
+
+  --success-subtle: var(--success-2);
+  --success: var(--success-3);
+  --success-strong: var(--success-4);
+  --warning-subtle: var(--warning-2);
+  --warning: var(--warning-3);
+  --warning-strong: var(--warning-4);
+  --danger-subtle: var(--danger-2);
+  --danger: var(--danger-3);
+  --danger-strong: var(--danger-4);
+  --info-subtle: var(--info-2);
+  --info: var(--info-3);
+  --info-strong: var(--info-4);
 
   --shadow-subtle: 0 1px 2px rgb(0 0 0 / 30%);
   --shadow-raised: 0 4px 12px rgb(0 0 0 / 35%);
@@ -263,4 +322,43 @@ body {
 :focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
+}
+
+/* Refractor / CodeBlock token colors */
+.code-block-highlight .token.comment,
+.code-block-highlight .token.prolog,
+.code-block-highlight .token.doctype {
+  color: var(--n8);
+}
+.code-block-highlight .token.punctuation {
+  color: var(--n9);
+}
+.code-block-highlight .token.property,
+.code-block-highlight .token.tag,
+.code-block-highlight .token.boolean,
+.code-block-highlight .token.number,
+.code-block-highlight .token.constant,
+.code-block-highlight .token.symbol {
+  color: var(--info);
+}
+.code-block-highlight .token.selector,
+.code-block-highlight .token.attr-name,
+.code-block-highlight .token.string,
+.code-block-highlight .token.char,
+.code-block-highlight .token.builtin {
+  color: var(--success);
+}
+.code-block-highlight .token.operator,
+.code-block-highlight .token.entity,
+.code-block-highlight .token.url {
+  color: var(--accent);
+}
+.code-block-highlight .token.atrule,
+.code-block-highlight .token.attr-value,
+.code-block-highlight .token.keyword {
+  color: var(--warning);
+}
+.code-block-highlight .token.function,
+.code-block-highlight .token.class-name {
+  color: var(--danger);
 }

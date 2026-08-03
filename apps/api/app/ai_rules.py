@@ -488,30 +488,108 @@ def strip_protected_module_effects(
     *,
     manifest: dict[str, Any],
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[str]]:
-    """Remove tier-1 inherit mutations; return (cleaned, refusals, warnings)."""
-    from app.protected_modules import protected_models_for
+    """Remove tier-1 effects; return (cleaned, refusals, warnings)."""
+    from app.protected_enforcement import (
+        check_automation_create,
+        pcm_refusal,
+        scrub_spec_for_protected_apply,
+    )
 
-    out = copy.deepcopy(draft)
+    out, skips = scrub_spec_for_protected_apply(draft, manifest)
     refusals: list[dict[str, Any]] = []
-    warnings: list[str] = []
-    kept: list[dict[str, Any]] = []
-    for model in out.get("models") or []:
-        if not isinstance(model, dict):
-            continue
-        name = str(model.get("model") or "")
-        if model.get("mode") == "inherit" and protected_models_for(manifest, name) == "tier_1":
+    warnings: list[str] = list(skips)
+
+    for skip in skips:
+        if skip.startswith("automation:"):
+            mod = "tier-1"
+            if "protected:tier_1:" in skip:
+                mod = skip.split("protected:tier_1:", 1)[1].split(":", 1)[0]
             refusals.append(
-                {
-                    "kind": "inherit_strip",
-                    "model": name,
-                    "reason": f"Cannot inherit fields on tier-1 host {name}",
-                }
+                pcm_refusal(
+                    requested_capability="automation with tier-1 write effect",
+                    protected_module=mod,
+                    kind="automation_strip",
+                    reason=skip,
+                )
             )
-            warnings.append(f"PCM: removed inherit model {name} (tier-1 host)")
+        elif skip.startswith("model:"):
+            mod = skip.split(":", 2)[1].split(":")[0] if skip.count(":") >= 2 else "tier-1"
+            refusals.append(
+                pcm_refusal(
+                    requested_capability=f"inherit or mutate tier-1 model {mod}",
+                    protected_module=mod,
+                    kind="inherit_strip",
+                    model=mod,
+                    reason=skip,
+                )
+            )
+        elif skip.startswith("field:") or skip.startswith("smart_button:"):
+            target = skip.split(":", 2)[1] if skip.count(":") >= 2 else "tier-1"
+            mod = target.split(".")[0] if "." in target else target
+            refusals.append(
+                pcm_refusal(
+                    requested_capability="protected field or smart button mutation",
+                    protected_module=mod,
+                    kind="spec_strip",
+                    reason=skip,
+                )
+            )
+
+    autos = out.get("automations")
+    if isinstance(autos, list):
+        kept_autos: list[Any] = []
+        for auto in autos:
+            if not isinstance(auto, dict):
+                kept_autos.append(auto)
+                continue
+            auto_model = str(auto.get("model") or auto.get("res_model") or "")
+            actions = auto.get("safe_actions") or auto.get("actions") or []
+            kind = "update_field"
+            target: str | None = None
+            if isinstance(actions, list) and actions and isinstance(actions[0], dict):
+                kind = str(actions[0].get("kind") or actions[0].get("type") or "update_field")
+                for tk in ("target_model", "model", "res_model", "relation"):
+                    if actions[0].get(tk):
+                        target = str(actions[0].get(tk))
+                        break
+            kind_map = {
+                "next_activity": "create_activity",
+                "object_write": "update_field",
+                "object_create": "create_record",
+            }
+            kind = kind_map.get(kind, kind)
+            viol = check_automation_create(
+                manifest,
+                model=auto_model,
+                action_kind=kind,
+                target_model=target,
+            )
+            if viol:
+                refusals.append(
+                    pcm_refusal(
+                        requested_capability=f"automation {kind!r}",
+                        protected_module=viol.model,
+                        safe_alternative=viol.safe_alternative,
+                        kind="automation_strip",
+                        model=viol.model,
+                        reason=viol.reason,
+                    )
+                )
+                warnings.append(f"PCM: removed automation on {viol.model}")
+                continue
+            kept_autos.append(auto)
+        out["automations"] = kept_autos
+
+    seen: set[tuple[str, str]] = set()
+    unique: list[dict[str, Any]] = []
+    for r in refusals:
+        key = (str(r.get("protected_module", "")), str(r.get("requested_capability", "")))
+        if key in seen:
             continue
-        kept.append(model)
-    out["models"] = kept
-    return out, refusals, warnings
+        seen.add(key)
+        unique.append(r)
+
+    return out, unique, warnings
 
 
 __all__ = [

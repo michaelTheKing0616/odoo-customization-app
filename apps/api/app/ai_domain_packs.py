@@ -764,52 +764,6 @@ _PACK_FACTORIES: list[tuple[str, Any, re.Pattern[str]]] = [
             re.I,
         ),
     ),
-    # Hotel before real_estate — "property" alone is ambiguous; hotel prompts use PMS/check-in.
-    (
-        "hotel",
-        _hotel_pack,
-        re.compile(
-            r"\b(hotel|pms|property\s+management\s+system|check[\s-]?in|check[\s-]?out|"
-            r"housekeeping|front\s+desk|room\s+booking|hotel\s+management|lodging|guest\s+folio)\b",
-            re.I,
-        ),
-    ),
-    (
-        "restaurant",
-        _restaurant_pack,
-        re.compile(
-            r"\b(restaurant|dining|menu|kitchen|food\s+service|pos\s+lite|"
-            r"table\s+reservation|waiter|bistro|cafe|dining\s+order)\b",
-            re.I,
-        ),
-    ),
-    (
-        "real_estate",
-        _real_estate_pack,
-        re.compile(
-            r"\b(real\s*estate|rental\s+property|lease\s+management|tenant\s+portal|"
-            r"property\s+listing|unit\s+lease|viewing|landlord|apartment\s+rental)\b",
-            re.I,
-        ),
-    ),
-    (
-        "subscription",
-        _subscription_pack,
-        re.compile(
-            r"\b(subscription|membership\s+plan|renewal\s+workflow|saas\s+plan|"
-            r"usage[\s-]?based|member\s+portal)\b",
-            re.I,
-        ),
-    ),
-    (
-        "project_tracker",
-        _project_tracker_pack,
-        re.compile(
-            r"\b(project\s+tracker|project\s+management|task\s+tracker|milestone|"
-            r"time\s+entry|timesheet|pm\s+tool)\b",
-            re.I,
-        ),
-    ),
     (
         "clinic",
         clinic_pack,

@@ -12,7 +12,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.billing_models import BillingWebhookEvent, ProjectPass, WorkspaceSubscription
-from app.entitlements import ensure_workspace_subscription, seed_plan_features
+from app.entitlements import ensure_workspace_subscription, grant_extra_project_slots, seed_plan_features
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -94,6 +94,9 @@ def apply_stripe_event(db: Session, event: dict) -> None:
                     expires_at=_now() + timedelta(days=60),
                 )
             )
+        elif metadata.get("sku") == "extra_project_slot":
+            qty = int(metadata.get("slot_quantity") or obj.get("quantity") or 1)
+            grant_extra_project_slots(db, workspace_id, qty)
         else:
             sub.plan_id = plan_id
             sub.status = "active"
@@ -180,6 +183,120 @@ def create_stripe_checkout_session(
         metadata={"workspace_id": workspace_id, "plan_id": plan_id},
     )
     return {"checkout_url": session.url or "", "session_id": session.id, "mode": "stripe"}
+
+
+def create_stripe_extra_slot_checkout(
+    *,
+    workspace_id: str,
+    plan_id: str,
+    slot_quantity: int,
+    success_url: str,
+    cancel_url: str,
+) -> dict[str, str]:
+    from app.entitlements import extra_slot_price_usd
+
+    if plan_id not in {"pro", "business"}:
+        raise RuntimeError("Extra project slots are available on Pro and Business plans only")
+    if extra_slot_price_usd(plan_id) is None:
+        raise RuntimeError(f"Plan {plan_id} does not support extra slot add-ons")
+
+    if not stripe_available():
+        if settings.billing_mode.strip().lower() == "fake":
+            fake_id = f"cs_fake_slot_{workspace_id[:8]}"
+            return {
+                "checkout_url": f"{success_url}?session_id={fake_id}&fake=1&slots={slot_quantity}",
+                "session_id": fake_id,
+                "mode": "fake",
+            }
+        raise RuntimeError("Stripe not configured")
+
+    import stripe
+
+    stripe.api_key = settings.stripe_secret_key
+    price_id = settings.stripe_extra_slot_price(plan_id)
+    if not price_id:
+        raise RuntimeError(f"No Stripe extra-slot price configured for plan {plan_id}")
+
+    session = stripe.checkout.Session.create(
+        mode="subscription",
+        line_items=[{"price": price_id, "quantity": slot_quantity}],
+        success_url=success_url,
+        cancel_url=cancel_url,
+        metadata={
+            "workspace_id": workspace_id,
+            "plan_id": plan_id,
+            "sku": "extra_project_slot",
+            "slot_quantity": str(slot_quantity),
+        },
+    )
+    return {"checkout_url": session.url or "", "session_id": session.id, "mode": "stripe"}
+
+
+def apply_paystack_charge_success(db: Session, data: dict) -> None:
+    """Shared Paystack charge.success handler (verify route + webhook)."""
+    meta = data.get("metadata") or {}
+    workspace_id = meta.get("workspace_id")
+    if not workspace_id:
+        return
+    if meta.get("sku") == "extra_project_slot":
+        qty = int(meta.get("slot_quantity") or 1)
+        grant_extra_project_slots(db, workspace_id, qty)
+        return
+    plan_id = meta.get("plan_id", "pro")
+    sub = ensure_workspace_subscription(db, workspace_id)
+    sub.plan_id = plan_id
+    sub.status = "active"
+    sub.processor = "paystack"
+    db.add(sub)
+    db.commit()
+
+
+async def paystack_initialize_extra_slots(
+    *,
+    email: str,
+    workspace_id: str,
+    plan_id: str,
+    slot_quantity: int,
+    callback_url: str,
+) -> dict:
+    from app.entitlements import extra_slot_price_usd
+
+    if plan_id not in {"pro", "business"}:
+        raise RuntimeError("Extra project slots are available on Pro and Business plans only")
+    unit_usd = extra_slot_price_usd(plan_id)
+    if unit_usd is None:
+        raise RuntimeError(f"Plan {plan_id} does not support extra slot add-ons")
+
+    amount_kobo = settings.paystack_extra_slot_kobo(plan_id)
+    if not amount_kobo:
+        amount_kobo = unit_usd * 100  # dev fallback
+
+    if not paystack_available():
+        if settings.billing_mode.strip().lower() == "fake":
+            return {
+                "authorization_url": f"{callback_url}?reference=fake_ps_slot_{workspace_id[:8]}",
+                "reference": f"fake_ps_slot_{workspace_id[:8]}",
+                "mode": "fake",
+            }
+        raise RuntimeError("Paystack not configured")
+
+    headers = {"Authorization": f"Bearer {settings.paystack_secret_key}"}
+    payload = {
+        "email": email,
+        "amount": amount_kobo * slot_quantity,
+        "callback_url": callback_url,
+        "metadata": {
+            "workspace_id": workspace_id,
+            "plan_id": plan_id,
+            "sku": "extra_project_slot",
+            "slot_quantity": str(slot_quantity),
+        },
+    }
+    async with httpx.AsyncClient(timeout=30) as client:
+        res = await client.post("https://api.paystack.co/transaction/initialize", json=payload, headers=headers)
+        res.raise_for_status()
+        data = res.json()["data"]
+        return {"authorization_url": data["authorization_url"], "reference": data["reference"], "mode": "paystack"}
 
 
 def create_stripe_portal_link(*, customer_id: str, return_url: str) -> str:

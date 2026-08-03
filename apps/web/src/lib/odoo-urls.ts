@@ -12,7 +12,8 @@ export type OdooViewType =
   | "map"
   | "activity"
   | "gantt"
-  | "cohort";
+  | "cohort"
+  | "grid";
 
 export type WindowActionCandidate = {
   id: number;

@@ -32,6 +32,7 @@ class PowerRecipe:
     requires_modules: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
     min_major: int = 16
+    protected_tier_note: str | None = None
 
 
 @dataclass
@@ -55,6 +56,12 @@ class PowerOpsResult:
     unavailable_reason: str | None = None
 
 
+_ACCOUNT_MOVE_PCM_NOTE = (
+    "Power Ops exemption: operator-initiated batch of Odoo's own account.move "
+    "methods — not generated tier-1 business logic (PCM Doc 7)."
+)
+
+
 def _recipes() -> dict[str, PowerRecipe]:
     return {
         "purge_journal_entries": PowerRecipe(
@@ -69,6 +76,7 @@ def _recipes() -> dict[str, PowerRecipe]:
             requires_modules=["account"],
             tags=["accounting", "destructive", "purge"],
             min_major=16,
+            protected_tier_note=_ACCOUNT_MOVE_PCM_NOTE,
             risks=[
                 "Permanently deletes journal entries matching your domain",
                 "Locked fiscal periods / reconciled items may fail per row",
@@ -137,6 +145,7 @@ def _recipes() -> dict[str, PowerRecipe]:
             destructive=True,
             requires_modules=["account"],
             tags=["accounting", "destructive"],
+            protected_tier_note=_ACCOUNT_MOVE_PCM_NOTE,
             risks=["Cancels posted moves where Odoo allows; locked periods may block"],
             steps=[
                 RecipeStep(kind="method", method="button_cancel", label="Cancel"),
@@ -150,6 +159,7 @@ def _recipes() -> dict[str, PowerRecipe]:
             destructive=True,
             requires_modules=["account"],
             tags=["accounting", "destructive"],
+            protected_tier_note=_ACCOUNT_MOVE_PCM_NOTE,
             risks=["Mutates accounting documents; fiscal locks may fail per row"],
             steps=[
                 RecipeStep(kind="method", method="button_draft", label="Reset to draft"),
@@ -164,6 +174,7 @@ def _recipes() -> dict[str, PowerRecipe]:
             destructive=False,
             requires_modules=["account"],
             tags=["accounting"],
+            protected_tier_note=_ACCOUNT_MOVE_PCM_NOTE,
             risks=["Posts accounting entries; hard to reverse without cancel/draft"],
             steps=[
                 RecipeStep(kind="method", method="action_post", label="Post"),
@@ -179,6 +190,7 @@ def _recipes() -> dict[str, PowerRecipe]:
             destructive=True,
             requires_modules=["account"],
             tags=["accounting", "destructive"],
+            protected_tier_note=_ACCOUNT_MOVE_PCM_NOTE,
             risks=["May fail on reconciled/locked moves — failures reported per row"],
             steps=[
                 RecipeStep(kind="method", method="button_draft", label="Reset to draft"),

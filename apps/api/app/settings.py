@@ -113,9 +113,13 @@ class Settings(BaseSettings):
     stripe_price_business: str = ""
     stripe_price_agency: str = ""
     stripe_price_project_pass: str = ""
+    stripe_price_extra_slot_pro: str = ""
+    stripe_price_extra_slot_business: str = ""
     paystack_secret_key: str = ""
     paystack_price_pro_kobo: int = 0
     paystack_price_business_kobo: int = 0
+    paystack_extra_slot_pro_kobo: int = 0
+    paystack_extra_slot_business_kobo: int = 0
     business_trial_enabled: bool = True
     business_trial_days: int = 14
 
@@ -142,6 +146,20 @@ class Settings(BaseSettings):
         if self.stripe_price_project_pass:
             out["project_pass"] = self.stripe_price_project_pass
         return out
+
+    def stripe_extra_slot_price(self, plan_id: str) -> str | None:
+        if plan_id == "pro" and self.stripe_price_extra_slot_pro:
+            return self.stripe_price_extra_slot_pro
+        if plan_id == "business" and self.stripe_price_extra_slot_business:
+            return self.stripe_price_extra_slot_business
+        return None
+
+    def paystack_extra_slot_kobo(self, plan_id: str) -> int:
+        if plan_id == "pro" and self.paystack_extra_slot_pro_kobo:
+            return self.paystack_extra_slot_pro_kobo
+        if plan_id == "business" and self.paystack_extra_slot_business_kobo:
+            return self.paystack_extra_slot_business_kobo
+        return 0
 
     def sandbox_extra_module_list(self) -> list[str]:
         return [m.strip() for m in self.sandbox_extra_modules.split(",") if m.strip()]

@@ -149,7 +149,7 @@ export function ScanToFieldPanel({
                 <>
                   {" "}
                   <Link
-                    className="text-[#714B67] underline"
+                    className="text-accent underline"
                     href={`${connection.url}/web#id=${r.id}&model=${model}&view_type=form`}
                     target="_blank"
                     rel="noreferrer"

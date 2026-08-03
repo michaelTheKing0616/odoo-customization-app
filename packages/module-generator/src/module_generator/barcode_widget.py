@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from importlib.resources import files
 from typing import Any
 
 BARCODE_README = """# Barcode scan field widget (Odoo Custom add-on)
@@ -19,16 +20,38 @@ On any char field in form views:
 
 ## Scanning
 
-The widget uses the browser **BarcodeDetector** API when available (Chrome/Android). On
-unsupported browsers, operators can type or paste values manually.
+1. **Fast path:** when the browser exposes `BarcodeDetector` (Chrome/Android), the widget uses
+   it directly on the camera stream.
+2. **Fallback:** otherwise the bundled **ZXing** library in `static/lib/zxing-browser.min.js`
+   decodes 1D/2D codes from the same stream (Safari, Firefox, desktop).
 
-## Third-party licenses
+Operators can always type or paste values manually if camera access is denied.
 
-The in-app scanner in Odoo Custom (web app) uses **@zxing/browser** (Apache-2.0). If you
-bundle a local copy of ZXing in `static/lib/` for offline parity, retain the Apache-2.0
-NOTICE per https://github.com/zxing-js/browser .
+## Licenses
 
-Our widget code in this module is LGPL-3 (same as the module license).
+| Component | License |
+|-----------|---------|
+| Widget code in this module (`static/src/js`, `static/src/xml`) | LGPL-3 (same as module) |
+| `static/lib/zxing-browser.min.js` | Apache-2.0 — see `static/lib/ZXING-NOTICE.txt` |
+
+The in-app scanner in Odoo Custom (web app) also uses **@zxing/browser** (Apache-2.0).
+Upstream: https://github.com/zxing-js/browser
+"""
+
+ZXING_NOTICE = """ZXing for JS (@zxing/browser bundled build)
+Copyright contributors to https://github.com/zxing-js/browser and https://github.com/zxing-js/library
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 """
 
 X_BARCODE_SCAN_JS = """/** @odoo-module **/
@@ -36,6 +59,48 @@ X_BARCODE_SCAN_JS = """/** @odoo-module **/
 import { registry } from "@web/core/registry";
 import { CharField, charField } from "@web/views/fields/char/char_field";
 import { useState } from "@odoo/owl";
+
+const SCAN_TIMEOUT_MS = 15000;
+const DETECTOR_FORMATS = ["qr_code", "code_128", "ean_13", "ean_8", "upc_a", "upc_e"];
+
+async function openCameraVideo() {
+    const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+    });
+    const video = document.createElement("video");
+    video.playsInline = true;
+    video.muted = true;
+    video.srcObject = stream;
+    await video.play();
+    return { stream, video };
+}
+
+async function scanWithBarcodeDetector(video) {
+    const detector = new BarcodeDetector({ formats: DETECTOR_FORMATS });
+    const deadline = Date.now() + SCAN_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+        const codes = await detector.detect(video);
+        if (codes.length) {
+            return codes[0].rawValue;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    return null;
+}
+
+async function scanWithZxing(video) {
+    const Reader = window.ZXingBrowser?.BrowserMultiFormatReader;
+    if (!Reader) {
+        throw new Error("ZXing scanner library failed to load.");
+    }
+    const reader = new Reader();
+    try {
+        const result = await reader.decodeOnceFromVideoElement(video);
+        return result?.getText?.() || null;
+    } finally {
+        reader.reset?.();
+    }
+}
 
 export class XBarcodeScanCharField extends CharField {
     setup() {
@@ -45,33 +110,28 @@ export class XBarcodeScanCharField extends CharField {
 
     async onScanClick() {
         this.scanState.error = null;
-        if (!("BarcodeDetector" in window)) {
+        if (!navigator.mediaDevices?.getUserMedia) {
             this.scanState.error =
-                "Camera barcode API unavailable — type or paste the value, or use Odoo Custom in-app scanner.";
+                "Camera unavailable — type or paste the value, or use Odoo Custom in-app scanner.";
             return;
         }
+        let stream = null;
         try {
             this.scanState.busy = true;
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: "environment" },
-            });
-            const video = document.createElement("video");
-            video.srcObject = stream;
-            await video.play();
-            const detector = new BarcodeDetector({
-                formats: ["qr_code", "code_128", "ean_13", "ean_8", "upc_a", "upc_e"],
-            });
-            const deadline = Date.now() + 15000;
+            const opened = await openCameraVideo();
+            stream = opened.stream;
+            const { video } = opened;
             let value = null;
-            while (Date.now() < deadline && !value) {
-                const codes = await detector.detect(video);
-                if (codes.length) {
-                    value = codes[0].rawValue;
-                } else {
-                    await new Promise((r) => setTimeout(r, 200));
+            if ("BarcodeDetector" in window) {
+                try {
+                    value = await scanWithBarcodeDetector(video);
+                } catch {
+                    value = null;
                 }
             }
-            stream.getTracks().forEach((t) => t.stop());
+            if (!value) {
+                value = await scanWithZxing(video);
+            }
             if (value) {
                 await this.props.record.update({ [this.props.name]: value });
             } else {
@@ -80,6 +140,7 @@ export class XBarcodeScanCharField extends CharField {
         } catch (err) {
             this.scanState.error = err?.message || String(err);
         } finally {
+            stream?.getTracks().forEach((track) => track.stop());
             this.scanState.busy = false;
         }
     }
@@ -108,6 +169,11 @@ X_BARCODE_SCAN_XML = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
+def _vendor_zxing_bundle() -> str:
+    path = files("module_generator.vendor").joinpath("zxing-browser.min.js")
+    return path.read_text(encoding="utf-8")
+
+
 def emit_barcode_scan_widget_files(
     spec: Any,
     files: dict[str, str],
@@ -116,6 +182,8 @@ def emit_barcode_scan_widget_files(
     if not getattr(spec, "include_barcode_scan_widget", False):
         return
     root = spec.technical_name
+    files[f"{root}/static/lib/zxing-browser.min.js"] = _vendor_zxing_bundle()
+    files[f"{root}/static/lib/ZXING-NOTICE.txt"] = ZXING_NOTICE
     files[f"{root}/static/src/js/x_barcode_scan_field.js"] = X_BARCODE_SCAN_JS
     files[f"{root}/static/src/xml/x_barcode_scan_field.xml"] = X_BARCODE_SCAN_XML
     files[f"{root}/README_BARCODE.md"] = BARCODE_README

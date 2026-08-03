@@ -30,7 +30,32 @@ export default function TokensE2EPage() {
           <p className="font-mono text-sm">font-mono code</p>
         </Card>
         <Card className="p-4">
-          <h2 className="text-sm font-semibold">Semantic</h2>
+          <h2 className="text-sm font-semibold">Semantic ramps (5 steps)</h2>
+          <div className="mt-3 space-y-3">
+            {(["success", "warning", "danger", "info"] as const).map((name) => (
+              <div key={name}>
+                <p className="mb-1 text-xs capitalize text-muted">{name}</p>
+                <div className="flex flex-wrap gap-1">
+                  {[1, 2, 3, 4, 5].map((step) => (
+                    <span
+                      key={step}
+                      className="flex h-8 w-10 items-center justify-center rounded border border-border-subtle text-[10px]"
+                      style={{
+                        background: `var(--${name}-${step})`,
+                        color: step >= 3 ? `var(--${name}-1)` : `var(--${name}-5)`,
+                      }}
+                      title={`${name}-${step}`}
+                    >
+                      {step}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+        <Card className="p-4">
+          <h2 className="text-sm font-semibold">Semantic badges</h2>
           <div className="mt-2 flex flex-wrap gap-2">
             <Badge variant="success">Success</Badge>
             <Badge variant="warning">Warning</Badge>

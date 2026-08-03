@@ -1,18 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
+import { highlightCode, type HighlightLanguage } from "@/lib/highlight";
 
 type CodeBlockProps = {
   code: string;
-  language?: "xml" | "json" | "python" | "text";
+  language?: HighlightLanguage;
   className?: string;
 };
 
 export function CodeBlock({ code, language = "text", className }: CodeBlockProps) {
   const [wrap, setWrap] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  const highlighted = useMemo(() => highlightCode(code, language), [code, language]);
 
   async function copy() {
     await navigator.clipboard.writeText(code);
@@ -38,11 +41,11 @@ export function CodeBlock({ code, language = "text", className }: CodeBlockProps
       </div>
       <pre
         className={cn(
-          "overflow-auto p-3 font-mono text-xs text-ink",
+          "code-block-highlight overflow-auto p-3 font-mono text-xs text-ink",
           wrap ? "whitespace-pre-wrap break-all" : "whitespace-pre",
         )}
       >
-        <code>{code}</code>
+        <code dangerouslySetInnerHTML={{ __html: highlighted }} />
       </pre>
     </div>
   );
