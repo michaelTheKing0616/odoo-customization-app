@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DomainBuilder } from "@/components/DomainBuilder";
@@ -32,6 +31,8 @@ import { ExplainThisButton } from "@/components/expert/ExplainThisButton";
 import { fallbackWidgetsForTtype, type WidgetOption } from "@/lib/widgetCatalog";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { Callout } from "@/components/ui/Callout";
+import { Card, PageHeader } from "@/components/ui/layout-primitives";
 import {
   bindModeSupported,
   bindModeUnsupportedReason,
@@ -2058,46 +2059,15 @@ export default function DesignerPage() {
   }, [connectionId, fields, selectedField?.name]);
 
   return (
-    <main className="odoo-shell min-h-screen px-6 py-10 text-[#f4eef2]">
-      <div className="mx-auto max-w-7xl">
-        <div className="flex flex-wrap gap-4 text-sm">
-          <Link href={`/connections/${connectionId}`} className="text-[#c9a9c0] hover:underline">
-            ← Metadata
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/builder`}
-            className="text-[#8f7a88] hover:underline"
-          >
-            Builder
-          </Link>
-          <Link
-            href={
-              model
-                ? `/connections/${connectionId}/automations?model=${encodeURIComponent(model)}`
-                : `/connections/${connectionId}/automations`
-            }
-            className="text-[#8f7a88] hover:underline"
-          >
-            Automations
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/reminders`}
-            className="text-[#8f7a88] hover:underline"
-          >
-            Reminders
-          </Link>
-        </div>
-        <h1 className="mt-4 font-[family-name:var(--font-display)] text-3xl text-[#faf6f9]">
-          View designer
-        </h1>
-        <p className="mt-1 text-sm text-[#8f7a88]">
-          {connection?.name ?? connectionId} · drag fields onto the canvas ·
-          saves real <code className="text-[#c9a9c0]">ir.ui.view</code> arch
-        </p>
-        <p className="mt-2 text-sm text-[#a8909e]">
-          Removing a field from the view does not delete the database column.
-        </p>
-        <VersionAwarenessBanner capabilities={connection?.capabilities} />
+    <div className="mx-auto max-w-7xl" data-testid="designer-page">
+      <PageHeader
+        title="View designer"
+        description={`${connection?.name ?? connectionId} · drag fields onto the canvas · saves real ir.ui.view arch`}
+      />
+      <p className="mt-2 text-sm text-muted">
+        Removing a field from the view does not delete the database column.
+      </p>
+      <VersionAwarenessBanner capabilities={connection?.capabilities} />
         <CapabilityProbePanel
           capabilities={connection?.capabilities}
           defaultOpen={false}
@@ -2126,9 +2096,8 @@ export default function DesignerPage() {
             })();
           }}
         />
-        <div className="mt-4 border border-[#3d2a38] bg-[#0f1a16]/80 px-4 py-3 text-xs text-[#d4c4ce]">
-          <p className="font-semibold text-[#c9a9c0]">Production defaults</p>
-          <ul className="mt-1 list-disc space-y-1 pl-4">
+        <Callout variant="info" title="Production defaults" className="mt-4">
+          <ul className="mt-1 list-disc space-y-1 pl-4 text-sm">
             <li>
               Save strategy defaults to <strong>Inherit</strong> (extension view) — safe for
               installed modules.
@@ -2148,9 +2117,9 @@ export default function DesignerPage() {
               Create field requires the confirm phrase and injects via inherit xpath.
             </li>
           </ul>
-        </div>
+        </Callout>
 
-        <div className="mt-6 flex flex-wrap items-end gap-3">
+        <Card className="mt-6 flex flex-wrap items-end gap-3 p-4">
           <label className="text-sm">
             <span className="text-[#a8909e]">Model</span>
             <input
@@ -2654,25 +2623,25 @@ export default function DesignerPage() {
           >
             Refresh preview
           </button>
-        </div>
-        <p className="mt-2 text-xs text-[#8f7a88]">
+        </Card>
+        <p className="mt-2 text-xs text-muted">
           Preview uses a same-origin proxy (strips X-Frame-Options).{" "}
           <strong className="text-[#c9a9c0]">Open in Odoo is authoritative</strong> — the iframe
           is best-effort. Save defaults to <strong>inherit</strong> extension views.
           {archOverride ? " Arch override active — Save will POST raw inherit arch." : ""}
         </p>
         {error ? <ErrorNotice message={error} className="mt-4" /> : null}
-        {notice && (
-          <p
-            role="status"
-            className="mt-4 animate-pulse border border-[#5a3d54] bg-[#1a1018] px-3 py-2 text-sm font-medium text-[#e8d4e0]"
-          >
+        {notice ? (
+          <Callout variant="info" title="Notice" className="mt-4">
             {notice}
-          </p>
-        )}
+          </Callout>
+        ) : null}
 
         {viewType === "form" && model && (
-          <div className="mt-6 grid gap-4 lg:grid-cols-[200px_1fr_240px]">
+          <div
+            className="mt-6 grid gap-4 lg:grid-cols-[200px_1fr_240px]"
+            data-testid="designer-form-layout"
+          >
             <div>
               <FieldPalette
                 fields={fields.map((f) => ({
@@ -4741,7 +4710,6 @@ export default function DesignerPage() {
             </div>
           </aside>
         </div>
-      </div>
       <ConfirmDialog
         open={confirmOverwriteOpen}
         title="Overwrite primary view"
@@ -4777,6 +4745,6 @@ export default function DesignerPage() {
           })
         }
       />
-    </main>
+    </div>
   );
 }

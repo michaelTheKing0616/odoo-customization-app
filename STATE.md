@@ -4,13 +4,11 @@
 
 ## Last run
 - Date: 2026-08-03
-- Commit `754d1ac`: UIX-2 full kit, Expert error diagnosis, landing/connect migration, e2e fixes.
-- **UIX-4a (complete):** Overview (`connections/[id]/page.tsx`) — removed legacy nav, PageHeader, stat cards, DataTable tabs, kit export panel. Draft Studio (`wizard/`) — pipeline rail, Card composer, kit controls, template cards.
-- Gates: `pnpm test` 78 passed; `pnpm build` ok; `shell-expert` e2e 3/3.
+- Commit (pending): **UIX-4b** — projects (`ProjectDiffPanel` + kit), access (matrix-first tabs + kit forms), automations (trigger→condition→action chain + ConfirmDialogV2), designer (PageHeader/Callout/toolbar card + keyboard reorder in `FormCanvas`).
+- Gates: `pnpm test` 78 passed; `pnpm build` ok. E2e not re-run (Playwright browsers missing in sandbox).
 
 ## Next (prescribed wave order)
-- **UIX-4b** — designer, projects, automations, access page migrations onto kit.
-- **UIX-4c** — remaining pages + per-page nav strip removal.
+- **UIX-4c** — power-ops/bulk, journal, import, reports, menus, config, reminders, modulespec, settings, pipelines + legacy-style grep purge.
 - **UIX-5** — copy guide pass + iconography audit.
 
 ## Rules

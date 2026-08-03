@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+
 /**
  * Odoo-familiar form canvas chrome for the View Designer.
  * Structural preview — Open-in-Odoo remains authoritative.
@@ -62,8 +64,35 @@ export function FormCanvas({
   onDropFieldName,
   onDropFieldOnPage,
 }: FormCanvasProps) {
+  useEffect(() => {
+    if (!selectedFieldId || !onMoveField) return;
+    const move = onMoveField;
+    const fieldId = selectedFieldId;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      e.preventDefault();
+      move(fieldId, e.key === "ArrowUp" ? -1 : 1);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedFieldId, onMoveField]);
+
   return (
-    <div className="odoo-form-canvas overflow-hidden shadow-sm">
+    <div
+      className="odoo-form-canvas overflow-hidden shadow-sm"
+      data-testid="form-canvas"
+      tabIndex={0}
+    >
       <div className="odoo-form-header flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold text-[var(--odoo-primary)]">{title}</span>
         {statusbar && (

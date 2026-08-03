@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
+import { Button } from "@/components/ui/Button";
+import { Callout } from "@/components/ui/Callout";
+import { Card, PageHeader } from "@/components/ui/layout-primitives";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import { DomainBuilder } from "@/components/DomainBuilder";
@@ -503,52 +508,27 @@ export default function AutomationsPage() {
     (gatingChoice === "export_module" && form.action_kind === "python_module");
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#3d2a38_0%,_#1a1218_50%,_#0c090b_100%)] px-6 py-10 text-[#f4eef2]">
-      <div className="mx-auto max-w-4xl">
-        <div className="flex flex-wrap gap-4 text-sm">
-          <Link href={`/connections/${connectionId}`} className="text-[#c9a9c0] hover:underline">
-            ← Metadata
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/builder`}
-            className="text-[#8f7a88] hover:underline"
-          >
-            Builder
-          </Link>
-          <Link
-            href={
-              form.model
-                ? `/connections/${connectionId}/designer?model=${encodeURIComponent(form.model)}`
-                : `/connections/${connectionId}/designer`
-            }
-            className="text-[#8f7a88] hover:underline"
-          >
-            Designer
-          </Link>
-        </div>
-        <h1 className="mt-4 font-[family-name:var(--font-display)] text-3xl text-[#faf6f9]">
-          Automations
-        </h1>
-        <p className="mt-1 text-sm text-[#8f7a88]">
-          {connection?.name ?? connectionId} · Safe actions by default. Python:
-          Option A module export, or live code with Odoo-style confirmation.
-        </p>
-        <p className="mt-2 text-sm text-[#a8909e]">
-          Form-bound button actions (update field, next activity, mail post, smart buttons)
-          live in the{" "}
-          <Link
-            href={
-              form.model
-                ? `/connections/${connectionId}/designer?model=${encodeURIComponent(form.model)}`
-                : `/connections/${connectionId}/designer`
-            }
-            className="text-[#c9a9c0] hover:underline"
-          >
-            Designer
-          </Link>
-          .
-        </p>
-        <VersionAwarenessBanner capabilities={connection?.capabilities} />
+    <div className="mx-auto max-w-4xl" data-testid="automations-page">
+      <PageHeader
+        title="Automations"
+        description={`${connection?.name ?? connectionId} · Safe actions by default. Python: Option A module export, or live code with Odoo-style confirmation.`}
+      />
+      <p className="mt-2 text-sm text-muted">
+        Form-bound button actions (update field, next activity, mail post, smart buttons)
+        live in the{" "}
+        <Link
+          href={
+            form.model
+              ? `/connections/${connectionId}/designer?model=${encodeURIComponent(form.model)}`
+              : `/connections/${connectionId}/designer`
+          }
+          className="text-accent hover:underline"
+        >
+          Designer
+        </Link>
+        .
+      </p>
+      <VersionAwarenessBanner capabilities={connection?.capabilities} />
         <CapabilityProbePanel
           capabilities={connection?.capabilities}
           defaultOpen={false}
@@ -579,7 +559,11 @@ export default function AutomationsPage() {
         />
 
         {error ? <ErrorNotice message={error} className="mt-4" /> : null}
-        {notice && <p className="mt-4 text-sm text-[#c9a9c0]">{notice}</p>}
+        {notice ? (
+          <Callout variant="info" title="Notice" className="mt-4">
+            {notice}
+          </Callout>
+        ) : null}
 
         {automationsGate && !automationsGate.automations.available ? (
           <GatingCallout
@@ -590,81 +574,80 @@ export default function AutomationsPage() {
           />
         ) : null}
         {migrationAssist?.eligible ? (
-          <div
-            className="mt-4 rounded border border-[#3d2a38] bg-[#0f1a16]/80 p-4 text-sm text-[#a8909e]"
-            data-testid="automations-migration-assist"
+          <Callout
+            variant="info"
+            title={migrationAssist.title}
+            className="mt-4"
+            testId="automations-migration-assist"
           >
-            <p className="font-medium text-[#faf6f9]">{migrationAssist.title}</p>
-            <p className="mt-2">{migrationAssist.body}</p>
-            <p className="mt-2 text-xs text-[#8f7a88]">
+            <p>{migrationAssist.body}</p>
+            <p className="mt-2 text-xs text-muted">
               See{" "}
-              <Link href={`/connections/${connectionId}`} className="text-[#c9a9c0] hover:underline">
+              <Link href={`/connections/${connectionId}`} className="text-accent hover:underline">
                 connection hub → Export section
               </Link>{" "}
               for the full migration assist panel.
             </p>
-          </div>
+          </Callout>
         ) : null}
 
         <form
           data-testid="automations-form"
           onSubmit={onSubmit}
-          className="mt-8 space-y-4 border border-[#3d2a38] bg-[#0f1a16]/70 p-6"
+          className="mt-8 space-y-4"
         >
-          <label className="block text-sm">
-            <span className="text-[#a8909e]">Rule name</span>
-            <input
+          <Card className="space-y-4 p-6">
+            <h2 className="text-lg font-semibold text-ink">1 · Trigger</h2>
+            <Input
+              label="Rule name"
               required
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
             />
-          </label>
-          <label className="block text-sm">
-            <span className="text-[#a8909e]">Model</span>
-            <input
+            <Input
+              label="Model"
               required
               value={form.model}
               onChange={(e) => setForm({ ...form, model: e.target.value })}
-              className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+              className="font-mono text-sm"
             />
-          </label>
-          <label className="block text-sm">
-            <span className="flex items-center gap-1 text-[#a8909e]">
-              When (trigger)
-              <ExplainThisButton
-                question={`Explain automation trigger "${form.trigger}" for model ${form.model}`}
-                label="Explain triggers"
-              />
-            </span>
-            <select
+            <Select
+              label="When (trigger)"
+              options={TRIGGERS.filter(
+                (t) => !supportedTriggers || supportedTriggers.has(t.value),
+              ).map((t) => ({ value: t.value, label: t.label }))}
               value={form.trigger}
               onChange={(e) => setForm({ ...form, trigger: e.target.value })}
-              className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
-            >
-              {TRIGGERS.filter(
-                (t) => !supportedTriggers || supportedTriggers.has(t.value),
-              ).map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          {form.trigger === "on_time" && (
-            <label className="block text-sm">
-              <span className="text-[#a8909e]">Date field</span>
-              <input
+            />
+            <ExplainThisButton
+              question={`Explain automation trigger "${form.trigger}" for model ${form.model}`}
+              label="Explain triggers"
+            />
+            {supportedTriggers && !supportedTriggers.has(form.trigger) ? (
+              <Callout variant="warning" title="Trigger not supported on this Odoo">
+                This trigger is not in the safe trigger set for this connection. Choose a
+                supported trigger or export as module (Option A).
+              </Callout>
+            ) : null}
+            {form.trigger === "on_time" ? (
+              <Input
+                label="Date field"
                 required
                 value={form.trg_date_field_name}
                 onChange={(e) =>
                   setForm({ ...form, trg_date_field_name: e.target.value })
                 }
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                className="font-mono text-sm"
               />
-            </label>
-          )}
-          <div className="block space-y-3 text-sm">
+            ) : null}
+          </Card>
+
+          <p className="text-center text-sm text-muted" aria-hidden>
+            ↓
+          </p>
+
+          <Card className="space-y-4 p-6">
+            <h2 className="text-lg font-semibold text-ink">2 · Condition</h2>
             <DomainBuilder
               label="Filter domain (after trigger / apply on)"
               value={form.filter_domain || "[]"}
@@ -690,61 +673,75 @@ export default function AutomationsPage() {
                 })
               }
             />
-            <p className="text-xs text-[#8f7a88]">
+            <p className="text-xs text-muted">
               Evaluated on the record <em>before</em> the write (Odoo{" "}
-              <code className="text-[#c9a9c0]">filter_pre_domain</code>). Useful
+              <code className="text-accent">filter_pre_domain</code>). Useful
               for “when status was X, then became Y” rules.
             </p>
-          </div>
+            <div className="rounded-md border border-border-subtle bg-surface-muted/50 p-3 text-sm">
+              <p className="font-medium text-ink">Presets</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    setForm({
+                      ...form,
+                      name: form.name || "Vehicle → rented on confirm",
+                      model: "x_rental_contract",
+                      trigger: "on_write",
+                      filter_domain: "[('x_status', '=', 'confirmed')]",
+                      action_kind: "related_write",
+                      relation_field: "x_vehicle_id",
+                      field_name: "x_status",
+                      value: "rented",
+                    })
+                  }
+                >
+                  Car rental: vehicle → rented
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    setForm({
+                      ...form,
+                      name: form.name || "Library fine on return",
+                      model: "x_lib_loan",
+                      trigger: "on_write",
+                      filter_domain: "[('x_returned', '=', True)]",
+                      action_kind: "python_module",
+                      python_code: LIBRARY_FINE_SNIPPET,
+                      module_technical_name: "library_fine_on_return",
+                    })
+                  }
+                >
+                  Library fine on return
+                </Button>
+              </div>
+              <p className="mt-1 text-xs text-muted">
+                Loads Option A Python snippet + filter for returned loans. Export
+                module zip, sandbox, then promote.
+              </p>
+            </div>
+          </Card>
 
-          <div className="rounded border border-[#3d2a38] bg-[#0c090b]/50 p-3 text-sm">
-            <p className="text-[#a8909e]">Presets</p>
-            <button
-              type="button"
-              className="mt-2 mr-3 text-[#c9a9c0] hover:underline"
-              onClick={() =>
-                setForm({
-                  ...form,
-                  name: form.name || "Vehicle → rented on confirm",
-                  model: "x_rental_contract",
-                  trigger: "on_write",
-                  filter_domain: "[('x_status', '=', 'confirmed')]",
-                  action_kind: "related_write",
-                  relation_field: "x_vehicle_id",
-                  field_name: "x_status",
-                  value: "rented",
-                })
-              }
-            >
-              Car rental: vehicle → rented
-            </button>
-            <button
-              type="button"
-              className="mt-2 text-[#c9a9c0] hover:underline"
-              onClick={() =>
-                setForm({
-                  ...form,
-                  name: form.name || "Library fine on return",
-                  model: "x_lib_loan",
-                  trigger: "on_write",
-                  filter_domain: "[('x_returned', '=', True)]",
-                  action_kind: "python_module",
-                  python_code: LIBRARY_FINE_SNIPPET,
-                  module_technical_name: "library_fine_on_return",
-                })
-              }
-            >
-              Library fine on return
-            </button>
-            <p className="mt-1 text-xs text-[#8f7a88]">
-              Loads Option A Python snippet + filter for returned loans. Export
-              module zip, sandbox, then promote.
-            </p>
-          </div>
+          <p className="text-center text-sm text-muted" aria-hidden>
+            ↓
+          </p>
 
-          <fieldset className="space-y-3 border border-[#3d2a38] p-4">
-            <legend className="px-1 text-sm text-[#a8909e]">Do</legend>
-            <AutomationActionKindSelect
+          <Card className="space-y-4 p-6">
+            <h2 className="text-lg font-semibold text-ink">3 · Action</h2>
+            {form.action_kind === "python_module" ? (
+              <Callout variant="warning" title="Option A — exports as module">
+                Python runs only after module export, sandbox test, and explicit promote.
+                Review generated code before installing on production.
+              </Callout>
+            ) : null}
+            <fieldset className="space-y-3">
+              <AutomationActionKindSelect
               connection={connection}
               value={form.action_kind}
               onChange={(action_kind) => setForm({ ...form, action_kind })}
@@ -1110,12 +1107,14 @@ export default function AutomationsPage() {
               </>
             )}
           </fieldset>
+          </Card>
 
-          <button
+          <Button
             type="submit"
+            variant="primary"
             disabled={busy || !canSubmitAutomation}
             data-testid="automations-submit"
-            className="h-11 bg-[#714B67] px-5 text-sm font-semibold text-white disabled:opacity-60"
+            loading={busy}
           >
             {busy
               ? "Working…"
@@ -1124,35 +1123,32 @@ export default function AutomationsPage() {
                 : ADVANCED_ACTION_KINDS.has(form.action_kind)
                   ? "Create advanced automation…"
                   : "Create automation"}
-          </button>
+          </Button>
         </form>
 
         <section className="mt-10">
-          <h2 className="font-[family-name:var(--font-display)] text-2xl">
-            Existing rules
-          </h2>
+          <h2 className="text-2xl font-semibold text-ink">Existing rules</h2>
           <ul className="mt-4 space-y-2 text-sm">
             {rows.length === 0 && (
-              <li className="text-[#8f7a88]">None yet on this connection.</li>
+              <li className="text-muted">None yet on this connection.</li>
             )}
             {rows.map((r) => (
-              <li
-                key={r.id}
-                className="flex flex-wrap items-center justify-between gap-3 border border-[#3d2a38] px-4 py-3"
-              >
+              <li key={r.id}>
+                <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
                 <div>
-                  <p className="font-medium text-[#faf6f9]">
+                  <p className="font-medium text-ink">
                     #{r.id} {r.name}
                   </p>
-                  <p className="text-[#8f7a88]">
+                  <p className="text-muted">
                     {r.model} · {r.trigger} · {r.active ? "active" : "inactive"}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <button
+                  <Button
                     type="button"
+                    variant="secondary"
+                    size="sm"
                     disabled={busy}
-                    className="border border-[#8f7a88] px-3 py-1.5 text-xs text-[#d4c4ce] disabled:opacity-40"
                     onClick={() => {
                       if (r.active) {
                         openConfirm(
@@ -1187,11 +1183,13 @@ export default function AutomationsPage() {
                     }}
                   >
                     {r.active ? "Deactivate" : "Activate"}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     disabled={busy}
-                    className="border border-[#a85b4a] px-3 py-1.5 text-xs text-[#f0a8a0] disabled:opacity-40"
+                    className="text-danger"
                     onClick={() =>
                       openConfirm(
                         { kind: "delete", automationId: r.id },
@@ -1205,51 +1203,54 @@ export default function AutomationsPage() {
                     }
                   >
                     Delete
-                  </button>
+                  </Button>
                 </div>
+                </Card>
               </li>
             ))}
           </ul>
         </section>
 
         <section className="mt-10">
-          <h2 className="font-[family-name:var(--font-display)] text-2xl">
-            Snapshots / undo
-          </h2>
-          <p className="mt-1 text-sm text-[#8f7a88]">
+          <h2 className="text-2xl font-semibold text-ink">Snapshots / undo</h2>
+          <p className="mt-1 text-sm text-muted">
             Restores definitions when possible. Does not rewind business data side effects.
           </p>
           <ul className="mt-4 space-y-2 text-sm">
             {snapshots.length === 0 && (
-              <li className="text-[#8f7a88]">No snapshots yet.</li>
+              <li className="text-muted">No snapshots yet.</li>
             )}
             {snapshots.map((s) => (
-              <li
-                key={s.id}
-                className="flex flex-wrap items-center justify-between gap-3 border border-[#3d2a38] px-4 py-3"
-              >
+              <li key={s.id}>
+                <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
                 <div>
-                  <p className="text-[#faf6f9]">{s.label}</p>
-                  <p className="text-[#8f7a88]">
+                  <p className="text-ink">{s.label}</p>
+                  <p className="text-muted">
                     {s.resource_type} · {s.reversible} · {s.created_at}
                   </p>
                 </div>
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
+                  size="sm"
                   disabled={busy || s.reversible === "no"}
                   onClick={() => onRollback(s.id)}
-                  className="border border-[#c9a9c0] px-3 py-1.5 text-[#c9a9c0] disabled:opacity-40"
                 >
                   Undo
-                </button>
+                </Button>
+                </Card>
               </li>
             ))}
           </ul>
         </section>
-      </div>
 
-      <ConfirmDialog
+      <ConfirmDialogV2
         open={confirmMode != null}
+        riskLevel={
+          confirmMode?.kind === "delete" || confirmMode?.kind === "deactivate"
+            ? "danger"
+            : "standard"
+        }
         title="Warning"
         warning={confirmWarning}
         risks={pendingRisks}
@@ -1258,6 +1259,6 @@ export default function AutomationsPage() {
         onCancel={() => setConfirmMode(null)}
         onConfirm={proceedConfirm}
       />
-    </main>
+    </div>
   );
 }

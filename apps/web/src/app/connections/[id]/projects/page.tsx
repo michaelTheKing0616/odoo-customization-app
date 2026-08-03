@@ -3,9 +3,16 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
+import { ProjectDiffPanel } from "@/components/projects/ProjectDiffPanel";
 import { SuggestTemplateButton } from "@/components/SuggestTemplateButton";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
+import { Button } from "@/components/ui/Button";
+import { Callout } from "@/components/ui/Callout";
+import { Card, EmptyState, PageHeader } from "@/components/ui/layout-primitives";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import {
   api,
   ConfirmationRequiredError,
@@ -141,7 +148,6 @@ export default function ProjectsPage() {
 
   function projectApplyAllowed(project: ProjectRow): boolean {
     const opts = scaffoldOptsFromSpec(project.spec_json);
-    // Library template drafts may include loan object_write automation.
     if (project.template_id === "library") {
       opts.requireObjectWrite = true;
     }
@@ -157,217 +163,154 @@ export default function ProjectsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#3d2a38_0%,_#1a1218_50%,_#0c090b_100%)] px-6 py-10 text-[#f4eef2]">
-      <div className="mx-auto max-w-3xl">
-        <div className="flex flex-wrap gap-4 text-sm">
-          <Link href={`/connections/${connectionId}`} className="text-[#c9a9c0] hover:underline">
-            ← Metadata
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/builder`}
-            className="text-[#8f7a88] hover:underline"
-          >
-            Builder
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/reminders`}
-            className="text-[#8f7a88] hover:underline"
-          >
-            Reminders
-          </Link>
-        </div>
-        <h1 className="mt-4 font-[family-name:var(--font-display)] text-3xl text-[#faf6f9]">
-          Draft projects
-        </h1>
-        <p className="mt-1 text-sm text-[#8f7a88]">
-          {connection?.name ?? connectionId} · visual ModuleSpec editor, Code→UI import,
-          then Apply / Generate UI
-        </p>
-        <VersionAwarenessBanner capabilities={connection?.capabilities} />
-        {mutateBlocked && (
-          <p className="mt-2 text-sm text-[#e8d09f]">{mutateBlocked}</p>
-        )}
+    <div className="mx-auto max-w-3xl" data-testid="projects-page">
+      <PageHeader
+        title="Draft projects"
+        description={`${connection?.name ?? connectionId} · ModuleSpec drafts, diff vs live, apply with dry-run honesty`}
+      />
+      <VersionAwarenessBanner capabilities={connection?.capabilities} />
+      {mutateBlocked ? (
+        <Callout variant="warning" title="Mutations blocked" className="mt-4">
+          {mutateBlocked}
+        </Callout>
+      ) : null}
 
-        {error && <p className="mt-4 text-sm text-[#f0a8a0]">{error}</p>}
-        {notice && <p className="mt-4 text-sm text-[#c9a9c0]">{notice}</p>}
+      {error ? <ErrorNotice message={error} className="mt-4" /> : null}
+      {notice ? (
+        <Callout variant="info" title="Notice" className="mt-4">
+          {notice}
+        </Callout>
+      ) : null}
 
-        <form
-          onSubmit={onCreate}
-          className="mt-8 space-y-4 border border-[#3d2a38] bg-[#0f1a16]/70 p-6"
-        >
-          <h2 className="font-[family-name:var(--font-display)] text-xl">New draft</h2>
-          <label className="block text-sm">
-            <span className="text-[#a8909e]">Name</span>
-            <input
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="text-[#a8909e]">Template</span>
-            <select
-              value={templateId}
-              onChange={(e) => setTemplateId(e.target.value)}
-              className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
-            >
-              <option value="library">library (portable ModuleSpec)</option>
-              <option value="">blank</option>
-            </select>
-          </label>
-          <button
+      <Card className="mt-8 p-6">
+        <form onSubmit={onCreate} className="space-y-4">
+          <h2 className="text-xl font-semibold text-ink">New draft</h2>
+          <Input
+            label="Name"
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <Select
+            label="Template"
+            options={[
+              { value: "library", label: "library (portable ModuleSpec)" },
+              { value: "", label: "blank" },
+            ]}
+            value={templateId}
+            onChange={(e) => setTemplateId(e.target.value)}
+          />
+          <Button
             type="submit"
+            variant="primary"
             disabled={busy || !canMutate}
             title={mutateBlocked ?? undefined}
-            className="h-11 bg-[#714B67] px-5 text-sm font-semibold text-white disabled:opacity-60"
+            loading={busy}
           >
             Create from template
-          </button>
+          </Button>
         </form>
+      </Card>
 
-        <ul className="mt-8 space-y-3">
-          {projects.map((p) => {
-            const models = Array.isArray(p.spec_json?.models)
-              ? (p.spec_json.models as unknown[]).length
-              : 0;
-            const canApply = projectApplyAllowed(p);
-            const applyBlocked = projectApplyBlocked(p);
-            return (
-              <li key={p.id} className="space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-3 border border-[#3d2a38] bg-[#0f1a16]/50 px-4 py-3">
-                  <div>
-                    <p className="font-[family-name:var(--font-display)] text-lg text-[#faf6f9]">
-                      {p.name}
-                    </p>
-                    <p className="text-xs text-[#8f7a88]">
-                      {p.status} · {p.template_id ?? "custom"} · {models} model(s) ·{" "}
-                      <span className="font-mono">{p.id.slice(0, 8)}</span>
-                    </p>
-                    {applyBlocked && (
-                      <p className="mt-1 text-xs text-[#e8d09f]">{applyBlocked}</p>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Link
-                      href={`/connections/${connectionId}/modulespec?project=${p.id}`}
-                      className="border border-[#c9a96e] px-3 py-1.5 text-sm text-[#c9a96e]"
-                    >
+      <ul className="mt-8 space-y-4">
+        {projects.map((p) => {
+          const models = Array.isArray(p.spec_json?.models)
+            ? (p.spec_json.models as unknown[]).length
+            : 0;
+          const canApply = projectApplyAllowed(p);
+          const applyBlocked = projectApplyBlocked(p);
+          return (
+            <li key={p.id} className="space-y-3">
+              <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
+                <div>
+                  <p className="text-lg font-semibold text-ink">{p.name}</p>
+                  <p className="text-xs text-muted">
+                    {p.status} · {p.template_id ?? "custom"} · {models} model(s) ·{" "}
+                    <span className="font-mono">{p.id.slice(0, 8)}</span>
+                  </p>
+                  {applyBlocked ? (
+                    <p className="mt-1 text-xs text-warning">{applyBlocked}</p>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="secondary" size="sm" asChild>
+                    <Link href={`/connections/${connectionId}/modulespec?project=${p.id}`}>
                       Edit ModuleSpec
                     </Link>
-                    {models > 0 && (
-                      <SuggestTemplateButton
-                        spec={p.spec_json}
-                        connectionId={connectionId}
-                        projectId={p.id}
-                        disabled={busy}
-                      />
-                    )}
-                    {models > 0 && (
-                      <SuggestTemplateButton
-                        spec={p.spec_json}
-                        connectionId={connectionId}
-                        projectId={p.id}
-                        disabled={busy}
-                      />
-                    )}
-                    <button
-                      type="button"
-                      disabled={busy || !canMutate}
-                      title={mutateBlocked ?? undefined}
-                      className="border border-[#3d2a38] px-3 py-1.5 text-sm text-[#d4c4ce] disabled:opacity-50"
-                      onClick={() => onDiff(p)}
-                    >
-                      Diff vs live
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy || !canApply}
-                      title={applyBlocked ?? undefined}
-                      className="border border-[#c9a9c0] px-3 py-1.5 text-sm text-[#c9a9c0] disabled:opacity-50"
-                      onClick={() => {
-                        setApplyTarget(p);
-                        setConfirmOpen(true);
-                      }}
-                    >
-                      Apply
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy || !canMutate}
-                      title={mutateBlocked ?? undefined}
-                      className="border border-[#f0a8a0] px-3 py-1.5 text-sm text-[#f0a8a0] disabled:opacity-50"
-                      onClick={async () => {
-                        setBusy(true);
-                        try {
-                          await api.deleteProject(connectionId, p.id);
-                          if (diffTargetId === p.id) {
-                            setDiff(null);
-                            setDiffTargetId(null);
-                          }
-                          await refresh();
-                        } catch (err) {
-                          setError(err instanceof Error ? err.message : "Delete failed");
-                        } finally {
-                          setBusy(false);
+                  </Button>
+                  {models > 0 ? (
+                    <SuggestTemplateButton
+                      spec={p.spec_json}
+                      connectionId={connectionId}
+                      projectId={p.id}
+                      disabled={busy}
+                    />
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy || !canMutate}
+                    title={mutateBlocked ?? undefined}
+                    onClick={() => onDiff(p)}
+                  >
+                    Diff vs live
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    disabled={busy || !canApply}
+                    title={applyBlocked ?? undefined}
+                    onClick={() => {
+                      setApplyTarget(p);
+                      setConfirmOpen(true);
+                    }}
+                  >
+                    Apply
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    disabled={busy || !canMutate}
+                    title={mutateBlocked ?? undefined}
+                    onClick={async () => {
+                      setBusy(true);
+                      try {
+                        await api.deleteProject(connectionId, p.id);
+                        if (diffTargetId === p.id) {
+                          setDiff(null);
+                          setDiffTargetId(null);
                         }
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
+                        await refresh();
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : "Delete failed");
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  >
+                    Delete
+                  </Button>
                 </div>
-                {diff && diffTargetId === p.id && (
-                  <div className="border border-[#3d2a38] bg-[#0c090b]/80 px-4 py-3 text-sm">
-                    <p className="text-[#c9a9c0]">{diff.message || "Diff"}</p>
-                    {diff.conflicts.length > 0 && (
-                      <div className="mt-2">
-                        <p className="text-xs uppercase text-[#f0a8a0]">Conflicts</p>
-                        <ul className="mt-1 list-disc space-y-0.5 pl-5 text-[#f0a8a0]">
-                          {diff.conflicts.map((c) => (
-                            <li key={c}>{c}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {diff.to_create_models.length > 0 && (
-                      <div className="mt-2">
-                        <p className="text-xs uppercase text-[#8f7a88]">Models to create</p>
-                        <ul className="mt-1 list-disc space-y-0.5 pl-5 font-mono text-[#c9a9c0]">
-                          {diff.to_create_models.map((m) => (
-                            <li key={m}>{m}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {diff.to_create_fields.length > 0 && (
-                      <div className="mt-2">
-                        <p className="text-xs uppercase text-[#8f7a88]">Fields to create</p>
-                        <ul className="mt-1 list-disc space-y-0.5 pl-5 font-mono text-[#c9a9c0]">
-                          {diff.to_create_fields.map((f) => (
-                            <li key={f}>{f}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {diff.existing_models.length > 0 && (
-                      <p className="mt-2 text-xs text-[#8f7a88]">
-                        Existing models: {diff.existing_models.join(", ")}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </li>
-            );
-          })}
-          {projects.length === 0 && (
-            <li className="text-sm text-[#8f7a88]">No drafts yet.</li>
-          )}
-        </ul>
-      </div>
+              </Card>
+              {diff && diffTargetId === p.id ? <ProjectDiffPanel diff={diff} /> : null}
+            </li>
+          );
+        })}
+        {projects.length === 0 ? (
+          <EmptyState
+            title="No drafts yet"
+            description="Create a draft from a template or start blank, then edit in ModuleSpec."
+          />
+        ) : null}
+      </ul>
 
-      <ConfirmDialog
+      <ConfirmDialogV2
         open={confirmOpen}
+        riskLevel="danger"
+        snapshotNote="A metadata snapshot is taken before apply when the API supports it."
         title="Apply draft to Odoo"
         warning={
           applyTarget
@@ -387,6 +330,6 @@ export default function ProjectsPage() {
         }}
         onConfirm={(phrase) => doApply(phrase)}
       />
-    </main>
+    </div>
   );
 }

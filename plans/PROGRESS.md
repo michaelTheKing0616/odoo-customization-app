@@ -56,7 +56,7 @@ CHECKLIST. Claiming done without both updated = failed card.
 - [x] UIX-2 Component kit (20 components) + icon mapping — Input/Select/DataTable/DiffView/BulkResultTable/etc. + `/e2e/kit` expanded
 - [x] UIX-3 App shell: sidebar nav, top bar, command palette, Expert panel mount
 - [x] UIX-4a Page migrations: landing, connect, overview, Draft Studio
-- [ ] UIX-4b Page migrations: designer, projects diff, automations, access
+- [x] UIX-4b Page migrations: designer, projects diff, automations, access
 - [ ] UIX-4c Page migrations: power-ops/bulk, journal, remaining pages
 - [ ] UIX-5 Copy guide application pass + iconography audit
 

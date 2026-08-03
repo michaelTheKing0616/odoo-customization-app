@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import {
@@ -19,6 +18,15 @@ import {
   mutationAllowed,
   mutationBlockedReason,
 } from "@/lib/capabilities";
+import { Button } from "@/components/ui/Button";
+import { Callout } from "@/components/ui/Callout";
+import { Card, PageHeader } from "@/components/ui/layout-primitives";
+import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
+import { DataTable, type DataTableColumn } from "@/components/ui/DataTable";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Tabs } from "@/components/ui/Tabs";
 
 const CONFIRM_PHRASE = "I understand the risks";
 
@@ -39,7 +47,6 @@ export default function AccessPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
-  const [confirmTyped, setConfirmTyped] = useState("");
   const [matrixModels, setMatrixModels] = useState("res.partner");
   const [matrix, setMatrix] = useState<AccessMatrixOut | null>(null);
   const [matrixBusy, setMatrixBusy] = useState(false);
@@ -242,7 +249,7 @@ export default function AccessPage() {
   }
 
   async function proceedDelete() {
-    if (!pendingDelete || confirmTyped !== CONFIRM_PHRASE) return;
+    if (!pendingDelete) return;
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -267,7 +274,6 @@ export default function AccessPage() {
         );
       }
       setPendingDelete(null);
-      setConfirmTyped("");
       await refresh(model);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
@@ -281,552 +287,551 @@ export default function AccessPage() {
   const canAdvanced = advancedMutationAllowed(connection);
   const advancedBlocked = advancedMutationBlockedReason(connection);
 
+  const rightsColumns: DataTableColumn<AccessRightRow>[] = [
+    { id: "name", header: "Name", accessor: (r) => r.name },
+    {
+      id: "group",
+      header: "Group",
+      accessor: (r) => <span className="text-muted">{r.group_name ?? "(all)"}</span>,
+    },
+    {
+      id: "crud",
+      header: "CRUD",
+      accessor: (r) => (
+        <span className="font-mono text-xs">
+          {[r.perm_read && "R", r.perm_write && "W", r.perm_create && "C", r.perm_unlink && "D"]
+            .filter(Boolean)
+            .join("") || "—"}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      header: "",
+      accessor: (r) => (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={busy || !canAdvanced}
+          title={advancedBlocked ?? undefined}
+          onClick={() =>
+            setPendingDelete({
+              kind: "access",
+              id: r.id,
+              name: r.name,
+              risks: [
+                "Users may lose or gain unintended access",
+                "Can lock operators out of custom models if no other ACL remains",
+                "Snapshot allows restoring the access line when possible",
+              ],
+            })
+          }
+        >
+          Delete
+        </Button>
+      ),
+    },
+  ];
+
   return (
-    <main className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#3d2a38_0%,_#1a1218_50%,_#0c090b_100%)] px-6 py-10 text-[#f4eef2]">
-      <div className="mx-auto max-w-5xl">
-        <div className="flex flex-wrap gap-4 text-sm">
-          <Link href={`/connections/${connectionId}`} className="text-[#c9a9c0] hover:underline">
-            ← Metadata
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/builder`}
-            className="text-[#8f7a88] hover:underline"
-          >
-            Builder
-          </Link>
-          <Link
-            href={`/connections/${connectionId}/automations`}
-            className="text-[#8f7a88] hover:underline"
-          >
-            Automations
-          </Link>
-        </div>
-        <h1 className="mt-4 font-[family-name:var(--font-display)] text-3xl text-[#faf6f9]">
-          Access rights
-        </h1>
-        <p className="mt-1 text-sm text-[#8f7a88]">
-          {connection?.name ?? connectionId} ·{" "}
-          <code className="text-[#c9a9c0]">ir.model.access</code> + simple{" "}
-          <code className="text-[#c9a9c0]">ir.rule</code> · matrix below
-        </p>
-        <VersionAwarenessBanner capabilities={connection?.capabilities} />
-        {mutateBlocked && (
-          <p className="mt-2 text-sm text-[#e8d09f]">{mutateBlocked}</p>
-        )}
-        {!mutateBlocked && advancedBlocked && (
-          <p className="mt-2 text-sm text-[#e8d09f]">{advancedBlocked}</p>
-        )}
+    <div className="mx-auto max-w-5xl" data-testid="access-page">
+      <PageHeader
+        title="Access rights"
+        description={`${connection?.name ?? connectionId} · matrix, groups, ACL lines, record rules`}
+      />
+      <VersionAwarenessBanner capabilities={connection?.capabilities} />
+      {mutateBlocked ? (
+        <Callout variant="warning" title="Mutations blocked" className="mt-4">
+          {mutateBlocked}
+        </Callout>
+      ) : null}
+      {!mutateBlocked && advancedBlocked ? (
+        <Callout variant="warning" title="Advanced mutations" className="mt-4">
+          {advancedBlocked}
+        </Callout>
+      ) : null}
 
-        <section className="mt-8 border border-[#3d2a38] bg-[#0f1a16]/70 p-5">
-          <h2 className="font-[family-name:var(--font-display)] text-xl">
-            Access matrix
-          </h2>
-          <p className="mt-1 text-xs text-[#8f7a88]">
-            Groups × models. Click R/W/C/D to toggle. Empty cell creates a new access line.
-          </p>
-          <div className="mt-3 flex flex-wrap items-end gap-3">
-            <label className="text-sm">
-              <span className="text-[#a8909e]">Models (comma-separated)</span>
-              <input
-                value={matrixModels}
-                onChange={(e) => setMatrixModels(e.target.value)}
-                className="mt-1 block w-[28rem] max-w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
-              />
-            </label>
-            <button
-              type="button"
-              disabled={matrixBusy}
-              onClick={() => void loadMatrix()}
-              className="h-10 border border-[#c9a9c0] px-4 text-sm text-[#c9a9c0] disabled:opacity-60"
-            >
-              Load matrix
-            </button>
-          </div>
-          {matrix && (
-            <div className="mt-4 overflow-auto">
-              <table className="min-w-full text-left text-xs">
-                <thead className="text-[#8f7a88]">
-                  <tr>
-                    <th className="sticky left-0 bg-[#0f1a16] py-2 pr-3">Group \\ Model</th>
-                    {matrix.models.map((m) => (
-                      <th key={m} className="px-2 py-2 font-mono">
-                        {m}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {matrix.groups.slice(0, 40).map((g) => (
-                    <tr key={g.id} className="border-t border-[#1e2f29]">
-                      <td className="sticky left-0 bg-[#0f1a16] py-2 pr-3 text-[#c9a9c0]">
-                        {g.full_name || g.name}
-                      </td>
-                      {matrix.models.map((m) => {
-                        const cell = cellFor(m, g.id);
-                        return (
-                          <td key={`${m}-${g.id}`} className="px-2 py-2">
-                            <div className="flex gap-1 font-mono">
-                              {(
-                                [
-                                  ["perm_read", "R"],
-                                  ["perm_write", "W"],
-                                  ["perm_create", "C"],
-                                  ["perm_unlink", "D"],
-                                ] as const
-                              ).map(([key, label]) => (
-                                <button
-                                  key={key}
-                                  type="button"
-                                  disabled={matrixBusy || !canMutate}
-                                  title={
-                                    mutateBlocked ??
-                                    `${label} ${cell[key] ? "on" : "off"}`
-                                  }
-                                  onClick={() => void toggleMatrixPerm(cell, g.id, key)}
-                                  className={`px-1 ${
-                                    cell[key]
-                                      ? "bg-[#714B67] text-white"
-                                      : "border border-[#3d2a38] text-[#8f7a88]"
-                                  }`}
-                                >
-                                  {label}
-                                </button>
-                              ))}
-                            </div>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {matrix.groups.length > 40 && (
-                <p className="mt-2 text-xs text-[#8f7a88]">
-                  Showing first 40 groups of {matrix.groups.length}.
+      <Tabs
+        className="mt-6"
+        defaultValue="matrix"
+        items={[
+          {
+            value: "matrix",
+            label: "Matrix",
+            content: (
+              <Card className="p-5">
+                <h2 className="text-xl font-semibold text-ink">Access matrix</h2>
+                <p className="mt-1 text-xs text-muted">
+                  Groups × models. Click R/W/C/D to toggle. Empty cell creates a new access line.
                 </p>
-              )}
-            </div>
-          )}
-        </section>
-
-        <form onSubmit={onLoadModel} className="mt-6 flex flex-wrap items-end gap-3">
-          <label className="text-sm">
-            <span className="text-[#a8909e]">Model</span>
-            <input
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="mt-1 block w-64 border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
-            />
-          </label>
-          <button
-            type="submit"
-            disabled={busy}
-            className="h-10 border border-[#c9a9c0] px-4 text-sm text-[#c9a9c0] disabled:opacity-60"
-          >
-            Load
-          </button>
-        </form>
-
-        {error && <p className="mt-4 text-sm text-[#f0a8a0]">{error}</p>}
-        {notice && <p className="mt-4 text-sm text-[#c9a9c0]">{notice}</p>}
-
-        {pendingDelete && (
-          <div className="mt-6 border border-[#a85b4a] bg-[#2a1512] p-5">
-            <h2 className="font-[family-name:var(--font-display)] text-xl text-[#f0a8a0]">
-              Warning
-            </h2>
-            <p className="mt-2 text-sm text-[#e8cfc9]">
-              Delete {pendingDelete.kind === "access" ? "access right" : "record rule"}{" "}
-              <strong>{pendingDelete.name}</strong>? This changes who can see or edit
-              records.
-            </p>
-            <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-[#e8cfc9]">
-              {pendingDelete.risks.map((r) => (
-                <li key={r}>{r}</li>
-              ))}
-            </ul>
-            <label className="mt-4 block text-sm">
-              <span className="text-[#e8cfc9]">
-                Type <code className="text-[#f0a8a0]">{CONFIRM_PHRASE}</code> to continue
-              </span>
-              <input
-                value={confirmTyped}
-                onChange={(e) => setConfirmTyped(e.target.value)}
-                className="mt-1 w-full border border-[#5a3a36] bg-[#0c090b] px-3 py-2"
-              />
-            </label>
-            <div className="mt-4 flex gap-3">
-              <button
-                type="button"
-                className="border border-[#8f7a88] px-4 py-2 text-sm"
-                onClick={() => {
-                  setPendingDelete(null);
-                  setConfirmTyped("");
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={busy || confirmTyped !== CONFIRM_PHRASE}
-                className="bg-[#a85b4a] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                onClick={() => proceedDelete()}
-              >
-                Proceed
-              </button>
-            </div>
-          </div>
-        )}
-
-        <div className="mt-10 grid gap-8 lg:grid-cols-2">
-          <form
-            onSubmit={onCreateAccess}
-            className="space-y-4 border border-[#3d2a38] bg-[#0f1a16]/70 p-6"
-          >
-            <h2 className="font-[family-name:var(--font-display)] text-xl">New access right</h2>
-            <label className="block text-sm">
-              <span className="text-[#a8909e]">Name</span>
-              <input
-                required
-                value={accessForm.name}
-                onChange={(e) => setAccessForm({ ...accessForm, name: e.target.value })}
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
-                placeholder={`${model} user`}
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="text-[#a8909e]">Group (empty = all users)</span>
-              <select
-                value={accessForm.group_id}
-                onChange={(e) => setAccessForm({ ...accessForm, group_id: e.target.value })}
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
-              >
-                <option value="">— all / no group —</option>
-                {groups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.full_name || g.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="flex flex-wrap gap-4 text-sm">
-              {(
-                [
-                  ["perm_read", "Read"],
-                  ["perm_write", "Write"],
-                  ["perm_create", "Create"],
-                  ["perm_unlink", "Delete"],
-                ] as const
-              ).map(([key, label]) => (
-                <label key={key} className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={accessForm[key]}
-                    onChange={(e) =>
-                      setAccessForm({ ...accessForm, [key]: e.target.checked })
-                    }
+                <div className="mt-3 flex flex-wrap items-end gap-3">
+                  <Input
+                    label="Models (comma-separated)"
+                    value={matrixModels}
+                    onChange={(e) => setMatrixModels(e.target.value)}
+                    className="w-full max-w-md font-mono"
                   />
-                  {label}
-                </label>
-              ))}
-            </div>
-            <button
-              type="submit"
-              disabled={busy || !canMutate}
-              title={mutateBlocked ?? undefined}
-              className="h-11 bg-[#714B67] px-5 text-sm font-semibold text-white disabled:opacity-60"
-            >
-              Create access
-            </button>
-          </form>
-
-          <form
-            onSubmit={onCreateRule}
-            className="space-y-4 border border-[#3d2a38] bg-[#0f1a16]/70 p-6"
-          >
-            <h2 className="font-[family-name:var(--font-display)] text-xl">New record rule</h2>
-            <p className="text-sm text-[#8f7a88]">
-              Empty group = global rule. Domain must be a list string.
-            </p>
-            <label className="block text-sm">
-              <span className="text-[#a8909e]">Name</span>
-              <input
-                required
-                value={ruleForm.name}
-                onChange={(e) => setRuleForm({ ...ruleForm, name: e.target.value })}
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
-              />
-            </label>
-            <div className="block text-sm">
-              <DomainBuilder
-                label="Domain"
-                value={ruleForm.domain_force}
-                onChange={(domain_force) =>
-                  setRuleForm({ ...ruleForm, domain_force })
-                }
-              />
-            </div>
-            <label className="block text-sm">
-              <span className="text-[#a8909e]">Group (optional)</span>
-              <select
-                value={ruleForm.group_id}
-                onChange={(e) => setRuleForm({ ...ruleForm, group_id: e.target.value })}
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
-              >
-                <option value="">— global —</option>
-                {groups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.full_name || g.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="flex flex-wrap gap-4 text-sm">
-              {(
-                [
-                  ["perm_read", "Read"],
-                  ["perm_write", "Write"],
-                  ["perm_create", "Create"],
-                  ["perm_unlink", "Delete"],
-                ] as const
-              ).map(([key, label]) => (
-                <label key={key} className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={ruleForm[key]}
-                    onChange={(e) =>
-                      setRuleForm({ ...ruleForm, [key]: e.target.checked })
-                    }
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
-            <button
-              type="submit"
-              disabled={busy || !canMutate}
-              title={mutateBlocked ?? undefined}
-              className="h-11 bg-[#714B67] px-5 text-sm font-semibold text-white disabled:opacity-60"
-            >
-              Create rule
-            </button>
-          </form>
-        </div>
-
-        <section className="mt-10">
-          <h2 className="font-[family-name:var(--font-display)] text-xl">Access on {model}</h2>
-          <table className="mt-4 w-full text-left text-sm">
-            <thead className="text-[#8f7a88]">
-              <tr>
-                <th className="py-2 pr-3">Name</th>
-                <th className="py-2 pr-3">Group</th>
-                <th className="py-2 pr-3">CRUD</th>
-                <th className="py-2"> </th>
-              </tr>
-            </thead>
-            <tbody>
-              {rights.map((r) => (
-                <tr key={r.id} className="border-t border-[#1e2f29]">
-                  <td className="py-2 pr-3">{r.name}</td>
-                  <td className="py-2 pr-3 text-[#c9a9c0]">
-                    {r.group_name ?? "(all)"}
-                  </td>
-                  <td className="py-2 pr-3 font-mono text-xs text-[#8f7a88]">
-                    {[r.perm_read && "R", r.perm_write && "W", r.perm_create && "C", r.perm_unlink && "D"]
-                      .filter(Boolean)
-                      .join("") || "—"}
-                  </td>
-                  <td className="py-2">
-                    <button
-                      type="button"
-                      disabled={busy || !canAdvanced}
-                      title={advancedBlocked ?? undefined}
-                      className="text-xs text-[#f0a8a0] hover:underline disabled:opacity-50"
-                      onClick={() =>
-                        setPendingDelete({
-                          kind: "access",
-                          id: r.id,
-                          name: r.name,
-                          risks: [
-                            "Users may lose or gain unintended access",
-                            "Can lock operators out of custom models if no other ACL remains",
-                            "Snapshot allows restoring the access line when possible",
-                          ],
-                        })
-                      }
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {rights.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="py-3 text-[#8f7a88]">
-                    No access rows for this model (or load first).
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </section>
-
-        <section className="mt-10">
-          <h2 className="font-[family-name:var(--font-display)] text-xl">Record rules</h2>
-          <ul className="mt-4 space-y-3">
-            {rules.map((r) => (
-              <li key={r.id} className="border border-[#3d2a38] p-4 text-sm">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium">
-                      {r.name}{" "}
-                      <span className="text-[#8f7a88]">
-                        · #{r.id}
-                        {r.global ? " · global" : ""}
-                      </span>
-                    </p>
-                    <pre className="mt-2 overflow-auto bg-[#0c090b] p-2 text-xs text-[#d4c4ce]">
-                      {r.domain_force ?? "(empty)"}
-                    </pre>
-                  </div>
-                  <button
+                  <Button
                     type="button"
-                    disabled={busy || !canAdvanced}
-                    title={advancedBlocked ?? undefined}
-                    className="text-xs text-[#f0a8a0] hover:underline disabled:opacity-50"
-                    onClick={() =>
-                      setPendingDelete({
-                        kind: "rule",
-                        id: r.id,
-                        name: r.name,
-                        risks: [
-                          "May expose records previously filtered by domain",
-                          "Or hide records if other rules still apply",
-                          "Snapshot allows restoring the rule definition when possible",
-                        ],
-                      })
-                    }
+                    variant="secondary"
+                    disabled={matrixBusy}
+                    loading={matrixBusy}
+                    onClick={() => void loadMatrix()}
                   >
-                    Delete
-                  </button>
+                    Load matrix
+                  </Button>
                 </div>
-              </li>
-            ))}
-            {rules.length === 0 && (
-              <li className="text-sm text-[#8f7a88]">No record rules for this model.</li>
-            )}
-          </ul>
-        </section>
+                {matrix ? (
+                  <div className="mt-4 overflow-auto">
+                    <table className="min-w-full text-left text-xs">
+                      <thead className="text-muted">
+                        <tr>
+                          <th className="sticky left-0 bg-surface-raised py-2 pr-3">
+                            Group \\ Model
+                          </th>
+                          {matrix.models.map((m) => (
+                            <th key={m} className="px-2 py-2 font-mono">
+                              {m}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {matrix.groups.slice(0, 40).map((g) => (
+                          <tr key={g.id} className="border-t border-border-subtle">
+                            <td className="sticky left-0 bg-surface-raised py-2 pr-3 text-accent">
+                              {g.full_name || g.name}
+                            </td>
+                            {matrix.models.map((m) => {
+                              const cell = cellFor(m, g.id);
+                              return (
+                                <td key={`${m}-${g.id}`} className="px-2 py-2">
+                                  <div className="flex gap-1 font-mono">
+                                    {(
+                                      [
+                                        ["perm_read", "R"],
+                                        ["perm_write", "W"],
+                                        ["perm_create", "C"],
+                                        ["perm_unlink", "D"],
+                                      ] as const
+                                    ).map(([key, label]) => (
+                                      <button
+                                        key={key}
+                                        type="button"
+                                        disabled={matrixBusy || !canMutate}
+                                        title={
+                                          mutateBlocked ?? `${label} ${cell[key] ? "on" : "off"}`
+                                        }
+                                        onClick={() => void toggleMatrixPerm(cell, g.id, key)}
+                                        className={`rounded px-1 ${
+                                          cell[key]
+                                            ? "bg-accent text-on-accent"
+                                            : "border border-border-subtle text-muted"
+                                        }`}
+                                      >
+                                        {label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {matrix.groups.length > 40 ? (
+                      <p className="mt-2 text-xs text-muted">
+                        Showing first 40 groups of {matrix.groups.length}.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </Card>
+            ),
+          },
+          {
+            value: "groups",
+            label: "Groups",
+            content: (
+              <Card className="p-5">
+                <h2 className="text-lg font-semibold text-ink">Security groups</h2>
+                <ul className="mt-3 space-y-1 text-sm">
+                  {groups.map((g) => (
+                    <li
+                      key={g.id}
+                      className="border-l-2 border-border-subtle pl-3 text-ink"
+                      style={{ marginLeft: g.full_name?.includes("/") ? 12 : 0 }}
+                    >
+                      <span className="font-mono text-accent">{g.name}</span>
+                      {g.full_name ? (
+                        <span className="ml-2 text-muted">{g.full_name}</span>
+                      ) : null}
+                    </li>
+                  ))}
+                  {groups.length === 0 ? (
+                    <li className="text-muted">No groups loaded — open Matrix or load a model.</li>
+                  ) : null}
+                </ul>
+              </Card>
+            ),
+          },
+          {
+            value: "model",
+            label: "Model ACL",
+            content: (
+              <div className="space-y-6">
+                <form onSubmit={onLoadModel} className="flex flex-wrap items-end gap-3">
+                  <Input
+                    label="Model"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    className="w-64 font-mono"
+                  />
+                  <Button type="submit" variant="secondary" disabled={busy} loading={busy}>
+                    Load
+                  </Button>
+                </form>
+                {error ? <ErrorNotice message={error} /> : null}
+                {notice ? (
+                  <Callout variant="info" title="Notice">
+                    {notice}
+                  </Callout>
+                ) : null}
+                <div className="grid gap-8 lg:grid-cols-2">
+                  <Card className="space-y-4 p-6">
+                    <form onSubmit={onCreateAccess} className="space-y-4">
+                      <h2 className="text-xl font-semibold text-ink">New access right</h2>
+                      {!accessForm.group_id ? (
+                        <Callout variant="warning" title="Global access line">
+                          Empty group applies to all users — use only when you understand compendium §6.
+                        </Callout>
+                      ) : null}
+                      <Input
+                        label="Name"
+                        required
+                        value={accessForm.name}
+                        onChange={(e) =>
+                          setAccessForm({ ...accessForm, name: e.target.value })
+                        }
+                        placeholder={`${model} user`}
+                      />
+                      <Select
+                        label="Group (empty = all users)"
+                        options={[
+                          { value: "", label: "— all / no group —" },
+                          ...groups.map((g) => ({
+                            value: String(g.id),
+                            label: g.full_name || g.name,
+                          })),
+                        ]}
+                        value={accessForm.group_id}
+                        onChange={(e) =>
+                          setAccessForm({ ...accessForm, group_id: e.target.value })
+                        }
+                      />
+                      <div className="flex flex-wrap gap-4 text-sm">
+                        {(
+                          [
+                            ["perm_read", "Read"],
+                            ["perm_write", "Write"],
+                            ["perm_create", "Create"],
+                            ["perm_unlink", "Delete"],
+                          ] as const
+                        ).map(([key, label]) => (
+                          <label key={key} className="flex items-center gap-2 text-ink">
+                            <input
+                              type="checkbox"
+                              checked={accessForm[key]}
+                              onChange={(e) =>
+                                setAccessForm({ ...accessForm, [key]: e.target.checked })
+                              }
+                            />
+                            {label}
+                          </label>
+                        ))}
+                      </div>
+                      <Button
+                        type="submit"
+                        variant="primary"
+                        disabled={busy || !canMutate}
+                        title={mutateBlocked ?? undefined}
+                        loading={busy}
+                      >
+                        Create access
+                      </Button>
+                    </form>
+                  </Card>
 
-        <section className="mt-8 border border-[#3d2a38] bg-[#0f1a16]/70 p-5">
-          <h2 className="font-[family-name:var(--font-display)] text-xl text-[#faf6f9]">
-            {mcGuidance?.title ?? "Multi-company pack"}
-          </h2>
-          <p className="mt-2 text-sm text-[#a8909e]">
-            {mcGuidance?.body ??
-              "Adds x_company_id + global record rule with company_ids domain on custom models."}
-          </p>
-          <button
-            type="button"
-            disabled={busy || !model.startsWith("x_")}
-            onClick={async () => {
-              setBusy(true);
-              setError(null);
-              try {
-                const res = await api.applyMultiCompanyLive(connectionId, [model]);
-                setNotice(
-                  `Multi-company: ${res.fields_created} field(s), ${res.rules_created} rule(s)` +
-                    (res.warnings.length ? ` · ${res.warnings.join("; ")}` : ""),
-                );
-                await refresh(model);
-              } catch (err) {
-                setError(err instanceof Error ? err.message : "Multi-company apply failed");
-              } finally {
-                setBusy(false);
-              }
-            }}
-            className="mt-3 border border-[#c9a9c0] px-3 py-1 text-sm text-[#c9a9c0]"
-          >
-            Apply live pack to loaded model
-          </button>
-        </section>
+                  <Card className="space-y-4 p-6">
+                    <form onSubmit={onCreateRule} className="space-y-4">
+                      <h2 className="text-xl font-semibold text-ink">New record rule</h2>
+                      {!ruleForm.group_id ? (
+                        <Callout variant="danger" title="Global record rule">
+                          Empty group creates a global rule — compendium §6 warns this affects all users.
+                        </Callout>
+                      ) : null}
+                      <Input
+                        label="Name"
+                        required
+                        value={ruleForm.name}
+                        onChange={(e) => setRuleForm({ ...ruleForm, name: e.target.value })}
+                      />
+                      <DomainBuilder
+                        label="Domain"
+                        value={ruleForm.domain_force}
+                        onChange={(domain_force) =>
+                          setRuleForm({ ...ruleForm, domain_force })
+                        }
+                      />
+                      <Select
+                        label="Group (optional)"
+                        options={[
+                          { value: "", label: "— global —" },
+                          ...groups.map((g) => ({
+                            value: String(g.id),
+                            label: g.full_name || g.name,
+                          })),
+                        ]}
+                        value={ruleForm.group_id}
+                        onChange={(e) =>
+                          setRuleForm({ ...ruleForm, group_id: e.target.value })
+                        }
+                      />
+                      <div className="flex flex-wrap gap-4 text-sm">
+                        {(
+                          [
+                            ["perm_read", "Read"],
+                            ["perm_write", "Write"],
+                            ["perm_create", "Create"],
+                            ["perm_unlink", "Delete"],
+                          ] as const
+                        ).map(([key, label]) => (
+                          <label key={key} className="flex items-center gap-2 text-ink">
+                            <input
+                              type="checkbox"
+                              checked={ruleForm[key]}
+                              onChange={(e) =>
+                                setRuleForm({ ...ruleForm, [key]: e.target.checked })
+                              }
+                            />
+                            {label}
+                          </label>
+                        ))}
+                      </div>
+                      <Button
+                        type="submit"
+                        variant="primary"
+                        disabled={busy || !canMutate}
+                        title={mutateBlocked ?? undefined}
+                        loading={busy}
+                      >
+                        Create rule
+                      </Button>
+                    </form>
+                  </Card>
+                </div>
 
-        <section className="mt-8 border border-[#3d2a38] bg-[#0f1a16]/70 p-5">
-          <h2 className="font-[family-name:var(--font-display)] text-xl text-[#faf6f9]">
-            Documents folder map
-          </h2>
-          <p className="mt-1 text-xs text-[#8f7a88]">
-            {docsGate?.available
-              ? "Map custom models to a Documents folder (Enterprise documents module)."
-              : docsGate?.message ??
-                "Documents module not available — config is stored but attach automation is suggestion-only."}
-          </p>
-          <div className="mt-3 flex flex-wrap items-end gap-2">
-            <button
-              type="button"
-              disabled={busy || !docsGate?.available}
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  setDocsFolders(await api.listDocumentsFolders(connectionId));
-                  setNotice("Loaded Documents folders");
-                } catch (err) {
-                  setError(err instanceof Error ? err.message : "Folder list failed");
-                } finally {
-                  setBusy(false);
-                }
-              }}
-              className="border border-[#c9a9c0] px-3 py-1 text-sm text-[#c9a9c0]"
-            >
-              Load folders
-            </button>
-            <select
-              value={docsFolderId}
-              onChange={(e) => setDocsFolderId(e.target.value)}
-              className="border border-[#3d2a38] bg-[#0c090b] px-2 py-1 text-sm"
-              disabled={docsFolders.length === 0}
-            >
-              <option value="">Select folder</option>
-              {docsFolders.map((f) => (
-                <option key={f.id} value={String(f.id)}>
-                  {f.name ?? `#${f.id}`}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              disabled={busy || !model.startsWith("x_") || !docsFolderId}
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  const res = await api.setDocumentsFolder(connectionId, {
-                    model,
-                    folder_id: Number(docsFolderId),
-                  });
-                  setDocsMapping(res.mapping);
-                  setNotice(`Mapped ${model} → folder ${docsFolderId}`);
-                } catch (err) {
-                  setError(err instanceof Error ? err.message : "Save folder map failed");
-                } finally {
-                  setBusy(false);
-                }
-              }}
-              className="border border-[#c9a9c0] px-3 py-1 text-sm text-[#c9a9c0]"
-            >
-              Save for loaded model
-            </button>
-          </div>
-          {Object.keys(docsMapping).length > 0 && (
-            <ul className="mt-3 space-y-1 font-mono text-xs text-[#8f7a88]">
-              {Object.entries(docsMapping).map(([m, fid]) => (
-                <li key={m}>
-                  {m} → folder {fid}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
-    </main>
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-xl font-semibold text-ink">Access on {model}</h2>
+                    <div className="mt-4">
+                      <DataTable
+                        columns={rightsColumns}
+                        rows={rights}
+                        rowKey={(r) => String(r.id)}
+                        emptyState={
+                          <p className="text-sm text-muted">
+                            No access rows for this model (or load first).
+                          </p>
+                        }
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-semibold text-ink">Record rules</h2>
+                    <ul className="mt-4 space-y-3">
+                      {rules.map((r) => (
+                        <li
+                          key={r.id}
+                          className="rounded-md border border-border-subtle p-4 text-sm"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="font-medium text-ink">
+                                {r.name}{" "}
+                                <span className="text-muted">
+                                  · #{r.id}
+                                  {r.global ? " · global" : ""}
+                                </span>
+                              </p>
+                              <pre className="mt-2 overflow-auto rounded-md bg-surface-muted p-2 font-mono text-xs text-muted">
+                                {r.domain_force ?? "(empty)"}
+                              </pre>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              disabled={busy || !canAdvanced}
+                              title={advancedBlocked ?? undefined}
+                              onClick={() =>
+                                setPendingDelete({
+                                  kind: "rule",
+                                  id: r.id,
+                                  name: r.name,
+                                  risks: [
+                                    "May expose records previously filtered by domain",
+                                    "Or hide records if other rules still apply",
+                                    "Snapshot allows restoring the rule definition when possible",
+                                  ],
+                                })
+                              }
+                            >
+                              Delete
+                            </Button>
+                          </div>
+                        </li>
+                      ))}
+                      {rules.length === 0 ? (
+                        <li className="text-sm text-muted">No record rules for this model.</li>
+                      ) : null}
+                    </ul>
+                  </div>
+                </div>
+
+                <Card className="p-5">
+                  <h2 className="text-xl font-semibold text-ink">
+                    {mcGuidance?.title ?? "Multi-company pack"}
+                  </h2>
+                  <p className="mt-2 text-sm text-muted">
+                    {mcGuidance?.body ??
+                      "Adds x_company_id + global record rule with company_ids domain on custom models."}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="mt-3"
+                    disabled={busy || !model.startsWith("x_")}
+                    onClick={async () => {
+                      setBusy(true);
+                      setError(null);
+                      try {
+                        const res = await api.applyMultiCompanyLive(connectionId, [model]);
+                        setNotice(
+                          `Multi-company: ${res.fields_created} field(s), ${res.rules_created} rule(s)` +
+                            (res.warnings.length ? ` · ${res.warnings.join("; ")}` : ""),
+                        );
+                        await refresh(model);
+                      } catch (err) {
+                        setError(
+                          err instanceof Error ? err.message : "Multi-company apply failed",
+                        );
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  >
+                    Apply live pack to loaded model
+                  </Button>
+                </Card>
+
+                <Card className="p-5">
+                  <h2 className="text-xl font-semibold text-ink">Documents folder map</h2>
+                  <p className="mt-1 text-xs text-muted">
+                    {docsGate?.available
+                      ? "Map custom models to a Documents folder (Enterprise documents module)."
+                      : docsGate?.message ??
+                        "Documents module not available — config is stored but attach automation is suggestion-only."}
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-end gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={busy || !docsGate?.available}
+                      onClick={async () => {
+                        setBusy(true);
+                        try {
+                          setDocsFolders(await api.listDocumentsFolders(connectionId));
+                          setNotice("Loaded Documents folders");
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : "Folder list failed");
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      Load folders
+                    </Button>
+                    <Select
+                      options={[
+                        { value: "", label: "Select folder" },
+                        ...docsFolders.map((f) => ({
+                          value: String(f.id),
+                          label: f.name ?? `#${f.id}`,
+                        })),
+                      ]}
+                      value={docsFolderId}
+                      onChange={(e) => setDocsFolderId(e.target.value)}
+                      disabled={docsFolders.length === 0}
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={busy || !model.startsWith("x_") || !docsFolderId}
+                      onClick={async () => {
+                        setBusy(true);
+                        try {
+                          const res = await api.setDocumentsFolder(connectionId, {
+                            model,
+                            folder_id: Number(docsFolderId),
+                          });
+                          setDocsMapping(res.mapping);
+                          setNotice(`Mapped ${model} → folder ${docsFolderId}`);
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : "Save folder map failed");
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      Save for loaded model
+                    </Button>
+                  </div>
+                  {Object.keys(docsMapping).length > 0 ? (
+                    <ul className="mt-3 space-y-1 font-mono text-xs text-muted">
+                      {Object.entries(docsMapping).map(([m, fid]) => (
+                        <li key={m}>
+                          {m} → folder {fid}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </Card>
+              </div>
+            ),
+          },
+        ]}
+      />
+
+      <ConfirmDialogV2
+        open={pendingDelete != null}
+        riskLevel="danger"
+        title="Delete access metadata?"
+        warning={
+          pendingDelete
+            ? `Delete ${pendingDelete.kind === "access" ? "access right" : "record rule"} “${pendingDelete.name}”?`
+            : ""
+        }
+        risks={pendingDelete?.risks ?? []}
+        phrase={CONFIRM_PHRASE}
+        busy={busy}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => proceedDelete()}
+      />
+    </div>
   );
 }
