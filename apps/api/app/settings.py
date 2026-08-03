@@ -55,6 +55,16 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://127.0.0.1:11434"
     # Prefer qwen2.5 7B Q4 on Apple Silicon; override via OLLAMA_MODEL
     ollama_model: str = "qwen2.5:7b-instruct-q4_K_M"
+    # Per-step model ladder (empty = fall back to ollama_model / openai_compatible_model)
+    ai_model_bulk: str = "qwen3:8b"
+    ai_model_reasoning: str = "qwen3:14b"
+    # auto | on | off — native Ollama `think` when model supports it; else manual CoT
+    ai_thinking: str = "auto"
+    # Per-step model ladder (empty = fall back to ollama_model / openai_compatible_model)
+    ai_model_bulk: str = "qwen3:8b"
+    ai_model_reasoning: str = "qwen3:14b"
+    # auto | on | off — native Ollama `think` when model supports it; else manual CoT
+    ai_thinking: str = "auto"
     # OpenAI-compatible (vLLM / LM Studio / OpenAI / Groq)
     openai_compatible_base_url: str = ""
     openai_compatible_model: str = "gpt-4o-mini"
@@ -67,6 +77,11 @@ class Settings(BaseSettings):
     ai_rag_min_score: float = 0.35
     # Self-critique pass after draft: auto|on|off
     ai_critique: str = "auto"
+    # Self-consistency vote/merge on scaffold + workflow steps: off|on (default off)
+    ai_self_consistency: str = "off"
+    # Expert RAG (EXP-1) — community Q&A: off | dir (reads expert_community_dir)
+    expert_community_source: str = "off"
+    expert_community_dir: str = ""
 
     @property
     def cors_origin_list(self) -> list[str]:

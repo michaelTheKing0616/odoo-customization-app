@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -22,6 +22,12 @@ class OdooConnection(Base):
     # Fernet ciphertext of password or API key
     secret_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     server_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    last_seen_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    upgrade_detected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    upgrade_detected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    preview_theme_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    protected_manifest_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    protected_manifest_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -118,13 +124,98 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class HealthCheckRun(Base):
+    """Post-upgrade artifact sweep report (TIER-4)."""
+
+    __tablename__ = "health_check_runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    connection_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("odoo_connections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    job_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    trigger: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")  # auto|manual
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="running")
+    # running | complete | failed
+    previous_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    current_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    ok_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    broken_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    report_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    message: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ApprovalRule(Base):
+    """Button approval rule — Community engine (app DB) or Studio mirror (TIER-5)."""
+
+    __tablename__ = "approval_rules"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    connection_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("odoo_connections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    engine: Mapped[str] = mapped_column(String(20), nullable=False, default="community")
+    # community | studio
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    target_model: Mapped[str] = mapped_column(String(200), nullable=False)
+    button_method: Mapped[str] = mapped_column(String(200), nullable=False)
+    button_label: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    steps_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    deployed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    odoo_wrapper_action_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    odoo_view_inherit_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    odoo_studio_rule_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ApprovalEntry(Base):
+    """Per-record approval audit trail (Community engine evidence + app audit)."""
+
+    __tablename__ = "approval_entries"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    connection_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("odoo_connections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    rule_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("approval_rules.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    record_model: Mapped[str] = mapped_column(String(200), nullable=False)
+    record_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    step_order: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    # pending | approved | rejected
+    approver_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    activity_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    message: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class BackgroundJob(Base):
     """Async sandbox/promote job status (in-process thread pool)."""
 
     __tablename__ = "background_jobs"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    kind: Mapped[str] = mapped_column(String(40), nullable=False)  # sandbox|promote
+    kind: Mapped[str] = mapped_column(String(40), nullable=False)  # sandbox|promote|health_check
     connection_id: Mapped[str | None] = mapped_column(
         String(36),
         ForeignKey("odoo_connections.id", ondelete="CASCADE"),
@@ -190,6 +281,28 @@ class EnvPipeline(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class BulkRun(Base):
+    """Stored result payload for Bulk Suite operations (BLK shared schema)."""
+
+    __tablename__ = "bulk_runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    connection_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("odoo_connections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    operation: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(200), nullable=False)
+    dry_run: Mapped[str] = mapped_column(String(5), nullable=False, default="yes")  # yes|no
+    total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    succeeded: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    result_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class PipelineHop(Base):
     """Record of a promote hop in an env pipeline."""
 
@@ -210,5 +323,21 @@ class PipelineHop(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="succeeded")
     # succeeded | failed
     message: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ExpertChunk(Base):
+    """Version-tagged knowledge chunks for the Expert RAG assistant (EXP-1)."""
+
+    __tablename__ = "expert_chunks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    source: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    version: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    breadcrumb: Mapped[str] = mapped_column(String(500), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

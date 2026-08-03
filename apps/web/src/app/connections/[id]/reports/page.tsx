@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { api, Connection } from "@/lib/api";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ReportDesigner } from "@/components/reports/ReportDesigner";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import {
   advancedMutationAllowed,
@@ -47,6 +48,16 @@ export default function ReportsPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [mergeRows, setMergeRows] = useState<
+    Array<{ reportId: string; recordIds: string }>
+  >([{ reportId: "", recordIds: "1" }]);
+  const [renderProbe, setRenderProbe] = useState<string | null>(null);
+  const [editorTab, setEditorTab] = useState<"visual" | "code">("visual");
+  const [mergeRows, setMergeRows] = useState<
+    Array<{ reportId: string; recordIds: string }>
+  >([{ reportId: "", recordIds: "1" }]);
+  const [renderProbe, setRenderProbe] = useState<string | null>(null);
+  const [editorTab, setEditorTab] = useState<"visual" | "code">("visual");
 
   const refresh = useCallback(async () => {
     const [r, p] = await Promise.all([
@@ -83,10 +94,11 @@ export default function ReportsPage() {
   const canAdvanced = advancedMutationAllowed(connection);
   const advancedBlocked = advancedMutationBlockedReason(connection);
 
+  const selectedReport = reports.find((r) => r.id === selectedId) ?? null;
+
   useEffect(() => {
-    const sel = reports.find((r) => r.id === selectedId);
-    setArch(sel?.arch || "");
-  }, [selectedId, reports]);
+    setArch(selectedReport?.arch || "");
+  }, [selectedReport]);
 
   async function onCreate(e: FormEvent) {
     e.preventDefault();
@@ -104,6 +116,110 @@ export default function ReportsPage() {
       setSelectedId(created.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Create failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function downloadMergedPdf() {
+    const items = mergeRows
+      .map((row) => ({
+        report_id: Number(row.reportId),
+        record_ids: row.recordIds
+          .split(/[\s,]+/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .map((s) => Number(s))
+          .filter((n) => Number.isFinite(n) && n > 0),
+      }))
+      .filter((item) => item.report_id > 0 && item.record_ids.length > 0);
+    if (items.length < 1) {
+      setError("Pick at least one report and record id(s) for combined print.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const { blob, totalPages, renderPath } = await api.mergePrintReports(connectionId, {
+        items,
+        filename: "combined-report.pdf",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "combined-report.pdf";
+      a.click();
+      URL.revokeObjectURL(url);
+      setNotice(
+        `Downloaded merged PDF (${totalPages ?? "?"} pages via ${renderPath ?? "render"})`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Combined print failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function probeRenderPath() {
+    setBusy(true);
+    setError(null);
+    try {
+      const probe = await api.reportRenderProbe(connectionId);
+      setRenderProbe(`${probe.primary_path} — ${probe.message}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Render probe failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function downloadMergedPdf() {
+    const items = mergeRows
+      .map((row) => ({
+        report_id: Number(row.reportId),
+        record_ids: row.recordIds
+          .split(/[\s,]+/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .map((s) => Number(s))
+          .filter((n) => Number.isFinite(n) && n > 0),
+      }))
+      .filter((item) => item.report_id > 0 && item.record_ids.length > 0);
+    if (items.length < 1) {
+      setError("Pick at least one report and record id(s) for combined print.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const { blob, totalPages, renderPath } = await api.mergePrintReports(connectionId, {
+        items,
+        filename: "combined-report.pdf",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "combined-report.pdf";
+      a.click();
+      URL.revokeObjectURL(url);
+      setNotice(
+        `Downloaded merged PDF (${totalPages ?? "?"} pages via ${renderPath ?? "render"})`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Combined print failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function probeRenderPath() {
+    setBusy(true);
+    setError(null);
+    try {
+      const probe = await api.reportRenderProbe(connectionId);
+      setRenderProbe(`${probe.primary_path} — ${probe.message}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Render probe failed");
     } finally {
       setBusy(false);
     }
@@ -223,14 +339,62 @@ export default function ReportsPage() {
           </ul>
 
           <div className="border border-[#3d2a38] bg-[#0f1a16]/70 p-4">
-            <h2 className="text-sm font-semibold text-[#c9a9c0]">QWeb arch</h2>
-            <textarea
-              value={arch}
-              onChange={(e) => setArch(e.target.value)}
-              rows={16}
-              disabled={!selectedId}
-              className="mt-2 w-full border border-[#3d2a38] bg-[#0c090b] p-3 font-mono text-xs disabled:opacity-40"
-            />
+            <div className="flex gap-2 border-b border-[#3d2a38] pb-2">
+              <button
+                type="button"
+                onClick={() => setEditorTab("visual")}
+                className={`px-3 py-1 text-sm ${
+                  editorTab === "visual"
+                    ? "bg-[#714B67] text-white"
+                    : "text-[#c9a9c0] hover:underline"
+                }`}
+              >
+                Visual designer
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditorTab("code")}
+                className={`px-3 py-1 text-sm ${
+                  editorTab === "code"
+                    ? "bg-[#714B67] text-white"
+                    : "text-[#c9a9c0] hover:underline"
+                }`}
+              >
+                QWeb code
+              </button>
+            </div>
+            {editorTab === "visual" ? (
+              <div className="mt-4">
+                {!selectedId ? (
+                  <p className="text-sm text-[#8f7a88]">
+                    Create or select a report to open the visual designer.
+                  </p>
+                ) : (
+                  <ReportDesigner
+                    connectionId={connectionId}
+                    model={selectedReport?.model || form.model}
+                    reportKey={selectedReport?.report_name || form.report_key}
+                    reportName={selectedReport?.name || form.name}
+                    reportId={selectedId}
+                    paperLabel={selectedReport?.paperformat_name || "A4"}
+                    onArchChange={setArch}
+                    onNotice={setNotice}
+                    onError={setError}
+                  />
+                )}
+              </div>
+            ) : (
+              <>
+                <h2 className="mt-4 text-sm font-semibold text-[#c9a9c0]">QWeb arch</h2>
+                <textarea
+                  value={arch}
+                  onChange={(e) => setArch(e.target.value)}
+                  rows={16}
+                  disabled={!selectedId}
+                  className="mt-2 w-full border border-[#3d2a38] bg-[#0c090b] p-3 font-mono text-xs disabled:opacity-40"
+                />
+              </>
+            )}
             <div className="mt-3 flex gap-2">
               <button
                 type="button"
@@ -265,6 +429,90 @@ export default function ReportsPage() {
             </div>
           </div>
         </div>
+
+        <section className="mt-8 border border-[#3d2a38] bg-[#0f1a16]/70 p-4">
+          <h2 className="font-[family-name:var(--font-display)] text-xl text-[#faf6f9]">
+            Combined print
+          </h2>
+          <p className="mt-1 text-sm text-[#8f7a88]">
+            Render different QWeb PDF reports server-side and merge into one download — uses
+            authenticated HTTP <code>/report/pdf</code> when RPC render is unavailable.
+          </p>
+          <div className="mt-4 space-y-3">
+            {mergeRows.map((row, idx) => (
+              <div key={idx} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                <label className="text-sm">
+                  <span className="text-[#a8909e]">Report</span>
+                  <select
+                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5"
+                    value={row.reportId}
+                    onChange={(e) => {
+                      const next = [...mergeRows];
+                      next[idx] = { ...next[idx], reportId: e.target.value };
+                      setMergeRows(next);
+                    }}
+                  >
+                    <option value="">— pick —</option>
+                    {reports.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name} (#{r.id})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-sm">
+                  <span className="text-[#a8909e]">Record ids</span>
+                  <input
+                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 font-mono"
+                    value={row.recordIds}
+                    onChange={(e) => {
+                      const next = [...mergeRows];
+                      next[idx] = { ...next[idx], recordIds: e.target.value };
+                      setMergeRows(next);
+                    }}
+                    placeholder="1"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="self-end border border-[#3d2a38] px-3 py-1.5 text-sm text-[#f0a8a0]"
+                  disabled={mergeRows.length <= 1}
+                  onClick={() => setMergeRows(mergeRows.filter((_, i) => i !== idx))}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="h-9 border border-[#3d2a38] px-3 text-sm"
+              onClick={() => setMergeRows([...mergeRows, { reportId: "", recordIds: "" }])}
+            >
+              Add report
+            </button>
+            <button
+              type="button"
+              className="h-9 border border-[#3d2a38] px-3 text-sm"
+              disabled={busy}
+              onClick={() => void probeRenderPath()}
+            >
+              Probe render path
+            </button>
+            <button
+              type="button"
+              className="h-9 bg-[#714B67] px-4 text-sm font-semibold text-white disabled:opacity-50"
+              disabled={busy}
+              onClick={() => void downloadMergedPdf()}
+            >
+              Download merged PDF
+            </button>
+          </div>
+          {renderProbe && (
+            <p className="mt-3 text-xs text-[#8f7a88]">{renderProbe}</p>
+          )}
+        </section>
       </div>
 
       <ConfirmDialog

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+{% for seq in sequences %}
+  <record id="{{ seq.xml_id }}" model="ir.sequence">
+    <field name="name">{{ seq.name | xml }}</field>
+    <field name="code">{{ seq.code | xml }}</field>
+    <field name="prefix">{{ seq.prefix | xml }}</field>
+    <field name="padding">{{ seq.padding }}</field>
+    <field name="number_next">1</field>
+    <field name="number_increment">1</field>
+  </record>
+{% endfor %}
+</odoo>

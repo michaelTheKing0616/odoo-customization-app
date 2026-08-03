@@ -20,6 +20,7 @@ from app.routers import (
     auth,
     automations,
     builder,
+    bulk_suite,
     config_ops,
     connections,
     data_import,
@@ -28,6 +29,9 @@ from app.routers import (
     studio_feature_recipes,
     environments,
     export_sandbox,
+    ee_drivers,
+    approvals,
+    health_check,
     introspection,
     jobs,
     menus_builder,
@@ -37,6 +41,7 @@ from app.routers import (
     projects,
     reminders,
     reports,
+    id_generator,
     snapshots,
     views,
 )
@@ -78,6 +83,12 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(audit.router, prefix="/api", dependencies=_protected)
 app.include_router(jobs.router, prefix="/api", dependencies=_protected)
 app.include_router(connections.router, prefix="/api", dependencies=_protected)
+app.include_router(health_check.router, prefix="/api", dependencies=_protected)
+app.include_router(ee_drivers.router, prefix="/api", dependencies=_protected)
+app.include_router(approvals.router, prefix="/api", dependencies=_protected)
+app.include_router(health_check.router, prefix="/api", dependencies=_protected)
+app.include_router(ee_drivers.router, prefix="/api", dependencies=_protected)
+app.include_router(approvals.router, prefix="/api", dependencies=_protected)
 app.include_router(apps.router, prefix="/api", dependencies=_protected)
 app.include_router(ai.router, prefix="/api", dependencies=_protected)
 app.include_router(module_spec.router, prefix="/api", dependencies=_protected)
@@ -95,12 +106,15 @@ app.include_router(snapshots.router, prefix="/api", dependencies=_protected)
 app.include_router(export_sandbox.router, prefix="/api", dependencies=_protected)
 app.include_router(data_import.router, prefix="/api", dependencies=_protected)
 app.include_router(power_ops.router, prefix="/api", dependencies=_protected)
+app.include_router(bulk_suite.router, prefix="/api", dependencies=_protected)
+app.include_router(bulk_suite.router, prefix="/api", dependencies=_protected)
 app.include_router(ee_playbooks.router, prefix="/api", dependencies=_protected)
 app.include_router(domain_playbooks.router, prefix="/api", dependencies=_protected)
 app.include_router(studio_feature_recipes.router, prefix="/api", dependencies=_protected)
 app.include_router(config_ops.router, prefix="/api", dependencies=_protected)
 app.include_router(menus_builder.router, prefix="/api", dependencies=_protected)
 app.include_router(reports.router, prefix="/api", dependencies=_protected)
+app.include_router(id_generator.router, prefix="/api", dependencies=_protected)
 app.include_router(environments.router, prefix="/api", dependencies=_protected)
 
 

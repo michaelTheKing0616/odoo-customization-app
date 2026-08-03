@@ -20,6 +20,7 @@ import {
   scaffoldApplyAllowed,
   scaffoldApplyBlockedReason,
   scaffoldOptsFromSpec,
+  connectionSupports,
 } from "@/lib/capabilities";
 
 const CONFIRM_PHRASE = "I understand the risks";
@@ -178,6 +179,7 @@ export default function ModuleSpecPageInner() {
   const applyOpts = scaffoldOptsFromSpec(spec as Record<string, unknown>);
   const canApply = scaffoldApplyAllowed(connection, applyOpts);
   const applyBlocked = scaffoldApplyBlockedReason(connection, applyOpts);
+  const barcodeModuleAllowed = connectionSupports(connection, "barcode_scan_module");
 
   return (
     <main className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#3d2a38_0%,_#1a1218_50%,_#0c090b_100%)] px-6 py-10 text-[#f4eef2]">
@@ -267,6 +269,25 @@ export default function ModuleSpecPageInner() {
             Generate UI from ModuleSpec
           </button>
         </div>
+
+        {barcodeModuleAllowed ? (
+          <label className="mt-4 flex items-center gap-2 text-sm text-[#c9a9c0]">
+            <input
+              type="checkbox"
+              checked={Boolean(spec.include_barcode_scan_widget)}
+              onChange={(e) =>
+                setSpec({ ...spec, include_barcode_scan_widget: e.target.checked })
+              }
+            />
+            Include exported <code className="text-xs">x_barcode_scan</code> OWL widget module
+            (our add-on — not native Odoo; Apache-2 ZXing attribution in README)
+          </label>
+        ) : (
+          <p className="mt-4 text-xs text-[#8f7a88]">
+            Exported barcode widget module is unavailable on Odoo Online — use Bulk Suite in-app
+            scanner instead.
+          </p>
+        )}
 
         <div className="mt-6">
           <ModuleSpecEditor value={spec} onChange={setSpec} />

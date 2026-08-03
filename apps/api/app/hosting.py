@@ -30,15 +30,6 @@ def hosting_hint_from_url(url: str | None) -> str:
     return "self_hosted"
 
 
-def python_modules_allowed(hosting_hint: str) -> bool:
-    """Whether custom Python module install is expected to work on this tier."""
-    if hosting_hint == "online":
-        return False
-    if hosting_hint in {"odoo_sh", "self_hosted"}:
-        return True
-    return True  # unknown: allow attempt; promote path still validates
-
-
 def hosting_operator_message(hosting_hint: str, *, edition: str) -> str:
     parts: list[str] = []
     if hosting_hint == "online":
@@ -62,3 +53,17 @@ def hosting_operator_message(hosting_hint: str, *, edition: str) -> str:
             "Studio/`web_studio` source is never used."
         )
     return " ".join(parts)
+
+
+def python_modules_allowed(hosting_hint: str) -> bool:
+    """Backward-compatible shim — delegates to tier_matrix (lazy import)."""
+    from app.tier_matrix import python_modules_allowed as matrix_python_modules_allowed
+
+    return matrix_python_modules_allowed(hosting_hint)
+
+
+def python_modules_allowed(hosting_hint: str) -> bool:
+    """Backward-compatible shim — delegates to tier_matrix (lazy import)."""
+    from app.tier_matrix import python_modules_allowed as matrix_python_modules_allowed
+
+    return matrix_python_modules_allowed(hosting_hint)

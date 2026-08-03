@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Query
 from sqlalchemy.orm import Session
 
 from app.app_templates import list_templates, run_scaffold
@@ -17,6 +17,8 @@ from app.schemas import (
     LibraryExportBody,
     LibraryStatsOut,
     ModuleExportOut,
+    StoreReadinessItemOut,
+    StoreReadinessReportOut,
 )
 from app.snapshots import (
     CONFIRM_PHRASE,
@@ -24,6 +26,8 @@ from app.snapshots import (
     require_advanced_confirmation,
 )
 from module_generator import build_module_zip, library_module_spec
+from app.store_packaging import apply_store_packaging
+from app.store_packaging import apply_store_packaging
 
 router = APIRouter(tags=["apps"])
 
@@ -57,7 +61,10 @@ def get_app_templates() -> list[AppTemplateOut]:
 
 
 @router.post("/apps/templates/library/export", response_model=ModuleExportOut)
-def export_library_module(body: LibraryExportBody) -> ModuleExportOut:
+def export_library_module(
+    body: LibraryExportBody,
+    store_ready: bool = Query(False, description="Apps Store packaging assist"),
+) -> ModuleExportOut:
     """Portable library zip (fines + reminders + multi_company flags). Does not write to Odoo."""
     spec = library_module_spec(
         body.technical_name,
@@ -67,6 +74,19 @@ def export_library_module(body: LibraryExportBody) -> ModuleExportOut:
         multi_company=body.multi_company,
     )
     zip_bytes = build_module_zip(spec)
+    store_report = None
+    warnings: list[str] = []
+    if store_ready or body.store_ready:
+        zip_bytes, _, report_dict = apply_store_packaging(zip_bytes, spec, major=19)
+        store_report = StoreReadinessReportOut(
+            ok=bool(report_dict.get("ok")),
+            items=[StoreReadinessItemOut(**item) for item in report_dict.get("items") or []],
+            fail_count=int(report_dict.get("fail_count") or 0),
+            warn_count=int(report_dict.get("warn_count") or 0),
+            disclaimer=str(report_dict.get("disclaimer") or ""),
+            message=str(report_dict.get("message") or ""),
+        )
+        warnings.append(f"Store-ready packaging — {store_report.message}")
     note_parts = [
         f"Library module {spec.technical_name}",
         f"fines={'on' if body.fines else 'off'}",
@@ -81,7 +101,8 @@ def export_library_module(body: LibraryExportBody) -> ModuleExportOut:
         note="; ".join(note_parts),
         model_count=len(spec.models),
         view_count=len(spec.views),
-        warnings=[],
+        warnings=warnings,
+        store_readiness=store_report,
     )
 
 

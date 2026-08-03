@@ -47,6 +47,7 @@ const TRIGGERS = [
   { value: "on_message_received", label: "On message received (email)" },
   { value: "on_message_sent", label: "On message sent (email)" },
   { value: "on_webhook", label: "On webhook (incoming)" },
+  { value: "on_change", label: "On UI change" },
 ] as const;
 
 const CONFIRM_PHRASE = "I understand the risks";
@@ -470,6 +471,11 @@ export default function AutomationsPage() {
     });
   }
 
+  const automationsBlocked = automationsGate != null && !automationsGate.automations.available;
+  const canSubmitAutomation =
+    !automationsBlocked ||
+    (gatingChoice === "export_module" && form.action_kind === "python_module");
+
   return (
     <main className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#3d2a38_0%,_#1a1218_50%,_#0c090b_100%)] px-6 py-10 text-[#f4eef2]">
       <div className="mx-auto max-w-4xl">
@@ -549,6 +555,31 @@ export default function AutomationsPage() {
         {error && <p className="mt-4 text-sm text-[#f0a8a0]">{error}</p>}
         {notice && <p className="mt-4 text-sm text-[#c9a9c0]">{notice}</p>}
 
+        {automationsGate && !automationsGate.automations.available ? (
+          <GatingCallout
+            className="mt-6"
+            gating={automationsGate.automations}
+            selectedChoice={gatingChoice}
+            onSelectChoice={setGatingChoice}
+          />
+        ) : null}
+        {migrationAssist?.eligible ? (
+          <div
+            className="mt-4 rounded border border-[#3d2a38] bg-[#0f1a16]/80 p-4 text-sm text-[#a8909e]"
+            data-testid="automations-migration-assist"
+          >
+            <p className="font-medium text-[#faf6f9]">{migrationAssist.title}</p>
+            <p className="mt-2">{migrationAssist.body}</p>
+            <p className="mt-2 text-xs text-[#8f7a88]">
+              See{" "}
+              <Link href={`/connections/${connectionId}`} className="text-[#c9a9c0] hover:underline">
+                connection hub → Export section
+              </Link>{" "}
+              for the full migration assist panel.
+            </p>
+          </div>
+        ) : null}
+
         <form
           data-testid="automations-form"
           onSubmit={onSubmit}
@@ -579,7 +610,9 @@ export default function AutomationsPage() {
               onChange={(e) => setForm({ ...form, trigger: e.target.value })}
               className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
             >
-              {TRIGGERS.map((t) => (
+              {TRIGGERS.filter(
+                (t) => !supportedTriggers || supportedTriggers.has(t.value),
+              ).map((t) => (
                 <option key={t.value} value={t.value}>
                   {t.label}
                 </option>
@@ -1048,7 +1081,8 @@ export default function AutomationsPage() {
 
           <button
             type="submit"
-            disabled={busy}
+            disabled={busy || !canSubmitAutomation}
+            data-testid="automations-submit"
             className="h-11 bg-[#714B67] px-5 text-sm font-semibold text-white disabled:opacity-60"
           >
             {busy

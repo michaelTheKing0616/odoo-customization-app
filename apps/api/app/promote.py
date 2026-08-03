@@ -109,13 +109,13 @@ def _docker_cp_module(zip_bytes: bytes, module_name: str, container: str) -> Non
         if not (module_dir / "__manifest__.py").exists():
             raise ValueError(f"Zip missing {module_name}/__manifest__.py")
         subprocess.run(
-            ["docker", "exec", container, "rm", "-rf", f"/mnt/extra-addons/{module_name}"],
+            ["docker", "exec", "-u", "root", container, "rm", "-rf", f"/mnt/extra-addons/{module_name}"],
             check=False,
             capture_output=True,
             text=True,
         )
         cp = subprocess.run(
-            ["docker", "cp", str(module_dir), f"{container}:/mnt/extra-addons/{module_name}"],
+            ["docker", "cp", str(module_dir), f"{container}:/mnt/extra-addons/"],
             capture_output=True,
             text=True,
             check=False,

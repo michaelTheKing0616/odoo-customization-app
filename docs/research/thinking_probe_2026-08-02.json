@@ -1,0 +1,23 @@
+{
+  "recorded_at": "2026-08-02T21:43:00+01:00",
+  "ollama_version": "0.31.1",
+  "think_param": "think",
+  "models_installed": ["qwen3:14b", "qwen3:8b", "qwen2.5:7b"],
+  "pull_incident": {
+    "symptom": "Terminal UI stuck at 8% / 722 MB for ~40+ min",
+    "actual_disk_state": "partial blob at 8.6 GB (~93%) with no growth",
+    "fix": "killed stuck `ollama pull qwen3:14b` PID; restarted pull — resumed and completed in ~16 min"
+  },
+  "capabilities": {
+    "qwen3:8b": {"role": "bulk", "think_supported": true, "schema_format_supported": true},
+    "qwen3:14b": {"role": "reasoning", "think_supported": true, "schema_format_supported": true}
+  },
+  "native_thinking_verified": {
+    "qwen3:14b": {"think": true, "thinking_chars": 257, "note": "thinking field returned; response may be empty on trivial prompts"}
+  },
+  "settings_ladder": {
+    "AI_MODEL_BULK": "qwen3:8b",
+    "AI_MODEL_REASONING": "qwen3:14b",
+    "AI_THINKING": "auto"
+  }
+}

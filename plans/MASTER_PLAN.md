@@ -22,7 +22,9 @@ silently skipped.
    source code. Driving Enterprise features via public RPC on licensed instances is in scope.
    Public docs + our own original code only.
 3. **Protected modules:** tier-1 financial/legal modules are link-only targets (Wave 1).
-   The restriction is on the EFFECT, not the mechanism.
+   The restriction is on the EFFECT, not the mechanism. **Exception (Doc 7):** Power Ops
+   recipes that batch Odoo's own methods on `account.move` (and similar) are exempt —
+   operator-initiated batching ≠ generating protected-module logic (`protected_tier_note`).
 4. **Snapshot before risky mutation; sandbox before prod install; confirm gates on destructive
    ops** (existing infrastructure — reuse, never bypass).
 5. **Honesty is a feature:** approximations, gates, partial failures are designed UI states.
@@ -58,7 +60,7 @@ Card files: `plans/cards/WAVE-<n>-<code>.md`.
 
 - Wave 0 SAFE — repo baseline commit + STATE.md law-firm follow-up. (SAFE-1, SAFE-2)
 - Wave 1 PCM — Protected Core Modules guardrail. (PCM-1..4)
-- Wave 2 AI — Prompt-engineering + pipeline upgrades. (AI-1..7)
+- Wave 2 AI — Prompt-engineering + pipeline upgrades + component-grain generation. (AI-1..8)
 - Wave 3 BLK — Bulk & workflow-optimization suite + ID generator port. (BLK-1..9)
 - Wave 4 TIER — Four-tier hosting/edition coverage + Enterprise drivers. (TIER-1..5)
 - Wave 5 EXP — The Odoo Expert RAG assistant. (EXP-1..5; EXP-5 needs UIX-3)
@@ -74,8 +76,8 @@ with Wave 6. Wave 9 last (entitlement keys already named in earlier cards' DONE 
 
 ## Model routing (per skills/model-routing.md, mapped to available Cursor models)
 
-- **Cursor Grok 4.5** (high-reasoning tier): PCM-3, PCM-4, AI-1, AI-4, EXP-2, EXP-3, CMP-5,
-  CMP-10, MON-1, MON-2, UIX-6, TIER-1 — architecture/security/correctness-sensitive.
+- **Cursor Grok 4.5** (high-reasoning tier): PCM-3, PCM-4, AI-1, AI-4, AI-8, EXP-2, EXP-3,
+  CMP-5, CMP-10, MON-1, MON-2, UIX-6, TIER-1 — architecture/security/correctness-sensitive.
   Also ALL checker sessions.
 - **Composer 2.5** (agentic coding tier): everything else — SAFE-*, PCM-1/2, AI-2/3/5/6/7,
   BLK-*, TIER-2/3/4/5, EXP-1/4/5, UIX-1/2/3/4a/4b/4c/5/7, CMP-1/2/3/4/6/7/8/9/11, PROD-*,

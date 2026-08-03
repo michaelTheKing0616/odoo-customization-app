@@ -5,8 +5,10 @@ from __future__ import annotations
 import base64
 import json
 import logging
+from typing import Any
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -24,6 +26,7 @@ from app.promote import (
 from app.sandbox import resolve_sandbox_major, run_sandbox_install
 from app.zip_safety import validate_zip_bytes
 from app.schemas import (
+    DeploymentPanelOut,
     ExportModuleBody,
     ModuleExportOut,
     PromoteModuleBody,
@@ -31,11 +34,24 @@ from app.schemas import (
     PromotedModuleOut,
     SandboxRunBody,
     SandboxRunOut,
+    StoreReadinessItemOut,
+    StoreReadinessReportOut,
     SuggestDependsOut,
     UninstallModuleBody,
     UninstallModuleOut,
 )
+from app.store_packaging import apply_store_packaging
 from app.snapshots import ConfirmationRequired, require_advanced_confirmation
+from app.capabilities import probe_web_base_url, sample_installed_modules
+from app.deploy_odoo_sh import deploy_odoo_sh_markdown, inject_file_into_zip
+from app.hosting import hosting_hint_from_url
+from app.tier_gating import (
+    deployment_panel,
+    gating_context_for_connection,
+    online_python_promote_gating,
+    sandbox_approximation_label,
+    sh_staging_suggestion,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +88,80 @@ def _client(connection_id: str, db: Session):
         return client_from_connection(row)
     except OdooClientError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+def _sandbox_honesty(
+    db: Session,
+    *,
+    connection_id: str,
+    odoo_major: int | None,
+) -> dict[str, Any]:
+    from app.db_models import OdooConnection
+
+    row = db.get(OdooConnection, connection_id)
+    if row is None:
+        return {
+            "approximation": False,
+            "approximation_label": None,
+            "sh_staging_suggestion": None,
+        }
+    ctx = gating_context_for_connection(url=row.url, server_version=row.server_version)
+    approximation = ctx.hosting == "online"
+    approx_label = sandbox_approximation_label(odoo_major) if approximation else None
+    sh_sibling = (
+        db.query(OdooConnection)
+        .filter(OdooConnection.id != connection_id)
+        .all()
+    )
+    other_sh = next(
+        (r for r in sh_sibling if hosting_hint_from_url(r.url) == "odoo_sh"),
+        None,
+    )
+    staging_hint = None
+    if approximation and other_sh is not None:
+        staging_hint = sh_staging_suggestion(has_other_sh=True, other_sh_name=other_sh.name)
+    return {
+        "approximation": approximation,
+        "approximation_label": approx_label,
+        "sh_staging_suggestion": staging_hint,
+    }
+
+
+def _sandbox_honesty(
+    db: Session,
+    *,
+    connection_id: str,
+    odoo_major: int | None,
+) -> dict[str, Any]:
+    from app.db_models import OdooConnection
+
+    row = db.get(OdooConnection, connection_id)
+    if row is None:
+        return {
+            "approximation": False,
+            "approximation_label": None,
+            "sh_staging_suggestion": None,
+        }
+    ctx = gating_context_for_connection(url=row.url, server_version=row.server_version)
+    approximation = ctx.hosting == "online"
+    approx_label = sandbox_approximation_label(odoo_major) if approximation else None
+    sh_sibling = (
+        db.query(OdooConnection)
+        .filter(OdooConnection.id != connection_id)
+        .all()
+    )
+    other_sh = next(
+        (r for r in sh_sibling if hosting_hint_from_url(r.url) == "odoo_sh"),
+        None,
+    )
+    staging_hint = None
+    if approximation and other_sh is not None:
+        staging_hint = sh_staging_suggestion(has_other_sh=True, other_sh_name=other_sh.name)
+    return {
+        "approximation": approximation,
+        "approximation_label": approx_label,
+        "sh_staging_suggestion": staging_hint,
+    }
 
 
 def _connection_odoo_major(connection_id: str, db: Session) -> int:
@@ -198,8 +288,15 @@ def _resolve_zip(
 
 @router.post("/export-module", response_model=ModuleExportOut)
 def export_module(
-    connection_id: str, body: ExportModuleBody, db: Session = Depends(get_db)
+    connection_id: str,
+    body: ExportModuleBody,
+    store_ready: bool = Query(False, description="Apps Store packaging assist"),
+    db: Session = Depends(get_db),
 ) -> ModuleExportOut:
+    try:
+        row = get_connection_or_404(db, connection_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     client = _client(connection_id, db)
     try:
         zip_bytes, spec, warnings = export_connection_module_zip(
@@ -227,6 +324,39 @@ def export_module(
         )
 
     major = int(getattr(client.capabilities, "major", 19) or 19)
+    ctx = gating_context_for_connection(url=row.url, server_version=row.server_version)
+    panel_data = deployment_panel(ctx, technical_name=spec.technical_name)
+    if ctx.hosting == "sh":
+        doc = deploy_odoo_sh_markdown(
+            technical_name=spec.technical_name,
+            display_name=spec.display_name or spec.technical_name,
+            odoo_major=major,
+        )
+        zip_bytes = inject_file_into_zip(
+            zip_bytes,
+            f"{spec.technical_name}/DEPLOY_ODOO_SH.md",
+            doc,
+        )
+        warnings = list(warnings) + ["DEPLOY_ODOO_SH.md included in zip for Odoo.sh Git deploy."]
+    panel = DeploymentPanelOut(**panel_data)
+    store_report: StoreReadinessReportOut | None = None
+    if store_ready or body.store_ready:
+        zip_bytes, _, report_dict = apply_store_packaging(
+            zip_bytes, spec, major=major
+        )
+        store_report = StoreReadinessReportOut(
+            ok=bool(report_dict.get("ok")),
+            items=[
+                StoreReadinessItemOut(**item) for item in report_dict.get("items") or []
+            ],
+            fail_count=int(report_dict.get("fail_count") or 0),
+            warn_count=int(report_dict.get("warn_count") or 0),
+            disclaimer=str(report_dict.get("disclaimer") or ""),
+            message=str(report_dict.get("message") or ""),
+        )
+        warnings = list(warnings) + [
+            f"Store-ready packaging applied — {store_report.message} (see STORE_READINESS.json in zip)",
+        ]
     return ModuleExportOut(
         technical_name=spec.technical_name,
         filename=f"{spec.technical_name}.zip",
@@ -243,6 +373,8 @@ def export_module(
         target_major=major,
         manifest_version=spec.version,
         warnings=warnings,
+        deployment_panel=panel,
+        store_readiness=store_report,
     )
 
 
@@ -333,6 +465,7 @@ def sandbox_run(
             return out
 
         enqueue(job.id, _work)
+        honesty = _sandbox_honesty(db, connection_id=connection_id, odoo_major=odoo_major)
         return SandboxRunOut(
             ok=True,
             module=module_name,
@@ -341,6 +474,7 @@ def sandbox_run(
             ),
             job_id=job.id,
             odoo_major=odoo_major,
+            **honesty,
         )
 
     try:
@@ -371,6 +505,7 @@ def sandbox_run(
         digest = validation.zip_sha256
         echoed = base64.b64encode(zip_bytes).decode("ascii")
 
+    honesty = _sandbox_honesty(db, connection_id=connection_id, odoo_major=result.odoo_major)
     return SandboxRunOut(
         ok=result.ok,
         module=result.module,
@@ -381,6 +516,7 @@ def sandbox_run(
         validation_id=validation_id,
         zip_sha256=digest,
         zip_base64=echoed,
+        **honesty,
     )
 
 
@@ -406,6 +542,15 @@ def promote_module(
                 "confirm_phrase": "I understand the risks",
             },
         ) from exc
+
+    try:
+        row = get_connection_or_404(db, connection_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    ctx = gating_context_for_connection(url=row.url, server_version=row.server_version)
+    if ctx.hosting == "online" and body.install_mode == "python":
+        gating = online_python_promote_gating()
+        raise HTTPException(status_code=403, detail={"gating": gating.to_dict()})
 
     zip_bytes, module_name = _resolve_zip(
         connection_id,

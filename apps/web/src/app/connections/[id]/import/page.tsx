@@ -8,6 +8,8 @@ import {
   ConfirmationRequiredError,
   Connection,
   DataImportCommitOut,
+  ImageImportCommitOut,
+  ImageImportPreviewOut,
 } from "@/lib/api";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
@@ -81,6 +83,22 @@ export default function DataImportPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<DataImportCommitOut | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const [imgManifest, setImgManifest] = useState<File | null>(null);
+  const [imgZip, setImgZip] = useState<File | null>(null);
+  const [imgPreview, setImgPreview] = useState<ImageImportPreviewOut | null>(null);
+  const [imgMatchField, setImgMatchField] = useState("x_name");
+  const [imgField, setImgField] = useState("");
+  const [imgResult, setImgResult] = useState<ImageImportCommitOut | null>(null);
+  const [imgConfirmOpen, setImgConfirmOpen] = useState(false);
+
+  const [imgManifest, setImgManifest] = useState<File | null>(null);
+  const [imgZip, setImgZip] = useState<File | null>(null);
+  const [imgPreview, setImgPreview] = useState<ImageImportPreviewOut | null>(null);
+  const [imgMatchField, setImgMatchField] = useState("x_name");
+  const [imgField, setImgField] = useState("");
+  const [imgResult, setImgResult] = useState<ImageImportCommitOut | null>(null);
+  const [imgConfirmOpen, setImgConfirmOpen] = useState(false);
 
   useEffect(() => {
     api
@@ -163,6 +181,62 @@ export default function DataImportPage() {
     a.download = t.filename;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function onImagePreview() {
+    if (!imgManifest || !imgZip) {
+      setError("Choose manifest CSV and images ZIP");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const preview = await api.imageImportPreview(connectionId, imgManifest, imgZip);
+      setImgPreview(preview);
+      setImgMatchField(preview.match_field);
+      setImgField(preview.image_field);
+      setImgResult(null);
+      setNotice(`Image manifest: ${preview.row_count} row(s). ${preview.warnings.join(" ")}`.trim());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Image preview failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runImageCommit(dryRun: boolean, phrase?: string) {
+    if (!imgManifest || !imgZip) {
+      setError("Choose manifest CSV and images ZIP");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.imageImportCommit(connectionId, {
+        model,
+        manifest: imgManifest,
+        imagesZip: imgZip,
+        match_field: imgMatchField,
+        image_field: imgField || undefined,
+        dry_run: dryRun,
+        ...(dryRun
+          ? {}
+          : { confirm_advanced: true, confirm_phrase: phrase || CONFIRM_PHRASE }),
+      });
+      setImgResult(res);
+      setNotice(res.message);
+      setImgConfirmOpen(false);
+    } catch (err) {
+      if (err instanceof ConfirmationRequiredError) {
+        setImgConfirmOpen(true);
+        setError(err.warning);
+      } else {
+        setError(err instanceof Error ? err.message : "Image import failed");
+      }
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -343,6 +417,224 @@ export default function DataImportPage() {
             </div>
           )}
         </section>
+
+        <section className="odoo-sheet mt-6 space-y-4 p-4" data-testid="image-import-panel">
+          <h2 className="text-sm font-semibold text-[var(--odoo-primary)]">Bulk image import</h2>
+          <p className="text-xs text-[var(--odoo-muted)]">
+            CSV manifest (<code>match,name,filename</code>) + ZIP of images → writes base64 to an
+            image/binary field. Images are downscaled server-side (max {1920}px, 5MB guard).
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <label className="text-xs">
+              Manifest CSV
+              <input
+                type="file"
+                accept=".csv,.txt"
+                className="mt-1 block text-sm"
+                onChange={(e) => setImgManifest(e.target.files?.[0] ?? null)}
+              />
+            </label>
+            <label className="text-xs">
+              Images ZIP
+              <input
+                type="file"
+                accept=".zip"
+                className="mt-1 block text-sm"
+                onChange={(e) => setImgZip(e.target.files?.[0] ?? null)}
+              />
+            </label>
+            <button
+              type="button"
+              disabled={busy || !imgManifest || !imgZip}
+              onClick={() => void onImagePreview()}
+              className="self-end border border-[var(--odoo-primary)] px-3 py-1.5 text-sm text-[var(--odoo-primary)] disabled:opacity-50"
+            >
+              Preview manifest
+            </button>
+          </div>
+          {imgPreview && (
+            <>
+              <div className="grid gap-2 sm:grid-cols-2 text-sm">
+                <label>
+                  Match field
+                  <input
+                    value={imgMatchField}
+                    onChange={(e) => setImgMatchField(e.target.value)}
+                    className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1 font-mono text-xs"
+                  />
+                </label>
+                <label>
+                  Image field
+                  <input
+                    value={imgField}
+                    onChange={(e) => setImgField(e.target.value)}
+                    placeholder={imgPreview.image_field}
+                    className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1 font-mono text-xs"
+                  />
+                </label>
+              </div>
+              <pre className="max-h-32 overflow-auto bg-[#f8f9fa] p-2 text-xs text-[#1f1f1f]">
+                {JSON.stringify(imgPreview.sample_rows, null, 2)}
+              </pre>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void runImageCommit(true)}
+                  className="border border-[var(--odoo-primary)] px-3 py-1.5 text-sm text-[var(--odoo-primary)] disabled:opacity-50"
+                >
+                  Dry-run images
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setImgConfirmOpen(true)}
+                  className="bg-[var(--odoo-danger)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  Commit image writes
+                </button>
+              </div>
+            </>
+          )}
+          {imgResult && (
+            <div className="overflow-x-auto text-sm" data-testid="image-import-results">
+              <p>
+                updated={imgResult.updated} failed={imgResult.failed} skipped={imgResult.skipped}
+              </p>
+              <table className="mt-2 w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-[var(--odoo-border)]">
+                    <th className="py-1">#</th>
+                    <th className="py-1">match</th>
+                    <th className="py-1">file</th>
+                    <th className="py-1">ok</th>
+                    <th className="py-1">error</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {imgResult.results.map((r) => (
+                    <tr key={r.row_index} className="border-b border-[var(--odoo-border)]/60">
+                      <td className="py-1">{r.row_index}</td>
+                      <td className="py-1 font-mono">{r.match_value}</td>
+                      <td className="py-1 font-mono">{r.filename}</td>
+                      <td className="py-1">{r.ok ? "yes" : "no"}</td>
+                      <td className="py-1 text-[var(--odoo-danger)]">{r.error ?? ""}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        <section className="odoo-sheet mt-6 space-y-4 p-4" data-testid="image-import-panel">
+          <h2 className="text-sm font-semibold text-[var(--odoo-primary)]">Bulk image import</h2>
+          <p className="text-xs text-[var(--odoo-muted)]">
+            CSV manifest (<code>match,name,filename</code>) + ZIP of images → writes base64 to an
+            image/binary field. Images are downscaled server-side (max {1920}px, 5MB guard).
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <label className="text-xs">
+              Manifest CSV
+              <input
+                type="file"
+                accept=".csv,.txt"
+                className="mt-1 block text-sm"
+                onChange={(e) => setImgManifest(e.target.files?.[0] ?? null)}
+              />
+            </label>
+            <label className="text-xs">
+              Images ZIP
+              <input
+                type="file"
+                accept=".zip"
+                className="mt-1 block text-sm"
+                onChange={(e) => setImgZip(e.target.files?.[0] ?? null)}
+              />
+            </label>
+            <button
+              type="button"
+              disabled={busy || !imgManifest || !imgZip}
+              onClick={() => void onImagePreview()}
+              className="self-end border border-[var(--odoo-primary)] px-3 py-1.5 text-sm text-[var(--odoo-primary)] disabled:opacity-50"
+            >
+              Preview manifest
+            </button>
+          </div>
+          {imgPreview && (
+            <>
+              <div className="grid gap-2 sm:grid-cols-2 text-sm">
+                <label>
+                  Match field
+                  <input
+                    value={imgMatchField}
+                    onChange={(e) => setImgMatchField(e.target.value)}
+                    className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1 font-mono text-xs"
+                  />
+                </label>
+                <label>
+                  Image field
+                  <input
+                    value={imgField}
+                    onChange={(e) => setImgField(e.target.value)}
+                    placeholder={imgPreview.image_field}
+                    className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1 font-mono text-xs"
+                  />
+                </label>
+              </div>
+              <pre className="max-h-32 overflow-auto bg-[#f8f9fa] p-2 text-xs text-[#1f1f1f]">
+                {JSON.stringify(imgPreview.sample_rows, null, 2)}
+              </pre>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void runImageCommit(true)}
+                  className="border border-[var(--odoo-primary)] px-3 py-1.5 text-sm text-[var(--odoo-primary)] disabled:opacity-50"
+                >
+                  Dry-run images
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setImgConfirmOpen(true)}
+                  className="bg-[var(--odoo-danger)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  Commit image writes
+                </button>
+              </div>
+            </>
+          )}
+          {imgResult && (
+            <div className="overflow-x-auto text-sm" data-testid="image-import-results">
+              <p>
+                updated={imgResult.updated} failed={imgResult.failed} skipped={imgResult.skipped}
+              </p>
+              <table className="mt-2 w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-[var(--odoo-border)]">
+                    <th className="py-1">#</th>
+                    <th className="py-1">match</th>
+                    <th className="py-1">file</th>
+                    <th className="py-1">ok</th>
+                    <th className="py-1">error</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {imgResult.results.map((r) => (
+                    <tr key={r.row_index} className="border-b border-[var(--odoo-border)]/60">
+                      <td className="py-1">{r.row_index}</td>
+                      <td className="py-1 font-mono">{r.match_value}</td>
+                      <td className="py-1 font-mono">{r.filename}</td>
+                      <td className="py-1">{r.ok ? "yes" : "no"}</td>
+                      <td className="py-1 text-[var(--odoo-danger)]">{r.error ?? ""}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       </div>
 
       <ConfirmDialog
@@ -358,6 +650,20 @@ export default function DataImportPage() {
         busy={busy}
         onCancel={() => setConfirmOpen(false)}
         onConfirm={(phrase) => void runCommit(false, phrase)}
+      />
+      <ConfirmDialog
+        open={imgConfirmOpen}
+        title="Commit bulk image import"
+        warning={`Write images to ${model} on this live Odoo connection.`}
+        risks={[
+          "Overwrites binary/image data on matched records",
+          "Wrong match field can attach images to incorrect records",
+          "Partial success is not auto-rolled back",
+        ]}
+        phrase={CONFIRM_PHRASE}
+        busy={busy}
+        onCancel={() => setImgConfirmOpen(false)}
+        onConfirm={(phrase) => void runImageCommit(false, phrase)}
       />
     </main>
   );

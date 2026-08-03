@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { SuggestTemplateButton } from "@/components/SuggestTemplateButton";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import {
   api,
@@ -79,6 +80,34 @@ export default function AppWizardPage() {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [genUiConfirmOpen, setGenUiConfirmOpen] = useState(false);
   const [genUiResult, setGenUiResult] = useState<string | null>(null);
+  const [validateLiveResult, setValidateLiveResult] = useState<
+    import("@/lib/api").ValidateLiveResult | null
+  >(null);
+  const [skipValidateLive, setSkipValidateLive] = useState(false);
+  const [grainLabel, setGrainLabel] = useState<string | null>(null);
+  const [grainOverride, setGrainOverride] = useState<string>("");
+  const [connectPoints, setConnectPoints] = useState<Record<string, unknown> | null>(null);
+  const [hostCandidates, setHostCandidates] = useState<
+    Array<{ model: string; label: string; score: number; reason?: string }>
+  >([]);
+  const [componentGallery, setComponentGallery] = useState<
+    Array<{ id: string; name: string; description: string; host_slot: string }>
+  >([]);
+  const [selectedGalleryId, setSelectedGalleryId] = useState("");
+  const [validateLiveResult, setValidateLiveResult] = useState<
+    import("@/lib/api").ValidateLiveResult | null
+  >(null);
+  const [skipValidateLive, setSkipValidateLive] = useState(false);
+  const [grainLabel, setGrainLabel] = useState<string | null>(null);
+  const [grainOverride, setGrainOverride] = useState<string>("");
+  const [connectPoints, setConnectPoints] = useState<Record<string, unknown> | null>(null);
+  const [hostCandidates, setHostCandidates] = useState<
+    Array<{ model: string; label: string; score: number; reason?: string }>
+  >([]);
+  const [componentGallery, setComponentGallery] = useState<
+    Array<{ id: string; name: string; description: string; host_slot: string }>
+  >([]);
+  const [selectedGalleryId, setSelectedGalleryId] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -102,7 +131,7 @@ export default function AppWizardPage() {
       try {
         // Never block the whole wizard on slow Odoo/AI status (RAG used to
         // load MiniLM inside /ai/status and freeze "Loading templates…").
-        const [conn, tpls, status, models] = await Promise.all([
+        const [conn, tpls, status, models, gallery] = await Promise.all([
           withTimeout(api.getConnection(connectionId), 8000, null as Connection | null),
           withTimeout(api.listAppTemplates(), 5000, FALLBACK_TEMPLATES),
           withTimeout(api.aiStatus().catch(() => null), 4000, null),
@@ -111,6 +140,7 @@ export default function AppWizardPage() {
             6000,
             [],
           ),
+          withTimeout(api.listComponentGallery().catch(() => []), 4000, []),
         ]);
         if (cancelled) return;
         if (!conn) {
@@ -119,6 +149,8 @@ export default function AppWizardPage() {
           setConnection(conn);
         }
         setTemplates(tpls.length ? tpls : FALLBACK_TEMPLATES);
+        setComponentGallery(gallery || []);
+        setComponentGallery(gallery || []);
         setAiEnabled(Boolean(status?.enabled));
         setAvailableModels(
           (models || []).map((m) => m.model).filter(Boolean).slice(0, 400),
@@ -165,7 +197,7 @@ export default function AppWizardPage() {
         template_id: selected.id,
         display_name: displayName.trim() || selected.name,
         ...(prefix ? { technical_prefix: prefix } : {}),
-        multi_company: selected.id === "library" ? multiCompany : false,
+        multi_company: multiCompany,
         confirm_advanced: true,
         confirm_phrase: phrase,
       });
@@ -208,16 +240,23 @@ export default function AppWizardPage() {
     }
   }
 
-  async function onGenerateUiFromDraft(phrase: string) {
-    if (!aiDraft) return;
+  function draftWithMultiCompany() {
+    if (!aiDraft) return null;
+    return multiCompany ? { ...aiDraft, multi_company: true } : aiDraft;
+  }
+
+  async function onGenerateUiFromDraft(phrase: string, forceSkipValidate = false) {
+    const spec = draftWithMultiCompany();
+    if (!spec) return;
     setBusy(true);
     setError(null);
     setGenUiResult(null);
     try {
       const res = await api.applyModuleSpec(connectionId, {
-        spec: aiDraft,
+        spec,
         confirm_advanced: true,
         confirm_phrase: phrase,
+        skip_validate_live: forceSkipValidate || skipValidateLive,
       });
       setGenUiConfirmOpen(false);
       setGenUiResult(res.message);
@@ -232,6 +271,58 @@ export default function AppWizardPage() {
       } else {
         setError(err instanceof Error ? err.message : "Generate UI failed");
       }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onPrepareGenerateUi() {
+    const spec = draftWithMultiCompany();
+    if (!spec) return;
+    setBusy(true);
+    setError(null);
+    setValidateLiveResult(null);
+    setSkipValidateLive(false);
+    try {
+      const validation = await api.validateModuleSpecLive(connectionId, { spec });
+      setValidateLiveResult(validation);
+      if (validation.ok) {
+        setGenUiConfirmOpen(true);
+      } else {
+        setError(
+          `${validation.message} — fix the draft or confirm override in the dialog.`,
+        );
+        setGenUiConfirmOpen(true);
+        setSkipValidateLive(false);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Validate-live failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onPrepareGenerateUi() {
+    const spec = draftWithMultiCompany();
+    if (!spec) return;
+    setBusy(true);
+    setError(null);
+    setValidateLiveResult(null);
+    setSkipValidateLive(false);
+    try {
+      const validation = await api.validateModuleSpecLive(connectionId, { spec });
+      setValidateLiveResult(validation);
+      if (validation.ok) {
+        setGenUiConfirmOpen(true);
+      } else {
+        setError(
+          `${validation.message} — fix the draft or confirm override in the dialog.`,
+        );
+        setGenUiConfirmOpen(true);
+        setSkipValidateLive(false);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Validate-live failed");
     } finally {
       setBusy(false);
     }
@@ -356,13 +447,47 @@ export default function AppWizardPage() {
           <span>
             <span className="text-[#a8909e]">Multi-company aware</span>
             <span className="mt-0.5 block text-xs text-[#8f7a88]">
-              Applies when you scaffold or export the <strong>Library</strong> template
-              only. CRM Lite / Inventory Lite ignore this checkbox today. Adds a company
-              field + record rules so each Odoo company sees its own catalog/loans.
-              Requires companies configured under Odoo Settings.
+              Applies to template scaffold, AI draft Generate UI, and library zip export.
+              Adds company field + record rules so each Odoo company sees its own workflow
+              records. Requires companies configured under Odoo Settings.
             </span>
           </span>
         </label>
+
+        {componentGallery.length > 0 && (
+          <section className="mt-8 border border-[#3d2a38] bg-[#0f1a16]/70 p-5">
+            <h2 className="font-[family-name:var(--font-display)] text-xl text-[#faf6f9]">
+              Component gallery
+            </h2>
+            <p className="mt-1 text-xs text-[#8f7a88]">
+              Reusable slices that attach to stock or custom hosts — warranty, inspection,
+              compliance, document expiry.
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {componentGallery.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedGalleryId(c.id);
+                    setNlPrompt(`Add ${c.name.toLowerCase()} to my ${c.host_slot.replace(".", " ")}s`);
+                  }}
+                  className={`border p-3 text-left text-sm ${
+                    selectedGalleryId === c.id
+                      ? "border-[#c9a9c0] bg-[#1a1218]"
+                      : "border-[#3d2a38] hover:border-[#4a3550]"
+                  }`}
+                >
+                  <span className="font-semibold text-[#faf6f9]">{c.name}</span>
+                  <span className="mt-1 block text-xs text-[#8f7a88]">{c.description}</span>
+                  <span className="mt-1 block font-mono text-[10px] text-[#c9a9c0]">
+                    Host: {c.host_slot}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="mt-8 border border-[#3d2a38] bg-[#0f1a16]/70 p-5">
           <h2 className="font-[family-name:var(--font-display)] text-xl text-[#faf6f9]">
@@ -381,6 +506,26 @@ export default function AppWizardPage() {
             placeholder="Car rental fleet: vehicles, contracts, deposits, overdue returns…"
             className="mt-3 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 text-sm"
           />
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+            <label className="text-[#a8909e]">
+              Grain override
+              <select
+                value={grainOverride}
+                onChange={(e) => setGrainOverride(e.target.value)}
+                className="ml-2 border border-[#3d2a38] bg-[#0c090b] px-2 py-1 text-xs"
+              >
+                <option value="">Auto-detect</option>
+                <option value="field_pack">Field pack</option>
+                <option value="feature_slice">Component / feature slice</option>
+                <option value="full_app">Full app</option>
+              </select>
+            </label>
+            {grainLabel && (
+              <span className="rounded border border-[#714B67] px-2 py-0.5 text-xs text-[#c9a9c0]">
+                Detected: {grainLabel}
+              </span>
+            )}
+          </div>
 
           <div className="mt-4">
             <p className="text-xs uppercase tracking-wide text-[#8f7a88]">
@@ -454,7 +599,7 @@ export default function AppWizardPage() {
               type="button"
               disabled={!aiDraft || busy || !canGenerateUi}
               title={generateUiBlocked ?? undefined}
-              onClick={() => setGenUiConfirmOpen(true)}
+              onClick={() => void onPrepareGenerateUi()}
               className="border border-[#c9a96e] px-3 py-1.5 text-sm text-[#c9a96e] disabled:opacity-50"
             >
               Generate UI from JSON
@@ -508,6 +653,13 @@ export default function AppWizardPage() {
             >
               Export library zip (fines=true)
             </button>
+            {aiDraft && (
+              <SuggestTemplateButton
+                spec={aiDraft}
+                connectionId={connectionId}
+                disabled={aiBusy || busy}
+              />
+            )}
           </div>
           {aiDraft && generateUiBlocked && (
             <p className="mt-3 text-sm text-[#e8d09f]">{generateUiBlocked}</p>
@@ -523,20 +675,75 @@ export default function AppWizardPage() {
               ))}
             </ul>
           )}
+          {connectPoints && (
+            <section className="mt-4 border border-[#3d2a38] bg-[#0c090b] p-4">
+              <h3 className="text-sm font-semibold text-[#c9a9c0]">Connect points</h3>
+              <p className="mt-1 text-xs text-[#8f7a88]">
+                Review host + form placement before Generate UI. Edit host model and re-draft
+                if needed.
+              </p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2 text-xs">
+                <label>
+                  Host model
+                  <input
+                    value={String(connectPoints.host_model ?? "")}
+                    onChange={(e) =>
+                      setConnectPoints({ ...connectPoints, host_model: e.target.value })
+                    }
+                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono"
+                  />
+                </label>
+                <label>
+                  Form xpath
+                  <input
+                    value={String(connectPoints.form_xpath ?? "//sheet")}
+                    onChange={(e) =>
+                      setConnectPoints({ ...connectPoints, form_xpath: e.target.value })
+                    }
+                    className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1 font-mono"
+                  />
+                </label>
+              </div>
+              {hostCandidates.length > 1 && (
+                <p className="mt-2 text-xs text-[#8f7a88]">
+                  Other hosts:{" "}
+                  {hostCandidates
+                    .slice(1, 4)
+                    .map((h) => `${h.label} (${h.model})`)
+                    .join(" · ")}
+                </p>
+              )}
+            </section>
+          )}
           {aiDraft && (
             <>
-              <p className="mt-3 text-xs text-[#8f7a88]">
-                {Array.isArray(aiDraft.models) ? aiDraft.models.length : "?"} models
-                · {Array.isArray(aiDraft.views) ? aiDraft.views.length : 0} views
-                ·{" "}
-                {Array.isArray(aiDraft.smart_buttons)
-                  ? aiDraft.smart_buttons.length
-                  : 0}{" "}
-                smart buttons
-                {typeof aiDraft.domain_pack === "string"
-                  ? ` · pack: ${aiDraft.domain_pack}`
-                  : ""}
-              </p>
+              {Boolean(aiDraft._component) || (aiDraft.grain && aiDraft.grain !== "full_app") ? (
+                <p className="mt-3 text-xs text-[#c9a9c0]">
+                  Component summary — host{" "}
+                  <span className="font-mono">
+                    {String(
+                      (connectPoints?.host_model as string) ||
+                        (aiDraft.connect_points as { host_model?: string } | undefined)
+                          ?.host_model ||
+                        "?",
+                    )}
+                  </span>
+                  · depends {JSON.stringify(aiDraft.depends ?? [])} · no new app root
+                </p>
+              ) : (
+                <p className="mt-3 text-xs text-[#8f7a88]">
+                  {Array.isArray(aiDraft.models) ? aiDraft.models.length : "?"} models
+                  · {Array.isArray(aiDraft.views) ? aiDraft.views.length : 0} views
+                  ·{" "}
+                  {Array.isArray(aiDraft.smart_buttons)
+                    ? aiDraft.smart_buttons.length
+                    : 0}{" "}
+                  smart buttons
+                  {typeof aiDraft.domain_pack === "string"
+                    ? ` · pack: ${aiDraft.domain_pack}`
+                    : ""}
+                </p>
+              )}
               <pre className="mt-2 max-h-64 overflow-auto border border-[#1e2f29] bg-[#0c090b] p-3 text-xs text-[#d4c4ce]">
                 {JSON.stringify(aiDraft, null, 2)}
               </pre>
@@ -735,8 +942,8 @@ export default function AppWizardPage() {
           "Live metadata writes on this connection",
           "May create multiple x_* models and ACL rows",
           "Existing models with the same name are skipped or extended",
-          ...(selected?.id === "library" && multiCompany
-            ? ["Adds x_company_id + multi-company record rules"]
+          ...(multiCompany
+            ? ["Adds x_company_id + multi-company record rules on workflow models"]
             : []),
         ]}
         phrase={CONFIRM_PHRASE}
@@ -754,11 +961,22 @@ export default function AppWizardPage() {
           "Smart buttons use inherit views — stock forms like Contacts stay intact",
           "Automations in the draft are listed only — create them on Automations page",
           "Prefer a sandbox connection before production",
+          ...(validateLiveResult && !validateLiveResult.ok
+            ? [
+                `Validate-live: ${validateLiveResult.fail_count} failure(s) — override only if you accept broken metadata risk`,
+              ]
+            : []),
         ]}
         phrase={CONFIRM_PHRASE}
         busy={busy}
-        onCancel={() => setGenUiConfirmOpen(false)}
-        onConfirm={onGenerateUiFromDraft}
+        onCancel={() => {
+          setGenUiConfirmOpen(false);
+          setSkipValidateLive(false);
+        }}
+        onConfirm={(phrase) => {
+          const forceSkip = Boolean(validateLiveResult && !validateLiveResult.ok);
+          void onGenerateUiFromDraft(phrase, forceSkip);
+        }}
       />
     </main>
   );

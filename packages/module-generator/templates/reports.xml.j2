@@ -6,7 +6,13 @@
         <t t-call="web.html_container">
             <t t-foreach="docs" t-as="o">
                 <div class="page">
+{% if report.t_lang %}
+                    <t t-lang="{{ report.t_lang }}">
 {{ report.body_html }}
+                    </t>
+{% else %}
+{{ report.body_html }}
+{% endif %}
                 </div>
             </t>
         </t>

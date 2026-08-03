@@ -8,6 +8,14 @@ from typing import Any
 from xml.sax.saxutils import escape
 
 from module_generator import list_view_for_major
+from odoo_client.image_pipeline import guess_image_role, image_field_xml, is_image_field
+
+from app.ai_model_quality import is_party_link_model
+from app.ai_workflow import build_transition_header_buttons
+from odoo_client.image_pipeline import guess_image_role, image_field_xml, is_image_field
+
+from app.ai_model_quality import is_party_link_model
+from app.ai_workflow import build_transition_header_buttons
 
 
 def _slug(text: str, *, fallback: str = "custom") -> str:
@@ -37,13 +45,42 @@ def _ensure_x_name(model: dict[str, Any]) -> None:
             )
 
 
+def _field_names_set(fields: list[dict[str, Any]]) -> set[str]:
+    return {str(f.get("name")) for f in fields if f.get("name")}
+
+
+def _arch_field_node(
+    name: str,
+    fields: list[dict[str, Any]],
+    *,
+    view_type: str,
+    model_name: str,
+) -> str:
+    fdef = next((f for f in fields if f.get("name") == name), None)
+    if is_image_field(fdef):
+        role_raw = fdef.get("image_role") if fdef else None
+        role = role_raw if role_raw in {"avatar", "content"} else guess_image_role(model_name, name)
+        return image_field_xml(
+            name,
+            view_type=view_type,  # type: ignore[arg-type]
+            field_names=_field_names_set(fields),
+            role=role,
+            string=str((fdef or {}).get("string") or "") or None,
+        )
+    return f'<field name="{escape(name)}"/>'
+
+
 def _list_columns(fields: list[dict[str, Any]], *, limit: int = 8) -> list[str]:
-    skip = {"one2many", "many2many", "binary", "html", "text"}
+    skip = {"one2many", "many2many", "html", "text"}
     cols: list[str] = []
     for f in fields:
         ttype = str(f.get("ttype") or "char").lower()
         name = f.get("name")
-        if not name or ttype in skip:
+        if not name:
+            continue
+        if ttype == "binary" and not is_image_field(f):
+            continue
+        if ttype in skip:
             continue
         cols.append(str(name))
         if len(cols) >= limit:
@@ -64,6 +101,10 @@ def _form_field_names(fields: list[dict[str, Any]]) -> tuple[list[str], list[str
             lines.append(name)
         elif name == "x_name" or ttype == "many2one":
             identity.append(name)
+        elif ttype == "binary" and not is_image_field(f):
+            continue
+        elif ttype == "binary" and not is_image_field(f):
+            continue
         elif ttype == "binary":
             details.append(name)
         else:
@@ -80,12 +121,14 @@ def _selection_keys(selection: Any) -> list[str]:
 
 
 def _build_list_arch(
-    model_name: str, fields: list[dict[str, Any]], *, odoo_major: int = 19
+    model_name: str, fields: list[dict[str, Any]], *, odoo_major: int = 19, sample: bool = True
 ) -> str:
     cols = _list_columns(fields)
-    inner = "".join(f'<field name="{escape(c)}"/>' for c in cols)
+    inner = "".join(
+        _arch_field_node(c, fields, view_type="list", model_name=model_name) for c in cols
+    )
     status = next((f for f in fields if f.get("name") == "x_status"), None)
-    attrs = ""
+    attrs = ' sample="1"' if sample else ""
     if status:
         keys = _selection_keys(status.get("selection"))
         danger = next((k for k in keys if k in {"overdue", "lost", "retired", "cancelled"}), None)
@@ -103,6 +146,7 @@ def _build_form_arch(
     fields: list[dict[str, Any]],
     *,
     smart_buttons: list[dict[str, Any]] | None = None,
+    transitions: list[list[str]] | None = None,
     odoo_major: int = 19,
 ) -> str:
     identity, details, lines = _form_field_names(fields)
@@ -110,18 +154,33 @@ def _build_form_arch(
     header = ""
     if status:
         keys = _selection_keys(status.get("selection"))
-        visible = ",".join(keys[:6]) if keys else ""
-        vis_attr = f' statusbar_visible="{escape(visible)}"' if visible else ""
+        if transitions:
+            visible = []
+            seen: set[str] = set()
+            for tr in transitions:
+                if isinstance(tr, (list, tuple)) and len(tr) >= 2:
+                    for k in (str(tr[0]), str(tr[1])):
+                        if k not in seen:
+                            visible.append(k)
+                            seen.add(k)
+        else:
+            visible = keys[:6] if keys else []
+        vis_attr = f' statusbar_visible="{escape(",".join(visible))}"' if visible else ""
+        btn_xml = build_transition_header_buttons(transitions or [])
         header = (
             f"<header>"
             f'<field name="x_status" widget="statusbar"{vis_attr}/>'
+            f"{btn_xml}"
             f"</header>"
         )
 
     def group_xml(title: str, names: list[str]) -> str:
         if not names:
             return ""
-        inner = "".join(f'<field name="{escape(n)}"/>' for n in names)
+        inner = "".join(
+            _arch_field_node(n, fields, view_type="form", model_name=description)
+            for n in names
+        )
         return f'<group string="{escape(title)}">{inner}</group>'
 
     _type, list_root = list_view_for_major(odoo_major)
@@ -147,15 +206,37 @@ def _build_form_arch(
     return f'<form string="{escape(description)}">{header}{sheet}</form>'
 
 
-def _build_kanban_arch(fields: list[dict[str, Any]]) -> str | None:
+def _build_kanban_arch(
+    fields: list[dict[str, Any]], *, sample: bool = True, model_name: str = ""
+) -> str | None:
     names = {f.get("name") for f in fields}
     if "x_status" not in names and "x_name" not in names:
         return None
+    sample_attr = ' sample="1"' if sample else ""
+    card_bits = [
+        _arch_field_node("x_name", fields, view_type="kanban", model_name=model_name)
+        if "x_name" in names
+        else "",
+    ]
+    if "x_status" in names:
+        card_bits.append(
+            _arch_field_node("x_status", fields, view_type="kanban", model_name=model_name)
+        )
+    for f in fields:
+        if is_image_field(f) and f.get("name") not in {"x_name", "x_status"}:
+            card_bits.append(
+                _arch_field_node(
+                    str(f.get("name")),
+                    fields,
+                    view_type="kanban",
+                    model_name=model_name,
+                )
+            )
+            break
     return (
-        '<kanban default_group_by="x_status" class="o_kanban_small_column">'
+        f'<kanban default_group_by="x_status" class="o_kanban_small_column"{sample_attr}>'
         "<templates><t t-name=\"card\">"
-        '<field name="x_name"/>'
-        '<field name="x_status"/>'
+        f"{''.join(card_bits)}"
         "</t></templates></kanban>"
         if "x_status" in names
         else None
@@ -177,14 +258,14 @@ def _ensure_actions_for_models(
         if mid in have:
             continue
         label = str(m.get("description") or mid)
+        has_status = any(f.get("name") == "x_status" for f in _field_list(m))
+        use_kanban = has_status and not is_party_link_model(m)
         actions.append(
             {
                 "name": label,
                 "model": mid,
                 "view_mode": (
-                    default_view_mode_kanban
-                    if any(f.get("name") == "x_status" for f in _field_list(m))
-                    else default_view_mode
+                    default_view_mode_kanban if use_kanban else default_view_mode
                 ),
                 "technical_name": f"action_{_slug(mid)}",
             }
@@ -308,12 +389,15 @@ def _rebuild_stale_views(
             arch = _build_list_arch(desc, fields, odoo_major=odoo_major)
             vtype = list_type
         elif vtype == "kanban":
-            arch = _build_kanban_arch(fields) or str(v.get("arch") or "")
+            arch = _build_kanban_arch(fields, model_name=mid) or str(v.get("arch") or "")
         else:
+            sf = model.get("state_field") if isinstance(model.get("state_field"), dict) else {}
+            tr = sf.get("transitions") if isinstance(sf.get("transitions"), list) else None
             arch = _build_form_arch(
                 desc,
                 fields,
                 smart_buttons=smart_by_model.get(mid),
+                transitions=tr,
                 odoo_major=odoo_major,
             )
         new_views.append({**v, "type": vtype, "arch": arch})
@@ -356,14 +440,14 @@ def ensure_default_ui(draft: dict[str, Any]) -> list[str]:
         for m in new_models:
             mid = str(m["model"])
             label = str(m.get("description") or mid)
+            has_status = any(f.get("name") == "x_status" for f in _field_list(m))
+            use_kanban = has_status and not is_party_link_model(m)
             actions.append(
                 {
                     "name": label,
                     "model": mid,
                     "view_mode": (
-                        default_view_mode_kanban
-                        if any(f.get("name") == "x_status" for f in _field_list(m))
-                        else default_view_mode
+                        default_view_mode_kanban if use_kanban else default_view_mode
                     ),
                     "technical_name": f"action_{_slug(mid)}",
                 }
@@ -430,6 +514,8 @@ def ensure_default_ui(draft: dict[str, Any]) -> list[str]:
         mid = str(m["model"])
         desc = str(m.get("description") or mid)
         fields = _field_list(m)
+        sf = m.get("state_field") if isinstance(m.get("state_field"), dict) else {}
+        tr = sf.get("transitions") if isinstance(sf.get("transitions"), list) else None
         for vtype, arch in (
             (list_type, _build_list_arch(desc, fields, odoo_major=odoo_major)),
             (
@@ -438,6 +524,7 @@ def ensure_default_ui(draft: dict[str, Any]) -> list[str]:
                     desc,
                     fields,
                     smart_buttons=smart_by_model.get(mid),
+                    transitions=tr,
                     odoo_major=odoo_major,
                 ),
             ),
@@ -458,8 +545,8 @@ def ensure_default_ui(draft: dict[str, Any]) -> list[str]:
                 }
             )
             added_views += 1
-        kanban = _build_kanban_arch(fields)
-        if kanban and (mid, "kanban") not in existing_view_keys:
+        kanban = _build_kanban_arch(fields, model_name=mid)
+        if kanban and not is_party_link_model(m) and (mid, "kanban") not in existing_view_keys:
             views.append(
                 {
                     "name": f"{mid}.kanban",

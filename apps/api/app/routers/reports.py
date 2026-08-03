@@ -5,17 +5,20 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.odoo_service import OdooClientError, client_from_connection, get_connection_or_404
+from app.report_merge import ReportMergeError, run_merge_print
 from app.schemas import ConfirmAdvancedBody
 from app.snapshots import (
     CONFIRM_PHRASE,
     ConfirmationRequired,
     require_advanced_confirmation,
 )
+from odoo_client.report_render import probe_report_render
 
 router = APIRouter(
     prefix="/connections/{connection_id}/reports",
@@ -101,6 +104,320 @@ class UpdateReportBody(BaseModel):
     arch: str | None = None
     paperformat_id: int | None = None
     clear_paperformat: bool = False
+
+
+class ReportRenderProbeOut(BaseModel):
+    major: int
+    rpc_methods: dict[str, str]
+    http_report_pdf: bool
+    primary_path: str
+    message: str
+
+
+class MergePrintItemIn(BaseModel):
+    report_id: int
+    record_ids: list[int] = Field(..., min_length=1)
+
+
+class MergePrintBody(BaseModel):
+    items: list[MergePrintItemIn] = Field(..., min_length=1)
+    order: list[int] | None = None
+    filename: str | None = Field(None, max_length=120)
+
+
+class ReportDesignCompileBody(BaseModel):
+    spec: dict[str, Any] = Field(default_factory=dict)
+
+
+class ReportDesignCompileOut(BaseModel):
+    ok: bool
+    arch: str
+    body_html: str
+
+
+class ReportDesignModuleSpecOut(BaseModel):
+    ok: bool
+    fragment: dict[str, Any]
+
+
+class ReportDesignPreviewBody(BaseModel):
+    spec: dict[str, Any] = Field(default_factory=dict)
+    report_id: int
+    record_id: int
+
+
+class ReportDesignPreviewOut(BaseModel):
+    ok: bool
+    content_base64: str
+    render_path: str
+    message: str
+
+
+class ReportDesignAnchorsBody(BaseModel):
+    arch: str = Field(..., min_length=1)
+
+
+class ReportDesignAnchorOut(BaseModel):
+    xpath: str
+    label: str
+
+
+@router.get("/design/palette")
+def report_design_palette() -> list[dict[str, str]]:
+    from app.report_design import BLOCK_PALETTE
+
+    return list(BLOCK_PALETTE)
+
+
+@router.post("/design/compile", response_model=ReportDesignCompileOut)
+def compile_report_design_route(body: ReportDesignCompileBody) -> ReportDesignCompileOut:
+    from app.report_design import compile_report_design as compile_design
+
+    try:
+        out = compile_design(body.spec or {})
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return ReportDesignCompileOut(ok=True, arch=out["arch"], body_html=out["body_html"])
+
+
+@router.post("/design/to-module-spec", response_model=ReportDesignModuleSpecOut)
+def report_design_to_module_spec(body: ReportDesignCompileBody) -> ReportDesignModuleSpecOut:
+    from app.report_design import design_to_module_report
+
+    try:
+        fragment = design_to_module_report(body.spec or {})
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return ReportDesignModuleSpecOut(ok=True, fragment=fragment)
+
+
+@router.post("/design/anchors", response_model=list[ReportDesignAnchorOut])
+def report_design_anchors(body: ReportDesignAnchorsBody) -> list[ReportDesignAnchorOut]:
+    from app.report_design import parse_qweb_anchors
+
+    return [ReportDesignAnchorOut(**a) for a in parse_qweb_anchors(body.arch)]
+
+
+@router.post("/design/preview", response_model=ReportDesignPreviewOut)
+def report_design_preview(
+    connection_id: str,
+    body: ReportDesignPreviewBody,
+    db: Session = Depends(get_db),
+) -> ReportDesignPreviewOut:
+    import base64
+
+    from app.report_design import compile_report_design as compile_design
+    from odoo_client.report_render import probe_report_render, render_report_pdf
+
+    client = _client(connection_id, db)
+    try:
+        compiled = compile_design(body.spec or {})
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    arch = compiled["arch"]
+    try:
+        rows = client.execute_kw(
+            "ir.actions.report",
+            "read",
+            [[int(body.report_id)]],
+            {"fields": ["report_name"]},
+        )
+    except OdooClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not rows:
+        raise HTTPException(status_code=404, detail="Report not found")
+    key = rows[0].get("report_name")
+    if not key:
+        raise HTTPException(status_code=400, detail="Report has no QWeb key")
+    view = _find_qweb_view(client, str(key))
+    if not view:
+        raise HTTPException(status_code=404, detail="QWeb view not found")
+    prior_arch = view.get("arch") or ""
+    view_id = int(view["id"])
+    try:
+        client.execute_kw("ir.ui.view", "write", [[view_id], {"arch": arch}])
+        probe = probe_report_render(
+            client,
+            sample_report_id=int(body.report_id),
+            sample_res_id=int(body.record_id),
+        )
+        pdf = render_report_pdf(
+            client,
+            int(body.report_id),
+            [int(body.record_id)],
+            probe=probe,
+        )
+    except OdooClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        try:
+            client.execute_kw("ir.ui.view", "write", [[view_id], {"arch": prior_arch}])
+        except OdooClientError:
+            pass
+    return ReportDesignPreviewOut(
+        ok=True,
+        content_base64=base64.b64encode(pdf).decode("ascii"),
+        render_path=probe.primary_path,
+        message=probe.message or "Preview rendered",
+    )
+
+
+class ReportRenderProbeOut(BaseModel):
+    major: int
+    rpc_methods: dict[str, str]
+    http_report_pdf: bool
+    primary_path: str
+    message: str
+
+
+class MergePrintItemIn(BaseModel):
+    report_id: int
+    record_ids: list[int] = Field(..., min_length=1)
+
+
+class MergePrintBody(BaseModel):
+    items: list[MergePrintItemIn] = Field(..., min_length=1)
+    order: list[int] | None = None
+    filename: str | None = Field(None, max_length=120)
+
+
+class ReportDesignCompileBody(BaseModel):
+    spec: dict[str, Any] = Field(default_factory=dict)
+
+
+class ReportDesignCompileOut(BaseModel):
+    ok: bool
+    arch: str
+    body_html: str
+
+
+class ReportDesignModuleSpecOut(BaseModel):
+    ok: bool
+    fragment: dict[str, Any]
+
+
+class ReportDesignPreviewBody(BaseModel):
+    spec: dict[str, Any] = Field(default_factory=dict)
+    report_id: int
+    record_id: int
+
+
+class ReportDesignPreviewOut(BaseModel):
+    ok: bool
+    content_base64: str
+    render_path: str
+    message: str
+
+
+class ReportDesignAnchorsBody(BaseModel):
+    arch: str = Field(..., min_length=1)
+
+
+class ReportDesignAnchorOut(BaseModel):
+    xpath: str
+    label: str
+
+
+@router.get("/design/palette")
+def report_design_palette() -> list[dict[str, str]]:
+    from app.report_design import BLOCK_PALETTE
+
+    return list(BLOCK_PALETTE)
+
+
+@router.post("/design/compile", response_model=ReportDesignCompileOut)
+def compile_report_design_route(body: ReportDesignCompileBody) -> ReportDesignCompileOut:
+    from app.report_design import compile_report_design as compile_design
+
+    try:
+        out = compile_design(body.spec or {})
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return ReportDesignCompileOut(ok=True, arch=out["arch"], body_html=out["body_html"])
+
+
+@router.post("/design/to-module-spec", response_model=ReportDesignModuleSpecOut)
+def report_design_to_module_spec(body: ReportDesignCompileBody) -> ReportDesignModuleSpecOut:
+    from app.report_design import design_to_module_report
+
+    try:
+        fragment = design_to_module_report(body.spec or {})
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return ReportDesignModuleSpecOut(ok=True, fragment=fragment)
+
+
+@router.post("/design/anchors", response_model=list[ReportDesignAnchorOut])
+def report_design_anchors(body: ReportDesignAnchorsBody) -> list[ReportDesignAnchorOut]:
+    from app.report_design import parse_qweb_anchors
+
+    return [ReportDesignAnchorOut(**a) for a in parse_qweb_anchors(body.arch)]
+
+
+@router.post("/design/preview", response_model=ReportDesignPreviewOut)
+def report_design_preview(
+    connection_id: str,
+    body: ReportDesignPreviewBody,
+    db: Session = Depends(get_db),
+) -> ReportDesignPreviewOut:
+    import base64
+
+    from app.report_design import compile_report_design as compile_design
+    from odoo_client.report_render import probe_report_render, render_report_pdf
+
+    client = _client(connection_id, db)
+    try:
+        compiled = compile_design(body.spec or {})
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    arch = compiled["arch"]
+    try:
+        rows = client.execute_kw(
+            "ir.actions.report",
+            "read",
+            [[int(body.report_id)]],
+            {"fields": ["report_name"]},
+        )
+    except OdooClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not rows:
+        raise HTTPException(status_code=404, detail="Report not found")
+    key = rows[0].get("report_name")
+    if not key:
+        raise HTTPException(status_code=400, detail="Report has no QWeb key")
+    view = _find_qweb_view(client, str(key))
+    if not view:
+        raise HTTPException(status_code=404, detail="QWeb view not found")
+    prior_arch = view.get("arch") or ""
+    view_id = int(view["id"])
+    try:
+        client.execute_kw("ir.ui.view", "write", [[view_id], {"arch": arch}])
+        probe = probe_report_render(
+            client,
+            sample_report_id=int(body.report_id),
+            sample_res_id=int(body.record_id),
+        )
+        pdf = render_report_pdf(
+            client,
+            int(body.report_id),
+            [int(body.record_id)],
+            probe=probe,
+        )
+    except OdooClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        try:
+            client.execute_kw("ir.ui.view", "write", [[view_id], {"arch": prior_arch}])
+        except OdooClientError:
+            pass
+    return ReportDesignPreviewOut(
+        ok=True,
+        content_base64=base64.b64encode(pdf).decode("ascii"),
+        render_path=probe.primary_path,
+        message=probe.message or "Preview rendered",
+    )
 
 
 @router.get("/paperformats", response_model=list[PaperFormatOut])
@@ -214,6 +531,52 @@ def list_reports(
     except OdooClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return [_report_out(client, r) for r in rows]
+
+
+@router.get("/render-probe", response_model=ReportRenderProbeOut)
+def report_render_probe(
+    connection_id: str,
+    report_id: int | None = Query(None),
+    res_id: int | None = Query(None),
+    db: Session = Depends(get_db),
+) -> ReportRenderProbeOut:
+    client = _client(connection_id, db)
+    probe = probe_report_render(
+        client,
+        sample_report_id=report_id,
+        sample_res_id=res_id,
+    )
+    return ReportRenderProbeOut.model_validate(probe.to_dict())
+
+
+@router.post("/merge-print")
+def merge_print_reports(
+    connection_id: str,
+    body: MergePrintBody,
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    client = _client(connection_id, db)
+    try:
+        pdf_bytes, meta = run_merge_print(
+            client,
+            items=[item.model_dump() for item in body.items],
+            order=body.order,
+        )
+    except ReportMergeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    filename = (body.filename or meta.filename).strip() or "merged-report.pdf"
+    if not filename.lower().endswith(".pdf"):
+        filename = f"{filename}.pdf"
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "X-Total-Pages": str(meta.total_pages),
+        "X-Render-Path": meta.probe.primary_path if meta.probe else "unknown",
+    }
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type="application/pdf",
+        headers=headers,
+    )
 
 
 @router.get("/{report_id}", response_model=ReportOut)

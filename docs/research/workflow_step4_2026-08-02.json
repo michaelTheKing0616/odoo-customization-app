@@ -1,0 +1,46 @@
+{
+  "models": [
+    {
+      "model": "x_matter",
+      "description": "Legal matter",
+      "is_workflow": true,
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Name"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('draft','Draft'),('open','Open'),('in_progress','In Progress'),('done','Done')]"
+        }
+      ],
+      "state_field": {
+        "field": "x_status",
+        "transitions": [
+          [
+            "draft",
+            "open"
+          ],
+          [
+            "open",
+            "in_progress"
+          ],
+          [
+            "in_progress",
+            "done"
+          ]
+        ],
+        "states": [
+          "draft",
+          "open",
+          "in_progress",
+          "done"
+        ]
+      }
+    }
+  ],
+  "warnings": []
+}

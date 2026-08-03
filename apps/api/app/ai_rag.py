@@ -62,7 +62,8 @@ def _cache_dir() -> Path:
     return root
 
 
-def _cosine(a: list[float], b: list[float]) -> float:
+def cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Cosine similarity between two dense vectors (0.0 when invalid)."""
     if not a or not b or len(a) != len(b):
         return 0.0
     dot = sum(x * y for x, y in zip(a, b, strict=True))
@@ -273,6 +274,7 @@ def rag_status(*, probe_model: bool = False) -> dict[str, Any]:
 
 
 __all__ = [
+    "cosine_similarity",
     "rag_enabled",
     "rag_status",
     "retrieve_with_rag",

@@ -8,7 +8,15 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.module_import import import_module_archive
 from app.odoo_service import OdooClientError, client_from_connection, get_connection_or_404
-from app.schemas import ModuleSpecApplyBody, ModuleSpecApplyOut, ModuleSpecImportOut
+from app.schemas import (
+    ModuleSpecApplyBody,
+    ModuleSpecApplyOut,
+    ModuleSpecImportOut,
+    ModuleSpecValidateLiveBody,
+    ValidateLiveItemOut,
+    ValidateLiveOut,
+)
+from app.spec_validate_live import validate_module_spec_live
 from app.snapshots import (
     CONFIRM_PHRASE,
     ConfirmationRequired,
@@ -62,7 +70,72 @@ async def import_module_spec_file(
         spec=payload,
         warnings=result.warnings,
         unmapped=result.unmapped,
+        custom_code_blocks=list(payload.get("custom_code_blocks") or []),
         source=result.source,
+    )
+
+
+@router.post("/validate-live", response_model=ValidateLiveOut)
+def validate_live_module_spec(
+    connection_id: str,
+    body: ModuleSpecValidateLiveBody,
+    db: Session = Depends(get_db),
+) -> ValidateLiveOut:
+    """Read-only pre-apply checks against the live Odoo instance."""
+    if not isinstance(body.spec, dict) or not body.spec.get("models"):
+        raise HTTPException(status_code=422, detail="spec.models must be a non-empty list")
+    try:
+        conn = get_connection_or_404(db, connection_id)
+        client = client_from_connection(conn)
+        result = validate_module_spec_live(client, body.spec)
+    except OdooClientError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return ValidateLiveOut(
+        ok=result.ok,
+        items=[
+            ValidateLiveItemOut(
+                item_id=i.item_id,
+                category=i.category,
+                status=i.status,
+                message=i.message,
+            )
+            for i in result.items
+        ],
+        fail_count=result.fail_count,
+        warn_count=result.warn_count,
+        message=result.message,
+    )
+
+
+@router.post("/validate-live", response_model=ValidateLiveOut)
+def validate_live_module_spec(
+    connection_id: str,
+    body: ModuleSpecValidateLiveBody,
+    db: Session = Depends(get_db),
+) -> ValidateLiveOut:
+    """Read-only pre-apply checks against the live Odoo instance."""
+    if not isinstance(body.spec, dict) or not body.spec.get("models"):
+        raise HTTPException(status_code=422, detail="spec.models must be a non-empty list")
+    try:
+        conn = get_connection_or_404(db, connection_id)
+        client = client_from_connection(conn)
+        result = validate_module_spec_live(client, body.spec)
+    except OdooClientError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return ValidateLiveOut(
+        ok=result.ok,
+        items=[
+            ValidateLiveItemOut(
+                item_id=i.item_id,
+                category=i.category,
+                status=i.status,
+                message=i.message,
+            )
+            for i in result.items
+        ],
+        fail_count=result.fail_count,
+        warn_count=result.warn_count,
+        message=result.message,
     )
 
 
@@ -105,6 +178,44 @@ def apply_module_spec(
     try:
         conn = get_connection_or_404(db, connection_id)
         client = client_from_connection(conn)
+        validation = validate_module_spec_live(client, body.spec)
+        if not validation.ok and not body.skip_validate_live:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "validate_live_failed": True,
+                    "fail_count": validation.fail_count,
+                    "warn_count": validation.warn_count,
+                    "message": validation.message,
+                    "items": [
+                        {
+                            "item_id": i.item_id,
+                            "category": i.category,
+                            "status": i.status,
+                            "message": i.message,
+                        }
+                        for i in validation.items
+                        if i.status == "fail"
+                    ],
+                },
+            )
+        if not validation.ok and body.skip_validate_live:
+            try:
+                require_advanced_confirmation(
+                    confirm_advanced=body.confirm_advanced,
+                    confirm_phrase=body.confirm_phrase,
+                    warning=(
+                        "Apply despite validate-live failures — live Odoo may reject writes "
+                        "or produce broken views."
+                    ),
+                    risks=[
+                        f"{validation.fail_count} validate-live check(s) failed",
+                        "Partial apply may leave inconsistent metadata",
+                        "Prefer fixing the draft or re-running validate-live",
+                    ],
+                )
+            except ConfirmationRequired as exc:
+                raise _confirm_http(exc) from exc
         result = apply_module_spec_ui(
             client,
             body.spec,

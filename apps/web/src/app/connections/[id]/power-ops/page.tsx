@@ -147,6 +147,21 @@ export default function PowerOpsPage() {
           <Link href={`/connections/${connectionId}/import`} className="text-[var(--odoo-primary-light)] hover:underline">
             Bulk import
           </Link>
+          <Link href={`/connections/${connectionId}/bulk-suite`} className="text-[var(--odoo-primary-light)] hover:underline">
+            Bulk Suite
+          </Link>
+          <Link href={`/connections/${connectionId}/cron-manager`} className="text-[var(--odoo-primary-light)] hover:underline">
+            Cron Manager
+          </Link>
+          <Link href={`/connections/${connectionId}/housekeeping`} className="text-[var(--odoo-primary-light)] hover:underline">
+            Housekeeping
+          </Link>
+          <Link href={`/connections/${connectionId}/cron-manager`} className="text-[var(--odoo-primary-light)] hover:underline">
+            Cron Manager
+          </Link>
+          <Link href={`/connections/${connectionId}/housekeeping`} className="text-[var(--odoo-primary-light)] hover:underline">
+            Housekeeping
+          </Link>
         </div>
         <h1 className="mt-4 font-[family-name:var(--font-display)] text-3xl text-[var(--odoo-sheet-fg)]">
           Power Ops

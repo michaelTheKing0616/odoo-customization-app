@@ -5,6 +5,14 @@ import { useParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { api, ConfirmationRequiredError, Connection, FieldRow, ModelRow } from "@/lib/api";
 import {
+  fallbackWidgetsForTtype,
+  type WidgetOption,
+} from "@/lib/widgetCatalog";
+import {
+  fallbackWidgetsForTtype,
+  type WidgetOption,
+} from "@/lib/widgetCatalog";
+import {
   connectionSupports,
   connectionUnsupportedReason,
   currencyFieldSupported,
@@ -19,6 +27,10 @@ import {
 import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
+import { PropertyFieldsPanel } from "@/components/builder/PropertyFieldsPanel";
+import { InvoicingConnectPanel } from "@/components/builder/InvoicingConnectPanel";
+import { PropertyFieldsPanel } from "@/components/builder/PropertyFieldsPanel";
+import { InvoicingConnectPanel } from "@/components/builder/InvoicingConnectPanel";
 
 const FIELD_TYPES = [
   "char",
@@ -103,8 +115,13 @@ export default function BuilderPage() {
     on_delete: "restrict" as "set null" | "restrict" | "cascade",
     inject_into_views: true,
     inject_strategy: "inherit" as "inherit" | "mutate",
-    view_widget: "" as "" | "barcode",
+    view_widget: "",
   });
+
+  const [widgetOptions, setWidgetOptions] = useState<WidgetOption[]>([]);
+  const [relatedPaths, setRelatedPaths] = useState<
+    { path: string; label: string; ttype: string }[]
+  >([]);
 
   const [createdFields, setCreatedFields] = useState<FieldRow[]>([]);
   const [confirmMutateOpen, setConfirmMutateOpen] = useState(false);
@@ -126,6 +143,76 @@ export default function BuilderPage() {
   useEffect(() => {
     refresh().catch((err: Error) => setError(err.message));
   }, [refresh]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setWidgetOptions(fallbackWidgetsForTtype(fieldForm.ttype));
+    api
+      .listBuilderWidgets(connectionId, fieldForm.ttype)
+      .then((rows) => {
+        if (!cancelled && rows.length > 0) setWidgetOptions(rows);
+      })
+      .catch(() => {
+        /* fallback catalog */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionId, fieldForm.ttype]);
+
+  useEffect(() => {
+    if (!fieldForm.model) {
+      setRelatedPaths([]);
+      return;
+    }
+    let cancelled = false;
+    api
+      .listRelatedPaths(connectionId, fieldForm.model, 2)
+      .then((rows) => {
+        if (!cancelled) setRelatedPaths(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setRelatedPaths([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionId, fieldForm.model]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setWidgetOptions(fallbackWidgetsForTtype(fieldForm.ttype));
+    api
+      .listBuilderWidgets(connectionId, fieldForm.ttype)
+      .then((rows) => {
+        if (!cancelled && rows.length > 0) setWidgetOptions(rows);
+      })
+      .catch(() => {
+        /* fallback catalog */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionId, fieldForm.ttype]);
+
+  useEffect(() => {
+    if (!fieldForm.model) {
+      setRelatedPaths([]);
+      return;
+    }
+    let cancelled = false;
+    api
+      .listRelatedPaths(connectionId, fieldForm.model, 2)
+      .then((rows) => {
+        if (!cancelled) setRelatedPaths(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setRelatedPaths([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionId, fieldForm.model]);
 
   const needsRelation = useMemo(
     () => ["many2one", "many2many", "one2many"].includes(fieldForm.ttype),
@@ -217,10 +304,7 @@ export default function BuilderPage() {
         on_delete: needsOnDelete ? fieldForm.on_delete : null,
         inject_into_views: willInject,
         inject_strategy: willInject ? fieldForm.inject_strategy : "inherit",
-        view_widget:
-          fieldForm.ttype === "char" && fieldForm.view_widget
-            ? fieldForm.view_widget
-            : null,
+        view_widget: fieldForm.view_widget || null,
         ...(willInject && fieldForm.inject_strategy === "mutate"
           ? {
               confirm_advanced: true,
@@ -235,7 +319,12 @@ export default function BuilderPage() {
           : fieldForm.inject_into_views
             ? " (no existing form/list/search to inject into)"
             : "";
-      setNotice(`Created field ${created.name} on ${fieldForm.model}.${injected}`);
+      const currencyNote = created.currency_field_created
+        ? ` Auto-created currency field ${created.currency_field_created}.`
+        : "";
+      setNotice(
+        `Created field ${created.name} on ${fieldForm.model}.${injected}${currencyNote}`,
+      );
       setFieldForm((f) => ({
         ...f,
         name: "x_",
@@ -704,7 +793,7 @@ export default function BuilderPage() {
                 </p>
               </div>
             )}
-            {fieldForm.ttype === "char" && (
+            {widgetOptions.length > 0 && (
               <label className="block text-sm">
                 <span className="text-[#a8909e]">Form widget hint</span>
                 <select
@@ -712,30 +801,51 @@ export default function BuilderPage() {
                   onChange={(e) =>
                     setFieldForm({
                       ...fieldForm,
-                      view_widget: e.target.value as "" | "barcode",
+                      view_widget: e.target.value,
                     })
                   }
                   className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
                 >
                   <option value="">Default</option>
-                  <option value="barcode">barcode</option>
+                  {widgetOptions.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.label}
+                    </option>
+                  ))}
                 </select>
                 <span className="mt-1 block text-xs text-[#8f7a88]">
-                  When injecting into form views, uses{" "}
-                  <code className="text-[#c9a9c0]">widget=&quot;barcode&quot;</code>.
+                  When injecting into form views, sets{" "}
+                  <code className="text-[#c9a9c0]">widget=&quot;…&quot;</code> on the field.
                 </span>
               </label>
             )}
             <label className="block text-sm">
               <span className="text-[#a8909e]">Related path (optional)</span>
-              <input
-                value={fieldForm.related}
-                onChange={(e) =>
-                  setFieldForm({ ...fieldForm, related: e.target.value })
-                }
-                className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
-                placeholder="partner_id.country_id"
-              />
+              {relatedPaths.length > 0 ? (
+                <select
+                  value={fieldForm.related}
+                  onChange={(e) =>
+                    setFieldForm({ ...fieldForm, related: e.target.value })
+                  }
+                  className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                >
+                  <option value="">— none —</option>
+                  {relatedPaths.map((p) => (
+                    <option key={p.path} value={p.path}>
+                      {p.label} ({p.path})
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={fieldForm.related}
+                  onChange={(e) =>
+                    setFieldForm({ ...fieldForm, related: e.target.value })
+                  }
+                  className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
+                  placeholder="partner_id.country_id"
+                />
+              )}
               <span className="mt-1 block text-xs text-[#8f7a88]">
                 When set, Odoo stores a readonly related field using the type above
                 (there is no ttype=related).
@@ -1006,6 +1116,25 @@ export default function BuilderPage() {
           </button>
         </form>
       </div>
+
+      <PropertyFieldsPanel
+        connectionId={connectionId}
+        connection={connection}
+        defaultChildModel={fieldForm.model || o2mForm.child_model}
+      />
+
+      <InvoicingConnectPanel
+        connectionId={connectionId}
+        connection={connection}
+        defaultModel={fieldForm.model || o2mForm.parent_model}
+      />
+
+      <InvoicingConnectPanel
+        connectionId={connectionId}
+        connection={connection}
+        defaultModel={fieldForm.model || o2mForm.parent_model}
+      />
+
       <ConfirmDialog
         open={confirmMutateOpen}
         title="Mutate parent view arch"

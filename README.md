@@ -41,6 +41,19 @@ Set `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000` if needed.
 
 **Full local UAT checklist** (wizard → Designer → sandbox → promote): [docs/LOCAL-UAT.md](docs/LOCAL-UAT.md).
 
+### Expert RAG ingest (EXP-1 setup)
+
+After Postgres is up, populate the version-tagged knowledge store (git sparse-checkout of
+`odoo/documentation`; cache under `.cache/expert/`, gitignored):
+
+```bash
+uv run --directory apps/api python -m app.expert.ingest --version 19.0
+uv run --directory apps/api python -m app.expert.ingest --version 18.0 --offline  # after first fetch
+```
+
+Optional: `EXPERT_COMMUNITY_SOURCE=dir` + `EXPERT_COMMUNITY_DIR=/path/to/qa` for curated Q&A markdown.
+Place `docs/reference/MASTER_REFERENCE.md` when the 8-document master reference is available.
+
 ## Layout
 
 - `apps/web` — Next.js UI

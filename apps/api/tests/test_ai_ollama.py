@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+from typing import Any
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -128,7 +130,7 @@ def test_draft_module_with_monkeypatched_ollama(
             return True, "fake"
 
         def generate_json(
-            self, prompt: str, *, system: str | None = None, timeout_s: float = 60.0
+            self, prompt: str, *, system: str | None = None, timeout_s: float = 60.0, **kwargs: Any
         ) -> str:
             return json.dumps(fake)
 

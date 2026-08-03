@@ -38,6 +38,7 @@ from odoo_client.compat import (
     parse_major,
     supported_majors,
 )
+from odoo_client.report_render import ReportRenderProbe, probe_report_render, render_report_pdf
 from odoo_client.models import (
     ConnectionConfig,
     CreateFieldRequest,
@@ -88,11 +89,18 @@ from odoo_client.view_arch import (
     render_list_arch,
     render_map_arch,
     render_pivot_arch,
+    render_xpath_move_arch,
+    render_xpath_wrap_arch,
     validate_xpath_arch,
 )
+from odoo_client.field_attrs import emit_field_modifiers
+from odoo_client.widget_catalog import WidgetOption, validate_widget_for_ttype, widgets_for_ttype
 
 __all__ = [
     "OdooClient",
+    "ReportRenderProbe",
+    "probe_report_render",
+    "render_report_pdf",
     "CapabilityId",
     "UnsupportedCapabilityError",
     "UnsupportedOdooMajorError",
@@ -136,6 +144,8 @@ __all__ = [
     "render_inherit_replace_arch",
     "render_inherit_smart_buttons_arch",
     "render_inherit_xpath_arch",
+    "render_xpath_move_arch",
+    "render_xpath_wrap_arch",
     "validate_xpath_arch",
     "parse_arch",
     "field_names_in_arch",
@@ -170,4 +180,8 @@ __all__ = [
     "RecordRuleInfo",
     "UpdateAccessRightRequest",
     "UpdateRecordRuleRequest",
+    "emit_field_modifiers",
+    "WidgetOption",
+    "widgets_for_ttype",
+    "validate_widget_for_ttype",
 ]

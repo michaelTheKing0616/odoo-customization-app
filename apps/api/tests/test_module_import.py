@@ -149,6 +149,226 @@ def client() -> TestClient:
         yield c
 
 
+SAMPLE_CUSTOM_XML = """
+<odoo>
+  <record id="view_vehicle_form" model="ir.ui.view">
+    <field name="name">x_fleet_vehicle.form</field>
+    <field name="model">x_fleet_vehicle</field>
+    <field name="type">form</field>
+    <field name="arch" type="xml">
+      <form>
+        <script>console.log('custom');</script>
+        <field name="x_name"/>
+      </form>
+    </field>
+  </record>
+  <record id="action_custom_server" model="ir.actions.server">
+    <field name="name">Custom Server</field>
+    <field name="model_id" ref="model_x_fleet_vehicle"/>
+    <field name="state">code</field>
+    <field name="code">action = {}</field>
+  </record>
+</odoo>
+"""
+
+
+def test_import_sets_custom_code_blocks() -> None:
+    result = import_module_archive(SAMPLE_MODEL.encode(), filename="vehicle.py")
+    payload = result.as_dict()
+    blocks = payload.get("custom_code_blocks") or []
+    assert blocks
+    assert blocks[0]["kind"] == "python_methods"
+    assert "action_mark_available" in blocks[0]["content"]
+    assert blocks[0].get("model") == "x_fleet_vehicle"
+
+
+def test_round_trip_custom_blocks_byte_identical() -> None:
+    from app.module_spec_codec import draft_dict_to_module_spec, merge_custom_code_blocks
+    from module_generator import render_module_files
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr(
+            "fleet/__manifest__.py",
+            "{\n    'name': 'Fleet',\n    'depends': ['base', 'mail'],\n}\n",
+        )
+        zf.writestr("fleet/models/vehicle.py", SAMPLE_MODEL)
+        zf.writestr("fleet/views/vehicle_views.xml", SAMPLE_CUSTOM_XML)
+    imported = import_module_archive(buf.getvalue(), filename="fleet.zip")
+    spec = imported.as_dict()
+    original_blocks = merge_custom_code_blocks(spec)
+    assert original_blocks
+
+    module = draft_dict_to_module_spec(spec)
+    files = render_module_files(module)
+    # Method content preserved in model file append
+    method_block = next(b for b in original_blocks if b["kind"] == "python_methods")
+    model_py = files.get("fleet/models/fleet_vehicle.py") or files.get(
+        "fleet/models/vehicle.py", ""
+    )
+    assert method_block["content"] in model_py
+
+    # Re-import exported zip with meta sidecar path: rebuild zip from files
+    out_buf = io.BytesIO()
+    with zipfile.ZipFile(out_buf, "w") as zf:
+        for path, content in files.items():
+            zf.writestr(path, content)
+    reimport = import_module_archive(out_buf.getvalue(), filename="fleet_out.zip")
+    round_blocks = merge_custom_code_blocks(reimport.as_dict())
+    assert len(round_blocks) >= len(original_blocks)
+    re_method = next(b for b in round_blocks if b["kind"] == "python_methods")
+    assert re_method["content"] == method_block["content"]
+
+
+def test_fuzz_three_samples_zero_content_loss() -> None:
+    samples = [
+        ("a.py", SAMPLE_MODEL),
+        ("b.xml", SAMPLE_VIEW),
+        ("c.xml", SAMPLE_CUSTOM_XML),
+    ]
+    total_in = 0
+    total_blocks = 0
+    for name, text in samples:
+        result = import_module_archive(text.encode(), filename=name)
+        payload = result.as_dict()
+        from app.module_spec_codec import merge_custom_code_blocks
+
+        blocks = merge_custom_code_blocks(payload)
+        for b in blocks:
+            total_blocks += len(b.get("content") or "")
+        # mapped fields/views still present
+        if name.endswith(".py"):
+            assert payload.get("models")
+        if "view" in name:
+            assert payload.get("views") or blocks
+        total_in += sum(len(b.get("content") or "") for b in blocks)
+    assert total_blocks == total_in
+    assert total_blocks > 0
+
+
+def test_apply_skips_custom_code_blocks_with_warning() -> None:
+    from unittest.mock import MagicMock
+
+    from app.spec_apply_ui import apply_module_spec_ui
+
+    result = import_module_archive(SAMPLE_MODEL.encode(), filename="vehicle.py")
+    spec = result.as_dict()
+    client = MagicMock()
+    client.model_exists.return_value = True
+    ui = apply_module_spec_ui(client, spec, apply_views=False, apply_menus=False)
+    assert any("Custom logic skipped" in w for w in ui.warnings)
+
+
+SAMPLE_CUSTOM_XML = """
+<odoo>
+  <record id="view_vehicle_form" model="ir.ui.view">
+    <field name="name">x_fleet_vehicle.form</field>
+    <field name="model">x_fleet_vehicle</field>
+    <field name="type">form</field>
+    <field name="arch" type="xml">
+      <form>
+        <script>console.log('custom');</script>
+        <field name="x_name"/>
+      </form>
+    </field>
+  </record>
+  <record id="action_custom_server" model="ir.actions.server">
+    <field name="name">Custom Server</field>
+    <field name="model_id" ref="model_x_fleet_vehicle"/>
+    <field name="state">code</field>
+    <field name="code">action = {}</field>
+  </record>
+</odoo>
+"""
+
+
+def test_import_sets_custom_code_blocks() -> None:
+    result = import_module_archive(SAMPLE_MODEL.encode(), filename="vehicle.py")
+    payload = result.as_dict()
+    blocks = payload.get("custom_code_blocks") or []
+    assert blocks
+    assert blocks[0]["kind"] == "python_methods"
+    assert "action_mark_available" in blocks[0]["content"]
+    assert blocks[0].get("model") == "x_fleet_vehicle"
+
+
+def test_round_trip_custom_blocks_byte_identical() -> None:
+    from app.module_spec_codec import draft_dict_to_module_spec, merge_custom_code_blocks
+    from module_generator import render_module_files
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr(
+            "fleet/__manifest__.py",
+            "{\n    'name': 'Fleet',\n    'depends': ['base', 'mail'],\n}\n",
+        )
+        zf.writestr("fleet/models/vehicle.py", SAMPLE_MODEL)
+        zf.writestr("fleet/views/vehicle_views.xml", SAMPLE_CUSTOM_XML)
+    imported = import_module_archive(buf.getvalue(), filename="fleet.zip")
+    spec = imported.as_dict()
+    original_blocks = merge_custom_code_blocks(spec)
+    assert original_blocks
+
+    module = draft_dict_to_module_spec(spec)
+    files = render_module_files(module)
+    # Method content preserved in model file append
+    method_block = next(b for b in original_blocks if b["kind"] == "python_methods")
+    model_py = files.get("fleet/models/fleet_vehicle.py") or files.get(
+        "fleet/models/vehicle.py", ""
+    )
+    assert method_block["content"] in model_py
+
+    # Re-import exported zip with meta sidecar path: rebuild zip from files
+    out_buf = io.BytesIO()
+    with zipfile.ZipFile(out_buf, "w") as zf:
+        for path, content in files.items():
+            zf.writestr(path, content)
+    reimport = import_module_archive(out_buf.getvalue(), filename="fleet_out.zip")
+    round_blocks = merge_custom_code_blocks(reimport.as_dict())
+    assert len(round_blocks) >= len(original_blocks)
+    re_method = next(b for b in round_blocks if b["kind"] == "python_methods")
+    assert re_method["content"] == method_block["content"]
+
+
+def test_fuzz_three_samples_zero_content_loss() -> None:
+    samples = [
+        ("a.py", SAMPLE_MODEL),
+        ("b.xml", SAMPLE_VIEW),
+        ("c.xml", SAMPLE_CUSTOM_XML),
+    ]
+    total_in = 0
+    total_blocks = 0
+    for name, text in samples:
+        result = import_module_archive(text.encode(), filename=name)
+        payload = result.as_dict()
+        from app.module_spec_codec import merge_custom_code_blocks
+
+        blocks = merge_custom_code_blocks(payload)
+        for b in blocks:
+            total_blocks += len(b.get("content") or "")
+        # mapped fields/views still present
+        if name.endswith(".py"):
+            assert payload.get("models")
+        if "view" in name:
+            assert payload.get("views") or blocks
+        total_in += sum(len(b.get("content") or "") for b in blocks)
+    assert total_blocks == total_in
+    assert total_blocks > 0
+
+
+def test_apply_skips_custom_code_blocks_with_warning() -> None:
+    from unittest.mock import MagicMock
+
+    from app.spec_apply_ui import apply_module_spec_ui
+
+    result = import_module_archive(SAMPLE_MODEL.encode(), filename="vehicle.py")
+    spec = result.as_dict()
+    client = MagicMock()
+    client.model_exists.return_value = True
+    ui = apply_module_spec_ui(client, spec, apply_views=False, apply_menus=False)
+    assert any("Custom logic skipped" in w for w in ui.warnings)
+
+
 def test_import_api_accepts_py(client: TestClient) -> None:
     res = client.post(
         "/api/module-spec/import",

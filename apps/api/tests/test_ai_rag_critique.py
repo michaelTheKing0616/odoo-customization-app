@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+from typing import Any
+from typing import Any
 
 import pytest
 
@@ -94,6 +96,9 @@ def test_apply_critique_repairs_adds_field_and_model() -> None:
                 "description": "Line",
                 "fields": [
                     {"name": "x_name", "ttype": "char", "string": "Name", "required": True},
+                    {"name": "x_demo_id", "ttype": "many2one", "relation": "x_demo", "string": "Parent"},
+                    {"name": "x_qty", "ttype": "float", "string": "Qty"},
+                    {"name": "x_note", "ttype": "text", "string": "Note"},
                 ],
             }
         ],
@@ -151,7 +156,7 @@ def test_run_self_critique_llm_repair(monkeypatch: pytest.MonkeyPatch) -> None:
         def reachable(self, *, timeout_s: float = 2.0):
             return True, "ok"
 
-        def generate_json(self, prompt, *, system=None, timeout_s=90.0):
+        def generate_json(self, prompt, *, system=None, timeout_s=90.0, **kwargs: Any):
             return json.dumps(
                 {
                     "ready": False,

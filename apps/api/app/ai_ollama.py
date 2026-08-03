@@ -11,11 +11,17 @@ from app.ai_depth import run_depth_pass
 from app.ai_domain_packs import list_domain_packs, merge_domain_pack, retrieve_domain_pack
 from app.ai_domain_pack_law_firm import scaffold_teaching_blob
 from app.ai_enrich import enrich_draft_module_spec
+from app.ai_prompt_constants import (
+    STEP_TEMPERATURES,
+    append_prompt_blocks,
+    few_shot_exemplar_block,
+)
 from app.ai_model_quality import (
     MODEL_CREATION_RULES,
-    few_shot_exemplar_json,
     llm_emit_missing_scaffold_models,
+    repair_draft_integrity,
     run_model_quality_pass,
+    seed_missing_core_scaffold_models,
 )
 from app.ai_pipeline import run_staged_pipeline
 from app.ai_reuse_planner import ReusePlan, apply_reuse_plan, plan_reuse
@@ -134,7 +140,11 @@ def call_ollama_generate(prompt: str, *, timeout_s: float = 120.0) -> str:
         )
     try:
         return provider.generate_json(
-            prompt, system=_SYSTEM_PROMPT, timeout_s=timeout_s
+            prompt,
+            system=_SYSTEM_PROMPT,
+            timeout_s=timeout_s,
+            reasoning=True,
+            temperature=STEP_TEMPERATURES["single_pipeline"],
         )
     except LLMError as exc:
         raise AiAssistUnavailable(str(exc), status_code=exc.status_code) from exc
@@ -262,8 +272,43 @@ def draft_module_from_prompt(
     reuse_actions: list[dict[str, Any]] | None = None,
     expand: bool = True,
     pipeline: str | None = None,
-) -> tuple[dict[str, Any], str, list[str]]:
-    """Return (draft_dict, raw_response, warnings). Never mutates Odoo."""
+    protected_manifest: dict[str, Any] | None = None,
+    odoo_version: str | None = None,
+    grain_override: str | None = None,
+    gallery_id: str | None = None,
+    host_model_override: str | None = None,
+    connect_points_override: dict[str, Any] | None = None,
+    client: Any | None = None,
+) -> tuple[dict[str, Any], str, list[str], list[dict[str, Any]]]:
+    """Return (draft_dict, raw_response, warnings, refusals). Never mutates Odoo."""
+    from app.ai_component_builder import draft_component_from_prompt
+    from app.ai_grain import classify_grain
+    from app.ai_rules import strip_protected_module_effects
+    from app.protected_modules import refresh_connection_protected_manifest
+
+    grain = grain_override or classify_grain(prompt)
+    if grain != "full_app":
+        draft, _hosts, comp_warnings = draft_component_from_prompt(
+            prompt,
+            grain=grain,  # type: ignore[arg-type]
+            available_models=available_models,
+            connect_points_override=connect_points_override,
+            gallery_id=gallery_id,
+            host_model_override=host_model_override,
+            client=client,
+        )
+        manifest = protected_manifest or refresh_connection_protected_manifest(
+            server_version=odoo_version,
+            client=client,
+        )
+        draft, late_refusals, late_w = strip_protected_module_effects(draft, manifest=manifest)
+        refusals = list(late_refusals)
+        warnings = _dedupe_warnings(comp_warnings + late_w + validate_draft_module_spec(draft))
+        raw = json.dumps(
+            {"grain": grain, "component": True, "connect_points": draft.get("connect_points")}
+        )
+        return draft, raw, warnings, refusals
+
     reuse_plan = plan_reuse(
         prompt,
         available_models=available_models,
@@ -319,12 +364,13 @@ def draft_module_from_prompt(
                 )
                 warnings.extend(depth_w2)
             warnings.extend(validate_draft_module_spec(draft))
-            return draft, raw, _dedupe_warnings(warnings)
+            return draft, raw, _dedupe_warnings(warnings), [], []
         except LLMError as exc:
             raise AiAssistUnavailable(str(exc), status_code=exc.status_code) from exc
 
     warnings: list[str] = []
-    retrieved = retrieve_domain_pack(prompt)
+    provider = get_llm_provider()
+    retrieved = retrieve_domain_pack(prompt, provider=provider)
     matched = (retrieved[0], retrieved[1]) if retrieved else None
     scaffold = matched[1] if matched else None
 
@@ -340,7 +386,6 @@ def draft_module_from_prompt(
 
     raw = ""
     draft: dict[str, Any] | None = None
-    provider = get_llm_provider()
 
     if provider is not None:
         try:
@@ -377,6 +422,8 @@ def draft_module_from_prompt(
             provider, draft, matched[1], user_prompt=prompt
         )
         warnings.extend(gap_notes)
+        draft, seed_notes = seed_missing_core_scaffold_models(draft, matched[1])
+        warnings.extend(seed_notes)
 
     if matched:
         draft, pack_warnings = merge_domain_pack(draft, matched[1])
@@ -449,11 +496,15 @@ def draft_module_from_prompt(
                 expand_llm=False,
             )
             warnings.extend(depth_w2)
+            notes_final = repair_draft_integrity(
+                draft, ambition=str(draft.get("_ambition") or "standard")
+            )
+            warnings.extend(notes_final)
     else:
         warnings.extend(apply_reuse_plan(draft, reuse_plan))
 
     warnings.extend(validate_draft_module_spec(draft))
-    return draft, raw, _dedupe_warnings(warnings)
+    return draft, raw, _dedupe_warnings(warnings), []
 
 
 # Re-export for status endpoint

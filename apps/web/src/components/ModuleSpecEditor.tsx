@@ -32,6 +32,7 @@ export type ModuleSpecDoc = {
   actions?: unknown[];
   smart_buttons?: Array<Record<string, unknown>>;
   automations?: Array<Record<string, unknown>>;
+  custom_code_blocks?: Array<Record<string, unknown>>;
   unmapped?: Array<Record<string, unknown>>;
   [key: string]: unknown;
 };
@@ -65,12 +66,21 @@ function ensureModels(spec: ModuleSpecDoc): ModuleSpecModel[] {
 }
 
 export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
-  const [tab, setTab] = useState<"models" | "relations" | "extras" | "json" | "unmapped">(
-    "models",
-  );
+  const [tab, setTab] = useState<
+    "models" | "relations" | "extras" | "json" | "custom_code"
+  >("models");
   const [selectedModel, setSelectedModel] = useState(0);
   const models = ensureModels(value);
   const model = models[selectedModel];
+
+  const customBlocks = useMemo(() => {
+    const blocks = Array.isArray(value.custom_code_blocks)
+      ? value.custom_code_blocks
+      : Array.isArray(value.unmapped)
+        ? value.unmapped
+        : [];
+    return blocks;
+  }, [value.custom_code_blocks, value.unmapped]);
 
   const summary = useMemo(
     () => ({
@@ -79,9 +89,9 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
       views: Array.isArray(value.views) ? value.views.length : 0,
       smart: Array.isArray(value.smart_buttons) ? value.smart_buttons.length : 0,
       autos: Array.isArray(value.automations) ? value.automations.length : 0,
-      unmapped: Array.isArray(value.unmapped) ? value.unmapped.length : 0,
+      customCode: customBlocks.length,
     }),
-    [models, value],
+    [models, value, customBlocks.length],
   );
 
   function patch(partial: Partial<ModuleSpecDoc>) {
@@ -144,7 +154,7 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
     { id: "models", label: `Models (${summary.models})` },
     { id: "relations", label: "Relations" },
     { id: "extras", label: `UI / Autos (${summary.smart + summary.autos})` },
-    { id: "unmapped", label: `Code-only (${summary.unmapped})` },
+    { id: "custom_code", label: `Custom code (${summary.customCode})` },
     { id: "json", label: "JSON" },
   ];
 
@@ -425,29 +435,35 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
         </div>
       )}
 
-      {tab === "unmapped" && (
+      {tab === "custom_code" && (
         <div className="p-4">
           <p className="text-sm text-[#8f7a88]">
-            Custom Python methods / non-view XML preserved from Code→UI import — view as
-            code, not edited visually.
+            Custom logic preserved from Code→UI import — compute methods, constraints,
+            and opaque XML. These blocks are not editable visually; export the module
+            to keep them verbatim, or edit the generated Python/XML source directly.
           </p>
-          {(value.unmapped || []).length === 0 ? (
+          {customBlocks.length === 0 ? (
             <p className="mt-3 text-sm text-[#c9a9c0]">None — full visual fidelity.</p>
           ) : (
             <ul className="mt-3 space-y-3">
-              {(value.unmapped || []).map((u, i) => (
+              {customBlocks.map((u, i) => (
                 <li
                   key={i}
                   className="border border-[#3d2a38] bg-[#0c090b] p-3 text-xs text-[#d4c4ce]"
                 >
                   <p className="font-mono text-[#c9a96e]">
-                    {String(u.kind)} · {String(u.path || u.model || "")}
+                    {String(u.kind || "opaque")} ·{" "}
+                    {String(u.source_file || u.path || u.model || "")}
                   </p>
-                  <p className="mt-1 text-[#8f7a88]">{String(u.reason || "")}</p>
+                  <p className="mt-1 text-[#8f7a88]">
+                    {String(u.reason || "custom_logic_not_editable_visually")}
+                  </p>
                   <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap">
-                    {typeof u.source === "string"
-                      ? u.source.slice(0, 2000)
-                      : JSON.stringify(u.snippets || u, null, 2).slice(0, 2000)}
+                    {typeof u.content === "string"
+                      ? u.content.slice(0, 4000)
+                      : typeof u.source === "string"
+                        ? u.source.slice(0, 4000)
+                        : JSON.stringify(u.snippets || u, null, 2).slice(0, 4000)}
                   </pre>
                 </li>
               ))}

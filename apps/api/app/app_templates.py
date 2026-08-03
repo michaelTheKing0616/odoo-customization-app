@@ -377,8 +377,7 @@ def scaffold_models(
         if loan:
             _maybe_loan_returned_automation(client, loan, result)
 
-    if multi_company and result.models:
-        _maybe_multi_company_rules(client, result.models, result)
+    # Multi-company live pack applied in run_scaffold() post-hook for all templates.
 
     # Application-style root menu + per-model actions (live path parity with zip)
     try:
@@ -913,7 +912,99 @@ def scaffold_car_rental(
     return result
 
 
+def scaffold_approval_requests(
+    client: OdooClient,
+    *,
+    display_name: str | None = None,
+    technical_prefix: str | None = None,
+) -> ScaffoldResult:
+    """Approval Requests mini-app via ModuleSpec apply (CMP-10)."""
+    from app.approval_process_service import seed_demo_type
+    from app.approval_requests_pack import approval_requests_draft
+    from app.spec_apply_ui import apply_module_spec_ui
+
+    draft = approval_requests_draft(
+        display_name=display_name or "Approval Requests",
+    )
+    draft = _rewrite_pack_prefix(draft, technical_prefix)
+    ui = apply_module_spec_ui(client, draft)
+    seeded = seed_demo_type(client)
+    warnings = list(ui.warnings)
+    if seeded:
+        warnings.append(f"Seeded demo approval type id={seeded}")
+    result = ScaffoldResult(
+        template_id="approval_requests",
+        models=[
+            m["model"]
+            for m in (draft.get("models") or [])
+            if isinstance(m, dict) and m.get("model")
+        ],
+        models_created=ui.models_created,
+        models_skipped=[s.split(":", 1)[-1] for s in ui.skipped if s.startswith("model:")],
+        fields_created=ui.fields_created,
+        view_injects=ui.views_created + ui.views_updated,
+        menus_created=ui.menus_created,
+        warnings=warnings,
+        message=ui.message or "Approval Requests scaffolded",
+    )
+    return result
+
+
+def scaffold_approval_requests(
+    client: OdooClient,
+    *,
+    display_name: str | None = None,
+    technical_prefix: str | None = None,
+) -> ScaffoldResult:
+    """Approval Requests mini-app via ModuleSpec apply (CMP-10)."""
+    from app.approval_process_service import seed_demo_type
+    from app.approval_requests_pack import approval_requests_draft
+    from app.spec_apply_ui import apply_module_spec_ui
+
+    draft = approval_requests_draft(
+        display_name=display_name or "Approval Requests",
+    )
+    draft = _rewrite_pack_prefix(draft, technical_prefix)
+    ui = apply_module_spec_ui(client, draft)
+    seeded = seed_demo_type(client)
+    warnings = list(ui.warnings)
+    if seeded:
+        warnings.append(f"Seeded demo approval type id={seeded}")
+    result = ScaffoldResult(
+        template_id="approval_requests",
+        models=[
+            m["model"]
+            for m in (draft.get("models") or [])
+            if isinstance(m, dict) and m.get("model")
+        ],
+        models_created=ui.models_created,
+        models_skipped=[s.split(":", 1)[-1] for s in ui.skipped if s.startswith("model:")],
+        fields_created=ui.fields_created,
+        view_injects=ui.views_created + ui.views_updated,
+        menus_created=ui.menus_created,
+        warnings=warnings,
+        message=ui.message or "Approval Requests scaffolded",
+    )
+    return result
+
+
 TEMPLATE_META: list[AppTemplateMeta] = [
+    AppTemplateMeta(
+        id="approval_requests",
+        name="Approval Requests",
+        description=(
+            "Standalone multi-level approval processes — x_approval_type chains + "
+            "x_approval_request workflow (draft→submitted→approved/refused)"
+        ),
+    ),
+    AppTemplateMeta(
+        id="approval_requests",
+        name="Approval Requests",
+        description=(
+            "Standalone multi-level approval processes — x_approval_type chains + "
+            "x_approval_request workflow (draft→submitted→approved/refused)"
+        ),
+    ),
     AppTemplateMeta(
         id="library",
         name="Library",
@@ -943,6 +1034,7 @@ TEMPLATE_META: list[AppTemplateMeta] = [
 ]
 
 TEMPLATES: dict[str, Callable[..., ScaffoldResult]] = {
+    "approval_requests": scaffold_approval_requests,
     "library": scaffold_library,
     "car_rental": scaffold_car_rental,
     "crm_lite": scaffold_crm_lite,
@@ -972,7 +1064,20 @@ def run_scaffold(
     }
     if template_id == "library":
         kwargs["multi_company"] = multi_company
-    return fn(client, **kwargs)
+    result = fn(client, **kwargs)
+    if multi_company and result.models:
+        from app.multi_company_pack import apply_multi_company_live
+
+        mc = apply_multi_company_live(client, result.models)
+        if mc.get("warnings"):
+            result.warnings.extend(str(w) for w in mc["warnings"])
+        fc = int(mc.get("fields_created") or 0)
+        rc = int(mc.get("rules_created") or 0)
+        if fc or rc:
+            result.message += f" · multi-company: {fc} field(s), {rc} rule(s)"
+        elif multi_company:
+            result.message += " · multi-company (already configured)"
+    return result
 
 
 __all__ = [
@@ -981,6 +1086,7 @@ __all__ = [
     "TEMPLATE_META",
     "list_templates",
     "run_scaffold",
+    "scaffold_approval_requests",
     "scaffold_library",
     "scaffold_car_rental",
     "scaffold_crm_lite",

@@ -6,6 +6,11 @@ import { Suspense } from "react";
 import { FieldPalette } from "@/components/designer/FieldPalette";
 import { FormCanvas } from "@/components/designer/FormCanvas";
 import { KanbanCardPreview } from "@/components/designer/KanbanCardPreview";
+import {
+  NicheWidgetPalette,
+  type NicheWidgetEntry,
+} from "@/components/designer/NicheWidgetPalette";
+import { PreviewThemeScope } from "@/components/designer/PreviewThemeScope";
 import { PropsInspector } from "@/components/designer/PropsInspector";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import type { CapabilityMatrix, Connection } from "@/lib/api";
@@ -97,6 +102,36 @@ const SAMPLE_KANBAN_FIELDS = [
   { id: "k3", name: "x_amount", string: "Amount" },
   { id: "k4", name: "x_priority", string: "Priority" },
 ];
+
+const MOCK_NICHE_WIDGETS: NicheWidgetEntry[] = [
+  {
+    id: "boolean_favorite",
+    label: "Favorite star",
+    recommended_ttypes: ["boolean"],
+  },
+  {
+    id: "color",
+    label: "Color index",
+    recommended_ttypes: ["integer"],
+  },
+  {
+    id: "state_selection",
+    label: "State selection",
+    recommended_ttypes: ["selection"],
+  },
+];
+
+const MOCK_COLOR_PALETTE = [
+  { index: 0, name: "no_color" },
+  { index: 1, name: "red" },
+  { index: 5, name: "green" },
+];
+
+const MOCK_PREVIEW_VARS = {
+  "--odoo-primary": "#714B67",
+  "--odoo-primary-hover": "#714B67",
+  "--odoo-statusbar": "#714B67",
+};
 
 function parseMode(raw: string | null): ViewMode {
   const allowed: ViewMode[] = [
@@ -248,11 +283,19 @@ function DesignerHarnessInner() {
             className="mt-6 grid gap-4 lg:grid-cols-[200px_1fr_240px]"
             data-testid="designer-form-layout"
           >
-            <FieldPalette fields={SAMPLE_PALETTE} />
+            <div>
+              <FieldPalette fields={SAMPLE_PALETTE} />
+              <NicheWidgetPalette
+                widgets={MOCK_NICHE_WIDGETS}
+                colorPalette={MOCK_COLOR_PALETTE}
+                onPick={() => undefined}
+              />
+            </div>
             <div>
               <h2 className="mb-2 text-sm font-semibold text-[var(--odoo-primary-light)]">
                 Odoo-style canvas
               </h2>
+              <PreviewThemeScope previewVars={MOCK_PREVIEW_VARS}>
               <FormCanvas
                 title={title}
                 statusbar="x_stage"
@@ -273,6 +316,7 @@ function DesignerHarnessInner() {
                   );
                 }}
               />
+              </PreviewThemeScope>
             </div>
             <PropsInspector title="Field properties">
               {selectedMeta ? (
@@ -453,11 +497,19 @@ function DesignerHarnessInner() {
             className="mt-6 grid gap-4 lg:grid-cols-[200px_1fr_240px]"
             data-testid="designer-kanban-layout"
           >
-            <FieldPalette fields={SAMPLE_PALETTE} />
+            <div>
+              <FieldPalette fields={SAMPLE_PALETTE} />
+              <NicheWidgetPalette
+                widgets={MOCK_NICHE_WIDGETS}
+                colorPalette={MOCK_COLOR_PALETTE}
+                onPick={() => undefined}
+              />
+            </div>
             <div>
               <h2 className="mb-2 text-sm font-semibold text-[var(--odoo-primary-light)]">
                 Kanban card preview
               </h2>
+              <PreviewThemeScope previewVars={MOCK_PREVIEW_VARS}>
               <KanbanCardPreview
                 title={title}
                 groupBy="x_stage"
@@ -472,6 +524,7 @@ function DesignerHarnessInner() {
                   setSelectedFieldId((sel) => (sel === fieldId ? null : sel));
                 }}
               />
+              </PreviewThemeScope>
             </div>
             <PropsInspector title="Card field">
               {selectedMeta ? (

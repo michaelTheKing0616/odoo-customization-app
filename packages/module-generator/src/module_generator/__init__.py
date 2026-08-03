@@ -7,6 +7,7 @@ import re
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
@@ -29,11 +30,14 @@ ODOO_FIELD_MAP = {
     "date": "fields.Date",
     "datetime": "fields.Datetime",
     "binary": "fields.Binary",
+    "image": "fields.Image",
     "selection": "fields.Selection",
     "many2one": "fields.Many2one",
     "one2many": "fields.One2many",
     "many2many": "fields.Many2many",
     "monetary": "fields.Monetary",
+    "properties": "fields.Properties",
+    "properties_definition": "fields.PropertiesDefinition",
     "related": "fields.Char",
 }
 
@@ -76,6 +80,80 @@ _XPATH_ROOT_BY_VIEW: dict[str, str] = {
     "tree": "//tree",
     "search": "//search",
 }
+
+# Manifest ``data`` load order (security → data → views → menus → reports).
+_MANIFEST_SECURITY_PREFIXES = ("security/",)
+_MANIFEST_DATA_PREFIXES = ("data/",)
+_MANIFEST_VIEW_PREFIXES = ("views/views",)
+_MANIFEST_MENU_PREFIXES = ("views/menus",)
+_MANIFEST_REPORT_PREFIXES = ("report/",)
+
+
+def _manifest_bucket(path: str) -> str:
+    if path.startswith(_MANIFEST_SECURITY_PREFIXES):
+        return "security"
+    if path.startswith(_MANIFEST_DATA_PREFIXES):
+        return "data"
+    if path.startswith(_MANIFEST_VIEW_PREFIXES):
+        return "views"
+    if path.startswith(_MANIFEST_MENU_PREFIXES):
+        return "menus"
+    if path.startswith(_MANIFEST_REPORT_PREFIXES):
+        return "reports"
+    return "extra"
+
+
+def order_manifest_data_files(
+    paths: list[str], *, install_mode: str = "python"
+) -> list[str]:
+    """Topological contract: security → data (sequences) → views → menus → reports.
+
+    ``install_mode=data`` loads ``data/models.xml`` before security so ``model_*``
+    xmlids exist for ``ir.model.access.csv``.
+    """
+    buckets: dict[str, list[str]] = {
+        "security": [],
+        "data": [],
+        "views": [],
+        "menus": [],
+        "reports": [],
+        "extra": [],
+    }
+    seen: set[str] = set()
+    for path in paths:
+        if path in seen:
+            continue
+        seen.add(path)
+        buckets[_manifest_bucket(path)].append(path)
+
+    def _sort_security(items: list[str]) -> list[str]:
+        access = [p for p in items if p.endswith("ir.model.access.csv")]
+        rules = [p for p in items if p not in access]
+        return access + rules
+
+    models_xml = [p for p in buckets["data"] if p.endswith("models.xml")]
+    data_rest = [p for p in buckets["data"] if p not in models_xml]
+    sequences = [p for p in data_rest if p.endswith("sequences.xml")]
+    other_data = [p for p in data_rest if p not in sequences]
+    data_ordered = sequences + other_data
+
+    tail = buckets["views"] + buckets["menus"] + buckets["reports"] + buckets["extra"]
+    security = _sort_security(buckets["security"])
+
+    if install_mode == "data" and models_xml:
+        return models_xml + security + data_ordered + tail
+    return security + models_xml + data_ordered + tail
+
+
+def sequence_prefix_for_model(model: str) -> str:
+    """Compendium-style prefix token (e.g. ``ORD/`` for ``x_order``)."""
+    base = model.replace("x_", "").replace(".", "_")
+    token = (base.split("_")[0] or "ref").upper()[:8]
+    return f"{token}/"
+
+
+def sequence_code_for_model(model: str) -> str:
+    return f"{model.replace('.', '_')}.ref"
 
 
 def manifest_version_for_major(major: int) -> str:
@@ -133,6 +211,86 @@ def _normalize_view_mode_for_major(view_mode: str, major: int) -> str:
         if not deduped or deduped[-1] != p:
             deduped.append(p)
     return ",".join(deduped)
+
+
+DEFAULT_CURRENCY_FIELD = "x_currency_id"
+
+
+def ensure_monetary_currency_fields(spec: "ModuleSpec") -> None:
+    """Ensure monetary fields have a currency m2o companion on each model."""
+    for model in spec.models:
+        names = {f.name for f in model.fields}
+        for field in list(model.fields):
+            if field.ttype != "monetary":
+                continue
+            cf = (field.currency_field or DEFAULT_CURRENCY_FIELD).strip()
+            field.currency_field = cf
+            if cf in names:
+                continue
+            model.fields.append(
+                FieldSpec(
+                    name=cf,
+                    ttype="many2one",
+                    string="Currency",
+                    relation="res.currency",
+                )
+            )
+            names.add(cf)
+
+
+def _name_suggests_image(field_name: str) -> bool:
+    from odoo_client.image_pipeline import name_suggests_image
+
+    return name_suggests_image(field_name)
+
+
+def _models_with_compact_views(spec: "ModuleSpec") -> set[str]:
+    from odoo_client.image_pipeline import models_using_compact_views
+
+    return models_using_compact_views(
+        views=[{"model": v.model, "type": v.type} for v in spec.views],
+        actions=[{"model": a.model, "view_mode": a.view_mode} for a in spec.actions],
+    )
+
+
+def ensure_image_variant_fields(spec: "ModuleSpec") -> None:
+    """Add related Image variants for image fields on models with list/kanban usage."""
+    from odoo_client.image_pipeline import IMAGE_VARIANT_SIZES, variant_field_name
+
+    compact = _models_with_compact_views(spec)
+    for model in spec.models:
+        if model.model not in compact:
+            continue
+        names = {f.name for f in model.fields}
+        for field in list(model.fields):
+            if field.image_variant_of:
+                continue
+            is_img = field.is_image or (
+                field.ttype in {"binary", "image"} and _name_suggests_image(field.name)
+            )
+            if not is_img:
+                continue
+            field.is_image = True
+            if not field.image_role:
+                from odoo_client.image_pipeline import guess_image_role
+
+                field.image_role = guess_image_role(model.model, field.name)
+            base = field.name
+            for size in IMAGE_VARIANT_SIZES:
+                vn = variant_field_name(base, size)
+                if vn in names:
+                    continue
+                model.fields.append(
+                    FieldSpec(
+                        name=vn,
+                        ttype="image",
+                        string=f"{field.string} ({size})",
+                        image_variant_of=base,
+                        max_width=size,
+                        max_height=size,
+                    )
+                )
+                names.add(vn)
 
 
 def normalize_module_spec_list_views(spec: "ModuleSpec") -> "ModuleSpec":
@@ -212,6 +370,13 @@ class FieldSpec:
     related: str | None = None
     currency_field: str | None = None
     on_delete: str | None = None  # many2one: set null | restrict | cascade
+    is_image: bool = False
+    image_role: str | None = None  # avatar | content
+    image_variant_of: str | None = None
+    max_width: int | None = None
+    max_height: int | None = None
+    definition_record: str | None = None
+    definition_record_field: str | None = None
 
     def odoo_ttype(self) -> str:
         """Concrete Odoo ttype (related is not a real ttype)."""
@@ -241,6 +406,10 @@ class FieldSpec:
             parts.append(f"selection={self.selection}")
         if self.ttype == "monetary" and self.currency_field:
             parts.append(f"currency_field={self.currency_field!r}")
+        if self.ttype == "properties" and self.definition_record and self.definition_record_field:
+            parts.append(
+                f"definition={self.definition_record}.{self.definition_record_field}"
+            )
         # Odoo 19: required many2one must not use ondelete='set null'
         if self.ttype == "many2one":
             ondelete = self.on_delete or ("restrict" if self.required else None)
@@ -249,11 +418,32 @@ class FieldSpec:
         return ", ".join(parts)
 
     def python_assignment(self) -> str:
-        if self.ttype == "related" and self.relation:
+        if self.image_variant_of:
+            w = int(self.max_width or 128)
+            h = int(self.max_height or w)
+            return (
+                f"    {self.name} = fields.Image("
+                f"string={self.string!r}, related={self.image_variant_of!r}, "
+                f"max_width={w}, max_height={h}, store=True)"
+            )
+        if self.is_image or self.ttype == "image":
+            cls = "fields.Image"
+        elif self.ttype == "related" and self.relation:
             cls = "fields.Many2one"
         else:
             cls = ODOO_FIELD_MAP.get(self.ttype, "fields.Char")
         return f"    {self.name} = {cls}({self.python_kwargs()})"
+
+
+@dataclass
+class SequenceSpec:
+    model: str
+    xml_id: str
+    name: str
+    code: str
+    prefix: str
+    field_name: str
+    padding: int = 5
 
 
 @dataclass
@@ -265,6 +455,9 @@ class ModelSpec:
     inherit: str | None = None  # technical model to _inherit (e.g. res.partner)
     # Mixins for new models (e.g. mail.thread) — emitted as _inherit list with _name
     mixins: list[str] = field(default_factory=list)
+    is_workflow: bool = False
+    # Optional workflow metadata — {"field":"x_status","transitions":[["draft","open"],...]}
+    state_field: dict[str, Any] | None = None
     # Extra indented Python methods/helpers appended after fields in model.py.j2
     extra_python: str | None = None
 
@@ -290,6 +483,48 @@ class ModelSpec:
 
     def model_xml_id(self) -> str:
         return "model_" + self.model.replace(".", "_")
+
+    def is_workflow_model(self) -> bool:
+        return bool(self.is_workflow or self.state_field)
+
+    def reference_field_name(self) -> str:
+        names = {f.name for f in self.fields}
+        if "x_code" in names:
+            return "x_code"
+        if "x_reference" in names:
+            return "x_reference"
+        return "x_code"
+
+    def ensure_reference_field(self) -> None:
+        """Workflow models need a char reference wired to ir.sequence."""
+        if self.mode != "new" or not self.is_workflow_model():
+            return
+        names = {f.name for f in self.fields}
+        if "x_code" in names or "x_reference" in names:
+            return
+        ref = FieldSpec(
+            name="x_code",
+            ttype="char",
+            string="Reference",
+            readonly=True,
+            help=f"Sequence reference ({sequence_prefix_for_model(self.model)}00001)",
+        )
+        insert_at = 1 if self.fields and self.fields[0].name == "x_name" else 0
+        self.fields.insert(insert_at, ref)
+
+    def sequence_spec(self) -> SequenceSpec | None:
+        if self.mode != "new" or not self.is_workflow_model():
+            return None
+        self.ensure_reference_field()
+        slug = self.model.replace(".", "_")
+        return SequenceSpec(
+            model=self.model,
+            xml_id=f"seq_{slug}",
+            name=f"{self.description or self.model} Reference",
+            code=sequence_code_for_model(self.model),
+            prefix=sequence_prefix_for_model(self.model),
+            field_name=self.reference_field_name(),
+        )
 
 
 @dataclass
@@ -427,6 +662,7 @@ class ReportSpec:
     template_xml_id: str
     body_html: str  # inner QWeb for one record `o`
     print_report_name: str | None = None
+    t_lang: str | None = None
     technical_name: str | None = None
 
     def action_xml_id(self) -> str:
@@ -457,6 +693,10 @@ class ModuleSpec:
     mail_templates: list[MailTemplateSpec] = field(default_factory=list)
     cron_jobs: list[CronJobSpec] = field(default_factory=list)
     reports: list[ReportSpec] = field(default_factory=list)
+    # Verbatim import blocks (compute methods, opaque XML) — re-exported unchanged (AI-7)
+    custom_code_blocks: list[dict[str, Any]] = field(default_factory=list)
+    # CMP-9: emit OWL x_barcode_scan field widget assets (on-prem / Odoo.sh only in UI)
+    include_barcode_scan_widget: bool = False
 
     def infer_and_merge_depends(
         self,
@@ -595,11 +835,15 @@ def _env() -> Environment:
 
 
 def render_module_files(spec: ModuleSpec) -> dict[str, str]:
+    ensure_monetary_currency_fields(spec)
+    ensure_image_variant_fields(spec)
     normalize_module_spec_list_views(spec)
     spec.validate()
     spec.ensure_default_menus()
     # Default menus may introduce list,form actions — normalize again if major known.
     normalize_module_spec_list_views(spec)
+    for model in spec.models:
+        model.ensure_reference_field()
     env = _env()
     root = spec.technical_name
     data_files: list[str] = []
@@ -619,11 +863,19 @@ def render_module_files(spec: ModuleSpec) -> dict[str, str]:
             spec=spec
         )
         for model in spec.models:
+            seq = model.sequence_spec()
             files[f"{root}/models/{model.module_basename()}.py"] = env.get_template(
                 "model.py.j2"
-            ).render(model=model)
+            ).render(model=model, sequence_meta=seq)
     else:
         files[f"{root}/__init__.py"] = ""
+
+    sequences = [s for s in (m.sequence_spec() for m in spec.models) if s]
+    if sequences:
+        files[f"{root}/data/sequences.xml"] = env.get_template("sequences.xml.j2").render(
+            sequences=sequences
+        )
+        data_files.append("data/sequences.xml")
 
     if spec.views:
         files[f"{root}/views/views.xml"] = env.get_template("views.xml.j2").render(spec=spec)
@@ -676,35 +928,48 @@ def render_module_files(spec: ModuleSpec) -> dict[str, str]:
                 f"{rule.perm_read},{rule.perm_write},{rule.perm_create},{rule.perm_unlink}"
             )
         files[f"{root}/security/ir.model.access.csv"] = "\n".join(access_lines) + "\n"
-        # models.xml must load before access CSV so model_* xmlids exist (data mode)
-        if "data/models.xml" in data_files:
-            data_files = [
-                "data/models.xml",
-                "security/ir.model.access.csv",
-                *[f for f in data_files if f not in {"data/models.xml"}],
-            ]
-        else:
-            data_files = ["security/ir.model.access.csv", *data_files]
+        data_files.append("security/ir.model.access.csv")
 
     if spec.record_rules:
         files[f"{root}/security/record_rules.xml"] = env.get_template(
             "record_rules.xml.j2"
         ).render(spec=spec)
-        # After access CSV so model xmlids exist
-        if "security/ir.model.access.csv" in data_files:
-            idx = data_files.index("security/ir.model.access.csv")
-            data_files.insert(idx + 1, "security/record_rules.xml")
-        elif "data/models.xml" in data_files:
-            idx = data_files.index("data/models.xml")
-            data_files.insert(idx + 1, "security/record_rules.xml")
-        else:
-            data_files.insert(0, "security/record_rules.xml")
+        data_files.append("security/record_rules.xml")
+
+    data_files = order_manifest_data_files(data_files, install_mode=spec.install_mode)
 
     # Prefer application=True when we ship a root menu for new custom models
     is_app = bool(any(m.mode == "new" for m in spec.models) and spec.menus)
+    from module_generator.barcode_widget import emit_barcode_scan_widget_files
+
+    emit_barcode_scan_widget_files(spec, files)
     files[f"{root}/__manifest__.py"] = env.get_template("manifest.py.j2").render(
         spec=spec, data_files=data_files, application=is_app
     )
+
+    # AI-7: re-emit imported custom logic verbatim (correct relative paths)
+    for i, block in enumerate(spec.custom_code_blocks or []):
+        if not isinstance(block, dict):
+            continue
+        content = block.get("content")
+        if not isinstance(content, str) or not content:
+            continue
+        rel = str(block.get("source_file") or f"custom/preserved_{i}.txt")
+        rel = rel.replace("\\", "/").lstrip("/")
+        parts = rel.split("/")
+        if parts and parts[0] == root:
+            rel = "/".join(parts[1:])
+        if not rel:
+            rel = f"custom/preserved_{i}.txt"
+        out_path = f"{root}/{rel}"
+        if out_path in files and out_path.endswith(".py"):
+            files[out_path] = files[out_path].rstrip() + "\n\n" + content.rstrip() + "\n"
+        else:
+            files[out_path] = content if content.endswith("\n") else content + "\n"
+        if rel.endswith(".xml") and rel not in data_files:
+            data_files.append(rel)
+            data_files = order_manifest_data_files(data_files, install_mode=spec.install_mode)
+
     # Sidecar ModuleSpec for Code→UI reverse import (own output = trivial read-back)
     import dataclasses
     import json as _json
@@ -759,6 +1024,7 @@ from .app_templates import (  # noqa: E402
 __all__ = [
     "FieldSpec",
     "ModelSpec",
+    "SequenceSpec",
     "ViewSpec",
     "ActionSpec",
     "MenuSpec",
@@ -772,6 +1038,11 @@ __all__ = [
     "manifest_version_for_major",
     "list_view_for_major",
     "normalize_module_spec_list_views",
+    "ensure_monetary_currency_fields",
+    "ensure_image_variant_fields",
+    "order_manifest_data_files",
+    "sequence_code_for_model",
+    "sequence_prefix_for_model",
     "render_xpath_field_inject",
     "render_xpath_fields_inject",
     "render_module_files",

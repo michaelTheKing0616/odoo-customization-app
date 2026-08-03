@@ -17,7 +17,12 @@ def get_connection_or_404(db: Session, connection_id: str) -> OdooConnection:
     return row
 
 
-def client_from_connection(row: OdooConnection) -> OdooClient:
+def client_from_connection(
+    row: OdooConnection,
+    *,
+    db: Session | None = None,
+    watch_version: bool = False,
+) -> OdooClient:
     secret = decrypt_secret(row.secret_encrypted)
     client = OdooClient(
         ConnectionConfig(
@@ -28,6 +33,11 @@ def client_from_connection(row: OdooConnection) -> OdooClient:
         )
     )
     client.connect()
+    if watch_version and db is not None:
+        from app.version_watch import observe_server_version
+
+        version = str(client.server_version().get("server_version", ""))
+        observe_server_version(db, row, version, auto_health_check=True)
     return client
 
 

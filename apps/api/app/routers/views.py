@@ -10,7 +10,11 @@ from sqlalchemy.orm import Session
 
 from odoo_client import CreateViewRequest, parse_arch, render_arch, render_inherit_replace_arch
 from odoo_client.blueprint import apply_form_layout, auto_form_layout_for_model
-from odoo_client.view_arch import render_inherit_xpath_arch, validate_xpath_arch
+from odoo_client.view_arch import (
+    render_inherit_xpath_arch,
+    render_xpath_wrap_arch,
+    validate_xpath_arch,
+)
 
 from app.db import get_db
 from app.odoo_service import OdooClientError, client_from_connection, get_connection_or_404
@@ -81,6 +85,22 @@ def _client(connection_id: str, db: Session):
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
+def _connection_major(db: Session, connection_id: str) -> int:
+    from odoo_client.compat import UnsupportedOdooMajorError, parse_major
+
+    row = get_connection_or_404(db, connection_id)
+    try:
+        return parse_major(str(row.server_version or "19"))
+    except UnsupportedOdooMajorError:
+        return 19
+
+
+def _spec_with_major(spec: dict[str, Any], major: int) -> dict[str, Any]:
+    merged = dict(spec)
+    merged.setdefault("major", major)
+    return merged
+
+
 class PreviewArchBody(BaseModel):
     view_type: str = Field(..., examples=["form", "list"])
     spec: dict[str, Any]
@@ -128,8 +148,12 @@ class PolishFormOut(BaseModel):
 
 class XPathPreviewBody(BaseModel):
     expr: str
-    position: Literal["inside", "after", "before", "replace", "attributes"] = "inside"
-    body_xml: str
+    position: Literal[
+        "inside", "after", "before", "replace", "attributes", "move"
+    ] = "inside"
+    body_xml: str = ""
+    wrapper_xml: str | None = None
+    wrapper_xml: str | None = None
 
 
 class XPathPreviewOut(BaseModel):
@@ -138,10 +162,12 @@ class XPathPreviewOut(BaseModel):
 
 
 @router.post("/preview", response_model=PreviewArchOut)
-def preview_arch(connection_id: str, body: PreviewArchBody) -> PreviewArchOut:
-    _ = connection_id
+def preview_arch(
+    connection_id: str, body: PreviewArchBody, db: Session = Depends(get_db)
+) -> PreviewArchOut:
+    major = _connection_major(db, connection_id)
     try:
-        arch = render_arch(body.view_type, body.spec)
+        arch = render_arch(body.view_type, _spec_with_major(body.spec, major))
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return PreviewArchOut(arch=arch)
@@ -216,9 +242,12 @@ def xpath_preview(connection_id: str, body: XPathPreviewBody) -> XPathPreviewOut
     """Build + validate a single-xpath inherit arch (Designer power editor)."""
     _ = connection_id
     try:
-        arch = render_inherit_xpath_arch(
-            expr=body.expr, position=body.position, body_xml=body.body_xml
-        )
+        if body.wrapper_xml:
+            arch = render_xpath_wrap_arch(expr=body.expr, wrapper_xml=body.wrapper_xml)
+        else:
+            arch = render_inherit_xpath_arch(
+                expr=body.expr, position=body.position, body_xml=body.body_xml
+            )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return XPathPreviewOut(arch=arch, issues=validate_xpath_arch(arch))
@@ -239,13 +268,32 @@ def save_view(
     connection_id: str, body: SaveViewBody, db: Session = Depends(get_db)
 ) -> ViewOut:
     from app.snapshots import snapshot_view
+    from app.ee_drivers import EE_VIEW_TYPES
+    from app.tier_matrix import build_tier_context
+
+    row = get_connection_or_404(db, connection_id)
+    vt_check = "list" if body.view_type == "tree" else body.view_type
+    if vt_check in EE_VIEW_TYPES:
+        ctx = build_tier_context(url=row.url, server_version=row.server_version)
+        if not ctx.is_enterprise:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "capability": "views_enterprise_types",
+                    "message": (
+                        f"View type {vt_check!r} is Enterprise-only — "
+                        "matrix row views_enterprise_types is not available on Community."
+                    ),
+                },
+            )
 
     client = _client(connection_id, db)
+    major = _connection_major(db, connection_id)
     try:
         if body.arch:
             arch = body.arch
         elif body.spec is not None:
-            arch = render_arch(body.view_type, body.spec)
+            arch = render_arch(body.view_type, _spec_with_major(body.spec, major))
         else:
             raise HTTPException(status_code=422, detail="Provide spec or arch")
 

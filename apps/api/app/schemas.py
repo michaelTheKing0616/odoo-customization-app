@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -48,6 +48,236 @@ class CapabilityMatrixOut(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class TierCapabilityRowOut(BaseModel):
+    key: str
+    label: str
+    available: Literal["yes", "no", "verify", "plan_gated"]
+    reason: str
+    options: list[str] = Field(default_factory=list)
+
+
+class TierMatrixOut(BaseModel):
+    """Four-tier capability matrix (hosting × edition × modules)."""
+
+    connection_id: str
+    hosting: Literal["online", "sh", "onprem", "unknown"]
+    hosting_hint: str = "unknown"
+    edition: Literal["community", "enterprise", "unknown"]
+    major: int | None = None
+    server_version: str | None = None
+    web_base_url: str | None = None
+    installed_modules_sample: list[str] = Field(default_factory=list)
+    capabilities: list[TierCapabilityRowOut] = Field(default_factory=list)
+    legacy_supported: list[str] = Field(default_factory=list)
+    legacy_unsupported: list[UnsupportedCapabilityOut] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    message: str = ""
+
+
+class GatingOptionOut(BaseModel):
+    id: str
+    label: str
+
+
+class GatingCalloutOut(BaseModel):
+    feature: str
+    title: str
+    why: str
+    options: list[str] = Field(default_factory=list)
+    available: bool = False
+    capability_key: str
+    gating_choices: list[GatingOptionOut] = Field(default_factory=list)
+
+
+class AutomationsGateOut(BaseModel):
+    automations: GatingCalloutOut
+    approvals: GatingCalloutOut
+
+
+class AutomationTriggerProbeRow(BaseModel):
+    major: int
+    source: str
+    on_webhook: bool
+    on_change: bool
+    on_change_field_ids: bool = False
+    trigger_count: int | None = None
+
+
+class AutomationTriggersOut(BaseModel):
+    major: int
+    source: str
+    supported_triggers: list[str] = Field(default_factory=list)
+    probe_table: list[AutomationTriggerProbeRow] = Field(default_factory=list)
+
+
+class PropertyFieldsProbeRow(BaseModel):
+    major: int
+    source: str
+    ttype_properties: bool = False
+    ttype_properties_definition: bool = False
+    definition_record_column: bool = False
+    definition_record_field_column: bool = False
+    definition_write: bool = False
+    rpc_create: bool = False
+    supported: bool = False
+
+
+class PropertyFieldsProbeOut(BaseModel):
+    major: int
+    source: str
+    supported: bool
+    probe_table: list[PropertyFieldsProbeRow] = Field(default_factory=list)
+
+
+class PreviewThemeOut(BaseModel):
+    ok: bool
+    theme: dict[str, str] = Field(default_factory=dict)
+    preview_vars: dict[str, str] = Field(default_factory=dict)
+    error: str | None = None
+
+
+class DeploymentPanelOut(BaseModel):
+    tier: Literal["onprem", "sh", "online", "unknown"] = "unknown"
+    title: str = ""
+    body: str = ""
+    options: list[str] = Field(default_factory=list)
+    include_deploy_doc: bool = False
+
+
+class ValidateLiveItemOut(BaseModel):
+    item_id: str
+    category: str
+    status: Literal["pass", "warn", "fail"]
+    message: str
+
+
+class ValidateLiveOut(BaseModel):
+    ok: bool
+    items: list[ValidateLiveItemOut] = Field(default_factory=list)
+    fail_count: int = 0
+    warn_count: int = 0
+    message: str = ""
+
+
+class ModuleSpecValidateLiveBody(BaseModel):
+    spec: dict = Field(..., description="ModuleSpec-like JSON to validate read-only")
+
+
+class TierCapabilityRowOut(BaseModel):
+    key: str
+    label: str
+    available: Literal["yes", "no", "verify", "plan_gated"]
+    reason: str
+    options: list[str] = Field(default_factory=list)
+
+
+class TierMatrixOut(BaseModel):
+    """Four-tier capability matrix (hosting × edition × modules)."""
+
+    connection_id: str
+    hosting: Literal["online", "sh", "onprem", "unknown"]
+    hosting_hint: str = "unknown"
+    edition: Literal["community", "enterprise", "unknown"]
+    major: int | None = None
+    server_version: str | None = None
+    web_base_url: str | None = None
+    installed_modules_sample: list[str] = Field(default_factory=list)
+    capabilities: list[TierCapabilityRowOut] = Field(default_factory=list)
+    legacy_supported: list[str] = Field(default_factory=list)
+    legacy_unsupported: list[UnsupportedCapabilityOut] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    message: str = ""
+
+
+class GatingOptionOut(BaseModel):
+    id: str
+    label: str
+
+
+class GatingCalloutOut(BaseModel):
+    feature: str
+    title: str
+    why: str
+    options: list[str] = Field(default_factory=list)
+    available: bool = False
+    capability_key: str
+    gating_choices: list[GatingOptionOut] = Field(default_factory=list)
+
+
+class AutomationsGateOut(BaseModel):
+    automations: GatingCalloutOut
+    approvals: GatingCalloutOut
+
+
+class AutomationTriggerProbeRow(BaseModel):
+    major: int
+    source: str
+    on_webhook: bool
+    on_change: bool
+    on_change_field_ids: bool = False
+    trigger_count: int | None = None
+
+
+class AutomationTriggersOut(BaseModel):
+    major: int
+    source: str
+    supported_triggers: list[str] = Field(default_factory=list)
+    probe_table: list[AutomationTriggerProbeRow] = Field(default_factory=list)
+
+
+class PropertyFieldsProbeRow(BaseModel):
+    major: int
+    source: str
+    ttype_properties: bool = False
+    ttype_properties_definition: bool = False
+    definition_record_column: bool = False
+    definition_record_field_column: bool = False
+    definition_write: bool = False
+    rpc_create: bool = False
+    supported: bool = False
+
+
+class PropertyFieldsProbeOut(BaseModel):
+    major: int
+    source: str
+    supported: bool
+    probe_table: list[PropertyFieldsProbeRow] = Field(default_factory=list)
+
+
+class PreviewThemeOut(BaseModel):
+    ok: bool
+    theme: dict[str, str] = Field(default_factory=dict)
+    preview_vars: dict[str, str] = Field(default_factory=dict)
+    error: str | None = None
+
+
+class DeploymentPanelOut(BaseModel):
+    tier: Literal["onprem", "sh", "online", "unknown"] = "unknown"
+    title: str = ""
+    body: str = ""
+    options: list[str] = Field(default_factory=list)
+    include_deploy_doc: bool = False
+
+
+class ValidateLiveItemOut(BaseModel):
+    item_id: str
+    category: str
+    status: Literal["pass", "warn", "fail"]
+    message: str
+
+
+class ValidateLiveOut(BaseModel):
+    ok: bool
+    items: list[ValidateLiveItemOut] = Field(default_factory=list)
+    fail_count: int = 0
+    warn_count: int = 0
+    message: str = ""
+
+
+class ModuleSpecValidateLiveBody(BaseModel):
+    spec: dict = Field(..., description="ModuleSpec-like JSON to validate read-only")
+
+
 class ConnectionOut(BaseModel):
     id: str
     name: str
@@ -55,6 +285,9 @@ class ConnectionOut(BaseModel):
     db_name: str
     username: str
     server_version: str | None
+    last_seen_version: str | None = None
+    upgrade_detected: bool = False
+    upgrade_detected_at: datetime | None = None
     created_at: datetime | None
     updated_at: datetime | None
     capabilities: CapabilityMatrixOut | None = None
@@ -62,11 +295,58 @@ class ConnectionOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class HealthCheckItemOut(BaseModel):
+    artifact_id: str
+    artifact_type: str
+    label: str
+    status: str
+    reason: str
+    deep_link: str
+    resource_type: str | None = None
+    resource_key: str | None = None
+
+
+class HealthCheckRunOut(BaseModel):
+    id: str
+    connection_id: str
+    job_id: str | None = None
+    trigger: str
+    status: str
+    previous_version: str | None = None
+    current_version: str | None = None
+    ok_count: int = 0
+    broken_count: int = 0
+    message: str = ""
+    items: list[HealthCheckItemOut] = Field(default_factory=list)
+    created_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+class HealthCheckTriggerOut(BaseModel):
+    job_id: str | None = None
+    run_id: str | None = None
+    async_job: bool = True
+    message: str = ""
+    report: HealthCheckRunOut | None = None
+
+
 class ProbeResult(BaseModel):
     ok: bool
     uid: int | None = None
     server_version: str | None = None
     capabilities: CapabilityMatrixOut | None = None
+    upgrade_detected: bool = False
+    health_job_id: str | None = None
+    upgrade_detected: bool = False
+    health_job_id: str | None = None
+
+
+class ProtectedModulesOut(BaseModel):
+    connection_id: str
+    server_version: str | None = None
+    manifest_version: str | None = None
+    manifest: dict[str, Any]
+    tier_summary: dict[str, int] = Field(default_factory=dict)
 
 
 class ModuleOut(BaseModel):
@@ -203,6 +483,8 @@ class CreateFieldBody(BaseModel):
 class FieldCreateOut(FieldOut):
     injected_view_ids: list[int] = Field(default_factory=list)
     snapshot_id: str | None = None
+    currency_field_created: str | None = None
+    currency_field_created: str | None = None
 
 
 class ExportModuleBody(BaseModel):
@@ -230,6 +512,86 @@ class ExportModuleBody(BaseModel):
         True,
         description="Package custom QWeb PDF reports for exported models into report/reports.xml",
     )
+    store_ready: bool = Field(
+        False,
+        description="Inject Apps Store assets (icon, index.html, manifest fields) + readiness report",
+    )
+
+
+class StoreReadinessItemOut(BaseModel):
+    key: str
+    label: str
+    status: Literal["pass", "warn", "fail"]
+    message: str
+
+
+class StoreReadinessReportOut(BaseModel):
+    ok: bool
+    items: list[StoreReadinessItemOut] = Field(default_factory=list)
+    fail_count: int = 0
+    warn_count: int = 0
+    disclaimer: str = ""
+    message: str = ""
+
+
+class MigrationUnlockOut(BaseModel):
+    key: str
+    label: str
+    online_status: str
+    sh_status: str
+    unlocks: bool
+    reason: str
+
+
+class MigrationAssistOut(BaseModel):
+    eligible: bool
+    hosting: str
+    title: str
+    body: str
+    unlocks: list[MigrationUnlockOut] = Field(default_factory=list)
+    docs_links: list[dict[str, str]] = Field(default_factory=list)
+    disclaimer: str = ""
+    message: str = ""
+    store_ready: bool = Field(
+        False,
+        description="Inject Apps Store assets (icon, index.html, manifest fields) + readiness report",
+    )
+
+
+class StoreReadinessItemOut(BaseModel):
+    key: str
+    label: str
+    status: Literal["pass", "warn", "fail"]
+    message: str
+
+
+class StoreReadinessReportOut(BaseModel):
+    ok: bool
+    items: list[StoreReadinessItemOut] = Field(default_factory=list)
+    fail_count: int = 0
+    warn_count: int = 0
+    disclaimer: str = ""
+    message: str = ""
+
+
+class MigrationUnlockOut(BaseModel):
+    key: str
+    label: str
+    online_status: str
+    sh_status: str
+    unlocks: bool
+    reason: str
+
+
+class MigrationAssistOut(BaseModel):
+    eligible: bool
+    hosting: str
+    title: str
+    body: str
+    unlocks: list[MigrationUnlockOut] = Field(default_factory=list)
+    docs_links: list[dict[str, str]] = Field(default_factory=list)
+    disclaimer: str = ""
+    message: str = ""
 
 
 class ModuleExportOut(BaseModel):
@@ -243,6 +605,10 @@ class ModuleExportOut(BaseModel):
     target_major: int | None = None
     manifest_version: str | None = None
     warnings: list[str] = Field(default_factory=list)
+    deployment_panel: DeploymentPanelOut | None = None
+    store_readiness: StoreReadinessReportOut | None = None
+    deployment_panel: DeploymentPanelOut | None = None
+    store_readiness: StoreReadinessReportOut | None = None
 
 
 class SandboxRunBody(BaseModel):
@@ -293,6 +659,12 @@ class SandboxRunOut(BaseModel):
     job_id: str | None = Field(
         None, description="Set when async_job=true — poll GET /api/jobs/{id}"
     )
+    approximation: bool = False
+    approximation_label: str | None = None
+    sh_staging_suggestion: str | None = None
+    approximation: bool = False
+    approximation_label: str | None = None
+    sh_staging_suggestion: str | None = None
 
 
 class PromoteModuleBody(BaseModel):
@@ -359,6 +731,118 @@ class ConfirmAdvancedBody(BaseModel):
 
     confirm_advanced: bool = False
     confirm_phrase: str | None = None
+
+
+class PropertyDefinitionEntry(BaseModel):
+    name: str
+    string: str | None = None
+    type: str = "char"
+    default: str | int | float | bool | None = None
+    selection: list[list[str]] | None = None
+    comodel: str | None = None
+
+
+class PropertyFieldsSetupBody(ConfirmAdvancedBody):
+    child_model: str
+    parent_m2o_field: str
+    properties_field: str = "x_properties"
+    definition_field: str = "x_properties_definition"
+    properties_label: str = "Properties"
+
+
+class PropertyFieldsSetupOut(BaseModel):
+    ok: bool
+    properties_field: str
+    definition_field: str
+    parent_model: str
+    created: bool
+    definition_field_created: bool | None = None
+
+
+class PropertyDefinitionWriteBody(ConfirmAdvancedBody):
+    parent_model: str
+    parent_record_id: int
+    definition_field: str = "x_properties_definition"
+    entries: list[PropertyDefinitionEntry]
+
+
+class PropertyDefinitionWriteOut(BaseModel):
+    ok: bool
+    parent_model: str
+    record_id: int
+    definition_field: str
+    property_count: int
+
+
+class InvoicingPreflightOut(BaseModel):
+    ok: bool
+    account_installed: bool
+    l10n_installed: bool
+    company_country: str | None = None
+    l10n_modules: list[str] = Field(default_factory=list)
+    message: str = ""
+
+
+class InvoicingConnectBody(ConfirmAdvancedBody):
+    model: str
+    invoice_field: str = "x_invoice_ids"
+    smart_button_name: str = "Invoices"
+
+
+class InvoicingConnectOut(BaseModel):
+    ok: bool
+    path: str
+    invoice_field: str
+    field_created: bool
+    count_field: str | None = None
+    count_field_created: bool | None = None
+    window_action_id: int
+    button_spec: dict = Field(default_factory=dict)
+    form_view_id: int | None = None
+    form_view_name: str | None = None
+
+
+class InvoicingMergeSpecBody(BaseModel):
+    base_spec: dict = Field(default_factory=dict)
+    model: str
+    invoice_field: str = "x_invoice_ids"
+    origin_field_on_move: str = "x_origin_id"
+    partner_field: str = "x_partner_id"
+
+
+class InvoicingMergeSpecOut(BaseModel):
+    ok: bool
+    merged: dict = Field(default_factory=dict)
+
+
+class InvoicingDraftInvoiceBody(ConfirmAdvancedBody):
+    source_model: str
+    record_id: int
+    invoice_field: str = "x_invoice_ids"
+    partner_field: str = "x_partner_id"
+    amount_field: str = "x_amount"
+    description_field: str = "x_name"
+
+
+class InvoicingDraftInvoiceOut(BaseModel):
+    ok: bool
+    move_id: int
+    move_name: str | None = None
+    state: str | None = None
+    source_model: str
+    record_id: int
+
+
+class InvoicingModuleSpecBody(BaseModel):
+    model: str
+    invoice_field: str = "x_invoice_ids"
+    origin_field_on_move: str = "x_origin_id"
+    partner_field: str = "x_partner_id"
+
+
+class InvoicingModuleSpecOut(BaseModel):
+    ok: bool
+    fragment: dict = Field(default_factory=dict)
 
 
 class UpdateFieldBody(BaseModel):
@@ -611,6 +1095,14 @@ class LibraryExportBody(BaseModel):
         False,
         description="Add company_id + multi-company record rules on Book/Loan/Category",
     )
+    store_ready: bool = Field(False, description="Apps Store packaging assist")
+
+
+class ProtectedModuleRefusal(BaseModel):
+    kind: str = "refusal"
+    model: str | None = None
+    reason: str
+    safe_alternative: str | None = None
 
 
 class AiDraftModuleBody(BaseModel):
@@ -639,6 +1131,38 @@ class AiDraftModuleBody(BaseModel):
         None,
         description="single | staged — staged = multi-step LLM pipeline (overrides AI_PIPELINE_MODE)",
     )
+    grain: str | None = Field(
+        None,
+        description="Override grain: field_pack | feature_slice | full_app",
+    )
+    gallery_id: str | None = Field(
+        None,
+        description="Apply a built-in component gallery seed",
+    )
+    host_model: str | None = Field(
+        None,
+        description="Override detected host model for component grain",
+    )
+    connect_points: dict | None = Field(
+        None,
+        description="Operator-edited connect points from wizard review step",
+    )
+    grain: str | None = Field(
+        None,
+        description="Override grain: field_pack | feature_slice | full_app",
+    )
+    gallery_id: str | None = Field(
+        None,
+        description="Apply a built-in component gallery seed",
+    )
+    host_model: str | None = Field(
+        None,
+        description="Override detected host model for component grain",
+    )
+    connect_points: dict | None = Field(
+        None,
+        description="Operator-edited connect points from wizard review step",
+    )
 
 
 class AiDraftModuleOut(BaseModel):
@@ -650,7 +1174,12 @@ class AiDraftModuleOut(BaseModel):
         "(or save as Project → Apply)."
     )
     warnings: list[str] = Field(default_factory=list)
+    refusals: list[ProtectedModuleRefusal] = Field(default_factory=list)
     domain_pack: str | None = None
+    grain: str | None = None
+    grain_label: str | None = None
+    connect_points: dict | None = None
+    host_candidates: list[dict] = Field(default_factory=list)
 
 
 class ModuleSpecApplyBody(BaseModel):
@@ -661,6 +1190,14 @@ class ModuleSpecApplyBody(BaseModel):
     apply_automations: bool = True
     confirm_advanced: bool = False
     confirm_phrase: str | None = None
+    skip_validate_live: bool = Field(
+        False,
+        description="Skip pre-apply validate-live (requires confirm_advanced when failures exist)",
+    )
+    skip_validate_live: bool = Field(
+        False,
+        description="Skip pre-apply validate-live (requires confirm_advanced when failures exist)",
+    )
 
 
 class ModuleSpecApplyOut(BaseModel):
@@ -682,6 +1219,7 @@ class ModuleSpecImportOut(BaseModel):
     spec: dict
     warnings: list[str] = Field(default_factory=list)
     unmapped: list[dict] = Field(default_factory=list)
+    custom_code_blocks: list[dict] = Field(default_factory=list)
     source: str = ""
     note: str = (
         "Imported into ModuleSpec — review in visual editor before Generate UI / Apply."

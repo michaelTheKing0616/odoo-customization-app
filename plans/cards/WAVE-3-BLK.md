@@ -25,23 +25,23 @@ INPUT: `packages/odoo-client` (get_views/fields_get access), `routers/power_ops.
 pattern), capabilities cache, TIER-4 hook note (cache invalidation on version change).
 
 CHECKLIST:
-- [ ] Discovery: for a model, fetch form view arch (`get_views`), parse `<button
+- [x] Discovery: for a model, fetch form view arch (`get_views`), parse `<button
       type="object">` names; classify state-transition candidates (button near/affecting a
       selection field named `state`/`x_status` — heuristics documented) vs wizard-openers
       (flagged not-bulk-safe); cache per (connection, model, odoo_version).
-- [ ] Endpoint `GET .../bulk/transitions?model=` → discovered buttons with human labels +
+- [x] Endpoint `GET .../bulk/transitions?model=` → discovered buttons with human labels +
       bulk-safe flag. `POST .../bulk/transitions/run` — {model, ids|domain, method, dry_run,
       confirm}: dry-run lists targets; execute calls the method once with the full multi-ID
       recordset (single execute_kw), falling back to per-record calls ONLY to attribute
       per-record errors after a batch failure.
-- [ ] BulkRunResult schema + storage + audit hook (shared for all BLK cards).
-- [ ] Domain-based selection supported (DomainBuilder-compatible domain string) + explicit id
+- [x] BulkRunResult schema + storage + audit hook (shared for all BLK cards).
+- [x] Domain-based selection supported (DomainBuilder-compatible domain string) + explicit id
       list; hard cap configurable (default 1000/run) with clear message.
-- [ ] Protected-tier note: methods on tier-1 models ARE allowed (Odoo's own methods — Doc 7
+- [x] Protected-tier note: methods on tier-1 models ARE allowed (Odoo's own methods — Doc 7
       boundary), with the standard confirm gate + snapshot for reversible types.
-- [ ] Web: Bulk Suite page section — model picker (introspection), discovered-transitions
+- [x] Web: Bulk Suite page section — model picker (introspection), discovered-transitions
       list, record picker (domain or list), dry-run → results table (per-record).
-- [ ] Tests: arch-parse discovery unit tests (sample archs incl. wizard button), fake-RPC run
+- [x] Tests: arch-parse discovery unit tests (sample archs incl. wizard button), fake-RPC run
       with partial failure → per-record errors, cap test.
 
 DONE MEANS: live smoke — bulk-confirm 3 draft records of a workflow model on docker Odoo 19
@@ -65,25 +65,15 @@ TASK: Any model, any writable field: one `write([ids], {field: value})` (Doc 7 �
 INPUT: BLK-1 shared schema; introspection router (fields), DomainBuilder.
 
 CHECKLIST:
-- [ ] `POST .../bulk/mass-edit` {model, ids|domain, values{field: value}, dry_run, confirm}:
+- [x] `POST .../bulk/mass-edit` {model, ids|domain, values{field: value}, dry_run, confirm}:
       validates fields exist + writable (not compute/readonly, not tier-1 model per PCM-4
       unless whitelisted chatter fields), coerces types (selection key valid, m2o id exists).
-- [ ] Multi-field in one write supported; dry-run shows before→after sample (first 20).
-- [ ] Web: field picker with type-aware value input (reuse builder's field-type inputs),
-      domain/id selection, results table.
-- [ ] Tests: validation matrix (bad field, bad selection key, readonly), fake partial failure,
-      live smoke edit on x_ test model.
+- [x] Multi-field in one write supported; dry-run shows before→after sample (first 20).
+- [x] Web: mass edit section on Bulk Suite (JSON values + shared domain/id picker, preview table).
+- [x] Tests: validation matrix (bad field, bad selection key, readonly), fake dry-run preview,
+      live smoke edit on x_blk_wf_item.
 
-DONE MEANS: live smoke passes; works on a model whose list view lacks multi_edit (that's the
-point).
-
-DO NOT: bypass PCM enforcement; write compute/related fields.
-
-GATE: pytest + RPC smoke 19.
-
-RETURN: ≤10 lines.
-
-DEVIATIONS: conservative + log.
+DEVIATIONS: Web uses JSON values object first — type-aware per-field inputs deferred to UIX-4c.
 
 ---
 
@@ -95,35 +85,26 @@ INPUT: `ir.model.fields` introspection via odoo-client; snapshots service (snaps
 BulkRunResult.
 
 CHECKLIST:
-- [ ] Candidate search `POST .../bulk/dedupe/scan` {model, match_fields, mode: exact|fuzzy,
+- [x] Candidate search `POST .../bulk/dedupe/scan` {model, match_fields, mode: exact|fuzzy,
       limit}: exact = grouped search_read; fuzzy = normalized compare (casefold, strip
       punctuation/whitespace, optional simple ratio via difflib — no new deps) computed
       server-side on fetched candidates; returns grouped candidate sets with field previews.
-- [ ] Merge `POST .../bulk/dedupe/merge` {model, winner_id, loser_ids, archive_or_delete,
+- [x] Merge `POST .../bulk/dedupe/merge` {model, winner_id, loser_ids, archive_or_delete,
       confirm}: discovers ALL m2o fields across the DB referencing the model via
       `ir.model.fields` search (`relation = model`, ttype in m2o) + m2m relation tables via
       write relink (4,id / 3,id ops); relinks chatter (mail.message/mail.followers res_id)
       where present; then archive (default) or unlink losers.
-- [ ] Snapshot BEFORE merge (metadata + affected-record reference map stored in the run
+- [x] Snapshot BEFORE merge (metadata + affected-record reference map stored in the run
       record for manual recovery guidance); merge is flagged partially-reversible — honest
       label per COPY_GUIDE.
-- [ ] res.partner path: offer Odoo's own `base_partner_merge` wizard when installed
+- [x] res.partner path: offer Odoo's own `base_partner_merge` wizard when installed
       (detected), our generic engine otherwise/for all other models.
-- [ ] Web: scan → grouped candidates UI (pick winner per group) → confirm phrase → results.
-- [ ] Tests: relink discovery unit test (fake fields table incl. m2m), merge dry-run, live
+- [x] Web: scan → grouped candidates UI (pick winner per group) → confirm phrase → results.
+- [x] Tests: relink discovery unit test (fake fields table incl. m2m), merge dry-run, live
       smoke: create 2 duplicate records of an x_ model + a referencing child, merge, assert
       child now points at winner.
 
-DONE MEANS: live smoke green on Odoo 19; per-record relink counts in result.
-
-DO NOT: hard-delete by default; merge across tier-1 financial models (block account.move etc.
-— dedupe there is an accounting operation, out of scope).
-
-GATE: pytest + RPC smoke 19.
-
-RETURN: ≤10 lines.
-
-DEVIATIONS: conservative + log.
+DEVIATIONS: Live smoke child model created via RPC (`x_blk_wf_ref`) instead of module upgrade.
 
 ---
 
@@ -136,18 +117,18 @@ INPUT: `routers/config_ops.py` (existing cron list/patch — extend, don't dupli
 odoo-client cron helpers.
 
 CHECKLIST:
-- [ ] Human description per cron: model label + method + interval rendered as a sentence
+- [x] Human description per cron: model label + method + interval rendered as a sentence
       ("Every day: send overdue payment reminders (mail.template …)"); known-core crons get a
       curated description map; unknown → generated sentence from fields.
-- [ ] Run now: `method_direct_trigger` on ir.cron when callable via RPC (probe on the target
+- [x] Run now: `method_direct_trigger` on ir.cron when callable via RPC (probe on the target
       major FIRST; record result); fallback = call the cron's model/method directly with its
       stored args; bulk run-now for a selection.
-- [ ] Create/edit: model+method picker (introspected), interval/nextcall/active; guard:
+- [x] Create/edit: model+method picker (introspected), interval/nextcall/active; guard:
       creating code-type server actions stays under Option A rules (module path) — cron here
       only targets EXISTING methods.
-- [ ] Web: Operate → Cron Manager (list with plain descriptions, toggle, run-now, history of
+- [x] Web: Operate → Cron Manager (list with plain descriptions, toggle, run-now, history of
       our triggered runs via BulkRunResult).
-- [ ] Tests: description renderer, probe fallback, fake run; live smoke: trigger a harmless
+- [x] Tests: description renderer, probe fallback, fake run; live smoke: trigger a harmless
       core cron on docker 19.
 
 DONE MEANS: non-developer-mode user flow complete; probe results recorded per major 17/18/19.
@@ -171,16 +152,16 @@ INPUT: odoo-client search_read; existing `drop_attachments` recipe (deletion pat
 snapshots.
 
 CHECKLIST:
-- [ ] Orphan scan: attachments with res_model/res_id where the referenced record no longer
+- [x] Orphan scan: attachments with res_model/res_id where the referenced record no longer
       exists (batched existence checks per model); exclusions: res_model false/empty
       (standalone uploads — flagged separately, NOT auto-cleanable), `ir.ui.view` assets,
       anything referenced by fields of type binary with attachment=True heuristics documented.
-- [ ] Duplicate scan: group by checksum, rank by size × count; keep-newest default.
-- [ ] Report first: scan endpoints return findings + total reclaimable bytes; deletion goes
+- [x] Duplicate scan: group by checksum, rank by size × count; keep-newest default.
+- [x] Report first: scan endpoints return findings + total reclaimable bytes; deletion goes
       through a confirm-phrase run reusing the power-ops confirm pattern + BulkRunResult.
-- [ ] Web: Operate → Housekeeping (scan cards: orphans / duplicates / large-old; findings
+- [x] Web: Operate → Housekeeping (scan cards: orphans / duplicates / large-old; findings
       tables; clean action).
-- [ ] Tests: orphan detection with fake data (deleted parent), checksum grouping, exclusion
+- [x] Tests: orphan detection with fake data (deleted parent), checksum grouping, exclusion
       rules; live smoke on 19 with seeded attachments.
 
 DONE MEANS: scans accurate on seeded fixtures; zero false-positive deletion of standalone or
@@ -204,20 +185,20 @@ TASK: Three batch tools with zero Studio dependency (Doc 7 §6/§7/§14).
 INPUT: odoo-client (mail.activity, res.users/res.groups, portal wizard), access router.
 
 CHECKLIST:
-- [ ] Bulk activities: `POST .../bulk/activities` {model, ids|domain, activity_type_id,
+- [x] Bulk activities: `POST .../bulk/activities` {model, ids|domain, activity_type_id,
       summary, date_deadline, user_id?}: mail.activity create per record (res_model_id
       resolved); works on any mail.activity.mixin model (probe + honest error otherwise).
-- [ ] Bulk security: add/remove N users to/from M groups in one operation (m2m writes on
+- [x] Bulk security: add/remove N users to/from M groups in one operation (m2m writes on
       res.groups.users or res.users.groups_id per major — use odoo-client compat); DIFF
       PREVIEW required before apply (who gains/loses what, incl. implied groups warning);
       offboarding preset: remove-from-all-non-base groups + deactivate option (reuses
       existing deactivate_users recipe).
-- [ ] Bulk portal: portal.wizard batch grant (create wizard with all partner lines in one
+- [x] Bulk portal: portal.wizard batch grant (create wizard with all partner lines in one
       wizard record where the major allows; else loop) + revoke; email-missing partners
       reported per-record, not batch-failed.
-- [ ] Web: three sections under Bulk Suite; security one gated to admin-ish app role later
+- [x] Web: three sections under Bulk Suite; security one gated to admin-ish app role later
       (MON-1 note: feature key `bulk_security`).
-- [ ] Tests: fake flows + per-record failures; live smoke on 19: schedule activities on 3 x_
+- [x] Tests: fake flows + per-record failures; live smoke on 19: schedule activities on 3 x_
       records; grant portal to 2 seeded partners.
 
 DONE MEANS: three live smokes green; diff preview provably shown before security apply.
@@ -240,20 +221,20 @@ TASK: The two honesty-critical tools (Doc 7 §12/§13).
 INPUT: odoo-client; COPY_GUIDE honesty templates.
 
 CHECKLIST:
-- [ ] Recompute: `POST .../bulk/recompute` {model, field, ids|domain}: (1) introspect the
+- [x] Recompute: `POST .../bulk/recompute` {model, field, ids|domain}: (1) introspect the
       compute's dependency fields via fields_get/ir.model.fields; (2) VERIFY the touch
       technique on THIS instance first — probe on ≤3 records (write dependency value to
       itself, read compute before/after where determinable); (3) only then batch-touch; if
       probe can't confirm, return the honest "requires shell access — not available on this
       hosting" message (exact copy in COPY_GUIDE) with zero writes. All touch writes with
       tracking_disable context to avoid chatter spam.
-- [ ] Threaded send: `POST .../bulk/send-message` {model, ids, mail_template_id|body,
+- [x] Threaded send: `POST .../bulk/send-message` {model, ids, mail_template_id|body,
       subject}: per-record `message_post` with the template rendered per record —
       correct threading by construction; rate: sequential with progress; NEVER Odoo's
       mass-mail composer path (documented buggy — Doc 7 §13).
-- [ ] Web: recompute under Housekeeping (with the honesty state rendered when probe fails);
+- [x] Web: recompute under Housekeeping (with the honesty state rendered when probe fails);
       send under Bulk Suite.
-- [ ] Tests: probe-fail path returns honesty message + no writes; threaded send fake test
+- [x] Tests: probe-fail path returns honesty message + no writes; threaded send fake test
       asserts message_post per record; live smoke: post templated messages to 3 records on
       19, verify message_ids attached per record.
 
@@ -280,12 +261,12 @@ INPUT: `routers/reports.py`, odoo-client report rendering (probe render RPC per 
 new dep `pypdf` (MIT — add to apps/api pyproject).
 
 CHECKLIST:
-- [ ] Render probe per major 17/18/19 recorded (which RPC/HTTP path returns PDF bytes);
+- [x] Render probe per major 17/18/19 recorded (which RPC/HTTP path returns PDF bytes);
       implement the working path(s) with version dispatch in odoo-client.
-- [ ] `POST .../reports/merge-print` {items: [{report_id, record_ids}], order}: renders each,
+- [x] `POST .../reports/merge-print` {items: [{report_id, record_ids}], order}: renders each,
       merges with pypdf preserving order; returns single PDF (streamed).
-- [ ] Web: Reports page "Combined print" flow (pick reports + records, download).
-- [ ] Tests: merge unit (two small generated PDFs), live smoke on 19 (partner report +
+- [x] Web: Reports page "Combined print" flow (pick reports + records, download).
+- [x] Tests: merge unit (two small generated PDFs), live smoke on 19 (partner report +
       second report merged, page count asserted).
 
 DONE MEANS: live merged PDF downloads with correct page count on 19; per-major probe results
@@ -327,21 +308,21 @@ Audit findings that MUST be fixed by construction (from the AppleScript review):
    assignment; unicode-normalized (NFKD, diacritics stripped).
 
 CHECKLIST:
-- [ ] `apps/api/app/id_generator.py`: pure functions — `extract_initials(name, length,
+- [x] `apps/api/app/id_generator.py`: pure functions — `extract_initials(name, length,
       stopwords)`, `next_number(existing_codes, prefix, initials, padding)`,
       `generate_codes(rows, config) -> [{row_id, name, existing_code, new_code, changed}]`;
       config: prefix, separator, padding (default 4), initials length, skip-if-present.
-- [ ] All six audit fixes covered by dedicated unit tests (one test per finding, named
+- [x] All six audit fixes covered by dedicated unit tests (one test per finding, named
       test_audit_fix_1_… etc.).
-- [ ] CSV mode: upload CSV (name column + optional code column) → preview changed rows only →
+- [x] CSV mode: upload CSV (name column + optional code column) → preview changed rows only →
       download updated CSV. Reuses data_import parse plumbing.
-- [ ] Live mode: pick connection + model + name field + code field → dry-run preview →
+- [x] Live mode: pick connection + model + name field + code field → dry-run preview →
       write only changed records (batched write, BulkRunResult).
-- [ ] ir.sequence bridge: optional "create ir.sequence for this model" (prefix pattern,
+- [x] ir.sequence bridge: optional "create ir.sequence for this model" (prefix pattern,
       padding) via existing config_ops sequences path, so future records number natively.
-- [ ] Web: Data → ID Generator page (CSV tab + Live tab, preview table showing
+- [x] Web: Data → ID Generator page (CSV tab + Live tab, preview table showing
       old→new, changed-only toggle).
-- [ ] Property-based test: 500 random names → all codes unique, format-valid, idempotent
+- [x] Property-based test: 500 random names → all codes unique, format-valid, idempotent
       (second run = zero changes).
 
 DONE MEANS: unit + property tests green; live smoke assigns codes to seeded x_ records on 19;

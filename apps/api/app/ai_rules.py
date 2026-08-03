@@ -170,11 +170,12 @@ def _ensure_partner_backref_smart_button(
 
 
 def _ensure_overdue_automation(draft: dict[str, Any], model: dict[str, Any]) -> bool:
+    from app.ai_workflow import active_states_from_transitions, parse_selection_keys
+
     mid = str(model.get("model") or "")
     names = _field_names(model)
     if "x_status" not in names:
         return False
-    # Look for datetime/date return/due fields
     due_fields = [
         n
         for n in names
@@ -188,15 +189,30 @@ def _ensure_overdue_automation(draft: dict[str, Any], model: dict[str, Any]) -> 
     blob = json_dumps_lower(autos)
     if "overdue" in blob:
         return False
+    sf = model.get("state_field") if isinstance(model.get("state_field"), dict) else {}
+    states = sf.get("states") or parse_selection_keys(
+        next(
+            (f.get("selection") for f in (model.get("fields") or []) if isinstance(f, dict) and f.get("name") == "x_status"),
+            None,
+        )
+    )
+    transitions = sf.get("transitions") or []
+    active = active_states_from_transitions(
+        [str(s) for s in states] if states else [],
+        transitions if isinstance(transitions, list) else [],
+    )
+    status_clause = ""
+    if active:
+        status_clause = f", ('x_status', 'in', {active!r})"
     draft.setdefault("automations", []).append(
         {
             "name": f"Flag overdue on {mid}",
             "model": mid,
             "trigger": "on_time",
             "description": (
-                f"Safety-net: when {due_fields[0]} is past and still open → x_status=overdue"
+                f"Safety-net: when {due_fields[0]} is past and still in active states → overdue"
             ),
-            "filter_domain": f"[('{due_fields[0]}', '<', 'now')]",
+            "filter_domain": f"[('{due_fields[0]}', '<', 'now'){status_clause}]",
             "safe_actions": [
                 {"kind": "object_write", "field": "x_status", "value": "overdue"},
                 {"kind": "next_activity", "summary": "Overdue follow-up"},
@@ -287,7 +303,10 @@ def apply_pattern_rules(draft: dict[str, Any]) -> list[str]:
             continue
         names = _field_names(model)
         if "x_status" in names:
-            model["is_workflow"] = True
+            from app.ai_model_quality import is_party_link_model
+
+            if not is_party_link_model(model):
+                model["is_workflow"] = True
             if _ensure_sequence_field(model):
                 notes.append(
                     f"rules: added x_code reference on workflow model {model.get('model')}"
@@ -464,10 +483,42 @@ def validate_and_enrich_draft(
     return out, warnings, errors
 
 
+def strip_protected_module_effects(
+    draft: dict[str, Any],
+    *,
+    manifest: dict[str, Any],
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[str]]:
+    """Remove tier-1 inherit mutations; return (cleaned, refusals, warnings)."""
+    from app.protected_modules import protected_models_for
+
+    out = copy.deepcopy(draft)
+    refusals: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    kept: list[dict[str, Any]] = []
+    for model in out.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        name = str(model.get("model") or "")
+        if model.get("mode") == "inherit" and protected_models_for(manifest, name) == "tier_1":
+            refusals.append(
+                {
+                    "kind": "inherit_strip",
+                    "model": name,
+                    "reason": f"Cannot inherit fields on tier-1 host {name}",
+                }
+            )
+            warnings.append(f"PCM: removed inherit model {name} (tier-1 host)")
+            continue
+        kept.append(model)
+    out["models"] = kept
+    return out, refusals, warnings
+
+
 __all__ = [
     "validate_and_enrich_draft",
     "check_referential_integrity",
     "apply_pattern_rules",
     "completeness_checklist",
     "repair_smart_buttons_and_automations",
+    "strip_protected_module_effects",
 ]

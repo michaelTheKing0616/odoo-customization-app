@@ -43,6 +43,30 @@ export default function AccessPage() {
   const [matrixModels, setMatrixModels] = useState("res.partner");
   const [matrix, setMatrix] = useState<AccessMatrixOut | null>(null);
   const [matrixBusy, setMatrixBusy] = useState(false);
+  const [mcGuidance, setMcGuidance] = useState<{ title: string; body: string } | null>(
+    null,
+  );
+  const [docsGate, setDocsGate] = useState<{
+    available: boolean;
+    message?: string | null;
+  } | null>(null);
+  const [docsFolders, setDocsFolders] = useState<
+    Array<{ id: number; name: string | null }>
+  >([]);
+  const [docsFolderId, setDocsFolderId] = useState("");
+  const [docsMapping, setDocsMapping] = useState<Record<string, number>>({});
+  const [mcGuidance, setMcGuidance] = useState<{ title: string; body: string } | null>(
+    null,
+  );
+  const [docsGate, setDocsGate] = useState<{
+    available: boolean;
+    message?: string | null;
+  } | null>(null);
+  const [docsFolders, setDocsFolders] = useState<
+    Array<{ id: number; name: string | null }>
+  >([]);
+  const [docsFolderId, setDocsFolderId] = useState("");
+  const [docsMapping, setDocsMapping] = useState<Record<string, number>>({});
 
   const [accessForm, setAccessForm] = useState({
     name: "",
@@ -81,7 +105,16 @@ export default function AccessPage() {
 
   useEffect(() => {
     refresh("res.partner").catch((err: Error) => setError(err.message));
-  }, [refresh]);
+    api.getMultiCompanyGuidance(connectionId).then(setMcGuidance).catch(() => {});
+    api
+      .getDocumentsGate(connectionId)
+      .then((g) => setDocsGate({ available: g.available, message: g.message }))
+      .catch(() => setDocsGate({ available: false }));
+    api
+      .getDocumentsFolderMap(connectionId)
+      .then((m) => setDocsMapping(m.mapping))
+      .catch(() => {});
+  }, [refresh, connectionId]);
 
   async function onLoadModel(e: FormEvent) {
     e.preventDefault();
@@ -695,6 +728,115 @@ export default function AccessPage() {
               <li className="text-sm text-[#8f7a88]">No record rules for this model.</li>
             )}
           </ul>
+        </section>
+
+        <section className="mt-8 border border-[#3d2a38] bg-[#0f1a16]/70 p-5">
+          <h2 className="font-[family-name:var(--font-display)] text-xl text-[#faf6f9]">
+            {mcGuidance?.title ?? "Multi-company pack"}
+          </h2>
+          <p className="mt-2 text-sm text-[#a8909e]">
+            {mcGuidance?.body ??
+              "Adds x_company_id + global record rule with company_ids domain on custom models."}
+          </p>
+          <button
+            type="button"
+            disabled={busy || !model.startsWith("x_")}
+            onClick={async () => {
+              setBusy(true);
+              setError(null);
+              try {
+                const res = await api.applyMultiCompanyLive(connectionId, [model]);
+                setNotice(
+                  `Multi-company: ${res.fields_created} field(s), ${res.rules_created} rule(s)` +
+                    (res.warnings.length ? ` · ${res.warnings.join("; ")}` : ""),
+                );
+                await refresh(model);
+              } catch (err) {
+                setError(err instanceof Error ? err.message : "Multi-company apply failed");
+              } finally {
+                setBusy(false);
+              }
+            }}
+            className="mt-3 border border-[#c9a9c0] px-3 py-1 text-sm text-[#c9a9c0]"
+          >
+            Apply live pack to loaded model
+          </button>
+        </section>
+
+        <section className="mt-8 border border-[#3d2a38] bg-[#0f1a16]/70 p-5">
+          <h2 className="font-[family-name:var(--font-display)] text-xl text-[#faf6f9]">
+            Documents folder map
+          </h2>
+          <p className="mt-1 text-xs text-[#8f7a88]">
+            {docsGate?.available
+              ? "Map custom models to a Documents folder (Enterprise documents module)."
+              : docsGate?.message ??
+                "Documents module not available — config is stored but attach automation is suggestion-only."}
+          </p>
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            <button
+              type="button"
+              disabled={busy || !docsGate?.available}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  setDocsFolders(await api.listDocumentsFolders(connectionId));
+                  setNotice("Loaded Documents folders");
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : "Folder list failed");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              className="border border-[#c9a9c0] px-3 py-1 text-sm text-[#c9a9c0]"
+            >
+              Load folders
+            </button>
+            <select
+              value={docsFolderId}
+              onChange={(e) => setDocsFolderId(e.target.value)}
+              className="border border-[#3d2a38] bg-[#0c090b] px-2 py-1 text-sm"
+              disabled={docsFolders.length === 0}
+            >
+              <option value="">Select folder</option>
+              {docsFolders.map((f) => (
+                <option key={f.id} value={String(f.id)}>
+                  {f.name ?? `#${f.id}`}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={busy || !model.startsWith("x_") || !docsFolderId}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  const res = await api.setDocumentsFolder(connectionId, {
+                    model,
+                    folder_id: Number(docsFolderId),
+                  });
+                  setDocsMapping(res.mapping);
+                  setNotice(`Mapped ${model} → folder ${docsFolderId}`);
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : "Save folder map failed");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              className="border border-[#c9a9c0] px-3 py-1 text-sm text-[#c9a9c0]"
+            >
+              Save for loaded model
+            </button>
+          </div>
+          {Object.keys(docsMapping).length > 0 && (
+            <ul className="mt-3 space-y-1 font-mono text-xs text-[#8f7a88]">
+              {Object.entries(docsMapping).map(([m, fid]) => (
+                <li key={m}>
+                  {m} → folder {fid}
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       </div>
     </main>

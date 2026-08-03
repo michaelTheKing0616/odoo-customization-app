@@ -13,6 +13,53 @@
 
 ## Log
 
+### 2026-08-02 — PCM-4: enforcement beyond AI + UI badges
+**Decided:** Shared `protected_enforcement.py` gates Builder, ModuleSpec apply
+(`scrub_spec_for_protected_apply` → per-item skips), and Automations (chatter/activity
+allowed on tier-1). 422 detail includes `reason`, `safe_alternative`, `docs`. Power Ops
+account-move recipes get `protected_tier_note` and remain EXEMPT (Doc 7 batching). UI
+badges from `GET /protected-modules` on hub/builder/automations.
+**Why:** PCM-3 only covers AI path; direct API mutations must enforce the same effect rule.
+**Rejected:** Blocking Power Ops account recipes; hard-failing ModuleSpec apply on one
+violation; blocking link-only M2O from custom models into tier-1.
+
+### 2026-08-02 — PCM-3: guardrail injection + structured refusal
+**Decided:** Inject `guardrail_prompt(manifest)` into single-shot system/user prompts,
+staged steps 2/3/5, and critique; resolve manifest from connection cache else vendored
+community snapshot. Deterministic `strip_protected_module_effects` in `ai_rules.py` is
+enforcement (strips tier-1 writes; keeps link-only M2O/O2M). API returns `refusals[]`;
+wizard shows Protected module panel. Transcript: `docs/research/guardrail_run_2026-08-02.json`.
+**Why:** Doc 5 — LLM prompt is first line only; effect-not-mechanism must be enforced.
+**Rejected:** Relying on LLM alone; blocking link-only relations to protected models.
+
+### 2026-08-02 — PCM-2: protected manifest Path A+B + per-connection cache
+**Decided:** `fetch_community_modules_from_source` (git sparse-checkout → vendored JSON
+fallback); `fetch_live_installed_module_names` via existing `client.list_modules`; merged
+manifest cached on `odoo_connections.protected_manifest_json`, refreshed on create/probe;
+endpoint `GET …/protected-modules`.
+**Why:** PCM-1 classification needs version-aware module inventory without GitHub REST API.
+**Rejected:** Blocking probe on network failure; 16–18 offline snapshots seeded from real 19.0
+git list until per-branch snapshots refreshed.
+
+### 2026-08-02 — SAFE-2c: pre-merge core scaffold seed eliminates generation gaps
+**Decided:** After `llm_emit_missing_scaffold_models`, run `seed_missing_core_scaffold_models`
+(attorney/bill/compliance/deposit/trust…) from pack scaffold before `merge_domain_pack`.
+**Why:** Generation-gap warnings fire only when merge adds omitted core models; LLM repair is flaky.
+**Rejected:** Removing generation-gap warnings in merge (would hide real LLM under-coverage in tests).
+
+### 2026-08-02 — SAFE-2b: party-link models stay non-workflow after re-enrich
+**Decided:** Extract `is_party_link_model()`; block `apply_pattern_rules` from setting
+`is_workflow` on party links; skip kanban views/view_mode in `ensure_default_ui`; run final
+`repair_draft_integrity` after post-critique re-enrich in `draft_module_from_prompt`.
+**Why:** Quality demote worked but re-enrich + rules re-promoted `x_matter_party` (SAFE-2 v3 FAIL).
+**Rejected:** Demote-only without fixing enrich/rules (bug recurred every live draft).
+
+### 2026-08-02 — SAFE-1 baseline .gitignore hardening
+**Decided:** Extend root `.gitignore` with `.env.*` + `!.env.example`, Playwright artifact
+dirs, and docker bind-mount volume patterns before the initial commit.
+**Why:** Card checklist required explicit coverage beyond the pre-existing minimal ignore file.
+**Rejected:** Relying on `apps/web/.gitignore` `.env*` alone (would ignore `docker/.env.example` at root level inconsistently).
+
 ### 2026-08-02 — Orchestration plan package approved (55 cards, 11 waves)
 **Decided:** Full build-out executes from `plans/MASTER_PLAN.md` + `plans/cards/` via cheap
 models (Composer 2.5 default, Grok 4.5 for routed cards + all checking). Governing additions:
@@ -28,6 +75,34 @@ skips require user approval; checker diffs checklist vs code first.
 **Why:** User approved the plan and requires cheap-model execution without quality drift.
 **Rejected:** Deferring the promoted seven; auth-SaaS dependencies; deciding the 4 remaining
 DEFERRALS.md candidates without the user.
+
+### 2026-08-03 — Hybrid pricing: active-project slots + Project Pass (user-approved)
+**Decided:** Value metric = subscription tiers (unchanged) + ACTIVE-PROJECT SLOTS per tier
+(Solo 1 / Pro 3 +$15 / Business 10 +$10 / Agency 25 + packs) + a $299 one-time Project Pass
+(1 project, Pro-level build features, 60 days → read-only + basic maintenance; upgrade keeps
+project). Projects gain active↔archived lifecycle; archiving frees slots instantly and
+generously. HARD RULE: slots gate BUILD surfaces only — the operate/maintenance suite (bulk,
+health checks, Expert, snapshots) is never project-gated. Pricing anchor = consultant
+engagement costs, not SaaS peers. Encoded in WAVE-9-MON cards (MON-2/MON-4) +
+`active_projects_limit` entitlement key.
+**Why:** B2B/agency buyers derive episodic per-project value; flat monthly under-charged
+heavy builders and offered nothing to one-project buyers facing $3k–$10k consultant quotes.
+**Rejected:** Pure per-project pricing replacing subscriptions (lumpy, kills MRR + operate
+stickiness); metering builds/exports instead of concurrent slots (gameable, disputes);
+gating maintenance per-project (churn risk).
+
+### 2026-08-03 — Component-grain AI generation (card AI-8, user-approved)
+**Decided:** Draft Studio generates at three grains — field_pack / feature_slice / full_app —
+with components plugging into stock Odoo apps OR existing custom apps: intent grading, live
+host discovery (stock + `x_` models), an editable "connect points" pipeline step (host,
+form tab, menu nesting, smart buttons, FK direction), extension ModuleSpecs (`mode: inherit`,
+inferred depends), live-apply + small-module export, stacking collision detection, and a
+component gallery (AI-6 generalizer extended; 4 authored seeds). Grok 4.5-routed. PCM rules
+bind (tier-1 hosts link-only live; inherit views only — no primary mutation).
+**Why:** User wants small connectable components, not only whole apps; generator's `_inherit`
+support existed but the AI path never used it.
+**Rejected:** A separate "extension builder" product path outside ModuleSpec; padding small
+asks into full apps via depth floors.
 
 ### 2026-08-02 — UI identity: petrol teal supersedes Odoo purple (flagged supersession)
 **Decided:** App chrome uses our own identity — warm neutral scale + petrol/teal accent

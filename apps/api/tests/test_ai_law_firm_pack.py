@@ -354,6 +354,115 @@ def test_merge_fixes_users_fee_earner_and_terminal_status() -> None:
     _ = notes
 
 
+def test_reenrich_does_not_reworkflow_matter_party() -> None:
+    """Post-critique enrich+rules must not re-promote party links to workflow/kanban."""
+    from app.ai_enrich import enrich_draft_module_spec
+    from app.ai_model_quality import repair_draft_integrity
+    from app.ai_rules import validate_and_enrich_draft
+
+    draft = {
+        "technical_name": "law_firm",
+        "display_name": "Law Firm",
+        "models": [
+            {
+                "model": "x_matter",
+                "is_workflow": True,
+                "fields": [
+                    {"name": "x_name", "ttype": "char"},
+                    {
+                        "name": "x_status",
+                        "ttype": "selection",
+                        "selection": (
+                            "[('intake','Intake'),('open','Open'),('closed','Closed')]"
+                        ),
+                    },
+                ],
+            },
+            {
+                "model": "x_matter_party",
+                "is_workflow": True,
+                "description": "Matter Party / Role",
+                "fields": [
+                    {"name": "x_name", "ttype": "char"},
+                    {
+                        "name": "x_status",
+                        "ttype": "selection",
+                        "selection": (
+                            "[('draft','Draft'),('open','Open'),"
+                            "('done','Done'),('cancelled','Cancelled')]"
+                        ),
+                    },
+                    {
+                        "name": "x_matter_id",
+                        "ttype": "many2one",
+                        "relation": "x_matter",
+                    },
+                ],
+            },
+        ],
+        "views": [
+            {
+                "name": "x_matter_party.kanban",
+                "model": "x_matter_party",
+                "type": "kanban",
+                "arch": "<kanban/>",
+            }
+        ],
+        "actions": [
+            {
+                "name": "Matter Party / Role",
+                "model": "x_matter_party",
+                "view_mode": "list,kanban,form",
+            }
+        ],
+    }
+    repair_draft_integrity(draft)
+    draft, enrich_w = enrich_draft_module_spec(draft)
+    draft, rule_w, _ = validate_and_enrich_draft(draft)
+    repair_draft_integrity(draft)
+
+    party = next(m for m in draft["models"] if m["model"] == "x_matter_party")
+    assert party.get("is_workflow") is False
+    assert not any(
+        v.get("type") == "kanban" and v.get("model") == "x_matter_party"
+        for v in draft.get("views") or []
+    )
+    action = next(a for a in draft["actions"] if a.get("model") == "x_matter_party")
+    assert "kanban" not in str(action.get("view_mode") or "")
+    _ = enrich_w, rule_w
+
+
+def test_seed_core_scaffold_before_merge_avoids_generation_gap() -> None:
+    """Core masters seeded pre-merge must not trigger generation-gap warnings."""
+    from app.ai_domain_packs import law_firm_pack, merge_domain_pack
+    from app.ai_model_quality import seed_missing_core_scaffold_models
+
+    pack = law_firm_pack()
+    draft: dict = {
+        "models": [
+            {
+                "model": "x_matter",
+                "fields": [{"name": "x_name", "ttype": "char"}],
+            }
+        ]
+    }
+    draft, seed_notes = seed_missing_core_scaffold_models(draft, pack)
+    assert any("seeded core scaffold model x_bill" in n for n in seed_notes)
+    assert any("seeded core scaffold model x_compliance" in n for n in seed_notes)
+    merged, warnings = merge_domain_pack(draft, pack)
+    core_gaps = [
+        w
+        for w in warnings
+        if "generation gap" in w.lower()
+        and any(k in w.lower() for k in ("attorney", "bill", "compliance", "deposit", "trust"))
+    ]
+    assert core_gaps == []
+    ids = {m["model"] for m in merged["models"]}
+    assert "x_bill" in ids
+    assert "x_compliance" in ids
+    assert "x_attorney" in ids
+
+
 def test_creation_rules_and_few_shot_teach_excellence() -> None:
     assert "WORLD-CLASS OPS DEPTH" in MODEL_CREATION_RULES
     assert "specialty_a" in MODEL_CREATION_RULES or "placeholders" in MODEL_CREATION_RULES

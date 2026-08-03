@@ -25,6 +25,14 @@ from odoo_client.automation import AutomationTrigger, MailPostAction
 
 from app.db import get_db
 from app.odoo_service import OdooClientError, client_from_connection, get_connection_or_404
+from app.schemas import AutomationsGateOut, AutomationTriggersOut, GatingCalloutOut, GatingOptionOut
+from app.capabilities import probe_web_base_url, sample_installed_modules
+from app.tier_gating import approvals_gating, automations_gating, gating_context_for_connection
+
+from app.schemas import AutomationsGateOut, AutomationTriggersOut, GatingCalloutOut, GatingOptionOut
+from app.capabilities import probe_web_base_url, sample_installed_modules
+from app.tier_gating import approvals_gating, automations_gating, gating_context_for_connection
+
 from app.snapshots import (
     CONFIRM_PHRASE,
     ConfirmationRequired,
@@ -204,6 +212,126 @@ def _confirm_http(exc: ConfirmationRequired) -> HTTPException:
             "risks": exc.risks,
         },
     )
+
+
+def _gating_http(gating: Any) -> HTTPException:
+    payload = gating.to_dict() if hasattr(gating, "to_dict") else gating
+    return HTTPException(
+        status_code=409,
+        detail={"gating": payload, "message": payload.get("title", "Feature gated")},
+    )
+
+
+def _gating_out(gating: Any) -> GatingCalloutOut:
+    data = gating.to_dict() if hasattr(gating, "to_dict") else gating
+    return GatingCalloutOut(
+        feature=data["feature"],
+        title=data["title"],
+        why=data["why"],
+        options=list(data.get("options") or []),
+        available=bool(data.get("available")),
+        capability_key=data["capability_key"],
+        gating_choices=[
+            GatingOptionOut(id=c["id"], label=c["label"])
+            for c in data.get("gating_choices") or []
+        ],
+    )
+
+
+def _tier_context_for_connection(connection_id: str, db: Session):
+    row = get_connection_or_404(db, connection_id)
+    mods: list[str] = []
+    web_base_url: str | None = None
+    try:
+        client = client_from_connection(row)
+        mods = sample_installed_modules(client)
+        web_base_url = probe_web_base_url(client)
+    except OdooClientError:
+        pass
+    return gating_context_for_connection(
+        url=row.url,
+        server_version=row.server_version,
+        installed_modules=mods,
+        web_base_url=web_base_url,
+    )
+
+
+@router.get("/gate", response_model=AutomationsGateOut)
+def automations_gate(connection_id: str, db: Session = Depends(get_db)) -> AutomationsGateOut:
+    try:
+        ctx = _tier_context_for_connection(connection_id, db)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return AutomationsGateOut(
+        automations=_gating_out(automations_gating(ctx)),
+        approvals=_gating_out(approvals_gating(ctx)),
+    )
+
+
+def _gating_http(gating: Any) -> HTTPException:
+    payload = gating.to_dict() if hasattr(gating, "to_dict") else gating
+    return HTTPException(
+        status_code=409,
+        detail={"gating": payload, "message": payload.get("title", "Feature gated")},
+    )
+
+
+def _gating_out(gating: Any) -> GatingCalloutOut:
+    data = gating.to_dict() if hasattr(gating, "to_dict") else gating
+    return GatingCalloutOut(
+        feature=data["feature"],
+        title=data["title"],
+        why=data["why"],
+        options=list(data.get("options") or []),
+        available=bool(data.get("available")),
+        capability_key=data["capability_key"],
+        gating_choices=[
+            GatingOptionOut(id=c["id"], label=c["label"])
+            for c in data.get("gating_choices") or []
+        ],
+    )
+
+
+def _tier_context_for_connection(connection_id: str, db: Session):
+    row = get_connection_or_404(db, connection_id)
+    mods: list[str] = []
+    web_base_url: str | None = None
+    try:
+        client = client_from_connection(row)
+        mods = sample_installed_modules(client)
+        web_base_url = probe_web_base_url(client)
+    except OdooClientError:
+        pass
+    return gating_context_for_connection(
+        url=row.url,
+        server_version=row.server_version,
+        installed_modules=mods,
+        web_base_url=web_base_url,
+    )
+
+
+@router.get("/gate", response_model=AutomationsGateOut)
+def automations_gate(connection_id: str, db: Session = Depends(get_db)) -> AutomationsGateOut:
+    try:
+        ctx = _tier_context_for_connection(connection_id, db)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return AutomationsGateOut(
+        automations=_gating_out(automations_gating(ctx)),
+        approvals=_gating_out(approvals_gating(ctx)),
+    )
+
+
+@router.get("/triggers", response_model=AutomationTriggersOut)
+def automation_triggers(connection_id: str, db: Session = Depends(get_db)) -> AutomationTriggersOut:
+    from app.automation_trigger_probe import probe_automation_triggers
+
+    client = _client(connection_id, db)
+    try:
+        data = probe_automation_triggers(client)
+    except OdooClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return AutomationTriggersOut.model_validate(data)
 
 
 def _require_advanced_kind(action_kind: str, body: CreateAutomationBody) -> None:

@@ -43,6 +43,20 @@ export default function ConfigPage() {
   const [lang, setLang] = useState("en_US");
   const [labelModel, setLabelModel] = useState("res.partner");
   const [translationCsv, setTranslationCsv] = useState("");
+  const [specJson, setSpecJson] = useState('{"models":[{"model":"x_demo","fields":[]}]}');
+  const [i18nProbe, setI18nProbe] = useState<{
+    ok: boolean;
+    method: string;
+    message: string;
+    major: number | null;
+  } | null>(null);
+  const [specJson, setSpecJson] = useState('{"models":[{"model":"x_demo","fields":[]}]}');
+  const [i18nProbe, setI18nProbe] = useState<{
+    ok: boolean;
+    method: string;
+    message: string;
+    major: number | null;
+  } | null>(null);
   const [mailForm, setMailForm] = useState({
     name: "",
     model: "res.partner",
@@ -118,6 +132,7 @@ export default function ConfigPage() {
     }
     const defs = await api.listIrDefaults(connectionId, defaultModel);
     setDefaults(defs);
+    api.probeI18n(connectionId).then(setI18nProbe).catch(() => setI18nProbe(null));
   }, [connectionId, seqQuery, lang, defaultModel]);
 
   useEffect(() => {
@@ -806,6 +821,69 @@ export default function ConfigPage() {
             className="mt-3 w-full border border-[#3d2a38] bg-[#0c090b] p-3 font-mono text-xs"
             placeholder="type,model,name,lang,source,value"
           />
+        </section>
+
+        <section className="mt-8 border border-[#3d2a38] bg-[#0f1a16]/70 p-5">
+          <h2 className="font-[family-name:var(--font-display)] text-xl">
+            ModuleSpec translations (CMP-11)
+          </h2>
+          <p className="mt-1 text-xs text-[#8f7a88]">
+            {i18nProbe
+              ? `Probe: ${i18nProbe.method} (Odoo ${i18nProbe.major ?? "?"}). ${i18nProbe.message}`
+              : "Loading i18n probe…"}
+          </p>
+          <textarea
+            value={specJson}
+            onChange={(e) => setSpecJson(e.target.value)}
+            rows={6}
+            className="mt-3 w-full border border-[#3d2a38] bg-[#0c090b] p-3 font-mono text-xs"
+            placeholder='{"models":[{"model":"x_lib_book","fields":[]}]}'
+          />
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  const spec = JSON.parse(specJson) as Record<string, unknown>;
+                  const csv = await api.exportSpecTranslationsCsv(connectionId, spec, lang);
+                  setTranslationCsv(csv);
+                  setNotice(`Exported ModuleSpec labels for ${lang}`);
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : "Spec export failed");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              className="border border-[#c9a9c0] px-3 text-sm text-[#c9a9c0]"
+            >
+              Export spec CSV
+            </button>
+            <button
+              type="button"
+              disabled={busy || !translationCsv}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  const res = await api.importSpecTranslations(connectionId, {
+                    csv_text: translationCsv,
+                    dry_run: true,
+                  });
+                  setNotice(
+                    `Spec import dry-run: ${res.updated} would update, ${res.skipped} skipped`,
+                  );
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : "Spec import failed");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              className="border border-[#c9a9c0] px-3 text-sm text-[#c9a9c0]"
+            >
+              Spec import dry-run
+            </button>
+          </div>
         </section>
       </div>
 

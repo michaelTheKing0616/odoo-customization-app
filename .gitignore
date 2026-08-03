@@ -33,6 +33,9 @@ htmlcov/
 apps/web/test-results/
 apps/web/playwright-report/
 
+# Expert RAG ingest cache (odoo/documentation sparse clones + manifests)
+.cache/expert/
+
 # Docker local volume bind mounts (if used)
 docker/**/odoo-data/
 docker/**/pgdata/

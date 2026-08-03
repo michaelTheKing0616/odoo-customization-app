@@ -1,0 +1,13 @@
+{
+  "note": "Structural before/after for AI-2 temp+prompt tuning. Live Ollama A/B pending qwen3 pull completion.",
+  "before": {
+    "temperature": "fixed 0.2 all steps",
+    "prompt_blocks": "per-step ad hoc; no shared anti-pattern or closed ttype vocab"
+  },
+  "after": {
+    "temperature_table": "apps/api/app/ai_prompt_constants.py STEP_TEMPERATURES",
+    "prompt_blocks": "append_prompt_blocks() adds Output ONLY JSON + closed ttypes + DO-NOT on every LLM step",
+    "exemplar_rule": "few_shot_exemplar_block skips when matched pack == car_rental"
+  },
+  "gate": "144 passed pytest -k ai"
+}

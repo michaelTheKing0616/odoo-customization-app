@@ -18,30 +18,30 @@ INPUT: `llm_provider.py`, `settings.py`, `ai_ollama.py`, `ai_pipeline.py`, `ai_c
 `ai_model_quality.py` (`llm_emit_missing_scaffold_models`).
 
 CHECKLIST:
-- [ ] Settings: `AI_MODEL_BULK` (default `qwen3:8b`), `AI_MODEL_REASONING` (default
+- [x] Settings: `AI_MODEL_BULK` (default `qwen3:8b`), `AI_MODEL_REASONING` (default
       `qwen3:14b`), `AI_THINKING` (`auto|on|off`, default auto). Existing `AI_MODEL`-style
       setting remains as fallback for both (backward compatible).
-- [ ] `LLMProvider.generate(..., reasoning: bool = False)`: ollama backend sends the think
+- [x] `LLMProvider.generate(..., reasoning: bool = False)`: ollama backend sends the think
       parameter — VERIFY the exact param name against the installed Ollama version first
       (`ollama --version` + /api/chat docs probe); if unsupported, fall back to manual CoT:
       prepend step-by-step instruction, parse only after a `---JSON---` marker. openai-compat
       backend: map to `reasoning_effort` if the endpoint accepts it, else manual fallback.
       Thinking trace is ALWAYS discarded before JSON parse.
-- [ ] Routing: reasoning=True + reasoning model for: scaffold/domain matching, relationships
+- [x] Routing: reasoning=True + reasoning model for: scaffold/domain matching, relationships
       step, automations step, critique, `llm_emit_missing_scaffold_models`, (AI-4's workflow
       pass). reasoning=False + bulk model for: entity extraction, per-model fields.
       Single-pipeline draft call: reasoning model, thinking on.
-- [ ] Schema-constrained decoding (cheap variant, per DEFERRALS decision 2026-08-02): probe
+- [x] Schema-constrained decoding (cheap variant, per DEFERRALS decision 2026-08-02): probe
       whether the installed Ollama accepts a JSON SCHEMA in the `format` field (not just
       `"json"`). If yes: pass the step's response schema in `format` for pipeline steps with
       stable schemas (entities, fields, relationships), keeping the pydantic validate/repair
       pass as backstop; if no: keep `format: json` unchanged. Record the probe result. Do NOT
       add outlines/guidance or any new serving stack — that route is deferred.
-- [ ] `GET /api/ai/status` reports both models + thinking support detection result + whether
+- [x] `GET /api/ai/status` reports both models + thinking support detection result + whether
       schema-in-format is active.
-- [ ] Tests: provider unit tests with fake backends asserting param routing + trace
+- [x] Tests: provider unit tests with fake backends asserting param routing + trace
       stripping; settings matrix test.
-- [ ] Run mastery battery — green.
+- [x] Run mastery battery — green.
 
 DONE MEANS: both pipelines route models/thinking per table above; one real Ollama call with
 thinking recorded to `docs/research/thinking_probe_<date>.json`.
@@ -66,18 +66,18 @@ INPUT: `llm_provider.py` (temperature pass-through), `ai_pipeline.py`, `ai_ollam
 `ai_critique.py`, `ai_model_quality.py`, `ai_domain_packs.py` (teaching blob).
 
 CHECKLIST:
-- [ ] `generate(..., temperature: float | None)` plumbed to both backends.
-- [ ] Temps: extraction/fields/relationships/validation 0.15; entities + automations 0.6;
+- [x] `generate(..., temperature: float | None)` plumbed to both backends.
+- [x] Temps: extraction/fields/relationships/validation 0.15; entities + automations 0.6;
       critique 0.15; single-pipeline 0.3 (documented constants, one module-level table).
-- [ ] Audit EVERY prompt against Doc 4 §2: concrete example output shown (not described),
+- [x] Audit EVERY prompt against Doc 4 §2: concrete example output shown (not described),
       closed ttype vocabulary listed, "Output ONLY the JSON" instruction present. Fix
       stragglers; record the audit as a table in the PR/return.
-- [ ] Anti-pattern DO-NOT block appended per step (Doc 4 §7): no invented ttypes; no relations
+- [x] Anti-pattern DO-NOT block appended per step (Doc 4 §7): no invented ttypes; no relations
       to models not in the entity list; no `id` field name; no prose around JSON; plus the
       protected-modules one-liner (PCM-3's section).
-- [ ] Exemplar check: few-shot exemplar for a domain must be thematically adjacent, never the
+- [x] Exemplar check: few-shot exemplar for a domain must be thematically adjacent, never the
       matched pack itself (Doc 4 §3) — assert in code (skip exemplar if same pack id).
-- [ ] Mastery battery + law-firm pack tests green; one real generation compared before/after
+- [x] Mastery battery + law-firm pack tests green; one real generation compared before/after
       saved to `docs/research/temp_tuning_<date>/`.
 
 DONE MEANS: audit table complete (every prompt listed with its temp + schema-example status);
@@ -102,13 +102,13 @@ INPUT: `ai_pipeline.py`, `ai_ollama.py` (scaffold retrieval + AI-4's workflow pa
 `ai_rag.py`, `settings.py`.
 
 CHECKLIST:
-- [ ] Setting `AI_SELF_CONSISTENCY=off|on` (default off; docs note ~2–3x calls on those steps).
-- [ ] Scaffold selection: 3 samples at temp 0.5 → majority vote on pack id; tie → highest
+- [x] Setting `AI_SELF_CONSISTENCY=off|on` (default off; docs note ~2–3x calls on those steps).
+- [x] Scaffold selection: 3 samples at temp 0.5 → majority vote on pack id; tie → highest
       retrieval score; disagreement logged as warning.
-- [ ] Workflow states: 3 samples → merge = union of states appearing ≥2 times, order by
+- [x] Workflow states: 3 samples → merge = union of states appearing ≥2 times, order by
       average position; transitions kept when endpoints survive; merge notes in warnings.
-- [ ] Deterministic with seeded fake provider in tests (vote + merge + tie paths).
-- [ ] `GET /api/ai/status` reports the flag.
+- [x] Deterministic with seeded fake provider in tests (vote + merge + tie paths).
+- [x] `GET /api/ai/status` reports the flag.
 
 DONE MEANS: flag off = zero behavior change (regression suite proves); flag on = vote/merge
 paths tested.
@@ -134,17 +134,17 @@ equivalent enrichment), `ai_enrich.py` (statusbar/buttons), `ai_rules.py`,
 `packages/module-generator` (spec fields for transitions).
 
 CHECKLIST:
-- [ ] Spec extension: `state_field` gains `transitions: [[from, to], ...]` (schema +
+- [x] Spec extension: `state_field` gains `transitions: [[from, to], ...]` (schema +
       round-trip in module-generator .meta.json; additive, optional — old specs stay valid).
-- [ ] Staged pipeline: new step calling reasoning model (thinking on, temp 0.15) per workflow
+- [x] Staged pipeline: new step calling reasoning model (thinking on, temp 0.15) per workflow
       entity; validates states exist, transitions reference real states, terminal states have
       no mandatory outgoing edge.
-- [ ] Single pipeline: quality pass derives/validates transitions from emitted selections
+- [x] Single pipeline: quality pass derives/validates transitions from emitted selections
       (deterministic default chain draft→…→terminal when LLM omitted them).
-- [ ] `ai_enrich.py`: form statusbar buttons generated FROM transitions (confirm/cancel/etc.
+- [x] `ai_enrich.py`: form statusbar buttons generated FROM transitions (confirm/cancel/etc.
       per edge) instead of generic pairs; existing behavior preserved when no transitions.
-- [ ] Automation suggestions may reference transitions (e.g. overdue only from active states).
-- [ ] Tests: staged step unit test (fake provider), enrich buttons-from-transitions test,
+- [x] Automation suggestions may reference transitions (e.g. overdue only from active states).
+- [x] Tests: staged step unit test (fake provider), enrich buttons-from-transitions test,
       regression battery green.
 
 DONE MEANS: drafts contain validated transitions; forms show transition-derived buttons; no
@@ -170,15 +170,15 @@ INPUT: `ai_domain_pack_law_firm.py` + `ai_reference_law_firm.py` (the pattern to
 `docs/reference/law_firm_modulespec_gold.json` (depth bar).
 
 CHECKLIST (repeat per pack — check each pack line only when ALL sub-items done for it):
-- [ ] Pack: restaurant (tables/reservations/orders/menu items/kitchen statuses; POS-adjacent
+- [x] Pack: restaurant (tables/reservations/orders/menu items/kitchen statuses; POS-adjacent
       but NO payment logic — link-only per PCM).
-- [ ] Pack: real_estate (properties/units/leases/viewings/maintenance requests/deposits;
+- [x] Pack: real_estate (properties/units/leases/viewings/maintenance requests/deposits;
       lease workflow with terminal states).
-- [ ] Pack: hotel (rooms/room types/bookings/check-in-out workflow/housekeeping tasks/rate
+- [x] Pack: hotel (rooms/room types/bookings/check-in-out workflow/housekeeping tasks/rate
       plans; booking↔invoice link-only).
-- [ ] Pack: subscription (plans/subscriptions/renewal workflow/usage lines; NO recurring
+- [x] Pack: subscription (plans/subscriptions/renewal workflow/usage lines; NO recurring
       billing logic — link to invoicing pattern only, sale_subscription is tier-1).
-- [ ] Pack: project_tracker (projects/tasks/milestones/time entries; assignee = res.users
+- [x] Pack: project_tracker (projects/tasks/milestones/time entries; assignee = res.users
       login rule respected).
 Per pack requirements (the checker verifies each): gold-spec module file
 `ai_domain_pack_<id>.py` (+ reference module if following law-firm split); canonical `x_`
@@ -210,14 +210,14 @@ domain-pack file for human review (Doc 2 §4's compounding moat).
 INPUT: `ai_domain_packs.py`, a saved project (`routers/projects.py`), law-firm pack shape.
 
 CHECKLIST:
-- [ ] `POST /api/ai/generalize-pack` (input: ModuleSpec JSON or project id): strips
+- [x] `POST /api/ai/generalize-pack` (input: ModuleSpec JSON or project id): strips
       instance-specific naming to canonical `x_` names, extracts selections/relations/
       automations/smart buttons, emits a ready-to-review `ai_domain_pack_candidate_<slug>.py`
       source string + tags suggestion (LLM reasoning call for tags/anti-patterns; deterministic
       for structure).
-- [ ] Output is DOWNLOAD/response only — never auto-registered (human reviews then commits).
-- [ ] Round-trip test: law-firm gold spec → generalizer → output parses + classify-compatible.
-- [ ] Wizard/projects UI: "Suggest as template" button with consent note (permission framing
+- [x] Output is DOWNLOAD/response only — never auto-registered (human reviews then commits).
+- [x] Round-trip test: law-firm gold spec → generalizer → output parses + classify-compatible.
+- [x] Wizard/projects UI: "Suggest as template" button with consent note (permission framing
       per Doc 2 §4).
 
 DONE MEANS: endpoint + UI button + tests green.
@@ -241,16 +241,16 @@ INPUT: `module_import.py`, `packages/module-generator` (export), `spec_apply_ui.
 ignore opaque blocks), ModuleSpec editor UI (`ModuleSpecEditor.tsx`).
 
 CHECKLIST:
-- [ ] Import: unrecognized Python (compute methods, constrains, business logic) captured into
+- [x] Import: unrecognized Python (compute methods, constrains, business logic) captured into
       `custom_code_blocks: [{source_file, kind, content, model?}]` on the spec — never dropped.
       Same for unrecognized XML nodes (custom widgets/JS assets refs).
-- [ ] Export: blocks re-emitted verbatim into the generated module (correct file placement;
+- [x] Export: blocks re-emitted verbatim into the generated module (correct file placement;
       byte-identical content test).
-- [ ] Live apply: opaque blocks are skipped with an explicit per-item warning (never partial-
+- [x] Live apply: opaque blocks are skipped with an explicit per-item warning (never partial-
       applied).
-- [ ] UI: ModuleSpec editor "Custom code" tab — read-only viewer with file/kind labels and the
+- [x] UI: ModuleSpec editor "Custom code" tab — read-only viewer with file/kind labels and the
       "not editable visually" explanation (COPY_GUIDE tone).
-- [ ] Round-trip test: import a module containing a compute method + custom XML → export →
+- [x] Round-trip test: import a module containing a compute method + custom XML → export →
       diff shows blocks byte-identical; `tests/test_module_import.py` extended.
 
 DONE MEANS: no silent drops — a fuzz test importing 3 OCA-style sample files shows zero lost
@@ -259,6 +259,80 @@ content (everything mapped OR in blocks).
 DO NOT: attempt to parse arbitrary Python semantics; execute imported code.
 
 GATE: `uv run pytest tests/test_module_import.py tests/test_report_export.py -q` + zip safety suite.
+
+RETURN: ≤10 lines.
+
+DEVIATIONS: conservative + log.
+
+---
+
+## AI-8 — Component-grain generation: extensions for Odoo apps AND custom apps (Grok 4.5 card)
+
+TASK: Make Draft Studio work at any grain size — field packs and feature slices that plug
+into existing stock Odoo apps or existing custom apps — not only full standalone apps. Plus
+a reusable component gallery. (User-approved addition, 2026-08-03.)
+
+INPUT: `ai_pipeline.py` + `ai_ollama.py` (intent/ambition classification in `ai_depth.py`),
+introspection endpoints (live models incl. `x_*`), `module_import.py`/projects (saved specs),
+generator `_inherit` + inherit-view support (already exists — MEMORY 2026-07-27 "Module
+export supports model extensions"), `spec_apply_ui.py`, AI-6 generalizer, PCM (tier rules
+bind: components on tier-1 hosts are link-only), wizard page.
+
+CHECKLIST:
+- [x] Intent grading: classifier extends the ambition pass with a GRAIN axis —
+      `field_pack | feature_slice | full_app` — from prompt phrasing ("add … to",
+      "attach", "extend", named existing app/model) + reasoning-model tie-break; depth
+      floors, scaffolding, and menu generation scale to grain (a field_pack gets NO new
+      menus/apps; a feature_slice gets a sub-menu under the host's menu, never a new root).
+      Full-app path byte-identical to today when grain=full_app (regression battery proves).
+- [x] Host discovery: candidate hosts resolved from (a) live connection introspection —
+      stock models AND existing `x_` models with their fields/menus, (b) saved
+      projects/ModuleSpecs in the workspace; prompt mentions matched to hosts (fuzzy on
+      label + technical name); ambiguity → ranked candidates surfaced, not guessed.
+- [x] Connect-points step (new pipeline step, reasoning model): before generation, propose
+      the mounting plan — host model(s), form placement (which tab/group via inherit
+      xpath anchor from the live arch), menu nesting (host app's menu id), smart buttons on
+      the host, FK direction and relation_field. Emitted as `connect_points` on the spec;
+      wizard renders it as an editable review step (approve/change host, tab, menu) before
+      the rest of the draft generates.
+- [x] Component spec shape: ModuleSpec with host models as `mode: inherit` entries (fields
+      added to host), new models (if any) carrying M2Os to hosts, inherit views targeting
+      live arch anchors (validated by TIER-2's dry-run validator), `depends` inferred from
+      hosts (stock module map + custom-module detection for promoted custom apps);
+      PCM enforcement: tier-1 hosts allow link-only components (relational fields FROM the
+      component model; no field adds ON tier-1 models via live path — module path with
+      review note, consistent with CMP-8's boundary).
+- [x] Both outputs work at component grain: live apply (inherit inject path) and module
+      export (small clean zip, correct depends, no orphan menus) — sandbox gate on an
+      exported component whose host is a stock app (install with host preloaded via
+      SANDBOX_EXTRA_MODULES).
+- [x] Stacking: multiple components onto one host don't collide — deterministic unique
+      inherit-view names + field-name collision detection against live host schema with
+      rename suggestion (warning, not silent rename).
+- [x] Component gallery: AI-6's generalizer extended to component grain — "Save as
+      component" produces a reusable component template (host-slot abstracted: "attaches
+      to: any model with partner_id" or "attaches to: sale.order"); gallery section in the
+      wizard alongside app templates, seeded with 4 built-ins we author: warranty tracker
+      (sale.order), inspection checklist (project.task), compliance status + expiry reminder
+      (res.partner), document expiry pack (any model — host-slot).
+- [x] Wizard UX: grain is visible and overridable (chip: "Detected: component for Sales");
+      connect-points review step; component results view (host-anchored summary, not the
+      full-app model grid). Functional now; restyled by UIX-4a if it lands later.
+- [x] Tests: grain classifier suite (≥12 prompts incl. ambiguous), connect-points emission
+      with fake introspection (stock host + custom x_ host), collision detection, PCM
+      tier-1 host rules, gallery seed application live smoke: apply "inspection checklist"
+      onto project.task on docker 19 (project installed) end-to-end — fields on task form,
+      sub-menu under Project, smart button counts.
+
+DONE MEANS: "add a warranty tracker to my sale orders" yields a component (no new app root,
+fields on sale.order form via inherit, correct depends=['sale']) applied live AND exported/
+sandbox-installed; full-app prompts unchanged (regression green); gallery seeds work.
+
+DO NOT: let component grain regress full-app quality (battery is the guard); mutate host
+primary views (inherit only — MEMORY lock); guess hosts on ambiguity.
+
+GATE: `uv run pytest tests/test_ai_components.py tests/test_mastery_regression_battery.py -q`
++ RPC smoke 19 (project + sale hosts) + sandbox component gate.
 
 RETURN: ≤10 lines.
 

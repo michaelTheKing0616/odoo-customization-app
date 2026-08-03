@@ -14,7 +14,9 @@ from typing import Any
 
 from app.ai_rules import completeness_checklist
 from app.ai_depth import classify_ambition, depth_gaps
+from app.ai_prompt_constants import STEP_TEMPERATURES, append_prompt_blocks
 from app.llm_provider import LLMError, LLMProvider, get_llm_provider
+from app.ai_prompt_constants import STEP_TEMPERATURES, append_prompt_blocks
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -112,7 +114,13 @@ def llm_critique(
         f"Original user request:\n{user_prompt or '(n/a)'}\n\n"
         f"Draft ModuleSpec:\n{json.dumps(slim, default=str)[:7000]}"
     )
-    raw = provider.generate_json(prompt, system=system, timeout_s=90.0)
+    raw = provider.generate_json(
+        prompt,
+        system=system,
+        timeout_s=90.0,
+        reasoning=True,
+        temperature=STEP_TEMPERATURES["critique"],
+    )
     data = _extract_json(raw)
     if not isinstance(data, dict):
         raise ValueError("critique response was not a JSON object")

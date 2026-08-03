@@ -374,7 +374,10 @@ def llm_emit_missing_scaffold_models(
     user_prompt: str,
 ) -> tuple[dict[str, Any], list[str]]:
     """Ask the LLM to emit scaffold models it omitted — pack merge is the fallback only."""
+    from app.ai_prompt_constants import STEP_TEMPERATURES, append_prompt_blocks
     from app.llm_provider import LLMError
+    from app.ai_prompt_constants import STEP_TEMPERATURES, append_prompt_blocks
+    from app.ai_prompt_constants import STEP_TEMPERATURES, append_prompt_blocks
 
     notes: list[str] = []
     have = {
@@ -423,13 +426,17 @@ def llm_emit_missing_scaffold_models(
                 ],
             }
         )
-    system = (
+    system = append_prompt_blocks(
         "You repair a ModuleSpec that omitted required ops models. "
-        "Reply ONLY with JSON: {\"models\":[...]} containing ONLY the missing models. "
+        "Example output:\n"
+        '{"models":[{"model":"x_matter_bill","description":"Client bill",'
+        '"fields":[{"name":"x_name","ttype":"char","string":"Reference","required":true},'
+        '{"name":"x_matter_id","ttype":"many2one","relation":"x_matter","string":"Matter"}]}]}\n'
+        "Return ONLY the missing models in {\"models\":[...]}. "
         "Each model needs ≥6 substantive fields (x_name + relations + domain attrs). "
         "Fee-earner/counsel M2Os must relation the staff model, not res.users. "
         "Party/role-link models must NOT set is_workflow.\n"
-        + MODEL_CREATION_RULES
+        + MODEL_CREATION_RULES,
     )
     prompt = (
         f"User request:\n{user_prompt}\n\n"
@@ -439,7 +446,12 @@ def llm_emit_missing_scaffold_models(
         f"{json.dumps(sketches)[:5000]}"
     )
     try:
-        raw = provider.generate_json(prompt, system=system)
+        raw = provider.generate_json(
+            prompt,
+            system=system,
+            reasoning=True,
+            temperature=STEP_TEMPERATURES["quality.scaffold_gap"],
+        )
         data = raw if isinstance(raw, dict) else json.loads(raw)
     except (LLMError, TypeError, ValueError, json.JSONDecodeError) as exc:
         notes.append(f"quality: scaffold-gap LLM repair failed ({exc})")
@@ -472,6 +484,102 @@ def llm_emit_missing_scaffold_models(
         notes.append(
             f"quality: scaffold-gap repair emitted none of {missing_ids} "
             "(pack merge may fill)"
+        )
+    return draft, notes
+
+
+_CORE_SCAFFOLD_LEAF_KEYS = (
+    "attorney",
+    "doctor",
+    "staff",
+    "bill",
+    "invoice",
+    "compliance",
+    "deposit",
+    "trust",
+)
+
+
+def seed_missing_core_scaffold_models(
+    draft: dict[str, Any],
+    scaffold: dict[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    """Pre-merge deterministic floor for core ops masters the LLM still omitted.
+
+    Generation-gap warnings fire only when merge_domain_pack adds these models.
+    Seeding here preserves pack merge as field-upgrade only — no gap warnings.
+    """
+    notes: list[str] = []
+    have = {
+        str(m.get("model"))
+        for m in (draft.get("models") or [])
+        if isinstance(m, dict) and m.get("model")
+    }
+    scaffold_by_id = {
+        str(m["model"]): m
+        for m in (scaffold.get("models") or [])
+        if isinstance(m, dict) and m.get("model")
+    }
+    for mid, sm in scaffold_by_id.items():
+        if mid in have:
+            continue
+        leaf = mid.replace("x_", "")
+        if not any(k in leaf for k in _CORE_SCAFFOLD_LEAF_KEYS):
+            continue
+        seeded = copy.deepcopy(sm)
+        seeded["source"] = "scaffold_core_seed"
+        draft.setdefault("models", []).append(seeded)
+        have.add(mid)
+        notes.append(
+            f"quality: seeded core scaffold model {mid} before pack merge (LLM omitted)"
+        )
+    return draft, notes
+
+
+_CORE_SCAFFOLD_LEAF_KEYS = (
+    "attorney",
+    "doctor",
+    "staff",
+    "bill",
+    "invoice",
+    "compliance",
+    "deposit",
+    "trust",
+)
+
+
+def seed_missing_core_scaffold_models(
+    draft: dict[str, Any],
+    scaffold: dict[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    """Pre-merge deterministic floor for core ops masters the LLM still omitted.
+
+    Generation-gap warnings fire only when merge_domain_pack adds these models.
+    Seeding here preserves pack merge as field-upgrade only — no gap warnings.
+    """
+    notes: list[str] = []
+    have = {
+        str(m.get("model"))
+        for m in (draft.get("models") or [])
+        if isinstance(m, dict) and m.get("model")
+    }
+    scaffold_by_id = {
+        str(m["model"]): m
+        for m in (scaffold.get("models") or [])
+        if isinstance(m, dict) and m.get("model")
+    }
+    for mid, sm in scaffold_by_id.items():
+        if mid in have:
+            continue
+        leaf = mid.replace("x_", "")
+        if not any(k in leaf for k in _CORE_SCAFFOLD_LEAF_KEYS):
+            continue
+        seeded = copy.deepcopy(sm)
+        seeded["source"] = "scaffold_core_seed"
+        draft.setdefault("models", []).append(seeded)
+        have.add(mid)
+        notes.append(
+            f"quality: seeded core scaffold model {mid} before pack merge (LLM omitted)"
         )
     return draft, notes
 
@@ -593,6 +701,7 @@ def llm_deepen_model_fields(
     """Ask the LLM to add fields (and only substantive models) to thin drafts."""
     from app.ai_critique import apply_critique_repairs
     from app.ai_depth import _is_hollow_model, _models, compute_depth_metrics
+    from app.ai_prompt_constants import STEP_TEMPERATURES, append_prompt_blocks
     from app.llm_provider import LLMError
 
     notes: list[str] = []
@@ -621,18 +730,17 @@ def llm_deepen_model_fields(
     if not thin and metrics.get("fields_avg", 0) >= float(min_fields):
         return draft, notes
 
-    system = (
-        "You improve ModuleSpec MODEL QUALITY for Odoo Community. Reply ONLY with JSON:\n"
-        "{"
-        '"missing_fields":[{"model":"x_existing","name":"x_field","ttype":"char|selection|many2one|date|text|float",'
-        '"string":"Label","relation":"x_other|res.partner","selection":"[(\'a\',\'A\')]","required":false}],'
-        '"missing_models":[{"model":"x_substantive","description":"...","is_workflow":true,'
-        '"fields":[...at least 6 fields including x_name and a many2one...]}],'
-        '"notes":["..."]'
-        "}\n"
+    system = append_prompt_blocks(
+        "You improve ModuleSpec MODEL QUALITY for Odoo Community. Example output:\n"
+        '{"missing_fields":[{"model":"x_matter","name":"x_client_id","ttype":"many2one",'
+        '"relation":"res.partner","string":"Client"}],'
+        '"missing_models":[{"model":"x_matter_task","description":"Task line","is_workflow":false,'
+        '"fields":[{"name":"x_name","ttype":"char","string":"Task","required":true},'
+        '{"name":"x_matter_id","ttype":"many2one","relation":"x_matter","string":"Matter"}]}],'
+        '"notes":["Deepened thin matter model"]}\n'
         + MODEL_CREATION_RULES
         + "\nNever add hollow catalog models (type/tag/stage/priority name+code only). "
-        "Deepen listed thin models first. Triggers/automations are out of scope here."
+        "Deepen listed thin models first. Triggers/automations are out of scope here.",
     )
     prompt = (
         f"User request (ambition={ambition}):\n{user_prompt}\n\n"
@@ -643,7 +751,13 @@ def llm_deepen_model_fields(
         "loop is missing a substantive role (lines, events, billing, checks)."
     )
     try:
-        raw = provider.generate_json(prompt, system=system, timeout_s=120.0)
+        raw = provider.generate_json(
+            prompt,
+            system=system,
+            timeout_s=120.0,
+            reasoning=False,
+            temperature=STEP_TEMPERATURES["quality.field_deepen"],
+        )
     except LLMError as exc:
         notes.append(f"quality: field-deepen skipped ({exc})")
         return draft, notes
@@ -2271,6 +2385,32 @@ def remap_staff_fks_from_users(draft: dict[str, Any]) -> list[str]:
     return notes
 
 
+def is_party_link_model(model: dict[str, Any]) -> bool:
+    """Party/role-link models are relational join rows, not header workflows."""
+    if not isinstance(model, dict):
+        return False
+    mid = str(model.get("model") or "")
+    leaf = mid.replace("x_", "")
+    desc = str(model.get("description") or "").lower()
+    return any(
+        k in leaf or k in desc
+        for k in ("party", "role_link", "participant", "stakeholder")
+    )
+
+
+def is_party_link_model(model: dict[str, Any]) -> bool:
+    """Party/role-link models are relational join rows, not header workflows."""
+    if not isinstance(model, dict):
+        return False
+    mid = str(model.get("model") or "")
+    leaf = mid.replace("x_", "")
+    desc = str(model.get("description") or "").lower()
+    return any(
+        k in leaf or k in desc
+        for k in ("party", "role_link", "participant", "stakeholder")
+    )
+
+
 def demote_spurious_link_workflows(draft: dict[str, Any]) -> list[str]:
     """Party/role-link models are not workflows — drop is_workflow + generic status kanban."""
     notes: list[str] = []
@@ -2284,13 +2424,7 @@ def demote_spurious_link_workflows(draft: dict[str, Any]) -> list[str]:
         if not isinstance(m, dict) or not m.get("is_workflow"):
             continue
         mid = str(m.get("model") or "")
-        leaf = mid.replace("x_", "")
-        desc = str(m.get("description") or "").lower()
-        is_link = any(
-            k in leaf or k in desc
-            for k in ("party", "role_link", "participant", "stakeholder")
-        )
-        if not is_link:
+        if not is_party_link_model(m):
             continue
         status = next(
             (
@@ -2443,7 +2577,7 @@ def ensure_min_workflows(draft: dict[str, Any], ambition: str) -> list[str]:
         mid = str(m.get("model") or "")
         leaf = mid.replace("x_", "")
         # Never promote party/role-link models into workflows
-        if any(k in leaf for k in ("party", "role_link", "participant", "stakeholder")):
+        if is_party_link_model(m):
             continue
         names = {
             str(f.get("name") or "")
@@ -2660,6 +2794,12 @@ def repair_draft_integrity(draft: dict[str, Any], *, ambition: str = "standard")
     notes.extend(dedupe_redundant_automations(draft))
     notes.extend(cap_partner_smart_buttons(draft))
     notes.extend(ensure_min_workflows(draft, ambition))
+    from app.ai_workflow import ensure_workflow_transitions_on_draft
+
+    notes.extend(ensure_workflow_transitions_on_draft(draft))
+    from app.ai_workflow import ensure_workflow_transitions_on_draft
+
+    notes.extend(ensure_workflow_transitions_on_draft(draft))
     # Re-demote after promote pass so party links never stay workflows
     notes.extend(demote_spurious_link_workflows(draft))
     notes.extend(purge_ghost_ui(draft))
@@ -2701,8 +2841,14 @@ __all__ = [
     "min_fields_for_ambition",
     "collapse_hollow_catalogs_to_selections",
     "llm_deepen_model_fields",
+    "llm_emit_missing_scaffold_models",
+    "seed_missing_core_scaffold_models",
     "run_model_quality_pass",
     "repair_draft_integrity",
+    "is_party_link_model",
+    "demote_spurious_link_workflows",
+    "is_party_link_model",
+    "demote_spurious_link_workflows",
     "repair_orphan_relations",
     "normalize_smart_button_shapes",
     "purge_ghost_ui",

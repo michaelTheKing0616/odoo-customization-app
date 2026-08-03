@@ -15,9 +15,9 @@ from odoo_client.compat import (
 from app.hosting import (
     hosting_hint_from_url,
     hosting_operator_message,
-    python_modules_allowed,
 )
-from app.schemas import CapabilityMatrixOut, UnsupportedCapabilityOut
+from app.tier_matrix import build_tier_context, evaluate_full_matrix, python_modules_allowed_from_matrix
+from app.schemas import CapabilityMatrixOut, TierMatrixOut, TierCapabilityRowOut, UnsupportedCapabilityOut
 
 # Operator-facing labels (kept in API layer so UI stays thin).
 CAPABILITY_LABELS: dict[str, str] = {
@@ -51,9 +51,10 @@ def capabilities_from_version(
     """Build matrix from stored/probed server_version. None if version unknown."""
     if not server_version:
         return None
-    hosting = hosting_hint_from_url(url)
-    py_ok = python_modules_allowed(hosting)
     mods = list(installed_modules or [])
+    hosting = hosting_hint_from_url(url)
+    ctx = build_tier_context(url=url, server_version=server_version, installed_modules=mods)
+    py_ok = python_modules_allowed_from_matrix(ctx)
     warnings: list[str] = []
     if not py_ok:
         warnings.append(
@@ -120,6 +121,136 @@ def sample_installed_modules(client: Any, *, limit: int = 40) -> list[str]:
         return sorted({str(r["name"]) for r in rows if r.get("name")})
     except Exception:  # noqa: BLE001 — probe must not fail connections
         return []
+
+
+def probe_web_base_url(client: Any) -> str | None:
+    """Read Odoo web.base.url config parameter (best-effort hosting hint)."""
+    try:
+        rows = client.execute_kw(
+            "ir.config_parameter",
+            "search_read",
+            [[("key", "=", "web.base.url")]],
+            {"fields": ["value"], "limit": 1},
+        )
+        if rows and rows[0].get("value"):
+            return str(rows[0]["value"]).strip() or None
+    except Exception:  # noqa: BLE001 — probe must not fail connections
+        return None
+    return None
+
+
+def tier_matrix_response(
+    *,
+    connection_id: str,
+    url: str | None,
+    server_version: str | None,
+    installed_modules: list[str] | None = None,
+    web_base_url: str | None = None,
+    use_cache: bool = True,
+) -> TierMatrixOut | None:
+    """Build four-tier matrix for API responses. None when version unknown."""
+    if not server_version:
+        return None
+    evaluated = evaluate_full_matrix(
+        url=url,
+        server_version=server_version,
+        installed_modules=installed_modules,
+        web_base_url=web_base_url,
+        connection_id=connection_id,
+        use_cache=use_cache,
+    )
+    return TierMatrixOut(
+        connection_id=connection_id,
+        hosting=evaluated.hosting,
+        hosting_hint=evaluated.hosting_hint,
+        edition=evaluated.edition,
+        major=evaluated.major,
+        server_version=evaluated.server_version,
+        web_base_url=web_base_url,
+        installed_modules_sample=list(evaluated.installed_modules_sample),
+        capabilities=[
+            TierCapabilityRowOut(
+                key=c.key,
+                label=c.label,
+                available=c.available,
+                reason=c.reason,
+                options=list(c.options),
+            )
+            for c in evaluated.capabilities
+        ],
+        legacy_supported=list(evaluated.legacy_supported),
+        legacy_unsupported=[
+            UnsupportedCapabilityOut(id=u["id"], label=u["label"], reason=u["reason"])
+            for u in evaluated.legacy_unsupported
+        ],
+        warnings=list(evaluated.warnings),
+        message=evaluated.message,
+    )
+
+
+def probe_web_base_url(client: Any) -> str | None:
+    """Read Odoo web.base.url config parameter (best-effort hosting hint)."""
+    try:
+        rows = client.execute_kw(
+            "ir.config_parameter",
+            "search_read",
+            [[("key", "=", "web.base.url")]],
+            {"fields": ["value"], "limit": 1},
+        )
+        if rows and rows[0].get("value"):
+            return str(rows[0]["value"]).strip() or None
+    except Exception:  # noqa: BLE001 — probe must not fail connections
+        return None
+    return None
+
+
+def tier_matrix_response(
+    *,
+    connection_id: str,
+    url: str | None,
+    server_version: str | None,
+    installed_modules: list[str] | None = None,
+    web_base_url: str | None = None,
+    use_cache: bool = True,
+) -> TierMatrixOut | None:
+    """Build four-tier matrix for API responses. None when version unknown."""
+    if not server_version:
+        return None
+    evaluated = evaluate_full_matrix(
+        url=url,
+        server_version=server_version,
+        installed_modules=installed_modules,
+        web_base_url=web_base_url,
+        connection_id=connection_id,
+        use_cache=use_cache,
+    )
+    return TierMatrixOut(
+        connection_id=connection_id,
+        hosting=evaluated.hosting,
+        hosting_hint=evaluated.hosting_hint,
+        edition=evaluated.edition,
+        major=evaluated.major,
+        server_version=evaluated.server_version,
+        web_base_url=web_base_url,
+        installed_modules_sample=list(evaluated.installed_modules_sample),
+        capabilities=[
+            TierCapabilityRowOut(
+                key=c.key,
+                label=c.label,
+                available=c.available,
+                reason=c.reason,
+                options=list(c.options),
+            )
+            for c in evaluated.capabilities
+        ],
+        legacy_supported=list(evaluated.legacy_supported),
+        legacy_unsupported=[
+            UnsupportedCapabilityOut(id=u["id"], label=u["label"], reason=u["reason"])
+            for u in evaluated.legacy_unsupported
+        ],
+        warnings=list(evaluated.warnings),
+        message=evaluated.message,
+    )
 
 
 def _matrix_from_caps(

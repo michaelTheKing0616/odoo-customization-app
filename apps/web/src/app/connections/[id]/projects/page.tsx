@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { SuggestTemplateButton } from "@/components/SuggestTemplateButton";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import {
   api,
@@ -254,6 +255,22 @@ export default function ProjectsPage() {
                     >
                       Edit ModuleSpec
                     </Link>
+                    {models > 0 && (
+                      <SuggestTemplateButton
+                        spec={p.spec_json}
+                        connectionId={connectionId}
+                        projectId={p.id}
+                        disabled={busy}
+                      />
+                    )}
+                    {models > 0 && (
+                      <SuggestTemplateButton
+                        spec={p.spec_json}
+                        connectionId={connectionId}
+                        projectId={p.id}
+                        disabled={busy}
+                      />
+                    )}
                     <button
                       type="button"
                       disabled={busy || !canMutate}

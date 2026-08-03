@@ -657,6 +657,36 @@ def _law_firm_pack() -> dict[str, Any]:
     return law_firm_pack()
 
 
+def _restaurant_pack() -> dict[str, Any]:
+    from app.ai_domain_pack_restaurant import restaurant_pack
+
+    return restaurant_pack()
+
+
+def _real_estate_pack() -> dict[str, Any]:
+    from app.ai_domain_pack_real_estate import real_estate_pack
+
+    return real_estate_pack()
+
+
+def _hotel_pack() -> dict[str, Any]:
+    from app.ai_domain_pack_hotel import hotel_pack
+
+    return hotel_pack()
+
+
+def _subscription_pack() -> dict[str, Any]:
+    from app.ai_domain_pack_subscription import subscription_pack
+
+    return subscription_pack()
+
+
+def _project_tracker_pack() -> dict[str, Any]:
+    from app.ai_domain_pack_project_tracker import project_tracker_pack
+
+    return project_tracker_pack()
+
+
 _PACK_FACTORIES: list[tuple[str, Any, re.Pattern[str]]] = [
     (
         "car_rental",
@@ -685,6 +715,98 @@ _PACK_FACTORIES: list[tuple[str, Any, re.Pattern[str]]] = [
             r"\b(law\s*firm|legal\s+practice|practice\s+management|attorney|"
             r"lawyer|litigation|counsel|matter\s+management|legal\s+ops|"
             r"world[\s-]?class\s+law|billable\s+hour|retainer|trust\s+account)\b",
+            re.I,
+        ),
+    ),
+    # Hotel before real_estate — "property" alone is ambiguous; hotel prompts use PMS/check-in.
+    (
+        "hotel",
+        _hotel_pack,
+        re.compile(
+            r"\b(hotel|pms|property\s+management\s+system|check[\s-]?in|check[\s-]?out|"
+            r"housekeeping|front\s+desk|room\s+booking|hotel\s+management|lodging|guest\s+folio)\b",
+            re.I,
+        ),
+    ),
+    (
+        "restaurant",
+        _restaurant_pack,
+        re.compile(
+            r"\b(restaurant|dining|menu|kitchen|food\s+service|pos\s+lite|"
+            r"table\s+reservation|waiter|bistro|cafe|dining\s+order)\b",
+            re.I,
+        ),
+    ),
+    (
+        "real_estate",
+        _real_estate_pack,
+        re.compile(
+            r"\b(real\s*estate|rental\s+property|lease\s+management|tenant\s+portal|"
+            r"property\s+listing|unit\s+lease|viewing|landlord|apartment\s+rental)\b",
+            re.I,
+        ),
+    ),
+    (
+        "subscription",
+        _subscription_pack,
+        re.compile(
+            r"\b(subscription|membership\s+plan|renewal\s+workflow|saas\s+plan|"
+            r"usage[\s-]?based|member\s+portal)\b",
+            re.I,
+        ),
+    ),
+    (
+        "project_tracker",
+        _project_tracker_pack,
+        re.compile(
+            r"\b(project\s+tracker|project\s+management|task\s+tracker|milestone|"
+            r"time\s+entry|timesheet|pm\s+tool)\b",
+            re.I,
+        ),
+    ),
+    # Hotel before real_estate — "property" alone is ambiguous; hotel prompts use PMS/check-in.
+    (
+        "hotel",
+        _hotel_pack,
+        re.compile(
+            r"\b(hotel|pms|property\s+management\s+system|check[\s-]?in|check[\s-]?out|"
+            r"housekeeping|front\s+desk|room\s+booking|hotel\s+management|lodging|guest\s+folio)\b",
+            re.I,
+        ),
+    ),
+    (
+        "restaurant",
+        _restaurant_pack,
+        re.compile(
+            r"\b(restaurant|dining|menu|kitchen|food\s+service|pos\s+lite|"
+            r"table\s+reservation|waiter|bistro|cafe|dining\s+order)\b",
+            re.I,
+        ),
+    ),
+    (
+        "real_estate",
+        _real_estate_pack,
+        re.compile(
+            r"\b(real\s*estate|rental\s+property|lease\s+management|tenant\s+portal|"
+            r"property\s+listing|unit\s+lease|viewing|landlord|apartment\s+rental)\b",
+            re.I,
+        ),
+    ),
+    (
+        "subscription",
+        _subscription_pack,
+        re.compile(
+            r"\b(subscription|membership\s+plan|renewal\s+workflow|saas\s+plan|"
+            r"usage[\s-]?based|member\s+portal)\b",
+            re.I,
+        ),
+    ),
+    (
+        "project_tracker",
+        _project_tracker_pack,
+        re.compile(
+            r"\b(project\s+tracker|project\s+management|task\s+tracker|milestone|"
+            r"time\s+entry|timesheet|pm\s+tool)\b",
             re.I,
         ),
     ),
@@ -759,11 +881,12 @@ def retrieve_domain_pack_lexical(
 
 
 def retrieve_domain_pack(
-    prompt: str, *, min_score: float = 0.08
+    prompt: str, *, min_score: float = 0.08, provider: Any | None = None
 ) -> tuple[str, dict[str, Any], float] | None:
     """Step 0 retrieval: embedding RAG when available, else regex/Jaccard.
 
     Returns (pack_id, pack, score). Score is cosine (embeddings) or Jaccard/1.0 (regex).
+    When ``AI_SELF_CONSISTENCY=on`` and a provider is supplied, runs pack-id vote/merge.
     """
     from app.ai_rag import retrieve_with_rag
 
@@ -772,20 +895,44 @@ def retrieve_domain_pack(
         pack_loader=_all_packs,
         jaccard_retrieve=lambda p: retrieve_domain_pack_lexical(p, min_score=min_score),
     )
-    if method == "none" or not pack_id:
-        return None
-    # Stash retrieval method for draft metadata
-    if isinstance(pack, dict):
-        pack = copy.deepcopy(pack)
-        pack["_retrieval"] = {"method": method, "score": score}
-    return pack_id, pack, score
+    baseline: tuple[str, dict[str, Any], float] | None = None
+    if method != "none" and pack_id:
+        if isinstance(pack, dict):
+            pack = copy.deepcopy(pack)
+            pack["_retrieval"] = {"method": method, "score": score}
+        baseline = pack_id, pack, score
+
+    from app.ai_self_consistency import (
+        retrieve_scaffold_with_consistency,
+        self_consistency_enabled,
+    )
+
+    if self_consistency_enabled() and provider is not None:
+        voted, warnings = retrieve_scaffold_with_consistency(
+            prompt,
+            provider,
+            baseline=baseline,
+            pack_loader=_all_packs,
+        )
+        if voted is not None:
+            pid, p, sc = voted
+            if warnings and isinstance(p, dict):
+                p.setdefault("_self_consistency_warnings", warnings)
+            return pid, p, sc
+        return baseline
+
+    return baseline
 
 
 def match_domain_pack(prompt: str) -> tuple[str, dict[str, Any]] | None:
-    hit = retrieve_domain_pack(prompt)
-    if hit is None:
+    """Strict regex-only match for offline / AI-off paths (no Jaccard false positives)."""
+    text = (prompt or "").strip()
+    if not text:
         return None
-    return hit[0], hit[1]
+    for pack_id, factory, pattern in _PACK_FACTORIES:
+        if pattern.search(text):
+            return pack_id, copy.deepcopy(factory())
+    return None
 
 
 def merge_domain_pack(
@@ -978,7 +1125,12 @@ __all__ = [
     "clinic_pack",
     "field_service_pack",
     "hospital_pack",
+    "hotel_pack",
     "law_firm_pack",
+    "project_tracker_pack",
+    "real_estate_pack",
+    "restaurant_pack",
+    "subscription_pack",
     "match_domain_pack",
     "merge_domain_pack",
     "retrieve_domain_pack",
@@ -996,4 +1148,24 @@ def hospital_pack() -> dict[str, Any]:
 def law_firm_pack() -> dict[str, Any]:
     """Re-export for tests and callers."""
     return _law_firm_pack()
+
+
+def restaurant_pack() -> dict[str, Any]:
+    return _restaurant_pack()
+
+
+def real_estate_pack() -> dict[str, Any]:
+    return _real_estate_pack()
+
+
+def hotel_pack() -> dict[str, Any]:
+    return _hotel_pack()
+
+
+def subscription_pack() -> dict[str, Any]:
+    return _subscription_pack()
+
+
+def project_tracker_pack() -> dict[str, Any]:
+    return _project_tracker_pack()
 

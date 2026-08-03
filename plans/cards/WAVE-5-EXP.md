@@ -18,28 +18,28 @@ embedded.
 INPUT: `ai_rag.py` (embedding infra to extend, not duplicate), Doc 8 §3 spec, `settings.py`.
 
 CHECKLIST:
-- [ ] Fetcher: sparse checkout `odoo/documentation` branches 16.0/17.0/18.0/19.0
+- [x] Fetcher: sparse checkout `odoo/documentation` branches 16.0/17.0/18.0/19.0
       (`--filter=blob:none`, sparse-checkout `content`), same technique as PCM-2; ingestion
       CLI `python -m app.expert.ingest --version 19.0` with offline resume.
-- [ ] Chunker: RST heading-hierarchy chunking (docutils or regex-based section splitter —
+- [x] Chunker: RST heading-hierarchy chunking (docutils or regex-based section splitter —
       no heavyweight new deps; chunks carry breadcrumb path "Developer > Views > Inheritance"),
       target 300–900 tokens/chunk, never split mid-section below the target unless a section
       exceeds 2x max (then split at paragraph boundaries with continuation markers).
-- [ ] Project-docs source: ingest the 8-document master reference (store it at
+- [x] Project-docs source: ingest the 8-document master reference (store it at
       `docs/reference/MASTER_REFERENCE.md` if not already present — ask user for the file if
       missing rather than reconstructing) + selected `docs/*.md` capability docs, tagged
       `source: project`, version `all`.
-- [ ] Community Q&A: ingestion path implemented behind `EXPERT_COMMUNITY_SOURCE=off|dir`
+- [x] Community Q&A: ingestion path implemented behind `EXPERT_COMMUNITY_SOURCE=off|dir`
       (off default) — reads a local directory of curated Q&A markdown (user curates; no
       scraping pipeline in v1 — flag as [SKIPPED] candidate ONLY the scraper, not the path).
-- [ ] Store: `expert_chunks` table (id, source, version, breadcrumb, text, embedding blob) in
+- [x] Store: `expert_chunks` table (id, source, version, breadcrumb, text, embedding blob) in
       the app Postgres; embedding via existing MiniLM when installed, Jaccard fallback
       otherwise (mirror `ai_rag.py` pattern); cosine top-k retrieval with version filter +
       source weighting (project docs boosted).
-- [ ] Ingest run for 18.0 + 19.0 committed as a reproducible artifact count (chunk counts in
+- [x] Ingest run for 18.0 + 19.0 committed as a reproducible artifact count (chunk counts in
       return; store contents NOT committed to git — .gitignore the cache dir; ingestion is a
       setup step documented in README).
-- [ ] Tests: chunker on fixture RST (heading integrity, no mid-section splits), version
+- [x] Tests: chunker on fixture RST (heading integrity, no mid-section splits), version
       filter, retrieval ranking sanity, fallback path.
 
 DONE MEANS: `--version 19.0` ingest completes locally with chunk count reported; retrieval

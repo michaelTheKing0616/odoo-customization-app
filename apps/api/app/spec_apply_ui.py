@@ -30,6 +30,8 @@ class UiApplyResult(ApplyResult):
     automations_created: int = 0
     access_rights_created: int = 0
     record_rules_created: int = 0
+    sequences_created: int = 0
+    sequences_created: int = 0
 
 
 def _selection_keys(selection: Any) -> list[str]:
@@ -736,6 +738,290 @@ def _note_automations(spec: dict[str, Any], result: UiApplyResult) -> None:
             f"{result.automations_noted} automation(s) in draft — not applied "
             "(apply_automations=false). Review Automations page or re-run with apply."
         )
+
+
+def _warn_custom_code_blocks(spec: dict[str, Any], result: UiApplyResult) -> None:
+    """Live apply skips opaque custom logic — explicit per-block warnings (AI-7)."""
+    from app.module_spec_codec import merge_custom_code_blocks
+
+    for block in merge_custom_code_blocks(spec):
+        src = block.get("source_file") or block.get("path") or "custom"
+        kind = block.get("kind") or "opaque"
+        model = block.get("model")
+        label = f"{src} [{kind}]"
+        if model:
+            label = f"{label} on {model}"
+        result.warnings.append(
+            f"Custom logic skipped (view as code, not live-applied): {label}"
+        )
+
+
+def _workflow_models(spec: dict[str, Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for model in spec.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        if (model.get("mode") or "new") != "new":
+            continue
+        model_name = model.get("model")
+        if not model_name or not str(model_name).startswith("x_"):
+            continue
+        if model.get("is_workflow") or model.get("state_field"):
+            out.append(model)
+    return out
+
+
+def _reference_field_name(model: dict[str, Any]) -> str:
+    names = {
+        str(f.get("name"))
+        for f in (model.get("fields") or [])
+        if isinstance(f, dict) and f.get("name")
+    }
+    if "x_code" in names:
+        return "x_code"
+    if "x_reference" in names:
+        return "x_reference"
+    return "x_code"
+
+
+def _sequence_prefix_for_model(model: str) -> str:
+    from module_generator import sequence_prefix_for_model
+
+    return sequence_prefix_for_model(model)
+
+
+def _apply_workflow_sequences(
+    client: OdooClient, spec: dict[str, Any], result: UiApplyResult
+) -> None:
+    """Create ir.sequence rows for workflow models (config_ops parity)."""
+    from app.id_generator import IdGeneratorConfig, create_reference_sequence
+
+    for model in _workflow_models(spec):
+        model_name = str(model["model"])
+        if not client.model_exists(model_name):
+            result.warnings.append(
+                f"Skip sequence for {model_name}: model not on instance yet"
+            )
+            continue
+        prefix_token = _sequence_prefix_for_model(model_name).rstrip("/")
+        config = IdGeneratorConfig(prefix=prefix_token, separator="/", padding=5)
+        try:
+            create_reference_sequence(
+                client,
+                model=model_name,
+                config=config,
+                sequence_name=f"{model.get('description') or model_name} Reference",
+            )
+            result.sequences_created += 1
+        except Exception as exc:  # noqa: BLE001
+            result.warnings.append(f"Sequence for {model_name} failed: {exc}")
+
+
+def _apply_component_inherit(client: OdooClient, spec: dict[str, Any], result: UiApplyResult) -> None:
+    """AI-8: inject inherit fields/views for component-grain specs."""
+    if not spec.get("_component") and spec.get("grain") not in ("field_pack", "feature_slice"):
+        return
+
+    from app.ai_connect_points import unique_inherit_view_name
+
+    for model_entry in spec.get("models") or []:
+        if not isinstance(model_entry, dict):
+            continue
+        if str(model_entry.get("mode") or "new") != "inherit":
+            continue
+        host = str(model_entry.get("model") or "")
+        if not host or not client.model_exists(host):
+            result.warnings.append(f"Skip inherit fields: host {host} missing")
+            continue
+        for field_entry in model_entry.get("fields") or []:
+            if not isinstance(field_entry, dict):
+                continue
+            fname = field_entry.get("name")
+            ttype = str(field_entry.get("ttype") or "")
+            if not fname or ttype == "one2many":
+                continue
+            if not client.field_exists(host, str(fname)):
+                continue
+            try:
+                updated = client.inject_field_into_views(host, str(fname), strategy="inherit")
+                if updated:
+                    result.views_created += len(updated)
+            except Exception as exc:  # noqa: BLE001
+                result.warnings.append(f"Inherit inject {host}.{fname} failed: {exc}")
+
+    for view in spec.get("views") or []:
+        if not isinstance(view, dict):
+            continue
+        if str(view.get("mode") or "") != "extension":
+            continue
+        model = str(view.get("model") or "")
+        vtype = str(view.get("type") or "form")
+        arch = view.get("arch")
+        if not model or not isinstance(arch, str) or not arch.strip():
+            continue
+        primary = client.find_view(model, vtype, primary_only=True) or client.find_view(model, vtype)
+        if primary is None:
+            result.warnings.append(f"Skip inherit view: no primary {vtype} for {model}")
+            continue
+        vname = unique_inherit_view_name(model, str(view.get("name") or "extension"))
+        try:
+            existing = client._find_view_by_exact_name(vname)  # noqa: SLF001
+            if existing is not None:
+                client.update_view_arch(existing.id, arch)
+                result.views_updated += 1
+            else:
+                client.create_inherit_view(
+                    model=model,
+                    name=vname,
+                    view_type=primary.type or vtype,
+                    inherit_id=primary.id,
+                    arch=arch,
+                )
+                result.views_created += 1
+        except Exception as exc:  # noqa: BLE001
+            result.warnings.append(f"Inherit view {vname} failed: {exc}")
+
+
+def _warn_custom_code_blocks(spec: dict[str, Any], result: UiApplyResult) -> None:
+    """Live apply skips opaque custom logic — explicit per-block warnings (AI-7)."""
+    from app.module_spec_codec import merge_custom_code_blocks
+
+    for block in merge_custom_code_blocks(spec):
+        src = block.get("source_file") or block.get("path") or "custom"
+        kind = block.get("kind") or "opaque"
+        model = block.get("model")
+        label = f"{src} [{kind}]"
+        if model:
+            label = f"{label} on {model}"
+        result.warnings.append(
+            f"Custom logic skipped (view as code, not live-applied): {label}"
+        )
+
+
+def _workflow_models(spec: dict[str, Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for model in spec.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        if (model.get("mode") or "new") != "new":
+            continue
+        model_name = model.get("model")
+        if not model_name or not str(model_name).startswith("x_"):
+            continue
+        if model.get("is_workflow") or model.get("state_field"):
+            out.append(model)
+    return out
+
+
+def _reference_field_name(model: dict[str, Any]) -> str:
+    names = {
+        str(f.get("name"))
+        for f in (model.get("fields") or [])
+        if isinstance(f, dict) and f.get("name")
+    }
+    if "x_code" in names:
+        return "x_code"
+    if "x_reference" in names:
+        return "x_reference"
+    return "x_code"
+
+
+def _sequence_prefix_for_model(model: str) -> str:
+    from module_generator import sequence_prefix_for_model
+
+    return sequence_prefix_for_model(model)
+
+
+def _apply_workflow_sequences(
+    client: OdooClient, spec: dict[str, Any], result: UiApplyResult
+) -> None:
+    """Create ir.sequence rows for workflow models (config_ops parity)."""
+    from app.id_generator import IdGeneratorConfig, create_reference_sequence
+
+    for model in _workflow_models(spec):
+        model_name = str(model["model"])
+        if not client.model_exists(model_name):
+            result.warnings.append(
+                f"Skip sequence for {model_name}: model not on instance yet"
+            )
+            continue
+        prefix_token = _sequence_prefix_for_model(model_name).rstrip("/")
+        config = IdGeneratorConfig(prefix=prefix_token, separator="/", padding=5)
+        try:
+            create_reference_sequence(
+                client,
+                model=model_name,
+                config=config,
+                sequence_name=f"{model.get('description') or model_name} Reference",
+            )
+            result.sequences_created += 1
+        except Exception as exc:  # noqa: BLE001
+            result.warnings.append(f"Sequence for {model_name} failed: {exc}")
+
+
+def _apply_component_inherit(client: OdooClient, spec: dict[str, Any], result: UiApplyResult) -> None:
+    """AI-8: inject inherit fields/views for component-grain specs."""
+    if not spec.get("_component") and spec.get("grain") not in ("field_pack", "feature_slice"):
+        return
+
+    from app.ai_connect_points import unique_inherit_view_name
+
+    for model_entry in spec.get("models") or []:
+        if not isinstance(model_entry, dict):
+            continue
+        if str(model_entry.get("mode") or "new") != "inherit":
+            continue
+        host = str(model_entry.get("model") or "")
+        if not host or not client.model_exists(host):
+            result.warnings.append(f"Skip inherit fields: host {host} missing")
+            continue
+        for field_entry in model_entry.get("fields") or []:
+            if not isinstance(field_entry, dict):
+                continue
+            fname = field_entry.get("name")
+            ttype = str(field_entry.get("ttype") or "")
+            if not fname or ttype == "one2many":
+                continue
+            if not client.field_exists(host, str(fname)):
+                continue
+            try:
+                updated = client.inject_field_into_views(host, str(fname), strategy="inherit")
+                if updated:
+                    result.views_created += len(updated)
+            except Exception as exc:  # noqa: BLE001
+                result.warnings.append(f"Inherit inject {host}.{fname} failed: {exc}")
+
+    for view in spec.get("views") or []:
+        if not isinstance(view, dict):
+            continue
+        if str(view.get("mode") or "") != "extension":
+            continue
+        model = str(view.get("model") or "")
+        vtype = str(view.get("type") or "form")
+        arch = view.get("arch")
+        if not model or not isinstance(arch, str) or not arch.strip():
+            continue
+        primary = client.find_view(model, vtype, primary_only=True) or client.find_view(model, vtype)
+        if primary is None:
+            result.warnings.append(f"Skip inherit view: no primary {vtype} for {model}")
+            continue
+        vname = unique_inherit_view_name(model, str(view.get("name") or "extension"))
+        try:
+            existing = client._find_view_by_exact_name(vname)  # noqa: SLF001
+            if existing is not None:
+                client.update_view_arch(existing.id, arch)
+                result.views_updated += 1
+            else:
+                client.create_inherit_view(
+                    model=model,
+                    name=vname,
+                    view_type=primary.type or vtype,
+                    inherit_id=primary.id,
+                    arch=arch,
+                )
+                result.views_created += 1
+        except Exception as exc:  # noqa: BLE001
+            result.warnings.append(f"Inherit view {vname} failed: {exc}")
 
 
 def apply_module_spec_ui(

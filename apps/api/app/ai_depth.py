@@ -878,6 +878,8 @@ def llm_expand_depth(
         for m in _models(draft)
     ]
     from app.ai_model_quality import MODEL_CREATION_RULES
+    from app.ai_prompt_constants import STEP_TEMPERATURES, append_prompt_blocks
+    from app.ai_prompt_constants import STEP_TEMPERATURES, append_prompt_blocks
 
     targets = AMBITION_TARGETS[ambition]
     metrics = compute_depth_metrics(draft)
@@ -886,25 +888,24 @@ def llm_expand_depth(
         need_models = max(0, int(targets["min_models"]) - int(metrics["model_count"]))
         need_models = max(need_models, 2)  # always push at least 2 when under floor
 
-    system = (
+    system = append_prompt_blocks(
         "You deepen an Odoo Community ModuleSpec that is too thin for the user request. "
-        "Reply ONLY with JSON:\n"
-        "{"
-        '"missing_models":[{"model":"x_thing","description":"...","is_workflow":false,'
-        '"fields":[{"name":"x_name","ttype":"char","string":"Name","required":true},'
-        '{"name":"x_parent_id","ttype":"many2one","relation":"x_parent","string":"Parent"}]}],'
-        '"missing_fields":[{"model":"x_existing","name":"x_field","ttype":"many2one",'
-        '"relation":"x_other","string":"Label"}],'
-        '"missing_automations":[{"name":"...","model":"x_...","trigger":"on_write",'
+        "Example output:\n"
+        '{"missing_models":[{"model":"x_matter_event","description":"Hearing/event",'
+        '"is_workflow":false,'
+        '"fields":[{"name":"x_name","ttype":"char","string":"Event","required":true},'
+        '{"name":"x_matter_id","ttype":"many2one","relation":"x_matter","string":"Matter"}]}],'
+        '"missing_fields":[{"model":"x_matter","name":"x_lead_id","ttype":"many2one",'
+        '"relation":"x_staff","string":"Lead"}],'
+        '"missing_automations":[{"name":"Notify on status","model":"x_matter","trigger":"on_write",'
         '"safe_actions":[{"kind":"object_write","field":"x_status","value":"done"}]}],'
-        '"notes":["..."]'
-        "}\n"
+        '"notes":["Added event line model"]}\n'
         "Every missing_model must be SUBSTANTIVE (≥6 fields, ≥1 many2one to an EXISTING model). "
         "FORBIDDEN: type/category/tag/stage/priority name+code-only models — use selections. "
         "FORBIDDEN: duplicate billing models (if x_bill/x_charge exists, do not add x_invoice). "
         "FORBIDDEN: x_client mini-CRM when res.partner already links clients. "
-        "No Python code automations. No markdown.\n"
-        + MODEL_CREATION_RULES
+        "No Python code automations.\n"
+        + MODEL_CREATION_RULES,
     )
     loop_hints = (
         "Add operational roles NOT already covered (rename to THIS domain): "
@@ -928,7 +929,13 @@ def llm_expand_depth(
             f"at least {need_models} NEW substantive models (each ≥6 fields)."
         )
     try:
-        raw = provider.generate_json(prompt, system=system, timeout_s=120.0)
+        raw = provider.generate_json(
+            prompt,
+            system=system,
+            timeout_s=120.0,
+            reasoning=False,
+            temperature=STEP_TEMPERATURES["depth.expand"],
+        )
     except LLMError as exc:
         notes.append(f"depth: LLM expand skipped ({exc})")
         return draft, notes

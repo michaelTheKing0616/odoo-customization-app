@@ -10,6 +10,11 @@ import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import { FormCanvas } from "@/components/designer/FormCanvas";
 import { KanbanCardPreview } from "@/components/designer/KanbanCardPreview";
 import { FieldPalette } from "@/components/designer/FieldPalette";
+import {
+  NicheWidgetPalette,
+  type NicheWidgetEntry,
+} from "@/components/designer/NicheWidgetPalette";
+import { PreviewThemeScope } from "@/components/designer/PreviewThemeScope";
 import { PropsInspector } from "@/components/designer/PropsInspector";
 import {
   ActivityTypeRow,
@@ -19,8 +24,13 @@ import {
   Connection,
   FieldRow,
   MailTemplateRow,
+  PreviewTheme,
   SnapshotRow,
 } from "@/lib/api";
+import { DesignerFieldInspector } from "@/components/designer/DesignerFieldInspector";
+import { fallbackWidgetsForTtype, type WidgetOption } from "@/lib/widgetCatalog";
+import { DesignerFieldInspector } from "@/components/designer/DesignerFieldInspector";
+import { fallbackWidgetsForTtype, type WidgetOption } from "@/lib/widgetCatalog";
 import {
   bindModeSupported,
   bindModeUnsupportedReason,
@@ -58,10 +68,11 @@ type DesignerField = {
   id: string;
   name: string;
   string?: string;
-  required?: boolean;
-  readonly?: boolean;
+  required?: boolean | string;
+  readonly?: boolean | string;
   invisible?: string;
   widget?: string;
+  options?: string;
 };
 
 type DesignerButton = {
@@ -159,6 +170,21 @@ function fieldSpec(f: DesignerField) {
     readonly: f.readonly,
     invisible: f.invisible || undefined,
     widget: f.widget || undefined,
+    options: f.options || undefined,
+  };
+}
+
+function mapParsedField(n: Record<string, unknown>): DesignerField {
+  return {
+    kind: "field",
+    id: uid("f"),
+    name: String(n.name || ""),
+    string: n.string ? String(n.string) : undefined,
+    required: n.required as boolean | string | undefined,
+    readonly: n.readonly as boolean | string | undefined,
+    invisible: n.invisible ? String(n.invisible) : undefined,
+    widget: n.widget ? String(n.widget) : undefined,
+    options: n.options ? String(n.options) : undefined,
   };
 }
 
@@ -312,6 +338,22 @@ export default function DesignerPage() {
   const [listDefaultOrder, setListDefaultOrder] = useState("");
   const [kanbanCanCreate, setKanbanCanCreate] = useState(true);
   const [kanbanQuickCreate, setKanbanQuickCreate] = useState(true);
+  const [viewSample, setViewSample] = useState(false);
+  const [widgetAdvanced, setWidgetAdvanced] = useState(false);
+  const [inspectorWidgets, setInspectorWidgets] = useState<WidgetOption[]>([]);
+  const [nicheWidgets, setNicheWidgets] = useState<NicheWidgetEntry[]>([]);
+  const [colorPalette, setColorPalette] = useState<Array<{ index: number; name: string }>>(
+    [],
+  );
+  const [previewTheme, setPreviewTheme] = useState<PreviewTheme | null>(null);
+  const [viewSample, setViewSample] = useState(false);
+  const [widgetAdvanced, setWidgetAdvanced] = useState(false);
+  const [inspectorWidgets, setInspectorWidgets] = useState<WidgetOption[]>([]);
+  const [nicheWidgets, setNicheWidgets] = useState<NicheWidgetEntry[]>([]);
+  const [colorPalette, setColorPalette] = useState<Array<{ index: number; name: string }>>(
+    [],
+  );
+  const [previewTheme, setPreviewTheme] = useState<PreviewTheme | null>(null);
   const [searchGroupByFilters, setSearchGroupByFilters] = useState<SearchGroupByFilter[]>(
     [],
   );
@@ -403,7 +445,25 @@ export default function DesignerPage() {
       .then(setConnection)
       .catch((err: Error) => setError(err.message));
     refreshSnapshots().catch(() => undefined);
+    api
+      .getPreviewTheme(connectionId)
+      .then(setPreviewTheme)
+      .catch(() => setPreviewTheme(null));
   }, [connectionId, refreshSnapshots]);
+
+  useEffect(() => {
+    if (!connectionId) return;
+    api
+      .listNicheWidgets(connectionId, viewType)
+      .then((res) => {
+        setNicheWidgets(res.widgets);
+        setColorPalette(res.color_palette);
+      })
+      .catch(() => {
+        setNicheWidgets([]);
+        setColorPalette([]);
+      });
+  }, [connectionId, viewType]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -701,6 +761,7 @@ export default function DesignerPage() {
             setListDefaultOrder(
               typeof spec.default_order === "string" ? spec.default_order : "",
             );
+            setViewSample(asSpecBool(spec.sample) ?? false);
             if (typeof spec.string === "string") setTitle(spec.string);
           } else if (viewType === "search") {
             setSearchFields(((spec.fields as Array<Record<string, unknown>> | undefined) ?? []).map((c) => ({
@@ -730,6 +791,7 @@ export default function DesignerPage() {
             const kq = asSpecBool(spec.quick_create);
             setKanbanCanCreate(kc ?? true);
             setKanbanQuickCreate(kq ?? true);
+            setViewSample(asSpecBool(spec.sample) ?? false);
             if (typeof spec.string === "string") setTitle(spec.string);
           } else if (viewType === "calendar") {
             setCalendarDateStart(typeof spec.date_start === "string" ? spec.date_start : "");
@@ -760,6 +822,7 @@ export default function DesignerPage() {
                 string: c.string ? String(c.string) : undefined,
               })),
             );
+            setViewSample(asSpecBool(spec.sample) ?? false);
             if (typeof spec.string === "string") setTitle(spec.string);
           } else if (viewType === "pivot") {
             setPivotFields(
@@ -774,6 +837,7 @@ export default function DesignerPage() {
                 string: c.string ? String(c.string) : undefined,
               })),
             );
+            setViewSample(asSpecBool(spec.sample) ?? false);
             if (typeof spec.string === "string") setTitle(spec.string);
           } else if (viewType === "map") {
             setMapResPartner(
@@ -913,6 +977,8 @@ export default function DesignerPage() {
       delete: listCanDelete,
       multi_edit: listMultiEdit,
       default_order: listDefaultOrder || null,
+      sample: viewSample || null,
+      sample: viewSample || null,
       columns: listColumns.map(fieldSpec),
       decoration_danger: listDecorationDanger || null,
       decoration_info: listDecorationInfo || null,
@@ -928,6 +994,7 @@ export default function DesignerPage() {
       listCanDelete,
       listMultiEdit,
       listDefaultOrder,
+      viewSample,
       title,
     ],
   );
@@ -959,8 +1026,9 @@ export default function DesignerPage() {
       default_group_by: kanbanGroupBy || null,
       create: kanbanCanCreate,
       quick_create: kanbanQuickCreate,
+      sample: viewSample || null,
     }),
-    [kanbanFields, kanbanGroupBy, kanbanCanCreate, kanbanQuickCreate, title],
+    [kanbanFields, kanbanGroupBy, kanbanCanCreate, kanbanQuickCreate, viewSample, title],
   );
 
   const calendarSpec = useMemo(
@@ -981,6 +1049,7 @@ export default function DesignerPage() {
     () => ({
       string: title,
       type: graphType,
+      sample: viewSample || null,
       fields: graphFields.map((f) => ({
         kind: "field" as const,
         name: f.name,
@@ -989,12 +1058,13 @@ export default function DesignerPage() {
         string: f.string,
       })),
     }),
-    [graphFields, graphType, title],
+    [graphFields, graphType, viewSample, title],
   );
 
   const pivotSpec = useMemo(
     () => ({
       string: title,
+      sample: viewSample || null,
       fields: pivotFields.map((f) => ({
         kind: "field" as const,
         name: f.name,
@@ -1003,7 +1073,7 @@ export default function DesignerPage() {
         string: f.string,
       })),
     }),
-    [pivotFields, title],
+    [pivotFields, viewSample, title],
   );
 
   const mapSpec = useMemo(
@@ -1650,6 +1720,106 @@ export default function DesignerPage() {
     ]);
   }
 
+  async function addNicheWidget(entry: NicheWidgetEntry) {
+    if (!model) {
+      setError("Select a model first");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      let fieldName: string | undefined;
+      const support = entry.supporting_field;
+      let fieldRows = fields;
+
+      const existing = fields.find(
+        (f) =>
+          entry.recommended_ttypes.includes(f.ttype) &&
+          (!support || f.name === support.name),
+      );
+      if (existing) {
+        fieldName = existing.name;
+      } else if (support) {
+        if (!fields.some((f) => f.name === support.name)) {
+          await api.createField(connectionId, {
+            model,
+            name: support.name,
+            field_description: support.string || support.name,
+            ttype: support.ttype,
+            inject_into_views: false,
+            inject_strategy: "inherit",
+            confirm_advanced: true,
+            confirm_phrase: CONFIRM_PHRASE,
+            ...(support.relation ? { relation: support.relation } : {}),
+            ...(support.ttype === "selection"
+              ? {
+                  selection: [
+                    { value: "normal", label: "Normal" },
+                    { value: "done", label: "Done" },
+                    { value: "blocked", label: "Blocked" },
+                  ],
+                }
+              : {}),
+          });
+          fieldRows = await api.listFields(connectionId, model);
+          setFields(fieldRows);
+          setFieldsModel(model);
+        }
+        fieldName = support.name;
+      } else {
+        const match = fields.find((f) => entry.recommended_ttypes.includes(f.ttype));
+        if (!match) {
+          setNotice(
+            `Add a ${entry.recommended_ttypes.join("/")} field first for ${entry.label}`,
+          );
+          return;
+        }
+        fieldName = match.name;
+      }
+
+      const meta = fieldRows.find((f) => f.name === fieldName);
+      const node: DesignerField = {
+        kind: "field",
+        id: uid("f"),
+        name: fieldName,
+        string: meta?.field_description,
+        widget: entry.id,
+      };
+
+      if (viewType === "kanban") {
+        if (kanbanFields.some((c) => c.name === fieldName && c.widget === entry.id)) return;
+        setKanbanFields((cols) => [...cols, node]);
+        setSelected({ scope: "kanban", fieldId: node.id });
+      } else if (viewType === "list") {
+        if (listColumns.some((c) => c.name === fieldName && c.widget === entry.id)) return;
+        setListColumns((cols) => [...cols, node]);
+        setSelected({ scope: "list", fieldId: node.id });
+      } else if (viewType === "form") {
+        const firstGroup = formChildren.find((c) => c.kind === "group");
+        if (!firstGroup) {
+          setNotice("Add a form group before niche widgets");
+          return;
+        }
+        setFormChildren((children) =>
+          children.map((child) =>
+            child.kind === "group" && child.id === firstGroup.id
+              ? { ...child, children: [...child.children, node] }
+              : child,
+          ),
+        );
+        setSelected({ scope: "form-group", groupId: firstGroup.id, fieldId: node.id });
+      } else {
+        setNotice(`${entry.label} is available on form, list, and kanban views`);
+        return;
+      }
+      announceAction(`Added ${entry.label} (${entry.id})`, node.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add niche widget");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function removeFormField(
     container: "group" | "page",
     containerId: string,
@@ -1875,6 +2045,24 @@ export default function DesignerPage() {
   }
 
   const selectedField = findSelectedField();
+
+  useEffect(() => {
+    if (!selectedField) {
+      setInspectorWidgets([]);
+      return;
+    }
+    const row = fields.find((f) => f.name === selectedField.name);
+    const ttype = row?.ttype ?? "char";
+    setInspectorWidgets(fallbackWidgetsForTtype(ttype));
+    api
+      .listBuilderWidgets(connectionId, ttype)
+      .then((rows) => {
+        if (rows.length > 0) setInspectorWidgets(rows);
+      })
+      .catch(() => {
+        /* fallback */
+      });
+  }, [connectionId, fields, selectedField?.name]);
 
   return (
     <main className="odoo-shell min-h-screen px-6 py-10 text-[#f4eef2]">
@@ -2157,6 +2345,7 @@ export default function DesignerPage() {
             </>
           )}
           {viewType === "graph" && (
+            <>
             <label className="text-sm">
               <span className="text-[#a8909e]">Graph type</span>
               <select
@@ -2170,6 +2359,27 @@ export default function DesignerPage() {
                 <option value="line">line</option>
                 <option value="pie">pie</option>
               </select>
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={viewSample}
+                onChange={(e) => setViewSample(e.target.checked)}
+                data-testid="designer-view-sample"
+              />
+              sample data
+            </label>
+            </>
+          )}
+          {viewType === "pivot" && (
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={viewSample}
+                onChange={(e) => setViewSample(e.target.checked)}
+                data-testid="designer-view-sample"
+              />
+              sample data
             </label>
           )}
           {viewType === "map" && (
@@ -2477,17 +2687,25 @@ export default function DesignerPage() {
 
         {viewType === "form" && model && (
           <div className="mt-6 grid gap-4 lg:grid-cols-[200px_1fr_240px]">
-            <FieldPalette
-              fields={fields.map((f) => ({
-                name: f.name,
-                ttype: f.ttype,
-                label: f.field_description,
-              }))}
-            />
+            <div>
+              <FieldPalette
+                fields={fields.map((f) => ({
+                  name: f.name,
+                  ttype: f.ttype,
+                  label: f.field_description,
+                }))}
+              />
+              <NicheWidgetPalette
+                widgets={nicheWidgets}
+                colorPalette={colorPalette}
+                onPick={(w) => void addNicheWidget(w)}
+              />
+            </div>
             <div>
               <h2 className="mb-2 text-sm font-semibold text-[var(--odoo-primary-light)]">
                 Odoo-style canvas
               </h2>
+              <PreviewThemeScope previewVars={previewTheme?.preview_vars}>
               <FormCanvas
               title={title || model}
               statusbar={statusbarField || null}
@@ -2585,6 +2803,7 @@ export default function DesignerPage() {
                 dropFieldOnPage(notebookId, pageId, fieldName);
               }}
             />
+              </PreviewThemeScope>
             </div>
             <PropsInspector title="Field properties">
               {selectedField ? (
@@ -2628,17 +2847,25 @@ export default function DesignerPage() {
 
         {viewType === "kanban" && model && (
           <div className="mt-6 grid gap-4 lg:grid-cols-[200px_1fr_240px]">
-            <FieldPalette
-              fields={fields.map((f) => ({
-                name: f.name,
-                ttype: f.ttype,
-                label: f.field_description,
-              }))}
-            />
+            <div>
+              <FieldPalette
+                fields={fields.map((f) => ({
+                  name: f.name,
+                  ttype: f.ttype,
+                  label: f.field_description,
+                }))}
+              />
+              <NicheWidgetPalette
+                widgets={nicheWidgets}
+                colorPalette={colorPalette}
+                onPick={(w) => void addNicheWidget(w)}
+              />
+            </div>
             <div>
               <h2 className="mb-2 text-sm font-semibold text-[var(--odoo-primary-light)]">
                 Kanban card preview
               </h2>
+              <PreviewThemeScope previewVars={previewTheme?.preview_vars}>
               <KanbanCardPreview
                 title={title || model}
                 groupBy={kanbanGroupBy || null}
@@ -2662,6 +2889,7 @@ export default function DesignerPage() {
                 }}
                 onDropFieldName={(fieldName) => addKanbanField(fieldName)}
               />
+              </PreviewThemeScope>
             </div>
             <PropsInspector title="Card field">
               {selectedField && selected?.scope === "kanban" ? (
@@ -3923,6 +4151,15 @@ export default function DesignerPage() {
                     />
                     multi_edit
                   </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={viewSample}
+                      onChange={(e) => setViewSample(e.target.checked)}
+                      data-testid="designer-view-sample"
+                    />
+                    sample data
+                  </label>
                 </div>
                 <label className="mb-3 block text-xs text-[#8f7a88]">
                   default_order (Sort By)
@@ -4212,6 +4449,15 @@ export default function DesignerPage() {
                     />
                     quick_create
                   </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={viewSample}
+                      onChange={(e) => setViewSample(e.target.checked)}
+                      data-testid="designer-view-sample"
+                    />
+                    sample data
+                  </label>
                 </div>
                 {!model && (
                   <KanbanCardPreview
@@ -4331,45 +4577,16 @@ export default function DesignerPage() {
                 Field properties
               </p>
               {selectedField ? (
-                <div className="mt-3 space-y-3 text-sm">
-                  <p className="font-mono text-[#c9a9c0]">{selectedField.name}</p>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={!!selectedField.required}
-                      onChange={(e) => updateSelectedField({ required: e.target.checked })}
-                    />
-                    <span className="text-[#a8909e]">Required</span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={!!selectedField.readonly}
-                      onChange={(e) => updateSelectedField({ readonly: e.target.checked })}
-                    />
-                    <span className="text-[#a8909e]">Readonly</span>
-                  </label>
-                  <DomainBuilder
-                    label="Invisible (domain)"
-                    value={selectedField.invisible || "[]"}
-                    onChange={(domain) =>
-                      updateSelectedField({
-                        invisible: domain === "[]" ? undefined : domain,
-                      })
-                    }
+                <>
+                  <p className="mt-3 font-mono text-[#c9a9c0]">{selectedField.name}</p>
+                  <DesignerFieldInspector
+                    field={selectedField}
+                    widgetOptions={inspectorWidgets}
+                    widgetAdvanced={widgetAdvanced}
+                    onWidgetAdvancedChange={setWidgetAdvanced}
+                    onChange={updateSelectedField}
                   />
-                  <label className="block">
-                    <span className="text-[#a8909e]">Widget (optional)</span>
-                    <input
-                      value={selectedField.widget ?? ""}
-                      onChange={(e) =>
-                        updateSelectedField({ widget: e.target.value || undefined })
-                      }
-                      placeholder="e.g. many2many_tags"
-                      className="mt-1 w-full border border-[#3d2a38] bg-[#0c090b] px-2 py-1.5 font-mono text-xs"
-                    />
-                  </label>
-                </div>
+                </>
               ) : (
                 <p className="mt-3 text-xs text-[#8f7a88]">
                   Select a field on the canvas to edit properties.

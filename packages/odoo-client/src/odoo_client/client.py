@@ -503,6 +503,14 @@ class OdooClient:
                 vals["on_delete"] = request.on_delete
             elif request.required:
                 vals["on_delete"] = "restrict"
+        if request.definition_record:
+            readable = self._ir_model_fields_columns(
+                ["definition_record", "definition_record_field"]
+            )
+            if "definition_record" in readable:
+                vals["definition_record"] = request.definition_record
+            if request.definition_record_field and "definition_record_field" in readable:
+                vals["definition_record_field"] = request.definition_record_field
 
         field_id = self.execute_kw("ir.model.fields", "create", [vals])
         rows = self.execute_kw(

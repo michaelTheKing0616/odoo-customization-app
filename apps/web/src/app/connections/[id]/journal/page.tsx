@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { api, AuditLogRow, Connection, SnapshotRow } from "@/lib/api";
+import { api, AuditLogRow, Connection, HealthCheckRun, SnapshotRow } from "@/lib/api";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
+import { HealthCheckBanner } from "@/components/HealthCheckBanner";
 
 export default function ChangeJournalPage() {
   const params = useParams<{ id: string }>();
@@ -13,18 +14,21 @@ export default function ChangeJournalPage() {
   const [connection, setConnection] = useState<Connection | null>(null);
   const [snapshots, setSnapshots] = useState<SnapshotRow[]>([]);
   const [audits, setAudits] = useState<AuditLogRow[]>([]);
+  const [healthRuns, setHealthRuns] = useState<HealthCheckRun[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
-    const [conn, snaps, logs] = await Promise.all([
+    const [conn, snaps, logs, runs] = await Promise.all([
       api.getConnection(connectionId),
       api.listSnapshots(connectionId),
       api.listAuditLogs(80).catch(() => [] as AuditLogRow[]),
+      api.listHealthCheckRuns(connectionId, 10).catch(() => [] as HealthCheckRun[]),
     ]);
     setConnection(conn);
     setSnapshots(snaps);
+    setHealthRuns(runs);
     setAudits(
       logs.filter(
         (l) =>
@@ -85,6 +89,11 @@ export default function ChangeJournalPage() {
           Metadata snapshots with Undo · API audit (secondary)
         </p>
         <VersionAwarenessBanner capabilities={connection?.capabilities} />
+        <HealthCheckBanner
+          connectionId={connectionId}
+          connection={connection}
+          onRefreshConnection={refresh}
+        />
 
         {error && <p className="mt-4 text-sm text-[#f0a8a0]">{error}</p>}
         {notice && <p className="mt-4 text-sm text-[#c9a9c0]">{notice}</p>}
@@ -120,6 +129,104 @@ export default function ChangeJournalPage() {
               <li className="text-sm text-[#8f7a88]">
                 No snapshots yet. Destructive edits (views, access, automations, Power Ops)
                 create them automatically.
+              </li>
+            )}
+          </ul>
+        </section>
+
+        <section className="mt-10">
+          <h2 className="font-[family-name:var(--font-display)] text-xl text-[#faf6f9]">
+            Post-upgrade health checks
+          </h2>
+          <ul className="mt-4 space-y-3">
+            {healthRuns.map((run) => (
+              <li
+                key={run.id}
+                className="border border-[#3d2a38] bg-[#0f1a16]/70 p-4 text-sm"
+              >
+                <p className="font-medium text-[#faf6f9]">
+                  {run.trigger === "auto" ? "Auto" : "Manual"} sweep · {run.status}
+                  {run.broken_count > 0 ? (
+                    <span className="text-[#f0a8a0]"> · {run.broken_count} broken</span>
+                  ) : run.status === "complete" ? (
+                    <span className="text-[#c9a9c0]"> · {run.ok_count} OK</span>
+                  ) : null}
+                </p>
+                <p className="mt-1 text-xs text-[#8f7a88]">
+                  {run.previous_version && run.current_version
+                    ? `${run.previous_version} → ${run.current_version} · `
+                    : ""}
+                  {run.message}
+                  {run.finished_at ? ` · ${run.finished_at}` : ""}
+                </p>
+                {run.items.filter((i) => i.status === "broken").length > 0 && (
+                  <ul className="mt-2 space-y-1 text-xs">
+                    {run.items
+                      .filter((i) => i.status === "broken")
+                      .map((item) => (
+                        <li key={item.artifact_id}>
+                          <Link href={item.deep_link} className="text-[#c9a9c0] underline">
+                            {item.label}
+                          </Link>
+                          <span className="text-[#8f7a88]"> — {item.reason}</span>
+                        </li>
+                      ))}
+                  </ul>
+                )}
+              </li>
+            ))}
+            {healthRuns.length === 0 && (
+              <li className="text-sm text-[#8f7a88]">
+                No health sweeps yet. Run one from the banner above after an Odoo upgrade.
+              </li>
+            )}
+          </ul>
+        </section>
+
+        <section className="mt-10">
+          <h2 className="font-[family-name:var(--font-display)] text-xl text-[#faf6f9]">
+            Post-upgrade health checks
+          </h2>
+          <ul className="mt-4 space-y-3">
+            {healthRuns.map((run) => (
+              <li
+                key={run.id}
+                className="border border-[#3d2a38] bg-[#0f1a16]/70 p-4 text-sm"
+              >
+                <p className="font-medium text-[#faf6f9]">
+                  {run.trigger === "auto" ? "Auto" : "Manual"} sweep · {run.status}
+                  {run.broken_count > 0 ? (
+                    <span className="text-[#f0a8a0]"> · {run.broken_count} broken</span>
+                  ) : run.status === "complete" ? (
+                    <span className="text-[#c9a9c0]"> · {run.ok_count} OK</span>
+                  ) : null}
+                </p>
+                <p className="mt-1 text-xs text-[#8f7a88]">
+                  {run.previous_version && run.current_version
+                    ? `${run.previous_version} → ${run.current_version} · `
+                    : ""}
+                  {run.message}
+                  {run.finished_at ? ` · ${run.finished_at}` : ""}
+                </p>
+                {run.items.filter((i) => i.status === "broken").length > 0 && (
+                  <ul className="mt-2 space-y-1 text-xs">
+                    {run.items
+                      .filter((i) => i.status === "broken")
+                      .map((item) => (
+                        <li key={item.artifact_id}>
+                          <Link href={item.deep_link} className="text-[#c9a9c0] underline">
+                            {item.label}
+                          </Link>
+                          <span className="text-[#8f7a88]"> — {item.reason}</span>
+                        </li>
+                      ))}
+                  </ul>
+                )}
+              </li>
+            ))}
+            {healthRuns.length === 0 && (
+              <li className="text-sm text-[#8f7a88]">
+                No health sweeps yet. Run one from the banner above after an Odoo upgrade.
               </li>
             )}
           </ul>

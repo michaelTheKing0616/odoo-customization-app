@@ -13,9 +13,26 @@ from typing import Any
 from app.ai_domain_packs import merge_domain_pack, retrieve_domain_pack
 from app.ai_depth import AMBITION_TARGETS, classify_ambition
 from app.ai_enrich import enrich_draft_module_spec
-from app.ai_model_quality import MODEL_CREATION_RULES, min_fields_for_ambition
+from app.ai_model_quality import MODEL_CREATION_RULES, min_fields_for_ambition, seed_missing_core_scaffold_models, seed_missing_core_scaffold_models
 from app.ai_rules import validate_and_enrich_draft
-from app.llm_provider import LLMError, LLMProvider, get_llm_provider
+from app.ai_workflow import step4_workflow_models
+from app.ai_workflow import step4_workflow_models
+from app.ai_prompt_constants import (
+    STEP_TEMPERATURES,
+    append_prompt_blocks,
+)
+from app.ai_prompt_constants import (
+    STEP_TEMPERATURES,
+    append_prompt_blocks,
+)
+from app.llm_provider import (
+    FORMAT_SCHEMA_ENTITIES,
+    FORMAT_SCHEMA_FIELDS,
+    FORMAT_SCHEMA_RELATIONSHIPS,
+    LLMError,
+    LLMProvider,
+    get_llm_provider,
+)
 
 
 def _extract_json(text: str) -> Any:
@@ -53,8 +70,17 @@ def _llm_json(
     *,
     system: str,
     prompt: str,
+    reasoning: bool = False,
+    format_schema: dict[str, Any] | None = None,
+    temperature: float | None = None,
 ) -> Any:
-    raw = provider.generate_json(prompt, system=system)
+    raw = provider.generate_json(
+        prompt,
+        system=system,
+        reasoning=reasoning,
+        format_schema=format_schema,
+        temperature=temperature,
+    )
     return _extract_json(raw)
 
 
@@ -64,6 +90,7 @@ def step1_entities(
     scaffold: dict[str, Any] | None,
     *,
     max_entities: int = 12,
+    guardrail: str = "",
 ) -> list[dict[str, Any]]:
     from app.ai_domain_pack_law_firm import scaffold_teaching_blob
 
@@ -83,23 +110,29 @@ def step1_entities(
                 ]
             )
         )
+    system = append_prompt_blocks(
+        "Reply ONLY with a JSON array of SUBSTANTIVE entities for a serious ops app. "
+        "Example output:\n"
+        '[{"name":"matter","purpose":"open legal matter with client and counsel",'
+        '"is_workflow":true,"loop_role":"transaction"}]\n'
+        "loop_role one of: master|transaction|line|event|billing|compliance. "
+        "Cover the full operational loop (staff, transaction, lines, events, tasks, "
+        "expenses, deposits/holds, party links, documents, billing). "
+        "FORBIDDEN as entities: type, category, tag, stage, priority, status, kind "
+        "(those are selection fields on parents, not models). "
+        f"Aim for {max_entities} entities (≥60% for comprehensive). "
+        "Custom Odoo models will be prefixed x_. Prefer too many rich entities over "
+        "lookup tables.\n"
+        + MODEL_CREATION_RULES,
+        guardrail=guardrail,
+    )
     data = _llm_json(
         provider,
-        system=(
-            "Reply ONLY with a JSON array of SUBSTANTIVE entities for a serious ops app: "
-            '[{"name":"matter","purpose":"open legal matter with client and counsel",'
-            '"is_workflow":true,"loop_role":"transaction"}]. '
-            "loop_role one of: master|transaction|line|event|billing|compliance. "
-            "Cover the full operational loop (staff, transaction, lines, events, tasks, "
-            "expenses, deposits/holds, party links, documents, billing). "
-            "FORBIDDEN as entities: type, category, tag, stage, priority, status, kind "
-            "(those are selection fields on parents, not models). "
-            f"Aim for {max_entities} entities (≥60% for comprehensive). "
-            "Custom Odoo models will be prefixed x_. Prefer too many rich entities over "
-            "lookup tables.\n"
-            + MODEL_CREATION_RULES
-        ),
+        system=system,
         prompt=f"User app request:\n{prompt}\n\n{scaffold_hint}",
+        reasoning=False,
+        format_schema=FORMAT_SCHEMA_ENTITIES,
+        temperature=STEP_TEMPERATURES["pipeline.entities"],
     )
     if not isinstance(data, list):
         data = data.get("entities") if isinstance(data, dict) else []
@@ -164,7 +197,14 @@ def step2_fields(
         f"Workflow: {entity.get('is_workflow')}\nLoop role: {entity.get('loop_role')}\n"
         f"Minimum fields: {need}\n{hint}"
     )
-    data = _llm_json(provider, system=system, prompt=prompt)
+    data = _llm_json(
+        provider,
+        system=system,
+        prompt=prompt,
+        reasoning=False,
+        format_schema=FORMAT_SCHEMA_FIELDS,
+        temperature=STEP_TEMPERATURES["pipeline.fields"],
+    )
     if isinstance(data, dict):
         data = data.get("fields") or []
     fields: list[dict[str, Any]] = []
@@ -195,6 +235,9 @@ def step2_fields(
                 + f"\n\nPrevious attempt only had {len(fields)} fields — TOO THIN. "
                 f"Return ≥{need} substantive fields now."
             ),
+            reasoning=False,
+            format_schema=FORMAT_SCHEMA_FIELDS,
+            temperature=STEP_TEMPERATURES["pipeline.fields"],
         )
         if isinstance(retry, dict):
             retry = retry.get("fields") or []
@@ -267,7 +310,7 @@ def run_staged_pipeline(
     provider = provider if provider is not None else get_llm_provider()
 
     # Step 0 — retrieval
-    retrieved = retrieve_domain_pack(prompt)
+    retrieved = retrieve_domain_pack(prompt, provider=provider)
     scaffold: dict[str, Any] | None = None
     pack_id: str | None = None
     if retrieved:
@@ -291,7 +334,7 @@ def run_staged_pipeline(
             max_ent = int(AMBITION_TARGETS[ambition]["max_entities_staged"])
             warnings.append(f"step1: ambition={ambition} max_entities={max_ent}")
             entities = step1_entities(
-                provider, prompt, scaffold, max_entities=max_ent
+                provider, prompt, scaffold, max_entities=max_ent, guardrail=guard
             )
             # Drop excess only after generation; keep up to max_ent
             if len(entities) > max_ent:
@@ -366,6 +409,16 @@ def run_staged_pipeline(
                 except (LLMError, ValueError, json.JSONDecodeError) as exc:
                     warnings.append(f"step3 skipped: {exc}")
 
+                # Step 4 — workflow states + transitions
+                try:
+                    models, step4_w = step4_workflow_models(
+                        provider, models, user_prompt=prompt, guardrail=guard
+                    )
+                    warnings.extend(step4_w)
+                    trace.append("step4:workflows")
+                except (LLMError, ValueError, json.JSONDecodeError) as exc:
+                    warnings.append(f"step4 skipped: {exc}")
+
                 tech = re.sub(r"[^a-z0-9_]+", "_", prompt.lower())[:24].strip("_") or "custom_app"
                 draft = {
                     "technical_name": (scaffold or {}).get("technical_name") or tech,
@@ -378,6 +431,8 @@ def run_staged_pipeline(
                     "_ambition": ambition,
                 }
                 if scaffold:
+                    draft, seed_notes = seed_missing_core_scaffold_models(draft, scaffold)
+                    warnings.extend(seed_notes)
                     draft, pack_w = merge_domain_pack(draft, scaffold)
                     warnings.extend(pack_w)
 

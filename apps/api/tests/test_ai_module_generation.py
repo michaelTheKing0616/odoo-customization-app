@@ -521,6 +521,7 @@ class TestApiContract:
                 *,
                 system: str | None = None,
                 timeout_s: float = 60.0,
+                **kwargs: Any,
             ) -> str:
                 return json.dumps(thin)
 

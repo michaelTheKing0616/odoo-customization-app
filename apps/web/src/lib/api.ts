@@ -16,6 +16,168 @@ export type CapabilityMatrix = {
   warnings?: string[];
 };
 
+export type GatingChoiceId =
+  | "upgrade_plan"
+  | "export_module"
+  | "install_module"
+  | "leave_out"
+  | "use_staging";
+
+export type GatingCallout = {
+  feature: string;
+  title: string;
+  why: string;
+  options: string[];
+  available: boolean;
+  capability_key: string;
+  gating_choices: { id: GatingChoiceId; label: string }[];
+};
+
+export type AutomationsGateResponse = {
+  automations: GatingCallout;
+  approvals: GatingCallout;
+};
+
+export type DeploymentPanel = {
+  tier: "onprem" | "sh" | "online" | "unknown";
+  title: string;
+  body: string;
+  options: string[];
+  include_deploy_doc: boolean;
+};
+
+export type ValidateLiveItem = {
+  item_id: string;
+  category: string;
+  status: "pass" | "warn" | "fail";
+  message: string;
+};
+
+export type ValidateLiveResult = {
+  ok: boolean;
+  items: ValidateLiveItem[];
+  fail_count: number;
+  warn_count: number;
+  message: string;
+};
+
+export type StoreReadinessItem = {
+  key: string;
+  label: string;
+  status: "pass" | "warn" | "fail";
+  message: string;
+};
+
+export type StoreReadinessReport = {
+  ok: boolean;
+  items: StoreReadinessItem[];
+  fail_count: number;
+  warn_count: number;
+  disclaimer: string;
+  message: string;
+};
+
+export type MigrationUnlock = {
+  key: string;
+  label: string;
+  online_status: string;
+  sh_status: string;
+  unlocks: boolean;
+  reason: string;
+};
+
+export type MigrationAssist = {
+  eligible: boolean;
+  hosting: string;
+  title: string;
+  body: string;
+  unlocks: MigrationUnlock[];
+  docs_links: { label: string; url: string }[];
+  disclaimer: string;
+  message: string;
+};
+
+export type GatingChoiceId =
+  | "upgrade_plan"
+  | "export_module"
+  | "install_module"
+  | "leave_out"
+  | "use_staging";
+
+export type GatingCallout = {
+  feature: string;
+  title: string;
+  why: string;
+  options: string[];
+  available: boolean;
+  capability_key: string;
+  gating_choices: { id: GatingChoiceId; label: string }[];
+};
+
+export type AutomationsGateResponse = {
+  automations: GatingCallout;
+  approvals: GatingCallout;
+};
+
+export type DeploymentPanel = {
+  tier: "onprem" | "sh" | "online" | "unknown";
+  title: string;
+  body: string;
+  options: string[];
+  include_deploy_doc: boolean;
+};
+
+export type ValidateLiveItem = {
+  item_id: string;
+  category: string;
+  status: "pass" | "warn" | "fail";
+  message: string;
+};
+
+export type ValidateLiveResult = {
+  ok: boolean;
+  items: ValidateLiveItem[];
+  fail_count: number;
+  warn_count: number;
+  message: string;
+};
+
+export type StoreReadinessItem = {
+  key: string;
+  label: string;
+  status: "pass" | "warn" | "fail";
+  message: string;
+};
+
+export type StoreReadinessReport = {
+  ok: boolean;
+  items: StoreReadinessItem[];
+  fail_count: number;
+  warn_count: number;
+  disclaimer: string;
+  message: string;
+};
+
+export type MigrationUnlock = {
+  key: string;
+  label: string;
+  online_status: string;
+  sh_status: string;
+  unlocks: boolean;
+  reason: string;
+};
+
+export type MigrationAssist = {
+  eligible: boolean;
+  hosting: string;
+  title: string;
+  body: string;
+  unlocks: MigrationUnlock[];
+  docs_links: { label: string; url: string }[];
+  disclaimer: string;
+  message: string;
+};
+
 export type Connection = {
   id: string;
   name: string;
@@ -23,9 +185,188 @@ export type Connection = {
   db_name: string;
   username: string;
   server_version: string | null;
+  last_seen_version?: string | null;
+  upgrade_detected?: boolean;
+  upgrade_detected_at?: string | null;
   created_at: string | null;
   updated_at: string | null;
   capabilities?: CapabilityMatrix | null;
+};
+
+export type HealthCheckItem = {
+  artifact_id: string;
+  artifact_type: string;
+  label: string;
+  status: "ok" | "broken" | "skipped" | string;
+  reason: string;
+  deep_link: string;
+  resource_type?: string | null;
+  resource_key?: string | null;
+};
+
+export type HealthCheckRun = {
+  id: string;
+  connection_id: string;
+  job_id?: string | null;
+  trigger: string;
+  status: string;
+  previous_version?: string | null;
+  current_version?: string | null;
+  ok_count: number;
+  broken_count: number;
+  message: string;
+  items: HealthCheckItem[];
+  created_at?: string | null;
+  finished_at?: string | null;
+};
+
+export type HealthCheckTrigger = {
+  job_id?: string | null;
+  run_id?: string | null;
+  async_job: boolean;
+  message: string;
+  report?: HealthCheckRun | null;
+};
+
+export type ApprovalStep = {
+  order: number;
+  approver_user_ids?: number[];
+  approver_group_id?: number | null;
+  exclusive?: boolean;
+  domain?: string | null;
+};
+
+export type ApprovalRule = {
+  id: string;
+  connection_id: string;
+  engine: "community" | "studio" | string;
+  name: string;
+  target_model: string;
+  button_method: string;
+  button_label?: string | null;
+  steps: ApprovalStep[];
+  active: boolean;
+  deployed: boolean;
+  odoo_wrapper_action_id?: number | null;
+  odoo_studio_rule_id?: number | null;
+  created_at?: string | null;
+};
+
+export type ApprovalEntry = {
+  id: string;
+  rule_id: string;
+  record_model: string;
+  record_id: number;
+  step_order: number;
+  status: string;
+  approver_user_id?: number | null;
+  message: string;
+  created_at?: string | null;
+  resolved_at?: string | null;
+};
+
+export type ApprovalsGateResponse = {
+  engine: string;
+  studio_available: boolean;
+  studio_verify_state: string;
+  community_available: boolean;
+  studio_note?: string | null;
+  gating: GatingCallout;
+};
+
+export type ApprovalButton = {
+  name: string;
+  label: string;
+  bulk_safe: boolean;
+  reason: string;
+  in_header: boolean;
+};
+
+export type ApprovalStep = {
+  order: number;
+  approver_user_ids?: number[];
+  approver_group_id?: number | null;
+  exclusive?: boolean;
+  domain?: string | null;
+};
+
+export type ApprovalRule = {
+  id: string;
+  connection_id: string;
+  engine: "community" | "studio" | string;
+  name: string;
+  target_model: string;
+  button_method: string;
+  button_label?: string | null;
+  steps: ApprovalStep[];
+  active: boolean;
+  deployed: boolean;
+  odoo_wrapper_action_id?: number | null;
+  odoo_studio_rule_id?: number | null;
+  created_at?: string | null;
+};
+
+export type ApprovalEntry = {
+  id: string;
+  rule_id: string;
+  record_model: string;
+  record_id: number;
+  step_order: number;
+  status: string;
+  approver_user_id?: number | null;
+  message: string;
+  created_at?: string | null;
+  resolved_at?: string | null;
+};
+
+export type ApprovalsGateResponse = {
+  engine: string;
+  studio_available: boolean;
+  studio_verify_state: string;
+  community_available: boolean;
+  studio_note?: string | null;
+  gating: GatingCallout;
+};
+
+export type ApprovalButton = {
+  name: string;
+  label: string;
+  bulk_safe: boolean;
+  reason: string;
+  in_header: boolean;
+};
+
+export type ProcessGateResponse = {
+  engine: string;
+  enterprise_available: boolean;
+  verify_state: string;
+  enterprise_note?: string | null;
+  community_models_ready: boolean;
+};
+
+export type ProcessTypeRow = {
+  id: number;
+  name?: string | null;
+  active: boolean;
+  levels: number;
+  chain: Array<{
+    level: number;
+    min_approvals: number;
+    approver_user_ids: number[];
+    approver_group_id?: number | null;
+    domain?: string | null;
+  }>;
+};
+
+export type ProcessRequestRow = {
+  id: number;
+  name?: string | null;
+  subject?: string | null;
+  amount?: number | null;
+  state?: string | null;
+  current_level?: number | null;
+  type_id?: number | null;
+  requester_id?: number | null;
 };
 
 export type ModuleRow = {
@@ -72,6 +413,222 @@ export type ViewRow = {
 
 export type FieldCreateRow = FieldRow & {
   injected_view_ids: number[];
+  currency_field_created?: string | null;
+};
+
+export type BuilderWidgetOption = {
+  id: string;
+  label: string;
+  hint?: string;
+};
+
+export type RelatedPathOption = {
+  path: string;
+  label: string;
+  ttype: string;
+  relation?: string | null;
+};
+
+export type PreviewTheme = {
+  ok: boolean;
+  theme: Record<string, string>;
+  preview_vars: Record<string, string>;
+  error?: string | null;
+};
+
+export type AutomationTriggersResponse = {
+  major: number;
+  source: string;
+  supported_triggers: string[];
+  probe_table: Array<{
+    major: number;
+    source: string;
+    on_webhook: boolean;
+    on_change: boolean;
+    on_change_field_ids?: boolean;
+    trigger_count?: number | null;
+  }>;
+};
+
+export type NicheWidgetEntry = {
+  id: string;
+  label: string;
+  recommended_ttypes: string[];
+  view_types?: string[];
+  hint?: string;
+  supporting_field?: {
+    name: string;
+    ttype: string;
+    string?: string;
+    relation?: string;
+  } | null;
+};
+
+export type AutomationTriggersResponse = {
+  major: number;
+  source: string;
+  supported_triggers: string[];
+  probe_table: Array<{
+    major: number;
+    source: string;
+    on_webhook: boolean;
+    on_change: boolean;
+    on_change_field_ids?: boolean;
+    trigger_count?: number | null;
+  }>;
+};
+
+export type NicheWidgetsResponse = {
+  widgets: NicheWidgetEntry[];
+  color_palette: Array<{ index: number; name: string }>;
+};
+
+export type NicheWidgetEntry = {
+  id: string;
+  label: string;
+  recommended_ttypes: string[];
+  view_types?: string[];
+  hint?: string;
+  supporting_field?: {
+    name: string;
+    ttype: string;
+    string?: string;
+    relation?: string;
+  } | null;
+};
+
+export type PropertyFieldsProbeOut = {
+  major: number;
+  source: string;
+  supported: boolean;
+  probe_table: Array<{
+    major: number;
+    source: string;
+    ttype_properties: boolean;
+    ttype_properties_definition: boolean;
+    definition_record_column: boolean;
+    definition_record_field_column?: boolean;
+    definition_write: boolean;
+    rpc_create: boolean;
+    supported: boolean;
+  }>;
+};
+
+export type PropertyFieldsSetupOut = {
+  ok: boolean;
+  properties_field: string;
+  definition_field: string;
+  parent_model: string;
+  created: boolean;
+  definition_field_created?: boolean | null;
+};
+
+export type PropertyDefinitionWriteOut = {
+  ok: boolean;
+  parent_model: string;
+  record_id: number;
+  definition_field: string;
+  property_count: number;
+};
+
+export type InvoicingPreflightOut = {
+  ok: boolean;
+  account_installed: boolean;
+  l10n_installed: boolean;
+  company_country?: string | null;
+  l10n_modules: string[];
+  message: string;
+};
+
+export type InvoicingConnectOut = {
+  ok: boolean;
+  path: string;
+  invoice_field: string;
+  field_created: boolean;
+  count_field?: string | null;
+  count_field_created?: boolean | null;
+  window_action_id: number;
+  button_spec: Record<string, unknown>;
+  form_view_id?: number | null;
+  form_view_name?: string | null;
+};
+
+export type InvoicingMergeSpecOut = {
+  ok: boolean;
+  merged: Record<string, unknown>;
+};
+
+export type ScanFindOut = {
+  ok: boolean;
+  model: string;
+  field: string;
+  value: string;
+  count: number;
+  records: Array<{ id: number; display_name?: string | null }>;
+};
+
+export type InvoicingDraftInvoiceOut = {
+  ok: boolean;
+  move_id: number;
+  move_name?: string | null;
+  state?: string | null;
+  source_model: string;
+  record_id: number;
+};
+
+export type InvoicingModuleSpecOut = {
+  ok: boolean;
+  fragment: Record<string, unknown>;
+};
+
+export type InvoicingPreflightOut = {
+  ok: boolean;
+  account_installed: boolean;
+  l10n_installed: boolean;
+  company_country?: string | null;
+  l10n_modules: string[];
+  message: string;
+};
+
+export type InvoicingConnectOut = {
+  ok: boolean;
+  path: string;
+  invoice_field: string;
+  field_created: boolean;
+  count_field?: string | null;
+  count_field_created?: boolean | null;
+  window_action_id: number;
+  button_spec: Record<string, unknown>;
+  form_view_id?: number | null;
+  form_view_name?: string | null;
+};
+
+export type InvoicingMergeSpecOut = {
+  ok: boolean;
+  merged: Record<string, unknown>;
+};
+
+export type ScanFindOut = {
+  ok: boolean;
+  model: string;
+  field: string;
+  value: string;
+  count: number;
+  records: Array<{ id: number; display_name?: string | null }>;
+};
+
+export type InvoicingDraftInvoiceOut = {
+  ok: boolean;
+  move_id: number;
+  move_name?: string | null;
+  state?: string | null;
+  source_model: string;
+  record_id: number;
+};
+
+export type InvoicingModuleSpecOut = {
+  ok: boolean;
+  fragment: Record<string, unknown>;
 };
 
 export type SandboxRunResult = {
@@ -84,6 +641,9 @@ export type SandboxRunResult = {
   zip_sha256?: string | null;
   zip_base64?: string | null;
   job_id?: string | null;
+  approximation?: boolean;
+  approximation_label?: string | null;
+  sh_staging_suggestion?: string | null;
 };
 
 export type JobRow = {
@@ -184,6 +744,7 @@ export type ModuleExport = {
   filename: string;
   content_base64: string;
   note: string;
+  deployment_panel?: DeploymentPanel | null;
 };
 
 export type SnapshotRow = {
@@ -539,18 +1100,25 @@ export const api = {
     request<AuditLogRow[]>(`/api/audit/logs?limit=${limit}`),
   getJob: (jobId: string) => request<JobRow>(`/api/jobs/${jobId}`),
   listAppTemplates: () => request<AppTemplate[]>("/api/apps/templates"),
-  exportLibraryModule: (body: {
-    technical_name?: string;
-    display_name?: string;
-    fines?: boolean;
-    reminders?: boolean;
-    multi_company?: boolean;
-  }) =>
-    request<ModuleExport>("/api/apps/templates/library/export", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  draftModuleFromPrompt: (
+  exportLibraryModule: (
+    body: {
+      technical_name?: string;
+      display_name?: string;
+      fines?: boolean;
+      reminders?: boolean;
+      multi_company?: boolean;
+      store_ready?: boolean;
+    },
+    query?: { store_ready?: boolean },
+  ) =>
+    request<ModuleExport & { store_readiness?: StoreReadinessReport | null }>(
+      `/api/apps/templates/library/export${query?.store_ready || body.store_ready ? "?store_ready=true" : ""}`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
+    draftModuleFromPrompt: (
     prompt: string,
     opts?: {
       connection_id?: string;
@@ -578,6 +1146,53 @@ export const api = {
         expand: opts?.expand ?? true,
       }),
     }),
+  generalizePack: (body: {
+    spec_json?: Record<string, unknown>;
+    project_id?: string;
+    connection_id?: string;
+    pack_slug?: string;
+    consent_share_template: boolean;
+  }) =>
+    request<{
+      ok: boolean;
+      filename: string;
+      source: string;
+      domain_pack: string;
+      suggested_tags: string[];
+      anti_patterns: string[];
+      model_count: number;
+      warnings: string[];
+      note: string;
+    }>("/api/ai/generalize-pack", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  generalizePack: (body: {
+    spec_json?: Record<string, unknown>;
+    project_id?: string;
+    connection_id?: string;
+    pack_slug?: string;
+    consent_share_template: boolean;
+  }) =>
+    request<{
+      ok: boolean;
+      filename: string;
+      source: string;
+      domain_pack: string;
+      suggested_tags: string[];
+      anti_patterns: string[];
+      model_count: number;
+      warnings: string[];
+      note: string;
+    }>("/api/ai/generalize-pack", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  validateModuleSpecLive: (connectionId: string, body: { spec: Record<string, unknown> }) =>
+    request<ValidateLiveResult>(
+      `/api/connections/${connectionId}/module-spec/validate-live`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
   applyModuleSpec: (
     connectionId: string,
     body: {
@@ -588,6 +1203,7 @@ export const api = {
       apply_automations?: boolean;
       confirm_advanced?: boolean;
       confirm_phrase?: string | null;
+      skip_validate_live?: boolean;
     },
   ) =>
     request<{
@@ -911,6 +1527,262 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  listBuilderWidgets: (id: string, ttype: string) =>
+    request<BuilderWidgetOption[]>(
+      `/api/connections/${id}/builder/widgets?ttype=${encodeURIComponent(ttype)}`,
+    ),
+  listRelatedPaths: (id: string, model: string, depth = 2) =>
+    request<RelatedPathOption[]>(
+      `/api/connections/${id}/builder/related-paths?model=${encodeURIComponent(model)}&depth=${depth}`,
+    ),
+  listNicheWidgets: (id: string, viewType: string) =>
+    request<NicheWidgetsResponse>(
+      `/api/connections/${id}/builder/niche-widgets?view_type=${encodeURIComponent(viewType)}`,
+    ),
+  getPreviewTheme: (id: string) =>
+    request<PreviewTheme>(`/api/connections/${id}/preview-theme`),
+  getPropertyFieldsProbe: (id: string) =>
+    request<PropertyFieldsProbeOut>(`/api/connections/${id}/builder/properties/probe`),
+  setupPropertyFields: (
+    id: string,
+    body: {
+      child_model: string;
+      parent_m2o_field: string;
+      properties_field?: string;
+      definition_field?: string;
+      properties_label?: string;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<PropertyFieldsSetupOut>(`/api/connections/${id}/builder/properties/setup`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  writePropertyDefinition: (
+    id: string,
+    body: {
+      parent_model: string;
+      parent_record_id: number;
+      definition_field?: string;
+      entries: Array<{
+        name: string;
+        string?: string;
+        type?: string;
+        default?: string | number | boolean | null;
+        selection?: string[][];
+        comodel?: string;
+      }>;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<PropertyDefinitionWriteOut>(`/api/connections/${id}/builder/properties/definition`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getInvoicingPreflight: (id: string) =>
+    request<InvoicingPreflightOut>(`/api/connections/${id}/builder/invoicing/preflight`),
+  connectInvoicing: (
+    id: string,
+    body: {
+      model: string;
+      invoice_field?: string;
+      smart_button_name?: string;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<InvoicingConnectOut>(`/api/connections/${id}/builder/invoicing/connect`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  createDraftInvoice: (
+    id: string,
+    body: {
+      source_model: string;
+      record_id: number;
+      invoice_field?: string;
+      partner_field?: string;
+      amount_field?: string;
+      description_field?: string;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<InvoicingDraftInvoiceOut>(`/api/connections/${id}/builder/invoicing/draft-invoice`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getInvoicingModuleSpec: (
+    id: string,
+    body: {
+      model: string;
+      invoice_field?: string;
+      origin_field_on_move?: string;
+      partner_field?: string;
+    },
+  ) =>
+    request<InvoicingModuleSpecOut>(`/api/connections/${id}/builder/invoicing/module-spec`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  mergeInvoicingIntoSpec: (
+    id: string,
+    body: {
+      base_spec?: Record<string, unknown>;
+      model: string;
+      invoice_field?: string;
+      origin_field_on_move?: string;
+      partner_field?: string;
+    },
+  ) =>
+    request<InvoicingMergeSpecOut>(`/api/connections/${id}/builder/invoicing/merge-into-spec`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getDocumentsGate: (id: string) =>
+    request<{
+      ok: boolean;
+      available: boolean;
+      verify_state?: string | null;
+      folder_model?: string | null;
+      message?: string | null;
+      note?: string | null;
+    }>(`/api/connections/${id}/builder/documents/gate`),
+  getDocumentsFolderMap: (id: string) =>
+    request<{ ok: boolean; mapping: Record<string, number> }>(
+      `/api/connections/${id}/builder/documents/folder-map`,
+    ),
+  setDocumentsFolder: (
+    id: string,
+    body: { model: string; folder_id?: number | null },
+  ) =>
+    request<{ ok: boolean; mapping: Record<string, number> }>(
+      `/api/connections/${id}/builder/documents/folder-map`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  mergeDocumentsIntoSpec: (
+    id: string,
+    body: {
+      base_spec?: Record<string, unknown>;
+      model: string;
+      folder_id: number;
+    },
+  ) =>
+    request<{ ok: boolean; merged: Record<string, unknown> }>(
+      `/api/connections/${id}/builder/documents/merge-into-spec`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  bulkScanFind: (
+    id: string,
+    body: { model: string; field: string; value: string; limit?: number },
+  ) =>
+    request<ScanFindOut>(`/api/connections/${id}/bulk/scan-find`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getInvoicingPreflight: (id: string) =>
+    request<InvoicingPreflightOut>(`/api/connections/${id}/builder/invoicing/preflight`),
+  connectInvoicing: (
+    id: string,
+    body: {
+      model: string;
+      invoice_field?: string;
+      smart_button_name?: string;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<InvoicingConnectOut>(`/api/connections/${id}/builder/invoicing/connect`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  createDraftInvoice: (
+    id: string,
+    body: {
+      source_model: string;
+      record_id: number;
+      invoice_field?: string;
+      partner_field?: string;
+      amount_field?: string;
+      description_field?: string;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<InvoicingDraftInvoiceOut>(`/api/connections/${id}/builder/invoicing/draft-invoice`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getInvoicingModuleSpec: (
+    id: string,
+    body: {
+      model: string;
+      invoice_field?: string;
+      origin_field_on_move?: string;
+      partner_field?: string;
+    },
+  ) =>
+    request<InvoicingModuleSpecOut>(`/api/connections/${id}/builder/invoicing/module-spec`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  mergeInvoicingIntoSpec: (
+    id: string,
+    body: {
+      base_spec?: Record<string, unknown>;
+      model: string;
+      invoice_field?: string;
+      origin_field_on_move?: string;
+      partner_field?: string;
+    },
+  ) =>
+    request<InvoicingMergeSpecOut>(`/api/connections/${id}/builder/invoicing/merge-into-spec`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getDocumentsGate: (id: string) =>
+    request<{
+      ok: boolean;
+      available: boolean;
+      verify_state?: string | null;
+      folder_model?: string | null;
+      message?: string | null;
+      note?: string | null;
+    }>(`/api/connections/${id}/builder/documents/gate`),
+  getDocumentsFolderMap: (id: string) =>
+    request<{ ok: boolean; mapping: Record<string, number> }>(
+      `/api/connections/${id}/builder/documents/folder-map`,
+    ),
+  setDocumentsFolder: (
+    id: string,
+    body: { model: string; folder_id?: number | null },
+  ) =>
+    request<{ ok: boolean; mapping: Record<string, number> }>(
+      `/api/connections/${id}/builder/documents/folder-map`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  mergeDocumentsIntoSpec: (
+    id: string,
+    body: {
+      base_spec?: Record<string, unknown>;
+      model: string;
+      folder_id: number;
+    },
+  ) =>
+    request<{ ok: boolean; merged: Record<string, unknown> }>(
+      `/api/connections/${id}/builder/documents/merge-into-spec`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  bulkScanFind: (
+    id: string,
+    body: { model: string; field: string; value: string; limit?: number },
+  ) =>
+    request<ScanFindOut>(`/api/connections/${id}/bulk/scan-find`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   updateField: (
     id: string,
     fieldId: number,
@@ -961,7 +1833,9 @@ export const api = {
       model_filter?: string[] | null;
       extend_models?: string[] | null;
       depends?: string[] | null;
+      store_ready?: boolean;
     },
+    query?: { store_ready?: boolean },
   ) =>
     request<
       ModuleExport & {
@@ -971,11 +1845,17 @@ export const api = {
         target_major?: number | null;
         manifest_version?: string | null;
         warnings?: string[];
+        store_readiness?: StoreReadinessReport | null;
       }
-    >(`/api/connections/${id}/export-module`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
+    >(
+      `/api/connections/${id}/export-module${query?.store_ready ? "?store_ready=true" : body.store_ready ? "?store_ready=true" : ""}`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
+  getMigrationAssist: (id: string) =>
+    request<MigrationAssist>(`/api/connections/${id}/migration-assist`),
   runSandbox: (
     id: string,
     body: {
@@ -1130,6 +2010,46 @@ export const api = {
       `/api/connections/${id}/access/rules/${ruleId}`,
       { method: "DELETE", body: JSON.stringify(body) },
     ),
+  getMultiCompanyGuidance: (id: string) =>
+    request<{ title: string; body: string }>(
+      `/api/connections/${id}/access/multi-company/guidance`,
+    ),
+  applyMultiCompanyDraft: (id: string, draft: Record<string, unknown>) =>
+    request<{ ok: boolean; draft: Record<string, unknown> }>(
+      `/api/connections/${id}/access/multi-company/apply-draft`,
+      { method: "POST", body: JSON.stringify({ draft }) },
+    ),
+  applyMultiCompanyLive: (id: string, models: string[]) =>
+    request<{
+      ok: boolean;
+      models: string[];
+      fields_created: number;
+      rules_created: number;
+      warnings: string[];
+    }>(`/api/connections/${id}/access/multi-company/apply-live`, {
+      method: "POST",
+      body: JSON.stringify({ models }),
+    }),
+  getMultiCompanyGuidance: (id: string) =>
+    request<{ title: string; body: string }>(
+      `/api/connections/${id}/access/multi-company/guidance`,
+    ),
+  applyMultiCompanyDraft: (id: string, draft: Record<string, unknown>) =>
+    request<{ ok: boolean; draft: Record<string, unknown> }>(
+      `/api/connections/${id}/access/multi-company/apply-draft`,
+      { method: "POST", body: JSON.stringify({ draft }) },
+    ),
+  applyMultiCompanyLive: (id: string, models: string[]) =>
+    request<{
+      ok: boolean;
+      models: string[];
+      fields_created: number;
+      rules_created: number;
+      warnings: string[];
+    }>(`/api/connections/${id}/access/multi-company/apply-live`, {
+      method: "POST",
+      body: JSON.stringify({ models }),
+    }),
 
   previewViewArch: (id: string, view_type: string, spec: unknown) =>
     request<{ arch: string }>(`/api/connections/${id}/views/preview`, {
@@ -1309,6 +2229,97 @@ export const api = {
     ),
   listActivityTypes: (id: string) =>
     request<ActivityTypeRow[]>(`/api/connections/${id}/automations/activity-types`),
+  getAutomationsGate: (id: string) =>
+    request<AutomationsGateResponse>(`/api/connections/${id}/automations/gate`),
+  getAutomationTriggers: (id: string) =>
+    request<AutomationTriggersResponse>(`/api/connections/${id}/automations/triggers`),
+  getApprovalsGate: (id: string) =>
+    request<ApprovalsGateResponse>(`/api/connections/${id}/approvals/gate`),
+  listApprovalRules: (id: string) =>
+    request<ApprovalRule[]>(`/api/connections/${id}/approvals/rules`),
+  listApprovalButtons: (id: string, model: string) =>
+    request<ApprovalButton[]>(
+      `/api/connections/${id}/approvals/buttons?model=${encodeURIComponent(model)}`,
+    ),
+  createApprovalRule: (
+    id: string,
+    body: {
+      name: string;
+      target_model: string;
+      button_method: string;
+      button_label?: string | null;
+      steps: ApprovalStep[];
+      engine?: string | null;
+    },
+  ) =>
+    request<ApprovalRule>(`/api/connections/${id}/approvals/rules`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  checkApprovalAction: (id: string, ruleId: string, recordId: number, actorUserId?: number) =>
+    request<{ allowed: boolean; message: string; pending_step?: number | null; entry_id?: string }>(
+      `/api/connections/${id}/approvals/rules/${ruleId}/check`,
+      {
+        method: "POST",
+        body: JSON.stringify({ record_id: recordId, actor_user_id: actorUserId }),
+      },
+    ),
+  approveApprovalEntry: (
+    id: string,
+    entryId: string,
+    body: { actor_user_id: number; approve?: boolean },
+  ) =>
+    request<ApprovalEntry>(`/api/connections/${id}/approvals/entries/${entryId}/approve`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  listApprovalEntries: (id: string, ruleId?: string) =>
+    request<ApprovalEntry[]>(
+      `/api/connections/${id}/approvals/entries${ruleId ? `?rule_id=${encodeURIComponent(ruleId)}` : ""}`,
+    ),
+  getProcessGate: (id: string) =>
+    request<ProcessGateResponse>(`/api/connections/${id}/approvals/processes/gate`),
+  listProcessTypes: (id: string) =>
+    request<ProcessTypeRow[]>(`/api/connections/${id}/approvals/processes/types`),
+  listProcessRequests: (id: string) =>
+    request<ProcessRequestRow[]>(`/api/connections/${id}/approvals/processes/requests`),
+  createProcessRequest: (
+    id: string,
+    body: { type_id: number; subject: string; amount?: number; requester_id?: number },
+  ) =>
+    request<{ id: number; state: string }>(`/api/connections/${id}/approvals/processes/requests`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  submitProcessRequest: (id: string, requestId: number) =>
+    request<{ id: number; state: string }>(
+      `/api/connections/${id}/approvals/processes/requests/${requestId}/submit`,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
+  approveProcessRequest: (id: string, requestId: number, actorUserId: number) =>
+    request<{ id: number; state: string }>(
+      `/api/connections/${id}/approvals/processes/requests/${requestId}/approve`,
+      {
+        method: "POST",
+        body: JSON.stringify({ actor_user_id: actorUserId }),
+      },
+    ),
+  refuseProcessRequest: (id: string, requestId: number, actorUserId: number, reason?: string) =>
+    request<{ id: number; state: string }>(
+      `/api/connections/${id}/approvals/processes/requests/${requestId}/refuse`,
+      {
+        method: "POST",
+        body: JSON.stringify({ actor_user_id: actorUserId, reason: reason ?? "" }),
+      },
+    ),
+  scaffoldApprovalProcesses: (
+    id: string,
+    body: { confirm_advanced?: boolean; confirm_phrase?: string | null; display_name?: string },
+  ) =>
+    request<{ ok: boolean; message: string; warnings: string[] }>(
+      `/api/connections/${id}/approvals/processes/scaffold`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
   createAutomation: (
     id: string,
     body: {
@@ -1371,6 +2382,17 @@ export const api = {
     ),
   listSnapshots: (id: string) =>
     request<SnapshotRow[]>(`/api/connections/${id}/snapshots`),
+  getLatestHealthCheck: (id: string) =>
+    request<HealthCheckRun | null>(`/api/connections/${id}/health-check/latest`),
+  listHealthCheckRuns: (id: string, limit = 20) =>
+    request<HealthCheckRun[]>(
+      `/api/connections/${id}/health-check/runs?limit=${encodeURIComponent(String(limit))}`,
+    ),
+  runHealthCheck: (id: string, asyncJob = true) =>
+    request<HealthCheckTrigger>(
+      `/api/connections/${id}/health-check/run?async_job=${asyncJob ? "true" : "false"}`,
+      { method: "POST" },
+    ),
   rollbackSnapshot: (id: string, snapshotId: string) =>
     request<{ ok: boolean; restored: string; id: number }>(
       `/api/connections/${id}/snapshots/${snapshotId}/rollback`,
@@ -1407,12 +2429,157 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  imageImportPreview: async (id: string, manifest: File, imagesZip: File) => {
+    const fd = new FormData();
+    fd.append("manifest", manifest);
+    fd.append("images_zip", imagesZip);
+    return requestForm<ImageImportPreviewOut>(
+      `/api/connections/${id}/data-import/images/preview`,
+      fd,
+    );
+  },
+  imageImportCommit: async (
+    id: string,
+    body: {
+      model: string;
+      manifest: File;
+      imagesZip: File;
+      match_field?: string;
+      image_field?: string;
+      dry_run?: boolean;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) => {
+    const fd = new FormData();
+    fd.append("manifest", body.manifest);
+    fd.append("images_zip", body.imagesZip);
+    fd.append("model", body.model);
+    fd.append("match_field", body.match_field ?? "x_name");
+    if (body.image_field) fd.append("image_field", body.image_field);
+    fd.append("dry_run", String(body.dry_run ?? true));
+    if (body.confirm_advanced) fd.append("confirm_advanced", "true");
+    if (body.confirm_phrase) fd.append("confirm_phrase", body.confirm_phrase);
+    return requestForm<ImageImportCommitOut>(
+      `/api/connections/${id}/data-import/images/commit`,
+      fd,
+    );
+  },
+  idGeneratorCsvPreview: async (
+    id: string,
+    file: File,
+    body: {
+      name_column: string;
+      code_column?: string;
+      id_column?: string;
+      prefix: string;
+      separator?: string;
+      padding?: number;
+      initials_length?: number;
+      skip_if_present?: boolean;
+      changed_only?: boolean;
+    },
+  ) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("name_column", body.name_column);
+    if (body.code_column) fd.append("code_column", body.code_column);
+    if (body.id_column) fd.append("id_column", body.id_column);
+    fd.append("prefix", body.prefix);
+    fd.append("separator", body.separator ?? "-");
+    fd.append("padding", String(body.padding ?? 4));
+    fd.append("initials_length", String(body.initials_length ?? 3));
+    fd.append("skip_if_present", String(body.skip_if_present ?? true));
+    fd.append("changed_only", String(body.changed_only ?? false));
+    return requestForm<IdGeneratorPreviewOut>(`/api/connections/${id}/id-generator/csv/preview`, fd);
+  },
+  idGeneratorCsvDownload: async (
+    id: string,
+    body: {
+      headers: string[];
+      rows: Record<string, string>[];
+      assignments: IdGeneratorAssignmentOut[];
+      code_column: string;
+      changed_only?: boolean;
+    },
+  ) => {
+    const storedKey = getStoredApiKey();
+    const res = await fetch(`${API_BASE}/api/connections/${id}/id-generator/csv/download`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(storedKey ? { Authorization: `Bearer ${storedKey}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      let detail: unknown = res.statusText;
+      try {
+        const parsed = await res.json();
+        detail = parsed.detail !== undefined ? parsed.detail : parsed;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(formatDetailMessage(detail) || `CSV download failed (${res.status})`);
+    }
+    return res.blob();
+  },
+  idGeneratorLive: (
+    id: string,
+    body: {
+      model: string;
+      name_field: string;
+      code_field: string;
+      config: {
+        prefix: string;
+        separator?: string;
+        padding?: number;
+        initials_length?: number;
+        skip_if_present?: boolean;
+      };
+      ids?: number[];
+      domain?: string | unknown[];
+      dry_run?: boolean;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<IdGeneratorRunOut>(`/api/connections/${id}/id-generator/live`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  idGeneratorCreateSequence: (
+    id: string,
+    body: {
+      model: string;
+      config: {
+        prefix: string;
+        separator?: string;
+        padding?: number;
+        initials_length?: number;
+        skip_if_present?: boolean;
+      };
+      sequence_name?: string;
+    },
+  ) =>
+    request<{ ok: boolean; sequence: Record<string, unknown> }>(
+      `/api/connections/${id}/id-generator/sequence`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
   powerOpsRecipes: (id: string) =>
     request<{ recipes: PowerOpsRecipe[] }>(`/api/connections/${id}/power-ops/recipes`),
   powerOpsCapabilities: (id: string) =>
     request<PowerOpsCapabilities>(`/api/connections/${id}/power-ops/capabilities`),
   listEePlaybooks: (id: string) =>
     request<EePlaybook[]>(`/api/connections/${id}/ee-playbooks`),
+  listDocumentsFolders: (id: string) =>
+    request<Array<{ id: number; name: string | null }>>(
+      `/api/connections/${id}/ee-playbooks/documents/folders`,
+    ),
+  listDocumentsFolders: (id: string) =>
+    request<Array<{ id: number; name: string | null }>>(
+      `/api/connections/${id}/ee-playbooks/documents/folders`,
+    ),
   listDomainPlaybooks: (id: string) =>
     request<DomainPlaybook[]>(`/api/connections/${id}/domain-playbooks`),
   listStudioFeatureRecipes: () =>
@@ -1432,6 +2599,268 @@ export const api = {
     },
   ) =>
     request<PowerOpsRunOut>(`/api/connections/${id}/power-ops/run`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  bulkTransitions: (id: string, model: string) =>
+    request<BulkTransitionsOut>(
+      `/api/connections/${id}/bulk/transitions?model=${encodeURIComponent(model)}`,
+    ),
+  bulkTransitionRun: (
+    id: string,
+    body: {
+      model: string;
+      method: string;
+      domain?: unknown[] | string | null;
+      ids?: number[];
+      dry_run?: boolean;
+      cap?: number;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<BulkRunOut>(`/api/connections/${id}/bulk/transitions/run`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  bulkMassEdit: (
+    id: string,
+    body: {
+      model: string;
+      values: Record<string, unknown>;
+      domain?: unknown[] | string | null;
+      ids?: number[];
+      dry_run?: boolean;
+      cap?: number;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<BulkRunOut>(`/api/connections/${id}/bulk/mass-edit`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  bulkDedupeScan: (
+    id: string,
+    body: {
+      model: string;
+      match_fields: string[];
+      mode?: "exact" | "fuzzy";
+      limit?: number;
+      domain?: unknown[] | null;
+    },
+  ) =>
+    request<DedupeScanOut>(`/api/connections/${id}/bulk/dedupe/scan`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  bulkDedupeMerge: (
+    id: string,
+    body: {
+      model: string;
+      winner_id: number;
+      loser_ids: number[];
+      dry_run?: boolean;
+      archive_or_delete?: "archive" | "unlink";
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<BulkRunOut>(`/api/connections/${id}/bulk/dedupe/merge`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  bulkCrons: (
+    id: string,
+    params?: { q?: string; active?: boolean; limit?: number },
+  ) => {
+    const qs = new URLSearchParams();
+    if (params?.q) qs.set("q", params.q);
+    if (params?.active != null) qs.set("active", String(params.active));
+    if (params?.limit != null) qs.set("limit", String(params.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return request<CronListOut>(`/api/connections/${id}/bulk/crons${suffix}`);
+  },
+  bulkCronRunNow: (
+    id: string,
+    body: {
+      cron_ids: number[];
+      dry_run?: boolean;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<BulkRunOut>(`/api/connections/${id}/bulk/crons/run-now`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  bulkCronCreate: (
+    id: string,
+    body: {
+      name: string;
+      model: string;
+      method: string;
+      interval_number?: number;
+      interval_type?: "minutes" | "hours" | "days" | "weeks" | "months";
+      active?: boolean;
+      nextcall?: string | null;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<CronRowOut>(`/api/connections/${id}/bulk/crons`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  bulkCronPatch: (
+    id: string,
+    cronId: number,
+    body: {
+      interval_number?: number;
+      interval_type?: "minutes" | "hours" | "days" | "weeks" | "months";
+      active?: boolean;
+      nextcall?: string | null;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<CronRowOut>(`/api/connections/${id}/bulk/crons/${cronId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  bulkAttachmentOrphanScan: (id: string, body?: { limit?: number }) =>
+    request<OrphanScanOut>(`/api/connections/${id}/bulk/attachments/orphans/scan`, {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    }),
+  bulkAttachmentDuplicateScan: (id: string, body?: { limit?: number }) =>
+    request<DuplicateScanOut>(`/api/connections/${id}/bulk/attachments/duplicates/scan`, {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    }),
+  bulkAttachmentLargeOldScan: (
+    id: string,
+    body?: { min_bytes?: number; older_than_days?: number; limit?: number },
+  ) =>
+    request<LargeOldScanOut>(`/api/connections/${id}/bulk/attachments/large-old/scan`, {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    }),
+  bulkAttachmentClean: (
+    id: string,
+    body: {
+      attachment_ids: number[];
+      dry_run?: boolean;
+      kind?: "orphan" | "duplicate" | "large_old" | "manual";
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<BulkRunOut>(`/api/connections/${id}/bulk/attachments/clean`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  bulkActivitiesProbe: (id: string, model: string) =>
+    request<ActivityProbeOut>(
+      `/api/connections/${id}/bulk/activities/probe?model=${encodeURIComponent(model)}`,
+    ),
+  bulkActivities: (
+    id: string,
+    body: {
+      model: string;
+      ids?: number[];
+      domain?: unknown;
+      activity_type_id: number;
+      summary: string;
+      date_deadline: string;
+      user_id?: number | null;
+      dry_run?: boolean;
+      cap?: number;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<BulkRunOut>(`/api/connections/${id}/bulk/activities`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  bulkSecurityPreview: (
+    id: string,
+    body: {
+      user_ids: number[];
+      group_ids?: number[];
+      mode?: "add" | "remove" | "offboard";
+      deactivate?: boolean;
+    },
+  ) =>
+    request<SecurityPreviewOut>(`/api/connections/${id}/bulk/security/preview`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  bulkSecurityApply: (
+    id: string,
+    body: {
+      user_ids: number[];
+      group_ids?: number[];
+      mode?: "add" | "remove" | "offboard";
+      deactivate?: boolean;
+      dry_run?: boolean;
+      preview_acknowledged?: boolean;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<BulkRunOut>(`/api/connections/${id}/bulk/security/apply`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  bulkPortal: (
+    id: string,
+    body: {
+      partner_ids: number[];
+      action?: "grant" | "revoke";
+      dry_run?: boolean;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<BulkRunOut>(`/api/connections/${id}/bulk/portal`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  bulkRecompute: (
+    id: string,
+    body: {
+      model: string;
+      field: string;
+      ids?: number[];
+      domain?: string | unknown[];
+      dry_run?: boolean;
+      cap?: number;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<BulkRunOut>(`/api/connections/${id}/bulk/recompute`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  bulkSendMessage: (
+    id: string,
+    body: {
+      model: string;
+      ids?: number[];
+      domain?: string | unknown[];
+      body?: string | null;
+      subject?: string | null;
+      mail_template_id?: number | null;
+      dry_run?: boolean;
+      cap?: number;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<BulkRunOut>(`/api/connections/${id}/bulk/send-message`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
@@ -1659,6 +3088,92 @@ export const api = {
       message: string;
       errors: string[];
     }>(`/api/connections/${id}/config/translations`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  probeI18n: (id: string) =>
+    request<{
+      ok: boolean;
+      major: number | null;
+      method: string;
+      context_lang_reads: boolean;
+      ir_translation_model: boolean;
+      message: string;
+    }>(`/api/connections/${id}/config/i18n/probe`),
+  exportSpecTranslationsCsv: async (
+    id: string,
+    spec: Record<string, unknown>,
+    lang: string,
+  ) => {
+    const storedKey = getStoredApiKey();
+    const res = await fetch(
+      `${API_BASE}/api/connections/${id}/config/i18n/spec-export`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(storedKey ? { Authorization: `Bearer ${storedKey}` } : {}),
+        },
+        body: JSON.stringify({ spec, lang }),
+      },
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.text();
+  },
+  importSpecTranslations: (
+    id: string,
+    body: { csv_text: string; dry_run?: boolean },
+  ) =>
+    request<{
+      ok: boolean;
+      dry_run: boolean;
+      updated: number;
+      skipped: number;
+      preview: Array<{ model: string; name: string; lang: string; value: string }>;
+    }>(`/api/connections/${id}/config/i18n/spec-import`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  probeI18n: (id: string) =>
+    request<{
+      ok: boolean;
+      major: number | null;
+      method: string;
+      context_lang_reads: boolean;
+      ir_translation_model: boolean;
+      message: string;
+    }>(`/api/connections/${id}/config/i18n/probe`),
+  exportSpecTranslationsCsv: async (
+    id: string,
+    spec: Record<string, unknown>,
+    lang: string,
+  ) => {
+    const storedKey = getStoredApiKey();
+    const res = await fetch(
+      `${API_BASE}/api/connections/${id}/config/i18n/spec-export`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(storedKey ? { Authorization: `Bearer ${storedKey}` } : {}),
+        },
+        body: JSON.stringify({ spec, lang }),
+      },
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.text();
+  },
+  importSpecTranslations: (
+    id: string,
+    body: { csv_text: string; dry_run?: boolean },
+  ) =>
+    request<{
+      ok: boolean;
+      dry_run: boolean;
+      updated: number;
+      skipped: number;
+      preview: Array<{ model: string; name: string; lang: string; value: string }>;
+    }>(`/api/connections/${id}/config/i18n/spec-import`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
@@ -1940,6 +3455,102 @@ export const api = {
       method: "DELETE",
       body: JSON.stringify(body),
     }),
+  reportRenderProbe: (id: string, reportId?: number, resId?: number) => {
+    const params = new URLSearchParams();
+    if (reportId != null) params.set("report_id", String(reportId));
+    if (resId != null) params.set("res_id", String(resId));
+    const q = params.toString();
+    return request<ReportRenderProbeOut>(
+      `/api/connections/${id}/reports/render-probe${q ? `?${q}` : ""}`,
+    );
+  },
+  getReportDesignPalette: (id: string) =>
+    request<Array<{ type: string; label: string; hint: string }>>(
+      `/api/connections/${id}/reports/design/palette`,
+    ),
+  compileReportDesign: (id: string, body: { spec: Record<string, unknown> }) =>
+    request<{ ok: boolean; arch: string; body_html: string }>(
+      `/api/connections/${id}/reports/design/compile`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  previewReportDesign: (
+    id: string,
+    body: { spec: Record<string, unknown>; report_id: number; record_id: number },
+  ) =>
+    request<{
+      ok: boolean;
+      content_base64: string;
+      render_path: string;
+      message: string;
+    }>(`/api/connections/${id}/reports/design/preview`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  reportDesignToModuleSpec: (id: string, body: { spec: Record<string, unknown> }) =>
+    request<{ ok: boolean; fragment: Record<string, unknown> }>(
+      `/api/connections/${id}/reports/design/to-module-spec`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  getReportDesignPalette: (id: string) =>
+    request<Array<{ type: string; label: string; hint: string }>>(
+      `/api/connections/${id}/reports/design/palette`,
+    ),
+  compileReportDesign: (id: string, body: { spec: Record<string, unknown> }) =>
+    request<{ ok: boolean; arch: string; body_html: string }>(
+      `/api/connections/${id}/reports/design/compile`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  previewReportDesign: (
+    id: string,
+    body: { spec: Record<string, unknown>; report_id: number; record_id: number },
+  ) =>
+    request<{
+      ok: boolean;
+      content_base64: string;
+      render_path: string;
+      message: string;
+    }>(`/api/connections/${id}/reports/design/preview`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  reportDesignToModuleSpec: (id: string, body: { spec: Record<string, unknown> }) =>
+    request<{ ok: boolean; fragment: Record<string, unknown> }>(
+      `/api/connections/${id}/reports/design/to-module-spec`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  mergePrintReports: async (
+    id: string,
+    body: {
+      items: Array<{ report_id: number; record_ids: number[] }>;
+      order?: number[];
+      filename?: string;
+    },
+  ) => {
+    const storedKey = getStoredApiKey();
+    const res = await fetch(`${API_BASE}/api/connections/${id}/reports/merge-print`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(storedKey ? { Authorization: `Bearer ${storedKey}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      let detail: unknown = res.statusText;
+      try {
+        const parsed = await res.json();
+        detail = parsed.detail !== undefined ? parsed.detail : parsed;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(formatDetailMessage(detail) || `Merge print failed (${res.status})`);
+    }
+    return {
+      blob: await res.blob(),
+      totalPages: res.headers.get("X-Total-Pages"),
+      renderPath: res.headers.get("X-Render-Path"),
+    };
+  },
   listPipelines: () =>
     request<
       Array<{
@@ -2020,6 +3631,70 @@ export type DataImportPreviewOut = {
   warnings: string[];
 };
 
+export type IdGeneratorAssignmentOut = {
+  row_id: string | number;
+  name: string;
+  existing_code: string | null;
+  new_code: string | null;
+  changed: boolean;
+  initials?: string | null;
+};
+
+export type IdGeneratorPreviewOut = {
+  total: number;
+  changed: number;
+  skipped: number;
+  assignments: IdGeneratorAssignmentOut[];
+  headers?: string[] | null;
+  message: string;
+};
+
+export type IdGeneratorRunOut = {
+  run_id: string;
+  operation: string;
+  model: string;
+  total: number;
+  succeeded: number;
+  failed: number;
+  changed: number;
+  skipped: number;
+  dry_run: boolean;
+  message: string;
+  assignments: IdGeneratorAssignmentOut[];
+};
+
+export type IdGeneratorAssignmentOut = {
+  row_id: string | number;
+  name: string;
+  existing_code: string | null;
+  new_code: string | null;
+  changed: boolean;
+  initials?: string | null;
+};
+
+export type IdGeneratorPreviewOut = {
+  total: number;
+  changed: number;
+  skipped: number;
+  assignments: IdGeneratorAssignmentOut[];
+  headers?: string[] | null;
+  message: string;
+};
+
+export type IdGeneratorRunOut = {
+  run_id: string;
+  operation: string;
+  model: string;
+  total: number;
+  succeeded: number;
+  failed: number;
+  changed: number;
+  skipped: number;
+  dry_run: boolean;
+  message: string;
+  assignments: IdGeneratorAssignmentOut[];
+};
+
 export type DataImportCommitOut = {
   ok: boolean;
   dry_run: boolean;
@@ -2036,6 +3711,35 @@ export type DataImportCommitOut = {
     error: string | null;
   }>;
   error_csv: string | null;
+};
+
+export type ImageImportPreviewOut = {
+  row_count: number;
+  sample_rows: Array<Record<string, string>>;
+  image_field: string;
+  match_field: string;
+  match_mode: string;
+  warnings: string[];
+};
+
+export type ImageImportCommitOut = {
+  ok: boolean;
+  dry_run: boolean;
+  updated: number;
+  failed: number;
+  skipped: number;
+  message: string;
+  results: Array<{
+    row_index: number;
+    match_value: string;
+    filename: string;
+    ok: boolean;
+    record_id: number | null;
+    action: string | null;
+    error: string | null;
+    bytes_in: number;
+    bytes_out: number;
+  }>;
 };
 
 export type PowerOpsRecipe = {
@@ -2079,6 +3783,190 @@ export type PowerOpsRunOut = {
     ok: boolean;
     error: string | null;
   }>;
+};
+
+export type BulkTransitionButton = {
+  name: string;
+  label: string;
+  bulk_safe: boolean;
+  reason: string;
+  in_header: boolean;
+};
+
+export type BulkTransitionsOut = {
+  model: string;
+  buttons: BulkTransitionButton[];
+};
+
+export type DedupeScanOut = {
+  model: string;
+  mode: string;
+  match_fields: string[];
+  total_groups: number;
+  partner_merge_available: boolean;
+  groups: Array<{
+    group_key: string;
+    match_fields: string[];
+    records: Array<{
+      id: number;
+      display_name: string;
+      preview: Record<string, unknown>;
+    }>;
+  }>;
+  message: string;
+};
+
+export type ReportRenderProbeOut = {
+  major: number;
+  rpc_methods: Record<string, string>;
+  http_report_pdf: boolean;
+  primary_path: string;
+  message: string;
+};
+
+export type ReportRenderProbeOut = {
+  major: number;
+  rpc_methods: Record<string, string>;
+  http_report_pdf: boolean;
+  primary_path: string;
+  message: string;
+};
+
+export type BulkRunOut = {
+  run_id: string;
+  operation: string;
+  model: string;
+  method: string | null;
+  total: number;
+  succeeded: number;
+  failed: number;
+  per_record: Array<{
+    id: number;
+    display_name: string;
+    ok: boolean;
+    error: string | null;
+  }>;
+  dry_run: boolean;
+  message: string;
+  values?: Record<string, unknown> | null;
+  preview?: Array<{
+    id: number;
+    display_name: string;
+    before: Record<string, unknown>;
+    after: Record<string, unknown>;
+  }> | null;
+  winner_id?: number | null;
+  loser_ids?: number[] | null;
+  relinks?: Array<{
+    model: string;
+    field: string;
+    ttype: string;
+    count: number;
+  }> | null;
+  snapshot_id?: string | null;
+  reversibility?: string | null;
+  cron_ids?: number[] | null;
+  run_via?: string | null;
+  attachment_ids?: number[] | null;
+  reclaimable_bytes?: number | null;
+  kind?: string | null;
+  mode?: string | null;
+  preview_message?: string | null;
+  action?: string | null;
+  field?: string | null;
+  dependencies?: string[] | null;
+  probe?: {
+    ok: boolean;
+    field: string;
+    model: string;
+    dependencies: string[];
+    probe_ids: number[];
+    message: string;
+    honesty_message?: string | null;
+  } | null;
+};
+
+export type ActivityProbeOut = {
+  major: number | null;
+  mail_installed: boolean;
+  supports_model: boolean;
+  message: string;
+};
+
+export type SecurityPreviewOut = {
+  mode: string;
+  users: Array<{
+    user_id: number;
+    user_name: string;
+    add_groups: Array<{ id: number; name: string }>;
+    remove_groups: Array<{ id: number; name: string }>;
+    implied_warnings: string[];
+    deactivate: boolean;
+  }>;
+  message: string;
+};
+
+export type AttachmentRowOut = {
+  id: number;
+  name: string;
+  res_model: string | null;
+  res_id: number | null;
+  res_field: string | null;
+  checksum: string | null;
+  file_size: number;
+  create_date: string | null;
+  mimetype: string | null;
+  cleanable: boolean;
+  exclusion_reason?: string | null;
+};
+
+export type OrphanScanOut = {
+  orphans: AttachmentRowOut[];
+  standalone: AttachmentRowOut[];
+  excluded: AttachmentRowOut[];
+  total_reclaimable_bytes: number;
+  binary_field_hint: string;
+  message: string;
+};
+
+export type DuplicateScanOut = {
+  groups: Array<{
+    checksum: string;
+    keep_id: number;
+    duplicate_ids: number[];
+    reclaimable_bytes: number;
+    members: AttachmentRowOut[];
+  }>;
+  total_reclaimable_bytes: number;
+  binary_field_hint: string;
+  message: string;
+};
+
+export type LargeOldScanOut = {
+  attachments: AttachmentRowOut[];
+  total_reclaimable_bytes: number;
+  min_bytes: number;
+  older_than_days: number;
+  message: string;
+};
+
+export type CronRowOut = {
+  id: number;
+  name: string;
+  model_name: string | null;
+  interval_number: number | null;
+  interval_type: string | null;
+  active: boolean;
+  nextcall: string | null;
+  lastcall: string | null;
+  description: string;
+  state?: string | null;
+  code_preview?: string | null;
+};
+
+export type CronListOut = {
+  crons: CronRowOut[];
+  probe: Record<string, unknown>;
 };
 
 async function requestForm<T>(path: string, form: FormData): Promise<T> {

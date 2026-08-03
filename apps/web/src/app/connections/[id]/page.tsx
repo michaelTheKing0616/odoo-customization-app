@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
+import { HealthCheckBanner } from "@/components/HealthCheckBanner";
+import { HealthCheckBanner } from "@/components/HealthCheckBanner";
 import { EePlaybooksPanel } from "@/components/EePlaybooksPanel";
 import { DomainPlaybooksPanel } from "@/components/DomainPlaybooksPanel";
 import { StudioFeatureRecipesPanel } from "@/components/StudioFeatureRecipesPanel";
@@ -70,6 +72,23 @@ export default function BrowserPage() {
   const [jobStatus, setJobStatus] = useState<string | null>(null);
   const [sandboxLogTail, setSandboxLogTail] = useState<string | null>(null);
   const [suggestNotice, setSuggestNotice] = useState<string | null>(null);
+  const [deploymentPanel, setDeploymentPanel] = useState<DeploymentPanel | null>(null);
+  const [storeReadiness, setStoreReadiness] = useState<
+    import("@/lib/api").StoreReadinessReport | null
+  >(null);
+  const [storeReadyExport, setStoreReadyExport] = useState(false);
+  const [migrationAssist, setMigrationAssist] = useState<
+    import("@/lib/api").MigrationAssist | null
+  >(null);
+  const [storeReadiness, setStoreReadiness] = useState<
+    import("@/lib/api").StoreReadinessReport | null
+  >(null);
+  const [storeReadyExport, setStoreReadyExport] = useState(false);
+  const [migrationAssist, setMigrationAssist] = useState<
+    import("@/lib/api").MigrationAssist | null
+  >(null);
+  const [sandboxApproximation, setSandboxApproximation] = useState<string | null>(null);
+  const [shStagingSuggestion, setShStagingSuggestion] = useState<string | null>(null);
   const [libraryStats, setLibraryStats] = useState<{
     available: boolean;
     books: number | null;
@@ -102,6 +121,12 @@ export default function BrowserPage() {
         ]);
         if (cancelled) return;
         setConnection(conn);
+        if (conn) {
+          api.getMigrationAssist(connectionId).then(setMigrationAssist).catch(() => null);
+        }
+        if (conn) {
+          api.getMigrationAssist(connectionId).then(setMigrationAssist).catch(() => null);
+        }
         setModules(mods);
         setModels(modsAll);
         setPromoted(promo);
@@ -253,8 +278,12 @@ export default function BrowserPage() {
     setExportNotice(null);
     setError(null);
     try {
-      const res = await api.exportModule(connectionId, exportOptions());
+      const res = await api.exportModule(connectionId, exportOptions(), {
+        store_ready: storeReadyExport,
+      });
       downloadBase64Zip(res.filename, res.content_base64);
+      setDeploymentPanel(res.deployment_panel ?? null);
+      setStoreReadiness(res.store_readiness ?? null);
       const warn =
         res.warnings && res.warnings.length
           ? ` Warnings: ${res.warnings.slice(0, 2).join(" · ")}`
@@ -292,6 +321,14 @@ export default function BrowserPage() {
         keep_alive: false,
         async_job: true,
       });
+      setSandboxApproximation(
+        res.approximation ? res.approximation_label ?? "Approximate validation" : null,
+      );
+      setShStagingSuggestion(res.sh_staging_suggestion ?? null);
+      setSandboxApproximation(
+        res.approximation ? res.approximation_label ?? "Approximate validation" : null,
+      );
+      setShStagingSuggestion(res.sh_staging_suggestion ?? null);
 
       if (res.job_id) {
         setActiveJobId(res.job_id);
@@ -476,6 +513,18 @@ export default function BrowserPage() {
             Automations
           </Link>
           <Link
+            href={`/connections/${connectionId}/approvals`}
+            className="text-sm text-[#c9a9c0] hover:underline"
+          >
+            Approvals
+          </Link>
+          <Link
+            href={`/connections/${connectionId}/approvals`}
+            className="text-sm text-[#c9a9c0] hover:underline"
+          >
+            Approvals
+          </Link>
+          <Link
             href={`/connections/${connectionId}/access`}
             className="text-sm text-[#c9a9c0] hover:underline"
           >
@@ -494,10 +543,58 @@ export default function BrowserPage() {
             Bulk import
           </Link>
           <Link
+            href={`/connections/${connectionId}/id-generator`}
+            className="text-sm text-[#c9a9c0] hover:underline"
+          >
+            ID Generator
+          </Link>
+          <Link
+            href={`/connections/${connectionId}/id-generator`}
+            className="text-sm text-[#c9a9c0] hover:underline"
+          >
+            ID Generator
+          </Link>
+          <Link
             href={`/connections/${connectionId}/power-ops`}
             className="text-sm font-semibold text-[#c9a9c0] hover:underline"
           >
             Power Ops
+          </Link>
+          <Link
+            href={`/connections/${connectionId}/bulk-suite`}
+            className="text-sm text-[#c9a9c0] hover:underline"
+          >
+            Bulk Suite
+          </Link>
+          <Link
+            href={`/connections/${connectionId}/cron-manager`}
+            className="text-sm text-[#c9a9c0] hover:underline"
+          >
+            Cron Manager
+          </Link>
+          <Link
+            href={`/connections/${connectionId}/housekeeping`}
+            className="text-sm text-[#c9a9c0] hover:underline"
+          >
+            Housekeeping
+          </Link>
+          <Link
+            href={`/connections/${connectionId}/bulk-suite`}
+            className="text-sm text-[#c9a9c0] hover:underline"
+          >
+            Bulk Suite
+          </Link>
+          <Link
+            href={`/connections/${connectionId}/cron-manager`}
+            className="text-sm text-[#c9a9c0] hover:underline"
+          >
+            Cron Manager
+          </Link>
+          <Link
+            href={`/connections/${connectionId}/housekeeping`}
+            className="text-sm text-[#c9a9c0] hover:underline"
+          >
+            Housekeeping
           </Link>
           <Link
             href={`/connections/${connectionId}/journal`}
@@ -547,18 +644,25 @@ export default function BrowserPage() {
                 setProbing(true);
                 setError(null);
                 try {
-                  const result = await api.probeConnection(connectionId);
-                  setConnection({
-                    ...connection,
-                    server_version: result.server_version,
-                    capabilities: result.capabilities,
-                  });
+                  await api.probeConnection(connectionId);
+                  const refreshed = await api.getConnection(connectionId);
+                  setConnection(refreshed);
                 } catch (err) {
                   setError(err instanceof Error ? err.message : "Probe failed");
                 } finally {
                   setProbing(false);
                 }
               })();
+            }}
+          />
+        )}
+        {connection && (
+          <HealthCheckBanner
+            connectionId={connectionId}
+            connection={connection}
+            onRefreshConnection={async () => {
+              const refreshed = await api.getConnection(connectionId);
+              setConnection(refreshed);
             }}
           />
         )}
@@ -677,6 +781,131 @@ export default function BrowserPage() {
             ). Local sandbox uses matching-major Docker (odoo:16–19) on :18069.
             See <span className="text-[#c9a9c0]">skills/module-interop.md</span>.
           </p>
+          {deploymentPanel ? (
+            <div
+              className="mt-4 rounded border border-[#3d2a38] bg-[#0c090b]/80 p-4 text-sm"
+              data-testid="deployment-panel"
+            >
+              <p className="font-medium text-[#faf6f9]">{deploymentPanel.title}</p>
+              <p className="mt-2 text-[#a8909e]">{deploymentPanel.body}</p>
+              <ul className="mt-2 list-disc pl-5 text-[#8f7a88]">
+                {deploymentPanel.options.map((opt) => (
+                  <li key={opt}>{opt}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {sandboxApproximation ? (
+            <p
+              className="mt-3 rounded border border-amber-900/50 bg-amber-950/30 p-3 text-sm text-amber-100"
+              data-testid="sandbox-approximation"
+            >
+              {sandboxApproximation}
+              {shStagingSuggestion ? (
+                <span className="mt-2 block text-amber-200/90">{shStagingSuggestion}</span>
+              ) : null}
+            </p>
+          ) : null}
+          {storeReadiness ? (
+            <div
+              className="mt-4 rounded border border-[#3d2a38] bg-[#0c090b]/80 p-4 text-sm"
+              data-testid="store-readiness-report"
+            >
+              <p className="font-medium text-[#faf6f9]">
+                Store readiness — {storeReadiness.message}
+              </p>
+              <p className="mt-1 text-xs text-[#8f7a88]">{storeReadiness.disclaimer}</p>
+              <ul className="mt-2 space-y-1 text-[#a8909e]">
+                {storeReadiness.items.map((item) => (
+                  <li key={item.key}>
+                    [{item.status}] {item.label}: {item.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {migrationAssist?.eligible ? (
+            <div
+              className="mt-4 rounded border border-[#3d2a38] bg-[#0c090b]/80 p-4 text-sm"
+              data-testid="migration-assist-panel"
+            >
+              <p className="font-medium text-[#faf6f9]">{migrationAssist.title}</p>
+              <p className="mt-2 text-[#a8909e]">{migrationAssist.body}</p>
+              {migrationAssist.unlocks.length > 0 ? (
+                <ul className="mt-3 list-disc pl-5 text-[#8f7a88]">
+                  {migrationAssist.unlocks.map((u) => (
+                    <li key={u.key}>
+                      {u.label}: {u.online_status} → {u.sh_status} — {u.reason}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <p className="mt-2 text-xs text-[#8f7a88]">{migrationAssist.disclaimer}</p>
+              <div className="mt-2 flex flex-wrap gap-3">
+                {migrationAssist.docs_links.map((link) => (
+                  <a
+                    key={link.url}
+                    href={link.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[#c9a9c0] hover:underline"
+                  >
+                    {link.label}
+                  </a>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {storeReadiness ? (
+            <div
+              className="mt-4 rounded border border-[#3d2a38] bg-[#0c090b]/80 p-4 text-sm"
+              data-testid="store-readiness-report"
+            >
+              <p className="font-medium text-[#faf6f9]">
+                Store readiness — {storeReadiness.message}
+              </p>
+              <p className="mt-1 text-xs text-[#8f7a88]">{storeReadiness.disclaimer}</p>
+              <ul className="mt-2 space-y-1 text-[#a8909e]">
+                {storeReadiness.items.map((item) => (
+                  <li key={item.key}>
+                    [{item.status}] {item.label}: {item.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {migrationAssist?.eligible ? (
+            <div
+              className="mt-4 rounded border border-[#3d2a38] bg-[#0c090b]/80 p-4 text-sm"
+              data-testid="migration-assist-panel"
+            >
+              <p className="font-medium text-[#faf6f9]">{migrationAssist.title}</p>
+              <p className="mt-2 text-[#a8909e]">{migrationAssist.body}</p>
+              {migrationAssist.unlocks.length > 0 ? (
+                <ul className="mt-3 list-disc pl-5 text-[#8f7a88]">
+                  {migrationAssist.unlocks.map((u) => (
+                    <li key={u.key}>
+                      {u.label}: {u.online_status} → {u.sh_status} — {u.reason}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <p className="mt-2 text-xs text-[#8f7a88]">{migrationAssist.disclaimer}</p>
+              <div className="mt-2 flex flex-wrap gap-3">
+                {migrationAssist.docs_links.map((link) => (
+                  <a
+                    key={link.url}
+                    href={link.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[#c9a9c0] hover:underline"
+                  >
+                    {link.label}
+                  </a>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <div className="mt-4 flex flex-wrap items-end gap-3">
             <label className="text-sm">
               <span className="text-[#a8909e]">Technical name</span>
@@ -723,6 +952,22 @@ export default function BrowserPage() {
                 placeholder="res.partner, sale.order"
                 className="mt-1 block w-64 border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
               />
+            </label>
+            <label className="flex items-center gap-2 text-sm text-[#d4c4ce]">
+              <input
+                type="checkbox"
+                checked={storeReadyExport}
+                onChange={(e) => setStoreReadyExport(e.target.checked)}
+              />
+              Apps Store packaging assist (icon, listing page, readiness report)
+            </label>
+            <label className="flex items-center gap-2 text-sm text-[#d4c4ce]">
+              <input
+                type="checkbox"
+                checked={storeReadyExport}
+                onChange={(e) => setStoreReadyExport(e.target.checked)}
+              />
+              Apps Store packaging assist (icon, listing page, readiness report)
             </label>
             <button
               type="button"

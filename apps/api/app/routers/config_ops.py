@@ -972,6 +972,83 @@ def import_translations(
     )
 
 
+# --- CMP-11: i18n probe + ModuleSpec artifact translations ---
+
+
+class I18nProbeOut(BaseModel):
+    ok: bool
+    major: int | None = None
+    method: str
+    context_lang_reads: bool
+    ir_translation_model: bool
+    message: str
+
+
+class SpecTranslationsExportBody(BaseModel):
+    spec: dict[str, Any] = Field(default_factory=dict)
+    lang: str = Field("fr_FR", min_length=2)
+
+
+class SpecTranslationsImportBody(BaseModel):
+    csv_text: str = Field(..., min_length=1)
+    dry_run: bool = True
+
+
+class SpecTranslationsImportOut(BaseModel):
+    ok: bool
+    dry_run: bool
+    updated: int
+    skipped: int
+    preview: list[dict[str, str]] = Field(default_factory=list)
+
+
+@router.get("/i18n/probe", response_model=I18nProbeOut)
+def i18n_probe(connection_id: str, db: Session = Depends(get_db)) -> I18nProbeOut:
+    from app.i18n_probe import probe_i18n
+
+    client = _client(connection_id, db)
+    return I18nProbeOut.model_validate(probe_i18n(client))
+
+
+@router.post("/i18n/spec-export")
+def export_spec_translations(
+    connection_id: str,
+    body: SpecTranslationsExportBody,
+    db: Session = Depends(get_db),
+) -> PlainTextResponse:
+    from app.i18n_artifacts import export_spec_translations_csv
+
+    client = _client(connection_id, db)
+    try:
+        csv_text = export_spec_translations_csv(client, spec=body.spec, lang=body.lang)
+    except OdooClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return PlainTextResponse(
+        csv_text,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="modulespec_{body.lang}_translations.csv"'
+            )
+        },
+    )
+
+
+@router.post("/i18n/spec-import", response_model=SpecTranslationsImportOut)
+def import_spec_translations(
+    connection_id: str,
+    body: SpecTranslationsImportBody,
+    db: Session = Depends(get_db),
+) -> SpecTranslationsImportOut:
+    from app.i18n_artifacts import import_spec_translations_csv
+
+    client = _client(connection_id, db)
+    reader = csv.reader(io.StringIO(body.csv_text))
+    rows = list(reader)
+    result = import_spec_translations_csv(client, rows=rows, dry_run=body.dry_run)
+    return SpecTranslationsImportOut.model_validate(result)
+
+
 # --- M3: Paperformat ---
 
 

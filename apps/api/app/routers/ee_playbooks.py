@@ -300,6 +300,132 @@ def list_spreadsheet_dashboards(
     return [NamedRowOut(id=int(r["id"]), name=r.get("name")) for r in rows]
 
 
+class SignRequestCreateBody(BaseModel):
+    template_id: int
+    res_model: str
+    res_id: int
+    reference: str | None = None
+
+
+class SignRequestOut(BaseModel):
+    id: int
+    name: str | None = None
+    state: str | None = None
+    note: str | None = None
+
+
+@router.post("/sign/requests", response_model=SignRequestOut, status_code=201)
+def create_sign_request(
+    connection_id: str, body: SignRequestCreateBody, db: Session = Depends(get_db)
+) -> SignRequestOut:
+    """Create a sign.request from a template + record — verified: pending-live field subset."""
+    client = _client(connection_id, db)
+    if _module_state(client, "sign") not in {"installed", "to upgrade", "to remove"}:
+        raise HTTPException(status_code=404, detail="Sign module not installed — playbook greyed out")
+    if not client.model_exists("sign.request"):
+        raise HTTPException(status_code=404, detail="Model sign.request not found")
+    if not client.model_exists("sign.template"):
+        raise HTTPException(status_code=404, detail="Model sign.template not found")
+    templates = client.execute_kw(
+        "sign.template",
+        "read",
+        [[body.template_id]],
+        {"fields": ["id", "name"]},
+    )
+    if not templates:
+        raise HTTPException(status_code=404, detail=f"Sign template #{body.template_id} not found")
+    fields = client.execute_kw("sign.request", "fields_get", [], {"attributes": ["type"]})
+    vals: dict[str, Any] = {"template_id": body.template_id}
+    if "reference_doc" in fields:
+        vals["reference_doc"] = f"{body.res_model},{body.res_id}"
+    elif "reference" in fields:
+        vals["reference"] = body.reference or f"{body.res_model},{body.res_id}"
+    try:
+        req_id = client.execute_kw("sign.request", "create", [vals])
+        rows = client.execute_kw(
+            "sign.request",
+            "read",
+            [[int(req_id)]],
+            {"fields": ["id", "name", "state"]},
+        )
+    except OdooClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    row = rows[0] if rows else {"id": int(req_id)}
+    return SignRequestOut(
+        id=int(row["id"]),
+        name=row.get("name"),
+        state=row.get("state"),
+        note="[SKIPPED-LIVE-VERIFY] sign.request create field map not fully verified on Enterprise.",
+    )
+
+
+class DocumentsAttachBody(BaseModel):
+    folder_id: int
+    res_model: str
+    res_id: int
+
+
+class DocumentsAttachOut(BaseModel):
+    attached: int
+    document_ids: list[int] = Field(default_factory=list)
+    note: str | None = None
+
+
+@router.post("/documents/attach", response_model=DocumentsAttachOut)
+def attach_record_to_documents_folder(
+    connection_id: str, body: DocumentsAttachBody, db: Session = Depends(get_db)
+) -> DocumentsAttachOut:
+    """Link record attachments into a Documents folder — module-gated."""
+    client = _client(connection_id, db)
+    if _module_state(client, "documents") not in {"installed", "to upgrade", "to remove"}:
+        raise HTTPException(
+            status_code=404,
+            detail="Documents module not installed — playbook greyed out",
+        )
+    folder_model = "documents.folder" if client.model_exists("documents.folder") else None
+    if folder_model is None:
+        raise HTTPException(status_code=404, detail="documents.folder model not found on this major")
+    doc_model = "documents.document" if client.model_exists("documents.document") else None
+    if doc_model is None:
+        raise HTTPException(status_code=404, detail="documents.document model not found")
+    folders = client.execute_kw(folder_model, "read", [[body.folder_id]], {"fields": ["id", "name"]})
+    if not folders:
+        raise HTTPException(status_code=404, detail=f"Folder #{body.folder_id} not found")
+    attachments = client.execute_kw(
+        "ir.attachment",
+        "search_read",
+        [[("res_model", "=", body.res_model), ("res_id", "=", body.res_id)]],
+        {"fields": ["id", "name", "datas"], "limit": 50},
+    )
+    if not attachments:
+        return DocumentsAttachOut(
+            attached=0,
+            note="No ir.attachment rows on the record to copy into Documents.",
+        )
+    created_ids: list[int] = []
+    doc_fields = client.execute_kw(doc_model, "fields_get", [], {"attributes": ["type"]})
+    for att in attachments:
+        vals: dict[str, Any] = {"name": att.get("name") or "Attachment", "folder_id": body.folder_id}
+        if "attachment_id" in doc_fields:
+            vals["attachment_id"] = att["id"]
+        elif "datas" in doc_fields and att.get("datas"):
+            vals["datas"] = att["datas"]
+        try:
+            doc_id = client.execute_kw(doc_model, "create", [vals])
+            created_ids.append(int(doc_id))
+        except OdooClientError:
+            continue
+    return DocumentsAttachOut(
+        attached=len(created_ids),
+        document_ids=created_ids,
+        note=(
+            "[SKIPPED-LIVE-VERIFY] documents.document create field map not fully verified on Enterprise."
+            if created_ids
+            else "No documents created — field map may differ on this major."
+        ),
+    )
+
+
 @router.get("/voip/phonecalls", response_model=list[NamedRowOut])
 def list_voip_phonecalls(
     connection_id: str, db: Session = Depends(get_db)

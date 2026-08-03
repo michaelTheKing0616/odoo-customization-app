@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from odoo import fields, models
+from odoo import api, fields, models
 
 
 class {{ model.class_name() }}(models.Model):
@@ -23,6 +23,17 @@ class {{ model.class_name() }}(models.Model):
     x_name = fields.Char(string="Name", required=True)
 {% endif %}
 {% endfor %}
+{% if sequence_meta %}
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        seq_code = {{ sequence_meta.code | py }}
+        ref_field = {{ sequence_meta.field_name | py }}
+        for vals in vals_list:
+            if not vals.get(ref_field):
+                vals[ref_field] = self.env["ir.sequence"].next_by_code(seq_code) or "/"
+        return super().create(vals_list)
+{% endif %}
 {% if model.extra_python %}
 
 {{ model.extra_python }}

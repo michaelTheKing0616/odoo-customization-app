@@ -261,3 +261,55 @@ def test_render_inherit_smart_buttons_creates_box_when_missing() -> None:
     assert 'name="button_box"' in arch
     assert "oe_stat_button" in arch
     assert 'name="99"' in arch
+
+
+def test_list_arch_sample_flag() -> None:
+    arch = render_list_arch(
+        ListViewSpec(string="Demo", columns=[FieldNode(name="x_name")], sample=True)
+    )
+    assert 'sample="1"' in arch
+
+
+def test_field_image_options_emitted() -> None:
+    arch = render_form_arch(
+        FormViewSpec(
+            string="Photo",
+            children=[
+                GroupNode(
+                    children=[
+                        FieldNode(
+                            name="x_photo",
+                            widget="image",
+                            options='{"size": [128, 128]}',
+                        )
+                    ]
+                )
+            ],
+        )
+    )
+    assert 'widget="image"' in arch
+    assert "options=" in arch
+    assert "128" in arch
+
+
+def test_major16_form_field_attrs_roundtrip() -> None:
+    from odoo_client.view_arch import parse_form_arch
+
+    arch = render_form_arch(
+        FormViewSpec(
+            string="T",
+            children=[
+                GroupNode(
+                    children=[
+                        FieldNode(name="x_name", invisible="[('active', '=', False)]")
+                    ]
+                )
+            ],
+        ),
+        major=16,
+    )
+    assert "attrs=" in arch
+    spec = parse_form_arch(arch)
+    field = spec.children[0].children[0]
+    assert isinstance(field, FieldNode)
+    assert field.invisible == "[('active', '=', False)]"

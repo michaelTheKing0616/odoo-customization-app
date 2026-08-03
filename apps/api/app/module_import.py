@@ -25,12 +25,14 @@ class ImportResult:
 
     def as_dict(self) -> dict[str, Any]:
         out = dict(self.spec)
+        _attach_custom_code_blocks(out, self.unmapped)
         if self.unmapped:
             out["unmapped"] = self.unmapped
         out["_import"] = {
             "source": self.source,
             "warnings": self.warnings,
             "unmapped_count": len(self.unmapped),
+            "custom_code_blocks_count": len(out.get("custom_code_blocks") or []),
         }
         return out
 
@@ -53,8 +55,105 @@ _FIELD_CTOR = {
 }
 
 
-def _kw_str(kwargs: dict[str, Any], key: str, default: Any = None) -> Any:
+def unmapped_to_custom_code_blocks(unmapped: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Normalize legacy import ``unmapped`` entries to canonical custom_code_blocks."""
+    blocks: list[dict[str, Any]] = []
+    for entry in unmapped:
+        if not isinstance(entry, dict):
+            continue
+        kind = str(entry.get("kind") or "opaque")
+        source_file = str(entry.get("path") or entry.get("source_file") or "custom/preserved.txt")
+        model = entry.get("model")
+        content: str
+        if isinstance(entry.get("content"), str):
+            content = entry["content"]
+        elif isinstance(entry.get("source"), str):
+            content = entry["source"]
+        elif isinstance(entry.get("snippets"), list):
+            content = "\n\n".join(str(s) for s in entry["snippets"] if s)
+        else:
+            content = json.dumps(entry, indent=2)
+        block: dict[str, Any] = {
+            "source_file": source_file,
+            "kind": kind,
+            "content": content,
+            "reason": entry.get("reason") or "custom_logic_not_editable_visually",
+        }
+        if model:
+            block["model"] = model
+        blocks.append(block)
+    return blocks
+
+
+def _attach_custom_code_blocks(spec: dict[str, Any], unmapped: list[dict[str, Any]]) -> None:
+    existing = spec.get("custom_code_blocks")
+    if isinstance(existing, list) and existing:
+        return
+    if unmapped:
+        spec["custom_code_blocks"] = unmapped_to_custom_code_blocks(unmapped)
+        spec["unmapped"] = unmapped  # legacy mirror
+
+
+def unmapped_to_custom_code_blocks(unmapped: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Normalize legacy import ``unmapped`` entries to canonical custom_code_blocks."""
+    blocks: list[dict[str, Any]] = []
+    for entry in unmapped:
+        if not isinstance(entry, dict):
+            continue
+        kind = str(entry.get("kind") or "opaque")
+        source_file = str(entry.get("path") or entry.get("source_file") or "custom/preserved.txt")
+        model = entry.get("model")
+        content: str
+        if isinstance(entry.get("content"), str):
+            content = entry["content"]
+        elif isinstance(entry.get("source"), str):
+            content = entry["source"]
+        elif isinstance(entry.get("snippets"), list):
+            content = "\n\n".join(str(s) for s in entry["snippets"] if s)
+        else:
+            content = json.dumps(entry, indent=2)
+        block: dict[str, Any] = {
+            "source_file": source_file,
+            "kind": kind,
+            "content": content,
+            "reason": entry.get("reason") or "custom_logic_not_editable_visually",
+        }
+        if model:
+            block["model"] = model
+        blocks.append(block)
+    return blocks
+
+
+def _attach_custom_code_blocks(spec: dict[str, Any], unmapped: list[dict[str, Any]]) -> None:
+    existing = spec.get("custom_code_blocks")
+    if isinstance(existing, list) and existing:
+        return
+    if unmapped:
+        spec["custom_code_blocks"] = unmapped_to_custom_code_blocks(unmapped)
+        spec["unmapped"] = unmapped  # legacy mirror
+
+
     return kwargs.get(key, default)
+
+
+def _extract_opaque_xml_fragments(
+    arch: str, *, filename: str, model: str | None
+) -> list[dict[str, Any]]:
+    """Capture script tags / non-visual custom XML for view-as-code preservation."""
+    frags: list[dict[str, Any]] = []
+    if not arch:
+        return frags
+    if re.search(r"<script\b", arch, re.I):
+        frags.append(
+            {
+                "kind": "xml_opaque",
+                "path": filename,
+                "model": model,
+                "reason": "custom_logic_not_editable_visually",
+                "source": arch,
+            }
+        )
+    return frags
 
 
 def _call_kwargs(node: ast.Call) -> dict[str, Any]:
@@ -231,6 +330,13 @@ def _parse_field_call(name: str, call: ast.Call) -> dict[str, Any] | None:
     if ctor not in _FIELD_CTOR:
         return None
     kwargs = _call_kwargs(call)
+    if ctor == "Selection" and call.args:
+        try:
+            kwargs["selection"] = ast.literal_eval(call.args[0])
+        except (ValueError, TypeError):
+            pass
+        kwargs.pop("comodel_name", None)
+        kwargs.pop("relation", None)
     ttype = _FIELD_CTOR[ctor]
     field: dict[str, Any] = {
         "name": name if name.startswith("x_") or True else f"x_{name}",
@@ -327,6 +433,8 @@ def parse_xml_views(source: str, *, filename: str = "<view>") -> tuple[list[dict
             continue
         if vtype == "tree":
             vtype = "list"
+        opaque_frags = _extract_opaque_xml_fragments(arch, filename=filename, model=model)
+        unmapped.extend(opaque_frags)
         views.append(
             {
                 "name": vname,
@@ -349,7 +457,10 @@ def parse_meta_json(data: dict[str, Any] | str) -> ImportResult:
     spec = data.get("spec") if isinstance(data.get("spec"), dict) else data
     if not isinstance(spec, dict):
         raise ValueError(".meta.json missing spec object")
-    return ImportResult(spec=dict(spec), source="meta.json", warnings=["loaded from .meta.json sidecar"])
+    spec = dict(spec)
+    if isinstance(spec.get("custom_code_blocks"), list):
+        pass
+    return ImportResult(spec=spec, source="meta.json", warnings=["loaded from .meta.json sidecar"])
 
 
 def import_module_archive(content: bytes, *, filename: str = "module.zip") -> ImportResult:
@@ -511,4 +622,5 @@ __all__ = [
     "parse_meta_json",
     "parse_python_models",
     "parse_xml_views",
+    "unmapped_to_custom_code_blocks",
 ]

@@ -1,12 +1,13 @@
 """Serialize a narrow Studio-like view tree into Odoo view XML.
 
 Supported tags (80/20): field, group, notebook/page, button, list/tree columns,
-search fields, kanban, calendar, graph, pivot, map, activity, gantt, cohort.
+search fields, kanban, calendar, graph, pivot, map, activity, gantt, cohort, grid.
 No full Odoo directive coverage — expand deliberately.
 """
 
 from __future__ import annotations
 
+import ast
 import re
 from typing import Any, Literal
 from xml.etree.ElementTree import Element, SubElement, tostring
@@ -14,15 +15,18 @@ from xml.dom import minidom
 
 from pydantic import BaseModel, Field
 
+from odoo_client.field_attrs import emit_field_modifiers
+
 
 class FieldNode(BaseModel):
     kind: Literal["field"] = "field"
     name: str
     string: str | None = None
-    required: bool | None = None
-    readonly: bool | None = None
-    invisible: str | None = None  # domain / expr as Odoo expects later; optional attr
+    required: bool | str | None = None
+    readonly: bool | str | None = None
+    invisible: str | None = None  # domain / expr
     widget: str | None = None
+    options: str | None = None  # JSON string for widget options (e.g. image size)
 
 
 class ButtonNode(BaseModel):
@@ -122,6 +126,10 @@ class ListViewSpec(BaseModel):
     decoration_danger: str | None = None
     decoration_info: str | None = None
     decoration_muted: str | None = None
+    sample: bool | None = Field(
+        default=None,
+        description='When True, emit sample="1" on list root for demo data',
+    )
 
 
 class SearchFilterNode(BaseModel):
@@ -145,6 +153,7 @@ class KanbanViewSpec(BaseModel):
     default_group_by: str | None = None
     create: bool | None = None
     quick_create: bool | None = None
+    sample: bool | None = None
 
 
 class AxisFieldNode(BaseModel):
@@ -170,11 +179,13 @@ class GraphViewSpec(BaseModel):
     string: str = "Graph"
     type: Literal["bar", "line", "pie"] = "bar"
     fields: list[AxisFieldNode] = Field(default_factory=list)
+    sample: bool | None = None
 
 
 class PivotViewSpec(BaseModel):
     string: str = "Pivot"
     fields: list[AxisFieldNode] = Field(default_factory=list)
+    sample: bool | None = None
 
 
 class MapViewSpec(BaseModel):
@@ -218,6 +229,18 @@ class CohortViewSpec(BaseModel):
     fields: list[FieldNode] = Field(default_factory=list)
 
 
+class GridViewSpec(BaseModel):
+    """Grid/planning arch (EE/module-gated — public docs attrs)."""
+
+    string: str = "Grid"
+    row_field: str | None = None
+    col_field: str | None = None
+    measure: str | None = None
+    date_start: str | None = None
+    date_stop: str | None = None
+    fields: list[FieldNode] = Field(default_factory=list)
+
+
 def _set_bool_attr(el: Element, key: str, value: bool | None) -> None:
     if value is True:
         el.set(key, "1")
@@ -236,18 +259,23 @@ def _parse_bool_attr(raw: str | None) -> bool | None:
     return None
 
 
-def _render_node(parent: Element, node: ViewNode) -> None:
+def _render_node(parent: Element, node: ViewNode, *, major: int = 19) -> None:
     if isinstance(node, FieldNode):
         el = SubElement(parent, "field")
         el.set("name", node.name)
         if node.string:
             el.set("string", node.string)
-        _set_bool_attr(el, "required", node.required)
-        _set_bool_attr(el, "readonly", node.readonly)
-        if node.invisible:
-            el.set("invisible", node.invisible)
+        for key, val in emit_field_modifiers(
+            major=major,
+            required=node.required,
+            readonly=node.readonly,
+            invisible=node.invisible,
+        ).items():
+            el.set(key, val)
         if node.widget:
             el.set("widget", node.widget)
+        if node.options:
+            el.set("options", node.options)
         return
 
     if isinstance(node, ButtonNode):
@@ -259,7 +287,7 @@ def _render_node(parent: Element, node: ViewNode) -> None:
         if node.string:
             el.set("string", node.string)
         for child in node.children:
-            _render_node(el, child)
+            _render_node(el, child, major=major)
         return
 
     if isinstance(node, NotebookNode):
@@ -267,16 +295,14 @@ def _render_node(parent: Element, node: ViewNode) -> None:
         for page in node.pages:
             page_el = SubElement(el, "page")
             page_el.set("string", page.string)
-            # Fields directly under <page> often render without labels in Odoo;
-            # wrap in <group> unless the page already contains a group.
             kids = list(page.children)
             if kids and not any(isinstance(c, GroupNode) for c in kids):
                 group_el = SubElement(page_el, "group")
                 for child in kids:
-                    _render_node(group_el, child)
+                    _render_node(group_el, child, major=major)
             else:
                 for child in kids:
-                    _render_node(page_el, child)
+                    _render_node(page_el, child, major=major)
         return
 
     raise TypeError(f"Unsupported node: {type(node)!r}")
@@ -320,7 +346,7 @@ def _pretty_xml(root: Element) -> str:
     return "\n".join(lines)
 
 
-def render_form_arch(spec: FormViewSpec) -> str:
+def render_form_arch(spec: FormViewSpec, *, major: int = 19) -> str:
     root = Element("form")
     root.set("string", spec.string)
     _set_bool_attr(root, "create", spec.create)
@@ -352,11 +378,11 @@ def render_form_arch(spec: FormViewSpec) -> str:
                 )
             _render_button(box, btn)
     for child in spec.children:
-        _render_node(sheet, child)
+        _render_node(sheet, child, major=major)
     return _pretty_xml(root)
 
 
-def render_list_arch(spec: ListViewSpec) -> str:
+def render_list_arch(spec: ListViewSpec, *, major: int = 19) -> str:
     # Odoo 19 prefers <list>; older used <tree>. Emit <list>.
     root = Element("list")
     root.set("string", spec.string)
@@ -364,6 +390,8 @@ def render_list_arch(spec: ListViewSpec) -> str:
     _set_bool_attr(root, "edit", spec.edit)
     _set_bool_attr(root, "delete", spec.delete)
     _set_bool_attr(root, "multi_edit", spec.multi_edit)
+    if spec.sample:
+        root.set("sample", "1")
     if spec.default_order:
         root.set("default_order", spec.default_order)
     if spec.decoration_danger:
@@ -373,15 +401,15 @@ def render_list_arch(spec: ListViewSpec) -> str:
     if spec.decoration_muted:
         root.set("decoration-muted", spec.decoration_muted)
     for col in spec.columns:
-        _render_node(root, col)
+        _render_node(root, col, major=major)
     return _pretty_xml(root)
 
 
-def render_search_arch(spec: SearchViewSpec) -> str:
+def render_search_arch(spec: SearchViewSpec, *, major: int = 19) -> str:
     root = Element("search")
     root.set("string", spec.string)
     for fld in spec.fields:
-        _render_node(root, fld)
+        _render_node(root, fld, major=major)
     for filt in spec.filters:
         el = SubElement(root, "filter")
         el.set("name", filt.name)
@@ -411,6 +439,7 @@ def render_kanban_arch(
     default_group_by: str | None = None,
     create: bool | None = None,
     quick_create: bool | None = None,
+    sample: bool | None = None,
 ) -> str:
     """Render a simple Odoo 19 kanban board with field cards.
 
@@ -424,6 +453,8 @@ def render_kanban_arch(
         root.set("default_group_by", default_group_by)
     _set_bool_attr(root, "create", create)
     _set_bool_attr(root, "quick_create", quick_create)
+    if sample:
+        root.set("sample", "1")
     templates = SubElement(root, "templates")
     card = SubElement(templates, "t")
     card.set("t-name", "card")
@@ -466,6 +497,8 @@ def render_graph_arch(spec: GraphViewSpec) -> str:
     root = Element("graph")
     root.set("string", spec.string)
     root.set("type", spec.type)
+    if spec.sample:
+        root.set("sample", "1")
     for fld in spec.fields:
         _render_axis_field(root, fld)
     return _pretty_xml(root)
@@ -474,6 +507,8 @@ def render_graph_arch(spec: GraphViewSpec) -> str:
 def render_pivot_arch(spec: PivotViewSpec) -> str:
     root = Element("pivot")
     root.set("string", spec.string)
+    if spec.sample:
+        root.set("sample", "1")
     for fld in spec.fields:
         _render_axis_field(root, fld)
     return _pretty_xml(root)
@@ -559,13 +594,42 @@ def render_cohort_arch(spec: CohortViewSpec) -> str:
     return _pretty_xml(root)
 
 
+def render_grid_arch(spec: GridViewSpec) -> str:
+    root = Element("grid")
+    root.set("string", spec.string)
+    if spec.row_field:
+        root.set("row_field", spec.row_field)
+    if spec.col_field:
+        root.set("col_field", spec.col_field)
+    if spec.measure:
+        root.set("measure", spec.measure)
+    if spec.date_start:
+        root.set("date_start", spec.date_start)
+    if spec.date_stop:
+        root.set("date_stop", spec.date_stop)
+    for fld in spec.fields:
+        _render_node(root, fld)
+    return _pretty_xml(root)
+
+
+def _major_from_payload(payload: dict[str, Any]) -> int:
+    raw = payload.get("major")
+    if raw is None:
+        return 19
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 19
+
+
 def render_arch(view_type: str, payload: dict[str, Any]) -> str:
+    major = _major_from_payload(payload)
     if view_type in {"form"}:
-        return render_form_arch(FormViewSpec.model_validate(payload))
+        return render_form_arch(FormViewSpec.model_validate(payload), major=major)
     if view_type in {"list", "tree"}:
-        return render_list_arch(ListViewSpec.model_validate(payload))
+        return render_list_arch(ListViewSpec.model_validate(payload), major=major)
     if view_type == "search":
-        return render_search_arch(SearchViewSpec.model_validate(payload))
+        return render_search_arch(SearchViewSpec.model_validate(payload), major=major)
     if view_type == "kanban":
         if "records_fields" in payload or "default_group_by" in payload or "string" in payload:
             spec = KanbanViewSpec.model_validate(
@@ -580,6 +644,7 @@ def render_arch(view_type: str, payload: dict[str, Any]) -> str:
                     "default_group_by": payload.get("default_group_by"),
                     "create": payload.get("create"),
                     "quick_create": payload.get("quick_create"),
+                    "sample": payload.get("sample"),
                 }
             )
             return render_kanban_arch(
@@ -588,6 +653,7 @@ def render_arch(view_type: str, payload: dict[str, Any]) -> str:
                 default_group_by=spec.default_group_by,
                 create=spec.create,
                 quick_create=spec.quick_create,
+                sample=spec.sample,
             )
         return render_kanban_arch(
             string=payload.get("string", "Kanban"),
@@ -595,6 +661,7 @@ def render_arch(view_type: str, payload: dict[str, Any]) -> str:
             default_group_by=payload.get("default_group_by"),
             create=payload.get("create"),
             quick_create=payload.get("quick_create"),
+            sample=payload.get("sample"),
         )
     if view_type == "calendar":
         return render_calendar_arch(CalendarViewSpec.model_validate(payload))
@@ -610,6 +677,8 @@ def render_arch(view_type: str, payload: dict[str, Any]) -> str:
         return render_gantt_arch(GanttViewSpec.model_validate(payload))
     if view_type == "cohort":
         return render_cohort_arch(CohortViewSpec.model_validate(payload))
+    if view_type == "grid":
+        return render_grid_arch(GridViewSpec.model_validate(payload))
     raise ValueError(f"Unsupported view type for designer: {view_type!r}")
 
 
@@ -732,18 +801,62 @@ def render_inherit_field_arch(
     raise ValueError(f"Unsupported inherit inject view_type={view_type!r}")
 
 
+def _parse_modifier_attr(raw: str | None) -> bool | str | None:
+    if raw is None:
+        return None
+    s = raw.strip()
+    if not s:
+        return None
+    if s in {"1", "True", "true"}:
+        return True
+    if s in {"0", "False", "false"}:
+        return False
+    if s.startswith("[") and s.endswith("]"):
+        return s
+    return s
+
+
+def _domain_from_attrs_value(value: Any) -> str | None:
+    if value is True:
+        return "1"
+    if value is False or value is None:
+        return None
+    if isinstance(value, list):
+        return repr(value)
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
 def _parse_field_el(el: Element) -> FieldNode:
+    required: bool | str | None = None
+    readonly: bool | str | None = None
+    invisible: str | None = None
+
+    attrs_raw = el.get("attrs")
+    if attrs_raw:
+        try:
+            attrs = ast.literal_eval(attrs_raw)
+            if isinstance(attrs, dict):
+                required = _domain_from_attrs_value(attrs.get("required"))
+                readonly = _domain_from_attrs_value(attrs.get("readonly"))
+                inv = _domain_from_attrs_value(attrs.get("invisible"))
+                invisible = inv if inv else None
+        except (SyntaxError, ValueError):
+            pass
+    else:
+        required = _parse_modifier_attr(el.get("required"))
+        readonly = _parse_modifier_attr(el.get("readonly"))
+        invisible = el.get("invisible")
+
     return FieldNode(
         name=el.get("name") or "",
         string=el.get("string"),
-        required=True if el.get("required") in {"1", "True", "true"} else (
-            False if el.get("required") in {"0", "False", "false"} else None
-        ),
-        readonly=True if el.get("readonly") in {"1", "True", "true"} else (
-            False if el.get("readonly") in {"0", "False", "false"} else None
-        ),
-        invisible=el.get("invisible"),
+        required=required,
+        readonly=readonly,
+        invisible=invisible,
         widget=el.get("widget"),
+        options=el.get("options"),
     )
 
 
@@ -872,6 +985,7 @@ def parse_list_arch(arch: str) -> ListViewSpec:
         edit=_parse_bool_attr(root.get("edit")),
         delete=_parse_bool_attr(root.get("delete")),
         multi_edit=_parse_bool_attr(root.get("multi_edit")),
+        sample=_parse_bool_attr(root.get("sample")),
         default_order=root.get("default_order"),
         columns=columns,
         decoration_danger=root.get("decoration-danger"),
@@ -969,6 +1083,7 @@ def parse_kanban_arch(arch: str) -> KanbanViewSpec:
         default_group_by=root.get("default_group_by"),
         create=_parse_bool_attr(root.get("create")),
         quick_create=_parse_bool_attr(root.get("quick_create")),
+        sample=_parse_bool_attr(root.get("sample")),
     )
 
 
@@ -1038,6 +1153,7 @@ def parse_graph_arch(arch: str) -> GraphViewSpec:
         string=root.get("string") or "Graph",
         type=graph_type,
         fields=fields,
+        sample=_parse_bool_attr(root.get("sample")),
     )
 
 
@@ -1057,6 +1173,7 @@ def parse_pivot_arch(arch: str) -> PivotViewSpec:
     return PivotViewSpec(
         string=root.get("string") or "Pivot",
         fields=fields,
+        sample=_parse_bool_attr(root.get("sample")),
     )
 
 
@@ -1177,6 +1294,28 @@ def parse_cohort_arch(arch: str) -> CohortViewSpec:
     )
 
 
+def parse_grid_arch(arch: str) -> GridViewSpec:
+    from xml.etree.ElementTree import fromstring
+
+    unwrapped = _unwrap_inherit_inner_arch(arch)
+    if unwrapped:
+        arch = unwrapped
+
+    root = fromstring(arch)
+    if root.tag != "grid":
+        raise ValueError(f"Expected <grid>, got <{root.tag}>")
+    fields = [_parse_field_el(el) for el in root.findall("field") if el.get("name")]
+    return GridViewSpec(
+        string=root.get("string") or "Grid",
+        row_field=root.get("row_field"),
+        col_field=root.get("col_field"),
+        measure=root.get("measure"),
+        date_start=root.get("date_start"),
+        date_stop=root.get("date_stop"),
+        fields=fields,
+    )
+
+
 def parse_arch(view_type: str, arch: str) -> dict[str, Any]:
     """Parse Odoo view XML into a designer-friendly spec dict."""
     vt = "list" if view_type == "tree" else view_type
@@ -1202,6 +1341,8 @@ def parse_arch(view_type: str, arch: str) -> dict[str, Any]:
         return parse_gantt_arch(arch).model_dump()
     if vt == "cohort":
         return parse_cohort_arch(arch).model_dump()
+    if vt == "grid":
+        return parse_grid_arch(arch).model_dump()
     raise ValueError(f"Unsupported parse view_type={view_type!r}")
 
 
@@ -1238,6 +1379,8 @@ def render_inherit_replace_arch(view_type: str, inner_arch: str) -> str:
         expr = "//gantt"
     elif vt == "cohort":
         expr = "//cohort"
+    elif vt == "grid":
+        expr = "//grid"
     else:
         raise ValueError(f"Unsupported inherit replace view_type={view_type!r}")
     return (
@@ -1252,13 +1395,21 @@ def render_inherit_replace_arch(view_type: str, inner_arch: str) -> str:
 def render_inherit_xpath_arch(
     *,
     expr: str,
-    position: Literal["inside", "after", "before", "replace", "attributes"] = "inside",
-    body_xml: str,
+    position: Literal[
+        "inside", "after", "before", "replace", "attributes", "move"
+    ] = "inside",
+    body_xml: str = "",
 ) -> str:
     """Build a single-xpath inherit arch for power users / Designer xpath editor."""
     expr_clean = expr.strip()
     if not expr_clean:
         raise ValueError("xpath expr is required")
+    if position == "move":
+        return (
+            "<data>\n"
+            f'  <xpath expr="{expr_clean}" position="move"/>\n'
+            "</data>"
+        )
     body = body_xml.strip()
     if not body:
         raise ValueError("xpath body_xml is required")
@@ -1269,6 +1420,21 @@ def render_inherit_xpath_arch(
         "  </xpath>\n"
         "</data>"
     )
+
+
+def render_xpath_wrap_arch(*, expr: str, wrapper_xml: str) -> str:
+    """Wrap the matched node using Odoo ``$0`` placeholder (position replace)."""
+    wrapper = wrapper_xml.strip()
+    if not wrapper:
+        raise ValueError("wrapper_xml is required")
+    if "$0" not in wrapper:
+        raise ValueError("wrapper_xml must contain $0 for the matched node")
+    return render_inherit_xpath_arch(expr=expr, position="replace", body_xml=wrapper)
+
+
+def render_xpath_move_arch(*, expr: str) -> str:
+    """Move the matched node elsewhere (parent arch defines drop target)."""
+    return render_inherit_xpath_arch(expr=expr, position="move")
 
 
 def _normalize_smart_button(node: ButtonNode) -> ButtonNode:
@@ -1367,6 +1533,8 @@ def validate_xpath_arch(arch: str) -> list[str]:
         if not (xp.get("expr") or "").strip():
             issues.append("xpath missing expr attribute")
         pos = xp.get("position") or "inside"
-        if pos not in {"inside", "after", "before", "replace", "attributes"}:
+        if pos not in {"inside", "after", "before", "replace", "attributes", "move"}:
             issues.append(f"Unusual xpath position={pos!r}")
+        if pos != "move" and not list(xp) and not (xp.text or "").strip():
+            issues.append("xpath body is empty")
     return issues

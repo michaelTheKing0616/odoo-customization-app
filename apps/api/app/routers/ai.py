@@ -14,9 +14,12 @@ from app.ai_ollama import (
     ollama_reachable,
 )
 from app.ai_rag import rag_status
+from app.ai_self_consistency import self_consistency_status
 from app.db import get_db
+from app.llm_provider import llm_routing_status
 from app.odoo_service import OdooClientError, client_from_connection, get_connection_or_404
-from app.schemas import AiDraftModuleBody, AiDraftModuleOut
+from app.protected_modules import manifest_from_json
+from app.schemas import AiDraftModuleBody, AiDraftModuleOut, ProtectedModuleRefusal
 from app.settings import settings
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -30,14 +33,22 @@ def ai_status() -> dict[str, object]:
     if enabled:
         reachable, detail = ollama_reachable()
     rag = rag_status()
+    routing = llm_routing_status()
+    consistency = self_consistency_status()
     return {
         "ai_assist": settings.ai_assist,
         "enabled": enabled,
         "provider": settings.ai_assist,
         "pipeline_mode": settings.ai_pipeline_mode,
         "ai_critique": settings.ai_critique,
+        "ai_self_consistency": consistency.get("ai_self_consistency"),
+        "self_consistency": consistency,
         "ollama_base_url": settings.ollama_base_url,
         "ollama_model": settings.ollama_model,
+        "ai_model_bulk": routing.get("ai_model_bulk"),
+        "ai_model_reasoning": routing.get("ai_model_reasoning"),
+        "ai_thinking": routing.get("ai_thinking"),
+        "llm_routing": routing,
         "openai_compatible_base_url": settings.openai_compatible_base_url or None,
         "openai_compatible_model": settings.openai_compatible_model,
         "ollama_reachable": reachable,
@@ -52,11 +63,6 @@ def _load_reuse_catalog(
     db: Session,
     body: AiDraftModuleBody,
 ) -> tuple[list[str] | None, list[str] | None, list[dict], list[dict]]:
-    """Optional live catalog for prompt context + draft.reuse.
-
-    Returns (available_models, installed_modules, reuse_views, reuse_actions).
-    When connection_id is absent, all model/module lists are None → offline planner.
-    """
     available: list[str] | None = None
     installed: list[str] | None = None
     reuse_views: list[dict] = []
@@ -143,13 +149,38 @@ def _load_reuse_catalog(
     return available, installed, reuse_views, reuse_actions
 
 
+@router.get("/component-gallery")
+def component_gallery() -> list[dict[str, str]]:
+    from app.component_gallery import list_gallery
+
+    return list_gallery()
+
+
 @router.post("/draft-module", response_model=AiDraftModuleOut)
 def draft_module(
     body: AiDraftModuleBody, db: Session = Depends(get_db)
 ) -> AiDraftModuleOut:
     available, installed, reuse_views, reuse_actions = _load_reuse_catalog(db, body)
+    protected_manifest = None
+    odoo_version = None
+    odoo_client = None
+    if body.connection_id:
+        try:
+            conn = get_connection_or_404(db, body.connection_id)
+            protected_manifest = manifest_from_json(
+                getattr(conn, "protected_manifest_json", None)
+            )
+            odoo_version = getattr(conn, "server_version", None) or getattr(
+                conn, "protected_manifest_version", None
+            )
+            try:
+                odoo_client = client_from_connection(conn)
+            except OdooClientError:
+                odoo_client = None
+        except LookupError:
+            protected_manifest = None
     try:
-        draft, raw, warnings = draft_module_from_prompt(
+        draft, raw, warnings, refusals = draft_module_from_prompt(
             body.prompt,
             available_models=available,
             installed_modules=installed,
@@ -158,6 +189,13 @@ def draft_module(
             reuse_actions=reuse_actions or None,
             expand=body.expand,
             pipeline=body.pipeline,
+            protected_manifest=protected_manifest,
+            odoo_version=odoo_version,
+            grain_override=body.grain,
+            gallery_id=body.gallery_id,
+            host_model_override=body.host_model,
+            connect_points_override=body.connect_points,
+            client=odoo_client,
         )
     except AiAssistUnavailable as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
@@ -172,5 +210,14 @@ def draft_module(
         draft=draft,
         raw_response=raw,
         warnings=warnings,
+        refusals=[ProtectedModuleRefusal(**r) for r in refusals if isinstance(r, dict)],
         domain_pack=str(domain_pack) if domain_pack else None,
+        grain=str(draft.get("grain")) if isinstance(draft, dict) and draft.get("grain") else None,
+        grain_label=str(draft.get("grain_label")) if draft.get("grain_label") else None,
+        connect_points=draft.get("connect_points")
+        if isinstance(draft.get("connect_points"), dict)
+        else None,
+        host_candidates=list(draft.get("host_candidates") or [])
+        if isinstance(draft, dict)
+        else [],
     )

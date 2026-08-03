@@ -7,24 +7,38 @@ curve. Processors: Stripe (global) + Paystack (NGN) — transaction fees only, h
 NEVER commit secrets or credentials; never log tokens/passwords.
 
 Tier definitions (entitlement DATA, seeded by MON-2, adjustable in admin without code):
-- free_solo: 1 connection; metadata browser; model/field builder; menus; snapshots 7-day
-  retention; community support.
-- pro ($39/user/mo, annual 2-months-free): 5 connections; view designer; automations +
-  approvals; reports (+designer); access builder; import + seeds; Draft Studio (local
-  Ollama); module export + sandbox; full snapshots; ID generator.
-- business ($149/workspace/mo + $19/extra seat): pro + bulk suite (ALL BLK tools); power ops;
-  post-upgrade health check; pipelines; Odoo Expert; audit export; priority support flag.
-- agency (from $399/mo): business + unlimited connections; multi-workspace client mgmt; SSO
-  (placeholder flag v1); API keys surface; store packaging assist; migration assist;
-  white-label report branding.
+- free_solo: 1 connection; 1 active project; metadata browser; model/field builder; menus;
+  snapshots 7-day retention; community support.
+- pro ($39/user/mo, annual 2-months-free): 5 connections; 3 active projects (+$15/mo per
+  extra slot); view designer; automations + approvals; reports (+designer); access builder;
+  import + seeds; Draft Studio (local Ollama); module export + sandbox; full snapshots;
+  ID generator.
+- business ($149/workspace/mo + $19/extra seat): pro + 10 active projects (+$10/mo per extra
+  slot); bulk suite (ALL BLK tools); power ops; post-upgrade health check; pipelines;
+  Odoo Expert; audit export; priority support flag.
+- agency (from $399/mo): business + 25 active projects (volume slot packs above); unlimited
+  connections; multi-workspace client mgmt; per-client workspace labeling; SSO (placeholder
+  flag v1); API keys surface; store packaging assist; migration assist; white-label report
+  branding.
 - internal: everything, unlimited — admin/testing only, badge-labeled.
+- project_pass ($299 one-time, non-subscription SKU): 1 project with full Pro-level BUILD
+  features for 60 days, then read-only project + basic maintenance (snapshots view,
+  connection browse); upgrade path to any tier keeps the project.
 Trial: business, 14 days, no card. Downgrade re-gates, never deletes.
 
+Active-project semantics (2026-08-03, user-approved hybrid pricing): a project is the
+existing workspace project entity with a lifecycle — active ↔ archived. Only ACTIVE projects
+count against slots; archiving is instant, self-serve, generous (history stays readable,
+un-archive anytime a slot is free). HARD RULE: slot limits gate BUILD surfaces only (Draft
+Studio new drafts, designer edits within a project, apply/export of that project). The
+OPERATE suite (bulk tools, health checks, cron, housekeeping, Expert, snapshots) is NEVER
+gated by project slots — maintaining what exists must never cost per-project (churn guard).
+
 Feature-key registry (MON-2 creates `apps/api/app/entitlements.py`; earlier waves' surfaces
-map to keys): connections_limit, designer, automations, approvals, reports_designer, import,
-ai_draft, module_export, sandbox, snapshots_full, id_generator, bulk_suite, power_ops,
-health_check, pipelines, expert, audit_export, store_packaging, migration_assist,
-bulk_security, api_keys, white_label, workspaces_multi.
+map to keys): connections_limit, active_projects_limit, designer, automations, approvals,
+reports_designer, import, ai_draft, module_export, sandbox, snapshots_full, id_generator,
+bulk_suite, power_ops, health_check, pipelines, expert, audit_export, store_packaging,
+migration_assist, bulk_security, api_keys, white_label, workspaces_multi.
 
 ---
 
@@ -102,6 +116,21 @@ CHECKLIST:
 - [ ] Lifecycle: trialing (14d business auto on workspace creation), active, past_due
       (7-day grace banner), canceled (re-gate to free_solo); state machine tested; downgrade
       keeps data, re-gates.
+- [ ] Project lifecycle + slot enforcement: projects gain status active|archived (migration;
+      existing projects backfill active); archive/un-archive endpoints (instant, self-serve;
+      un-archive blocked only when no slot free — message names the option); slot check
+      enforced ONLY on build surfaces (new draft creation, project apply/export, designer
+      edits within a project) via `active_projects_limit`; OPERATE suite explicitly exempt —
+      named test proves bulk/health/expert/snapshots work at slot limit.
+- [ ] Slot add-ons: extra-slot recurring add-on per tier ($15 pro / $10 business) via Stripe
+      subscription items (quantity) + Paystack equivalent; admin override path for grants.
+- [ ] Project Pass SKU: $299 one-time checkout (Stripe payment mode / Paystack one-time) →
+      creates a pass entitlement (1 project, Pro-level build keys, 60-day expiry job, then
+      read-only + basic maintenance); pass→subscription upgrade keeps the project and
+      credits nothing (no proration promises); expiry reminder email at 7 days.
+- [ ] Anti-gaming honesty: archive/un-archive is not rate-limited or penalized (deliberate —
+      generous mechanic per pricing decision); slot counting tested against rapid
+      archive-cycles (no stuck states).
 - [ ] Frontend: `useEntitlements()` (react-query on a compact entitlements endpoint); gated
       UI = kit Callout + "Upgrade" CTA (COPY_GUIDE template — features stay VISIBLE, locked);
       403-with-feature-key interceptor routes to the upgrade sheet.
@@ -175,7 +204,14 @@ CHECKLIST:
 - [ ] `/pricing`: four-tier comparison (feature rows from the entitlement registry — rendered
       from data, not hand-copied), monthly/annual toggle (annual shows 2-months-free math),
       currency hint (USD default, NGN via Paystack path), FAQ (honest: what needs your own
-      Ollama, what works on Online, cancel anytime), single primary CTA per tier.
+      Ollama, what works on Online, cancel anytime), single primary CTA per tier; active-
+      project slots shown per tier with extra-slot pricing; Project Pass as a distinct
+      "just need one thing built?" card anchored against consultant engagement costs
+      (COPY_GUIDE tone — factual anchor, no competitor bashing); positioning line covers the
+      operate-suite-never-gated promise.
+- [ ] Projects page slot UX: slot usage meter (n of m active), archive/un-archive actions
+      with the generous-mechanic copy, at-limit state opens the upgrade sheet with the
+      extra-slot option alongside tier upgrade (not tier-upgrade-only).
 - [ ] In-app: upgrade sheet (opened by gate CTAs + 403 interceptor) — current plan, target
       feature highlighted, checkout handoff; billing settings page (plan, seats, portal
       link, invoices via portal, trial countdown banner at ≤3 days); downgrade flow with

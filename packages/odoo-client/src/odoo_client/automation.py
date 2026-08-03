@@ -21,6 +21,7 @@ SAFE_TRIGGERS = {
     "on_message_received",
     "on_message_sent",
     "on_webhook",
+    "on_change",
 }
 
 # Always refused on the safe encode / button path (code_live uses a separate API).
@@ -43,6 +44,7 @@ class AutomationTrigger(str, Enum):
     ON_MESSAGE_RECEIVED = "on_message_received"
     ON_MESSAGE_SENT = "on_message_sent"
     ON_WEBHOOK = "on_webhook"
+    ON_CHANGE = "on_change"
 
 
 class AutomationActionKind(str, Enum):

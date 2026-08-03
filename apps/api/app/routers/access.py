@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -420,3 +422,115 @@ def delete_rule(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return DeleteRuleOut(ok=True, rule_id=rule_id, snapshot_id=snap.id)
+
+
+class MultiCompanyGuidanceOut(BaseModel):
+    title: str
+    body: str
+
+
+class ApplyMultiCompanyDraftBody(BaseModel):
+    draft: dict[str, Any] = Field(default_factory=dict)
+
+
+class ApplyMultiCompanyDraftOut(BaseModel):
+    ok: bool
+    draft: dict[str, Any]
+
+
+class ApplyMultiCompanyLiveBody(BaseModel):
+    models: list[str] = Field(..., min_length=1)
+
+
+class ApplyMultiCompanyLiveOut(BaseModel):
+    ok: bool
+    models: list[str]
+    fields_created: int
+    rules_created: int
+    warnings: list[str] = Field(default_factory=list)
+
+
+@router.get("/multi-company/guidance", response_model=MultiCompanyGuidanceOut)
+def get_multi_company_guidance() -> MultiCompanyGuidanceOut:
+    from app.multi_company_pack import multi_company_guidance
+
+    return MultiCompanyGuidanceOut(**multi_company_guidance())
+
+
+@router.post("/multi-company/apply-draft", response_model=ApplyMultiCompanyDraftOut)
+def apply_multi_company_draft(body: ApplyMultiCompanyDraftBody) -> ApplyMultiCompanyDraftOut:
+    from app.multi_company_pack import apply_multi_company_to_draft
+
+    return ApplyMultiCompanyDraftOut(
+        ok=True,
+        draft=apply_multi_company_to_draft(body.draft or {}),
+    )
+
+
+@router.post("/multi-company/apply-live", response_model=ApplyMultiCompanyLiveOut)
+def apply_multi_company_live_route(
+    connection_id: str,
+    body: ApplyMultiCompanyLiveBody,
+    db: Session = Depends(get_db),
+) -> ApplyMultiCompanyLiveOut:
+    from app.multi_company_pack import apply_multi_company_live
+
+    client = _client(connection_id, db)
+    result = apply_multi_company_live(client, body.models)
+    return ApplyMultiCompanyLiveOut.model_validate(result)
+
+
+class MultiCompanyGuidanceOut(BaseModel):
+    title: str
+    body: str
+
+
+class ApplyMultiCompanyDraftBody(BaseModel):
+    draft: dict[str, Any] = Field(default_factory=dict)
+
+
+class ApplyMultiCompanyDraftOut(BaseModel):
+    ok: bool
+    draft: dict[str, Any]
+
+
+class ApplyMultiCompanyLiveBody(BaseModel):
+    models: list[str] = Field(..., min_length=1)
+
+
+class ApplyMultiCompanyLiveOut(BaseModel):
+    ok: bool
+    models: list[str]
+    fields_created: int
+    rules_created: int
+    warnings: list[str] = Field(default_factory=list)
+
+
+@router.get("/multi-company/guidance", response_model=MultiCompanyGuidanceOut)
+def get_multi_company_guidance() -> MultiCompanyGuidanceOut:
+    from app.multi_company_pack import multi_company_guidance
+
+    return MultiCompanyGuidanceOut(**multi_company_guidance())
+
+
+@router.post("/multi-company/apply-draft", response_model=ApplyMultiCompanyDraftOut)
+def apply_multi_company_draft(body: ApplyMultiCompanyDraftBody) -> ApplyMultiCompanyDraftOut:
+    from app.multi_company_pack import apply_multi_company_to_draft
+
+    return ApplyMultiCompanyDraftOut(
+        ok=True,
+        draft=apply_multi_company_to_draft(body.draft or {}),
+    )
+
+
+@router.post("/multi-company/apply-live", response_model=ApplyMultiCompanyLiveOut)
+def apply_multi_company_live_route(
+    connection_id: str,
+    body: ApplyMultiCompanyLiveBody,
+    db: Session = Depends(get_db),
+) -> ApplyMultiCompanyLiveOut:
+    from app.multi_company_pack import apply_multi_company_live
+
+    client = _client(connection_id, db)
+    result = apply_multi_company_live(client, body.models)
+    return ApplyMultiCompanyLiveOut.model_validate(result)

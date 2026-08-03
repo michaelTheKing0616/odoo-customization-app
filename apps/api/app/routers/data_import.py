@@ -292,3 +292,307 @@ def commit_import(
         ],
         error_csv=err_csv,
     )
+
+
+class ImageImportPreviewOut(BaseModel):
+    row_count: int
+    sample_rows: list[dict[str, str]]
+    image_field: str
+    match_field: str
+    match_mode: str
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ImageImportCommitBody(ConfirmAdvancedBody):
+    model: str
+    manifest_rows: list[dict[str, str]]
+    image_field: str
+    match_field: str = "x_name"
+    dry_run: bool = True
+
+
+class ImageImportRowOut(BaseModel):
+    row_index: int
+    match_value: str
+    filename: str
+    ok: bool
+    record_id: int | None = None
+    action: str | None = None
+    error: str | None = None
+    bytes_in: int = 0
+    bytes_out: int = 0
+
+
+class ImageImportCommitOut(BaseModel):
+    ok: bool
+    dry_run: bool
+    updated: int
+    failed: int
+    skipped: int
+    message: str
+    results: list[ImageImportRowOut]
+
+
+@router.post("/images/preview", response_model=ImageImportPreviewOut)
+async def preview_image_import(
+    connection_id: str,
+    manifest: UploadFile = File(..., description="CSV manifest: match,name + filename"),
+    images_zip: UploadFile = File(..., description="ZIP of image files"),
+    db: Session = Depends(get_db),
+) -> ImageImportPreviewOut:
+    _client(connection_id, db)
+    if not manifest.filename or not images_zip.filename:
+        raise HTTPException(status_code=422, detail="manifest CSV and images ZIP required")
+    manifest_raw = await manifest.read()
+    zip_raw = await images_zip.read()
+    if len(zip_raw) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="ZIP too large (max 50MB)")
+    try:
+        from app.image_import import build_image_import_preview, parse_image_upload
+
+        rows, image_field, match_field, match_mode, zip_images = parse_image_upload(
+            manifest_raw, zip_raw
+        )
+        preview = build_image_import_preview(
+            manifest_rows=rows,
+            image_field=image_field,
+            match_field=match_field,
+            match_mode=match_mode,
+            zip_names=set(zip_images.keys()),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return ImageImportPreviewOut(
+        row_count=preview.row_count,
+        sample_rows=preview.sample_rows,
+        image_field=preview.image_field,
+        match_field=preview.match_field,
+        match_mode=preview.match_mode,
+        warnings=preview.warnings,
+    )
+
+
+@router.post("/images/commit", response_model=ImageImportCommitOut)
+async def commit_image_import(
+    connection_id: str,
+    manifest: UploadFile = File(...),
+    images_zip: UploadFile = File(...),
+    model: str = Form(...),
+    match_field: str = Form("x_name"),
+    image_field: str = Form(""),
+    dry_run: bool = Form(True),
+    confirm_advanced: bool = Form(False),
+    confirm_phrase: str | None = Form(None),
+    db: Session = Depends(get_db),
+) -> ImageImportCommitOut:
+    if not dry_run:
+        try:
+            require_advanced_confirmation(
+                confirm_advanced=confirm_advanced,
+                confirm_phrase=confirm_phrase,
+                warning=f"Bulk image import will write images to {model} on live Odoo.",
+                risks=[
+                    "Overwrites existing binary/image field data on matched records",
+                    "Wrong match column can attach images to incorrect records",
+                    "Large images are downscaled but still consume DB space",
+                ],
+            )
+        except ConfirmationRequired as exc:
+            raise _confirm_http(exc) from exc
+
+    manifest_raw = await manifest.read()
+    zip_raw = await images_zip.read()
+    try:
+        from app.image_import import parse_image_upload, run_image_import
+
+        rows, default_field, _, _, zip_images = parse_image_upload(manifest_raw, zip_raw)
+        target_field = (image_field or default_field).strip() or default_field
+        client = _client(connection_id, db)
+        result = run_image_import(
+            client,
+            model=model.strip(),
+            manifest_rows=rows,
+            zip_images=zip_images,
+            image_field=target_field,
+            match_field=match_field.strip() or "x_name",
+            dry_run=dry_run,
+        )
+    except OdooClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return ImageImportCommitOut(
+        ok=result.ok,
+        dry_run=dry_run,
+        updated=result.updated,
+        failed=result.failed,
+        skipped=result.skipped,
+        message=result.message,
+        results=[
+            ImageImportRowOut(
+                row_index=r.row_index,
+                match_value=r.match_value,
+                filename=r.filename,
+                ok=r.ok,
+                record_id=r.record_id,
+                action=r.action,
+                error=r.error,
+                bytes_in=r.bytes_in,
+                bytes_out=r.bytes_out,
+            )
+            for r in result.results
+        ],
+    )
+
+
+class ImageImportPreviewOut(BaseModel):
+    row_count: int
+    sample_rows: list[dict[str, str]]
+    image_field: str
+    match_field: str
+    match_mode: str
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ImageImportCommitBody(ConfirmAdvancedBody):
+    model: str
+    manifest_rows: list[dict[str, str]]
+    image_field: str
+    match_field: str = "x_name"
+    dry_run: bool = True
+
+
+class ImageImportRowOut(BaseModel):
+    row_index: int
+    match_value: str
+    filename: str
+    ok: bool
+    record_id: int | None = None
+    action: str | None = None
+    error: str | None = None
+    bytes_in: int = 0
+    bytes_out: int = 0
+
+
+class ImageImportCommitOut(BaseModel):
+    ok: bool
+    dry_run: bool
+    updated: int
+    failed: int
+    skipped: int
+    message: str
+    results: list[ImageImportRowOut]
+
+
+@router.post("/images/preview", response_model=ImageImportPreviewOut)
+async def preview_image_import(
+    connection_id: str,
+    manifest: UploadFile = File(..., description="CSV manifest: match,name + filename"),
+    images_zip: UploadFile = File(..., description="ZIP of image files"),
+    db: Session = Depends(get_db),
+) -> ImageImportPreviewOut:
+    _client(connection_id, db)
+    if not manifest.filename or not images_zip.filename:
+        raise HTTPException(status_code=422, detail="manifest CSV and images ZIP required")
+    manifest_raw = await manifest.read()
+    zip_raw = await images_zip.read()
+    if len(zip_raw) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="ZIP too large (max 50MB)")
+    try:
+        from app.image_import import build_image_import_preview, parse_image_upload
+
+        rows, image_field, match_field, match_mode, zip_images = parse_image_upload(
+            manifest_raw, zip_raw
+        )
+        preview = build_image_import_preview(
+            manifest_rows=rows,
+            image_field=image_field,
+            match_field=match_field,
+            match_mode=match_mode,
+            zip_names=set(zip_images.keys()),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return ImageImportPreviewOut(
+        row_count=preview.row_count,
+        sample_rows=preview.sample_rows,
+        image_field=preview.image_field,
+        match_field=preview.match_field,
+        match_mode=preview.match_mode,
+        warnings=preview.warnings,
+    )
+
+
+@router.post("/images/commit", response_model=ImageImportCommitOut)
+async def commit_image_import(
+    connection_id: str,
+    manifest: UploadFile = File(...),
+    images_zip: UploadFile = File(...),
+    model: str = Form(...),
+    match_field: str = Form("x_name"),
+    image_field: str = Form(""),
+    dry_run: bool = Form(True),
+    confirm_advanced: bool = Form(False),
+    confirm_phrase: str | None = Form(None),
+    db: Session = Depends(get_db),
+) -> ImageImportCommitOut:
+    if not dry_run:
+        try:
+            require_advanced_confirmation(
+                confirm_advanced=confirm_advanced,
+                confirm_phrase=confirm_phrase,
+                warning=f"Bulk image import will write images to {model} on live Odoo.",
+                risks=[
+                    "Overwrites existing binary/image field data on matched records",
+                    "Wrong match column can attach images to incorrect records",
+                    "Large images are downscaled but still consume DB space",
+                ],
+            )
+        except ConfirmationRequired as exc:
+            raise _confirm_http(exc) from exc
+
+    manifest_raw = await manifest.read()
+    zip_raw = await images_zip.read()
+    try:
+        from app.image_import import parse_image_upload, run_image_import
+
+        rows, default_field, _, _, zip_images = parse_image_upload(manifest_raw, zip_raw)
+        target_field = (image_field or default_field).strip() or default_field
+        client = _client(connection_id, db)
+        result = run_image_import(
+            client,
+            model=model.strip(),
+            manifest_rows=rows,
+            zip_images=zip_images,
+            image_field=target_field,
+            match_field=match_field.strip() or "x_name",
+            dry_run=dry_run,
+        )
+    except OdooClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return ImageImportCommitOut(
+        ok=result.ok,
+        dry_run=dry_run,
+        updated=result.updated,
+        failed=result.failed,
+        skipped=result.skipped,
+        message=result.message,
+        results=[
+            ImageImportRowOut(
+                row_index=r.row_index,
+                match_value=r.match_value,
+                filename=r.filename,
+                ok=r.ok,
+                record_id=r.record_id,
+                action=r.action,
+                error=r.error,
+                bytes_in=r.bytes_in,
+                bytes_out=r.bytes_out,
+            )
+            for r in result.results
+        ],
+    )

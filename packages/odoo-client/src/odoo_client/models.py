@@ -24,6 +24,8 @@ class FieldType(str, Enum):
     HTML = "html"
     MONETARY = "monetary"
     JSON = "json"
+    PROPERTIES = "properties"
+    PROPERTIES_DEFINITION = "properties_definition"
     # Deprecated API/UI alias — Odoo has no ttype=related; use concrete ttype + related=.
     RELATED = "related"
 
@@ -167,6 +169,14 @@ class CreateFieldRequest(BaseModel):
         description="Many2one on_delete: set null | restrict | cascade. "
         "Odoo 19 requires restrict|cascade when the field is required.",
     )
+    definition_record: str | None = Field(
+        default=None,
+        description="M2O field name on same model linking to definition holder (properties fields).",
+    )
+    definition_record_field: str | None = Field(
+        default=None,
+        description="PropertiesDefinition field name on related parent model.",
+    )
 
     @field_validator("name")
     @classmethod
@@ -190,6 +200,11 @@ class CreateFieldRequest(BaseModel):
             raise ValueError("selection fields require selection options")
         if self.ttype == FieldType.RELATED and not self.related:
             raise ValueError("related fields require a related path")
+        if self.ttype == FieldType.PROPERTIES:
+            if not self.definition_record or not self.definition_record_field:
+                raise ValueError(
+                    "properties fields require definition_record and definition_record_field"
+                )
 
 
 class CreateViewRequest(BaseModel):
