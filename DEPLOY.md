@@ -2,6 +2,43 @@
 
 Production / shared-host setup for the Odoo Customization API + web UI.
 
+## Quick start — local prod profile (Docker)
+
+From the repository root:
+
+```bash
+cp .env.example .env
+# Edit .env: set a real FERNET_KEY and APP_API_KEY before any shared host.
+
+docker compose -p odoo-custom-deploy -f docker/docker-compose.deploy.yml up --build
+```
+
+| Service | URL |
+|---------|-----|
+| Web UI | http://localhost:3000 |
+| API health | http://localhost:8000/health |
+
+Smoke checks:
+
+1. `curl -fsS http://localhost:8000/health` → `"status":"ok"`, `"database_ok":true`
+2. Open the web UI → Connect page loads and can reach the API (browser uses `NEXT_PUBLIC_API_URL`, default `http://127.0.0.1:8000`)
+3. Point Connect at a running Odoo instance (local `docker compose -f docker/docker-compose.yml up` Odoo on `:8069` is fine)
+
+The deploy profile starts **api + web + app-db** only. It does **not** replace the dev Odoo stacks under `docker/docker-compose.yml` / `docker-compose.odoo*.yml`.
+
+### Env highlights (deploy profile)
+
+| Var | Default in compose | Notes |
+|-----|-------------------|-------|
+| `FERNET_KEY` | dev placeholder | **Must** be a real Fernet key before shared use |
+| `AUTH_MODE` | `api_key` | Set `off` only for local experiments |
+| `APP_API_KEY` | `change-me-before-deploy` | Bearer / `X-API-Key` for the web + API |
+| `NEXT_PUBLIC_API_URL` | `http://127.0.0.1:8000` | Browser-visible API origin |
+| `CORS_ORIGINS` | `http://localhost:3000,...` | Must include your web origin |
+| `SANDBOX_DOCKER_SOCKET` | *(empty)* | Ephemeral sandbox disabled by default |
+
+Back up the `deploy-app-db-data` volume before upgrades (app metadata, connections, audit rows — not customer Odoo DBs).
+
 ## Required before exposing the API
 
 1. Set a real Fernet key (never `dev-only-*` outside local):
@@ -13,6 +50,58 @@ Production / shared-host setup for the Odoo Customization API + web UI.
 4. Restrict `CORS_ORIGINS` to your web origin(s).
 5. Put the API behind a reverse proxy (Caddy/nginx) with TLS.
 6. If the proxy sets `X-Forwarded-For`, set `TRUSTED_PROXY=true` so rate limit + audit use the real client IP. Leave `false` when the API is reachable directly (prevents spoofing).
+
+## Container images
+
+| Image | Dockerfile | Notes |
+|-------|------------|-------|
+| API | `apps/api/Dockerfile` | uv workspace sync; non-root `appuser`; healthcheck on `/health` |
+| Web | `apps/web/Dockerfile` | Next.js `standalone` output; non-root `webuser` |
+
+Build context is always the **repository root** (monorepo packages `odoo-client`, `module-generator`).
+
+## Sandbox from a containerized API
+
+Ephemeral module validation uses `docker compose` against `docker/docker-compose.sandbox.yml` on the **host** (port **18069**).
+
+**Default (deploy profile):** `SANDBOX_DOCKER_SOCKET` is unset → sandbox runs return an honest error. Promote flows that require sandbox validation must run the API on the host, or enable Docker socket access deliberately.
+
+**To enable from the API container** (security tradeoff — API can control host Docker):
+
+1. Uncomment the socket volume in `docker/docker-compose.deploy.yml`:
+   ```yaml
+   volumes:
+     - /var/run/docker.sock:/var/run/docker.sock
+   ```
+2. Set `SANDBOX_DOCKER_SOCKET=/var/run/docker.sock`.
+3. Ensure the API image can reach the host Docker daemon (Linux: socket mount; macOS Docker Desktop: same mount path inside the VM).
+
+Only enable on trusted single-operator hosts. Never expose the API with an open Docker socket to the public internet.
+
+Host-native API (no container) continues to use the local `docker` CLI without `SANDBOX_DOCKER_SOCKET`.
+
+## Optional Ollama (local LLM)
+
+The deploy compose file includes a **commented** `ollama` service. Uncomment only when the host has enough RAM/GPU, then set:
+
+```
+AI_ASSIST=ollama
+OLLAMA_BASE_URL=http://ollama:11434
+```
+
+Pull a model inside the container: `docker exec -it odoo-custom-deploy-ollama ollama pull qwen2.5:7b-instruct-q4_K_M`
+
+## Fly.io / Railway (later)
+
+Per stack lock — no paid SaaS until paying users. Suggested split:
+
+| Component | Fly.io | Railway |
+|-----------|--------|---------|
+| API | `fly launch` from `apps/api/Dockerfile` context = repo root | Dockerfile service |
+| Web | separate app; set `NEXT_PUBLIC_API_URL` to public API URL | same |
+| app-db | Fly Postgres or attached volume | Railway Postgres plugin |
+
+Secrets: `FERNET_KEY`, `APP_API_KEY`, `DATABASE_URL` via platform secret stores — never bake into images.
 
 ## Recommended env
 
@@ -31,7 +120,7 @@ See root `.env.example`. Highlights:
 
 v1 is single-operator: **every valid API key can see every connection**. Do not share keys across tenants. Store browser keys carefully (`localStorage` is XSS-sensitive — prefer a hardened host and short-lived keys).
 
-## Sandbox / promote
+## Sandbox / promote (host API or enabled socket)
 
 - Sandbox uses Docker compose project `odoo-sandbox` on host port **18069** (image `odoo:{16|17|18|19}` from connection major). Never `down -v` without `-p odoo-sandbox`. Port **8070** is reserved for the permanent Odoo 18 stack.
 - Long runs: `POST .../sandbox/run` with `"async_job": true`, then poll `GET /api/jobs/{id}`.
@@ -40,3 +129,15 @@ v1 is single-operator: **every valid API key can see every connection**. Do not 
 ## Health
 
 `GET /health` reports `database_ok` and warns when `AUTH_MODE` is off.
+
+## In-container test gate
+
+After building the API image:
+
+```bash
+docker compose -f docker/docker-compose.deploy.yml build api
+docker compose -f docker/docker-compose.deploy.yml run --rm api \
+  pytest -q -m "not integration"
+```
+
+(Requires the deploy stack's app-db or `DATABASE_URL` pointing at a reachable Postgres.)

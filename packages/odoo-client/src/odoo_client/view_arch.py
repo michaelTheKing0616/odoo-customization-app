@@ -189,10 +189,15 @@ class PivotViewSpec(BaseModel):
 
 
 class MapViewSpec(BaseModel):
-    """Map arch (``ir.ui.view`` type=map; contact/res_partner field gated)."""
+    """Map arch (``ir.ui.view`` type=map; contact/res_partner field gated).
+
+    Public docs: https://www.odoo.com/documentation/19.0/developer/reference/user_interface/view_architectures.html#map
+    """
 
     string: str = "Map"
     res_partner: str | None = None
+    routing: bool | None = None
+    default_order: str | None = None
     fields: list[FieldNode] = Field(default_factory=list)
 
 
@@ -204,12 +209,18 @@ class ActivityViewSpec(BaseModel):
 
 
 class GanttViewSpec(BaseModel):
-    """Gantt arch (often module-gated: web_gantt / project). date_start required."""
+    """Gantt arch (often module-gated: web_gantt / project). date_start required.
+
+    Public docs: https://www.odoo.com/documentation/19.0/developer/reference/user_interface/view_architectures.html#gantt
+    """
 
     string: str = "Gantt"
     date_start: str
     date_stop: str | None = None
     default_group_by: str | None = None
+    default_scale: str | None = None
+    dependency_field: str | None = None
+    allow_drag_drop: bool | None = None
     color: str | None = None
     progress: str | None = None
     decoration_danger: str | None = None
@@ -230,12 +241,16 @@ class CohortViewSpec(BaseModel):
 
 
 class GridViewSpec(BaseModel):
-    """Grid/planning arch (EE/module-gated — public docs attrs)."""
+    """Grid/planning arch (EE/module-gated — public docs attrs).
+
+    Public docs: https://www.odoo.com/documentation/19.0/developer/reference/user_interface/view_architectures.html#grid
+    """
 
     string: str = "Grid"
     row_field: str | None = None
     col_field: str | None = None
     measure: str | None = None
+    adjustment: str | None = None
     date_start: str | None = None
     date_stop: str | None = None
     fields: list[FieldNode] = Field(default_factory=list)
@@ -520,6 +535,9 @@ def render_map_arch(spec: MapViewSpec) -> str:
     root.set("string", spec.string)
     if spec.res_partner:
         root.set("res_partner", spec.res_partner)
+    _set_bool_attr(root, "routing", spec.routing)
+    if spec.default_order:
+        root.set("default_order", spec.default_order)
     for fld in spec.fields:
         _render_node(root, fld)
     return _pretty_xml(root)
@@ -564,6 +582,11 @@ def render_gantt_arch(spec: GanttViewSpec) -> str:
         root.set("date_stop", spec.date_stop)
     if spec.default_group_by:
         root.set("default_group_by", spec.default_group_by)
+    if spec.default_scale:
+        root.set("default_scale", spec.default_scale)
+    if spec.dependency_field:
+        root.set("dependency_field", spec.dependency_field)
+    _set_bool_attr(root, "allow_drag_drop", spec.allow_drag_drop)
     if spec.color:
         root.set("color", spec.color)
     if spec.progress:
@@ -603,6 +626,8 @@ def render_grid_arch(spec: GridViewSpec) -> str:
         root.set("col_field", spec.col_field)
     if spec.measure:
         root.set("measure", spec.measure)
+    if spec.adjustment:
+        root.set("adjustment", spec.adjustment)
     if spec.date_start:
         root.set("date_start", spec.date_start)
     if spec.date_stop:
@@ -1191,6 +1216,8 @@ def parse_map_arch(arch: str) -> MapViewSpec:
     return MapViewSpec(
         string=root.get("string") or "Map",
         res_partner=root.get("res_partner"),
+        routing=_parse_bool_attr(root.get("routing")),
+        default_order=root.get("default_order"),
         fields=fields,
     )
 
@@ -1249,6 +1276,9 @@ def parse_gantt_arch(arch: str) -> GanttViewSpec:
         date_start=date_start,
         date_stop=root.get("date_stop"),
         default_group_by=root.get("default_group_by"),
+        default_scale=root.get("default_scale"),
+        dependency_field=root.get("dependency_field"),
+        allow_drag_drop=_parse_bool_attr(root.get("allow_drag_drop")),
         color=root.get("color"),
         progress=root.get("progress"),
         decoration_danger=root.get("decoration-danger"),
@@ -1310,6 +1340,7 @@ def parse_grid_arch(arch: str) -> GridViewSpec:
         row_field=root.get("row_field"),
         col_field=root.get("col_field"),
         measure=root.get("measure"),
+        adjustment=root.get("adjustment"),
         date_start=root.get("date_start"),
         date_stop=root.get("date_stop"),
         fields=fields,

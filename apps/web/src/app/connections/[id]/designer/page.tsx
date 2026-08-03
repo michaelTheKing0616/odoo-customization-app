@@ -1,12 +1,13 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DomainBuilder } from "@/components/DomainBuilder";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import { FormCanvas } from "@/components/designer/FormCanvas";
+import { OverlayEditor } from "@/components/designer/OverlayEditor";
 import { KanbanCardPreview } from "@/components/designer/KanbanCardPreview";
 import { FieldPalette } from "@/components/designer/FieldPalette";
 import {
@@ -364,6 +365,7 @@ export default function DesignerPage() {
   const [snapshots, setSnapshots] = useState<SnapshotRow[]>([]);
   const [selected, setSelected] = useState<SelectedField | null>(null);
   const [showIframePreview, setShowIframePreview] = useState(false);
+  const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const [previewKey, setPreviewKey] = useState(0);
   const [saveStrategy, setSaveStrategy] = useState<"inherit" | "overwrite">("inherit");
   const [confirmOverwriteOpen, setConfirmOverwriteOpen] = useState(false);
@@ -3519,10 +3521,17 @@ export default function DesignerPage() {
 
         {showIframePreview && proxyPreviewUrl && (
           <div className="mt-4 border border-[#3d2a38] bg-[#0c090b]">
+            <OverlayEditor
+              iframeRef={previewIframeRef}
+              onSelect={(fieldName) => {
+                setNotice(`Overlay selected field: ${fieldName}`);
+              }}
+            />
             <p className="border-b border-[#3d2a38] px-3 py-2 text-xs text-[#8f7a88]">
               Iframe preview is best-effort — use Open in Odoo for the authoritative client.
             </p>
             <iframe
+              ref={previewIframeRef}
               key={previewKey}
               title="Odoo live preview"
               src={proxyPreviewUrl}

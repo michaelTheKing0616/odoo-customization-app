@@ -201,15 +201,18 @@ def _build_prompt_with_context(
     reuse_actions: list[dict[str, Any]] | None = None,
     reuse_plan: ReusePlan | None = None,
     scaffold: dict[str, Any] | None = None,
+    matched_pack_id: str | None = None,
 ) -> str:
     parts = [prompt.strip()]
     parts.append(
         "Follow these model-creation rules exactly:\n" + MODEL_CREATION_RULES
     )
-    parts.append(
-        "Quality exemplar (adapt roles to THIS domain; do not invent hollow type/tag models):\n"
-        + few_shot_exemplar_json()
-    )
+    exemplar = few_shot_exemplar_block(matched_pack_id)
+    if exemplar:
+        parts.append(
+            "Quality exemplar (adapt roles to THIS domain; do not invent hollow type/tag models):\n"
+            + exemplar
+        )
     if reuse_plan is not None:
         parts.append(reuse_plan.prompt_block())
     if scaffold:
@@ -382,6 +385,7 @@ def draft_module_from_prompt(
         reuse_actions=reuse_actions,
         reuse_plan=reuse_plan,
         scaffold=scaffold,
+        matched_pack_id=matched[0] if matched else None,
     )
 
     raw = ""

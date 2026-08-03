@@ -163,4 +163,4 @@ def test_approval_rules_crud_http(client: TestClient) -> None:
 def test_probe_all_drivers_counts() -> None:
     fake = _FakeApprovalClient()
     rows = probe_all_drivers(fake)
-    assert len(rows) == 4
+    assert len(rows) == 5

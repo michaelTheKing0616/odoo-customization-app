@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+
+from pydantic import BaseModel, Field
 
 from app.ai_depth import AMBITION_TARGETS
 from app.ai_ollama import (
@@ -23,6 +27,13 @@ from app.schemas import AiDraftModuleBody, AiDraftModuleOut, ProtectedModuleRefu
 from app.settings import settings
 
 router = APIRouter(prefix="/ai", tags=["ai"])
+
+
+class GeneralizePackBody(BaseModel):
+    spec_json: dict[str, Any]
+    consent_share_template: bool = False
+    pack_slug: str | None = None
+    use_llm: bool = False
 
 
 @router.get("/status")
@@ -154,6 +165,29 @@ def component_gallery() -> list[dict[str, str]]:
     from app.component_gallery import list_gallery
 
     return list_gallery()
+
+
+@router.post("/generalize-pack")
+def generalize_pack(body: GeneralizePackBody) -> dict[str, object]:
+    if not body.consent_share_template:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "requires_consent": True,
+                "message": "Set consent_share_template=true to export a candidate pack.",
+            },
+        )
+    from app.ai_pack_generalizer import generalize_with_optional_llm
+
+    try:
+        result = generalize_with_optional_llm(
+            body.spec_json,
+            pack_slug=body.pack_slug,
+            use_llm=body.use_llm,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"ok": True, **result}
 
 
 @router.post("/draft-module", response_model=AiDraftModuleOut)

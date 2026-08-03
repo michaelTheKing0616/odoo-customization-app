@@ -1,0 +1,93 @@
+name: odoo-custom-deploy
+
+# Production deploy profile — API + web + app metadata Postgres.
+# Does NOT start the dev Odoo 19 stack (see docker-compose.yml).
+#
+# From repo root (project name isolates volumes/containers from dev stacks):
+#   cp .env.example .env   # set FERNET_KEY + APP_API_KEY for shared use
+#   docker compose -p odoo-custom-deploy -f docker/docker-compose.deploy.yml up --build
+#
+# Web UI: http://localhost:3000
+# API health: http://localhost:8000/health
+#
+# Ephemeral module sandbox (Docker-in-Docker) is OFF by default in this profile.
+# See DEPLOY.md — enable SANDBOX_DOCKER_SOCKET + socket mount only when you accept
+# the host Docker access tradeoff.
+
+services:
+  app-db:
+    image: postgres:15
+    container_name: odoo-custom-deploy-app-db
+    environment:
+      POSTGRES_DB: odoo_custom
+      POSTGRES_USER: odoo_custom
+      POSTGRES_PASSWORD: ${APP_DB_PASSWORD:-odoo_custom}
+    volumes:
+      - deploy-app-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo_custom -d odoo_custom"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    container_name: odoo-custom-deploy-api
+    depends_on:
+      app-db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://${APP_DB_USER:-odoo_custom}:${APP_DB_PASSWORD:-odoo_custom}@app-db:5432/odoo_custom
+      FERNET_KEY: ${FERNET_KEY:-dev-only-replace-me-use-Fernet-generate_key()}
+      AUTH_MODE: ${AUTH_MODE:-api_key}
+      APP_API_KEY: ${APP_API_KEY:-change-me-before-deploy}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      TRUSTED_PROXY: ${TRUSTED_PROXY:-false}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
+      AUDIT_LOG_ENABLED: ${AUDIT_LOG_ENABLED:-true}
+      AI_ASSIST: ${AI_ASSIST:-off}
+      # Empty = sandbox Docker disabled (safe default for containerized API)
+      SANDBOX_DOCKER_SOCKET: ${SANDBOX_DOCKER_SOCKET:-}
+      DB_MIGRATIONS: ${DB_MIGRATIONS:-auto}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    # Uncomment ONLY when SANDBOX_DOCKER_SOCKET=/var/run/docker.sock — grants host Docker access.
+    # volumes:
+    #   - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://127.0.0.1:8000}
+    container_name: odoo-custom-deploy-web
+    depends_on:
+      - api
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://127.0.0.1:8000}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    restart: unless-stopped
+
+  # Optional local LLM — requires substantial RAM/GPU; not enabled by default.
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: odoo-custom-deploy-ollama
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - deploy-ollama-data:/root/.ollama
+  #   restart: unless-stopped
+  #
+  # When enabled, point the API at it (host networking varies by platform):
+  #   AI_ASSIST=ollama
+  #   OLLAMA_BASE_URL=http://ollama:11434
+
+volumes:
+  deploy-app-db-data:
+  # deploy-ollama-data:

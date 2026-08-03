@@ -118,8 +118,25 @@ def test_draft_module_with_monkeypatched_ollama(
                 "fields": [
                     {"name": "x_name", "ttype": "char", "string": "Title", "required": True},
                     {"name": "x_barcode", "ttype": "char", "string": "Barcode"},
+                    {"name": "x_isbn", "ttype": "char", "string": "ISBN"},
+                    {"name": "x_author", "ttype": "char", "string": "Author"},
+                    {"name": "x_published", "ttype": "date", "string": "Published"},
                 ],
-            }
+            },
+            {
+                "model": "x_book_loan",
+                "description": "Loan",
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "string": "Reference", "required": True},
+                    {
+                        "name": "x_book_id",
+                        "ttype": "many2one",
+                        "string": "Book",
+                        "relation": "x_book",
+                    },
+                    {"name": "x_due_date", "ttype": "date", "string": "Due date"},
+                ],
+            },
         ],
     }
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
@@ -45,19 +46,27 @@ from app.routers import (
     id_generator,
     snapshots,
     views,
+    website,
 )
 from app.settings import settings
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
-    if settings.auth_enabled and settings.app_api_key:
-        db = SessionLocal()
-        try:
+    from app.jobs import mark_interrupted_jobs_on_boot
+
+    db = SessionLocal()
+    try:
+        n = mark_interrupted_jobs_on_boot(db)
+        if n:
+            logger.info("Marked %s background job(s) as interrupted on boot", n)
+        if settings.auth_enabled and settings.app_api_key:
             ensure_env_bootstrap_key(db)
-        finally:
-            db.close()
+    finally:
+        db.close()
     yield
 
 
@@ -118,6 +127,7 @@ app.include_router(menus_builder.router, prefix="/api", dependencies=_protected)
 app.include_router(reports.router, prefix="/api", dependencies=_protected)
 app.include_router(id_generator.router, prefix="/api", dependencies=_protected)
 app.include_router(environments.router, prefix="/api", dependencies=_protected)
+app.include_router(website.router, prefix="/api", dependencies=_protected)
 
 
 @app.get("/health")
@@ -146,6 +156,7 @@ def health() -> dict[str, str | bool]:
         "odoo_ga_majors": ",".join(str(m) for m in sorted(ga_majors(), reverse=True)),
         "auth_enabled": settings.auth_enabled,
         "database_ok": db_ok,
+        "sandbox_docker_enabled": settings.sandbox_docker_enabled,
     }
     if settings.warn_auth_off and not settings.auth_enabled:
         out["auth_warning"] = (

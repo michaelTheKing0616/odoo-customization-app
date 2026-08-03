@@ -26,6 +26,36 @@ from app.odoo_service import get_connection_or_404
 
 router = APIRouter(prefix="/connections/{connection_id}", tags=["preview-proxy"])
 
+_OVERLAY_JS = """
+(function () {
+  const PARENT = window.parent;
+  if (!PARENT || PARENT === window) return;
+  function descriptor(el) {
+    const field = el.closest('[name]') || el.querySelector('[name]');
+    const name = field && field.getAttribute('name');
+    if (!name) return null;
+    return { fieldName: name, tag: el.tagName, className: el.className || '' };
+  }
+  document.addEventListener('mouseover', (ev) => {
+    const d = descriptor(ev.target);
+    if (d) PARENT.postMessage({ type: 'oc-overlay-hover', ...d }, '*');
+  });
+  document.addEventListener('click', (ev) => {
+    const d = descriptor(ev.target);
+    if (!d) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    PARENT.postMessage({ type: 'oc-overlay-select', ...d }, '*');
+  }, true);
+})();
+"""
+
+
+@router.get("/odoo-proxy/overlay.js")
+def overlay_script() -> Response:
+    """Injected overlay for live field selection (UIX-6)."""
+    return Response(content=_OVERLAY_JS.strip(), media_type="application/javascript")
+
 _HOP_BY_HOP = {
     "connection",
     "keep-alive",
@@ -150,8 +180,9 @@ async def odoo_proxy(
 <script>
   location.replace({json.dumps(proxy_prefix + "/web")} + "#model=" +
     encodeURIComponent({json.dumps(model)}) + "&view_type=" +
-    encodeURIComponent({json.dumps(view_type)});
+    encodeURIComponent({json.dumps(view_type)}));
 </script>
+<script src="{proxy_prefix}/overlay.js"></script>
 </body></html>"""
             return HTMLResponse(
                 boot,
@@ -215,6 +246,20 @@ async def odoo_proxy(
                     )
                 else:
                     html = banner + html
+                if request.query_params.get("overlay") == "1":
+                    inject = (
+                        f'<script src="{proxy_prefix}/overlay.js"></script>'
+                    )
+                    if "</body>" in html.lower():
+                        html = re.sub(
+                            r"</body>",
+                            inject + "</body>",
+                            html,
+                            count=1,
+                            flags=re.I,
+                        )
+                    else:
+                        html += inject
                 return HTMLResponse(html, headers=out_headers, status_code=resp.status)
             return Response(content=raw, media_type=content_type, headers=out_headers, status_code=resp.status)
     except HTTPError as exc:

@@ -1,6 +1,8 @@
+name: odoo-custom-dev
+
 # Local Odoo 19 Community + Postgres for RPC gates / Phase 0–6 sandbox target.
 # Usage (from repo root):
-#   docker compose -f docker/docker-compose.yml up -d
+#   docker compose -p odoo-custom-dev -f docker/docker-compose.yml up -d
 #   ./docker/wait-for-odoo.sh
 #   ./docker/init-db.sh
 

@@ -133,9 +133,6 @@ def _attach_custom_code_blocks(spec: dict[str, Any], unmapped: list[dict[str, An
         spec["unmapped"] = unmapped  # legacy mirror
 
 
-    return kwargs.get(key, default)
-
-
 def _extract_opaque_xml_fragments(
     arch: str, *, filename: str, model: str | None
 ) -> list[dict[str, Any]]:
@@ -181,6 +178,13 @@ def _call_kwargs(node: ast.Call) -> dict[str, Any]:
                 out.setdefault("comodel_name", node.args[0].value)
                 out.setdefault("relation", node.args[0].value)
     return out
+
+
+def _kw_str(kwargs: dict[str, Any], key: str) -> str | None:
+    val = kwargs.get(key)
+    if val is None:
+        return None
+    return str(val)
 
 
 def _selection_to_odoo_str(sel: Any) -> str | None:

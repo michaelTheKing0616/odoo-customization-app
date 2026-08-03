@@ -4,14 +4,14 @@
 
 ## Last run
 - Date: 2026-08-03
-- Commit (pending): **UIX-5 complete** — COPY_GUIDE copy fixes, `copy-guide.ts` empty/honesty strings, EmptyStates (automations/journal/bulk-suite/projects), GatingCallout + HealthCheckBanner + VersionAwarenessBanner on kit, Badge contrast tokens, `@axe-core/playwright` + 8-page axe e2e, audit in `plans/UIX-5-AUDIT.md`.
-- Prior: `75cb19d` UIX-4c complete.
-- Gates: `pnpm test` 78 passed; `pnpm build` ok; e2e `a11y-primary` + `automation-gating` 9 passed.
+- **Wave 7b + Wave 8 PROD-2/3 shipped** — TIER-6 EE view attrs + golden tests; UIX-6 overlay + reality check; UIX-7 website blocks/API/page; Alembic baseline; JobRunner seam; README in zips; dev compose project names.
+- Gates: API pytest **645 passed**; web build ok; odoo-client EE golden 6 passed; module-generator README 2 passed.
 
 ## Next (prescribed wave order)
-- **Wave 7 CMP** — already marked complete in PROGRESS; next unstarted work is post-UIX backlog or new cards.
+- **Wave 9 MON** — auth accounts, billing, admin console, pricing UX
 
 ## Rules
 - Expert thread: `sessionStorage` key `expert-thread-{connectionId}`.
 - Shell provides nav chrome — connection pages keep content only.
 - Diagnose errors: `ErrorNotice` + `reportApiError(..., { toast: true })` on mutations.
+- Dev compose: always `-p odoo-custom-dev`; deploy: `-p odoo-custom-deploy`.

@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     # Comma-separated modules to install in sandbox after DB init (e.g. sale,account).
     # Empty = fast smoke; extension gates set SANDBOX_EXTRA_MODULES=sale,account.
     sandbox_extra_modules: str = ""
+    # Ephemeral sandbox from containerized API: path to Docker socket, or empty = disabled.
+    # Deploy profile defaults off; mount /var/run/docker.sock and set this to enable.
+    sandbox_docker_socket: str = ""
+    # off | auto — auto runs alembic upgrade head on startup (deploy profile)
+    db_migrations: str = "off"
     # Phase P3 — NL → ModuleSpec
     # off | ollama | openai-compatible
     ai_assist: str = "off"
@@ -93,6 +98,10 @@ class Settings(BaseSettings):
 
     def sandbox_extra_module_list(self) -> list[str]:
         return [m.strip() for m in self.sandbox_extra_modules.split(",") if m.strip()]
+
+    @property
+    def sandbox_docker_enabled(self) -> bool:
+        return bool(self.sandbox_docker_socket.strip())
 
 
 settings = Settings()

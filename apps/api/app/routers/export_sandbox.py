@@ -436,6 +436,7 @@ def sandbox_run(
                 keep_alive=keep_alive,
                 extra_modules=extras,
                 odoo_major=major,
+                job_id=job.id,
             )
             out: dict = {
                 "ok": result.ok,

@@ -406,3 +406,40 @@ def save_view(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+class ResolveFieldBody(BaseModel):
+    view_type: str
+    arch: str
+    field_name: str
+
+
+@router.post("/resolve-field")
+def resolve_field_node(body: ResolveFieldBody) -> dict[str, object]:
+    """Map overlay field descriptor → candidate arch nodes (UIX-6)."""
+    import re
+
+    name = body.field_name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="field_name required")
+    pattern = re.compile(
+        rf'<field\b[^>]*\bname=["\']{re.escape(name)}["\'][^>]*/?>',
+        re.I,
+    )
+    candidates = [{"xpath": f"//field[@name='{name}']", "match": m.group(0)} for m in pattern.finditer(body.arch)]
+    if not candidates:
+        try:
+            spec = parse_arch(body.view_type, body.arch)
+            fields = []
+            if isinstance(spec, dict):
+                for key in ("fields", "columns", "children"):
+                    val = spec.get(key)
+                    if isinstance(val, list):
+                        fields.extend(val)
+            for f in fields:
+                if isinstance(f, dict) and f.get("name") == name:
+                    candidates.append({"xpath": f"//field[@name='{name}']", "from_spec": True})
+        except Exception:  # noqa: BLE001
+            pass
+    return {"field_name": name, "candidates": candidates, "ambiguous": len(candidates) > 1}
+

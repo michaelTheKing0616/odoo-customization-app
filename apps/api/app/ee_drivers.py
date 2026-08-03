@@ -308,7 +308,6 @@ def probe_all_drivers(client: OdooClient) -> list[DriverCapabilityStatus]:
     return [
         probe_approval_rules_driver(client),
         probe_enterprise_approvals_driver(client),
-        probe_enterprise_approvals_driver(client),
         probe_ee_playbook_driver(
             client,
             driver_id="ee_playbook_sign",

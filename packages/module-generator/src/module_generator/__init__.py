@@ -943,6 +943,10 @@ def render_module_files(spec: ModuleSpec) -> dict[str, str]:
     from module_generator.barcode_widget import emit_barcode_scan_widget_files
 
     emit_barcode_scan_widget_files(spec, files)
+    from module_generator.readme import render_module_readme
+
+    major = spec.odoo_major or 19
+    files[f"{root}/README.md"] = render_module_readme(spec, odoo_major=major)
     files[f"{root}/__manifest__.py"] = env.get_template("manifest.py.j2").render(
         spec=spec, data_files=data_files, application=is_app
     )

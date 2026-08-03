@@ -13,6 +13,19 @@
 
 ## Log
 
+### 2026-08-03 — PROD-2: Alembic migration policy
+**Decided:** Adopt Alembic for app metadata DB; `init_db()` uses `create_all` only when
+`DB_MIGRATIONS=off` (tests/local); deploy profile sets `DB_MIGRATIONS=auto` →
+`alembic upgrade head` on startup.
+**Why:** MON-1/2 will add ALTERs; drift test gates model/revision parity.
+**Rejected:** Breaking test fixtures that rely on create-all (kept via off mode).
+
+### 2026-08-03 — PROD-3: Job runner v1
+**Decided:** Keep in-process `ThreadPoolExecutor` with `JobRunner` protocol seam;
+`mark_interrupted_jobs_on_boot`, per-kind timeouts, concurrent cap, sandbox cancel hook.
+**Why:** Solo single-instance deploy; arq/Redis deferred until multi-instance need.
+**Rejected:** Adding Redis/arq now (stack lock + no paying users).
+
 ### 2026-08-02 — PCM-4: enforcement beyond AI + UI badges
 **Decided:** Shared `protected_enforcement.py` gates Builder, ModuleSpec apply
 (`scrub_spec_for_protected_apply` → per-item skips), and Automations (chatter/activity

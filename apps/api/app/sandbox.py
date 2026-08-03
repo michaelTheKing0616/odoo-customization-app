@@ -37,6 +37,20 @@ SUPPORTED_SANDBOX_MAJORS = frozenset({16, 17, 18, 19})
 
 # Serialize sandbox runs — shared addons dir + fixed compose project name.
 _sandbox_lock = threading.Lock()
+_active_sandbox_job_id: str | None = None
+
+
+def cancel_sandbox_if_running(job_id: str) -> None:
+    """Tear down ephemeral sandbox when a background job is cancelled."""
+    global _active_sandbox_job_id
+    if _active_sandbox_job_id != job_id:
+        return
+    try:
+        _compose("down", "--remove-orphans", check=False)
+    except Exception:  # noqa: BLE001
+        logger.warning("sandbox cancel teardown failed", exc_info=True)
+    finally:
+        _active_sandbox_job_id = None
 
 
 @dataclass
@@ -61,6 +75,27 @@ def resolve_sandbox_major(major: int | None) -> int:
 
 def sandbox_image_for_major(major: int) -> str:
     return f"odoo:{resolve_sandbox_major(major)}"
+
+
+def sandbox_docker_status() -> tuple[bool, str]:
+    """Return whether ephemeral sandbox Docker is usable from this process."""
+    from app.settings import settings
+
+    socket_path = settings.sandbox_docker_socket.strip()
+    if socket_path.lower() in {"off", "false", "0", "disabled"}:
+        return False, "Sandbox Docker explicitly disabled (SANDBOX_DOCKER_SOCKET=off)."
+    if socket_path:
+        if not Path(socket_path).exists():
+            return False, f"SANDBOX_DOCKER_SOCKET path not found: {socket_path}"
+    elif Path("/.dockerenv").exists():
+        return False, (
+            "Sandbox Docker is disabled in the containerized API (SANDBOX_DOCKER_SOCKET unset). "
+            "Mount the host Docker socket and set SANDBOX_DOCKER_SOCKET=/var/run/docker.sock "
+            "to run ephemeral sandbox validation from a containerized API."
+        )
+    if shutil.which("docker") is None:
+        return False, "Docker CLI is not available in the API runtime"
+    return True, "ok"
 
 
 def _compose(
@@ -355,6 +390,7 @@ def run_sandbox_install(
     keep_alive: bool = False,
     extra_modules: list[str] | None = None,
     odoo_major: int | None = None,
+    job_id: str | None = None,
 ) -> SandboxResult:
     """Install zip in ephemeral sandbox. Serialized — only one run at a time.
 
@@ -366,6 +402,15 @@ def run_sandbox_install(
     """
     if not SANDBOX_COMPOSE.exists():
         raise FileNotFoundError(f"Missing {SANDBOX_COMPOSE}")
+
+    docker_ok, docker_detail = sandbox_docker_status()
+    if not docker_ok:
+        return SandboxResult(
+            ok=False,
+            module=module_name or "unknown",
+            message=docker_detail,
+            odoo_major=odoo_major,
+        )
 
     try:
         major = resolve_sandbox_major(odoo_major)
@@ -393,6 +438,7 @@ def run_sandbox_install(
             keep_alive=keep_alive,
             extra_modules=extra_modules,
             odoo_major=major,
+            job_id=job_id,
         )
     finally:
         _sandbox_lock.release()
@@ -405,10 +451,22 @@ def _run_sandbox_install_unlocked(
     keep_alive: bool = False,
     extra_modules: list[str] | None = None,
     odoo_major: int = 19,
+    job_id: str | None = None,
 ) -> SandboxResult:
+    global _active_sandbox_job_id
+    from app.jobs import job_cancelled
+
+    _active_sandbox_job_id = job_id
     logs: list[str] = []
     technical = module_name or "unknown"
     try:
+        if job_id and job_cancelled(job_id):
+            return SandboxResult(
+                ok=False,
+                module=technical,
+                message="Sandbox cancelled",
+                odoo_major=odoo_major,
+            )
         technical = _extract_zip(zip_bytes, SANDBOX_ADDONS)
         logs.append(
             f"extracted {technical} into {SANDBOX_ADDONS} "
@@ -465,6 +523,7 @@ def _run_sandbox_install_unlocked(
             odoo_major=odoo_major,
         )
     finally:
+        _active_sandbox_job_id = None
         if not keep_alive:
             try:
                 _compose("down", "-v", check=False, odoo_major=odoo_major)

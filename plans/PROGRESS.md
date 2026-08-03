@@ -74,14 +74,14 @@ CHECKLIST. Claiming done without both updated = failed card.
 - [x] CMP-11 Multi-company patterns + i18n depth + Documents integration
 
 ## Wave 7b — ADV (advanced designers & live editing)
-- [ ] TIER-6 Deep Gantt/Grid/Map/Cohort config designers (edition-gated)
-- [ ] UIX-6 Live overlay editor on proxied Odoo frame
-- [ ] UIX-7 Website page editing (block-based, website module detected)
+- [x] TIER-6 Deep Gantt/Grid/Map/Cohort config designers (edition-gated)
+- [x] UIX-6 Live overlay editor on the proxied Odoo frame
+- [x] UIX-7 Website page editing (block-based, website module detected)
 
 ## Wave 8 — PROD (production hardening)
-- [ ] PROD-1 API Dockerfile + compose deploy profile
-- [ ] PROD-2 DB migration strategy + export README audit
-- [ ] PROD-3 Queue decision (arq vs in-process policy) + job hardening
+- [x] PROD-1 API Dockerfile + compose deploy profile
+- [x] PROD-2 DB migration strategy + export README audit
+- [x] PROD-3 Queue decision (arq vs in-process policy) + job hardening
 
 ## Wave 9 — MON (monetization)
 - [ ] MON-1 Auth accounts: users/workspaces/roles/sessions/2FA
