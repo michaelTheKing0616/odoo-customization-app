@@ -10,11 +10,20 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
 
+# Register account models on the same metadata (MON-1).
+from app import account_models as _account_models  # noqa: F401
+
 
 class OdooConnection(Base):
     __tablename__ = "odoo_connections"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     url: Mapped[str] = mapped_column(String(500), nullable=False)
     db_name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -236,6 +245,12 @@ class CustomizationProject(Base):
     __tablename__ = "customization_projects"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     connection_id: Mapped[str] = mapped_column(
         String(36),
         ForeignKey("odoo_connections.id", ondelete="CASCADE"),

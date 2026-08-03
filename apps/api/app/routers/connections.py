@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.capabilities import capabilities_from_version, probe_web_base_url, sample_installed_modules, tier_matrix_response
@@ -10,6 +10,7 @@ from app.crypto import encrypt_secret
 from app.db import get_db
 from app.db_models import OdooConnection
 from app.odoo_service import OdooClientError, client_from_connection, probe_credentials
+from app.workspace_auth import WorkspaceAuth, get_scoped_connection_or_404, get_workspace_auth, require_admin, require_builder, scoped_connection_query
 from app.schemas import (
     ConnectionCreate,
     ConnectionOut,
@@ -62,13 +63,20 @@ def _connection_out(row: OdooConnection) -> ConnectionOut:
 
 
 @router.get("", response_model=list[ConnectionOut])
-def list_connections(db: Session = Depends(get_db)) -> list[ConnectionOut]:
-    rows = db.query(OdooConnection).order_by(OdooConnection.created_at.desc()).all()
+def list_connections(
+    db: Session = Depends(get_db),
+    auth: WorkspaceAuth = Depends(get_workspace_auth),
+) -> list[ConnectionOut]:
+    rows = scoped_connection_query(db, auth).order_by(OdooConnection.created_at.desc()).all()
     return [_connection_out(r) for r in rows]
 
 
 @router.post("", response_model=ConnectionOut, status_code=201)
-def create_connection(body: ConnectionCreate, db: Session = Depends(get_db)) -> ConnectionOut:
+def create_connection(
+    body: ConnectionCreate,
+    db: Session = Depends(get_db),
+    auth: WorkspaceAuth = Depends(require_builder),
+) -> ConnectionOut:
     server_version: str | None = None
     if body.verify:
         try:
@@ -86,6 +94,7 @@ def create_connection(body: ConnectionCreate, db: Session = Depends(get_db)) -> 
         secret_encrypted=encrypt_secret(body.password),
         server_version=server_version,
         last_seen_version=server_version,
+        workspace_id=auth.workspace_id if auth.workspace_scoped else None,
     )
     db.add(row)
     db.commit()
@@ -104,18 +113,22 @@ def create_connection(body: ConnectionCreate, db: Session = Depends(get_db)) -> 
 
 
 @router.get("/{connection_id}", response_model=ConnectionOut)
-def get_connection(connection_id: str, db: Session = Depends(get_db)) -> ConnectionOut:
-    row = db.get(OdooConnection, connection_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Connection not found")
+def get_connection(
+    connection_id: str,
+    db: Session = Depends(get_db),
+    auth: WorkspaceAuth = Depends(get_workspace_auth),
+) -> ConnectionOut:
+    row = get_scoped_connection_or_404(db, connection_id, auth)
     return _connection_out(row)
 
 
 @router.get("/{connection_id}/preview-theme", response_model=PreviewThemeOut)
-def get_preview_theme(connection_id: str, db: Session = Depends(get_db)) -> PreviewThemeOut:
-    row = db.get(OdooConnection, connection_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Connection not found")
+def get_preview_theme(
+    connection_id: str,
+    db: Session = Depends(get_db),
+    auth: WorkspaceAuth = Depends(get_workspace_auth),
+) -> PreviewThemeOut:
+    row = get_scoped_connection_or_404(db, connection_id, auth)
     from app.preview_theme_service import load_preview_theme
 
     data = load_preview_theme(row)
@@ -129,11 +142,12 @@ def get_preview_theme(connection_id: str, db: Session = Depends(get_db)) -> Prev
 
 @router.patch("/{connection_id}", response_model=ConnectionOut)
 def update_connection(
-    connection_id: str, body: ConnectionUpdate, db: Session = Depends(get_db)
+    connection_id: str,
+    body: ConnectionUpdate,
+    db: Session = Depends(get_db),
+    auth: WorkspaceAuth = Depends(require_builder),
 ) -> ConnectionOut:
-    row = db.get(OdooConnection, connection_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Connection not found")
+    row = get_scoped_connection_or_404(db, connection_id, auth)
 
     if body.name is not None:
         row.name = body.name
@@ -166,12 +180,14 @@ def update_connection(
 
 
 @router.delete("/{connection_id}", status_code=204)
-def delete_connection(connection_id: str, db: Session = Depends(get_db)) -> None:
+def delete_connection(
+    connection_id: str,
+    db: Session = Depends(get_db),
+    auth: WorkspaceAuth = Depends(require_admin),
+) -> None:
     from app.db_models import MetadataSnapshot, PromotedModule, SandboxValidation
 
-    row = db.get(OdooConnection, connection_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Connection not found")
+    row = get_scoped_connection_or_404(db, connection_id, auth)
     # Cascade app-DB metadata for this connection (Odoo-side customizations remain).
     db.query(MetadataSnapshot).filter(MetadataSnapshot.connection_id == connection_id).delete(
         synchronize_session=False

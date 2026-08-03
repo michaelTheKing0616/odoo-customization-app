@@ -50,30 +50,29 @@ INPUT: `auth.py` (existing key auth — extend, keep working), `db_models.py`, `
 `rate_limit.py`, web settings/login surfaces, PROD-2 Alembic.
 
 CHECKLIST:
-- [ ] Models (Alembic migration): users (email unique, password_hash argon2id, email_verified,
+- [x] Models (Alembic migration): users (email unique, password_hash argon2id, email_verified,
       totp_secret nullable, is_superadmin), workspaces, memberships (role:
       owner/admin/builder/viewer), invitations (token, expiry), sessions (server-side record:
       token hash, expiry, ip, ua), password_resets, email_verifications.
-- [ ] Password auth: argon2id (argon2-cffi); policy: min 10 chars, breach-list top-1k check
+- [x] Password auth: argon2id (argon2-cffi); policy: min 10 chars, breach-list top-1k check
       (vendored list); login rate-limited + lockout backoff; timing-safe comparisons.
-- [ ] Sessions: HTTP-only Secure SameSite=Lax cookie, server-side session with rotation on
+- [x] Sessions: HTTP-only Secure SameSite=Lax cookie, server-side session with rotation on
       privilege change; short-lived JWT ONLY for the SPA's bearer needs if cookie won't
       suffice (decide: cookie-first, document); logout revokes.
-- [ ] Email flows: verification + reset via SMTP settings (console/log transport in dev,
+- [x] Email flows: verification + reset via SMTP settings (console/log transport in dev,
       clearly marked); tokens single-use, expiring, hashed at rest.
-- [ ] TOTP 2FA: optional enroll (QR provisioning URI), verify, recovery codes (hashed);
+- [x] TOTP 2FA: optional enroll (QR provisioning URI), verify, recovery codes (hashed);
       enforced-for-admins toggle (workspace setting).
-- [ ] Workspace scoping: connections/projects/pipelines/audit rows gain workspace_id
+- [x] Workspace scoping: connections/projects/pipelines/audit rows gain workspace_id
       (migration backfills a default workspace owning existing rows); every router query
       workspace-filtered; role matrix enforced (viewer read-only, builder mutates
       non-destructive, admin+ destructive/billing/members) — matrix documented + tested per
       router family.
-- [ ] `AUTH_MODE=accounts`: web login/signup/verify/reset/2FA pages (UIX kit); api-key mode
+- [x] `AUTH_MODE=accounts`: web login/signup/verify/reset/2FA pages (UIX kit); api-key mode
       + off mode regression-tested unchanged.
-- [ ] Invitations: admin invites email → role; accept flow creates user/membership.
-- [ ] OAuth (Google/GitHub) via authlib: implemented behind `OAUTH_PROVIDERS` env config
-      (off default) — if time-boxed out, mark [SKIPPED] for user approval explicitly.
-- [ ] Security tests: authz matrix per role, session fixation/rotation, token reuse, lockout,
+- [x] Invitations: admin invites email → role; accept flow creates user/membership.
+- [ ] OAuth (Google/GitHub) via authlib: **[SKIPPED]** — `OAUTH_PROVIDERS` env stub only; needs user approval to implement.
+- [x] Security tests: authz matrix per role, session fixation/rotation, token reuse, lockout,
       workspace isolation (user A cannot read workspace B's connections — adversarial suite
       extension).
 

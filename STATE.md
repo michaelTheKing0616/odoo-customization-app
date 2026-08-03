@@ -4,14 +4,16 @@
 
 ## Last run
 - Date: 2026-08-03
-- **Wave 7b + Wave 8 PROD-2/3 shipped** — TIER-6 EE view attrs + golden tests; UIX-6 overlay + reality check; UIX-7 website blocks/API/page; Alembic baseline; JobRunner seam; README in zips; dev compose project names.
-- Gates: API pytest **645 passed**; web build ok; odoo-client EE golden 6 passed; module-generator README 2 passed.
+- **Wave 9 MON-1 shipped** — `AUTH_MODE=accounts`: users/workspaces/memberships/sessions, argon2id + TOTP, cookie sessions, workspace-scoped connections, login/signup/verify/reset web pages, Alembic `a1b2c3d4e5f6`.
+- Gates: API pytest **653 passed**; MON auth suite 25 passed; web build ok.
+- OAuth: **[SKIPPED]** per card — env stub `OAUTH_PROVIDERS` only.
 
 ## Next (prescribed wave order)
-- **Wave 9 MON** — auth accounts, billing, admin console, pricing UX
+- **Wave 9 MON-2** — Stripe/Paystack billing, `entitlements.py`, feature gating, project slots
 
 ## Rules
 - Expert thread: `sessionStorage` key `expert-thread-{connectionId}`.
 - Shell provides nav chrome — connection pages keep content only.
 - Diagnose errors: `ErrorNotice` + `reportApiError(..., { toast: true })` on mutations.
 - Dev compose: always `-p odoo-custom-dev`; deploy: `-p odoo-custom-deploy`.
+- Accounts auth: set `AUTH_MODE=accounts`; sessions via `oc_session` cookie (`credentials: include` on web fetch).

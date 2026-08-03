@@ -13,6 +13,13 @@
 
 ## Log
 
+### 2026-08-03 — MON-1: Accounts auth mode
+**Decided:** `AUTH_MODE=accounts` with cookie-first sessions (`oc_session`), argon2id passwords,
+server-side session records, workspace scoping on connections/projects; API key fallback in
+accounts mode for CI; OAuth deferred [SKIPPED].
+**Why:** Self-hosted SaaS without paid auth vendor; preserves `off`/`api_key` for local gates.
+**Rejected:** JWT-first SPA auth (cookie simpler for same-origin Next.js); OAuth in v1 (time-box).
+
 ### 2026-08-03 — PROD-2: Alembic migration policy
 **Decided:** Adopt Alembic for app metadata DB; `init_db()` uses `create_all` only when
 `DB_MIGRATIONS=off` (tests/local); deploy profile sets `DB_MIGRATIONS=auto` →

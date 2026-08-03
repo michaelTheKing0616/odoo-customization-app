@@ -58,6 +58,8 @@ def init_db(*, bootstrap: bool = True) -> None:
         run_migrations()
         return
     if bootstrap:
+        from app import account_models  # noqa: F401
+
         Base.metadata.create_all(bind=engine)
         _ensure_schema_columns()
 
@@ -98,6 +100,16 @@ def _ensure_schema_columns() -> None:
                 )
             if "preview_theme_json" not in cols:
                 conn.execute(text("ALTER TABLE odoo_connections ADD COLUMN preview_theme_json TEXT"))
+            if "workspace_id" not in cols:
+                conn.execute(text("ALTER TABLE odoo_connections ADD COLUMN workspace_id VARCHAR(36)"))
+
+    if "customization_projects" in inspector.get_table_names():
+        cols = {c["name"] for c in inspector.get_columns("customization_projects")}
+        with engine.begin() as conn:
+            if "workspace_id" not in cols:
+                conn.execute(
+                    text("ALTER TABLE customization_projects ADD COLUMN workspace_id VARCHAR(36)")
+                )
 
     _ensure_connection_fks(inspector)
 

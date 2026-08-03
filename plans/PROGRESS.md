@@ -84,7 +84,7 @@ CHECKLIST. Claiming done without both updated = failed card.
 - [x] PROD-3 Queue decision (arq vs in-process policy) + job hardening
 
 ## Wave 9 — MON (monetization)
-- [ ] MON-1 Auth accounts: users/workspaces/roles/sessions/2FA
+- [x] MON-1 Auth accounts: users/workspaces/roles/sessions/2FA
 - [ ] MON-2 Billing: Stripe + Paystack, entitlements, feature gating
 - [ ] MON-3 Admin console + internal-plan bootstrap (env-seeded admin)
 - [ ] MON-4 Pricing page + upgrade/trial UX

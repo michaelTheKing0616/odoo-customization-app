@@ -824,6 +824,23 @@ export type AuthStatus = {
   bootstrap_available: boolean;
 };
 
+export type AccountSession = {
+  user: {
+    id: string;
+    email: string;
+    email_verified: boolean;
+    totp_enabled: boolean;
+    is_superadmin: boolean;
+  };
+  workspace: {
+    id: string;
+    name: string;
+    slug: string;
+    plan: string;
+    role: string;
+  };
+};
+
 export type ApiKeyRow = {
   id: string;
   name: string;
@@ -887,6 +904,7 @@ export type XPathPreviewOut = {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const storedKey = getStoredApiKey();
   const res = await fetch(`${API_BASE}${path}`, {
+    credentials: "include",
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -915,6 +933,33 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   authStatus: () => request<AuthStatus>("/api/auth/status"),
+  accountSignup: (body: { email: string; password: string; workspace_name?: string }) =>
+    request<{ message: string; user_id: string; workspace_id: string }>("/api/accounts/signup", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  accountLogin: (body: { email: string; password: string; totp_code?: string }) =>
+    request<AccountSession>("/api/accounts/login", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  accountLogout: () => request<void>("/api/accounts/logout", { method: "POST" }),
+  accountMe: () => request<AccountSession>("/api/accounts/me"),
+  accountVerifyEmail: (token: string) =>
+    request<{ message: string }>("/api/accounts/verify-email", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    }),
+  accountRequestPasswordReset: (email: string) =>
+    request<void>("/api/accounts/request-password-reset", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    }),
+  accountResetPassword: (token: string, password: string) =>
+    request<{ message: string }>("/api/accounts/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ token, password }),
+    }),
   bootstrapApiKey: () =>
     request<{ api_key: string; key_id: string; name: string; note: string }>(
       "/api/auth/bootstrap",

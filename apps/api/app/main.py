@@ -9,11 +9,13 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.audit import AuditLogMiddleware
-from app.auth import ensure_env_bootstrap_key, require_api_auth
+from app.auth import ensure_env_bootstrap_key
 from app.db import SessionLocal, init_db
 from app.rate_limit import RateLimitMiddleware
+from app.workspace_auth import require_app_auth
 from app.routers import (
     access,
+    accounts,
     actions,
     ai,
     apps,
@@ -65,6 +67,10 @@ async def lifespan(_app: FastAPI):
             logger.info("Marked %s background job(s) as interrupted on boot", n)
         if settings.auth_enabled and settings.app_api_key:
             ensure_env_bootstrap_key(db)
+        if settings.accounts_auth_enabled:
+            from app.account_service import ensure_default_workspace_for_legacy_rows
+
+            ensure_default_workspace_for_legacy_rows(db)
     finally:
         db.close()
     yield
@@ -87,9 +93,10 @@ app.add_middleware(RateLimitMiddleware)
 app.add_middleware(AuditLogMiddleware)
 
 # All /api/* routers (except auth status/bootstrap which skip inside the dependency)
-_protected = [Depends(require_api_auth)]
+_protected = [Depends(require_app_auth)]
 
 app.include_router(auth.router, prefix="/api")
+app.include_router(accounts.router, prefix="/api")
 app.include_router(audit.router, prefix="/api", dependencies=_protected)
 app.include_router(jobs.router, prefix="/api", dependencies=_protected)
 app.include_router(connections.router, prefix="/api", dependencies=_protected)
@@ -154,7 +161,8 @@ def health() -> dict[str, str | bool]:
             str(m) for m in sorted(supported_majors(), reverse=True)
         ),
         "odoo_ga_majors": ",".join(str(m) for m in sorted(ga_majors(), reverse=True)),
-        "auth_enabled": settings.auth_enabled,
+        "auth_enabled": settings.auth_enabled or settings.accounts_auth_enabled,
+        "auth_mode": settings.auth_mode,
         "database_ok": db_ok,
         "sandbox_docker_enabled": settings.sandbox_docker_enabled,
     }

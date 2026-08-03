@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     # Phase 7 — app API auth
     # off: no checks (local gates / tests)
     # api_key: require Bearer / X-API-Key matching APP_API_KEY or hashed keys in DB
+    # accounts: session cookie (web) with optional API key fallback for CI
     auth_mode: str = "off"
     # Bootstrap / env key (plaintext). Preferred for single-operator deploy.
     app_api_key: str | None = None
@@ -88,6 +89,19 @@ class Settings(BaseSettings):
     expert_community_source: str = "off"
     expert_community_dir: str = ""
 
+    # MON-1 — accounts auth (when AUTH_MODE=accounts)
+    app_public_url: str = "http://localhost:3000"
+    session_cookie_secure: bool = False
+    email_transport: str = "console"  # console | smtp
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_use_tls: bool = True
+    # OAuth (MON-1) — off by default; [SKIPPED] implementation until configured
+    oauth_providers: str = ""
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
@@ -95,6 +109,10 @@ class Settings(BaseSettings):
     @property
     def auth_enabled(self) -> bool:
         return self.auth_mode.strip().lower() in {"api_key", "on", "true", "1"}
+
+    @property
+    def accounts_auth_enabled(self) -> bool:
+        return self.auth_mode.strip().lower() == "accounts"
 
     def sandbox_extra_module_list(self) -> list[str]:
         return [m.strip() for m in self.sandbox_extra_modules.split(",") if m.strip()]

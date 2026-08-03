@@ -4,6 +4,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.db import Base
+from app import account_models  # noqa: F401 — register account ORM
 from app import db_models  # noqa: F401 — register ORM metadata
 from app.settings import settings
 
