@@ -166,6 +166,7 @@ That’s on purpose. ERP systems hold business-critical data; the app wants you 
 | Symptom | What to try |
 |---------|-------------|
 | Odoo Custom page is blank or “can’t connect” | Make sure the API terminal is still running (`8001/health` should be ok). |
+| Browser console shows **Failed to fetch** on `/connect` | API CORS must include your web origin. Restart the API after updating `CORS_ORIGINS` in `.env` (defaults now include `:3002`). |
 | “Unauthorized” or API errors on `:3000` | Use [http://127.0.0.1:3002](http://127.0.0.1:3002) instead, or add an API key under **Settings**. |
 | Odoo login fails | Database might not exist — run `./docker/init-db.sh` once. |
 | New menu doesn’t appear in Odoo | Log out and back into Odoo, or clear menu cache (see [USER-GUIDE.md](USER-GUIDE.md) troubleshooting). |

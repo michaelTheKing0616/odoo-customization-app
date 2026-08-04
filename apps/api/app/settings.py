@@ -23,7 +23,11 @@ class Settings(BaseSettings):
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     fernet_key: str = "dev-only-replace-me-use-Fernet-generate_key()"
 
-    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    cors_origins: str = (
+        "http://localhost:3000,http://127.0.0.1:3000,"
+        "http://localhost:3001,http://127.0.0.1:3001,"
+        "http://localhost:3002,http://127.0.0.1:3002"
+    )
 
     odoo_url: str = "http://127.0.0.1:8069"
     odoo_db: str = "odoo_dev"
