@@ -526,6 +526,36 @@ def delete_field(
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    mode = body.mode or "deprecate"
+    if mode == "hard_delete":
+        try:
+            require_advanced_confirmation(
+                confirm_advanced=body.confirm_advanced,
+                confirm_phrase=body.confirm_phrase,
+                warning=(
+                    f"Hard-deleting field id={field_id} removes the column. "
+                    "A CSV of id→value is exported first."
+                ),
+                risks=[
+                    "Column data is removed from the database",
+                    "Views referencing the field can break until edited",
+                    "Operation refused if column export fails",
+                ],
+            )
+        except ConfirmationRequired as exc:
+            raise _confirm_http(exc) from exc
+    elif not body.confirm_advanced:
+        raise _confirm_http(
+            ConfirmationRequired(
+                warning=f"Deprecate field id={field_id} (rename to x_deprecated_* and hide)?",
+                risks=[
+                    "Field stays in the database under a new name",
+                    "Views may still reference the old name until updated",
+                    "Use hard delete only when you need the column dropped",
+                ],
+            )
+        )
+
     client = _client(connection_id, db)
     try:
         raw = client.read_field_raw(field_id)
@@ -540,36 +570,6 @@ def delete_field(
     )
     if violation is not None:
         raise _protected_http(violation)
-
-    mode = body.mode or "deprecate"
-    if mode == "hard_delete":
-        try:
-            require_advanced_confirmation(
-                confirm_advanced=body.confirm_advanced,
-                confirm_phrase=body.confirm_phrase,
-                warning=(
-                    f"Hard-deleting field {field_name!r} on {model_name!r} removes the column. "
-                    "A CSV of id→value is exported first."
-                ),
-                risks=[
-                    "Column data is removed from the database",
-                    "Views referencing the field can break until edited",
-                    "Operation refused if column export fails",
-                ],
-            )
-        except ConfirmationRequired as exc:
-            raise _confirm_http(exc) from exc
-    elif not body.confirm_advanced:
-        raise _confirm_http(
-            ConfirmationRequired(
-                warning=f"Deprecate field {field_name!r} (rename to x_deprecated_* and hide)?",
-                risks=[
-                    "Field stays in the database under a new name",
-                    "Views may still reference the old name until updated",
-                    "Use hard delete only when you need the column dropped",
-                ],
-            )
-        )
 
     if mode == "deprecate":
         try:

@@ -20,7 +20,14 @@ from app.crypto import encrypt_secret  # noqa: E402
 from app.db import SessionLocal, init_db  # noqa: E402
 from app.db_models import MetadataSnapshot, OdooConnection  # noqa: E402
 from app.main import app  # noqa: E402
-from app.snapshots import rollback_snapshot  # noqa: E402
+from app.snapshots import (  # noqa: E402
+    CONFIRM_PHRASE,
+    ConfirmationRequired,
+    list_snapshots,
+    require_advanced_confirmation,
+    rollback_snapshot,
+    save_snapshot,
+)
 
 
 @pytest.fixture
@@ -76,6 +83,122 @@ def test_rollback_rejects_wrong_connection() -> None:
     try:
         with pytest.raises(LookupError, match="this connection"):
             rollback_snapshot(db, DummyClient(), snap_id, connection_id=b.id)  # type: ignore[arg-type]
+    finally:
+        db.close()
+
+
+def test_require_advanced_confirmation_accepts_phrase() -> None:
+    require_advanced_confirmation(
+        confirm_advanced=True,
+        confirm_phrase=CONFIRM_PHRASE,
+        warning="test",
+        risks=["a"],
+    )
+
+
+def test_require_advanced_confirmation_rejects_missing_phrase() -> None:
+    with pytest.raises(ConfirmationRequired) as exc:
+        require_advanced_confirmation(
+            confirm_advanced=False,
+            confirm_phrase=None,
+            warning="Need confirm",
+            risks=["risk one"],
+        )
+    assert exc.value.warning == "Need confirm"
+    assert exc.value.risks == ["risk one"]
+
+
+def test_save_and_list_snapshots_scoped_to_connection() -> None:
+    init_db()
+    conn = _mk_connection("snap-list")
+    other = _mk_connection("snap-other")
+    db = SessionLocal()
+    try:
+        save_snapshot(
+            db,
+            connection_id=conn.id,
+            resource_type="view",
+            resource_key="view:1",
+            label="Primary",
+            payload={"view": {"id": 1}},
+            reversible="yes",
+        )
+        save_snapshot(
+            db,
+            connection_id=other.id,
+            resource_type="view",
+            resource_key="view:2",
+            label="Other",
+            payload={"view": {"id": 2}},
+            reversible="yes",
+        )
+        rows = list_snapshots(db, conn.id)
+        assert len(rows) == 1
+        assert rows[0].label == "Primary"
+        limited = list_snapshots(db, conn.id, limit=1)
+        assert len(limited) == 1
+    finally:
+        db.close()
+
+
+def test_rollback_snapshot_missing_raises() -> None:
+    init_db()
+    db = SessionLocal()
+    try:
+        with pytest.raises(LookupError, match="Snapshot not found"):
+            rollback_snapshot(db, object(), "00000000-0000-0000-0000-000000000000")  # type: ignore[arg-type]
+    finally:
+        db.close()
+
+
+def test_rollback_snapshot_non_reversible_raises() -> None:
+    init_db()
+    conn = _mk_connection("non-rev")
+    db = SessionLocal()
+    try:
+        snap = save_snapshot(
+            db,
+            connection_id=conn.id,
+            resource_type="view",
+            resource_key="view:9",
+            label="locked",
+            payload={"view": {"id": 9, "arch": "<form/>"}},
+            reversible="no",
+        )
+        from odoo_client.client import OdooClientError
+
+        with pytest.raises(OdooClientError, match="non-reversible"):
+            rollback_snapshot(db, object(), snap.id)  # type: ignore[arg-type]
+    finally:
+        db.close()
+
+
+def test_rollback_snapshot_restores_view_arch() -> None:
+    init_db()
+    conn = _mk_connection("rollback-view")
+    db = SessionLocal()
+    try:
+        snap = save_snapshot(
+            db,
+            connection_id=conn.id,
+            resource_type="view",
+            resource_key="view:42",
+            label="form",
+            payload={"view": {"id": 42, "arch": "<form><field name='x'/></form>"}},
+            reversible="yes",
+        )
+
+        class StubClient:
+            def __init__(self) -> None:
+                self.calls: list[tuple[int, str]] = []
+
+            def update_view_arch(self, view_id: int, arch: str) -> None:
+                self.calls.append((view_id, arch))
+
+        stub = StubClient()
+        result = rollback_snapshot(db, stub, snap.id, connection_id=conn.id)  # type: ignore[arg-type]
+        assert result == {"restored": "view", "id": 42}
+        assert stub.calls == [(42, "<form><field name='x'/></form>")]
     finally:
         db.close()
 
