@@ -29,6 +29,7 @@ JOB_TIMEOUTS: dict[str, float | None] = {
     "promote": 900.0,
     "health_check": 600.0,
     "expert_ingest": 1200.0,
+    "script_run": 120.0,
 }
 
 _TERMINAL_STATUSES = frozenset(
@@ -150,8 +151,10 @@ class InProcessJobRunner:
         if ev is not None:
             ev.set()
         from app.sandbox import cancel_sandbox_if_running
+        from app.script_runner.executor import cancel_script_if_running
 
         cancel_sandbox_if_running(job_id)
+        cancel_script_if_running(job_id)
         return ev is not None
 
     def is_cancelled(self, job_id: str) -> bool:

@@ -90,9 +90,14 @@ test.describe("Overlay live loop (docker Odoo)", () => {
     const connectionId = process.env.ODOO_E2E_CONNECTION_ID;
     test.skip(!connectionId, "ODOO_E2E_CONNECTION_ID required");
     const apiBase = process.env.PLAYWRIGHT_API_BASE || "http://127.0.0.1:8000";
+    const apiKey = process.env.PLAYWRIGHT_API_KEY;
+    const authHeaders = apiKey
+      ? { Authorization: `Bearer ${apiKey}`, "X-API-Key": apiKey }
+      : {};
 
     const primary = await request.get(
-      `${apiBase}/api/connections/${connectionId}/views/res.partner/form/primary`,
+      `${apiBase}/api/connections/${connectionId}/views/primary?model=res.partner&view_type=form`,
+      { headers: authHeaders },
     );
     expect(primary.ok()).toBeTruthy();
     const primaryBody = await primary.json();
@@ -100,50 +105,58 @@ test.describe("Overlay live loop (docker Odoo)", () => {
     expect(beforeArch).toContain('name="email"');
 
     const preview = await request.post(
-      `${apiBase}/api/connections/${connectionId}/views/res.partner/form/overlay/preview`,
+      `${apiBase}/api/connections/${connectionId}/views/overlay/preview`,
       {
+        headers: authHeaders,
         data: {
           model: "res.partner",
           view_type: "form",
           operation: "hide",
           field_name: "email",
-          xpath: "//field[@name='email']",
+          expr: "//field[@name='email']",
         },
       },
     );
     expect(preview.ok()).toBeTruthy();
 
     const apply = await request.post(
-      `${apiBase}/api/connections/${connectionId}/views/res.partner/form/overlay/apply`,
+      `${apiBase}/api/connections/${connectionId}/views/overlay/apply`,
       {
+        headers: authHeaders,
         data: {
           model: "res.partner",
           view_type: "form",
           operation: "hide",
           field_name: "email",
-          xpath: "//field[@name='email']",
+          expr: "//field[@name='email']",
         },
       },
     );
     expect(apply.ok()).toBeTruthy();
     const applyBody = await apply.json();
     expect(applyBody.xpath_arch).toContain("invisible");
+    expect(applyBody.view_id).toBeTruthy();
 
-    const afterPrimary = await request.get(
-      `${apiBase}/api/connections/${connectionId}/views/res.partner/form/primary`,
+    const inheritView = await request.get(
+      `${apiBase}/api/connections/${connectionId}/views/${applyBody.view_id}`,
+      { headers: authHeaders },
     );
-    const afterBody = await afterPrimary.json();
-    const mergedArch: string = afterBody.arch || "";
-    expect(mergedArch).not.toEqual(beforeArch);
+    expect(inheritView.ok()).toBeTruthy();
+    const inheritBody = await inheritView.json();
+    expect(inheritBody.arch).toContain("invisible");
 
     if (applyBody.snapshot_id) {
       const restore = await request.post(
-        `${apiBase}/api/connections/${connectionId}/snapshots/${applyBody.snapshot_id}/restore`,
+        `${apiBase}/api/connections/${connectionId}/snapshots/${applyBody.snapshot_id}/rollback`,
+        { headers: authHeaders },
       );
       expect(restore.ok()).toBeTruthy();
     }
 
     await page.goto(`/connections/${connectionId}/designer?model=res.partner`);
+    await expect(page.getByRole("heading", { name: /View designer|Designer/i })).toBeVisible({
+      timeout: 15_000,
+    });
     await page.screenshot({
       path: path.join(OUT_DIR, "overlay-editor-live.png"),
       fullPage: true,

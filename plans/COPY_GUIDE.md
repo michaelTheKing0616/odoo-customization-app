@@ -120,3 +120,21 @@ button = the destructive verb, danger-styled; secondary = "Cancel".
 - Tooltips on icon-only buttons: the action verb ("Snapshot now").
 - Timestamps: relative under 7 days ("3h ago"), absolute date after.
 - Keyboard hints as Kbd chips, not text ("Press ⌘K").
+
+## Marketing & pricing safety (TRUST-8)
+
+Audit all public copy against `docs/SAFETY.md`. **Forbidden blanket claims:**
+
+- "Risk-free" / "zero risk" customization
+- "Fully reversible" for all changes (use the verified reversibility table instead)
+- "We never touch production" (standard/production modes mutate live metadata)
+- "Automatic rollback for everything"
+
+**Allowed honest patterns:**
+
+- "Snapshots before risky metadata changes — rollback where reversible"
+- "Blast-radius limits and sample-first bulk runs"
+- "Observer mode for read-only analysis"
+- "Production mode requires a readiness checklist on each connection"
+
+Pricing page already states operate tools "never cost per project" — do not extend that into safety guarantees.

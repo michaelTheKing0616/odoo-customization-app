@@ -55,6 +55,7 @@ const MOCK_CONNECTION: Connection = {
   db_name: "odoo_dev",
   username: "admin",
   server_version: "19.0",
+  write_mode: "standard",
   created_at: null,
   updated_at: null,
   capabilities: ODOO_19_CAPS,

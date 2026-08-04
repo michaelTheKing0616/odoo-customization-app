@@ -64,6 +64,7 @@ export default function ChangeJournalPage() {
           l.path.includes("/power-ops") ||
           l.path.includes("/data-import") ||
           l.path.includes("/automations") ||
+          l.path.includes("/code-studio") ||
           l.path.includes("/access") ||
           l.path.includes("/config"),
       ),
@@ -199,6 +200,14 @@ export default function ChangeJournalPage() {
           }
           if (entry.kind === "audit") {
             const a = entry.audit;
+            let detail: { operation?: string; code?: string; bind_kind?: string } | null = null;
+            if (a.detail_json) {
+              try {
+                detail = JSON.parse(a.detail_json) as { operation?: string; code?: string; bind_kind?: string };
+              } catch {
+                detail = null;
+              }
+            }
             return (
               <li key={`audit-${a.id}`} className="relative">
                 <span className="absolute -left-[1.6rem] top-2 h-2.5 w-2.5 rounded-full bg-muted" />
@@ -210,6 +219,13 @@ export default function ChangeJournalPage() {
                     {a.duration_ms != null ? ` · ${a.duration_ms}ms` : ""}
                     {a.created_at ? ` · ${a.created_at}` : ""}
                   </p>
+                  {detail?.code ? (
+                    <pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded border border-border-subtle bg-surface-muted p-2 text-[11px] text-ink">
+                      {detail.operation ?? "mutation"} · {detail.bind_kind ?? "script"}
+                      {"\n"}
+                      {detail.code}
+                    </pre>
+                  ) : null}
                 </Card>
               </li>
             );

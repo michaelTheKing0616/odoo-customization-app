@@ -25,6 +25,8 @@ from app.odoo_service import OdooClientError, client_from_connection, get_connec
 from app.protected_enforcement import normalize_refusal_dict
 from app.protected_modules import manifest_from_json
 from app.schemas import (
+    AiCheckOverlapBody,
+    AiCheckOverlapOut,
     AiDraftModuleBody,
     AiDraftModuleOut,
     AiProposeConnectPointsBody,
@@ -175,6 +177,78 @@ def component_gallery() -> list[dict[str, str]]:
     return list_gallery()
 
 
+@router.post("/check-overlap", response_model=AiCheckOverlapOut)
+def check_overlap_route(body: AiCheckOverlapBody, db: Session = Depends(get_db)) -> AiCheckOverlapOut:
+    from app.ai_overlap import check_overlap
+
+    available: list[str] | None = None
+    installed: list[str] | None = None
+    available_odoo_modules: list[str] | None = None
+    client = None
+    projects: list[dict] = []
+    if body.connection_id:
+        available, installed, _views, _actions = _load_reuse_catalog(
+            db,
+            AiDraftModuleBody(prompt=body.prompt, connection_id=body.connection_id),
+        )
+        try:
+            conn = get_connection_or_404(db, body.connection_id)
+            client = client_from_connection(conn)
+        except (LookupError, OdooClientError):
+            client = None
+        try:
+            from app.db_models import CustomizationProject
+
+            rows = (
+                db.query(CustomizationProject)
+                .filter(CustomizationProject.connection_id == body.connection_id)
+                .order_by(CustomizationProject.updated_at.desc())
+                .limit(50)
+                .all()
+            )
+            for row in rows:
+                import json
+
+                try:
+                    spec = json.loads(row.spec_json or "{}")
+                except json.JSONDecodeError:
+                    spec = {}
+                projects.append(
+                    {
+                        "id": row.id,
+                        "name": row.name,
+                        "updated_at": row.updated_at,
+                        "spec_json": spec if isinstance(spec, dict) else {},
+                    }
+                )
+        except Exception:  # noqa: BLE001
+            projects = []
+        if client is not None:
+            try:
+                rows = client.execute_kw(
+                    "ir.module.module",
+                    "search_read",
+                    [[("state", "in", ["uninstalled", "to install", "to upgrade"])]],
+                    {"fields": ["name"], "limit": 300},
+                )
+                available_odoo_modules = [str(r["name"]) for r in rows if r.get("name")]
+            except Exception:  # noqa: BLE001
+                available_odoo_modules = None
+
+    result = check_overlap(
+        body.prompt,
+        grain=body.grain,  # type: ignore[arg-type]
+        host_model=body.host_model,
+        connection_id=body.connection_id,
+        client=client,
+        available_models=available,
+        installed_modules=installed,
+        available_odoo_modules=available_odoo_modules,
+        projects=projects,
+    )
+    return AiCheckOverlapOut(**result)
+
+
 @router.post("/propose-connect-points", response_model=AiProposeConnectPointsOut)
 def propose_connect_points_route(
     body: AiProposeConnectPointsBody, db: Session = Depends(get_db)
@@ -300,6 +374,14 @@ def draft_module(
             connect_points_override=body.connect_points,
             client=odoo_client,
         )
+        if body.overlap_choice and isinstance(draft, dict):
+            from app.ai_overlap import record_overlap_choice
+
+            draft = record_overlap_choice(
+                draft,
+                finding_id=body.overlap_finding_id,
+                choice=body.overlap_choice,
+            )
     except AiAssistUnavailable as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except ValueError as exc:

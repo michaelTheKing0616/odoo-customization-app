@@ -8,7 +8,15 @@ from typing import Any
 from odoo_client.client import OdooClient
 
 from app.ai_connect_points import detect_field_collisions, propose_connect_points
-from app.ai_grain import Grain, HostCandidate, classify_grain, discover_hosts, grain_display, module_for_model
+from app.ai_grain import (
+    Grain,
+    HostCandidate,
+    classify_grain,
+    discover_hosts,
+    grain_display,
+    module_for_model,
+    parent_menu_xml_id_for_module,
+)
 from app.component_gallery import get_gallery_seed, list_gallery
 
 
@@ -149,7 +157,7 @@ def build_component_draft(
             {
                 "name": sub,
                 "action_xml_id": action_xml,
-                "parent_xml_id": f"{mod}.menu_{mod}_root" if mod != "base" else None,
+                "parent_xml_id": parent_menu_xml_id_for_module(mod),
                 "sequence": 90,
             }
         )
@@ -159,6 +167,15 @@ def build_component_draft(
                 {
                     "name": sub,
                     "model": cm["model"],
+                    "view_mode": "list,form",
+                    "technical_name": action_xml,
+                }
+            )
+        else:
+            actions.append(
+                {
+                    "name": sub,
+                    "model": host_model,
                     "view_mode": "list,form",
                     "technical_name": action_xml,
                 }

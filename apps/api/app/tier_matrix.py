@@ -33,6 +33,7 @@ class TierCapabilityKey(str, Enum):
     APPROVAL_RULES_STUDIO = "approval_rules_studio"
     PROPERTY_FIELDS = "property_fields"
     MODULE_DEPLOY = "module_deploy"
+    CODE_SERVER_ACTIONS = "code_server_actions"
     SANDBOX_PARITY = "sandbox_parity"
     DIRECT_SQL = "direct_sql"
     FINANCIAL_LINK_ONLY = "financial_link_only"
@@ -65,6 +66,7 @@ TIER_CAPABILITY_LABELS: dict[str, str] = {
     TierCapabilityKey.BULK_RPC_SUITE.value: "Bulk RPC suite (transitions, mass edit, dedupe)",
     TierCapabilityKey.REPORT_MERGE_PRINT.value: "Cross-report merged PDF print",
     TierCapabilityKey.PYTHON_MODULE_INSTALL.value: "Custom Python module install (Option A)",
+    TierCapabilityKey.CODE_SERVER_ACTIONS.value: "Live code server actions (Code Studio)",
     TierCapabilityKey.BARCODE_SCAN_MODULE.value: "Exported barcode scan OWL widget module",
     TierCapabilityKey.EE_PLAYBOOK_SIGN.value: "Sign — templates & requests (EE module)",
     TierCapabilityKey.EE_PLAYBOOK_DOCUMENTS.value: "Documents — folders & attach (EE module)",
@@ -536,6 +538,18 @@ def _rule_ee_playbook_spreadsheet(ctx: TierContext) -> TierCapabilityResult:
     )
 
 
+def _rule_code_server_actions(ctx: TierContext) -> TierCapabilityResult:
+    from app.code_studio_gating import MODULE_PATH_OPTIONS
+
+    return TierCapabilityResult(
+        key=TierCapabilityKey.CODE_SERVER_ACTIONS.value,
+        label=TIER_CAPABILITY_LABELS[TierCapabilityKey.CODE_SERVER_ACTIONS.value],
+        available="verify",
+        reason="Live state=code is probed per connection on first Code Studio open — never assumed by hosting tier.",
+        options=tuple(MODULE_PATH_OPTIONS),
+    )
+
+
 TIER_RULES: tuple[tuple[TierCapabilityKey, Callable[[TierContext], TierCapabilityResult]], ...] = (
     (TierCapabilityKey.CUSTOM_MODELS, _always_yes(TierCapabilityKey.CUSTOM_MODELS, "Public ORM supports ir.model on all tiers.")),
     (TierCapabilityKey.CUSTOM_FIELDS, _always_yes(TierCapabilityKey.CUSTOM_FIELDS, "Public ORM supports ir.model.fields on all tiers.")),
@@ -551,6 +565,7 @@ TIER_RULES: tuple[tuple[TierCapabilityKey, Callable[[TierContext], TierCapabilit
     (TierCapabilityKey.PROPERTY_FIELDS, _rule_property_fields),
     (TierCapabilityKey.MODULE_DEPLOY, _rule_module_deploy),
     (TierCapabilityKey.PYTHON_MODULE_INSTALL, _rule_python_module),
+    (TierCapabilityKey.CODE_SERVER_ACTIONS, _rule_code_server_actions),
     (TierCapabilityKey.BARCODE_SCAN_MODULE, _rule_module_deploy),
     (TierCapabilityKey.SANDBOX_PARITY, _rule_sandbox_parity),
     (TierCapabilityKey.DIRECT_SQL, _rule_direct_sql),

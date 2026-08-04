@@ -29,6 +29,7 @@ import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import { PropertyFieldsPanel } from "@/components/builder/PropertyFieldsPanel";
 import { InvoicingConnectPanel } from "@/components/builder/InvoicingConnectPanel";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
+import { FirstWriteInterstitial } from "@/components/shell/FirstWriteInterstitial";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { reportApiError } from "@/lib/api-error";
 
@@ -391,8 +392,9 @@ export default function BuilderPage() {
     }
   }
 
-  async function proceedDelete() {
-    if (!pendingDelete || confirmTyped !== CONFIRM_PHRASE) return;
+  async function proceedDelete(mode: "deprecate" | "hard_delete" = "hard_delete") {
+    if (!pendingDelete) return;
+    if (mode === "hard_delete" && confirmTyped !== CONFIRM_PHRASE) return;
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -412,15 +414,30 @@ export default function BuilderPage() {
         }
       } else {
         const res = await api.deleteField(connectionId, pendingDelete.fieldId, {
+          mode,
           confirm_advanced: true,
-          confirm_phrase: CONFIRM_PHRASE,
+          confirm_phrase: mode === "hard_delete" ? CONFIRM_PHRASE : undefined,
         });
-        setNotice(
-          `Deleted field #${res.field_id}` +
-            (res.snapshot_id ? ` · snapshot ${res.snapshot_id.slice(0, 8)}…` : ""),
-        );
-        setCreatedFields((rows) => rows.filter((f) => f.id !== pendingDelete.fieldId));
-        setModelFields((rows) => rows.filter((f) => f.id !== pendingDelete.fieldId));
+        if (res.mode === "deprecate") {
+          setNotice(
+            `Deprecated field → ${res.new_field_name ?? "x_deprecated_*"}` +
+              (res.snapshot_id ? ` · snapshot ${res.snapshot_id.slice(0, 8)}…` : ""),
+          );
+        } else {
+          setNotice(
+            `Hard-deleted field #${res.field_id}` +
+              (res.row_count != null ? ` · exported ${res.row_count} row(s)` : "") +
+              (res.artifact_url
+                ? ` · backup ${res.artifact_url}`
+                : res.snapshot_id
+                  ? ` · snapshot ${res.snapshot_id.slice(0, 8)}…`
+                  : ""),
+          );
+        }
+        if (res.mode === "hard_delete") {
+          setCreatedFields((rows) => rows.filter((f) => f.id !== pendingDelete.fieldId));
+          setModelFields((rows) => rows.filter((f) => f.id !== pendingDelete.fieldId));
+        }
       }
       setPendingDelete(null);
       setConfirmTyped("");
@@ -438,6 +455,7 @@ export default function BuilderPage() {
         title="Model & field builder"
         description={`${connection ? `${connection.name} · ${connection.server_version ?? ""}` : connectionId} · writes live metadata to Odoo (sandbox instance recommended)`}
       />
+      <FirstWriteInterstitial connection={connection} />
       <VersionAwarenessBanner capabilities={connection?.capabilities} />
         <CapabilityProbePanel
           capabilities={connection?.capabilities}
@@ -483,7 +501,7 @@ export default function BuilderPage() {
             <p className="mt-2 text-sm text-muted">
               {pendingDelete.kind === "model"
                 ? `Delete model ${pendingDelete.model}? This often cannot be fully undone.`
-                : `Delete field ${pendingDelete.name}? Column data may be unrestorable.`}
+                : `Field ${pendingDelete.name}: deprecate (recommended) renames to x_deprecated_* and keeps data. Hard delete exports a CSV backup first, then drops the column.`}
             </p>
             <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-muted">
               {pendingDelete.risks.map((r) => (
@@ -492,7 +510,7 @@ export default function BuilderPage() {
             </ul>
             <label className="mt-4 block text-sm">
               <span className="text-muted">
-                Type <code className="text-danger">{CONFIRM_PHRASE}</code> to continue
+                For hard delete, type <code className="text-danger">{CONFIRM_PHRASE}</code>
               </span>
               <input
                 value={confirmTyped}
@@ -500,7 +518,7 @@ export default function BuilderPage() {
                 className="mt-1 w-full border border-border-subtle bg-surface-raised px-3 py-2"
               />
             </label>
-            <div className="mt-4 flex gap-3">
+            <div className="mt-4 flex flex-wrap gap-3">
               <button
                 type="button"
                 className="border border-border-subtle px-4 py-2 text-sm"
@@ -511,13 +529,27 @@ export default function BuilderPage() {
               >
                 Cancel
               </button>
+              {pendingDelete.kind === "field" ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  className="bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                  onClick={() => proceedDelete("deprecate")}
+                >
+                  Deprecate (recommended)
+                </button>
+              ) : null}
               <button
                 type="button"
-                disabled={busy || confirmTyped !== CONFIRM_PHRASE}
+                disabled={
+                  busy ||
+                  (pendingDelete.kind === "model" && confirmTyped !== CONFIRM_PHRASE) ||
+                  (pendingDelete.kind === "field" && confirmTyped !== CONFIRM_PHRASE)
+                }
                 className="bg-danger px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                onClick={() => proceedDelete()}
+                onClick={() => proceedDelete("hard_delete")}
               >
-                Proceed
+                {pendingDelete.kind === "field" ? "Hard delete" : "Proceed"}
               </button>
             </div>
           </div>
@@ -983,14 +1015,14 @@ export default function BuilderPage() {
                             fieldId: f.id,
                             name: f.name,
                             risks: [
-                              "Dropped columns / field data may be unrestorable",
-                              "Views referencing the field can break",
-                              "Snapshot stores definition only (partial)",
+                              "Deprecate keeps column data under x_deprecated_*",
+                              "Hard delete exports CSV then drops the column",
+                              "Views referencing the old name may need updates",
                             ],
                           })
                         }
                       >
-                        Delete
+                        Remove…
                       </button>
                     )}
                   </li>

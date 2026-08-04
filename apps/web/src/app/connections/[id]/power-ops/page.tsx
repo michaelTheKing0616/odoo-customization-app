@@ -12,6 +12,7 @@ import {
 } from "@/lib/api";
 import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
+import { FirstWriteInterstitial } from "@/components/shell/FirstWriteInterstitial";
 import { belowMinMajor, connectionMajor } from "@/lib/capabilities";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -246,6 +247,7 @@ export default function PowerOpsPage() {
         description="Multi-step bulk RPC recipes — the same class of power as Odoo.sh scripts, usable on Odoo Online when the API allows."
       />
       <VersionAwarenessBanner capabilities={connection?.capabilities} />
+      {connection ? <FirstWriteInterstitial connection={connection} /> : null}
       <CapabilityProbePanel
         capabilities={connection?.capabilities}
         defaultOpen={false}

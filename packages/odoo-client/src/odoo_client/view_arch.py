@@ -1438,7 +1438,7 @@ def render_inherit_xpath_arch(
     if position == "move":
         return (
             "<data>\n"
-            f'  <xpath expr="{expr_clean}" position="move"/>\n'
+            f'  <xpath expr="{_xml_attr(expr_clean)}" position="move"/>\n'
             "</data>"
         )
     body = body_xml.strip()
@@ -1446,7 +1446,7 @@ def render_inherit_xpath_arch(
         raise ValueError("xpath body_xml is required")
     return (
         "<data>\n"
-        f'  <xpath expr="{expr_clean}" position="{position}">\n'
+        f'  <xpath expr="{_xml_attr(expr_clean)}" position="{position}">\n'
         f"    {body}\n"
         "  </xpath>\n"
         "</data>"

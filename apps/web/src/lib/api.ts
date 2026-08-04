@@ -149,9 +149,26 @@ export type Connection = {
   last_seen_version?: string | null;
   upgrade_detected?: boolean;
   upgrade_detected_at?: string | null;
+  write_mode: "observer" | "standard" | "production";
+  writes_paused?: boolean;
   created_at: string | null;
   updated_at: string | null;
   capabilities?: CapabilityMatrix | null;
+};
+
+export type ProductionReadinessItem = {
+  key: string;
+  label: string;
+  status: "pass" | "fail" | "warn";
+  detail: string;
+};
+
+export type ProductionReadinessReport = {
+  passed: boolean;
+  items: ProductionReadinessItem[];
+  drill_snapshot_id?: string | null;
+  updated_at?: string | null;
+  first_write_acknowledged?: boolean;
 };
 
 export type HealthCheckItem = {
@@ -687,7 +704,42 @@ export type AuditLogRow = {
   client_ip: string | null;
   api_key_prefix: string | null;
   duration_ms: number | null;
+  detail_json?: string | null;
   created_at: string | null;
+};
+
+export type CodeStudioGateResponse = {
+  probe: Record<string, unknown>;
+  gating: GatingCallout;
+  developer_role_required: boolean;
+  entitlement_key: string;
+};
+
+export type CodeStudioValidateResult = {
+  ok: boolean;
+  syntax_ok: boolean;
+  warnings: { code: string; message: string }[];
+  error?: string | null;
+};
+
+export type CodeStudioTestRunResult = {
+  ok: boolean;
+  validation: CodeStudioValidateResult;
+  ran_for_real: boolean;
+  record: { model: string; id: number | null };
+  exception?: string | null;
+  field_diff: { field: string; before: unknown; after: unknown }[];
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+};
+
+export type CodeStudioBindResult = {
+  ok: boolean;
+  bind_kind: string;
+  code: string;
+  snapshot_id?: string | null;
+  server_action_id?: number | null;
+  automation_id?: number | null;
 };
 
 export type AppTemplate = {
@@ -1016,6 +1068,18 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ token, password }),
     }),
+  accountOAuthProviders: () => request<{ providers: string[] }>("/api/accounts/oauth/providers"),
+  accountOAuthComplete2FA: (body: { token: string; totp_code: string }) =>
+    request<AccountSession>("/api/accounts/oauth/complete-2fa", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  accountOAuthIdentities: () =>
+    request<Array<{ provider: string; email: string | null; created_at: string }>>(
+      "/api/accounts/oauth/identities",
+    ),
+  accountOAuthUnlink: (provider: string) =>
+    request<void>(`/api/accounts/oauth/${encodeURIComponent(provider)}`, { method: "DELETE" }),
   billingEntitlements: () => request<EntitlementsOut>("/api/billing/entitlements"),
   billingPlans: () => request<BillingPlansCatalog>("/api/billing/plans"),
   billingPlanDiff: (fromPlan: string, toPlan = "free_solo") =>
@@ -1092,6 +1156,8 @@ export const api = {
       gallery_id?: string | null;
       host_model?: string | null;
       connect_points?: Record<string, unknown> | null;
+      overlap_choice?: string | null;
+      overlap_finding_id?: string | null;
     },
   ) =>
     request<{
@@ -1124,6 +1190,8 @@ export const api = {
         gallery_id: opts?.gallery_id || undefined,
         host_model: opts?.host_model || undefined,
         connect_points: opts?.connect_points ?? undefined,
+        overlap_choice: opts?.overlap_choice || undefined,
+        overlap_finding_id: opts?.overlap_finding_id || undefined,
       }),
     }),
   proposeConnectPoints: (body: {
@@ -1149,6 +1217,34 @@ export const api = {
       warnings?: string[];
       gallery_id?: string | null;
     }>("/api/ai/propose-connect-points", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  checkOverlap: (body: {
+    prompt: string;
+    connection_id?: string;
+    grain?: string | null;
+    host_model?: string | null;
+  }) =>
+    request<{
+      ok: boolean;
+      grain: string;
+      grain_label: string;
+      findings: Array<{
+        id: string;
+        source: string;
+        title: string;
+        evidence: string;
+        confidence: number;
+        artifact_type: string;
+        artifact_ref: Record<string, unknown>;
+        deep_link?: string | null;
+        extend_host_model?: string | null;
+        options: string[];
+      }>;
+      semantic_pass_ran: boolean;
+      requires_review: boolean;
+    }>("/api/ai/check-overlap", {
       method: "POST",
       body: JSON.stringify(body),
     }),
@@ -1223,6 +1319,62 @@ export const api = {
       warnings: string[];
       message: string;
     }>(`/api/connections/${connectionId}/module-spec/apply`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  lintModuleSpecBlocks: (connectionId: string, spec: Record<string, unknown>) =>
+    request<{ ok: boolean; blocks: Array<{ source_file?: string; issues?: { message: string }[] }> }>(
+      `/api/connections/${connectionId}/module-spec/lint-blocks`,
+      { method: "POST", body: JSON.stringify({ spec }) },
+    ),
+  exportModuleSpecSandbox: (
+    connectionId: string,
+    body: { spec: Record<string, unknown>; async_job?: boolean; odoo_major?: number | null },
+  ) =>
+    request<{ ok: boolean; job_id?: string; validation_id?: string; message?: string }>(
+      `/api/connections/${connectionId}/module-spec/export-sandbox`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  getScriptRunnerTemplates: (connectionId: string) =>
+    request<{ templates: Array<{ id: string; label: string; description: string; code: string }> }>(
+      `/api/connections/${connectionId}/script-runner/templates`,
+    ),
+  listScriptRuns: (connectionId: string) =>
+    request<
+      Array<{
+        id: string;
+        status: string;
+        script_content: string;
+        stdout: string | null;
+        stderr: string | null;
+        write_counts: Record<string, unknown>;
+        error: string | null;
+        created_at: string | null;
+      }>
+    >(`/api/connections/${connectionId}/script-runner/runs`),
+  runScript: (
+    connectionId: string,
+    body: {
+      script: string;
+      async_job?: boolean;
+      count_writes?: boolean;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<{ ok: boolean; async?: boolean; job_id?: string; run_id?: string }>(
+      `/api/connections/${connectionId}/script-runner/run`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  listSavedScripts: (connectionId: string) =>
+    request<
+      Array<{ id: string; name: string; description: string | null; script_content: string; shared: boolean }>
+    >(`/api/connections/${connectionId}/script-runner/library`),
+  saveScript: (
+    connectionId: string,
+    body: { name: string; description?: string | null; script_content: string; shared?: boolean },
+  ) =>
+    request<{ id: string; name: string }>(`/api/connections/${connectionId}/script-runner/library`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
@@ -1307,6 +1459,34 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  updateConnectionWriteMode: (id: string, write_mode: Connection["write_mode"]) =>
+    request<Connection>(`/api/connections/${id}/write-mode`, {
+      method: "PATCH",
+      body: JSON.stringify({ write_mode }),
+    }),
+  getProductionReadiness: (id: string) =>
+    request<ProductionReadinessReport>(`/api/connections/${id}/production-readiness`),
+  runProductionSnapshotDrill: (id: string) =>
+    request<{ ok: boolean; snapshot_id: string; report: ProductionReadinessReport }>(
+      `/api/connections/${id}/production-readiness/snapshot-drill`,
+      { method: "POST" },
+    ),
+  confirmProductionLeastPrivilege: (id: string, acknowledge_admin: boolean) =>
+    request<ProductionReadinessReport>(
+      `/api/connections/${id}/production-readiness/confirm-least-privilege`,
+      { method: "POST", body: JSON.stringify({ acknowledge_admin }) },
+    ),
+  verifyProductionBackupArtifact: (id: string) =>
+    request<ProductionReadinessReport>(
+      `/api/connections/${id}/production-readiness/verify-backup-artifact`,
+      { method: "POST" },
+    ),
+  ackProductionFirstWrite: (id: string) =>
+    request<ProductionReadinessReport>(
+      `/api/connections/${id}/production-readiness/ack-first-write`,
+      { method: "POST" },
+    ),
+  getSafetyContract: () => request<{ markdown: string; source: string }>("/api/trust/safety"),
   deleteConnection: (id: string) =>
     request<void>(`/api/connections/${id}`, { method: "DELETE" }),
   probeConnection: (id: string) =>
@@ -1719,12 +1899,26 @@ export const api = {
   deleteField: (
     id: string,
     fieldId: number,
-    body: { confirm_advanced?: boolean; confirm_phrase?: string | null },
+    body: {
+      mode?: "deprecate" | "hard_delete";
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
   ) =>
-    request<{ ok: boolean; field_id: number; snapshot_id: string | null }>(
-      `/api/connections/${id}/fields/${fieldId}`,
-      { method: "DELETE", body: JSON.stringify(body) },
-    ),
+    request<{
+      ok: boolean;
+      field_id: number;
+      mode: "deprecate" | "hard_delete";
+      snapshot_id: string | null;
+      artifact_id?: string | null;
+      artifact_url?: string | null;
+      row_count?: number | null;
+      truncated?: boolean | null;
+      new_field_name?: string | null;
+    }>(`/api/connections/${id}/fields/${fieldId}`, {
+      method: "DELETE",
+      body: JSON.stringify(body),
+    }),
   deleteModel: (
     id: string,
     model: string,
@@ -2164,6 +2358,51 @@ export const api = {
     request<ActivityTypeRow[]>(`/api/connections/${id}/automations/activity-types`),
   getAutomationsGate: (id: string) =>
     request<AutomationsGateResponse>(`/api/connections/${id}/automations/gate`),
+  getCodeStudioGate: (id: string) =>
+    request<CodeStudioGateResponse>(`/api/connections/${id}/code-studio/gate`),
+  probeCodeStudio: (id: string) =>
+    request<Record<string, unknown>>(`/api/connections/${id}/code-studio/probe`, {
+      method: "POST",
+    }),
+  getCodeStudioContext: (id: string) =>
+    request<{ major: number | null; symbols: { name: string; description: string }[] }>(
+      `/api/connections/${id}/code-studio/context`,
+    ),
+  getCodeStudioSnippets: (id: string) =>
+    request<{ snippets: { id: string; label: string; code: string }[] }>(
+      `/api/connections/${id}/code-studio/snippets`,
+    ),
+  validateCodeStudio: (id: string, code: string) =>
+    request<CodeStudioValidateResult>(`/api/connections/${id}/code-studio/validate`, {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    }),
+  testRunCodeStudio: (
+    id: string,
+    body: { model: string; record_id?: number | null; code: string },
+  ) =>
+    request<CodeStudioTestRunResult>(`/api/connections/${id}/code-studio/test-run`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  bindCodeStudio: (
+    id: string,
+    body: {
+      name: string;
+      model: string;
+      code: string;
+      bind_kind: "standalone" | "model_button" | "automation";
+      bind_to_model?: boolean;
+      trigger?: string | null;
+      filter_domain?: string | null;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<CodeStudioBindResult>(`/api/connections/${id}/code-studio/bind`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   getAutomationTriggers: (id: string) =>
     request<AutomationTriggersResponse>(`/api/connections/${id}/automations/triggers`),
   getApprovalsGate: (id: string) =>
@@ -2546,11 +2785,24 @@ export const api = {
       cap?: number;
       confirm_advanced?: boolean;
       confirm_phrase?: string | null;
+      receipt_token?: string | null;
+      continue_run_id?: string | null;
+      disable_sample_first?: boolean;
     },
   ) =>
     request<BulkRunOut>(`/api/connections/${id}/bulk/transitions/run`, {
       method: "POST",
       body: JSON.stringify(body),
+    }),
+  bulkRunContinue: (id: string, runId: string) =>
+    request<BulkRunOut>(`/api/connections/${id}/bulk/runs/${runId}/continue`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  bulkRunAbort: (id: string, runId: string) =>
+    request<BulkRunOut>(`/api/connections/${id}/bulk/runs/${runId}/abort`, {
+      method: "POST",
+      body: JSON.stringify({}),
     }),
   bulkMassEdit: (
     id: string,
@@ -3750,6 +4002,12 @@ export type BulkRunOut = {
     message: string;
     honesty_message?: string | null;
   } | null;
+  receipt_token?: string | null;
+  status?: string;
+  pending_ids?: number[] | null;
+  processed_count?: number | null;
+  aborted?: boolean;
+  can_continue?: boolean;
 };
 
 export type ActivityProbeOut = {

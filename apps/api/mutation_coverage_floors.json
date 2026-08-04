@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "high_floor_percent": 82,
+  "medium_floor_percent": 50,
+  "medium_floor_target_percent": 70,
+  "medium_floor_deferred_percent": 15,
+  "min_statements": 15,
+  "high_floor_modules": [
+    "app/safety_gate.py",
+    "app/safety_registry.py",
+    "app/mutation_lock.py",
+    "app/rpc_resilience.py",
+    "app/bulk_suite/executor.py",
+    "app/bulk_suite/transitions.py",
+    "app/bulk_suite/domain_util.py"
+  ],
+    "medium_floor_modules": [
+    "app/spec_apply_ui.py",
+    "app/protected_enforcement.py",
+    "app/protected_modules.py",
+    "app/ai_pipeline.py",
+    "app/power_ops_recipes.py",
+    "app/bulk_suite/storage.py",
+    "app/bulk_suite/discovery.py",
+    "app/bulk_suite/activities.py",
+    "app/bulk_suite/attachments.py",
+    "app/bulk_suite/dedupe.py",
+    "app/bulk_suite/mass_edit.py",
+    "app/bulk_suite/cron_manager.py",
+    "app/bulk_suite/security.py",
+    "app/bulk_suite/send_message.py"
+  ],
+  "medium_floor_ratchet_modules": [
+    "app/snapshots.py",
+    "app/promote.py",
+    "app/bulk_suite/recompute.py",
+    "app/bulk_suite/portal_access.py"
+  ],
+  "deferred_modules": [
+    "app/bulk_suite/scan.py"
+  ]
+}

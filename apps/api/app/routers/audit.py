@@ -27,6 +27,7 @@ class AuditLogOut(BaseModel):
     client_ip: str | None
     api_key_prefix: str | None
     duration_ms: int | None
+    detail_json: str | None = None
     created_at: datetime | None
 
     model_config = {"from_attributes": True}

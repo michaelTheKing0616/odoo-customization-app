@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 import pyotp
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -28,6 +29,15 @@ from app.account_service import (
 from app.db import get_db
 from app.settings import settings
 from app.workspace_auth import WorkspaceAuth, get_workspace_auth, require_admin, require_app_auth
+from app.oauth_service import (
+    complete_oauth_totp,
+    create_oauth_start,
+    enabled_oauth_providers,
+    exchange_oauth_code,
+    list_oauth_identities,
+    resolve_oauth_login,
+    unlink_oauth_identity,
+)
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
@@ -364,3 +374,154 @@ def totp_verify(
     db.add(user)
     db.commit()
     return {"recovery_codes": codes}
+
+
+class OAuthProvidersOut(BaseModel):
+    providers: list[str]
+
+
+class OAuthIdentityOut(BaseModel):
+    provider: str
+    email: str | None
+    created_at: datetime
+
+
+class OAuthComplete2FABody(BaseModel):
+    token: str
+    totp_code: str
+
+
+@router.get("/oauth/providers", response_model=OAuthProvidersOut)
+def oauth_providers() -> OAuthProvidersOut:
+    return OAuthProvidersOut(providers=enabled_oauth_providers())
+
+
+@router.get("/oauth/{provider}/start")
+def oauth_start(provider: str, db: Session = Depends(get_db)) -> RedirectResponse:
+    if settings.auth_mode.strip().lower() != "accounts":
+        raise HTTPException(status_code=404, detail="OAuth not available")
+    try:
+        url, _state = create_oauth_start(db, provider=provider)
+    except AccountError as exc:
+        raise _account_error(exc) from exc
+    return RedirectResponse(url=url, status_code=302)
+
+
+@router.get("/oauth/{provider}/callback")
+def oauth_callback(
+    provider: str,
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    db: Session = Depends(get_db),
+):
+    if settings.auth_mode.strip().lower() != "accounts":
+        raise HTTPException(status_code=404, detail="OAuth not available")
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing OAuth callback parameters")
+    try:
+        profile = exchange_oauth_code(db, provider=provider, code=code, raw_state=state)
+        result = resolve_oauth_login(db, profile)
+    except AccountError as exc:
+        redirect = RedirectResponse(
+            url=f"{settings.app_public_url.rstrip('/')}/login?oauth_error={exc.code}",
+            status_code=302,
+        )
+        return redirect
+
+    if result.totp_pending_token:
+        return RedirectResponse(
+            url=(
+                f"{settings.app_public_url.rstrip('/')}/login"
+                f"?oauth_totp=1&token={result.totp_pending_token}"
+            ),
+            status_code=302,
+        )
+
+    membership = (
+        db.query(WorkspaceMembership)
+        .filter(WorkspaceMembership.user_id == result.user.id)
+        .order_by(WorkspaceMembership.created_at.asc())
+        .first()
+    )
+    if membership is None:
+        raise HTTPException(status_code=400, detail="No workspace membership")
+
+    _, raw = create_session(
+        db,
+        user=result.user,
+        workspace_id=membership.workspace_id,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    redirect = RedirectResponse(
+        url=f"{settings.app_public_url.rstrip('/')}/connect",
+        status_code=302,
+    )
+    _set_session_cookie(redirect, raw)
+    return redirect
+
+
+@router.post("/oauth/complete-2fa", response_model=SessionOut)
+def oauth_complete_2fa(
+    body: OAuthComplete2FABody,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> SessionOut:
+    if settings.auth_mode.strip().lower() != "accounts":
+        raise HTTPException(status_code=400, detail="OAuth not available")
+    try:
+        user = complete_oauth_totp(db, raw_token=body.token, totp_code=body.totp_code)
+    except AccountError as exc:
+        raise _account_error(exc) from exc
+
+    membership = (
+        db.query(WorkspaceMembership)
+        .filter(WorkspaceMembership.user_id == user.id)
+        .order_by(WorkspaceMembership.created_at.asc())
+        .first()
+    )
+    if membership is None:
+        raise HTTPException(status_code=400, detail="No workspace membership")
+
+    _, raw = create_session(
+        db,
+        user=user,
+        workspace_id=membership.workspace_id,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    _set_session_cookie(response, raw)
+    return _session_out(db, user, membership.workspace_id, membership.role)
+
+
+@router.get("/oauth/identities", response_model=list[OAuthIdentityOut])
+def oauth_identities(
+    auth: WorkspaceAuth = Depends(require_app_auth),
+    db: Session = Depends(get_db),
+) -> list[OAuthIdentityOut]:
+    if auth.mode != "accounts" or not auth.user_id or auth.api_key_authenticated:
+        raise HTTPException(status_code=401, detail="Session required")
+    rows = list_oauth_identities(db, auth.user_id)
+    return [
+        OAuthIdentityOut(provider=row.provider, email=row.email, created_at=row.created_at)
+        for row in rows
+    ]
+
+
+@router.delete("/oauth/{provider}", status_code=204)
+def oauth_unlink(
+    provider: str,
+    auth: WorkspaceAuth = Depends(require_app_auth),
+    db: Session = Depends(get_db),
+) -> None:
+    if auth.mode != "accounts" or not auth.user_id or auth.api_key_authenticated:
+        raise HTTPException(status_code=401, detail="Session required")
+    user = db.get(User, auth.user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    try:
+        unlink_oauth_identity(db, user=user, provider=provider)
+    except AccountError as exc:
+        raise _account_error(exc) from exc

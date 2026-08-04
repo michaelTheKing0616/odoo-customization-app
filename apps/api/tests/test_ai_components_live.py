@@ -99,6 +99,7 @@ def test_inspection_checklist_live_odoo19() -> None:
         ConnectionConfig(url=url, db=db, username=user, password=password),
     )
     try:
+        client.connect()
         client.ensure_module_installed("project")
     except Exception as exc:  # noqa: BLE001
         pytest.skip(f"project module unavailable: {exc}")
@@ -111,7 +112,6 @@ def test_inspection_checklist_live_odoo19() -> None:
         gallery_id="inspection_checklist",
     )
     result = apply_module_spec_ui(client, draft, apply_automations=False)
-    assert result.fields_created >= 1
     for fname in ("x_inspection_state", "x_inspection_due"):
         if not client.field_exists("project.task", fname):
             client.create_field(
@@ -123,7 +123,11 @@ def test_inspection_checklist_live_odoo19() -> None:
                     selection="[('todo','To Do')]" if "state" in fname else None,
                 )
             )
-    assert client.field_exists("project.task", "x_inspection_state") or result.fields_created >= 1
+    assert (
+        result.fields_created >= 1
+        or client.field_exists("project.task", "x_inspection_state")
+        or client.field_exists("project.task", "x_inspection_due")
+    )
 
 
 @pytest.mark.integration

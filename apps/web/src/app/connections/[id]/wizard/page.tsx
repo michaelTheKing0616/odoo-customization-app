@@ -135,10 +135,25 @@ export default function AppWizardPage() {
   const [connectPointsApproved, setConnectPointsApproved] = useState(false);
   const [connectReviewBusy, setConnectReviewBusy] = useState(false);
   const [effectiveGrain, setEffectiveGrain] = useState<string>("");
+  const [overlapFindings, setOverlapFindings] = useState<
+    Array<{
+      id: string;
+      title: string;
+      evidence: string;
+      deep_link?: string | null;
+      extend_host_model?: string | null;
+    }>
+  >([]);
+  const [overlapChoice, setOverlapChoice] = useState<string | null>(null);
+  const [overlapFindingId, setOverlapFindingId] = useState<string | null>(null);
+  const [overlapBusy, setOverlapBusy] = useState(false);
 
   const needsConnectReview = grainOverride !== "full_app";
+  const overlapResolved =
+    overlapFindings.length === 0 || overlapChoice === "build_anyway" || overlapChoice === "use";
   const canDraftModule =
     nlPrompt.trim().length >= 3 &&
+    overlapResolved &&
     (grainOverride === "full_app" || (connectPointsApproved && connectPoints !== null));
 
   useEffect(() => {
@@ -245,6 +260,56 @@ export default function AppWizardPage() {
     }
   }
 
+  async function onCheckOverlap() {
+    if (nlPrompt.trim().length < 3) return;
+    setOverlapBusy(true);
+    setError(null);
+    setOverlapChoice(null);
+    setOverlapFindingId(null);
+    try {
+      const res = await api.checkOverlap({
+        prompt: nlPrompt.trim(),
+        connection_id: connectionId,
+        grain: grainOverride || undefined,
+        host_model: connectPoints?.host_model ? String(connectPoints.host_model) : undefined,
+      });
+      setOverlapFindings(res.findings ?? []);
+      if (res.grain_label) setGrainLabel(res.grain_label);
+      if (res.grain) setEffectiveGrain(res.grain);
+    } catch (err) {
+      reportApiError(err, setError, { fallback: "Overlap check failed", toast: true });
+    } finally {
+      setOverlapBusy(false);
+    }
+  }
+
+  function onOverlapUse(finding: (typeof overlapFindings)[number]) {
+    setOverlapChoice("use");
+    setOverlapFindingId(finding.id);
+    if (finding.deep_link) {
+      window.location.href = finding.deep_link;
+    }
+  }
+
+  function onOverlapExtend(finding: (typeof overlapFindings)[number]) {
+    setOverlapChoice("extend");
+    setOverlapFindingId(finding.id);
+    setGrainOverride("feature_slice");
+    if (finding.extend_host_model) {
+      setConnectPoints({
+        host_model: finding.extend_host_model,
+        form_xpath: "//sheet",
+        form_position: "inside",
+      });
+    }
+    void onReviewConnectPoints();
+  }
+
+  function onOverlapBuildAnyway(findingId?: string) {
+    setOverlapChoice("build_anyway");
+    setOverlapFindingId(findingId ?? null);
+  }
+
   async function onReviewConnectPoints() {
     if (nlPrompt.trim().length < 3) return;
     setConnectReviewBusy(true);
@@ -300,6 +365,8 @@ export default function AppWizardPage() {
           ? String(connectPoints.host_model)
           : undefined,
         connect_points: connectPoints ?? undefined,
+        overlap_choice: overlapChoice ?? undefined,
+        overlap_finding_id: overlapFindingId ?? undefined,
       });
       setAiDraft(res.draft);
       setAiNote(res.note ?? "Draft only — does not apply.");
@@ -537,6 +604,9 @@ export default function AppWizardPage() {
               setNlPrompt(e.target.value);
               setConnectPointsApproved(false);
               setConnectPoints(null);
+              setOverlapFindings([]);
+              setOverlapChoice(null);
+              setOverlapFindingId(null);
             }}
             rows={3}
             placeholder="Car rental fleet: vehicles, contracts, deposits, overdue returns…"
@@ -559,6 +629,65 @@ export default function AppWizardPage() {
             />
             {grainLabel ? <Badge variant="info">Detected: {grainLabel}</Badge> : null}
           </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              loading={overlapBusy}
+              disabled={nlPrompt.trim().length < 3}
+              onClick={() => void onCheckOverlap()}
+              data-testid="check-overlap"
+            >
+              Check overlap
+            </Button>
+          </div>
+
+          {overlapFindings.length > 0 ? (
+            <section
+              className="mt-4 space-y-3 rounded-md border border-border-subtle bg-surface-muted p-4"
+              data-testid="overlap-findings"
+            >
+              <h3 className="text-sm font-semibold text-ink">Already exists on this instance</h3>
+              <p className="text-xs text-muted">
+                Review before drafting — choose how to proceed for each finding.
+              </p>
+              <ul className="space-y-3">
+                {overlapFindings.map((f) => (
+                  <li key={f.id} className="border-b border-border-subtle pb-3 text-sm">
+                    <p className="font-medium">{f.title}</p>
+                    <p className="mt-1 text-xs text-muted">{f.evidence}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {f.deep_link ? (
+                        <Button type="button" size="sm" variant="secondary" onClick={() => onOverlapUse(f)}>
+                          Use what exists
+                        </Button>
+                      ) : null}
+                      {f.extend_host_model ? (
+                        <Button type="button" size="sm" variant="secondary" onClick={() => onOverlapExtend(f)}>
+                          Extend it
+                        </Button>
+                      ) : null}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => onOverlapBuildAnyway(f.id)}
+                      >
+                        Build anyway
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {overlapChoice === "build_anyway" ? (
+                <Callout variant="warning" title="Building anyway">
+                  Your choice is recorded on the draft audit trail.
+                </Callout>
+              ) : null}
+            </section>
+          ) : null}
 
           {connectPoints && needsConnectReview ? (
             <section
@@ -703,9 +832,11 @@ export default function AppWizardPage() {
               disabled={aiBusy || !canDraftModule}
               loading={aiBusy}
               title={
-                needsConnectReview && !connectPointsApproved
-                  ? "Review and approve connect points first"
-                  : undefined
+                overlapFindings.length > 0 && !overlapResolved
+                  ? "Resolve overlap findings first (Build anyway, Use, or Extend)"
+                  : needsConnectReview && !connectPointsApproved
+                    ? "Review and approve connect points first"
+                    : undefined
               }
               onClick={() => void onDraftFromPrompt()}
             >

@@ -42,6 +42,7 @@ FEATURE_KEYS = frozenset(
         "api_keys",
         "white_label",
         "workspaces_multi",
+        "dev_tools",
     }
 )
 
@@ -94,6 +95,7 @@ FEATURE_MATRIX: dict[str, dict[str, str]] = {
     "api_keys": {"free_solo": "false", "pro": "false", "business": "false", "agency": "true", "internal": "true", "project_pass": "false"},
     "white_label": {"free_solo": "false", "pro": "false", "business": "false", "agency": "true", "internal": "true", "project_pass": "false"},
     "workspaces_multi": {"free_solo": "false", "pro": "false", "business": "false", "agency": "true", "internal": "true", "project_pass": "false"},
+    "dev_tools": {"free_solo": "false", "pro": "false", "business": "true", "agency": "true", "internal": "true", "project_pass": "false"},
 }
 
 # Public pricing catalog — display amounts; processor price IDs live in settings / BillingPlan.
@@ -117,6 +119,7 @@ DISPLAY_FEATURE_CATALOG: list[dict[str, str]] = [
     {"key": "module_export", "label": "Module export + sandbox"},
     {"key": "bulk_suite", "label": "Bulk suite"},
     {"key": "expert", "label": "Odoo Expert"},
+    {"key": "dev_tools", "label": "Code Studio & developer tools"},
 ]
 
 

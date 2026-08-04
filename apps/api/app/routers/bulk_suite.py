@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -113,11 +113,21 @@ from app.bulk_suite.security import (
     preview_security_changes,
 )
 from app.bulk_suite.send_message import SendMessageRunResult, SendMessageValidationError, run_bulk_send_message
-from app.bulk_suite.storage import load_bulk_run, save_bulk_run
+from app.bulk_suite.storage import (
+    bulk_run_abort_checker,
+    load_bulk_run,
+    mark_bulk_run_abort_requested,
+    save_bulk_run,
+    update_bulk_run,
+)
+from app.blast_radius import clamp_request_cap, plan_execution_ids
+from app.anomaly_guard import record_connection_mutations
+from app.account_models import Workspace
 from app.bulk_suite.transitions import (
     DEFAULT_RECORD_CAP,
     BulkRunResult,
     BulkSuiteError,
+    PerRecordResult,
     discover_transitions,
     resolve_record_ids,
     run_bulk_transition,
@@ -133,11 +143,18 @@ from app.snapshots import (
     require_advanced_confirmation,
     save_snapshot,
 )
+from app.safety_dependency import get_route_registry
+from app.safety_gate import SafetyGate, SafetyGateError
+from app.safety_registry import lookup_route_spec
+from app.mutation_lock_dep import require_connection_mutation_lock
 
 router = APIRouter(
     prefix="/connections/{connection_id}/bulk",
     tags=["bulk-suite"],
 )
+
+BULK_TRANSITIONS_RUN_KEY = "POST:/api/connections/{connection_id}/bulk/transitions/run"
+BULK_TRANSITIONS_OPERATION = "bulk.transitions.run"
 
 
 def _confirm_http(exc: ConfirmationRequired) -> HTTPException:
@@ -150,6 +167,45 @@ def _confirm_http(exc: ConfirmationRequired) -> HTTPException:
             "risks": exc.risks,
         },
     )
+
+
+BULK_ROUTE_PREFIX = "/api/connections/{connection_id}/bulk"
+
+
+def _bulk_receipt(
+    db: Session,
+    row,
+    *,
+    route_suffix: str,
+    operation: str,
+    params: dict[str, Any],
+    dry_run: bool,
+    receipt_token: str | None,
+) -> str | None:
+    """Issue or validate dry-run receipt for bulk execute routes (TRUST-2)."""
+    route_path = f"{BULK_ROUTE_PREFIX}{route_suffix}"
+    spec = lookup_route_spec("POST", route_path, get_route_registry())
+    gate = SafetyGate(db, connection=row)
+    if not dry_run:
+        if spec is not None and spec.dry_run_first:
+            try:
+                gate.require_dry_run_receipt(
+                    spec,
+                    connection_id=row.id,
+                    operation=operation,
+                    params=params,
+                    receipt_token=receipt_token,
+                )
+            except SafetyGateError as exc:
+                raise HTTPException(status_code=403, detail=exc.refusal.http_detail()) from exc
+        return None
+    if spec is not None and spec.dry_run_first:
+        return gate.issue_dry_run_receipt(
+            connection_id=row.id,
+            operation=operation,
+            params=params,
+        )
+    return None
 
 
 def _connection_row(connection_id: str, db: Session):
@@ -187,6 +243,9 @@ class BulkTransitionRunBody(ConfirmAdvancedBody):
     domain: list[Any] | str | None = None
     dry_run: bool = True
     cap: int = Field(DEFAULT_RECORD_CAP, ge=1, le=5000)
+    receipt_token: str | None = None
+    continue_run_id: str | None = None
+    disable_sample_first: bool = False
 
 
 class MassEditRunBody(ConfirmAdvancedBody):
@@ -196,6 +255,7 @@ class MassEditRunBody(ConfirmAdvancedBody):
     domain: list[Any] | str | None = None
     dry_run: bool = True
     cap: int = Field(DEFAULT_RECORD_CAP, ge=1, le=5000)
+    receipt_token: str | None = None
 
 
 class DedupeScanBody(BaseModel):
@@ -211,6 +271,7 @@ class DedupeMergeBody(ConfirmAdvancedBody):
     winner_id: int
     loser_ids: list[int] = Field(..., min_length=1)
     dry_run: bool = True
+    receipt_token: str | None = None
     archive_or_delete: str = Field("archive", pattern="^(archive|unlink)$")
     force_generic_merge: bool = Field(
         False,
@@ -240,6 +301,7 @@ class CronListOut(BaseModel):
 class CronRunNowBody(ConfirmAdvancedBody):
     cron_ids: list[int] = Field(..., min_length=1)
     dry_run: bool = True
+    receipt_token: str | None = None
 
 
 class CreateCronBody(ConfirmAdvancedBody):
@@ -322,6 +384,7 @@ class LargeOldScanOut(BaseModel):
 class AttachmentCleanBody(ConfirmAdvancedBody):
     attachment_ids: list[int] = Field(..., min_length=1)
     dry_run: bool = True
+    receipt_token: str | None = None
     kind: str = Field("manual", pattern="^(orphan|duplicate|large_old|manual)$")
 
 
@@ -335,6 +398,7 @@ class BulkActivitiesBody(ConfirmAdvancedBody):
     user_id: int | None = None
     dry_run: bool = True
     cap: int = Field(DEFAULT_RECORD_CAP, ge=1, le=5000)
+    receipt_token: str | None = None
 
 
 class ActivityProbeOut(BaseModel):
@@ -378,12 +442,14 @@ class SecurityApplyBody(ConfirmAdvancedBody):
     deactivate: bool = False
     dry_run: bool = True
     preview_acknowledged: bool = False
+    receipt_token: str | None = None
 
 
 class BulkPortalBody(ConfirmAdvancedBody):
     partner_ids: list[int] = Field(..., min_length=1)
     action: str = Field("grant", pattern="^(grant|revoke)$")
     dry_run: bool = True
+    receipt_token: str | None = None
 
 
 class BulkRecomputeBody(ConfirmAdvancedBody):
@@ -393,6 +459,7 @@ class BulkRecomputeBody(ConfirmAdvancedBody):
     domain: list[Any] | str | None = None
     dry_run: bool = True
     cap: int = Field(DEFAULT_RECORD_CAP, ge=1, le=5000)
+    receipt_token: str | None = None
 
 
 class RecomputeProbeOut(BaseModel):
@@ -414,6 +481,7 @@ class BulkSendMessageBody(ConfirmAdvancedBody):
     mail_template_id: int | None = None
     dry_run: bool = True
     cap: int = Field(DEFAULT_RECORD_CAP, ge=1, le=5000)
+    receipt_token: str | None = None
 
 
 class MassEditRunBody(ConfirmAdvancedBody):
@@ -423,6 +491,7 @@ class MassEditRunBody(ConfirmAdvancedBody):
     domain: list[Any] | str | None = None
     dry_run: bool = True
     cap: int = Field(DEFAULT_RECORD_CAP, ge=1, le=5000)
+    receipt_token: str | None = None
 
 
 class DedupeScanBody(BaseModel):
@@ -438,6 +507,7 @@ class DedupeMergeBody(ConfirmAdvancedBody):
     winner_id: int
     loser_ids: list[int] = Field(..., min_length=1)
     dry_run: bool = True
+    receipt_token: str | None = None
     archive_or_delete: str = Field("archive", pattern="^(archive|unlink)$")
     force_generic_merge: bool = Field(
         False,
@@ -467,6 +537,7 @@ class CronListOut(BaseModel):
 class CronRunNowBody(ConfirmAdvancedBody):
     cron_ids: list[int] = Field(..., min_length=1)
     dry_run: bool = True
+    receipt_token: str | None = None
 
 
 class CreateCronBody(ConfirmAdvancedBody):
@@ -549,6 +620,7 @@ class LargeOldScanOut(BaseModel):
 class AttachmentCleanBody(ConfirmAdvancedBody):
     attachment_ids: list[int] = Field(..., min_length=1)
     dry_run: bool = True
+    receipt_token: str | None = None
     kind: str = Field("manual", pattern="^(orphan|duplicate|large_old|manual)$")
 
 
@@ -562,6 +634,7 @@ class BulkActivitiesBody(ConfirmAdvancedBody):
     user_id: int | None = None
     dry_run: bool = True
     cap: int = Field(DEFAULT_RECORD_CAP, ge=1, le=5000)
+    receipt_token: str | None = None
 
 
 class ActivityProbeOut(BaseModel):
@@ -605,12 +678,14 @@ class SecurityApplyBody(ConfirmAdvancedBody):
     deactivate: bool = False
     dry_run: bool = True
     preview_acknowledged: bool = False
+    receipt_token: str | None = None
 
 
 class BulkPortalBody(ConfirmAdvancedBody):
     partner_ids: list[int] = Field(..., min_length=1)
     action: str = Field("grant", pattern="^(grant|revoke)$")
     dry_run: bool = True
+    receipt_token: str | None = None
 
 
 class BulkRecomputeBody(ConfirmAdvancedBody):
@@ -620,6 +695,7 @@ class BulkRecomputeBody(ConfirmAdvancedBody):
     domain: list[Any] | str | None = None
     dry_run: bool = True
     cap: int = Field(DEFAULT_RECORD_CAP, ge=1, le=5000)
+    receipt_token: str | None = None
 
 
 class RecomputeProbeOut(BaseModel):
@@ -716,12 +792,12 @@ class BulkRunOut(BaseModel):
     field: str | None = None
     dependencies: list[str] | None = None
     probe: dict[str, Any] | None = None
-    mode: str | None = None
-    preview_message: str | None = None
-    action: str | None = None
-    field: str | None = None
-    dependencies: list[str] | None = None
-    probe: dict[str, Any] | None = None
+    receipt_token: str | None = None
+    status: str = "completed"
+    pending_ids: list[int] | None = None
+    processed_count: int | None = None
+    aborted: bool = False
+    can_continue: bool = False
 
 
 def _attachment_row_out(row: Any) -> AttachmentRowOut:
@@ -806,6 +882,8 @@ def _to_out(
     | PortalApplyResult
     | RecomputeRunResult
     | SendMessageRunResult,
+    *,
+    receipt_token: str | None = None,
 ) -> BulkRunOut:
     preview = None
     values = None
@@ -907,6 +985,12 @@ def _to_out(
         field=recompute_field,
         dependencies=dependencies,
         probe=probe,
+        receipt_token=receipt_token,
+        status=getattr(result, "status", "completed"),
+        pending_ids=list(getattr(result, "pending_ids", []) or []) or None,
+        processed_count=getattr(result, "processed_count", None) or None,
+        aborted=bool(getattr(result, "aborted", False)),
+        can_continue=bool(getattr(result, "pending_ids", []) and getattr(result, "status", "") == "sample_paused"),
     )
 
 
@@ -934,8 +1018,19 @@ def run_bulk_crons_now(
     connection_id: str,
     body: CronRunNowBody,
     db: Session = Depends(get_db),
+    _: Annotated[None, Depends(require_connection_mutation_lock)] = None,
 ) -> BulkRunOut:
-    _, client = _client(connection_id, db)
+    row, client = _client(connection_id, db)
+    receipt_params = {"cron_ids": body.cron_ids}
+    issued = _bulk_receipt(
+        db,
+        row,
+        route_suffix="/crons/run-now",
+        operation="bulk.crons.run_now",
+        params=receipt_params,
+        dry_run=body.dry_run,
+        receipt_token=body.receipt_token,
+    )
     if not body.dry_run:
         try:
             require_advanced_confirmation(
@@ -963,7 +1058,7 @@ def run_bulk_crons_now(
     except OdooClientError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     save_bulk_run(db, connection_id=connection_id, result=result)
-    return _to_out(result)
+    return _to_out(result, receipt_token=issued)
 
 
 @router.post("/crons", response_model=CronRowOut)
@@ -971,6 +1066,7 @@ def create_bulk_cron(
     connection_id: str,
     body: CreateCronBody,
     db: Session = Depends(get_db),
+    _: Annotated[None, Depends(require_connection_mutation_lock)] = None,
 ) -> CronRowOut:
     _, client = _client(connection_id, db)
     try:
@@ -1081,54 +1177,95 @@ def run_bulk_transitions(
     connection_id: str,
     body: BulkTransitionRunBody,
     db: Session = Depends(get_db),
+    _: Annotated[None, Depends(require_connection_mutation_lock)] = None,
 ) -> BulkRunOut:
     row, client = _client(connection_id, db)
     model = body.model.strip()
-    hint = hosting_hint_from_url(row.url)
-    hint = hosting_hint_from_url(row.url)
     method = body.method.strip()
     if not method:
         raise HTTPException(status_code=400, detail="method is required")
 
-    try:
-        buttons = discover_transitions(
-            client,
-            connection_id=connection_id,
-            model=model,
-            odoo_version=row.server_version,
-        )
-    except BulkSuiteError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    continue_after_sample = False
+    pending_from_prior: list[int] = []
+    run_id: str | None = None
+    prior: dict[str, Any] | None = None
+    if body.continue_run_id:
+        prior = load_bulk_run(db, body.continue_run_id)
+        if prior is None or prior.get("connection_id") != connection_id:
+            raise HTTPException(status_code=404, detail="Prior bulk run not found")
+        if prior.get("status") not in {"sample_paused", "in_progress"}:
+            raise HTTPException(status_code=409, detail="Bulk run is not awaiting continuation")
+        pending_from_prior = [int(i) for i in prior.get("pending_ids") or []]
+        if not pending_from_prior:
+            raise HTTPException(status_code=409, detail="No pending records on prior run")
+        model = str(prior.get("model") or model)
+        method = str(prior.get("method") or method)
+        run_id = body.continue_run_id
+        continue_after_sample = True
+        record_ids = pending_from_prior
+    else:
+        try:
+            buttons = discover_transitions(
+                client,
+                connection_id=connection_id,
+                model=model,
+                odoo_version=row.server_version,
+            )
+        except BulkSuiteError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    known = {b.name: b for b in buttons}
-    btn = known.get(method)
-    if btn is None:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Method {method!r} was not discovered on form view for {model!r}",
-        )
-    if not btn.bulk_safe and not body.dry_run:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Method {method!r} is not bulk-safe: {btn.reason}",
-        )
+        known = {b.name: b for b in buttons}
+        btn = known.get(method)
+        if btn is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Method {method!r} was not discovered on form view for {model!r}",
+            )
+        if not btn.bulk_safe and not body.dry_run:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Method {method!r} is not bulk-safe: {btn.reason}",
+            )
 
-    try:
-        record_ids = resolve_record_ids(
-            client,
-            model=model,
-            ids=body.ids,
-            domain=body.domain,
-            cap=body.cap,
-        )
-    except DomainParseError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except BulkSuiteError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except OdooClientError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        risk_cap = clamp_request_cap(body.cap, "reversible")
+        try:
+            record_ids = resolve_record_ids(
+                client,
+                model=model,
+                ids=body.ids,
+                domain=body.domain,
+                cap=risk_cap,
+            )
+        except DomainParseError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except BulkSuiteError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except OdooClientError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    if not body.dry_run:
+    receipt_params = {
+        "model": model,
+        "method": method,
+        "ids": record_ids,
+        "cap": body.cap,
+    }
+    spec = lookup_route_spec(
+        "POST",
+        BULK_TRANSITIONS_RUN_KEY.split(":", 1)[1],
+        get_route_registry(),
+    )
+    gate = SafetyGate(db, connection=row)
+    if not body.dry_run and not continue_after_sample:
+        try:
+            gate.require_dry_run_receipt(
+                spec,
+                connection_id=connection_id,
+                operation=BULK_TRANSITIONS_OPERATION,
+                params=receipt_params,
+                receipt_token=body.receipt_token,
+            )
+        except SafetyGateError as exc:
+            raise HTTPException(status_code=403, detail=exc.refusal.http_detail()) from exc
         try:
             require_advanced_confirmation(
                 confirm_advanced=body.confirm_advanced,
@@ -1141,24 +1278,86 @@ def run_bulk_transitions(
                     "Runs as the connected Odoo user — Odoo enforces access per record",
                     "Partial failures are reported per record; successful rows are not auto-undone",
                     "Workflow methods may have side effects (mail, stock, accounting)",
+                    "Runs >50 records use sample-first: first 10 execute, then pause for review",
                 ],
             )
         except ConfirmationRequired as exc:
             raise _confirm_http(exc) from exc
+
+    execute_ids = record_ids
+    pending_after: list[int] = []
+    sample_status = "completed"
+    if not body.dry_run and not continue_after_sample:
+        execute_ids, pending_after, sample_paused = plan_execution_ids(
+            record_ids,
+            continue_after_sample=False,
+            sample_disabled=body.disable_sample_first,
+        )
+        if sample_paused:
+            sample_status = "sample_paused"
+
+    workspace = None
+    if row.workspace_id:
+        workspace = db.get(Workspace, row.workspace_id)
+
+    def _on_mutations(count: int) -> None:
+        record_connection_mutations(
+            db,
+            connection_id=connection_id,
+            mutation_count=count,
+            workspace=workspace,
+        )
+
+    should_abort = bulk_run_abort_checker(db, run_id) if run_id else None
 
     try:
         result = run_bulk_transition(
             client,
             model=model,
             method=method,
-            record_ids=record_ids,
+            record_ids=execute_ids,
             dry_run=body.dry_run,
+            run_id=run_id,
+            pending_ids=pending_after if not body.dry_run else [],
+            status=sample_status if not body.dry_run else "completed",
+            should_abort=should_abort,
+            on_mutations=_on_mutations if not body.dry_run else None,
         )
     except OdooClientError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    save_bulk_run(db, connection_id=connection_id, result=result)
-    return _to_out(result)
+    if body.continue_run_id and prior is not None:
+        prior_rows = prior.get("per_record") or []
+        merged: list[PerRecordResult] = []
+        for row_data in prior_rows:
+            merged.append(
+                PerRecordResult(
+                    id=int(row_data["id"]),
+                    display_name=str(row_data.get("display_name") or row_data["id"]),
+                    ok=bool(row_data.get("ok")),
+                    error=row_data.get("error"),
+                )
+            )
+        merged.extend(result.per_record)
+        result.per_record = merged
+        result.succeeded = sum(1 for r in merged if r.ok)
+        result.failed = sum(1 for r in merged if not r.ok)
+        result.processed_count = len(merged)
+        result.total = int(prior.get("total") or result.total)
+
+    if body.continue_run_id:
+        update_bulk_run(db, run_id=result.run_id, result=result)
+    else:
+        save_bulk_run(db, connection_id=connection_id, result=result)
+
+    issued: str | None = None
+    if body.dry_run and spec is not None and spec.dry_run_first:
+        issued = gate.issue_dry_run_receipt(
+            connection_id=connection_id,
+            operation=BULK_TRANSITIONS_OPERATION,
+            params=receipt_params,
+        )
+    return _to_out(result, receipt_token=issued)
 
 
 @router.post("/mass-edit", response_model=BulkRunOut)
@@ -1166,6 +1365,7 @@ def run_mass_edit_route(
     connection_id: str,
     body: MassEditRunBody,
     db: Session = Depends(get_db),
+    _: Annotated[None, Depends(require_connection_mutation_lock)] = None,
 ) -> BulkRunOut:
     row, client = _client(connection_id, db)
     model = body.model.strip()
@@ -1188,6 +1388,22 @@ def run_mass_edit_route(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     manifest = manifest_for_connection(row)
+
+    receipt_params = {
+        "model": model,
+        "values": body.values,
+        "ids": record_ids,
+        "cap": body.cap,
+    }
+    issued = _bulk_receipt(
+        db,
+        row,
+        route_suffix="/mass-edit",
+        operation="bulk.mass_edit",
+        params=receipt_params,
+        dry_run=body.dry_run,
+        receipt_token=body.receipt_token,
+    )
 
     if not body.dry_run:
         try:
@@ -1222,7 +1438,7 @@ def run_mass_edit_route(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     save_bulk_run(db, connection_id=connection_id, result=result)
-    return _to_out(result)
+    return _to_out(result, receipt_token=issued)
 
 
 @router.post("/dedupe/scan", response_model=DedupeScanOut)
@@ -1275,6 +1491,7 @@ def dedupe_merge(
     connection_id: str,
     body: DedupeMergeBody,
     db: Session = Depends(get_db),
+    _: Annotated[None, Depends(require_connection_mutation_lock)] = None,
 ) -> BulkRunOut:
     row, client = _client(connection_id, db)
     model = body.model.strip()
@@ -1283,6 +1500,22 @@ def dedupe_merge(
 
     if not losers:
         raise HTTPException(status_code=400, detail="loser_ids must differ from winner_id")
+
+    receipt_params = {
+        "model": model,
+        "winner_id": body.winner_id,
+        "loser_ids": losers,
+        "archive_or_delete": body.archive_or_delete,
+    }
+    issued = _bulk_receipt(
+        db,
+        row,
+        route_suffix="/dedupe/merge",
+        operation="bulk.dedupe.merge",
+        params=receipt_params,
+        dry_run=body.dry_run,
+        receipt_token=body.receipt_token,
+    )
 
     if not body.dry_run:
         try:
@@ -1345,7 +1578,7 @@ def dedupe_merge(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     save_bulk_run(db, connection_id=connection_id, result=result)
-    return _to_out(result)
+    return _to_out(result, receipt_token=issued)
 
 
 @router.post("/attachments/orphans/scan", response_model=OrphanScanOut)
@@ -1400,9 +1633,23 @@ def attachment_clean(
     connection_id: str,
     body: AttachmentCleanBody,
     db: Session = Depends(get_db),
+    _: Annotated[None, Depends(require_connection_mutation_lock)] = None,
 ) -> BulkRunOut:
     row, client = _client(connection_id, db)
     manifest = manifest_for_connection(row)
+    receipt_params = {
+        "attachment_ids": body.attachment_ids,
+        "kind": body.kind,
+    }
+    issued = _bulk_receipt(
+        db,
+        row,
+        route_suffix="/attachments/clean",
+        operation="bulk.attachments.clean",
+        params=receipt_params,
+        dry_run=body.dry_run,
+        receipt_token=body.receipt_token,
+    )
     if not body.dry_run:
         try:
             require_advanced_confirmation(
@@ -1433,7 +1680,7 @@ def attachment_clean(
     except OdooClientError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     save_bulk_run(db, connection_id=connection_id, result=result)
-    return _to_out(result)
+    return _to_out(result, receipt_token=issued)
 
 
 @router.get("/activities/probe", response_model=ActivityProbeOut)
@@ -1452,8 +1699,9 @@ def bulk_activities_route(
     connection_id: str,
     body: BulkActivitiesBody,
     db: Session = Depends(get_db),
+    _: Annotated[None, Depends(require_connection_mutation_lock)] = None,
 ) -> BulkRunOut:
-    _, client = _client(connection_id, db)
+    row, client = _client(connection_id, db)
     model = body.model.strip()
     try:
         record_ids = resolve_record_ids(
@@ -1469,6 +1717,25 @@ def bulk_activities_route(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except OdooClientError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    receipt_params = {
+        "model": model,
+        "ids": record_ids,
+        "activity_type_id": body.activity_type_id,
+        "summary": body.summary,
+        "date_deadline": body.date_deadline,
+        "user_id": body.user_id,
+        "cap": body.cap,
+    }
+    issued = _bulk_receipt(
+        db,
+        row,
+        route_suffix="/activities",
+        operation="bulk.activities",
+        params=receipt_params,
+        dry_run=body.dry_run,
+        receipt_token=body.receipt_token,
+    )
 
     if not body.dry_run:
         try:
@@ -1501,7 +1768,7 @@ def bulk_activities_route(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     save_bulk_run(db, connection_id=connection_id, result=result)
-    return _to_out(result)
+    return _to_out(result, receipt_token=issued)
 
 
 @router.post("/security/preview", response_model=SecurityPreviewOut)
@@ -1535,8 +1802,24 @@ def bulk_security_apply(
     connection_id: str,
     body: SecurityApplyBody,
     db: Session = Depends(get_db),
+    _: Annotated[None, Depends(require_connection_mutation_lock)] = None,
 ) -> BulkRunOut:
-    _, client = _client(connection_id, db)
+    row, client = _client(connection_id, db)
+    receipt_params = {
+        "user_ids": body.user_ids,
+        "group_ids": body.group_ids,
+        "mode": body.mode,
+        "deactivate": body.deactivate,
+    }
+    issued = _bulk_receipt(
+        db,
+        row,
+        route_suffix="/security/apply",
+        operation="bulk.security.apply",
+        params=receipt_params,
+        dry_run=body.dry_run,
+        receipt_token=body.receipt_token,
+    )
     if not body.dry_run:
         try:
             require_advanced_confirmation(
@@ -1568,7 +1851,7 @@ def bulk_security_apply(
     except OdooClientError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     save_bulk_run(db, connection_id=connection_id, result=result)
-    return _to_out(result)
+    return _to_out(result, receipt_token=issued)
 
 
 @router.post("/portal", response_model=BulkRunOut)
@@ -1576,8 +1859,22 @@ def bulk_portal_route(
     connection_id: str,
     body: BulkPortalBody,
     db: Session = Depends(get_db),
+    _: Annotated[None, Depends(require_connection_mutation_lock)] = None,
 ) -> BulkRunOut:
-    _, client = _client(connection_id, db)
+    row, client = _client(connection_id, db)
+    receipt_params = {
+        "partner_ids": body.partner_ids,
+        "action": body.action,
+    }
+    issued = _bulk_receipt(
+        db,
+        row,
+        route_suffix="/portal",
+        operation="bulk.portal",
+        params=receipt_params,
+        dry_run=body.dry_run,
+        receipt_token=body.receipt_token,
+    )
     if not body.dry_run:
         try:
             require_advanced_confirmation(
@@ -1606,7 +1903,7 @@ def bulk_portal_route(
     except OdooClientError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     save_bulk_run(db, connection_id=connection_id, result=result)
-    return _to_out(result)
+    return _to_out(result, receipt_token=issued)
 
 
 @router.post("/recompute", response_model=BulkRunOut)
@@ -1614,6 +1911,7 @@ def bulk_recompute_route(
     connection_id: str,
     body: BulkRecomputeBody,
     db: Session = Depends(get_db),
+    _: Annotated[None, Depends(require_connection_mutation_lock)] = None,
 ) -> BulkRunOut:
     row, client = _client(connection_id, db)
     model = body.model.strip()
@@ -1632,6 +1930,22 @@ def bulk_recompute_route(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except OdooClientError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    receipt_params = {
+        "model": model,
+        "field": body.field,
+        "ids": record_ids,
+        "cap": body.cap,
+    }
+    issued = _bulk_receipt(
+        db,
+        row,
+        route_suffix="/recompute",
+        operation="bulk.recompute",
+        params=receipt_params,
+        dry_run=body.dry_run,
+        receipt_token=body.receipt_token,
+    )
 
     if not body.dry_run:
         try:
@@ -1662,7 +1976,7 @@ def bulk_recompute_route(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     save_bulk_run(db, connection_id=connection_id, result=result)
-    return _to_out(result)
+    return _to_out(result, receipt_token=issued)
 
 
 @router.post("/send-message", response_model=BulkRunOut)
@@ -1670,8 +1984,9 @@ def bulk_send_message_route(
     connection_id: str,
     body: BulkSendMessageBody,
     db: Session = Depends(get_db),
+    _: Annotated[None, Depends(require_connection_mutation_lock)] = None,
 ) -> BulkRunOut:
-    _, client = _client(connection_id, db)
+    row, client = _client(connection_id, db)
     model = body.model.strip()
     try:
         record_ids = resolve_record_ids(
@@ -1687,6 +2002,24 @@ def bulk_send_message_route(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except OdooClientError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    receipt_params = {
+        "model": model,
+        "ids": record_ids,
+        "body": body.body,
+        "subject": body.subject,
+        "mail_template_id": body.mail_template_id,
+        "cap": body.cap,
+    }
+    issued = _bulk_receipt(
+        db,
+        row,
+        route_suffix="/send-message",
+        operation="bulk.send_message",
+        params=receipt_params,
+        dry_run=body.dry_run,
+        receipt_token=body.receipt_token,
+    )
 
     if not body.dry_run:
         try:
@@ -1718,7 +2051,7 @@ def bulk_send_message_route(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     save_bulk_run(db, connection_id=connection_id, result=result)
-    return _to_out(result)
+    return _to_out(result, receipt_token=issued)
 
 
 class ScanFindBody(BaseModel):
@@ -1779,12 +2112,61 @@ def bulk_scan_find(
     )
 
 
+@router.post("/runs/{run_id}/abort", response_model=BulkRunOut)
+def abort_bulk_run(
+    connection_id: str,
+    run_id: str,
+    db: Session = Depends(get_db),
+) -> BulkRunOut:
+    import json
+
+    from app.db_models import BulkRun
+
+    _connection_row(connection_id, db)
+    payload = load_bulk_run(db, run_id)
+    if payload is None or payload.get("connection_id") != connection_id:
+        raise HTTPException(status_code=404, detail="Bulk run not found")
+    if payload.get("status") in {"completed", "aborted"}:
+        return BulkRunOut.model_validate(payload)
+    payload = mark_bulk_run_abort_requested(db, run_id)
+    payload["status"] = "aborted"
+    payload["aborted"] = True
+    payload["message"] = (
+        f"Abort requested — {payload.get('processed_count') or 0} record(s) processed; "
+        f"{len(payload.get('pending_ids') or [])} pending."
+    )
+    row = db.get(BulkRun, run_id)
+    if row is not None:
+        row.result_json = json.dumps(payload)
+        db.add(row)
+        db.commit()
+    return BulkRunOut.model_validate(payload)
+
+
+@router.post("/runs/{run_id}/continue", response_model=BulkRunOut)
+def continue_bulk_run(
+    connection_id: str,
+    run_id: str,
+    db: Session = Depends(get_db),
+    _: Annotated[None, Depends(require_connection_mutation_lock)] = None,
+) -> BulkRunOut:
+    body = BulkTransitionRunBody(
+        model="",
+        method="",
+        dry_run=False,
+        continue_run_id=run_id,
+        confirm_advanced=True,
+    )
+    return run_bulk_transitions(connection_id, body, db)
+
+
 @router.get("/runs/{run_id}", response_model=BulkRunOut)
 def get_bulk_run(
     connection_id: str,
     run_id: str,
     db: Session = Depends(get_db),
 ) -> BulkRunOut:
+    _connection_row(connection_id, db)
     payload = load_bulk_run(db, run_id)
     if payload is None or payload.get("connection_id") != connection_id:
         raise HTTPException(status_code=404, detail="Bulk run not found")

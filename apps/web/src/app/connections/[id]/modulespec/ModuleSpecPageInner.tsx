@@ -16,6 +16,7 @@ import {
   ConfirmationRequiredError,
   Connection,
 } from "@/lib/api";
+import { pollJob } from "@/lib/jobs";
 import {
   mutationAllowed,
   mutationBlockedReason,
@@ -49,6 +50,9 @@ export default function ModuleSpecPageInner() {
   const [busy, setBusy] = useState(false);
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
   const [genConfirmOpen, setGenConfirmOpen] = useState(false);
+  const [canDevCode, setCanDevCode] = useState(false);
+  const [lintBusy, setLintBusy] = useState(false);
+  const [sandboxBusy, setSandboxBusy] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -176,6 +180,63 @@ export default function ModuleSpecPageInner() {
     }
   }
 
+  useEffect(() => {
+    api.accountMe().then((me) => {
+      const role = me.workspace?.role ?? "";
+      setCanDevCode(
+        me.user.is_superadmin || role === "developer" || role === "admin" || role === "owner",
+      );
+    }).catch(() => setCanDevCode(false));
+  }, []);
+
+  async function onLintBlocks() {
+    setLintBusy(true);
+    setError(null);
+    try {
+      const res = await api.lintModuleSpecBlocks(connectionId, spec as Record<string, unknown>);
+      if (res.ok) {
+        setNotice("Lint passed for all custom code blocks.");
+      } else {
+        setImportWarnings(
+          (res.blocks || [])
+            .flatMap((b: { issues?: { message: string }[]; source_file?: string }) =>
+              (b.issues || []).map((i) => `${b.source_file}: ${i.message}`),
+            ),
+        );
+        setError("Lint found issues in custom code blocks.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Lint failed");
+    } finally {
+      setLintBusy(false);
+    }
+  }
+
+  async function onExportSandbox() {
+    setSandboxBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const queued = await api.exportModuleSpecSandbox(connectionId, {
+        spec: spec as Record<string, unknown>,
+        async_job: true,
+      });
+      if (queued.job_id) {
+        const job = await pollJob(queued.job_id, { fetchJob: api.getJob });
+        const result = job.result as Record<string, unknown> | undefined;
+        if (result?.ok) {
+          setNotice(`Sandbox passed — validation ${String(result.validation_id ?? "recorded")}`);
+        } else {
+          setError(String((result?.sandbox as { message?: string })?.message ?? "Sandbox failed"));
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Export/sandbox failed");
+    } finally {
+      setSandboxBusy(false);
+    }
+  }
+
   const canSave = mutationAllowed(connection);
   const saveBlocked = mutationBlockedReason(connection);
   const applyOpts = scaffoldOptsFromSpec(spec as Record<string, unknown>);
@@ -270,7 +331,15 @@ export default function ModuleSpecPageInner() {
         )}
 
         <div className="mt-6">
-          <ModuleSpecEditor value={spec} onChange={setSpec} />
+          <ModuleSpecEditor
+            value={spec}
+            onChange={setSpec}
+            canEditCustomCode={canDevCode}
+            onLintBlocks={canDevCode ? onLintBlocks : undefined}
+            onExportSandbox={canDevCode ? onExportSandbox : undefined}
+            lintBusy={lintBusy}
+            sandboxBusy={sandboxBusy}
+          />
         </div>
 
       <ConfirmDialogV2

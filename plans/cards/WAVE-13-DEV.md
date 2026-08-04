@@ -26,14 +26,14 @@ directly on instances that verifiably allow them, with an editor, sample-record 
 and the full confirm/snapshot posture.
 
 CHECKLIST:
-- [ ] Capability probe + matrix row `code_server_actions`: on connect (or on first Code
+- [x] Capability probe + matrix row `code_server_actions`: on connect (or on first Code
       Studio open), verify per instance that `ir.actions.server` accepts `state='code'` via
       RPC — probe by fields_get selection inspection PLUS a create→run-on-nothing→unlink
       round-trip of a trivial no-op action (`x = 1`) with cleanup guaranteed (try/finally);
       record result + error detail; Online instances get probed like everyone else (result,
       not assumption). Failure → honest Callout with the module-path alternative
       (COPY_GUIDE three-options template).
-- [ ] Editor surface: Code Studio page (nav Build group, `developer` role + `dev_tools`
+- [x] Editor surface: Code Studio page (nav Build group, `developer` role + `dev_tools`
       gated) — Monaco (or CodeMirror — pick the lighter one that supports Python
       highlighting + diagnostics hooks; document choice) with: safe_eval context reference
       panel (records/env/model/log/UserError etc. per Odoo's documented server-action
@@ -41,19 +41,19 @@ CHECKLIST:
       guard clause patterns), and static pre-checks before save (syntax compile check
       server-side; warn on imports — safe_eval forbids them anyway; warn on `unlink`/`sudo`
       patterns with an extra consequences line in the confirm).
-- [ ] Test run before bind: execute the action against ONE user-chosen record (or none for
+- [x] Test run before bind: execute the action against ONE user-chosen record (or none for
       context-free code) with captured result/exception + a diff-style report of what the
       record's fields looked like before/after (read before, read after) — clearly labeled
       "this ran for real on that record" (honest; recommend picking a test record; on
       dirty-gate instances this is exercised in tests).
-- [ ] Bind targets: standalone server action (Technical-style), contextual action button on
+- [x] Bind targets: standalone server action (Technical-style), contextual action button on
       a model, or automation action (base_automation code step) — all with the Odoo-style
       warning + advanced confirm + snapshot; created artifacts fully covered by existing
       snapshot/rollback + journal.
-- [ ] Odoo Expert integration: "Explain this code" + "Draft code for me" buttons route to
+- [x] Odoo Expert integration: "Explain this code" + "Draft code for me" buttons route to
       the Expert with the safe_eval context — drafts land in the editor, NEVER auto-bound
       (review + confirm always human).
-- [ ] Tests: probe round-trip incl. cleanup-on-failure, gating matrix (role × entitlement ×
+- [x] Tests: probe round-trip incl. cleanup-on-failure, gating matrix (role × entitlement ×
       write-mode × probe result), test-run before/after capture, bind paths live on docker
       19, refusal shapes; adversarial: non-developer role cannot reach any Code Studio
       endpoint.
@@ -76,24 +76,24 @@ TASK: Turn the module escape hatch into a workable developer experience: write/e
 existing export → sandbox → promote pipeline.
 
 CHECKLIST:
-- [ ] Make AI-7's `custom_code_blocks` read-WRITE for developer-role users: the ModuleSpec
+- [x] Make AI-7's `custom_code_blocks` read-WRITE for developer-role users: the ModuleSpec
       editor "Custom code" tab becomes an editor (same component as DEV-1) supporting
       add/edit/delete of Python files (models/*.py, controllers) and raw XML blocks, with
       file placement controls; non-developer users keep the read-only view.
-- [ ] Authoring aids: model class skeleton generator from the spec (fields typed from
+- [x] Authoring aids: model class skeleton generator from the spec (fields typed from
       ModuleSpec — compute/constrains stubs wired to real field names), manifest deps
       surfaced, lint pass (pyflakes-level: syntax + undefined names) on save with inline
       diagnostics; XML well-formedness check.
-- [ ] Pipeline unchanged and enforced: code blocks NEVER apply via the live path (existing
+- [x] Pipeline unchanged and enforced: code blocks NEVER apply via the live path (existing
       AI-7 skip behavior verified intact) — banner in the tab: "Code ships as a module:
       export → sandbox → promote"; one-click "Export & sandbox-test" from the tab, surfacing
       sandbox install logs (incl. tracebacks) inline for the edit-test loop.
-- [ ] Round-trip integrity: edited blocks survive spec save/export/import byte-identically
+- [x] Round-trip integrity: edited blocks survive spec save/export/import byte-identically
       (extends AI-7's tests to the write path).
-- [ ] Promote posture unchanged: sandbox validation token + confirm still required (existing
+- [x] Promote posture unchanged: sandbox validation token + confirm still required (existing
       promote gates); remote no-filesystem targets still refuse Python zips honestly
       (existing behavior — verify with a named test, don't rebuild).
-- [ ] Tests: editor write path round-trip, lint diagnostics, sandbox-loop e2e (author a
+- [x] Tests: editor write path round-trip, lint diagnostics, sandbox-loop e2e (author a
       compute method → export → sandbox gate passes → method works on installed model),
       role gating.
 
@@ -115,31 +115,31 @@ through the typed RPC client, in an isolated subprocess on OUR side — the deve
 tool that never touches the customer server's filesystem or shell.
 
 CHECKLIST:
-- [ ] Execution sandbox: scripts run in a separate OS subprocess with resource limits
+- [x] Execution sandbox: scripts run in a separate OS subprocess with resource limits
       (CPU/time — default 120s, memory cap, no subprocess spawning), a minimal allowlisted
       import set (stdlib subset + provided client), NO general network and NO filesystem
       writes except an output buffer — implemented via a restricted bootstrap + OS-level
       limits (resource/rlimit; document what is and isn't guaranteed vs a container; if the
       docker sandbox infra is trivially reusable for stronger isolation, prefer it and
       document the choice).
-- [ ] Script context: injected `odoo` handle = the typed odoo-client for THIS connection
+- [x] Script context: injected `odoo` handle = the typed odoo-client for THIS connection
       (same credentials/permissions as everything else — the structural safety bound holds:
       scripts can't exceed the connection user), plus `log()`, `progress(n, total)`;
       stdout/stderr captured and streamed to the UI console.
-- [ ] Safety posture: SafetyGate risk class `code`; advanced confirm before every run
+- [x] Safety posture: SafetyGate risk class `code`; advanced confirm before every run
       (script content hashed + stored in the journal); observer mode refuses; anomaly guard
       counts script writes; kill/abort terminates the subprocess (TRUST-tested pattern);
       optional but default-ON "count writes" wrapper reporting created/written/unlinked
       record counts per model in the run summary (wrapper around the client's mutating
       methods).
-- [ ] UX: Script Runner page (Operate group; `developer` role + `dev_tools` gated) — editor,
+- [x] UX: Script Runner page (Operate group; `developer` role + `dev_tools` gated) — editor,
       connection picker (write-mode-aware), run/abort, live console, run history with
       script content + output + write counts (journal-linked); saved-scripts library per
       workspace with share-within-workspace.
-- [ ] Templates: 5 authored starter scripts (safe patterns: batched read+report, guarded
+- [x] Templates: 5 authored starter scripts (safe patterns: batched read+report, guarded
       mass write with dry-run flag convention, data export to CSV output, orphan checker,
       activity scheduler) — each demonstrating the `log`/`progress`/write-count idioms.
-- [ ] Tests: sandbox limits (timeout kill, memory cap, import allowlist, no-network, no-fs
+- [x] Tests: sandbox limits (timeout kill, memory cap, import allowlist, no-network, no-fs
       write), abort mid-run, write-count accuracy (fake client), role/entitlement/
       write-mode gating matrix, journal record completeness; live smoke on docker 19
       (batched write script on x_ records).

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 from dataclasses import dataclass
 
 from fastapi import Depends, HTTPException, Request
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.account_service import (
     SessionContext,
     can_admin,
+    can_develop,
     can_mutate,
     can_read,
     resolve_session,
@@ -23,6 +25,20 @@ from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBea
 
 _bearer = HTTPBearer(auto_error=False)
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+# Set per-request by require_app_auth; read by get_connection_or_404 (TRUST-7 IDOR choke).
+_current_workspace_auth: ContextVar["WorkspaceAuth | None"] = ContextVar(
+    "current_workspace_auth",
+    default=None,
+)
+
+
+def bind_workspace_auth(auth: WorkspaceAuth) -> None:
+    _current_workspace_auth.set(auth)
+
+
+def current_workspace_auth() -> WorkspaceAuth | None:
+    return _current_workspace_auth.get()
 
 
 @dataclass
@@ -88,18 +104,24 @@ async def require_app_auth(
 ) -> WorkspaceAuth:
     mode = settings.auth_mode.strip().lower()
     if mode in {"off", ""}:
-        request.state.auth = WorkspaceAuth(mode="off")
-        return request.state.auth
+        auth = WorkspaceAuth(mode="off")
+        request.state.auth = auth
+        bind_workspace_auth(auth)
+        return auth
 
     path = request.url.path
     if path in _public_account_paths():
-        request.state.auth = WorkspaceAuth(mode=mode)
-        return request.state.auth
+        auth = WorkspaceAuth(mode=mode)
+        request.state.auth = auth
+        bind_workspace_auth(auth)
+        return auth
 
     if mode == "api_key":
         await _require_api_key(request, credentials, x_api_key, db)
-        request.state.auth = WorkspaceAuth(mode="api_key", api_key_authenticated=True)
-        return request.state.auth
+        auth = WorkspaceAuth(mode="api_key", api_key_authenticated=True)
+        request.state.auth = auth
+        bind_workspace_auth(auth)
+        return auth
 
     if mode == "accounts":
         raw_session = _session_token(request)
@@ -114,12 +136,14 @@ async def require_app_auth(
                 is_superadmin=ctx.is_superadmin,
             )
             request.state.auth = auth
+            bind_workspace_auth(auth)
             return auth
 
         raw_key = extract_raw_key(credentials, x_api_key)
         if raw_key and (key_matches_env(raw_key) or verify_api_key(db, raw_key)):
             auth = WorkspaceAuth(mode="accounts", api_key_authenticated=True)
             request.state.auth = auth
+            bind_workspace_auth(auth)
             return auth
 
         raise HTTPException(
@@ -133,11 +157,15 @@ async def require_app_auth(
     # Legacy aliases
     if settings.auth_enabled:
         await _require_api_key(request, credentials, x_api_key, db)
-        request.state.auth = WorkspaceAuth(mode="api_key", api_key_authenticated=True)
-        return request.state.auth
+        auth = WorkspaceAuth(mode="api_key", api_key_authenticated=True)
+        request.state.auth = auth
+        bind_workspace_auth(auth)
+        return auth
 
-    request.state.auth = WorkspaceAuth(mode="off")
-    return request.state.auth
+    auth = WorkspaceAuth(mode="off")
+    request.state.auth = auth
+    bind_workspace_auth(auth)
+    return auth
 
 
 async def _require_api_key(request, credentials, x_api_key, db) -> None:
@@ -160,6 +188,22 @@ def require_builder(auth: WorkspaceAuth = Depends(require_app_auth)) -> Workspac
 
 def require_admin(auth: WorkspaceAuth = Depends(require_app_auth)) -> WorkspaceAuth:
     auth.require_role("admin")
+    return auth
+
+
+def require_developer(auth: WorkspaceAuth = Depends(require_app_auth)) -> WorkspaceAuth:
+    if auth.mode != "accounts" or auth.api_key_authenticated or auth.is_superadmin:
+        return auth
+    role = auth.role or ""
+    if not can_develop(role):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "forbidden",
+                "message": "Requires developer role or higher.",
+                "role": role,
+            },
+        )
     return auth
 
 

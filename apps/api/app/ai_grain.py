@@ -99,6 +99,24 @@ MODEL_MODULE: dict[str, str] = {
     "stock.picking": "stock",
 }
 
+# Odoo 17–19 root app menus (public xml ids; sale/crm/project differ from menu_{mod}_root).
+MODULE_PARENT_MENU: dict[str, str] = {
+    "sale": "sale.sale_menu_root",
+    "crm": "crm.crm_menu_root",
+    "project": "project.menu_main_pm",
+    "stock": "stock.menu_stock_root",
+    "purchase": "purchase.menu_purchase_root",
+}
+
+
+def parent_menu_xml_id_for_module(mod: str) -> str | None:
+    """Return parent ir.ui.menu xml id for a sub-menu under a standard Odoo app."""
+    if not mod or mod == "base":
+        return None
+    if mod in MODULE_PARENT_MENU:
+        return MODULE_PARENT_MENU[mod]
+    return f"{mod}.menu_{mod}_root"
+
 INHERIT_FORM_XML: dict[str, str] = {
     "sale.order": "sale.view_order_form",
     "project.task": "project.view_task_form2",

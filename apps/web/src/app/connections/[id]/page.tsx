@@ -30,6 +30,9 @@ import { Card, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Badge } from "@/components/ui/Badge";
 import { CodeBlock } from "@/components/ui/CodeBlock";
+import { WriteModeUnlockPanel } from "@/components/shell/WriteModeUnlockPanel";
+import { ProductionReadinessPanel } from "@/components/shell/ProductionReadinessPanel";
+import { FirstWriteInterstitial } from "@/components/shell/FirstWriteInterstitial";
 
 type Tab = "modules" | "models" | "fields" | "views";
 
@@ -580,6 +583,26 @@ export default function BrowserPage() {
           </div>
         }
       />
+
+      {connection ? (
+        <WriteModeUnlockPanel
+          connection={connection}
+          onUpdated={(updated) => setConnection(updated)}
+        />
+      ) : null}
+
+      {connection ? (
+        <ProductionReadinessPanel
+          connection={connection}
+          onRefreshConnection={async () => {
+            await api.probeConnection(connectionId);
+            const refreshed = await api.getConnection(connectionId);
+            setConnection(refreshed);
+          }}
+        />
+      ) : null}
+
+      <FirstWriteInterstitial connection={connection} />
 
       {connection ? (
         <div className="mb-4 flex flex-wrap items-center gap-2">

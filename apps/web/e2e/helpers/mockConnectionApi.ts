@@ -7,6 +7,7 @@ export const DEMO_CONN = {
   db_name: "odoo",
   username: "admin",
   server_version: "19.0",
+  write_mode: "standard",
   created_at: null,
   updated_at: null,
   capabilities: {

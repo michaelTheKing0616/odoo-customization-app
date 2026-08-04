@@ -20,6 +20,7 @@ dependencies = [
   "alembic>=1.14",
   "argon2-cffi>=23.1",
   "pyotp>=2.9",
+  "authlib>=1.4",
 ]
 
 [project.optional-dependencies]
@@ -47,6 +48,7 @@ build-backend = "hatchling.build"
 dev = [
     "httpx>=0.28.1",
     "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
 ]
 
 [tool.hatch.build.targets.wheel]

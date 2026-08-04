@@ -62,8 +62,67 @@ jobs:
           tests/test_wave_b_confirm.py
           tests/test_sandbox_extra_modules.py
           tests/test_adversarial_security.py
+          tests/test_trust7_idor.py
+          tests/test_trust7_credentials.py
+          tests/test_trust8_production_readiness.py
+          tests/test_trust9_beta_protocol.py
           tests/test_phase1_api.py::test_health
           tests/test_phase1_api.py::test_sandbox_smoke_zip_unit
+
+  trust-mutation-coverage:
+    name: TRUST-6 mutation coverage floor
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: odoo_custom
+          POSTGRES_PASSWORD: odoo_custom
+          POSTGRES_DB: odoo_custom
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U odoo_custom -d odoo_custom"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql+psycopg://odoo_custom:odoo_custom@127.0.0.1:5433/odoo_custom
+      FERNET_KEY: dev-only-ci-fernet-key
+      AUTH_MODE: "off"
+      RATE_LIMIT_PER_MINUTE: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --all-packages
+      - name: Mutation test bundle + coverage floors
+        run: |
+          cd apps/api
+          TESTS=$(grep -v '^#' tests/mutation_coverage_tests.txt | grep -v '^$' | tr '\n' ' ')
+          uv run pytest $TESTS --cov=app --cov-report=json:.mutation_coverage.json -q
+          uv run python scripts/check_mutation_coverage.py .mutation_coverage.json
+
+  security-supply-chain:
+    name: TRUST-7 supply chain + secrets scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: uv sync --all-packages
+      - run: pnpm install
+      - name: pip-audit, pnpm audit, secrets scan
+        run: bash scripts/security_supply_chain.sh
 
   web-unit:
     name: Web unit

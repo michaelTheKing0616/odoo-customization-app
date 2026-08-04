@@ -25,7 +25,7 @@ CHECKLIST. Claiming done without both updated = failed card.
 - [x] AI-6 Draft→pack generalizer (fold customer projects into library, opt-in)
 - [x] AI-7 Reverse-import partial-fidelity contract (custom_code_blocks)
 - [x] AI-8 Component-grain generation (extensions for Odoo + custom apps, connect points, gallery) — added 2026-08-03
-- [ ] AI-9 Overlap/already-exists check before generation (4 sources, options panel) — added 2026-08-03
+- [x] AI-9 Overlap/already-exists check before generation (4 sources, options panel) — 2026-08-03
 
 ## Wave 3 — BLK (bulk & workflow suite)
 - [x] BLK-1 Generic bulk state transition + button discovery engine + BulkResult schema
@@ -76,7 +76,7 @@ CHECKLIST. Claiming done without both updated = failed card.
 
 ## Wave 7b — ADV (advanced designers & live editing)
 - [x] TIER-6 Deep Gantt/Grid/Map/Cohort config designers — REM-8: grid panel EE-gated, map routing, gantt default_scale/dependency_field, e2e harness
-- [~] UIX-6 Live overlay editor on the proxied Odoo frame — REM-6 shipped six ops + e2e harness; live docker loop optional via `ODOO_E2E=1`
+- [x] UIX-6 Live overlay editor on the proxied Odoo frame — REM-6 shipped six ops + e2e harness; live docker loop via `ODOO_E2E=1` + `ODOO_E2E_CONNECTION_ID` (see `e2e/overlay-editor.spec.ts`)
 - [x] UIX-7 Website page editing — REM-7: image upload, reorder, publish, nav gating, byte-identical locked round-trip
 
 ## Wave 8 — PROD (production hardening)
@@ -98,7 +98,7 @@ CHECKLIST. Claiming done without both updated = failed card.
 Re-verified 2026-08-03 (orchestrator + 3 checkers); REM-14 closed residual gaps 2026-08-03.
 - [x] REM-1 Fix staged-pipeline NameError + AI-1/2 step wiring — guardrail + schema-in-format + live staged artifact (`docs/research/staged_run_fixed_2026-08-03.json`)
 - [x] REM-2 PCM-3/PCM-4 completion — update_automation PCM check + tier-1 422 test
-- [~] REM-3 AI-8 finish — wizard/sandbox unit green; live project.task apply skipped (no sale/project on docker-19)
+- [x] REM-3 AI-8 finish — wizard/sandbox unit green; docker init-db installs sale+project+crm for live apply
 - [x] REM-4 BLK live-smoke sweep — 7/7 live on 19; 17/18/19 probes recorded in `blk_probe_matrix_2026-08-03.json`
 - [x] REM-5 UIX kit honesty — DataTable virtualization test added
 - [x] REM-6 UIX-6 overlay editor — API live loop + overlay-editor.png
@@ -108,21 +108,21 @@ Re-verified 2026-08-03 (orchestrator + 3 checkers); REM-14 closed residual gaps 
 - [x] REM-10 MON completion — slot-limit operate test hardened; role matrix breadth; Stripe slots already subscription mode
 - [x] REM-11 CMP-9 widget module — sandbox barcode live smoke green
 - [x] REM-12 UIX evidence sweep — overlay/website PNGs added via Playwright
-- [ ] REM-13 OAuth login: Google + GitHub (scheduled by user 2026-08-03)
+- [x] REM-13 OAuth login: Google + GitHub (authlib, linking rules, TOTP-after-OAuth, UI)
 - [x] REM-14 Punch list from re-verification + live evidence + one-pass commit (user-approved)
 
 ## Wave 12 — TRUST (production-trust hardening; cards in WAVE-12-TRUST.md; AFTER Wave 11)
-- [ ] TRUST-1 Read-only connections by default + least-privilege onboarding
-- [ ] TRUST-2 SafetyGate choke point + risk-class registry + route meta-test + kill switch
-- [ ] TRUST-3 Blast-radius limits: sample-first execution, caps, anomaly auto-pause
-- [ ] TRUST-4 Data-loss proofing: backup artifacts before destructive ops + restore drills
-- [ ] TRUST-5 Dirty-instance & chaos validation (dirty gate, RPC fault injection, concurrency lock)
-- [ ] TRUST-6 Runtime coverage floor + settings-matrix execution policy
-- [ ] TRUST-7 App-side security: IDOR sweep, role matrix, supply chain, app-DB restore
-- [ ] TRUST-8 SAFETY.md trust contract + production readiness checklist gate
-- [ ] TRUST-9 Design-partner beta protocol + GA evidence criteria
+- [x] TRUST-1 Read-only connections by default + least-privilege onboarding — write_mode migration, RPC choke point, unlock API, badge/panel, docs
+- [x] TRUST-2 SafetyGate choke point + risk-class registry + route meta-test + kill switch — core shipped 2026-08-03; bulk receipt on transitions/run only; admin UI deferred
+- [x] TRUST-3 Blast-radius limits — sample-first + caps + batched executor + anomaly auto-pause on transitions/run; BulkResultTable continue/abort UI
+- [x] TRUST-4 Data-loss proofing (field delete core) — deprecate default, hard-delete CSV pre-export, artifact download, PCM gate
+- [x] TRUST-5 Dirty-instance & chaos validation — dirty gate script, RPC resilience, mutation lock, SAFETY.md limits
+- [x] TRUST-6 Runtime coverage floor + settings-matrix execution policy — CI coverage gate, matrix/error-path tests, coverage-gate skill
+- [x] TRUST-7 App-side security: IDOR sweep, role matrix, supply chain, app-DB restore — core 2026-08-03
+- [x] TRUST-8 SAFETY.md trust contract + production readiness checklist gate — core 2026-08-03
+- [x] TRUST-9 Design-partner beta protocol + GA evidence criteria — core 2026-08-03
 
 ## Wave 13 — DEV (developer code path; cards in WAVE-13-DEV.md; AFTER Wave 12)
-- [ ] DEV-1 Code Studio: live code server actions + automations (probe-gated per instance)
-- [ ] DEV-2 Module code authoring: Option A with a real editor (custom_code_blocks writable)
-- [ ] DEV-3 Script Runner: ad-hoc Python via typed RPC client in isolated subprocess
+- [x] DEV-1 Code Studio: live code server actions + automations (probe-gated per instance) — core 2026-08-03
+- [x] DEV-2 Module code authoring: Option A with a real editor (custom_code_blocks writable) — 2026-08-03
+- [x] DEV-3 Script Runner: ad-hoc Python via typed RPC client in isolated subprocess — 2026-08-03

@@ -624,3 +624,24 @@ proxied frames), optionally themed from the connected instance's own extracted p
 4. Deploy-stack `LAUNCH-1` partial — `/health` OK but `/api/billing/plans` 404 on deploy API image (log: `docs/research/launch_compose_smoke_2026-08-03.log`).
 5. Playwright e2e harness requires fresh build with `NEXT_PUBLIC_E2E=1` — reusing deploy :3000 serves 404 on `/e2e/*`.
 **Why:** Honest live gates without fixture relabeling; deviations are env gaps not code stubs.
+
+---
+
+## GA decision log template (TRUST-9 — copy for each GA review)
+
+**Date:** YYYY-MM-DD  
+**Reviewer:**  
+**Evidence sources:** `GET /api/admin/trust-telemetry`, `GET /api/admin/ga-criteria`, partner weekly attestations, `test_safety_route_registry` CI green
+
+| Criterion | Threshold | Observed | Pass? |
+| --- | --- | --- | --- |
+| Beta partner workspaces | ≥ `BETA_GA_MIN_WORKSPACES` (default 8) | | |
+| Weeks active per workspace | ≥ `BETA_GA_MIN_WEEKS` (default 4) | | |
+| Unrecoverable-data incidents | 0 | | |
+| SafetyGate bypasses | 0 | | |
+
+**Telemetry roll-up (beta partners only):** bulk runs __ · refusals __ · aborts __ · restores __ · anomaly trips __
+
+**Decision:** ☐ Proceed to GA (`PRODUCTION_WRITE_MODE_GA_UNLOCKED=1`) · ☐ Extend beta · ☐ Block — reason:
+
+**Follow-ups:**

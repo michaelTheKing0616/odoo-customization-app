@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { api } from "@/lib/api";
+import { OAuthProviderButtons } from "@/components/auth/OAuthProviderButtons";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
@@ -65,6 +66,7 @@ export default function SignupPage() {
             {busy ? "Creating…" : "Sign up"}
           </Button>
         </form>
+        <OAuthProviderButtons />
         <Callout variant="info" title="Already have an account?" className="mt-4">
           <Link href="/login" className="underline">
             Log in

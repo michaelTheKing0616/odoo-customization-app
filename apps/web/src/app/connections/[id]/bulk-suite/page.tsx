@@ -20,6 +20,7 @@ import { Card, EmptyState, PageHeader } from "@/components/ui/layout-primitives"
 import { EMPTY_STATES } from "@/lib/copy-guide";
 import { ScanToFieldPanel } from "@/components/scanner/ScanToFieldPanel";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
+import { FirstWriteInterstitial } from "@/components/shell/FirstWriteInterstitial";
 
 const CONFIRM_PHRASE = "I understand the risks";
 
@@ -39,6 +40,11 @@ function bulkRunToTable(result: BulkRunOut): BulkRunResult {
     })),
     dry_run: result.dry_run,
     message: result.message,
+    status: result.status,
+    pending_ids: result.pending_ids,
+    processed_count: result.processed_count,
+    aborted: result.aborted,
+    can_continue: result.can_continue,
   };
 }
 
@@ -60,6 +66,7 @@ export default function BulkSuitePage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [result, setResult] = useState<BulkRunOut | null>(null);
+  const [runControlBusy, setRunControlBusy] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmMode, setConfirmMode] = useState<
     | "transition"
@@ -198,6 +205,36 @@ export default function BulkSuitePage() {
       .filter((n) => Number.isFinite(n) && n > 0);
     if (!ids.length) throw new Error("Enter at least one numeric record id");
     return { ids };
+  }
+
+  async function continueSampleRun() {
+    if (!result?.run_id) return;
+    setRunControlBusy(true);
+    setError(null);
+    try {
+      const res = await api.bulkRunContinue(connectionId, result.run_id);
+      setResult(res);
+      setNotice(res.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Continue failed");
+    } finally {
+      setRunControlBusy(false);
+    }
+  }
+
+  async function abortSampleRun() {
+    if (!result?.run_id) return;
+    setRunControlBusy(true);
+    setError(null);
+    try {
+      const res = await api.bulkRunAbort(connectionId, result.run_id);
+      setResult(res);
+      setNotice(res.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Abort failed");
+    } finally {
+      setRunControlBusy(false);
+    }
   }
 
 
@@ -528,6 +565,7 @@ export default function BulkSuitePage() {
         description="Discover form-view workflow buttons per model and run them in bulk with dry-run first. Runs as the connected Odoo user — partial failures are reported per record."
       />
       <VersionAwarenessBanner capabilities={connection?.capabilities} />
+      {connection ? <FirstWriteInterstitial connection={connection} /> : null}
 
       {error ? <ErrorNotice message={error} className="mt-4" /> : null}
       {notice ? (
@@ -1425,7 +1463,24 @@ export default function BulkSuitePage() {
               </table>
             ) : null}
             <div className="mt-4">
-              <BulkResultTable result={bulkRunToTable(result)} />
+              <BulkResultTable
+                result={bulkRunToTable(result)}
+                onContinue={result.can_continue ? continueSampleRun : undefined}
+                onAbort={result.status === "sample_paused" ? abortSampleRun : undefined}
+                continueBusy={runControlBusy}
+                abortBusy={runControlBusy}
+              />
+              {result.snapshot_id && result.operation === "dedupe_merge" && !result.dry_run ? (
+                <p className="mt-3 text-sm">
+                  <a
+                    className="text-accent underline"
+                    href={`/api/connections/${connectionId}/snapshots/${result.snapshot_id}/artifact.json`}
+                    data-testid="dedupe-merge-backup-download"
+                  >
+                    Download merge backup (JSON)
+                  </a>
+                </p>
+              ) : null}
             </div>
           </Card>
         ) : null}

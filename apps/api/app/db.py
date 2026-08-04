@@ -120,6 +120,66 @@ def _ensure_schema_columns() -> None:
 
     _ensure_connection_fks(inspector)
 
+    if "users" in inspector.get_table_names():
+        cols = {c["name"] for c in inspector.get_columns("users")}
+        if "password_login_enabled" not in cols:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE users ADD COLUMN password_login_enabled BOOLEAN NOT NULL DEFAULT TRUE"
+                    )
+                )
+
+    if "odoo_connections" in inspector.get_table_names():
+        cols = {c["name"] for c in inspector.get_columns("odoo_connections")}
+        if "write_mode" not in cols:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE odoo_connections ADD COLUMN write_mode VARCHAR(20) NOT NULL DEFAULT 'standard'"
+                    )
+                )
+        cols = {c["name"] for c in inspector.get_columns("odoo_connections")}
+        if "writes_paused" not in cols:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE odoo_connections ADD COLUMN writes_paused BOOLEAN NOT NULL DEFAULT FALSE"
+                    )
+                )
+        cols = {c["name"] for c in inspector.get_columns("odoo_connections")}
+        if "code_studio_probe_json" not in cols:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE odoo_connections ADD COLUMN code_studio_probe_json TEXT")
+                )
+
+    if "workspaces" in inspector.get_table_names():
+        cols = {c["name"] for c in inspector.get_columns("workspaces")}
+        if "writes_paused" not in cols:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE workspaces ADD COLUMN writes_paused BOOLEAN NOT NULL DEFAULT FALSE"
+                    )
+                )
+        cols = {c["name"] for c in inspector.get_columns("workspaces")}
+        if "beta_partner" not in cols:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE workspaces ADD COLUMN beta_partner BOOLEAN NOT NULL DEFAULT FALSE"
+                    )
+                )
+
+    if "audit_logs" in inspector.get_table_names():
+        cols = {c["name"] for c in inspector.get_columns("audit_logs")}
+        if "detail_json" not in cols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE audit_logs ADD COLUMN detail_json TEXT"))
+
+    # DEV-3 script runner tables — created by metadata.create_all if missing
+
 
 def _ensure_connection_fks(inspector) -> None:
     """Add ON DELETE CASCADE FKs for connection-scoped tables when missing (Postgres)."""

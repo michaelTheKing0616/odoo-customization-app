@@ -46,6 +46,7 @@ export default function EeDesignerHarnessPage() {
       db_name: "odoo_dev",
       username: "admin",
       server_version: edition === "enterprise" ? "19.0+e" : "19.0",
+      write_mode: "standard",
       created_at: null,
       updated_at: null,
       capabilities: capsForEdition(edition),

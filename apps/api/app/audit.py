@@ -42,6 +42,12 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
             try:
                 db = SessionLocal()
                 try:
+                    detail = getattr(request.state, "audit_detail", None)
+                    detail_json = None
+                    if detail is not None:
+                        import json
+
+                        detail_json = json.dumps(detail, default=str)[:50000]
                     row = AuditLog(
                         method=request.method,
                         path=request.url.path[:500],
@@ -49,6 +55,7 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
                         client_ip=client_ip(request),
                         api_key_prefix=getattr(request.state, "api_key_prefix", None),
                         duration_ms=duration_ms,
+                        detail_json=detail_json,
                     )
                     db.add(row)
                     db.commit()

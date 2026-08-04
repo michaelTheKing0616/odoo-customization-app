@@ -203,6 +203,10 @@ def unarchive_project(
 def get_project(
     connection_id: str, project_id: str, db: Session = Depends(get_db)
 ) -> ProjectOut:
+    try:
+        get_connection_or_404(db, connection_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     row = (
         db.query(CustomizationProject)
         .filter(
@@ -253,6 +257,10 @@ def update_project(
 def delete_project(
     connection_id: str, project_id: str, db: Session = Depends(get_db)
 ) -> None:
+    try:
+        get_connection_or_404(db, connection_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     row = (
         db.query(CustomizationProject)
         .filter(

@@ -19,7 +19,7 @@ export default function E2EBillingHarnessPage() {
     <main className="space-y-6 p-8">
       <h1 className="text-lg font-semibold">Billing e2e harness</h1>
 
-      <Callout variant="warning" title={`Trial ends in ${trialDays} days`} data-testid="trial-banner">
+      <Callout variant="warning" title={`Trial ends in ${trialDays} days`} testId="trial-banner">
         Add a payment method before trial ends to keep Business features.
       </Callout>
 

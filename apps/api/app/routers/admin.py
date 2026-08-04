@@ -54,6 +54,18 @@ class WorkspaceAdminOut(BaseModel):
     slug: str
     plan: str
     subscription_status: str | None
+    beta_partner: bool = False
+    writes_paused: bool = False
+
+
+class BetaPartnerBody(BaseModel):
+    enabled: bool
+    reason: str = Field(..., min_length=1, max_length=500)
+
+
+class WritesPausedBody(BaseModel):
+    paused: bool
+    reason: str = Field(..., min_length=1, max_length=500)
 
 
 class OverrideBody(BaseModel):
@@ -129,9 +141,107 @@ def list_workspaces(
                 slug=ws.slug,
                 plan=ws.plan,
                 subscription_status=sub.status if sub else None,
+                beta_partner=bool(getattr(ws, "beta_partner", False)),
+                writes_paused=bool(getattr(ws, "writes_paused", False)),
             )
         )
     return out
+
+
+@router.patch("/workspaces/{workspace_id}/beta-partner", response_model=WorkspaceAdminOut)
+def set_beta_partner(
+    workspace_id: str,
+    body: BetaPartnerBody,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> WorkspaceAdminOut:
+    ws = db.get(Workspace, workspace_id)
+    if ws is None:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    ws.beta_partner = body.enabled
+    db.add(ws)
+    sub = db.query(WorkspaceSubscription).filter(WorkspaceSubscription.workspace_id == ws.id).first()
+    _audit(
+        db,
+        method="PATCH",
+        path=f"/api/admin/workspaces/{workspace_id}/beta-partner",
+        status_code=200,
+        actor=admin.email,
+        detail=f"beta_partner={body.enabled}: {body.reason[:80]}",
+    )
+    db.commit()
+    return WorkspaceAdminOut(
+        id=ws.id,
+        name=ws.name,
+        slug=ws.slug,
+        plan=ws.plan,
+        subscription_status=sub.status if sub else None,
+        beta_partner=bool(ws.beta_partner),
+        writes_paused=bool(ws.writes_paused),
+    )
+
+
+@router.patch("/workspaces/{workspace_id}/writes-paused", response_model=WorkspaceAdminOut)
+def set_writes_paused(
+    workspace_id: str,
+    body: WritesPausedBody,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> WorkspaceAdminOut:
+    ws = db.get(Workspace, workspace_id)
+    if ws is None:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    ws.writes_paused = body.paused
+    db.add(ws)
+    sub = db.query(WorkspaceSubscription).filter(WorkspaceSubscription.workspace_id == ws.id).first()
+    _audit(
+        db,
+        method="PATCH",
+        path=f"/api/admin/workspaces/{workspace_id}/writes-paused",
+        status_code=200,
+        actor=admin.email,
+        detail=f"writes_paused={body.paused}: {body.reason[:80]}",
+    )
+    db.commit()
+    return WorkspaceAdminOut(
+        id=ws.id,
+        name=ws.name,
+        slug=ws.slug,
+        plan=ws.plan,
+        subscription_status=sub.status if sub else None,
+        beta_partner=bool(ws.beta_partner),
+        writes_paused=bool(ws.writes_paused),
+    )
+
+
+@router.get("/trust-telemetry")
+def trust_telemetry(
+    _admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> dict:
+    from app.beta_telemetry import ga_evidence_summary
+
+    return ga_evidence_summary(db)
+
+
+@router.get("/ga-criteria")
+def ga_criteria(_admin: User = Depends(require_superadmin)) -> dict:
+    from app.settings import settings
+
+    return {
+        "beta_production_gating_enabled": settings.beta_production_gating_enabled,
+        "production_write_mode_ga_unlocked": settings.production_write_mode_ga_unlocked,
+        "min_beta_partner_workspaces": settings.beta_ga_min_workspaces,
+        "min_weeks_per_workspace": settings.beta_ga_min_weeks,
+        "exit_criteria": [
+            f">= {settings.beta_ga_min_workspaces} beta_partner workspaces",
+            f">= {settings.beta_ga_min_weeks} calendar weeks of active use each",
+            "Zero unrecoverable-data incidents (operator-attested)",
+            "Zero SafetyGate bypasses (route meta-test + audit review)",
+        ],
+        "launch_env": "Set PRODUCTION_WRITE_MODE_GA_UNLOCKED=1 to open production mode globally",
+        "runbook": "docs/BETA_PROTOCOL.md",
+    }
 
 
 @router.post("/overrides", status_code=201)

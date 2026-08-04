@@ -8,10 +8,19 @@ from sqlalchemy.orm import Session
 
 from app.crypto import decrypt_secret
 from app.db_models import OdooConnection
+from app.workspace_auth import current_workspace_auth, scoped_connection_query
 
 
 def get_connection_or_404(db: Session, connection_id: str) -> OdooConnection:
-    row = db.get(OdooConnection, connection_id)
+    auth = current_workspace_auth()
+    if auth is not None and auth.workspace_scoped and auth.workspace_id:
+        row = (
+            scoped_connection_query(db, auth)
+            .filter(OdooConnection.id == connection_id)
+            .first()
+        )
+    else:
+        row = db.get(OdooConnection, connection_id)
     if row is None:
         raise LookupError(f"Connection {connection_id} not found")
     return row
@@ -30,6 +39,7 @@ def client_from_connection(
             db=row.db_name,
             username=row.username,
             password=secret,
+            write_mode=row.write_mode or "standard",
         )
     )
     client.connect()

@@ -78,6 +78,9 @@ Order matters and each stage exists to catch what the previous one can't:
 1. **The gate** — something purely mechanical that returns pass/fail with no judgment: a
    test suite, a build, a linter, a word/line count, a schema check. If nothing objective
    can fail the work, you don't have a loop, you have a model agreeing with itself.
+   **TRUST-6 addendum:** a settings-gated code path counts as tested only if a test executes
+   it under that config (see `skills/coverage-gate.md`). Mutation-relevant modules must meet
+   coverage floors in CI (`apps/api/mutation_coverage_floors.json`).
 2. **The checker** — judges what the gate can't (quality, adherence to spec, taste) but
    only after the mechanical gate has already passed.
 3. **You** — see only what survived both. If you're doing meaningful review work on what

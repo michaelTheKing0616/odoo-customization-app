@@ -37,6 +37,8 @@ pnpm --filter @odoo-custom/web dev
 
 Set `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000` if needed.
 
+**Start here (plain language, first-time setup):** [docs/START-HERE.md](docs/START-HERE.md).
+
 **End-user guide (every screen & flow, non-developer):** [docs/USER-GUIDE.md](docs/USER-GUIDE.md).
 
 **Full local UAT checklist** (wizard → Designer → sandbox → promote): [docs/LOCAL-UAT.md](docs/LOCAL-UAT.md).

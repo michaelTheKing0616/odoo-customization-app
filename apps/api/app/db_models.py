@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import datetime
 
@@ -9,6 +10,8 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, fun
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
+
+_TEST_WRITE_MODE_DEFAULT = os.environ.get("TEST_DEFAULT_WRITE_MODE", "observer")
 
 # Register account models on the same metadata (MON-1).
 from app import account_models as _account_models  # noqa: F401
@@ -38,10 +41,33 @@ class OdooConnection(Base):
     preview_theme_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     protected_manifest_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     protected_manifest_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    write_mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=_TEST_WRITE_MODE_DEFAULT
+    )
+    writes_paused: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    code_studio_probe_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class DryRunReceipt(Base):
+    __tablename__ = "dry_run_receipts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    connection_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("odoo_connections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    operation: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    params_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class MetadataSnapshot(Base):
@@ -131,7 +157,30 @@ class AuditLog(Base):
     client_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
     api_key_prefix: Mapped[str | None] = mapped_column(String(16), nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    detail_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ConnectionProductionReadiness(Base):
+    """TRUST-8 per-connection production write-mode checklist state."""
+
+    __tablename__ = "connection_production_readiness"
+
+    connection_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("odoo_connections.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    snapshot_drill_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    snapshot_drill_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    least_privilege_confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    backup_artifact_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    first_write_ack_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class HealthCheckRun(Base):
@@ -321,6 +370,42 @@ class BulkRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class ConnectionMutationHourly(Base):
+    """Rolling hourly mutation counter per connection (TRUST-3 anomaly guard)."""
+
+    __tablename__ = "connection_mutation_hourly"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    connection_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("odoo_connections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    hour_bucket: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    mutation_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class TrustAnomalyEvent(Base):
+    """Admin-visible record when anomaly guard trips the kill switch."""
+
+    __tablename__ = "trust_anomaly_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    connection_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("odoo_connections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    mutation_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    threshold: Mapped[int] = mapped_column(Integer, nullable=False)
+    hour_bucket: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    action: Mapped[str] = mapped_column(String(40), nullable=False, default="writes_paused")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class PipelineHop(Base):
     """Record of a promote hop in an env pipeline."""
 
@@ -358,4 +443,53 @@ class ExpertChunk(Base):
     source_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class SavedScript(Base):
+    """DEV-3 workspace script library."""
+
+    __tablename__ = "saved_scripts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    script_content: Mapped[str] = mapped_column(Text, nullable=False)
+    shared: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ScriptRun(Base):
+    """DEV-3 script execution history."""
+
+    __tablename__ = "script_runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    connection_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("odoo_connections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    job_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    saved_script_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    script_content: Mapped[str] = mapped_column(Text, nullable=False)
+    script_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
+    stdout: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stderr: Mapped[str | None] = mapped_column(Text, nullable=True)
+    write_counts_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

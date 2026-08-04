@@ -83,6 +83,16 @@ def test_connect_points_emission() -> None:
     assert cp["host_module"] == "sale"
 
 
+def test_parent_menu_xml_id_for_module_odoo19() -> None:
+    from app.ai_grain import parent_menu_xml_id_for_module
+
+    assert parent_menu_xml_id_for_module("sale") == "sale.sale_menu_root"
+    assert parent_menu_xml_id_for_module("project") == "project.menu_main_pm"
+    assert parent_menu_xml_id_for_module("crm") == "crm.crm_menu_root"
+    assert parent_menu_xml_id_for_module("stock") == "stock.menu_stock_root"
+    assert parent_menu_xml_id_for_module("base") is None
+
+
 def test_collision_detection_fake_client() -> None:
     class _Client:
         def execute_kw(self, model: str, method: str, args: list[Any], kwargs: dict[str, Any] | None = None):

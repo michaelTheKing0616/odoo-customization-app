@@ -15,6 +15,7 @@ import {
   IconMenus,
   IconModels,
   IconReports,
+  IconCodeStudio,
   IconSnapshots,
   IconViews,
   IconWebsite,
@@ -132,6 +133,14 @@ export const NAV_ITEMS: NavItem[] = [
     shipped: true,
   },
   {
+    id: "code-studio",
+    label: "Code Studio",
+    href: (id) => `/connections/${id}/code-studio`,
+    group: "build",
+    icon: IconCodeStudio,
+    shipped: true,
+  },
+  {
     id: "access",
     label: "Access",
     href: (id) => `/connections/${id}/access`,
@@ -225,6 +234,14 @@ export const NAV_ITEMS: NavItem[] = [
     href: (id) => `/connections/${id}/reminders`,
     group: "operate",
     icon: IconCron,
+    shipped: true,
+  },
+  {
+    id: "script-runner",
+    label: "Script Runner",
+    href: (id) => `/connections/${id}/script-runner`,
+    group: "operate",
+    icon: IconCodeStudio,
     shipped: true,
   },
   {

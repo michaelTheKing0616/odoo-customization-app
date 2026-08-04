@@ -19,6 +19,12 @@ def test_overlay_hide_form() -> None:
     assert validate_xpath_arch(arch) == []
 
 
+def test_overlay_hide_escapes_double_quotes_in_expr() -> None:
+    arch = render_overlay_hide_arch('//field[@name="email"]', view_type="form")
+    assert "&quot;" in arch
+    assert validate_xpath_arch(arch) == []
+
+
 def test_overlay_hide_list() -> None:
     arch = render_overlay_hide_arch("//field[@name='email']", view_type="list")
     assert 'name="column_invisible"' in arch

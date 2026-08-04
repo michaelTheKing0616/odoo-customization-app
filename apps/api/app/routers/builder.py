@@ -27,6 +27,7 @@ from app.schemas import (
     CreateFieldBody,
     CreateModelBody,
     CreateModelOut,
+    DeleteFieldBody,
     DeleteFieldOut,
     DeleteModelOut,
     FieldCreateOut,
@@ -50,10 +51,12 @@ from app.schemas import (
     RelationalPairOut,
     UpdateFieldBody,
 )
+from app.field_lifecycle import FieldLifecycleError, deprecate_field, export_field_column_csv
 from app.snapshots import (
     CONFIRM_PHRASE,
     ConfirmationRequired,
     require_advanced_confirmation,
+    save_snapshot,
     snapshot_field,
     snapshot_model,
 )
@@ -294,13 +297,47 @@ def delete_model(
 
     client = _client(connection_id, db)
     try:
+        from app.model_lifecycle import ModelLifecycleError, export_model_records_json
+        from app.snapshots import save_snapshot
+
+        data_export = export_model_records_json(client, model=model)
+        data_artifact = save_snapshot(
+            db,
+            connection_id=connection_id,
+            resource_type="model_data_export",
+            resource_key=f"model_data:{model}",
+            label=f"Record export {model} before delete",
+            payload={
+                "format": "model_records_json",
+                "model": model,
+                "json": data_export.json_text,
+                "record_count": data_export.record_count,
+                "truncated": data_export.truncated,
+            },
+            reversible="no",
+        )
         snap = snapshot_model(db, connection_id, client, model)
         client.delete_model(model)
+    except ModelLifecycleError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "model_export_failed", "message": str(exc)},
+        ) from exc
     except OdooClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return DeleteModelOut(ok=True, model=model, snapshot_id=snap.id)
+    artifact_url = f"/api/connections/{connection_id}/snapshots/{data_artifact.id}/artifact.json"
+    return DeleteModelOut(
+        ok=True,
+        model=model,
+        snapshot_id=snap.id,
+        data_artifact_id=data_artifact.id,
+        artifact_url=artifact_url,
+        record_count=data_export.record_count,
+        truncated=data_export.truncated,
+        overflow_warning=data_export.overflow_warning,
+    )
 
 
 @router.get("/builder/niche-widgets")
@@ -481,39 +518,123 @@ def update_field(
 def delete_field(
     connection_id: str,
     field_id: int,
-    body: ConfirmAdvancedBody,
+    body: DeleteFieldBody,
     db: Session = Depends(get_db),
 ) -> DeleteFieldOut:
     try:
-        get_connection_or_404(db, connection_id)
+        row = get_connection_or_404(db, connection_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    try:
-        require_advanced_confirmation(
-            confirm_advanced=body.confirm_advanced,
-            confirm_phrase=body.confirm_phrase,
-            warning=(
-                "Deleting a custom field removes it from the model. "
-                "Column data is often not recoverable."
-            ),
-            risks=[
-                "Dropped DB columns / field data may be unrestorable",
-                "Views referencing the field can break until edited",
-                "Snapshot stores field definition only (reversible=partial)",
-            ],
-        )
-    except ConfirmationRequired as exc:
-        raise _confirm_http(exc) from exc
 
     client = _client(connection_id, db)
     try:
-        snap = snapshot_field(db, connection_id, client, field_id)
+        raw = client.read_field_raw(field_id)
+    except OdooClientError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    model_name = str(raw.get("model") or "")
+    field_name = str(raw.get("name") or "")
+    manifest = manifest_for_connection(row)
+    violation = check_field_delete_or_stock_mutate(
+        manifest, model=model_name, field_name=field_name
+    )
+    if violation is not None:
+        raise _protected_http(violation)
+
+    mode = body.mode or "deprecate"
+    if mode == "hard_delete":
+        try:
+            require_advanced_confirmation(
+                confirm_advanced=body.confirm_advanced,
+                confirm_phrase=body.confirm_phrase,
+                warning=(
+                    f"Hard-deleting field {field_name!r} on {model_name!r} removes the column. "
+                    "A CSV of id→value is exported first."
+                ),
+                risks=[
+                    "Column data is removed from the database",
+                    "Views referencing the field can break until edited",
+                    "Operation refused if column export fails",
+                ],
+            )
+        except ConfirmationRequired as exc:
+            raise _confirm_http(exc) from exc
+    elif not body.confirm_advanced:
+        raise _confirm_http(
+            ConfirmationRequired(
+                warning=f"Deprecate field {field_name!r} (rename to x_deprecated_* and hide)?",
+                risks=[
+                    "Field stays in the database under a new name",
+                    "Views may still reference the old name until updated",
+                    "Use hard delete only when you need the column dropped",
+                ],
+            )
+        )
+
+    if mode == "deprecate":
+        try:
+            updated = deprecate_field(client, field_id)
+            snap = snapshot_field(db, connection_id, client, field_id)
+        except FieldLifecycleError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except OdooClientError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return DeleteFieldOut(
+            ok=True,
+            field_id=field_id,
+            mode="deprecate",
+            snapshot_id=snap.id,
+            new_field_name=str(updated.get("name")),
+        )
+
+    try:
+        export = export_field_column_csv(
+            client, model=model_name, field_name=field_name
+        )
+    except FieldLifecycleError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "field_export_failed",
+                "message": str(exc),
+            },
+        ) from exc
+
+    artifact = save_snapshot(
+        db,
+        connection_id=connection_id,
+        resource_type="field_data_export",
+        resource_key=f"field_data:{field_id}",
+        label=f"Column export {model_name}.{field_name}",
+        payload={
+            "format": "csv",
+            "model": export.model,
+            "field_name": export.field_name,
+            "csv": export.csv_text,
+            "row_count": export.row_count,
+            "truncated": export.truncated,
+        },
+        reversible="no",
+    )
+    try:
+        meta_snap = snapshot_field(db, connection_id, client, field_id)
         client.delete_field(field_id)
     except OdooClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return DeleteFieldOut(ok=True, field_id=field_id, snapshot_id=snap.id)
+
+    artifact_url = f"/api/connections/{connection_id}/snapshots/{artifact.id}/artifact.csv"
+    return DeleteFieldOut(
+        ok=True,
+        field_id=field_id,
+        mode="hard_delete",
+        snapshot_id=meta_snap.id,
+        artifact_id=artifact.id,
+        artifact_url=artifact_url,
+        row_count=export.row_count,
+        truncated=export.truncated,
+    )
 
 
 @router.get("/properties/probe", response_model=PropertyFieldsProbeOut)

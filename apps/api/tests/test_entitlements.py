@@ -116,12 +116,16 @@ def test_active_project_slot_limit(client: TestClient, monkeypatch: pytest.Monke
         db.commit()
         conn_id = conn.id
         email = f"slot-{uuid.uuid4().hex[:8]}@example.com"
-        from app.account_service import signup_user
-        from app.account_models import WorkspaceMembership
+        from app.account_models import User, WorkspaceMembership
+        from app.account_service import hash_password
 
-        user, _, _ = signup_user(db, email=email, password="slot-test-pass1")
-        user.email_verified = True
+        user = User(
+            email=email,
+            password_hash=hash_password("slot-test-pass1"),
+            email_verified=True,
+        )
         db.add(user)
+        db.flush()
         db.add(WorkspaceMembership(workspace_id=ws_id, user_id=user.id, role="owner"))
         db.commit()
     finally:

@@ -288,11 +288,40 @@ class ConnectionOut(BaseModel):
     last_seen_version: str | None = None
     upgrade_detected: bool = False
     upgrade_detected_at: datetime | None = None
+    write_mode: Literal["observer", "standard", "production"] = "observer"
+    writes_paused: bool = False
     created_at: datetime | None
     updated_at: datetime | None
     capabilities: CapabilityMatrixOut | None = None
 
     model_config = {"from_attributes": True}
+
+
+class WriteModeUpdate(BaseModel):
+    write_mode: Literal["observer", "standard", "production"]
+
+
+class WritesPausedUpdate(BaseModel):
+    writes_paused: bool
+
+
+class ProductionReadinessItemOut(BaseModel):
+    key: str
+    label: str
+    status: Literal["pass", "fail", "warn"]
+    detail: str
+
+
+class ProductionReadinessOut(BaseModel):
+    passed: bool
+    items: list[ProductionReadinessItemOut]
+    drill_snapshot_id: str | None = None
+    updated_at: datetime | None = None
+    first_write_acknowledged: bool = False
+
+
+class LeastPrivilegeConfirmBody(BaseModel):
+    acknowledge_admin: bool = False
 
 
 class HealthCheckItemOut(BaseModel):
@@ -859,16 +888,31 @@ class UpdateFieldBody(BaseModel):
     )
 
 
+class DeleteFieldBody(ConfirmAdvancedBody):
+    mode: Literal["deprecate", "hard_delete"] = "deprecate"
+
+
 class DeleteFieldOut(BaseModel):
     ok: bool = True
     field_id: int
+    mode: Literal["deprecate", "hard_delete"] = "deprecate"
     snapshot_id: str | None = None
+    artifact_id: str | None = None
+    artifact_url: str | None = None
+    row_count: int | None = None
+    truncated: bool | None = None
+    new_field_name: str | None = None
 
 
 class DeleteModelOut(BaseModel):
     ok: bool = True
     model: str
     snapshot_id: str | None = None
+    data_artifact_id: str | None = None
+    artifact_url: str | None = None
+    record_count: int | None = None
+    truncated: bool | None = None
+    overflow_warning: str | None = None
 
 
 class UpdateAutomationBody(BaseModel):
@@ -1156,6 +1200,14 @@ class AiDraftModuleBody(BaseModel):
         None,
         description="Operator-edited connect points from wizard review step",
     )
+    overlap_choice: str | None = Field(
+        None,
+        description="AI-9 audit: use | extend | build_anyway",
+    )
+    overlap_finding_id: str | None = Field(
+        None,
+        description="AI-9 finding id when user chose use/extend/build_anyway",
+    )
 
 
 class AiProposeConnectPointsBody(BaseModel):
@@ -1176,6 +1228,22 @@ class AiProposeConnectPointsOut(BaseModel):
     requires_review: bool = False
     warnings: list[str] = Field(default_factory=list)
     gallery_id: str | None = None
+
+
+class AiCheckOverlapBody(BaseModel):
+    prompt: str = Field(..., min_length=3)
+    connection_id: str | None = None
+    grain: str | None = None
+    host_model: str | None = None
+
+
+class AiCheckOverlapOut(BaseModel):
+    ok: bool = True
+    grain: str
+    grain_label: str
+    findings: list[dict] = Field(default_factory=list)
+    semantic_pass_ran: bool = False
+    requires_review: bool = False
 
 
 class GeneralizeComponentBody(BaseModel):

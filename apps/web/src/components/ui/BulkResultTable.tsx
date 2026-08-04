@@ -22,16 +22,32 @@ export type BulkRunResult = {
   per_record: PerRecordResult[];
   dry_run?: boolean;
   message?: string;
+  status?: string;
+  pending_ids?: number[] | null;
+  processed_count?: number | null;
+  aborted?: boolean;
+  can_continue?: boolean;
 };
 
 type BulkResultTableProps = {
   result: BulkRunResult;
   onRetryFailed?: () => void;
+  onContinue?: () => void;
+  onAbort?: () => void;
+  continueBusy?: boolean;
+  abortBusy?: boolean;
 };
 
 type Filter = "all" | "succeeded" | "failed";
 
-export function BulkResultTable({ result, onRetryFailed }: BulkResultTableProps) {
+export function BulkResultTable({
+  result,
+  onRetryFailed,
+  onContinue,
+  onAbort,
+  continueBusy,
+  abortBusy,
+}: BulkResultTableProps) {
   const [filter, setFilter] = useState<Filter>("all");
 
   const rows = useMemo(() => {
@@ -75,8 +91,32 @@ export function BulkResultTable({ result, onRetryFailed }: BulkResultTableProps)
           {result.succeeded}/{result.total} succeeded
           {result.failed > 0 ? ` · ${result.failed} failed` : ""}
           {result.dry_run ? " · dry run" : ""}
+          {result.status === "sample_paused" ? " · sample paused" : ""}
+          {result.aborted ? " · aborted" : ""}
         </span>
         <div className="ml-auto flex gap-2">
+          {result.can_continue && onContinue ? (
+            <Button
+              variant="primary"
+              size="sm"
+              type="button"
+              disabled={continueBusy}
+              onClick={onContinue}
+            >
+              Continue remaining
+            </Button>
+          ) : null}
+          {result.status === "sample_paused" && onAbort ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              type="button"
+              disabled={abortBusy}
+              onClick={onAbort}
+            >
+              Abort
+            </Button>
+          ) : null}
           {(
             [
               { id: "all" as const, label: "All" },

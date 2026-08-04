@@ -10,6 +10,8 @@ import { Kbd } from "@/components/ui/layout-primitives";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import { useShell } from "@/context/ShellContext";
 import { breadcrumbForPath } from "@/lib/nav";
+import { WriteModeBadge } from "@/components/shell/WriteModeBadge";
+import { AnomalyBanner } from "@/components/shell/AnomalyBanner";
 import { WorkspacePlanBadge } from "@/components/billing/WorkspacePlanBadge";
 import type { Connection } from "@/lib/api";
 
@@ -56,8 +58,10 @@ export function TopBar({ connection, connections, pathname }: Props) {
               <Badge>{caps.hosting_hint.replace("_", " ")}</Badge>
             ) : null}
             {caps?.edition ? <Badge>{caps.edition}</Badge> : null}
+            <WriteModeBadge mode={connection.write_mode ?? "standard"} />
             <WorkspacePlanBadge />
           </div>
+          <AnomalyBanner connection={connection} />
         </div>
         <div className="flex items-center gap-2">
           <Button

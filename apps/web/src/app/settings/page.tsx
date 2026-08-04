@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import {
   api,
@@ -21,6 +22,9 @@ export default function SettingsPage() {
   const [status, setStatus] = useState<AuthStatus | null>(null);
   const [keys, setKeys] = useState<ApiKeyRow[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogRow[]>([]);
+  const [oauthIdentities, setOauthIdentities] = useState<
+    Array<{ provider: string; email: string | null; created_at: string }>
+  >([]);
   const [localKey, setLocalKey] = useState("");
   const [newKeyName, setNewKeyName] = useState("operator");
   const [revealed, setRevealed] = useState<string | null>(null);
@@ -45,6 +49,15 @@ export default function SettingsPage() {
       setAuditLogs(await api.listAuditLogs(30));
     } catch {
       setAuditLogs([]);
+    }
+    if (s.auth_mode === "accounts") {
+      try {
+        setOauthIdentities(await api.accountOAuthIdentities());
+      } catch {
+        setOauthIdentities([]);
+      }
+    } else {
+      setOauthIdentities([]);
     }
   }
 
@@ -88,6 +101,21 @@ export default function SettingsPage() {
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Create key failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onUnlinkOAuth(provider: string) {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await api.accountOAuthUnlink(provider);
+      setNotice(`Unlinked ${provider}.`);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unlink failed");
     } finally {
       setBusy(false);
     }
@@ -192,6 +220,18 @@ export default function SettingsPage() {
         </form>
       </Card>
 
+      <Card className="mt-6 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-xl font-semibold text-ink">Trust & safety</h2>
+          <Link href="/settings/trust-safety" className="text-sm text-accent hover:underline">
+            Open safety contract
+          </Link>
+        </div>
+        <p className="mt-2 text-sm text-muted">
+          Permission model, reversibility table, blast-radius limits, and incident playbook.
+        </p>
+      </Card>
+
       {status?.auth_enabled ? (
         <Card className="mt-6 p-5">
           <form onSubmit={onCreateKey} className="space-y-4">
@@ -247,6 +287,34 @@ export default function SettingsPage() {
             ))}
           </ul>
         </section>
+      ) : null}
+
+      {status?.auth_mode === "accounts" && oauthIdentities.length > 0 ? (
+        <Card className="mt-6 p-5">
+          <h2 className="text-xl font-semibold text-ink">Linked sign-in providers</h2>
+          <ul className="mt-3 space-y-2">
+            {oauthIdentities.map((row) => (
+              <li key={row.provider}>
+                <Card className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
+                  <span>
+                    {row.provider}
+                    {row.email ? <span className="ml-2 text-muted">{row.email}</span> : null}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy}
+                    className="text-danger"
+                    onClick={() => onUnlinkOAuth(row.provider)}
+                  >
+                    Unlink
+                  </Button>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </Card>
       ) : null}
 
       <Card className="mt-6 p-5">

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -21,6 +21,7 @@ from app.snapshots import (
     ConfirmationRequired,
     require_advanced_confirmation,
 )
+from app.mutation_lock_dep import require_connection_mutation_lock
 
 router = APIRouter(
     prefix="/connections/{connection_id}/power-ops",
@@ -78,6 +79,10 @@ class PowerOpsRunOut(BaseModel):
     available: bool = True
     unavailable_reason: str | None = None
     logs: list[StepLogOut] = Field(default_factory=list)
+    snapshot_id: str | None = None
+    artifact_url: str | None = None
+    export_record_count: int | None = None
+    export_truncated: bool | None = None
 
 
 @router.get("/recipes")
@@ -102,6 +107,7 @@ def run_power_ops(
     connection_id: str,
     body: PowerOpsRunBody,
     db: Session = Depends(get_db),
+    _: Annotated[None, Depends(require_connection_mutation_lock)] = None,
 ) -> PowerOpsRunOut:
     from app.power_ops_recipes import get_recipe
 
@@ -128,6 +134,58 @@ def run_power_ops(
             raise _confirm_http(exc) from exc
 
     client = _client(connection_id, db)
+    snapshot_id: str | None = None
+    artifact_url: str | None = None
+    export_record_count: int | None = None
+    export_truncated: bool | None = None
+
+    if not body.dry_run and recipe.destructive:
+        from app.model_lifecycle import ModelLifecycleError, export_records_by_ids_json
+        from app.power_ops_recipes import resolve_recipe_record_ids
+        from app.snapshots import save_snapshot
+
+        try:
+            target_model, record_ids = resolve_recipe_record_ids(
+                client,
+                recipe,
+                model=body.model,
+                domain=body.domain,
+                ids=body.ids,
+            )
+            if record_ids:
+                export = export_records_by_ids_json(
+                    client, model=target_model, record_ids=record_ids
+                )
+                snap = save_snapshot(
+                    db,
+                    connection_id=connection_id,
+                    resource_type="power_ops_pre_export",
+                    resource_key=f"power_ops:{body.recipe_id}:{target_model}",
+                    label=f"Pre-export {recipe.name} on {target_model}",
+                    payload={
+                        "format": "model_records_json",
+                        "model": export.model,
+                        "json": export.json_text,
+                        "record_count": export.record_count,
+                        "truncated": export.truncated,
+                        "recipe_id": body.recipe_id,
+                    },
+                    reversible="no",
+                )
+                snapshot_id = snap.id
+                artifact_url = (
+                    f"/api/connections/{connection_id}/snapshots/{snap.id}/artifact.json"
+                )
+                export_record_count = export.record_count
+                export_truncated = export.truncated
+        except ModelLifecycleError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "power_ops_export_failed", "message": str(exc)},
+            ) from exc
+        except OdooClientError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
     try:
         result = run_recipe(
             client,
@@ -162,4 +220,8 @@ def run_power_ops(
             )
             for l in result.logs[:2000]
         ],
+        snapshot_id=snapshot_id,
+        artifact_url=artifact_url,
+        export_record_count=export_record_count,
+        export_truncated=export_truncated,
     )

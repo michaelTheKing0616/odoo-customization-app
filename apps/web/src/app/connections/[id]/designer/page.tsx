@@ -6,6 +6,7 @@ import { DomainBuilder } from "@/components/DomainBuilder";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
+import { FirstWriteInterstitial } from "@/components/shell/FirstWriteInterstitial";
 import { FormCanvas } from "@/components/designer/FormCanvas";
 import { OverlayEditor } from "@/components/designer/OverlayEditor";
 import { KanbanCardPreview } from "@/components/designer/KanbanCardPreview";
@@ -2142,6 +2143,7 @@ export default function DesignerPage() {
         title="View designer"
         description={`${connection?.name ?? connectionId} · drag fields onto the canvas · saves real ir.ui.view arch`}
       />
+      {connection ? <FirstWriteInterstitial connection={connection} /> : null}
       <p className="mt-2 text-sm text-muted">
         Removing a field from the view does not delete the database column.
       </p>

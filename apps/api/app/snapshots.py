@@ -535,6 +535,22 @@ def rollback_snapshot(
             client.execute_kw("ir.actions.server", "write", [[sa_id], sa_vals])
         return {"restored": "automation", "id": auto_id}
 
+    if row.resource_type == "server_action":
+        sa = payload.get("server_action") or {}
+        sa_id = int(sa["id"])
+        if payload.get("created"):
+            client.execute_kw("ir.actions.server", "unlink", [[sa_id]])
+            return {"restored": "server_action", "id": sa_id, "action": "unlinked"}
+        sa_vals = {
+            k: sa.get(k)
+            for k in ("name", "state", "code", "binding_model_id", "binding_type")
+            if sa.get(k) is not False
+        }
+        if isinstance(sa.get("binding_model_id"), (list, tuple)):
+            sa_vals["binding_model_id"] = sa["binding_model_id"][0]
+        client.execute_kw("ir.actions.server", "write", [[sa_id], sa_vals])
+        return {"restored": "server_action", "id": sa_id}
+
     if row.resource_type == "access":
         access = payload["access"]
         access_id = int(access["id"])

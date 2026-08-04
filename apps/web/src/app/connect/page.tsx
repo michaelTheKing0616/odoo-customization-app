@@ -193,6 +193,12 @@ export default function ConnectPage() {
             title="Connect your Odoo"
             description="URL, database, and API key (or password). Credentials are encrypted at rest and verified before save."
           />
+          <Callout variant="info" title="Least-privilege + observer default" className="mt-4">
+            New connections start in <strong>Observer</strong> mode (read-only). Use a dedicated
+            Odoo user with only the app access it needs — not your full admin account. The app can
+            never exceed that user&apos;s Odoo permissions. Unlock write mode from the connection
+            overview when you are ready to customize.
+          </Callout>
         </div>
 
         <ol className="mb-8 flex flex-wrap gap-4 text-sm">

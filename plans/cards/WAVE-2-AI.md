@@ -353,7 +353,7 @@ projects store, component gallery, reasoning-model provider (AI-1), wizard conne
 review step, COPY_GUIDE.
 
 CHECKLIST:
-- [ ] Four detection sources, deterministic-first then reasoning-model semantic pass on the
+- [x] Four detection sources, deterministic-first then reasoning-model semantic pass on the
       shortlist only: (a) existing fields/models/automations on the target instance — fuzzy
       match on technical names + labels ("warranty end date" ≈ existing `x_warranty_end` on
       sale.order); (b) INSTALLED Odoo modules already covering the ask (keyword→module
@@ -361,19 +361,19 @@ CHECKLIST:
       (c) NOT-installed stock/available apps that would cover it — recommend installing the
       real app over building a knockoff (from `ir.module.module` available list, honest
       one-liner per app); (d) existing workspace projects + gallery components.
-- [ ] Findings panel in the wizard (rendered with/before the connect-points step): ranked,
+- [x] Findings panel in the wizard (rendered with/before the connect-points step): ranked,
       capped at top 5, each with evidence ("field x_warranty_end already on Sale Order —
       added by project 'Sales extras', 12 Jun") and three options — "Use what exists"
       (deep link to the artifact) / "Extend it" (switches draft to component grain targeting
       the existing artifact via AI-8) / "Build anyway" (proceeds; choice + finding recorded
       on the draft for audit). Zero-hit prompts get NO added step or latency beyond the
       deterministic scan (semantic pass only runs when the shortlist is non-empty).
-- [ ] Full-app grain too: "build me a project tracker" on an instance with `project`
+- [x] Full-app grain too: "build me a project tracker" on an instance with `project`
       installed must surface source (b) before generating 12 models.
-- [ ] Precision guard: semantic confirmations require the reasoning model to output the
+- [x] Precision guard: semantic confirmations require the reasoning model to output the
       matched-capability rationale; low-confidence matches are dropped, not shown
       (false "already exists" claims are worse than misses — documented threshold + test).
-- [ ] Tests: fixture suite covering all four sources hit + evidence text, build-anyway
+- [x] Tests: fixture suite covering all four sources hit + evidence text, build-anyway
       recording, zero-hit fast path (no LLM call asserted), full-app module hit, precision
       guard drop case; one live smoke on docker 19 (project installed, prompt "track tasks
       per client") showing the installed-app finding.

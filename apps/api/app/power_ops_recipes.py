@@ -386,6 +386,33 @@ def probe_recipe(client: OdooClient, recipe: PowerRecipe, model: str) -> tuple[b
     return True, "RPC available (UI limits do not block this app)"
 
 
+def resolve_recipe_record_ids(
+    client: OdooClient,
+    recipe: PowerRecipe,
+    *,
+    model: str | None = None,
+    domain: list[Any] | None = None,
+    ids: list[int] | None = None,
+) -> tuple[str, list[int]]:
+    """Resolve target model + record ids for a recipe run (shared with pre-export)."""
+    target_model = model or (None if recipe.model == "*" else recipe.model)
+    if not target_model or target_model == "*":
+        raise OdooClientError("model is required for this recipe")
+    if ids:
+        record_ids = [int(i) for i in ids]
+    else:
+        record_ids = [
+            int(i)
+            for i in client.execute_kw(
+                target_model,
+                "search",
+                [domain or []],
+                {"limit": 10000},
+            )
+        ]
+    return target_model, record_ids
+
+
 def run_recipe(
     client: OdooClient,
     *,
@@ -400,9 +427,9 @@ def run_recipe(
     recipe = get_recipe(recipe_id)
     if recipe is None:
         raise OdooClientError(f"Unknown recipe {recipe_id}")
-    target_model = model or (None if recipe.model == "*" else recipe.model)
-    if not target_model or target_model == "*":
-        raise OdooClientError("model is required for this recipe")
+    target_model, record_ids = resolve_recipe_record_ids(
+        client, recipe, model=model, domain=domain, ids=ids
+    )
 
     batch_size = max(1, min(int(batch_size or 40), 200))
 
@@ -418,19 +445,6 @@ def run_recipe(
             available=False,
             unavailable_reason=reason,
         )
-
-    if ids:
-        record_ids = [int(i) for i in ids]
-    else:
-        record_ids = [
-            int(i)
-            for i in client.execute_kw(
-                target_model,
-                "search",
-                [domain or []],
-                {"limit": 10000},
-            )
-        ]
 
     logs: list[StepLog] = []
     succeeded = 0

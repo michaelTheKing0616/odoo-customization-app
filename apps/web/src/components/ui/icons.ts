@@ -21,6 +21,7 @@ export {
   Upload as IconImport,
   Globe as IconWebsite,
   Zap as IconAutomations,
+  Code2 as IconCodeStudio,
   Search,
   Moon,
   Sun,

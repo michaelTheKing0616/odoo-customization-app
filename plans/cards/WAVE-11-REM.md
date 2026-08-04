@@ -275,20 +275,20 @@ INPUT: MON-1 accounts stack (`account_models.py`, `account_service.py`, session 
 authlib (already the approved dep in the MON-1 card), login/signup pages, settings.
 
 CHECKLIST:
-- [ ] `authlib` integration: Google + GitHub authorization-code flow behind
+- [x] `authlib` integration: Google + GitHub authorization-code flow behind
       `OAUTH_PROVIDERS=google,github` (off default); redirect URIs env-configured; state +
       PKCE where supported; no client secrets in repo (env only, documented in
       `.env.example` placeholders).
-- [ ] Account linking rules: OAuth email matches existing verified account → link provider
+- [x] Account linking rules: OAuth email matches existing verified account → link provider
       identity (new `oauth_identities` table: provider, subject, user_id — Alembic
       migration); no match → create account with email_verified=true (provider-verified);
       NEVER auto-link to an UNVERIFIED existing email (account-takeover guard — named test).
-- [ ] Sessions issued through the same server-side session path as password login (cookie,
+- [x] Sessions issued through the same server-side session path as password login (cookie,
       rotation); 2FA: if the linked account has TOTP enforced, OAuth login still passes the
       TOTP step.
-- [ ] UI: provider buttons on login + signup (kit styling, COPY_GUIDE labels), settings page
+- [x] UI: provider buttons on login + signup (kit styling, COPY_GUIDE labels), settings page
       shows linked identities with unlink (blocked if it would leave no login method).
-- [ ] Tests: mocked-provider flow (authlib test transport) — new-user create, verified link,
+- [x] Tests: mocked-provider flow (authlib test transport) — new-user create, verified link,
       unverified-collision refusal, unlink guard, TOTP-after-OAuth; adversarial: forged
       state rejected.
 

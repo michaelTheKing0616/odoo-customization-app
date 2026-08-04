@@ -16,6 +16,7 @@ from app.bulk_suite.discovery import (
     discover_buttons_from_arch,
 )
 from app.bulk_suite.domain_util import parse_domain
+from app.rpc_resilience import execute_mutation_with_verify
 
 DEFAULT_RECORD_CAP = 1000
 
@@ -47,6 +48,11 @@ class BulkRunResult:
     dry_run: bool = True
     method: str | None = None
     message: str = ""
+    status: str = "completed"
+    pending_ids: list[int] = field(default_factory=list)
+    processed_count: int = 0
+    aborted: bool = False
+    abort_requested: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -152,6 +158,57 @@ def _load_display_names(
     return names
 
 
+def _execute_transition_chunk(
+    client: OdooClient,
+    *,
+    model: str,
+    method: str,
+    record_ids: list[int],
+    names: dict[int, str],
+) -> list[PerRecordResult]:
+    if not record_ids:
+        return []
+    per_record: list[PerRecordResult] = []
+    try:
+        client.execute_kw(model, method, [record_ids])
+        for rid in record_ids:
+            per_record.append(
+                PerRecordResult(
+                    id=rid,
+                    display_name=names.get(rid, str(rid)),
+                    ok=True,
+                )
+            )
+        return per_record
+    except Exception as batch_exc:  # noqa: BLE001
+        batch_msg = str(batch_exc)
+        for rid in record_ids:
+            ok, err = execute_mutation_with_verify(
+                client,
+                model=model,
+                method=method,
+                record_id=rid,
+            )
+            if ok:
+                per_record.append(
+                    PerRecordResult(
+                        id=rid,
+                        display_name=names.get(rid, str(rid)),
+                        ok=True,
+                    )
+                )
+            else:
+                per_record.append(
+                    PerRecordResult(
+                        id=rid,
+                        display_name=names.get(rid, str(rid)),
+                        ok=False,
+                        error=err or batch_msg,
+                    )
+                )
+        return per_record
+
+
 def run_bulk_transition(
     client: OdooClient,
     *,
@@ -160,12 +217,19 @@ def run_bulk_transition(
     record_ids: list[int],
     dry_run: bool = True,
     run_id: str | None = None,
+    batch_size: int | None = None,
+    sleep_ms: int | None = None,
+    should_abort=None,
+    on_mutations=None,
+    pending_ids: list[int] | None = None,
+    status: str = "completed",
 ) -> BulkRunResult:
     run_id = run_id or str(uuid.uuid4())
-    names = _load_display_names(client, model, record_ids)
-    total = len(record_ids)
+    all_ids = list(dict.fromkeys(list(record_ids) + list(pending_ids or [])))
+    names = _load_display_names(client, model, all_ids)
+    total = len(all_ids)
 
-    if total == 0:
+    if len(record_ids) == 0 and not pending_ids:
         return BulkRunResult(
             run_id=run_id,
             operation="bulk_transition",
@@ -177,12 +241,14 @@ def run_bulk_transition(
             per_record=[],
             dry_run=dry_run,
             message="No records matched the selection.",
+            status="completed",
         )
 
     if dry_run:
+        preview_ids = record_ids if record_ids else (pending_ids or [])
         per = [
             PerRecordResult(id=rid, display_name=names.get(rid, str(rid)), ok=True)
-            for rid in record_ids
+            for rid in preview_ids
         ]
         return BulkRunResult(
             run_id=run_id,
@@ -190,51 +256,55 @@ def run_bulk_transition(
             model=model,
             method=method,
             total=total,
-            succeeded=total,
+            succeeded=len(per),
             failed=0,
             per_record=per,
             dry_run=True,
             message=f"Dry-run: would call {method} on {total} record(s).",
+            status="completed",
+            pending_ids=list(pending_ids or []),
         )
 
-    per_record: list[PerRecordResult] = []
-    succeeded = 0
-    failed = 0
+    from app.bulk_suite.executor import execute_in_batches
+    from app.settings import settings
 
-    try:
-        client.execute_kw(model, method, [record_ids])
-        for rid in record_ids:
-            per_record.append(
-                PerRecordResult(
-                    id=rid,
-                    display_name=names.get(rid, str(rid)),
-                    ok=True,
-                )
-            )
-        succeeded = total
-    except Exception as batch_exc:  # noqa: BLE001
-        batch_msg = str(batch_exc)
-        for rid in record_ids:
-            try:
-                client.execute_kw(model, method, [[rid]])
-                per_record.append(
-                    PerRecordResult(
-                        id=rid,
-                        display_name=names.get(rid, str(rid)),
-                        ok=True,
-                    )
-                )
-                succeeded += 1
-            except Exception as row_exc:  # noqa: BLE001
-                per_record.append(
-                    PerRecordResult(
-                        id=rid,
-                        display_name=names.get(rid, str(rid)),
-                        ok=False,
-                        error=str(row_exc) or batch_msg,
-                    )
-                )
-                failed += 1
+    per_record, aborted, unprocessed = execute_in_batches(
+        record_ids,
+        lambda chunk: _execute_transition_chunk(
+            client, model=model, method=method, record_ids=chunk, names=names
+        ),
+        batch_size=batch_size or settings.bulk_batch_size,
+        sleep_ms=sleep_ms if sleep_ms is not None else settings.bulk_batch_sleep_ms,
+        should_abort=should_abort,
+        on_mutations=on_mutations,
+    )
+    succeeded = sum(1 for r in per_record if r.ok)
+    failed = sum(1 for r in per_record if not r.ok)
+    processed_count = len(per_record)
+    all_pending = list(unprocessed) + list(pending_ids or [])
+
+    if aborted:
+        final_status = "aborted"
+        msg = (
+            f"Aborted after {processed_count} record(s): {succeeded} ok, {failed} failed. "
+            f"{len(all_pending)} record(s) not processed."
+        )
+    elif status == "sample_paused" and all_pending:
+        final_status = "sample_paused"
+        msg = (
+            f"Sample phase: {method} on {processed_count} record(s) — "
+            f"{succeeded} ok, {failed} failed. Review results, then continue for "
+            f"{len(all_pending)} remaining record(s)."
+        )
+    else:
+        final_status = "completed" if not all_pending else status
+        msg = (
+            f"{method}: {succeeded} ok, {failed} failed of {processed_count} record(s)"
+            if failed
+            else f"{method}: {succeeded} record(s) updated."
+        )
+        if all_pending and final_status != "completed":
+            msg += f" {len(all_pending)} record(s) pending."
 
     return BulkRunResult(
         run_id=run_id,
@@ -246,9 +316,9 @@ def run_bulk_transition(
         failed=failed,
         per_record=per_record,
         dry_run=False,
-        message=(
-            f"{method}: {succeeded} ok, {failed} failed of {total} record(s)"
-            if failed
-            else f"{method}: {succeeded} record(s) updated."
-        ),
+        message=msg,
+        status=final_status,
+        pending_ids=all_pending,
+        processed_count=processed_count,
+        aborted=aborted,
     )

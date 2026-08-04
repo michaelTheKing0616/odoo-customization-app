@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -24,6 +27,12 @@ from app.snapshots import (
 )
 from app.protected_enforcement import manifest_for_connection, scrub_spec_for_protected_apply
 from app.spec_apply_ui import apply_module_spec_ui
+from app.mutation_lock_dep import require_connection_mutation_lock
+from app.custom_code_authoring import lint_custom_code_blocks, model_class_skeleton
+from app.module_spec_codec import export_draft_module_zip
+from app.workspace_auth import WorkspaceAuth, require_app_auth
+from app.code_studio_gating import assert_code_studio_entitlement, assert_developer_role
+from app.mutation_lock_dep import require_connection_mutation_lock
 
 router = APIRouter(
     prefix="/connections/{connection_id}/module-spec",
@@ -108,36 +117,126 @@ def validate_live_module_spec(
     )
 
 
-@router.post("/validate-live", response_model=ValidateLiveOut)
-def validate_live_module_spec(
+class LintBlocksBody(BaseModel):
+    spec: dict
+
+
+class ExportSandboxBody(BaseModel):
+    spec: dict
+    async_job: bool = True
+    odoo_major: int | None = None
+
+
+class SkeletonBody(BaseModel):
+    spec: dict
+    model: str
+
+
+@router.post("/lint-blocks")
+def lint_blocks_route(
     connection_id: str,
-    body: ModuleSpecValidateLiveBody,
+    body: LintBlocksBody,
     db: Session = Depends(get_db),
-) -> ValidateLiveOut:
-    """Read-only pre-apply checks against the live Odoo instance."""
-    if not isinstance(body.spec, dict) or not body.spec.get("models"):
-        raise HTTPException(status_code=422, detail="spec.models must be a non-empty list")
-    try:
-        conn = get_connection_or_404(db, connection_id)
-        client = client_from_connection(conn)
-        result = validate_module_spec_live(client, body.spec)
-    except OdooClientError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    return ValidateLiveOut(
-        ok=result.ok,
-        items=[
-            ValidateLiveItemOut(
-                item_id=i.item_id,
-                category=i.category,
-                status=i.status,
-                message=i.message,
-            )
-            for i in result.items
-        ],
-        fail_count=result.fail_count,
-        warn_count=result.warn_count,
-        message=result.message,
-    )
+    auth: WorkspaceAuth = Depends(require_app_auth),
+) -> dict:
+    assert_developer_role(auth)
+    assert_code_studio_entitlement(db, auth)
+    get_connection_or_404(db, connection_id)
+    return lint_custom_code_blocks(body.spec)
+
+
+@router.post("/skeleton")
+def model_skeleton_route(
+    connection_id: str,
+    body: SkeletonBody,
+    auth: WorkspaceAuth = Depends(require_app_auth),
+) -> dict:
+    assert_developer_role(auth)
+    return {"model": body.model, "code": model_class_skeleton(body.spec, body.model)}
+
+
+@router.post("/export-sandbox")
+def export_sandbox_from_draft(
+    connection_id: str,
+    body: ExportSandboxBody,
+    db: Session = Depends(get_db),
+    auth: WorkspaceAuth = Depends(require_app_auth),
+) -> dict:
+    """DEV-2 — export draft ModuleSpec zip and run sandbox gate."""
+    assert_developer_role(auth)
+    assert_code_studio_entitlement(db, auth)
+    conn = get_connection_or_404(db, connection_id)
+    lint = lint_custom_code_blocks(body.spec)
+    if not lint.get("ok"):
+        raise HTTPException(status_code=422, detail={"lint_failed": True, **lint})
+    import base64
+
+    from app.jobs import create_job, enqueue
+    from app.sandbox import resolve_sandbox_major, run_sandbox_install
+    from app.promote import record_sandbox_validation, sha256_bytes
+
+    major = body.odoo_major or resolve_sandbox_major(conn.server_version)
+    zip_bytes = export_draft_module_zip(body.spec, odoo_major=major)
+    zip_b64 = base64.b64encode(zip_bytes).decode("ascii")
+    tech = str(body.spec.get("technical_name") or "custom_module")
+
+    if not body.async_job:
+        result = run_sandbox_install(
+            zip_bytes=zip_bytes,
+            technical_name=tech,
+            odoo_major=major,
+            extra_modules=list(body.spec.get("depends") or []),
+        )
+        if not result.get("ok"):
+            return {"ok": False, "lint": lint, "sandbox": result}
+        validation_id = record_sandbox_validation(
+            db,
+            connection_id=connection_id,
+            zip_sha256=sha256_bytes(zip_bytes),
+            message=result.get("message", "ok"),
+        )
+        return {
+            "ok": True,
+            "lint": lint,
+            "validation_id": validation_id,
+            "zip_base64": zip_b64,
+            "sandbox": result,
+        }
+
+    job = create_job(db, kind="sandbox", connection_id=connection_id)
+
+    def _work() -> dict:
+        result = run_sandbox_install(
+            zip_bytes=zip_bytes,
+            technical_name=tech,
+            odoo_major=major,
+            job_id=job.id,
+            extra_modules=list(body.spec.get("depends") or []),
+        )
+        from app.db import SessionLocal
+
+        wdb = SessionLocal()
+        try:
+            validation_id = None
+            if result.get("ok"):
+                validation_id = record_sandbox_validation(
+                    wdb,
+                    connection_id=connection_id,
+                    zip_sha256=sha256_bytes(zip_bytes),
+                    message=result.get("message", "ok"),
+                )
+        finally:
+            wdb.close()
+        return {
+            "ok": bool(result.get("ok")),
+            "validation_id": validation_id,
+            "zip_base64": zip_b64,
+            "sandbox": result,
+            "lint": lint,
+        }
+
+    enqueue(job.id, _work)
+    return {"ok": True, "job_id": job.id, "lint": lint, "message": "Sandbox job queued"}
 
 
 @router.post("/apply", response_model=ModuleSpecApplyOut)
@@ -145,6 +244,7 @@ def apply_module_spec(
     connection_id: str,
     body: ModuleSpecApplyBody,
     db: Session = Depends(get_db),
+    _: Annotated[None, Depends(require_connection_mutation_lock)] = None,
 ) -> ModuleSpecApplyOut:
     """Generate UI from ModuleSpec JSON (models, fields, views, menus, smart buttons)."""
     try:

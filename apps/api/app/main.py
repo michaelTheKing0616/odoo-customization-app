@@ -13,6 +13,7 @@ from app.auth import ensure_env_bootstrap_key
 from app.db import SessionLocal, init_db
 from app.rate_limit import RateLimitMiddleware
 from app.entitlements import require_feature
+from app.safety_dependency import enforce_safety_gate
 from app.workspace_auth import require_app_auth
 from app.routers import (
     access,
@@ -33,6 +34,7 @@ from app.routers import (
     domain_playbooks,
     ee_playbooks,
     studio_feature_recipes,
+    trust,
     environments,
     expert,
     export_sandbox,
@@ -45,6 +47,7 @@ from app.routers import (
     module_spec,
     power_ops,
     preview_proxy,
+    production_readiness,
     projects,
     reminders,
     reports,
@@ -52,6 +55,9 @@ from app.routers import (
     snapshots,
     views,
     website,
+    workspaces,
+    code_studio,
+    script_runner,
 )
 from app.settings import settings
 
@@ -105,15 +111,17 @@ app.add_middleware(RateLimitMiddleware)
 app.add_middleware(AuditLogMiddleware)
 
 # All /api/* routers (except auth status/bootstrap which skip inside the dependency)
-_protected = [Depends(require_app_auth)]
+_protected = [Depends(require_app_auth), Depends(enforce_safety_gate)]
 
 app.include_router(auth.router, prefix="/api")
-app.include_router(accounts.router, prefix="/api")
-app.include_router(billing.router, prefix="/api")
-app.include_router(admin.router, prefix="/api", dependencies=[Depends(require_app_auth)])
+app.include_router(accounts.router, prefix="/api", dependencies=[Depends(enforce_safety_gate)])
+app.include_router(billing.router, prefix="/api", dependencies=[Depends(enforce_safety_gate)])
+app.include_router(admin.router, prefix="/api", dependencies=[Depends(require_app_auth), Depends(enforce_safety_gate)])
 app.include_router(audit.router, prefix="/api", dependencies=_protected)
 app.include_router(jobs.router, prefix="/api", dependencies=_protected)
 app.include_router(connections.router, prefix="/api", dependencies=_protected)
+app.include_router(production_readiness.router, prefix="/api", dependencies=_protected)
+app.include_router(trust.router, prefix="/api")
 app.include_router(health_check.router, prefix="/api", dependencies=_protected + [Depends(require_feature("health_check"))])
 app.include_router(ee_drivers.router, prefix="/api", dependencies=_protected)
 app.include_router(approvals.router, prefix="/api", dependencies=_protected + [Depends(require_feature("approvals"))])
@@ -145,6 +153,17 @@ app.include_router(reports.router, prefix="/api", dependencies=_protected + [Dep
 app.include_router(id_generator.router, prefix="/api", dependencies=_protected + [Depends(require_feature("id_generator"))])
 app.include_router(environments.router, prefix="/api", dependencies=_protected + [Depends(require_feature("pipelines"))])
 app.include_router(website.router, prefix="/api", dependencies=_protected)
+app.include_router(
+    code_studio.router,
+    prefix="/api",
+    dependencies=_protected + [Depends(require_feature("dev_tools"))],
+)
+app.include_router(
+    script_runner.router,
+    prefix="/api",
+    dependencies=_protected + [Depends(require_feature("dev_tools"))],
+)
+app.include_router(workspaces.router, prefix="/api", dependencies=_protected)
 
 
 @app.get("/health")

@@ -99,8 +99,13 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = ""
     smtp_use_tls: bool = True
-    # OAuth (MON-1) — off by default; [SKIPPED] implementation until configured
+    # OAuth (MON-1) — off by default; enable with OAUTH_PROVIDERS=google,github
     oauth_providers: str = ""
+    oauth_redirect_base: str = ""
+    google_oauth_client_id: str = ""
+    google_oauth_client_secret: str = ""
+    github_oauth_client_id: str = ""
+    github_oauth_client_secret: str = ""
 
     app_admin_email: str = ""
     app_admin_password: str = ""
@@ -122,6 +127,25 @@ class Settings(BaseSettings):
     paystack_extra_slot_business_kobo: int = 0
     business_trial_enabled: bool = True
     business_trial_days: int = 14
+
+    # TRUST-3 — blast-radius limits
+    bulk_sample_first_enabled: bool = True
+    bulk_sample_first_threshold: int = 50
+    bulk_sample_size: int = 10
+    bulk_cap_reversible: int = 1000
+    bulk_cap_destructive: int = 200
+    bulk_batch_size: int = 40
+    bulk_batch_sleep_ms: int = 0
+    bulk_anomaly_hourly_limit: int = 5000
+    bulk_anomaly_exempt_internal: bool = True
+    field_export_max_rows: int = 100_000
+    field_export_batch_size: int = 500
+
+    # TRUST-9 — design-partner beta / GA launch
+    beta_production_gating_enabled: bool = True
+    production_write_mode_ga_unlocked: bool = False
+    beta_ga_min_workspaces: int = 8
+    beta_ga_min_weeks: int = 4
 
     @property
     def cors_origin_list(self) -> list[str]:

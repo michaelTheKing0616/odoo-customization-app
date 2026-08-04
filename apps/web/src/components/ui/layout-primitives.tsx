@@ -3,16 +3,15 @@ import { cn } from "@/lib/cn";
 export function Card({
   className,
   children,
-}: {
-  className?: string;
-  children: React.ReactNode;
-}) {
+  ...props
+}: React.ComponentPropsWithoutRef<"div">) {
   return (
     <div
       className={cn(
         "rounded-md border border-border-subtle bg-surface-raised shadow-subtle",
         className,
       )}
+      {...props}
     >
       {children}
     </div>

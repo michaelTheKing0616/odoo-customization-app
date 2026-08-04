@@ -76,6 +76,7 @@ function mockConnection(
     db_name: "odoo_dev",
     username: "admin",
     server_version: caps?.server_version ?? null,
+    write_mode: "standard",
     created_at: null,
     updated_at: null,
     capabilities: caps,

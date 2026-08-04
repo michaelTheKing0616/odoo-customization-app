@@ -1,6 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { CodeEditorPanel } from "@/components/CodeEditorPanel";
+import { Button } from "@/components/ui/Button";
+import { Callout } from "@/components/ui/Callout";
 
 export type ModuleSpecField = {
   name: string;
@@ -41,6 +44,11 @@ type Props = {
   value: ModuleSpecDoc;
   onChange: (next: ModuleSpecDoc) => void;
   readOnly?: boolean;
+  canEditCustomCode?: boolean;
+  onLintBlocks?: () => void;
+  onExportSandbox?: () => void;
+  lintBusy?: boolean;
+  sandboxBusy?: boolean;
 };
 
 const TTYPES = [
@@ -65,7 +73,16 @@ function ensureModels(spec: ModuleSpecDoc): ModuleSpecModel[] {
   return Array.isArray(spec.models) ? [...spec.models] : [];
 }
 
-export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
+export function ModuleSpecEditor({
+  value,
+  onChange,
+  readOnly,
+  canEditCustomCode = false,
+  onLintBlocks,
+  onExportSandbox,
+  lintBusy,
+  sandboxBusy,
+}: Props) {
   const [tab, setTab] = useState<
     "models" | "relations" | "extras" | "json" | "custom_code"
   >("models");
@@ -148,6 +165,30 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
     if (!model) return;
     const fields = (model.fields || []).filter((_, i) => i !== fi);
     updateModel(selectedModel, { ...model, fields });
+  }
+
+  function updateCustomBlocks(blocks: Array<Record<string, unknown>>) {
+    patch({ custom_code_blocks: blocks, unmapped: undefined });
+  }
+
+  function addCustomBlock() {
+    const blocks = [...customBlocks];
+    blocks.push({
+      source_file: "models/custom_logic.py",
+      kind: "python",
+      content: "from odoo import api, fields, models\n\n# Custom logic\n",
+      reason: "authoring",
+    });
+    updateCustomBlocks(blocks);
+  }
+
+  function updateCustomBlock(index: number, partial: Record<string, unknown>) {
+    const blocks = customBlocks.map((b, i) => (i === index ? { ...b, ...partial } : b));
+    updateCustomBlocks(blocks);
+  }
+
+  function removeCustomBlock(index: number) {
+    updateCustomBlocks(customBlocks.filter((_, i) => i !== index));
   }
 
   const tabs: Array<{ id: typeof tab; label: string }> = [
@@ -436,35 +477,91 @@ export function ModuleSpecEditor({ value, onChange, readOnly }: Props) {
       )}
 
       {tab === "custom_code" && (
-        <div className="p-4">
-          <p className="text-sm text-muted">
-            Custom logic preserved from Code→UI import — compute methods, constraints,
-            and opaque XML. These blocks are not editable visually; export the module
-            to keep them verbatim, or edit the generated Python/XML source directly.
-          </p>
+        <div className="p-4 space-y-4">
+          <Callout variant="warning" title="Code ships as a module">
+            Custom Python/XML never applies via the live Generate UI path. Flow: export → sandbox
+            → promote. Live apply skips custom blocks with warnings.
+          </Callout>
+          {!canEditCustomCode ? (
+            <p className="text-sm text-muted">
+              Custom logic preserved from Code→UI import — read-only unless you have the developer
+              role and dev_tools entitlement.
+            </p>
+          ) : null}
+          {canEditCustomCode && !readOnly ? (
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" variant="secondary" onClick={addCustomBlock}>
+                + Add code block
+              </Button>
+              {onLintBlocks ? (
+                <Button type="button" size="sm" variant="secondary" onClick={onLintBlocks} disabled={lintBusy}>
+                  Lint blocks
+                </Button>
+              ) : null}
+              {onExportSandbox ? (
+                <Button type="button" size="sm" onClick={onExportSandbox} disabled={sandboxBusy}>
+                  Export &amp; sandbox-test
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
           {customBlocks.length === 0 ? (
-            <p className="mt-3 text-sm text-muted">None — full visual fidelity.</p>
+            <p className="text-sm text-muted">None — full visual fidelity.</p>
           ) : (
-            <ul className="mt-3 space-y-3">
+            <ul className="space-y-4">
               {customBlocks.map((u, i) => (
-                <li
-                  key={i}
-                  className="border border-border-subtle bg-surface p-3 text-xs text-muted"
-                >
-                  <p className="font-mono text-[#c9a96e]">
-                    {String(u.kind || "opaque")} ·{" "}
-                    {String(u.source_file || u.path || u.model || "")}
-                  </p>
-                  <p className="mt-1 text-muted">
-                    {String(u.reason || "custom_logic_not_editable_visually")}
-                  </p>
-                  <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap">
-                    {typeof u.content === "string"
-                      ? u.content.slice(0, 4000)
-                      : typeof u.source === "string"
-                        ? u.source.slice(0, 4000)
-                        : JSON.stringify(u.snippets || u, null, 2).slice(0, 4000)}
-                  </pre>
+                <li key={i} className="border border-border-subtle bg-surface p-3">
+                  {canEditCustomCode && !readOnly ? (
+                    <div className="space-y-3">
+                      <label className="block text-xs text-muted">
+                        Source file
+                        <input
+                          className="mt-1 w-full border border-border-subtle bg-surface-muted px-2 py-1 font-mono text-xs"
+                          value={String(u.source_file || u.path || "")}
+                          onChange={(e) => updateCustomBlock(i, { source_file: e.target.value })}
+                        />
+                      </label>
+                      <label className="block text-xs text-muted">
+                        Kind
+                        <select
+                          className="mt-1 w-full border border-border-subtle bg-surface-muted px-2 py-1 text-xs"
+                          value={String(u.kind || "python")}
+                          onChange={(e) => updateCustomBlock(i, { kind: e.target.value })}
+                        >
+                          <option value="python">python</option>
+                          <option value="python_methods">python_methods</option>
+                          <option value="xml">xml</option>
+                        </select>
+                      </label>
+                      <CodeEditorPanel
+                        value={String(u.content || u.source || "")}
+                        onChange={(code) => updateCustomBlock(i, { content: code })}
+                        label={String(u.source_file || "block")}
+                        rows={14}
+                        testId={`custom-code-block-${i}`}
+                      />
+                      <Button type="button" size="sm" variant="ghost" onClick={() => removeCustomBlock(i)}>
+                        Remove block
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="font-mono text-xs text-[#c9a96e]">
+                        {String(u.kind || "opaque")} ·{" "}
+                        {String(u.source_file || u.path || u.model || "")}
+                      </p>
+                      <p className="mt-1 text-xs text-muted">
+                        {String(u.reason || "custom_logic_not_editable_visually")}
+                      </p>
+                      <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-xs">
+                        {typeof u.content === "string"
+                          ? u.content.slice(0, 4000)
+                          : typeof u.source === "string"
+                            ? u.source.slice(0, 4000)
+                            : JSON.stringify(u.snippets || u, null, 2).slice(0, 4000)}
+                      </pre>
+                    </>
+                  )}
                 </li>
               ))}
             </ul>

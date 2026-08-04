@@ -30,7 +30,7 @@ from app.settings import settings
 
 _ph = PasswordHasher(time_cost=2, memory_cost=65536, parallelism=1, hash_len=32, salt_len=16)
 
-ROLE_ORDER = {"viewer": 0, "builder": 1, "admin": 2, "owner": 3}
+ROLE_ORDER = {"viewer": 0, "builder": 1, "developer": 2, "admin": 3, "owner": 4}
 VALID_ROLES = frozenset(ROLE_ORDER)
 
 SESSION_COOKIE = "oc_session"
@@ -105,6 +105,11 @@ def can_mutate(role: str) -> bool:
 
 def can_admin(role: str) -> bool:
     return role_at_least(role, "admin")
+
+
+def can_develop(role: str) -> bool:
+    """DEV-1 — Code Studio and module code authoring."""
+    return role in {"developer", "admin", "owner"}
 
 
 def slugify(name: str) -> str:
@@ -370,6 +375,7 @@ def reset_password(db: Session, raw_token: str, new_password: str) -> User:
         raise AccountError("invalid_token", "Reset link is invalid.", 400)
     row.used_at = _now()
     user.password_hash = hash_password(new_password)
+    user.password_login_enabled = True
     user.failed_login_count = 0
     user.locked_until = None
     db.add(row)

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from app.account_service import AccountError
 from app.capabilities import capabilities_from_version, probe_web_base_url, sample_installed_modules, tier_matrix_response
 from app.crypto import encrypt_secret
 from app.db import get_db
@@ -21,8 +24,13 @@ from app.schemas import (
     ProbeResult,
     ProtectedModulesOut,
     TierMatrixOut,
+    WriteModeUpdate,
+    WritesPausedUpdate,
 )
+from app.beta_gating import can_unlock_production_write_mode
 from app.migration_assist import migration_assist_for_connection
+from app.production_readiness import evaluate_production_readiness
+from app.write_mode_service import normalize_write_mode
 from app.tier_matrix import invalidate_matrix_cache
 
 router = APIRouter(prefix="/connections", tags=["connections"])
@@ -57,6 +65,8 @@ def _connection_out(row: OdooConnection) -> ConnectionOut:
         last_seen_version=row.last_seen_version,
         upgrade_detected=bool(row.upgrade_detected),
         upgrade_detected_at=row.upgrade_detected_at,
+        write_mode=row.write_mode or "standard",
+        writes_paused=bool(row.writes_paused),
         created_at=row.created_at,
         updated_at=row.updated_at,
         capabilities=capabilities_from_version(row.server_version, url=row.url),
@@ -96,6 +106,7 @@ def create_connection(
         secret_encrypted=encrypt_secret(body.password),
         server_version=server_version,
         last_seen_version=server_version,
+        write_mode=os.environ.get("TEST_DEFAULT_WRITE_MODE", "observer"),
         workspace_id=auth.workspace_id if auth.workspace_scoped else None,
     )
     db.add(row)
@@ -176,6 +187,76 @@ def update_connection(
         # cannot keep a wrong capability matrix until the next probe.
         row.server_version = None
 
+    db.commit()
+    db.refresh(row)
+    return _connection_out(row)
+
+
+def _account_error(exc: AccountError) -> HTTPException:
+    return HTTPException(
+        status_code=exc.status,
+        detail={"error": exc.code, "message": exc.message},
+    )
+
+
+@router.patch("/{connection_id}/write-mode", response_model=ConnectionOut)
+def update_write_mode(
+    connection_id: str,
+    body: WriteModeUpdate,
+    db: Session = Depends(get_db),
+    auth: WorkspaceAuth = Depends(require_admin),
+) -> ConnectionOut:
+    row = get_scoped_connection_or_404(db, connection_id, auth)
+    try:
+        mode = normalize_write_mode(body.write_mode)
+    except AccountError as exc:
+        raise _account_error(exc) from exc
+    if mode == "production":
+        ok, err_code = can_unlock_production_write_mode(db, row)
+        if not ok:
+            if err_code == "production_readiness_required":
+                report = evaluate_production_readiness(db, row)
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "error": err_code,
+                        "message": (
+                            "Production write mode requires passing the production readiness "
+                            "checklist on this connection."
+                        ),
+                        "checklist": [
+                            {"key": i.key, "status": i.status, "detail": i.detail}
+                            for i in report.items
+                        ],
+                    },
+                )
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": err_code or "beta_partner_required",
+                    "message": (
+                        "Production write mode is limited to design-partner workspaces until GA. "
+                        "Use standard mode, or set PRODUCTION_WRITE_MODE_GA_UNLOCKED=1 at launch."
+                    ),
+                },
+            )
+    row.write_mode = mode
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _connection_out(row)
+
+
+@router.patch("/{connection_id}/writes-paused", response_model=ConnectionOut)
+def update_writes_paused(
+    connection_id: str,
+    body: WritesPausedUpdate,
+    db: Session = Depends(get_db),
+    auth: WorkspaceAuth = Depends(require_admin),
+) -> ConnectionOut:
+    row = get_scoped_connection_or_404(db, connection_id, auth)
+    row.writes_paused = body.writes_paused
+    db.add(row)
     db.commit()
     db.refresh(row)
     return _connection_out(row)

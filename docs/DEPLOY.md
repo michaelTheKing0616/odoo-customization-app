@@ -26,6 +26,44 @@ export RATE_LIMIT_PER_MINUTE=120   # 0 disables (dev only)
 - `FERNET_KEY` — encrypts Odoo connection secrets at rest (required).
 - `DATABASE_URL` — app Postgres (not customer Odoo DB).
 - Prefer Odoo **API keys** over passwords in connection forms.
+- Rotate `FERNET_KEY` with `scripts/rotate_fernet_key.sh` (see procedure in script header).
+
+## App database backup & restore
+
+The app Postgres holds metadata snapshots, audit rows, and encrypted Odoo credentials — treat it as production-critical.
+
+**Backup (daily recommended):**
+
+```bash
+export DATABASE_URL='postgresql+psycopg://user:pass@host:5432/odoo_custom'
+PG_URL="${DATABASE_URL/postgresql+psycopg/postgresql}"
+pg_dump -Fc --no-owner --no-acl -f "odoo_custom_$(date +%Y%m%d).dump" "$PG_URL"
+```
+
+Store dumps off-host (object storage or encrypted volume). Retain ≥30 days for snapshot rollback support.
+
+**Restore (maintenance window — destructive to target DB):**
+
+```bash
+export DATABASE_URL='postgresql+psycopg://user:pass@host:5432/odoo_custom'
+./scripts/restore_app_db.sh /path/to/odoo_custom_YYYYMMDD.dump
+```
+
+Verify on a **copy** first. After restore: restart API, `GET /health`, spot-check one connection probe.
+
+**Fernet rotation:** snapshot DB → `OLD_FERNET_KEY` + `NEW_FERNET_KEY` → `scripts/rotate_fernet_key.sh --dry-run` → apply → deploy new key.
+
+## Beta / GA (TRUST-9)
+
+```bash
+export BETA_PRODUCTION_GATING_ENABLED=1
+export PRODUCTION_WRITE_MODE_GA_UNLOCKED=0   # flip at GA launch
+export BETA_GA_MIN_WORKSPACES=8
+export BETA_GA_MIN_WEEKS=4
+```
+
+Partner runbook: `docs/BETA_PROTOCOL.md`. Mark workspaces via admin console or
+`PATCH /api/admin/workspaces/{id}/beta-partner`.
 
 ## Process
 
@@ -46,6 +84,7 @@ Fly.io or Railway — no paid SaaS dependency required for bootstrapping.
 | Playwright caps harness | Every PR if browser installed |
 | `major-matrix` sandbox | Manual workflow dispatch / weekly optional |
 | Live Odoo 16–19 integration | Local or scheduled; skip when stacks down |
+| `security-supply-chain` | Every PR — pip-audit, pnpm audit (high+), secrets scan |
 
 ## Post-deploy smoke
 

@@ -47,6 +47,7 @@ def _mk_connection(name: str = "pcm-guard") -> OdooConnection:
             db_name="odoo_dev",
             username="admin",
             secret_encrypted=encrypt_secret("admin"),
+            write_mode="standard",
         )
         db.add(row)
         db.commit()

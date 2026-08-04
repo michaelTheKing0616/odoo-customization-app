@@ -8,6 +8,7 @@ from urllib.parse import urljoin
 
 from odoo_client.compat.capabilities import VersionCapabilities
 from odoo_client.compat.registry import for_major, parse_major
+from odoo_client.write_mode import is_rpc_blocked_in_observer
 from odoo_client.models import (
     ConnectionConfig,
     CreateFieldRequest,
@@ -23,6 +24,18 @@ from odoo_client.models import (
 
 class OdooClientError(Exception):
     """Raised when an Odoo RPC call fails or returns an unexpected shape."""
+
+
+class ObserverModeError(OdooClientError):
+    """Raised when observer write mode blocks a mutating RPC call."""
+
+    def __init__(self, model: str, method: str) -> None:
+        self.model = model
+        self.method = method
+        super().__init__(
+            f"Observer mode blocks {model}.{method}(). "
+            "Unlock write mode on this connection to make changes."
+        )
 
 
 class OdooClient:
@@ -130,6 +143,8 @@ class OdooClient:
         args: list[Any] | None = None,
         kwargs: dict[str, Any] | None = None,
     ) -> Any:
+        if is_rpc_blocked_in_observer(self.config.write_mode, method):
+            raise ObserverModeError(model, method)
         return self._object.execute_kw(
             self.config.db,
             self.uid,
@@ -653,6 +668,26 @@ class OdooClient:
         if not vals:
             raise OdooClientError("No writable attributes after validation")
 
+        self.execute_kw("ir.model.fields", "write", [[field_id], vals])
+        return self.get_field(field_id)
+
+    def deprecate_field(self, field_id: int) -> FieldInfo:
+        """Rename custom field to x_deprecated_* and mark readonly (TRUST-4)."""
+        raw = self.read_field_raw(field_id)
+        name = str(raw.get("name") or "")
+        if not name.startswith("x_"):
+            raise OdooClientError(
+                f"Refusing to deprecate non-custom field {name!r} — only x_* fields allowed"
+            )
+        if name.startswith("x_deprecated_"):
+            raise OdooClientError(f"Field {name!r} is already deprecated")
+        new_name = f"x_deprecated_{name.removeprefix('x_')}"
+        desc = str(raw.get("field_description") or name)
+        vals = {
+            "name": new_name,
+            "field_description": f"[DEPRECATED] {desc}",
+            "readonly": True,
+        }
         self.execute_kw("ir.model.fields", "write", [[field_id], vals])
         return self.get_field(field_id)
 
