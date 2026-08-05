@@ -80,10 +80,12 @@ export function ProductionReadinessPanel({ connection, onRefreshConnection }: Pr
   const artifactUrl = drillId
     ? `/api/connections/${connection.id}/snapshots/${drillId}/artifact.csv`
     : null;
+  const checklist =
+    report && !Array.isArray(report) && Array.isArray(report.items) ? report : null;
 
   return (
     <Callout
-      variant={report?.passed ? "info" : "warning"}
+      variant={checklist?.passed ? "info" : "warning"}
       title="Production readiness checklist"
       testId="production-readiness-panel"
       className="mt-4"
@@ -96,9 +98,9 @@ export function ProductionReadinessPanel({ connection, onRefreshConnection }: Pr
         .
       </p>
       {error ? <ErrorNotice message={error} className="mt-3" /> : null}
-      {report ? (
+      {checklist ? (
         <ul className="mt-3 space-y-2">
-          {report.items.map((item) => (
+          {checklist.items.map((item) => (
             <li key={item.key}>
               <Card className="flex flex-wrap items-start justify-between gap-2 p-3 text-sm">
                 <div>
@@ -171,7 +173,7 @@ export function ProductionReadinessPanel({ connection, onRefreshConnection }: Pr
           </Button>
         ) : null}
       </div>
-      {report?.passed ? (
+      {checklist?.passed ? (
         <p className="mt-3 text-sm text-ink" data-testid="production-readiness-passed">
           Checklist complete — production write mode can be enabled.
         </p>

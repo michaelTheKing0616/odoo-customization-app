@@ -115,7 +115,7 @@ test.describe("Wizard component flow", () => {
       "add inspection checklist to project tasks",
     );
 
-    const draftBtn = page.getByRole("button", { name: "Draft ModuleSpec" });
+    const draftBtn = page.getByTestId("create-draft");
     await expect(draftBtn).toBeDisabled();
 
     await page.getByTestId("review-connect-points").click();

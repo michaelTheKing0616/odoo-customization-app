@@ -950,53 +950,7 @@ def scaffold_approval_requests(
     return result
 
 
-def scaffold_approval_requests(
-    client: OdooClient,
-    *,
-    display_name: str | None = None,
-    technical_prefix: str | None = None,
-) -> ScaffoldResult:
-    """Approval Requests mini-app via ModuleSpec apply (CMP-10)."""
-    from app.approval_process_service import seed_demo_type
-    from app.approval_requests_pack import approval_requests_draft
-    from app.spec_apply_ui import apply_module_spec_ui
-
-    draft = approval_requests_draft(
-        display_name=display_name or "Approval Requests",
-    )
-    draft = _rewrite_pack_prefix(draft, technical_prefix)
-    ui = apply_module_spec_ui(client, draft)
-    seeded = seed_demo_type(client)
-    warnings = list(ui.warnings)
-    if seeded:
-        warnings.append(f"Seeded demo approval type id={seeded}")
-    result = ScaffoldResult(
-        template_id="approval_requests",
-        models=[
-            m["model"]
-            for m in (draft.get("models") or [])
-            if isinstance(m, dict) and m.get("model")
-        ],
-        models_created=ui.models_created,
-        models_skipped=[s.split(":", 1)[-1] for s in ui.skipped if s.startswith("model:")],
-        fields_created=ui.fields_created,
-        view_injects=ui.views_created + ui.views_updated,
-        menus_created=ui.menus_created,
-        warnings=warnings,
-        message=ui.message or "Approval Requests scaffolded",
-    )
-    return result
-
-
 TEMPLATE_META: list[AppTemplateMeta] = [
-    AppTemplateMeta(
-        id="approval_requests",
-        name="Approval Requests",
-        description=(
-            "Standalone multi-level approval processes — x_approval_type chains + "
-            "x_approval_request workflow (draft→submitted→approved/refused)"
-        ),
-    ),
     AppTemplateMeta(
         id="approval_requests",
         name="Approval Requests",
@@ -1043,7 +997,14 @@ TEMPLATES: dict[str, Callable[..., ScaffoldResult]] = {
 
 
 def list_templates() -> list[dict[str, str]]:
-    return [{"id": t.id, "name": t.name, "description": t.description} for t in TEMPLATE_META]
+    seen: set[str] = set()
+    out: list[dict[str, str]] = []
+    for t in TEMPLATE_META:
+        if t.id in seen:
+            continue
+        seen.add(t.id)
+        out.append({"id": t.id, "name": t.name, "description": t.description})
+    return out
 
 
 def run_scaffold(

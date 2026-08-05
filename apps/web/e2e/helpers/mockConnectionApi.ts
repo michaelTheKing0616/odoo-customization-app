@@ -28,7 +28,19 @@ export const DEMO_CONN = {
   },
 };
 
-/** Intercept FastAPI calls (NEXT_PUBLIC_API_URL defaults to :8000) for shell + primary pages. */
+const PRODUCTION_READINESS = {
+  passed: false,
+  items: [
+    {
+      key: "snapshot_drill",
+      label: "Snapshot drill",
+      detail: "Mock checklist for vision-verify.",
+      status: "warn" as const,
+    },
+  ],
+};
+
+/** Intercept FastAPI calls for shell + primary pages (any NEXT_PUBLIC_API_URL host). */
 export async function mockConnectionApi(page: Page) {
   await page.route("**/api/billing/**", async (route) => {
     await route.fulfill({
@@ -103,8 +115,41 @@ export async function mockConnectionApi(page: Page) {
       return;
     }
 
+    if (url.match(/\/modules\/promoted(\?|$)/)) {
+      await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+      return;
+    }
+
     if (url.match(/\/modules(\?|$)/)) {
       await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+      return;
+    }
+
+    if (url.match(/\/production-readiness(\?|$)/)) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(PRODUCTION_READINESS),
+      });
+      return;
+    }
+
+    if (url.match(/\/ee-playbooks(\?|$)/)) {
+      await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+      return;
+    }
+
+    if (url.match(/\/domain-playbooks(\?|$)/)) {
+      await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+      return;
+    }
+
+    if (url.match(/\/health-check\/latest(\?|$)/)) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(null),
+      });
       return;
     }
 
