@@ -14,6 +14,6 @@
     </record>
 {% endfor %}
 {% for menu in spec.menus %}
-    <menuitem id="{{ menu.xml_id() }}" name="{{ menu.name | xml }}"{% if menu.parent_xml_id %} parent="{{ menu.parent_xml_id | xml }}"{% endif %}{% if menu.action_xml_id %} action="{{ menu.action_xml_id | xml }}"{% endif %} sequence="{{ menu.sequence }}"/>
+    <menuitem id="{{ menu.xml_id() }}" name="{{ menu.name | xml }}"{% if menu.parent_xml_id %} parent="{{ menu.parent_xml_id | xml }}"{% endif %}{% if menu.action_xml_id %} action="{{ menu.action_xml_id | xml }}"{% endif %} sequence="{{ menu.sequence }}"{% if menu.group_xml_ids %} groups="{% for g in menu.group_xml_ids %}{{ spec.technical_name }}.{{ g }}{% if not loop.last %},{% endif %}{% endfor %}"{% endif %}/>
 {% endfor %}
 </odoo>

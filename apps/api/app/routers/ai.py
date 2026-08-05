@@ -30,6 +30,8 @@ from app.schemas import (
     AiCheckOverlapOut,
     AiDraftModuleBody,
     AiDraftModuleOut,
+    AiDraftCacheOut,
+    AiEnrichDraftBody,
     AiReapplyReuseBody,
     AiReapplyReuseOut,
     AiProposeConnectPointsBody,
@@ -356,6 +358,41 @@ def draft_module(
                 odoo_client = None
         except LookupError:
             protected_manifest = None
+
+    if body.async_job:
+        from app.ai_draft_jobs import enqueue_draft_job
+
+        job_id = enqueue_draft_job(
+            db,
+            connection_id=body.connection_id,
+            body_kwargs={
+                "prompt": body.prompt,
+                "available_models": available,
+                "installed_modules": installed,
+                "stock_catalog": stock_catalog,
+                "reuse_models": body.reuse_models or None,
+                "rejected_reuse_models": body.rejected_reuse_models or None,
+                "reuse_views": reuse_views or None,
+                "reuse_actions": reuse_actions or None,
+                "expand": body.expand,
+                "pipeline": body.pipeline,
+                "protected_manifest": protected_manifest,
+                "odoo_version": odoo_version,
+                "grain_override": body.grain,
+                "gallery_id": body.gallery_id,
+                "host_model_override": body.host_model,
+                "connect_points_override": body.connect_points,
+                "client": odoo_client,
+                "connection_id": body.connection_id,
+            },
+        )
+        return AiDraftModuleOut(
+            ok=True,
+            draft={},
+            job_id=job_id,
+            note="Draft job queued — poll GET /api/jobs/{id} for progress and result.",
+        )
+
     try:
         draft, raw, warnings, refusals = draft_module_from_prompt(
             body.prompt,
@@ -406,6 +443,16 @@ def draft_module(
         raise HTTPException(status_code=502, detail=f"AI draft failed: {exc}") from exc
 
     domain_pack = draft.get("domain_pack") if isinstance(draft, dict) else None
+    from app.ai_draft_cache import save_draft_cache
+
+    save_draft_cache(
+        db,
+        connection_id=body.connection_id,
+        prompt=body.prompt,
+        draft=draft,
+        raw_response=raw,
+        domain_pack=str(domain_pack) if domain_pack else None,
+    )
     return AiDraftModuleOut(
         ok=True,
         draft=draft,
@@ -461,3 +508,96 @@ def reapply_reuse(
     )
     warnings = apply_reuse_plan(draft, plan)
     return AiReapplyReuseOut(ok=True, draft=draft, warnings=warnings)
+
+
+@router.get("/draft-cache", response_model=list[AiDraftCacheOut])
+def list_draft_cache_route(
+    connection_id: str | None = None,
+    limit: int = 20,
+    db: Session = Depends(get_db),
+) -> list[AiDraftCacheOut]:
+    from app.ai_draft_cache import cache_to_dict, list_draft_cache
+
+    rows = list_draft_cache(db, connection_id=connection_id, limit=limit)
+    return [AiDraftCacheOut(**cache_to_dict(r)) for r in rows]
+
+
+@router.get("/draft-cache/{cache_id}", response_model=AiDraftCacheOut)
+def get_draft_cache_route(cache_id: str, db: Session = Depends(get_db)) -> AiDraftCacheOut:
+    from app.ai_draft_cache import cache_to_dict, get_draft_cache
+
+    row = get_draft_cache(db, cache_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Cached draft not found")
+    return AiDraftCacheOut(**cache_to_dict(row))
+
+
+@router.post("/enrich-draft", response_model=AiDraftModuleOut)
+def enrich_draft_route(
+    body: AiEnrichDraftBody, db: Session = Depends(get_db)
+) -> AiDraftModuleOut:
+    """Re-run only failed LLM enrichment steps and merge into existing draft."""
+    if body.async_job:
+        from app.ai_enrich_jobs import enqueue_enrich_job
+
+        job_id = enqueue_enrich_job(
+            db,
+            connection_id=body.connection_id,
+            prompt=body.prompt,
+            draft=body.draft,
+            failed_steps=body.failed_steps or None,
+        )
+        return AiDraftModuleOut(
+            ok=True,
+            draft=body.draft,
+            job_id=job_id,
+            note="Enrichment job queued — poll GET /api/jobs/{id} for progress and result.",
+        )
+
+    import copy
+
+    from app.ai_llm_status import attach_llm_status, sanitize_draft_payload
+    from app.ai_model_quality import run_model_quality_pass
+    from app.ai_depth import run_depth_pass
+    from app.ai_critique import run_self_critique
+    from app.llm_provider import get_llm_provider
+
+    draft = copy.deepcopy(body.draft)
+    provider = get_llm_provider()
+    warnings: list[str] = []
+    failed = set(body.failed_steps or [])
+    status = draft.get("_llm_status") if isinstance(draft.get("_llm_status"), dict) else {}
+    if not failed and status.get("failed_steps"):
+        failed = set(status.get("failed_steps") or [])
+
+    if provider and ("quality" in failed or "depth" in failed or "critique" in failed):
+        if "quality" in failed:
+            draft, q_w = run_model_quality_pass(
+                draft,
+                user_prompt=body.prompt,
+                ambition=str(draft.get("_ambition") or "standard"),
+                provider=provider,
+                expand_llm=True,
+            )
+            warnings.extend(q_w)
+        if "depth" in failed:
+            draft, d_w = run_depth_pass(
+                draft, user_prompt=body.prompt, provider=provider, expand_llm=True
+            )
+            warnings.extend(d_w)
+        if "critique" in failed:
+            draft, c_w = run_self_critique(draft, user_prompt=body.prompt, repair=True)
+            warnings.extend(c_w)
+
+    draft = sanitize_draft_payload(draft)
+    attach_llm_status(draft, mode="llm_full", completed_steps=list(failed))
+    from app.ai_draft_cache import save_draft_cache
+
+    save_draft_cache(
+        db,
+        connection_id=body.connection_id,
+        prompt=body.prompt,
+        draft=draft,
+        domain_pack=str(draft.get("domain_pack") or "") or None,
+    )
+    return AiDraftModuleOut(ok=True, draft=draft, warnings=warnings)

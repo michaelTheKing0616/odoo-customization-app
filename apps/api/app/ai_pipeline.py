@@ -71,14 +71,18 @@ def _llm_json(
     format_schema: dict[str, Any] | None = None,
     temperature: float | None = None,
     timeout_s: float = 120.0,
+    step: str = "draft_json",
 ) -> Any:
-    raw = provider.generate_json(
+    from app.ai_llm_budget import llm_json_with_budget
+
+    raw, _down = llm_json_with_budget(
+        provider,
+        step,
         prompt,
         system=system,
         reasoning=reasoning,
         format_schema=format_schema,
         temperature=temperature,
-        timeout_s=timeout_s,
     )
     return _extract_json(raw)
 
@@ -132,6 +136,7 @@ def step1_entities(
         reasoning=False,
         format_schema=FORMAT_SCHEMA_ENTITIES,
         temperature=STEP_TEMPERATURES["pipeline.entities"],
+        step="entities",
     )
     if not isinstance(data, list):
         data = data.get("entities") if isinstance(data, dict) else []
@@ -205,6 +210,7 @@ def step2_fields(
         reasoning=False,
         format_schema=FORMAT_SCHEMA_FIELDS,
         temperature=STEP_TEMPERATURES["pipeline.fields"],
+        step="fields",
     )
     if isinstance(data, dict):
         data = data.get("fields") or []
@@ -280,6 +286,7 @@ def step3_relationships(
         reasoning=True,
         format_schema=FORMAT_SCHEMA_RELATIONSHIPS,
         temperature=STEP_TEMPERATURES["pipeline.relationships"],
+        step="relationships",
     )
     if isinstance(data, dict):
         data = data.get("relationships") or []
@@ -307,6 +314,7 @@ def step5_automations(
         reasoning=True,
         format_schema=FORMAT_SCHEMA_AUTOMATIONS,
         temperature=STEP_TEMPERATURES["pipeline.automations"],
+        step="automations",
     )
     if isinstance(data, dict):
         data = data.get("automations") or []

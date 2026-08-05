@@ -126,11 +126,11 @@ def infer_stock_reuse(
     pack_reuse_stock: list[dict[str, Any]] | None = None,
     rejected_models: list[str] | None = None,
     stock_catalog: list[dict[str, Any]] | None = None,
-) -> tuple[list[dict[str, Any]], list[str]]:
-    """Return (inferred decision dicts, notes). Each decision has confirmed=False."""
+) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
+    """Return (inferred decision dicts, notes, catalog_suggestions)."""
     text = (user_prompt or "").strip()
     if not text:
-        return [], []
+        return [], [], []
     nouns = set(extract_prompt_nouns(text))
     available = set(available_models) if available_models is not None else None
     modules = set(installed_modules) if installed_modules else None
@@ -241,7 +241,7 @@ def infer_stock_reuse(
             )
 
     if stock_catalog:
-        from app.ai_stock_catalog import infer_catalog_reuse, model_app_prefix
+        from app.ai_stock_catalog import infer_catalog_reuse
 
         catalog_rows = infer_catalog_reuse(
             text,
@@ -250,21 +250,15 @@ def infer_stock_reuse(
             installed_modules=modules,
             rejected=rejected,
         )
+        catalog_suggestions: list[dict[str, Any]] = []
         for row in catalog_rows:
             model = str(row.get("model") or "")
             if not model or model in seen_models:
                 continue
-            mods = tuple(str(m) for m in (row.get("modules") or ()) if m)
-            add_decision(
-                model,
-                reason=str(row.get("reason") or "Catalog match"),
-                rule_modules=mods or (model_app_prefix(model),),
-                forbid_parallel=tuple(str(x) for x in (row.get("forbid_parallel") or [])),
-                link_only=bool(row.get("link_only")),
-                source_tag="catalog",
-            )
+            catalog_suggestions.append(row)
+        return decisions, notes, catalog_suggestions
 
-    return decisions, notes
+    return decisions, notes, []
 
 
 __all__ = [

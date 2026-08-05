@@ -247,7 +247,7 @@ def test_noun_expand_adds_branch_model() -> None:
 
 
 def test_infer_product_reuse_when_installed() -> None:
-    decisions, _notes = infer_stock_reuse(
+    decisions, _notes, _cat = infer_stock_reuse(
         SUPERMARKET_PROMPT,
         available_models=["product.template", "product.product", "res.partner"],
         installed_modules=["base", "product", "contacts"],
@@ -257,7 +257,7 @@ def test_infer_product_reuse_when_installed() -> None:
 
 
 def test_infer_product_absent_notes_custom() -> None:
-    _decisions, notes = infer_stock_reuse(
+    _decisions, notes, _cat = infer_stock_reuse(
         "Supermarket product catalog",
         available_models=["res.partner"],
         installed_modules=["base", "contacts"],
@@ -266,7 +266,7 @@ def test_infer_product_absent_notes_custom() -> None:
 
 
 def test_infer_product_installable_not_installed_offers_install() -> None:
-    decisions, notes = infer_stock_reuse(
+    decisions, notes, _cat = infer_stock_reuse(
         "Supermarket product catalog",
         available_models=["res.partner"],
         installed_modules=["base", "contacts"],
@@ -286,7 +286,7 @@ def test_pack_product_template_wins_over_noun_inference() -> None:
             "forbid_parallel": ["x_product", "x_product_template"],
         }
     ]
-    decisions, _notes = infer_stock_reuse(
+    decisions, _notes, _cat = infer_stock_reuse(
         SUPERMARKET_PROMPT,
         available_models=["product.template", "product.product", "res.partner"],
         installed_modules=["base", "product", "contacts"],
@@ -299,7 +299,7 @@ def test_pack_product_template_wins_over_noun_inference() -> None:
 
 
 def test_rejected_models_skip_inference() -> None:
-    decisions, notes = infer_stock_reuse(
+    decisions, notes, _cat = infer_stock_reuse(
         SUPERMARKET_PROMPT,
         available_models=["product.template", "res.partner"],
         installed_modules=["base", "product", "contacts"],
@@ -362,7 +362,7 @@ def test_confirmed_product_reuse_forbids_x_product() -> None:
 
 
 def test_invoice_inference_link_only() -> None:
-    decisions, _notes = infer_stock_reuse(
+    decisions, _notes, _cat = infer_stock_reuse(
         "Track customer invoices and billing",
         available_models=["account.move", "res.partner"],
         installed_modules=["base", "account", "contacts"],

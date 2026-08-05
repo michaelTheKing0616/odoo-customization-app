@@ -2860,6 +2860,29 @@ def repair_draft_integrity(draft: dict[str, Any], *, ambition: str = "standard")
     from app.ai_workflow import ensure_workflow_transitions_on_draft
 
     notes.extend(ensure_workflow_transitions_on_draft(draft))
+    from app.ai_workflow_semantic import apply_semantic_workflow_pass
+
+    notes.extend(apply_semantic_workflow_pass(draft))
+    try:
+        from app.ai_domain_packs import match_domain_pack
+
+        pack_id = str(draft.get("domain_pack") or "")
+        pack = match_domain_pack(str(draft.get("_user_prompt") or ""))
+        pack_body = pack[1] if pack else None
+        from app.ai_vocab_scrub import scrub_draft_vocabulary
+
+        notes.extend(scrub_draft_vocabulary(draft, pack=pack_body))
+    except Exception:  # noqa: BLE001
+        pass
+    from app.ai_presentation import (
+        dedupe_smart_button_labels,
+        group_menus_if_needed,
+        suggest_line_total_compute,
+    )
+
+    notes.extend(group_menus_if_needed(draft))
+    notes.extend(dedupe_smart_button_labels(draft))
+    notes.extend(suggest_line_total_compute(draft))
     # Re-demote after promote pass so party links never stay workflows
     notes.extend(demote_spurious_link_workflows(draft))
     notes.extend(purge_ghost_ui(draft))

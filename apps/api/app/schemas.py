@@ -1221,6 +1221,10 @@ class AiDraftModuleBody(BaseModel):
         None,
         description="AI-9 finding id when user chose use/extend/build_anyway",
     )
+    async_job: bool = Field(
+        False,
+        description="Run draft generation as background job (returns job_id to poll)",
+    )
 
 
 class AiProposeConnectPointsBody(BaseModel):
@@ -1281,6 +1285,29 @@ class AiDraftModuleOut(BaseModel):
     grain_label: str | None = None
     connect_points: dict | None = None
     host_candidates: list[dict] = Field(default_factory=list)
+    job_id: str | None = Field(
+        None, description="Background job id when async_job=true — poll GET /api/jobs/{id}"
+    )
+
+
+class AiDraftCacheOut(BaseModel):
+    id: str
+    connection_id: str | None = None
+    prompt: str
+    summary: str
+    domain_pack: str | None = None
+    draft: dict
+    raw_response: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class AiEnrichDraftBody(BaseModel):
+    prompt: str = Field(..., min_length=3)
+    draft: dict
+    connection_id: str | None = None
+    failed_steps: list[str] = Field(default_factory=list)
+    async_job: bool = False
 
 
 class AiReapplyReuseBody(BaseModel):

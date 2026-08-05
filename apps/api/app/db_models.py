@@ -289,6 +289,30 @@ class BackgroundJob(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class AiDraftCache(Base):
+    """Cached AI ModuleSpec drafts — auto-saved after generation for recovery."""
+
+    __tablename__ = "ai_draft_cache"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    connection_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("odoo_connections.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    prompt_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    prompt_text: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    draft_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    raw_response: Mapped[str | None] = mapped_column(Text, nullable=True)
+    domain_pack: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class CustomizationProject(Base):
     """Draft ModuleSpec-like project stored in app DB; Apply pushes models/fields via RPC."""
 

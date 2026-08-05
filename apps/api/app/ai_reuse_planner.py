@@ -202,6 +202,7 @@ class ReusePlan:
     models: list[str] = field(default_factory=list)
     depends: list[str] = field(default_factory=list)
     forbid_new_models: list[str] = field(default_factory=list)
+    catalog_suggestions: list[dict[str, Any]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
     def prompt_block(self) -> str:
@@ -373,7 +374,7 @@ def plan_reuse(
         elif cand.offline_assume:
             add(cand, confirmed=False, src="offline_ce19")
 
-    inferred_rows, infer_notes = infer_stock_reuse(
+    inferred_rows, infer_notes, catalog_suggestions = infer_stock_reuse(
         text,
         available_models=available_models,
         installed_modules=installed_modules,
@@ -392,12 +393,16 @@ def plan_reuse(
             if row.get("source") == "pack_reuse_stock"
             else "installable"
             if row.get("source") == "installable"
-            else "catalog"
-            if row.get("source") == "catalog"
             else "inferred"
         )
         confirmed = mid in operator_set
         seen.add(mid)
+        link_only = bool(row.get("link_only"))
+        if src == "pack_reuse_stock" and pack_reuse_stock:
+            for ps in pack_reuse_stock:
+                if isinstance(ps, dict) and ps.get("model") == mid:
+                    link_only = bool(ps.get("link_only")) or link_only
+                    break
         decisions.append(
             ReuseDecision(
                 model=mid,
@@ -405,7 +410,7 @@ def plan_reuse(
                 source=src,
                 confirmed=confirmed,
                 forbid_parallel=tuple(str(x) for x in (row.get("forbid_parallel") or [])),
-                link_only=bool(row.get("link_only")),
+                link_only=link_only,
                 required_module=str(row["module"]) if row.get("module") else None,
             )
         )
@@ -417,7 +422,7 @@ def plan_reuse(
     ]
     forbid: list[str] = []
     for d in decisions:
-        if d.source in {"inferred", "pack_reuse_stock", "installable", "catalog"} and not d.confirmed:
+        if d.source in {"inferred", "pack_reuse_stock", "installable"} and not d.confirmed:
             continue
         for f in d.forbid_parallel:
             if f not in forbid:
@@ -437,6 +442,7 @@ def plan_reuse(
         models=models,
         depends=depends,
         forbid_new_models=forbid,
+        catalog_suggestions=catalog_suggestions,
         notes=notes,
     )
 
@@ -577,6 +583,8 @@ def apply_reuse_plan(draft: dict[str, Any], plan: ReusePlan) -> list[str]:
         dict.fromkeys([*(reuse.get("models") or []), *confirmed_models])
     )
     reuse["plan"] = plan.to_draft_meta()
+    if plan.catalog_suggestions:
+        reuse["catalog_suggestions"] = list(plan.catalog_suggestions)
     draft["reuse"] = reuse
 
     depends = list(draft.get("depends") or [])

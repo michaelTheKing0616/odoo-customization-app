@@ -610,6 +610,7 @@ def _build_seed_fields(
     with_location: bool = False,
     with_party_type: bool = False,
     with_file: bool = False,
+    anchor_required: bool = True,
 ) -> list[dict[str, Any]]:
     fk = _parent_fk_name(parent_id)
     fields: list[dict[str, Any]] = [
@@ -619,7 +620,7 @@ def _build_seed_fields(
             "ttype": "many2one",
             "relation": parent_id,
             "string": parent_label,
-            "required": True,
+            "required": anchor_required,
         },
     ]
     if with_deadline:
@@ -725,7 +726,14 @@ def seed_operational_loop_models(
     )
     if need <= 0:
         return notes
+    from app.ai_vocab_scrub import find_hub_model
+
     parent = _primary_transaction_model(draft)
+    anchor_required = True
+    hub = find_hub_model(draft)
+    if hub:
+        parent = next((m for m in _models(draft) if m.get("model") == hub), parent)
+        anchor_required = False
     if not parent:
         return notes
     parent_id = str(parent["model"])
@@ -800,7 +808,11 @@ def seed_operational_loop_models(
         if model_name in known:
             continue
         fields = _build_seed_fields(
-            parent_id, staff_id, parent_label=parent_label, **opts
+            parent_id,
+            staff_id,
+            parent_label=parent_label,
+            anchor_required=anchor_required,
+            **opts,
         )
         desc_neutral = _neutral_seed_description(
             desc, parent_label=parent_label, user_prompt=prompt

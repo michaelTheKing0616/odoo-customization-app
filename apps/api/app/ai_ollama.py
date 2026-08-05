@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import re
-from typing import Any
+from typing import Any, Callable
 
 from app.ai_critique import run_self_critique
 from app.ai_depth import run_depth_pass
@@ -98,9 +98,14 @@ def derive_draft_naming_from_prompt(
             data["technical_name"] = slug
             warnings.append(f"technical_name derived from prompt → {slug!r}")
     if not data.get("display_name"):
-        headline = user_prompt.strip().split("\n")[0][:80].strip()
-        data["display_name"] = headline.title() if headline else "Custom App"
-        warnings.append("display_name derived from prompt")
+        from app.ai_domain_packs import match_domain_pack
+        from app.ai_vocab_scrub import derive_domain_prefix
+
+        pack = match_domain_pack(user_prompt)
+        data["display_name"] = derive_domain_prefix(
+            user_prompt, pack=pack[1] if pack else None
+        )
+        warnings.append(f"display_name derived from prompt → {data['display_name']!r}")
     return warnings
 
 
@@ -374,6 +379,7 @@ def draft_module_from_prompt(
     host_model_override: str | None = None,
     connect_points_override: dict[str, Any] | None = None,
     client: Any | None = None,
+    progress_callback: Callable[[int, str, dict[str, Any] | None], None] | None = None,
 ) -> tuple[dict[str, Any], str, list[str], list[dict[str, Any]]]:
     """Return (draft_dict, raw_response, warnings, refusals). Never mutates Odoo."""
     from app.ai_component_builder import draft_component_from_prompt
@@ -405,6 +411,13 @@ def draft_module_from_prompt(
         return draft, raw, warnings, refusals
 
     from app.ai_domain_packs import match_domain_pack
+    from app.ollama_warm import warm_ollama_models
+
+    warm_ollama_models()
+    if progress_callback:
+        from app.ai_llm_status import STEP_LABELS
+
+        progress_callback(0, STEP_LABELS[0], None)
 
     early_pack = match_domain_pack(prompt)
     pack_stock: list[dict[str, Any]] | None = None
@@ -517,6 +530,7 @@ def draft_module_from_prompt(
 
     raw = ""
     draft: dict[str, Any] | None = None
+    llm_initial_failed = False
 
     if provider is not None:
         parse_exc: Exception | None = None
@@ -533,9 +547,11 @@ def draft_module_from_prompt(
                 break
             except (LLMError, ValueError, json.JSONDecodeError) as exc:
                 parse_exc = exc
-                if isinstance(exc, LLMError):
-                    raise AiAssistUnavailable(str(exc), status_code=exc.status_code) from exc
+                if isinstance(exc, LLMError) and attempt == 0:
+                    continue
+                break
         if draft is None and parse_exc is not None:
+            llm_initial_failed = isinstance(parse_exc, LLMError)
             pack_fallback = matched
             if pack_fallback is None:
                 lexical = match_domain_pack(prompt)
@@ -697,6 +713,30 @@ def draft_module_from_prompt(
         client=client,
         warnings=warnings,
     )
+    from app.ai_llm_status import STEP_LABELS, attach_llm_status, sanitize_draft_payload
+
+    draft = sanitize_draft_payload(draft)
+    failed_steps = [
+        w.split(":")[0]
+        for w in warnings
+        if "LLM failed" in w or "timed out" in w.lower()
+    ]
+    mode = "llm_full"
+    if llm_initial_failed or (provider is None and matched):
+        mode = "pack_fallback"
+    elif failed_steps:
+        mode = "llm_partial"
+    depth_meta = draft.get("_depth") if isinstance(draft.get("_depth"), dict) else {}
+    if depth_meta.get("seeded") and mode == "llm_full":
+        mode = "seed_fallback"
+    attach_llm_status(
+        draft,
+        mode=mode,  # type: ignore[arg-type]
+        failed_steps=failed_steps,
+        reason="timeout" if failed_steps else None,
+    )
+    if progress_callback:
+        progress_callback(len(STEP_LABELS) - 1, STEP_LABELS[-1], draft)
     return draft, raw, warnings, refusals
 
 

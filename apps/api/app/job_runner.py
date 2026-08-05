@@ -30,6 +30,8 @@ JOB_TIMEOUTS: dict[str, float | None] = {
     "health_check": 600.0,
     "expert_ingest": 1200.0,
     "script_run": 120.0,
+    "ai_draft": 1800.0,
+    "ai_enrich": 900.0,
 }
 
 _TERMINAL_STATUSES = frozenset(
@@ -266,6 +268,31 @@ def _set_status(
             row.error = error[:4000]
         if status in _TERMINAL_STATUSES:
             row.finished_at = datetime.now(timezone.utc)
+        db.add(row)
+        db.commit()
+    finally:
+        db.close()
+
+
+def update_job_progress(job_id: str, progress: dict[str, Any]) -> None:
+    """Merge progress fields into result_json while job is running."""
+    db = SessionLocal()
+    try:
+        row = db.get(BackgroundJob, job_id)
+        if row is None or row.status in _TERMINAL_STATUSES:
+            return
+        existing: dict[str, Any] = {}
+        if row.result_json:
+            try:
+                parsed = json.loads(row.result_json)
+                if isinstance(parsed, dict):
+                    existing = parsed
+            except json.JSONDecodeError:
+                existing = {}
+        existing.update(progress)
+        row.result_json = json.dumps(existing)
+        if row.status == "queued":
+            row.status = "running"
         db.add(row)
         db.commit()
     finally:

@@ -198,8 +198,76 @@ def _ensure_menus(client: OdooClient, spec: dict[str, Any], result: UiApplyResul
     try:
         menu_ids = client.ensure_app_menus(root_name=display, model_entries=entries)
         result.menus_created = len(menu_ids)
+        _apply_root_menu_groups(client, spec, menu_ids[0] if menu_ids else None, result)
     except Exception as exc:  # noqa: BLE001
         result.warnings.append(f"Menus skipped: {exc}")
+
+
+def _group_name_by_ref(spec: dict[str, Any], ref: str) -> str | None:
+    short = str(ref).split(".")[-1]
+    for g in spec.get("groups") or []:
+        if isinstance(g, dict) and str(g.get("id") or "") == short:
+            return str(g.get("name") or short)
+    return None
+
+
+def _resolve_or_create_group_id(
+    client: OdooClient, spec: dict[str, Any], ref: str
+) -> int | None:
+    name = _group_name_by_ref(spec, ref)
+    if not name:
+        return None
+    found = client.execute_kw(
+        "res.groups", "search", [[("name", "=", name)]], {"limit": 1}
+    )
+    if found:
+        return int(found[0])
+    return int(client.execute_kw("res.groups", "create", [{"name": name}]))
+
+
+def _apply_root_menu_groups(
+    client: OdooClient,
+    spec: dict[str, Any],
+    root_menu_id: int | None,
+    result: UiApplyResult,
+) -> None:
+    """Restrict root app menu to the module user group when draft menus specify groups."""
+    if not root_menu_id:
+        return
+    menus = spec.get("menus") or []
+    root_spec = next(
+        (
+            m
+            for m in menus
+            if isinstance(m, dict)
+            and not m.get("parent_xml_id")
+            and not m.get("action_xml_id")
+        ),
+        None,
+    )
+    if not root_spec:
+        return
+    refs = list(root_spec.get("groups") or root_spec.get("group_xml_ids") or [])
+    if not refs:
+        return
+    group_ids: list[int] = []
+    for ref in refs:
+        gid = _resolve_or_create_group_id(client, spec, str(ref))
+        if gid is not None:
+            group_ids.append(gid)
+    if not group_ids:
+        return
+    try:
+        client.execute_kw(
+            "ir.ui.menu",
+            "write",
+            [[int(root_menu_id)], {"groups_id": [(6, 0, group_ids)]}],
+        )
+        result.warnings.append(
+            f"Root menu restricted to app group(s): {', '.join(str(r) for r in refs)}"
+        )
+    except Exception as exc:  # noqa: BLE001
+        result.warnings.append(f"Root menu group assignment failed: {exc}")
 
 
 # AI / client aliases → ModuleSpec smart-button keys

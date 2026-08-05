@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     # off | ollama | openai-compatible
     ai_assist: str = "off"
     ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_keep_alive: str = "30m"
     # Legacy fallback when AI_MODEL_BULK / AI_MODEL_REASONING are empty (prefer Qwen3 ladder)
     ollama_model: str = "qwen3:8b"
     # Per-step model ladder (empty = fall back to ollama_model / openai_compatible_model)

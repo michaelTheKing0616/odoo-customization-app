@@ -89,6 +89,10 @@ async def lifespan(_app: FastAPI):
         from app.billing_jobs import run_billing_jobs_on_boot
 
         run_billing_jobs_on_boot(db)
+        if settings.ai_assist.strip().lower() == "ollama":
+            from app.ollama_warm import warm_ollama_models
+
+            warm_ollama_models()
     finally:
         db.close()
     yield

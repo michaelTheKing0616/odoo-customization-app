@@ -136,6 +136,16 @@ Re-verified 2026-08-03 (orchestrator + 3 checkers); REM-14 closed residual gaps 
 - [x] GEN-5 Model-count adequacy: ambition auto-scale from prompt cues, retail_supermarket pack, seed-free floor, noun-driven expansion
 - [x] GEN-6 Intuitive stock-model reuse: noun→model inference gated by installed modules, PCM link-only, confirm-in-UI, pack reuse_stock entries
 
+## Wave 16 — GEN2 (LLM reliability + semantic fidelity; cards in WAVE-16-GEN2.md; from 2026-08-05 draft #2)
+- [x] GEN2-1 LLM reliability: warm keep_alive, background draft jobs + step progress, budget ladder, _llm_status (no error leak)
+- [x] GEN2-2 Honest status UI: banner per _llm_status.mode + retry-failed-steps-only enrichment
+- [x] GEN2-3 Semantic transitions (terminals branch, not chain) + strip state from non-workflow models
+- [x] GEN2-4 Domain vocab scrub (law-firm lexicon ban + pack vocab) + hub-anchored optional seeds + prefix fix
+- [x] GEN2-5 Reuse precision: link_only propagation bug + catalog match threshold (no report.*/res.role noise)
+- [x] GEN2-6 Access rules manager/user split (no unlink for user group)
+- [x] GEN2-7 Menu auto-grouping, smart-button label dedupe, line-total compute suggestion
+- [x] Bonus: AI draft JSON auto-cache (`ai_draft_cache` table + GET list/restore + wizard saved drafts)
+
 ## Wave 13 — DEV (developer code path; cards in WAVE-13-DEV.md; AFTER Wave 12)
 - [x] DEV-1 Code Studio: live code server actions + automations (probe-gated per instance) — core 2026-08-03
 - [x] DEV-2 Module code authoring: Option A with a real editor (custom_code_blocks writable) — 2026-08-03

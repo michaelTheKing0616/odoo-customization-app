@@ -1,0 +1,57 @@
+{
+  "date": "2026-08-05",
+  "prompt": "A large mega Super Market with multiple branches",
+  "gate": "deviation",
+  "mode": "live_ollama_background_job",
+  "elapsed_s": 947.8,
+  "ollama_reachable": true,
+  "ollama_model": "qwen3:8b",
+  "ollama_base_url": "http://127.0.0.1:11434",
+  "_llm_status": {
+    "mode": "pack_fallback",
+    "failed_steps": [
+      "LLM draft failed (Ollama request timed out); using domain pack",
+      "quality",
+      "depth"
+    ],
+    "completed_steps": [],
+    "reason": "timeout",
+    "step": 0,
+    "step_total": 7,
+    "step_label": "Retrieving domain context"
+  },
+  "technical_name": "retail_supermarket",
+  "display_name": "Retail Supermarket",
+  "domain_pack": "retail_supermarket",
+  "model_count": 10,
+  "model_names_sample": [
+    "x_branch",
+    "x_store_order",
+    "x_store_order_line",
+    "x_promotion",
+    "x_branch_transfer",
+    "x_supplier_agreement",
+    "x_staff_shift",
+    "x_inventory_count",
+    "x_event",
+    "x_task"
+  ],
+  "error_key_absent": true,
+  "warnings_sample": [
+    "ambition: prompt scale cues (mega/large/multiple branches/chain) \u2192 comprehensive targets",
+    "LLM draft failed (Ollama request timed out); using domain pack",
+    "added 8 default action(s)",
+    "added root + 8 menu(s)",
+    "added 19 default view arch(es)",
+    "reuse: offline CE-19 allowlist (no connection)",
+    "reuse: added x_partner_id on x_promotion",
+    "reuse: added x_partner_id on x_branch_transfer",
+    "reuse: plan applied (offline_ce19) \u2192 res.partner, res.users, res.company, res.currency, product.template, product.product, uom.uom, purchase.order, stock.warehouse",
+    "rules: partner back-ref smart button for x_store_order",
+    "rules: mail.thread mixin on x_store_order",
+    "rules: added x_code reference on workflow model x_promotion",
+    "rules: partner back-ref smart button for x_promotion",
+    "rules: mail.thread mixin on x_promotion",
+    "rules: added x_code reference on workflow model x_branch_transfer"
+  ]
+}

@@ -9,6 +9,12 @@ from app import billing_models  # noqa: F401 — register billing ORM
 from app import db_models  # noqa: F401 — register ORM metadata
 from app.settings import settings
 
+# Allow migration scripts to import migration_helpers from this directory.
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 config = context.config
 
 if config.config_file_name is not None:

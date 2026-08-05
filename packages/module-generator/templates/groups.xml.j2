@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+{% for group in spec.groups %}
+    <record id="{{ group.id }}" model="res.groups">
+        <field name="name">{{ group.name | xml }}</field>
+        {% if group.category_id %}
+        <field name="category_id" ref="{{ group.category_id }}"/>
+        {% endif %}
+        {% if group.implied_ids %}
+        <field name="implied_ids" eval="[(6, 0, [{% for gid in group.implied_ids %}ref('{{ gid }}'){% if not loop.last %}, {% endif %}{% endfor %}])]"/>
+        {% endif %}
+    </record>
+{% endfor %}
+</odoo>

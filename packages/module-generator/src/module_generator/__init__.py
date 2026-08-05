@@ -594,12 +594,21 @@ class ActionSpec:
 
 
 @dataclass
+class GroupSpec:
+    id: str
+    name: str
+    category_id: str | None = "base.module_category_custom"
+    implied_ids: list[str] = field(default_factory=list)
+
+
+@dataclass
 class MenuSpec:
     name: str
     action_xml_id: str | None = None
     parent_xml_id: str | None = None
     sequence: int = 10
     technical_name: str | None = None
+    group_xml_ids: list[str] = field(default_factory=list)
 
     def xml_id(self) -> str:
         base = self.technical_name or self.name
@@ -687,6 +696,7 @@ class ModuleSpec:
     views: list[ViewSpec] = field(default_factory=list)
     actions: list[ActionSpec] = field(default_factory=list)
     menus: list[MenuSpec] = field(default_factory=list)
+    groups: list[GroupSpec] = field(default_factory=list)
     python_automations: list[PythonAutomationSpec] = field(default_factory=list)
     access_rules: list[AccessRuleSpec] = field(default_factory=list)
     record_rules: list[RecordRuleSpec] = field(default_factory=list)
@@ -904,6 +914,12 @@ def render_module_files(spec: ModuleSpec) -> dict[str, str]:
         )
         data_files.append("report/reports.xml")
 
+    if spec.groups:
+        files[f"{root}/security/groups.xml"] = env.get_template("groups.xml.j2").render(
+            spec=spec
+        )
+        data_files.insert(0, "security/groups.xml")
+
     rules = list(spec.access_rules)
     if not rules:
         for model in spec.models:
@@ -1031,6 +1047,7 @@ __all__ = [
     "SequenceSpec",
     "ViewSpec",
     "ActionSpec",
+    "GroupSpec",
     "MenuSpec",
     "PythonAutomationSpec",
     "AccessRuleSpec",

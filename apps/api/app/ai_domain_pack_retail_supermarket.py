@@ -85,6 +85,14 @@ def retail_supermarket_pack() -> dict[str, Any]:
                 "forbid_parallel": ["x_warehouse"],
             },
         ],
+        "vocab": {
+            "deposit": "Supplier deposit",
+            "retainer": "Supplier deposit",
+            "compliance": "Food safety check",
+            "conflict check": "Supplier approval",
+            "matter": "Store record",
+        },
+        "display_prefix": "Super Market",
         "anti_patterns": [
             "Do NOT duplicate product.template as x_product — reuse stock Products",
             "Do NOT implement payment capture — link purchase/sale documents only",

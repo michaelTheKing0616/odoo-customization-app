@@ -1167,6 +1167,7 @@ export const api = {
       connect_points?: Record<string, unknown> | null;
       overlap_choice?: string | null;
       overlap_finding_id?: string | null;
+      async_job?: boolean;
     },
   ) =>
     request<{
@@ -1186,6 +1187,7 @@ export const api = {
         score: number;
         reason?: string;
       }>;
+      job_id?: string | null;
     }>("/api/ai/draft-module", {
       method: "POST",
       body: JSON.stringify({
@@ -1202,7 +1204,25 @@ export const api = {
         connect_points: opts?.connect_points ?? undefined,
         overlap_choice: opts?.overlap_choice || undefined,
         overlap_finding_id: opts?.overlap_finding_id || undefined,
+        async_job: opts?.async_job ?? false,
       }),
+    }),
+  enrichDraft: (body: {
+    prompt: string;
+    draft: Record<string, unknown>;
+    connection_id?: string;
+    failed_steps?: string[];
+    async_job?: boolean;
+  }) =>
+    request<{
+      ok: boolean;
+      draft: Record<string, unknown>;
+      warnings?: string[];
+      job_id?: string;
+      note?: string;
+    }>("/api/ai/enrich-draft", {
+      method: "POST",
+      body: JSON.stringify({ ...body, async_job: body.async_job ?? true }),
     }),
   reapplyReusePlan: (body: {
     prompt: string;
@@ -1565,6 +1585,29 @@ export const api = {
       `/api/connections/${id}/reuse-catalog?${params.toString()}`,
     );
   },
+  listDraftCache: (connectionId?: string, limit = 20) => {
+    const qs = connectionId
+      ? `?connection_id=${encodeURIComponent(connectionId)}&limit=${limit}`
+      : `?limit=${limit}`;
+    return request<
+      Array<{
+        id: string;
+        connection_id: string | null;
+        prompt: string;
+        summary: string;
+        domain_pack: string | null;
+        draft: Record<string, unknown>;
+        updated_at: string | null;
+      }>
+    >(`/api/ai/draft-cache${qs}`);
+  },
+  getDraftCache: (cacheId: string) =>
+    request<{
+      id: string;
+      prompt: string;
+      summary: string;
+      draft: Record<string, unknown>;
+    }>(`/api/ai/draft-cache/${cacheId}`),
   modelTier: (connectionId: string, model: string) =>
     request<{ model: string; tier: ProtectedTier | null }>(
       `/api/connections/${connectionId}/model-tier?model=${encodeURIComponent(model)}`,

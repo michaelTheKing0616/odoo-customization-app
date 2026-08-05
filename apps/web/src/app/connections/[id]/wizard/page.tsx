@@ -122,13 +122,30 @@ export default function AppWizardPage() {
   const [aiWarnings, setAiWarnings] = useState<string[]>([]);
   const draftNeedsRegenerate = Boolean(
     aiDraft &&
-      ((aiDraft._depth as { seeded?: boolean } | undefined)?.seeded ||
+      (
+        (aiDraft._llm_status as { mode?: string } | undefined)?.mode === "llm_partial" ||
+        (aiDraft._llm_status as { mode?: string } | undefined)?.mode === "pack_fallback" ||
+        (
+          (aiDraft._depth as { seeded?: boolean } | undefined)?.seeded &&
+          (aiDraft._llm_status as { mode?: string } | undefined)?.mode === "seed_fallback"
+        ) ||
         aiWarnings.some(
           (w) =>
             w.includes("field-deepen skipped") ||
             w.includes("depth met via generic seeds"),
-        )),
+        )
+      ),
   );
+  const llmStatusMode = (aiDraft?._llm_status as { mode?: string } | undefined)?.mode;
+  const llmStatusBanner =
+    llmStatusMode === "llm_partial"
+      ? "Some AI steps timed out; pack templates filled in. Retry AI enrichment?"
+      : llmStatusMode === "pack_fallback"
+        ? "Built from the retail template — the AI model was unavailable. Retry AI enrichment for tailored results."
+        : llmStatusMode === "seed_fallback" &&
+            (aiDraft?._depth as { seeded?: boolean } | undefined)?.seeded
+          ? "Depth targets were met via generic operational seeds — review entities before apply."
+          : null;
   const [aiRefusals, setAiRefusals] = useState<ProtectedModuleRefusal[]>([]);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiBusyLabel, setAiBusyLabel] = useState<string | null>(null);
@@ -138,6 +155,9 @@ export default function AppWizardPage() {
   const [rejectedInferredReuse, setRejectedInferredReuse] = useState<string[]>([]);
   const [reuseCatalog, setReuseCatalog] = useState<ReuseModelRow[]>([]);
   const [reuseSearch, setReuseSearch] = useState("");
+  const [draftCacheEntries, setDraftCacheEntries] = useState<
+    Array<{ id: string; summary: string; prompt: string; updated_at: string | null }>
+  >([]);
   const [genUiConfirmOpen, setGenUiConfirmOpen] = useState(false);
   const [genUiResult, setGenUiResult] = useState<string | null>(null);
   const [validateLiveResult, setValidateLiveResult] = useState<
@@ -227,6 +247,19 @@ export default function AppWizardPage() {
         setComponentGallery(gallery || []);
         setAiEnabled(Boolean(status?.enabled));
         setReuseCatalog(models || []);
+        try {
+          const cached = await api.listDraftCache(connectionId, 10);
+          setDraftCacheEntries(
+            (cached || []).map((c) => ({
+              id: c.id,
+              summary: c.summary,
+              prompt: c.prompt,
+              updated_at: c.updated_at,
+            })),
+          );
+        } catch {
+          setDraftCacheEntries([]);
+        }
         if (status?.ollama_reachable === false && status.ollama_detail) {
           setOllamaDetail(status.ollama_detail);
         } else if (status?.ollama_reachable === true) {
@@ -377,6 +410,66 @@ export default function AppWizardPage() {
     }
   }
 
+  async function restoreDraftFromCache(cacheId: string) {
+    setAiBusy(true);
+    setAiBusyLabel("Restoring cached draft…");
+    try {
+      const row = await api.getDraftCache(cacheId);
+      setAiDraft(row.draft);
+      setNlPrompt(row.prompt || nlPrompt);
+      setAiNote(`Restored cached draft: ${row.summary}`);
+    } catch (err) {
+      reportApiError(err, setError, { fallback: "Failed to restore cached draft" });
+    } finally {
+      setAiBusy(false);
+      setAiBusyLabel(null);
+    }
+  }
+
+  async function retryAiEnrichment() {
+    if (!aiDraft || !nlPrompt.trim()) return;
+    const status = aiDraft._llm_status as { failed_steps?: string[] } | undefined;
+    setAiBusy(true);
+    setAiBusyLabel("Retrying AI enrichment…");
+    try {
+      const res = await api.enrichDraft({
+        prompt: nlPrompt.trim(),
+        draft: aiDraft,
+        connection_id: connectionId,
+        failed_steps: status?.failed_steps || ["quality", "depth", "critique"],
+        async_job: true,
+      });
+      if (res.job_id) {
+        setAiBusyLabel("AI enrichment (background)…");
+        let job = await api.getJob(res.job_id);
+        for (let i = 0; i < 180 && (job.status === "queued" || job.status === "running"); i++) {
+          await new Promise((r) => setTimeout(r, 2000));
+          job = await api.getJob(res.job_id);
+          const stepLabel = job.result?.step_label as string | undefined;
+          if (stepLabel) setAiBusyLabel(`${stepLabel}…`);
+          const partial = job.result?.partial_draft as Record<string, unknown> | undefined;
+          if (partial && Object.keys(partial).length > 0) setAiDraft(partial);
+        }
+        if (job.status === "succeeded" && job.result?.draft) {
+          setAiDraft(job.result.draft as Record<string, unknown>);
+          setAiWarnings((job.result.warnings as string[]) || []);
+          setAiNote("AI enrichment merged into existing draft.");
+        } else if (job.status === "failed" || job.status === "timeout") {
+          throw new Error(job.error || "AI enrichment job failed");
+        }
+      } else {
+        setAiDraft(res.draft);
+        if (res.warnings?.length) setAiWarnings(res.warnings);
+        setAiNote("AI enrichment merged into existing draft.");
+      }
+    } catch (err) {
+      reportApiError(err, setError, { fallback: "AI enrichment failed" });
+    } finally {
+      setAiBusy(false);
+      setAiBusyLabel(null);
+    }
+  }
+
   async function onDraftFromPrompt(opts?: {
     reuseOverride?: string[];
     rejectedOverride?: string[];
@@ -407,15 +500,45 @@ export default function AppWizardPage() {
         connect_points: connectPoints ?? undefined,
         overlap_choice: overlapChoice ?? undefined,
         overlap_finding_id: overlapFindingId ?? undefined,
+        async_job: true,
       });
-      setAiDraft(res.draft);
-      setAiNote(res.note ?? "Draft only — does not apply.");
-      setAiWarnings(res.warnings ?? []);
-      setAiRefusals(res.refusals ?? []);
-      if (res.grain_label) setGrainLabel(res.grain_label);
-      if (res.grain) setEffectiveGrain(res.grain);
-      if (res.connect_points) setConnectPoints(res.connect_points);
-      if (res.host_candidates?.length) setHostCandidates(res.host_candidates);
+      if (res.job_id) {
+        setAiBusyLabel("Generating draft (background)…");
+        let job = await api.getJob(res.job_id);
+        for (let i = 0; i < 360 && (job.status === "queued" || job.status === "running"); i++) {
+          await new Promise((r) => setTimeout(r, 2000));
+          job = await api.getJob(res.job_id);
+          const stepLabel = job.result?.step_label as string | undefined;
+          if (stepLabel) setAiBusyLabel(`${stepLabel}…`);
+          const partial = job.result?.partial_draft as Record<string, unknown> | undefined;
+          if (partial && Object.keys(partial).length > 0) setAiDraft(partial);
+        }
+        if (job.status === "succeeded" && job.result?.draft) {
+          setAiDraft(job.result.draft as Record<string, unknown>);
+          setAiWarnings((job.result.warnings as string[]) || []);
+          setAiNote("Draft recovered from background job.");
+        } else if (job.status === "failed" || job.status === "timeout") {
+          throw new Error(job.error || "Draft job failed");
+        }
+      } else {
+        setAiDraft(res.draft);
+        setAiNote(res.note ?? "Draft only — does not apply.");
+        setAiWarnings(res.warnings ?? []);
+        setAiRefusals(res.refusals ?? []);
+        if (res.grain_label) setGrainLabel(res.grain_label);
+        if (res.grain) setEffectiveGrain(res.grain);
+        if (res.connect_points) setConnectPoints(res.connect_points);
+        if (res.host_candidates?.length) setHostCandidates(res.host_candidates);
+      }
+      const cached = await api.listDraftCache(connectionId, 10).catch(() => []);
+      setDraftCacheEntries(
+        (cached || []).map((c) => ({
+          id: c.id,
+          summary: c.summary,
+          prompt: c.prompt,
+          updated_at: c.updated_at,
+        })),
+      );
     } catch (err) {
       setAiDraft(null);
       reportApiError(err, setError, { fallback: "AI draft failed", toast: true });
@@ -1284,7 +1407,41 @@ export default function AppWizardPage() {
               {genUiResult}
             </Callout>
           ) : null}
-          {draftNeedsRegenerate ? (
+          {draftCacheEntries.length > 0 ? (
+            <div className="mt-3">
+              <p className="text-xs uppercase tracking-wide text-muted">Saved drafts</p>
+              <ul className="mt-1 space-y-1">
+                {draftCacheEntries.slice(0, 5).map((c) => (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      className="text-left text-xs text-muted hover:text-ink underline"
+                      onClick={() => void restoreDraftFromCache(c.id)}
+                    >
+                      {c.summary}
+                      {c.updated_at ? ` · ${new Date(c.updated_at).toLocaleString()}` : ""}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {llmStatusBanner ? (
+            <Callout variant="warning" title="AI draft status" className="mt-2">
+              <p className="text-sm">{llmStatusBanner}</p>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="mt-2"
+                disabled={aiBusy || !aiDraft}
+                onClick={() => void retryAiEnrichment()}
+              >
+                Retry AI enrichment
+              </Button>
+            </Callout>
+          ) : null}
+          {draftNeedsRegenerate && !llmStatusBanner ? (
             <Callout variant="warning" title="Generic placeholders detected" className="mt-2">
               <p className="text-sm">
                 The AI model timed out — generic placeholders filled the gaps. Regenerate for
@@ -1312,6 +1469,29 @@ export default function AppWizardPage() {
                 ))}
               </ul>
             </Callout>
+          ) : null}
+          {Array.isArray(aiDraft?._compute_suggestions) &&
+          (aiDraft._compute_suggestions as Array<{ model?: string; message?: string }>)
+            .length > 0 ? (
+            <div className="mt-2 space-y-2" data-testid="compute-suggestions">
+              {(
+                aiDraft._compute_suggestions as Array<{ model?: string; message?: string }>
+              ).map((s, i) => (
+                <Callout
+                  key={`${s.model ?? "line"}-${i}`}
+                  variant="info"
+                  title="Line total suggestion"
+                >
+                  <p className="text-sm">{s.message}</p>
+                  <Link
+                    href={`/connections/${connectionId}/automations`}
+                    className="mt-2 inline-block text-sm text-accent underline"
+                  >
+                    Configure equation compute (advanced — confirm before apply)
+                  </Link>
+                </Callout>
+              ))}
+            </div>
           ) : null}
           {connectPoints && !needsConnectReview ? (
             <section className="mt-4 border border-border-subtle bg-surface p-4">

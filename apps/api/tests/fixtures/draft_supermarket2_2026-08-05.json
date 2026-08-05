@@ -1,0 +1,63 @@
+{
+  "error": "Invalid JSON: Expecting value: line 1 column 1 (char 0)",
+  "technical_name": "retail_supermarket",
+  "display_name": "Super Market",
+  "depends": ["base", "contacts", "mail", "product"],
+  "domain_pack": "retail_supermarket",
+  "models": [
+    {
+      "model": "x_branch",
+      "description": "Branch / Store location",
+      "mode": "new",
+      "is_workflow": false,
+      "fields": [
+        {"name": "x_name", "ttype": "char", "string": "Branch", "required": true}
+      ]
+    },
+    {
+      "model": "x_sales_order",
+      "description": "Store sales order",
+      "mode": "new",
+      "is_workflow": true,
+      "fields": [
+        {"name": "x_name", "ttype": "char", "string": "Name", "required": true},
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('draft','Draft'),('confirmed','Confirmed'),('delivered','Delivered'),('cancelled','Cancelled')]"
+        },
+        {"name": "x_branch_id", "ttype": "many2one", "relation": "x_branch", "string": "Branch"}
+      ],
+      "state_field": {
+        "field": "x_status",
+        "states": ["draft", "confirmed", "delivered", "cancelled"],
+        "transitions": [
+          ["draft", "confirmed"],
+          ["confirmed", "delivered"],
+          ["delivered", "cancelled"]
+        ]
+      }
+    },
+    {
+      "model": "x_party_role",
+      "description": "Party role link",
+      "mode": "new",
+      "is_workflow": false,
+      "fields": [
+        {"name": "x_name", "ttype": "char", "string": "Name", "required": true},
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('draft','Draft'),('active','Active')]"
+        },
+        {"name": "x_partner_id", "ttype": "many2one", "relation": "res.partner", "string": "Contact"}
+      ],
+      "state_field": {"field": "x_status", "states": ["draft", "active"], "transitions": []}
+    }
+  ],
+  "_user_prompt": "A large mega Super Market with multiple branches",
+  "_depth": {"seeded": false},
+  "_llm_status": {"mode": "pack_fallback", "failed_steps": ["draft_json"], "reason": "timeout"}
+}

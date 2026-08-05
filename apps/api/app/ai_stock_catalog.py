@@ -10,7 +10,8 @@ from app.ai_stock_reuse import _LINK_ONLY_MODELS
 STOCK_CATALOG_LIMIT = 2000
 PROMPT_MODEL_LIMIT = 400
 CATALOG_INFER_MAX = 15
-CATALOG_INFER_MIN_SCORE = 2
+CATALOG_INFER_MIN_SCORE = 3
+CATALOG_NOISE_PREFIXES = ("report.", "res.role", "ir.", "bus.")
 
 # Models that exist on every Odoo instance — always safe to suggest offline.
 _UNIVERSAL_STOCK = frozenset(
@@ -246,6 +247,8 @@ def infer_catalog_reuse(
     for row in stock_entries:
         model = str(row.get("model") or "")
         if not model or model in skip or not is_stock_model(model):
+            continue
+        if any(model.startswith(p) for p in CATALOG_NOISE_PREFIXES):
             continue
         name = str(row.get("name") or model)
         app = str(row.get("app") or model_app_prefix(model))

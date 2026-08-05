@@ -334,13 +334,36 @@ def apply_pattern_rules(draft: dict[str, Any]) -> list[str]:
                 depends.append("mail")
                 out["depends"] = depends
 
-    # Default access stubs — fill gaps for every x_* model
+    # Default access stubs — user (no unlink) + manager (full) per x_* model
     existing_access = {
         str(r.get("model") or "").replace("model_", "", 1)
         for r in (out.get("access_rules") or [])
         if isinstance(r, dict)
     }
     rules = list(out.get("access_rules") or []) if isinstance(out.get("access_rules"), list) else []
+    tech = str(out.get("technical_name") or "custom_app")
+    user_group = f"group_{tech}_user"
+    mgr_group = f"group_{tech}_manager"
+    groups = list(out.get("groups") or []) if isinstance(out.get("groups"), list) else []
+    group_ids = {g.get("id") for g in groups if isinstance(g, dict)}
+    if user_group not in group_ids:
+        groups.append(
+            {
+                "id": user_group,
+                "name": f"{out.get('display_name') or tech} User",
+                "category_id": "base.module_category_custom",
+            }
+        )
+    if mgr_group not in group_ids:
+        groups.append(
+            {
+                "id": mgr_group,
+                "name": f"{out.get('display_name') or tech} Manager",
+                "implied_ids": [user_group],
+                "category_id": "base.module_category_custom",
+            }
+        )
+    out["groups"] = groups
     added_acl = 0
     for model in out.get("models") or []:
         if not isinstance(model, dict) or not model.get("model"):
@@ -348,35 +371,42 @@ def apply_pattern_rules(draft: dict[str, Any]) -> list[str]:
         mid = str(model["model"])
         if not mid.startswith("x_"):
             continue
-        leaf = mid  # access uses model_x_attorney
-        if mid in existing_access or mid.replace(".", "_") in existing_access:
-            continue
         xml = "model_" + mid.replace(".", "_")
-        if xml.replace("model_", "", 1) in existing_access:
+        if mid in existing_access or xml.replace("model_", "", 1) in existing_access:
             continue
-        # Also skip if rule id already present
-        if any(
-            isinstance(r, dict) and r.get("model") == xml for r in rules
-        ):
+        if any(isinstance(r, dict) and r.get("model") == xml for r in rules):
             continue
         rules.append(
             {
                 "id": f"access_{mid.replace('.', '_')}_user",
                 "name": f"{model.get('description') or mid} user",
                 "model": xml,
-                "group": "base.group_user",
+                "group": user_group,
+                "perm_read": 1,
+                "perm_write": 1,
+                "perm_create": 1,
+                "perm_unlink": 0,
+            }
+        )
+        rules.append(
+            {
+                "id": f"access_{mid.replace('.', '_')}_manager",
+                "name": f"{model.get('description') or mid} manager",
+                "model": xml,
+                "group": mgr_group,
                 "perm_read": 1,
                 "perm_write": 1,
                 "perm_create": 1,
                 "perm_unlink": 1,
             }
         )
-        added_acl += 1
+        added_acl += 2
     if added_acl:
         out["access_rules"] = rules
-        notes.append(f"rules: added {added_acl} access rule stub(s)")
+        notes.append(
+            f"rules: added {added_acl // 2} model(s) with user (no unlink) + manager access"
+        )
     elif not out.get("access_rules") and out.get("models"):
-        # First-time full stub set
         rules = []
         for model in out["models"]:
             if not isinstance(model, dict) or not model.get("model"):
@@ -390,7 +420,19 @@ def apply_pattern_rules(draft: dict[str, Any]) -> list[str]:
                     "id": f"access_{mid.replace('.', '_')}_user",
                     "name": f"{model.get('description') or mid} user",
                     "model": xml,
-                    "group": "base.group_user",
+                    "group": user_group,
+                    "perm_read": 1,
+                    "perm_write": 1,
+                    "perm_create": 1,
+                    "perm_unlink": 0,
+                }
+            )
+            rules.append(
+                {
+                    "id": f"access_{mid.replace('.', '_')}_manager",
+                    "name": f"{model.get('description') or mid} manager",
+                    "model": xml,
+                    "group": mgr_group,
                     "perm_read": 1,
                     "perm_write": 1,
                     "perm_create": 1,
@@ -399,7 +441,24 @@ def apply_pattern_rules(draft: dict[str, Any]) -> list[str]:
             )
         if rules:
             out["access_rules"] = rules
-            notes.append(f"rules: added {len(rules)} default access rule stub(s)")
+            notes.append(
+                f"rules: added {len(rules) // 2} default user/manager access rule pair(s)"
+            )
+
+    menus = list(out.get("menus") or []) if isinstance(out.get("menus"), list) else []
+    root_updated = 0
+    for menu in menus:
+        if not isinstance(menu, dict):
+            continue
+        is_root = not menu.get("parent_xml_id") and not menu.get("action_xml_id")
+        if is_root or str(menu.get("xml_id") or "").startswith("menu_root_"):
+            existing = list(menu.get("groups") or menu.get("group_xml_ids") or [])
+            if user_group not in existing:
+                menu["groups"] = [user_group]
+                root_updated += 1
+    if root_updated:
+        out["menus"] = menus
+        notes.append(f"rules: root menu restricted to {user_group}")
 
     return notes
 

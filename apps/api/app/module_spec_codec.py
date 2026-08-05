@@ -8,6 +8,7 @@ from typing import Any
 from module_generator import (
     ActionSpec,
     FieldSpec,
+    GroupSpec,
     MenuSpec,
     ModelSpec,
     ModuleSpec,
@@ -211,6 +212,43 @@ def draft_dict_to_module_spec(draft: dict[str, Any]) -> ModuleSpec:
                 parent_xml_id=mu.get("parent_xml_id"),
                 sequence=int(mu.get("sequence") or 10),
                 technical_name=mu.get("technical_name"),
+                group_xml_ids=[
+                    str(g)
+                    for g in (mu.get("groups") or mu.get("group_xml_ids") or [])
+                    if g
+                ],
+            )
+        )
+
+    groups: list[GroupSpec] = []
+    for g in draft.get("groups") or []:
+        if not isinstance(g, dict) or not g.get("id"):
+            continue
+        groups.append(
+            GroupSpec(
+                id=str(g["id"]),
+                name=str(g.get("name") or g["id"]),
+                category_id=g.get("category_id"),
+                implied_ids=[str(i) for i in (g.get("implied_ids") or []) if i],
+            )
+        )
+
+    access_rules: list = []
+    from module_generator import AccessRuleSpec
+
+    for ar in draft.get("access_rules") or []:
+        if not isinstance(ar, dict) or not ar.get("model"):
+            continue
+        access_rules.append(
+            AccessRuleSpec(
+                id=str(ar.get("id") or f"access_{ar['model']}"),
+                name=str(ar.get("name") or ar["model"]),
+                model=str(ar["model"]),
+                group=str(ar.get("group") or ar.get("group_xml_id") or "base.group_user"),
+                perm_read=int(ar.get("perm_read", 1)),
+                perm_write=int(ar.get("perm_write", 1)),
+                perm_create=int(ar.get("perm_create", 1)),
+                perm_unlink=int(ar.get("perm_unlink", 1)),
             )
         )
 
@@ -276,6 +314,8 @@ def draft_dict_to_module_spec(draft: dict[str, Any]) -> ModuleSpec:
         views=views,
         actions=actions,
         menus=menus,
+        groups=groups,
+        access_rules=access_rules,
         record_rules=record_rules,
         reports=reports,
         custom_code_blocks=blocks,

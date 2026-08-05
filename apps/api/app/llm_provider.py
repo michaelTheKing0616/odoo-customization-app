@@ -407,6 +407,9 @@ class OllamaProvider(LLMProvider):
             "format": fmt,
             "options": {"temperature": temp, "num_predict": num_predict or 4096},
         }
+        alive = (settings.ollama_keep_alive or "").strip()
+        if alive:
+            payload["keep_alive"] = alive
         if use_think:
             payload["think"] = True
 
