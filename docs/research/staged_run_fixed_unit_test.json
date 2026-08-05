@@ -9,7 +9,7 @@
     "rules: suggested overdue automation for x_support_ticket",
     "rules: partner back-ref smart button for x_support_ticket",
     "rules: mail.thread mixin on x_support_ticket",
-    "rules: added 1 access rule stub(s)",
+    "rules: added 1 model(s) with user (no unlink) + manager access",
     "completeness gaps: depth_models"
   ],
   "model_count": 1,

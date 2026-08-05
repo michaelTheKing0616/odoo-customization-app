@@ -1,6 +1,24 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8001";
+const DEFAULT_API_ORIGIN = "http://127.0.0.1:8001";
 
-export { API_BASE };
+/** Absolute API origin (SSR, downloads, explicit NEXT_PUBLIC_API_URL). */
+export const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? DEFAULT_API_ORIGIN).replace(
+  /\/$/,
+  "",
+);
+
+/**
+ * Base URL for browser fetch calls. When NEXT_PUBLIC_API_URL is unset, use same-origin
+ * `/api/*` so Next.js rewrites proxy to FastAPI (avoids CORS / extension fetch blocks).
+ */
+export function getApiBase(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return API_BASE;
+  }
+  if (typeof window !== "undefined") {
+    return "";
+  }
+  return DEFAULT_API_ORIGIN;
+}
 
 export type CapabilityMatrix = {
   major: number | null;
@@ -1010,17 +1028,40 @@ export type XPathPreviewOut = {
   issues: string[];
 };
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function fetchApi(path: string, init?: RequestInit): Promise<Response> {
+  const base = getApiBase();
+  const url = `${base}${path}`;
   const storedKey = getStoredApiKey();
-  const res = await fetch(`${API_BASE}${path}`, {
-    credentials: "include",
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(storedKey ? { Authorization: `Bearer ${storedKey}` } : {}),
-      ...(init?.headers ?? {}),
-    },
-  });
+  const headers: Record<string, string> = {
+    ...(storedKey ? { Authorization: `Bearer ${storedKey}` } : {}),
+  };
+  if (init?.body && !(init.body instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+  }
+  try {
+    return await fetch(url, {
+      credentials: "include",
+      ...init,
+      headers: {
+        ...headers,
+        ...(init?.headers ?? {}),
+      },
+    });
+  } catch (err) {
+    if (err instanceof TypeError) {
+      const target =
+        base || (typeof window !== "undefined" ? window.location.origin : DEFAULT_API_ORIGIN);
+      throw new Error(
+        `Cannot reach the API at ${target}. Start the API (uvicorn apps/api, port 8001) ` +
+          `or set NEXT_PUBLIC_API_URL / API_PROXY_TARGET.`,
+      );
+    }
+    throw err;
+  }
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetchApi(path, init);
   if (!res.ok) {
     let detail: unknown = res.statusText;
     try {
@@ -1730,12 +1771,8 @@ export const api = {
       body: JSON.stringify(body),
     }),
   importModuleSpec: async (file: File) => {
-    const storedKey = getStoredApiKey();
-    const form = new FormData();
-    form.append("file", file);
-    const res = await fetch(`${API_BASE}/api/module-spec/import`, {
+    const res = await fetchApi("/api/module-spec/import", {
       method: "POST",
-      headers: storedKey ? { Authorization: `Bearer ${storedKey}` } : {},
       body: form,
     });
     if (!res.ok) {
@@ -2758,13 +2795,8 @@ export const api = {
       changed_only?: boolean;
     },
   ) => {
-    const storedKey = getStoredApiKey();
-    const res = await fetch(`${API_BASE}/api/connections/${id}/id-generator/csv/download`, {
+    const res = await fetchApi(`/api/connections/${id}/id-generator/csv/download`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(storedKey ? { Authorization: `Bearer ${storedKey}` } : {}),
-      },
       body: JSON.stringify(body),
     });
     if (!res.ok) {
@@ -3176,14 +3208,8 @@ export const api = {
       body: JSON.stringify(body),
     }),
   exportFieldLabelsCsv: async (id: string, model: string) => {
-    const storedKey = getStoredApiKey();
-    const res = await fetch(
-      `${API_BASE}/api/connections/${id}/config/field-labels.csv?model=${encodeURIComponent(model)}`,
-      {
-        headers: {
-          ...(storedKey ? { Authorization: `Bearer ${storedKey}` } : {}),
-        },
-      },
+    const res = await fetchApi(
+      `/api/connections/${id}/config/field-labels.csv?model=${encodeURIComponent(model)}`,
     );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.text();
@@ -3323,10 +3349,8 @@ export const api = {
       `/api/connections/${id}/config/languages`,
     ),
   exportTranslationsCsv: async (id: string, model: string, lang: string) => {
-    const storedKey = getStoredApiKey();
-    const res = await fetch(
-      `${API_BASE}/api/connections/${id}/config/translations.csv?model=${encodeURIComponent(model)}&lang=${encodeURIComponent(lang)}`,
-      { headers: { ...(storedKey ? { Authorization: `Bearer ${storedKey}` } : {}) } },
+    const res = await fetchApi(
+      `/api/connections/${id}/config/translations.csv?model=${encodeURIComponent(model)}&lang=${encodeURIComponent(lang)}`,
     );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.text();
@@ -3369,18 +3393,10 @@ export const api = {
     spec: Record<string, unknown>,
     lang: string,
   ) => {
-    const storedKey = getStoredApiKey();
-    const res = await fetch(
-      `${API_BASE}/api/connections/${id}/config/i18n/spec-export`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(storedKey ? { Authorization: `Bearer ${storedKey}` } : {}),
-        },
-        body: JSON.stringify({ spec, lang }),
-      },
-    );
+    const res = await fetchApi(`/api/connections/${id}/config/i18n/spec-export`, {
+      method: "POST",
+      body: JSON.stringify({ spec, lang }),
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.text();
   },
@@ -3751,13 +3767,8 @@ export const api = {
       filename?: string;
     },
   ) => {
-    const storedKey = getStoredApiKey();
-    const res = await fetch(`${API_BASE}/api/connections/${id}/reports/merge-print`, {
+    const res = await fetchApi(`/api/connections/${id}/reports/merge-print`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(storedKey ? { Authorization: `Bearer ${storedKey}` } : {}),
-      },
       body: JSON.stringify(body),
     });
     if (!res.ok) {
@@ -4177,13 +4188,9 @@ export type CronListOut = {
 };
 
 async function requestForm<T>(path: string, form: FormData): Promise<T> {
-  const storedKey = getStoredApiKey();
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetchApi(path, {
     method: "POST",
     body: form,
-    headers: {
-      ...(storedKey ? { Authorization: `Bearer ${storedKey}` } : {}),
-    },
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { API_BASE, api } from "@/lib/api";
+import { api, getApiBase } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 
 const LABELS: Record<string, string> = {
@@ -33,7 +33,7 @@ export function OAuthProviderButtons() {
           variant="secondary"
           className="w-full"
           onClick={() => {
-            window.location.href = `${API_BASE}/api/accounts/oauth/${provider}/start`;
+            window.location.href = `${getApiBase()}/api/accounts/oauth/${provider}/start`;
           }}
         >
           {LABELS[provider] ?? `Continue with ${provider}`}

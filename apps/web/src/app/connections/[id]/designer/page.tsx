@@ -20,7 +20,7 @@ import { PropsInspector } from "@/components/designer/PropsInspector";
 import {
   ActivityTypeRow,
   api,
-  API_BASE,
+  getApiBase,
   ConfirmationRequiredError,
   Connection,
   FieldRow,
@@ -527,7 +527,7 @@ export default function DesignerPage() {
       ? odooViewUrl(connection.url, model, viewType, windowActionId)
       : null;
   const proxyPreviewUrl = model
-    ? sameOriginPreviewUrl(connectionId, model, viewType, API_BASE)
+    ? sameOriginPreviewUrl(connectionId, model, viewType, getApiBase())
     : null;
 
   function applyFieldNamesToCanvas(names: string[], rows: FieldRow[]) {
