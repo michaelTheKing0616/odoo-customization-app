@@ -6,18 +6,28 @@ export const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? DEFAULT_API_ORIGIN).
   "",
 );
 
+function isLoopbackOrigin(origin: string): boolean {
+  try {
+    const { hostname } = new URL(origin);
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Base URL for browser fetch calls. When NEXT_PUBLIC_API_URL is unset, use same-origin
- * `/api/*` so Next.js rewrites proxy to FastAPI (avoids CORS / extension fetch blocks).
+ * Base URL for browser fetch calls. Loopback API URLs route through same-origin `/api/*`
+ * so Next.js rewrites proxy to FastAPI (avoids CORS and extension fetch interception).
+ * Remote/production NEXT_PUBLIC_API_URL still calls the API directly.
  */
 export function getApiBase(): string {
-  if (process.env.NEXT_PUBLIC_API_URL) {
+  if (typeof window !== "undefined") {
+    if (!process.env.NEXT_PUBLIC_API_URL || isLoopbackOrigin(API_BASE)) {
+      return "";
+    }
     return API_BASE;
   }
-  if (typeof window !== "undefined") {
-    return "";
-  }
-  return DEFAULT_API_ORIGIN;
+  return API_BASE;
 }
 
 export type CapabilityMatrix = {
@@ -1052,8 +1062,9 @@ async function fetchApi(path: string, init?: RequestInit): Promise<Response> {
       const target =
         base || (typeof window !== "undefined" ? window.location.origin : DEFAULT_API_ORIGIN);
       throw new Error(
-        `Cannot reach the API at ${target}. Start the API (uvicorn apps/api, port 8001) ` +
-          `or set NEXT_PUBLIC_API_URL / API_PROXY_TARGET.`,
+        `Cannot reach the API${base ? ` at ${target}` : ""}. ` +
+          `Start the API (uvicorn on port 8001) and restart the web dev server ` +
+          `(Next /api proxy → API_PROXY_TARGET, default http://127.0.0.1:8001).`,
       );
     }
     throw err;

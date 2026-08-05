@@ -77,8 +77,10 @@ Open another Terminal window:
 ```bash
 cd ~/Odoo_Customization_App
 pnpm install
-NEXT_PUBLIC_API_URL=http://127.0.0.1:8001 pnpm --filter @odoo-custom/web dev -H 127.0.0.1 -p 3002
+pnpm --filter @odoo-custom/web dev -H 127.0.0.1 -p 3002
 ```
+
+Ensure `apps/web/.env.local` has `API_PROXY_TARGET=http://127.0.0.1:8001` (default). **Do not** set `NEXT_PUBLIC_API_URL` to `127.0.0.1` — the browser routes API calls through the Next `/api` proxy instead.
 
 **Check:** open [http://127.0.0.1:3002](http://127.0.0.1:3002) — you should see the Odoo Custom home page with a **Connect your Odoo** button.
 
@@ -185,7 +187,7 @@ That’s on purpose. ERP systems hold business-critical data; the app wants you 
 | Symptom                                                 | What to try                                                                                                                    |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | Odoo Custom page is blank or “can’t connect”            | Make sure the API terminal is still running (`8001/health` should be ok).                                                      |
-| Browser console shows **Failed to fetch** on `/connect` | API CORS must include your web origin. Restart the API after updating `CORS_ORIGINS` in `.env` (defaults now include `:3002`). |
+| Browser console shows **Failed to fetch** on wizard / connect | Restart web dev after changing env. API must be on `8001`; use `API_PROXY_TARGET` in `apps/web/.env.local`, not `NEXT_PUBLIC_API_URL=http://127.0.0.1:8001`. Try incognito if a Chrome extension wraps `fetch`. |
 | “Unauthorized” or API errors on `:3000`                 | Use [http://127.0.0.1:3002](http://127.0.0.1:3002) instead, or add an API key under **Settings**.                              |
 | Odoo login fails                                        | Database might not exist — run `./docker/init-db.sh` once.                                                                     |
 | New menu doesn’t appear in Odoo                         | Log out and back into Odoo, or clear menu cache (see [USER-GUIDE.md](USER-GUIDE.md) troubleshooting).                          |
