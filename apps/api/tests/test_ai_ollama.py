@@ -178,6 +178,17 @@ def test_validate_rejects_bad_model_name() -> None:
         )
 
 
+def test_sanitize_technical_name_from_llm_label() -> None:
+    draft = {
+        "technical_name": "Super Market",
+        "display_name": "Mega Super Market",
+        "models": [{"model": "x_branch", "fields": [{"name": "x_name"}]}],
+    }
+    warnings = ai_ollama.validate_draft_module_spec(draft)
+    assert draft["technical_name"] == "super_market"
+    assert any("normalized" in w for w in warnings)
+
+
 def test_car_rental_in_templates(client: TestClient) -> None:
     res = client.get("/api/apps/templates")
     assert res.status_code == 200

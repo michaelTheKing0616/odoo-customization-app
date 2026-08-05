@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -362,6 +363,7 @@ def draft_module(
             available_models=available,
             installed_modules=installed,
             reuse_models=body.reuse_models or None,
+            rejected_reuse_models=body.rejected_reuse_models or None,
             reuse_views=reuse_views or None,
             reuse_actions=reuse_actions or None,
             expand=body.expand,
@@ -384,8 +386,22 @@ def draft_module(
             )
     except AiAssistUnavailable as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "AI returned malformed JSON. Click Create draft again, shorten the prompt, "
+                "or use a ready-made template at the bottom of Draft Studio."
+            ),
+        ) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        detail = str(exc)
+        if "malformed JSON" in detail or "Expecting" in detail:
+            detail = (
+                "AI returned malformed JSON. Click Create draft again, shorten the prompt, "
+                "or use a ready-made template at the bottom of Draft Studio."
+            )
+        raise HTTPException(status_code=422, detail=detail) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"AI draft failed: {exc}") from exc
 

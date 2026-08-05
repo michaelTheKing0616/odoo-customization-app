@@ -408,9 +408,11 @@ def completeness_checklist(
     draft: dict[str, Any],
     *,
     user_prompt: str = "",
+    reuse_models: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Non-LLM production-readiness checklist (yes/no items) + depth floors."""
     from app.ai_depth import classify_ambition, depth_checklist
+    from app.ai_domain_nouns import domain_noun_coverage
 
     models = _models_index(draft)
     items: list[dict[str, Any]] = []
@@ -452,6 +454,12 @@ def completeness_checklist(
         for f in (m.get("fields") or [])
     )
     add("contacts_link", partner_links, "res.partner M2O present" if partner_links else "none")
+
+    if user_prompt.strip():
+        noun_items, _uncovered, _noun_w = domain_noun_coverage(
+            draft, user_prompt, reuse_models=reuse_models
+        )
+        items.extend(noun_items)
 
     ambition = draft.get("_ambition")
     if ambition not in {"thin", "standard", "comprehensive"}:

@@ -133,10 +133,11 @@ def test_seed_fills_comprehensive_model_floor() -> None:
     assert "x_fee_schedule" not in ids
     assert "x_event" in ids or any("event" in i for i in ids)
     assert "x_task" in ids or any("task" in i for i in ids)
-    assert not depth_gaps(out, "comprehensive") or "depth_models" not in depth_gaps(
-        out, "comprehensive"
-    )
+    # GEN-5: seeds fill total count but seed-free floor still gaps until LLM regen
     assert compute_depth_metrics(out)["model_count"] >= 10
+    assert compute_depth_metrics(out, exclude_depth_seed=True)["model_count"] < 10
+    assert "depth_models" in depth_gaps(out, "comprehensive")
+    assert out.get("_depth", {}).get("seeded") is True
     assert compute_depth_metrics(out)["automation_count"] >= 2
     assert any("seeded substantive" in n for n in notes)
 
@@ -368,4 +369,6 @@ def test_run_depth_pass_without_llm_sets_ambition() -> None:
     # Deterministic seed fills the model floor even without an LLM
     assert compute_depth_metrics(out)["model_count"] >= 10
     assert any("seeded substantive" in w for w in warnings)
-    assert out["_depth"]["ok"] or "depth_models" not in out["_depth"]["gaps"]
+    assert out["_depth"]["seeded"] is True
+    assert "depth_models" in out["_depth"]["gaps"]
+    assert out["_depth"]["ok"] is False

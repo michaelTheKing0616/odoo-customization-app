@@ -112,6 +112,7 @@ def apply_state_field_to_model(
     out = dict(model)
     state_dicts: list[dict[str, Any]] = []
     state_keys: list[str] = []
+    label_by_key: dict[str, str] = {}
     for st in states:
         if isinstance(st, dict):
             val = str(st.get("value") or st.get("name") or "")
@@ -119,11 +120,33 @@ def apply_state_field_to_model(
             if val:
                 state_dicts.append({"value": val, "label": label})
                 state_keys.append(val)
+                label_by_key[val] = label
         elif isinstance(st, str) and st.strip():
             state_keys.append(st.strip())
             state_dicts.append(
                 {"value": st.strip(), "label": st.strip().replace("_", " ").title()}
             )
+            label_by_key[st.strip()] = st.strip().replace("_", " ").title()
+
+    fields_existing = [f for f in (out.get("fields") or []) if isinstance(f, dict)]
+    existing_status = next(
+        (f for f in fields_existing if f.get("name") == "x_status"),
+        None,
+    )
+    if existing_status:
+        from app.ai_selection import parse_selection_literal
+
+        for key, label in parse_selection_literal(existing_status.get("selection")) or []:
+            label_by_key.setdefault(key, label)
+        merged_keys: list[str] = []
+        for key in parse_selection_keys(existing_status.get("selection")) + state_keys:
+            if key not in merged_keys:
+                merged_keys.append(key)
+        state_keys = merged_keys
+        state_dicts = [
+            {"value": k, "label": label_by_key.get(k, k.replace("_", " ").title())}
+            for k in state_keys
+        ]
 
     if state_dicts:
         sel = selection_literal_from_states(state_dicts)
@@ -307,6 +330,8 @@ def ensure_workflow_transitions_on_draft(draft: dict[str, Any]) -> list[str]:
             ),
             None,
         )
+        if not status and not model.get("is_workflow"):
+            continue
         if not status:
             continue
         keys = parse_selection_keys(status.get("selection"))

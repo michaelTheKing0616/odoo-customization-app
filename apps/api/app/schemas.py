@@ -1168,6 +1168,10 @@ class AiDraftModuleBody(BaseModel):
         default_factory=list,
         description="Existing Odoo models to prefer linking (e.g. res.partner)",
     )
+    rejected_reuse_models: list[str] = Field(
+        default_factory=list,
+        description="Stock models the operator rejected — skip inference and allow custom x_* parallels",
+    )
     reuse_view_ids: list[int] = Field(
         default_factory=list,
         description="Existing ir.ui.view ids the operator wants to reuse",

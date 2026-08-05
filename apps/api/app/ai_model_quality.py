@@ -758,7 +758,10 @@ def llm_deepen_model_fields(
         "loop is missing a substantive role (lines, events, billing, checks)."
     )
     try:
-        raw = provider.generate_json(
+        from app.llm_provider import generate_json_with_timeout_retry
+
+        raw = generate_json_with_timeout_retry(
+            provider,
             prompt,
             system=system,
             timeout_s=120.0,
@@ -2204,6 +2207,8 @@ def deepen_thin_rate_models(draft: dict[str, Any]) -> list[str]:
 def ensure_terminal_workflow_statuses(draft: dict[str, Any]) -> list[str]:
     """Primary transaction header must include a terminal stage (closed/done/…)."""
     from app.ai_depth import _primary_transaction_model
+    from app.ai_selection import parse_selection_literal, selection_keys, serialize_selection
+    from app.ai_workflow import derive_default_transitions
 
     notes: list[str] = []
     parent = _primary_transaction_model(draft)
@@ -2227,17 +2232,39 @@ def ensure_terminal_workflow_statuses(draft: dict[str, Any]) -> list[str]:
     )
     if not status or not status.get("selection"):
         return notes
-    keys = set(re.findall(r"\(\s*'([^']+)'\s*,", str(status.get("selection") or "")))
+    pairs = parse_selection_literal(status.get("selection")) or []
+    keys = {k for k, _ in pairs}
     terminals = {"closed", "done", "cancelled", "void", "on_hold"}
+    terminal_append = [
+        ("closed", "Closed"),
+        ("on_hold", "On hold"),
+        ("cancelled", "Cancelled"),
+    ]
     if keys & terminals:
+        sf = parent.get("state_field")
+        ordered = selection_keys(status.get("selection"))
+        if isinstance(sf, dict):
+            sf_states = [str(s) for s in (sf.get("states") or [])]
+            flow = [k for k in ordered if k not in terminals]
+            if flow and sf_states and set(sf_states) <= terminals:
+                sf["states"] = ordered
+                sf["transitions"] = derive_default_transitions(ordered)
+                notes.append(
+                    f"quality: restored flow states on {mid}.state_field (was terminals-only)"
+                )
         return notes
-    sel = str(status["selection"]).rstrip()
-    if sel.endswith("]"):
-        status["selection"] = (
-            sel[:-1]
-            + ",('closed','Closed'),('on_hold','On hold'),('cancelled','Cancelled')]"
-        )
-        notes.append(f"quality: added terminal statuses on {mid}.x_status")
+    for key, label in terminal_append:
+        if key not in keys:
+            pairs.append((key, label))
+            keys.add(key)
+    status["selection"] = serialize_selection(pairs)
+    ordered = [k for k, _ in pairs]
+    parent["state_field"] = {
+        "field": "x_status",
+        "states": ordered,
+        "transitions": derive_default_transitions(ordered),
+    }
+    notes.append(f"quality: added terminal statuses on {mid}.x_status")
     return notes
 
 
@@ -2623,32 +2650,21 @@ def ensure_min_workflows(draft: dict[str, Any], ambition: str) -> list[str]:
 
 
 def normalize_selection_field_shapes(draft: dict[str, Any]) -> list[str]:
-    """Convert selection_values lists into Odoo-style selection strings."""
+    """Convert selection_values lists into Odoo-style selection strings; dedupe keys."""
+    from app.ai_selection import normalize_selection_field
+
     notes: list[str] = []
     for m in draft.get("models") or []:
         if not isinstance(m, dict):
             continue
+        mid = str(m.get("model") or "?")
         for f in m.get("fields") or []:
             if not isinstance(f, dict) or f.get("ttype") != "selection":
                 continue
-            if f.get("selection"):
-                f.pop("selection_values", None)
-                continue
-            vals = f.get("selection_values")
-            if not isinstance(vals, list) or not vals:
-                continue
-            parts: list[str] = []
-            for row in vals:
-                if isinstance(row, (list, tuple)) and len(row) >= 2:
-                    parts.append(f"('{row[0]}','{row[1]}')")
-                elif isinstance(row, dict) and row.get("value") is not None:
-                    parts.append(f"('{row.get('value')}','{row.get('name') or row.get('value')}')")
-            if parts:
-                f["selection"] = "[" + ",".join(parts) + "]"
-                f.pop("selection_values", None)
-                notes.append(
-                    f"quality: normalized selection on {m.get('model')}.{f.get('name')}"
-                )
+            fname = str(f.get("name") or "?")
+            notes.extend(
+                normalize_selection_field(f, context=f"{mid}.{fname}")
+            )
     return notes
 
 
@@ -2769,9 +2785,48 @@ def strip_partner_on_child_lines(draft: dict[str, Any]) -> list[str]:
     return notes
 
 
+def strip_internal_scaffold(draft: dict[str, Any]) -> list[str]:
+    """Remove teaching blobs that must never ship in API responses."""
+    notes: list[str] = []
+    if "json" in draft:
+        draft.pop("json", None)
+        notes.append("quality: stripped internal json scaffold from draft")
+    return notes
+
+
+def enforce_on_write_filter_domains(draft: dict[str, Any]) -> list[str]:
+    """Drop on_write automations that fire on every write (missing filter_domain)."""
+    notes: list[str] = []
+    autos = draft.get("automations")
+    if not isinstance(autos, list):
+        return notes
+    exempt_sources = {"depth_seed", "rules_engine", "quality_normalize"}
+    kept: list[dict[str, Any]] = []
+    for auto in autos:
+        if not isinstance(auto, dict):
+            continue
+        trigger = str(auto.get("trigger") or "")
+        domain = auto.get("filter_domain")
+        source = str(auto.get("source") or "")
+        if trigger == "on_write" and not (
+            isinstance(domain, str) and domain.strip()
+        ):
+            if source in exempt_sources:
+                kept.append(auto)
+                continue
+            notes.append(
+                f"quality: dropped automation without filter_domain: {auto.get('name')!r}"
+            )
+            continue
+        kept.append(auto)
+    draft["automations"] = kept
+    return notes
+
+
 def repair_draft_integrity(draft: dict[str, Any], *, ambition: str = "standard") -> list[str]:
     """Deterministic integrity + shape repairs after LLM generation."""
     notes: list[str] = []
+    notes.extend(strip_internal_scaffold(draft))
     notes.extend(dedupe_fields_by_name(draft))
     notes.extend(normalize_selection_field_shapes(draft))
     notes.extend(fill_empty_selection_fields(draft))
@@ -2798,12 +2853,10 @@ def repair_draft_integrity(draft: dict[str, Any], *, ambition: str = "standard")
     notes.extend(scrub_invalid_related_writes(draft))
     notes.extend(scrub_automation_filter_domains(draft))
     notes.extend(dedupe_automation_safe_actions(draft))
+    notes.extend(enforce_on_write_filter_domains(draft))
     notes.extend(dedupe_redundant_automations(draft))
     notes.extend(cap_partner_smart_buttons(draft))
     notes.extend(ensure_min_workflows(draft, ambition))
-    from app.ai_workflow import ensure_workflow_transitions_on_draft
-
-    notes.extend(ensure_workflow_transitions_on_draft(draft))
     from app.ai_workflow import ensure_workflow_transitions_on_draft
 
     notes.extend(ensure_workflow_transitions_on_draft(draft))
@@ -2811,6 +2864,16 @@ def repair_draft_integrity(draft: dict[str, Any], *, ambition: str = "standard")
     notes.extend(demote_spurious_link_workflows(draft))
     notes.extend(purge_ghost_ui(draft))
     notes.extend(refresh_forms_missing_relational_fields(draft))
+    prompt = str(draft.get("_user_prompt") or "")
+    if prompt.strip():
+        from app.ai_domain_nouns import expand_uncovered_noun_models
+
+        reuse = []
+        if isinstance(draft.get("reuse"), dict):
+            reuse = list(draft["reuse"].get("models") or [])
+        notes.extend(
+            expand_uncovered_noun_models(draft, prompt, reuse_models=reuse)
+        )
     return notes
 
 

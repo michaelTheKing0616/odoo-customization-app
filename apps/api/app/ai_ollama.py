@@ -31,10 +31,92 @@ from app.llm_provider import (
     ai_provider_enabled,
     get_llm_provider,
 )
+from app.llm_json import parse_llm_json_object
 from app.settings import settings
 _TECHNICAL_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 _MODEL_RE = re.compile(r"^x_[a-z0-9_]+$")
 _FIELD_RE = re.compile(r"^x_[A-Za-z0-9_]+$")
+
+
+def normalize_technical_name(raw: Any, *, fallback: str = "custom_app") -> str:
+    """Coerce LLM/user labels into Odoo module technical names."""
+    source = raw if isinstance(raw, str) and raw.strip() else fallback
+    s = source.strip().lower()
+    s = re.sub(r"[^a-z0-9_]+", "_", s)
+    s = re.sub(r"_+", "_", s).strip("_")
+    if not s:
+        s = "custom_app"
+    if not s[0].isalpha():
+        s = f"x_{s}"
+    if not _TECHNICAL_RE.fullmatch(s):
+        s = "custom_app"
+    return s
+
+
+def derive_draft_naming_from_prompt(
+    data: dict[str, Any], user_prompt: str
+) -> list[str]:
+    """Fill technical_name, display_name, and root menu label from the user prompt."""
+    warnings: list[str] = []
+    if not user_prompt.strip():
+        return warnings
+    raw_tech = data.get("technical_name")
+    if not raw_tech or raw_tech == "custom_app":
+        tokens = re.findall(r"[a-zA-Z]+", user_prompt.lower())
+        skip = {
+            "a",
+            "an",
+            "the",
+            "and",
+            "or",
+            "with",
+            "for",
+            "to",
+            "of",
+            "in",
+            "on",
+            "large",
+            "mega",
+            "multiple",
+            "full",
+            "simple",
+            "app",
+            "system",
+            "management",
+            "build",
+            "create",
+        }
+        words = [t for t in tokens if t not in skip and len(t) > 2][:4]
+        slug_source = "_".join(words) if words else user_prompt
+        slug = normalize_technical_name(slug_source, fallback="custom_app")
+        if slug == "custom_app":
+            warnings.append(
+                "technical_name defaulted to custom_app — could not slugify prompt"
+            )
+        else:
+            data["technical_name"] = slug
+            warnings.append(f"technical_name derived from prompt → {slug!r}")
+    if not data.get("display_name"):
+        headline = user_prompt.strip().split("\n")[0][:80].strip()
+        data["display_name"] = headline.title() if headline else "Custom App"
+        warnings.append("display_name derived from prompt")
+    return warnings
+
+
+def sanitize_draft_module_spec(data: dict[str, Any]) -> list[str]:
+    """Fix common LLM identifier mistakes in-place; return warnings."""
+    warnings: list[str] = []
+    raw_tech = data.get("technical_name")
+    display = data.get("display_name")
+    fallback = display if isinstance(display, str) else "custom_app"
+    fixed = normalize_technical_name(raw_tech, fallback=str(fallback))
+    if raw_tech != fixed:
+        if raw_tech:
+            warnings.append(f"technical_name normalized {raw_tech!r} → {fixed!r}")
+        else:
+            warnings.append(f"technical_name defaulted to {fixed!r}")
+    data["technical_name"] = fixed
+    return warnings
 
 _SYSTEM_PROMPT = f"""You are a ModuleSpec JSON generator for Odoo Community 19 customizations
 (public ORM/RPC only — never Studio Enterprise). Your #1 job is MODEL CREATION QUALITY:
@@ -107,27 +189,7 @@ def ollama_reachable(*, timeout_s: float = 2.0) -> tuple[bool, str]:
 
 
 def _extract_json_object(text: str) -> dict[str, Any]:
-    text = text.strip()
-    if text.startswith("```"):
-        lines = text.splitlines()
-        if lines and lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        text = "\n".join(lines).strip()
-    try:
-        data = json.loads(text)
-        if isinstance(data, dict):
-            return data
-    except json.JSONDecodeError:
-        pass
-    start = text.find("{")
-    end = text.rfind("}")
-    if start >= 0 and end > start:
-        data = json.loads(text[start : end + 1])
-        if isinstance(data, dict):
-            return data
-    raise ValueError("LLM response did not contain a JSON object")
+    return parse_llm_json_object(text)
 
 
 def call_ollama_generate(prompt: str, *, timeout_s: float = 120.0) -> str:
@@ -152,7 +214,7 @@ def call_ollama_generate(prompt: str, *, timeout_s: float = 120.0) -> str:
 
 def validate_draft_module_spec(data: dict[str, Any]) -> list[str]:
     """Return warnings; raise ValueError on hard invalid technical names."""
-    warnings: list[str] = []
+    warnings: list[str] = sanitize_draft_module_spec(data)
     tech = data.get("technical_name")
     if not isinstance(tech, str) or not _TECHNICAL_RE.fullmatch(tech):
         raise ValueError(
@@ -291,6 +353,7 @@ def draft_module_from_prompt(
     available_models: list[str] | None = None,
     installed_modules: list[str] | None = None,
     reuse_models: list[str] | None = None,
+    rejected_reuse_models: list[str] | None = None,
     reuse_views: list[dict[str, Any]] | None = None,
     reuse_actions: list[dict[str, Any]] | None = None,
     expand: bool = True,
@@ -337,10 +400,23 @@ def draft_module_from_prompt(
         available_models=available_models,
         installed_modules=installed_modules,
         operator_reuse=reuse_models,
+        pack_reuse_stock=None,
+        rejected_reuse_models=rejected_reuse_models,
     )
     effective_reuse = list(
-        dict.fromkeys([*(reuse_models or []), *reuse_plan.models])
+        dict.fromkeys(
+            [
+                *(reuse_models or []),
+                *[d.model for d in reuse_plan.decisions if d.confirmed],
+            ]
+        )
     )
+
+    warnings: list[str] = []
+    from app.ai_depth import classify_ambition_with_notes
+
+    scaled_amb, amb_notes = classify_ambition_with_notes(prompt)
+    warnings.extend(amb_notes)
 
     mode = (pipeline or settings.ai_pipeline_mode or "single").strip().lower()
     if mode == "staged":
@@ -401,7 +477,6 @@ def draft_module_from_prompt(
         except LLMError as exc:
             raise AiAssistUnavailable(str(exc), status_code=exc.status_code) from exc
 
-    warnings: list[str] = []
     provider = get_llm_provider()
     retrieved = retrieve_domain_pack(prompt, provider=provider)
     matched = (retrieved[0], retrieved[1]) if retrieved else None
@@ -431,7 +506,13 @@ def draft_module_from_prompt(
                 draft = matched[1]
                 raw = raw or json.dumps(draft)
             else:
-                raise AiAssistUnavailable(str(exc), status_code=getattr(exc, "status_code", 503)) from exc
+                msg = str(exc)
+                if isinstance(exc, json.JSONDecodeError) or "malformed JSON" in msg:
+                    msg = (
+                        "AI returned malformed JSON. Click Create draft again, shorten the "
+                        "prompt, or use a ready-made template at the bottom of Draft Studio."
+                    )
+                raise AiAssistUnavailable(msg, status_code=422) from exc
     elif matched:
         draft = matched[1]
         raw = json.dumps(draft)
@@ -449,6 +530,10 @@ def draft_module_from_prompt(
         )
 
     assert draft is not None
+    draft["_user_prompt"] = prompt
+    draft["_ambition"] = scaled_amb
+    warnings.extend(sanitize_draft_module_spec(draft))
+    warnings.extend(derive_draft_naming_from_prompt(draft, prompt))
 
     # Pure-AI repair: emit omitted scaffold models before pack merge fills them
     if matched and provider is not None:
@@ -462,6 +547,24 @@ def draft_module_from_prompt(
     if matched:
         draft, pack_warnings = merge_domain_pack(draft, matched[1])
         warnings.extend(pack_warnings)
+        pack_stock = matched[1].get("reuse_stock") or draft.get("_pack_reuse_stock")
+        if pack_stock:
+            reuse_plan = plan_reuse(
+                prompt,
+                available_models=available_models,
+                installed_modules=installed_modules,
+                operator_reuse=reuse_models,
+                pack_reuse_stock=pack_stock if isinstance(pack_stock, list) else None,
+                rejected_reuse_models=rejected_reuse_models,
+            )
+            effective_reuse = list(
+                dict.fromkeys(
+                    [
+                        *(reuse_models or []),
+                        *[d.model for d in reuse_plan.decisions if d.confirmed],
+                    ]
+                )
+            )
 
     if expand:
         draft, enrich_warnings = enrich_draft_module_spec(
@@ -477,7 +580,7 @@ def draft_module_from_prompt(
         draft, q_w = run_model_quality_pass(
             draft,
             user_prompt=prompt,
-            ambition=str(draft.get("_ambition") or "standard"),
+            ambition=str(draft.get("_ambition") or scaled_amb),
             provider=provider,
             expand_llm=True,
         )
@@ -538,6 +641,9 @@ def draft_module_from_prompt(
         warnings.extend(apply_reuse_plan(draft, reuse_plan))
 
     warnings.extend(validate_draft_module_spec(draft))
+    from app.ai_model_quality import strip_internal_scaffold
+
+    warnings.extend(strip_internal_scaffold(draft))
     draft, warnings, refusals = _apply_pcm_strip(
         draft,
         protected_manifest=protected_manifest,

@@ -128,6 +128,14 @@ Re-verified 2026-08-03 (orchestrator + 3 checkers); REM-14 closed residual gaps 
 - [x] UIF-3 Overview declutter: tabs + first-run start-here card — 2026-08-05
 - [x] UIF-4 Copy/density pass: subtitles, jargon sweep, Advanced disclosures, screenshot re-run — 2026-08-05 (Playwright sweep: run locally)
 
+## Wave 15 — GEN (generation fidelity; cards in WAVE-15-GEN.md; from 2026-08-05 supermarket draft review)
+- [x] GEN-1 Selection dedupe/normalize + terminal-merge preserves flow + transitions inferred
+- [x] GEN-2 Domain noun coverage gate (missing-branch class of miss) + critique required repairs
+- [x] GEN-3 Honest seed fallback: domain-neutral seeds, seeded-depth flag + UI callout, timeout retry
+- [x] GEN-4 Response hygiene: scaffold strip, prompt-derived naming, on_write domain rule, critique consistency, PCM label
+- [x] GEN-5 Model-count adequacy: ambition auto-scale from prompt cues, retail_supermarket pack, seed-free floor, noun-driven expansion
+- [x] GEN-6 Intuitive stock-model reuse: noun→model inference gated by installed modules, PCM link-only, confirm-in-UI, pack reuse_stock entries
+
 ## Wave 13 — DEV (developer code path; cards in WAVE-13-DEV.md; AFTER Wave 12)
 - [x] DEV-1 Code Studio: live code server actions + automations (probe-gated per instance) — core 2026-08-03
 - [x] DEV-2 Module code authoring: Option A with a real editor (custom_code_blocks writable) — 2026-08-03

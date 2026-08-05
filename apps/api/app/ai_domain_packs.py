@@ -687,6 +687,12 @@ def _project_tracker_pack() -> dict[str, Any]:
     return project_tracker_pack()
 
 
+def _retail_supermarket_pack() -> dict[str, Any]:
+    from app.ai_domain_pack_retail_supermarket import retail_supermarket_pack
+
+    return retail_supermarket_pack()
+
+
 _PACK_FACTORIES: list[tuple[str, Any, re.Pattern[str]]] = [
     (
         "car_rental",
@@ -734,6 +740,15 @@ _PACK_FACTORIES: list[tuple[str, Any, re.Pattern[str]]] = [
         re.compile(
             r"\b(restaurant|dining|menu|kitchen|food\s+service|pos\s+lite|"
             r"table\s+reservation|waiter|bistro|cafe|dining\s+order)\b",
+            re.I,
+        ),
+    ),
+    (
+        "retail_supermarket",
+        _retail_supermarket_pack,
+        re.compile(
+            r"\b(super[\s-]?market|grocery|mega\s+store|retail\s+chain|"
+            r"multiple\s+branches|store\s+chain|hypermarket)\b",
             re.I,
         ),
     ),
@@ -898,6 +913,8 @@ def merge_domain_pack(
     out.setdefault("technical_name", pack.get("technical_name"))
     out.setdefault("display_name", pack.get("display_name"))
     out["domain_pack"] = pack.get("domain_pack")
+    if pack.get("reuse_stock"):
+        out["_pack_reuse_stock"] = copy.deepcopy(pack.get("reuse_stock"))
 
     depends = list(out.get("depends") or [])
     for dep in pack.get("depends") or []:

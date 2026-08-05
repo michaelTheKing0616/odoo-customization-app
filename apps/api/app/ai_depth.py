@@ -60,15 +60,35 @@ _THIN_HINT_RE = re.compile(
 )
 
 
+_SCALE_RE = re.compile(
+    r"\b(mega|large|multiple|multi[\s-]?branch|branches|chain|franchise|"
+    r"nationwide|worldwide)\b",
+    re.I,
+)
+
+
 def classify_ambition(prompt: str) -> Ambition:
     """Infer how deep the ModuleSpec should be from the user prompt alone."""
+    amb, _notes = classify_ambition_with_notes(prompt)
+    return amb
+
+
+def classify_ambition_with_notes(prompt: str) -> tuple[Ambition, list[str]]:
+    """Return ambition plus optional auto-scale warnings."""
     text = (prompt or "").strip()
+    notes: list[str] = []
     if not text:
-        return "standard"
+        return "standard", notes
     if _COMPREHENSIVE_RE.search(text):
-        return "comprehensive"
+        return "comprehensive", notes
+    if _SCALE_RE.search(text) and not _THIN_HINT_RE.search(text):
+        notes.append(
+            "ambition: prompt scale cues (mega/large/multiple branches/chain) "
+            "→ comprehensive targets"
+        )
+        return "comprehensive", notes
     if _THIN_HINT_RE.search(text) and len(text.split()) < 16:
-        return "thin"
+        return "thin", notes
     ops = re.findall(
         r"\b(manage|management|system|platform|operations|workflow|inventory|"
         r"billing|scheduling|crm|erp|portal)\b",
@@ -76,10 +96,10 @@ def classify_ambition(prompt: str) -> Ambition:
         flags=re.I,
     )
     if len(ops) >= 1 and len(text.split()) >= 8:
-        return "standard"
+        return "standard", notes
     if len(text.split()) <= 5:
-        return "thin"
-    return "standard"
+        return "thin", notes
+    return "standard", notes
 
 
 def _models(draft: dict[str, Any]) -> list[dict[str, Any]]:
@@ -140,8 +160,18 @@ def _is_safe_automation(auto: dict[str, Any]) -> bool:
     return True
 
 
-def compute_depth_metrics(draft: dict[str, Any]) -> dict[str, Any]:
+def compute_depth_metrics(
+    draft: dict[str, Any],
+    *,
+    exclude_depth_seed: bool = False,
+) -> dict[str, Any]:
     models = _models(draft)
+    if exclude_depth_seed:
+        models = [
+            m
+            for m in models
+            if not (isinstance(m, dict) and m.get("source") == "depth_seed")
+        ]
     n_models = len(models)
     substantive = [m for m in models if not _is_hollow_model(m)]
     field_counts: list[int] = []
@@ -184,8 +214,9 @@ def depth_gaps(draft: dict[str, Any], ambition: Ambition | None = None) -> list[
         amb = "standard"
     t = AMBITION_TARGETS[amb]
     m = compute_depth_metrics(draft)
+    m_real = compute_depth_metrics(draft, exclude_depth_seed=True)
     gaps: list[str] = []
-    if m["model_count"] < t["min_models"]:
+    if m_real["model_count"] < t["min_models"]:
         gaps.append("depth_models")
     if m["fields_avg"] < t["min_fields_avg"]:
         gaps.append("depth_fields_avg")
@@ -208,6 +239,7 @@ def depth_checklist(
         amb = "standard"
     t = AMBITION_TARGETS[amb]
     m = compute_depth_metrics(draft)
+    m_real = compute_depth_metrics(draft, exclude_depth_seed=True)
     gaps = set(depth_gaps(draft, amb))
 
     def row(key: str, ok: bool, detail: str) -> dict[str, Any]:
@@ -217,9 +249,9 @@ def depth_checklist(
         row(
             "depth_models",
             "depth_models" not in gaps,
-            f"{m['model_count']}/{int(t['min_models'])} substantive models "
-            f"({amb}; raw={m.get('model_count_raw', m['model_count'])}, "
-            f"hollow={m.get('hollow_model_count', 0)})",
+            f"{m_real['model_count']}/{int(t['min_models'])} substantive models "
+            f"(excl. depth_seed; raw={m.get('model_count_raw', m['model_count'])}, "
+            f"seeded={m['model_count'] - m_real['model_count']})",
         ),
         row(
             "depth_fields_avg",
@@ -532,6 +564,42 @@ def _parent_fk_name(parent_id: str) -> str:
     return f"{parent_id}_id" if parent_id.startswith("x_") else f"x_{parent_id}_id"
 
 
+LAW_FIRM_SEED_LEXICON = frozenset(
+    {
+        "retainer",
+        "appointment",
+        "disbursement",
+        "hearing",
+        "matter",
+        "attorney",
+        "conflict",
+        "trust",
+        "escrow",
+    }
+)
+
+
+def _neutral_seed_description(
+    template_desc: str,
+    *,
+    parent_label: str,
+    user_prompt: str = "",
+) -> str:
+    """Domain-neutral labels for depth_seed models (no law-firm jargon)."""
+    role = template_desc.split("/")[0].strip()
+    domain_word = ""
+    for tok in re.findall(r"[a-zA-Z]+", user_prompt):
+        low = tok.lower()
+        if low in {"super", "market", "store", "shop", "retail", "hospital", "clinic"}:
+            domain_word = tok.title()
+            break
+    if domain_word:
+        return f"{domain_word} {role}"
+    if parent_label and parent_label not in {"Parent", "parent"}:
+        return f"{parent_label} {role}"
+    return f"Related {role}"
+
+
 def _build_seed_fields(
     parent_id: str,
     staff_id: str | None,
@@ -644,7 +712,7 @@ def _build_seed_fields(
 
 
 def seed_operational_loop_models(
-    draft: dict[str, Any], ambition: Ambition
+    draft: dict[str, Any], ambition: Ambition, *, user_prompt: str = ""
 ) -> list[str]:
     """Deterministically add substantive ops-loop models when under the model floor.
 
@@ -662,6 +730,7 @@ def seed_operational_loop_models(
         return notes
     parent_id = str(parent["model"])
     parent_label = str(parent.get("description") or parent_id).split("/")[0].strip() or "Parent"
+    prompt = user_prompt or str(draft.get("_user_prompt") or "")
     staff_id = _staff_model_id(draft, parent_id)
     known = {str(m.get("model")) for m in _models(draft)}
 
@@ -733,10 +802,13 @@ def seed_operational_loop_models(
         fields = _build_seed_fields(
             parent_id, staff_id, parent_label=parent_label, **opts
         )
+        desc_neutral = _neutral_seed_description(
+            desc, parent_label=parent_label, user_prompt=prompt
+        )
         draft.setdefault("models", []).append(
             {
                 "model": model_name,
-                "description": desc,
+                "description": desc_neutral,
                 "mode": "new",
                 "fields": fields,
                 "source": "depth_seed",
@@ -807,14 +879,38 @@ def ensure_min_automations(draft: dict[str, Any], ambition: Ambition) -> list[st
 def apply_deterministic_depth(
     draft: dict[str, Any],
     ambition: Ambition | None = None,
+    *,
+    user_prompt: str = "",
 ) -> tuple[dict[str, Any], list[str]]:
     """Mutate draft toward ambition floor without an LLM."""
     out = copy.deepcopy(draft)
+    if user_prompt:
+        out["_user_prompt"] = user_prompt
     amb: Ambition = ambition or out.get("_ambition") or "standard"  # type: ignore[assignment]
     if amb not in AMBITION_TARGETS:
         amb = "standard"
     out["_ambition"] = amb
     notes: list[str] = []
+
+    def _gaps_for_metrics(m: dict[str, Any]) -> list[str]:
+        t = AMBITION_TARGETS[amb]
+        gaps: list[str] = []
+        if m["model_count"] < t["min_models"]:
+            gaps.append("depth_models")
+        if m["fields_avg"] < t["min_fields_avg"]:
+            gaps.append("depth_fields_avg")
+        if m["m2o_count"] < t["min_m2o"]:
+            gaps.append("depth_relations")
+        if m["workflow_count"] < t["min_workflows"]:
+            gaps.append("depth_workflows")
+        if m["smart_button_count"] < t["min_smart_buttons"]:
+            gaps.append("depth_smart_buttons")
+        if m["automation_count"] < t["min_automations"]:
+            gaps.append("depth_automations")
+        return gaps
+
+    metrics_before_seed = compute_depth_metrics(out, exclude_depth_seed=True)
+    gaps_before = _gaps_for_metrics(metrics_before_seed)
     notes.extend(strip_unsafe_automations(out))
     from app.ai_model_quality import (
         collapse_hollow_catalogs_to_selections,
@@ -823,25 +919,37 @@ def apply_deterministic_depth(
 
     notes.extend(collapse_hollow_catalogs_to_selections(out))
     notes.extend(collapse_thin_padding_models(out))
-    notes.extend(seed_operational_loop_models(out, amb))
+    notes.extend(seed_operational_loop_models(
+        out, amb, user_prompt=user_prompt or str(out.get("_user_prompt") or "")
+    ))
     notes.extend(ensure_min_automations(out, amb))
     notes.extend(_ensure_workflow_minimum_fields(out))
     notes.extend(_ensure_currency_on_amounts(out))
     notes.extend(_ensure_company_on_transactional(out, amb))
     notes.extend(synthesize_smart_buttons_from_relations(out))
     metrics = compute_depth_metrics(out)
+    metrics_no_seed = compute_depth_metrics(out, exclude_depth_seed=True)
     gaps = depth_gaps(out, amb)
+    gaps_no_seed = _gaps_for_metrics(metrics_no_seed)
+    has_depth_seeds = any(
+        isinstance(m, dict) and m.get("source") == "depth_seed" for m in _models(out)
+    )
+    seeded_only = has_depth_seeds and bool(gaps_no_seed)
     out["_depth"] = {
         "ambition": amb,
         "metrics": metrics,
+        "metrics_without_seeds": metrics_no_seed,
         "gaps": gaps,
         "targets": AMBITION_TARGETS[amb],
         "ok": not gaps,
+        "seeded": seeded_only,
     }
     base = [c for c in (out.get("_completeness") or []) if isinstance(c, dict)]
     depth_ids = {c["id"] for c in depth_checklist(out, amb)}
     base = [c for c in base if c.get("id") not in depth_ids]
     out["_completeness"] = base + depth_checklist(out, amb)
+    if seeded_only:
+        notes.append("depth padded via generic seeds — regenerate recommended")
     if gaps:
         notes.append(f"depth: ambition={amb} still missing {', '.join(gaps)}")
     else:
@@ -929,7 +1037,10 @@ def llm_expand_depth(
             f"at least {need_models} NEW substantive models (each ≥6 fields)."
         )
     try:
-        raw = provider.generate_json(
+        from app.llm_provider import generate_json_with_timeout_retry
+
+        raw = generate_json_with_timeout_retry(
+            provider,
             prompt,
             system=system,
             timeout_s=120.0,
@@ -989,7 +1100,7 @@ def run_depth_pass(
         raw_amb = draft.get("_ambition") or "standard"
         ambition = raw_amb if raw_amb in AMBITION_TARGETS else "standard"  # type: ignore[assignment]
 
-    out, notes = apply_deterministic_depth(draft, ambition)
+    out, notes = apply_deterministic_depth(draft, ambition, user_prompt=user_prompt)
     warnings.extend(notes)
 
     if expand_llm and provider is not None:
@@ -1030,6 +1141,7 @@ __all__ = [
     "AMBITION_TARGETS",
     "Ambition",
     "classify_ambition",
+    "classify_ambition_with_notes",
     "compute_depth_metrics",
     "depth_gaps",
     "depth_checklist",

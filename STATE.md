@@ -4,18 +4,15 @@
 
 ## Last run
 - Date: 2026-08-05
-- **Wave 14 UIF shipped (UIF-1 → UIF-4):**
-  - `InstanceIdentity` once in top bar; CapabilityProbePanel quiet row only; Overview identity chips removed.
-  - Bulk Suite duplicate six-section block + Housekeeping duplicate recompute removed.
-  - Sidebar exact Overview active match; collapsible nav + localStorage; unique icons; Operations hub `/operations`.
-  - Overview tabs (Overview / Models / Develop), primary actions, first-run card, playbook accordions.
-  - Playbook panels → ErrorNotice + Retry; journal HealthCheckBanner removed (health filter tab).
-  - Gates: `pnpm lint` 0 errors · `pnpm test` 101 passed · `pnpm build` OK.
-  - Playwright vision-verify sweep: spec updated (+ operations-hub); run locally (webServer timeout in agent env).
+- **Wave 15 GEN-1 → GEN-6 complete** + minor polish:
+  - Reject inferred/installable reuse → auto-regen + `rejected_reuse_models` API.
+  - Installable modules → structured `installable` decisions + wizard panel.
+  - Pack `reuse_stock` processed before noun inference (pack metadata wins).
+- Gate artifact: `docs/research/gen_fix_run_2026-08-05.json` (live Ollama).
+- Tests: 35 passed (wave15 + reuse planner).
 
 ## Next
-- Run `pnpm exec playwright test e2e/vision-verify-sweep.spec.ts` locally to refresh `docs/vision-verify/` screenshots.
-- Commit Wave 14 when user approves.
+- None — committed and pushed on user request.
 
 ## Rule
 - Code Studio = probe per connection, never hosting-tier assumption.

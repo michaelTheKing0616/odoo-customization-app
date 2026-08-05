@@ -1,0 +1,103 @@
+{
+  "prompt": "A large mega Super Market with multiple branches",
+  "mode": "live_ollama_regeneration",
+  "ollama_reachable": true,
+  "ollama_model": "reachable http://127.0.0.1:11434 model=qwen3:8b",
+  "technical_name": "super_market_branches",
+  "display_name": "A Large Mega Super Market With Multiple Branches",
+  "ambition": "comprehensive",
+  "domain_pack": "retail_supermarket",
+  "model_count": 10,
+  "model_names_sample": [
+    "x_branch",
+    "x_branch_transfer",
+    "x_event",
+    "x_inventory_count",
+    "x_promotion",
+    "x_staff_shift",
+    "x_store_order",
+    "x_store_order_line",
+    "x_supplier_agreement",
+    "x_task"
+  ],
+  "branch_model_present": true,
+  "noun_branch_checklist": {
+    "id": "noun_uncovered:branch",
+    "ok": true,
+    "detail": "covered by model/reuse"
+  },
+  "uncovered_nouns": [],
+  "has_json_scaffold": false,
+  "depth_seeded": true,
+  "depth_ok": false,
+  "selection_valid": true,
+  "transitions_present": true,
+  "inferred_reuse_count": 4,
+  "inferred_reuse_sample": [
+    {
+      "model": "product.template",
+      "reason": "Products / catalog",
+      "source": "inferred",
+      "confirmed": false,
+      "forbid_parallel": [
+        "x_product",
+        "x_product_template",
+        "x_sku"
+      ],
+      "link_only": false
+    },
+    {
+      "model": "product.product",
+      "reason": "Products / catalog",
+      "source": "inferred",
+      "confirmed": false,
+      "forbid_parallel": [
+        "x_product",
+        "x_product_template",
+        "x_sku"
+      ],
+      "link_only": false
+    },
+    {
+      "model": "purchase.order",
+      "reason": "Supplier purchase orders (link-only)",
+      "source": "pack_reuse_stock",
+      "confirmed": false,
+      "forbid_parallel": [],
+      "link_only": true
+    },
+    {
+      "model": "stock.warehouse",
+      "reason": "Warehouse / stock locations (link-only)",
+      "source": "pack_reuse_stock",
+      "confirmed": false,
+      "forbid_parallel": [
+        "x_warehouse"
+      ],
+      "link_only": true
+    }
+  ],
+  "warnings_sample": [
+    "ambition: prompt scale cues (mega/large/multiple branches/chain) \u2192 comprehensive targets",
+    "technical_name defaulted to 'custom_app'",
+    "technical_name derived from prompt \u2192 'super_market_branches'",
+    "display_name derived from prompt",
+    "quality: scaffold-gap repair emitted none of ['x_staff_shift', 'x_branch', 'x_store_order', 'x_store_order_line', 'x_promotion', 'x_branch_transfer'] (pack merge may fill)",
+    "quality: seeded core scaffold model x_staff_shift before pack merge (LLM omitted)",
+    "domain pack added model x_branch",
+    "domain pack added model x_store_order",
+    "domain pack added model x_store_order_line",
+    "domain pack added model x_promotion",
+    "domain pack added model x_branch_transfer",
+    "domain pack added model x_supplier_agreement",
+    "domain pack added model x_inventory_count",
+    "added 8 default action(s)",
+    "added root + 8 menu(s)",
+    "added 19 default view arch(es)",
+    "reuse: connection-aware plan",
+    "reuse: uom.uom available via module 'uom' \u2014 install and reuse vs generate custom x_ model",
+    "reuse: added x_partner_id on x_promotion",
+    "reuse: added x_partner_id on x_branch_transfer"
+  ],
+  "refusals_count": 1
+}

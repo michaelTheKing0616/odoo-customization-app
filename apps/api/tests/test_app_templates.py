@@ -27,10 +27,12 @@ def client() -> TestClient:
 
 def test_list_templates_includes_library() -> None:
     templates = list_templates()
-    ids = {t["id"] for t in templates}
-    assert "library" in ids
-    assert "crm_lite" in ids
-    assert "inventory_lite" in ids
+    ids = [t["id"] for t in templates]
+    assert len(ids) == len(set(ids)), f"duplicate template ids: {ids}"
+    id_set = set(ids)
+    assert "library" in id_set
+    assert "crm_lite" in id_set
+    assert "inventory_lite" in id_set
     lib = next(t for t in templates if t["id"] == "library")
     assert lib["name"] == "Library"
     assert "description" in lib

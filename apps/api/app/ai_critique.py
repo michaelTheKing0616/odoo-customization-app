@@ -114,6 +114,16 @@ def llm_critique(
         f"Original user request:\n{user_prompt or '(n/a)'}\n\n"
         f"Draft ModuleSpec:\n{json.dumps(slim, default=str)[:7000]}"
     )
+    from app.ai_domain_nouns import domain_noun_coverage
+
+    _items, uncovered, noun_warnings = domain_noun_coverage(
+        draft, user_prompt or str(draft.get("_user_prompt") or "")
+    )
+    if uncovered:
+        prompt += (
+            "\n\nMANDATORY REPAIRS — prompt nouns without models (add substantive models):\n"
+            + ", ".join(uncovered)
+        )
     raw = provider.generate_json(
         prompt,
         system=system,
@@ -275,6 +285,24 @@ def _apply_missing_automations(draft: dict[str, Any], missing: list[Any]) -> lis
     return notes
 
 
+def _normalize_critique_block(critique: dict[str, Any], repair_notes: list[str]) -> dict[str, Any]:
+    ready = bool(critique.get("ready"))
+    notes_list = list(critique.get("notes") or [])
+    checklist = critique.get("checklist") or []
+    if not ready and not notes_list and not checklist and not repair_notes:
+        ready = True
+    if not ready and not notes_list:
+        notes_list = [
+            "Critique flagged not ready but gave no details — review completeness/depth gaps"
+        ]
+    return {
+        "ready": ready,
+        "checklist": checklist,
+        "notes": notes_list,
+        "repairs": repair_notes,
+    }
+
+
 def apply_critique_repairs(
     draft: dict[str, Any], critique: dict[str, Any]
 ) -> tuple[dict[str, Any], list[str]]:
@@ -291,12 +319,7 @@ def apply_critique_repairs(
         notes.append(f"critique: skipped {skipped} hollow/thin/redundant missing_model(s)")
     notes.extend(_apply_missing_models(out, filtered))
     notes.extend(_apply_missing_automations(out, critique.get("missing_automations") or []))
-    out["_critique"] = {
-        "ready": bool(critique.get("ready")),
-        "checklist": critique.get("checklist") or [],
-        "notes": critique.get("notes") or [],
-        "repairs": notes,
-    }
+    out["_critique"] = _normalize_critique_block(critique, notes)
     return out, notes
 
 
@@ -310,11 +333,14 @@ def run_self_critique(
     """Evaluate draft; optionally repair gaps. Always safe if LLM unavailable."""
     warnings: list[str] = []
     out = copy.deepcopy(draft)
+    from app.ai_domain_nouns import domain_noun_coverage
 
     # Deterministic baseline always
-    checklist = completeness_checklist(out)
+    checklist = completeness_checklist(out, user_prompt=user_prompt)
     out["_completeness"] = checklist
     gaps = [c["id"] for c in checklist if not c.get("ok")]
+    _noun_items, uncovered, noun_warnings = domain_noun_coverage(out, user_prompt)
+    warnings.extend(noun_warnings)
     ambition = out.get("_ambition") or classify_ambition(user_prompt)
     d_gaps = depth_gaps(out, ambition if ambition in {"thin", "standard", "comprehensive"} else "standard")  # type: ignore[arg-type]
     if d_gaps:
@@ -356,9 +382,9 @@ def run_self_critique(
             out, repair_notes = apply_critique_repairs(out, critique)
             warnings.extend(repair_notes)
             # Refresh completeness after repairs
-            out["_completeness"] = completeness_checklist(out)
+            out["_completeness"] = completeness_checklist(out, user_prompt=user_prompt)
         else:
-            out["_critique"] = critique
+            out["_critique"] = _normalize_critique_block(critique, [])
         warnings.append(
             "critique: LLM pass "
             + ("ready" if critique.get("ready") else "needs_work")

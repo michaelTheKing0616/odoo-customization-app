@@ -1,0 +1,67 @@
+{
+  "technical_name": "custom_app",
+  "display_name": "Super Market",
+  "depends": ["base", "contacts", "mail"],
+  "models": [
+    {
+      "model": "x_sales_order",
+      "description": "Sales order",
+      "mode": "new",
+      "is_workflow": true,
+      "fields": [
+        {"name": "x_name", "ttype": "char", "string": "Name", "required": true},
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('draft','Draft'),('confirmed','Confirmed'),('delivered','Delivered'),('cancelled','Cancelled'),('cancelled','Cancelled duplicate')]"
+        },
+        {"name": "x_partner_id", "ttype": "many2one", "relation": "res.partner", "string": "Customer"}
+      ],
+      "state_field": {
+        "field": "x_status",
+        "states": ["closed", "on_hold", "cancelled"],
+        "transitions": []
+      }
+    },
+    {
+      "model": "x_event",
+      "description": "Event / Appointment",
+      "mode": "new",
+      "source": "depth_seed",
+      "fields": [
+        {"name": "x_name", "ttype": "char", "string": "Name", "required": true},
+        {"name": "x_sales_order_id", "ttype": "many2one", "relation": "x_sales_order", "string": "Sales order", "required": true},
+        {"name": "x_date", "ttype": "date", "string": "Date", "required": true},
+        {"name": "x_partner_id", "ttype": "many2one", "relation": "res.partner", "string": "Contact"}
+      ]
+    },
+    {
+      "model": "x_deposit",
+      "description": "Deposit / Retainer",
+      "mode": "new",
+      "source": "depth_seed",
+      "fields": [
+        {"name": "x_name", "ttype": "char", "string": "Name", "required": true},
+        {"name": "x_sales_order_id", "ttype": "many2one", "relation": "x_sales_order", "string": "Sales order", "required": true},
+        {"name": "x_amount", "ttype": "float", "string": "Amount", "required": true}
+      ]
+    }
+  ],
+  "automations": [
+    {
+      "name": "Notify on order confirmation",
+      "model": "x_sales_order",
+      "trigger": "on_write",
+      "safe_actions": [{"kind": "next_activity", "summary": "Follow up"}]
+    }
+  ],
+  "menus": [],
+  "views": [],
+  "json": {
+    "models": [{"model": "x_ex_job", "description": "Teaching exemplar"}],
+    "anti_patterns": ["Do NOT keep x_ex_* names"]
+  },
+  "_critique": {"ready": false, "checklist": [], "notes": []},
+  "_user_prompt": "A large mega Super Market with multiple branches"
+}

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { SuggestTemplateButton } from "@/components/SuggestTemplateButton";
 import { SaveAsComponentButton } from "@/components/SaveAsComponentButton";
@@ -86,6 +86,15 @@ const FALLBACK_TEMPLATES: AppTemplate[] = [
   },
 ];
 
+function dedupeTemplates(templates: AppTemplate[]): AppTemplate[] {
+  const seen = new Set<string>();
+  return templates.filter((tpl) => {
+    if (seen.has(tpl.id)) return false;
+    seen.add(tpl.id);
+    return true;
+  });
+}
+
 export default function AppWizardPage() {
   const params = useParams<{ id: string }>();
   const connectionId = params.id;
@@ -110,11 +119,21 @@ export default function AppWizardPage() {
   useSyncShellContext({ draftSummary });
   const [aiNote, setAiNote] = useState<string | null>(null);
   const [aiWarnings, setAiWarnings] = useState<string[]>([]);
+  const draftNeedsRegenerate = Boolean(
+    aiDraft &&
+      ((aiDraft._depth as { seeded?: boolean } | undefined)?.seeded ||
+        aiWarnings.some(
+          (w) =>
+            w.includes("field-deepen skipped") ||
+            w.includes("depth met via generic seeds"),
+        )),
+  );
   const [aiRefusals, setAiRefusals] = useState<ProtectedModuleRefusal[]>([]);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [ollamaDetail, setOllamaDetail] = useState<string | null>(null);
   const [reuseModels, setReuseModels] = useState<string[]>(["res.partner"]);
+  const [rejectedInferredReuse, setRejectedInferredReuse] = useState<string[]>([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [genUiConfirmOpen, setGenUiConfirmOpen] = useState(false);
   const [genUiResult, setGenUiResult] = useState<string | null>(null);
@@ -148,13 +167,19 @@ export default function AppWizardPage() {
   const [overlapFindingId, setOverlapFindingId] = useState<string | null>(null);
   const [overlapBusy, setOverlapBusy] = useState(false);
 
-  const needsConnectReview = grainOverride !== "full_app";
+  const resolvedGrain = grainOverride || effectiveGrain;
+  const isFullAppGrain =
+    resolvedGrain === "full_app" || grainLabel?.toLowerCase() === "full app";
+  const isComponentGrain =
+    !isFullAppGrain &&
+    (resolvedGrain === "feature_slice" || resolvedGrain === "field_pack");
+  const needsConnectReview = isComponentGrain;
   const overlapResolved =
     overlapFindings.length === 0 || overlapChoice === "build_anyway" || overlapChoice === "use";
   const canDraftModule =
     nlPrompt.trim().length >= 3 &&
     overlapResolved &&
-    (grainOverride === "full_app" || (connectPointsApproved && connectPoints !== null));
+    (!needsConnectReview || (connectPointsApproved && connectPoints !== null));
 
   useEffect(() => {
     let cancelled = false;
@@ -195,7 +220,7 @@ export default function AppWizardPage() {
         } else {
           setConnection(conn);
         }
-        setTemplates(tpls.length ? tpls : FALLBACK_TEMPLATES);
+        setTemplates(dedupeTemplates(tpls.length ? tpls : FALLBACK_TEMPLATES));
         setComponentGallery(gallery || []);
         setAiEnabled(Boolean(status?.enabled));
         setAvailableModels(
@@ -211,7 +236,7 @@ export default function AppWizardPage() {
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Failed to load");
-          setTemplates(FALLBACK_TEMPLATES);
+          setTemplates(dedupeTemplates(FALLBACK_TEMPLATES));
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -275,7 +300,10 @@ export default function AppWizardPage() {
       });
       setOverlapFindings(res.findings ?? []);
       if (res.grain_label) setGrainLabel(res.grain_label);
-      if (res.grain) setEffectiveGrain(res.grain);
+      if (res.grain) {
+        setEffectiveGrain(res.grain);
+        if (res.grain === "full_app") setConnectPointsApproved(true);
+      }
     } catch (err) {
       reportApiError(err, setError, { fallback: "Overlap check failed", toast: true });
     } finally {
@@ -326,6 +354,7 @@ export default function AppWizardPage() {
       });
       setEffectiveGrain(res.grain);
       setGrainLabel(res.grain_label);
+      if (res.grain === "full_app") setConnectPointsApproved(true);
       setConnectPoints(res.connect_points ?? null);
       setHostCandidates(res.host_candidates ?? []);
       if (res.gallery_id && !selectedGalleryId) {
@@ -347,8 +376,15 @@ export default function AppWizardPage() {
     }
   }
 
-  async function onDraftFromPrompt() {
+  async function onDraftFromPrompt(opts?: {
+    reuseOverride?: string[];
+    rejectedOverride?: string[];
+  }) {
     if (!canDraftModule) return;
+    const effectiveRejected = opts?.rejectedOverride ?? rejectedInferredReuse;
+    const effectiveReuse = (opts?.reuseOverride ?? reuseModels).filter(
+      (m) => !effectiveRejected.includes(m),
+    );
     setAiBusy(true);
     setError(null);
     setAiNote(null);
@@ -358,7 +394,8 @@ export default function AppWizardPage() {
     try {
       const res = await api.draftModuleFromPrompt(nlPrompt.trim(), {
         connection_id: connectionId,
-        reuse_models: reuseModels,
+        reuse_models: effectiveReuse,
+        rejected_reuse_models: effectiveRejected,
         grain: grainOverride || undefined,
         gallery_id: selectedGalleryId || undefined,
         host_model: connectPoints?.host_model
@@ -451,6 +488,102 @@ export default function AppWizardPage() {
   }
 
 
+  const inferredReuseSuggestions = useMemo(() => {
+    if (!aiDraft) return [];
+    const plan = (
+      aiDraft.reuse as
+        | {
+            plan?: {
+              decisions?: Array<{
+                model?: string;
+                reason?: string;
+                source?: string;
+                confirmed?: boolean;
+                link_only?: boolean;
+                module?: string;
+              }>;
+            };
+          }
+        | undefined
+    )?.plan;
+    return (plan?.decisions ?? []).filter(
+      (d) =>
+        d.model &&
+        !d.confirmed &&
+        !rejectedInferredReuse.includes(String(d.model)) &&
+        (d.source === "inferred" || d.source === "pack_reuse_stock"),
+    );
+  }, [aiDraft, rejectedInferredReuse]);
+
+  const installableReuseSuggestions = useMemo(() => {
+    if (!aiDraft) return [];
+    const plan = (
+      aiDraft.reuse as
+        | {
+            plan?: {
+              decisions?: Array<{
+                model?: string;
+                reason?: string;
+                source?: string;
+                confirmed?: boolean;
+                link_only?: boolean;
+                module?: string;
+              }>;
+            };
+          }
+        | undefined
+    )?.plan;
+    return (plan?.decisions ?? []).filter(
+      (d) =>
+        d.model &&
+        !d.confirmed &&
+        !rejectedInferredReuse.includes(String(d.model)) &&
+        d.source === "installable",
+    );
+  }, [aiDraft, rejectedInferredReuse]);
+
+  async function confirmInferredReuse(model: string) {
+    const nextReuse = reuseModels.includes(model)
+      ? reuseModels
+      : [...reuseModels, model];
+    setReuseModels(nextReuse);
+    await onDraftFromPrompt({ reuseOverride: nextReuse });
+  }
+
+  async function rejectInferredReuse(model: string) {
+    const nextRejected = rejectedInferredReuse.includes(model)
+      ? rejectedInferredReuse
+      : [...rejectedInferredReuse, model];
+    const nextReuse = reuseModels.filter((m) => m !== model);
+    setRejectedInferredReuse(nextRejected);
+    setReuseModels(nextReuse);
+    await onDraftFromPrompt({
+      reuseOverride: nextReuse,
+      rejectedOverride: nextRejected,
+    });
+  }
+
+  async function confirmInstallableReuse(model: string) {
+    const nextReuse = reuseModels.includes(model)
+      ? reuseModels
+      : [...reuseModels, model];
+    setReuseModels(nextReuse);
+    await onDraftFromPrompt({ reuseOverride: nextReuse });
+  }
+
+  async function rejectInstallableReuse(model: string) {
+    const nextRejected = rejectedInferredReuse.includes(model)
+      ? rejectedInferredReuse
+      : [...rejectedInferredReuse, model];
+    const nextReuse = reuseModels.filter((m) => m !== model);
+    setRejectedInferredReuse(nextRejected);
+    setReuseModels(nextReuse);
+    await onDraftFromPrompt({
+      reuseOverride: nextReuse,
+      rejectedOverride: nextRejected,
+    });
+  }
+
   function toggleReuse(model: string) {
     setReuseModels((prev) =>
       prev.includes(model) ? prev.filter((m) => m !== model) : [...prev, model],
@@ -505,7 +638,7 @@ export default function AppWizardPage() {
         title="Draft Studio"
         description={
           connection
-            ? `${connection.name} · describe an app or pick a template to scaffold`
+            ? `${connection.name} · describe an app, create a draft, then apply it to Odoo — or pick a template below`
             : connectionId
         }
       />
@@ -594,9 +727,47 @@ export default function AppWizardPage() {
         <Card className="mb-6 p-5">
           <h2 className="text-xl font-semibold text-ink">Describe your app</h2>
           <p className="mt-1 text-sm text-muted">
-            NL → ModuleSpec via Ollama ({aiEnabled ? "enabled" : "off"}
-            {ollamaDetail ? ` · ${ollamaDetail}` : ""}). Draft never applies until Generate UI.
+            AI drafts a reviewable spec ({aiEnabled ? "Ollama on" : "AI off"}
+            {ollamaDetail ? ` · ${ollamaDetail}` : ""}). Nothing is written to Odoo until
+            you click <strong className="font-medium text-ink">Apply to Odoo</strong>.
           </p>
+
+          <ol className="mt-4 grid gap-2 sm:grid-cols-3" data-testid="draft-studio-steps">
+            {[
+              {
+                n: 1,
+                title: "Describe",
+                detail: "Write what you need in plain language.",
+                done: nlPrompt.trim().length >= 3,
+              },
+              {
+                n: 2,
+                title: "Create draft",
+                detail: "AI returns JSON you can review and edit.",
+                done: Boolean(aiDraft),
+              },
+              {
+                n: 3,
+                title: "Apply to Odoo",
+                detail: "Creates models, fields, and views on this connection.",
+                done: Boolean(genUiResult),
+              },
+            ].map((step) => (
+              <li
+                key={step.n}
+                className={`rounded-md border px-3 py-2 text-sm ${
+                  step.done
+                    ? "border-accent/40 bg-accent-subtle"
+                    : "border-border-subtle bg-surface-muted"
+                }`}
+              >
+                <p className="font-medium text-ink">
+                  {step.n}. {step.title}
+                </p>
+                <p className="mt-0.5 text-xs text-muted">{step.detail}</p>
+              </li>
+            ))}
+          </ol>
           <Textarea
             className="mt-3"
             value={nlPrompt}
@@ -628,20 +799,6 @@ export default function AppWizardPage() {
               }}
             />
             {grainLabel ? <Badge variant="info">Detected: {grainLabel}</Badge> : null}
-          </div>
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              loading={overlapBusy}
-              disabled={nlPrompt.trim().length < 3}
-              onClick={() => void onCheckOverlap()}
-              data-testid="check-overlap"
-            >
-              Check overlap
-            </Button>
           </div>
 
           {overlapFindings.length > 0 ? (
@@ -811,99 +968,224 @@ export default function AppWizardPage() {
                 Selected: {reuseModels.join(", ")}
               </p>
             )}
+            {inferredReuseSuggestions.length > 0 ? (
+              <div
+                className="mt-3 space-y-2 rounded-md border border-border-subtle bg-surface-muted p-3"
+                data-testid="inferred-reuse-suggestions"
+              >
+                <p className="text-xs font-medium text-ink">Suggested stock models</p>
+                {inferredReuseSuggestions.map((d) => (
+                  <div key={String(d.model)} className="rounded border border-border-subtle p-2">
+                    <p className="font-mono text-xs text-ink">{d.model}</p>
+                    <p className="mt-1 text-xs text-muted">
+                      Suggested — {d.reason}
+                      {d.link_only ? " (link-only)" : ""}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={aiBusy}
+                        onClick={() => void confirmInferredReuse(String(d.model))}
+                        data-testid={`confirm-reuse-${d.model}`}
+                      >
+                        Use installed model
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={aiBusy}
+                        onClick={() => void rejectInferredReuse(String(d.model))}
+                        data-testid={`reject-reuse-${d.model}`}
+                      >
+                        Generate custom instead
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {installableReuseSuggestions.length > 0 ? (
+              <div
+                className="mt-3 space-y-2 rounded-md border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900/40 dark:bg-amber-950/20"
+                data-testid="installable-reuse-suggestions"
+              >
+                <p className="text-xs font-medium text-ink">Installable Odoo apps</p>
+                {installableReuseSuggestions.map((d) => (
+                  <div key={String(d.model)} className="rounded border border-border-subtle p-2">
+                    <p className="font-mono text-xs text-ink">{d.model}</p>
+                    <p className="mt-1 text-xs text-muted">
+                      Install <span className="font-mono">{d.module ?? "?"}</span> and reuse, or
+                      generate a custom model — {d.reason}
+                      {d.link_only ? " (link-only)" : ""}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={aiBusy}
+                        onClick={() => void confirmInstallableReuse(String(d.model))}
+                        data-testid={`confirm-install-reuse-${d.model}`}
+                      >
+                        Install &amp; reuse
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={aiBusy}
+                        onClick={() => void rejectInstallableReuse(String(d.model))}
+                        data-testid={`reject-install-reuse-${d.model}`}
+                      >
+                        Generate custom instead
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
 
-          <div className="mt-3 flex flex-wrap gap-3">
-            {needsConnectReview ? (
+          <div className="mt-4 space-y-3 rounded-md border border-border-subtle bg-surface-muted p-4">
+            <p className="text-sm font-medium text-ink">What to click</p>
+            <div className="flex flex-wrap gap-2">
+              {needsConnectReview ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={connectReviewBusy || nlPrompt.trim().length < 3}
+                  loading={connectReviewBusy}
+                  onClick={() => void onReviewConnectPoints()}
+                  data-testid="review-connect-points"
+                >
+                  Review connect points
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                variant="primary"
+                disabled={aiBusy || !canDraftModule}
+                loading={aiBusy}
+                title={
+                  overlapFindings.length > 0 && !overlapResolved
+                    ? "Resolve overlap findings first (Build anyway, Use, or Extend)"
+                    : needsConnectReview && !connectPointsApproved
+                      ? "Review and approve connect points first"
+                      : undefined
+                }
+                onClick={() => void onDraftFromPrompt()}
+                data-testid="create-draft"
+              >
+                1. Create draft
+              </Button>
+              <Button
+                type="button"
+                variant={aiDraft ? "primary" : "secondary"}
+                disabled={!aiDraft || busy || !canGenerateUi}
+                title={generateUiBlocked ?? undefined}
+                onClick={() => void onPrepareGenerateUi()}
+                data-testid="apply-to-odoo"
+              >
+                2. Apply to Odoo
+              </Button>
+            </div>
+            {!aiDraft ? (
+              <p className="text-xs text-muted">
+                {nlPrompt.trim().length < 3
+                  ? "Type your app idea above (at least a few words), then click Create draft."
+                  : needsConnectReview && (!connectPoints || !connectPointsApproved)
+                    ? "Component / field pack: click Review connect points, approve the host model, then Create draft."
+                    : overlapFindings.length > 0 && !overlapResolved
+                      ? "Resolve overlap findings above (Use, Extend, or Build anyway), then Create draft."
+                      : isFullAppGrain
+                        ? "Full app detected — click Create draft. AI generates JSON below; nothing touches Odoo until Apply."
+                        : "Click Create draft — AI detects full app vs component and generates JSON for review."}
+              </p>
+            ) : (
+              <p className="text-xs text-muted">
+                Draft ready below. Review the JSON, then click{" "}
+                <strong className="font-medium text-ink">Apply to Odoo</strong> to generate models
+                and views on this connection.
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2 border-t border-border-subtle pt-3">
               <Button
                 type="button"
                 variant="secondary"
-                disabled={connectReviewBusy || nlPrompt.trim().length < 3}
-                loading={connectReviewBusy}
-                onClick={() => void onReviewConnectPoints()}
-                data-testid="review-connect-points"
+                size="sm"
+                loading={overlapBusy}
+                disabled={nlPrompt.trim().length < 3}
+                onClick={() => void onCheckOverlap()}
+                data-testid="check-overlap"
               >
-                Review connect points
+                Check overlap
               </Button>
-            ) : null}
-            <Button
-              type="button"
-              variant="primary"
-              disabled={aiBusy || !canDraftModule}
-              loading={aiBusy}
-              title={
-                overlapFindings.length > 0 && !overlapResolved
-                  ? "Resolve overlap findings first (Build anyway, Use, or Extend)"
-                  : needsConnectReview && !connectPointsApproved
-                    ? "Review and approve connect points first"
-                    : undefined
-              }
-              onClick={() => void onDraftFromPrompt()}
-            >
-              Draft ModuleSpec
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={!aiDraft || busy || !canGenerateUi}
-              title={generateUiBlocked ?? undefined}
-              onClick={() => void onPrepareGenerateUi()}
-            >
-              Generate UI from JSON
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={!aiDraft}
-              onClick={() => {
-                if (!aiDraft) return;
-                const modelCount = Array.isArray(aiDraft.models)
-                  ? aiDraft.models.length
-                  : 0;
-                if (modelCount === 0) {
-                  setError(
-                    "Draft has 0 models — Draft ModuleSpec again before opening the builder.",
-                  );
-                  return;
-                }
-                try {
-                  sessionStorage.setItem(
-                    `modulespec-draft:${connectionId}`,
-                    JSON.stringify(aiDraft),
-                  );
-                } catch {
-                  setError("Could not store draft in this browser session.");
-                  return;
-                }
-                window.location.href = `/connections/${connectionId}/modulespec`;
-              }}
-            >
-              Open in ModuleSpec
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => {
-                setAiDraft(null);
-                setNlPrompt("");
-                setAiWarnings([]);
-                setConnectPoints(null);
-                setConnectPointsApproved(false);
-                setGrainLabel(null);
-                setEffectiveGrain("");
-                setAiNote("Use a template card below.");
-              }}
-            >
-              Clear draft
-            </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={!aiDraft}
+                onClick={() => {
+                  if (!aiDraft) return;
+                  const modelCount = Array.isArray(aiDraft.models)
+                    ? aiDraft.models.length
+                    : 0;
+                  if (modelCount === 0) {
+                    setError(
+                      "Draft has 0 models — create the draft again before opening the editor.",
+                    );
+                    return;
+                  }
+                  try {
+                    sessionStorage.setItem(
+                      `modulespec-draft:${connectionId}`,
+                      JSON.stringify(aiDraft),
+                    );
+                  } catch {
+                    setError("Could not store draft in this browser session.");
+                    return;
+                  }
+                  window.location.href = `/connections/${connectionId}/modulespec`;
+                }}
+              >
+                Edit draft (advanced)
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setAiDraft(null);
+                  setNlPrompt("");
+                  setAiWarnings([]);
+                  setConnectPoints(null);
+                  setConnectPointsApproved(false);
+                  setOverlapFindings([]);
+                  setOverlapChoice(null);
+                  setOverlapFindingId(null);
+                  setGenUiResult(null);
+                  setValidateLiveResult(null);
+                  setGrainLabel(null);
+                  setEffectiveGrain("");
+                  setAiNote(null);
+                }}
+              >
+                Clear
+              </Button>
+            </div>
           </div>
           {needsConnectReview && !connectPointsApproved ? (
             <Callout variant="info" title="Component grain" className="mt-3">
-              Run connect-points review and approve before drafting a component ModuleSpec.
+              This prompt looks like a feature slice or field pack — review connect points and
+              approve before creating the draft.
             </Callout>
           ) : null}
           {aiDraft && generateUiBlocked ? (
-            <Callout variant="warning" title="Generate UI blocked" className="mt-3">
+            <Callout variant="warning" title="Apply to Odoo blocked" className="mt-3">
               {generateUiBlocked}
             </Callout>
           ) : null}
@@ -913,8 +1195,28 @@ export default function AppWizardPage() {
             </Callout>
           ) : null}
           {genUiResult ? (
-            <Callout variant="info" title="Generate UI" className="mt-2">
+            <Callout variant="info" title="Applied to Odoo" className="mt-2">
               {genUiResult}
+            </Callout>
+          ) : null}
+          {draftNeedsRegenerate ? (
+            <Callout variant="warning" title="Generic placeholders detected" className="mt-2">
+              <p className="text-sm">
+                The AI model timed out — generic placeholders filled the gaps. Regenerate for
+                domain-specific results.
+              </p>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="mt-2"
+                disabled={aiBusy || !canDraftModule}
+                loading={aiBusy}
+                onClick={() => void onDraftFromPrompt()}
+                data-testid="regenerate-draft"
+              >
+                Regenerate
+              </Button>
             </Callout>
           ) : null}
           {aiWarnings.length > 0 ? (
@@ -941,7 +1243,9 @@ export default function AppWizardPage() {
                   <p className="text-sm">
                     <strong>{r.requested_capability}</strong>
                   </p>
-                  <p className="mt-1 text-sm text-muted">Model: {r.protected_module}</p>
+                  <p className="mt-1 break-all font-mono text-sm text-muted">
+                    Model: {r.protected_module}
+                  </p>
                   <p className="mt-1 text-sm">{r.reason || r.requested_capability}</p>
                   <p className="mt-2 text-sm text-accent">{r.safe_alternative}</p>
                 </Callout>
@@ -1017,7 +1321,13 @@ export default function AppWizardPage() {
         ) : null}
         {error ? <ErrorNotice message={error} className="mt-4" /> : null}
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-10 border-t border-border-subtle pt-8">
+          <h2 className="text-xl font-semibold text-ink">Ready-made templates</h2>
+          <p className="mt-1 text-sm text-muted">
+            Skip AI — one click scaffolds a full app (Library, CRM Lite, …) directly on this connection.
+          </p>
+        </div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {templates.map((tpl) => {
             const active = selected?.id === tpl.id;
             const opts = templateScaffoldOpts(tpl.id);
@@ -1205,7 +1515,7 @@ export default function AppWizardPage() {
       />
       <ConfirmDialog
         open={genUiConfirmOpen}
-        title="Generate UI from JSON"
+        title="Apply draft to Odoo"
         warning="Applies the ModuleSpec draft: models, fields, views, menus, and smart buttons on this live Odoo connection."
         risks={[
           "Creates ir.model / fields / views / menus",

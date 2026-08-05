@@ -1150,6 +1150,7 @@ export const api = {
     opts?: {
       connection_id?: string;
       reuse_models?: string[];
+      rejected_reuse_models?: string[];
       reuse_view_ids?: number[];
       reuse_action_ids?: number[];
       expand?: boolean;
@@ -1184,6 +1185,7 @@ export const api = {
         prompt,
         connection_id: opts?.connection_id,
         reuse_models: opts?.reuse_models ?? [],
+        rejected_reuse_models: opts?.rejected_reuse_models ?? [],
         reuse_view_ids: opts?.reuse_view_ids ?? [],
         reuse_action_ids: opts?.reuse_action_ids ?? [],
         expand: opts?.expand ?? true,

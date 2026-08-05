@@ -370,6 +370,7 @@ class OllamaProvider(LLMProvider):
         temperature: float | None = None,
         format_schema: dict[str, Any] | None = None,
         model: str | None = None,
+        num_predict: int | None = None,
     ) -> str:
         chosen = model or (resolve_reasoning_model() if reasoning else resolve_bulk_model())
         caps = probe_ollama_capabilities(base_url=self.base_url, model=chosen)
@@ -397,7 +398,7 @@ class OllamaProvider(LLMProvider):
             "prompt": full,
             "stream": False,
             "format": fmt,
-            "options": {"temperature": temp, "num_predict": 4096},
+            "options": {"temperature": temp, "num_predict": num_predict or 4096},
         }
         if use_think:
             payload["think"] = True
@@ -531,6 +532,47 @@ class OpenAICompatibleProvider(LLMProvider):
         if not isinstance(text, str) or not text.strip():
             raise LLMError("Empty chat completion content", status_code=502)
         return strip_thinking_trace(text)
+
+
+def generate_json_with_timeout_retry(
+    provider: LLMProvider,
+    prompt: str,
+    *,
+    system: str | None = None,
+    timeout_s: float = 120.0,
+    reasoning: bool = False,
+    temperature: float | None = None,
+    format_schema: dict[str, Any] | None = None,
+    model: str | None = None,
+) -> str:
+    """Retry once with smaller ctx/model on timeout before callers fall back to seeds."""
+    try:
+        return provider.generate_json(
+            prompt,
+            system=system,
+            timeout_s=timeout_s,
+            reasoning=reasoning,
+            temperature=temperature,
+            format_schema=format_schema,
+            model=model,
+        )
+    except LLMError as exc:
+        msg = str(exc).lower()
+        if "timed out" not in msg and "timeout" not in msg:
+            raise
+        retry_model = resolve_bulk_model()
+        kwargs: dict[str, Any] = {
+            "prompt": prompt,
+            "system": system,
+            "timeout_s": max(60.0, timeout_s * 0.75),
+            "reasoning": False,
+            "temperature": temperature,
+            "format_schema": format_schema,
+            "model": retry_model,
+        }
+        if isinstance(provider, OllamaProvider):
+            kwargs["num_predict"] = 2048
+        return provider.generate_json(**kwargs)
 
 
 def get_llm_provider() -> LLMProvider | None:
