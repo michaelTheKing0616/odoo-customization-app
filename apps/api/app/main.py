@@ -201,9 +201,13 @@ def health() -> dict[str, str | bool]:
         )
     if settings.ai_assist.strip().lower() == "ollama":
         from app.ai_ollama import ollama_reachable
+        from app.llm_provider import llm_routing_status
 
+        routing = llm_routing_status()
         out["ai_assist"] = "ollama"
         out["ollama_model"] = settings.ollama_model
+        out["ai_model_bulk"] = routing.get("ai_model_bulk")
+        out["ai_model_reasoning"] = routing.get("ai_model_reasoning")
         ok, detail = ollama_reachable()
         out["ollama_reachable"] = ok
         out["ollama_detail"] = detail

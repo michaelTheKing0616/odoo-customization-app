@@ -1,4 +1,4 @@
-# Start here — try Odoo Custom on your machine
+# dStart here — try Odoo Custom on your machine
 
 This guide is written for **you**, not for developers. No jargon where we can help it.
 
@@ -12,15 +12,19 @@ There is a longer reference, [USER-GUIDE.md](USER-GUIDE.md), with every screen e
 
 If someone on your team (or an assistant) just started the stack for you, open these in your browser:
 
-| What | Address | Login |
-|------|---------|--------|
-| **Odoo Custom (the app)** | [http://127.0.0.1:3002](http://127.0.0.1:3002) | No login needed locally |
-| **Odoo itself** | [http://127.0.0.1:8069](http://127.0.0.1:8069) | Email `admin` / password `admin` |
+
+| What                                  | Address                                        | Login                              |
+| ------------------------------------- | ---------------------------------------------- | ---------------------------------- |
+| **Odoo Custom (the app)**             | [http://127.0.0.1:3002](http://127.0.0.1:3002) | No login needed locally            |
+| **Odoo itself**                       | [http://127.0.0.1:8069](http://127.0.0.1:8069) | Email `admin` / password `admin`   |
 | **Optional: Docker build of the app** | [http://127.0.0.1:3000](http://127.0.0.1:3000) | May ask for an API key (see below) |
+
 
 Keep **two tabs** open while you explore: Odoo Custom in one, Odoo in the other. Many actions only make sense when you can flip between “I changed something here” and “I see it there.”
 
 ---
+
+
 
 ## How to start everything yourself (first time)
 
@@ -85,19 +89,23 @@ NEXT_PUBLIC_API_URL=http://127.0.0.1:8001 pnpm --filter @odoo-custom/web dev -H 
 
 ---
 
+
+
 ## Your first five minutes in the app
 
 1. Go to [http://127.0.0.1:3002/connect](http://127.0.0.1:3002/connect).
 2. Create a connection:
-   - **Name:** anything you like, e.g. `My local Odoo`
-   - **URL:** `http://127.0.0.1:8069`
-   - **Database:** `odoo_dev`
-   - **Username / password:** `admin` / `admin`
+  - **Name:** anything you like, e.g. `My local Odoo`
+  - **URL:** `http://127.0.0.1:8069`
+  - **Database:** `odoo_dev`
+  - **Username / password:** `admin` / `admin`
 3. Save and open the connection. You should see models and menus load without errors.
 4. In Odoo ([8069](http://127.0.0.1:8069)), stay logged in as admin — you’ll need that for “Open in Odoo” links.
 5. From the connection sidebar, try **View Designer** or **App Wizard** (Draft Studio) when you’re ready to build something.
 
 ---
+
+
 
 ## What the product can do (in plain language)
 
@@ -115,7 +123,9 @@ Think of three buckets: **Build**, **Operate**, and **Stay safe**.
 - **Website** — Edit website pages (when the Website app is installed in Odoo).
 - **Code Studio** — For advanced users: write small Python snippets, test them, bind them to buttons or automations (with confirmations and snapshots).
 - **Draft Studio / ModuleSpec / Projects** — AI-assisted drafting of apps and specs; review before anything touches Odoo.
-- **Odoo Expert** — Ask questions; answers are grounded in official Odoo documentation with citations.
+- **Odoo Expert** — Ask questions; answers are grounded in official Odoo docs **and vertical playbooks** (school, clinic, hotel, etc.) with citations. Run Expert ingest once — see [README](../README.md#expert-rag-ingest-exp-1-setup).
+
+
 
 ### Operate — work on lots of data at once
 
@@ -127,6 +137,8 @@ Think of three buckets: **Build**, **Operate**, and **Stay safe**.
 - **Reminders** — Email templates and scheduled nudges tied to your data.
 - **Script Runner** — Run one-off Python scripts against the connection (journaled, with guardrails).
 
+
+
 ### Govern — trust, undo, and configuration
 
 - **Snapshots & Journal** — Before risky changes, the app often saves a restore point. The journal shows what changed and whether you can roll back.
@@ -135,6 +147,8 @@ Think of three buckets: **Build**, **Operate**, and **Stay safe**.
 - **First-write interstitial** — The first time you change something on a connection, you’ll get a clear heads-up about what “live” means.
 
 ---
+
+
 
 ## A simple workflow most people follow
 
@@ -149,6 +163,8 @@ You don’t have to do all six steps on day one. Connecting and changing one fie
 
 ---
 
+
+
 ## When the app asks you to type a phrase
 
 For actions that can hurt real data (installing modules, bulk deletes, overwriting views, etc.), you’ll see a confirmation box. Type exactly:
@@ -161,20 +177,26 @@ That’s on purpose. ERP systems hold business-critical data; the app wants you 
 
 ---
 
+
+
 ## If something doesn’t load
 
-| Symptom | What to try |
-|---------|-------------|
-| Odoo Custom page is blank or “can’t connect” | Make sure the API terminal is still running (`8001/health` should be ok). |
+
+| Symptom                                                 | What to try                                                                                                                    |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Odoo Custom page is blank or “can’t connect”            | Make sure the API terminal is still running (`8001/health` should be ok).                                                      |
 | Browser console shows **Failed to fetch** on `/connect` | API CORS must include your web origin. Restart the API after updating `CORS_ORIGINS` in `.env` (defaults now include `:3002`). |
-| “Unauthorized” or API errors on `:3000` | Use [http://127.0.0.1:3002](http://127.0.0.1:3002) instead, or add an API key under **Settings**. |
-| Odoo login fails | Database might not exist — run `./docker/init-db.sh` once. |
-| New menu doesn’t appear in Odoo | Log out and back into Odoo, or clear menu cache (see [USER-GUIDE.md](USER-GUIDE.md) troubleshooting). |
-| Docker says port already in use | Something else is using 8069 or 3000 — stop old containers or pick another port. |
+| “Unauthorized” or API errors on `:3000`                 | Use [http://127.0.0.1:3002](http://127.0.0.1:3002) instead, or add an API key under **Settings**.                              |
+| Odoo login fails                                        | Database might not exist — run `./docker/init-db.sh` once.                                                                     |
+| New menu doesn’t appear in Odoo                         | Log out and back into Odoo, or clear menu cache (see [USER-GUIDE.md](USER-GUIDE.md) troubleshooting).                          |
+| Docker says port already in use                         | Something else is using 8069 or 3000 — stop old containers or pick another port.                                               |
+
 
 More detail: [LOCAL-UAT.md](LOCAL-UAT.md) (checklist for testers) and [USER-GUIDE.md](USER-GUIDE.md) (full product manual).
 
 ---
+
+
 
 ## Where to go next
 

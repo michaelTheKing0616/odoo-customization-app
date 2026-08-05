@@ -122,6 +122,12 @@ Re-verified 2026-08-03 (orchestrator + 3 checkers); REM-14 closed residual gaps 
 - [x] TRUST-8 SAFETY.md trust contract + production readiness checklist gate — core 2026-08-03
 - [x] TRUST-9 Design-partner beta protocol + GA evidence criteria — core 2026-08-03
 
+## Wave 14 — UIF (UI friendliness; cards in WAVE-14-UIF.md; can run before Wave 12)
+- [x] UIF-1 Dedupe instance identity badges (3× on Overview) + raw-error sweep + double-render bugs (Bulk Suite ×2, Housekeeping ×2, sidebar dual-active) — 2026-08-05
+- [x] UIF-2 Sidebar IA: collapsible groups, unique icons, Operations hub, Developer captions — 2026-08-05
+- [x] UIF-3 Overview declutter: tabs + first-run start-here card — 2026-08-05
+- [x] UIF-4 Copy/density pass: subtitles, jargon sweep, Advanced disclosures, screenshot re-run — 2026-08-05 (Playwright sweep: run locally)
+
 ## Wave 13 — DEV (developer code path; cards in WAVE-13-DEV.md; AFTER Wave 12)
 - [x] DEV-1 Code Studio: live code server actions + automations (probe-gated per instance) — core 2026-08-03
 - [x] DEV-2 Module code authoring: Option A with a real editor (custom_code_blocks writable) — 2026-08-03

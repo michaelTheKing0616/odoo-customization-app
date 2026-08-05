@@ -41,41 +41,9 @@ export function CapabilityProbePanel({
     );
   }
 
-  const badge = capabilities.ga
-    ? `Odoo ${capabilities.major ?? "?"} ${capabilities.edition}`
-    : `Odoo ${capabilities.major ?? "?"} (limited)`;
-
-  const hosting =
-    capabilities.hosting_hint === "online"
-      ? "Online"
-      : capabilities.hosting_hint === "odoo_sh"
-        ? "Odoo.sh"
-        : capabilities.hosting_hint === "self_hosted"
-          ? "Self-hosted"
-          : null;
-
   return (
     <div className={`text-sm ${className}`}>
       <div className="flex flex-wrap items-center gap-2">
-        <span
-          className={
-            capabilities.ga
-              ? "border border-[#3d6b5a] bg-[#143029] px-2 py-0.5 text-xs font-medium text-muted"
-              : "border border-[#6b5a3d] bg-[#2a2414] px-2 py-0.5 text-xs font-medium text-[#e8d09f]"
-          }
-        >
-          {badge}
-        </span>
-        {hosting && (
-          <span className="border border-border-subtle bg-[#120e14] px-2 py-0.5 text-xs text-muted">
-            {hosting}
-          </span>
-        )}
-        {capabilities.python_module_install === false && (
-          <span className="border border-[#6b3d3d] bg-[#2a1414] px-2 py-0.5 text-xs text-[#e8a0a0]">
-            No Python module install
-          </span>
-        )}
         <span className="text-xs text-muted">
           {capabilities.supported.length} capabilities
           {capabilities.unsupported.length > 0

@@ -1327,6 +1327,7 @@ class ExpertCitationOut(BaseModel):
     version: str
     breadcrumb: str
     chunk_id: str
+    source_index: int = 0
 
 
 class ExpertAskOut(BaseModel):

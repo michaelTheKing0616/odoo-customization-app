@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { api, type EePlaybook } from "@/lib/api";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { formatFetchError } from "@/lib/format-fetch-error";
 
 type Props = {
   connectionId: string;
@@ -12,6 +14,7 @@ export function EePlaybooksPanel({ connectionId, className = "" }: Props) {
   const [rows, setRows] = useState<EePlaybook[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -26,7 +29,8 @@ export function EePlaybooksPanel({ connectionId, className = "" }: Props) {
       })
       .catch((err: unknown) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load EE playbooks");
+          const raw = err instanceof Error ? err.message : "Failed to load EE playbooks";
+          setError(formatFetchError(raw));
         }
       })
       .finally(() => {
@@ -35,7 +39,7 @@ export function EePlaybooksPanel({ connectionId, className = "" }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [connectionId]);
+  }, [connectionId, reloadKey]);
 
   return (
     <div className={`text-sm ${className}`} data-testid="ee-playbooks-panel">
@@ -45,7 +49,14 @@ export function EePlaybooksPanel({ connectionId, className = "" }: Props) {
         Studio source.
       </p>
       {loading && <p className="mt-2 text-xs text-muted">Loading…</p>}
-      {error && <p className="mt-2 text-xs text-[#e8a0a0]">{error}</p>}
+      {error ? (
+        <ErrorNotice
+          message={error}
+          showDiagnose={false}
+          onRetry={() => setReloadKey((k) => k + 1)}
+          className="mt-2"
+        />
+      ) : null}
       {!loading && !error && (
         <ul className="mt-2 space-y-1">
           {rows.map((pb) => (

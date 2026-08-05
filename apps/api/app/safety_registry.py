@@ -50,6 +50,12 @@ ROUTE_OVERRIDES: dict[str, SafetySpec] = {
     "PATCH:/api/connections/{connection_id}/write-mode": SafetySpec(
         risk="read", odoo_mutation=False, confirm="simple"
     ),
+    "POST:/api/connections/{connection_id}/probe": SafetySpec(
+        risk="read", odoo_mutation=False, confirm="none"
+    ),
+    "POST:/api/connections/{connection_id}/health-check/run": SafetySpec(
+        risk="read", odoo_mutation=False, confirm="none"
+    ),
     "PATCH:/api/connections/{connection_id}/writes-paused": SafetySpec(
         risk="read", odoo_mutation=False, confirm="none", bypass_writes_paused=True
     ),

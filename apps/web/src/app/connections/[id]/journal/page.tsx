@@ -5,7 +5,6 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, AuditLogRow, Connection, HealthCheckRun, SnapshotRow } from "@/lib/api";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
-import { HealthCheckBanner } from "@/components/HealthCheckBanner";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
@@ -134,11 +133,6 @@ export default function ChangeJournalPage() {
         description="Metadata snapshots with rollback · API audit · post-upgrade health checks"
       />
       <VersionAwarenessBanner capabilities={connection?.capabilities} />
-      <HealthCheckBanner
-        connectionId={connectionId}
-        connection={connection}
-        onRefreshConnection={refresh}
-      />
 
       {error ? <ErrorNotice message={error} className="mt-4" /> : null}
       {notice ? (

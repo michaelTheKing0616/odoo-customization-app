@@ -27,14 +27,16 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Card, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
-import { StatusPill } from "@/components/ui/StatusPill";
-import { Badge } from "@/components/ui/Badge";
+import { Tabs } from "@/components/ui/Tabs";
+import { FirstRunCard } from "@/components/overview/FirstRunCard";
+import { Disclosure } from "@/components/ui/Disclosure";
 import { CodeBlock } from "@/components/ui/CodeBlock";
 import { WriteModeUnlockPanel } from "@/components/shell/WriteModeUnlockPanel";
 import { ProductionReadinessPanel } from "@/components/shell/ProductionReadinessPanel";
 import { FirstWriteInterstitial } from "@/components/shell/FirstWriteInterstitial";
 
 type Tab = "modules" | "models" | "fields" | "views";
+type OverviewSection = "home" | "models" | "develop";
 
 function downloadBase64Zip(filename: string, contentBase64: string) {
   const bin = atob(contentBase64);
@@ -55,6 +57,7 @@ export default function BrowserPage() {
 
   const [connection, setConnection] = useState<Connection | null>(null);
   const [tab, setTab] = useState<Tab>("models");
+  const [section, setSection] = useState<OverviewSection>("home");
   const [modules, setModules] = useState<ModuleRow[]>([]);
   const [models, setModels] = useState<ModelRow[]>([]);
   const [selectedModel, setSelectedModel] = useState("res.partner");
@@ -564,24 +567,7 @@ export default function BrowserPage() {
     <div className="mx-auto max-w-6xl" data-testid="connection-overview">
       <PageHeader
         title="Overview"
-        description={
-          connection
-            ? `${connection.name} · ${connection.url} · ${connection.server_version ?? "version unknown"}`
-            : connectionId
-        }
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <Button variant="primary" size="sm" asChild>
-              <Link href={`/connections/${connectionId}/builder`}>Build</Link>
-            </Button>
-            <Button variant="secondary" size="sm" asChild>
-              <Link href={`/connections/${connectionId}/wizard`}>Draft Studio</Link>
-            </Button>
-            <Button variant="ghost" size="sm" asChild>
-              <Link href={`/connections/${connectionId}/journal`}>Journal</Link>
-            </Button>
-          </div>
-        }
+        description="Your connection at a glance — health, models, and export paths."
       />
 
       {connection ? (
@@ -604,15 +590,6 @@ export default function BrowserPage() {
 
       <FirstWriteInterstitial connection={connection} />
 
-      {connection ? (
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          {connection.capabilities?.ga ? <StatusPill kind="ga" /> : null}
-          {!connection.capabilities?.ga ? <StatusPill kind="experimental" /> : null}
-          {connection.capabilities?.edition ? (
-            <Badge variant="info">{connection.capabilities.edition}</Badge>
-          ) : null}
-        </div>
-      ) : null}
         {connection && (
           <CapabilityProbePanel
             capabilities={connection.capabilities}
@@ -659,63 +636,158 @@ export default function BrowserPage() {
             </Card>
           ))}
         </div>
-        <EePlaybooksPanel connectionId={connectionId} className="mt-3" />
-        <DomainPlaybooksPanel connectionId={connectionId} className="mt-3" />
-        <StudioFeatureRecipesPanel className="mt-3" />
 
-        {libraryStats?.available && (
-          <Card className="mt-6 flex flex-wrap gap-6 p-4 text-sm">
-            <span className="font-medium text-ink">Library</span>
-            <span>
-              <span className="text-muted">Books </span>
-              <span className="font-mono text-accent">{libraryStats.books ?? "—"}</span>
-            </span>
-            <span>
-              <span className="text-muted">Loans </span>
-              <span className="font-mono text-accent">{libraryStats.loans ?? "—"}</span>
-            </span>
-            <span>
-              <span className="text-muted">Active </span>
-              <span className="font-mono text-accent">{libraryStats.active_loans ?? "—"}</span>
-            </span>
-            <span>
-              <span className="text-muted">Overdue </span>
-              <span className="font-mono text-danger">{libraryStats.overdue_loans ?? "—"}</span>
-            </span>
-          </Card>
-        )}
-
-        <div className="mt-8 flex flex-wrap gap-2 border-b border-border-subtle pb-3">
-          {tabs.map((t) => (
-            <Button
-              key={t.id}
-              type="button"
-              variant={tab === t.id ? "primary" : "secondary"}
-              size="sm"
-              onClick={() => setTab(t.id)}
-            >
-              {t.label}
-            </Button>
-          ))}
+        <div className="mt-6 flex flex-wrap gap-2">
+          <Button variant="primary" size="sm" asChild>
+            <Link href={`/connections/${connectionId}/wizard`}>Draft with AI</Link>
+          </Button>
+          <Button variant="secondary" size="sm" asChild>
+            <Link href={`/connections/${connectionId}/builder`}>Open Builder</Link>
+          </Button>
+          <Button variant="ghost" size="sm" asChild>
+            <a href="#overview-health-sweep">Run health sweep</a>
+          </Button>
         </div>
 
-        {(tab === "fields" || tab === "views") && (
-          <div className="mt-4 max-w-md">
-            <Input
-              label="Model"
-              list="model-options"
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-            />
-            <datalist id="model-options">
-              {models.slice(0, 500).map((m) => (
-                <option key={m.id} value={m.model}>
-                  {m.name}
-                </option>
-              ))}
-            </datalist>
-          </div>
-        )}
+        <FirstRunCard connectionId={connectionId} modelCount={models.length} />
+
+        <Tabs
+          className="mt-8"
+          value={section}
+          onValueChange={(v) => setSection(v as OverviewSection)}
+          items={[
+            {
+              value: "home",
+              label: "Overview",
+              content: (
+                <div className="space-y-3">
+                  <Disclosure title="Enterprise playbooks" defaultOpen={false}>
+                    <EePlaybooksPanel connectionId={connectionId} />
+                  </Disclosure>
+                  <Disclosure title="Domain playbooks" defaultOpen={false}>
+                    <DomainPlaybooksPanel connectionId={connectionId} />
+                  </Disclosure>
+                  <Disclosure title="Studio feature recipes" defaultOpen={false}>
+                    <StudioFeatureRecipesPanel />
+                  </Disclosure>
+                  {libraryStats?.available && (
+                    <Card className="flex flex-wrap gap-6 p-4 text-sm">
+                      <span className="font-medium text-ink">Library</span>
+                      <span>
+                        <span className="text-muted">Books </span>
+                        <span className="font-mono text-accent">{libraryStats.books ?? "—"}</span>
+                      </span>
+                      <span>
+                        <span className="text-muted">Loans </span>
+                        <span className="font-mono text-accent">{libraryStats.loans ?? "—"}</span>
+                      </span>
+                      <span>
+                        <span className="text-muted">Active </span>
+                        <span className="font-mono text-accent">{libraryStats.active_loans ?? "—"}</span>
+                      </span>
+                      <span>
+                        <span className="text-muted">Overdue </span>
+                        <span className="font-mono text-danger">{libraryStats.overdue_loans ?? "—"}</span>
+                      </span>
+                    </Card>
+                  )}
+                </div>
+              ),
+            },
+            {
+              value: "models",
+              label: "Models",
+              content: (
+                <>
+                  <div className="flex flex-wrap gap-2 border-b border-border-subtle pb-3">
+                    {tabs.map((t) => (
+                      <Button
+                        key={t.id}
+                        type="button"
+                        variant={tab === t.id ? "primary" : "secondary"}
+                        size="sm"
+                        onClick={() => setTab(t.id)}
+                      >
+                        {t.label}
+                      </Button>
+                    ))}
+                  </div>
+                  {(tab === "fields" || tab === "views") && (
+                    <div className="mt-4 max-w-md">
+                      <Input
+                        label="Model"
+                        list="model-options"
+                        value={selectedModel}
+                        onChange={(e) => setSelectedModel(e.target.value)}
+                      />
+                      <datalist id="model-options">
+                        {models.slice(0, 500).map((m) => (
+                          <option key={m.id} value={m.model}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </datalist>
+                    </div>
+                  )}
+                  {loading ? (
+                    <div className="mt-4 space-y-2">
+                      <Skeleton className="h-8 w-full" />
+                      <Skeleton className="h-8 w-full" />
+                    </div>
+                  ) : null}
+                  {!loading && tab === "modules" ? (
+                    <div className="mt-6">
+                      <DataTable columns={moduleColumns} rows={modules} rowKey={(m) => String(m.id)} />
+                    </div>
+                  ) : null}
+                  {!loading && tab === "models" ? (
+                    <div className="mt-6 space-y-4">
+                      <Input
+                        placeholder="Filter models…"
+                        value={modelQuery}
+                        onChange={(e) => setModelQuery(e.target.value)}
+                        className="max-w-md"
+                      />
+                      <DataTable columns={modelColumns} rows={filteredModels} rowKey={(m) => String(m.id)} />
+                    </div>
+                  ) : null}
+                  {!loading && tab === "fields" ? (
+                    <div className="mt-6">
+                      <DataTable columns={fieldColumns} rows={fields} rowKey={(f) => String(f.id)} />
+                    </div>
+                  ) : null}
+                  {!loading && tab === "views" ? (
+                    <ul className="mt-6 space-y-4">
+                      {views.map((v) => (
+                        <Card key={v.id} className="p-4">
+                          <p className="font-medium text-ink">
+                            {v.name}{" "}
+                            <span className="text-muted">
+                              · {v.type} · #{v.id}
+                            </span>
+                          </p>
+                          <CodeBlock className="mt-3" language="xml" code={v.arch ?? "(no arch)"} />
+                        </Card>
+                      ))}
+                      {views.length === 0 ? (
+                        <p className="text-sm text-muted">No views for this model.</p>
+                      ) : null}
+                    </ul>
+                  ) : null}
+                </>
+              ),
+            },
+            {
+              value: "develop",
+              label: "Develop",
+              content: (
+                <p className="text-sm text-muted">
+                  Export, sandbox, promote, and promoted-module history appear below when this tab is selected.
+                </p>
+              ),
+            },
+          ]}
+        />
 
         {error ? <ErrorNotice message={error} className="mt-4" /> : null}
         {exportNotice ? (
@@ -756,13 +828,8 @@ export default function BrowserPage() {
             </pre>
           </details>
         )}
-        {loading ? (
-          <div className="mt-4 space-y-2">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-          </div>
-        ) : null}
-
+        {section === "develop" ? (
+        <>
         <Card className="mt-8 p-5">
           <h2 className="text-xl font-semibold text-ink">Export, sandbox &amp; promote</h2>
           <p className="mt-1 text-sm text-muted">
@@ -1155,64 +1222,7 @@ export default function BrowserPage() {
             </div>
           )}
         </Card>
-
-        {!loading && tab === "modules" ? (
-          <div className="mt-6">
-            <DataTable
-              columns={moduleColumns}
-              rows={modules}
-              rowKey={(m) => String(m.id)}
-            />
-          </div>
-        ) : null}
-
-        {!loading && tab === "models" ? (
-          <div className="mt-6 space-y-4">
-            <Input
-              placeholder="Filter models…"
-              value={modelQuery}
-              onChange={(e) => setModelQuery(e.target.value)}
-              className="max-w-md"
-            />
-            <DataTable
-              columns={modelColumns}
-              rows={filteredModels}
-              rowKey={(m) => String(m.id)}
-            />
-          </div>
-        ) : null}
-
-        {!loading && tab === "fields" ? (
-          <div className="mt-6">
-            <DataTable
-              columns={fieldColumns}
-              rows={fields}
-              rowKey={(f) => String(f.id)}
-            />
-          </div>
-        ) : null}
-
-        {!loading && tab === "views" ? (
-          <ul className="mt-6 space-y-4">
-            {views.map((v) => (
-              <Card key={v.id} className="p-4">
-                <p className="font-medium text-ink">
-                  {v.name}{" "}
-                  <span className="text-muted">
-                    · {v.type} · #{v.id}
-                  </span>
-                </p>
-                <CodeBlock
-                  className="mt-3"
-                  language="xml"
-                  code={v.arch ?? "(no arch)"}
-                />
-              </Card>
-            ))}
-            {views.length === 0 ? (
-              <p className="text-sm text-muted">No views for this model.</p>
-            ) : null}
-          </ul>
+        </>
         ) : null}
     </div>
   );

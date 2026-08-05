@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { api, type StudioFeatureRecipe } from "@/lib/api";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { formatFetchError } from "@/lib/format-fetch-error";
 
 type Props = {
   className?: string;
@@ -11,6 +13,8 @@ export function StudioFeatureRecipesPanel({ className = "" }: Props) {
   const [rows, setRows] = useState<StudioFeatureRecipe[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -25,7 +29,8 @@ export function StudioFeatureRecipesPanel({ className = "" }: Props) {
       })
       .catch((err: unknown) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load feature recipes");
+          const raw = err instanceof Error ? err.message : "Failed to load feature recipes";
+          setError(formatFetchError(raw));
         }
       })
       .finally(() => {
@@ -34,7 +39,7 @@ export function StudioFeatureRecipesPanel({ className = "" }: Props) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadKey]);
 
   return (
     <div className={`text-sm ${className}`} data-testid="studio-feature-recipes-panel">
@@ -44,7 +49,14 @@ export function StudioFeatureRecipesPanel({ className = "" }: Props) {
         statuses, not a Studio clone.
       </p>
       {loading && <p className="mt-2 text-xs text-muted">Loading…</p>}
-      {error && <p className="mt-2 text-xs text-[#e8a0a0]">{error}</p>}
+      {error ? (
+        <ErrorNotice
+          message={error}
+          showDiagnose={false}
+          onRetry={() => setReloadKey((k) => k + 1)}
+          className="mt-2"
+        />
+      ) : null}
       {!loading && !error && (
         <ul className="mt-2 max-h-64 space-y-1 overflow-y-auto">
           {rows.map((r) => (

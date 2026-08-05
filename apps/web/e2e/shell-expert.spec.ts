@@ -21,6 +21,7 @@ test.describe("App shell & Expert (mocked API)", () => {
               version: "19.0",
               breadcrumb: "Views",
               chunk_id: "c1",
+              source_index: 1,
             },
           ],
           grounded: true,

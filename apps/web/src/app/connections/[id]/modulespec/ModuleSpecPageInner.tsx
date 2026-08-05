@@ -247,8 +247,8 @@ export default function ModuleSpecPageInner() {
   return (
     <div className="mx-auto max-w-6xl" data-testid="modulespec-page">
       <PageHeader
-        title="ModuleSpec builder"
-        description={`${connection?.name ?? connectionId}${projectName ? ` · project “${projectName}”` : " · session draft"} — single contract for AI drafts, Code→UI import, and Generate UI.`}
+        title="ModuleSpec"
+        description="The blueprint of your app — single contract for AI drafts, import, and Generate UI."
       />
       <VersionAwarenessBanner capabilities={connection?.capabilities} />
       {(applyBlocked || saveBlocked) ? (

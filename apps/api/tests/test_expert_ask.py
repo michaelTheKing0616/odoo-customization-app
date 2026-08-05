@@ -19,6 +19,9 @@ os.environ.setdefault("AUTH_MODE", "off")
 
 from app.expert.ask import (  # noqa: E402
     DECLINE_LOW_CONFIDENCE,
+    _blocks_have_citations,
+    _enforce_citation_markers,
+    _split_citation_blocks,
     ask_expert,
     classify_expert_intent,
     detect_legal_tax_question,
@@ -114,6 +117,57 @@ def test_classify_expert_intent() -> None:
     assert classify_expert_intent("What is xpath?", retrieval_chars=100) is False
     assert classify_expert_intent("Walk me through diagnosing AccessError", retrieval_chars=100) is True
     assert classify_expert_intent("KeyError: field does not exist", retrieval_chars=100) is True
+    school = "If I want to build an Odoo DB for a school, what modules would I need?"
+    assert classify_expert_intent(school, retrieval_chars=9500) is False
+    assert classify_expert_intent("Explain xpath", retrieval_chars=9500) is False
+
+
+def test_ask_retries_bulk_when_reasoning_returns_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.expert.ask.retrieve_expert_chunks",
+        lambda *a, **k: _sample_chunks(),
+    )
+    monkeypatch.setattr(
+        "app.expert.ask.assemble_context",
+        lambda *a, **k: _sample_bundle(),
+    )
+    monkeypatch.setattr(
+        "app.expert.ask.classify_expert_intent",
+        lambda *a, **k: True,
+    )
+
+    class _EmptyThenAnswerLLM(_FakeLLM):
+        def __init__(self) -> None:
+            super().__init__({})
+            self._n = 0
+
+        def generate_json(self, prompt: str, **kwargs: Any) -> str:
+            self.calls.append({"reasoning": kwargs.get("reasoning")})
+            self._n += 1
+            if self._n == 1:
+                return json.dumps(
+                    {"answer_markdown": "", "citation_ids": [], "caution_flags": []}
+                )
+            return json.dumps(
+                {
+                    "answer_markdown": "Grounded answer with citation [1].",
+                    "citation_ids": [1],
+                    "caution_flags": [],
+                }
+            )
+
+    llm = _EmptyThenAnswerLLM()
+    result = ask_expert(
+        _FakeDb(),  # type: ignore[arg-type]
+        question="Walk me through a complex xpath issue",
+        provider=llm,
+    )
+    assert not result.declined
+    assert "[1]" in result.answer_markdown
+    assert len(llm.calls) == 2
+    assert llm.calls[0]["reasoning"] is True
+    assert llm.calls[1]["reasoning"] is False
+    assert "reasoning_empty_retry_bulk" in result.caution_flags
 
 
 def test_detect_legal_tax_question() -> None:
@@ -149,6 +203,26 @@ def test_ask_declines_when_no_retrieval(monkeypatch: pytest.MonkeyPatch) -> None
     assert DECLINE_LOW_CONFIDENCE in result.answer_markdown
 
 
+def test_ask_error_diagnosis_without_retrieval(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.expert.ask.retrieve_expert_chunks", lambda *a, **k: [])
+    monkeypatch.setattr(
+        "app.expert.ask.assemble_context",
+        lambda *a, **k: _sample_bundle(),
+    )
+    result = ask_expert(
+        _FakeDb(),  # type: ignore[arg-type]
+        question=(
+            "Diagnose this error\n\nError log:\n"
+            "Error while validating view near:\nModel not found: x_ticket"
+        ),
+        provider=_FakeLLM({}),
+    )
+    assert not result.declined
+    assert "x_ticket" in result.answer_markdown
+    assert "Models & Fields" in result.answer_markdown
+    assert "rule_based_diagnosis" in result.caution_flags
+
+
 def test_ask_grounded_with_citations(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "app.expert.ask.retrieve_expert_chunks",
@@ -178,6 +252,78 @@ def test_ask_grounded_with_citations(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.suggested_tools[0]["id"] == "mass_edit"
     assert llm.calls[0]["temperature"] == pytest.approx(0.15)
     assert llm.calls[0]["reasoning"] is False
+
+
+def test_split_citation_blocks_treats_list_items_separately() -> None:
+    answer = (
+        "Intro paragraph without marker.\n\n"
+        "1. First item cited [1].\n"
+        "2. Second item missing marker.\n\n"
+        "Closing paragraph missing marker."
+    )
+    blocks = _split_citation_blocks(answer)
+    assert len(blocks) == 4
+    assert blocks[0].startswith("Intro")
+    assert blocks[1].startswith("1.")
+    assert blocks[2].startswith("2.")
+
+
+def test_blocks_have_citations_requires_each_list_item() -> None:
+    listed = "1. First [1].\n2. Second without marker."
+    assert not _blocks_have_citations(listed)
+    assert _blocks_have_citations("1. First [1].\n2. Second [1].")
+
+
+def test_enforce_citation_markers_appends_primary_source() -> None:
+    index_map = {1: _sample_chunks()[0]}
+    answer = "1. Install Contacts.\n2. Add CRM.\n\nSummary without marker."
+    fixed, ids = _enforce_citation_markers(answer, index_map=index_map, citation_ids=[1])
+    assert _blocks_have_citations(fixed)
+    assert "[1]" in fixed
+    assert ids == [1]
+
+
+def test_ask_enforces_citations_when_regeneration_still_uncited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.expert.ask.retrieve_expert_chunks",
+        lambda *a, **k: _sample_chunks(),
+    )
+    monkeypatch.setattr(
+        "app.expert.ask.assemble_context",
+        lambda *a, **k: _sample_bundle(),
+    )
+
+    class _AlwaysUncitedLLM(_FakeLLM):
+        def __init__(self) -> None:
+            super().__init__({})
+
+        def generate_json(self, prompt: str, **kwargs: Any) -> str:
+            self.calls.append({"strict": "REMINDER" in prompt})
+            return json.dumps(
+                {
+                    "answer_markdown": (
+                        "1. Install Contacts for students.\n"
+                        "2. Use CRM for admissions.\n\n"
+                        "Remember to sandbox-test first."
+                    ),
+                    "citation_ids": [],
+                }
+            )
+
+    llm = _AlwaysUncitedLLM()
+    result = ask_expert(
+        _FakeDb(),  # type: ignore[arg-type]
+        question="What modules for a school?",
+        provider=llm,
+    )
+    assert not result.declined
+    assert _blocks_have_citations(result.answer_markdown)
+    assert result.citations
+    assert result.citations[0].source_index == 1
+    assert "citations_enforced" in result.caution_flags
+    assert not result.uncited_warning
 
 
 def test_ask_regenerates_on_uncited_paragraphs(monkeypatch: pytest.MonkeyPatch) -> None:

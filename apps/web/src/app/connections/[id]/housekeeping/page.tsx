@@ -16,6 +16,7 @@ import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { Callout } from "@/components/ui/Callout";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Card, PageHeader } from "@/components/ui/layout-primitives";
+import { Disclosure } from "@/components/ui/Disclosure";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 
 const CONFIRM_PHRASE = "I understand the risks";
@@ -400,76 +401,6 @@ export default function HousekeepingPage() {
                 Select all cleanable
               </button>
             </>
-          )}
-        </Card>
-
-        <Card className="mt-6 space-y-3 p-4">
-          <h2 className="text-lg font-semibold">Stored compute recompute</h2>
-          <p className="text-sm text-[var(--odoo-muted)]">
-            Refresh stored computed fields by touching dependencies with tracking disabled. Probe
-            runs on up to three records first — if it fails, no writes are made and you get an
-            honest hosting message.
-          </p>
-          <label className="block text-sm">
-            Model
-            <input
-              className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5 font-mono text-sm"
-              value={recomputeModel}
-              onChange={(e) => setRecomputeModel(e.target.value)}
-              placeholder="x_blk_wf_item"
-            />
-          </label>
-          <label className="block text-sm">
-            Stored field
-            <input
-              className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5 font-mono text-sm"
-              value={recomputeField}
-              onChange={(e) => setRecomputeField(e.target.value)}
-              placeholder="x_title_len"
-            />
-          </label>
-          <label className="block text-sm">
-            Record ids (optional)
-            <input
-              className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5 font-mono text-sm"
-              value={recomputeIds}
-              onChange={(e) => setRecomputeIds(e.target.value)}
-              placeholder="1, 2, 3"
-            />
-          </label>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="odoo-btn-secondary"
-              disabled={busy}
-              onClick={() => void runRecompute(true)}
-            >
-              Dry run
-            </button>
-            <button
-              type="button"
-              className="odoo-btn-primary"
-              disabled={busy}
-              onClick={() => void runRecompute(false)}
-            >
-              Recompute
-            </button>
-          </div>
-          {recomputeResult?.probe && (
-            <div className="rounded border border-[var(--odoo-border)] p-3 text-sm">
-              <p className="font-medium">
-                Probe {recomputeResult.probe.ok ? "ok" : "failed"} ·{" "}
-                {recomputeResult.probe.message}
-              </p>
-              {recomputeResult.probe.honesty_message && (
-                <p className="mt-2 text-amber-900">{recomputeResult.probe.honesty_message}</p>
-              )}
-              {recomputeResult.dependencies && recomputeResult.dependencies.length > 0 && (
-                <p className="mt-1 text-xs text-[var(--odoo-muted)]">
-                  Depends on: {recomputeResult.dependencies.join(", ")}
-                </p>
-              )}
-            </div>
           )}
         </Card>
 

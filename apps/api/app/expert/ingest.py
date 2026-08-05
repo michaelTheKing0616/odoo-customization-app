@@ -11,6 +11,8 @@ from app.db import SessionLocal, init_db
 from app.expert.chunker import chunk_file
 from app.expert.fetcher import SUPPORTED_VERSIONS, fetch_documentation, iter_doc_files
 from app.expert.store import UpsertStats, upsert_chunks
+from app.expert.vertical_playbooks import all_vertical_playbook_chunks
+
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -24,14 +26,25 @@ class IngestReport:
     odoo_docs: UpsertStats = field(default_factory=UpsertStats)
     project: UpsertStats = field(default_factory=UpsertStats)
     community: UpsertStats = field(default_factory=UpsertStats)
+    vertical: UpsertStats = field(default_factory=UpsertStats)
 
     @property
     def total_inserted(self) -> int:
-        return self.odoo_docs.inserted + self.project.inserted + self.community.inserted
+        return (
+            self.odoo_docs.inserted
+            + self.project.inserted
+            + self.community.inserted
+            + self.vertical.inserted
+        )
 
     @property
     def total_updated(self) -> int:
-        return self.odoo_docs.updated + self.project.updated + self.community.updated
+        return (
+            self.odoo_docs.updated
+            + self.project.updated
+            + self.community.updated
+            + self.vertical.updated
+        )
 
 
 def _project_doc_paths() -> list[Path]:
@@ -117,21 +130,40 @@ def ingest_community_docs(*, embed: bool = True) -> UpsertStats:
         db.close()
 
 
+def ingest_vertical_docs(*, embed: bool = True) -> UpsertStats:
+    chunks = all_vertical_playbook_chunks()
+    if not chunks:
+        logger.info("No vertical playbook chunks to ingest")
+        return UpsertStats()
+    db = SessionLocal()
+    try:
+        return upsert_chunks(db, source="vertical", version="all", chunks=chunks, embed=embed)
+    finally:
+        db.close()
+
+
 def run_ingest(
     version: str,
     *,
     offline: bool = False,
+    skip_odoo_docs: bool = False,
     skip_project: bool = False,
     skip_community: bool = False,
+    skip_vertical: bool = False,
     embed: bool = True,
 ) -> IngestReport:
     init_db()
     report = IngestReport(version=version)
-    report.odoo_docs = ingest_odoo_docs(version, offline=offline, embed=embed)
+    if skip_odoo_docs:
+        report.odoo_docs = UpsertStats()
+    else:
+        report.odoo_docs = ingest_odoo_docs(version, offline=offline, embed=embed)
     if not skip_project:
         report.project = ingest_project_docs(embed=embed)
     if not skip_community:
         report.community = ingest_community_docs(embed=embed)
+    if not skip_vertical:
+        report.vertical = ingest_vertical_docs(embed=embed)
     return report
 
 
@@ -150,6 +182,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--skip-project", action="store_true")
     parser.add_argument("--skip-community", action="store_true")
+    parser.add_argument(
+        "--skip-odoo-docs",
+        action="store_true",
+        help="Skip official Odoo documentation (re-index project/vertical only)",
+    )
+    parser.add_argument(
+        "--skip-vertical",
+        action="store_true",
+        help="Skip vertical playbook ingest",
+    )
     parser.add_argument("--no-embed", action="store_true", help="Skip embedding generation")
     args = parser.parse_args(argv)
 
@@ -157,15 +199,18 @@ def main(argv: list[str] | None = None) -> int:
     report = run_ingest(
         args.version,
         offline=args.offline,
+        skip_odoo_docs=args.skip_odoo_docs,
         skip_project=args.skip_project,
         skip_community=args.skip_community,
+        skip_vertical=args.skip_vertical,
         embed=not args.no_embed,
     )
     print(
         f"version={report.version} "
         f"odoo_docs=+{report.odoo_docs.inserted}/~{report.odoo_docs.updated} "
         f"project=+{report.project.inserted}/~{report.project.updated} "
-        f"community=+{report.community.inserted}/~{report.community.updated}"
+        f"community=+{report.community.inserted}/~{report.community.updated} "
+        f"vertical=+{report.vertical.inserted}/~{report.vertical.updated}"
     )
     return 0
 

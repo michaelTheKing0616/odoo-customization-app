@@ -341,7 +341,7 @@ class OllamaProvider(LLMProvider):
         model: str | None = None,
     ) -> None:
         self.base_url = (base_url or settings.ollama_base_url).rstrip("/")
-        self.model = model or settings.ollama_model
+        self.model = model or resolve_bulk_model()
 
     @property
     def name(self) -> str:
@@ -377,8 +377,12 @@ class OllamaProvider(LLMProvider):
             reasoning=reasoning,
             model_supports_think=bool(caps.get("think_supported")),
         )
+        # Native thinking + JSON schema often yields an empty `response` on Ollama.
+        if format_schema and use_think:
+            use_think = False
         user_prompt = prompt
-        if reasoning and not use_think:
+        # Manual CoT + schema is similarly unreliable — rely on schema-only JSON.
+        if reasoning and not use_think and not format_schema:
             user_prompt = _MANUAL_COT_PREFIX + prompt
 
         url = f"{self.base_url}/api/generate"

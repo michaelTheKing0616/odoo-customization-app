@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from odoo_client import CreateViewRequest, parse_arch, render_arch, render_inherit_replace_arch
+from odoo_client import CreateModelRequest, CreateViewRequest, parse_arch, render_arch, render_inherit_replace_arch
 from odoo_client.blueprint import apply_form_layout, auto_form_layout_for_model
 from odoo_client.view_arch import (
     merge_inherit_data_arch,
@@ -428,6 +428,31 @@ def get_view(connection_id: str, view_id: int, db: Session = Depends(get_db)) ->
     return ViewOut.model_validate(view.model_dump())
 
 
+def _humanize_model_name(model: str) -> str:
+    stem = model.split(".")[-1]
+    if stem.startswith("x_"):
+        stem = stem[2:]
+    return stem.replace("_", " ").strip().title() or model
+
+
+def _ensure_custom_model_for_view(client, model: str) -> bool:
+    """Create a stub x_* ir.model when Designer saves before Models & Fields.
+
+    Returns True when a new model was created.
+    """
+    if not model.startswith("x_") or client.model_exists(model):
+        return False
+    client.create_model(
+        CreateModelRequest(
+            name=_humanize_model_name(model),
+            model=model,
+            transient=False,
+        ),
+        with_defaults=True,
+    )
+    return True
+
+
 @router.post("/save", response_model=ViewOut, status_code=200)
 def save_view(
     connection_id: str, body: SaveViewBody, db: Session = Depends(get_db)
@@ -455,6 +480,8 @@ def save_view(
     client = _client(connection_id, db)
     major = _connection_major(db, connection_id)
     try:
+        _ensure_custom_model_for_view(client, body.model)
+
         if body.arch:
             arch = body.arch
         elif body.spec is not None:
@@ -568,7 +595,17 @@ def save_view(
     except HTTPException:
         raise
     except OdooClientError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        msg = str(exc)
+        if "Model not found" in msg and body.model.startswith("x_"):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Odoo could not find custom model {body.model!r}. "
+                    "Create it under Models & Fields first, or retry Save to Odoo "
+                    "(the app will auto-create x_* models when missing)."
+                ),
+            ) from exc
+        raise HTTPException(status_code=400, detail=msg) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

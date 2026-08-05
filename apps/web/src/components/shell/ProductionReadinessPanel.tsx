@@ -156,7 +156,16 @@ export function ProductionReadinessPanel({ connection, onRefreshConnection }: Pr
             size="sm"
             variant="ghost"
             disabled={busy}
-            onClick={() => void onRefreshConnection().then(() => load())}
+            onClick={() => {
+              setBusy(true);
+              setError(null);
+              void onRefreshConnection()
+                .then(() => load())
+                .catch((err) =>
+                  setError(err instanceof Error ? err.message : "Refresh failed"),
+                )
+                .finally(() => setBusy(false));
+            }}
           >
             Refresh probe / health
           </Button>

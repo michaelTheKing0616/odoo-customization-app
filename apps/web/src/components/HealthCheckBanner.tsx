@@ -144,12 +144,12 @@ export function HealthCheckBanner({
       ) : null}
 
       <div className="flex flex-wrap gap-3">
-        <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={() => void runCheck()}>
+          <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={() => void runCheck()} id="overview-health-sweep">
           {busy ? "Running…" : "Run health sweep"}
         </Button>
         <Link href={`/connections/${connectionId}/journal`}>
           <Button type="button" variant="ghost" size="sm">
-            Change journal
+            Open journal
           </Button>
         </Link>
       </div>

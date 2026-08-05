@@ -42,6 +42,13 @@ _ACCESS_ERROR_RE = re.compile(
 _DOES_NOT_EXIST_RE = re.compile(
     r"(?i)(does\s+not\s+exist|unknown\s+comodel|invalid\s+field|no\s+such\s+field|keyerror)"
 )
+_FAULT_RE = re.compile(r"(?i)(?:<fault\s*\d+:|fault\s+\d+:)")
+_MODEL_NOT_FOUND_RE = re.compile(
+    r"(?i)(?:model not found|unknown model|no model named):\s*['\"]?([a-z][a-z0-9_]*)"
+)
+_VALIDATING_VIEW_RE = re.compile(r"(?i)error while validating view")
+_TRACEBACK_RE = re.compile(r"(?i)traceback\s*\(")
+_X_MODEL_RE = re.compile(r"\b(x_[a-z][a-z0-9_]*)\b")
 
 _NOTABLE_MODULE_PREFIXES = ("l10n_",)
 _NOTABLE_MODULE_EXACT = frozenset(
@@ -206,27 +213,48 @@ def _notable_flags(modules: set[str]) -> dict[str, bool]:
     return flags
 
 
+def merge_question_with_pasted_error(
+    question: str,
+    ui_context: dict[str, Any] | None,
+) -> str:
+    """Combine main question with ui_context.pasted_error when not already embedded."""
+    q = (question or "").strip()
+    pasted = ""
+    if ui_context:
+        pasted = str(ui_context.get("pasted_error") or "").strip()
+    if not pasted or pasted in q:
+        return q
+    if re.search(r"(?i)\nerror log:\n", q):
+        return q
+    return f"{q}\n\nError log:\n{pasted}" if q else pasted
+
+
 def extract_model_field_refs(text: str) -> list[tuple[str, str | None]]:
     """Return unique (model, field|None) refs from question/error text."""
     if not text:
         return []
     seen: set[tuple[str, str | None]] = set()
     out: list[tuple[str, str | None]] = []
-    for match in _MODEL_FIELD_RE.finditer(text):
-        model, fld = match.group(1).lower().split(".", 1)
-        key = (model, fld)
-        if key not in seen:
+
+    def _add(model: str, fld: str | None) -> None:
+        key = (model.lower(), fld.lower() if fld else None)
+        if key not in seen and len(out) < _MAX_MODELS_FROM_TEXT:
             seen.add(key)
             out.append(key)
+
+    for match in _MODEL_FIELD_RE.finditer(text):
+        model, fld = match.group(1).lower().split(".", 1)
+        _add(model, fld)
     for match in _MODEL_RE.finditer(text):
         token = match.group(1).lower()
         if "." not in token:
             continue
-        model = token.split(".", 1)[0]
-        key = (model, None)
-        if key not in seen and len(out) < _MAX_MODELS_FROM_TEXT:
-            seen.add(key)
-            out.append(key)
+        _add(token.split(".", 1)[0], None)
+    for match in _MODEL_NOT_FOUND_RE.finditer(text):
+        _add(match.group(1), None)
+    if looks_like_rpc_error(text):
+        for match in _X_MODEL_RE.finditer(text):
+            _add(match.group(1), None)
     return out[:_MAX_MODELS_FROM_TEXT]
 
 
@@ -236,6 +264,14 @@ def looks_like_rpc_error(text: str) -> bool:
     if _ACCESS_ERROR_RE.search(text):
         return True
     if _DOES_NOT_EXIST_RE.search(text):
+        return True
+    if _FAULT_RE.search(text):
+        return True
+    if _MODEL_NOT_FOUND_RE.search(text):
+        return True
+    if _VALIDATING_VIEW_RE.search(text):
+        return True
+    if _TRACEBACK_RE.search(text):
         return True
     return bool(_MODEL_FIELD_RE.search(text))
 
@@ -515,7 +551,7 @@ def assemble_context(
     client: Any | None = None,
 ) -> GroundingBundle:
     """Build a grounding bundle for Expert retrieval + generation."""
-    q = (question or "").strip()
+    q = merge_question_with_pasted_error((question or "").strip(), ui_context)
     bundle = GroundingBundle()
     row = None
     manifest: dict[str, Any] = {}
@@ -599,6 +635,7 @@ __all__ = [
     "cross_check_schema",
     "extract_model_field_refs",
     "looks_like_rpc_error",
+    "merge_question_with_pasted_error",
     "match_capability_highlights",
     "route_bulk_tools",
     "serialize_bundle",

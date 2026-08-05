@@ -9,9 +9,11 @@ export function useSyncShellContext(patch: {
   viewType?: string;
   triggerType?: string;
 }) {
-  const shell = useShellOptional();
+  const setUiContext = useShellOptional()?.setUiContext;
+  const { model, draftSummary, viewType, triggerType } = patch;
+
   useEffect(() => {
-    if (!shell) return;
-    shell.setUiContext(patch);
-  }, [shell, patch.model, patch.draftSummary, patch.viewType, patch.triggerType, patch]);
+    if (!setUiContext) return;
+    setUiContext({ model, draftSummary, viewType, triggerType });
+  }, [setUiContext, model, draftSummary, viewType, triggerType]);
 }

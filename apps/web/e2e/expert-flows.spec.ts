@@ -22,6 +22,7 @@ test.describe("Expert UX flows (REM-9)", () => {
               version: "all",
               breadcrumb: "Security model",
               chunk_id: "expert-e2e-1",
+              source_index: 1,
             },
           ],
           grounded: true,
@@ -48,14 +49,14 @@ test.describe("Expert UX flows (REM-9)", () => {
     });
   });
 
-  test("error notice diagnose opens expert with pasted error", async ({ page }) => {
+  test("error notice diagnose auto-submits with error in main input", async ({ page }) => {
     await page.goto("/e2e/expert");
     await page.getByRole("button", { name: /Diagnose with Expert/i }).click();
     await expect(page.getByTestId("expert-panel")).toBeVisible();
-    await expect(page.getByTestId("expert-error-paste")).toHaveValue(/AccessError/);
-    await page.getByTestId("expert-input").fill("Why am I blocked?");
-    await page.getByRole("button", { name: "Ask Expert" }).click();
-    await expect(page.getByText(/AccessError usually means/)).toBeVisible();
+    await expect(page.getByTestId("expert-input")).toHaveValue(/Error log:/);
+    await expect(page.getByTestId("expert-input")).toHaveValue(/AccessError/);
+    await expect(page.getByText(/AccessError usually means/)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("expert-copy-answer")).toBeVisible();
     await page.screenshot({
       path: path.join(OUT_DIR, "expert-error-diagnose.png"),
       fullPage: true,

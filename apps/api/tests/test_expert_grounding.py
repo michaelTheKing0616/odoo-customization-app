@@ -61,7 +61,26 @@ def test_extract_model_field_refs() -> None:
 def test_looks_like_rpc_error() -> None:
     assert looks_like_rpc_error("KeyError: x_mattr does not exist")
     assert looks_like_rpc_error("AccessError: not allowed")
+    assert looks_like_rpc_error("<Fault 2: 'Model not found: x_ticket'>")
+    assert looks_like_rpc_error("Error while validating view near:\nModel not found: x_ticket")
     assert not looks_like_rpc_error("How do I add a custom field?")
+
+
+def test_extract_model_not_found_ref() -> None:
+    refs = extract_model_field_refs("Model not found: x_ticket")
+    assert ("x_ticket", None) in refs
+
+
+def test_merge_question_with_pasted_error() -> None:
+    from app.expert.grounding import merge_question_with_pasted_error
+
+    merged = merge_question_with_pasted_error(
+        "Diagnose this error",
+        {"pasted_error": "AccessError on res.partner"},
+    )
+    assert "Error log:" in merged
+    assert "AccessError on res.partner" in merged
+    assert merge_question_with_pasted_error(merged, {"pasted_error": "AccessError on res.partner"}) == merged
 
 
 def test_route_bulk_tools_mass_edit() -> None:

@@ -9,7 +9,13 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.expert.grounding import GroundingBundle, assemble_context
+from app.expert.grounding import (
+    GroundingBundle,
+    assemble_context,
+    looks_like_rpc_error,
+    merge_question_with_pasted_error,
+)
+from app.expert.error_diagnosis import try_rule_based_error_diagnosis
 from app.expert.retrieval import RetrievedChunk, retrieve_expert_chunks
 from app.llm_provider import LLMError, LLMProvider, get_llm_provider
 from app.protected_enforcement import manifest_for_connection
@@ -30,8 +36,12 @@ GROUND OR DECLINE (mandatory — no exceptions):
 2. Do NOT answer from general parametric knowledge when sources are missing or thin.
 3. If sources cannot support a confident answer, set answer_markdown to a short honest
    decline (do not invent steps).
-4. Every factual paragraph in answer_markdown MUST include at least one citation marker
-   like [1] referencing a source number from the excerpts list.
+4. CITATION FORMAT (strict):
+   - Use inline markers [1], [2], … matching SOURCE EXCERPT numbers exactly.
+   - Every paragraph AND every list item MUST end with at least one [n] marker.
+   - Place the marker at the end of the sentence or list item, before any trailing punctuation
+     is fine: e.g. "Install Contacts for students [1]."
+   - citation_ids in JSON must list every source number used in the answer.
 5. For protected tier-1 areas (accounting_core, payroll, payments, subscriptions, etc.):
    explain WHY the constraint exists, point to the legitimate link-only or module path,
    and our in-app bulk tools when relevant — never give bypass instructions.
@@ -39,9 +49,20 @@ GROUND OR DECLINE (mandatory — no exceptions):
    and recommend a qualified advisor for jurisdiction-specific rules.
 """.strip()
 
+ERROR_DIAGNOSIS_RULES = """
+ERROR DIAGNOSIS (when ERROR LOG, Fault, traceback, or validation error text is present):
+1. Diagnose the specific error immediately — never ask the user to paste the error again.
+2. Use INSTANCE GROUNDING error_diagnostics when present (model_missing, field_missing, suggestions).
+3. For "Model not found" on x_* custom models during view save: the ir.model record must exist
+   before the view validates — create it in Models & Fields or re-save from Designer (auto-create).
+4. Give concrete remediation steps in numbered order with [n] citations from sources.
+""".strip()
+
 EXPERT_PERSONA = (
     "You are the Odoo Expert — a careful advisor for Odoo Community customization via "
-    "public ORM/RPC only. Tone: plain, confident, honest (COPY_GUIDE). Cite sources."
+    "public ORM/RPC only. Tone: plain, confident, honest (COPY_GUIDE). Cite sources. "
+    "When vertical playbook excerpts match the question, prefer their stock-module lists "
+    "and custom-model guidance over generic answers."
 )
 
 EXPERT_RESPONSE_SCHEMA: dict[str, Any] = {
@@ -78,6 +99,30 @@ _REASONING_HINTS = (
     "walkthrough",
 )
 
+# Vertical / module-stack questions — factual lists, not multi-step diagnostics.
+_BULK_PLANNING_HINTS = (
+    "what modules",
+    "which modules",
+    "what apps",
+    "which apps",
+    "modules would",
+    "apps would",
+    "modules do i need",
+    "apps do i need",
+    "build an odoo",
+    "build a odoo",
+    "recommended modules",
+    "module stack",
+    "apps to install",
+    "modules to install",
+    "for a school",
+    "for school",
+    "for a nonprofit",
+    "for retail",
+    "for manufacturing",
+    "for logistics",
+)
+
 _LEGAL_TAX_HINTS = (
     "legal advice",
     "tax advice",
@@ -93,6 +138,9 @@ _TIER1_LOGIC_VERBS = re.compile(
     r"related_write|update_field|create.*logic)\b"
 )
 
+_CITATION_MARKER_RE = re.compile(r"\[(\d+)\]")
+_LIST_ITEM_RE = re.compile(r"^\s*(?:[-*+]|\d+\.)\s+")
+
 
 @dataclass
 class ExpertCitation:
@@ -100,13 +148,15 @@ class ExpertCitation:
     version: str
     breadcrumb: str
     chunk_id: str
+    source_index: int = 0
 
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> dict[str, str | int]:
         return {
             "source": self.source,
             "version": self.version,
             "breadcrumb": self.breadcrumb,
             "chunk_id": self.chunk_id,
+            "source_index": self.source_index,
         }
 
 
@@ -144,20 +194,34 @@ def expert_assist_enabled() -> bool:
 
 def classify_expert_intent(question: str, *, retrieval_chars: int) -> bool:
     """True → reasoning model + thinking; False → bulk/fast factual path."""
+    del retrieval_chars  # kept for API stability; no longer used as a trigger
     q = (question or "").lower()
+    if any(h in q for h in _BULK_PLANNING_HINTS):
+        return False
     if any(h in q for h in _REASONING_HINTS):
         return True
     if looks_like_error_question(q):
-        return True
-    if retrieval_chars > 4500:
         return True
     return False
 
 
 def looks_like_error_question(text: str) -> bool:
-    from app.expert.grounding import looks_like_rpc_error
-
     return looks_like_rpc_error(text)
+
+
+def _expand_error_retrieval_query(question: str) -> str:
+    """Bias retrieval toward remediation docs when the user pasted an RPC fault."""
+    ql = question.lower()
+    extra: list[str] = []
+    if "model not found" in ql or "validating view" in ql:
+        extra.extend(["ir.model", "custom model", "view validation", "designer"])
+    if "accesserror" in ql or "access error" in ql:
+        extra.extend(["access rights", "ir.model.access", "security"])
+    if "fault" in ql or "traceback" in ql:
+        extra.extend(["rpc error", "troubleshooting"])
+    if not extra:
+        return question
+    return f"{question} {' '.join(extra)}"
 
 
 def detect_legal_tax_question(question: str) -> bool:
@@ -259,12 +323,18 @@ def _build_user_prompt(
         parts.extend(
             [
                 "",
-                "REMINDER: Every paragraph MUST include [n] citation markers. "
+                "REMINDER — CITATION FORMAT:",
+                "- Every paragraph AND every numbered/bulleted list item must end with [n].",
+                "- Example list item: \"1. Install **Contacts** for students [1].\"",
+                "- citation_ids must include every [n] used.",
                 "Return JSON with answer_markdown and citation_ids (source numbers used).",
             ]
         )
     parts.extend(
         [
+            "",
+            "CITATION EXAMPLE:",
+            '{"answer_markdown":"Install **Contacts** for students [1].\\n\\nUse **CRM** for admissions [1].", "citation_ids":[1], "caution_flags":[]}',
             "",
             "Respond with JSON: "
             '{"answer_markdown":"...", "citation_ids":[1], "caution_flags":[]}',
@@ -284,40 +354,158 @@ def _parse_llm_response(raw: str) -> dict[str, Any]:
     return data
 
 
-def _paragraphs_have_citations(answer: str) -> bool:
-    blocks = [b.strip() for b in re.split(r"\n\s*\n", answer.strip()) if b.strip()]
+def _split_citation_blocks(answer: str) -> list[str]:
+    """Split answer into blocks that each require a [n] citation marker."""
+    blocks: list[str] = []
+    for para in re.split(r"\n\s*\n", answer.strip()):
+        para = para.strip()
+        if not para:
+            continue
+        lines = [ln for ln in para.split("\n") if ln.strip()]
+        if lines and all(_LIST_ITEM_RE.match(ln) for ln in lines):
+            blocks.extend(ln.strip() for ln in lines)
+            continue
+        if any(_LIST_ITEM_RE.match(ln) for ln in lines):
+            buf: list[str] = []
+            for ln in lines:
+                if _LIST_ITEM_RE.match(ln):
+                    if buf:
+                        blocks.append(" ".join(buf).strip())
+                        buf = []
+                    blocks.append(ln.strip())
+                else:
+                    buf.append(ln.strip())
+            if buf:
+                blocks.append(" ".join(buf).strip())
+        else:
+            blocks.append(para)
+    return blocks
+
+
+def _blocks_have_citations(answer: str) -> bool:
+    blocks = _split_citation_blocks(answer)
     if not blocks:
         return False
-    for block in blocks:
-        if not re.search(r"\[\d+\]", block):
-            return False
-    return True
+    return all(_CITATION_MARKER_RE.search(block) for block in blocks)
+
+
+def _paragraphs_have_citations(answer: str) -> bool:
+    """Back-compat alias — uses list-item-aware block splitting."""
+    return _blocks_have_citations(answer)
+
+
+def _extract_citation_ids_from_answer(answer: str, index_map: dict[int, RetrievedChunk]) -> list[int]:
+    seen: list[int] = []
+    for match in _CITATION_MARKER_RE.finditer(answer):
+        idx = int(match.group(1))
+        if idx in index_map and idx not in seen:
+            seen.append(idx)
+    return seen
+
+
+def _primary_citation_id(
+    answer: str,
+    citation_ids: list[int],
+    index_map: dict[int, RetrievedChunk],
+) -> int:
+    for match in _CITATION_MARKER_RE.finditer(answer):
+        idx = int(match.group(1))
+        if idx in index_map:
+            return idx
+    for raw_id in citation_ids:
+        try:
+            idx = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        if idx in index_map:
+            return idx
+    return min(index_map.keys()) if index_map else 1
+
+
+def _append_citation_marker(text: str, source_index: int) -> str:
+    stripped = text.rstrip()
+    if not stripped or _CITATION_MARKER_RE.search(stripped):
+        return text
+    return f"{stripped} [{source_index}]"
+
+
+def _enforce_citation_markers(
+    answer: str,
+    *,
+    index_map: dict[int, RetrievedChunk],
+    citation_ids: list[int] | None = None,
+) -> tuple[str, list[int]]:
+    """Ensure every citation block ends with [n]; return normalized answer + ids."""
+    primary = _primary_citation_id(answer, citation_ids or [], index_map)
+    paragraphs = re.split(r"\n\s*\n", answer.strip())
+    fixed_paras: list[str] = []
+
+    for para in paragraphs:
+        if not para.strip():
+            continue
+        lines = para.split("\n")
+        content_lines = [ln for ln in lines if ln.strip()]
+        if content_lines and all(_LIST_ITEM_RE.match(ln) for ln in content_lines):
+            fixed_lines = [_append_citation_marker(ln, primary) for ln in lines]
+            fixed_paras.append("\n".join(fixed_lines))
+            continue
+        if any(_LIST_ITEM_RE.match(ln) for ln in content_lines):
+            fixed_lines: list[str] = []
+            for ln in lines:
+                if _LIST_ITEM_RE.match(ln):
+                    fixed_lines.append(_append_citation_marker(ln, primary))
+                else:
+                    fixed_lines.append(ln)
+            joined = "\n".join(fixed_lines)
+            if not _blocks_have_citations(joined):
+                fixed_paras.append(_append_citation_marker(joined, primary))
+            else:
+                fixed_paras.append(joined)
+        elif not _CITATION_MARKER_RE.search(para):
+            fixed_paras.append(_append_citation_marker(para, primary))
+        else:
+            fixed_paras.append(para)
+
+    result = "\n\n".join(fixed_paras)
+    ids = _extract_citation_ids_from_answer(result, index_map)
+    if not ids and primary in index_map:
+        ids = [primary]
+    return result, ids
 
 
 def _citations_from_response(
     data: dict[str, Any],
     index_map: dict[int, RetrievedChunk],
+    *,
+    answer: str | None = None,
 ) -> list[ExpertCitation]:
     cited: list[ExpertCitation] = []
     seen: set[str] = set()
-    ids = data.get("citation_ids") or []
-    if isinstance(ids, list):
-        for raw_id in ids:
+    ids: list[int] = []
+    if answer:
+        ids.extend(_extract_citation_ids_from_answer(answer, index_map))
+    raw_ids = data.get("citation_ids") or []
+    if isinstance(raw_ids, list):
+        for raw_id in raw_ids:
             try:
                 idx = int(raw_id)
             except (TypeError, ValueError):
                 continue
-            chunk = index_map.get(idx)
-            if chunk and chunk.chunk_id not in seen:
-                seen.add(chunk.chunk_id)
-                cited.append(
-                    ExpertCitation(
-                        source=chunk.source,
-                        version=chunk.version,
-                        breadcrumb=chunk.breadcrumb,
-                        chunk_id=chunk.chunk_id,
-                    )
+            if idx not in ids:
+                ids.append(idx)
+    for idx in ids:
+        chunk = index_map.get(idx)
+        if chunk and chunk.chunk_id not in seen:
+            seen.add(chunk.chunk_id)
+            cited.append(
+                ExpertCitation(
+                    source=chunk.source,
+                    version=chunk.version,
+                    breadcrumb=chunk.breadcrumb,
+                    chunk_id=chunk.chunk_id,
+                    source_index=idx,
                 )
+            )
     return cited
 
 
@@ -332,7 +520,7 @@ def ask_expert(
     client: Any | None = None,
 ) -> ExpertAskResult:
     """Run retrieval + grounding + generation with structural ground-or-decline."""
-    q = (question or "").strip()
+    q = merge_question_with_pasted_error((question or "").strip(), ui_context)
     if not q:
         return ExpertAskResult(
             answer_markdown="Ask a specific question about Odoo or this connection.",
@@ -377,7 +565,7 @@ def ask_expert(
     min_score = float(settings.ai_rag_min_score or 0.35)
     chunks = retrieve_expert_chunks(
         db,
-        q,
+        _expand_error_retrieval_query(q),
         version=version,
         top_k=_RETRIEVAL_TOP_K,
         min_score=min_score,
@@ -385,7 +573,24 @@ def ask_expert(
 
     suggested = list(bundle.suggested_tools or [])
 
+    def _rule_based_fallback() -> ExpertAskResult | None:
+        payload = try_rule_based_error_diagnosis(q, bundle, connection_id=connection_id)
+        if not payload:
+            return None
+        return ExpertAskResult(
+            answer_markdown=payload["answer_markdown"],
+            citations=[],
+            grounded=bool(payload.get("grounded")),
+            declined=False,
+            suggested_tools=suggested,
+            caution_flags=list(payload.get("caution_flags") or []),
+            retrieval_version=version,
+        )
+
     if not chunks:
+        ruled = _rule_based_fallback()
+        if ruled:
+            return ruled
         return ExpertAskResult(
             answer_markdown=DECLINE_LOW_CONFIDENCE,
             citations=[],
@@ -399,6 +604,9 @@ def ask_expert(
     top_score = max(c.score for c in chunks)
     threshold = min_score
     if top_score < threshold:
+        ruled = _rule_based_fallback()
+        if ruled:
+            return ruled
         return ExpertAskResult(
             answer_markdown=DECLINE_LOW_CONFIDENCE,
             citations=[],
@@ -429,64 +637,91 @@ def ask_expert(
         EXPERT_PERSONA,
         GROUND_OR_DECLINE_RULES,
     ]
+    if looks_like_error_question(q):
+        system_parts.append(ERROR_DIAGNOSIS_RULES)
     if manifest:
         system_parts.append(guardrail_prompt(manifest))
 
-    user_prompt = _build_user_prompt(
-        question=q,
-        chunks=chunks,
-        bundle=bundle,
-        conversation=conversation,
-    )
+    system_text = "\n\n".join(system_parts)
 
-    try:
+    def _generate(*, use_reasoning: bool, strict_citations: bool = False) -> dict[str, Any]:
+        prompt = _build_user_prompt(
+            question=q,
+            chunks=chunks,
+            bundle=bundle,
+            conversation=conversation,
+            strict_citations=strict_citations,
+        )
         raw = llm.generate_json(
-            user_prompt,
-            system="\n\n".join(system_parts),
-            reasoning=reasoning,
+            prompt,
+            system=system_text,
+            reasoning=use_reasoning,
             temperature=_EXPERT_TEMPERATURE,
             format_schema=EXPERT_RESPONSE_SCHEMA,
         )
-        data = _parse_llm_response(raw)
+        return _parse_llm_response(raw)
+
+    try:
+        data = _generate(use_reasoning=reasoning)
     except (json.JSONDecodeError, ValueError, LLMError):
         raise
     except Exception as exc:  # noqa: BLE001
         raise LLMError(str(exc), status_code=502) from exc
 
     answer = str(data.get("answer_markdown") or "").strip()
-    cited = _citations_from_response(data, index_map)
+    if not answer and reasoning:
+        reasoning = False
+        caution_flags.append("reasoning_empty_retry_bulk")
+        try:
+            data = _generate(use_reasoning=False)
+            answer = str(data.get("answer_markdown") or "").strip()
+        except (json.JSONDecodeError, ValueError, LLMError):
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise LLMError(str(exc), status_code=502) from exc
+
+    cited = _citations_from_response(data, index_map, answer=answer)
     llm_flags = data.get("caution_flags") or []
     if isinstance(llm_flags, list):
         caution_flags.extend(str(f) for f in llm_flags if f)
 
-    uncited = False
-    if answer and not _paragraphs_have_citations(answer):
-        strict_prompt = _build_user_prompt(
-            question=q,
-            chunks=chunks,
-            bundle=bundle,
-            conversation=conversation,
-            strict_citations=True,
-        )
+    if answer and not _blocks_have_citations(answer):
         try:
-            raw2 = llm.generate_json(
-                strict_prompt,
-                system="\n\n".join(system_parts),
-                reasoning=reasoning,
-                temperature=_EXPERT_TEMPERATURE,
-                format_schema=EXPERT_RESPONSE_SCHEMA,
-            )
-            data2 = _parse_llm_response(raw2)
+            data2 = _generate(use_reasoning=reasoning, strict_citations=True)
             answer2 = str(data2.get("answer_markdown") or "").strip()
-            if answer2 and _paragraphs_have_citations(answer2):
+            if answer2 and _blocks_have_citations(answer2):
                 answer = answer2
-                cited = _citations_from_response(data2, index_map)
+                data = data2
+                cited = _citations_from_response(data2, index_map, answer=answer)
             else:
-                uncited = True
-                caution_flags.append("uncited_paragraphs")
+                answer, enforced_ids = _enforce_citation_markers(
+                    answer2 or answer,
+                    index_map=index_map,
+                    citation_ids=data2.get("citation_ids") if answer2 else data.get("citation_ids"),
+                )
+                data = data2 if answer2 else data
+                if enforced_ids:
+                    data = {**data, "citation_ids": enforced_ids}
+                cited = _citations_from_response(data, index_map, answer=answer)
+                caution_flags.append("citations_enforced")
         except Exception:  # noqa: BLE001
-            uncited = True
-            caution_flags.append("uncited_paragraphs")
+            answer, enforced_ids = _enforce_citation_markers(
+                answer,
+                index_map=index_map,
+                citation_ids=data.get("citation_ids"),
+            )
+            if enforced_ids:
+                data = {**data, "citation_ids": enforced_ids}
+            cited = _citations_from_response(data, index_map, answer=answer)
+            caution_flags.append("citations_enforced")
+
+    if answer and _blocks_have_citations(answer):
+        merged_ids = _extract_citation_ids_from_answer(answer, index_map)
+        if merged_ids:
+            data = {**data, "citation_ids": merged_ids}
+            cited = _citations_from_response(data, index_map, answer=answer)
+
+    uncited_warning = bool(answer) and not _blocks_have_citations(answer)
 
     return ExpertAskResult(
         answer_markdown=answer or DECLINE_LOW_CONFIDENCE,
@@ -498,7 +733,7 @@ def ask_expert(
         retrieval_version=version,
         model_used=llm.name,
         reasoning=reasoning,
-        uncited_warning=uncited,
+        uncited_warning=uncited_warning,
     )
 
 
@@ -515,5 +750,8 @@ __all__ = [
     "classify_expert_intent",
     "detect_legal_tax_question",
     "detect_tier1_logic_request",
+    "_blocks_have_citations",
+    "_enforce_citation_markers",
+    "_split_citation_blocks",
     "expert_assist_enabled",
 ]

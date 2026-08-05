@@ -3,14 +3,19 @@
 > Read at the start of every session. Updated at the end of every session.
 
 ## Last run
-- Date: 2026-08-04
-- **Follow-ups shipped:**
-  - `Card` forwards div props (`data-testid`) — pricing e2e uses `pricing-tier-*` + `project-pass` again.
-  - `test_restore_drill_on_copy_database` — row-count drill (baseline restore → delete 1 `odoo_connections` row → `restore_app_db.sh` → count restored); **passed** on `odoo_custom_restore_drill`.
-- **Prior operator evidence (still valid):** Playwright 7/7 live overlay + TRUST-7 manual drill; `docs/vision-verify/overlay-editor-live.png`.
+- Date: 2026-08-05
+- **Wave 14 UIF shipped (UIF-1 → UIF-4):**
+  - `InstanceIdentity` once in top bar; CapabilityProbePanel quiet row only; Overview identity chips removed.
+  - Bulk Suite duplicate six-section block + Housekeeping duplicate recompute removed.
+  - Sidebar exact Overview active match; collapsible nav + localStorage; unique icons; Operations hub `/operations`.
+  - Overview tabs (Overview / Models / Develop), primary actions, first-run card, playbook accordions.
+  - Playbook panels → ErrorNotice + Retry; journal HealthCheckBanner removed (health filter tab).
+  - Gates: `pnpm lint` 0 errors · `pnpm test` 101 passed · `pnpm build` OK.
+  - Playwright vision-verify sweep: spec updated (+ operations-hub); run locally (webServer timeout in agent env).
 
 ## Next
-- None blocking — optional backlog from prior waves only.
+- Run `pnpm exec playwright test e2e/vision-verify-sweep.spec.ts` locally to refresh `docs/vision-verify/` screenshots.
+- Commit Wave 14 when user approves.
 
 ## Rule
 - Code Studio = probe per connection, never hosting-tier assumption.

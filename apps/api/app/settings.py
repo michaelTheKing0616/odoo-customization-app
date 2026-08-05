@@ -63,13 +63,8 @@ class Settings(BaseSettings):
     # off | ollama | openai-compatible
     ai_assist: str = "off"
     ollama_base_url: str = "http://127.0.0.1:11434"
-    # Prefer qwen2.5 7B Q4 on Apple Silicon; override via OLLAMA_MODEL
-    ollama_model: str = "qwen2.5:7b-instruct-q4_K_M"
-    # Per-step model ladder (empty = fall back to ollama_model / openai_compatible_model)
-    ai_model_bulk: str = "qwen3:8b"
-    ai_model_reasoning: str = "qwen3:14b"
-    # auto | on | off — native Ollama `think` when model supports it; else manual CoT
-    ai_thinking: str = "auto"
+    # Legacy fallback when AI_MODEL_BULK / AI_MODEL_REASONING are empty (prefer Qwen3 ladder)
+    ollama_model: str = "qwen3:8b"
     # Per-step model ladder (empty = fall back to ollama_model / openai_compatible_model)
     ai_model_bulk: str = "qwen3:8b"
     ai_model_reasoning: str = "qwen3:14b"

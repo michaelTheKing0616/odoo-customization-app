@@ -20,6 +20,8 @@ export function ExpertDiagnoseListener() {
       shell.openExpert({
         question: "Diagnose this error on my connection",
         errorText: detail.errorText,
+        autoSubmit: true,
+        freshThread: true,
       });
     };
     window.addEventListener("expert:diagnose", handler);

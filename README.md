@@ -49,8 +49,16 @@ After Postgres is up, populate the version-tagged knowledge store (git sparse-ch
 `odoo/documentation`; cache under `.cache/expert/`, gitignored):
 
 ```bash
+uv sync --project apps/api --extra ai-rag   # embeddings (recommended)
 uv run --directory apps/api python -m app.expert.ingest --version 19.0
 uv run --directory apps/api python -m app.expert.ingest --version 18.0 --offline  # after first fetch
+```
+
+**Vertical playbooks** (`docs/expert/verticals/`) ingest automatically as source `vertical`
+(school, retail, hospital, law firm, etc.). Re-index only playbooks after edits:
+
+```bash
+uv run --directory apps/api python -m app.expert.ingest --version 19.0 --offline --skip-odoo-docs --skip-project
 ```
 
 Optional: `EXPERT_COMMUNITY_SOURCE=dir` + `EXPERT_COMMUNITY_DIR=/path/to/qa` for curated Q&A markdown.

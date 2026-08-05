@@ -21,6 +21,10 @@ export type ShellUiContext = {
 export type ExpertPrefill = {
   question: string;
   errorText?: string;
+  /** Submit immediately when the panel opens (diagnose-from-error flow). */
+  autoSubmit?: boolean;
+  /** Ignore prior Expert turns so diagnosis is not polluted by old context. */
+  freshThread?: boolean;
 };
 
 type ShellContextValue = {
@@ -69,7 +73,17 @@ export function ShellProvider({
   }, []);
 
   const setUiContext = useCallback((patch: Partial<ShellUiContext>) => {
-    setUiContextState((prev) => ({ ...prev, ...patch }));
+    setUiContextState((prev) => {
+      let changed = false;
+      for (const key of Object.keys(patch) as (keyof ShellUiContext)[]) {
+        if (prev[key] !== patch[key]) {
+          changed = true;
+          break;
+        }
+      }
+      if (!changed) return prev;
+      return { ...prev, ...patch };
+    });
   }, []);
 
   const openExpert = useCallback((prefill?: ExpertPrefill) => {

@@ -156,3 +156,68 @@ def test_client_from_connection_blocks_mutations_in_observer() -> None:
     client._uid = 1
     with pytest.raises(ObserverModeError):
         client.execute_kw("res.partner", "write", [[1], {"name": "blocked"}])
+
+
+def test_probe_allowed_in_observer_mode(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    init_db()
+    create = client.post(
+        "/api/connections",
+        json={
+            "name": "Probe observer",
+            "url": "http://127.0.0.1:8069",
+            "db_name": "odoo",
+            "username": "admin",
+            "password": "admin",
+            "verify": False,
+        },
+    )
+    assert create.status_code == 201
+    conn_id = create.json()["id"]
+    patch = client.patch(
+        f"/api/connections/{conn_id}/write-mode",
+        json={"write_mode": "observer", "confirm_advanced": True},
+    )
+    assert patch.status_code == 200, patch.text
+
+    monkeypatch.setattr(
+        "app.routers.connections.probe_credentials",
+        lambda *_a, **_k: (1, "19.0"),
+    )
+    monkeypatch.setattr(
+        "app.version_watch.observe_server_version",
+        lambda *_a, **_k: type(
+            "Watch",
+            (),
+            {"upgrade_detected": False, "health_job_id": None},
+        )(),
+    )
+
+    class FakeOdooClient:
+        pass
+
+    monkeypatch.setattr(
+        "app.odoo_service.client_from_connection",
+        lambda _row: FakeOdooClient(),
+    )
+    monkeypatch.setattr(
+        "app.capabilities.sample_installed_modules",
+        lambda _c: ["base", "contacts"],
+    )
+    monkeypatch.setattr(
+        "app.capabilities.probe_web_base_url",
+        lambda _c: "http://127.0.0.1:8069",
+    )
+    monkeypatch.setattr(
+        "app.routers.connections._refresh_protected_manifest_for_row",
+        lambda row, client=None: {},
+    )
+    monkeypatch.setattr(
+        "app.routers.connections.tier_matrix_response",
+        lambda **_k: {},
+    )
+
+    resp = client.post(f"/api/connections/{conn_id}/probe")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["ok"] is True

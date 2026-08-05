@@ -169,20 +169,8 @@ export default function ApprovalsPage() {
         ) : (
           <>
         <p className="mt-3 text-sm text-muted">
-          Studio-style button gating — Community engine by default; Studio native when detected.
+          Studio-style button gating — uses Community rules by default; Enterprise Studio when detected.
         </p>
-
-        {gate && (
-          <p className="mt-3 text-sm text-muted">
-            Engine:{" "}
-            <span className="font-medium text-ink">
-              {gate.engine === "studio" ? "Enterprise Studio" : "Community"}
-            </span>
-            {gate.studio_note ? (
-              <span className="mt-1 block text-xs text-warning">{gate.studio_note}</span>
-            ) : null}
-          </p>
-        )}
 
         {error ? <ErrorNotice message={error} className="mt-4" /> : null}
         {notice ? (

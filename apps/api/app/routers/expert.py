@@ -21,12 +21,22 @@ def expert_ask(body: ExpertAskBody, db: Session = Depends(get_db)) -> ExpertAskO
             detail="Expert requires AI_ASSIST enabled (ollama or openai-compatible)",
         )
     try:
+        client = None
+        if body.connection_id:
+            from app.odoo_service import client_from_connection, get_connection_or_404
+
+            try:
+                row = get_connection_or_404(db, body.connection_id)
+                client = client_from_connection(row)
+            except Exception:  # noqa: BLE001 — best-effort live grounding
+                client = None
         result = ask_expert(
             db,
             question=body.question,
             connection_id=body.connection_id,
             ui_context=body.ui_context,
             conversation=[t.model_dump() for t in body.conversation],
+            client=client,
         )
     except LLMError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
@@ -39,6 +49,7 @@ def expert_ask(body: ExpertAskBody, db: Session = Depends(get_db)) -> ExpertAskO
                 version=c.version,
                 breadcrumb=c.breadcrumb,
                 chunk_id=c.chunk_id,
+                source_index=c.source_index,
             )
             for c in result.citations
         ],

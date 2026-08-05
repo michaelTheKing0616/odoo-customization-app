@@ -11,9 +11,11 @@ from sqlalchemy.orm import Session
 
 from app.ai_rag import cosine_similarity, embed_texts, rag_enabled
 from app.db_models import ExpertChunk
+from app.expert.vertical_catalog import expand_expert_query
 from app.settings import settings
 
 PROJECT_SOURCE_BOOST = 1.25
+VERTICAL_SOURCE_BOOST = 1.45
 _DEFAULT_MIN_SCORE = 0.35
 
 
@@ -52,6 +54,8 @@ def _parse_embedding(raw: str | None) -> list[float] | None:
 
 
 def _source_weight(source: str) -> float:
+    if source == "vertical":
+        return VERTICAL_SOURCE_BOOST
     if source == "project":
         return PROJECT_SOURCE_BOOST
     return 1.0
@@ -71,6 +75,8 @@ def retrieve_expert_chunks(
     if not q:
         return []
 
+    retrieval_query = expand_expert_query(q)
+
     stmt = select(ExpertChunk)
     if version:
         stmt = stmt.where(or_(ExpertChunk.version == version, ExpertChunk.version == "all"))
@@ -80,7 +86,7 @@ def retrieve_expert_chunks(
 
     query_vec: list[float] | None = None
     if rag_enabled():
-        encoded = embed_texts([q])
+        encoded = embed_texts([retrieval_query])
         if encoded and encoded[0]:
             query_vec = encoded[0]
 
@@ -92,7 +98,7 @@ def retrieve_expert_chunks(
             score = cosine_similarity(query_vec, embedding) * weight
             method = "embedding"
         else:
-            score = _jaccard(q, f"{row.breadcrumb} {row.text}") * weight
+            score = _jaccard(retrieval_query, f"{row.breadcrumb} {row.text}") * weight
             method = "jaccard"
 
         if score >= threshold:

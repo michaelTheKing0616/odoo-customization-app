@@ -37,6 +37,13 @@ export {
   Info,
   CircleAlert,
   Copy,
+  Workflow as IconPowerOps,
+  Bell as IconReminders,
+  Bot as IconOdooExpert,
+  FolderKanban as IconProjects,
+  Terminal as IconScriptRunner,
+  SlidersHorizontal as IconInstanceConfig,
+  Wrench as IconOperations,
   ExternalLink,
 } from "lucide-react";
 

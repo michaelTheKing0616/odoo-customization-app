@@ -4,7 +4,7 @@ import {
   IconApprovals,
   IconAutomations,
   IconBulk,
-  IconConfig,
+  IconCodeStudio,
   IconConnection,
   IconCron,
   IconExpert,
@@ -12,10 +12,15 @@ import {
   IconHousekeeping,
   IconIdGenerator,
   IconImport,
+  IconInstanceConfig,
   IconMenus,
   IconModels,
+  IconOdooExpert,
+  IconPowerOps,
+  IconProjects,
+  IconReminders,
   IconReports,
-  IconCodeStudio,
+  IconScriptRunner,
   IconSnapshots,
   IconViews,
   IconWebsite,
@@ -35,6 +40,8 @@ export type NavItem = {
   href: (connectionId: string) => string;
   group: NavGroupId;
   icon: IconComponent;
+  /** Visual sub-caption within a group (Developer tools) */
+  developer?: boolean;
   /** Odoo module name — locks nav when not in installed_modules_sample */
   moduleKey?: string;
   /** Capability id from connection.capabilities.supported — when set, item locks if unsupported */
@@ -46,13 +53,43 @@ export type NavItem = {
   gatingOptions?: string[];
 };
 
-export const NAV_GROUPS: { id: NavGroupId; label: string }[] = [
-  { id: "overview", label: "Overview" },
-  { id: "build", label: "Build" },
-  { id: "ai", label: "AI" },
-  { id: "data", label: "Data" },
-  { id: "operate", label: "Operate" },
-  { id: "govern", label: "Govern" },
+export const NAV_GROUPS: {
+  id: NavGroupId;
+  label: string;
+  tooltip: string;
+  hubPath?: string;
+}[] = [
+  {
+    id: "overview",
+    label: "Overview",
+    tooltip: "Connection home, health, and instance metadata",
+  },
+  {
+    id: "build",
+    label: "Build",
+    tooltip: "Models, views, menus, automations, and access",
+  },
+  {
+    id: "ai",
+    label: "AI Studio",
+    tooltip: "Draft with AI, ModuleSpec, projects, and Odoo Expert",
+  },
+  {
+    id: "data",
+    label: "Data",
+    tooltip: "Import records and generate external IDs",
+  },
+  {
+    id: "operate",
+    label: "Operations",
+    tooltip: "Bulk tools, cron, housekeeping, and scripts",
+    hubPath: "operations",
+  },
+  {
+    id: "govern",
+    label: "Safety & History",
+    tooltip: "Snapshots, journal, and instance configuration",
+  },
 ];
 
 export const NAV_ITEMS: NavItem[] = [
@@ -138,6 +175,7 @@ export const NAV_ITEMS: NavItem[] = [
     href: (id) => `/connections/${id}/code-studio`,
     group: "build",
     icon: IconCodeStudio,
+    developer: true,
     shipped: true,
   },
   {
@@ -169,7 +207,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Projects",
     href: (id) => `/connections/${id}/projects`,
     group: "ai",
-    icon: IconModels,
+    icon: IconProjects,
     shipped: true,
   },
   {
@@ -177,7 +215,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Odoo Expert",
     href: (id) => `/connections/${id}?expert=1`,
     group: "ai",
-    icon: IconExpert,
+    icon: IconOdooExpert,
     shipped: true,
   },
   {
@@ -209,7 +247,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Power Ops",
     href: (id) => `/connections/${id}/power-ops`,
     group: "operate",
-    icon: IconBulk,
+    icon: IconPowerOps,
     shipped: true,
   },
   {
@@ -233,7 +271,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Reminders",
     href: (id) => `/connections/${id}/reminders`,
     group: "operate",
-    icon: IconCron,
+    icon: IconReminders,
     shipped: true,
   },
   {
@@ -241,7 +279,8 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Script Runner",
     href: (id) => `/connections/${id}/script-runner`,
     group: "operate",
-    icon: IconCodeStudio,
+    icon: IconScriptRunner,
+    developer: true,
     shipped: true,
   },
   {
@@ -254,10 +293,10 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     id: "config",
-    label: "Config",
+    label: "Instance Config",
     href: (id) => `/connections/${id}/config`,
     group: "govern",
-    icon: IconConfig,
+    icon: IconInstanceConfig,
     shipped: true,
   },
 ];
@@ -283,8 +322,17 @@ export function breadcrumbForPath(connectionId: string, pathname: string) {
     { label: "Connections", href: "/connect" },
     { label: "Overview", href: base },
   ];
+  if (pathname.endsWith("/operations")) {
+    crumbs.push({ label: "Operations", href: `${base}/operations` });
+    return crumbs;
+  }
   if (item && item.id !== "overview") {
     crumbs.push({ label: item.label, href: pathname });
   }
   return crumbs;
+}
+
+/** Assert every nav item uses a distinct icon component. */
+export function navIconIds(): string[] {
+  return NAV_ITEMS.map((item) => item.icon.displayName ?? item.icon.name ?? item.id);
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -10,9 +10,15 @@ import { ExternalLink } from "@/components/ui/icons";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useShell } from "@/context/ShellContext";
 import { api, type ExpertAskResponse, type ExpertCitation } from "@/lib/api";
+import { buildExpertAskPayload, formatExpertDiagnosePrompt } from "@/lib/expert-prompt";
 import { cn } from "@/lib/cn";
 
 type Turn = { role: "user" | "assistant"; content: string; response?: ExpertAskResponse };
+
+type SendOptions = {
+  errorText?: string;
+  freshThread?: boolean;
+};
 
 function storageKey(connectionId: string) {
   return `expert-thread-${connectionId}`;
@@ -32,15 +38,80 @@ function saveThread(connectionId: string, turns: Turn[]) {
   sessionStorage.setItem(storageKey(connectionId), JSON.stringify(turns));
 }
 
-function CitationChip({ citation }: { citation: ExpertCitation }) {
+function CitationChip({ citation, index }: { citation: ExpertCitation; index?: number }) {
+  const label = index ?? citation.source_index;
   return (
     <Tooltip
       label={`${citation.source} · ${citation.version} — ${citation.breadcrumb}`}
     >
-      <sup className="cursor-help rounded bg-accent-subtle px-1 text-[10px] text-accent">
-        [{citation.chunk_id.slice(0, 6)}]
+      <sup className="cursor-help rounded bg-accent-subtle px-1 text-[10px] font-medium text-accent">
+        [{label}]
       </sup>
     </Tooltip>
+  );
+}
+
+/** Turn inline [n] markers into markdown links the custom anchor renderer converts to chips. */
+function linkifyCitationMarkers(markdown: string): string {
+  return markdown.replace(/\[(\d+)\](?!\()/g, "[$1](#cite-$1)");
+}
+
+function ExpertAnswerMarkdown({
+  markdown,
+  citations,
+}: {
+  markdown: string;
+  citations: ExpertCitation[];
+}) {
+  const citationByIndex = useMemo(
+    () => new Map(citations.map((c) => [c.source_index, c])),
+    [citations],
+  );
+  const linked = useMemo(() => linkifyCitationMarkers(markdown), [markdown]);
+
+  return (
+    <Markdown
+      components={{
+        a: ({ href, children }) => {
+          if (href?.startsWith("#cite-")) {
+            const idx = Number.parseInt(href.slice("#cite-".length), 10);
+            const citation = citationByIndex.get(idx);
+            if (citation) {
+              return <CitationChip citation={citation} index={idx} />;
+            }
+          }
+          return (
+            <a href={href} className="text-accent hover:underline">
+              {children}
+            </a>
+          );
+        },
+      }}
+    >
+      {linked}
+    </Markdown>
+  );
+}
+
+function CopyAnswerButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  }
+
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      type="button"
+      onClick={() => void copy()}
+      data-testid="expert-copy-answer"
+    >
+      {copied ? "Copied" : "Copy"}
+    </Button>
   );
 }
 
@@ -60,25 +131,13 @@ export function ExpertPanel() {
   const [errorPaste, setErrorPaste] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [autoSubmitNonce, setAutoSubmitNonce] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const pendingAutoSubmit = useRef<SendOptions & { prompt: string } | null>(null);
 
   useEffect(() => {
     setTurns(loadThread(connectionId));
   }, [connectionId]);
-
-  useEffect(() => {
-    if (expertPrefill?.question) {
-      setInput(expertPrefill.question);
-    }
-    if (expertPrefill?.errorText) {
-      setErrorPaste(expertPrefill.errorText);
-    }
-    clearExpertPrefill();
-  }, [expertPrefill, clearExpertPrefill]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [turns, busy]);
 
   const contextLabel = useMemo(() => {
     if (!contextEnabled) return null;
@@ -89,51 +148,95 @@ export function ExpertPanel() {
     return parts.length ? parts.join(" · ") : null;
   }, [contextEnabled, uiContext]);
 
-  async function sendQuestion(question: string) {
-    const q = question.trim();
-    if (!q || busy) return;
-    setBusy(true);
-    setError(null);
-    const conversation = turns.map((t) => ({
-      role: t.role,
-      content: t.role === "assistant" ? t.response?.answer_markdown ?? t.content : t.content,
-    }));
-    const userTurn: Turn = { role: "user", content: q };
-    setTurns((prev) => {
-      const next = [...prev, userTurn];
-      saveThread(connectionId, next);
-      return next;
-    });
-    setInput("");
-    try {
-      const ui_context = contextEnabled
-        ? {
-            ...uiContext,
-            ...(errorPaste.trim() ? { pasted_error: errorPaste.trim() } : {}),
-          }
-        : errorPaste.trim()
-          ? { pasted_error: errorPaste.trim() }
-          : undefined;
-      const response = await api.expertAsk({
-        question: errorPaste.trim() ? `${q}\n\nError log:\n${errorPaste.trim()}` : q,
-        connection_id: connectionId,
-        ui_context,
-        conversation,
-      });
+  const sendQuestion = useCallback(
+    async (question: string, opts?: SendOptions) => {
+      const { question: payloadQuestion, pastedError } = buildExpertAskPayload(
+        question,
+        opts?.errorText ?? errorPaste,
+      );
+      const q = payloadQuestion.trim();
+      if (!q || busy) return;
+      setBusy(true);
+      setError(null);
+      const priorTurns = opts?.freshThread ? [] : turns;
+      const conversation = priorTurns.map((t) => ({
+        role: t.role,
+        content: t.role === "assistant" ? t.response?.answer_markdown ?? t.content : t.content,
+      }));
+      const userTurn: Turn = { role: "user", content: q };
       setTurns((prev) => {
-        const next: Turn[] = [
-          ...prev,
-          { role: "assistant", content: response.answer_markdown, response },
-        ];
+        const base = opts?.freshThread ? [] : prev;
+        const next = [...base, userTurn];
         saveThread(connectionId, next);
         return next;
       });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Expert request failed");
-    } finally {
-      setBusy(false);
+      setInput("");
+      setErrorPaste("");
+      try {
+        const ui_context = contextEnabled
+          ? {
+              ...uiContext,
+              ...(pastedError ? { pasted_error: pastedError } : {}),
+            }
+          : pastedError
+            ? { pasted_error: pastedError }
+            : undefined;
+        const response = await api.expertAsk({
+          question: q,
+          connection_id: connectionId,
+          ui_context,
+          conversation,
+        });
+        setTurns((prev) => {
+          const next: Turn[] = [
+            ...prev,
+            { role: "assistant", content: response.answer_markdown, response },
+          ];
+          saveThread(connectionId, next);
+          return next;
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Expert request failed");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, connectionId, contextEnabled, errorPaste, turns, uiContext],
+  );
+
+  useEffect(() => {
+    if (!expertPrefill?.question) return;
+    const { question, errorText, autoSubmit, freshThread } = expertPrefill;
+    const prompt = formatExpertDiagnosePrompt(question, errorText);
+    setInput(prompt);
+    setErrorPaste(errorText?.trim() ?? "");
+    if (freshThread) {
+      setTurns([]);
+      saveThread(connectionId, []);
     }
-  }
+    if (autoSubmit && prompt.trim()) {
+      pendingAutoSubmit.current = {
+        prompt,
+        errorText: errorText?.trim(),
+        freshThread: Boolean(freshThread),
+      };
+      setAutoSubmitNonce((n) => n + 1);
+    }
+    clearExpertPrefill();
+  }, [expertPrefill, clearExpertPrefill, connectionId]);
+
+  useEffect(() => {
+    if (!expertOpen || !pendingAutoSubmit.current || busy) return;
+    const { prompt, errorText, freshThread } = pendingAutoSubmit.current;
+    pendingAutoSubmit.current = null;
+    void sendQuestion(prompt, { errorText, freshThread });
+  }, [expertOpen, busy, autoSubmitNonce, sendQuestion]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [turns, busy]);
+
+  const errorInMainInput = /\nError log:\n/i.test(input);
 
   return (
     <Sheet
@@ -161,18 +264,26 @@ export function ExpertPanel() {
               </button>
             </div>
           ) : null}
-          <label className="mt-2 block text-xs font-medium text-muted" htmlFor="expert-error-paste">
-            Paste an error to diagnose (optional)
-          </label>
-          <textarea
-            id="expert-error-paste"
-            className="mt-1 w-full rounded-md border border-border-subtle bg-surface px-2 py-1.5 text-xs font-mono"
-            rows={2}
-            value={errorPaste}
-            onChange={(e) => setErrorPaste(e.target.value)}
-            placeholder="AccessError, KeyError, RPC traceback…"
-            data-testid="expert-error-paste"
-          />
+          {!errorInMainInput ? (
+            <>
+              <label className="mt-2 block text-xs font-medium text-muted" htmlFor="expert-error-paste">
+                Paste an error to diagnose (optional)
+              </label>
+              <textarea
+                id="expert-error-paste"
+                className="mt-1 w-full rounded-md border border-border-subtle bg-surface px-2 py-1.5 text-xs font-mono"
+                rows={2}
+                value={errorPaste}
+                onChange={(e) => setErrorPaste(e.target.value)}
+                placeholder="AccessError, KeyError, RPC traceback…"
+                data-testid="expert-error-paste"
+              />
+            </>
+          ) : (
+            <p className="mt-2 text-xs text-muted">
+              Error details are included in your question below.
+            </p>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
@@ -193,26 +304,37 @@ export function ExpertPanel() {
             >
               {turn.role === "assistant" && turn.response ? (
                 <>
-                  <div className="mb-2 flex flex-wrap gap-2">
-                    {turn.response.declined ? (
-                      <Badge variant="warning">Declined</Badge>
-                    ) : turn.response.grounded ? (
-                      <Badge variant="success">Grounded</Badge>
-                    ) : null}
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap gap-2">
+                      {turn.response.declined ? (
+                        <Badge variant="warning">Declined</Badge>
+                      ) : turn.response.grounded ? (
+                        <Badge variant="success">Grounded</Badge>
+                      ) : null}
                     {turn.response.caution_flags?.map((f) => (
-                      <Badge key={f} variant="warning">
-                        {f}
-                      </Badge>
-                    ))}
+                        <Badge key={f} variant="warning">
+                          {f === "rule_based_diagnosis" ? "Rule-based fix" : f}
+                        </Badge>
+                      ))}
+                    </div>
+                    <CopyAnswerButton text={turn.response.answer_markdown} />
                   </div>
                   <div className="prose prose-sm max-w-none dark:prose-invert">
-                    <Markdown>{turn.response.answer_markdown}</Markdown>
+                    <ExpertAnswerMarkdown
+                      markdown={turn.response.answer_markdown}
+                      citations={turn.response.citations ?? []}
+                    />
                   </div>
                   {turn.response.citations?.length ? (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {turn.response.citations.map((c) => (
-                        <CitationChip key={c.chunk_id} citation={c} />
-                      ))}
+                    <div className="mt-3 border-t border-border-subtle pt-2">
+                      <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted">
+                        Sources
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {turn.response.citations.map((c) => (
+                          <CitationChip key={c.chunk_id} citation={c} />
+                        ))}
+                      </div>
                     </div>
                   ) : null}
                   {turn.response.suggested_tools?.length ? (

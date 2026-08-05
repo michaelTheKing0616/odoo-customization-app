@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Badge } from "@/components/ui/Badge";
+import { InstanceIdentity } from "@/components/shell/InstanceIdentity";
 import { Button } from "@/components/ui/Button";
 import { Breadcrumbs } from "@/components/ui/layout-primitives";
 import { Command, IconExpert, Moon, Sun } from "@/components/ui/icons";
@@ -25,7 +25,6 @@ export function TopBar({ connection, connections, pathname }: Props) {
   const router = useRouter();
   const { toggle, resolved } = useTheme();
   const { setCommandOpen, setExpertOpen } = useShell();
-  const caps = connection.capabilities;
   const crumbs = breadcrumbForPath(connection.id, pathname);
 
   return (
@@ -48,16 +47,8 @@ export function TopBar({ connection, connections, pathname }: Props) {
               </option>
             ))}
           </select>
+          <InstanceIdentity connection={connection} className="mt-2" />
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            {connection.server_version ? (
-              <Badge variant={caps?.ga ? "ga" : "experimental"}>
-                Odoo {connection.server_version}
-              </Badge>
-            ) : null}
-            {caps?.hosting_hint ? (
-              <Badge>{caps.hosting_hint.replace("_", " ")}</Badge>
-            ) : null}
-            {caps?.edition ? <Badge>{caps.edition}</Badge> : null}
             <WriteModeBadge mode={connection.write_mode ?? "standard"} />
             <WorkspacePlanBadge />
           </div>

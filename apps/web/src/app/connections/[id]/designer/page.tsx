@@ -2304,7 +2304,7 @@ export default function DesignerPage() {
           </label>
           {viewType === "kanban" && (
             <label className="text-sm">
-              <span className="text-[#a8909e]">Group by</span>
+              <span className="text-[#a8909e]">Column field</span>
               <select
                 value={kanbanGroupBy}
                 onChange={(e) => setKanbanGroupBy(e.target.value)}

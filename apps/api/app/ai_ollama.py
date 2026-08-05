@@ -136,7 +136,7 @@ def call_ollama_generate(prompt: str, *, timeout_s: float = 120.0) -> str:
     if provider is None:
         raise AiAssistUnavailable(
             "AI assist is disabled. Set AI_ASSIST=ollama (or openai-compatible) "
-            "and pull qwen2.5:7b-instruct-q4_K_M, or use a domain-matched prompt."
+            "and pull qwen3:8b (+ qwen3:14b for reasoning steps), or use a domain-matched prompt."
         )
     try:
         return provider.generate_json(

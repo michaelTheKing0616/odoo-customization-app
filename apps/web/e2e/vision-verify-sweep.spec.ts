@@ -24,6 +24,7 @@ const SHELL_TARGET = {
 } as const;
 
 const PRIMARY_TARGETS = [
+  { path: "/connections/demo-conn/operations", testId: "operations-hub", name: "operations-hub" },
   { path: "/connections/demo-conn/journal", testId: "journal-page", name: "journal" },
   { path: "/connections/demo-conn/bulk-suite", testId: "bulk-suite-page", name: "bulk-suite" },
   { path: "/connections/demo-conn/reminders", testId: "reminders-page", name: "reminders" },
