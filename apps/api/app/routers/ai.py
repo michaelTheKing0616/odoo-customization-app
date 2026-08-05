@@ -30,6 +30,8 @@ from app.schemas import (
     AiCheckOverlapOut,
     AiDraftModuleBody,
     AiDraftModuleOut,
+    AiReapplyReuseBody,
+    AiReapplyReuseOut,
     AiProposeConnectPointsBody,
     AiProposeConnectPointsOut,
     GeneralizeComponentBody,
@@ -426,3 +428,35 @@ def draft_module(
         if isinstance(draft, dict)
         else [],
     )
+
+
+@router.post("/reapply-reuse", response_model=AiReapplyReuseOut)
+def reapply_reuse(
+    body: AiReapplyReuseBody, db: Session = Depends(get_db)
+) -> AiReapplyReuseOut:
+    """Apply confirmed reuse decisions to an existing draft — no LLM (fast path)."""
+    import copy
+
+    from app.ai_domain_packs import match_domain_pack
+    from app.ai_reuse_planner import apply_reuse_plan, plan_reuse
+
+    catalog_body = AiDraftModuleBody(
+        prompt=body.prompt, connection_id=body.connection_id
+    )
+    available, installed, _views, _actions = _load_reuse_catalog(db, catalog_body)
+    draft = copy.deepcopy(body.draft)
+    pack_stock = draft.get("_pack_reuse_stock")
+    if not isinstance(pack_stock, list) and draft.get("domain_pack"):
+        matched = match_domain_pack(body.prompt)
+        if matched:
+            pack_stock = matched[1].get("reuse_stock")
+    plan = plan_reuse(
+        body.prompt,
+        available_models=available,
+        installed_modules=installed,
+        operator_reuse=body.reuse_models or None,
+        pack_reuse_stock=pack_stock if isinstance(pack_stock, list) else None,
+        rejected_reuse_models=body.rejected_reuse_models or None,
+    )
+    warnings = apply_reuse_plan(draft, plan)
+    return AiReapplyReuseOut(ok=True, draft=draft, warnings=warnings)

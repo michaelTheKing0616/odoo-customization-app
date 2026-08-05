@@ -130,6 +130,7 @@ export default function AppWizardPage() {
   );
   const [aiRefusals, setAiRefusals] = useState<ProtectedModuleRefusal[]>([]);
   const [aiBusy, setAiBusy] = useState(false);
+  const [aiBusyLabel, setAiBusyLabel] = useState<string | null>(null);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [ollamaDetail, setOllamaDetail] = useState<string | null>(null);
   const [reuseModels, setReuseModels] = useState<string[]>(["res.partner"]);
@@ -379,6 +380,7 @@ export default function AppWizardPage() {
   async function onDraftFromPrompt(opts?: {
     reuseOverride?: string[];
     rejectedOverride?: string[];
+    busyLabel?: string;
   }) {
     if (!canDraftModule) return;
     const effectiveRejected = opts?.rejectedOverride ?? rejectedInferredReuse;
@@ -386,6 +388,7 @@ export default function AppWizardPage() {
       (m) => !effectiveRejected.includes(m),
     );
     setAiBusy(true);
+    setAiBusyLabel(opts?.busyLabel ?? "Creating draft…");
     setError(null);
     setAiNote(null);
     setAiWarnings([]);
@@ -422,6 +425,36 @@ export default function AppWizardPage() {
       );
     } finally {
       setAiBusy(false);
+      setAiBusyLabel(null);
+    }
+  }
+
+  async function reapplyReuseToDraft(
+    nextReuse: string[],
+    rejected: string[] = rejectedInferredReuse,
+  ) {
+    if (!aiDraft || !nlPrompt.trim()) return;
+    setAiBusy(true);
+    setAiBusyLabel("Applying reuse plan…");
+    setError(null);
+    try {
+      const res = await api.reapplyReusePlan({
+        prompt: nlPrompt.trim(),
+        draft: aiDraft,
+        connection_id: connectionId,
+        reuse_models: nextReuse,
+        rejected_reuse_models: rejected,
+      });
+      setAiDraft(res.draft);
+      if (res.warnings?.length) {
+        setAiWarnings((prev) => [...prev, ...res.warnings!]);
+      }
+      setAiNote("Reuse plan updated — no full AI regen needed.");
+    } catch (err) {
+      reportApiError(err, setError, { fallback: "Reuse apply failed", toast: true });
+    } finally {
+      setAiBusy(false);
+      setAiBusyLabel(null);
     }
   }
 
@@ -547,7 +580,7 @@ export default function AppWizardPage() {
       ? reuseModels
       : [...reuseModels, model];
     setReuseModels(nextReuse);
-    await onDraftFromPrompt({ reuseOverride: nextReuse });
+    await reapplyReuseToDraft(nextReuse);
   }
 
   async function rejectInferredReuse(model: string) {
@@ -560,6 +593,8 @@ export default function AppWizardPage() {
     await onDraftFromPrompt({
       reuseOverride: nextReuse,
       rejectedOverride: nextRejected,
+      busyLabel:
+        "Regenerating with custom models — local Ollama may take several minutes…",
     });
   }
 
@@ -568,7 +603,7 @@ export default function AppWizardPage() {
       ? reuseModels
       : [...reuseModels, model];
     setReuseModels(nextReuse);
-    await onDraftFromPrompt({ reuseOverride: nextReuse });
+    await reapplyReuseToDraft(nextReuse);
   }
 
   async function rejectInstallableReuse(model: string) {
@@ -581,6 +616,8 @@ export default function AppWizardPage() {
     await onDraftFromPrompt({
       reuseOverride: nextReuse,
       rejectedOverride: nextRejected,
+      busyLabel:
+        "Regenerating with custom models — local Ollama may take several minutes…",
     });
   }
 
@@ -974,6 +1011,9 @@ export default function AppWizardPage() {
                 data-testid="inferred-reuse-suggestions"
               >
                 <p className="text-xs font-medium text-ink">Suggested stock models</p>
+                {aiBusy && aiBusyLabel ? (
+                  <p className="text-xs text-muted">{aiBusyLabel}</p>
+                ) : null}
                 {inferredReuseSuggestions.map((d) => (
                   <div key={String(d.model)} className="rounded border border-border-subtle p-2">
                     <p className="font-mono text-xs text-ink">{d.model}</p>

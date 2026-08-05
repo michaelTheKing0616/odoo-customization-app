@@ -1197,6 +1197,27 @@ export const api = {
         overlap_finding_id: opts?.overlap_finding_id || undefined,
       }),
     }),
+  reapplyReusePlan: (body: {
+    prompt: string;
+    draft: Record<string, unknown>;
+    connection_id?: string;
+    reuse_models?: string[];
+    rejected_reuse_models?: string[];
+  }) =>
+    request<{
+      ok: boolean;
+      draft: Record<string, unknown>;
+      warnings?: string[];
+    }>("/api/ai/reapply-reuse", {
+      method: "POST",
+      body: JSON.stringify({
+        prompt: body.prompt,
+        draft: body.draft,
+        connection_id: body.connection_id,
+        reuse_models: body.reuse_models ?? [],
+        rejected_reuse_models: body.rejected_reuse_models ?? [],
+      }),
+    }),
   proposeConnectPoints: (body: {
     prompt: string;
     connection_id?: string;

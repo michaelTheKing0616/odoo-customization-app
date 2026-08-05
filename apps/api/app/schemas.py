@@ -1274,6 +1274,20 @@ class AiDraftModuleOut(BaseModel):
     host_candidates: list[dict] = Field(default_factory=list)
 
 
+class AiReapplyReuseBody(BaseModel):
+    prompt: str = Field(..., min_length=3, max_length=4000)
+    draft: dict = Field(..., description="Existing ModuleSpec draft JSON")
+    connection_id: str | None = None
+    reuse_models: list[str] = Field(default_factory=list)
+    rejected_reuse_models: list[str] = Field(default_factory=list)
+
+
+class AiReapplyReuseOut(BaseModel):
+    ok: bool = True
+    draft: dict
+    warnings: list[str] = Field(default_factory=list)
+
+
 class ModuleSpecApplyBody(BaseModel):
     spec: dict = Field(..., description="ModuleSpec-like JSON (from AI draft or Projects)")
     apply_views: bool = True

@@ -383,3 +383,45 @@ def test_unconfirmed_inferred_not_in_forbid_until_confirmed() -> None:
     assert inferred
     assert not any(d.confirmed for d in inferred)
     assert "x_product" not in plan.forbid_new_models
+
+
+def test_reapply_reuse_endpoint_collapses_parallel_without_llm() -> None:
+    import os
+
+    from fastapi.testclient import TestClient
+
+    os.environ.setdefault(
+        "DATABASE_URL",
+        "postgresql+psycopg://odoo_custom:odoo_custom@127.0.0.1:5433/odoo_custom",
+    )
+    os.environ.setdefault("FERNET_KEY", "dev-only-test")
+    os.environ.setdefault("AUTH_MODE", "off")
+
+    from app.main import app
+
+    draft = {
+        "technical_name": "demo",
+        "models": [
+            {"model": "x_product", "fields": [{"name": "x_name", "ttype": "char"}]},
+            {"model": "x_store_order", "fields": [{"name": "x_name", "ttype": "char"}]},
+        ],
+    }
+    with TestClient(app) as client:
+        res = client.post(
+            "/api/ai/reapply-reuse",
+            json={
+                "prompt": "Mega supermarket with product catalog",
+                "draft": draft,
+                "reuse_models": ["product.product"],
+                "rejected_reuse_models": [],
+            },
+        )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    models = {m["model"] for m in body["draft"]["models"]}
+    assert "x_product" not in models
+    assert body["draft"]["reuse"]["plan"]["decisions"]
+    assert any(
+        d.get("model") == "product.product" and d.get("confirmed")
+        for d in body["draft"]["reuse"]["plan"]["decisions"]
+    )
