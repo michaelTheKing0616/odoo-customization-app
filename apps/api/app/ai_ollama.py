@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import re
 from typing import Any
@@ -478,6 +479,8 @@ def draft_module_from_prompt(
             raise AiAssistUnavailable(str(exc), status_code=exc.status_code) from exc
 
     provider = get_llm_provider()
+    from app.ai_domain_packs import match_domain_pack
+
     retrieved = retrieve_domain_pack(prompt, provider=provider)
     matched = (retrieved[0], retrieved[1]) if retrieved else None
     scaffold = matched[1] if matched else None
@@ -497,22 +500,45 @@ def draft_module_from_prompt(
     draft: dict[str, Any] | None = None
 
     if provider is not None:
-        try:
-            raw = provider.generate_json(enriched_prompt, system=_SYSTEM_PROMPT)
-            draft = _extract_json_object(raw)
-        except (LLMError, ValueError, json.JSONDecodeError) as exc:
-            if matched:
-                warnings.append(f"LLM draft failed ({exc}); using domain pack")
-                draft = matched[1]
+        parse_exc: Exception | None = None
+        for attempt in range(2):
+            try:
+                raw = provider.generate_json(
+                    enriched_prompt,
+                    system=_SYSTEM_PROMPT,
+                    reasoning=False,
+                    temperature=0.15 if attempt else None,
+                )
+                draft = _extract_json_object(raw)
+                parse_exc = None
+                break
+            except (LLMError, ValueError, json.JSONDecodeError) as exc:
+                parse_exc = exc
+                if isinstance(exc, LLMError):
+                    raise AiAssistUnavailable(str(exc), status_code=exc.status_code) from exc
+        if draft is None and parse_exc is not None:
+            pack_fallback = matched
+            if pack_fallback is None:
+                lexical = match_domain_pack(prompt)
+                if lexical:
+                    pack_fallback = lexical
+                    warnings.append(
+                        f"LLM JSON failed; falling back to domain pack '{lexical[0]}'"
+                    )
+            if pack_fallback:
+                warnings.append(f"LLM draft failed ({parse_exc}); using domain pack")
+                draft = copy.deepcopy(pack_fallback[1])
                 raw = raw or json.dumps(draft)
+                if matched is None:
+                    matched = pack_fallback
             else:
-                msg = str(exc)
-                if isinstance(exc, json.JSONDecodeError) or "malformed JSON" in msg:
+                msg = str(parse_exc)
+                if isinstance(parse_exc, json.JSONDecodeError) or "malformed JSON" in msg:
                     msg = (
                         "AI returned malformed JSON. Click Create draft again, shorten the "
                         "prompt, or use a ready-made template at the bottom of Draft Studio."
                     )
-                raise AiAssistUnavailable(msg, status_code=422) from exc
+                raise AiAssistUnavailable(msg, status_code=422) from parse_exc
     elif matched:
         draft = matched[1]
         raw = json.dumps(draft)

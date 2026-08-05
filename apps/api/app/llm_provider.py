@@ -150,7 +150,14 @@ def strip_thinking_trace(text: str) -> str:
     """Discard CoT / thinking traces before JSON extraction."""
     if _JSON_MARKER in text:
         return text.split(_JSON_MARKER, 1)[1].strip()
-    return text.strip()
+    stripped = text.strip()
+    if stripped.startswith("{") or stripped.startswith("["):
+        return stripped
+    # Model returned prose then JSON without the marker — slice from first object/array.
+    for i, ch in enumerate(stripped):
+        if ch in "{[":
+            return stripped[i:].strip()
+    return stripped
 
 
 def _http_json(

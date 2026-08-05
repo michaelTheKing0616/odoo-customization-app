@@ -23,3 +23,10 @@ def test_parse_markdown_fence() -> None:
 def test_parse_friendly_error() -> None:
     with pytest.raises(ValueError, match="malformed JSON"):
         parse_llm_json_object("{not json at all")
+
+
+def test_strip_thinking_preamble_before_json() -> None:
+    from app.llm_provider import strip_thinking_trace
+
+    raw = 'Here is the draft:\n{"technical_name":"demo","models":[{"model":"x_a","fields":[]}]}'
+    assert strip_thinking_trace(raw).startswith("{")
