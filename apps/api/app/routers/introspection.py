@@ -7,7 +7,12 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.odoo_service import OdooClientError, client_from_connection, get_connection_or_404
-from app.schemas import FieldOut, ModelOut, ModuleOut, ViewOut
+from app.ai_stock_catalog import (
+    STOCK_CATALOG_LIMIT,
+    filter_catalog,
+    load_connection_stock_catalog,
+)
+from app.schemas import FieldOut, ModelOut, ModuleOut, ReuseModelOut, ViewOut
 
 router = APIRouter(prefix="/connections/{connection_id}", tags=["introspection"])
 
@@ -75,6 +80,25 @@ def list_models(
         ModelOut.model_validate(m.model_dump())
         for m in client.list_models(custom_only=custom_only, limit=limit)
     ]
+
+
+@router.get("/reuse-catalog", response_model=list[ReuseModelOut])
+def list_reuse_catalog(
+    connection_id: str,
+    q: str | None = Query(None, description="Filter on model / display name / app"),
+    stock_only: bool = Query(True, description="Exclude custom x_* models"),
+    limit: int = Query(STOCK_CATALOG_LIMIT, ge=1, le=STOCK_CATALOG_LIMIT),
+    db: Session = Depends(get_db),
+) -> list[ReuseModelOut]:
+    """All stock Odoo models on the connection for manual reuse and AI catalog."""
+    client = _client(connection_id, db)
+    catalog = load_connection_stock_catalog(client, limit=limit)
+    rows = filter_catalog(
+        catalog["stock"] if stock_only else catalog["all"],
+        q=q,
+        stock_only=stock_only,
+    )
+    return [ReuseModelOut.model_validate(r) for r in rows[:limit]]
 
 
 @router.get("/models/{model_name}/fields", response_model=list[FieldOut])

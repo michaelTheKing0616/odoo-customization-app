@@ -394,6 +394,15 @@ class ModelOut(BaseModel):
     transient: bool
 
 
+class ReuseModelOut(BaseModel):
+    """Stock Odoo model row for reuse pickers and AI catalog."""
+
+    model: str
+    name: str
+    app: str
+    link_only: bool = False
+
+
 class FieldOut(BaseModel):
     id: int
     name: str

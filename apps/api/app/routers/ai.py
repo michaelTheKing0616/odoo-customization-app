@@ -86,13 +86,14 @@ def ai_status() -> dict[str, object]:
 def _load_reuse_catalog(
     db: Session,
     body: AiDraftModuleBody,
-) -> tuple[list[str] | None, list[str] | None, list[dict], list[dict]]:
+) -> tuple[list[str] | None, list[str] | None, list[dict], list[dict], list[dict]]:
     available: list[str] | None = None
     installed: list[str] | None = None
     reuse_views: list[dict] = []
     reuse_actions: list[dict] = []
+    stock_catalog: list[dict] = []
     if not body.connection_id:
-        return available, installed, reuse_views, reuse_actions
+        return available, installed, reuse_views, reuse_actions, stock_catalog
     try:
         conn = get_connection_or_404(db, body.connection_id)
         client = client_from_connection(conn)
@@ -102,20 +103,14 @@ def _load_reuse_catalog(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     try:
-        models = client.list_models(limit=500)
-        available = [m.model for m in models]
-        for preferred in (
-            "res.partner",
-            "res.users",
-            "product.product",
-            "account.move",
-            "calendar.event",
-            "project.project",
-            "hr.employee",
-        ):
-            if preferred in available:
-                available.remove(preferred)
-                available.insert(0, preferred)
+        from app.ai_stock_catalog import (
+            STOCK_CATALOG_LIMIT,
+            load_connection_stock_catalog,
+        )
+
+        catalog = load_connection_stock_catalog(client, limit=STOCK_CATALOG_LIMIT)
+        available = [str(e["model"]) for e in catalog["all"]]
+        stock_catalog = list(catalog["stock"])
     except Exception:  # noqa: BLE001
         available = []
 
@@ -170,7 +165,7 @@ def _load_reuse_catalog(
                 status_code=400, detail=f"Failed to load reuse actions: {exc}"
             ) from exc
 
-    return available, installed, reuse_views, reuse_actions
+    return available, installed, reuse_views, reuse_actions, stock_catalog
 
 
 @router.get("/component-gallery")
@@ -190,7 +185,7 @@ def check_overlap_route(body: AiCheckOverlapBody, db: Session = Depends(get_db))
     client = None
     projects: list[dict] = []
     if body.connection_id:
-        available, installed, _views, _actions = _load_reuse_catalog(
+        available, installed, _views, _actions, _stock = _load_reuse_catalog(
             db,
             AiDraftModuleBody(prompt=body.prompt, connection_id=body.connection_id),
         )
@@ -261,7 +256,7 @@ def propose_connect_points_route(
 
     available: list[str] | None = None
     if body.connection_id:
-        available, _installed, _views, _actions = _load_reuse_catalog(
+        available, _installed, _views, _actions, _stock = _load_reuse_catalog(
             db,
             AiDraftModuleBody(
                 prompt=body.prompt,
@@ -340,7 +335,9 @@ def generalize_pack(body: GeneralizePackBody) -> dict[str, object]:
 def draft_module(
     body: AiDraftModuleBody, db: Session = Depends(get_db)
 ) -> AiDraftModuleOut:
-    available, installed, reuse_views, reuse_actions = _load_reuse_catalog(db, body)
+    available, installed, reuse_views, reuse_actions, stock_catalog = _load_reuse_catalog(
+        db, body
+    )
     protected_manifest = None
     odoo_version = None
     odoo_client = None
@@ -366,6 +363,7 @@ def draft_module(
             installed_modules=installed,
             reuse_models=body.reuse_models or None,
             rejected_reuse_models=body.rejected_reuse_models or None,
+            stock_catalog=stock_catalog or None,
             reuse_views=reuse_views or None,
             reuse_actions=reuse_actions or None,
             expand=body.expand,
@@ -443,7 +441,9 @@ def reapply_reuse(
     catalog_body = AiDraftModuleBody(
         prompt=body.prompt, connection_id=body.connection_id
     )
-    available, installed, _views, _actions = _load_reuse_catalog(db, catalog_body)
+    available, installed, _views, _actions, stock_catalog = _load_reuse_catalog(
+        db, catalog_body
+    )
     draft = copy.deepcopy(body.draft)
     pack_stock = draft.get("_pack_reuse_stock")
     if not isinstance(pack_stock, list) and draft.get("domain_pack"):
@@ -457,6 +457,7 @@ def reapply_reuse(
         operator_reuse=body.reuse_models or None,
         pack_reuse_stock=pack_stock if isinstance(pack_stock, list) else None,
         rejected_reuse_models=body.rejected_reuse_models or None,
+        stock_catalog=stock_catalog or None,
     )
     warnings = apply_reuse_plan(draft, plan)
     return AiReapplyReuseOut(ok=True, draft=draft, warnings=warnings)

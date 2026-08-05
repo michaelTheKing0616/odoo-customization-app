@@ -259,6 +259,7 @@ def _build_prompt_with_context(
     prompt: str,
     *,
     available_models: list[str] | None = None,
+    stock_catalog: list[dict[str, Any]] | None = None,
     reuse_models: list[str] | None = None,
     reuse_views: list[dict[str, Any]] | None = None,
     reuse_actions: list[dict[str, Any]] | None = None,
@@ -309,7 +310,13 @@ def _build_prompt_with_context(
             parts.append(
                 "Operator wants to reuse these existing actions: " + "; ".join(labels[:30])
             )
-    if available_models:
+    if stock_catalog:
+        from app.ai_stock_catalog import format_stock_models_for_llm
+
+        block = format_stock_models_for_llm(stock_catalog, prompt)
+        if block:
+            parts.append(block)
+    elif available_models:
         parts.append(
             "Sample models already on the instance: "
             + ", ".join(available_models[:80])
@@ -355,6 +362,7 @@ def draft_module_from_prompt(
     installed_modules: list[str] | None = None,
     reuse_models: list[str] | None = None,
     rejected_reuse_models: list[str] | None = None,
+    stock_catalog: list[dict[str, Any]] | None = None,
     reuse_views: list[dict[str, Any]] | None = None,
     reuse_actions: list[dict[str, Any]] | None = None,
     expand: bool = True,
@@ -396,13 +404,23 @@ def draft_module_from_prompt(
         )
         return draft, raw, warnings, refusals
 
+    from app.ai_domain_packs import match_domain_pack
+
+    early_pack = match_domain_pack(prompt)
+    pack_stock: list[dict[str, Any]] | None = None
+    if early_pack:
+        raw_stock = early_pack[1].get("reuse_stock")
+        if isinstance(raw_stock, list):
+            pack_stock = raw_stock
+
     reuse_plan = plan_reuse(
         prompt,
         available_models=available_models,
         installed_modules=installed_modules,
         operator_reuse=reuse_models,
-        pack_reuse_stock=None,
+        pack_reuse_stock=pack_stock,
         rejected_reuse_models=rejected_reuse_models,
+        stock_catalog=stock_catalog,
     )
     effective_reuse = list(
         dict.fromkeys(
@@ -482,12 +500,13 @@ def draft_module_from_prompt(
     from app.ai_domain_packs import match_domain_pack
 
     retrieved = retrieve_domain_pack(prompt, provider=provider)
-    matched = (retrieved[0], retrieved[1]) if retrieved else None
+    matched = (retrieved[0], retrieved[1]) if retrieved else early_pack
     scaffold = matched[1] if matched else None
 
     enriched_prompt = _build_prompt_with_context(
         prompt,
         available_models=available_models,
+        stock_catalog=stock_catalog,
         reuse_models=effective_reuse,
         reuse_views=reuse_views,
         reuse_actions=reuse_actions,
@@ -582,6 +601,7 @@ def draft_module_from_prompt(
                 operator_reuse=reuse_models,
                 pack_reuse_stock=pack_stock if isinstance(pack_stock, list) else None,
                 rejected_reuse_models=rejected_reuse_models,
+                stock_catalog=stock_catalog,
             )
             effective_reuse = list(
                 dict.fromkeys(

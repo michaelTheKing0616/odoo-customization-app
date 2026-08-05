@@ -14,6 +14,7 @@ import {
   ConfirmationRequiredError,
   ProtectedModuleRefusal,
   ScaffoldResult,
+  ReuseModelRow,
 } from "@/lib/api";
 import {
   scaffoldApplyAllowed,
@@ -135,7 +136,8 @@ export default function AppWizardPage() {
   const [ollamaDetail, setOllamaDetail] = useState<string | null>(null);
   const [reuseModels, setReuseModels] = useState<string[]>(["res.partner"]);
   const [rejectedInferredReuse, setRejectedInferredReuse] = useState<string[]>([]);
-  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [reuseCatalog, setReuseCatalog] = useState<ReuseModelRow[]>([]);
+  const [reuseSearch, setReuseSearch] = useState("");
   const [genUiConfirmOpen, setGenUiConfirmOpen] = useState(false);
   const [genUiResult, setGenUiResult] = useState<string | null>(null);
   const [validateLiveResult, setValidateLiveResult] = useState<
@@ -209,8 +211,8 @@ export default function AppWizardPage() {
           withTimeout(api.listAppTemplates(), 5000, FALLBACK_TEMPLATES),
           withTimeout(api.aiStatus().catch(() => null), 4000, null),
           withTimeout(
-            api.listModels(connectionId, false).catch(() => []),
-            6000,
+            api.listReuseCatalog(connectionId).catch(() => []),
+            12000,
             [],
           ),
           withTimeout(api.listComponentGallery().catch(() => []), 4000, []),
@@ -224,9 +226,7 @@ export default function AppWizardPage() {
         setTemplates(dedupeTemplates(tpls.length ? tpls : FALLBACK_TEMPLATES));
         setComponentGallery(gallery || []);
         setAiEnabled(Boolean(status?.enabled));
-        setAvailableModels(
-          (models || []).map((m) => m.model).filter(Boolean).slice(0, 400),
-        );
+        setReuseCatalog(models || []);
         if (status?.ollama_reachable === false && status.ollama_detail) {
           setOllamaDetail(status.ollama_detail);
         } else if (status?.ollama_reachable === true) {
@@ -627,6 +627,25 @@ export default function AppWizardPage() {
     );
   }
 
+  const reuseCatalogByModel = useMemo(() => {
+    const map = new Map<string, ReuseModelRow>();
+    for (const row of reuseCatalog) {
+      map.set(row.model, row);
+    }
+    return map;
+  }, [reuseCatalog]);
+
+  const filteredReuseCatalog = useMemo(() => {
+    const needle = reuseSearch.trim().toLowerCase();
+    const rows = needle
+      ? reuseCatalog.filter((row) => {
+          const hay = `${row.model} ${row.name} ${row.app}`.toLowerCase();
+          return hay.includes(needle);
+        })
+      : reuseCatalog;
+    return rows.slice(0, 80);
+  }, [reuseCatalog, reuseSearch]);
+
   /** Library scaffold creates an object_write loan automation. */
   function templateScaffoldOpts(tplId: string) {
     return tplId === "library" ? { requireObjectWrite: true as const } : {};
@@ -953,11 +972,13 @@ export default function AppWizardPage() {
               Reuse existing Odoo models
             </p>
             <p className="mt-1 text-xs text-muted">
-              Link these instead of inventing duplicates (Contacts, products, invoices…).
+              Link stock Odoo models instead of inventing duplicates. Search the full
+              instance catalog ({reuseCatalog.length.toLocaleString()} models).
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {REUSE_SUGGESTIONS.map((m) => {
                 const on = reuseModels.includes(m);
+                const label = reuseCatalogByModel.get(m)?.name;
                 return (
                   <button
                     key={m}
@@ -968,37 +989,61 @@ export default function AppWizardPage() {
                         ? "border-border-subtle bg-surface-raised text-muted"
                         : "border-border-subtle text-muted hover:border-[#4a3550]"
                     }`}
+                    title={label || m}
                   >
                     {on ? "✓ " : ""}
-                    {m}
+                    {label ? `${label} (${m})` : m}
                   </button>
                 );
               })}
             </div>
-            {availableModels.length > 0 && (
-              <label className="mt-3 block text-xs text-muted">
-                Or pick from this connection
-                <select
-                  className="mt-1 w-full max-w-md border border-border-subtle bg-surface px-2 py-1.5 font-mono text-xs text-ink"
-                  defaultValue=""
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v) toggleReuse(v);
-                    e.target.value = "";
-                  }}
-                >
-                  <option value="">Add model…</option>
-                  {availableModels
-                    .filter((m) => !REUSE_SUGGESTIONS.includes(m))
-                    .slice(0, 200)
-                    .map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                        {reuseModels.includes(m) ? " ✓" : ""}
-                      </option>
-                    ))}
-                </select>
-              </label>
+            {reuseCatalog.length > 0 && (
+              <div className="mt-3 space-y-2">
+                <Input
+                  type="search"
+                  placeholder="Search stock models by name or technical name…"
+                  value={reuseSearch}
+                  onChange={(e) => setReuseSearch(e.target.value)}
+                  className="max-w-md font-mono text-xs"
+                />
+                <div className="max-h-48 overflow-y-auto border border-border-subtle bg-surface">
+                  {filteredReuseCatalog.length === 0 ? (
+                    <p className="px-2 py-2 text-xs text-muted">No models match.</p>
+                  ) : (
+                    filteredReuseCatalog.map((row) => {
+                      const on = reuseModels.includes(row.model);
+                      return (
+                        <button
+                          key={row.model}
+                          type="button"
+                          onClick={() => toggleReuse(row.model)}
+                          className={`flex w-full items-start gap-2 border-b border-border-subtle px-2 py-1.5 text-left text-xs last:border-b-0 ${
+                            on ? "bg-surface-raised" : "hover:bg-surface-raised/60"
+                          }`}
+                        >
+                          <span className="shrink-0 text-muted">{on ? "✓" : "+"}</span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-ink">{row.name}</span>
+                            <span className="font-mono text-muted">
+                              {row.model}
+                              {row.link_only ? " · link-only" : ""}
+                            </span>
+                          </span>
+                          <Badge variant="default" className="shrink-0 font-mono">
+                            {row.app}
+                          </Badge>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+                {reuseSearch.trim() === "" && reuseCatalog.length > 80 ? (
+                  <p className="text-xs text-muted">
+                    Showing first 80 — type to search all {reuseCatalog.length.toLocaleString()}{" "}
+                    stock models.
+                  </p>
+                ) : null}
+              </div>
             )}
             {reuseModels.length > 0 && (
               <p className="mt-2 font-mono text-xs text-muted">

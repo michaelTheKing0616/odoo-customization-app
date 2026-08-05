@@ -315,6 +315,13 @@ export type ModelRow = {
   transient: boolean;
 };
 
+export type ReuseModelRow = {
+  model: string;
+  name: string;
+  app: string;
+  link_only: boolean;
+};
+
 export type FieldRow = {
   id: number;
   name: string;
@@ -1547,8 +1554,17 @@ export const api = {
       `/api/connections/${id}/modules/installed${qs ? `?${qs}` : ""}`,
     );
   },
-  listModels: (id: string, customOnly = false) =>
-    request<ModelRow[]>(`/api/connections/${id}/models?custom_only=${customOnly}`),
+  listModels: (id: string, customOnly = false, limit = 2000) =>
+    request<ModelRow[]>(
+      `/api/connections/${id}/models?custom_only=${customOnly}&limit=${limit}`,
+    ),
+  listReuseCatalog: (id: string, q?: string, limit = 2000) => {
+    const params = new URLSearchParams({ limit: String(limit), stock_only: "true" });
+    if (q?.trim()) params.set("q", q.trim());
+    return request<ReuseModelRow[]>(
+      `/api/connections/${id}/reuse-catalog?${params.toString()}`,
+    );
+  },
   modelTier: (connectionId: string, model: string) =>
     request<{ model: string; tier: ProtectedTier | null }>(
       `/api/connections/${connectionId}/model-tier?model=${encodeURIComponent(model)}`,

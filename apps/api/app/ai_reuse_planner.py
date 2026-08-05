@@ -23,6 +23,7 @@ ReuseSource = Literal[
     "inferred",
     "pack_reuse_stock",
     "installable",
+    "catalog",
 ]
 
 
@@ -277,6 +278,7 @@ def plan_reuse(
     operator_reuse: list[str] | None = None,
     pack_reuse_stock: list[dict[str, Any]] | None = None,
     rejected_reuse_models: list[str] | None = None,
+    stock_catalog: list[dict[str, Any]] | None = None,
 ) -> ReusePlan:
     """Build a reuse plan from prompt intent + offline allowlist or live catalog."""
     from app.ai_stock_reuse import infer_stock_reuse
@@ -377,6 +379,7 @@ def plan_reuse(
         installed_modules=installed_modules,
         pack_reuse_stock=pack_reuse_stock,
         rejected_models=rejected_reuse_models,
+        stock_catalog=stock_catalog,
     )
     notes.extend(infer_notes)
     operator_set = set(operator_reuse or [])
@@ -389,6 +392,8 @@ def plan_reuse(
             if row.get("source") == "pack_reuse_stock"
             else "installable"
             if row.get("source") == "installable"
+            else "catalog"
+            if row.get("source") == "catalog"
             else "inferred"
         )
         confirmed = mid in operator_set
@@ -412,7 +417,7 @@ def plan_reuse(
     ]
     forbid: list[str] = []
     for d in decisions:
-        if d.source in {"inferred", "pack_reuse_stock", "installable"} and not d.confirmed:
+        if d.source in {"inferred", "pack_reuse_stock", "installable", "catalog"} and not d.confirmed:
             continue
         for f in d.forbid_parallel:
             if f not in forbid:

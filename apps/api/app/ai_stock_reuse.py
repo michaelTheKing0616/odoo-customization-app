@@ -125,6 +125,7 @@ def infer_stock_reuse(
     installed_modules: list[str] | None = None,
     pack_reuse_stock: list[dict[str, Any]] | None = None,
     rejected_models: list[str] | None = None,
+    stock_catalog: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """Return (inferred decision dicts, notes). Each decision has confirmed=False."""
     text = (user_prompt or "").strip()
@@ -237,6 +238,30 @@ def infer_stock_reuse(
                 rule_modules=rule.modules,
                 forbid_parallel=rule.forbid_parallel,
                 link_only=rule.link_only,
+            )
+
+    if stock_catalog:
+        from app.ai_stock_catalog import infer_catalog_reuse, model_app_prefix
+
+        catalog_rows = infer_catalog_reuse(
+            text,
+            stock_catalog,
+            available_models=available,
+            installed_modules=modules,
+            rejected=rejected,
+        )
+        for row in catalog_rows:
+            model = str(row.get("model") or "")
+            if not model or model in seen_models:
+                continue
+            mods = tuple(str(m) for m in (row.get("modules") or ()) if m)
+            add_decision(
+                model,
+                reason=str(row.get("reason") or "Catalog match"),
+                rule_modules=mods or (model_app_prefix(model),),
+                forbid_parallel=tuple(str(x) for x in (row.get("forbid_parallel") or [])),
+                link_only=bool(row.get("link_only")),
+                source_tag="catalog",
             )
 
     return decisions, notes
