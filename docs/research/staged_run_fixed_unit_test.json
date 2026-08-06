@@ -10,6 +10,7 @@
     "rules: partner back-ref smart button for x_support_ticket",
     "rules: mail.thread mixin on x_support_ticket",
     "rules: added 1 model(s) with user (no unlink) + manager access",
+    "rules: root menu restricted to group_simple_task_tracker_user",
     "completeness gaps: depth_models"
   ],
   "model_count": 1,

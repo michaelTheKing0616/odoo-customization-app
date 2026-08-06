@@ -10,8 +10,8 @@
 - Committed GEN2-8 (user approved).
 
 ## Next
+- Odoo Expert: Phases 0–7 already shipped (Wave 5 EXP); Phase 8 parity doc → `docs/research/expert_vs_odoo_native_ai_2026-08-06.md`; audit → `/PROGRESS.md`.
 - Wave 16 close-out / next wave card selection.
-- Re-run full `-m "not integration"` gate if needed before deploy.
 
 ## Rule
 - Code Studio = probe per connection, never hosting-tier assumption.
