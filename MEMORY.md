@@ -645,3 +645,9 @@ proxied frames), optionally themed from the connected instance's own extracted p
 **Decision:** ☐ Proceed to GA (`PRODUCTION_WRITE_MODE_GA_UNLOCKED=1`) · ☐ Extend beta · ☐ Block — reason:
 
 **Follow-ups:**
+
+### 2026-08-06 — Wave 17 ingest vision tier
+**Decided:** `vision_tier: deferred`. Local Ollama has qwen3:8b + qwen3:14b only; **no qwen3-vl** installed. Tongyi Qianwen license for VL models requires separate EU agreement — do not pull VL or ship vision OCR until product owner override. Text-PDF path (ING-4) blocked on same gate. Settings: `INGEST_VISION=off` (default), `INGEST_CLASSIFY_MIN_CONFIDENCE=0.55`.
+**Why:** ING-0 gate before any multimodal dependency; reuse CSV/XLSX path first (Slice A).
+**Rejected:** Cloud OCR; pulling 30B VL without license review.
+**Operator unlock:** `ollama pull qwen3-vl:8b` + `INGEST_VISION=ollama` — code path ready in `extract_vision.py`.

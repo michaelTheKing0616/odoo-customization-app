@@ -2732,6 +2732,49 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  ingestCreateJob: async (id: string, files: File[]) => {
+    const fd = new FormData();
+    for (const f of files) fd.append("files", f);
+    return requestForm<IngestJobOut>(`/api/connections/${id}/ingest/jobs`, fd);
+  },
+  ingestGetJob: (id: string, jobId: string) =>
+    request<IngestJobOut>(`/api/connections/${id}/ingest/jobs/${jobId}`),
+  ingestDryRun: (id: string, jobId: string, body?: { batch_size?: number }) =>
+    request<IngestJobOut>(`/api/connections/${id}/ingest/jobs/${jobId}/dry-run`, {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    }),
+  ingestCommit: (
+    id: string,
+    jobId: string,
+    body?: { batch_size?: number; confirm_advanced?: boolean; confirm_phrase?: string | null },
+  ) =>
+    request<IngestJobOut>(`/api/connections/${id}/ingest/jobs/${jobId}/commit`, {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    }),
+  ingestVisionStatus: (id: string) =>
+    request<{ enabled: boolean; ready: boolean; message: string; model: string }>(
+      `/api/connections/${id}/ingest/vision/status`,
+    ),
+  ingestInterviewQuestions: (id: string) =>
+    request<
+      Array<{ id: string; prompt: string; kind: string; choices: string[] }>
+    >(`/api/connections/${id}/ingest/interview/questions`),
+  ingestCreateInterviewJob: (
+    id: string,
+    body: {
+      business_name?: string;
+      product_type?: "product" | "service" | "mixed";
+      product_lines?: string[];
+      starter_contacts?: string[];
+      expense_categories?: string[];
+    },
+  ) =>
+    request<IngestJobOut>(`/api/connections/${id}/ingest/interview/jobs`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   imageImportPreview: async (id: string, manifest: File, imagesZip: File) => {
     const fd = new FormData();
     fd.append("manifest", manifest);
@@ -3888,6 +3931,74 @@ export type DataImportPreviewOut = {
   field_hints: Array<Record<string, unknown>>;
   suggested_mapping: Record<string, string>;
   warnings: string[];
+};
+
+export type IngestGapOut = {
+  model: string;
+  field: string;
+  value: string;
+  message: string;
+};
+
+export type IngestPlanStepOut = {
+  step_index: number;
+  table_ids: string[];
+  models: string[];
+  parallel_ok: boolean;
+};
+
+export type IngestPlanOut = {
+  steps: IngestPlanStepOut[];
+  gaps: IngestGapOut[];
+};
+
+export type IngestFileOut = {
+  id: string;
+  filename: string;
+  mime?: string | null;
+  doc_type: string;
+  confidence: number;
+  needs_user_confirm: boolean;
+  warnings: string[];
+  table_ids: string[];
+};
+
+export type IngestTableOut = {
+  id: string;
+  model: string;
+  doc_type: string;
+  row_count?: number;
+  natural_key_fields: string[];
+  warnings: string[];
+};
+
+export type IngestCommitLogOut = {
+  dry_run: boolean;
+  created: number;
+  updated: number;
+  failed: number;
+  skipped: number;
+  messages: string[];
+  step_results: Array<Record<string, unknown>>;
+};
+
+export type IngestBatchOut = {
+  connection_id?: string | null;
+  files: IngestFileOut[];
+  tables: Array<IngestTableOut & { rows?: Array<Record<string, unknown>> }>;
+  refs: Array<Record<string, unknown>>;
+  gaps: IngestGapOut[];
+  plan: IngestPlanOut | null;
+  commit_log: IngestCommitLogOut | null;
+  warnings: string[];
+};
+
+export type IngestJobOut = {
+  id: string;
+  connection_id: string;
+  status: string;
+  batch: IngestBatchOut;
+  error?: string | null;
 };
 
 export type IdGeneratorAssignmentOut = {

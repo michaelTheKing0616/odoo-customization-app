@@ -69,10 +69,15 @@ Card files: `plans/cards/WAVE-<n>-<code>.md`.
 - Wave 7b ADV — Advanced designers & live editing. (TIER-6, UIX-6, UIX-7)
 - Wave 8 PROD — Production hardening. (PROD-1..3)
 - Wave 9 MON — Monetization: auth, billing, admin, pricing. (MON-1..4)
+- Wave 17 INGEST — Universal document ingestion pipeline (ING-0..9). Orchestrator:
+  `plans/UNIVERSAL_INGESTION_PIPELINE.md`; cards: `plans/cards/WAVE-17-INGEST.md`.
+  **Reuses** `data_import`, `bulk_suite/dedupe`, `invoicing_l10n` — do not rebuild.
 
 Dependencies: Wave 0 first, always. Wave 1 before Wave 2/5 (guardrail feeds prompts).
 Wave 6 UIX-1/2/3 before UIX-4*, EXP-5, MON-4, and Wave 7b UI cards. Waves 3/4 parallel-safe
 with Wave 6. Wave 9 last (entitlement keys already named in earlier cards' DONE MEANS).
+Wave 17 after Wave 3 (dedupe/batch) + Wave 1 (PCM for fiscal/payroll guardrails); ING-9
+needs Wave 5 Expert. Slice A (CSV multi-file) does not need vision (ING-4).
 
 ## Model routing (per skills/model-routing.md, mapped to available Cursor models)
 

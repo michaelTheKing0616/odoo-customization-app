@@ -517,3 +517,41 @@ class ScriptRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+
+class IngestJobRow(Base):
+    """Universal ingest job — multi-file classify → extract → map → commit."""
+
+    __tablename__ = "ingest_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    connection_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("odoo_connections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class IngestLayoutCacheRow(Base):
+    """Repeat supplier layout fingerprint → exemplar extract mapping (ING-4)."""
+
+    __tablename__ = "ingest_layout_cache"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    source_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    doc_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    headers_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mapping_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+

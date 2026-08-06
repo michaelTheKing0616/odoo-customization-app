@@ -34,3 +34,11 @@ ollama list   # qwen3:8b + qwen3:14b expected locally
 ## Last verified
 
 - **2026-08-06:** Expert test suite 28 passed (1 skipped live-only); eval set 41 lines; alembic + GEN2-8 on master.
+
+## Wave 17 — Universal Ingestion (planned, not started)
+
+- Orchestrator: `plans/UNIVERSAL_INGESTION_PIPELINE.md`
+- Cards: `plans/cards/WAVE-17-INGEST.md`
+- Token rule: reuse `data_import` + `bulk_suite/dedupe` + `invoicing_l10n`; net-new =
+  classify, PDF extract, dependency graph, multi-file job, review UI.
+- Next agent action: **ING-0** only (license + inventory). Do not pull VL models until decision.

@@ -147,6 +147,20 @@ Re-verified 2026-08-03 (orchestrator + 3 checkers); REM-14 closed residual gaps 
 - [x] Bonus: AI draft JSON auto-cache (`ai_draft_cache` table + GET list/restore + wizard saved drafts)
 - [x] GEN2-8 Draft #3 punch list (2026-08-06): root payload leak validator, statusbar_visible, _llm_status finalize, form field grouping + redundant name drop, global x_country_id, slug stop-words, comprehensive workflow automation floor; live gate pass `llm_partial` → `gen2_run_2026-08-06.json`; 31 wave16 tests green
 
+## Wave 17 — INGEST (Universal document pipeline)
+Orchestrator: `plans/UNIVERSAL_INGESTION_PIPELINE.md` · Cards: `plans/cards/WAVE-17-INGEST.md`
+- [x] ING-0 License + runtime inventory (vision_tier: **deferred**)
+- [x] ING-1 Canonical IngestBatch + job store (`d0e1f2a3b4c5`)
+- [x] ING-2 Classifier (closed vocab)
+- [x] ING-3 Extract CSV/XLSX + LLM column map fallback
+- [x] ING-4 PDF text + vision gate (qwen3-vl pull = operator final step)
+- [x] ING-5 Map + live/batch dedupe xref
+- [x] ING-6 Dependency topo-sort
+- [x] ING-7 Dry-run review UI + Playwright e2e
+- [x] ING-8 Commit + mail_notrack + live smoke
+- [x] ING-9 Expert interview → same pipeline
+- [x] Slice A MVP live smoke (`test_ingest_slice_a_live.py`)
+
 ## Wave 13 — DEV (developer code path; cards in WAVE-13-DEV.md; AFTER Wave 12)
 - [x] DEV-1 Code Studio: live code server actions + automations (probe-gated per instance) — core 2026-08-03
 - [x] DEV-2 Module code authoring: Option A with a real editor (custom_code_blocks writable) — 2026-08-03

@@ -341,6 +341,7 @@ def dry_run_or_commit(
     match_fields: list[str] | None = None,
     dry_run: bool = True,
     batch_size: int = 50,
+    rpc_context: dict[str, Any] | None = None,
 ) -> ImportCommitResult:
     if not client.model_exists(model):
         raise OdooClientError(f"Model {model} not found on this Odoo")
@@ -351,6 +352,12 @@ def dry_run_or_commit(
     results: list[RowResult] = []
     created = updated = failed = skipped = 0
     pending_creates: list[tuple[int, dict[str, Any]]] = []
+
+    def _kw(extra: dict[str, Any] | None = None) -> dict[str, Any]:
+        out = dict(extra or {})
+        if rpc_context:
+            out["context"] = {**(out.get("context") or {}), **rpc_context}
+        return out
 
     def flush_creates() -> None:
         nonlocal created, failed
@@ -372,7 +379,7 @@ def dry_run_or_commit(
                             )
                         )
                     continue
-                new_ids = client.execute_kw(model, "create", [vals_list])
+                new_ids = client.execute_kw(model, "create", [vals_list], _kw())
                 if isinstance(new_ids, int):
                     new_ids = [new_ids]
                 if not isinstance(new_ids, list) or len(new_ids) != len(chunk):
@@ -405,7 +412,7 @@ def dry_run_or_commit(
                                 )
                             )
                             continue
-                        new_id = int(client.execute_kw(model, "create", [vals]))
+                        new_id = int(client.execute_kw(model, "create", [vals], _kw()))
                         created += 1
                         results.append(
                             RowResult(
@@ -461,7 +468,7 @@ def dry_run_or_commit(
                         )
                     )
                 else:
-                    client.execute_kw(model, "write", [[existing_id], vals])
+                    client.execute_kw(model, "write", [[existing_id], vals], _kw())
                     updated += 1
                     results.append(
                         RowResult(

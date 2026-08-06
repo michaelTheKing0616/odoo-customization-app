@@ -41,6 +41,7 @@ from app.routers import (
     ee_drivers,
     approvals,
     health_check,
+    ingest,
     introspection,
     jobs,
     menus_builder,
@@ -146,6 +147,7 @@ app.include_router(access.router, prefix="/api", dependencies=_protected)
 app.include_router(snapshots.router, prefix="/api", dependencies=_protected)
 app.include_router(export_sandbox.router, prefix="/api", dependencies=_protected + [Depends(require_feature("module_export"))])
 app.include_router(data_import.router, prefix="/api", dependencies=_protected + [Depends(require_feature("import"))])
+app.include_router(ingest.router, prefix="/api", dependencies=_protected + [Depends(require_feature("import"))])
 app.include_router(power_ops.router, prefix="/api", dependencies=_protected + [Depends(require_feature("power_ops"))])
 app.include_router(bulk_suite.router, prefix="/api", dependencies=_protected + [Depends(require_feature("bulk_suite"))])
 app.include_router(ee_playbooks.router, prefix="/api", dependencies=_protected)

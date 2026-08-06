@@ -141,6 +141,11 @@ class Settings(BaseSettings):
     field_export_max_rows: int = 100_000
     field_export_batch_size: int = 500
 
+    # Wave 17 — universal ingest
+    ingest_vision: str = "off"  # off | ollama — ollama requires qwen3-vl pulled
+    ingest_vision_model: str = "qwen3-vl:8b"
+    ingest_classify_min_confidence: float = 0.55
+
     # TRUST-9 — design-partner beta / GA launch
     beta_production_gating_enabled: bool = True
     production_write_mode_ga_unlocked: bool = False
