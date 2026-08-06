@@ -556,7 +556,7 @@ def enrich_draft_route(
 
     import copy
 
-    from app.ai_llm_status import attach_llm_status, sanitize_draft_payload
+    from app.ai_llm_status import attach_llm_status, finalize_llm_status, sanitize_draft_payload
     from app.ai_model_quality import run_model_quality_pass
     from app.ai_depth import run_depth_pass
     from app.ai_critique import run_self_critique
@@ -591,6 +591,7 @@ def enrich_draft_route(
 
     draft = sanitize_draft_payload(draft)
     attach_llm_status(draft, mode="llm_full", completed_steps=list(failed))
+    finalize_llm_status(draft, mode="llm_full")
     from app.ai_draft_cache import save_draft_cache
 
     save_draft_cache(

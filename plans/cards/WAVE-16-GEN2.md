@@ -93,6 +93,34 @@ The recurring root cause of both bad drafts is Ollama timing out in a request-sc
       + one-click) to create the advanced equation-compute automation for subtotal/total
       (goes through the existing advanced-action confirm flow; never silent).
 
+## GEN2-8 — Punch list from 2026-08-06 draft #3 (graded 8/10)
+
+Evidence: third supermarket draft ("…branches around the world", 07:32). Save as fixture
+`apps/api/tests/fixtures/draft_supermarket3_2026-08-06.json` (ask user / journal).
+
+- [x] BUG (priority): a step result leaked into the response ROOT — top level contains
+      `"model": "x_branch"` + its own fields/automations/smart_buttons/anti_patterns
+      spliced before the real spec keys. Find the enrichment-merge that writes step output
+      to the root instead of `models[]`; add a response-shape validator (allowlist of
+      top-level keys) that runs before returning ANY draft + named test. Also fixes the
+      smart-button count drift (header 15 vs _meta 19).
+- [x] BUG: form archs ignore `state_field.statusbar_visible` — arch generator must emit
+      the filtered list (x_store_order/x_promotion/x_branch_transfer forms still show
+      `cancelled` in statusbar_visible). Test: arch statusbar matches state_field for
+      every workflow model.
+- [x] Form layout for enriched models: >10 fields in one group → split into semantic
+      groups (Contact / Location / Details heuristics by field name) or notebook pages;
+      drop redundant `x_<role>_name` char fields when a same-role m2o exists
+      (x_manager_name vs x_manager_id).
+- [x] `_llm_status` finalization: populate `completed_steps`, and clear/finalize
+      step/step_label in the terminal payload (no frozen "Retrieving domain context" at
+      step 0 in a finished draft). Test.
+- [x] Small semantics: branch model gets `x_country_id` (res.country) when prompt implies
+      multi-country ("around the world", "international", "global"); slug stop-words
+      (around, the, with, world) dropped from technical_name; automation floor for
+      comprehensive ambition prefers one real per-workflow automation (e.g. notify on
+      order delivered) over the generic on_create filler seed.
+
 GATE: `cd apps/api && uv run pytest -q -m "not integration"` 0 failed; fixture regression
 suite green; one live background-job draft of the supermarket prompt recorded to
 `docs/research/gen2_run_<date>.json` with `_llm_status.mode` ∈ {llm_full, llm_partial} (a

@@ -306,8 +306,21 @@ def _normalize_critique_block(critique: dict[str, Any], repair_notes: list[str])
 def apply_critique_repairs(
     draft: dict[str, Any], critique: dict[str, Any]
 ) -> tuple[dict[str, Any], list[str]]:
+    from app.ai_llm_status import validate_draft_response_shape
+
     out = copy.deepcopy(draft)
-    notes: list[str] = []
+    out, shape_w = validate_draft_response_shape(out)
+    notes: list[str] = list(shape_w)
+    # LLM enrichment steps occasionally return a bare model object — never splice at root.
+    if isinstance(critique.get("model"), str) and str(critique.get("model", "")).startswith("x_"):
+        if not critique.get("missing_models") and isinstance(critique.get("fields"), list):
+            critique = {
+                "missing_models": [critique],
+                "missing_fields": critique.get("missing_fields") or [],
+                "missing_automations": critique.get("missing_automations") or [],
+                "notes": critique.get("notes") or [],
+            }
+            notes.append("shape: wrapped bare model LLM response into missing_models")
     from app.ai_model_quality import filter_redundant_missing_models
 
     notes.extend(_apply_missing_fields(out, critique.get("missing_fields") or []))

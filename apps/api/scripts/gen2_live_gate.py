@@ -18,7 +18,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 PROMPT = "A large mega Super Market with multiple branches"
-OUT = Path(__file__).resolve().parents[3] / "docs" / "research" / "gen2_run_2026-08-05.json"
+_default_out = (
+    Path(__file__).resolve().parents[3]
+    / "docs"
+    / "research"
+    / f"gen2_run_{datetime.now(UTC).strftime('%Y-%m-%d')}.json"
+)
+OUT = Path(os.environ["GEN2_GATE_OUT"]) if os.environ.get("GEN2_GATE_OUT") else _default_out
 
 
 def main() -> int:
@@ -104,6 +110,11 @@ def main() -> int:
         "model_count": len(models),
         "model_names_sample": models[:12],
         "error_key_absent": "error" not in draft,
+        "root_model_leak_absent": not (
+            isinstance(draft.get("model"), str)
+            and str(draft.get("model", "")).startswith("x_")
+            and isinstance(draft.get("models"), list)
+        ),
         "warnings_sample": (result.get("warnings") or [])[:15],
     }
     if error:

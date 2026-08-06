@@ -1974,6 +1974,38 @@ def normalize_automation_shapes(draft: dict[str, Any]) -> list[str]:
     return notes
 
 
+def drop_redundant_role_name_fields(draft: dict[str, Any]) -> list[str]:
+    """Remove x_<role>_name char fields when x_<role>_id many2one exists on the same model."""
+    from app.ai_enrich import drop_redundant_role_name_fields as _prune_fields
+
+    notes: list[str] = []
+    for m in draft.get("models") or []:
+        if not isinstance(m, dict):
+            continue
+        fields = [f for f in (m.get("fields") or []) if isinstance(f, dict)]
+        pruned = _prune_fields(fields)
+        if len(pruned) == len(fields):
+            continue
+        dropped = {str(f.get("name")) for f in fields} - {str(f.get("name")) for f in pruned}
+        m["fields"] = pruned
+        mid = str(m.get("model") or "")
+        notes.append(
+            f"quality: dropped redundant name field(s) on {mid}: {', '.join(sorted(dropped))}"
+        )
+        for v in draft.get("views") or []:
+            if not isinstance(v, dict) or v.get("model") != mid:
+                continue
+            arch = str(v.get("arch") or "")
+            for name in dropped:
+                arch = re.sub(
+                    rf'<field name="{re.escape(name)}"(?:[^>]*)?/?>',
+                    "",
+                    arch,
+                )
+            v["arch"] = arch
+    return notes
+
+
 def dedupe_redundant_partner_fields(draft: dict[str, Any]) -> list[str]:
     """Canonicalize res.partner links to x_partner_id (views/buttons stay in sync)."""
     notes: list[str] = []
@@ -2833,6 +2865,7 @@ def repair_draft_integrity(draft: dict[str, Any], *, ambition: str = "standard")
     notes.extend(scrub_placeholder_selections(draft))
     notes.extend(repair_incomplete_relational_fields(draft))
     notes.extend(repair_orphan_relations(draft))
+    notes.extend(drop_redundant_role_name_fields(draft))
     notes.extend(dedupe_redundant_partner_fields(draft))
     notes.extend(collapse_duplicate_role_models(draft))
     notes.extend(collapse_parallel_party_models(draft))

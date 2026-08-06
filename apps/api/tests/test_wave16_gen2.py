@@ -9,7 +9,23 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.ai_llm_status import banner_for_mode, sanitize_draft_payload
+from app.ai_depth import (
+    ensure_country_on_branch_for_global_prompt,
+    ensure_min_automations,
+)
+from app.ai_enrich import (
+    _build_form_arch,
+    drop_redundant_role_name_fields,
+    ensure_default_ui,
+)
+from app.ai_ollama import derive_draft_naming_from_prompt
+from app.ai_model_quality import drop_redundant_role_name_fields as drop_role_names_draft
+from app.ai_llm_status import (
+    banner_for_mode,
+    finalize_llm_status,
+    sanitize_draft_payload,
+    validate_draft_response_shape,
+)
 from app.ai_reuse_planner import plan_reuse
 from app.ai_stock_catalog import infer_catalog_reuse, stock_entry
 from app.ai_stock_reuse import infer_stock_reuse
@@ -18,11 +34,17 @@ from app.ai_rules import validate_and_enrich_draft
 from app.llm_provider import LLMError, generate_json_with_timeout_retry
 
 FIXTURE2 = Path(__file__).parent / "fixtures" / "draft_supermarket2_2026-08-05.json"
+FIXTURE3 = Path(__file__).parent / "fixtures" / "draft_supermarket3_2026-08-06.json"
 SUPERMARKET_PROMPT = "A large mega Super Market with multiple branches"
+SUPERMARKET3_PROMPT = "A large, mega super market with multiple branches around the world"
 
 
 def _load_fixture2() -> dict[str, Any]:
     return json.loads(FIXTURE2.read_text())
+
+
+def _load_fixture3() -> dict[str, Any]:
+    return json.loads(FIXTURE3.read_text())
 
 
 def test_sanitize_removes_top_level_error() -> None:
@@ -394,3 +416,202 @@ def test_llm_timeout_falls_back_to_pack(monkeypatch: pytest.MonkeyPatch) -> None
     )
     assert draft.get("_llm_status", {}).get("mode") == "pack_fallback"
     assert "error" not in draft
+
+
+def test_supermarket3_fixture_has_root_model_leak_before_sanitize() -> None:
+    raw = _load_fixture3()
+    assert raw.get("model") == "x_branch"
+    assert isinstance(raw.get("models"), list)
+    assert raw.get("fields")
+
+
+def test_validate_draft_response_shape_strips_supermarket3_leak() -> None:
+    raw = _load_fixture3()
+    clean, warnings = validate_draft_response_shape(raw)
+    assert "model" not in clean
+    assert "fields" not in clean or "fields" in (clean.get("models") or [{}])[0]
+    assert not any(k in clean for k in ("is_workflow", "state_field"))
+    assert any("stripped model-level root keys" in w for w in warnings)
+    meta = clean.get("_meta") or {}
+    assert meta.get("smart_button_count") == len(clean.get("smart_buttons") or [])
+
+
+def test_sanitize_draft_payload_strips_root_model_key_named_test() -> None:
+    draft = {
+        "model": "x_branch",
+        "fields": [{"name": "x_name", "ttype": "char"}],
+        "technical_name": "t",
+        "display_name": "T",
+        "models": [{"model": "x_branch", "fields": [{"name": "x_name", "ttype": "char"}]}],
+    }
+    clean = sanitize_draft_payload(draft)
+    assert "model" not in clean
+    assert "error" not in clean
+
+
+def test_finalize_llm_status_populates_completed_steps() -> None:
+    draft = {
+        "models": [{"model": "x_a", "fields": []}],
+        "_llm_status": {
+            "mode": "llm_partial",
+            "failed_steps": ["quality"],
+            "completed_steps": [],
+            "step": 0,
+            "step_label": "Retrieving domain context",
+            "step_total": 7,
+        },
+    }
+    finalize_llm_status(draft, mode="llm_partial")
+    status = draft["_llm_status"]
+    assert status["step"] == 6
+    assert status["step_label"] == "Finalizing draft"
+    assert len(status["completed_steps"]) >= 6
+    assert "Retrieving domain context" in status["completed_steps"]
+
+
+def test_form_arch_statusbar_uses_state_field_visible_list() -> None:
+    fields = [
+        {"name": "x_name", "ttype": "char"},
+        {
+            "name": "x_status",
+            "ttype": "selection",
+            "selection": "[('draft','Draft'),('done','Done'),('cancelled','Cancelled')]",
+        },
+    ]
+    arch = _build_form_arch(
+        "Order",
+        fields,
+        statusbar_visible=["draft", "done"],
+    )
+    assert 'statusbar_visible="draft,done"' in arch
+    assert "cancelled" not in arch.split("statusbar_visible")[1].split('"')[1]
+
+
+def test_form_arch_splits_large_field_groups() -> None:
+    fields = [{"name": "x_name", "ttype": "char"}]
+    for i in range(12):
+        fields.append({"name": f"x_detail_{i}", "ttype": "char", "string": f"Detail {i}"})
+    fields.extend(
+        [
+            {"name": "x_phone", "ttype": "char", "string": "Phone"},
+            {"name": "x_email", "ttype": "char", "string": "Email"},
+            {"name": "x_address", "ttype": "char", "string": "Address"},
+            {"name": "x_city", "ttype": "char", "string": "City"},
+        ]
+    )
+    arch = _build_form_arch("Branch", fields)
+    assert arch.count('group string="Contact"') >= 1
+    assert arch.count('group string="Location"') >= 1
+    assert 'group string="Details"' in arch
+
+
+def test_drop_redundant_manager_name_when_manager_id_exists() -> None:
+    fields = [
+        {"name": "x_name", "ttype": "char"},
+        {"name": "x_manager_id", "ttype": "many2one", "relation": "hr.employee"},
+        {"name": "x_manager_name", "ttype": "char", "string": "Manager Name"},
+        {"name": "x_phone", "ttype": "char"},
+    ]
+    pruned = drop_redundant_role_name_fields(fields)
+    names = {f["name"] for f in pruned}
+    assert "x_manager_id" in names
+    assert "x_manager_name" not in names
+
+
+def test_drop_redundant_role_name_fields_on_draft_and_views() -> None:
+    draft = {
+        "models": [
+            {
+                "model": "x_branch",
+                "fields": [
+                    {"name": "x_name", "ttype": "char"},
+                    {"name": "x_manager_id", "ttype": "many2one", "relation": "hr.employee"},
+                    {"name": "x_manager_name", "ttype": "char"},
+                ],
+            }
+        ],
+        "views": [
+            {
+                "model": "x_branch",
+                "type": "form",
+                "arch": '<form><field name="x_manager_name"/><field name="x_manager_id"/></form>',
+            }
+        ],
+    }
+    notes = drop_role_names_draft(draft)
+    assert notes
+    branch_fields = {f["name"] for f in draft["models"][0]["fields"]}
+    assert "x_manager_name" not in branch_fields
+    assert "x_manager_name" not in draft["views"][0]["arch"]
+
+
+def test_global_prompt_adds_country_on_branch() -> None:
+    draft = {
+        "models": [
+            {
+                "model": "x_branch",
+                "description": "Branch / Store location",
+                "fields": [{"name": "x_name", "ttype": "char"}],
+            }
+        ]
+    }
+    notes = ensure_country_on_branch_for_global_prompt(draft, SUPERMARKET3_PROMPT)
+    assert notes
+    names = {f["name"] for f in draft["models"][0]["fields"]}
+    assert "x_country_id" in names
+    country = next(f for f in draft["models"][0]["fields"] if f["name"] == "x_country_id")
+    assert country["relation"] == "res.country"
+
+
+def test_technical_name_drops_stop_words_around_world() -> None:
+    draft: dict[str, Any] = {"technical_name": "custom_app"}
+    derive_draft_naming_from_prompt(draft, SUPERMARKET3_PROMPT)
+    slug = draft["technical_name"]
+    assert "around" not in slug
+    assert "world" not in slug
+    assert "the" not in slug.split("_")
+
+
+def test_comprehensive_automation_prefers_workflow_over_on_create() -> None:
+    draft = {
+        "models": [
+            {
+                "model": "x_store_order",
+                "description": "Store order",
+                "is_workflow": True,
+                "fields": [
+                    {"name": "x_name", "ttype": "char"},
+                    {
+                        "name": "x_status",
+                        "ttype": "selection",
+                        "selection": "[('draft','Draft'),('delivered','Delivered'),('cancelled','Cancelled')]",
+                    },
+                ],
+                "state_field": {
+                    "field": "x_status",
+                    "statusbar_visible": ["draft", "delivered"],
+                },
+            }
+        ],
+        "automations": [],
+    }
+    notes = ensure_min_automations(draft, "comprehensive")
+    assert notes
+    triggers = [a.get("trigger") for a in draft["automations"]]
+    assert "on_write" in triggers
+    workflow_auto = next(a for a in draft["automations"] if a.get("trigger") == "on_write")
+    assert workflow_auto.get("filter_domain")
+    assert "delivered" in str(workflow_auto.get("filter_domain"))
+
+
+def test_supermarket3_fixture_form_rebuild_drops_manager_name() -> None:
+    draft = _load_fixture3()
+    draft.pop("model", None)
+    for key in ("fields", "automations", "smart_buttons", "is_workflow", "state_field"):
+        draft.pop(key, None)
+    ensure_default_ui(draft)
+    branch = next(m for m in draft["models"] if m["model"] == "x_branch")
+    assert "x_manager_name" not in {f["name"] for f in branch["fields"]}
+    form = next(v for v in draft["views"] if v["model"] == "x_branch" and v["type"] == "form")
+    assert "x_manager_name" not in form["arch"]
+    assert 'group string="Contact"' in form["arch"] or 'group string="Location"' in form["arch"]

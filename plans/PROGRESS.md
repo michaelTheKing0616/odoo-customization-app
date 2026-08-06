@@ -145,6 +145,7 @@ Re-verified 2026-08-03 (orchestrator + 3 checkers); REM-14 closed residual gaps 
 - [x] GEN2-6 Access rules manager/user split (no unlink for user group)
 - [x] GEN2-7 Menu auto-grouping, smart-button label dedupe, line-total compute suggestion
 - [x] Bonus: AI draft JSON auto-cache (`ai_draft_cache` table + GET list/restore + wizard saved drafts)
+- [x] GEN2-8 Draft #3 punch list (2026-08-06): root payload leak validator, statusbar_visible, _llm_status finalize, form field grouping + redundant name drop, global x_country_id, slug stop-words, comprehensive workflow automation floor; live gate pass `llm_partial` → `gen2_run_2026-08-06.json`; 31 wave16 tests green
 
 ## Wave 13 — DEV (developer code path; cards in WAVE-13-DEV.md; AFTER Wave 12)
 - [x] DEV-1 Code Studio: live code server actions + automations (probe-gated per instance) — core 2026-08-03

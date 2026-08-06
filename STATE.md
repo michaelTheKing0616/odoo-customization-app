@@ -3,17 +3,14 @@
 > Read at the start of every session. Updated at the end of every session.
 
 ## Last run
-- Date: 2026-08-05
-- **Wave 16 GEN2 + draft cache complete** (uncommitted — awaiting user approval):
-  - GEN2-1→7 + honest gaps (Alembic, enrich jobs, root menu groups, live gate script).
-  - **Fix:** LLM timeout now falls back to domain pack (`pack_fallback`) instead of 502 crash.
-- Gate artifact: `docs/research/gen2_run_2026-08-05.json` — **deviation** (live run 947s; Ollama timed out → `pack_fallback`, 10 models, no top-level `error`).
-- Tests: 18 wave16 + 47 targeted; **full gate `-m "not integration"`: 987 passed** (32 min).
-- Alembic: `c9d0e1f2a3b4_ai_draft_cache.py` added; local `upgrade head` blocked by pre-existing oauth migration duplicate column (stamp/fix separately).
+- Date: 2026-08-06
+- **GEN2-8 complete:** root payload leak validator; statusbar_visible; _llm_status finalize; form semantic grouping (>10 fields); drop redundant x_*_name; global prompt → x_country_id on branch; slug stop-words; comprehensive workflow automation floor.
+- Gates: `test_wave16_gen2.py` 31 passed; full `-m "not integration"` 1008 passed / 1 alembic suite-order flake (passes in isolation); live gate pass → `gen2_run_2026-08-06.json`.
+- Committed GEN2-8 (user approved).
 
 ## Next
-- User approval → commit.
-- Optional: `alembic stamp` / fix oauth migration drift; re-run gate when Ollama is warm for `llm_full`/`llm_partial`.
+- Wave 16 close-out / next wave card selection.
+- Re-run full `-m "not integration"` gate if needed before deploy.
 
 ## Rule
 - Code Studio = probe per connection, never hosting-tier assumption.

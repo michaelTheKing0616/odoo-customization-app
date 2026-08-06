@@ -66,6 +66,14 @@ _SCALE_RE = re.compile(
     re.I,
 )
 
+_GLOBAL_PROMPT_RE = re.compile(
+    r"\b("
+    r"around\s+the\s+world|international|global|worldwide|multi[\s-]?country|"
+    r"across\s+countries|multiple\s+countries"
+    r")\b",
+    re.I,
+)
+
 
 def classify_ambition(prompt: str) -> Ambition:
     """Infer how deep the ModuleSpec should be from the user prompt alone."""
@@ -832,6 +840,93 @@ def seed_operational_loop_models(
     return notes
 
 
+def _is_branch_model(model: dict[str, Any]) -> bool:
+    mid = str(model.get("model") or "")
+    desc = str(model.get("description") or "").lower()
+    return mid == "x_branch" or "branch" in mid or "branch" in desc or "store location" in desc
+
+
+def ensure_country_on_branch_for_global_prompt(
+    draft: dict[str, Any], user_prompt: str
+) -> list[str]:
+    """Add x_country_id (res.country) on branch models when prompt implies multi-country ops."""
+    if not _GLOBAL_PROMPT_RE.search(user_prompt or ""):
+        return []
+    notes: list[str] = []
+    for m in _models(draft):
+        if not _is_branch_model(m):
+            continue
+        names = _field_names(m)
+        if "x_country_id" in names:
+            continue
+        m.setdefault("fields", [])
+        if isinstance(m["fields"], list):
+            m["fields"].append(
+                {
+                    "name": "x_country_id",
+                    "ttype": "many2one",
+                    "relation": "res.country",
+                    "string": "Country",
+                }
+            )
+            notes.append(f"depth: added x_country_id on {m.get('model')} (global prompt)")
+    return notes
+
+
+def _selection_keys_from_model(model: dict[str, Any]) -> list[str]:
+    sf = model.get("state_field") if isinstance(model.get("state_field"), dict) else {}
+    states = sf.get("states") if isinstance(sf.get("states"), list) else []
+    keys: list[str] = []
+    for st in states:
+        if isinstance(st, dict) and st.get("key"):
+            keys.append(str(st["key"]))
+        elif isinstance(st, str):
+            keys.append(st)
+    if keys:
+        return keys
+    for f in model.get("fields") or []:
+        if isinstance(f, dict) and f.get("name") == "x_status":
+            sel = f.get("selection")
+            if isinstance(sel, str):
+                keys = re.findall(r"\('([^']+)'\s*,", sel)
+            break
+    return keys
+
+
+def _workflow_automation_candidates(draft: dict[str, Any]) -> list[dict[str, Any]]:
+    """Prefer per-workflow on_write automations over generic on_create fillers."""
+    from app.ai_workflow_semantic import classify_state
+
+    candidates: list[dict[str, Any]] = []
+    for m in _models(draft):
+        names = _field_names(m)
+        if not (m.get("is_workflow") or "x_status" in names):
+            continue
+        mid = str(m["model"])
+        keys = _selection_keys_from_model(m)
+        terminals = [k for k in keys if classify_state(k) == "terminal_success"]
+        if not terminals and keys:
+            terminals = [keys[-1]]
+        for term in terminals[:2]:
+            label = str(m.get("description") or mid).replace("/", " ").strip()
+            candidates.append(
+                {
+                    "name": f"Notify on {label} {term}",
+                    "model": mid,
+                    "trigger": "on_write",
+                    "filter_domain": f"[('x_status','=','{term}')]",
+                    "description": (
+                        f"Depth floor: schedule follow-up when {mid} reaches {term!r}"
+                    ),
+                    "safe_actions": [
+                        {"kind": "next_activity", "summary": f"Review {term} {label}"}
+                    ],
+                    "source": "depth_seed",
+                }
+            )
+    return candidates
+
+
 def ensure_min_automations(draft: dict[str, Any], ambition: Ambition) -> list[str]:
     """Add safe next_activity automations until the ambition floor is met."""
     notes: list[str] = []
@@ -848,43 +943,49 @@ def ensure_min_automations(draft: dict[str, Any], ambition: Ambition) -> list[st
         return notes
     parent_id = str(parent["model"])
     names = {str(a.get("name") or "") for a in autos}
-    candidates = [
-        {
-            "name": f"Follow up on {parent_id} write",
-            "model": parent_id,
-            "trigger": "on_write",
-            "description": "Depth floor: schedule a follow-up activity on change",
-            "safe_actions": [
-                {"kind": "next_activity", "summary": "Review update"}
-            ],
-            "source": "depth_seed",
-        },
-        {
-            "name": f"Activity on {parent_id} create",
-            "model": parent_id,
-            "trigger": "on_create",
-            "description": "Depth floor: kick off activity when record is created",
-            "safe_actions": [
-                {"kind": "next_activity", "summary": "New record follow-up"}
-            ],
-            "source": "depth_seed",
-        },
-    ]
+    candidate_lists: list[list[dict[str, Any]]] = []
+    if ambition == "comprehensive":
+        candidate_lists.append(_workflow_automation_candidates(draft))
+    candidate_lists.append(
+        [
+            {
+                "name": f"Follow up on {parent_id} write",
+                "model": parent_id,
+                "trigger": "on_write",
+                "description": "Depth floor: schedule a follow-up activity on change",
+                "safe_actions": [
+                    {"kind": "next_activity", "summary": "Review update"}
+                ],
+                "source": "depth_seed",
+            },
+            {
+                "name": f"Activity on {parent_id} create",
+                "model": parent_id,
+                "trigger": "on_create",
+                "description": "Depth floor: kick off activity when record is created",
+                "safe_actions": [
+                    {"kind": "next_activity", "summary": "New record follow-up"}
+                ],
+                "source": "depth_seed",
+            },
+        ]
+    )
     draft.setdefault("automations", [])
-    for cand in candidates:
-        if len(
-            [
-                a
-                for a in draft["automations"]
-                if isinstance(a, dict) and _is_safe_automation(a)
-            ]
-        ) >= need:
-            break
-        if cand["name"] in names:
-            continue
-        draft["automations"].append(cand)
-        names.add(cand["name"])
-        notes.append(f"depth: seeded automation {cand['name']}")
+    for candidates in candidate_lists:
+        for cand in candidates:
+            if len(
+                [
+                    a
+                    for a in draft["automations"]
+                    if isinstance(a, dict) and _is_safe_automation(a)
+                ]
+            ) >= need:
+                break
+            if cand["name"] in names:
+                continue
+            draft["automations"].append(cand)
+            names.add(cand["name"])
+            notes.append(f"depth: seeded automation {cand['name']}")
     return notes
 
 
@@ -934,6 +1035,11 @@ def apply_deterministic_depth(
     notes.extend(seed_operational_loop_models(
         out, amb, user_prompt=user_prompt or str(out.get("_user_prompt") or "")
     ))
+    notes.extend(
+        ensure_country_on_branch_for_global_prompt(
+            out, user_prompt or str(out.get("_user_prompt") or "")
+        )
+    )
     notes.extend(ensure_min_automations(out, amb))
     notes.extend(_ensure_workflow_minimum_fields(out))
     notes.extend(_ensure_currency_on_amounts(out))

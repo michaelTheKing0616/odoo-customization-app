@@ -76,6 +76,9 @@ def derive_draft_naming_from_prompt(
             "of",
             "in",
             "on",
+            "around",
+            "world",
+            "across",
             "large",
             "mega",
             "multiple",
@@ -713,7 +716,7 @@ def draft_module_from_prompt(
         client=client,
         warnings=warnings,
     )
-    from app.ai_llm_status import STEP_LABELS, attach_llm_status, sanitize_draft_payload
+    from app.ai_llm_status import STEP_LABELS, attach_llm_status, finalize_llm_status, sanitize_draft_payload
 
     draft = sanitize_draft_payload(draft)
     failed_steps = [
@@ -735,6 +738,7 @@ def draft_module_from_prompt(
         failed_steps=failed_steps,
         reason="timeout" if failed_steps else None,
     )
+    finalize_llm_status(draft, mode=mode)  # type: ignore[arg-type]
     if progress_callback:
         progress_callback(len(STEP_LABELS) - 1, STEP_LABELS[-1], draft)
     return draft, raw, warnings, refusals

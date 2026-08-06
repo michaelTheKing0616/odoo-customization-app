@@ -12,10 +12,25 @@ from odoo_client.image_pipeline import guess_image_role, image_field_xml, is_ima
 
 from app.ai_model_quality import is_party_link_model
 from app.ai_workflow import build_transition_header_buttons
-from odoo_client.image_pipeline import guess_image_role, image_field_xml, is_image_field
 
-from app.ai_model_quality import is_party_link_model
-from app.ai_workflow import build_transition_header_buttons
+_FORM_GROUP_FIELD_THRESHOLD = 10
+_CONTACT_HINTS = frozenset(
+    {"phone", "email", "manager", "website", "fax", "contact", "mobile", "tel"}
+)
+_LOCATION_HINTS = frozenset(
+    {
+        "address",
+        "city",
+        "zip",
+        "postal",
+        "country",
+        "latitude",
+        "longitude",
+        "state",
+        "location",
+        "street",
+    }
+)
 
 
 def _slug(text: str, *, fallback: str = "custom") -> str:
@@ -90,6 +105,59 @@ def _list_columns(fields: list[dict[str, Any]], *, limit: int = 8) -> list[str]:
     return cols or ["x_name"]
 
 
+def _m2o_role_bases(fields: list[dict[str, Any]]) -> set[str]:
+    roles: set[str] = set()
+    for f in fields:
+        name = str(f.get("name") or "")
+        if f.get("ttype") == "many2one" and name.startswith("x_") and name.endswith("_id"):
+            roles.add(name[2:-3])
+    return roles
+
+
+def drop_redundant_role_name_fields(fields: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop x_<role>_name char fields when a matching x_<role>_id many2one exists."""
+    roles = _m2o_role_bases(fields)
+    if not roles:
+        return fields
+    kept: list[dict[str, Any]] = []
+    for f in fields:
+        name = str(f.get("name") or "")
+        if (
+            f.get("ttype") == "char"
+            and name.startswith("x_")
+            and name.endswith("_name")
+            and name != "x_name"
+            and name[2:-5] in roles
+        ):
+            continue
+        kept.append(f)
+    return kept
+
+
+def _scalar_group_label(name: str) -> str:
+    lower = name.lower()
+    if any(h in lower for h in _CONTACT_HINTS):
+        return "Contact"
+    if any(h in lower for h in _LOCATION_HINTS):
+        return "Location"
+    return "Details"
+
+
+def _partition_scalar_fields(names: list[str]) -> list[tuple[str, list[str]]]:
+    """Split scalar form fields into semantic groups when the flat list is large."""
+    filtered = [n for n in names if n != "x_status"]
+    if len(filtered) <= _FORM_GROUP_FIELD_THRESHOLD:
+        return [("Details", filtered)] if filtered else []
+    buckets: dict[str, list[str]] = {"Contact": [], "Location": [], "Details": []}
+    for name in filtered:
+        buckets[_scalar_group_label(name)].append(name)
+    groups: list[tuple[str, list[str]]] = []
+    for title in ("Contact", "Location", "Details"):
+        if buckets[title]:
+            groups.append((title, buckets[title]))
+    return groups
+
+
 def _form_field_names(fields: list[dict[str, Any]]) -> tuple[list[str], list[str], list[str]]:
     identity: list[str] = []
     details: list[str] = []
@@ -101,8 +169,6 @@ def _form_field_names(fields: list[dict[str, Any]]) -> tuple[list[str], list[str
             lines.append(name)
         elif name == "x_name" or ttype == "many2one":
             identity.append(name)
-        elif ttype == "binary" and not is_image_field(f):
-            continue
         elif ttype == "binary" and not is_image_field(f):
             continue
         elif ttype == "binary":
@@ -147,6 +213,7 @@ def _build_form_arch(
     *,
     smart_buttons: list[dict[str, Any]] | None = None,
     transitions: list[list[str]] | None = None,
+    statusbar_visible: list[str] | None = None,
     odoo_major: int = 19,
 ) -> str:
     identity, details, lines = _form_field_names(fields)
@@ -154,7 +221,9 @@ def _build_form_arch(
     header = ""
     if status:
         keys = _selection_keys(status.get("selection"))
-        if transitions:
+        if statusbar_visible:
+            visible = [str(k) for k in statusbar_visible if k]
+        elif transitions:
             visible = []
             seen: set[str] = set()
             for tr in transitions:
@@ -185,10 +254,9 @@ def _build_form_arch(
 
     _type, list_root = list_view_for_major(odoo_major)
 
-    sheet_bits = [
-        group_xml("Identity", identity),
-        group_xml("Details", [n for n in details if n != "x_status"]),
-    ]
+    sheet_bits = [group_xml("Identity", identity)]
+    for title, names in _partition_scalar_fields(details):
+        sheet_bits.append(group_xml(title, names))
     for line in lines:
         fdef = next((f for f in fields if f.get("name") == line), None)
         title = str((fdef or {}).get("string") or line)
@@ -393,11 +461,15 @@ def _rebuild_stale_views(
         else:
             sf = model.get("state_field") if isinstance(model.get("state_field"), dict) else {}
             tr = sf.get("transitions") if isinstance(sf.get("transitions"), list) else None
+            sb_vis = (
+                sf.get("statusbar_visible") if isinstance(sf.get("statusbar_visible"), list) else None
+            )
             arch = _build_form_arch(
                 desc,
                 fields,
                 smart_buttons=smart_by_model.get(mid),
                 transitions=tr,
+                statusbar_visible=sb_vis,
                 odoo_major=odoo_major,
             )
         new_views.append({**v, "type": vtype, "arch": arch})
@@ -417,6 +489,13 @@ def ensure_default_ui(draft: dict[str, Any]) -> list[str]:
 
     for model in models:
         _ensure_x_name(model)
+        fields = model.get("fields")
+        if isinstance(fields, list):
+            pruned = drop_redundant_role_name_fields(
+                [f for f in fields if isinstance(f, dict)]
+            )
+            if len(pruned) != len(fields):
+                model["fields"] = pruned
         mode = model.get("mode") or "new"
         if mode not in {"new", "inherit"}:
             model["mode"] = "new"
@@ -516,6 +595,7 @@ def ensure_default_ui(draft: dict[str, Any]) -> list[str]:
         fields = _field_list(m)
         sf = m.get("state_field") if isinstance(m.get("state_field"), dict) else {}
         tr = sf.get("transitions") if isinstance(sf.get("transitions"), list) else None
+        sb_vis = sf.get("statusbar_visible") if isinstance(sf.get("statusbar_visible"), list) else None
         for vtype, arch in (
             (list_type, _build_list_arch(desc, fields, odoo_major=odoo_major)),
             (
@@ -525,6 +605,7 @@ def ensure_default_ui(draft: dict[str, Any]) -> list[str]:
                     fields,
                     smart_buttons=smart_by_model.get(mid),
                     transitions=tr,
+                    statusbar_visible=sb_vis,
                     odoo_major=odoo_major,
                 ),
             ),

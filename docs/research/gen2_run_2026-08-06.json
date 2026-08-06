@@ -44,6 +44,7 @@
     "x_task"
   ],
   "error_key_absent": true,
+  "root_model_leak_absent": true,
   "warnings_sample": [
     "ambition: prompt scale cues (mega/large/multiple branches/chain) \u2192 comprehensive targets",
     "technical_name defaulted to 'custom_app'",
