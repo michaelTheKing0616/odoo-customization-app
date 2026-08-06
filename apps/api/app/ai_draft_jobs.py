@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import copy
-import json
 from typing import Any, Callable
 
 from sqlalchemy.orm import Session
@@ -16,6 +15,23 @@ from app.ollama_warm import warm_ollama_models
 
 
 ProgressFn = Callable[[int, str, dict[str, Any] | None], None]
+
+_NON_SERIALIZABLE_KWARGS = frozenset({"client"})
+
+
+def _resolve_odoo_client(connection_id: str | None, db_factory: Callable[[], Session]) -> Any | None:
+    if not connection_id:
+        return None
+    from app.odoo_service import OdooClientError, client_from_connection, get_connection_or_404
+
+    db = db_factory()
+    try:
+        conn = get_connection_or_404(db, connection_id)
+        return client_from_connection(conn)
+    except (LookupError, OdooClientError):
+        return None
+    finally:
+        db.close()
 
 
 def _default_progress(job_id: str) -> ProgressFn:
@@ -114,12 +130,15 @@ def run_draft_job_body(
 def enqueue_draft_job(db: Session, *, connection_id: str | None, body_kwargs: dict[str, Any]) -> str:
     row = create_job(db, kind="ai_draft", connection_id=connection_id)
     job_id = row.id
-    kwargs = copy.deepcopy(body_kwargs)
+    serializable = {k: v for k, v in body_kwargs.items() if k not in _NON_SERIALIZABLE_KWARGS}
+    kwargs = copy.deepcopy(serializable)
+    conn_id = kwargs.get("connection_id") or connection_id
 
     def _fn() -> dict[str, Any]:
         from app.db import SessionLocal
 
-        return run_draft_job_body(job_id=job_id, db_factory=SessionLocal, **kwargs)
+        client = _resolve_odoo_client(conn_id, SessionLocal)
+        return run_draft_job_body(job_id=job_id, db_factory=SessionLocal, client=client, **kwargs)
 
     enqueue(job_id, _fn)
     return job_id

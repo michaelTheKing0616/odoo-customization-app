@@ -319,6 +319,62 @@ def test_enrich_job_enqueue(monkeypatch: pytest.MonkeyPatch) -> None:
         db.close()
 
 
+def test_enqueue_draft_job_skips_odoo_client_deepcopy(monkeypatch: pytest.MonkeyPatch) -> None:
+    import xmlrpc.client
+    from unittest.mock import patch
+
+    from app.ai_draft_jobs import enqueue_draft_job
+    from app.db import SessionLocal
+
+    rpc_client = xmlrpc.client.ServerProxy("http://127.0.0.1:9999", allow_none=True)
+    captured: dict[str, object] = {}
+
+    def fake_enqueue(job_id: str, fn: object) -> None:
+        captured["job_id"] = job_id
+        captured["fn"] = fn
+
+    monkeypatch.setattr("app.ai_draft_jobs.enqueue", fake_enqueue)
+    db = SessionLocal()
+    try:
+        job_id = enqueue_draft_job(
+            db,
+            connection_id=None,
+            body_kwargs={
+                "prompt": "Simple task tracker",
+                "available_models": None,
+                "installed_modules": None,
+                "stock_catalog": None,
+                "reuse_models": None,
+                "rejected_reuse_models": None,
+                "reuse_views": None,
+                "reuse_actions": None,
+                "expand": True,
+                "pipeline": None,
+                "protected_manifest": None,
+                "odoo_version": None,
+                "grain_override": None,
+                "gallery_id": None,
+                "host_model_override": None,
+                "connect_points_override": None,
+                "client": rpc_client,
+                "connection_id": None,
+            },
+        )
+        assert job_id
+        assert captured.get("job_id") == job_id
+        with patch("app.ai_draft_jobs._resolve_odoo_client", return_value=None), patch(
+            "app.ai_draft_jobs.run_draft_job_body",
+            return_value={"ok": True, "draft": {}},
+        ) as run_body:
+            fn = captured["fn"]
+            assert callable(fn)
+            fn()
+            run_body.assert_called_once()
+            assert run_body.call_args.kwargs["client"] is None
+    finally:
+        db.close()
+
+
 def test_llm_timeout_falls_back_to_pack(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.ai_ollama import draft_module_from_prompt
     from app.llm_provider import LLMError

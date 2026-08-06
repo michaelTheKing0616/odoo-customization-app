@@ -29,6 +29,7 @@ from app.entitlements import (
     PUBLIC_TIER_ORDER,
     WorkspaceEntitlements,
     count_active_projects,
+    entitlements_bypassed,
     extra_slot_price_usd,
     plan_feature_diff,
     resolve_entitlements,
@@ -89,6 +90,23 @@ def get_entitlements(
     db: Session = Depends(get_db),
 ) -> EntitlementsOut:
     if not auth.workspace_id:
+        if entitlements_bypassed(auth):
+            seed_plan_features(db)
+            from app.billing_models import PlanFeature
+
+            rows = db.query(PlanFeature).filter(PlanFeature.plan_id == "internal").all()
+            features = {r.feature_key: r.value for r in rows}
+            return EntitlementsOut(
+                workspace_id="local-dev",
+                plan_id="internal",
+                subscription_status="active",
+                features=features,
+                extra_project_slots=0,
+                active_projects=0,
+                active_project_limit=None,
+                trial_ends_at=None,
+                current_period_end=None,
+            )
         raise HTTPException(status_code=400, detail="Workspace context required")
     ent = resolve_entitlements(db, auth.workspace_id)
     limit = ent.active_project_slot_limit()

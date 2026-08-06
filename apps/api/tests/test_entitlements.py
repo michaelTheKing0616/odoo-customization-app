@@ -88,6 +88,16 @@ def test_entitlements_bypass_when_auth_off(client: TestClient, monkeypatch: pyte
         db.close()
 
 
+def test_billing_entitlements_auth_off(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "auth_mode", "off")
+    res = client.get("/api/billing/entitlements")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["plan_id"] == "internal"
+    assert body["workspace_id"] == "local-dev"
+    assert body["features"].get("ai_draft") == "true"
+
+
 def test_active_project_slot_limit(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "auth_mode", "accounts")
     init_db()
