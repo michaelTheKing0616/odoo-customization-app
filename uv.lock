@@ -1137,6 +1137,7 @@ dependencies = [
     { name = "authlib" },
     { name = "cryptography" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "module-generator" },
     { name = "odoo-client" },
     { name = "openpyxl" },
@@ -1156,7 +1157,6 @@ ai-rag = [
     { name = "sentence-transformers" },
 ]
 dev = [
-    { name = "httpx" },
     { name = "pytest" },
 ]
 stripe = [
@@ -1177,7 +1177,7 @@ requires-dist = [
     { name = "authlib", specifier = ">=1.4" },
     { name = "cryptography", specifier = ">=44" },
     { name = "fastapi", specifier = ">=0.115" },
-    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28" },
+    { name = "httpx", specifier = ">=0.28" },
     { name = "module-generator", editable = "packages/module-generator" },
     { name = "odoo-client", editable = "packages/odoo-client" },
     { name = "openpyxl", specifier = ">=3.1" },

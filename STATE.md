@@ -3,15 +3,12 @@
 > Read at the start of every session. Updated at the end of every session.
 
 ## Last run
-- Date: 2026-08-06
-- **Operator/external finish (then commit+push):**
-  - Alembic head `f2a3b4c5d6e7` (ingest_prefs_json) applied
-  - docker-19: installed `l10n_us`, `mrp`, `hr`
-  - Slice B/C/D live: `test_ingest_slice_b_live.py` + `test_ingest_slice_c_live.py` green
-  - `ollama pull qwen3-vl:8b` done; `INGEST_VISION=ollama` in local `.env`
-  - Vision smoke: `check_vision_model` ready + `extract_image_with_vision` OK
-  - Odoo 19 UoM: map uses `relative_uom_id` (no `category_id`); BoM CSV → nested tables + defaults
-- Gates: `pytest -k ingest` **57+** passed; Slice B/C integration 3 passed
+- Date: 2026-08-07
+- **Deploy API follow-up:** rebuilt `odoo-custom-deploy-api` with vision env;
+  `OLLAMA_BASE_URL=http://host.docker.internal:11434` (not container 127.0.0.1);
+  stamped/upgraded deploy app-db to `f2a3b4c5d6e7`; moved `httpx` to runtime deps.
+  Verified: `/health` ollama_reachable; `/ingest/vision/status` enabled+ready qwen3-vl:8b.
+- Prior: GEN2-9 + ingest finish pushed as `ab83197`.
 - **Cannot complete:** Tongyi Qianwen EU commercial agreement (human/legal only)
 
 ## Next

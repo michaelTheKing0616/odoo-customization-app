@@ -21,6 +21,8 @@ dependencies = [
   "argon2-cffi>=23.1",
   "pyotp>=2.9",
   "authlib>=1.4",
+  # Runtime: OAuth callbacks, ingest vision OCR, outbound HTTP probes
+  "httpx>=0.28",
 ]
 
 [project.optional-dependencies]
@@ -29,7 +31,6 @@ stripe = [
 ]
 dev = [
   "pytest>=8.3",
-  "httpx>=0.28",
 ]
 # Local MiniLM embeddings for domain-pack RAG (Apple Silicon friendly)
 ai-rag = [

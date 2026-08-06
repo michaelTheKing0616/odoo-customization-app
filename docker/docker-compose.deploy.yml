@@ -49,6 +49,10 @@ services:
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
       AUDIT_LOG_ENABLED: ${AUDIT_LOG_ENABLED:-true}
       AI_ASSIST: ${AI_ASSIST:-off}
+      # Container → host Ollama (Docker Desktop). Do not use 127.0.0.1 here —
+      # that is the container loopback. Host-side `uv run` can keep 127.0.0.1 in .env;
+      # override when starting this service:
+      #   OLLAMA_BASE_URL=http://host.docker.internal:11434 docker compose ... up -d api
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       INGEST_VISION: ${INGEST_VISION:-off}
       INGEST_VISION_MODEL: ${INGEST_VISION_MODEL:-qwen3-vl:8b}
