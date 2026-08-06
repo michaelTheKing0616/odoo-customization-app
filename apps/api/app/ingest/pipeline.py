@@ -108,7 +108,11 @@ def stage_extract(
 
 
 def stage_map(batch: IngestBatch, client: OdooClient) -> IngestBatch:
-    return map_batch(client, batch)
+    return map_batch(
+        client,
+        batch,
+        allow_coa_as_is=bool(batch.allow_coa_as_is),
+    )
 
 
 def stage_plan(batch: IngestBatch) -> IngestBatch:
@@ -117,12 +121,16 @@ def stage_plan(batch: IngestBatch) -> IngestBatch:
 
 
 def stage_dry_run(batch: IngestBatch, client: OdooClient) -> IngestBatch:
-    batch.commit_log = run_commit_plan(client, batch, dry_run=True)
+    batch.commit_log = run_commit_plan(
+        client, batch, dry_run=True, notify_mode=batch.notify_mode
+    )
     return batch
 
 
 def stage_commit(batch: IngestBatch, client: OdooClient) -> IngestBatch:
-    batch.commit_log = run_commit_plan(client, batch, dry_run=False)
+    batch.commit_log = run_commit_plan(
+        client, batch, dry_run=False, notify_mode=batch.notify_mode
+    )
     return batch
 
 

@@ -20,4 +20,5 @@ def test_interview_builds_partner_and_product_tables() -> None:
     models = {t.model for t in batch.tables}
     assert "res.partner" in models
     assert "product.template" in models
-    assert any("expense categories" in w for w in batch.warnings)
+    assert "product.category" in models
+    assert any("expense" in w.lower() for w in batch.warnings)

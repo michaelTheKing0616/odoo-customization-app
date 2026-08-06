@@ -29,6 +29,8 @@ _DEFAULT_NEUTRAL = {
     "multi party": "multi contact",
 }
 
+_DUP_LABEL_RE = re.compile(r"\b(\w[\w\s]*?)\s*/\s*\1\b", re.I)
+
 
 def _pack_vocab(pack: dict[str, Any] | None) -> dict[str, str]:
     if not pack:
@@ -39,15 +41,47 @@ def _pack_vocab(pack: dict[str, Any] | None) -> dict[str, str]:
     return {str(k).lower(): str(v) for k, v in raw.items() if k and v}
 
 
+def _preserve_case(original: str, replacement: str) -> str:
+    if original.isupper():
+        return replacement.upper()
+    if original[:1].isupper():
+        return replacement[:1].upper() + replacement[1:]
+    return replacement
+
+
 def scrub_text(text: str, vocab: dict[str, str]) -> tuple[str, bool]:
     out = text
     changed = False
     mapping = {**_DEFAULT_NEUTRAL, **vocab}
     for term, repl in sorted(mapping.items(), key=lambda x: -len(x[0])):
-        if term.lower() in out.lower():
-            out = re.sub(re.escape(term), repl, out, flags=re.I)
+        if term.lower() == repl.lower():
+            continue
+        pattern = re.compile(re.escape(term), re.I)
+
+        def _sub(m: re.Match[str]) -> str:
+            return _preserve_case(m.group(0), repl)
+
+        new_out, n = pattern.subn(_sub, out)
+        if n:
+            out = new_out
             changed = True
+    deduped, n = _DUP_LABEL_RE.subn(r"\1", out)
+    if n:
+        out = deduped.strip()
+        changed = True
     return out, changed
+
+
+def _scrub_string_fields(obj: dict[str, Any], keys: tuple[str, ...], vocab: dict[str, str]) -> bool:
+    changed = False
+    for key in keys:
+        val = obj.get(key)
+        if isinstance(val, str):
+            new, ch = scrub_text(val, vocab)
+            if ch:
+                obj[key] = new
+                changed = True
+    return changed
 
 
 def scrub_draft_vocabulary(
@@ -55,31 +89,39 @@ def scrub_draft_vocabulary(
     *,
     pack: dict[str, Any] | None = None,
 ) -> list[str]:
-    """Scrub banned law-firm terms from descriptions, labels, and seed names."""
+    """Scrub banned law-firm terms from all user-visible draft surfaces."""
     vocab = _pack_vocab(pack)
     notes: list[str] = []
     for model in draft.get("models") or []:
         if not isinstance(model, dict):
             continue
-        for key in ("description", "string"):
-            val = model.get(key)
-            if isinstance(val, str):
-                new, ch = scrub_text(val, vocab)
-                if ch:
-                    model[key] = new
-                    notes.append(f"vocab: scrubbed {model.get('model')}.{key}")
+        if _scrub_string_fields(model, ("description", "string"), vocab):
+            notes.append(f"vocab: scrubbed {model.get('model')} description")
         for field in model.get("fields") or []:
             if not isinstance(field, dict):
                 continue
-            for key in ("string", "name"):
-                val = field.get(key)
-                if isinstance(val, str):
-                    new, ch = scrub_text(val, vocab)
-                    if ch and key == "string":
-                        field[key] = new
-                        notes.append(
-                            f"vocab: scrubbed {model.get('model')}.{field.get('name')}"
-                        )
+            if _scrub_string_fields(field, ("string",), vocab):
+                notes.append(
+                    f"vocab: scrubbed {model.get('model')}.{field.get('name')}"
+                )
+    for action in draft.get("actions") or []:
+        if isinstance(action, dict) and _scrub_string_fields(action, ("name",), vocab):
+            notes.append(f"vocab: scrubbed action {action.get('technical_name')}")
+    for menu in draft.get("menus") or []:
+        if isinstance(menu, dict) and _scrub_string_fields(menu, ("name",), vocab):
+            notes.append(f"vocab: scrubbed menu {menu.get('technical_name')}")
+    for btn in draft.get("smart_buttons") or []:
+        if isinstance(btn, dict) and _scrub_string_fields(btn, ("label",), vocab):
+            notes.append(f"vocab: scrubbed smart_button {btn.get('label')}")
+    for view in draft.get("views") or []:
+        if not isinstance(view, dict):
+            continue
+        arch = view.get("arch")
+        if isinstance(arch, str):
+            new, ch = scrub_text(arch, vocab)
+            if ch:
+                view["arch"] = new
+                notes.append(f"vocab: scrubbed view {view.get('name')}")
     return notes
 
 
@@ -126,4 +168,5 @@ __all__ = [
     "derive_domain_prefix",
     "find_hub_model",
     "scrub_draft_vocabulary",
+    "scrub_text",
 ]

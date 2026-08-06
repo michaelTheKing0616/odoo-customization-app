@@ -65,6 +65,7 @@ WAGE_LIKE_HEADERS = frozenset(
 # Dependency edges: parent model must exist before child model records
 MODEL_DEPENDENCY_EDGES: list[tuple[str, str]] = [
     ("product.category", "product.template"),
+    ("product.category", "product.product"),
     ("product.template", "product.product"),
     ("product.template", "product.pricelist.item"),
     ("product.product", "product.pricelist.item"),
@@ -79,3 +80,39 @@ MODEL_DEPENDENCY_EDGES: list[tuple[str, str]] = [
 ]
 
 FINANCIAL_DOC_TYPES: frozenset[DocType] = frozenset({"coa", "opening_trial_balance"})
+
+# Doc types that must not use generic dry_run_or_commit
+OPENING_TB_DOC_TYPE: DocType = "opening_trial_balance"
+
+# Doc types with dedicated commit handlers (not generic dry_run_or_commit)
+DEDICATED_COMMIT_DOC_TYPES: frozenset[DocType] = frozenset(
+    {"opening_trial_balance", "inventory_count"}
+)
+
+# Kept for backward-compatible imports; inventory now has a real path
+COMMIT_BLOCKED_DOC_TYPES: frozenset[DocType] = frozenset()
+
+# hr.employee fields we allow from roster extract (org only)
+EMPLOYEE_ORG_FIELDS: frozenset[str] = frozenset(
+    {
+        "name",
+        "work_email",
+        "work_phone",
+        "mobile_phone",
+        "department_id",
+        "job_id",
+        "parent_id",
+        "coach_id",
+        "company_id",
+        "user_id",
+        "work_contact_id",
+        "address_id",
+        "private_street",
+        "private_city",
+        "private_country_id",
+        "resource_calendar_id",
+    }
+)
+
+NotifyMode = str  # "batch_summary" | "individual"
+DEFAULT_NOTIFY_MODE = "batch_summary"

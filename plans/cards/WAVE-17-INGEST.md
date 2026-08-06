@@ -15,7 +15,7 @@ CHECKLIST:
       `qwen3-vl:*` is present — **do not pull large VL models until license note filed**.
 - [x] Short note in `MEMORY.md` or this card: Tongyi Qianwen vs Apache 2.0 Qwen3 —
       EU deploy needs separate agreement; no competing multimodal training. Decision:
-      `vision_tier: deferred|local_ok|eu_blocked`.
+      `vision_tier: local_ok` (2026-08-06 product-owner unlock; EU commercial still gated).
 - [x] Inventory existing import entrypoints (`data_import` routes, import UI) in 10 lines
       under `docs/research/ingest_reuse_inventory.md` (no code rewrite).
 
@@ -227,10 +227,36 @@ RETURN: ≤8 lines.
 
 After ING-8 (CSV-only path sufficient):
 
-- [ ] Upload 3 CSVs (customers, products, pricelist) unordered → plan shows products before
+- [x] Upload 3 CSVs (customers, products, pricelist) unordered → plan shows products before
       pricelist items; dry-run then commit on docker-19 or fake-client CI.
-- [ ] Re-upload updated products → upsert by SKU, no duplicates.
+- [x] Re-upload updated products → upsert by SKU, no duplicates.
 - [x] PROGRESS.md Wave 17 Slice A marked done (live smoke green when Odoo 19 up).
 
-Slice B/C/D each need their own mini GATE in PROGRESS when started — do not claim full
-doc coverage at Slice A.
+## Production hardening (post ING-9 — 2026-08-06)
+
+- [x] Opening TB: draft JE on Opening journal only — never auto-post / never raw move.line invent
+- [x] CoA align vs live/l10n codes + `allow_coa_as_is` financial confirm
+- [x] inventory_count commit blocked until dedicated stock path
+- [x] notify_mode: `batch_summary` | `individual`
+- [x] Live m2o resolve + fuzzy/exact dedupe; VAT/VIES via base_vat when installed
+- [x] Image + scanned PDF vision path; review UI confidence/override/commit log
+- [x] BoM product/UoM live ID resolve in map; employee org allowlist
+
+## CONTINUE gap-close (2026-08-06)
+
+- [x] True CoA remap: `suggest_coa_remaps` / `apply_coa_remap` + `POST .../coa-remap` + UI auto-align
+- [x] inventory_count dedicated path: `stock.quant` `inventory_quantity` + `action_apply_inventory`
+- [x] UoM resolve category-aware (`_resolve_uom` + product category hint; Odoo 19 `relative_uom_id`)
+- [x] Persist prefs: `ingest_prefs_json` on connection + GET/PATCH `/ingest/prefs` + UI save default
+- [x] Vision enable runbook: `docs/research/ingest_vision_enable.md`
+
+## Operator / external finish (2026-08-06)
+
+- [x] Alembic `f2a3b4c5d6e7` applied (ingest_prefs_json)
+- [x] `l10n_us` + `mrp` + `hr` installed on docker-19
+- [x] Slice B live: `tests/test_ingest_slice_b_live.py` (CoA align + opening TB dry path)
+- [x] Slice C/D live: `tests/test_ingest_slice_c_live.py` (BoM parent dry-run + employee org-only)
+- [x] Local `INGEST_VISION=ollama` + `qwen3-vl:8b` pull (see STATE for smoke result)
+- [ ] **EU Tongyi Qianwen commercial agreement** — human/legal only; cannot be agent-completed
+
+EU commercial vision marketing still needs Tongyi Qianwen agreement (owner/legal).

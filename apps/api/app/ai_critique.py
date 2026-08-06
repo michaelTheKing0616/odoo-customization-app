@@ -22,6 +22,12 @@ from app.settings import settings
 logger = logging.getLogger(__name__)
 
 _FIELD_RE = re.compile(r"^x_[A-Za-z0-9_]+$")
+_REPAIR_ADDED_FIELD = re.compile(r"^critique: added field ([^.]+)\.(\S+)$")
+_REPAIR_ADDED_MODEL = re.compile(r"^critique: added model (\S+)$")
+_REPAIR_ADDED_AUTO = re.compile(r"^critique: added automation (.+)$")
+_INVENTORY_NOTE_RE = re.compile(
+    r"lacks inventory|inventory management|inventory tracking", re.I
+)
 
 
 def critique_enabled() -> bool:
@@ -252,6 +258,16 @@ def _apply_missing_automations(draft: dict[str, Any], missing: list[Any]) -> lis
                 f"critique: skipped automation {row['name']} (unknown model {row['model']})"
             )
             continue
+        trigger = str(row.get("trigger") or "on_write")
+        domain = row.get("filter_domain")
+        if trigger == "on_write" and not (
+            isinstance(domain, str) and domain.strip()
+        ):
+            notes.append(
+                f"critique: skipped automation {row['name']} "
+                "(on_write requires filter_domain)"
+            )
+            continue
         raw_actions = row.get("safe_actions") or []
         if not isinstance(raw_actions, list) or not raw_actions:
             notes.append(f"critique: skipped empty automation {row['name']}")
@@ -273,9 +289,9 @@ def _apply_missing_automations(draft: dict[str, Any], missing: list[Any]) -> lis
             {
                 "name": row["name"],
                 "model": mid,
-                "trigger": row.get("trigger") or "on_write",
+                "trigger": trigger,
                 "description": row.get("description") or "",
-                "filter_domain": row.get("filter_domain"),
+                "filter_domain": domain,
                 "safe_actions": clean_actions,
                 "source": "critique",
             }
@@ -285,11 +301,145 @@ def _apply_missing_automations(draft: dict[str, Any], missing: list[Any]) -> lis
     return notes
 
 
-def _normalize_critique_block(critique: dict[str, Any], repair_notes: list[str]) -> dict[str, Any]:
+def _verify_repair_in_spec(draft: dict[str, Any], repair: str) -> bool:
+    """Return True when a logged repair is present in the final ModuleSpec."""
+    m = _REPAIR_ADDED_FIELD.match(repair)
+    if m:
+        mid, fname = m.group(1), m.group(2)
+        for model in draft.get("models") or []:
+            if not isinstance(model, dict) or str(model.get("model")) != mid:
+                continue
+            return fname in {
+                str(f.get("name"))
+                for f in (model.get("fields") or [])
+                if isinstance(f, dict)
+            }
+        return False
+    m = _REPAIR_ADDED_MODEL.match(repair)
+    if m:
+        mid = m.group(1)
+        return mid in {
+            str(x.get("model"))
+            for x in (draft.get("models") or [])
+            if isinstance(x, dict)
+        }
+    m = _REPAIR_ADDED_AUTO.match(repair)
+    if m:
+        name = m.group(1)
+        return name in {
+            str(a.get("name"))
+            for a in (draft.get("automations") or [])
+            if isinstance(a, dict)
+        }
+    return True
+
+
+def _draft_has_inventory_coverage(draft: dict[str, Any]) -> bool:
+    inv = ("inventory", "stock", "warehouse", "replenish", "count")
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        blob = f"{model.get('model')} {model.get('description')}".lower()
+        if any(k in blob for k in inv):
+            return True
+    reuse = draft.get("reuse") if isinstance(draft.get("reuse"), dict) else {}
+    for mid in reuse.get("models") or []:
+        if any(k in str(mid).lower() for k in inv):
+            return True
+    return False
+
+
+def _scrub_stale_critique_notes(
+    draft: dict[str, Any], notes_list: list[str]
+) -> list[str]:
+    if not _draft_has_inventory_coverage(draft):
+        return notes_list
+    return [n for n in notes_list if not _INVENTORY_NOTE_RE.search(str(n))]
+
+
+def _filter_off_schema_checklist(checklist: list[Any]) -> list[Any]:
+    allowed = {
+        "audit_trail",
+        "data_export",
+        "access_rules",
+        "menus",
+        "views",
+        "automations",
+        "workflows",
+        "depth",
+        "reuse",
+        "smart_buttons",
+    }
+    kept: list[Any] = []
+    for row in checklist:
+        if not isinstance(row, dict):
+            continue
+        cid = str(row.get("id") or "")
+        if cid and cid not in allowed:
+            continue
+        kept.append(row)
+    return kept
+
+
+def finalize_critique_block(draft: dict[str, Any]) -> list[str]:
+    """Reconcile `_critique.repairs` with the final spec after post-repair passes."""
+    crit = draft.get("_critique")
+    if not isinstance(crit, dict):
+        return []
+    warnings: list[str] = []
+    raw_repairs = list(crit.get("repairs") or [])
+    verified: list[str] = []
+    suggestions = list(crit.get("suggestions") or [])
+    for repair in raw_repairs:
+        if repair.startswith("critique: added") and not _verify_repair_in_spec(
+            draft, repair
+        ):
+            suggestion = repair.replace("critique: ", "unapplied: ", 1)
+            if suggestion not in suggestions:
+                suggestions.append(suggestion)
+            warnings.append(f"critique: ghost repair removed — {repair}")
+            continue
+        if repair.startswith(("critique: skipped", "shape:")):
+            if repair not in suggestions:
+                suggestions.append(repair)
+            continue
+        verified.append(repair)
+    notes_list = _scrub_stale_critique_notes(
+        draft, list(crit.get("notes") or [])
+    )
+    checklist = _filter_off_schema_checklist(list(crit.get("checklist") or []))
+    ready = bool(crit.get("ready"))
+    if suggestions and ready:
+        ready = False
+    if not notes_list and verified and not suggestions:
+        ready = True
+    crit["repairs"] = verified
+    crit["suggestions"] = suggestions
+    crit["notes"] = notes_list
+    crit["checklist"] = checklist
+    crit["ready"] = ready
+    draft["_critique"] = crit
+    return warnings
+
+
+def _normalize_critique_block(
+    critique: dict[str, Any],
+    applied_repairs: list[str],
+    *,
+    suggestions: list[str] | None = None,
+) -> dict[str, Any]:
     ready = bool(critique.get("ready"))
     notes_list = list(critique.get("notes") or [])
-    checklist = critique.get("checklist") or []
-    if not ready and not notes_list and not checklist and not repair_notes:
+    raw_checklist = list(critique.get("checklist") or [])
+    checklist = _filter_off_schema_checklist(raw_checklist)
+    sug = list(suggestions or [])
+    if (
+        not ready
+        and not notes_list
+        and not raw_checklist
+        and not applied_repairs
+        and not sug
+    ):
         ready = True
     if not ready and not notes_list:
         notes_list = [
@@ -299,7 +449,11 @@ def _normalize_critique_block(critique: dict[str, Any], repair_notes: list[str])
         "ready": ready,
         "checklist": checklist,
         "notes": notes_list,
-        "repairs": repair_notes,
+        "repairs": [r for r in applied_repairs if r.startswith("critique: added")],
+        "suggestions": [
+            *sug,
+            *(r for r in applied_repairs if not r.startswith("critique: added")),
+        ],
     }
 
 
@@ -310,7 +464,8 @@ def apply_critique_repairs(
 
     out = copy.deepcopy(draft)
     out, shape_w = validate_draft_response_shape(out)
-    notes: list[str] = list(shape_w)
+    applied: list[str] = []
+    suggestions: list[str] = list(shape_w)
     # LLM enrichment steps occasionally return a bare model object — never splice at root.
     if isinstance(critique.get("model"), str) and str(critique.get("model", "")).startswith("x_"):
         if not critique.get("missing_models") and isinstance(critique.get("fields"), list):
@@ -320,19 +475,24 @@ def apply_critique_repairs(
                 "missing_automations": critique.get("missing_automations") or [],
                 "notes": critique.get("notes") or [],
             }
-            notes.append("shape: wrapped bare model LLM response into missing_models")
+            suggestions.append("shape: wrapped bare model LLM response into missing_models")
     from app.ai_model_quality import filter_redundant_missing_models
 
-    notes.extend(_apply_missing_fields(out, critique.get("missing_fields") or []))
+    applied.extend(_apply_missing_fields(out, critique.get("missing_fields") or []))
     filtered = filter_redundant_missing_models(
         out, critique.get("missing_models") or []
     )
     skipped = len(critique.get("missing_models") or []) - len(filtered)
     if skipped:
-        notes.append(f"critique: skipped {skipped} hollow/thin/redundant missing_model(s)")
-    notes.extend(_apply_missing_models(out, filtered))
-    notes.extend(_apply_missing_automations(out, critique.get("missing_automations") or []))
-    out["_critique"] = _normalize_critique_block(critique, notes)
+        suggestions.append(
+            f"critique: skipped {skipped} hollow/thin/redundant missing_model(s)"
+        )
+    applied.extend(_apply_missing_models(out, filtered))
+    applied.extend(_apply_missing_automations(out, critique.get("missing_automations") or []))
+    out["_critique"] = _normalize_critique_block(
+        critique, applied, suggestions=suggestions
+    )
+    notes = applied + suggestions
     return out, notes
 
 
@@ -419,5 +579,6 @@ __all__ = [
     "critique_enabled",
     "run_self_critique",
     "apply_critique_repairs",
+    "finalize_critique_block",
     "llm_critique",
 ]

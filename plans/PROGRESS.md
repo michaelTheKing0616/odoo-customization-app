@@ -146,20 +146,25 @@ Re-verified 2026-08-03 (orchestrator + 3 checkers); REM-14 closed residual gaps 
 - [x] GEN2-7 Menu auto-grouping, smart-button label dedupe, line-total compute suggestion
 - [x] Bonus: AI draft JSON auto-cache (`ai_draft_cache` table + GET list/restore + wizard saved drafts)
 - [x] GEN2-8 Draft #3 punch list (2026-08-06): root payload leak validator, statusbar_visible, _llm_status finalize, form field grouping + redundant name drop, global x_country_id, slug stop-words, comprehensive workflow automation floor; live gate pass `llm_partial` → `gen2_run_2026-08-06.json`; 31 wave16 tests green
+- [x] GEN2-9 Draft #4 punch list (grade 7.5/10, first llm_full): ghost critique repairs → `finalize_critique_block` + `suggestions`; view sync → `sync_form_archs_to_models`; field quality gate; vocab scrub atomic; pack statusbar patch; critique staleness; fixture `draft_supermarket4_2026-08-06.json` (cache 06:32 UTC); 37 wave16 + 100 targeted regression green; full gate 1040 passed / 1 pre-existing job timeout flake
 
 ## Wave 17 — INGEST (Universal document pipeline)
 Orchestrator: `plans/UNIVERSAL_INGESTION_PIPELINE.md` · Cards: `plans/cards/WAVE-17-INGEST.md`
-- [x] ING-0 License + runtime inventory (vision_tier: **deferred**)
+- [x] ING-0 License + runtime inventory → **vision_tier: local_ok** (EU commercial still needs Tongyi agreement)
 - [x] ING-1 Canonical IngestBatch + job store (`d0e1f2a3b4c5`)
 - [x] ING-2 Classifier (closed vocab)
 - [x] ING-3 Extract CSV/XLSX + LLM column map fallback
-- [x] ING-4 PDF text + vision gate (qwen3-vl pull = operator final step)
-- [x] ING-5 Map + live/batch dedupe xref
+- [x] ING-4 PDF text + vision/image OCR path (`extract_vision.py`; enable `INGEST_VISION=ollama` + qwen3-vl)
+- [x] ING-5 Map + live m2o resolve + exact/fuzzy dedupe + VIES/VAT + CoA l10n align
 - [x] ING-6 Dependency topo-sort
-- [x] ING-7 Dry-run review UI + Playwright e2e
-- [x] ING-8 Commit + mail_notrack + live smoke
-- [x] ING-9 Expert interview → same pipeline
+- [x] ING-7 Dry-run review UI (confidence, override, notify mode, commit log) + Playwright e2e
+- [x] ING-8 Commit + notify_mode batch/individual + opening-TB draft JE + inventory_count block + live smoke
+- [x] ING-9 Expert interview → same pipeline (+ expense cats → product.category guidance)
 - [x] Slice A MVP live smoke (`test_ingest_slice_a_live.py`)
+- [x] Production guards suite (`test_ingest_production_guards.py`) — 37 ingest tests green
+- [x] CONTINUE (2026-08-06): CoA remap API/UI; inventory_count `stock.quant` path; UoM category-aware; connection `ingest_prefs_json` + GET/PATCH prefs; vision enable runbook — ingest suite green (incl. prefs/inventory)
+- [x] Operator finish (2026-08-06): alembic `f2a3b4c5d6e7`; docker-19 `l10n_us`+`mrp`+`hr`; Slice B/C/D live tests; `qwen3-vl:8b` pulled + vision smoke; Odoo 19 `relative_uom_id` UoM path
+- [ ] EU Tongyi commercial agreement (human/legal — not agent-completable)
 
 ## Wave 13 — DEV (developer code path; cards in WAVE-13-DEV.md; AFTER Wave 12)
 - [x] DEV-1 Code Studio: live code server actions + automations (probe-gated per instance) — core 2026-08-03

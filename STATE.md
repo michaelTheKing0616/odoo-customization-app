@@ -4,14 +4,20 @@
 
 ## Last run
 - Date: 2026-08-06
-- **Wave 17 deferred items shipped** (except qwen3-vl install): ING-3 LLM column map, ING-4 PDF text + vision gate + layout cache (`e1f2a3b4c5d6`), ING-5 dedupe, ING-7 Playwright e2e, ING-8 mail_notrack + live smoke, ING-9 Expert interview path.
-- Gates: `test_ingest_*.py` **30 passed**; alembic drift green; Slice A live smoke green on docker-19 when reachable.
-- **Final ING-4 step for operator:** `ollama pull qwen3-vl:8b` then `INGEST_VISION=ollama` in `.env`.
+- **Operator/external finish (then commit+push):**
+  - Alembic head `f2a3b4c5d6e7` (ingest_prefs_json) applied
+  - docker-19: installed `l10n_us`, `mrp`, `hr`
+  - Slice B/C/D live: `test_ingest_slice_b_live.py` + `test_ingest_slice_c_live.py` green
+  - `ollama pull qwen3-vl:8b` done; `INGEST_VISION=ollama` in local `.env`
+  - Vision smoke: `check_vision_model` ready + `extract_image_with_vision` OK
+  - Odoo 19 UoM: map uses `relative_uom_id` (no `category_id`); BoM CSV → nested tables + defaults
+- Gates: `pytest -k ingest` **57+** passed; Slice B/C integration 3 passed
+- **Cannot complete:** Tongyi Qianwen EU commercial agreement (human/legal only)
 
 ## Next
-- Operator: pull qwen3-vl when license cleared; scan PDF smoke.
-- Slice B/C: full pricelist.item multi-tier CSV fixtures; fuzzy dedupe merge UX.
+- Owner: file Tongyi agreement before marketing vision OCR in EU
+- Optional: live vision OCR on a real invoice scan (smoke used blank PNG)
 
 ## Rule
-- Code Studio = probe per connection, never hosting-tier assumption.
-- Bulk execute paths require dry-run receipt when `dry_run_first` is set in safety registry.
+- Opening balances never auto-post; inventory via dedicated stock.quant path only
+- Vision default-off in `.env.example`; local unlock ≠ EU commercial clearance

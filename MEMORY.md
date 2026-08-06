@@ -647,7 +647,15 @@ proxied frames), optionally themed from the connected instance's own extracted p
 **Follow-ups:**
 
 ### 2026-08-06 — Wave 17 ingest vision tier
-**Decided:** `vision_tier: deferred`. Local Ollama has qwen3:8b + qwen3:14b only; **no qwen3-vl** installed. Tongyi Qianwen license for VL models requires separate EU agreement — do not pull VL or ship vision OCR until product owner override. Text-PDF path (ING-4) blocked on same gate. Settings: `INGEST_VISION=off` (default), `INGEST_CLASSIFY_MIN_CONFIDENCE=0.55`.
-**Why:** ING-0 gate before any multimodal dependency; reuse CSV/XLSX path first (Slice A).
-**Rejected:** Cloud OCR; pulling 30B VL without license review.
-**Operator unlock:** `ollama pull qwen3-vl:8b` + `INGEST_VISION=ollama` — code path ready in `extract_vision.py`.
+**Decided (superseded 2026-08-06 evening):** was `vision_tier: deferred`.
+
+### 2026-08-06 — Vision tier product-owner unlock (local_ok)
+**Decided:** `vision_tier: local_ok`. Code path for PDF scans + image OCR is production-quality and gated by `INGEST_VISION=off|ollama` (default still off). Operator enables with `ollama pull qwen3-vl:8b` + `INGEST_VISION=ollama`. **EU commercial deploy** still requires separate Tongyi Qianwen agreement — do not market vision OCR to EU customers until that agreement is filed; non-EU / local-only use is unlocked.
+**Why:** Product owner ordered full Universal Ingest fidelity; vision code must not remain a stub.
+**Rejected:** Cloud OCR; shipping with vision default-on.
+**Operator unlock:** `ollama pull qwen3-vl:8b` + `INGEST_VISION=ollama`.
+
+### 2026-08-06 — Operator unlock executed; Tongyi EU legal remains owner-only
+**Decided:** Local vision operator path is complete (model pull + `INGEST_VISION=ollama` in local `.env`; compose wires `INGEST_VISION` / `OLLAMA_BASE_URL`). **Agents cannot execute Tongyi Qianwen commercial/EU license agreements** — that remains a human/legal action before marketing vision OCR to EU customers. Product code stays default-off in `.env.example` / deploy unless operator sets `INGEST_VISION=ollama`.
+**Why:** Finish all technical operator gates without falsely claiming a legal contract was signed.
+**Rejected:** Pretending EU commercial vision is cleared by a code change.

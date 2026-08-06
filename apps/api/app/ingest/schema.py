@@ -81,6 +81,7 @@ class IngestGap(BaseModel):
     field: str
     value: str
     message: str
+    severity: Literal["block", "warn"] = "block"
 
 
 class IngestPlanStep(BaseModel):
@@ -126,6 +127,10 @@ class IngestBatch(BaseModel):
     plan: IngestPlan | None = None
     commit_log: IngestCommitLog | None = None
     warnings: list[str] = Field(default_factory=list)
+    # batch_summary → suppress chatter/mail; individual → full Odoo notifications
+    notify_mode: Literal["batch_summary", "individual"] = "batch_summary"
+    allow_coa_as_is: bool = False
+    meta: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("files", "tables", mode="before")
     @classmethod

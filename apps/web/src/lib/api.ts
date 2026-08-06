@@ -2739,7 +2739,15 @@ export const api = {
   },
   ingestGetJob: (id: string, jobId: string) =>
     request<IngestJobOut>(`/api/connections/${id}/ingest/jobs/${jobId}`),
-  ingestDryRun: (id: string, jobId: string, body?: { batch_size?: number }) =>
+  ingestDryRun: (
+    id: string,
+    jobId: string,
+    body?: {
+      batch_size?: number;
+      notify_mode?: "batch_summary" | "individual";
+      allow_coa_as_is?: boolean;
+    },
+  ) =>
     request<IngestJobOut>(`/api/connections/${id}/ingest/jobs/${jobId}/dry-run`, {
       method: "POST",
       body: JSON.stringify(body ?? {}),
@@ -2747,11 +2755,57 @@ export const api = {
   ingestCommit: (
     id: string,
     jobId: string,
-    body?: { batch_size?: number; confirm_advanced?: boolean; confirm_phrase?: string | null },
+    body?: {
+      batch_size?: number;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+      notify_mode?: "batch_summary" | "individual";
+      allow_coa_as_is?: boolean;
+    },
   ) =>
     request<IngestJobOut>(`/api/connections/${id}/ingest/jobs/${jobId}/commit`, {
       method: "POST",
       body: JSON.stringify(body ?? {}),
+    }),
+  ingestOverride: (
+    id: string,
+    jobId: string,
+    body: { force_doc_types: Record<string, string> },
+  ) =>
+    request<IngestJobOut>(`/api/connections/${id}/ingest/jobs/${jobId}/override`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  ingestCoaRemap: (
+    id: string,
+    jobId: string,
+    body: { remap?: Record<string, string>; auto?: boolean; min_score?: number },
+  ) =>
+    request<IngestJobOut>(`/api/connections/${id}/ingest/jobs/${jobId}/coa-remap`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  ingestGetPrefs: (id: string) =>
+    request<{
+      notify_mode: "batch_summary" | "individual";
+      allow_coa_as_is_default: boolean;
+      coa_auto_remap_default: boolean;
+    }>(`/api/connections/${id}/ingest/prefs`),
+  ingestPatchPrefs: (
+    id: string,
+    body: {
+      notify_mode?: "batch_summary" | "individual";
+      allow_coa_as_is_default?: boolean;
+      coa_auto_remap_default?: boolean;
+    },
+  ) =>
+    request<{
+      notify_mode: "batch_summary" | "individual";
+      allow_coa_as_is_default: boolean;
+      coa_auto_remap_default: boolean;
+    }>(`/api/connections/${id}/ingest/prefs`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
     }),
   ingestVisionStatus: (id: string) =>
     request<{ enabled: boolean; ready: boolean; message: string; model: string }>(
@@ -3991,6 +4045,9 @@ export type IngestBatchOut = {
   plan: IngestPlanOut | null;
   commit_log: IngestCommitLogOut | null;
   warnings: string[];
+  notify_mode?: "batch_summary" | "individual";
+  allow_coa_as_is?: boolean;
+  meta?: Record<string, unknown>;
 };
 
 export type IngestJobOut = {

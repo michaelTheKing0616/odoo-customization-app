@@ -121,6 +121,41 @@ Evidence: third supermarket draft ("…branches around the world", 07:32). Save 
       comprehensive ambition prefers one real per-workflow automation (e.g. notify on
       order delivered) over the generic on_create filler seed.
 
+## GEN2-9 — Punch list from 2026-08-06 16:12 draft #4 (graded 7.5/10; first llm_full run)
+
+Fixture: pull from ai_draft_cache → `apps/api/tests/fixtures/draft_supermarket4_2026-08-06.json`.
+Infra is clean (llm_full, no leaks, honest status). These are content-quality bugs:
+
+- [x] BUG (trust): critique logs repairs it never applied ("added field x_branch.x_warehouse_id",
+      "added automation Inventory Reorder Alert" — neither in draft). Repairs list must be
+      derived from actual applied diffs, not the LLM's claim; unapplied suggestions go to a
+      separate `suggestions` list. Test: every logged repair verifiably present in the spec.
+      (`finalize_critique_block`; `repair_orphan_relations` keeps reuse-model FKs like stock.warehouse)
+- [x] BUG: enrichment fields never reach views — x_branch has 17 model fields, form arch
+      shows 6 (LLM defaults/timezone absent everywhere; order-line discount/tax/total too).
+      Re-run arch generation (or arch-patch) after every field-adding pass; test asserts
+      every non-o2m stored field appears in its model's form arch.
+      (`sync_form_archs_to_models` in enrich + quality pass)
+- [x] LLM field quality gate: reject placeholder selections (Option A/B pattern, single-letter
+      keys), collapse near-duplicate field sprays (5× x_default_*_pct), drop fields duplicating
+      an existing one by name-similarity + same ttype (x_default_currency_id vs x_currency_id).
+      Warn per rejection. (`gate_llm_field_quality`)
+- [x] BUG: vocab scrub produced "expense / expense" (lowercase dup of "Disbursement / expense")
+      on model description + menu + action while the smart button kept the old label. Scrub must
+      do whole-label replacement with casing preserved and apply to ALL surfaces (descriptions,
+      menus, actions, smart buttons, view strings) atomically. Test on this fixture.
+- [x] BUG: pack-provided view archs bypass the statusbar_visible fix (x_store_order/x_promotion/
+      x_branch_transfer forms still show cancelled) — run pack archs through the same arch
+      generator/patcher as generated models. Test: no workflow form arch shows negative
+      terminals in statusbar_visible.
+- [x] Critique consistency: `ready:false` + note "lacks inventory management" AFTER adding
+      x_branch_inventory — notes must be re-evaluated post-repair (or dropped when the repair
+      addressed them). Off-schema checklist ids (audit_trail, data_export) either map to real
+      spec checks or are excluded.
+- [x] Carry-over from GEN2-8 (not yet shipped in this run): form grouping + statusbar now fire
+      via `sync_form_archs_to_models` on fixture #4; `x_country_id` still prompt-gated
+      (global/international cues only — draft #4 prompt lacks them).
+
 GATE: `cd apps/api && uv run pytest -q -m "not integration"` 0 failed; fixture regression
 suite green; one live background-job draft of the supermarket prompt recorded to
 `docs/research/gen2_run_<date>.json` with `_llm_status.mode` ∈ {llm_full, llm_partial} (a

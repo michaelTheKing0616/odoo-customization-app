@@ -160,8 +160,39 @@ def build_batch_from_interview(
         batch.files[0].table_ids.append(tid)
 
     if answers.expense_categories:
+        # Guidance only — product.category rows for ops structure, never invent posted CoA
+        cat_rows: list[IngestRow] = []
+        for idx, line in enumerate(answers.expense_categories, start=1):
+            name = line.strip()
+            if not name:
+                continue
+            cat_rows.append(
+                IngestRow(
+                    raw={"name": name},
+                    values={},
+                    source_ref=f"interview:expense_cat:{idx}",
+                    flags=["interview_guidance_only"],
+                )
+            )
+        if cat_rows:
+            tid = str(uuid.uuid4())
+            tables.append(
+                IngestTable(
+                    id=tid,
+                    model="product.category",
+                    doc_type="other",
+                    mapping={"name": "name"},
+                    natural_key_fields=["name"],
+                    rows=cat_rows,
+                    warnings=[
+                        "Expense categories mapped to product.category for structure only — "
+                        "do not treat as fiscal CoA; align accounts via l10n_* separately"
+                    ],
+                )
+            )
+            batch.files[0].table_ids.append(tid)
         batch.warnings.append(
-            "expense categories captured for Expert/CoA guidance — not auto-posted: "
+            "expense categories → product.category guidance (not posted CoA): "
             + ", ".join(answers.expense_categories[:8])
         )
     if answers.business_name:

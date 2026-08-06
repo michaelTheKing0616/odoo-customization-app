@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -35,6 +36,7 @@ from app.llm_provider import LLMError, generate_json_with_timeout_retry
 
 FIXTURE2 = Path(__file__).parent / "fixtures" / "draft_supermarket2_2026-08-05.json"
 FIXTURE3 = Path(__file__).parent / "fixtures" / "draft_supermarket3_2026-08-06.json"
+FIXTURE4 = Path(__file__).parent / "fixtures" / "draft_supermarket4_2026-08-06.json"
 SUPERMARKET_PROMPT = "A large mega Super Market with multiple branches"
 SUPERMARKET3_PROMPT = "A large, mega super market with multiple branches around the world"
 
@@ -45,6 +47,10 @@ def _load_fixture2() -> dict[str, Any]:
 
 def _load_fixture3() -> dict[str, Any]:
     return json.loads(FIXTURE3.read_text())
+
+
+def _load_fixture4() -> dict[str, Any]:
+    return json.loads(FIXTURE4.read_text())
 
 
 def test_sanitize_removes_top_level_error() -> None:
@@ -615,3 +621,91 @@ def test_supermarket3_fixture_form_rebuild_drops_manager_name() -> None:
     form = next(v for v in draft["views"] if v["model"] == "x_branch" and v["type"] == "form")
     assert "x_manager_name" not in form["arch"]
     assert 'group string="Contact"' in form["arch"] or 'group string="Location"' in form["arch"]
+
+
+def test_finalize_critique_removes_ghost_repairs_from_fixture4() -> None:
+    from app.ai_critique import finalize_critique_block
+
+    draft = _load_fixture4()
+    repairs_before = list((draft.get("_critique") or {}).get("repairs") or [])
+    assert any("x_warehouse_id" in r for r in repairs_before)
+    finalize_critique_block(draft)
+    crit = draft["_critique"]
+    repairs = crit.get("repairs") or []
+    suggestions = crit.get("suggestions") or []
+    for repair in repairs:
+        if repair.startswith("critique: added field"):
+            _, rest = repair.split("added field ", 1)
+            mid, fname = rest.split(".", 1)
+            model = next(m for m in draft["models"] if m["model"] == mid)
+            assert fname in {f["name"] for f in model["fields"]}
+        elif repair.startswith("critique: added automation"):
+            name = repair.split("added automation ", 1)[1]
+            assert name in {a.get("name") for a in draft.get("automations") or []}
+    assert any("unapplied" in s and "x_warehouse_id" in s for s in suggestions)
+
+
+def test_supermarket4_fixture_sync_form_includes_enrichment_fields() -> None:
+    from app.ai_enrich import sync_form_archs_to_models
+
+    draft = _load_fixture4()
+    sync_form_archs_to_models(draft)
+    branch = next(m for m in draft["models"] if m["model"] == "x_branch")
+    stored = {
+        f["name"]
+        for f in branch["fields"]
+        if f.get("ttype") not in {"one2many", "many2many"}
+    }
+    form = next(v for v in draft["views"] if v["model"] == "x_branch" and v["type"] == "form")
+    arch_names = set(re.findall(r'name="(x_[^"]+)"', form["arch"]))
+    assert stored <= arch_names
+    assert "x_timezone" in arch_names
+    assert 'group string="Contact"' in form["arch"] or 'group string="Details"' in form["arch"]
+
+
+def test_supermarket4_fixture_statusbar_hides_cancelled_on_pack_views() -> None:
+    from app.ai_enrich import sync_form_archs_to_models
+
+    draft = _load_fixture4()
+    apply_semantic_workflow_pass(draft)
+    sync_form_archs_to_models(draft)
+    for mid in ("x_store_order", "x_promotion", "x_branch_transfer"):
+        model = next(m for m in draft["models"] if m["model"] == mid)
+        visible = model["state_field"]["statusbar_visible"]
+        assert "cancelled" not in visible
+        form = next(v for v in draft["views"] if v["model"] == mid and v["type"] == "form")
+        sb = re.search(r'statusbar_visible="([^"]+)"', form["arch"])
+        assert sb is not None
+        assert "cancelled" not in sb.group(1)
+
+
+def test_reuse_stock_warehouse_field_not_dropped_as_orphan() -> None:
+    from app.ai_model_quality import repair_orphan_relations
+
+    draft = {
+        "reuse": {"models": ["stock.warehouse"]},
+        "models": [
+            {
+                "model": "x_branch",
+                "fields": [
+                    {
+                        "name": "x_warehouse_id",
+                        "ttype": "many2one",
+                        "relation": "stock.warehouse",
+                    }
+                ],
+            }
+        ],
+    }
+    repair_orphan_relations(draft)
+    names = {f["name"] for f in draft["models"][0]["fields"]}
+    assert "x_warehouse_id" in names
+
+
+def test_vocab_scrub_no_expense_slash_expense_duplicate() -> None:
+    from app.ai_vocab_scrub import scrub_text
+
+    out, changed = scrub_text("Disbursement / expense tracking", {})
+    assert changed
+    assert "expense / expense" not in out.lower()
+    assert "expense" in out.lower()

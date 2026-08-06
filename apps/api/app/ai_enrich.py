@@ -419,6 +419,105 @@ def _view_arch_field_names(arch: str) -> set[str]:
     return set(re.findall(r'name="(x_[A-Za-z0-9_]+)"', arch or ""))
 
 
+def _stored_form_field_names(model: dict[str, Any]) -> set[str]:
+    """Scalar + binary image fields that belong on a form arch (not O2M/M2M lines)."""
+    names: set[str] = set()
+    for f in _field_list(model):
+        name = str(f.get("name") or "")
+        ttype = str(f.get("ttype") or "").lower()
+        if ttype in {"one2many", "many2many"}:
+            continue
+        if ttype == "binary" and not is_image_field(f):
+            continue
+        if name:
+            names.add(name)
+    return names
+
+
+def _expected_statusbar_visible(model: dict[str, Any]) -> str | None:
+    sf = model.get("state_field") if isinstance(model.get("state_field"), dict) else {}
+    visible = sf.get("statusbar_visible")
+    if isinstance(visible, list) and visible:
+        return ",".join(str(k) for k in visible if k)
+    return None
+
+
+def _arch_statusbar_visible(arch: str) -> str | None:
+    m = re.search(r'statusbar_visible="([^"]*)"', arch or "")
+    return m.group(1) if m else None
+
+
+def sync_form_archs_to_models(draft: dict[str, Any]) -> list[str]:
+    """Rebuild form views when model fields or statusbar_visible drift from the arch."""
+    notes: list[str] = []
+    by_id = {
+        str(m["model"]): m
+        for m in (draft.get("models") or [])
+        if isinstance(m, dict) and m.get("model")
+    }
+    try:
+        odoo_major = int(draft.get("odoo_major") or 19)
+    except (TypeError, ValueError):
+        odoo_major = 19
+    smart_by_model: dict[str, list[dict[str, Any]]] = {}
+    for btn in draft.get("smart_buttons") or []:
+        if isinstance(btn, dict) and btn.get("on_model"):
+            smart_by_model.setdefault(str(btn["on_model"]), []).append(btn)
+    views = draft.get("views")
+    if not isinstance(views, list):
+        return notes
+    rebuilt = 0
+    for v in views:
+        if not isinstance(v, dict) or v.get("type") != "form":
+            continue
+        mid = str(v.get("model") or "")
+        model = by_id.get(mid)
+        if not model:
+            continue
+        fields = _field_list(model)
+        stored = _stored_form_field_names(model)
+        arch = str(v.get("arch") or "")
+        arch_names = _view_arch_field_names(arch)
+        missing = stored - arch_names
+        expected_sb = _expected_statusbar_visible(model)
+        actual_sb = _arch_statusbar_visible(arch)
+        statusbar_stale = bool(
+            expected_sb is not None
+            and "statusbar" in arch
+            and actual_sb != expected_sb
+        )
+        rel_names = {
+            str(f.get("name"))
+            for f in fields
+            if str(f.get("ttype") or "") in {"one2many", "many2many", "binary"}
+            and (str(f.get("ttype")) != "binary" or is_image_field(f))
+        }
+        missing_rel = rel_names - arch_names
+        if not missing and not statusbar_stale and not missing_rel:
+            continue
+        sf = model.get("state_field") if isinstance(model.get("state_field"), dict) else {}
+        tr = sf.get("transitions") if isinstance(sf.get("transitions"), list) else None
+        sb_vis = (
+            sf.get("statusbar_visible")
+            if isinstance(sf.get("statusbar_visible"), list)
+            else None
+        )
+        v["arch"] = _build_form_arch(
+            str(model.get("description") or mid),
+            fields,
+            smart_buttons=smart_by_model.get(mid),
+            transitions=tr,
+            statusbar_visible=sb_vis,
+            odoo_major=odoo_major,
+        )
+        rebuilt += 1
+    if rebuilt:
+        notes.append(
+            f"enrich: synced {rebuilt} form arch(es) to model fields/statusbar"
+        )
+    return notes
+
+
 def _rebuild_stale_views(
     draft: dict[str, Any],
     new_models: list[dict[str, Any]],
@@ -644,6 +743,7 @@ def ensure_default_ui(draft: dict[str, Any]) -> list[str]:
         warnings.append(f"added {added_views} default view arch(es)")
 
     warnings.extend(_rebuild_stale_views(draft, new_models, odoo_major=odoo_major))
+    warnings.extend(sync_form_archs_to_models(draft))
     return warnings
 
 

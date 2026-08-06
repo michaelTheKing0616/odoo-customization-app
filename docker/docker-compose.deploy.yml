@@ -49,6 +49,9 @@ services:
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
       AUDIT_LOG_ENABLED: ${AUDIT_LOG_ENABLED:-true}
       AI_ASSIST: ${AI_ASSIST:-off}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      INGEST_VISION: ${INGEST_VISION:-off}
+      INGEST_VISION_MODEL: ${INGEST_VISION_MODEL:-qwen3-vl:8b}
       # Empty = sandbox Docker disabled (safe default for containerized API)
       SANDBOX_DOCKER_SOCKET: ${SANDBOX_DOCKER_SOCKET:-}
       DB_MIGRATIONS: ${DB_MIGRATIONS:-auto}

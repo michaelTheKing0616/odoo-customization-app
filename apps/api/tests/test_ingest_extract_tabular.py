@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.industry_seeds import partner_seed, product_seed
-from app.ingest.extract_tabular import extract_tabular_bytes
+from app.ingest.extract_tabular import extract_tabular_bytes, extract_tabular_file
 
 
 def _csv_from_seed(pack_fn, model: str) -> bytes:
@@ -39,3 +39,17 @@ def test_employee_roster_strips_wage_columns() -> None:
     assert table.model == "hr.employee"
     assert any("stripped payroll" in w for w in table.warnings)
     assert "salary" not in table.rows[0].raw
+
+
+def test_bom_csv_expands_to_parent_and_lines() -> None:
+    raw = (
+        "product_code,component_code,quantity,uom\n"
+        "ASSY-1,PART-A,2,Units\n"
+        "ASSY-1,PART-B,1,Units\n"
+    ).encode()
+    tables = extract_tabular_file(filename="bom.csv", raw=raw, doc_type="bom")
+    models = [t.model for t in tables]
+    assert "mrp.bom" in models
+    assert "mrp.bom.line" in models
+    lines = next(t for t in tables if t.model == "mrp.bom.line")
+    assert len(lines.rows) == 2

@@ -508,6 +508,11 @@ def draft_module_from_prompt(
                 client=client,
                 warnings=warnings,
             )
+            from app.ai_critique import finalize_critique_block
+            from app.ai_enrich import sync_form_archs_to_models
+
+            warnings.extend(sync_form_archs_to_models(draft))
+            warnings.extend(finalize_critique_block(draft))
             return draft, raw, warnings, refusals
         except LLMError as exc:
             raise AiAssistUnavailable(str(exc), status_code=exc.status_code) from exc
@@ -719,6 +724,9 @@ def draft_module_from_prompt(
     from app.ai_llm_status import STEP_LABELS, attach_llm_status, finalize_llm_status, sanitize_draft_payload
 
     draft = sanitize_draft_payload(draft)
+    from app.ai_critique import finalize_critique_block
+
+    warnings.extend(finalize_critique_block(draft))
     failed_steps = [
         w.split(":")[0]
         for w in warnings

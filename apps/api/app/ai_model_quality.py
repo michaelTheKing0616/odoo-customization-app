@@ -918,7 +918,18 @@ def repair_orphan_relations(draft: dict[str, Any]) -> list[str]:
 
     notes: list[str] = []
     draft_ids = _model_ids(draft)
-    known = draft_ids | set(_BUILTIN_MODELS)
+    reuse_known: set[str] = set()
+    reuse = draft.get("reuse")
+    if isinstance(reuse, dict):
+        for mid in reuse.get("models") or []:
+            if mid:
+                reuse_known.add(str(mid))
+        plan = reuse.get("plan")
+        if isinstance(plan, dict):
+            for mid in plan.get("models") or []:
+                if mid:
+                    reuse_known.add(str(mid))
+    known = draft_ids | set(_BUILTIN_MODELS) | reuse_known
     for m in draft.get("models") or []:
         if not isinstance(m, dict):
             continue
@@ -1533,6 +1544,77 @@ def scrub_invalid_related_writes(draft: dict[str, Any]) -> list[str]:
     return notes
 
 
+_PLACEHOLDER_SELECTION_RE = re.compile(
+    r"^(option_[a-z]|specialty_[a-z]|area_[a-z]|type_[a-z])$",
+    re.I,
+)
+_DEFAULT_SPRAY_RE = re.compile(r"^x_default_.+_(pct|percent|rate|amount)$", re.I)
+
+
+def gate_llm_field_quality(draft: dict[str, Any]) -> list[str]:
+    """Reject placeholder selections, duplicate sprays, and near-duplicate fields."""
+    notes: list[str] = []
+    for m in draft.get("models") or []:
+        if not isinstance(m, dict):
+            continue
+        mid = str(m.get("model") or "")
+        fields = [f for f in (m.get("fields") or []) if isinstance(f, dict)]
+        kept: list[dict[str, Any]] = []
+        seen_names: set[str] = set()
+        spray_groups: dict[str, list[dict[str, Any]]] = {}
+        for f in fields:
+            fname = str(f.get("name") or "")
+            ttype = str(f.get("ttype") or "")
+            if ttype == "selection":
+                sel = str(f.get("selection") or "")
+                keys = re.findall(r"\('([^']+)'\s*,", sel)
+                if any(_PLACEHOLDER_SELECTION_RE.match(k) for k in keys):
+                    notes.append(
+                        f"quality: placeholder selection keys on {mid}.{fname} "
+                        "(will be normalized)"
+                    )
+            if fname in seen_names:
+                notes.append(f"quality: dropped duplicate field {mid}.{fname}")
+                continue
+            if _DEFAULT_SPRAY_RE.match(fname):
+                base = fname.replace("x_default_", "x_", 1)
+                if base in {str(x.get("name")) for x in fields} or any(
+                    str(x.get("name")) == base for x in kept
+                ):
+                    notes.append(
+                        f"quality: dropped duplicate spray {mid}.{fname} (≈ {base})"
+                    )
+                    continue
+                spray_groups.setdefault("default_spray", []).append(f)
+            if fname == "x_default_currency_id":
+                if any(
+                    str(x.get("name")) == "x_currency_id"
+                    for x in fields + kept
+                ):
+                    notes.append(
+                        f"quality: dropped {mid}.x_default_currency_id (x_currency_id exists)"
+                    )
+                    continue
+            kept.append(f)
+            seen_names.add(fname)
+        # Collapse excessive default_*_pct sprays — keep first two
+        sprays = [
+            f
+            for f in kept
+            if _DEFAULT_SPRAY_RE.match(str(f.get("name") or ""))
+            and str(f.get("ttype") or "") in {"float", "integer", "monetary"}
+        ]
+        if len(sprays) > 2:
+            drop = {id(f) for f in sprays[2:]}
+            kept = [f for f in kept if id(f) not in drop]
+            notes.append(
+                f"quality: collapsed {len(sprays) - 2} near-duplicate default pct field(s) on {mid}"
+            )
+        if len(kept) != len(fields):
+            m["fields"] = kept
+    return notes
+
+
 def scrub_placeholder_selections(draft: dict[str, Any]) -> list[str]:
     """Replace specialty_a / option_a style selection keys with usable labels."""
     notes: list[str] = []
@@ -1839,57 +1921,10 @@ def cap_partner_smart_buttons(draft: dict[str, Any], *, max_partner: int = 4) ->
 
 
 def refresh_forms_missing_relational_fields(draft: dict[str, Any]) -> list[str]:
-    """Rebuild form arches that omit one2many/many2many/binary fields on the model."""
-    from app.ai_enrich import _build_form_arch, _field_list, _view_arch_field_names
+    """Rebuild form arches that omit stored model fields or stale statusbars."""
+    from app.ai_enrich import sync_form_archs_to_models
 
-    notes: list[str] = []
-    by_id = {
-        str(m["model"]): m
-        for m in (draft.get("models") or [])
-        if isinstance(m, dict) and m.get("model")
-    }
-    try:
-        odoo_major = int(draft.get("odoo_major") or 19)
-    except (TypeError, ValueError):
-        odoo_major = 19
-    smart_by_model: dict[str, list[dict[str, Any]]] = {}
-    for btn in draft.get("smart_buttons") or []:
-        if isinstance(btn, dict) and btn.get("on_model"):
-            smart_by_model.setdefault(str(btn["on_model"]), []).append(btn)
-    views = draft.get("views")
-    if not isinstance(views, list):
-        return notes
-    rebuilt = 0
-    for v in views:
-        if not isinstance(v, dict) or v.get("type") != "form":
-            continue
-        mid = str(v.get("model") or "")
-        model = by_id.get(mid)
-        if not model:
-            continue
-        fields = _field_list(model)
-        rel_names = {
-            str(f.get("name"))
-            for f in fields
-            if str(f.get("ttype") or "") in {"one2many", "many2many", "binary"}
-        }
-        if not rel_names:
-            continue
-        arch_names = _view_arch_field_names(str(v.get("arch") or ""))
-        if rel_names <= arch_names:
-            continue
-        v["arch"] = _build_form_arch(
-            str(model.get("description") or mid),
-            fields,
-            smart_buttons=smart_by_model.get(mid),
-            odoo_major=odoo_major,
-        )
-        rebuilt += 1
-    if rebuilt:
-        notes.append(
-            f"quality: refreshed {rebuilt} form(s) to include O2M/binary fields"
-        )
-    return notes
+    return sync_form_archs_to_models(draft)
 
 
 def normalize_automation_shapes(draft: dict[str, Any]) -> list[str]:
@@ -2860,6 +2895,7 @@ def repair_draft_integrity(draft: dict[str, Any], *, ambition: str = "standard")
     notes: list[str] = []
     notes.extend(strip_internal_scaffold(draft))
     notes.extend(dedupe_fields_by_name(draft))
+    notes.extend(gate_llm_field_quality(draft))
     notes.extend(normalize_selection_field_shapes(draft))
     notes.extend(fill_empty_selection_fields(draft))
     notes.extend(scrub_placeholder_selections(draft))

@@ -1,31 +1,39 @@
-# ING-4 vision enable — operator checklist
+# Enable Vision OCR for Universal Ingest
 
-**Status:** Code complete. **Final step:** install the model.
+Default: `INGEST_VISION=off` (text/CSV/XLSX/PDF text layer only).
 
-## When text PDF works (default)
+## Local Ollama path
 
-- Upload `.pdf` with extractable text → `extract_pdf.py` (pypdf + LLM/deterministic).
-- No vision model required.
+1. Install/start Ollama.
+2. Pull a vision model (operator approval required — large download):
 
-## When you need scan/image PDFs
-
-1. Confirm license note in `MEMORY.md` (Tongyi Qianwen / EU agreement).
-2. Pull the model:
    ```bash
    ollama pull qwen3-vl:8b
    ```
-3. Enable in API env:
-   ```bash
-   INGEST_VISION=ollama
-   INGEST_VISION_MODEL=qwen3-vl:8b
-   ```
-4. Verify:
-   ```bash
-   curl -s http://127.0.0.1:8001/api/connections/{id}/ingest/vision/status
-   ```
-   Expect `"ready": true`.
 
-## What happens
+3. Set API env:
 
-- Text-empty PDFs route to `extract_vision.py` → Ollama chat with image → same map/order/commit pipeline.
-- Layout fingerprints cached in `ingest_layout_cache` for repeat supplier docs.
+   ```bash
+   export INGEST_VISION=ollama
+   export OLLAMA_HOST=http://127.0.0.1:11434   # if non-default
+   export INGEST_VISION_MODEL=qwen3-vl:8b       # optional override
+   ```
+
+4. Restart the API. Check:
+
+   `GET /api/connections/{id}/ingest/vision/status`
+
+   Expect `enabled: true`, `ready: true` when the model is present.
+
+5. Upload JPEG/PNG/WebP on the ingest page; extract uses `extract_vision.py`.
+
+## EU commercial note
+
+`qwen3-vl` / Tongyi terms may require a separate commercial agreement for EU marketing claims.
+Local R&D / sandbox use is the current product default (`MEMORY.md`: `vision_tier: local_ok`).
+Do not market “vision OCR included for EU customers” until legal clears Tongyi.
+
+## Fallback
+
+If vision is off or the model is missing, image uploads are rejected with a clear message;
+use PDF text or tabular files instead.

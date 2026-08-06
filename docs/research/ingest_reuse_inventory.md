@@ -1,6 +1,6 @@
 # Ingest reuse inventory (ING-0)
 
-**Date:** 2026-08-06 · **Vision decision:** `deferred` (qwen3-vl not installed; Tongyi license review before ship)
+**Date:** 2026-08-06 · **Vision decision:** `local_ok` (code ready; enable with pull + `INGEST_VISION=ollama`; EU commercial still needs Tongyi agreement)
 
 ## Ollama runtime
 

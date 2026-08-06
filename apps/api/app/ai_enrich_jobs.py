@@ -79,6 +79,11 @@ def run_enrich_job_body(
             warnings.extend(c_w)
 
     working = sanitize_draft_payload(working)
+    from app.ai_critique import finalize_critique_block
+    from app.ai_enrich import sync_form_archs_to_models
+
+    warnings.extend(sync_form_archs_to_models(working))
+    warnings.extend(finalize_critique_block(working))
     attach_llm_status(working, mode="llm_full", completed_steps=list(steps))
 
     db = db_factory()
