@@ -156,6 +156,88 @@ Infra is clean (llm_full, no leaks, honest status). These are content-quality bu
       via `sync_form_archs_to_models` on fixture #4; `x_country_id` still prompt-gated
       (global/international cues only — draft #4 prompt lacks them).
 
+## GEN2-10 — Punch list from 2026-08-07 09:20 draft #5 (graded 8/10; enrichment-merge run)
+
+Fixture: pull from ai_draft_cache → `apps/api/tests/fixtures/draft_supermarket5_2026-08-07.json`.
+GEN2-9 verifiably landed (honest repairs+suggestions, fields-in-views, pack statusbar sync,
+country, vocab). Remaining: critique output bypasses the scaffolding pipeline.
+
+- [x] BUG (structural): critique-added models get NO views/actions/menus/access rules
+      (x_branch_transfer_line, x_inventory_adjustment, x_compliance_check,
+      x_event_registration — 14 models, 10 actions). After the critique pass, re-run the
+      SAME scaffolding chain as pack/LLM models (views, action, menu placement, access user+
+      manager, kanban-if-workflow). Harden completeness: `has_views` verifies EVERY model
+      has ≥ list+form; new per-model checks for action/menu/access. Test on fixture.
+- [x] BUG: line models must link their parent — `*_line` model requires m2o to the parent
+      (x_branch_transfer_line lacks x_transfer_id; instead duplicates parent's from/to
+      branch, date, country — drop those, add o2m back-ref + smart button on parent).
+      Deterministic rule keyed on `_line` suffix / critique "line" intent.
+- [x] BUG: normalizer must run post-critique — critique-added selections shipped as
+      array-of-arrays (canonical = python-literal string); is_workflow models with x_status
+      but no state_field get workflow synthesis (x_inventory_adjustment regression) +
+      kanban + statusbar arch. Test: no non-string selections, no workflow model without
+      state_field anywhere in final draft.
+- [x] Noun-coverage stop-words: share the slug stop-word list + noun filter — no more
+      `noun_uncovered:around` / `noun_uncovered:world` false positives. Test.
+- [x] Lifecycle ordering: state classifier orders by lifecycle lexicon (planned/draft/new <
+      open/active < closed/done) instead of trusting LLM listing order — fixes
+      open→planned→closed on x_branch. Button labels from target state ("Close") not
+      generic "Complete".
+- [x] Critique automation quality: `on_create` + `object_write`-status combos are rewritten
+      to mail_post/next_activity (auto-confirming every record contradicts its own draft
+      state) or dropped with warning; names humanized (no snake_case); empty descriptions
+      filled from name.
+- [x] Polish: `_llm_status` step/step_label finalized on the enrichment path too (frozen at
+      0 again); repair log says "merged (already present)" when the field pre-existed
+      (x_currency_id); near-dup detector flags same-label different-ttype (x_address char vs
+      x_address_id m2o both "Address"); enrichment merge must PRESERVE the existing draft's
+      prompt-derived technical_name/display_name (became pack id "retail_supermarket").
+
+## GEN2-11 — 10/10 finisher: production-shaped drafts (search, sequences, money, rules, arch polish)
+
+Defect-free ≠ 10/10. These are the things every real Odoo app has that drafts still lack.
+
+- [x] Search views: every model with an action gets a search arch — filters for status
+      (per state), date ranges (this month/overdue where date fields exist), my-records
+      (user m2o), plus group-by for every m2o to a draft model + status. Deterministic
+      generation from fields; test: every actioned model has a search view with ≥2 filters.
+- [x] Wire ir.sequence for real: x_code fields emit a sequence spec (prefix from model,
+      padding 5) consumed by module export AND live apply (base_automation on_create or
+      default via ir.sequence — use the existing CMP-1 verified mechanism). Help text
+      "wire later" is replaced by the actual wiring. Test + sandbox smoke.
+- [x] Money correctness: float amount fields with a sibling currency m2o become monetary
+      widget pairs in archs (`widget="monetary"` + currency_field); status selections get
+      `tracking=True` (chatter logs transitions); defaults: status = first active state,
+      date fields named x_date/x_date_order default today where sensible. Tests.
+- [x] Multi-company record rules: when models carry x_company_id, emit the standard
+      company ir.rule (`['|',('x_company_id','=',False),('x_company_id','in',company_ids)]`)
+      per model in module + live apply (CMP-11 templates). Test.
+- [x] Arch polish: o2m lists move to notebook pages with meaningful columns (not just
+      x_name — include qty/price/date/status when present); kanban cards show 2–3 key
+      fields + status badge; smart buttons render in a button-box; widget hints
+      (many2one_avatar_user for res.users m2o, date widgets). Golden-file tests on the
+      supermarket fixture.
+
+## GEN2-12 — Automated draft scorecard (encode the orchestrator's rubric; gate ≥9)
+
+Make 10/10 measurable instead of orchestrator-vibes. Deterministic scorer, no LLM needed.
+
+- [x] `draft_scorecard(spec) -> {score_0_10, dimensions, findings}` scoring five dimensions
+      (weights): domain_fit (prompt nouns covered, no foreign-domain lexicon) 25%;
+      structure (per-model views/action/menu/access/search, line-parent links, no orphans)
+      25%; semantics (workflow transitions sane per lifecycle lexicon, no terminal
+      outgoing edges, automations have domains/sane actions) 20%; ux (search filters,
+      monetary pairing, notebook/o2m, kanban richness, menu grouping, no dup labels) 15%;
+      hygiene (canonical selections, no placeholder options, no leaked internals, counts
+      consistent, honest _llm_status) 15%. Every finding names the offending element.
+- [x] Run automatically after every draft; result in `_scorecard` + wizard chip
+      ("Draft quality: 9.2/10") with expandable findings list per COPY_GUIDE.
+- [x] Regression: score all 5 supermarket fixtures + law-firm fixture — asserts monotonic
+      floor (fixture 5 ≥ 8, post-GEN2-10/11 live regen ≥ 9). CI gate: live regen scoring
+      < 9 fails the wave gate with findings printed.
+- [x] Feed critique: scorecard findings become the critique pass's required-repairs input
+      (closing the loop: score → repair → rescore; stop at ≥9 or 2 iterations).
+
 GATE: `cd apps/api && uv run pytest -q -m "not integration"` 0 failed; fixture regression
 suite green; one live background-job draft of the supermarket prompt recorded to
 `docs/research/gen2_run_<date>.json` with `_llm_status.mode` ∈ {llm_full, llm_partial} (a

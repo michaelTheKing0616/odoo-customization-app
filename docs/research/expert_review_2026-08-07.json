@@ -1,0 +1,7 @@
+{
+  "prompt": "A large, mega, super market with multiple branches around the world",
+  "score_before": 7.19,
+  "score_after": 9.76,
+  "verdict": "ready",
+  "review_markdown": "**Draft quality: 7.2/10**\n\nTop findings:\n- [Fix available] Structure: model_ui:x_branch_transfer_line: missing list/form views; missing action; missing menu; missing access\n- [Fix available] Structure: model_ui:x_compliance_check: missing list/form views; missing action; missing menu; missing access\n- [Fix available] Structure: model_ui:x_event_registration: missing list/form views; missing action; missing menu; missing access\n- [Fix available] Structure: model_ui:x_inventory_adjustment: missing list/form views; missing action; missing menu; missing access\n- [Fix available] Semantics: x_inventory_adjustment: workflow model missing state_field\n- [Suggestion] Ux: x_branch: missing search view\n- [Suggestion] Ux: x_branch_transfer: missing search view\n- [Suggestion] Ux: x_event: missing search view\n\nAfter deterministic fixes: **9.8/10**"
+}

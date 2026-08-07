@@ -481,7 +481,24 @@ def completeness_checklist(
 
     add("has_models", bool(models), f"{len(models)} model(s)")
     add("has_menus", bool(draft.get("menus")), "")
-    add("has_views", bool(draft.get("views")), "")
+    by_id = _models_index(draft)
+    view_types: dict[str, set[str]] = {}
+    for v in draft.get("views") or []:
+        if isinstance(v, dict) and v.get("model"):
+            view_types.setdefault(str(v["model"]), set()).add(str(v.get("type") or ""))
+    models_missing_views = [
+        mid
+        for mid in by_id
+        if not (
+            ("list" in view_types.get(mid, set()) or "tree" in view_types.get(mid, set()))
+            and "form" in view_types.get(mid, set())
+        )
+    ]
+    add(
+        "has_views",
+        not models_missing_views,
+        ",".join(models_missing_views) if models_missing_views else f"{len(view_types)} model view sets",
+    )
     workflow_models = [
         mid for mid, m in models.items() if "x_status" in _field_names(m)
     ]

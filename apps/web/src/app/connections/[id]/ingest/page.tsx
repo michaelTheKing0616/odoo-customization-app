@@ -186,7 +186,7 @@ export default function UniversalIngestPage() {
 
       {error && <ErrorNotice message={error} />}
       {notice && (
-        <Callout variant="success" title="Done">
+        <Callout variant="info" title="Done">
           {notice}
         </Callout>
       )}

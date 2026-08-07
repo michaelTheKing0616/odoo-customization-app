@@ -1395,3 +1395,31 @@ class ExpertAskOut(BaseModel):
     model_used: str | None = None
     reasoning: bool = False
     uncited_warning: bool = False
+
+
+class ExpertDraftReviewBody(BaseModel):
+    draft: dict = Field(..., description="ModuleSpec draft JSON")
+    user_prompt: str = ""
+    connection_id: str | None = None
+    apply_fixes: bool = False
+
+
+class ExpertDraftReviewFindingOut(BaseModel):
+    priority: int
+    element: str
+    summary: str
+    detail: str
+    deterministic: bool
+    repair_hint: str | None = None
+    citation: str | None = None
+
+
+class ExpertDraftReviewOut(BaseModel):
+    score_before: float
+    score_after: float | None = None
+    verdict: str
+    review_markdown: str
+    findings: list[ExpertDraftReviewFindingOut] = Field(default_factory=list)
+    repairs: list[str] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
+    draft: dict | None = None

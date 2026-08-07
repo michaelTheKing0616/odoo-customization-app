@@ -37,6 +37,8 @@ from app.llm_provider import LLMError, generate_json_with_timeout_retry
 FIXTURE2 = Path(__file__).parent / "fixtures" / "draft_supermarket2_2026-08-05.json"
 FIXTURE3 = Path(__file__).parent / "fixtures" / "draft_supermarket3_2026-08-06.json"
 FIXTURE4 = Path(__file__).parent / "fixtures" / "draft_supermarket4_2026-08-06.json"
+FIXTURE5 = Path(__file__).parent / "fixtures" / "draft_supermarket5_2026-08-07.json"
+LAW_FIRM_GOLD = Path(__file__).parent.parent.parent / "docs" / "reference" / "law_firm_modulespec_gold.json"
 SUPERMARKET_PROMPT = "A large mega Super Market with multiple branches"
 SUPERMARKET3_PROMPT = "A large, mega super market with multiple branches around the world"
 
@@ -51,6 +53,14 @@ def _load_fixture3() -> dict[str, Any]:
 
 def _load_fixture4() -> dict[str, Any]:
     return json.loads(FIXTURE4.read_text())
+
+
+def _load_fixture5() -> dict[str, Any]:
+    return json.loads(FIXTURE5.read_text())
+
+
+def _load_law_firm_gold() -> dict[str, Any]:
+    return json.loads(LAW_FIRM_GOLD.read_text())
 
 
 def test_sanitize_removes_top_level_error() -> None:
@@ -709,3 +719,147 @@ def test_vocab_scrub_no_expense_slash_expense_duplicate() -> None:
     assert changed
     assert "expense / expense" not in out.lower()
     assert "expense" in out.lower()
+
+
+# --- GEN2-10 / GEN2-11 / GEN2-12 ---
+
+
+def test_fixture5_post_critique_scaffolds_critique_models() -> None:
+    import copy
+
+    from app.ai_post_critique import run_post_critique_pipeline
+
+    draft = copy.deepcopy(_load_fixture5())
+    run_post_critique_pipeline(draft, user_prompt=SUPERMARKET3_PROMPT)
+    models = {m["model"] for m in draft["models"]}
+    actions = {a.get("model") for a in draft.get("actions") or []}
+    for mid in (
+        "x_branch_transfer_line",
+        "x_compliance_check",
+        "x_event_registration",
+        "x_inventory_adjustment",
+    ):
+        assert mid in models
+        assert mid in actions
+    views = {}
+    for v in draft.get("views") or []:
+        views.setdefault(v["model"], set()).add(v.get("type"))
+    for mid in (
+        "x_branch_transfer_line",
+        "x_compliance_check",
+        "x_event_registration",
+        "x_inventory_adjustment",
+    ):
+        assert "form" in views.get(mid, set())
+        assert views.get(mid, set()) & {"list", "tree"}
+
+
+def test_fixture5_line_model_gets_parent_m2o() -> None:
+    import copy
+
+    from app.ai_post_critique import ensure_line_model_parent_links
+
+    draft = copy.deepcopy(_load_fixture5())
+    ensure_line_model_parent_links(draft)
+    line = next(m for m in draft["models"] if m["model"] == "x_branch_transfer_line")
+    rels = {
+        f.get("relation")
+        for f in line.get("fields") or []
+        if f.get("ttype") == "many2one"
+    }
+    assert "x_branch_transfer" in rels
+    assert "x_from_branch_id" not in {f.get("name") for f in line.get("fields") or []}
+
+
+def test_noun_stopwords_exclude_around_world() -> None:
+    from app.ai_domain_nouns import domain_noun_coverage
+
+    draft = _load_fixture5()
+    items, uncovered, _w = domain_noun_coverage(draft, SUPERMARKET3_PROMPT)
+    ids = {i["id"] for i in items}
+    assert "noun_uncovered:around" not in ids
+    assert "noun_uncovered:world" not in ids
+    assert "around" not in uncovered
+    assert "world" not in uncovered
+
+
+def test_lifecycle_orders_planned_before_closed() -> None:
+    from app.ai_workflow_semantic import order_states_by_lifecycle
+
+    keys = ["closed", "planned", "open"]
+    ordered = order_states_by_lifecycle(keys)
+    assert ordered.index("planned") < ordered.index("open") < ordered.index("closed")
+
+
+def test_transition_button_uses_target_label_not_complete() -> None:
+    from app.ai_workflow import transition_button_label
+
+    assert transition_button_label("open", "closed") == "Closed"
+    assert transition_button_label("active", "done") == "Done"
+
+
+def test_production_shape_adds_search_views() -> None:
+    import copy
+
+    from app.ai_post_critique import run_post_critique_pipeline
+    from app.ai_production_shape import run_production_shape_pass
+
+    draft = copy.deepcopy(_load_fixture5())
+    run_post_critique_pipeline(draft, user_prompt=SUPERMARKET3_PROMPT)
+    run_production_shape_pass(draft)
+    action_models = {a.get("model") for a in draft.get("actions") or []}
+    search_models = {
+        v.get("model")
+        for v in draft.get("views") or []
+        if v.get("type") == "search"
+    }
+    assert action_models.issubset(search_models)
+    sample = next(v for v in draft["views"] if v.get("type") == "search")
+    assert sample["arch"].count("<filter") >= 2
+
+
+def test_scorecard_fixture5_floor_after_passes() -> None:
+    import copy
+
+    from app.ai_draft_scorecard import draft_scorecard
+    from app.ai_post_critique import run_post_critique_pipeline
+    from app.ai_production_shape import run_production_shape_pass
+
+    raw = draft_scorecard(_load_fixture5(), user_prompt=SUPERMARKET3_PROMPT)
+    assert raw["score_0_10"] >= 6.0
+    draft = copy.deepcopy(_load_fixture5())
+    run_post_critique_pipeline(draft, user_prompt=SUPERMARKET3_PROMPT)
+    run_production_shape_pass(draft)
+    scored = draft_scorecard(draft, user_prompt=SUPERMARKET3_PROMPT)
+    assert scored["score_0_10"] >= 8.0
+
+
+def test_scorecard_regression_monotonic_supermarket_fixtures() -> None:
+    from app.ai_draft_scorecard import draft_scorecard
+    from app.ai_post_critique import run_post_critique_pipeline
+    from app.ai_production_shape import run_production_shape_pass
+    import copy
+
+    scores: list[float] = []
+    for loader, prompt in (
+        (_load_fixture2, SUPERMARKET_PROMPT),
+        (_load_fixture3, SUPERMARKET3_PROMPT),
+        (_load_fixture4, SUPERMARKET3_PROMPT),
+        (_load_fixture5, SUPERMARKET3_PROMPT),
+    ):
+        d = copy.deepcopy(loader())
+        run_post_critique_pipeline(d, user_prompt=prompt)
+        run_production_shape_pass(d)
+        scores.append(draft_scorecard(d, user_prompt=prompt)["score_0_10"])
+    assert scores[-1] >= 8.0
+    assert scores[-1] >= scores[0] - 1.0
+
+
+def test_expert_review_improves_score_mocked() -> None:
+    from app.expert.draft_review import review_draft
+
+    draft = _load_fixture5()
+    before = review_draft(draft, user_prompt=SUPERMARKET3_PROMPT, apply_fixes=False)
+    after = review_draft(draft, user_prompt=SUPERMARKET3_PROMPT, apply_fixes=True)
+    assert after.score_after is not None
+    assert after.score_after >= before.score_before

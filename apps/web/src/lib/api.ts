@@ -99,6 +99,25 @@ export type ExpertAskResponse = {
   uncited_warning: boolean;
 };
 
+export type ExpertDraftReviewResponse = {
+  score_before: number;
+  score_after?: number | null;
+  verdict: string;
+  review_markdown: string;
+  findings: Array<{
+    priority: number;
+    element: string;
+    summary: string;
+    detail: string;
+    deterministic: boolean;
+    repair_hint?: string | null;
+    citation?: string | null;
+  }>;
+  repairs: string[];
+  suggestions: string[];
+  draft?: Record<string, unknown> | null;
+};
+
 export type DeploymentPanel = {
   tier: "onprem" | "sh" | "online" | "unknown";
   title: string;
@@ -1058,13 +1077,18 @@ async function fetchApi(path: string, init?: RequestInit): Promise<Response> {
       },
     });
   } catch (err) {
-    if (err instanceof TypeError) {
+    const isNetwork =
+      err instanceof TypeError ||
+      (err instanceof Error &&
+        /failed to fetch|networkerror|network request failed|load failed/i.test(err.message));
+    if (isNetwork) {
       const target =
         base || (typeof window !== "undefined" ? window.location.origin : DEFAULT_API_ORIGIN);
       throw new Error(
         `Cannot reach the API${base ? ` at ${target}` : ""}. ` +
-          `Start the API (uvicorn on port 8001) and restart the web dev server ` +
-          `(Next /api proxy → API_PROXY_TARGET, default http://127.0.0.1:8001).`,
+          `Start the API (uvicorn on port 8001, or deploy API on 8000) and restart the web dev server ` +
+          `(Next /api proxy → API_PROXY_TARGET, default http://127.0.0.1:8001). ` +
+          `If a browser extension wraps fetch, try incognito or disable it.`,
       );
     }
     throw err;
@@ -1782,6 +1806,8 @@ export const api = {
       body: JSON.stringify(body),
     }),
   importModuleSpec: async (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
     const res = await fetchApi("/api/module-spec/import", {
       method: "POST",
       body: form,
@@ -3972,6 +3998,16 @@ export const api = {
     conversation?: Array<{ role: string; content: string }>;
   }) =>
     request<ExpertAskResponse>("/api/expert/ask", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  expertReviewDraft: (body: {
+    draft: Record<string, unknown>;
+    user_prompt?: string;
+    connection_id?: string;
+    apply_fixes?: boolean;
+  }) =>
+    request<ExpertDraftReviewResponse>("/api/expert/review-draft", {
       method: "POST",
       body: JSON.stringify(body),
     }),

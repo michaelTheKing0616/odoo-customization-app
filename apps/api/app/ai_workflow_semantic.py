@@ -43,10 +43,54 @@ def classify_state(key: str) -> str:
     return "active"
 
 
+_LIFECYCLE_RANK: dict[str, int] = {}
+for _i, _k in enumerate(
+    (
+        "planned",
+        "draft",
+        "new",
+        "submitted",
+        "confirmed",
+        "open",
+        "active",
+        "in_progress",
+        "picking",
+        "processing",
+        "review",
+        "approved",
+        "done",
+        "closed",
+        "delivered",
+        "received",
+        "paid",
+        "passed",
+        "posted",
+        "cancelled",
+        "canceled",
+        "void",
+        "failed",
+        "expired",
+        "rejected",
+    )
+):
+    _LIFECYCLE_RANK.setdefault(_k, _i)
+
+
+def order_states_by_lifecycle(keys: list[str]) -> list[str]:
+    """Order selection keys by lifecycle lexicon instead of LLM listing order."""
+
+    def rank(k: str) -> tuple[int, int]:
+        kl = k.lower().strip()
+        return (_LIFECYCLE_RANK.get(kl, 50), keys.index(k))
+
+    return sorted(keys, key=rank)
+
+
 def synthesize_semantic_transitions(keys: list[str]) -> tuple[list[list[str]], list[str]]:
     """Active chain + branch to terminals; terminals have no outgoing edges."""
     if not keys:
         return [], []
+    keys = order_states_by_lifecycle(keys)
     active: list[str] = []
     terminal_success: list[str] = []
     terminal_negative: list[str] = []

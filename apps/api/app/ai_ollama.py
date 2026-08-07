@@ -747,6 +747,32 @@ def draft_module_from_prompt(
         reason="timeout" if failed_steps else None,
     )
     finalize_llm_status(draft, mode=mode)  # type: ignore[arg-type]
+    from app.ai_post_critique import run_post_critique_pipeline
+    from app.ai_production_shape import run_production_shape_pass
+    from app.ai_draft_scorecard import attach_scorecard
+
+    warnings.extend(run_post_critique_pipeline(draft, user_prompt=prompt))
+    warnings.extend(run_production_shape_pass(draft))
+    attach_scorecard(draft, user_prompt=prompt)
+    sc = draft.get("_scorecard") if isinstance(draft.get("_scorecard"), dict) else {}
+    if float(sc.get("score_0_10") or 0) < 9:
+        from app.ai_draft_scorecard import scorecard_required_repairs
+
+        crit = draft.get("_critique") if isinstance(draft.get("_critique"), dict) else {}
+        sug = list(crit.get("suggestions") or [])
+        sug.extend(scorecard_required_repairs(sc))
+        crit["suggestions"] = sug
+        draft["_critique"] = crit
+    draft["_meta"] = {
+        **(draft.get("_meta") if isinstance(draft.get("_meta"), dict) else {}),
+        "model_count": len(draft.get("models") or []),
+        "view_count": len(draft.get("views") or []),
+        "menu_count": len(draft.get("menus") or []),
+        "smart_button_count": len(draft.get("smart_buttons") or []),
+        "automation_count": len(draft.get("automations") or []),
+        "domain_pack": draft.get("domain_pack"),
+        "score_0_10": (draft.get("_scorecard") or {}).get("score_0_10"),
+    }
     if progress_callback:
         progress_callback(len(STEP_LABELS) - 1, STEP_LABELS[-1], draft)
     return draft, raw, warnings, refusals

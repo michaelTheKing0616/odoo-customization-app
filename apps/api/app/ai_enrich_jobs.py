@@ -81,10 +81,18 @@ def run_enrich_job_body(
     working = sanitize_draft_payload(working)
     from app.ai_critique import finalize_critique_block
     from app.ai_enrich import sync_form_archs_to_models
+    from app.ai_post_critique import run_post_critique_pipeline
+    from app.ai_production_shape import run_production_shape_pass
+    from app.ai_draft_scorecard import attach_scorecard
+    from app.ai_llm_status import finalize_llm_status
 
     warnings.extend(sync_form_archs_to_models(working))
+    warnings.extend(run_post_critique_pipeline(working, user_prompt=prompt))
+    warnings.extend(run_production_shape_pass(working))
     warnings.extend(finalize_critique_block(working))
+    attach_scorecard(working, user_prompt=prompt)
     attach_llm_status(working, mode="llm_full", completed_steps=list(steps))
+    finalize_llm_status(working, mode="llm_full")
 
     db = db_factory()
     try:

@@ -5,52 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-_STOPWORDS = frozenset(
-    {
-        "a",
-        "an",
-        "the",
-        "and",
-        "or",
-        "with",
-        "for",
-        "to",
-        "of",
-        "in",
-        "on",
-        "at",
-        "by",
-        "from",
-        "that",
-        "this",
-        "our",
-        "your",
-        "my",
-        "i",
-        "we",
-        "want",
-        "need",
-        "build",
-        "create",
-        "make",
-        "large",
-        "mega",
-        "multiple",
-        "full",
-        "simple",
-        "basic",
-        "management",
-        "system",
-        "app",
-        "application",
-        "module",
-        "custom",
-        "odoo",
-        "super",
-        "market",
-        "store",
-    }
-)
+from app.ai_post_critique import NOUN_STOPWORDS as _STOPWORDS
 
 # Nouns that are too generic to require a dedicated model when alone.
 _GENERIC_NOUNS = frozenset({"order", "item", "line", "record", "data", "user", "company"})

@@ -147,6 +147,13 @@ Re-verified 2026-08-03 (orchestrator + 3 checkers); REM-14 closed residual gaps 
 - [x] Bonus: AI draft JSON auto-cache (`ai_draft_cache` table + GET list/restore + wizard saved drafts)
 - [x] GEN2-8 Draft #3 punch list (2026-08-06): root payload leak validator, statusbar_visible, _llm_status finalize, form field grouping + redundant name drop, global x_country_id, slug stop-words, comprehensive workflow automation floor; live gate pass `llm_partial` → `gen2_run_2026-08-06.json`; 31 wave16 tests green
 - [x] GEN2-9 Draft #4 punch list (grade 7.5/10, first llm_full): ghost critique repairs → `finalize_critique_block` + `suggestions`; view sync → `sync_form_archs_to_models`; field quality gate; vocab scrub atomic; pack statusbar patch; critique staleness; fixture `draft_supermarket4_2026-08-06.json` (cache 06:32 UTC); 37 wave16 + 100 targeted regression green; full gate 1040 passed / 1 pre-existing job timeout flake
+- [x] GEN2-10 Draft #5 punch list (grade 8/10→9.76 post-passes): `run_post_critique_pipeline` scaffolds critique models; line parent m2o; post-critique normalizer; shared noun stop-words (`around`/`world`); lifecycle ordering + target-state button labels; critique automation rewrite; fixture `draft_supermarket5_2026-08-07.json` (cache 08:20Z); 45 wave16 tests green
+- [x] GEN2-11 10/10 finisher: `run_production_shape_pass` — search views, ir.sequence specs, monetary/tracking/defaults, multi-company record rules, arch polish (notebook o2m, kanban, widgets)
+- [x] GEN2-12 Automated draft scorecard: `draft_scorecard` + `_scorecard` + wizard chip; fixture regression floors; live background-job artifact `docs/research/gen2_run_2026-08-07.json` score **9.88** (`llm_partial`, 962s job)
+
+## Wave 17 — EXP2 (Expert to 10/10; cards in WAVE-17-EXP2.md)
+- [x] EXP2-1 Real benchmark: 41 scenarios, decline adversarials 100%, citation validity scoring (1.0 CI), version pinning in harness, baseline `docs/research/expert_bench_2026-08-07.json` pass_rate 1.0
+- [x] EXP2-2 Draft-review companion: `POST /expert/review-draft`, scorecard-driven review, deterministic fixes, wizard banner + chip; artifact `docs/research/expert_review_2026-08-07.json` 7.19→9.76; Playwright `wizard-scorecard.spec.ts` green
 
 ## Wave 17 — INGEST (Universal document pipeline)
 Orchestrator: `plans/UNIVERSAL_INGESTION_PIPELINE.md` · Cards: `plans/cards/WAVE-17-INGEST.md`

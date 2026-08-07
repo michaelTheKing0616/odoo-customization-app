@@ -167,6 +167,7 @@ def _apply_missing_fields(draft: dict[str, Any], missing: list[Any]) -> list[str
             if isinstance(f, dict)
         }
         if fname in existing:
+            notes.append(f"critique: merged (already present) {mid}.{fname}")
             continue
         field: dict[str, Any] = {
             "name": fname,
@@ -489,6 +490,16 @@ def apply_critique_repairs(
         )
     applied.extend(_apply_missing_models(out, filtered))
     applied.extend(_apply_missing_automations(out, critique.get("missing_automations") or []))
+    if any(n.startswith("critique: added") for n in applied):
+        from app.ai_post_critique import run_post_critique_pipeline
+
+        applied.extend(
+            run_post_critique_pipeline(
+                out,
+                user_prompt=str(out.get("_user_prompt") or ""),
+                original_names=draft,
+            )
+        )
     out["_critique"] = _normalize_critique_block(
         critique, applied, suggestions=suggestions
     )

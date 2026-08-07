@@ -354,8 +354,8 @@ def ensure_workflow_transitions_on_draft(draft: dict[str, Any]) -> list[str]:
 def transition_button_label(from_state: str, to_state: str) -> str:
     if to_state in {"cancelled", "canceled"}:
         return "Cancel"
-    if to_state in {"done", "closed", "paid"}:
-        return "Complete"
+    if to_state in {"done", "closed", "paid", "delivered", "received", "posted", "passed"}:
+        return to_state.replace("_", " ").title()
     if from_state == "draft" and to_state in {"open", "confirmed", "submitted"}:
         return "Confirm"
     return to_state.replace("_", " ").title()

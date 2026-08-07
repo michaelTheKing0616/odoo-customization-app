@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-PROMPT = "A large mega Super Market with multiple branches"
+PROMPT = "A large, mega, super market with multiple branches around the world"
 _default_out = (
     Path(__file__).resolve().parents[3]
     / "docs"
@@ -89,21 +89,33 @@ def main() -> int:
     draft = result.get("draft") or {}
     llm_status = draft.get("_llm_status") or {}
     mode = llm_status.get("mode")
+    scorecard = draft.get("_scorecard") if isinstance(draft.get("_scorecard"), dict) else {}
+    score = float(scorecard.get("score_0_10") or 0.0)
     models = [
         m.get("model")
         for m in (draft.get("models") or [])
         if isinstance(m, dict) and m.get("model")
     ]
+    llm_ok = mode in {"llm_full", "llm_partial"}
+    score_ok = score >= 9.0
+    if llm_ok and score_ok:
+        gate = "pass"
+    elif llm_ok:
+        gate = "score_below_9"
+    else:
+        gate = "deviation"
     artifact = {
         "date": datetime.now(UTC).strftime("%Y-%m-%d"),
         "prompt": PROMPT,
-        "gate": "pass" if mode in {"llm_full", "llm_partial"} else "deviation",
+        "gate": gate,
         "mode": "live_ollama_background_job",
         "elapsed_s": elapsed,
         "ollama_reachable": True,
         "ollama_model": settings.ollama_model,
         "ollama_base_url": settings.ollama_base_url,
         "_llm_status": llm_status,
+        "_scorecard": scorecard,
+        "score_0_10": score,
         "technical_name": draft.get("technical_name"),
         "display_name": draft.get("display_name"),
         "domain_pack": draft.get("domain_pack"),
@@ -116,12 +128,18 @@ def main() -> int:
             and isinstance(draft.get("models"), list)
         ),
         "warnings_sample": (result.get("warnings") or [])[:15],
+        "draft": draft,
     }
     if error:
         artifact["run_error"] = error
     OUT.write_text(json.dumps(artifact, indent=2) + "\n")
-    print(json.dumps(artifact, indent=2))
-    return 0 if artifact["gate"] == "pass" else 2
+    print(json.dumps({k: artifact[k] for k in artifact if k != "draft"}, indent=2))
+    if gate == "pass":
+        return 0
+    if gate == "score_below_9":
+        print(f"GEN2 gate: score {score} < 9", file=sys.stderr)
+        return 3
+    return 2
 
 
 if __name__ == "__main__":

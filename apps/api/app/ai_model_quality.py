@@ -2748,6 +2748,8 @@ def collapse_duplicate_role_models(draft: dict[str, Any]) -> list[str]:
         members: list[str] = []
         for mid in by_id:
             leaf = mid.replace("x_", "")
+            if leaf.endswith("_registration") or leaf.endswith("_line") or leaf.endswith("_attendee"):
+                continue
             if any(k in leaf for k in cluster):
                 members.append(mid)
         if len(members) < 2:

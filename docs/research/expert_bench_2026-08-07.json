@@ -1,0 +1,21 @@
+{
+  "total": 41,
+  "passed": 41,
+  "pass_rate": 1.0,
+  "grounding_rate": 0.878,
+  "decline_correct": 1.0,
+  "citation_presence": 0.78,
+  "citation_validity": 1.0,
+  "category_pass_rate": {
+    "doc_grounded": 1.0,
+    "instance_grounded": 1.0,
+    "protected_caution": 1.0,
+    "should_decline": 1.0,
+    "version_diff": 1.0,
+    "bulk_routing": 1.0
+  },
+  "failures": [],
+  "mode": "ci_deterministic_mock_provider",
+  "eval_set_size": 41,
+  "decline_adversarial_pass": 1.0
+}

@@ -4,17 +4,18 @@
 
 ## Last run
 - Date: 2026-08-07
-- **Deploy API follow-up:** rebuilt `odoo-custom-deploy-api` with vision env;
-  `OLLAMA_BASE_URL=http://host.docker.internal:11434` (not container 127.0.0.1);
-  stamped/upgraded deploy app-db to `f2a3b4c5d6e7`; moved `httpx` to runtime deps.
-  Verified: `/health` ollama_reachable; `/ingest/vision/status` enabled+ready qwen3-vl:8b.
-- Prior: GEN2-9 + ingest finish pushed as `ab83197`.
-- **Cannot complete:** Tongyi Qianwen EU commercial agreement (human/legal only)
+- **GEN2-10/11/12 + EXP2-1/2 follow-ups complete (no commit — awaiting user approval):**
+  - Playwright `wizard-scorecard.spec.ts` green (Callout `testId` fix on scorecard chip)
+  - Live Ollama background job → `docs/research/gen2_run_2026-08-07.json` gate **pass** (`llm_partial`, score **9.88**, 962s)
+  - Full API gate (final re-run): **1066 passed**, 2 skipped, 0 failed (~33 min)
+  - Expert + GEN2 targeted: 47 passed; Playwright 1 passed
+- Prior: post-critique, production shape, scorecard, expert bench/review artifacts
 
 ## Next
-- Owner: file Tongyi agreement before marketing vision OCR in EU
-- Optional: live vision OCR on a real invoice scan (smoke used blank PNG)
+- User approval → commit GEN2/EXP2 batch
+- EU Tongyi agreement still human/legal only
 
 ## Rule
 - Opening balances never auto-post; inventory via dedicated stock.quant path only
 - Vision default-off in `.env.example`; local unlock ≠ EU commercial clearance
+- No commit until user approves this wave

@@ -55,6 +55,7 @@ class EvalScore:
     grounded: bool = False
     declined: bool = False
     citation_count: int = 0
+    citation_valid: bool | None = None
 
 
 def load_eval_set() -> list[dict[str, Any]]:
@@ -161,9 +162,39 @@ def score_eval_item(item: dict[str, Any], result: ExpertAskResult) -> EvalScore:
         if str(term).lower() in answer:
             reasons.append(f"hit must_not_contain: {term}")
 
+    citation_valid: bool | None = None
     if item.get("require_citations") and not item.get("expect_decline") and not item.get("tier1_refusal"):
         if not result.citations:
             reasons.append("missing citations")
+        elif item.get("mock_chunks"):
+            chunk_text = ""
+            for ch in item.get("mock_chunks") or []:
+                if isinstance(ch, dict):
+                    chunk_text = str(ch.get("text") or "").lower()
+                    break
+            overlap_ok = False
+            scope_major = str(item.get("version_scope") or "").split(".")[0]
+            if scope_major and scope_major in chunk_text:
+                overlap_ok = True
+            for term in item.get("must_contain") or []:
+                t = str(term).lower().strip("[]")
+                if len(t) < 2 or (len(t) < 4 and not t.isdigit()):
+                    continue
+                if t in chunk_text:
+                    overlap_ok = True
+                    break
+                stem = t[:5] if len(t) >= 5 else t
+                if stem and stem in chunk_text:
+                    overlap_ok = True
+                    break
+            citation_valid = overlap_ok
+
+    if item.get("version_scope") and not item.get("expect_decline") and item.get("connection_id"):
+        scope = str(item.get("version_scope"))
+        if result.retrieval_version and not str(result.retrieval_version).startswith(
+            scope.split(".")[0]
+        ):
+            reasons.append(f"version pin mismatch: got {result.retrieval_version}")
 
     expect_tool = item.get("expect_tool")
     if expect_tool:
@@ -179,6 +210,7 @@ def score_eval_item(item: dict[str, Any], result: ExpertAskResult) -> EvalScore:
         grounded=result.grounded,
         declined=result.declined,
         citation_count=len(result.citations),
+        citation_valid=citation_valid,
     )
 
 
@@ -202,6 +234,11 @@ def summarize_scores(scores: list[EvalScore]) -> dict[str, Any]:
         ),
         "citation_presence": round(
             sum(1 for s in scores if s.citation_count > 0) / total, 3 if total else 1.0,
+        ),
+        "citation_validity": round(
+            sum(1 for s in scores if s.citation_valid is True)
+            / max(1, sum(1 for s in scores if s.citation_valid is not None)),
+            3,
         ),
         "category_pass_rate": category_rates,
         "failures": [{"id": s.id, "reasons": s.reasons} for s in scores if not s.passed],

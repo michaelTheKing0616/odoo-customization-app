@@ -137,6 +137,11 @@ export default function AppWizardPage() {
       ),
   );
   const llmStatusMode = (aiDraft?._llm_status as { mode?: string } | undefined)?.mode;
+  const scorecard = aiDraft?._scorecard as
+    | { score_0_10?: number; findings?: Array<{ element?: string; detail?: string }> }
+    | undefined;
+  const draftScore = scorecard?.score_0_10;
+  const [expertReviewNote, setExpertReviewNote] = useState<string | null>(null);
   const llmStatusBanner =
     llmStatusMode === "llm_partial"
       ? "Some AI steps timed out; pack templates filled in. Retry AI enrichment?"
@@ -420,6 +425,34 @@ export default function AppWizardPage() {
       setAiNote(`Restored cached draft: ${row.summary}`);
     } catch (err) {
       reportApiError(err, setError, { fallback: "Failed to restore cached draft" });
+    } finally {
+      setAiBusy(false);
+      setAiBusyLabel(null);
+    }
+  }
+
+  async function askExpertReviewDraft(applyFixes: boolean) {
+    if (!aiDraft) return;
+    setAiBusy(true);
+    setAiBusyLabel(applyFixes ? "Expert review + fixes…" : "Expert review…");
+    setExpertReviewNote(null);
+    try {
+      const res = await api.expertReviewDraft({
+        draft: aiDraft,
+        user_prompt: nlPrompt.trim(),
+        connection_id: connectionId,
+        apply_fixes: applyFixes,
+      });
+      if (res.draft && applyFixes) {
+        setAiDraft(res.draft);
+      }
+      const after = res.score_after ?? res.score_before;
+      setExpertReviewNote(
+        `Expert review: ${res.score_before.toFixed(1)}/10 → ${after.toFixed(1)}/10 (${res.verdict})`,
+      );
+      setAiNote(res.review_markdown);
+    } catch (err) {
+      reportApiError(err, setError, { fallback: "Expert draft review failed" });
     } finally {
       setAiBusy(false);
       setAiBusyLabel(null);
@@ -1439,6 +1472,42 @@ export default function AppWizardPage() {
               >
                 Retry AI enrichment
               </Button>
+            </Callout>
+          ) : null}
+          {typeof draftScore === "number" ? (
+            <Callout
+              variant="info"
+              title={`Draft quality: ${draftScore.toFixed(1)}/10${draftScore >= 9 ? " ✓" : ""}`}
+              className="mt-2"
+              testId="draft-scorecard-chip"
+            >
+              {Array.isArray(scorecard?.findings) && scorecard.findings.length > 0 ? (
+                <ul className="mt-1 list-disc space-y-1 pl-5 text-sm">
+                  {scorecard.findings.slice(0, 6).map((f, i) => (
+                    <li key={`${f.element}-${i}`}>
+                      {f.element}: {f.detail}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm">No major findings — ready for review.</p>
+              )}
+              {draftScore < 9 ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="mt-2"
+                  disabled={aiBusy || !aiDraft}
+                  data-testid="expert-review-fix"
+                  onClick={() => void askExpertReviewDraft(true)}
+                >
+                  Ask the Expert to review and fix
+                </Button>
+              ) : null}
+              {expertReviewNote ? (
+                <p className="mt-2 text-sm text-muted">{expertReviewNote}</p>
+              ) : null}
             </Callout>
           ) : null}
           {draftNeedsRegenerate && !llmStatusBanner ? (
