@@ -19,10 +19,14 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "odoo_connections",
-        sa.Column("code_studio_probe_json", sa.Text(), nullable=True),
-    )
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    cols = {c["name"] for c in inspector.get_columns("odoo_connections")}
+    if "code_studio_probe_json" not in cols:
+        op.add_column(
+            "odoo_connections",
+            sa.Column("code_studio_probe_json", sa.Text(), nullable=True),
+        )
 
 
 def downgrade() -> None:
