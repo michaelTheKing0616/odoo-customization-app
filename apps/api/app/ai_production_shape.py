@@ -79,14 +79,14 @@ def ensure_search_views(draft: dict[str, Any]) -> list[str]:
                 if rel.startswith("x_") or rel in {"res.partner", "res.users"}:
                     groupbys.append(
                         f'<filter string="{escape(str(f.get("string") or fname))}" '
+                        f'name="group_{fname}" '
                         f'context="{{\'group_by\': \'{fname}\'}}"/>'
                     )
         if "x_status" in names:
             groupbys.append(
-                '<filter string="Status" context="{\'group_by\': \'x_status\'}"/>'
+                '<filter string="Status" name="group_x_status" '
+                'context="{\'group_by\': \'x_status\'}"/>'
             )
-        if len(filters) < 2 and groupbys:
-            filters.extend(groupbys[: max(0, 2 - len(filters))])
         if len(filters) < 2:
             filters.append(
                 f'<filter string="All" name="all" domain="[]"/>'
@@ -94,10 +94,15 @@ def ensure_search_views(draft: dict[str, Any]) -> list[str]:
             filters.append(
                 f'<filter string="Has name" name="has_name" domain="[(\'x_name\',\'!=\',False)]"/>'
             )
+        extra_groupbys = list(groupbys)
+        if len(filters) < 2 and extra_groupbys:
+            need = max(0, 2 - len(filters))
+            filters.extend(extra_groupbys[:need])
+            extra_groupbys = extra_groupbys[need:]
         arch = (
             f'<search string="{escape(str(model.get("description") or mid))}">'
             f"{''.join(filters[:6])}"
-            f"{''.join(groupbys[:4])}"
+            f"{''.join(extra_groupbys[:4])}"
             f"</search>"
         )
         views.append(

@@ -131,6 +131,14 @@ def merge_module_spec_fragment(
 
 def draft_dict_to_module_spec(draft: dict[str, Any]) -> ModuleSpec:
     """Build ModuleSpec from ModuleSpec-like JSON (projects / AI draft / import)."""
+    technical_name = str(draft.get("technical_name") or "custom_module")
+
+    def _group_xml_id(group: str | None) -> str:
+        gid = str(group or "base.group_user")
+        if "." in gid:
+            return gid
+        return f"{technical_name}.{gid}"
+
     models: list[ModelSpec] = []
     for m in draft.get("models") or []:
         if not isinstance(m, dict) or not m.get("model"):
@@ -224,11 +232,14 @@ def draft_dict_to_module_spec(draft: dict[str, Any]) -> ModuleSpec:
     for g in draft.get("groups") or []:
         if not isinstance(g, dict) or not g.get("id"):
             continue
+        category_id = g.get("category_id")
+        if category_id == "base.module_category_custom":
+            category_id = None
         groups.append(
             GroupSpec(
                 id=str(g["id"]),
                 name=str(g.get("name") or g["id"]),
-                category_id=g.get("category_id"),
+                category_id=category_id,
                 implied_ids=[str(i) for i in (g.get("implied_ids") or []) if i],
             )
         )
@@ -244,7 +255,7 @@ def draft_dict_to_module_spec(draft: dict[str, Any]) -> ModuleSpec:
                 id=str(ar.get("id") or f"access_{ar['model']}"),
                 name=str(ar.get("name") or ar["model"]),
                 model=str(ar["model"]),
-                group=str(ar.get("group") or ar.get("group_xml_id") or "base.group_user"),
+                group=_group_xml_id(ar.get("group") or ar.get("group_xml_id")),
                 perm_read=int(ar.get("perm_read", 1)),
                 perm_write=int(ar.get("perm_write", 1)),
                 perm_create=int(ar.get("perm_create", 1)),
@@ -307,7 +318,7 @@ def draft_dict_to_module_spec(draft: dict[str, Any]) -> ModuleSpec:
                 )
             )
     return ModuleSpec(
-        technical_name=str(draft.get("technical_name") or "custom_module"),
+        technical_name=technical_name,
         display_name=str(draft.get("display_name") or "Custom Module"),
         depends=list(draft.get("depends") or ["base"]),
         models=models,

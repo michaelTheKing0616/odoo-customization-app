@@ -33,11 +33,13 @@ def test_order_manifest_data_files_python_mode_contract() -> None:
             "views/views.xml",
             "security/record_rules.xml",
             "data/automations.xml",
+            "security/groups.xml",
             "security/ir.model.access.csv",
         ],
         install_mode="python",
     )
     assert paths == [
+        "security/groups.xml",
         "security/ir.model.access.csv",
         "security/record_rules.xml",
         "data/sequences.xml",
@@ -130,3 +132,28 @@ def test_generated_manifest_includes_all_types_in_contract_order() -> None:
 
     manifest = render_module_files(spec)["cmp1_full/__manifest__.py"]
     assert re.search(r'"security/ir\.model\.access\.csv"', manifest)
+
+
+def test_normalize_menu_xml_references_resolves_truncated_parents() -> None:
+    from module_generator import MenuSpec, ModuleSpec
+
+    parent = MenuSpec(
+        name="Operations",
+        technical_name="menu_sub_operations_root_retail_supermarket",
+        sequence=20,
+    )
+    child = MenuSpec(
+        name="Orders",
+        technical_name="menu_x_store_order",
+        parent_xml_id="menu_sub_operations_root_retail_supermarket",
+        action_xml_id="action_x_store_order",
+        sequence=10,
+    )
+    spec = ModuleSpec(
+        technical_name="retail_supermarket",
+        display_name="Retail Supermarket",
+        menus=[parent, child],
+    )
+    spec.normalize_menu_xml_references()
+    assert child.parent_xml_id == parent.xml_id()
+    assert child.parent_xml_id != "menu_sub_operations_root_retail_supermarket"

@@ -616,7 +616,7 @@ export default function AppWizardPage() {
       });
       setAiDraft(res.draft);
       if (res.warnings?.length) {
-        setAiWarnings((prev) => [...prev, ...res.warnings!]);
+        setAiWarnings((prev) => Array.from(new Set([...prev, ...res.warnings!])));
       }
       const reuseScore = (
         res.draft?._scorecard as { score_0_10?: number } | undefined

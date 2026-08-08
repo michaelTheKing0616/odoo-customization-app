@@ -193,6 +193,172 @@ _PAYMENT_CAPTURE_FORBIDDEN_RE = re.compile(
 )
 _PARALLEL_BILLING_MODEL_RE = re.compile(r"x_.*(?:invoice|bill)(?:_line)?$", re.I)
 _PAYMENT_WORKFLOW_STATES = frozenset({"paid", "overdue", "sent", "partial", "posted"})
+_PAYMENT_CAPTURE_FIELD_RE = re.compile(
+    r"^x_(?:payment_(?:status|state|method|ref)|is_paid|paid(?:\b|_))", re.I
+)
+_PAYMENT_SELECTION_KEYS = frozenset({"paid", "unpaid", "partial", "refunded", "overdue"})
+_PRIMARY_HEADER_TOTALS = ("x_amount_total", "x_total", "x_amount")
+_SHADOW_HEADER_TOTALS = ("x_total_amount", "x_amount_untaxed", "x_grand_total", "x_amount_gross")
+_HEADER_TAX_FIELDS = ("x_tax_amount", "x_amount_tax", "x_tax_total")
+_TRANSACTION_HEADER_TOKENS = ("order", "matter", "case", "job", "booking", "reservation", "quote")
+_PROCUREMENT_HEADER_TOKENS = ("supplier", "purchase", "procurement", "vendor", "rfq", "requisition")
+_SALES_HEADER_TOKENS = ("order", "sale", "booking", "reservation", "quote")
+_INTERNAL_HEADER_TOKENS = (
+    "transfer",
+    "adjustment",
+    "task",
+    "event",
+    "shift",
+    "registration",
+)
+_CAMPAIGN_MODEL_TOKENS = ("promotion", "campaign", "coupon", "discount", "voucher")
+_STOCK_DOCUMENT_LINKS: tuple[tuple[str, str, str, str], ...] = (
+    ("account.move", "x_invoice_id", "Invoice", "account"),
+    ("sale.order", "x_sale_order_id", "Sales order", "sale"),
+    ("purchase.order", "x_purchase_order_id", "Purchase order", "purchase"),
+)
+
+
+def _forbids_payment_capture(draft: dict[str, Any]) -> bool:
+    anti = _draft_anti_patterns(draft)
+    return any(_PAYMENT_CAPTURE_FORBIDDEN_RE.search(p) for p in anti)
+
+
+def _reuse_models(draft: dict[str, Any]) -> set[str]:
+    reuse = draft.get("reuse") if isinstance(draft.get("reuse"), dict) else {}
+    models = set(reuse.get("models") or [])
+    plan = reuse.get("plan")
+    if isinstance(plan, dict):
+        for d in plan.get("decisions") or []:
+            if isinstance(d, dict) and d.get("model"):
+                models.add(str(d["model"]))
+    return models
+
+
+def _selection_keys(selection: Any) -> set[str]:
+    if not isinstance(selection, str):
+        return set()
+    return set(re.findall(r"\('([^']+)'", selection))
+
+
+def _field_implies_payment_capture(field: dict[str, Any]) -> bool:
+    name = str(field.get("name") or "")
+    if _PAYMENT_CAPTURE_FIELD_RE.match(name):
+        return True
+    if str(field.get("ttype") or "") != "selection":
+        return False
+    keys = _selection_keys(field.get("selection"))
+    if keys & _PAYMENT_SELECTION_KEYS and "payment" in name.lower():
+        return True
+    if keys <= _PAYMENT_SELECTION_KEYS and name.lower().endswith("_status"):
+        return True
+    return False
+
+
+def _model_name_tokens(model: dict[str, Any]) -> set[str]:
+    mid = str(model.get("model") or "").lower()
+    return set(re.split(r"[_\s]+", mid))
+
+
+def _is_transaction_header(model: dict[str, Any]) -> bool:
+    mid = str(model.get("model") or "")
+    if not mid.startswith("x_") or "line" in mid.lower():
+        return False
+    fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
+    if any(
+        f.get("ttype") == "one2many" and "line" in str(f.get("relation") or "").lower()
+        for f in fields
+    ):
+        return True
+    if model.get("is_workflow") and any(tok in mid for tok in _TRANSACTION_HEADER_TOKENS):
+        return True
+    return False
+
+
+def _is_procurement_header(model: dict[str, Any]) -> bool:
+    if not _is_transaction_header(model):
+        return False
+    tokens = _model_name_tokens(model)
+    desc = str(model.get("description") or "").lower()
+    if tokens & set(_PROCUREMENT_HEADER_TOKENS):
+        return True
+    if any(tok in desc for tok in _PROCUREMENT_HEADER_TOKENS):
+        return True
+    for field in model.get("fields") or []:
+        if not isinstance(field, dict):
+            continue
+        name = str(field.get("name") or "").lower()
+        if "supplier" in name or "vendor" in name:
+            return True
+    return False
+
+
+def _is_sales_header(model: dict[str, Any]) -> bool:
+    if not _is_transaction_header(model) or _is_procurement_header(model):
+        return False
+    tokens = _model_name_tokens(model)
+    desc = str(model.get("description") or "").lower()
+    if tokens & set(_SALES_HEADER_TOKENS):
+        return True
+    return any(word in desc for word in ("sales", "customer order", "retail", "pos"))
+
+
+def _stock_link_applies(stock_model: str, model: dict[str, Any]) -> bool:
+    if stock_model == "purchase.order":
+        return _is_procurement_header(model)
+    if stock_model == "sale.order":
+        return _is_sales_header(model)
+    if stock_model == "account.move":
+        mid = str(model.get("model") or "").lower()
+        if any(tok in mid for tok in _INTERNAL_HEADER_TOKENS):
+            return False
+        return _is_sales_header(model) or _is_procurement_header(model)
+    return False
+
+
+def _is_campaign_model(model: dict[str, Any]) -> bool:
+    mid = str(model.get("model") or "")
+    if not mid.startswith("x_"):
+        return False
+    if not (_model_name_tokens(model) & set(_CAMPAIGN_MODEL_TOKENS)):
+        return False
+    names = _field_names(model)
+    if model.get("is_workflow"):
+        return True
+    return any(
+        name.startswith(("x_discount", "x_date_start", "x_date_end")) for name in names
+    )
+
+
+def _pick_campaign_model(by_id: dict[str, dict[str, Any]]) -> str | None:
+    candidates = [mid for mid, model in by_id.items() if _is_campaign_model(model)]
+    if not candidates:
+        return None
+    for preferred in ("x_promotion", "x_campaign", "x_discount", "x_coupon", "x_voucher"):
+        if preferred in candidates:
+            return preferred
+    for mid in sorted(candidates, key=len):
+        if "promotion" in mid or "campaign" in mid:
+            return mid
+    return candidates[0]
+
+
+def _pick_sales_order_header(by_id: dict[str, dict[str, Any]]) -> str | None:
+    candidates = [mid for mid, model in by_id.items() if _is_sales_header(model)]
+    if not candidates:
+        return None
+    for mid in candidates:
+        if "order" in mid.lower():
+            return mid
+    return candidates[0]
+
+
+def _header_primary_total(fields: dict[str, dict[str, Any]], compute_models: set[str], mid: str) -> str | None:
+    if mid in compute_models:
+        for name in _PRIMARY_HEADER_TOTALS:
+            if name in fields:
+                return name
+    return None
 
 
 def _purge_draft_models(draft: dict[str, Any], removed: set[str]) -> None:
@@ -254,9 +420,8 @@ def _purge_draft_models(draft: dict[str, Any], removed: set[str]) -> None:
 def demote_parallel_billing_models(draft: dict[str, Any]) -> list[str]:
     """Drop parallel x_* invoice/bill workflows when pack forbids payment capture."""
     notes: list[str] = []
-    anti = _draft_anti_patterns(draft)
-    forbid_capture = any(_PAYMENT_CAPTURE_FORBIDDEN_RE.search(p) for p in anti)
-    reuse_models = set((draft.get("reuse") or {}).get("models") or [])
+    forbid_capture = _forbids_payment_capture(draft)
+    reuse_models = _reuse_models(draft)
     if not forbid_capture and "account.move" not in reuse_models:
         return notes
 
@@ -309,31 +474,6 @@ def demote_parallel_billing_models(draft: dict[str, Any]) -> list[str]:
         if len(model.get("fields") or []) < before:
             notes.append(f"apply: removed line billing link field(s) on {mid}")
 
-    depends = set(draft.get("depends") or [])
-    reuse = set((draft.get("reuse") or {}).get("models") or [])
-    if "account" in depends or "account.move" in reuse:
-        by_id = _models_index(draft)
-        for model in draft.get("models") or []:
-            if not isinstance(model, dict):
-                continue
-            mid = str(model.get("model") or "")
-            if "line" in mid.lower() or "order" not in mid.lower():
-                continue
-            names = _field_names(model)
-            if "x_invoice_id" in names or "x_move_id" in names:
-                continue
-            model.setdefault("fields", []).append(
-                {
-                    "name": "x_invoice_id",
-                    "ttype": "many2one",
-                    "relation": "account.move",
-                    "string": "Invoice",
-                    "help": "Link-only — wire to account.move manually",
-                    "source": "apply_readiness",
-                }
-            )
-            notes.append(f"apply: link-only x_invoice_id on {mid} (account.move)")
-
     draft.setdefault("review_notes", [])
     if isinstance(draft["review_notes"], list):
         note = (
@@ -342,6 +482,198 @@ def demote_parallel_billing_models(draft: dict[str, Any]) -> list[str]:
         )
         if note not in draft["review_notes"]:
             draft["review_notes"].append(note)
+    return notes
+
+
+def scrub_payment_capture_fields(draft: dict[str, Any]) -> list[str]:
+    """Remove pseudo payment-tracking fields when pack forbids payment capture."""
+    notes: list[str] = []
+    if not _forbids_payment_capture(draft):
+        return notes
+    drop: dict[str, set[str]] = {}
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        mid = str(model.get("model") or "")
+        if not mid.startswith("x_"):
+            continue
+        for f in model.get("fields") or []:
+            if isinstance(f, dict) and _field_implies_payment_capture(f):
+                drop.setdefault(mid, set()).add(str(f.get("name") or ""))
+    for mid, names in drop.items():
+        _drop_model_fields(draft, mid, names)
+        notes.append(f"apply: removed payment capture field(s) on {mid}: {', '.join(sorted(names))}")
+    return notes
+
+
+def consolidate_header_monetary_fields(draft: dict[str, Any]) -> list[str]:
+    """Drop shadow header totals/taxes when a computed primary total exists."""
+    notes: list[str] = []
+    compute_models = {
+        str(b.get("model"))
+        for b in merge_custom_code_blocks(draft)
+        if isinstance(b, dict) and b.get("model")
+    }
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict) or not _is_transaction_header(model):
+            continue
+        mid = str(model.get("model") or "")
+        fields = {
+            str(f.get("name")): f for f in (model.get("fields") or []) if isinstance(f, dict)
+        }
+        primary = _header_primary_total(fields, compute_models, mid)
+        if not primary:
+            continue
+        drop: set[str] = set()
+        for name in _SHADOW_HEADER_TOTALS:
+            if name in fields and name != primary:
+                drop.add(name)
+        line_models = {
+            str(fields[f].get("relation") or "")
+            for f in fields
+            if fields[f].get("ttype") == "one2many"
+        }
+        line_has_tax = any(
+            any(
+                isinstance(lf, dict)
+                and str(lf.get("name") or "").startswith("x_tax")
+                for lf in (_models_index(draft).get(lm) or {}).get("fields") or []
+            )
+            for lm in line_models
+            if lm in _models_index(draft)
+        )
+        tax_computed = mid in compute_models and any(
+            "tax" in str(b.get("content") or "").lower()
+            for b in merge_custom_code_blocks(draft)
+            if isinstance(b, dict) and str(b.get("model") or "") == mid
+        )
+        if not line_has_tax and not tax_computed:
+            for name in _HEADER_TAX_FIELDS:
+                if name in fields:
+                    drop.add(name)
+        if drop:
+            _drop_model_fields(draft, mid, drop)
+            notes.append(f"apply: consolidated header monetary fields on {mid} (keep {primary})")
+    return notes
+
+
+def scrub_misapplied_stock_document_links(draft: dict[str, Any]) -> list[str]:
+    """Drop stock-document M2O fields on semantically wrong header models."""
+    notes: list[str] = []
+    checks = (
+        ("x_purchase_order_id", lambda model: _is_procurement_header(model)),
+        ("x_sale_order_id", lambda model: _is_sales_header(model)),
+        ("x_invoice_id", lambda model: _stock_link_applies("account.move", model)),
+    )
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        mid = str(model.get("model") or "")
+        names = _field_names(model)
+        drop = {fname for fname, ok in checks if fname in names and not ok(model)}
+        if drop:
+            _drop_model_fields(draft, mid, drop)
+            notes.append(f"apply: removed misapplied stock document link(s) on {mid}")
+    return notes
+
+
+def ensure_transaction_document_links(draft: dict[str, Any]) -> list[str]:
+    """Link-only M2O to stock Odoo documents on semantically matching transactional headers."""
+    notes: list[str] = []
+    reuse = _reuse_models(draft)
+    depends = set(draft.get("depends") or [])
+    for stock_model, fname, label, dep_module in _STOCK_DOCUMENT_LINKS:
+        if stock_model not in reuse and dep_module not in depends:
+            continue
+        for model in draft.get("models") or []:
+            if not isinstance(model, dict) or not _stock_link_applies(stock_model, model):
+                continue
+            mid = str(model.get("model") or "")
+            names = _field_names(model)
+            if fname in names:
+                continue
+            alt = {
+                "x_invoice_id": "x_move_id",
+                "x_sale_order_id": "x_order_id",
+            }.get(fname)
+            if alt and alt in names:
+                continue
+            model.setdefault("fields", []).append(
+                {
+                    "name": fname,
+                    "ttype": "many2one",
+                    "relation": stock_model,
+                    "string": label,
+                    "help": f"Link-only — wire to {stock_model} manually",
+                    "source": "apply_readiness",
+                }
+            )
+            notes.append(f"apply: link-only {fname} on {mid} ({stock_model})")
+    if notes:
+        draft.setdefault("review_notes", [])
+        if isinstance(draft["review_notes"], list):
+            link_note = (
+                "Transactional headers include link-only stock Odoo document fields — "
+                "wire in Odoo before go-live; metadata export does not post moves/orders."
+            )
+            if link_note not in draft["review_notes"]:
+                draft["review_notes"].append(link_note)
+    return notes
+
+
+def ensure_campaign_order_links(draft: dict[str, Any]) -> list[str]:
+    """Restore campaign/promotion ↔ sales-order links when both model families exist."""
+    notes: list[str] = []
+    by_id = _models_index(draft)
+    campaign_id = _pick_campaign_model(by_id)
+    order_id = _pick_sales_order_header(by_id)
+    if not campaign_id or not order_id:
+        return notes
+
+    campaign = by_id[campaign_id]
+    order = by_id[order_id]
+    campaign_suffix = campaign_id.removeprefix("x_")
+    order_suffix = order_id.removeprefix("x_")
+    m2o_name = f"x_{campaign_suffix}_id"
+    o2m_name = f"x_{order_suffix}_ids"
+    order_names = _field_names(order)
+    campaign_names = _field_names(campaign)
+    alt_m2o = ("x_discount_id", "x_campaign_id", "x_coupon_id", "x_voucher_id")
+
+    link_field = next((name for name in alt_m2o if name in order_names), None)
+    if link_field is None and m2o_name not in order_names:
+        order.setdefault("fields", []).append(
+            {
+                "name": m2o_name,
+                "ttype": "many2one",
+                "relation": campaign_id,
+                "string": str(campaign.get("description") or "Promotion").split("/")[0].strip(),
+                "source": "apply_readiness",
+            }
+        )
+        link_field = m2o_name
+        notes.append(f"apply: {m2o_name} on {order_id} → {campaign_id}")
+    elif link_field is None:
+        link_field = m2o_name
+
+    has_o2m = any(
+        isinstance(field, dict)
+        and field.get("ttype") == "one2many"
+        and str(field.get("relation") or "") == order_id
+        for field in (campaign.get("fields") or [])
+    )
+    if o2m_name not in campaign_names and not has_o2m:
+        campaign.setdefault("fields", []).append(
+            {
+                "name": o2m_name,
+                "ttype": "one2many",
+                "relation": order_id,
+                "relation_field": link_field,
+                "string": str(order.get("description") or "Orders").split("/")[0].strip(),
+                "source": "apply_readiness",
+            }
+        )
+        notes.append(f"apply: {o2m_name} on {campaign_id} → {order_id}")
     return notes
 
 
@@ -362,6 +694,60 @@ def fix_reuse_link_only_consistency(draft: dict[str, Any]) -> list[str]:
         if model in link_only and link_only[model] and not d.get("link_only"):
             d["link_only"] = True
             notes.append(f"apply: reuse {model} marked link_only (pack contract)")
+    return notes
+
+
+def ensure_search_filter_names(draft: dict[str, Any]) -> list[str]:
+    """Odoo search filters require unique ``name`` attrs — group_by filters often omit them."""
+    notes: list[str] = []
+    for v in draft.get("views") or []:
+        if not isinstance(v, dict) or str(v.get("type") or "") != "search":
+            continue
+        arch = str(v.get("arch") or "")
+        if not arch:
+            continue
+        filters = re.findall(r"<filter\b[^>]*/>", arch, flags=re.I)
+        if not filters or all('name="' in flt for flt in filters):
+            continue
+        used: set[str] = set(re.findall(r'name="([^"]+)"', arch))
+        changed = False
+
+        def _inject_name(match: re.Match[str]) -> str:
+            nonlocal changed
+            tag = match.group(0)
+            if 'name="' in tag:
+                return tag
+            ctx_m = re.search(r"context=\"(\{[^\"]+\})\"", tag)
+            dom_m = re.search(r'domain="([^"]+)"', tag)
+            string_m = re.search(r'string="([^"]+)"', tag)
+            if ctx_m and "group_by" in ctx_m.group(1):
+                gb_m = re.search(r"'group_by':\s*'([^']+)'", ctx_m.group(1))
+                base = gb_m.group(1) if gb_m else "group"
+                name = f"group_{base}"
+            elif dom_m:
+                status_m = re.search(r"\('x_status',\s*'=',\s*'([^']+)'\)", dom_m.group(1))
+                base = status_m.group(1) if status_m else (
+                    string_m.group(1).lower().replace(" ", "_") if string_m else "filter"
+                )
+                name = f"status_{base}" if status_m else f"filter_{base}"
+            else:
+                base = string_m.group(1).lower().replace(" ", "_") if string_m else "filter"
+                name = f"filter_{base}"
+            n = 2
+            candidate = name
+            while candidate in used:
+                candidate = f"{name}_{n}"
+                n += 1
+            used.add(candidate)
+            changed = True
+            if tag.endswith("/>"):
+                return tag[:-2] + f' name="{candidate}"/>'
+            return tag.replace("<filter ", f'<filter name="{candidate}" ', 1)
+
+        new_arch = re.sub(r"<filter\b[^>]*/>", _inject_name, arch, flags=re.I)
+        if changed and new_arch != arch:
+            v["arch"] = new_arch
+            notes.append(f"apply: named search filters on {v.get('model') or '?'}")
     return notes
 
 
@@ -1429,6 +1815,19 @@ def finalize_draft_readiness_metadata(draft: dict[str, Any]) -> list[str]:
     return notes
 
 
+def dedupe_enrich_warnings(warnings: list[str]) -> list[str]:
+    """Drop exact duplicate enrich warning lines before UI display."""
+    seen: set[str] = set()
+    kept: list[str] = []
+    for warning in warnings:
+        text = str(warning or "")
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        kept.append(text)
+    return kept
+
+
 def filter_stale_enrich_warnings(warnings: list[str], draft: dict[str, Any]) -> list[str]:
     """Drop enrich warnings superseded by apply-readiness fixes."""
     by_id = _models_index(draft)
@@ -1455,8 +1854,23 @@ def filter_stale_enrich_warnings(warnings: list[str], draft: dict[str, Any]) -> 
             }
             if computed:
                 continue
+        if w.startswith("quality: dropped orphan field "):
+            tail = w.replace("quality: dropped orphan field ", "", 1)
+            if "." in tail:
+                mid, rest = tail.split(".", 1)
+                fname = rest.split(" ", 1)[0].strip()
+                names = _field_names(by_id.get(mid) or {})
+                if fname in names:
+                    continue
+        if w.startswith("quality: remapped orphan "):
+            tail = w.replace("quality: remapped orphan ", "", 1)
+            token = tail.split(" ", 1)[0].strip()
+            if "." in token:
+                mid, fname = token.split(".", 1)
+                if fname in _field_names(by_id.get(mid) or {}):
+                    continue
         kept.append(w)
-    return kept
+    return dedupe_enrich_warnings(kept)
 
 
 def sanitize_automation_names(draft: dict[str, Any]) -> list[str]:
@@ -1483,10 +1897,171 @@ def sanitize_automation_names(draft: dict[str, Any]) -> list[str]:
     return notes
 
 
+def sanitize_automation_state_references(draft: dict[str, Any]) -> list[str]:
+    """Align automation labels/domains with actual workflow states on the target model."""
+    notes: list[str] = []
+    by_id = _models_index(draft)
+    for auto in draft.get("automations") or []:
+        if not isinstance(auto, dict):
+            continue
+        mid = str(auto.get("model") or "")
+        model = by_id.get(mid)
+        if not model:
+            continue
+        status_field = next(
+            (
+                f
+                for f in (model.get("fields") or [])
+                if isinstance(f, dict) and str(f.get("name") or "") == "x_status"
+            ),
+            None,
+        )
+        states = _selection_keys(status_field.get("selection")) if status_field else set()
+        name = str(auto.get("name") or "")
+        desc = str(auto.get("description") or "")
+        if states and "overdue" not in states and re.search(r"\boverdue\b", f"{name} {desc}", re.I):
+            auto["name"] = re.sub(r"\boverdue\b", "deadline", name, flags=re.I)
+            auto["description"] = re.sub(
+                r"\boverdue\b",
+                "past deadline",
+                desc,
+                flags=re.I,
+            )
+            notes.append(f"apply: renamed automation on {mid} (no overdue state)")
+        actions = auto.get("safe_actions")
+        if isinstance(actions, list):
+            for action in actions:
+                if not isinstance(action, dict):
+                    continue
+                summary = str(action.get("summary") or "")
+                cleaned = re.sub(r"\s+", " ", summary).strip()
+                if states and "overdue" not in states and re.search(r"\boverdue\b", cleaned, re.I):
+                    cleaned = re.sub(r"\boverdue\b", "deadline", cleaned, flags=re.I)
+                if cleaned and cleaned != summary:
+                    action["summary"] = cleaned
+                    notes.append(f"apply: sanitized automation action summary on {mid}")
+        dom = str(auto.get("filter_domain") or "")
+        if dom and states and "'x_status'" in dom:
+            in_match = re.search(r"\('x_status',\s*'in',\s*\[(.*?)\]\)", dom)
+            if in_match:
+                vals = set(re.findall(r"'([^']+)'", in_match.group(1)))
+                invalid = vals - states
+                if invalid:
+                    cleaned_vals = sorted(vals & states)
+                    if cleaned_vals:
+                        replacement = ", ".join(f"'{v}'" for v in cleaned_vals)
+                        auto["filter_domain"] = (
+                            dom[: in_match.start(1)] + replacement + dom[in_match.end(1) :]
+                        )
+                        notes.append(f"apply: trimmed invalid x_status values on {mid} automation")
+    return notes
+
+
+def _automation_signature(auto: dict[str, Any]) -> tuple[str, str, str]:
+    mid = str(auto.get("model") or "")
+    trigger = str(auto.get("trigger") or "")
+    dom = re.sub(r"\s+", "", str(auto.get("filter_domain") or ""))
+    return (mid, trigger, dom)
+
+
+def _automation_keep_rank(auto: dict[str, Any]) -> tuple[int, int, int, str]:
+    actions = auto.get("safe_actions") or []
+    has_write = any(
+        isinstance(action, dict)
+        and str(action.get("kind") or "") in {"object_write", "update_field"}
+        for action in actions
+    )
+    activity_only = bool(actions) and not has_write
+    src = str(auto.get("source") or "")
+    src_pri = {"rules_engine": 0, "depth_seed": 1, "depth_floor": 1, "critique": 2}.get(src, 5)
+    return (0 if activity_only else 1, len(actions), src_pri, str(auto.get("name") or ""))
+
+
+def sanitize_automation_object_writes(draft: dict[str, Any]) -> list[str]:
+    """Drop object_write values that are not valid selection keys on the target model."""
+    notes: list[str] = []
+    by_id = _models_index(draft)
+    for auto in draft.get("automations") or []:
+        if not isinstance(auto, dict):
+            continue
+        mid = str(auto.get("model") or "")
+        model = by_id.get(mid)
+        if not model:
+            continue
+        fields_by_name = {
+            str(field.get("name")): field
+            for field in (model.get("fields") or [])
+            if isinstance(field, dict) and field.get("name")
+        }
+        actions = auto.get("safe_actions")
+        if not isinstance(actions, list):
+            continue
+        kept: list[dict[str, Any]] = []
+        dropped = False
+        for action in actions:
+            if not isinstance(action, dict):
+                continue
+            kind = str(action.get("kind") or "")
+            field = str(action.get("field") or "")
+            if kind in {"object_write", "update_field"} and field in fields_by_name:
+                fdef = fields_by_name[field]
+                if str(fdef.get("ttype")) == "selection":
+                    keys = _selection_keys(fdef.get("selection"))
+                    val = str(action.get("value") or "")
+                    if keys and val and val not in keys:
+                        dropped = True
+                        notes.append(
+                            f"apply: dropped invalid {field}={val!r} write on {mid} automation"
+                        )
+                        continue
+            kept.append(action)
+        if dropped:
+            if not kept:
+                kept.append(
+                    {
+                        "kind": "next_activity",
+                        "summary": str(auto.get("name") or f"{mid} follow-up"),
+                    }
+                )
+            auto["safe_actions"] = kept
+    return notes
+
+
+def dedupe_automations_by_signature(draft: dict[str, Any]) -> list[str]:
+    """Keep one automation per (model, trigger, filter_domain) — prefer activity-only rules."""
+    notes: list[str] = []
+    autos = draft.get("automations")
+    if not isinstance(autos, list):
+        return notes
+    groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    passthrough: list[dict[str, Any]] = []
+    for auto in autos:
+        if not isinstance(auto, dict):
+            continue
+        sig = _automation_signature(auto)
+        if not sig[0] or not sig[1]:
+            passthrough.append(auto)
+            continue
+        groups.setdefault(sig, []).append(auto)
+    kept: list[dict[str, Any]] = list(passthrough)
+    for sig, group in groups.items():
+        if len(group) == 1:
+            kept.append(group[0])
+            continue
+        group.sort(key=_automation_keep_rank)
+        kept.append(group[0])
+        notes.append(
+            f"apply: deduped {len(group) - 1} automation(s) on {sig[0]} ({sig[1]})"
+        )
+    draft["automations"] = kept
+    return notes
+
+
 def run_apply_readiness_pass(draft: dict[str, Any]) -> list[str]:
     """Fix blockers before Apply / template export."""
     notes: list[str] = []
     notes.extend(demote_parallel_billing_models(draft))
+    notes.extend(scrub_payment_capture_fields(draft))
     notes.extend(normalize_depth_seed_naming(draft))
     notes.extend(resolve_duplicate_address_fields(draft))
     notes.extend(polish_branch_address_fields(draft))
@@ -1508,8 +2083,19 @@ def run_apply_readiness_pass(draft: dict[str, Any]) -> list[str]:
     notes.extend(normalize_line_monetary_fields(draft))
     notes.extend(apply_line_subtotal_computes(draft))
     notes.extend(apply_order_header_total_computes(draft))
+    notes.extend(consolidate_header_monetary_fields(draft))
+    notes.extend(scrub_misapplied_stock_document_links(draft))
+    notes.extend(ensure_transaction_document_links(draft))
+    notes.extend(ensure_campaign_order_links(draft))
     notes.extend(clear_resolved_compute_suggestions(draft))
     notes.extend(sanitize_automation_names(draft))
+    notes.extend(sanitize_automation_object_writes(draft))
+    notes.extend(sanitize_automation_state_references(draft))
+    notes.extend(dedupe_automations_by_signature(draft))
+    from app.ai_model_quality import dedupe_automation_safe_actions
+
+    notes.extend(dedupe_automation_safe_actions(draft))
+    notes.extend(ensure_search_filter_names(draft))
     notes.extend(dedupe_search_view_filters(draft))
     notes.extend(ensure_operational_companion_models(draft))
     notes.extend(reconcile_depth_metadata(draft))
@@ -1520,12 +2106,18 @@ __all__ = [
     "apply_line_subtotal_computes",
     "apply_order_header_total_computes",
     "clear_resolved_compute_suggestions",
+    "consolidate_header_monetary_fields",
     "consolidate_inventory_count_fields",
     "consolidate_redundant_inventory_models",
+    "ensure_search_filter_names",
     "dedupe_search_view_filters",
+    "dedupe_automations_by_signature",
+    "dedupe_enrich_warnings",
     "demote_parallel_billing_models",
+    "ensure_campaign_order_links",
     "ensure_global_branch_fields",
     "ensure_operational_companion_models",
+    "ensure_transaction_document_links",
     "ensure_line_currency_fields",
     "ensure_relation_module_depends",
     "ensure_unique_sequence_prefixes",
@@ -1545,6 +2137,10 @@ __all__ = [
     "resolve_duplicate_address_fields",
     "run_apply_readiness_pass",
     "sanitize_automation_names",
+    "sanitize_automation_object_writes",
+    "sanitize_automation_state_references",
+    "scrub_misapplied_stock_document_links",
+    "scrub_payment_capture_fields",
     "scrub_unused_domain_tags",
     "sync_company_fields_with_record_rules",
     "wire_stock_document_links",

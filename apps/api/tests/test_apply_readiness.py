@@ -65,6 +65,27 @@ def test_dedupe_search_view_filters() -> None:
     assert draft["views"][0]["arch"].count("grp1") == 1
 
 
+def test_ensure_search_filter_names_adds_group_by_names() -> None:
+    from app.ai_apply_readiness import ensure_search_filter_names
+
+    draft = {
+        "views": [
+            {
+                "model": "x_branch",
+                "type": "search",
+                "arch": (
+                    '<search string="Branch">'
+                    '<filter string="Manager" context="{\'group_by\': \'x_manager_id\'}"/>'
+                    "</search>"
+                ),
+            }
+        ]
+    }
+    notes = ensure_search_filter_names(draft)
+    assert notes
+    assert 'name="group_x_manager_id"' in draft["views"][0]["arch"]
+
+
 def test_ensure_unique_sequence_prefixes() -> None:
     from app.ai_apply_readiness import ensure_unique_sequence_prefixes
 
@@ -298,10 +319,17 @@ def test_fixture5_worldclass_hygiene_after_pass() -> None:
         b for b in draft.get("custom_code_blocks") or [] if b.get("model") == "x_store_order_line"
     )
     assert "fields.Monetary" in block["content"]
+    order_names = {f.get("name") for f in order["fields"]}
+    assert "x_purchase_order_id" not in order_names
+    assert "x_promotion_id" in order_names
+    promotion = next(m for m in draft["models"] if m["model"] == "x_promotion")
+    promo_names = {f.get("name") for f in promotion["fields"]}
+    assert "x_store_order_ids" in promo_names
+    assert scored["score_0_10"] >= 9.9
 
 
 def test_demote_parallel_billing_models() -> None:
-    from app.ai_apply_readiness import demote_parallel_billing_models
+    from app.ai_apply_readiness import demote_parallel_billing_models, ensure_transaction_document_links
 
     draft = {
         "anti_patterns": ["Do NOT implement payment capture — link purchase/sale documents only"],
@@ -310,7 +338,10 @@ def test_demote_parallel_billing_models() -> None:
         "models": [
             {
                 "model": "x_store_order",
-                "fields": [{"name": "x_name", "ttype": "char"}],
+                "fields": [
+                    {"name": "x_name", "ttype": "char"},
+                    {"name": "x_line_ids", "ttype": "one2many", "relation": "x_store_order_line"},
+                ],
             },
             {
                 "model": "x_store_order_line",
@@ -332,6 +363,7 @@ def test_demote_parallel_billing_models() -> None:
         "actions": [{"model": "x_store_order_invoice", "name": "Invoices"}],
     }
     notes = demote_parallel_billing_models(draft)
+    notes.extend(ensure_transaction_document_links(draft))
     assert notes
     model_ids = {m["model"] for m in draft["models"]}
     assert "x_store_order_invoice" not in model_ids
@@ -410,6 +442,344 @@ def test_fix_reuse_link_only_from_domain_pack() -> None:
     notes = fix_reuse_link_only_consistency(draft)
     assert notes
     assert draft["reuse"]["plan"]["decisions"][0]["link_only"] is True
+
+
+def test_scrub_payment_capture_fields() -> None:
+    from app.ai_apply_readiness import scrub_payment_capture_fields
+
+    draft = {
+        "anti_patterns": ["Do NOT implement payment capture — link purchase/sale only"],
+        "models": [
+            {
+                "model": "x_store_order",
+                "fields": [
+                    {"name": "x_payment_status", "ttype": "selection", "selection": "[('paid','Paid')]"},
+                    {"name": "x_name", "ttype": "char"},
+                ],
+            }
+        ],
+    }
+    scrub_payment_capture_fields(draft)
+    names = {f["name"] for f in draft["models"][0]["fields"]}
+    assert "x_payment_status" not in names
+
+
+def test_consolidate_header_monetary_fields() -> None:
+    from app.ai_apply_readiness import consolidate_header_monetary_fields
+
+    draft = {
+        "models": [
+            {
+                "model": "x_store_order",
+                "fields": [
+                    {"name": "x_line_ids", "ttype": "one2many", "relation": "x_store_order_line"},
+                    {"name": "x_amount_total", "ttype": "monetary"},
+                    {"name": "x_total_amount", "ttype": "monetary"},
+                    {"name": "x_tax_amount", "ttype": "monetary"},
+                ],
+            },
+            {"model": "x_store_order_line", "fields": [{"name": "x_subtotal", "ttype": "monetary"}]},
+        ],
+        "custom_code_blocks": [
+            {"model": "x_store_order", "content": "def _compute_x_amount_total(self): pass"}
+        ],
+    }
+    consolidate_header_monetary_fields(draft)
+    names = {f["name"] for f in draft["models"][0]["fields"]}
+    assert "x_amount_total" in names
+    assert "x_total_amount" not in names
+    assert "x_tax_amount" not in names
+
+
+def test_ensure_transaction_document_links_purchase() -> None:
+    from app.ai_apply_readiness import ensure_transaction_document_links
+
+    draft = {
+        "depends": ["purchase"],
+        "reuse": {"models": ["purchase.order"]},
+        "models": [
+            {
+                "model": "x_supplier_purchase",
+                "is_workflow": True,
+                "fields": [
+                    {"name": "x_supplier_id", "ttype": "many2one", "relation": "res.partner"},
+                    {"name": "x_line_ids", "ttype": "one2many", "relation": "x_supplier_purchase_line"},
+                ],
+            }
+        ],
+    }
+    notes = ensure_transaction_document_links(draft)
+    assert notes
+    names = {f["name"] for f in draft["models"][0]["fields"]}
+    assert "x_purchase_order_id" in names
+
+
+def test_ensure_transaction_document_links_skips_purchase_on_sales_order() -> None:
+    from app.ai_apply_readiness import (
+        ensure_transaction_document_links,
+        scrub_misapplied_stock_document_links,
+    )
+
+    draft = {
+        "depends": ["purchase"],
+        "reuse": {"models": ["purchase.order"]},
+        "models": [
+            {
+                "model": "x_store_order",
+                "is_workflow": True,
+                "fields": [
+                    {"name": "x_line_ids", "ttype": "one2many", "relation": "x_store_order_line"},
+                    {"name": "x_purchase_order_id", "ttype": "many2one", "relation": "purchase.order"},
+                ],
+            }
+        ],
+    }
+    scrub_misapplied_stock_document_links(draft)
+    ensure_transaction_document_links(draft)
+    names = {f["name"] for f in draft["models"][0]["fields"]}
+    assert "x_purchase_order_id" not in names
+
+
+def test_ensure_campaign_order_links() -> None:
+    from app.ai_apply_readiness import ensure_campaign_order_links
+
+    draft = {
+        "models": [
+            {
+                "model": "x_store_order",
+                "is_workflow": True,
+                "fields": [
+                    {"name": "x_line_ids", "ttype": "one2many", "relation": "x_store_order_line"},
+                ],
+            },
+            {
+                "model": "x_promotion",
+                "is_workflow": True,
+                "fields": [{"name": "x_discount_pct", "ttype": "float"}],
+            },
+        ]
+    }
+    notes = ensure_campaign_order_links(draft)
+    assert notes
+    order = next(m for m in draft["models"] if m["model"] == "x_store_order")
+    promotion = next(m for m in draft["models"] if m["model"] == "x_promotion")
+    assert any(f["name"] == "x_promotion_id" for f in order["fields"])
+    assert any(
+        f["name"] == "x_store_order_ids"
+        and f.get("relation_field") == "x_promotion_id"
+        for f in promotion["fields"]
+    )
+
+
+def test_dedupe_enrich_warnings() -> None:
+    from app.ai_apply_readiness import dedupe_enrich_warnings
+
+    kept = dedupe_enrich_warnings(
+        [
+            "workflow: semantic transitions on x_task (4 edges, 3 statusbar)",
+            "workflow: semantic transitions on x_task (4 edges, 3 statusbar)",
+            "presentation: line-total compute suggestion on x_store_order_line",
+        ]
+    )
+    assert len(kept) == 2
+
+
+def test_filter_stale_orphan_quality_warnings() -> None:
+    from app.ai_apply_readiness import filter_stale_enrich_warnings
+
+    draft = {
+        "models": [
+            {
+                "model": "x_branch",
+                "fields": [{"name": "x_country_id", "ttype": "many2one", "relation": "res.country"}],
+            }
+        ]
+    }
+    kept = filter_stale_enrich_warnings(
+        ["quality: dropped orphan field x_branch.x_country_id → res.country"],
+        draft,
+    )
+    assert kept == []
+
+
+def test_sanitize_automation_state_references_overdue() -> None:
+    from app.ai_apply_readiness import sanitize_automation_state_references
+
+    draft = {
+        "models": [
+            {
+                "model": "x_task",
+                "fields": [
+                    {
+                        "name": "x_status",
+                        "ttype": "selection",
+                        "selection": "[('draft','Draft'),('open','Open'),('done','Done')]",
+                    }
+                ],
+            }
+        ],
+        "automations": [
+            {
+                "name": "Flag overdue on x_task",
+                "model": "x_task",
+                "filter_domain": "[('x_status', 'in', ['draft', 'open'])]",
+                "safe_actions": [
+                    {"kind": "next_activity", "summary": "Flag overdue on x_task"}
+                ],
+            }
+        ],
+    }
+    sanitize_automation_state_references(draft)
+    assert "deadline" in draft["automations"][0]["name"].lower()
+    assert "overdue" not in draft["automations"][0]["name"].lower()
+    assert "deadline" in draft["automations"][0]["safe_actions"][0]["summary"].lower()
+    assert "overdue" not in draft["automations"][0]["safe_actions"][0]["summary"].lower()
+
+
+def test_sanitize_automation_object_writes_drops_invalid_status() -> None:
+    from app.ai_apply_readiness import sanitize_automation_object_writes
+
+    draft = {
+        "models": [
+            {
+                "model": "x_task",
+                "fields": [
+                    {
+                        "name": "x_status",
+                        "ttype": "selection",
+                        "selection": "[('draft','Draft'),('open','Open'),('done','Done')]",
+                    }
+                ],
+            }
+        ],
+        "automations": [
+            {
+                "name": "Flag deadline on x_task",
+                "model": "x_task",
+                "trigger": "on_time",
+                "filter_domain": "[('x_date_deadline', '<', 'now'), ('x_status', 'in', ['draft', 'open'])]",
+                "safe_actions": [
+                    {"kind": "object_write", "field": "x_status", "value": "overdue"},
+                    {"kind": "next_activity", "summary": "deadline follow-up"},
+                ],
+            }
+        ],
+    }
+    sanitize_automation_object_writes(draft)
+    kinds = [a.get("kind") for a in draft["automations"][0]["safe_actions"]]
+    assert "object_write" not in kinds
+    assert "next_activity" in kinds
+
+
+def test_dedupe_automations_by_signature_keeps_activity_only() -> None:
+    from app.ai_apply_readiness import dedupe_automations_by_signature
+
+    dom = "[('x_date_deadline', '<', 'now'), ('x_status', 'in', ['draft', 'open'])]"
+    draft = {
+        "automations": [
+            {
+                "name": "Flag deadline on x_task",
+                "model": "x_task",
+                "trigger": "on_time",
+                "filter_domain": dom,
+                "source": "rules_engine",
+                "safe_actions": [{"kind": "next_activity", "summary": "Flag deadline on x_task"}],
+            },
+            {
+                "name": "Flag deadline on x_task",
+                "model": "x_task",
+                "trigger": "on_time",
+                "filter_domain": dom,
+                "source": "rules_engine",
+                "safe_actions": [
+                    {"kind": "object_write", "field": "x_status", "value": "overdue"},
+                    {"kind": "next_activity", "summary": "deadline follow-up"},
+                ],
+            },
+        ]
+    }
+    dedupe_automations_by_signature(draft)
+    assert len(draft["automations"]) == 1
+    assert draft["automations"][0]["safe_actions"] == [
+        {"kind": "next_activity", "summary": "Flag deadline on x_task"}
+    ]
+
+
+def test_v6_automation_pass_on_task_deadline_duplicate() -> None:
+    from app.ai_apply_readiness import (
+        dedupe_automations_by_signature,
+        sanitize_automation_object_writes,
+        sanitize_automation_state_references,
+    )
+
+    dom = "[('x_date_deadline', '<', 'now'), ('x_status', 'in', ['draft', 'open'])]"
+    draft = {
+        "models": [
+            {
+                "model": "x_task",
+                "fields": [
+                    {
+                        "name": "x_status",
+                        "ttype": "selection",
+                        "selection": "[('draft','Draft'),('open','Open'),('done','Done'),('cancelled','Cancelled')]",
+                    }
+                ],
+            }
+        ],
+        "automations": [
+            {
+                "name": "Flag overdue on x_task",
+                "model": "x_task",
+                "trigger": "on_time",
+                "description": "Safety-net: when x_date_deadline is past → overdue",
+                "filter_domain": dom,
+                "source": "rules_engine",
+                "safe_actions": [{"kind": "next_activity", "summary": "Flag overdue on x_task"}],
+            },
+            {
+                "name": "Flag overdue on x_task",
+                "model": "x_task",
+                "trigger": "on_time",
+                "description": "Safety-net: when x_date_deadline is past → overdue",
+                "filter_domain": dom,
+                "source": "rules_engine",
+                "safe_actions": [
+                    {"kind": "object_write", "field": "x_status", "value": "overdue"},
+                    {"kind": "next_activity", "summary": "deadline follow-up"},
+                ],
+            },
+        ],
+    }
+    sanitize_automation_state_references(draft)
+    sanitize_automation_object_writes(draft)
+    dedupe_automations_by_signature(draft)
+    assert len(draft["automations"]) == 1
+    auto = draft["automations"][0]
+    assert "deadline" in auto["name"].lower()
+    assert all(a.get("kind") == "next_activity" for a in auto["safe_actions"])
+    assert "overdue" not in str(auto["safe_actions"]).lower()
+
+
+@pytest.mark.integration
+def test_fixture5_export_access_groups_prefixed() -> None:
+    import io
+    import zipfile
+
+    from app.ai_post_critique import run_post_critique_pipeline
+    from app.ai_production_shape import run_production_shape_pass
+    from app.module_spec_codec import export_draft_module_zip
+
+    draft = copy.deepcopy(_load_fixture5())
+    draft["_user_prompt"] = PROMPT
+    run_post_critique_pipeline(draft, user_prompt=PROMPT)
+    run_production_shape_pass(draft)
+    zip_bytes = export_draft_module_zip(draft, odoo_major=19)
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as z:
+        manifest = z.read("retail_supermarket/__manifest__.py").decode()
+        csv = z.read("retail_supermarket/security/ir.model.access.csv").decode()
+    assert "security/groups.xml" in manifest
+    assert manifest.index("security/groups.xml") < manifest.index("security/ir.model.access.csv")
+    assert "retail_supermarket.group_retail_supermarket_user" in csv
 
 
 @pytest.mark.integration

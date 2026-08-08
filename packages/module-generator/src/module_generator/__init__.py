@@ -127,9 +127,10 @@ def order_manifest_data_files(
         buckets[_manifest_bucket(path)].append(path)
 
     def _sort_security(items: list[str]) -> list[str]:
+        groups = [p for p in items if p.endswith("groups.xml")]
         access = [p for p in items if p.endswith("ir.model.access.csv")]
-        rules = [p for p in items if p not in access]
-        return access + rules
+        rules = [p for p in items if p not in groups and p not in access]
+        return groups + access + rules
 
     models_xml = [p for p in buckets["data"] if p.endswith("models.xml")]
     data_rest = [p for p in buckets["data"] if p not in models_xml]
@@ -797,6 +798,29 @@ class ModuleSpec:
                 raise ValueError(f"Invalid ViewSpec.mode {view.mode!r}")
         self.infer_and_merge_depends()
 
+    def normalize_menu_xml_references(self) -> None:
+        """Map draft parent_xml_id aliases to truncated MenuSpec.xml_id() values."""
+        if not self.menus:
+            return
+        id_map: dict[str, str] = {}
+        for menu in self.menus:
+            exported = menu.xml_id()
+            id_map[exported] = exported
+            if not menu.technical_name:
+                continue
+            tn = menu.technical_name
+            id_map[tn] = exported
+            if tn.startswith("menu_"):
+                bare = tn[5:]
+                id_map[bare] = exported
+                id_map[f"menu_{bare}"] = exported
+            else:
+                id_map[f"menu_{tn}"] = exported
+        for menu in self.menus:
+            parent = menu.parent_xml_id
+            if parent and parent in id_map:
+                menu.parent_xml_id = id_map[parent]
+
     def ensure_default_menus(self) -> None:
         """Add root menu + per-model act_window/menu when new models exist and menus empty."""
         new_models = [m for m in self.models if m.mode == "new"]
@@ -850,6 +874,7 @@ def render_module_files(spec: ModuleSpec) -> dict[str, str]:
     normalize_module_spec_list_views(spec)
     spec.validate()
     spec.ensure_default_menus()
+    spec.normalize_menu_xml_references()
     # Default menus may introduce list,form actions — normalize again if major known.
     normalize_module_spec_list_views(spec)
     for model in spec.models:

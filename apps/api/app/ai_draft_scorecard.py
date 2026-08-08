@@ -442,19 +442,197 @@ def _score_hygiene(draft: dict[str, Any], *, user_prompt: str = "") -> tuple[flo
         for p in anti
     )
     if forbid_capture:
+        from app.ai_apply_readiness import (
+            _HEADER_TAX_FIELDS,
+            _SHADOW_HEADER_TOTALS,
+            _field_implies_payment_capture,
+            _header_primary_total,
+        )
+
         for model in draft.get("models") or []:
             if not isinstance(model, dict):
                 continue
             mid = str(model.get("model") or "")
-            if not mid.startswith("x_") or "invoice" not in mid.lower():
+            if not mid.startswith("x_"):
                 continue
-            if model.get("is_workflow"):
+            for f in model.get("fields") or []:
+                if not isinstance(f, dict):
+                    continue
+                if _field_implies_payment_capture(f):
+                    score -= 1.5
+                    findings.append(
+                        {
+                            "dimension": "hygiene",
+                            "element": f"{mid}.{f.get('name')}",
+                            "detail": "payment capture field violates pack anti-pattern (link stock docs only)",
+                        }
+                    )
+            if "invoice" in mid.lower() and model.get("is_workflow"):
                 score -= 2.0
                 findings.append(
                     {
                         "dimension": "hygiene",
                         "element": mid,
                         "detail": "parallel billing workflow violates pack anti-pattern (link account.move only)",
+                    }
+                )
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        mid = str(model.get("model") or "")
+        if mid not in compute_models:
+            continue
+        from app.ai_apply_readiness import (
+            _HEADER_TAX_FIELDS,
+            _SHADOW_HEADER_TOTALS,
+            _header_primary_total,
+        )
+
+        fields = {
+            str(f.get("name")): f for f in (model.get("fields") or []) if isinstance(f, dict)
+        }
+        primary = _header_primary_total(fields, compute_models, mid)
+        if not primary:
+            continue
+        for shadow in _SHADOW_HEADER_TOTALS:
+            if shadow in fields and shadow != primary:
+                score -= 0.8
+                findings.append(
+                    {
+                        "dimension": "hygiene",
+                        "element": f"{mid}.{shadow}",
+                        "detail": "shadow header total duplicates computed primary total",
+                    }
+                )
+        if any(n in fields for n in _HEADER_TAX_FIELDS):
+            score -= 0.6
+            findings.append(
+                {
+                    "dimension": "hygiene",
+                    "element": mid,
+                    "detail": "header tax amount without tax compute or line tax fields",
+                }
+            )
+    from app.ai_apply_readiness import (
+        _field_names as _apply_field_names,
+        _is_procurement_header,
+        _is_sales_header,
+        _pick_campaign_model,
+        _pick_sales_order_header,
+    )
+
+    by_id = {
+        str(m.get("model")): m
+        for m in (draft.get("models") or [])
+        if isinstance(m, dict) and m.get("model")
+    }
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        mid = str(model.get("model") or "")
+        names = _apply_field_names(model)
+        if "x_purchase_order_id" in names and _is_sales_header(model):
+            score -= 0.8
+            findings.append(
+                {
+                    "dimension": "hygiene",
+                    "element": f"{mid}.x_purchase_order_id",
+                    "detail": "purchase.order link on sales-shaped header",
+                }
+            )
+        if "x_sale_order_id" in names and _is_procurement_header(model):
+            score -= 0.8
+            findings.append(
+                {
+                    "dimension": "hygiene",
+                    "element": f"{mid}.x_sale_order_id",
+                    "detail": "sale.order link on procurement-shaped header",
+                }
+            )
+    campaign_id = _pick_campaign_model(by_id)
+    order_id = _pick_sales_order_header(by_id)
+    if campaign_id and order_id:
+        order = by_id.get(order_id) or {}
+        campaign = by_id.get(campaign_id) or {}
+        order_names = _apply_field_names(order)
+        campaign_suffix = campaign_id.removeprefix("x_")
+        m2o_name = f"x_{campaign_suffix}_id"
+        alt_m2o = ("x_discount_id", "x_campaign_id", "x_coupon_id", "x_voucher_id")
+        has_order_link = m2o_name in order_names or any(name in order_names for name in alt_m2o)
+        if not has_order_link:
+            score -= 0.4
+            findings.append(
+                {
+                    "dimension": "semantics",
+                    "element": order_id,
+                    "detail": "campaign/order models exist but order header lacks promotion link",
+                }
+            )
+        has_reverse = any(
+            isinstance(field, dict)
+            and field.get("ttype") == "one2many"
+            and str(field.get("relation") or "") == order_id
+            for field in (campaign.get("fields") or [])
+        )
+        if not has_reverse:
+            score -= 0.3
+            findings.append(
+                {
+                    "dimension": "semantics",
+                    "element": campaign_id,
+                    "detail": "campaign model lacks reverse order relation",
+                }
+            )
+    from app.ai_apply_readiness import _automation_signature, _selection_keys as _apply_selection_keys
+
+    auto_groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    for auto in draft.get("automations") or []:
+        if not isinstance(auto, dict):
+            continue
+        sig = _automation_signature(auto)
+        if sig[0] and sig[1]:
+            auto_groups.setdefault(sig, []).append(auto)
+    for sig, group in auto_groups.items():
+        if len(group) > 1:
+            score -= 0.5
+            findings.append(
+                {
+                    "dimension": "hygiene",
+                    "element": sig[0],
+                    "detail": "duplicate automation signature (model/trigger/domain)",
+                }
+            )
+    for auto in draft.get("automations") or []:
+        if not isinstance(auto, dict):
+            continue
+        mid = str(auto.get("model") or "")
+        model = by_id.get(mid)
+        if not model:
+            continue
+        fields_by_name = {
+            str(field.get("name")): field
+            for field in (model.get("fields") or [])
+            if isinstance(field, dict) and field.get("name")
+        }
+        for action in auto.get("safe_actions") or []:
+            if not isinstance(action, dict):
+                continue
+            kind = str(action.get("kind") or "")
+            field = str(action.get("field") or "")
+            if kind not in {"object_write", "update_field"} or field not in fields_by_name:
+                continue
+            fdef = fields_by_name[field]
+            if str(fdef.get("ttype")) != "selection":
+                continue
+            keys = _apply_selection_keys(fdef.get("selection"))
+            val = str(action.get("value") or "")
+            if keys and val and val not in keys:
+                score -= 0.8
+                findings.append(
+                    {
+                        "dimension": "semantics",
+                        "element": f"{mid}.{field}",
+                        "detail": f"automation writes invalid selection value {val!r}",
                     }
                 )
     for v in draft.get("views") or []:
