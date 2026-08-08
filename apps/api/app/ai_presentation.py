@@ -73,40 +73,50 @@ def dedupe_smart_button_labels(draft: dict[str, Any]) -> list[str]:
     for btn in buttons:
         if not isinstance(btn, dict):
             continue
-        key = (str(btn.get("on_model") or ""), str(btn.get("related_model") or ""))
+        label = str(btn.get("label") or btn.get("string") or btn.get("name") or "Related")
+        btn.setdefault("label", label)
+        key = (str(btn.get("on_model") or ""), label)
         groups.setdefault(key, []).append(btn)
-    for (_on, _rel), rows in groups.items():
+    for (on_model, base_label), rows in groups.items():
         if len(rows) < 2:
             continue
         for i, btn in enumerate(rows):
             field = str(btn.get("relation_field") or btn.get("field") or "")
             suffix = ""
             if "out" in field.lower() or field.endswith("_from_id"):
-                suffix = " out"
+                suffix = " (out)"
             elif "in" in field.lower() or field.endswith("_to_id"):
-                suffix = " in"
+                suffix = " (in)"
             elif i > 0:
-                suffix = f" ({field or i + 1})"
-            label = str(btn.get("string") or btn.get("name") or "Related")
-            if suffix and suffix.strip() not in label.lower():
-                btn["string"] = f"{label}{suffix}".strip()
-                notes.append(
-                    f"presentation: smart button label dedupe on {btn.get('on_model')}"
-                )
+                suffix = f" ({i + 1})"
+            new_label = base_label if not suffix else f"{base_label}{suffix}"
+            if btn.get("label") != new_label:
+                btn["label"] = new_label
+                btn["string"] = new_label
+                notes.append(f"presentation: smart button label dedupe on {on_model}")
     return notes
 
 
 def suggest_line_total_compute(draft: dict[str, Any]) -> list[str]:
-    """Flag line models with qty × price for optional equation-compute automation."""
+    """Flag line models with qty × price when no custom compute block exists yet."""
+    from app.module_spec_codec import merge_custom_code_blocks
+
     notes: list[str] = []
+    computed_models = {
+        str(b.get("model"))
+        for b in merge_custom_code_blocks(draft)
+        if isinstance(b, dict) and b.get("model")
+    }
     suggestions: list[dict[str, str]] = []
     qty_names = ("x_qty", "x_quantity", "quantity", "x_hours", "x_units")
-    price_names = ("x_price", "x_unit_price", "x_rate", "price_unit")
+    price_names = ("x_price", "x_unit_price", "x_price_unit", "x_rate", "price_unit")
     for model in draft.get("models") or []:
         if not isinstance(model, dict):
             continue
         mid = str(model.get("model") or "")
         if not mid.startswith("x_") or "line" not in mid.lower():
+            continue
+        if mid in computed_models:
             continue
         fields = {str(f.get("name")): f for f in (model.get("fields") or []) if isinstance(f, dict)}
         qty = next((n for n in qty_names if n in fields), None)
@@ -126,8 +136,10 @@ def suggest_line_total_compute(draft: dict[str, Any]) -> list[str]:
                 }
             )
     if suggestions:
-        draft.setdefault("_compute_suggestions", []).extend(suggestions)
+        draft["_compute_suggestions"] = suggestions
         notes.append(f"presentation: {len(suggestions)} line-total compute suggestion(s)")
+    elif draft.get("_compute_suggestions"):
+        draft["_compute_suggestions"] = []
     return notes
 
 

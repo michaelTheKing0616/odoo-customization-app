@@ -274,12 +274,19 @@ def run_production_shape_pass(draft: dict[str, Any]) -> list[str]:
         notes.extend(scrub_draft_vocabulary(draft, pack=pack_body))
     except Exception:  # noqa: BLE001
         pass
+    from app.ai_apply_readiness import ensure_unique_sequence_prefixes, run_apply_readiness_pass
     from app.ai_presentation import dedupe_smart_button_labels
 
+    notes.extend(run_apply_readiness_pass(draft))
     notes.extend(dedupe_smart_button_labels(draft))
     notes.extend(ensure_search_views(draft))
     notes.extend(ensure_sequence_specs(draft))
+    notes.extend(ensure_unique_sequence_prefixes(draft))
     notes.extend(apply_money_and_tracking_defaults(draft))
+    from app.ai_apply_readiness import apply_line_subtotal_computes, apply_order_header_total_computes
+
+    notes.extend(apply_line_subtotal_computes(draft))
+    notes.extend(apply_order_header_total_computes(draft))
     notes.extend(ensure_multi_company_record_rules(draft))
     notes.extend(polish_arch_richness(draft))
     from app.ai_llm_status import finalize_llm_status
@@ -295,6 +302,9 @@ def run_production_shape_pass(draft: dict[str, Any]) -> list[str]:
         "smart_button_count": len(draft.get("smart_buttons") or []),
         "automation_count": len(draft.get("automations") or []),
     }
+    from app.ai_apply_readiness import finalize_draft_readiness_metadata
+
+    notes.extend(finalize_draft_readiness_metadata(draft))
     return notes
 
 

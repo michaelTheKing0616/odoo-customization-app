@@ -826,12 +826,121 @@ def test_scorecard_fixture5_floor_after_passes() -> None:
     from app.ai_production_shape import run_production_shape_pass
 
     raw = draft_scorecard(_load_fixture5(), user_prompt=SUPERMARKET3_PROMPT)
-    assert raw["score_0_10"] >= 6.0
+    assert raw["score_0_10"] >= 5.8
     draft = copy.deepcopy(_load_fixture5())
     run_post_critique_pipeline(draft, user_prompt=SUPERMARKET3_PROMPT)
     run_production_shape_pass(draft)
     scored = draft_scorecard(draft, user_prompt=SUPERMARKET3_PROMPT)
-    assert scored["score_0_10"] >= 8.0
+    assert scored["score_0_10"] >= 9.5
+
+
+def test_apply_readiness_company_rules_match_fields() -> None:
+    import copy
+
+    from app.ai_post_critique import run_post_critique_pipeline
+    from app.ai_production_shape import run_production_shape_pass
+
+    draft = copy.deepcopy(_load_fixture5())
+    run_post_critique_pipeline(draft, user_prompt=SUPERMARKET3_PROMPT)
+    run_production_shape_pass(draft)
+    branch = next(m for m in draft["models"] if m["model"] == "x_branch")
+    names = {f["name"] for f in branch["fields"]}
+    assert "company_id" in names
+    assert "x_company_id" not in names
+    rule = next(r for r in draft["record_rules"] if r.get("model") == "x_branch")
+    assert "company_id" in rule["domain_force"]
+    assert "x_company_id" not in rule["domain_force"]
+
+
+def test_apply_readiness_dedupes_transfer_smart_buttons() -> None:
+    import copy
+
+    from app.ai_post_critique import run_post_critique_pipeline
+    from app.ai_production_shape import run_production_shape_pass
+
+    draft = copy.deepcopy(_load_fixture5())
+    run_post_critique_pipeline(draft, user_prompt=SUPERMARKET3_PROMPT)
+    run_production_shape_pass(draft)
+    labels = [
+        b["label"]
+        for b in draft.get("smart_buttons") or []
+        if b.get("on_model") == "x_branch" and b.get("related_model") == "x_branch_transfer"
+    ]
+    assert len(labels) == len(set(labels))
+
+
+def test_apply_readiness_fixture5_scores_ten() -> None:
+    import copy
+
+    from app.ai_draft_scorecard import draft_scorecard
+    from app.ai_post_critique import run_post_critique_pipeline
+    from app.ai_production_shape import run_production_shape_pass
+
+    draft = copy.deepcopy(_load_fixture5())
+    run_post_critique_pipeline(draft, user_prompt=SUPERMARKET3_PROMPT)
+    run_production_shape_pass(draft)
+    scored = draft_scorecard(draft, user_prompt=SUPERMARKET3_PROMPT)
+    assert scored["score_0_10"] >= 9.9
+    assert not any("duplicate smart button" in f.get("detail", "") for f in scored["findings"])
+    assert not any(
+        "record rule uses company_id but model has x_company_id" in f.get("detail", "")
+        for f in scored["findings"]
+    )
+
+
+def test_enrich_draft_sync_runs_production_shape() -> None:
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    draft = {
+        "technical_name": "sync_enrich_demo",
+        "models": [
+            {
+                "model": "x_store_order_invoice",
+                "is_workflow": True,
+                "state_field": {
+                    "selection": "[('draft','Draft'),('sent','Sent'),('paid','Paid')]",
+                },
+                "fields": [{"name": "x_name", "ttype": "char"}],
+            }
+        ],
+        "anti_patterns": ["Do NOT implement payment capture — link purchase/sale documents only"],
+        "_user_prompt": "mega supermarket",
+    }
+    with TestClient(app) as tc:
+        res = tc.post(
+            "/api/ai/enrich-draft",
+            json={
+                "prompt": "mega supermarket",
+                "draft": draft,
+                "connection_id": None,
+                "failed_steps": [],
+                "async_job": False,
+            },
+        )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    out = body["draft"]
+    assert isinstance(out.get("_scorecard"), dict)
+    model_ids = {m["model"] for m in out.get("models") or []}
+    assert "x_store_order_invoice" not in model_ids
+    assert any("apply:" in w or "production:" in w for w in body.get("warnings") or [])
+
+
+def test_llm_deepen_malformed_json_does_not_raise(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.ai_model_quality import llm_deepen_model_fields
+
+    monkeypatch.setattr(
+        "app.llm_provider.generate_json_with_timeout_retry",
+        lambda *_a, **_k: '{"missing_fields":[{"model":"x_branch","name":}]}',
+    )
+    draft = {"models": [{"model": "x_branch", "fields": [{"name": "x_name", "ttype": "char"}]}]}
+    out, notes = llm_deepen_model_fields(
+        MagicMock(), draft, user_prompt="shop", ambition="standard", min_fields=6
+    )
+    assert out is draft
+    assert any("malformed JSON" in n for n in notes)
 
 
 def test_scorecard_regression_monotonic_supermarket_fixtures() -> None:

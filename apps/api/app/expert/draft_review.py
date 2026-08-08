@@ -39,11 +39,18 @@ def _finding_from_scorecard_row(row: dict[str, Any], priority: int) -> DraftRevi
     dim = str(row.get("dimension") or "hygiene")
     el = str(row.get("element") or "?")
     detail = str(row.get("detail") or "")
-    deterministic = dim in {"structure", "hygiene", "semantics"} and (
+    deterministic = dim in {"structure", "hygiene", "semantics", "ux"} and (
         "missing" in detail
         or "line model" in detail
         or "non-string" in detail
         or "workflow model missing" in detail
+        or "duplicate smart button" in detail
+        or "duplicate address" in detail
+        or "record rule" in detail
+        or "duplicate sequence" in detail
+        or "duplicate search" in detail
+        or "without hr in depends" in detail
+        or "generic depth_seed" in detail
     )
     summary = f"{dim.replace('_', ' ').title()}: {el}"
     return DraftReviewFinding(

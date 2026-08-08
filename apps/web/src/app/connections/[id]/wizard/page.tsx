@@ -484,16 +484,29 @@ export default function AppWizardPage() {
           if (partial && Object.keys(partial).length > 0) setAiDraft(partial);
         }
         if (job.status === "succeeded" && job.result?.draft) {
-          setAiDraft(job.result.draft as Record<string, unknown>);
+          const merged = job.result.draft as Record<string, unknown>;
+          setAiDraft(merged);
           setAiWarnings((job.result.warnings as string[]) || []);
-          setAiNote("AI enrichment merged into existing draft.");
+          const enrichScore = (merged._scorecard as { score_0_10?: number } | undefined)
+            ?.score_0_10;
+          setAiNote(
+            typeof enrichScore === "number"
+              ? `AI enrichment complete — draft quality ${enrichScore.toFixed(1)}/10.`
+              : "AI enrichment merged into existing draft.",
+          );
         } else if (job.status === "failed" || job.status === "timeout") {
           throw new Error(job.error || "AI enrichment job failed");
         }
       } else {
         setAiDraft(res.draft);
         if (res.warnings?.length) setAiWarnings(res.warnings);
-        setAiNote("AI enrichment merged into existing draft.");
+        const enrichScore = (res.draft?._scorecard as { score_0_10?: number } | undefined)
+          ?.score_0_10;
+        setAiNote(
+          typeof enrichScore === "number"
+            ? `AI enrichment complete — draft quality ${enrichScore.toFixed(1)}/10.`
+            : "AI enrichment merged into existing draft.",
+        );
       }
     } catch (err) {
       reportApiError(err, setError, { fallback: "AI enrichment failed" });
@@ -605,7 +618,14 @@ export default function AppWizardPage() {
       if (res.warnings?.length) {
         setAiWarnings((prev) => [...prev, ...res.warnings!]);
       }
-      setAiNote("Reuse plan updated — no full AI regen needed.");
+      const reuseScore = (
+        res.draft?._scorecard as { score_0_10?: number } | undefined
+      )?.score_0_10;
+      setAiNote(
+        typeof reuseScore === "number"
+          ? `Reuse plan updated — draft quality ${reuseScore.toFixed(1)}/10 (apply-readiness applied).`
+          : "Reuse plan updated — apply-readiness passes applied.",
+      );
     } catch (err) {
       reportApiError(err, setError, { fallback: "Reuse apply failed", toast: true });
     } finally {

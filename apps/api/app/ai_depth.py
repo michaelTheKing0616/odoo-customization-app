@@ -587,6 +587,26 @@ LAW_FIRM_SEED_LEXICON = frozenset(
 )
 
 
+_SEED_SCALE_WORDS = frozenset(
+    {"super", "mega", "large", "multiple", "around", "world", "global", "chain"}
+)
+_SEED_DOMAIN_WORDS = frozenset(
+    {
+        "market",
+        "store",
+        "shop",
+        "retail",
+        "branch",
+        "grocery",
+        "supermarket",
+        "hospital",
+        "clinic",
+        "hotel",
+        "restaurant",
+    }
+)
+
+
 def _neutral_seed_description(
     template_desc: str,
     *,
@@ -598,7 +618,9 @@ def _neutral_seed_description(
     domain_word = ""
     for tok in re.findall(r"[a-zA-Z]+", user_prompt):
         low = tok.lower()
-        if low in {"super", "market", "store", "shop", "retail", "hospital", "clinic"}:
+        if low in _SEED_SCALE_WORDS or low in {"the", "with", "and", "for"}:
+            continue
+        if low in _SEED_DOMAIN_WORDS or len(low) >= 5:
             domain_word = tok.title()
             break
     if domain_word:

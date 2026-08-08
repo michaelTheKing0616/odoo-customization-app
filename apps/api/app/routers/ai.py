@@ -507,6 +507,9 @@ def reapply_reuse(
         stock_catalog=stock_catalog or None,
     )
     warnings = apply_reuse_plan(draft, plan)
+    from app.ai_production_shape import run_production_shape_pass
+
+    warnings.extend(run_production_shape_pass(draft))
     return AiReapplyReuseOut(ok=True, draft=draft, warnings=warnings)
 
 
@@ -556,7 +559,7 @@ def enrich_draft_route(
 
     import copy
 
-    from app.ai_llm_status import attach_llm_status, finalize_llm_status, sanitize_draft_payload
+    from app.ai_llm_status import sanitize_draft_payload
     from app.ai_model_quality import run_model_quality_pass
     from app.ai_depth import run_depth_pass
     from app.ai_critique import run_self_critique
@@ -589,9 +592,16 @@ def enrich_draft_route(
             draft, c_w = run_self_critique(draft, user_prompt=body.prompt, repair=True)
             warnings.extend(c_w)
 
+    from app.ai_enrich_jobs import finalize_enriched_draft
+
     draft = sanitize_draft_payload(draft)
-    attach_llm_status(draft, mode="llm_full", completed_steps=list(failed))
-    finalize_llm_status(draft, mode="llm_full")
+    warnings = finalize_enriched_draft(
+        draft,
+        prompt=body.prompt,
+        warnings=warnings,
+        llm_mode="llm_full",
+        completed_steps=list(failed),
+    )
     from app.ai_draft_cache import save_draft_cache
 
     save_draft_cache(

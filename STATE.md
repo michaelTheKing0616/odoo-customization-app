@@ -4,15 +4,13 @@
 
 ## Last run
 - Date: 2026-08-07
-- **GEN2-10/11/12 + EXP2-1/2 follow-ups complete (no commit — awaiting user approval):**
-  - Playwright `wizard-scorecard.spec.ts` green (Callout `testId` fix on scorecard chip)
-  - Live Ollama background job → `docs/research/gen2_run_2026-08-07.json` gate **pass** (`llm_partial`, score **9.88**, 962s)
-  - Full API gate (final re-run): **1066 passed**, 2 skipped, 0 failed (~33 min)
-  - Expert + GEN2 targeted: 47 passed; Playwright 1 passed
-- Prior: post-critique, production shape, scorecard, expert bench/review artifacts
+- **Apply-readiness v3 + follow-up (uncommitted):** billing demotion, Monetary header computes, depth/x_task restore, reuse link_only, scorecard gate; **sync `/enrich-draft`** now shares `finalize_enriched_draft` with async jobs; wizard shows score after reuse/enrich; sandbox smoke test added (skips without Docker). Tests: **67 passed**, 1 skipped (fixture5 sandbox).
+- Prior: GEN2/EXP2 (`d38e90a`).
 
 ## Next
-- User approval → commit GEN2/EXP2 batch
+- User approval → commit apply-readiness v1–v3 + follow-up batch
+- Re-save live supermarket draft (reuse toggle or Retry enrichment) to pick up all passes
+- Run `pytest tests/test_apply_readiness.py::test_fixture5_sandbox_install_smoke` with Docker for full ERP gate
 - EU Tongyi agreement still human/legal only
 
 ## Rule

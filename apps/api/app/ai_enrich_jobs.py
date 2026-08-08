@@ -61,38 +61,40 @@ def run_enrich_job_body(
             warnings.append(f"enrich: skipped {step} — LLM unavailable")
             continue
         if step == "quality":
-            working, q_w = run_model_quality_pass(
-                working,
-                user_prompt=prompt,
-                ambition=str(working.get("_ambition") or "standard"),
-                provider=provider,
-                expand_llm=True,
-            )
-            warnings.extend(q_w)
+            try:
+                working, q_w = run_model_quality_pass(
+                    working,
+                    user_prompt=prompt,
+                    ambition=str(working.get("_ambition") or "standard"),
+                    provider=provider,
+                    expand_llm=True,
+                )
+                warnings.extend(q_w)
+            except Exception as exc:  # noqa: BLE001
+                warnings.append(f"enrich: quality step failed ({exc})")
         elif step == "depth":
-            working, d_w = run_depth_pass(
-                working, user_prompt=prompt, provider=provider, expand_llm=True
-            )
-            warnings.extend(d_w)
+            try:
+                working, d_w = run_depth_pass(
+                    working, user_prompt=prompt, provider=provider, expand_llm=True
+                )
+                warnings.extend(d_w)
+            except Exception as exc:  # noqa: BLE001
+                warnings.append(f"enrich: depth step failed ({exc})")
         elif step == "critique":
-            working, c_w = run_self_critique(working, user_prompt=prompt, repair=True)
-            warnings.extend(c_w)
+            try:
+                working, c_w = run_self_critique(working, user_prompt=prompt, repair=True)
+                warnings.extend(c_w)
+            except Exception as exc:  # noqa: BLE001
+                warnings.append(f"enrich: critique step failed ({exc})")
 
     working = sanitize_draft_payload(working)
-    from app.ai_critique import finalize_critique_block
-    from app.ai_enrich import sync_form_archs_to_models
-    from app.ai_post_critique import run_post_critique_pipeline
-    from app.ai_production_shape import run_production_shape_pass
-    from app.ai_draft_scorecard import attach_scorecard
-    from app.ai_llm_status import finalize_llm_status
-
-    warnings.extend(sync_form_archs_to_models(working))
-    warnings.extend(run_post_critique_pipeline(working, user_prompt=prompt))
-    warnings.extend(run_production_shape_pass(working))
-    warnings.extend(finalize_critique_block(working))
-    attach_scorecard(working, user_prompt=prompt)
-    attach_llm_status(working, mode="llm_full", completed_steps=list(steps))
-    finalize_llm_status(working, mode="llm_full")
+    warnings = finalize_enriched_draft(
+        working,
+        prompt=prompt,
+        warnings=warnings,
+        llm_mode="llm_full",
+        completed_steps=list(steps),
+    )
 
     db = db_factory()
     try:
@@ -147,4 +149,33 @@ def enqueue_enrich_job(
     return job_id
 
 
-__all__ = ["enqueue_enrich_job", "run_enrich_job_body"]
+def finalize_enriched_draft(
+    draft: dict[str, Any],
+    *,
+    prompt: str,
+    warnings: list[str],
+    llm_mode: str = "llm_full",
+    completed_steps: list[str] | None = None,
+) -> list[str]:
+    """Shared tail for sync enrich-draft and async enrich jobs."""
+    from app.ai_apply_readiness import filter_stale_enrich_warnings, finalize_draft_readiness_metadata
+    from app.ai_critique import finalize_critique_block
+    from app.ai_draft_scorecard import attach_scorecard
+    from app.ai_enrich import sync_form_archs_to_models
+    from app.ai_llm_status import attach_llm_status, finalize_llm_status
+    from app.ai_post_critique import run_post_critique_pipeline
+    from app.ai_production_shape import run_production_shape_pass
+
+    warnings.extend(sync_form_archs_to_models(draft))
+    warnings.extend(run_post_critique_pipeline(draft, user_prompt=prompt))
+    warnings.extend(run_production_shape_pass(draft))
+    warnings.extend(finalize_critique_block(draft))
+    warnings = filter_stale_enrich_warnings(warnings, draft)
+    attach_scorecard(draft, user_prompt=prompt)
+    finalize_draft_readiness_metadata(draft)
+    attach_llm_status(draft, mode=llm_mode, completed_steps=list(completed_steps or []))
+    finalize_llm_status(draft, mode=llm_mode)  # type: ignore[arg-type]
+    return warnings
+
+
+__all__ = ["enqueue_enrich_job", "finalize_enriched_draft", "run_enrich_job_body"]

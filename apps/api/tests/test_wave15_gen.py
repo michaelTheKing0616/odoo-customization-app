@@ -421,6 +421,8 @@ def test_reapply_reuse_endpoint_collapses_parallel_without_llm() -> None:
     models = {m["model"] for m in body["draft"]["models"]}
     assert "x_product" not in models
     assert body["draft"]["reuse"]["plan"]["decisions"]
+    assert isinstance(body["draft"].get("_scorecard"), dict)
+    assert float(body["draft"]["_scorecard"].get("score_0_10") or 0) >= 0
     assert any(
         d.get("model") == "product.product" and d.get("confirmed")
         for d in body["draft"]["reuse"]["plan"]["decisions"]

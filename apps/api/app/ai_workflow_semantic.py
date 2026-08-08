@@ -32,6 +32,8 @@ _TERMINAL_NEGATIVE = frozenset(
         "refused",
     }
 )
+_INITIAL_STATES = frozenset({"draft", "new"})
+_ALLOWED_INITIAL_TERMINALS = frozenset({"cancelled", "canceled", "rejected"})
 
 
 def classify_state(key: str) -> str:
@@ -108,6 +110,11 @@ def synthesize_semantic_transitions(keys: list[str]) -> tuple[list[list[str]], l
         transitions.append([active[i], active[i + 1]])
     for a in active:
         for neg in terminal_negative:
+            if (
+                a.lower() in _INITIAL_STATES
+                and neg.lower() not in _ALLOWED_INITIAL_TERMINALS
+            ):
+                continue
             transitions.append([a, neg])
     if active and terminal_success:
         transitions.append([active[-1], terminal_success[0]])
@@ -182,6 +189,8 @@ def apply_semantic_workflow_pass(draft: dict[str, Any]) -> list[str]:
 
 
 __all__ = [
+    "_ALLOWED_INITIAL_TERMINALS",
+    "_INITIAL_STATES",
     "apply_semantic_workflow_pass",
     "classify_state",
     "strip_non_workflow_state",

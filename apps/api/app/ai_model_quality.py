@@ -785,7 +785,11 @@ def llm_deepen_model_fields(
         if start < 0 or end <= start:
             notes.append("quality: field-deepen non-JSON")
             return draft, notes
-        data = json.loads(text[start : end + 1])
+        try:
+            data = json.loads(text[start : end + 1])
+        except json.JSONDecodeError as exc:
+            notes.append(f"quality: field-deepen malformed JSON ({exc})")
+            return draft, notes
     if not isinstance(data, dict):
         notes.append("quality: field-deepen not an object")
         return draft, notes
