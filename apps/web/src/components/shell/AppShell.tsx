@@ -32,6 +32,8 @@ export function AppShell({ connectionId, children }: Props) {
   const connectionQuery = useQuery({
     queryKey: ["connection", connectionId],
     queryFn: () => api.getConnection(connectionId),
+    enabled: Boolean(connectionId),
+    retry: false,
   });
 
   const connectionsQuery = useQuery({
@@ -103,7 +105,17 @@ export function AppShell({ connectionId, children }: Props) {
   const connection = connectionQuery.data;
   const connections = connectionsQuery.data ?? [];
 
-  if (connectionQuery.isLoading) {
+  if (!connectionId) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6">
+        <Callout variant="danger" title="Invalid connection URL">
+          Open a connection from the home page or pick one from your saved connections list.
+        </Callout>
+      </div>
+    );
+  }
+
+  if (connectionQuery.isPending) {
     return (
       <div className="flex min-h-screen items-center justify-center text-muted">
         Loading connection…
@@ -115,7 +127,9 @@ export function AppShell({ connectionId, children }: Props) {
     return (
       <div className="flex min-h-screen items-center justify-center p-6">
         <Callout variant="danger" title="Could not load connection">
-          Check the API is running and this connection still exists.
+          {connectionQuery.error instanceof Error
+            ? connectionQuery.error.message
+            : "Check the API is running and this connection still exists."}
         </Callout>
       </div>
     );

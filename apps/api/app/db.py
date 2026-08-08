@@ -56,6 +56,7 @@ def init_db(*, bootstrap: bool = True) -> None:
     mode = settings.db_migrations.strip().lower()
     if mode == "auto":
         run_migrations()
+        _ensure_schema_columns()
         return
     if bootstrap:
         from app import account_models  # noqa: F401
