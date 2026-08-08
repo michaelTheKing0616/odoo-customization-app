@@ -78,6 +78,20 @@ def retail_supermarket_pack() -> dict[str, Any]:
                 "link_only": True,
             },
             {
+                "model": "sale.order",
+                "modules": ["sale"],
+                "reason": "Customer sales orders (link-only)",
+                "link_only": True,
+                "forbid_parallel": ["x_sale_order"],
+            },
+            {
+                "model": "account.move",
+                "modules": ["account"],
+                "reason": "Invoices / bills (link-only)",
+                "link_only": True,
+                "forbid_parallel": ["x_invoice", "x_bill"],
+            },
+            {
                 "model": "stock.warehouse",
                 "modules": ["stock"],
                 "reason": "Warehouse / stock locations (link-only)",

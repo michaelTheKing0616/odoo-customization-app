@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -14,6 +15,7 @@ from app.odoo_service import OdooClientError, client_from_connection, get_connec
 from app.schemas import (
     ModuleSpecApplyBody,
     ModuleSpecApplyOut,
+    ModuleSpecImportJsonBody,
     ModuleSpecImportOut,
     ModuleSpecValidateLiveBody,
     ValidateLiveItemOut,
@@ -26,6 +28,7 @@ from app.snapshots import (
     require_advanced_confirmation,
 )
 from app.protected_enforcement import manifest_for_connection, scrub_spec_for_protected_apply
+from app.ai_apply_readiness import prepare_spec_for_live_apply
 from app.spec_apply_ui import apply_module_spec_ui
 from app.mutation_lock_dep import require_connection_mutation_lock
 from app.custom_code_authoring import lint_custom_code_blocks, model_class_skeleton
@@ -82,6 +85,34 @@ async def import_module_spec_file(
         unmapped=result.unmapped,
         custom_code_blocks=list(payload.get("custom_code_blocks") or []),
         source=result.source,
+    )
+
+
+@import_router.post("/import-json", response_model=ModuleSpecImportOut)
+def import_module_spec_json(body: ModuleSpecImportJsonBody) -> ModuleSpecImportOut:
+    """Accept pasted ModuleSpec JSON — optional apply-readiness prep, no Odoo writes."""
+    if not isinstance(body.spec, dict) or not body.spec.get("models"):
+        raise HTTPException(
+            status_code=422,
+            detail="spec.models must be a non-empty list",
+        )
+    spec = copy.deepcopy(body.spec)
+    warnings: list[str] = []
+    if body.prepare:
+        spec, prep_notes = prepare_spec_for_live_apply(spec)
+        warnings.extend(prep_notes)
+    blocks = list(spec.get("custom_code_blocks") or [])
+    return ModuleSpecImportOut(
+        ok=True,
+        spec=spec,
+        warnings=warnings,
+        unmapped=[],
+        custom_code_blocks=blocks,
+        source="json_paste",
+        note=(
+            "JSON loaded into ModuleSpec — click Apply to Odoo on a connection "
+            "or open the visual editor."
+        ),
     )
 
 
@@ -318,7 +349,8 @@ def apply_module_spec(
             except ConfirmationRequired as exc:
                 raise _confirm_http(exc) from exc
         manifest = manifest_for_connection(conn)
-        spec_clean, pcm_skips = scrub_spec_for_protected_apply(body.spec, manifest)
+        spec_prepared, prep_notes = prepare_spec_for_live_apply(body.spec)
+        spec_clean, pcm_skips = scrub_spec_for_protected_apply(spec_prepared, manifest)
         result = apply_module_spec_ui(
             client,
             spec_clean,
@@ -334,6 +366,8 @@ def apply_module_spec(
 
     skipped = list(result.skipped) + pcm_skips
     warnings = list(result.warnings)
+    if prep_notes:
+        warnings.append(f"Live prep: {len(prep_notes)} readiness adjustment(s)")
     if pcm_skips:
         warnings.append(f"PCM: skipped {len(pcm_skips)} protected item(s)")
 

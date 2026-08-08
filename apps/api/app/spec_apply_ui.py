@@ -794,6 +794,52 @@ def _apply_access_rules(
             result.warnings.append(f"Access rule {name!r} failed: {exc}")
 
 
+def _apply_draft_record_rules(
+    client: OdooClient, spec: dict[str, Any], result: UiApplyResult
+) -> None:
+    """Apply draft record_rules (multi-company + branch scope) via ir.rule RPC."""
+    from odoo_client.security import CreateRecordRuleRequest
+
+    rules = spec.get("record_rules") or []
+    if not isinstance(rules, list):
+        return
+
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        model = _resolve_draft_model_name(client, rule.get("model"))
+        if not model:
+            result.warnings.append(
+                f"Record rule skipped (unknown model): {rule.get('model')!r}"
+            )
+            continue
+        name = str(rule.get("name") or f"rule_{model.replace('.', '_')}")
+        domain = rule.get("domain_force") or rule.get("domain")
+        if domain in (None, False, ""):
+            result.warnings.append(f"Record rule {name!r} skipped: empty domain")
+            continue
+        try:
+            existing = client.list_record_rules(model=model, limit=50)
+            if any(r.name == name for r in existing):
+                result.skipped.append(f"record_rule:{model}:{name}")
+                continue
+            client.create_record_rule(
+                CreateRecordRuleRequest(
+                    model=model,
+                    name=name,
+                    domain_force=str(domain),
+                    perm_read=bool(rule.get("perm_read", True)),
+                    perm_write=bool(rule.get("perm_write", True)),
+                    perm_create=bool(rule.get("perm_create", True)),
+                    perm_unlink=bool(rule.get("perm_unlink", True)),
+                    active=bool(rule.get("active", True)),
+                )
+            )
+            result.record_rules_created += 1
+        except Exception as exc:  # noqa: BLE001
+            result.warnings.append(f"Record rule {name!r} failed: {exc}")
+
+
 def _note_automations(spec: dict[str, Any], result: UiApplyResult) -> None:
     """Legacy note path — prefer _apply_safe_automations when apply_automations=True."""
     autos = spec.get("automations") or []
@@ -986,6 +1032,7 @@ def apply_module_spec_ui(
         _note_automations(spec, result)
     if apply_access:
         _apply_access_rules(client, spec, result)
+        _apply_draft_record_rules(client, spec, result)
 
     result.message = (
         f"UI apply: {len(result.models_created)} model(s), {result.fields_created} field(s), "

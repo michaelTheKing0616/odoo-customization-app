@@ -27,6 +27,49 @@ COMPANY_FIELD_MODULE: dict[str, Any] = {
 
 COMPANY_FIELD_LIVE_NAME = "x_company_id"
 
+COMPANY_FIELD_LIVE: dict[str, Any] = {
+    **COMPANY_FIELD_MODULE,
+    "name": COMPANY_FIELD_LIVE_NAME,
+}
+
+
+def apply_multi_company_to_live_draft(draft: dict[str, Any]) -> dict[str, Any]:
+    """Enrich draft with x_company_id + live record rules on new x_* models."""
+    out = copy.deepcopy(draft)
+    models = out.setdefault("models", [])
+    rules = out.setdefault("record_rules", [])
+    existing_rule_models = {
+        str(r.get("model") or r.get("model_xml_id") or "")
+        for r in rules
+        if isinstance(r, dict)
+    }
+
+    for entry in models:
+        if not isinstance(entry, dict):
+            continue
+        model = str(entry.get("model") or "")
+        if not model.startswith("x_") or str(entry.get("mode") or "new") != "new":
+            continue
+        fields = entry.setdefault("fields", [])
+        names = {str(f.get("name")) for f in fields if isinstance(f, dict) and f.get("name")}
+        if COMPANY_FIELD_LIVE_NAME not in names and "company_id" not in names:
+            fields.append(dict(COMPANY_FIELD_LIVE))
+        xml_id = _model_xml_id(model)
+        if xml_id not in existing_rule_models and model not in existing_rule_models:
+            rules.append(
+                {
+                    "name": f"Multi-company ({model})",
+                    "model": model,
+                    "model_xml_id": xml_id,
+                    "domain_force": COMPANY_RULE_DOMAIN_LIVE,
+                    "technical_name": _rule_technical(model),
+                }
+            )
+            existing_rule_models.add(xml_id)
+
+    out["multi_company"] = True
+    return out
+
 
 def _model_xml_id(model: str) -> str:
     return f"model_{model.replace('.', '_')}"

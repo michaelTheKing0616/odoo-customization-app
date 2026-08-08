@@ -16,8 +16,8 @@ def _load_fixture5() -> dict:
     return json.loads(FIXTURE5.read_text())
 
 
-def test_normalize_company_fields_renames_x_company_id() -> None:
-    from app.ai_apply_readiness import normalize_company_fields_for_export
+def test_normalize_company_fields_renames_company_id_to_live() -> None:
+    from app.ai_apply_readiness import normalize_company_fields_for_live
 
     draft = {
         "models": [
@@ -25,22 +25,22 @@ def test_normalize_company_fields_renames_x_company_id() -> None:
                 "model": "x_branch",
                 "fields": [
                     {"name": "x_name", "ttype": "char"},
-                    {"name": "x_company_id", "ttype": "many2one", "relation": "res.company"},
+                    {"name": "company_id", "ttype": "many2one", "relation": "res.company"},
                 ],
             }
         ],
         "record_rules": [
             {
                 "model": "x_branch",
-                "domain_force": "['|', ('x_company_id', '=', False), ('x_company_id', 'in', company_ids)]",
+                "domain_force": "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]",
             }
         ],
     }
-    normalize_company_fields_for_export(draft)
+    normalize_company_fields_for_live(draft)
     names = {f["name"] for f in draft["models"][0]["fields"]}
-    assert "company_id" in names
-    assert "x_company_id" not in names
-    assert "company_id" in draft["record_rules"][0]["domain_force"]
+    assert "x_company_id" in names
+    assert "company_id" not in names
+    assert "x_company_id" in draft["record_rules"][0]["domain_force"]
 
 
 def test_dedupe_search_view_filters() -> None:
@@ -137,7 +137,7 @@ def test_sync_company_fields_with_record_rules() -> None:
     notes = sync_company_fields_with_record_rules(draft)
     assert notes
     names = {f["name"] for f in draft["models"][0]["fields"]}
-    assert "company_id" in names
+    assert "x_company_id" in names
 
 
 def test_fix_workflow_skip_terminal_transitions() -> None:
@@ -298,7 +298,7 @@ def test_fixture5_worldclass_hygiene_after_pass() -> None:
     assert "line qty×price without stored subtotal compute" not in details
     assert "assignee points to shift row not employee/user" not in details
     order_line = next(m for m in draft["models"] if m["model"] == "x_store_order_line")
-    assert any(f.get("name") == "company_id" for f in order_line["fields"])
+    assert any(f.get("name") == "x_company_id" for f in order_line["fields"])
     event = next(m for m in draft["models"] if m["model"] == "x_event")
     staff = next(f for f in event["fields"] if f["name"] == "x_staff_id")
     assert staff["relation"] == "hr.employee"
@@ -760,6 +760,213 @@ def test_v6_automation_pass_on_task_deadline_duplicate() -> None:
     assert "overdue" not in str(auto["safe_actions"]).lower()
 
 
+def _thin_supermarket_draft() -> dict:
+    return {
+        "technical_name": "super_market_branches",
+        "display_name": "Super Market",
+        "domain_pack": "retail_supermarket",
+        "_user_prompt": PROMPT,
+        "_ambition": "comprehensive",
+        "depends": ["base", "contacts", "mail", "product", "purchase", "stock", "hr"],
+        "groups": [
+            {"id": "group_super_market_branches_user", "name": "Super Market User"},
+            {"id": "group_super_market_branches_manager", "name": "Super Market Manager"},
+        ],
+        "models": [
+            {
+                "model": "x_branch",
+                "description": "Branch / Store location",
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "required": True},
+                    {"name": "x_manager_id", "ttype": "many2one", "relation": "res.users"},
+                    {"name": "company_id", "ttype": "many2one", "relation": "res.company"},
+                ],
+            },
+            {
+                "model": "x_store_order",
+                "description": "Store sales order",
+                "is_workflow": True,
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "required": True},
+                    {"name": "x_branch_id", "ttype": "many2one", "relation": "x_branch"},
+                    {
+                        "name": "x_line_ids",
+                        "ttype": "one2many",
+                        "relation": "x_store_order_line",
+                        "relation_field": "x_order_id",
+                    },
+                ],
+            },
+            {"model": "x_store_order_line", "fields": [{"name": "x_name", "ttype": "char"}]},
+            {
+                "model": "x_branch_transfer",
+                "description": "Inter-branch stock transfer",
+                "is_workflow": True,
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "required": True},
+                    {"name": "x_branch_from_id", "ttype": "many2one", "relation": "x_branch"},
+                    {"name": "x_branch_to_id", "ttype": "many2one", "relation": "x_branch"},
+                    {"name": "x_product_id", "ttype": "many2one", "relation": "product.product"},
+                    {"name": "x_qty", "ttype": "float"},
+                    {"name": "x_country_id", "ttype": "many2one", "relation": "res.country"},
+                ],
+            },
+            {
+                "model": "x_inventory_count",
+                "description": "Stock count session",
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "required": True},
+                    {"name": "x_branch_id", "ttype": "many2one", "relation": "x_branch"},
+                    {"name": "x_product_id", "ttype": "many2one", "relation": "product.product"},
+                    {"name": "x_qty_system", "ttype": "float"},
+                    {"name": "x_qty_counted", "ttype": "float"},
+                ],
+            },
+            {
+                "model": "x_supplier_agreement",
+                "description": "Supplier terms / rebate",
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "required": True},
+                    {"name": "x_partner_id", "ttype": "many2one", "relation": "res.partner", "string": "Supplier"},
+                    {"name": "x_branch_id", "ttype": "many2one", "relation": "x_branch"},
+                ],
+            },
+            {
+                "model": "x_event",
+                "description": "Market Event",
+                "source": "depth_seed",
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "required": True},
+                    {"name": "x_branch_id", "ttype": "many2one", "relation": "x_branch"},
+                    {"name": "x_date", "ttype": "date"},
+                    {"name": "x_location", "ttype": "char"},
+                    {"name": "x_staff_id", "ttype": "many2one", "relation": "hr.employee"},
+                    {"name": "x_partner_id", "ttype": "many2one", "relation": "res.partner"},
+                    {"name": "company_id", "ttype": "many2one", "relation": "res.company"},
+                    {"name": "x_notes", "ttype": "text"},
+                ],
+            },
+            {
+                "model": "x_task",
+                "description": "Market Task",
+                "source": "depth_seed",
+                "is_workflow": True,
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "required": True},
+                    {"name": "x_branch_id", "ttype": "many2one", "relation": "x_branch"},
+                    {"name": "x_date_deadline", "ttype": "date"},
+                    {"name": "x_status", "ttype": "selection", "selection": "[('draft','Draft'),('open','Open')]"},
+                    {"name": "x_staff_id", "ttype": "many2one", "relation": "hr.employee"},
+                    {"name": "company_id", "ttype": "many2one", "relation": "res.company"},
+                    {"name": "x_notes", "ttype": "text"},
+                ],
+            },
+        ],
+        "reuse": {"models": ["purchase.order"]},
+        "record_rules": [],
+        "views": [
+            {
+                "model": "x_branch_transfer",
+                "type": "form",
+                "arch": '<form><field name="x_country_id"/><field name="x_product_id"/></form>',
+            }
+        ],
+    }
+
+
+def test_promote_retail_depth_seeds_clears_depth_gap() -> None:
+    from app.ai_apply_readiness import (
+        ensure_header_line_models,
+        promote_retail_depth_seeds,
+        reconcile_depth_metadata,
+    )
+    from app.ai_depth import depth_gaps
+
+    draft = _thin_supermarket_draft()
+    assert "depth_models" in depth_gaps(draft, "comprehensive")
+    promote_retail_depth_seeds(draft)
+    ensure_header_line_models(draft)
+    event = next(m for m in draft["models"] if m["model"] == "x_event")
+    assert event["source"] == "retail_depth"
+    assert "depth_seed" not in event["description"].lower()
+    reconcile_depth_metadata(draft)
+    assert "depth_models" not in (draft.get("_depth") or {}).get("gaps", [])
+
+
+def test_ensure_header_line_models_scaffolds_transfer_and_count_lines() -> None:
+    from app.ai_apply_readiness import ensure_header_line_models
+
+    draft = _thin_supermarket_draft()
+    notes = ensure_header_line_models(draft)
+    mids = {m["model"] for m in draft["models"]}
+    assert "x_branch_transfer_line" in mids
+    assert "x_inventory_count_line" in mids
+    assert any("scaffolded x_branch_transfer_line" in n for n in notes)
+    transfer = next(m for m in draft["models"] if m["model"] == "x_branch_transfer")
+    assert "x_product_id" not in {f["name"] for f in transfer["fields"]}
+    line = next(m for m in draft["models"] if m["model"] == "x_branch_transfer_line")
+    assert any(f.get("name") == "x_transfer_id" for f in line["fields"])
+
+
+def test_prune_transfer_country_field() -> None:
+    from app.ai_apply_readiness import prune_transfer_country_field
+
+    draft = _thin_supermarket_draft()
+    prune_transfer_country_field(draft)
+    transfer = next(m for m in draft["models"] if m["model"] == "x_branch_transfer")
+    assert "x_country_id" not in {f["name"] for f in transfer["fields"]}
+    form = next(v for v in draft["views"] if v["model"] == "x_branch_transfer")
+    assert "x_country_id" not in form["arch"]
+
+
+def test_strip_branch_manager_scope_rules() -> None:
+    from app.ai_apply_readiness import strip_branch_manager_scope_rules
+
+    draft = _thin_supermarket_draft()
+    draft["record_rules"] = [
+        {
+            "model": "x_store_order",
+            "domain_force": (
+                "['|', ('x_branch_id', '=', False), "
+                "('x_branch_id.x_manager_id', '=', user.id)]"
+            ),
+            "group_xml_ids": ["group_super_market_branches_user"],
+            "technical_name": "rule_x_store_order_branch_manager_scope",
+            "name": "Branch manager scope (x_store_order)",
+        }
+    ]
+    notes = strip_branch_manager_scope_rules(draft)
+    assert any("removed branch-manager scope" in n for n in notes)
+    assert not any(
+        "x_branch_id.x_manager_id" in str(r.get("domain_force") or "")
+        for r in draft.get("record_rules") or []
+    )
+
+
+def test_supplier_agreement_gets_purchase_order_link() -> None:
+    from app.ai_apply_readiness import ensure_transaction_document_links
+
+    draft = _thin_supermarket_draft()
+    ensure_transaction_document_links(draft)
+    agreement = next(m for m in draft["models"] if m["model"] == "x_supplier_agreement")
+    assert any(f.get("name") == "x_purchase_order_id" for f in agreement["fields"])
+
+
+def test_thin_supermarket_reaches_ten_after_production_shape() -> None:
+    from app.ai_draft_scorecard import draft_scorecard
+    from app.ai_post_critique import run_post_critique_pipeline
+    from app.ai_production_shape import run_production_shape_pass
+    from app.ai_depth import depth_gaps
+
+    draft = _thin_supermarket_draft()
+    run_post_critique_pipeline(draft, user_prompt=PROMPT)
+    run_production_shape_pass(draft)
+    assert "depth_models" not in depth_gaps(draft, "comprehensive")
+    scored = draft_scorecard(draft, user_prompt=PROMPT)
+    assert scored["score_0_10"] >= 9.8
+    assert draft.get("_depth", {}).get("ok") is True
+
+
 @pytest.mark.integration
 def test_fixture5_export_access_groups_prefixed() -> None:
     import io
@@ -780,6 +987,138 @@ def test_fixture5_export_access_groups_prefixed() -> None:
     assert "security/groups.xml" in manifest
     assert manifest.index("security/groups.xml") < manifest.index("security/ir.model.access.csv")
     assert "retail_supermarket.group_retail_supermarket_user" in csv
+
+
+def test_wire_reuse_stock_documents_confirms_sale_and_account() -> None:
+    from app.ai_apply_readiness import wire_reuse_stock_documents
+
+    draft = {
+        "depends": ["base", "mail", "contacts"],
+        "_pack_reuse_stock": [
+            {
+                "model": "sale.order",
+                "modules": ["sale"],
+                "reason": "Sales orders (link-only)",
+                "link_only": True,
+            },
+            {
+                "model": "account.move",
+                "modules": ["account"],
+                "reason": "Invoices (link-only)",
+                "link_only": True,
+            },
+        ],
+        "models": [
+            {
+                "model": "x_store_order",
+                "is_workflow": True,
+                "fields": [
+                    {
+                        "name": "x_line_ids",
+                        "ttype": "one2many",
+                        "relation": "x_store_order_line",
+                    }
+                ],
+            },
+            {"model": "x_store_order_line", "fields": []},
+        ],
+    }
+    notes = wire_reuse_stock_documents(draft)
+    assert "sale.order" in draft["reuse"]["models"]
+    assert "account.move" in draft["reuse"]["models"]
+    assert "sale" in draft["depends"]
+    assert "account" in draft["depends"]
+    decisions = {
+        d["model"]: d for d in draft["reuse"]["plan"]["decisions"] if isinstance(d, dict)
+    }
+    assert decisions["sale.order"]["confirmed"] is True
+    assert decisions["account.move"]["link_only"] is True
+    assert any("reuse wired sale.order" in n for n in notes)
+
+
+def test_apply_promotion_discount_line_computes() -> None:
+    from app.ai_apply_readiness import apply_promotion_discount_line_computes
+    from app.module_spec_codec import merge_custom_code_blocks
+
+    draft = {
+        "models": [
+            {
+                "model": "x_store_order",
+                "is_workflow": True,
+                "fields": [
+                    {
+                        "name": "x_line_ids",
+                        "ttype": "one2many",
+                        "relation": "x_store_order_line",
+                    },
+                    {
+                        "name": "x_promotion_id",
+                        "ttype": "many2one",
+                        "relation": "x_promotion",
+                    },
+                ],
+            },
+            {
+                "model": "x_store_order_line",
+                "fields": [
+                    {
+                        "name": "x_order_id",
+                        "ttype": "many2one",
+                        "relation": "x_store_order",
+                    },
+                    {"name": "x_qty", "ttype": "float"},
+                    {"name": "x_price_unit", "ttype": "monetary"},
+                    {"name": "x_subtotal", "ttype": "monetary"},
+                    {"name": "x_currency_id", "ttype": "many2one", "relation": "res.currency"},
+                ],
+            },
+            {
+                "model": "x_promotion",
+                "is_workflow": True,
+                "fields": [{"name": "x_discount_pct", "ttype": "float"}],
+            },
+        ]
+    }
+    notes = apply_promotion_discount_line_computes(draft)
+    assert notes
+    block = next(
+        b
+        for b in merge_custom_code_blocks(draft)
+        if b.get("model") == "x_store_order_line"
+    )
+    content = str(block["content"])
+    assert "x_promotion_id.x_discount_pct" in content
+    assert "1.0 - (pct or 0.0) / 100.0" in content
+
+
+def test_prepare_spec_for_live_apply_normalizes_record_rules() -> None:
+    from app.ai_apply_readiness import prepare_spec_for_live_apply
+
+    spec = {
+        "models": [
+            {
+                "model": "x_branch",
+                "mode": "new",
+                "fields": [
+                    {"name": "x_name", "ttype": "char"},
+                    {"name": "company_id", "ttype": "many2one", "relation": "res.company"},
+                ],
+            }
+        ],
+        "record_rules": [
+            {
+                "name": "Multi-company (x_branch)",
+                "model": "x_branch",
+                "domain_force": "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]",
+            }
+        ],
+    }
+    prepared, notes = prepare_spec_for_live_apply(spec)
+    names = {f["name"] for f in prepared["models"][0]["fields"]}
+    assert "x_company_id" in names
+    assert "company_id" not in names
+    assert "x_company_id" in prepared["record_rules"][0]["domain_force"]
+    assert any("x_company_id" in n for n in notes)
 
 
 @pytest.mark.integration

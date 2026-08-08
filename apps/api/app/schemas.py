@@ -1364,6 +1364,14 @@ class ModuleSpecImportOut(BaseModel):
     )
 
 
+class ModuleSpecImportJsonBody(BaseModel):
+    spec: dict = Field(..., description="ModuleSpec-like JSON (models, views, menus, …)")
+    prepare: bool = Field(
+        True,
+        description="Run apply-readiness + live prep (reuse wiring, x_company_id, promo math)",
+    )
+
+
 class ExpertConversationTurn(BaseModel):
     role: Literal["user", "assistant"] = "user"
     content: str = Field(..., min_length=1, max_length=4000)

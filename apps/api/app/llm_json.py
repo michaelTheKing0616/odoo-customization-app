@@ -24,6 +24,16 @@ def repair_json_text(text: str) -> str:
     s = text.strip()
     # Trailing commas before } or ]
     s = re.sub(r",\s*([}\]])", r"\1", s)
+    # Missing comma between adjacent properties (common LLM slip)
+    string_value = r'"(?:[^"\\]|\\.)*"'
+    key = rf'{string_value}\s*:'
+    s = re.sub(rf"({string_value})\s+({key})", r"\1, \2", s)
+    s = re.sub(
+        rf"(true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s+({key})",
+        r"\1, \2",
+        s,
+    )
+    s = re.sub(rf"([}}\]])\s+({key})", r"\1, \2", s)
     return s
 
 

@@ -46,6 +46,12 @@ async function proxyRequest(
     body = await request.arrayBuffer();
   }
 
+  const upstreamTimeoutMs = 12_000;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort(new DOMException("Upstream API timed out", "TimeoutError"));
+  }, upstreamTimeoutMs);
+
   let upstream: Response;
   try {
     upstream = await fetch(target, {
@@ -53,16 +59,27 @@ async function proxyRequest(
       headers,
       body: hasBody ? body : undefined,
       redirect: "manual",
+      signal: controller.signal,
     });
   } catch (err) {
+    const timedOut =
+      controller.signal.aborted ||
+      (err instanceof Error &&
+        (err.name === "AbortError" ||
+          err.name === "TimeoutError" ||
+          /timed out|timeout/i.test(err.message)));
     const detail =
       err instanceof Error ? err.message : "Upstream API request failed";
     return NextResponse.json(
       {
-        detail: `Cannot reach API at ${API_PROXY_TARGET}: ${detail}`,
+        detail: timedOut
+          ? `Timed out reaching API at ${API_PROXY_TARGET} (${upstreamTimeoutMs / 1000}s). Start uvicorn on port 8001.`
+          : `Cannot reach API at ${API_PROXY_TARGET}: ${detail}`,
       },
-      { status: 502 },
+      { status: timedOut ? 504 : 502 },
     );
+  } finally {
+    clearTimeout(timeout);
   }
 
   const responseHeaders = new Headers();

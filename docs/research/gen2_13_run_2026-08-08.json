@@ -1,0 +1,41 @@
+{
+  "date": "2026-08-08",
+  "card": "GEN2-13",
+  "prompt": "A large, mega, super market with multiple branches around the world",
+  "source": "fixture6_production_shape_replay",
+  "note": "Deterministic replay of cached draft #6 through post-critique + production-shape (includes reuse wiring, promo line math, live apply prep)",
+  "score_0_10": 9.82,
+  "validators": {
+    "xml_findings": [],
+    "consistency_findings": [],
+    "xml_ok": true,
+    "consistency_ok": true,
+    "all_green": true
+  },
+  "llm_status": {
+    "mode": "llm_full",
+    "failed_steps": [],
+    "completed_steps": [
+      "Retrieving domain context",
+      "Extracting entities",
+      "Defining fields",
+      "Mapping relationships",
+      "Building workflow",
+      "Adding automations",
+      "Finalizing draft"
+    ],
+    "reason": null,
+    "step": 6,
+    "step_total": 7,
+    "step_label": "Finalizing draft"
+  },
+  "depth_ok": true,
+  "gate_pass": true,
+  "features": {
+    "reuse_sale_order": true,
+    "reuse_account_move": true,
+    "promo_line_discount_compute": true,
+    "live_apply_prep": true
+  },
+  "recorded_at": "2026-08-08T21:23:56.459427+00:00"
+}

@@ -3,6 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Button } from "@/components/ui/Button";
 import { ExpertPanel } from "@/components/expert/ExpertPanel";
 import { Callout } from "@/components/ui/Callout";
 import { CommandPalette, type CommandItem } from "@/components/ui/CommandPalette";
@@ -34,12 +35,25 @@ export function AppShell({ connectionId, children }: Props) {
     queryFn: () => api.getConnection(connectionId),
     enabled: Boolean(connectionId),
     retry: false,
+    refetchOnWindowFocus: false,
   });
 
   const connectionsQuery = useQuery({
     queryKey: ["connections"],
     queryFn: () => api.listConnections(),
+    retry: false,
+    refetchOnWindowFocus: false,
   });
+
+  const [slowLoad, setSlowLoad] = useState(false);
+  useEffect(() => {
+    if (!connectionQuery.isPending) {
+      setSlowLoad(false);
+      return;
+    }
+    const t = window.setTimeout(() => setSlowLoad(true), 3_000);
+    return () => window.clearTimeout(t);
+  }, [connectionQuery.isPending]);
 
   const modelsQuery = useQuery({
     queryKey: ["models", connectionId],
@@ -117,8 +131,14 @@ export function AppShell({ connectionId, children }: Props) {
 
   if (connectionQuery.isPending) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-muted">
-        Loading connection…
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-muted">
+        <p>Loading connection…</p>
+        {slowLoad ? (
+          <p className="max-w-md text-center text-sm">
+            Still waiting — check the API is running on port 8001{" "}
+            <code className="text-xs">(uv run uvicorn app.main:app --port 8001)</code>.
+          </p>
+        ) : null}
       </div>
     );
   }
@@ -127,9 +147,20 @@ export function AppShell({ connectionId, children }: Props) {
     return (
       <div className="flex min-h-screen items-center justify-center p-6">
         <Callout variant="danger" title="Could not load connection">
-          {connectionQuery.error instanceof Error
-            ? connectionQuery.error.message
-            : "Check the API is running and this connection still exists."}
+          <p className="text-sm">
+            {connectionQuery.error instanceof Error
+              ? connectionQuery.error.message
+              : "Check the API is running and this connection still exists."}
+          </p>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="mt-3"
+            onClick={() => void connectionQuery.refetch()}
+          >
+            Retry
+          </Button>
         </Callout>
       </div>
     );

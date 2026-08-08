@@ -38,7 +38,8 @@ FIXTURE2 = Path(__file__).parent / "fixtures" / "draft_supermarket2_2026-08-05.j
 FIXTURE3 = Path(__file__).parent / "fixtures" / "draft_supermarket3_2026-08-06.json"
 FIXTURE4 = Path(__file__).parent / "fixtures" / "draft_supermarket4_2026-08-06.json"
 FIXTURE5 = Path(__file__).parent / "fixtures" / "draft_supermarket5_2026-08-07.json"
-LAW_FIRM_GOLD = Path(__file__).parent.parent.parent / "docs" / "reference" / "law_firm_modulespec_gold.json"
+FIXTURE6 = Path(__file__).parent / "fixtures" / "draft_supermarket6_2026-08-08.json"
+LAW_FIRM_GOLD = Path(__file__).resolve().parents[3] / "docs" / "reference" / "law_firm_modulespec_gold.json"
 SUPERMARKET_PROMPT = "A large mega Super Market with multiple branches"
 SUPERMARKET3_PROMPT = "A large, mega super market with multiple branches around the world"
 
@@ -57,6 +58,10 @@ def _load_fixture4() -> dict[str, Any]:
 
 def _load_fixture5() -> dict[str, Any]:
     return json.loads(FIXTURE5.read_text())
+
+
+def _load_fixture6() -> dict[str, Any]:
+    return json.loads(FIXTURE6.read_text())
 
 
 def _load_law_firm_gold() -> dict[str, Any]:
@@ -845,11 +850,11 @@ def test_apply_readiness_company_rules_match_fields() -> None:
     run_production_shape_pass(draft)
     branch = next(m for m in draft["models"] if m["model"] == "x_branch")
     names = {f["name"] for f in branch["fields"]}
-    assert "company_id" in names
-    assert "x_company_id" not in names
+    assert "x_company_id" in names
+    assert "company_id" not in names
     rule = next(r for r in draft["record_rules"] if r.get("model") == "x_branch")
-    assert "company_id" in rule["domain_force"]
-    assert "x_company_id" not in rule["domain_force"]
+    assert "x_company_id" in rule["domain_force"]
+    assert "('company_id'" not in rule["domain_force"]
 
 
 def test_apply_readiness_dedupes_transfer_smart_buttons() -> None:
@@ -972,3 +977,56 @@ def test_expert_review_improves_score_mocked() -> None:
     after = review_draft(draft, user_prompt=SUPERMARKET3_PROMPT, apply_fixes=True)
     assert after.score_after is not None
     assert after.score_after >= before.score_before
+
+
+def test_gen2_13_calibration_bands() -> None:
+    """Known-bad fixtures must not score 10; post-shape fixture6 lands in honest band."""
+    import copy
+
+    from app.ai_draft_scorecard import draft_scorecard
+    from app.ai_post_critique import run_post_critique_pipeline
+    from app.ai_production_shape import run_production_shape_pass
+
+    raw6 = draft_scorecard(_load_fixture6(), user_prompt=SUPERMARKET3_PROMPT)
+    assert raw6["score_0_10"] < 10.0
+    assert raw6["validators"]["all_green"] is False
+
+    shaped = copy.deepcopy(_load_fixture6())
+    shaped["_user_prompt"] = SUPERMARKET3_PROMPT
+    run_post_critique_pipeline(shaped, user_prompt=SUPERMARKET3_PROMPT)
+    run_production_shape_pass(shaped)
+    scored6 = draft_scorecard(shaped, user_prompt=SUPERMARKET3_PROMPT)
+    assert scored6["score_0_10"] >= 9.5
+    assert scored6["score_0_10"] < 10.0
+    assert scored6["validators"]["all_green"] is True
+
+    s2 = draft_scorecard(_load_fixture2(), user_prompt=SUPERMARKET_PROMPT)["score_0_10"]
+    assert s2 < 8.5
+    assert s2 < 10.0
+
+    s4 = draft_scorecard(_load_fixture4(), user_prompt=SUPERMARKET3_PROMPT)["score_0_10"]
+    assert 7.0 <= s4 <= 8.5
+
+    law = draft_scorecard(_load_law_firm_gold(), user_prompt="law firm matter billing")["score_0_10"]
+    assert law < 10.0
+
+    shaped5 = copy.deepcopy(_load_fixture5())
+    run_post_critique_pipeline(shaped5, user_prompt=SUPERMARKET3_PROMPT)
+    run_production_shape_pass(shaped5)
+    s5 = draft_scorecard(shaped5, user_prompt=SUPERMARKET3_PROMPT)["score_0_10"]
+    assert s5 >= 9.5
+
+
+def test_gen2_13_depth_metrics_not_swapped_after_shape() -> None:
+    import copy
+
+    from app.ai_post_critique import run_post_critique_pipeline
+    from app.ai_production_shape import run_production_shape_pass
+
+    draft = copy.deepcopy(_load_fixture6())
+    run_post_critique_pipeline(draft, user_prompt=SUPERMARKET3_PROMPT)
+    run_production_shape_pass(draft)
+    depth = draft.get("_depth") or {}
+    metrics = depth.get("metrics") or {}
+    metrics_ns = depth.get("metrics_without_seeds") or {}
+    assert int(metrics_ns.get("model_count") or 0) <= int(metrics.get("model_count") or 0)

@@ -1,0 +1,3362 @@
+{
+  "_user_prompt": "A large, mega, super market with multiple branches around the world",
+  "_ambition": "comprehensive",
+  "technical_name": "super_market_branches",
+  "display_name": "Super Market",
+  "models": [
+    {
+      "model": "x_branch",
+      "description": "Branch / Store location",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Branch",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Code",
+          "help": "Auto-numbered via ir.sequence (BRANCH/00001)"
+        },
+        {
+          "name": "x_street",
+          "ttype": "char",
+          "string": "Street"
+        },
+        {
+          "name": "x_phone",
+          "ttype": "char",
+          "string": "Phone"
+        },
+        {
+          "name": "x_manager_id",
+          "ttype": "many2one",
+          "relation": "res.users",
+          "string": "Manager"
+        },
+        {
+          "name": "company_id",
+          "ttype": "many2one",
+          "relation": "res.company",
+          "string": "Company"
+        },
+        {
+          "name": "x_order_ids",
+          "ttype": "one2many",
+          "string": "Store orders",
+          "relation": "x_store_order",
+          "relation_field": "x_branch_id"
+        },
+        {
+          "name": "x_currency_id",
+          "ttype": "many2one",
+          "string": "Currency",
+          "relation": "res.currency"
+        },
+        {
+          "name": "x_city",
+          "ttype": "char",
+          "string": "City",
+          "source": "apply_readiness"
+        },
+        {
+          "name": "x_branch_transfer_in_ids",
+          "ttype": "one2many",
+          "string": "Incoming transfers",
+          "relation": "x_branch_transfer",
+          "relation_field": "x_branch_to_id",
+          "source": "apply_readiness"
+        },
+        {
+          "name": "x_country_id",
+          "ttype": "many2one",
+          "relation": "res.country",
+          "string": "Country"
+        },
+        {
+          "name": "x_timezone",
+          "ttype": "char",
+          "string": "Timezone",
+          "source": "apply_readiness"
+        },
+        {
+          "name": "x_warehouse_id",
+          "ttype": "many2one",
+          "relation": "stock.warehouse",
+          "string": "Warehouse",
+          "source": "apply_readiness"
+        }
+      ]
+    },
+    {
+      "model": "x_store_order",
+      "description": "Store sales order",
+      "mode": "new",
+      "is_workflow": true,
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Order",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Auto-numbered via ir.sequence (STORE/00001)"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('draft','Draft'),('confirmed','Confirmed'),('picking','Picking'),('delivered','Delivered'),('cancelled','Cancelled')]",
+          "required": true,
+          "tracking": true,
+          "default": "draft"
+        },
+        {
+          "name": "x_branch_id",
+          "ttype": "many2one",
+          "relation": "x_branch",
+          "string": "Branch",
+          "required": true
+        },
+        {
+          "name": "x_partner_id",
+          "ttype": "many2one",
+          "relation": "res.partner",
+          "string": "Customer"
+        },
+        {
+          "name": "x_date_order",
+          "ttype": "datetime",
+          "string": "Order date"
+        },
+        {
+          "name": "x_amount_total",
+          "ttype": "monetary",
+          "string": "Total",
+          "currency_field": "x_currency_id",
+          "widget": "monetary"
+        },
+        {
+          "name": "x_currency_id",
+          "ttype": "many2one",
+          "relation": "res.currency",
+          "string": "Currency"
+        },
+        {
+          "name": "x_line_ids",
+          "ttype": "one2many",
+          "string": "Lines",
+          "relation": "x_store_order_line",
+          "relation_field": "x_order_id"
+        },
+        {
+          "name": "company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        },
+        {
+          "name": "x_promotion_id",
+          "ttype": "many2one",
+          "relation": "x_promotion",
+          "string": "Promotion",
+          "source": "apply_readiness"
+        }
+      ],
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ],
+      "state_field": {
+        "field": "x_status",
+        "transitions": [
+          [
+            "draft",
+            "confirmed"
+          ],
+          [
+            "confirmed",
+            "picking"
+          ],
+          [
+            "draft",
+            "cancelled"
+          ],
+          [
+            "confirmed",
+            "cancelled"
+          ],
+          [
+            "picking",
+            "cancelled"
+          ],
+          [
+            "picking",
+            "delivered"
+          ]
+        ],
+        "states": [
+          "draft",
+          "confirmed",
+          "picking",
+          "delivered",
+          "cancelled"
+        ],
+        "statusbar_visible": [
+          "draft",
+          "confirmed",
+          "picking",
+          "delivered"
+        ]
+      }
+    },
+    {
+      "model": "x_store_order_line",
+      "description": "Order line",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Description",
+          "required": true
+        },
+        {
+          "name": "x_order_id",
+          "ttype": "many2one",
+          "relation": "x_store_order",
+          "string": "Order",
+          "required": true
+        },
+        {
+          "name": "x_product_id",
+          "ttype": "many2one",
+          "relation": "product.product",
+          "string": "Product"
+        },
+        {
+          "name": "x_qty",
+          "ttype": "float",
+          "string": "Quantity",
+          "required": true
+        },
+        {
+          "name": "x_price_unit",
+          "ttype": "monetary",
+          "string": "Unit price",
+          "currency_field": "x_currency_id",
+          "widget": "monetary"
+        },
+        {
+          "name": "x_subtotal",
+          "ttype": "monetary",
+          "string": "Subtotal",
+          "currency_field": "x_currency_id",
+          "widget": "monetary"
+        },
+        {
+          "name": "x_currency_id",
+          "ttype": "many2one",
+          "string": "Currency",
+          "relation": "res.currency"
+        },
+        {
+          "name": "company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company",
+          "on_delete": "restrict"
+        }
+      ]
+    },
+    {
+      "model": "x_promotion",
+      "description": "Promotion / discount campaign",
+      "mode": "new",
+      "is_workflow": true,
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Promotion",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Auto-numbered via ir.sequence (PROMOTIO/00001)"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('draft','Draft'),('active','Active'),('expired','Expired'),('cancelled','Cancelled')]",
+          "required": true,
+          "tracking": true,
+          "default": "draft"
+        },
+        {
+          "name": "x_date_start",
+          "ttype": "date",
+          "string": "Start",
+          "default": "today"
+        },
+        {
+          "name": "x_date_end",
+          "ttype": "date",
+          "string": "End"
+        },
+        {
+          "name": "x_discount_pct",
+          "ttype": "float",
+          "string": "Discount %"
+        },
+        {
+          "name": "x_branch_id",
+          "ttype": "many2one",
+          "relation": "x_branch",
+          "string": "Branch"
+        },
+        {
+          "name": "x_partner_id",
+          "ttype": "many2one",
+          "relation": "res.partner",
+          "string": "Contact"
+        },
+        {
+          "name": "company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        },
+        {
+          "name": "x_currency_id",
+          "ttype": "many2one",
+          "string": "Currency",
+          "relation": "res.currency"
+        },
+        {
+          "name": "x_store_order_ids",
+          "ttype": "one2many",
+          "relation": "x_store_order",
+          "relation_field": "x_promotion_id",
+          "string": "Store sales order",
+          "source": "apply_readiness"
+        }
+      ],
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ],
+      "state_field": {
+        "field": "x_status",
+        "transitions": [
+          [
+            "draft",
+            "active"
+          ],
+          [
+            "draft",
+            "cancelled"
+          ],
+          [
+            "active",
+            "cancelled"
+          ],
+          [
+            "active",
+            "expired"
+          ]
+        ],
+        "states": [
+          "draft",
+          "active",
+          "expired",
+          "cancelled"
+        ],
+        "statusbar_visible": [
+          "draft",
+          "active"
+        ]
+      }
+    },
+    {
+      "model": "x_branch_transfer",
+      "description": "Inter-branch stock transfer",
+      "mode": "new",
+      "is_workflow": true,
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Transfer",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Auto-numbered via ir.sequence (BRANCH_T/00001)"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('draft','Draft'),('in_transit','In transit'),('received','Received'),('cancelled','Cancelled')]",
+          "required": true,
+          "tracking": true,
+          "default": "draft"
+        },
+        {
+          "name": "x_branch_from_id",
+          "ttype": "many2one",
+          "relation": "x_branch",
+          "string": "From branch",
+          "required": true
+        },
+        {
+          "name": "x_branch_to_id",
+          "ttype": "many2one",
+          "relation": "x_branch",
+          "string": "To branch",
+          "required": true
+        },
+        {
+          "name": "x_date_scheduled",
+          "ttype": "datetime",
+          "string": "Scheduled"
+        },
+        {
+          "name": "x_partner_id",
+          "ttype": "many2one",
+          "relation": "res.partner",
+          "string": "Contact"
+        },
+        {
+          "name": "company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        },
+        {
+          "name": "x_currency_id",
+          "ttype": "many2one",
+          "string": "Currency",
+          "relation": "res.currency"
+        },
+        {
+          "name": "x_line_ids",
+          "ttype": "one2many",
+          "relation": "x_branch_transfer_line",
+          "relation_field": "x_transfer_id",
+          "string": "Lines",
+          "source": "apply_readiness"
+        },
+        {
+          "name": "x_picking_id",
+          "ttype": "many2one",
+          "relation": "stock.picking",
+          "string": "Stock transfer",
+          "source": "apply_readiness"
+        }
+      ],
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ],
+      "state_field": {
+        "field": "x_status",
+        "transitions": [
+          [
+            "draft",
+            "in_transit"
+          ],
+          [
+            "draft",
+            "cancelled"
+          ],
+          [
+            "in_transit",
+            "cancelled"
+          ],
+          [
+            "in_transit",
+            "received"
+          ]
+        ],
+        "states": [
+          "draft",
+          "in_transit",
+          "received",
+          "cancelled"
+        ],
+        "statusbar_visible": [
+          "draft",
+          "in_transit",
+          "received"
+        ]
+      }
+    },
+    {
+      "model": "x_supplier_agreement",
+      "description": "Supplier terms / rebate",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Agreement",
+          "required": true
+        },
+        {
+          "name": "x_partner_id",
+          "ttype": "many2one",
+          "relation": "res.partner",
+          "string": "Supplier",
+          "required": true
+        },
+        {
+          "name": "x_branch_id",
+          "ttype": "many2one",
+          "relation": "x_branch",
+          "string": "Branch"
+        },
+        {
+          "name": "x_rebate_pct",
+          "ttype": "float",
+          "string": "Rebate %"
+        },
+        {
+          "name": "x_date_start",
+          "ttype": "date",
+          "string": "Start",
+          "default": "today"
+        },
+        {
+          "name": "x_date_end",
+          "ttype": "date",
+          "string": "End"
+        },
+        {
+          "name": "company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        },
+        {
+          "name": "x_currency_id",
+          "ttype": "many2one",
+          "string": "Currency",
+          "relation": "res.currency"
+        },
+        {
+          "name": "x_purchase_order_id",
+          "ttype": "many2one",
+          "relation": "purchase.order",
+          "string": "Purchase order",
+          "help": "Link-only — wire to purchase.order manually",
+          "source": "apply_readiness"
+        }
+      ]
+    },
+    {
+      "model": "x_staff_shift",
+      "description": "Staff shift / roster line",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Shift",
+          "required": true
+        },
+        {
+          "name": "x_branch_id",
+          "ttype": "many2one",
+          "relation": "x_branch",
+          "string": "Branch",
+          "required": true
+        },
+        {
+          "name": "x_employee_id",
+          "ttype": "many2one",
+          "relation": "hr.employee",
+          "string": "Employee"
+        },
+        {
+          "name": "x_date_start",
+          "ttype": "datetime",
+          "string": "Start"
+        },
+        {
+          "name": "x_date_end",
+          "ttype": "datetime",
+          "string": "End"
+        },
+        {
+          "name": "x_hours",
+          "ttype": "float",
+          "string": "Hours"
+        },
+        {
+          "name": "company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        }
+      ],
+      "source": "scaffold_core_seed"
+    },
+    {
+      "model": "x_inventory_count",
+      "description": "Stock count session",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Count",
+          "required": true
+        },
+        {
+          "name": "x_branch_id",
+          "ttype": "many2one",
+          "relation": "x_branch",
+          "string": "Branch",
+          "required": true
+        },
+        {
+          "name": "x_date",
+          "ttype": "date",
+          "string": "Count date",
+          "required": true,
+          "default": "today"
+        },
+        {
+          "name": "x_notes",
+          "ttype": "text",
+          "string": "Notes"
+        },
+        {
+          "name": "company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        },
+        {
+          "name": "x_currency_id",
+          "ttype": "many2one",
+          "string": "Currency",
+          "relation": "res.currency"
+        },
+        {
+          "name": "x_line_ids",
+          "ttype": "one2many",
+          "relation": "x_inventory_count_line",
+          "relation_field": "x_count_id",
+          "string": "Count lines",
+          "source": "apply_readiness"
+        }
+      ]
+    },
+    {
+      "model": "x_event",
+      "description": "In-store marketing event",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Name",
+          "required": true
+        },
+        {
+          "name": "x_branch_id",
+          "ttype": "many2one",
+          "relation": "x_branch",
+          "string": "Branch",
+          "required": false
+        },
+        {
+          "name": "x_date",
+          "ttype": "date",
+          "string": "Date",
+          "required": true,
+          "default": "today"
+        },
+        {
+          "name": "x_location",
+          "ttype": "char",
+          "string": "Location"
+        },
+        {
+          "name": "x_staff_id",
+          "ttype": "many2one",
+          "relation": "hr.employee",
+          "string": "Employee"
+        },
+        {
+          "name": "x_partner_id",
+          "ttype": "many2one",
+          "relation": "res.partner",
+          "string": "Contact"
+        },
+        {
+          "name": "company_id",
+          "ttype": "many2one",
+          "relation": "res.company",
+          "string": "Company"
+        },
+        {
+          "name": "x_notes",
+          "ttype": "text",
+          "string": "Notes"
+        },
+        {
+          "name": "x_currency_id",
+          "ttype": "many2one",
+          "string": "Currency",
+          "relation": "res.currency"
+        }
+      ],
+      "source": "retail_depth"
+    },
+    {
+      "model": "x_task",
+      "description": "Replenishment / shelf task",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Name",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Auto-numbered via ir.sequence (TASK/00001)"
+        },
+        {
+          "name": "x_branch_id",
+          "ttype": "many2one",
+          "relation": "x_branch",
+          "string": "Branch",
+          "required": false
+        },
+        {
+          "name": "x_date_deadline",
+          "ttype": "date",
+          "string": "Deadline",
+          "required": true
+        },
+        {
+          "name": "x_staff_id",
+          "ttype": "many2one",
+          "relation": "hr.employee",
+          "string": "Employee"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('draft','Draft'),('open','Open'),('done','Done'),('cancelled','Cancelled')]",
+          "tracking": true,
+          "default": "draft"
+        },
+        {
+          "name": "x_partner_id",
+          "ttype": "many2one",
+          "relation": "res.partner",
+          "string": "Contact"
+        },
+        {
+          "name": "company_id",
+          "ttype": "many2one",
+          "relation": "res.company",
+          "string": "Company"
+        },
+        {
+          "name": "x_notes",
+          "ttype": "text",
+          "string": "Notes"
+        },
+        {
+          "name": "x_currency_id",
+          "ttype": "many2one",
+          "string": "Currency",
+          "relation": "res.currency"
+        }
+      ],
+      "source": "retail_depth",
+      "is_workflow": true,
+      "state_field": {
+        "field": "x_status",
+        "transitions": [
+          [
+            "draft",
+            "open"
+          ],
+          [
+            "draft",
+            "cancelled"
+          ],
+          [
+            "open",
+            "cancelled"
+          ],
+          [
+            "open",
+            "done"
+          ]
+        ],
+        "states": [
+          "draft",
+          "open",
+          "done",
+          "cancelled"
+        ],
+        "statusbar_visible": [
+          "draft",
+          "open",
+          "done"
+        ]
+      },
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ]
+    },
+    {
+      "model": "x_inventory_adjustment",
+      "description": "Stock adjustment record",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Adjustment",
+          "required": true
+        },
+        {
+          "name": "x_branch_id",
+          "ttype": "many2one",
+          "relation": "x_branch",
+          "string": "Branch"
+        },
+        {
+          "name": "x_product_id",
+          "ttype": "many2one",
+          "relation": "product.product",
+          "string": "Product"
+        },
+        {
+          "name": "x_before_qty",
+          "ttype": "float",
+          "string": "Before Quantity"
+        },
+        {
+          "name": "x_after_qty",
+          "ttype": "float",
+          "string": "After Quantity"
+        },
+        {
+          "name": "x_reason",
+          "ttype": "selection",
+          "string": "Reason",
+          "selection": "[('theft','Theft'),('damage','Damage'),('adjustment','Adjustment'),('other','Other')]"
+        },
+        {
+          "name": "company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company",
+          "on_delete": "restrict"
+        },
+        {
+          "name": "x_picking_id",
+          "ttype": "many2one",
+          "relation": "stock.picking",
+          "string": "Stock picking",
+          "source": "apply_readiness"
+        }
+      ]
+    },
+    {
+      "model": "x_expense",
+      "description": "Expense tracking",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Expense",
+          "required": true
+        },
+        {
+          "name": "x_branch_id",
+          "ttype": "many2one",
+          "relation": "x_branch",
+          "string": "Branch"
+        },
+        {
+          "name": "x_date",
+          "ttype": "date",
+          "string": "Date",
+          "default": "today"
+        },
+        {
+          "name": "x_amount",
+          "ttype": "monetary",
+          "string": "Amount",
+          "currency_field": "x_currency_id",
+          "widget": "monetary"
+        },
+        {
+          "name": "x_currency_id",
+          "ttype": "many2one",
+          "relation": "res.currency",
+          "string": "Currency"
+        },
+        {
+          "name": "x_partner_id",
+          "ttype": "many2one",
+          "relation": "res.partner",
+          "string": "Vendor"
+        },
+        {
+          "name": "x_expense_type",
+          "ttype": "selection",
+          "string": "Type",
+          "selection": "[('travel','Travel'),('supplies','Supplies'),('rent','Rent'),('utilities','Utilities'),('other','Other')]"
+        },
+        {
+          "name": "company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        }
+      ]
+    },
+    {
+      "model": "x_compliance_check",
+      "description": "Food safety check / Supplier approval",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Check",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Auto-numbered via ir.sequence (COMPLIAN/00001)"
+        },
+        {
+          "name": "x_branch_id",
+          "ttype": "many2one",
+          "relation": "x_branch",
+          "string": "Branch"
+        },
+        {
+          "name": "x_date",
+          "ttype": "date",
+          "string": "Date",
+          "default": "today"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('pending','Pending'),('passed','Passed'),('failed','Failed')]",
+          "tracking": true,
+          "default": "pending"
+        },
+        {
+          "name": "company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        },
+        {
+          "name": "x_partner_id",
+          "ttype": "many2one",
+          "relation": "res.partner",
+          "string": "Contact"
+        }
+      ],
+      "is_workflow": true,
+      "state_field": {
+        "field": "x_status",
+        "transitions": [
+          [
+            "pending",
+            "failed"
+          ],
+          [
+            "pending",
+            "passed"
+          ]
+        ],
+        "states": [
+          "pending",
+          "passed",
+          "failed"
+        ],
+        "statusbar_visible": [
+          "pending",
+          "passed"
+        ]
+      },
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ]
+    },
+    {
+      "model": "x_multi_party_link",
+      "description": "Multi-contact relationship link",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Relationship",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Auto-numbered via ir.sequence (MULTI/00001)"
+        },
+        {
+          "name": "x_branch_id",
+          "ttype": "many2one",
+          "relation": "x_branch",
+          "string": "Branch"
+        },
+        {
+          "name": "x_party1_id",
+          "ttype": "many2one",
+          "relation": "res.partner",
+          "string": "Party 1"
+        },
+        {
+          "name": "x_party2_id",
+          "ttype": "many2one",
+          "relation": "res.partner",
+          "string": "Party 2"
+        },
+        {
+          "name": "x_role",
+          "ttype": "selection",
+          "string": "Role",
+          "selection": "[('supplier_customer','Supplier-Customer'),('agent_principal','Agent-Principal'),('other','Other')]"
+        },
+        {
+          "name": "company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company"
+        }
+      ],
+      "is_workflow": false,
+      "mixins": [
+        "mail.thread"
+      ]
+    },
+    {
+      "model": "x_staff_rate",
+      "description": "Staff rate / pay rate",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Rate",
+          "required": true
+        },
+        {
+          "name": "x_branch_id",
+          "ttype": "many2one",
+          "relation": "x_branch",
+          "string": "Branch"
+        },
+        {
+          "name": "x_staff_id",
+          "ttype": "many2one",
+          "relation": "hr.employee",
+          "string": "Staff"
+        },
+        {
+          "name": "x_rate",
+          "ttype": "float",
+          "string": "Rate"
+        },
+        {
+          "name": "x_currency_id",
+          "ttype": "many2one",
+          "relation": "res.currency",
+          "string": "Currency"
+        },
+        {
+          "name": "x_effective_date",
+          "ttype": "date",
+          "string": "Effective Date"
+        },
+        {
+          "name": "company_id",
+          "ttype": "many2one",
+          "relation": "res.company",
+          "string": "Company"
+        }
+      ]
+    },
+    {
+      "model": "x_branch_transfer_line",
+      "description": "Transfer line",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Line",
+          "required": true
+        },
+        {
+          "name": "x_transfer_id",
+          "ttype": "many2one",
+          "relation": "x_branch_transfer",
+          "string": "Inter-branch stock transfer",
+          "required": true
+        },
+        {
+          "name": "x_product_id",
+          "ttype": "many2one",
+          "relation": "product.product",
+          "string": "Product",
+          "source": "apply_readiness"
+        },
+        {
+          "name": "x_qty",
+          "ttype": "float",
+          "string": "Quantity",
+          "source": "apply_readiness"
+        },
+        {
+          "name": "x_unit_price",
+          "ttype": "monetary",
+          "string": "Unit price",
+          "source": "apply_readiness",
+          "currency_field": "x_currency_id",
+          "widget": "monetary"
+        },
+        {
+          "name": "company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company",
+          "on_delete": "restrict"
+        },
+        {
+          "name": "x_currency_id",
+          "ttype": "many2one",
+          "relation": "res.currency",
+          "string": "Currency",
+          "related": "x_transfer_id.x_currency_id",
+          "readonly": true,
+          "source": "apply_readiness"
+        }
+      ],
+      "source": "apply_readiness"
+    },
+    {
+      "model": "x_inventory_count_line",
+      "description": "Count line",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Line",
+          "required": true
+        },
+        {
+          "name": "x_count_id",
+          "ttype": "many2one",
+          "relation": "x_inventory_count",
+          "string": "Stock count session",
+          "required": true
+        },
+        {
+          "name": "x_product_id",
+          "ttype": "many2one",
+          "relation": "product.product",
+          "string": "Product",
+          "source": "apply_readiness"
+        },
+        {
+          "name": "x_qty_system",
+          "ttype": "float",
+          "string": "System qty",
+          "source": "apply_readiness"
+        },
+        {
+          "name": "x_qty_counted",
+          "ttype": "float",
+          "string": "Counted qty",
+          "source": "apply_readiness"
+        },
+        {
+          "name": "company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company",
+          "on_delete": "restrict"
+        },
+        {
+          "name": "x_inventory_count_id",
+          "ttype": "many2one",
+          "relation": "x_inventory_count",
+          "string": "Stock count session",
+          "required": false,
+          "source": "post_critique_line"
+        },
+        {
+          "name": "x_currency_id",
+          "ttype": "many2one",
+          "relation": "res.currency",
+          "string": "Currency",
+          "related": "x_count_id.x_currency_id",
+          "readonly": true,
+          "source": "apply_readiness"
+        }
+      ],
+      "source": "apply_readiness"
+    }
+  ],
+  "domain_pack": "retail_supermarket",
+  "_pack_reuse_stock": [
+    {
+      "model": "product.template",
+      "modules": [
+        "product"
+      ],
+      "reason": "Product catalog (installed Products app)",
+      "forbid_parallel": [
+        "x_product",
+        "x_product_template"
+      ]
+    },
+    {
+      "model": "product.product",
+      "modules": [
+        "product"
+      ],
+      "reason": "Product variants",
+      "forbid_parallel": [
+        "x_product"
+      ]
+    },
+    {
+      "model": "uom.uom",
+      "modules": [
+        "uom"
+      ],
+      "reason": "Units of measure for pack sizes"
+    },
+    {
+      "model": "purchase.order",
+      "modules": [
+        "purchase"
+      ],
+      "reason": "Supplier purchase orders (link-only)",
+      "link_only": true
+    },
+    {
+      "model": "stock.warehouse",
+      "modules": [
+        "stock"
+      ],
+      "reason": "Warehouse / stock locations (link-only)",
+      "link_only": true,
+      "forbid_parallel": [
+        "x_warehouse"
+      ]
+    }
+  ],
+  "depends": [
+    "base",
+    "contacts",
+    "mail",
+    "product",
+    "uom",
+    "purchase",
+    "stock",
+    "hr"
+  ],
+  "tags": [
+    "supermarket",
+    "grocery",
+    "retail",
+    "store",
+    "shop",
+    "mega",
+    "branch",
+    "branches",
+    "chain",
+    "inventory",
+    "purchase",
+    "supplier",
+    "promotion",
+    "warehouse"
+  ],
+  "actions": [
+    {
+      "name": "Branch / Store location",
+      "model": "x_branch",
+      "view_mode": "list,form",
+      "technical_name": "action_x_branch"
+    },
+    {
+      "name": "Store sales order",
+      "model": "x_store_order",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_store_order"
+    },
+    {
+      "name": "Order line",
+      "model": "x_store_order_line",
+      "view_mode": "list,form",
+      "technical_name": "action_x_store_order_line"
+    },
+    {
+      "name": "Promotion / discount campaign",
+      "model": "x_promotion",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_promotion"
+    },
+    {
+      "name": "Inter-branch stock transfer",
+      "model": "x_branch_transfer",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_branch_transfer"
+    },
+    {
+      "name": "Supplier terms / rebate",
+      "model": "x_supplier_agreement",
+      "view_mode": "list,form",
+      "technical_name": "action_x_supplier_agreement"
+    },
+    {
+      "name": "Staff shift / roster line",
+      "model": "x_staff_shift",
+      "view_mode": "list,form",
+      "technical_name": "action_x_staff_shift"
+    },
+    {
+      "name": "Stock count session",
+      "model": "x_inventory_count",
+      "view_mode": "list,form",
+      "technical_name": "action_x_inventory_count"
+    },
+    {
+      "name": "In-store marketing event",
+      "model": "x_event",
+      "view_mode": "list,form",
+      "technical_name": "action_x_event"
+    },
+    {
+      "name": "Replenishment",
+      "model": "x_task",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_task"
+    },
+    {
+      "name": "Stock adjustment record",
+      "model": "x_inventory_adjustment",
+      "view_mode": "list,form",
+      "technical_name": "action_x_inventory_adjustment"
+    },
+    {
+      "name": "Expense tracking",
+      "model": "x_expense",
+      "view_mode": "list,form",
+      "technical_name": "action_x_expense"
+    },
+    {
+      "name": "Food safety check / Supplier approval",
+      "model": "x_compliance_check",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_compliance_check"
+    },
+    {
+      "name": "Multi-contact relationship link",
+      "model": "x_multi_party_link",
+      "view_mode": "list,form",
+      "technical_name": "action_x_multi_party_link"
+    },
+    {
+      "name": "Staff rate / pay rate",
+      "model": "x_staff_rate",
+      "view_mode": "list,form",
+      "technical_name": "action_x_staff_rate"
+    },
+    {
+      "name": "Transfer line",
+      "model": "x_branch_transfer_line",
+      "view_mode": "list,form",
+      "technical_name": "action_x_branch_transfer_line"
+    },
+    {
+      "name": "Count line",
+      "model": "x_inventory_count_line",
+      "view_mode": "list,form",
+      "technical_name": "action_x_inventory_count_line"
+    }
+  ],
+  "menus": [
+    {
+      "name": "Super Market",
+      "sequence": 10,
+      "technical_name": "root_super_market_branches",
+      "xml_id": "menu_root_super_market_branches",
+      "groups": [
+        "group_super_market_branches_user"
+      ]
+    },
+    {
+      "name": "Operations",
+      "parent_xml_id": "menu_root_super_market_branches",
+      "sequence": 20,
+      "technical_name": "menu_sub_operations_root_super_market_branches",
+      "xml_id": "menu_sub_operations_root_super_market_branches"
+    },
+    {
+      "name": "Store sales order",
+      "action_xml_id": "action_x_store_order",
+      "parent_xml_id": "menu_sub_operations_root_super_market_branches",
+      "sequence": 10,
+      "technical_name": "menu_x_store_order"
+    },
+    {
+      "name": "Order line",
+      "action_xml_id": "action_x_store_order_line",
+      "parent_xml_id": "menu_sub_operations_root_super_market_branches",
+      "sequence": 11,
+      "technical_name": "menu_x_store_order_line"
+    },
+    {
+      "name": "In-store marketing event",
+      "action_xml_id": "action_x_event",
+      "parent_xml_id": "menu_sub_operations_root_super_market_branches",
+      "sequence": 12,
+      "technical_name": "menu_x_event"
+    },
+    {
+      "name": "Replenishment",
+      "action_xml_id": "action_x_task",
+      "parent_xml_id": "menu_sub_operations_root_super_market_branches",
+      "sequence": 13,
+      "technical_name": "menu_x_task"
+    },
+    {
+      "name": "Inventory",
+      "parent_xml_id": "menu_root_super_market_branches",
+      "sequence": 21,
+      "technical_name": "menu_sub_inventory_root_super_market_branches",
+      "xml_id": "menu_sub_inventory_root_super_market_branches"
+    },
+    {
+      "name": "Branch / Store location",
+      "action_xml_id": "action_x_branch",
+      "parent_xml_id": "menu_sub_inventory_root_super_market_branches",
+      "sequence": 10,
+      "technical_name": "menu_x_branch"
+    },
+    {
+      "name": "Inter-branch stock transfer",
+      "action_xml_id": "action_x_branch_transfer",
+      "parent_xml_id": "menu_sub_inventory_root_super_market_branches",
+      "sequence": 11,
+      "technical_name": "menu_x_branch_transfer"
+    },
+    {
+      "name": "Stock count session",
+      "action_xml_id": "action_x_inventory_count",
+      "parent_xml_id": "menu_sub_inventory_root_super_market_branches",
+      "sequence": 12,
+      "technical_name": "menu_x_inventory_count"
+    },
+    {
+      "name": "Stock adjustment record",
+      "action_xml_id": "action_x_inventory_adjustment",
+      "parent_xml_id": "menu_sub_inventory_root_super_market_branches",
+      "sequence": 13,
+      "technical_name": "menu_x_inventory_adjustment"
+    },
+    {
+      "name": "People",
+      "parent_xml_id": "menu_root_super_market_branches",
+      "sequence": 22,
+      "technical_name": "menu_sub_people_root_super_market_branches",
+      "xml_id": "menu_sub_people_root_super_market_branches"
+    },
+    {
+      "name": "Staff shift / roster line",
+      "action_xml_id": "action_x_staff_shift",
+      "parent_xml_id": "menu_sub_people_root_super_market_branches",
+      "sequence": 10,
+      "technical_name": "menu_x_staff_shift"
+    },
+    {
+      "name": "Staff rate / pay rate",
+      "action_xml_id": "action_x_staff_rate",
+      "parent_xml_id": "menu_sub_people_root_super_market_branches",
+      "sequence": 11,
+      "technical_name": "menu_x_staff_rate"
+    },
+    {
+      "name": "Finance",
+      "parent_xml_id": "menu_root_super_market_branches",
+      "sequence": 23,
+      "technical_name": "menu_sub_finance_root_super_market_branches",
+      "xml_id": "menu_sub_finance_root_super_market_branches"
+    },
+    {
+      "name": "Expense tracking",
+      "action_xml_id": "action_x_expense",
+      "parent_xml_id": "menu_sub_finance_root_super_market_branches",
+      "sequence": 10,
+      "technical_name": "menu_x_expense"
+    },
+    {
+      "name": "Other",
+      "parent_xml_id": "menu_root_super_market_branches",
+      "sequence": 24,
+      "technical_name": "menu_sub_other_root_super_market_branches",
+      "xml_id": "menu_sub_other_root_super_market_branches"
+    },
+    {
+      "name": "Promotion / discount campaign",
+      "action_xml_id": "action_x_promotion",
+      "parent_xml_id": "menu_sub_other_root_super_market_branches",
+      "sequence": 10,
+      "technical_name": "menu_x_promotion"
+    },
+    {
+      "name": "Supplier terms / rebate",
+      "action_xml_id": "action_x_supplier_agreement",
+      "parent_xml_id": "menu_sub_other_root_super_market_branches",
+      "sequence": 11,
+      "technical_name": "menu_x_supplier_agreement"
+    },
+    {
+      "name": "Food safety check / Supplier approval",
+      "action_xml_id": "action_x_compliance_check",
+      "parent_xml_id": "menu_sub_other_root_super_market_branches",
+      "sequence": 12,
+      "technical_name": "menu_x_compliance_check"
+    },
+    {
+      "name": "Multi-contact relationship link",
+      "action_xml_id": "action_x_multi_party_link",
+      "parent_xml_id": "menu_sub_other_root_super_market_branches",
+      "sequence": 13,
+      "technical_name": "menu_x_multi_party_link"
+    },
+    {
+      "name": "Transfer line",
+      "action_xml_id": "action_x_branch_transfer_line",
+      "parent_xml_id": "menu_root_super_market_branches",
+      "sequence": 31,
+      "technical_name": "menu_x_branch_transfer_line"
+    },
+    {
+      "name": "Count line",
+      "action_xml_id": "action_x_inventory_count_line",
+      "parent_xml_id": "menu_root_super_market_branches",
+      "sequence": 32,
+      "technical_name": "menu_x_inventory_count_line"
+    }
+  ],
+  "views": [
+    {
+      "name": "x_branch.list",
+      "model": "x_branch",
+      "type": "list",
+      "arch": "<list string=\"Branch / Store location\" sample=\"1\"><field name=\"x_name\"/><field name=\"x_code\"/><field name=\"x_street\"/><field name=\"x_phone\"/><field name=\"x_manager_id\" widget=\"many2one_avatar_user\"/><field name=\"company_id\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_branch.form",
+      "model": "x_branch",
+      "type": "form",
+      "arch": "<form string=\"Branch / Store location\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_manager_id\"/><field name=\"company_id\"/><field name=\"x_currency_id\"/><field name=\"x_country_id\"/><field name=\"x_warehouse_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_street\"/><field name=\"x_phone\"/><field name=\"x_city\"/><field name=\"x_timezone\"/></group><group string=\"Store orders\"><field name=\"x_order_ids\"><list><field name=\"x_name\"/></list></field></group><group string=\"Incoming transfers\"><field name=\"x_branch_transfer_in_ids\"><list><field name=\"x_name\"/></list></field></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_store_order.list",
+      "model": "x_store_order",
+      "type": "list",
+      "arch": "<list string=\"Store sales order\" sample=\"1\" decoration-danger=\"x_status == 'cancelled'\" decoration-muted=\"x_status == 'draft'\"><field name=\"x_name\"/><field name=\"x_code\"/><field name=\"x_status\"/><field name=\"x_branch_id\"/><field name=\"x_partner_id\"/><field name=\"x_date_order\"/><field name=\"x_amount_total\"/><field name=\"x_currency_id\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_store_order.form",
+      "model": "x_store_order",
+      "type": "form",
+      "arch": "<form string=\"Store sales order\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"draft,confirmed,picking,delivered\"/><button string=\"Confirm\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'draft'\" data-transition-to=\"confirmed\"/><button string=\"Picking\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'confirmed'\" data-transition-to=\"picking\"/><button string=\"Cancel\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'draft'\" data-transition-to=\"cancelled\"/><button string=\"Cancel\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'confirmed'\" data-transition-to=\"cancelled\"/><button string=\"Cancel\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'picking'\" data-transition-to=\"cancelled\"/><button string=\"Delivered\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'picking'\" data-transition-to=\"delivered\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_branch_id\"/><field name=\"x_partner_id\"/><field name=\"x_currency_id\"/><field name=\"company_id\"/><field name=\"x_promotion_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_date_order\"/><field name=\"x_amount_total\"/></group><group string=\"Lines\"><field name=\"x_line_ids\"><list><field name=\"x_name\"/></list></field></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_store_order.kanban",
+      "model": "x_store_order",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\" sample=\"1\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/><field name=\"x_date_order\"/><field name=\"x_branch_id\"/><field name=\"x_partner_id\"/></t></templates></kanban>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_store_order_line.list",
+      "model": "x_store_order_line",
+      "type": "list",
+      "arch": "<list string=\"Order line\" sample=\"1\"><field name=\"x_name\"/><field name=\"x_order_id\"/><field /><field /><field name=\"x_price_unit\"/><field name=\"x_subtotal\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_store_order_line.form",
+      "model": "x_store_order_line",
+      "type": "form",
+      "arch": "<form string=\"Order line\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_order_id\"/><field name=\"x_product_id\"/><field name=\"x_currency_id\"/><field name=\"company_id\"/></group><group string=\"Details\"><field name=\"x_qty\"/><field name=\"x_price_unit\"/><field name=\"x_subtotal\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_promotion.list",
+      "model": "x_promotion",
+      "type": "list",
+      "arch": "<list string=\"Promotion / discount campaign\" sample=\"1\" decoration-danger=\"x_status == 'cancelled'\" decoration-muted=\"x_status == 'draft'\"><field name=\"x_name\"/><field name=\"x_status\"/><field name=\"x_date_start\"/><field name=\"x_date_end\"/><field name=\"x_discount_pct\"/><field name=\"x_branch_id\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_promotion.form",
+      "model": "x_promotion",
+      "type": "form",
+      "arch": "<form string=\"Promotion / discount campaign\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"draft,active\"/><button string=\"Active\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'draft'\" data-transition-to=\"active\"/><button string=\"Cancel\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'draft'\" data-transition-to=\"cancelled\"/><button string=\"Cancel\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'active'\" data-transition-to=\"cancelled\"/><button string=\"Expired\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'active'\" data-transition-to=\"expired\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_branch_id\"/><field name=\"x_partner_id\"/><field name=\"company_id\"/><field name=\"x_currency_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_date_start\"/><field name=\"x_date_end\"/><field name=\"x_discount_pct\"/></group><group string=\"Store sales order\"><field name=\"x_store_order_ids\"><list><field name=\"x_name\"/></list></field></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_promotion.kanban",
+      "model": "x_promotion",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\" sample=\"1\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/><field name=\"x_branch_id\"/><field name=\"x_partner_id\"/></t></templates></kanban>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_branch_transfer.list",
+      "model": "x_branch_transfer",
+      "type": "list",
+      "arch": "<list string=\"Inter-branch stock transfer\" sample=\"1\" decoration-danger=\"x_status == 'cancelled'\" decoration-muted=\"x_status == 'draft'\"><field name=\"x_name\"/><field name=\"x_status\"/><field name=\"x_branch_from_id\"/><field name=\"x_branch_to_id\"/><field name=\"x_date_scheduled\"/><field /><field /></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_branch_transfer.form",
+      "model": "x_branch_transfer",
+      "type": "form",
+      "arch": "<form string=\"Inter-branch stock transfer\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"draft,in_transit,received\"/><button string=\"In Transit\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'draft'\" data-transition-to=\"in_transit\"/><button string=\"Cancel\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'draft'\" data-transition-to=\"cancelled\"/><button string=\"Cancel\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'in_transit'\" data-transition-to=\"cancelled\"/><button string=\"Received\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'in_transit'\" data-transition-to=\"received\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_branch_from_id\"/><field name=\"x_branch_to_id\"/><field name=\"x_partner_id\"/><field name=\"company_id\"/><field name=\"x_currency_id\"/><field name=\"x_picking_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_date_scheduled\"/></group><group string=\"Lines\"><field name=\"x_line_ids\"><list><field name=\"x_name\"/></list></field></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_branch_transfer.kanban",
+      "model": "x_branch_transfer",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\" sample=\"1\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/><field name=\"x_partner_id\"/></t></templates></kanban>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_supplier_agreement.list",
+      "model": "x_supplier_agreement",
+      "type": "list",
+      "arch": "<list string=\"Supplier terms / rebate\" sample=\"1\"><field name=\"x_name\"/><field name=\"x_partner_id\"/><field name=\"x_branch_id\"/><field name=\"x_rebate_pct\"/><field name=\"x_date_start\"/><field name=\"x_date_end\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_supplier_agreement.form",
+      "model": "x_supplier_agreement",
+      "type": "form",
+      "arch": "<form string=\"Supplier terms / rebate\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_partner_id\"/><field name=\"x_branch_id\"/><field name=\"company_id\"/><field name=\"x_currency_id\"/><field name=\"x_purchase_order_id\"/></group><group string=\"Details\"><field name=\"x_rebate_pct\"/><field name=\"x_date_start\"/><field name=\"x_date_end\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_staff_shift.list",
+      "model": "x_staff_shift",
+      "type": "list",
+      "arch": "<list string=\"Staff shift / roster line\" sample=\"1\"><field name=\"x_name\"/><field name=\"x_branch_id\"/><field name=\"x_employee_id\"/><field name=\"x_date_start\"/><field name=\"x_date_end\"/><field name=\"x_hours\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_staff_shift.form",
+      "model": "x_staff_shift",
+      "type": "form",
+      "arch": "<form string=\"Staff shift / roster line\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_branch_id\"/><field name=\"x_employee_id\"/><field name=\"company_id\"/></group><group string=\"Details\"><field name=\"x_date_start\"/><field name=\"x_date_end\"/><field name=\"x_hours\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_inventory_count.list",
+      "model": "x_inventory_count",
+      "type": "list",
+      "arch": "<list string=\"Stock count session\" sample=\"1\"><field name=\"x_name\"/><field name=\"x_branch_id\"/><field name=\"x_date\"/><field /><field /><field /></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_inventory_count.form",
+      "model": "x_inventory_count",
+      "type": "form",
+      "arch": "<form string=\"Stock count session\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_branch_id\"/><field name=\"company_id\"/><field name=\"x_currency_id\"/></group><group string=\"Details\"><field name=\"x_date\"/><field name=\"x_notes\"/></group><group string=\"Count lines\"><field name=\"x_line_ids\"><list><field name=\"x_name\"/></list></field></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_event.list",
+      "model": "x_event",
+      "type": "list",
+      "arch": "<list string=\"In-store marketing event\" sample=\"1\"><field name=\"x_name\"/><field name=\"x_branch_id\"/><field name=\"x_date\"/><field name=\"x_location\"/><field name=\"x_staff_id\"/><field name=\"x_partner_id\"/><field name=\"company_id\"/><field name=\"x_currency_id\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_event.form",
+      "model": "x_event",
+      "type": "form",
+      "arch": "<form string=\"In-store marketing event\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_branch_id\"/><field name=\"x_staff_id\"/><field name=\"x_partner_id\"/><field name=\"company_id\"/><field name=\"x_currency_id\"/></group><group string=\"Details\"><field name=\"x_date\"/><field name=\"x_location\"/><field name=\"x_notes\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_task.list",
+      "model": "x_task",
+      "type": "list",
+      "arch": "<list string=\"Replenishment\" sample=\"1\" decoration-danger=\"x_status == 'cancelled'\" decoration-muted=\"x_status == 'draft'\"><field name=\"x_name\"/><field name=\"x_code\"/><field name=\"x_branch_id\"/><field name=\"x_date_deadline\"/><field name=\"x_staff_id\"/><field name=\"x_status\"/><field name=\"x_partner_id\"/><field name=\"company_id\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_task.form",
+      "model": "x_task",
+      "type": "form",
+      "arch": "<form string=\"Replenishment / shelf task\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"draft,open,done\"/><button string=\"Confirm\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'draft'\" data-transition-to=\"open\"/><button string=\"Cancel\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'draft'\" data-transition-to=\"cancelled\"/><button string=\"Cancel\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'open'\" data-transition-to=\"cancelled\"/><button string=\"Done\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'open'\" data-transition-to=\"done\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_branch_id\"/><field name=\"x_staff_id\"/><field name=\"x_partner_id\"/><field name=\"company_id\"/><field name=\"x_currency_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_date_deadline\"/><field name=\"x_notes\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_task.kanban",
+      "model": "x_task",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\" sample=\"1\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/><field name=\"x_branch_id\"/><field name=\"x_partner_id\"/></t></templates></kanban>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_inventory_adjustment.list",
+      "model": "x_inventory_adjustment",
+      "type": "list",
+      "arch": "<list string=\"Stock adjustment record\" sample=\"1\"><field name=\"x_name\"/><field name=\"x_branch_id\"/><field /><field name=\"x_before_qty\"/><field name=\"x_after_qty\"/><field name=\"x_reason\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_inventory_adjustment.form",
+      "model": "x_inventory_adjustment",
+      "type": "form",
+      "arch": "<form string=\"Stock adjustment record\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_branch_id\"/><field name=\"x_product_id\"/><field name=\"company_id\"/><field name=\"x_picking_id\"/></group><group string=\"Details\"><field name=\"x_before_qty\"/><field name=\"x_after_qty\"/><field name=\"x_reason\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_expense.list",
+      "model": "x_expense",
+      "type": "list",
+      "arch": "<list string=\"Expense tracking\" sample=\"1\"><field name=\"x_name\"/><field name=\"x_branch_id\"/><field name=\"x_date\"/><field name=\"x_amount\"/><field name=\"x_currency_id\"/><field name=\"x_partner_id\"/><field name=\"x_expense_type\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_expense.form",
+      "model": "x_expense",
+      "type": "form",
+      "arch": "<form string=\"Expense tracking\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_branch_id\"/><field name=\"x_currency_id\"/><field name=\"x_partner_id\"/><field name=\"company_id\"/></group><group string=\"Details\"><field name=\"x_date\"/><field name=\"x_amount\"/><field name=\"x_expense_type\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_compliance_check.list",
+      "model": "x_compliance_check",
+      "type": "list",
+      "arch": "<list string=\"Food safety check / Supplier approval\" sample=\"1\"><field name=\"x_name\"/><field name=\"x_branch_id\"/><field name=\"x_date\"/><field name=\"x_status\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_compliance_check.form",
+      "model": "x_compliance_check",
+      "type": "form",
+      "arch": "<form string=\"Food safety check / Supplier approval\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"pending,passed\"/><button string=\"Failed\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'pending'\" data-transition-to=\"failed\"/><button string=\"Passed\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'pending'\" data-transition-to=\"passed\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_branch_id\"/><field name=\"company_id\"/><field name=\"x_partner_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_date\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_compliance_check.kanban",
+      "model": "x_compliance_check",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\" sample=\"1\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/><field name=\"x_date\"/><field name=\"x_branch_id\"/><field name=\"x_partner_id\"/></t></templates></kanban>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_multi_party_link.list",
+      "model": "x_multi_party_link",
+      "type": "list",
+      "arch": "<list string=\"Multi-contact relationship link\" sample=\"1\"><field name=\"x_name\"/><field name=\"x_code\"/><field name=\"x_branch_id\"/><field name=\"x_party1_id\"/><field name=\"x_party2_id\"/><field name=\"x_role\"/><field name=\"company_id\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_multi_party_link.form",
+      "model": "x_multi_party_link",
+      "type": "form",
+      "arch": "<form string=\"Multi-contact relationship link\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_branch_id\"/><field name=\"x_party1_id\"/><field name=\"x_party2_id\"/><field name=\"company_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_role\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_staff_rate.list",
+      "model": "x_staff_rate",
+      "type": "list",
+      "arch": "<list string=\"Staff rate / pay rate\" sample=\"1\"><field name=\"x_name\"/><field name=\"x_branch_id\"/><field name=\"x_staff_id\"/><field name=\"x_rate\"/><field name=\"x_currency_id\"/><field name=\"x_effective_date\"/><field name=\"company_id\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_staff_rate.form",
+      "model": "x_staff_rate",
+      "type": "form",
+      "arch": "<form string=\"Staff rate / pay rate\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_branch_id\"/><field name=\"x_staff_id\"/><field name=\"x_currency_id\"/><field name=\"company_id\"/></group><group string=\"Details\"><field name=\"x_rate\"/><field name=\"x_effective_date\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_branch_transfer_line.list",
+      "model": "x_branch_transfer_line",
+      "type": "list",
+      "arch": "<list string=\"Transfer line\" sample=\"1\"><field name=\"x_name\"/><field name=\"x_transfer_id\"/><field name=\"x_product_id\"/><field name=\"x_qty\"/><field name=\"x_unit_price\"/><field name=\"company_id\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_branch_transfer_line.form",
+      "model": "x_branch_transfer_line",
+      "type": "form",
+      "arch": "<form string=\"Transfer line\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_transfer_id\"/><field name=\"x_product_id\"/><field name=\"company_id\"/><field name=\"x_currency_id\"/></group><group string=\"Details\"><field name=\"x_qty\"/><field name=\"x_unit_price\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_inventory_count_line.list",
+      "model": "x_inventory_count_line",
+      "type": "list",
+      "arch": "<list string=\"Count line\" sample=\"1\"><field name=\"x_name\"/><field name=\"x_count_id\"/><field name=\"x_product_id\"/><field name=\"x_qty_system\"/><field name=\"x_qty_counted\"/><field name=\"company_id\"/><field name=\"x_inventory_count_id\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_inventory_count_line.form",
+      "model": "x_inventory_count_line",
+      "type": "form",
+      "arch": "<form string=\"Count line\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_count_id\"/><field name=\"x_product_id\"/><field name=\"company_id\"/><field name=\"x_inventory_count_id\"/><field name=\"x_currency_id\"/></group><group string=\"Details\"><field name=\"x_qty_system\"/><field name=\"x_qty_counted\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_branch.search",
+      "model": "x_branch",
+      "type": "search",
+      "arch": "<search string=\"Branch / Store location\"><filter string=\"My records\" name=\"my_x_manager_id\" domain=\"[('x_manager_id','=', uid)]\"/><filter string=\"All\" name=\"all\" domain=\"[]\"/><filter string=\"Has name\" name=\"has_name\" domain=\"[('x_name','!=',False)]\"/><filter string=\"Manager\" name=\"group_x_manager_id\" context=\"{'group_by': 'x_manager_id'}\"/></search>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_branch_transfer.search",
+      "model": "x_branch_transfer",
+      "type": "search",
+      "arch": "<search string=\"Inter-branch stock transfer\"><filter string=\"Draft\" name=\"status_draft\" domain=\"[('x_status','=','draft')]\"/><filter string=\"In Transit\" name=\"status_in_transit\" domain=\"[('x_status','=','in_transit')]\"/><filter string=\"Received\" name=\"status_received\" domain=\"[('x_status','=','received')]\"/><filter string=\"Cancelled\" name=\"status_cancelled\" domain=\"[('x_status','=','cancelled')]\"/><filter string=\"From branch\" name=\"group_x_branch_from_id\" context=\"{'group_by': 'x_branch_from_id'}\"/><filter string=\"To branch\" name=\"group_x_branch_to_id\" context=\"{'group_by': 'x_branch_to_id'}\"/><filter string=\"Contact\" name=\"group_x_partner_id\" context=\"{'group_by': 'x_partner_id'}\"/><filter string=\"Status\" name=\"group_x_status\" context=\"{'group_by': 'x_status'}\"/></search>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_branch_transfer_line.search",
+      "model": "x_branch_transfer_line",
+      "type": "search",
+      "arch": "<search string=\"Transfer line\"><filter string=\"All\" name=\"all\" domain=\"[]\"/><filter string=\"Has name\" name=\"has_name\" domain=\"[('x_name','!=',False)]\"/><filter string=\"Inter-branch stock transfer\" name=\"group_x_transfer_id\" context=\"{'group_by': 'x_transfer_id'}\"/></search>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_compliance_check.search",
+      "model": "x_compliance_check",
+      "type": "search",
+      "arch": "<search string=\"Food safety check / Supplier approval\"><filter string=\"Pending\" name=\"status_pending\" domain=\"[('x_status','=','pending')]\"/><filter string=\"Passed\" name=\"status_passed\" domain=\"[('x_status','=','passed')]\"/><filter string=\"Failed\" name=\"status_failed\" domain=\"[('x_status','=','failed')]\"/><filter string=\"This month\" name=\"month_x_date\" domain=\"[('x_date','&gt;=', (context_today().replace(day=1)).strftime('%Y-%m-%d'))]\"/><filter string=\"Branch\" name=\"group_x_branch_id\" context=\"{'group_by': 'x_branch_id'}\"/><filter string=\"Contact\" name=\"group_x_partner_id\" context=\"{'group_by': 'x_partner_id'}\"/><filter string=\"Status\" name=\"group_x_status\" context=\"{'group_by': 'x_status'}\"/></search>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_event.search",
+      "model": "x_event",
+      "type": "search",
+      "arch": "<search string=\"In-store marketing event\"><filter string=\"This month\" name=\"month_x_date\" domain=\"[('x_date','&gt;=', (context_today().replace(day=1)).strftime('%Y-%m-%d'))]\"/><filter string=\"All\" name=\"all\" domain=\"[]\"/><filter string=\"Has name\" name=\"has_name\" domain=\"[('x_name','!=',False)]\"/><filter string=\"Branch\" name=\"group_x_branch_id\" context=\"{'group_by': 'x_branch_id'}\"/><filter string=\"Contact\" name=\"group_x_partner_id\" context=\"{'group_by': 'x_partner_id'}\"/></search>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_expense.search",
+      "model": "x_expense",
+      "type": "search",
+      "arch": "<search string=\"Expense tracking\"><filter string=\"This month\" name=\"month_x_date\" domain=\"[('x_date','&gt;=', (context_today().replace(day=1)).strftime('%Y-%m-%d'))]\"/><filter string=\"All\" name=\"all\" domain=\"[]\"/><filter string=\"Has name\" name=\"has_name\" domain=\"[('x_name','!=',False)]\"/><filter string=\"Branch\" name=\"group_x_branch_id\" context=\"{'group_by': 'x_branch_id'}\"/><filter string=\"Vendor\" name=\"group_x_partner_id\" context=\"{'group_by': 'x_partner_id'}\"/></search>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_inventory_adjustment.search",
+      "model": "x_inventory_adjustment",
+      "type": "search",
+      "arch": "<search string=\"Stock adjustment record\"><filter string=\"All\" name=\"all\" domain=\"[]\"/><filter string=\"Has name\" name=\"has_name\" domain=\"[('x_name','!=',False)]\"/><filter string=\"Branch\" name=\"group_x_branch_id\" context=\"{'group_by': 'x_branch_id'}\"/></search>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_inventory_count.search",
+      "model": "x_inventory_count",
+      "type": "search",
+      "arch": "<search string=\"Stock count session\"><filter string=\"This month\" name=\"month_x_date\" domain=\"[('x_date','&gt;=', (context_today().replace(day=1)).strftime('%Y-%m-%d'))]\"/><filter string=\"All\" name=\"all\" domain=\"[]\"/><filter string=\"Has name\" name=\"has_name\" domain=\"[('x_name','!=',False)]\"/><filter string=\"Branch\" name=\"group_x_branch_id\" context=\"{'group_by': 'x_branch_id'}\"/></search>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_inventory_count_line.search",
+      "model": "x_inventory_count_line",
+      "type": "search",
+      "arch": "<search string=\"Count line\"><filter string=\"All\" name=\"all\" domain=\"[]\"/><filter string=\"Has name\" name=\"has_name\" domain=\"[('x_name','!=',False)]\"/><filter string=\"Stock count session\" name=\"group_x_count_id\" context=\"{'group_by': 'x_count_id'}\"/><filter string=\"Stock count session\" name=\"group_x_inventory_count_id\" context=\"{'group_by': 'x_inventory_count_id'}\"/></search>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_multi_party_link.search",
+      "model": "x_multi_party_link",
+      "type": "search",
+      "arch": "<search string=\"Multi-contact relationship link\"><filter string=\"All\" name=\"all\" domain=\"[]\"/><filter string=\"Has name\" name=\"has_name\" domain=\"[('x_name','!=',False)]\"/><filter string=\"Branch\" name=\"group_x_branch_id\" context=\"{'group_by': 'x_branch_id'}\"/><filter string=\"Party 1\" name=\"group_x_party1_id\" context=\"{'group_by': 'x_party1_id'}\"/><filter string=\"Party 2\" name=\"group_x_party2_id\" context=\"{'group_by': 'x_party2_id'}\"/></search>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_promotion.search",
+      "model": "x_promotion",
+      "type": "search",
+      "arch": "<search string=\"Promotion / discount campaign\"><filter string=\"Draft\" name=\"status_draft\" domain=\"[('x_status','=','draft')]\"/><filter string=\"Active\" name=\"status_active\" domain=\"[('x_status','=','active')]\"/><filter string=\"Expired\" name=\"status_expired\" domain=\"[('x_status','=','expired')]\"/><filter string=\"Cancelled\" name=\"status_cancelled\" domain=\"[('x_status','=','cancelled')]\"/><filter string=\"This month\" name=\"month_x_date_start\" domain=\"[('x_date_start','&gt;=', (context_today().replace(day=1)).strftime('%Y-%m-%d'))]\"/><filter string=\"Branch\" name=\"group_x_branch_id\" context=\"{'group_by': 'x_branch_id'}\"/><filter string=\"Contact\" name=\"group_x_partner_id\" context=\"{'group_by': 'x_partner_id'}\"/><filter string=\"Status\" name=\"group_x_status\" context=\"{'group_by': 'x_status'}\"/></search>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_staff_rate.search",
+      "model": "x_staff_rate",
+      "type": "search",
+      "arch": "<search string=\"Staff rate / pay rate\"><filter string=\"All\" name=\"all\" domain=\"[]\"/><filter string=\"Has name\" name=\"has_name\" domain=\"[('x_name','!=',False)]\"/><filter string=\"Branch\" name=\"group_x_branch_id\" context=\"{'group_by': 'x_branch_id'}\"/></search>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_staff_shift.search",
+      "model": "x_staff_shift",
+      "type": "search",
+      "arch": "<search string=\"Staff shift / roster line\"><filter string=\"This month\" name=\"month_x_date_start\" domain=\"[('x_date_start','&gt;=', (context_today().replace(day=1)).strftime('%Y-%m-%d'))]\"/><filter string=\"All\" name=\"all\" domain=\"[]\"/><filter string=\"Has name\" name=\"has_name\" domain=\"[('x_name','!=',False)]\"/><filter string=\"Branch\" name=\"group_x_branch_id\" context=\"{'group_by': 'x_branch_id'}\"/></search>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_store_order.search",
+      "model": "x_store_order",
+      "type": "search",
+      "arch": "<search string=\"Store sales order\"><filter string=\"Draft\" name=\"status_draft\" domain=\"[('x_status','=','draft')]\"/><filter string=\"Confirmed\" name=\"status_confirmed\" domain=\"[('x_status','=','confirmed')]\"/><filter string=\"Picking\" name=\"status_picking\" domain=\"[('x_status','=','picking')]\"/><filter string=\"Delivered\" name=\"status_delivered\" domain=\"[('x_status','=','delivered')]\"/><filter string=\"This month\" name=\"month_x_date_order\" domain=\"[('x_date_order','&gt;=', (context_today().replace(day=1)).strftime('%Y-%m-%d'))]\"/><filter string=\"Branch\" name=\"group_x_branch_id\" context=\"{'group_by': 'x_branch_id'}\"/><filter string=\"Customer\" name=\"group_x_partner_id\" context=\"{'group_by': 'x_partner_id'}\"/><filter string=\"Promotion\" name=\"group_x_promotion_id\" context=\"{'group_by': 'x_promotion_id'}\"/><filter string=\"Status\" name=\"group_x_status\" context=\"{'group_by': 'x_status'}\"/></search>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_store_order_line.search",
+      "model": "x_store_order_line",
+      "type": "search",
+      "arch": "<search string=\"Order line\"><filter string=\"All\" name=\"all\" domain=\"[]\"/><filter string=\"Has name\" name=\"has_name\" domain=\"[('x_name','!=',False)]\"/><filter string=\"Order\" name=\"group_x_order_id\" context=\"{'group_by': 'x_order_id'}\"/></search>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_supplier_agreement.search",
+      "model": "x_supplier_agreement",
+      "type": "search",
+      "arch": "<search string=\"Supplier terms / rebate\"><filter string=\"This month\" name=\"month_x_date_start\" domain=\"[('x_date_start','&gt;=', (context_today().replace(day=1)).strftime('%Y-%m-%d'))]\"/><filter string=\"All\" name=\"all\" domain=\"[]\"/><filter string=\"Has name\" name=\"has_name\" domain=\"[('x_name','!=',False)]\"/><filter string=\"Supplier\" name=\"group_x_partner_id\" context=\"{'group_by': 'x_partner_id'}\"/><filter string=\"Branch\" name=\"group_x_branch_id\" context=\"{'group_by': 'x_branch_id'}\"/></search>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_task.search",
+      "model": "x_task",
+      "type": "search",
+      "arch": "<search string=\"Replenishment / shelf task\"><filter string=\"Draft\" name=\"status_draft\" domain=\"[('x_status','=','draft')]\"/><filter string=\"Open\" name=\"status_open\" domain=\"[('x_status','=','open')]\"/><filter string=\"Done\" name=\"status_done\" domain=\"[('x_status','=','done')]\"/><filter string=\"Cancelled\" name=\"status_cancelled\" domain=\"[('x_status','=','cancelled')]\"/><filter string=\"Branch\" name=\"group_x_branch_id\" context=\"{'group_by': 'x_branch_id'}\"/><filter string=\"Contact\" name=\"group_x_partner_id\" context=\"{'group_by': 'x_partner_id'}\"/><filter string=\"Status\" name=\"group_x_status\" context=\"{'group_by': 'x_status'}\"/></search>",
+      "mode": "primary"
+    }
+  ],
+  "reuse": {
+    "models": [
+      "res.partner",
+      "product.template",
+      "product.product",
+      "uom.uom",
+      "purchase.order",
+      "stock.warehouse",
+      "res.users",
+      "res.company",
+      "res.currency"
+    ],
+    "plan": {
+      "source": "connection",
+      "models": [
+        "res.partner",
+        "product.template",
+        "product.product",
+        "uom.uom",
+        "purchase.order",
+        "stock.warehouse",
+        "res.users",
+        "res.company",
+        "res.currency"
+      ],
+      "depends": [
+        "base",
+        "contacts",
+        "product",
+        "uom",
+        "purchase",
+        "stock",
+        "mail"
+      ],
+      "forbid_new_models": [
+        "x_client",
+        "x_customer",
+        "x_contact",
+        "x_client_contact",
+        "x_product"
+      ],
+      "decisions": [
+        {
+          "model": "res.partner",
+          "reason": "Operator selected",
+          "source": "operator",
+          "confirmed": true,
+          "forbid_parallel": [
+            "x_client",
+            "x_customer",
+            "x_contact",
+            "x_client_contact"
+          ],
+          "link_only": false
+        },
+        {
+          "model": "product.template",
+          "reason": "Operator selected",
+          "source": "operator",
+          "confirmed": true,
+          "forbid_parallel": [],
+          "link_only": false
+        },
+        {
+          "model": "product.product",
+          "reason": "Operator selected",
+          "source": "operator",
+          "confirmed": true,
+          "forbid_parallel": [
+            "x_product"
+          ],
+          "link_only": false
+        },
+        {
+          "model": "uom.uom",
+          "reason": "Operator selected",
+          "source": "operator",
+          "confirmed": true,
+          "forbid_parallel": [],
+          "link_only": false
+        },
+        {
+          "model": "purchase.order",
+          "reason": "Operator selected",
+          "source": "operator",
+          "confirmed": true,
+          "forbid_parallel": [],
+          "link_only": true
+        },
+        {
+          "model": "stock.warehouse",
+          "reason": "Operator selected",
+          "source": "operator",
+          "confirmed": true,
+          "forbid_parallel": [],
+          "link_only": true
+        },
+        {
+          "model": "res.users",
+          "reason": "Assignees / internal users",
+          "source": "connection",
+          "confirmed": true,
+          "forbid_parallel": [],
+          "link_only": false
+        },
+        {
+          "model": "res.company",
+          "reason": "Multi-company",
+          "source": "connection",
+          "confirmed": true,
+          "forbid_parallel": [],
+          "link_only": false
+        },
+        {
+          "model": "res.currency",
+          "reason": "Monetary amounts",
+          "source": "connection",
+          "confirmed": true,
+          "forbid_parallel": [],
+          "link_only": false
+        }
+      ]
+    },
+    "catalog_suggestions": [
+      {
+        "model": "account.edi.common",
+        "reason": "Catalog match: Common functions for EDI documents: generate the data, the constraints, etc",
+        "source": "catalog",
+        "confirmed": false,
+        "forbid_parallel": [],
+        "link_only": false,
+        "modules": [
+          "account"
+        ]
+      }
+    ]
+  },
+  "_meta": {
+    "model_count": 17,
+    "view_count": 56,
+    "menu_count": 23,
+    "smart_button_count": 24,
+    "automation_count": 3,
+    "domain_pack": "retail_supermarket",
+    "score_0_10": 10.0
+  },
+  "reuse_hints": [
+    {
+      "model": "res.partner",
+      "reason": "Operator selected"
+    },
+    {
+      "model": "product.template",
+      "reason": "Operator selected"
+    },
+    {
+      "model": "product.product",
+      "reason": "Operator selected"
+    },
+    {
+      "model": "uom.uom",
+      "reason": "Operator selected"
+    },
+    {
+      "model": "purchase.order",
+      "reason": "Operator selected"
+    },
+    {
+      "model": "stock.warehouse",
+      "reason": "Operator selected"
+    },
+    {
+      "model": "res.users",
+      "reason": "Assignees / internal users"
+    },
+    {
+      "model": "res.company",
+      "reason": "Multi-company"
+    },
+    {
+      "model": "res.currency",
+      "reason": "Monetary amounts"
+    }
+  ],
+  "smart_buttons": [
+    {
+      "on_model": "x_branch",
+      "label": "Store sales order",
+      "related_model": "x_store_order",
+      "relation_field": "x_branch_id",
+      "icon": "fa-list",
+      "source": "depth_synthesize"
+    },
+    {
+      "on_model": "x_store_order",
+      "label": "Order line",
+      "related_model": "x_store_order_line",
+      "relation_field": "x_order_id",
+      "icon": "fa-list",
+      "source": "depth_synthesize"
+    },
+    {
+      "on_model": "x_branch",
+      "label": "Promotion / discount campaign",
+      "related_model": "x_promotion",
+      "relation_field": "x_branch_id",
+      "icon": "fa-list",
+      "source": "depth_synthesize"
+    },
+    {
+      "on_model": "x_branch",
+      "label": "Inter-branch stock transfer (out)",
+      "related_model": "x_branch_transfer",
+      "relation_field": "x_branch_from_id",
+      "icon": "fa-list",
+      "source": "depth_synthesize",
+      "string": "Inter-branch stock transfer (out)"
+    },
+    {
+      "on_model": "x_branch",
+      "label": "Inter-branch stock transfer (in)",
+      "related_model": "x_branch_transfer",
+      "relation_field": "x_branch_to_id",
+      "icon": "fa-list",
+      "source": "depth_synthesize",
+      "string": "Inter-branch stock transfer (in)"
+    },
+    {
+      "on_model": "x_branch",
+      "label": "Supplier terms / rebate",
+      "related_model": "x_supplier_agreement",
+      "relation_field": "x_branch_id",
+      "icon": "fa-list",
+      "source": "depth_synthesize"
+    },
+    {
+      "on_model": "x_branch",
+      "label": "Staff shift / roster line",
+      "related_model": "x_staff_shift",
+      "relation_field": "x_branch_id",
+      "icon": "fa-list",
+      "source": "depth_synthesize"
+    },
+    {
+      "on_model": "x_branch",
+      "label": "Stock count session",
+      "related_model": "x_inventory_count",
+      "relation_field": "x_branch_id",
+      "icon": "fa-list",
+      "source": "depth_synthesize"
+    },
+    {
+      "on_model": "x_branch",
+      "label": "In-store marketing event",
+      "related_model": "x_event",
+      "relation_field": "x_branch_id",
+      "icon": "fa-list",
+      "source": "depth_synthesize"
+    },
+    {
+      "on_model": "x_branch",
+      "label": "Replenishment",
+      "related_model": "x_task",
+      "relation_field": "x_branch_id",
+      "icon": "fa-list",
+      "source": "depth_synthesize"
+    },
+    {
+      "on_model": "x_branch",
+      "label": "Stock adjustment record",
+      "related_model": "x_inventory_adjustment",
+      "relation_field": "x_branch_id",
+      "icon": "fa-list",
+      "source": "depth_synthesize"
+    },
+    {
+      "on_model": "x_branch",
+      "label": "Expense tracking",
+      "related_model": "x_expense",
+      "relation_field": "x_branch_id",
+      "icon": "fa-list",
+      "source": "depth_synthesize"
+    },
+    {
+      "on_model": "x_branch",
+      "label": "Food safety check / Supplier approval",
+      "related_model": "x_compliance_check",
+      "relation_field": "x_branch_id",
+      "icon": "fa-list",
+      "source": "depth_synthesize"
+    },
+    {
+      "on_model": "x_branch",
+      "label": "Multi-contact relationship link",
+      "related_model": "x_multi_party_link",
+      "relation_field": "x_branch_id",
+      "icon": "fa-list",
+      "source": "depth_synthesize"
+    },
+    {
+      "on_model": "x_branch",
+      "label": "Staff rate / pay rate",
+      "related_model": "x_staff_rate",
+      "relation_field": "x_branch_id",
+      "icon": "fa-list",
+      "source": "depth_synthesize"
+    },
+    {
+      "on_model": "res.partner",
+      "label": "Store sales order",
+      "related_model": "x_store_order",
+      "relation_field": "x_partner_id",
+      "icon": "fa-list",
+      "requires_inherit_view": true,
+      "note": "Applied as inherit on Contacts button_box"
+    },
+    {
+      "on_model": "res.partner",
+      "label": "Promotion / discount campaign",
+      "related_model": "x_promotion",
+      "relation_field": "x_partner_id",
+      "icon": "fa-list",
+      "requires_inherit_view": true,
+      "note": "Applied as inherit on Contacts button_box"
+    },
+    {
+      "on_model": "res.partner",
+      "label": "Inter-branch stock transfer",
+      "related_model": "x_branch_transfer",
+      "relation_field": "x_partner_id",
+      "icon": "fa-list",
+      "requires_inherit_view": true,
+      "note": "Applied as inherit on Contacts button_box"
+    },
+    {
+      "on_model": "res.partner",
+      "label": "Supplier terms / rebate",
+      "related_model": "x_supplier_agreement",
+      "relation_field": "x_partner_id",
+      "icon": "fa-list",
+      "requires_inherit_view": true,
+      "note": "Applied as inherit on Contacts button_box"
+    },
+    {
+      "on_model": "x_branch_transfer",
+      "label": "Transfer line",
+      "related_model": "x_branch_transfer_line",
+      "relation_field": "x_transfer_id",
+      "icon": "fa-list"
+    },
+    {
+      "on_model": "x_inventory_count",
+      "label": "Count line",
+      "related_model": "x_inventory_count_line",
+      "relation_field": "x_inventory_count_id",
+      "icon": "fa-list"
+    },
+    {
+      "on_model": "x_branch_transfer",
+      "label": "Stock transfer",
+      "related_model": "stock.picking",
+      "relation_field": "x_picking_id",
+      "icon": "fa-truck",
+      "source": "apply_readiness",
+      "link_only": true
+    },
+    {
+      "on_model": "x_inventory_adjustment",
+      "label": "Stock picking",
+      "related_model": "stock.picking",
+      "relation_field": "x_picking_id",
+      "icon": "fa-truck",
+      "source": "apply_readiness",
+      "link_only": true
+    },
+    {
+      "on_model": "x_branch",
+      "label": "Warehouse",
+      "related_model": "stock.warehouse",
+      "relation_field": "x_warehouse_id",
+      "icon": "fa-archive",
+      "source": "apply_readiness",
+      "link_only": true
+    }
+  ],
+  "groups": [
+    {
+      "id": "group_super_market_branches_user",
+      "name": "Super Market User",
+      "category_id": "base.module_category_custom"
+    },
+    {
+      "id": "group_super_market_branches_manager",
+      "name": "Super Market Manager",
+      "implied_ids": [
+        "group_super_market_branches_user"
+      ],
+      "category_id": "base.module_category_custom"
+    }
+  ],
+  "access_rules": [
+    {
+      "id": "access_x_branch_user",
+      "name": "Branch / Store location user",
+      "model": "model_x_branch",
+      "group": "group_super_market_branches_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 0
+    },
+    {
+      "id": "access_x_branch_manager",
+      "name": "Branch / Store location manager",
+      "model": "model_x_branch",
+      "group": "group_super_market_branches_manager",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_store_order_user",
+      "name": "Store sales order user",
+      "model": "model_x_store_order",
+      "group": "group_super_market_branches_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 0
+    },
+    {
+      "id": "access_x_store_order_manager",
+      "name": "Store sales order manager",
+      "model": "model_x_store_order",
+      "group": "group_super_market_branches_manager",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_store_order_line_user",
+      "name": "Order line user",
+      "model": "model_x_store_order_line",
+      "group": "group_super_market_branches_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 0
+    },
+    {
+      "id": "access_x_store_order_line_manager",
+      "name": "Order line manager",
+      "model": "model_x_store_order_line",
+      "group": "group_super_market_branches_manager",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_promotion_user",
+      "name": "Promotion / discount campaign user",
+      "model": "model_x_promotion",
+      "group": "group_super_market_branches_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 0
+    },
+    {
+      "id": "access_x_promotion_manager",
+      "name": "Promotion / discount campaign manager",
+      "model": "model_x_promotion",
+      "group": "group_super_market_branches_manager",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_branch_transfer_user",
+      "name": "Inter-branch stock transfer user",
+      "model": "model_x_branch_transfer",
+      "group": "group_super_market_branches_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 0
+    },
+    {
+      "id": "access_x_branch_transfer_manager",
+      "name": "Inter-branch stock transfer manager",
+      "model": "model_x_branch_transfer",
+      "group": "group_super_market_branches_manager",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_supplier_agreement_user",
+      "name": "Supplier terms / rebate user",
+      "model": "model_x_supplier_agreement",
+      "group": "group_super_market_branches_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 0
+    },
+    {
+      "id": "access_x_supplier_agreement_manager",
+      "name": "Supplier terms / rebate manager",
+      "model": "model_x_supplier_agreement",
+      "group": "group_super_market_branches_manager",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_staff_shift_user",
+      "name": "Staff shift / roster line user",
+      "model": "model_x_staff_shift",
+      "group": "group_super_market_branches_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 0
+    },
+    {
+      "id": "access_x_staff_shift_manager",
+      "name": "Staff shift / roster line manager",
+      "model": "model_x_staff_shift",
+      "group": "group_super_market_branches_manager",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_inventory_count_user",
+      "name": "Stock count session user",
+      "model": "model_x_inventory_count",
+      "group": "group_super_market_branches_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 0
+    },
+    {
+      "id": "access_x_inventory_count_manager",
+      "name": "Stock count session manager",
+      "model": "model_x_inventory_count",
+      "group": "group_super_market_branches_manager",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_event_user",
+      "name": "Market Event user",
+      "model": "model_x_event",
+      "group": "group_super_market_branches_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 0
+    },
+    {
+      "id": "access_x_event_manager",
+      "name": "Market Event manager",
+      "model": "model_x_event",
+      "group": "group_super_market_branches_manager",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_task_user",
+      "name": "Market Task user",
+      "model": "model_x_task",
+      "group": "group_super_market_branches_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 0
+    },
+    {
+      "id": "access_x_task_manager",
+      "name": "Market Task manager",
+      "model": "model_x_task",
+      "group": "group_super_market_branches_manager",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_inventory_adjustment_user",
+      "name": "Stock adjustment record user",
+      "model": "model_x_inventory_adjustment",
+      "group": "group_super_market_branches_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 0
+    },
+    {
+      "id": "access_x_inventory_adjustment_manager",
+      "name": "Stock adjustment record manager",
+      "model": "model_x_inventory_adjustment",
+      "group": "group_super_market_branches_manager",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_expense_user",
+      "name": "Expense tracking user",
+      "model": "model_x_expense",
+      "group": "group_super_market_branches_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 0
+    },
+    {
+      "id": "access_x_expense_manager",
+      "name": "Expense tracking manager",
+      "model": "model_x_expense",
+      "group": "group_super_market_branches_manager",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_compliance_check_user",
+      "name": "Food safety check / Supplier approval user",
+      "model": "model_x_compliance_check",
+      "group": "group_super_market_branches_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 0
+    },
+    {
+      "id": "access_x_compliance_check_manager",
+      "name": "Food safety check / Supplier approval manager",
+      "model": "model_x_compliance_check",
+      "group": "group_super_market_branches_manager",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_multi_party_link_user",
+      "name": "Multi-contact relationship link user",
+      "model": "model_x_multi_party_link",
+      "group": "group_super_market_branches_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 0
+    },
+    {
+      "id": "access_x_multi_party_link_manager",
+      "name": "Multi-contact relationship link manager",
+      "model": "model_x_multi_party_link",
+      "group": "group_super_market_branches_manager",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_staff_rate_user",
+      "name": "Staff rate / pay rate user",
+      "model": "model_x_staff_rate",
+      "group": "group_super_market_branches_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 0
+    },
+    {
+      "id": "access_x_staff_rate_manager",
+      "name": "Staff rate / pay rate manager",
+      "model": "model_x_staff_rate",
+      "group": "group_super_market_branches_manager",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_branch_transfer_line_user",
+      "name": "Transfer line user",
+      "model": "model_x_branch_transfer_line",
+      "group": "group_super_market_branches_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 0
+    },
+    {
+      "id": "access_x_branch_transfer_line_manager",
+      "name": "Transfer line manager",
+      "model": "model_x_branch_transfer_line",
+      "group": "group_super_market_branches_manager",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_inventory_count_line_user",
+      "name": "Count line user",
+      "model": "model_x_inventory_count_line",
+      "group": "group_super_market_branches_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 0
+    },
+    {
+      "id": "access_x_inventory_count_line_manager",
+      "name": "Count line manager",
+      "model": "model_x_inventory_count_line",
+      "group": "group_super_market_branches_manager",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    }
+  ],
+  "_completeness": [
+    {
+      "id": "has_models",
+      "ok": true,
+      "detail": "15 model(s)"
+    },
+    {
+      "id": "has_menus",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "has_views",
+      "ok": true,
+      "detail": "15 model view sets"
+    },
+    {
+      "id": "has_workflow",
+      "ok": true,
+      "detail": "x_store_order,x_promotion,x_branch_transfer,x_task,x_compliance_check"
+    },
+    {
+      "id": "kanban_for_workflow",
+      "ok": true,
+      "detail": "kanban present"
+    },
+    {
+      "id": "mail_thread",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "sequence_on_workflow",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "has_access_stubs",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "has_smart_buttons",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "contacts_link",
+      "ok": true,
+      "detail": "res.partner M2O present"
+    },
+    {
+      "id": "depth_models",
+      "ok": true,
+      "detail": "13/10 substantive models (excl. depth_seed; raw=15, seeded=2)"
+    },
+    {
+      "id": "depth_fields_avg",
+      "ok": true,
+      "detail": "avg 8.33/6 fields/model"
+    },
+    {
+      "id": "depth_relations",
+      "ok": true,
+      "detail": "59/10 many2one links"
+    },
+    {
+      "id": "depth_workflows",
+      "ok": true,
+      "detail": "5/3 workflow models"
+    },
+    {
+      "id": "depth_smart_buttons",
+      "ok": true,
+      "detail": "21/6 smart buttons"
+    },
+    {
+      "id": "depth_automations",
+      "ok": true,
+      "detail": "3/2 automations"
+    },
+    {
+      "id": "model_ui:x_branch",
+      "ok": true,
+      "detail": "complete"
+    },
+    {
+      "id": "model_ui:x_branch_transfer",
+      "ok": true,
+      "detail": "complete"
+    },
+    {
+      "id": "model_ui:x_compliance_check",
+      "ok": true,
+      "detail": "complete"
+    },
+    {
+      "id": "model_ui:x_event",
+      "ok": true,
+      "detail": "complete"
+    },
+    {
+      "id": "model_ui:x_expense",
+      "ok": true,
+      "detail": "complete"
+    },
+    {
+      "id": "model_ui:x_inventory_adjustment",
+      "ok": true,
+      "detail": "complete"
+    },
+    {
+      "id": "model_ui:x_inventory_count",
+      "ok": true,
+      "detail": "complete"
+    },
+    {
+      "id": "model_ui:x_multi_party_link",
+      "ok": true,
+      "detail": "complete"
+    },
+    {
+      "id": "model_ui:x_promotion",
+      "ok": true,
+      "detail": "complete"
+    },
+    {
+      "id": "model_ui:x_staff_rate",
+      "ok": true,
+      "detail": "complete"
+    },
+    {
+      "id": "model_ui:x_staff_shift",
+      "ok": true,
+      "detail": "complete"
+    },
+    {
+      "id": "model_ui:x_store_order",
+      "ok": true,
+      "detail": "complete"
+    },
+    {
+      "id": "model_ui:x_store_order_line",
+      "ok": true,
+      "detail": "complete"
+    },
+    {
+      "id": "model_ui:x_supplier_agreement",
+      "ok": true,
+      "detail": "complete"
+    },
+    {
+      "id": "model_ui:x_task",
+      "ok": true,
+      "detail": "complete"
+    }
+  ],
+  "_compute_suggestions": [],
+  "automations": [
+    {
+      "name": "Flag deadline on x_task",
+      "model": "x_task",
+      "trigger": "on_time",
+      "description": "Safety-net: when x_date_deadline is past and still in active states → past deadline",
+      "filter_domain": "[('x_date_deadline', '<', 'now'), ('x_status', 'in', ['draft', 'open'])]",
+      "safe_actions": [
+        {
+          "kind": "next_activity",
+          "summary": "Flag deadline on x_task"
+        }
+      ],
+      "source": "rules_engine"
+    },
+    {
+      "name": "Notify on Store sales order delivered",
+      "model": "x_store_order",
+      "trigger": "on_write",
+      "filter_domain": "[('x_status','=','delivered')]",
+      "description": "Depth floor: schedule follow-up when x_store_order reaches 'delivered'",
+      "safe_actions": [
+        {
+          "kind": "next_activity",
+          "summary": "Review delivered Store sales order"
+        }
+      ],
+      "source": "depth_seed"
+    },
+    {
+      "name": "Notify on Promotion discount campaign cancelled",
+      "model": "x_promotion",
+      "trigger": "on_write",
+      "filter_domain": "[('x_status','=','cancelled')]",
+      "description": "Depth floor: schedule follow-up when x_promotion reaches 'cancelled'",
+      "safe_actions": [
+        {
+          "kind": "next_activity",
+          "summary": "Review cancelled Promotion discount campaign"
+        }
+      ],
+      "source": "depth_seed"
+    }
+  ],
+  "_depth": {
+    "ambition": "comprehensive",
+    "metrics": {
+      "model_count": 15,
+      "model_count_raw": 15,
+      "hollow_model_count": 0,
+      "field_total": 125,
+      "fields_avg": 8.33,
+      "m2o_count": 59,
+      "workflow_count": 5,
+      "smart_button_count": 21,
+      "automation_count": 3
+    },
+    "metrics_without_seeds": {
+      "model_count": 17,
+      "model_count_raw": 17,
+      "hollow_model_count": 0,
+      "field_total": 148,
+      "fields_avg": 8.71,
+      "m2o_count": 73,
+      "workflow_count": 5,
+      "smart_button_count": 24,
+      "automation_count": 3
+    },
+    "gaps": [],
+    "targets": {
+      "min_models": 10,
+      "min_fields_avg": 6,
+      "min_m2o": 10,
+      "min_workflows": 3,
+      "min_smart_buttons": 6,
+      "min_automations": 2,
+      "max_entities_staged": 18
+    },
+    "ok": true,
+    "seeded": false,
+    "checklist": [
+      {
+        "id": "depth_models",
+        "ok": true,
+        "detail": "17/10 substantive models (excl. depth_seed; raw=17, seeded=0)"
+      },
+      {
+        "id": "depth_fields_avg",
+        "ok": true,
+        "detail": "avg 8.71/6 fields/model"
+      },
+      {
+        "id": "depth_relations",
+        "ok": true,
+        "detail": "73/10 many2one links"
+      },
+      {
+        "id": "depth_workflows",
+        "ok": true,
+        "detail": "5/3 workflow models"
+      },
+      {
+        "id": "depth_smart_buttons",
+        "ok": true,
+        "detail": "24/6 smart buttons"
+      },
+      {
+        "id": "depth_automations",
+        "ok": true,
+        "detail": "3/2 automations"
+      }
+    ]
+  },
+  "_critique": {
+    "ready": true,
+    "checklist": [],
+    "mode": "skipped_complete",
+    "depth_gaps": [],
+    "repairs": [],
+    "suggestions": [],
+    "notes": []
+  },
+  "_llm_status": {
+    "mode": "llm_full",
+    "failed_steps": [],
+    "completed_steps": [
+      "Retrieving domain context",
+      "Extracting entities",
+      "Defining fields",
+      "Mapping relationships",
+      "Building workflow",
+      "Adding automations",
+      "Finalizing draft"
+    ],
+    "reason": null,
+    "step": 6,
+    "step_total": 7,
+    "step_label": "Finalizing draft"
+  },
+  "record_rules": [
+    {
+      "name": "Multi-company (x_branch)",
+      "model": "x_branch",
+      "model_xml_id": "model_x_branch",
+      "domain_force": "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]",
+      "technical_name": "rule_x_branch_multi_company"
+    },
+    {
+      "name": "Multi-company (x_store_order)",
+      "model": "x_store_order",
+      "model_xml_id": "model_x_store_order",
+      "domain_force": "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]",
+      "technical_name": "rule_x_store_order_multi_company"
+    },
+    {
+      "name": "Multi-company (x_store_order_line)",
+      "model": "x_store_order_line",
+      "model_xml_id": "model_x_store_order_line",
+      "domain_force": "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]",
+      "technical_name": "rule_x_store_order_line_multi_company"
+    },
+    {
+      "name": "Multi-company (x_promotion)",
+      "model": "x_promotion",
+      "model_xml_id": "model_x_promotion",
+      "domain_force": "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]",
+      "technical_name": "rule_x_promotion_multi_company"
+    },
+    {
+      "name": "Multi-company (x_branch_transfer)",
+      "model": "x_branch_transfer",
+      "model_xml_id": "model_x_branch_transfer",
+      "domain_force": "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]",
+      "technical_name": "rule_x_branch_transfer_multi_company"
+    },
+    {
+      "name": "Multi-company (x_supplier_agreement)",
+      "model": "x_supplier_agreement",
+      "model_xml_id": "model_x_supplier_agreement",
+      "domain_force": "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]",
+      "technical_name": "rule_x_supplier_agreement_multi_company"
+    },
+    {
+      "name": "Multi-company (x_staff_shift)",
+      "model": "x_staff_shift",
+      "model_xml_id": "model_x_staff_shift",
+      "domain_force": "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]",
+      "technical_name": "rule_x_staff_shift_multi_company"
+    },
+    {
+      "name": "Multi-company (x_inventory_count)",
+      "model": "x_inventory_count",
+      "model_xml_id": "model_x_inventory_count",
+      "domain_force": "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]",
+      "technical_name": "rule_x_inventory_count_multi_company"
+    },
+    {
+      "name": "Multi-company (x_event)",
+      "model": "x_event",
+      "model_xml_id": "model_x_event",
+      "domain_force": "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]",
+      "technical_name": "rule_x_event_multi_company"
+    },
+    {
+      "name": "Multi-company (x_task)",
+      "model": "x_task",
+      "model_xml_id": "model_x_task",
+      "domain_force": "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]",
+      "technical_name": "rule_x_task_multi_company"
+    },
+    {
+      "name": "Multi-company (x_inventory_adjustment)",
+      "model": "x_inventory_adjustment",
+      "model_xml_id": "model_x_inventory_adjustment",
+      "domain_force": "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]",
+      "technical_name": "rule_x_inventory_adjustment_multi_company"
+    },
+    {
+      "name": "Multi-company (x_expense)",
+      "model": "x_expense",
+      "model_xml_id": "model_x_expense",
+      "domain_force": "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]",
+      "technical_name": "rule_x_expense_multi_company"
+    },
+    {
+      "name": "Multi-company (x_compliance_check)",
+      "model": "x_compliance_check",
+      "model_xml_id": "model_x_compliance_check",
+      "domain_force": "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]",
+      "technical_name": "rule_x_compliance_check_multi_company"
+    },
+    {
+      "name": "Multi-company (x_multi_party_link)",
+      "model": "x_multi_party_link",
+      "model_xml_id": "model_x_multi_party_link",
+      "domain_force": "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]",
+      "technical_name": "rule_x_multi_party_link_multi_company"
+    },
+    {
+      "name": "Multi-company (x_staff_rate)",
+      "model": "x_staff_rate",
+      "model_xml_id": "model_x_staff_rate",
+      "domain_force": "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]",
+      "technical_name": "rule_x_staff_rate_multi_company"
+    },
+    {
+      "name": "Branch manager scope (x_store_order)",
+      "model": "x_store_order",
+      "model_xml_id": "model_x_store_order",
+      "domain_force": "['|', ('x_branch_id', '=', False), ('x_branch_id.x_manager_id', '=', user.id)]",
+      "group_xml_ids": [
+        "group_super_market_branches_user"
+      ],
+      "technical_name": "rule_x_store_order_branch_manager_scope"
+    },
+    {
+      "name": "Branch manager scope (x_promotion)",
+      "model": "x_promotion",
+      "model_xml_id": "model_x_promotion",
+      "domain_force": "['|', ('x_branch_id', '=', False), ('x_branch_id.x_manager_id', '=', user.id)]",
+      "group_xml_ids": [
+        "group_super_market_branches_user"
+      ],
+      "technical_name": "rule_x_promotion_branch_manager_scope"
+    },
+    {
+      "name": "Branch manager scope (x_supplier_agreement)",
+      "model": "x_supplier_agreement",
+      "model_xml_id": "model_x_supplier_agreement",
+      "domain_force": "['|', ('x_branch_id', '=', False), ('x_branch_id.x_manager_id', '=', user.id)]",
+      "group_xml_ids": [
+        "group_super_market_branches_user"
+      ],
+      "technical_name": "rule_x_supplier_agreement_branch_manager_scope"
+    },
+    {
+      "name": "Branch manager scope (x_staff_shift)",
+      "model": "x_staff_shift",
+      "model_xml_id": "model_x_staff_shift",
+      "domain_force": "['|', ('x_branch_id', '=', False), ('x_branch_id.x_manager_id', '=', user.id)]",
+      "group_xml_ids": [
+        "group_super_market_branches_user"
+      ],
+      "technical_name": "rule_x_staff_shift_branch_manager_scope"
+    },
+    {
+      "name": "Branch manager scope (x_inventory_count)",
+      "model": "x_inventory_count",
+      "model_xml_id": "model_x_inventory_count",
+      "domain_force": "['|', ('x_branch_id', '=', False), ('x_branch_id.x_manager_id', '=', user.id)]",
+      "group_xml_ids": [
+        "group_super_market_branches_user"
+      ],
+      "technical_name": "rule_x_inventory_count_branch_manager_scope"
+    },
+    {
+      "name": "Branch manager scope (x_event)",
+      "model": "x_event",
+      "model_xml_id": "model_x_event",
+      "domain_force": "['|', ('x_branch_id', '=', False), ('x_branch_id.x_manager_id', '=', user.id)]",
+      "group_xml_ids": [
+        "group_super_market_branches_user"
+      ],
+      "technical_name": "rule_x_event_branch_manager_scope"
+    },
+    {
+      "name": "Branch manager scope (x_task)",
+      "model": "x_task",
+      "model_xml_id": "model_x_task",
+      "domain_force": "['|', ('x_branch_id', '=', False), ('x_branch_id.x_manager_id', '=', user.id)]",
+      "group_xml_ids": [
+        "group_super_market_branches_user"
+      ],
+      "technical_name": "rule_x_task_branch_manager_scope"
+    },
+    {
+      "name": "Branch manager scope (x_inventory_adjustment)",
+      "model": "x_inventory_adjustment",
+      "model_xml_id": "model_x_inventory_adjustment",
+      "domain_force": "['|', ('x_branch_id', '=', False), ('x_branch_id.x_manager_id', '=', user.id)]",
+      "group_xml_ids": [
+        "group_super_market_branches_user"
+      ],
+      "technical_name": "rule_x_inventory_adjustment_branch_manager_scope"
+    },
+    {
+      "name": "Branch manager scope (x_expense)",
+      "model": "x_expense",
+      "model_xml_id": "model_x_expense",
+      "domain_force": "['|', ('x_branch_id', '=', False), ('x_branch_id.x_manager_id', '=', user.id)]",
+      "group_xml_ids": [
+        "group_super_market_branches_user"
+      ],
+      "technical_name": "rule_x_expense_branch_manager_scope"
+    },
+    {
+      "name": "Branch manager scope (x_compliance_check)",
+      "model": "x_compliance_check",
+      "model_xml_id": "model_x_compliance_check",
+      "domain_force": "['|', ('x_branch_id', '=', False), ('x_branch_id.x_manager_id', '=', user.id)]",
+      "group_xml_ids": [
+        "group_super_market_branches_user"
+      ],
+      "technical_name": "rule_x_compliance_check_branch_manager_scope"
+    },
+    {
+      "name": "Branch manager scope (x_multi_party_link)",
+      "model": "x_multi_party_link",
+      "model_xml_id": "model_x_multi_party_link",
+      "domain_force": "['|', ('x_branch_id', '=', False), ('x_branch_id.x_manager_id', '=', user.id)]",
+      "group_xml_ids": [
+        "group_super_market_branches_user"
+      ],
+      "technical_name": "rule_x_multi_party_link_branch_manager_scope"
+    },
+    {
+      "name": "Branch manager scope (x_staff_rate)",
+      "model": "x_staff_rate",
+      "model_xml_id": "model_x_staff_rate",
+      "domain_force": "['|', ('x_branch_id', '=', False), ('x_branch_id.x_manager_id', '=', user.id)]",
+      "group_xml_ids": [
+        "group_super_market_branches_user"
+      ],
+      "technical_name": "rule_x_staff_rate_branch_manager_scope"
+    },
+    {
+      "name": "Multi-company (x_branch_transfer_line)",
+      "model": "x_branch_transfer_line",
+      "model_xml_id": "model_x_branch_transfer_line",
+      "domain_force": "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]",
+      "technical_name": "rule_x_branch_transfer_line_multi_company"
+    },
+    {
+      "name": "Multi-company (x_inventory_count_line)",
+      "model": "x_inventory_count_line",
+      "model_xml_id": "model_x_inventory_count_line",
+      "domain_force": "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]",
+      "technical_name": "rule_x_inventory_count_line_multi_company"
+    }
+  ],
+  "review_notes": [
+    "Stock: x_picking_id / x_warehouse_id are link-only — wire to stock.picking in Odoo before go-live; no automatic quant moves from metadata export.",
+    "Transactional headers include link-only stock Odoo document fields — wire in Odoo before go-live; metadata export does not post moves/orders."
+  ],
+  "custom_code_blocks": [
+    {
+      "source_file": "models/x_store_order_line.py",
+      "kind": "python",
+      "content": "from odoo import api, fields, models\n\n\nclass XStoreOrderLineLineSubtotal(models.Model):\n    _inherit = 'x_store_order_line'\n\n    x_subtotal = fields.Monetary(\n        string='Subtotal',\n        compute='_compute_x_subtotal',\n        store=True,\n        currency_field='x_currency_id',\n    )\n\n    @api.depends('x_qty', 'x_price_unit')\n    def _compute_x_subtotal(self):\n        for rec in self:\n            rec.x_subtotal = (rec.x_qty or 0.0) * (rec.x_price_unit or 0.0)\n",
+      "reason": "apply_readiness: line subtotal compute",
+      "model": "x_store_order_line"
+    },
+    {
+      "source_file": "models/x_store_order.py",
+      "kind": "python",
+      "content": "from odoo import api, fields, models\n\n\nclass XStoreOrderHeaderTotal(models.Model):\n    _inherit = 'x_store_order'\n\n    x_amount_total = fields.Monetary(\n        string='Total',\n        compute='_compute_x_amount_total',\n        store=True,\n        currency_field='x_currency_id',\n    )\n\n    @api.depends('x_line_ids.x_subtotal')\n    def _compute_x_amount_total(self):\n        for rec in self:\n            rec.x_amount_total = sum(rec.x_line_ids.mapped('x_subtotal'))\n",
+      "reason": "apply_readiness: order header total compute",
+      "model": "x_store_order"
+    }
+  ],
+  "sequences": [
+    {
+      "model": "x_branch",
+      "field": "x_code",
+      "name": "Branch / Store location Sequence",
+      "prefix": "BRANCH/",
+      "padding": 5,
+      "implementation": "base_automation_on_create"
+    },
+    {
+      "model": "x_store_order",
+      "field": "x_code",
+      "name": "Store sales order Sequence",
+      "prefix": "STORE/",
+      "padding": 5,
+      "implementation": "base_automation_on_create"
+    },
+    {
+      "model": "x_promotion",
+      "field": "x_code",
+      "name": "Promotion / discount campaign Sequence",
+      "prefix": "PROMOTIO/",
+      "padding": 5,
+      "implementation": "base_automation_on_create"
+    },
+    {
+      "model": "x_branch_transfer",
+      "field": "x_code",
+      "name": "Inter-branch stock transfer Sequence",
+      "prefix": "BRANCH_T/",
+      "padding": 5,
+      "implementation": "base_automation_on_create"
+    },
+    {
+      "model": "x_task",
+      "field": "x_code",
+      "name": "Replenishment / shelf task Sequence",
+      "prefix": "TASK/",
+      "padding": 5,
+      "implementation": "base_automation_on_create"
+    },
+    {
+      "model": "x_compliance_check",
+      "field": "x_code",
+      "name": "Food safety check / Supplier approval Sequence",
+      "prefix": "COMPLIAN/",
+      "padding": 5,
+      "implementation": "base_automation_on_create"
+    },
+    {
+      "model": "x_multi_party_link",
+      "field": "x_code",
+      "name": "Multi-contact relationship link Sequence",
+      "prefix": "MULTI/",
+      "padding": 5,
+      "implementation": "base_automation_on_create"
+    }
+  ],
+  "_scorecard": {
+    "score_0_10": 10.0,
+    "dimensions": {
+      "domain_fit": 10.0,
+      "structure": 10.0,
+      "semantics": 10.0,
+      "ux": 10.0,
+      "hygiene": 10.0
+    },
+    "findings": [],
+    "prompt_nouns": [
+      "branch"
+    ]
+  }
+}

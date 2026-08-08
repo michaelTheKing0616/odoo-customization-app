@@ -192,25 +192,90 @@ def _score_semantics(draft: dict[str, Any]) -> tuple[float, list[dict[str, Any]]
     return max(0.0, score), findings
 
 
+def _meaningful_search_filter_count(arch: str) -> int:
+    count = 0
+    for flt in re.findall(r"<filter\b[^>]*(?:/>|>[^<]*</filter>)", arch, flags=re.I):
+        name_m = re.search(r'name="([^"]+)"', flt)
+        name = (name_m.group(1) if name_m else "").lower()
+        if name in {"all", "has_name"}:
+            continue
+        if "group_by" in flt or "groupby" in flt.lower():
+            count += 1
+            continue
+        if re.search(r"x_status|x_date|x_.*_id", flt):
+            count += 1
+    return count
+
+
 def _score_ux(draft: dict[str, Any]) -> tuple[float, list[dict[str, Any]]]:
     findings: list[dict[str, Any]] = []
     score = 10.0
+    by_id = _models_index(draft)
     action_models = {
         str(a.get("model"))
         for a in (draft.get("actions") or [])
         if isinstance(a, dict) and a.get("model")
     }
-    search_models = {
-        str(v.get("model"))
+    search_by_model = {
+        str(v.get("model")): str(v.get("arch") or "")
         for v in (draft.get("views") or [])
         if isinstance(v, dict) and str(v.get("type") or "") == "search"
     }
-    missing_search = action_models - search_models
+    missing_search = action_models - set(search_by_model)
     if missing_search:
         score -= min(3.0, len(missing_search) * 0.8)
         for m in sorted(missing_search):
             findings.append(
                 {"dimension": "ux", "element": m, "detail": "missing search view"}
+            )
+    for mid in action_models:
+        if mid.endswith("_line"):
+            continue
+        arch = search_by_model.get(mid, "")
+        if not arch:
+            continue
+        meaningful = _meaningful_search_filter_count(arch)
+        if meaningful < 2:
+            score -= 0.6
+            findings.append(
+                {
+                    "dimension": "ux",
+                    "element": mid,
+                    "detail": "search view lacks meaningful filters (status/date/m2o group-by)",
+                }
+            )
+    line_models = {m for m in by_id if m.endswith("_line")}
+    for menu in draft.get("menus") or []:
+        if not isinstance(menu, dict):
+            continue
+        parent = str(menu.get("parent_xml_id") or menu.get("parent") or "")
+        action_ref = str(menu.get("action_xml_id") or "")
+        for a in draft.get("actions") or []:
+            if not isinstance(a, dict):
+                continue
+            if str(a.get("technical_name") or "") in action_ref and str(a.get("model") or "") in line_models:
+                if not parent or parent.endswith("_menu_root"):
+                    score -= 1.0
+                    findings.append(
+                        {
+                            "dimension": "ux",
+                            "element": str(a.get("model")),
+                            "detail": "root menu on line model (should be parent-only)",
+                        }
+                    )
+    for seq in draft.get("sequences") or []:
+        if not isinstance(seq, dict):
+            continue
+        prefix = str(seq.get("prefix") or "")
+        model = str(seq.get("model") or "")
+        if prefix and len(prefix.rstrip("/")) > 8:
+            score -= 0.5
+            findings.append(
+                {
+                    "dimension": "ux",
+                    "element": model,
+                    "detail": f"sequence prefix {prefix!r} looks truncated — use whole-word token",
+                }
             )
     labels: dict[tuple[str, str], int] = {}
     for btn in draft.get("smart_buttons") or []:
@@ -312,7 +377,9 @@ def _score_hygiene(draft: dict[str, Any], *, user_prompt: str = "") -> tuple[flo
         model = str(rule.get("model") or "")
         mdef = by_id.get(model) or {}
         mnames = {str(f.get("name")) for f in (mdef.get("fields") or []) if isinstance(f, dict)}
-        if "company_id" in dom and "company_id" not in mnames and "x_company_id" in mnames:
+        uses_module_company = bool(re.search(r"\(['\"]company_id['\"]\s*,", dom))
+        uses_live_company = bool(re.search(r"\(['\"]x_company_id['\"]\s*,", dom))
+        if uses_module_company and not uses_live_company and "x_company_id" in mnames:
             score -= 2.0
             findings.append(
                 {
@@ -321,7 +388,7 @@ def _score_hygiene(draft: dict[str, Any], *, user_prompt: str = "") -> tuple[flo
                     "detail": "record rule uses company_id but model has x_company_id",
                 }
             )
-        if "x_company_id" in dom and "company_id" in mnames and "x_company_id" not in mnames:
+        if uses_live_company and "company_id" in mnames and "x_company_id" not in mnames:
             score -= 2.0
             findings.append(
                 {
@@ -330,7 +397,7 @@ def _score_hygiene(draft: dict[str, Any], *, user_prompt: str = "") -> tuple[flo
                     "detail": "record rule uses x_company_id but model has company_id",
                 }
             )
-        if "company_id" in dom and "company_id" not in mnames and "x_company_id" not in mnames:
+        if uses_module_company and not uses_live_company and "company_id" not in mnames and "x_company_id" not in mnames:
             score -= 2.0
             findings.append(
                 {
@@ -346,6 +413,8 @@ def _score_hygiene(draft: dict[str, Any], *, user_prompt: str = "") -> tuple[flo
                 continue
             mid = str(model.get("model") or "")
             desc = str(model.get("description") or "").lower()
+            if "transfer" in mid or "transfer" in desc:
+                continue
             if mid != "x_branch" and "branch" not in mid and "branch" not in desc:
                 continue
             names = {str(f.get("name")) for f in (model.get("fields") or []) if isinstance(f, dict)}
@@ -690,6 +759,8 @@ def draft_scorecard(
     user_prompt: str = "",
 ) -> dict[str, Any]:
     """Score draft 0–10 across five weighted dimensions."""
+    from app.ai_draft_validators import run_draft_validators
+
     prompt = user_prompt or str(spec.get("_user_prompt") or "")
     weights = {
         "domain_fit": 0.25,
@@ -714,11 +785,33 @@ def draft_scorecard(
         sum(dim_scores[k] * weights[k] for k in weights),
         2,
     )
+    validators = run_draft_validators(spec)
+    for vf in validators["xml_findings"]:
+        findings.append(
+            {
+                "dimension": "validators",
+                "element": vf.get("element"),
+                "detail": vf.get("detail"),
+            }
+        )
+    for vf in validators["consistency_findings"]:
+        findings.append(
+            {
+                "dimension": "validators",
+                "element": vf.get("element"),
+                "detail": vf.get("detail"),
+            }
+        )
+    if validators["xml_findings"]:
+        score_0_10 = min(score_0_10, 6.0)
+    elif validators["consistency_findings"]:
+        score_0_10 = min(score_0_10, 7.0)
     return {
         "score_0_10": score_0_10,
         "dimensions": dim_scores,
         "findings": findings,
         "prompt_nouns": extract_prompt_nouns(prompt),
+        "validators": validators,
     }
 
 

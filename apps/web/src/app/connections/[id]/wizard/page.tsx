@@ -59,6 +59,7 @@ const REUSE_SUGGESTIONS = [
   "res.partner",
   "res.users",
   "product.product",
+  "sale.order",
   "account.move",
   "hr.employee",
 ];
@@ -138,9 +139,14 @@ export default function AppWizardPage() {
   );
   const llmStatusMode = (aiDraft?._llm_status as { mode?: string } | undefined)?.mode;
   const scorecard = aiDraft?._scorecard as
-    | { score_0_10?: number; findings?: Array<{ element?: string; detail?: string }> }
+    | {
+        score_0_10?: number;
+        findings?: Array<{ element?: string; detail?: string }>;
+        validators?: { all_green?: boolean; xml_ok?: boolean; consistency_ok?: boolean };
+      }
     | undefined;
   const draftScore = scorecard?.score_0_10;
+  const validatorsGreen = scorecard?.validators?.all_green === true;
   const [expertReviewNote, setExpertReviewNote] = useState<string | null>(null);
   const llmStatusBanner =
     llmStatusMode === "llm_partial"
@@ -160,6 +166,8 @@ export default function AppWizardPage() {
   const [rejectedInferredReuse, setRejectedInferredReuse] = useState<string[]>([]);
   const [reuseCatalog, setReuseCatalog] = useState<ReuseModelRow[]>([]);
   const [reuseSearch, setReuseSearch] = useState("");
+  const [jsonPaste, setJsonPaste] = useState("");
+  const [jsonPasteOpen, setJsonPasteOpen] = useState(false);
   const [draftCacheEntries, setDraftCacheEntries] = useState<
     Array<{ id: string; summary: string; prompt: string; updated_at: string | null }>
   >([]);
@@ -286,6 +294,14 @@ export default function AppWizardPage() {
       cancelled = true;
     };
   }, [connectionId]);
+
+  useEffect(() => {
+    if (!aiDraft) return;
+    const reuse = aiDraft.reuse as { models?: string[] } | undefined;
+    if (Array.isArray(reuse?.models) && reuse.models.length > 0) {
+      setReuseModels(reuse.models);
+    }
+  }, [aiDraft]);
 
   function openConfirm(tpl: AppTemplate) {
     setSelected(tpl);
@@ -751,6 +767,80 @@ export default function AppWizardPage() {
     );
   }, [aiDraft, rejectedInferredReuse]);
 
+  const autoWiredReuse = useMemo(() => {
+    if (!aiDraft) return [];
+    const plan = (
+      aiDraft.reuse as
+        | {
+            plan?: {
+              decisions?: Array<{
+                model?: string;
+                reason?: string;
+                source?: string;
+                confirmed?: boolean;
+                link_only?: boolean;
+              }>;
+            };
+          }
+        | undefined
+    )?.plan;
+    return (plan?.decisions ?? []).filter(
+      (d) =>
+        d.model &&
+        d.confirmed &&
+        d.link_only &&
+        (d.source === "apply_readiness" ||
+          d.source === "pack_reuse_stock" ||
+          d.source === "inferred"),
+    );
+  }, [aiDraft]);
+
+  async function onLoadPastedJson(source: "paste" | "file", file?: File) {
+    setError(null);
+    setAiNote(null);
+    let raw = jsonPaste.trim();
+    if (source === "file" && file) {
+      raw = await file.text();
+    }
+    if (!raw) {
+      setError("Paste ModuleSpec JSON or choose a .json file.");
+      return;
+    }
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      setError("Invalid JSON — expected a ModuleSpec object with a models array.");
+      return;
+    }
+    if (!Array.isArray(parsed.models) || parsed.models.length === 0) {
+      setError("JSON must include a non-empty models array.");
+      return;
+    }
+    setBusy(true);
+    setAiBusyLabel("Preparing JSON draft…");
+    try {
+      const res = await api.importModuleSpecJson({
+        spec: parsed,
+        prepare: true,
+      });
+      setAiDraft(res.spec);
+      setAiWarnings(res.warnings ?? []);
+      setAiNote(
+        res.note ??
+          "JSON loaded — review below, then Apply to Odoo (live prep + reuse wiring applied).",
+      );
+      setGenUiResult(null);
+      setValidateLiveResult(null);
+      setJsonPasteOpen(false);
+    } catch (err) {
+      reportApiError(err, setError, { fallback: "JSON import failed", toast: true });
+    } finally {
+      setBusy(false);
+      setAiBusyLabel(null);
+    }
+  }
+
   async function confirmInferredReuse(model: string) {
     const nextReuse = reuseModels.includes(model)
       ? reuseModels
@@ -1014,6 +1104,64 @@ export default function AppWizardPage() {
             rows={3}
             placeholder="Car rental fleet: vehicles, contracts, deposits, overdue returns…"
           />
+
+          <div className="mt-4 rounded-md border border-border-subtle bg-surface-muted p-3">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between text-left text-sm font-medium text-ink"
+              onClick={() => setJsonPasteOpen((v) => !v)}
+              data-testid="toggle-json-import"
+            >
+              <span>Or paste ModuleSpec JSON</span>
+              <span className="text-xs text-muted">{jsonPasteOpen ? "Hide" : "Show"}</span>
+            </button>
+            {jsonPasteOpen ? (
+              <div className="mt-3 space-y-2">
+                <p className="text-xs text-muted">
+                  Bring your own draft JSON — we run apply-readiness (reuse wiring, live
+                  field naming, promo math) and load it here. Then click Apply to Odoo.
+                </p>
+                <Textarea
+                  value={jsonPaste}
+                  onChange={(e) => setJsonPaste(e.target.value)}
+                  rows={6}
+                  className="font-mono text-xs"
+                  placeholder='{"technical_name":"my_app","models":[...]}'
+                  data-testid="json-paste-input"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    loading={busy && aiBusyLabel === "Preparing JSON draft…"}
+                    disabled={busy}
+                    onClick={() => void onLoadPastedJson("paste")}
+                    data-testid="load-json-draft"
+                  >
+                    Load JSON draft
+                  </Button>
+                  <label className="inline-flex cursor-pointer items-center">
+                    <input
+                      type="file"
+                      accept=".json,application/json"
+                      className="sr-only"
+                      data-testid="json-file-input"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void onLoadPastedJson("file", file);
+                        e.target.value = "";
+                      }}
+                    />
+                    <span className="inline-flex h-8 items-center rounded-md border border-border-subtle px-3 text-xs text-ink hover:bg-surface-raised">
+                      Upload .json file
+                    </span>
+                  </label>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Select
               label="Grain override"
@@ -1226,6 +1374,28 @@ export default function AppWizardPage() {
                 Selected: {reuseModels.join(", ")}
               </p>
             )}
+            {autoWiredReuse.length > 0 ? (
+              <div
+                className="mt-3 space-y-2 rounded-md border border-emerald-900/30 bg-emerald-950/20 p-3"
+                data-testid="auto-wired-reuse"
+              >
+                <p className="text-xs font-medium text-ink">Auto-wired (link-only)</p>
+                <p className="text-xs text-muted">
+                  Backend confirmed these stock models during apply-readiness. Apply adds
+                  link-only M2O fields — it does not post orders, invoices, or stock moves.
+                </p>
+                <ul className="space-y-1 text-xs">
+                  {autoWiredReuse.map((d) => (
+                    <li key={String(d.model)} className="flex flex-wrap items-center gap-2">
+                      <Badge variant="default" className="font-mono">
+                        {d.model}
+                      </Badge>
+                      <span className="text-muted">{d.reason ?? "Link-only reuse"}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             {inferredReuseSuggestions.length > 0 ? (
               <div
                 className="mt-3 space-y-2 rounded-md border border-border-subtle bg-surface-muted p-3"
@@ -1497,7 +1667,9 @@ export default function AppWizardPage() {
           {typeof draftScore === "number" ? (
             <Callout
               variant="info"
-              title={`Draft quality: ${draftScore.toFixed(1)}/10${draftScore >= 9 ? " ✓" : ""}`}
+              title={`Draft quality: ${draftScore.toFixed(1)}/10${
+                validatorsGreen ? " · all validators green" : ""
+              }${draftScore >= 9 ? " ✓" : ""}`}
               className="mt-2"
               testId="draft-scorecard-chip"
             >

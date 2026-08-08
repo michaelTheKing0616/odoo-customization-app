@@ -238,6 +238,61 @@ Make 10/10 measurable instead of orchestrator-vibes. Deterministic scorer, no LL
 - [x] Feed critique: scorecard findings become the critique pass's required-repairs input
       (closing the loop: score → repair → rescore; stop at ≥9 or 2 iterations).
 
+## GEN2-13 — Draft #6 punch list + scorecard hardening (self-score 10.0, orchestrator 8.5)
+
+Fixture: cache 08/08 → `apps/api/tests/fixtures/draft_supermarket6_2026-08-08.json`.
+Meta-finding: the scorecard was Goodharted — every remaining defect sits in its blind
+spots. Two thrusts: (A) fix defects, (B) make 10/10 un-gameable.
+
+### A. Defects
+
+- [x] A1 BUG: empty `<field />` tags in list archs (x_store_order_line, x_branch_transfer,
+      x_inventory_count ×3, x_inventory_adjustment) — fix the generator path that leaves
+      empty elements when fields are removed/moved.
+- [x] A2 BUG: `company_id` (no x_ prefix) on custom models + record rules referencing it —
+      live ir.model.fields apply requires x_ prefix. Use `x_company_id` everywhere on the
+      live path; module export MAY keep company_id (document choice); record-rule domains
+      follow the chosen name. Test both paths.
+- [x] A3 BUG (security semantics): "Branch manager scope" rules attached to the USER group
+      lock out non-manager staff (they manage no branch). Redesign: manager-scoping only
+      as an OPT-IN suggestion, default rules = multi-company only; if branch scoping is
+      offered, base it on membership (x_branch_id in user's allowed branches via a
+      user⇄branch link), never manager-of-branch for all users. Named test: a plain user
+      group member can read records.
+- [x] A4 BUG: duplicate parent m2o — post-critique line rule added x_inventory_count_id
+      beside existing x_count_id; smart button uses the dup. Near-dup detector must catch
+      same-relation different-name; line rule reuses the existing parent field.
+- [x] A5 BUG: _depth metrics/metrics_without_seeds swapped (15 vs 17 inverted) + _meta vs
+      completeness count drift — single counting function, one source of truth, test.
+- [x] A6 Polish: no menus for `*_line` models (reachable via parent form only); sequence
+      prefixes from whole words (PROMO/, TRANSFER/, CHECK/ — wordlist truncation, not
+      8-char cut); monetary pairing for x_staff_rate.x_rate; drop or justify domain-filler
+      models (x_multi_party_link needs a pack-declared reason or is omitted; no sequences
+      on link tables); remove filler search filters ("All", "Has name" on required fields).
+
+### B. Scorecard hardening (un-gameable 10)
+
+- [x] B1 XML validator as a scorecard input: parse every arch with lxml — no empty <field/>,
+      every field name exists on the model, statusbar fields exist, buttons reference valid
+      states. ANY validator error caps score at 6 and lists findings.
+- [x] B2 Consistency validator: _meta/_completeness/_depth counts must agree; with/without
+      seeds sanity (without ≤ with); duplicate same-relation m2o detector; live-path field
+      naming (x_ prefix) check. Errors cap score at 7.
+- [x] B3 Anti-gaming: search-view credit only for meaningful filters (status/date/m2o —
+      "All" and required-field "Has name" score zero); menu credit deducts root-level line
+      menus; sequence credit requires clean prefixes.
+- [x] B4 Calibration set: score all 6 supermarket fixtures + law-firm; assert expected
+      bands (fixture 1 ≤ 5, #4 ∈ [7,8.5], #6 ∈ [8,9] — NOT 10). CI fails if any known-bad
+      fixture scores 10. A live regen must reach ≥9.5 with zero validator errors to claim
+      the gate.
+- [x] B5 Wizard: score chip shows validator status separately ("10.0 · all validators
+      green") so a capped score explains itself; scorecard findings feed critique repairs
+      (existing loop).
+
+GATE: full API suite 0 failed; calibration bands green; one live regen ≥9.5 with zero
+validator errors recorded to `docs/research/gen2_13_run_<date>.json`; sandbox install smoke
+of the exported module (catches A1/A2 classes for real). No commit until user approves.
+
 GATE: `cd apps/api && uv run pytest -q -m "not integration"` 0 failed; fixture regression
 suite green; one live background-job draft of the supermarket prompt recorded to
 `docs/research/gen2_run_<date>.json` with `_llm_status.mode` ∈ {llm_full, llm_partial} (a

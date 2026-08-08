@@ -215,6 +215,32 @@ def compute_depth_metrics(
     }
 
 
+def build_depth_block(
+    draft: dict[str, Any],
+    *,
+    ambition: Ambition | None = None,
+    **extra: Any,
+) -> dict[str, Any]:
+    """Single source of truth for _depth metrics (with/without seeds)."""
+    amb: Ambition = ambition or draft.get("_ambition") or "standard"  # type: ignore[assignment]
+    if amb not in AMBITION_TARGETS:
+        amb = "standard"
+    metrics = compute_depth_metrics(draft, exclude_depth_seed=False)
+    metrics_no_seed = compute_depth_metrics(draft, exclude_depth_seed=True)
+    gaps = depth_gaps(draft, amb)
+    block: dict[str, Any] = {
+        "ambition": amb,
+        "metrics": metrics,
+        "metrics_without_seeds": metrics_no_seed,
+        "gaps": gaps,
+        "targets": AMBITION_TARGETS[amb],
+        "ok": not gaps,
+        "seeded": False,
+    }
+    block.update(extra)
+    return block
+
+
 def depth_gaps(draft: dict[str, Any], ambition: Ambition | None = None) -> list[str]:
     """Return failed depth criterion ids (empty = meets floor)."""
     amb: Ambition = ambition or draft.get("_ambition") or "standard"  # type: ignore[assignment]
@@ -864,8 +890,15 @@ def seed_operational_loop_models(
 
 def _is_branch_model(model: dict[str, Any]) -> bool:
     mid = str(model.get("model") or "")
+    if "transfer" in mid:
+        return False
+    if mid == "x_branch":
+        return True
     desc = str(model.get("description") or "").lower()
-    return mid == "x_branch" or "branch" in mid or "branch" in desc or "store location" in desc
+    return (
+        ("branch" in mid or "branch" in desc or "store location" in desc)
+        and "transfer" not in desc
+    )
 
 
 def ensure_country_on_branch_for_global_prompt(
@@ -1067,23 +1100,14 @@ def apply_deterministic_depth(
     notes.extend(_ensure_currency_on_amounts(out))
     notes.extend(_ensure_company_on_transactional(out, amb))
     notes.extend(synthesize_smart_buttons_from_relations(out))
-    metrics = compute_depth_metrics(out)
-    metrics_no_seed = compute_depth_metrics(out, exclude_depth_seed=True)
-    gaps = depth_gaps(out, amb)
-    gaps_no_seed = _gaps_for_metrics(metrics_no_seed)
+    out["_depth"] = build_depth_block(out, ambition=amb)
+    gaps = out["_depth"]["gaps"]
+    gaps_no_seed = _gaps_for_metrics(out["_depth"]["metrics_without_seeds"])
     has_depth_seeds = any(
         isinstance(m, dict) and m.get("source") == "depth_seed" for m in _models(out)
     )
     seeded_only = has_depth_seeds and bool(gaps_no_seed)
-    out["_depth"] = {
-        "ambition": amb,
-        "metrics": metrics,
-        "metrics_without_seeds": metrics_no_seed,
-        "gaps": gaps,
-        "targets": AMBITION_TARGETS[amb],
-        "ok": not gaps,
-        "seeded": seeded_only,
-    }
+    out["_depth"]["seeded"] = seeded_only
     base = [c for c in (out.get("_completeness") or []) if isinstance(c, dict)]
     depth_ids = {c["id"] for c in depth_checklist(out, amb)}
     base = [c for c in base if c.get("id") not in depth_ids]
@@ -1183,7 +1207,7 @@ def llm_expand_depth(
             provider,
             prompt,
             system=system,
-            timeout_s=120.0,
+            timeout_s=240.0,
             reasoning=False,
             temperature=STEP_TEMPERATURES["depth.expand"],
         )
@@ -1191,25 +1215,17 @@ def llm_expand_depth(
         notes.append(f"depth: LLM expand skipped ({exc})")
         return draft, notes
 
-    text = raw.strip() if isinstance(raw, str) else json.dumps(raw)
-    if text.startswith("```"):
-        lines = text.splitlines()
-        if lines and lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        text = "\n".join(lines).strip()
-    try:
-        data = json.loads(text) if isinstance(raw, str) else raw
-    except json.JSONDecodeError:
-        start, end = text.find("{"), text.rfind("}")
-        if start < 0 or end <= start:
-            notes.append("depth: LLM expand returned non-JSON")
+    if isinstance(raw, dict):
+        data = raw
+    else:
+        text = raw.strip() if isinstance(raw, str) else json.dumps(raw)
+        try:
+            from app.llm_json import parse_llm_json_object
+
+            data = parse_llm_json_object(text)
+        except ValueError as exc:
+            notes.append(f"depth: LLM expand malformed JSON ({exc})")
             return draft, notes
-        data = json.loads(text[start : end + 1])
-    if not isinstance(data, dict):
-        notes.append("depth: LLM expand not an object")
-        return draft, notes
 
     from app.ai_critique import apply_critique_repairs
     from app.ai_model_quality import filter_redundant_missing_models
@@ -1280,6 +1296,7 @@ def run_depth_pass(
 __all__ = [
     "AMBITION_TARGETS",
     "Ambition",
+    "build_depth_block",
     "classify_ambition",
     "classify_ambition_with_notes",
     "compute_depth_metrics",

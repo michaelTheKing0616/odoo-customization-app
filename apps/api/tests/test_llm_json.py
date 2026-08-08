@@ -14,6 +14,16 @@ def test_repair_trailing_comma() -> None:
     assert draft["technical_name"] == "demo"
 
 
+def test_repair_missing_comma_between_properties() -> None:
+    raw = (
+        '{"missing_models":[{"model":"x_a","description":"A" "fields":[]}]'
+        ' "missing_fields":[{"model":"x_b","name":"x_name","ttype":"char"}]}'
+    )
+    draft = parse_llm_json_object(raw)
+    assert draft["missing_models"][0]["model"] == "x_a"
+    assert draft["missing_fields"][0]["model"] == "x_b"
+
+
 def test_parse_markdown_fence() -> None:
     raw = '```json\n{"technical_name":"demo","models":[{"model":"x_a","fields":[]}]}\n```'
     draft = parse_llm_json_object(raw)

@@ -129,8 +129,51 @@ def merge_module_spec_fragment(
     return out
 
 
+def _draft_company_fields_for_module_export(draft: dict[str, Any]) -> dict[str, Any]:
+    """Module export uses company_id — convert from live x_company_id in-place on a copy."""
+    from app.multi_company_pack import COMPANY_RULE_DOMAIN_MODULE
+
+    live = "x_company_id"
+    mod = "company_id"
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        mid = str(model.get("model") or "")
+        if not mid.startswith("x_"):
+            continue
+        names = {
+            str(f.get("name"))
+            for f in (model.get("fields") or [])
+            if isinstance(f, dict) and f.get("name")
+        }
+        fields = model.get("fields") or []
+        if live in names and mod not in names:
+            for f in fields:
+                if isinstance(f, dict) and f.get("name") == live:
+                    f["name"] = mod
+        elif live in names and mod in names:
+            model["fields"] = [
+                f for f in fields if not (isinstance(f, dict) and f.get("name") == live)
+            ]
+    for v in draft.get("views") or []:
+        if isinstance(v, dict) and v.get("arch"):
+            arch = str(v["arch"])
+            if live in arch:
+                v["arch"] = arch.replace(live, mod)
+    for rule in draft.get("record_rules") or []:
+        if not isinstance(rule, dict):
+            continue
+        dom = str(rule.get("domain_force") or "")
+        if live in dom:
+            rule["domain_force"] = dom.replace(live, mod)
+        if mod in str(rule.get("domain_force") or ""):
+            rule["domain_force"] = COMPANY_RULE_DOMAIN_MODULE
+    return draft
+
+
 def draft_dict_to_module_spec(draft: dict[str, Any]) -> ModuleSpec:
     """Build ModuleSpec from ModuleSpec-like JSON (projects / AI draft / import)."""
+    draft = _draft_company_fields_for_module_export(copy.deepcopy(draft))
     technical_name = str(draft.get("technical_name") or "custom_module")
 
     def _group_xml_id(group: str | None) -> str:

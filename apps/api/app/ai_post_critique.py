@@ -119,6 +119,8 @@ def ensure_line_model_parent_links(draft: dict[str, Any]) -> list[str]:
             fk_name = "x_transfer_id"
         elif parent_id.endswith("_order"):
             fk_name = "x_order_id"
+        elif parent_id == "x_inventory_count":
+            fk_name = "x_count_id"
 
         fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
         names = {str(f.get("name")) for f in fields}

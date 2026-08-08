@@ -71,6 +71,8 @@ def _arch_field_node(
     view_type: str,
     model_name: str,
 ) -> str:
+    if not name or not str(name).strip():
+        return ""
     fdef = next((f for f in fields if f.get("name") == name), None)
     if is_image_field(fdef):
         role_raw = fdef.get("image_role") if fdef else None

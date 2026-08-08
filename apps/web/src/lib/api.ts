@@ -1057,45 +1057,82 @@ export type XPathPreviewOut = {
   issues: string[];
 };
 
-async function fetchApi(path: string, init?: RequestInit): Promise<Response> {
+const CONNECTION_READ_TIMEOUT_MS = 8_000;
+
+type ApiRequestInit = RequestInit & { timeoutMs?: number };
+
+function isFetchUnreachableError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  if (err.name === "AbortError" || err.name === "TimeoutError") return true;
+  if (err instanceof TypeError) return true;
+  return /failed to fetch|networkerror|network request failed|load failed|aborted|timed out|timeout/i.test(
+    err.message,
+  );
+}
+
+async function fetchApi(path: string, init?: ApiRequestInit): Promise<Response> {
   const base = getApiBase();
   const url = `${base}${path}`;
   const storedKey = getStoredApiKey();
   const headers: Record<string, string> = {
     ...(storedKey ? { Authorization: `Bearer ${storedKey}` } : {}),
   };
-  if (init?.body && !(init.body instanceof FormData)) {
+  const { timeoutMs, ...fetchInit } = init ?? {};
+  if (fetchInit.body && !(fetchInit.body instanceof FormData)) {
     headers["Content-Type"] = "application/json";
   }
+
+  let controller: AbortController | undefined;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let onExternalAbort: (() => void) | undefined;
+
+  if (timeoutMs != null && timeoutMs > 0) {
+    controller = new AbortController();
+    timeout = setTimeout(() => {
+      controller?.abort(new DOMException("Request timed out", "TimeoutError"));
+    }, timeoutMs);
+    onExternalAbort = () => controller?.abort();
+    fetchInit.signal?.addEventListener("abort", onExternalAbort);
+  }
+
   try {
     return await fetch(url, {
       credentials: "include",
-      ...init,
+      ...fetchInit,
+      ...(controller ? { signal: controller.signal } : {}),
       headers: {
         ...headers,
-        ...(init?.headers ?? {}),
+        ...(fetchInit.headers ?? {}),
       },
     });
   } catch (err) {
-    const isNetwork =
-      err instanceof TypeError ||
-      (err instanceof Error &&
-        /failed to fetch|networkerror|network request failed|load failed/i.test(err.message));
-    if (isNetwork) {
+    const isAbort =
+      err instanceof Error &&
+      (err.name === "AbortError" ||
+        err.name === "TimeoutError" ||
+        /aborted|timed out|timeout/i.test(err.message));
+    if (isFetchUnreachableError(err)) {
       const target =
         base || (typeof window !== "undefined" ? window.location.origin : DEFAULT_API_ORIGIN);
       throw new Error(
-        `Cannot reach the API${base ? ` at ${target}` : ""}. ` +
-          `Start the API (uvicorn on port 8001, or deploy API on 8000) and restart the web dev server ` +
-          `(Next /api proxy → API_PROXY_TARGET, default http://127.0.0.1:8001). ` +
-          `If a browser extension wraps fetch, try incognito or disable it.`,
+        isAbort
+          ? `Timed out reaching the API${base ? ` at ${target}` : ""}. ` +
+              `Start the API (uvicorn on port 8001, or deploy API on 8000) and restart the web dev server ` +
+              `(Next /api proxy → API_PROXY_TARGET, default http://127.0.0.1:8001).`
+          : `Cannot reach the API${base ? ` at ${target}` : ""}. ` +
+              `Start the API (uvicorn on port 8001, or deploy API on 8000) and restart the web dev server ` +
+              `(Next /api proxy → API_PROXY_TARGET, default http://127.0.0.1:8001). ` +
+              `If a browser extension wraps fetch, try incognito or disable it.`,
       );
     }
     throw err;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+    if (onExternalAbort) fetchInit.signal?.removeEventListener("abort", onExternalAbort);
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: ApiRequestInit): Promise<T> {
   const res = await fetchApi(path, init);
   if (!res.ok) {
     let detail: unknown = res.statusText;
@@ -1556,9 +1593,10 @@ export const api = {
       overdue_loans: number | null;
       message: string;
     }>(`/api/connections/${connectionId}/library/stats`),
-  listConnections: () => request<Connection[]>("/api/connections"),
+  listConnections: () =>
+    request<Connection[]>("/api/connections", { timeoutMs: CONNECTION_READ_TIMEOUT_MS }),
   getConnection: (id: string) =>
-    request<Connection>(`/api/connections/${id}`),
+    request<Connection>(`/api/connections/${id}`, { timeoutMs: CONNECTION_READ_TIMEOUT_MS }),
   createConnection: (body: {
     name: string;
     url: string;
@@ -1833,6 +1871,19 @@ export const api = {
       note?: string;
     }>;
   },
+  importModuleSpecJson: (body: { spec: Record<string, unknown>; prepare?: boolean }) =>
+    request<{
+      ok: boolean;
+      spec: Record<string, unknown>;
+      warnings: string[];
+      unmapped: Record<string, unknown>[];
+      custom_code_blocks: Record<string, unknown>[];
+      source: string;
+      note?: string;
+    }>("/api/module-spec/import-json", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   applyProject: (
     id: string,
     projectId: string,

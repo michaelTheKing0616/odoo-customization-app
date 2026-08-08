@@ -6,7 +6,12 @@ import re
 from typing import Any
 
 from app.module_spec_codec import merge_custom_code_blocks
-from app.multi_company_pack import COMPANY_FIELD_MODULE, COMPANY_RULE_DOMAIN_MODULE
+from app.multi_company_pack import (
+    COMPANY_FIELD_LIVE,
+    COMPANY_FIELD_MODULE,
+    COMPANY_RULE_DOMAIN_LIVE,
+    apply_multi_company_to_live_draft,
+)
 
 _MODULE_COMPANY_FIELD = "company_id"
 _LIVE_COMPANY_FIELD = "x_company_id"
@@ -60,8 +65,98 @@ def _replace_in_arch(draft: dict[str, Any], old: str, new: str) -> None:
             v["arch"] = arch.replace(old, new)
 
 
-def normalize_company_fields_for_export(draft: dict[str, Any]) -> list[str]:
-    """Module export uses company_id + company_ids domain — not x_company_id."""
+def scrub_unknown_arch_field_refs(draft: dict[str, Any]) -> list[str]:
+    """Drop arch nodes that reference fields removed from the model (e.g. moved to lines)."""
+    notes: list[str] = []
+    by_id = _models_index(draft)
+
+    def _scrub(arch: str, names: set[str]) -> tuple[str, int]:
+        removed = 0
+
+        def repl(match: re.Match[str]) -> str:
+            nonlocal removed
+            fname = match.group(1)
+            if fname in names:
+                return match.group(0)
+            removed += 1
+            return ""
+
+        cleaned = re.sub(r'<field\b[^>]*\bname="([^"]+)"[^>]*/>', repl, arch, flags=re.I)
+        cleaned = re.sub(
+            r"<field\b[^>]*\bname=\"([^\"]+)\"[^>]*>\s*</field>",
+            repl,
+            cleaned,
+            flags=re.I,
+        )
+        return cleaned, removed
+
+    for v in draft.get("views") or []:
+        if not isinstance(v, dict):
+            continue
+        mid = str(v.get("model") or "")
+        model = by_id.get(mid)
+        if not model:
+            continue
+        arch = str(v.get("arch") or "")
+        cleaned, n = _scrub(arch, _field_names(model))
+        if n:
+            v["arch"] = cleaned
+            notes.append(f"apply: scrubbed {n} stale arch field ref(s) on {mid}")
+    return notes
+
+
+def sanitize_empty_field_tags(draft: dict[str, Any]) -> list[str]:
+    """Remove empty <field/> nodes left when columns were dropped from list archs (GEN2-13 A1)."""
+    notes: list[str] = []
+    for v in draft.get("views") or []:
+        if not isinstance(v, dict):
+            continue
+        arch = str(v.get("arch") or "")
+        if not arch or "<field" not in arch:
+            continue
+        cleaned = _EMPTY_FIELD_TAG_RE.sub("", arch)
+        cleaned = re.sub(
+            r"<field\b(?![^>]*\bname=)[^>]*>\s*</field>",
+            "",
+            cleaned,
+            flags=re.I,
+        )
+        if cleaned != arch:
+            v["arch"] = cleaned
+            notes.append(f"apply: stripped empty field tags on {v.get('model') or '?'}")
+    return notes
+
+
+def _replace_field_name_in_archs(draft: dict[str, Any], old: str, new: str) -> None:
+    token = f'name="{old}"'
+    repl = f'name="{new}"'
+    for v in draft.get("views") or []:
+        if not isinstance(v, dict):
+            continue
+        arch = str(v.get("arch") or "")
+        if token in arch:
+            v["arch"] = arch.replace(token, repl)
+
+
+def _repair_corrupted_company_arch_refs(draft: dict[str, Any]) -> list[str]:
+    notes: list[str] = []
+    bad = re.compile(r'name="x+(?:x_)*company_id"')
+    for v in draft.get("views") or []:
+        if not isinstance(v, dict):
+            continue
+        arch = str(v.get("arch") or "")
+        if bad.search(arch):
+            v["arch"] = bad.sub('name="x_company_id"', arch)
+            notes.append(f"apply: repaired corrupted company field arch on {v.get('model')}")
+    return notes
+
+
+_MODULE_COMPANY_IN_DOM = re.compile(r"\(['\"]company_id['\"]\s*,")
+_LIVE_COMPANY_IN_DOM = re.compile(r"\(['\"]x_company_id['\"]\s*,")
+
+
+def normalize_company_fields_for_live(draft: dict[str, Any]) -> list[str]:
+    """Live apply uses x_company_id + x_-prefixed record-rule domains (GEN2-13 A2)."""
     notes: list[str] = []
     for model in draft.get("models") or []:
         if not isinstance(model, dict):
@@ -71,40 +166,44 @@ def normalize_company_fields_for_export(draft: dict[str, Any]) -> list[str]:
             continue
         names = _field_names(model)
         fields = model.get("fields") or []
-        if _LIVE_COMPANY_FIELD in names and _MODULE_COMPANY_FIELD not in names:
+        if _MODULE_COMPANY_FIELD in names and _LIVE_COMPANY_FIELD not in names:
             for f in fields:
-                if isinstance(f, dict) and f.get("name") == _LIVE_COMPANY_FIELD:
-                    f["name"] = _MODULE_COMPANY_FIELD
+                if isinstance(f, dict) and f.get("name") == _MODULE_COMPANY_FIELD:
+                    f["name"] = _LIVE_COMPANY_FIELD
                     f.setdefault("string", "Company")
-                    notes.append(f"apply: {_LIVE_COMPANY_FIELD}→{_MODULE_COMPANY_FIELD} on {mid}")
-            _replace_in_arch(draft, _LIVE_COMPANY_FIELD, _MODULE_COMPANY_FIELD)
-        elif _LIVE_COMPANY_FIELD in names and _MODULE_COMPANY_FIELD in names:
+                    notes.append(f"apply: {_MODULE_COMPANY_FIELD}→{_LIVE_COMPANY_FIELD} on {mid}")
+            _replace_field_name_in_archs(draft, _MODULE_COMPANY_FIELD, _LIVE_COMPANY_FIELD)
+        elif _MODULE_COMPANY_FIELD in names and _LIVE_COMPANY_FIELD in names:
             model["fields"] = [
                 f
                 for f in fields
-                if not (isinstance(f, dict) and f.get("name") == _LIVE_COMPANY_FIELD)
+                if not (isinstance(f, dict) and f.get("name") == _MODULE_COMPANY_FIELD)
             ]
-            notes.append(f"apply: dropped duplicate {_LIVE_COMPANY_FIELD} on {mid}")
+            notes.append(f"apply: dropped duplicate {_MODULE_COMPANY_FIELD} on {mid}")
 
-    rules = draft.get("record_rules") or []
-    if isinstance(rules, list):
-        for rule in rules:
-            if not isinstance(rule, dict):
-                continue
-            dom = str(rule.get("domain_force") or "")
-            if _LIVE_COMPANY_FIELD in dom:
-                rule["domain_force"] = dom.replace(_LIVE_COMPANY_FIELD, _MODULE_COMPANY_FIELD)
-                notes.append(f"apply: record rule domain uses {_MODULE_COMPANY_FIELD}")
+    for rule in draft.get("record_rules") or []:
+        if not isinstance(rule, dict):
+            continue
+        dom = str(rule.get("domain_force") or "")
+        if _MODULE_COMPANY_IN_DOM.search(dom) and not _LIVE_COMPANY_IN_DOM.search(dom):
+            rule["domain_force"] = _MODULE_COMPANY_IN_DOM.sub("('x_company_id',", dom)
+            notes.append(f"apply: record rule domain uses {_LIVE_COMPANY_FIELD}")
 
-    from app.multi_company_pack import apply_multi_company_to_draft
-
-    enriched = apply_multi_company_to_draft(draft)
+    enriched = apply_multi_company_to_live_draft(draft)
     if enriched.get("record_rules"):
         draft["record_rules"] = enriched["record_rules"]
     for rule in draft.get("record_rules") or []:
         if isinstance(rule, dict):
-            rule["domain_force"] = COMPANY_RULE_DOMAIN_MODULE
+            dom = str(rule.get("domain_force") or "")
+            if _LIVE_COMPANY_IN_DOM.search(dom) or _MODULE_COMPANY_IN_DOM.search(dom):
+                rule["domain_force"] = COMPANY_RULE_DOMAIN_LIVE
+    draft["multi_company"] = True
     return notes
+
+
+def normalize_company_fields_for_export(draft: dict[str, Any]) -> list[str]:
+    """Backward-compatible alias — live path keeps x_company_id."""
+    return normalize_company_fields_for_live(draft)
 
 
 def resolve_duplicate_address_fields(draft: dict[str, Any]) -> list[str]:
@@ -197,6 +296,7 @@ _PAYMENT_CAPTURE_FIELD_RE = re.compile(
     r"^x_(?:payment_(?:status|state|method|ref)|is_paid|paid(?:\b|_))", re.I
 )
 _PAYMENT_SELECTION_KEYS = frozenset({"paid", "unpaid", "partial", "refunded", "overdue"})
+_EMPTY_FIELD_TAG_RE = re.compile(r"<field\b(?![^>]*\bname=)[^>]*/>", re.I)
 _PRIMARY_HEADER_TOTALS = ("x_amount_total", "x_total", "x_amount")
 _SHADOW_HEADER_TOTALS = ("x_total_amount", "x_amount_untaxed", "x_grand_total", "x_amount_gross")
 _HEADER_TAX_FIELDS = ("x_tax_amount", "x_amount_tax", "x_tax_total")
@@ -264,6 +364,11 @@ def _is_transaction_header(model: dict[str, Any]) -> bool:
     mid = str(model.get("model") or "")
     if not mid.startswith("x_") or "line" in mid.lower():
         return False
+    desc = str(model.get("description") or "").lower()
+    if "supplier" in desc and "agreement" in desc:
+        return True
+    if "supplier" in mid and "agreement" in mid:
+        return True
     fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
     if any(
         f.get("ttype") == "one2many" and "line" in str(f.get("relation") or "").lower()
@@ -677,6 +782,222 @@ def ensure_campaign_order_links(draft: dict[str, Any]) -> list[str]:
     return notes
 
 
+_REUSE_STOCK_DOCUMENT_TARGETS: tuple[tuple[str, str, str], ...] = (
+    ("sale.order", "sale", "Sales orders (link-only)"),
+    ("account.move", "account", "Invoices / bills (link-only)"),
+    ("purchase.order", "purchase", "Purchase orders (link-only)"),
+)
+
+
+def _needs_reuse_stock_document(model: str, by_id: dict[str, dict[str, Any]]) -> bool:
+    if model == "sale.order":
+        return any(_is_sales_header(m) for m in by_id.values())
+    if model == "account.move":
+        return any(
+            _is_sales_header(m) or _is_procurement_header(m) for m in by_id.values()
+        )
+    if model == "purchase.order":
+        return any(_is_procurement_header(m) for m in by_id.values())
+    return False
+
+
+def wire_reuse_stock_documents(draft: dict[str, Any]) -> list[str]:
+    """Auto-confirm link-only reuse of sale.order / account.move (+ purchase) for retail drafts."""
+    notes: list[str] = []
+    by_id = _models_index(draft)
+    if not by_id:
+        return notes
+
+    pack_rows = {
+        str(row.get("model") or ""): row
+        for row in _pack_reuse_stock_rows(draft)
+        if row.get("model")
+    }
+    reuse = draft.get("reuse") if isinstance(draft.get("reuse"), dict) else {}
+    plan = reuse.get("plan") if isinstance(reuse.get("plan"), dict) else {}
+    decisions = list(plan.get("decisions") or []) if isinstance(plan.get("decisions"), list) else []
+    decision_by_model = {
+        str(d.get("model") or ""): d for d in decisions if isinstance(d, dict) and d.get("model")
+    }
+    models_reuse = set(reuse.get("models") or [])
+    depends = list(draft.get("depends") or [])
+
+    for stock_model, dep_module, default_reason in _REUSE_STOCK_DOCUMENT_TARGETS:
+        if not _needs_reuse_stock_document(stock_model, by_id):
+            continue
+        pack_row = pack_rows.get(stock_model, {})
+        reason = str(pack_row.get("reason") or default_reason)
+        if dep_module not in depends:
+            depends.append(dep_module)
+            notes.append(f"apply: added depends {dep_module!r} for {stock_model} reuse")
+        if stock_model not in models_reuse:
+            models_reuse.add(stock_model)
+            notes.append(f"apply: reuse wired {stock_model} (link-only)")
+        decision = decision_by_model.get(stock_model)
+        if decision is None:
+            decision = {
+                "model": stock_model,
+                "source": "pack_reuse_stock" if pack_row else "apply_readiness",
+                "reason": reason,
+            }
+            decisions.append(decision)
+            decision_by_model[stock_model] = decision
+        if not decision.get("confirmed"):
+            decision["confirmed"] = True
+            notes.append(f"apply: confirmed reuse {stock_model}")
+        if pack_row.get("link_only") or stock_model in {
+            "sale.order",
+            "account.move",
+            "purchase.order",
+        }:
+            decision["link_only"] = True
+
+    if notes:
+        draft["depends"] = depends
+        draft["reuse"] = {
+            **reuse,
+            "models": sorted(models_reuse),
+            "plan": {**plan, "decisions": decisions},
+        }
+    return notes
+
+
+def apply_promotion_discount_line_computes(draft: dict[str, Any]) -> list[str]:
+    """Apply promotion x_discount_pct to order line subtotals (qty × price × (1 − pct/100))."""
+    notes: list[str] = []
+    by_id = _models_index(draft)
+    campaign_id = _pick_campaign_model(by_id)
+    order_id = _pick_sales_order_header(by_id)
+    if not campaign_id or not order_id:
+        return notes
+
+    campaign = by_id[campaign_id]
+    order = by_id[order_id]
+    campaign_names = _field_names(campaign)
+    discount_field = next(
+        (name for name in ("x_discount_pct", "x_discount", "x_percent") if name in campaign_names),
+        None,
+    )
+    if not discount_field:
+        return notes
+
+    order_names = _field_names(order)
+    campaign_suffix = campaign_id.removeprefix("x_")
+    alt_m2o = ("x_discount_id", "x_campaign_id", "x_coupon_id", "x_voucher_id")
+    promo_field = next(
+        (name for name in (*alt_m2o, f"x_{campaign_suffix}_id") if name in order_names),
+        None,
+    )
+    if not promo_field:
+        return notes
+
+    line_field = next(
+        (
+            str(f.get("name"))
+            for f in (order.get("fields") or [])
+            if isinstance(f, dict)
+            and f.get("ttype") == "one2many"
+            and str(f.get("relation") or "") in by_id
+            and "line" in str(f.get("relation") or "").lower()
+        ),
+        None,
+    )
+    if not line_field:
+        return notes
+    line_model = str(
+        next(
+            f.get("relation")
+            for f in (order.get("fields") or [])
+            if isinstance(f, dict) and str(f.get("name") or "") == line_field
+        )
+        or ""
+    )
+    line_def = by_id.get(line_model) or {}
+    line_fields = {
+        str(f.get("name")): f for f in (line_def.get("fields") or []) if isinstance(f, dict)
+    }
+    qty = next((n for n in _LINE_QTY_NAMES if n in line_fields), None)
+    price = next((n for n in _LINE_PRICE_NAMES if n in line_fields), None)
+    total = next((n for n in _LINE_TOTAL_NAMES if n in line_fields), None)
+    if not qty or not price or not total:
+        return notes
+
+    parent_field = next(
+        (
+            str(f.get("name"))
+            for f in (line_def.get("fields") or [])
+            if isinstance(f, dict)
+            and f.get("ttype") == "many2one"
+            and str(f.get("relation") or "") == order_id
+        ),
+        None,
+    )
+    if not parent_field:
+        return notes
+
+    total_label = str(line_fields[total].get("string") or "Subtotal")
+    class_name = f"{_model_class_token(line_model)}PromoSubtotal"
+    method = f"_compute_{total}"
+    basename = _model_module_basename(line_model)
+    source_file = f"models/{basename}.py"
+    curr = _currency_field_name(line_fields)
+    if _field_ttype(line_fields, total) == "monetary" or curr:
+        field_lines = (
+            f"    {total} = fields.Monetary(\n"
+            f"        string={total_label!r},\n"
+            f"        compute={method!r},\n"
+            f"        store=True,\n"
+            f"        currency_field={curr!r},\n"
+            f"    )\n"
+        )
+    else:
+        field_lines = (
+            f"    {total} = fields.Float(\n"
+            f"        string={total_label!r},\n"
+            f"        compute={method!r},\n"
+            f"        store=True,\n"
+            f"    )\n"
+        )
+    depends = (
+        f"'{qty}', '{price}', "
+        f"'{parent_field}.{promo_field}.{discount_field}'"
+    )
+    content = (
+        "from odoo import api, fields, models\n\n\n"
+        f"class {class_name}(models.Model):\n"
+        f"    _inherit = {line_model!r}\n\n"
+        f"{field_lines}\n"
+        f"    @api.depends({depends})\n"
+        f"    def {method}(self):\n"
+        f"        for rec in self:\n"
+        f"            base = (rec.{qty} or 0.0) * (rec.{price} or 0.0)\n"
+        f"            promo = rec.{parent_field}.{promo_field}\n"
+        f"            pct = promo.{discount_field} if promo else 0.0\n"
+        f"            rec.{total} = base * (1.0 - (pct or 0.0) / 100.0)\n"
+    )
+    _upsert_custom_code_block(
+        draft,
+        model=line_model,
+        source_file=source_file,
+        content=content,
+        reason="apply_readiness: promotion discount line subtotal compute",
+    )
+    notes.append(
+        f"apply: promotion discount compute on {line_model} "
+        f"({parent_field}.{promo_field}.{discount_field})"
+    )
+    return notes
+
+
+def prepare_spec_for_live_apply(spec: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """Normalize draft JSON before live Odoo RPC apply (readiness + live company naming)."""
+    import copy
+
+    out = copy.deepcopy(spec)
+    notes = run_apply_readiness_pass(out)
+    return out, notes
+
+
 def fix_reuse_link_only_consistency(draft: dict[str, Any]) -> list[str]:
     notes: list[str] = []
     link_only: dict[str, bool] = {}
@@ -782,6 +1103,30 @@ def dedupe_search_view_filters(draft: dict[str, Any]) -> list[str]:
     return notes
 
 
+_SEQUENCE_WORD_PREFIXES: tuple[tuple[str, str], ...] = (
+    ("promotion", "PROMO"),
+    ("transfer", "TRANSFER"),
+    ("compliance", "CHECK"),
+    ("inventory_count", "COUNT"),
+    ("adjustment", "ADJ"),
+    ("order", "ORDER"),
+    ("branch", "BR"),
+    ("staff", "STAFF"),
+    ("event", "EVENT"),
+    ("task", "TASK"),
+)
+
+
+def _sequence_prefix_for_model(model: str) -> str:
+    slug = model.replace("x_", "").replace(".", "_").lower()
+    for token, prefix in _SEQUENCE_WORD_PREFIXES:
+        if token in slug:
+            return f"{prefix}/"
+    parts = [p for p in slug.split("_") if p and p not in {"line", "store"}]
+    word = parts[0] if parts else slug
+    return f"{word.upper()}/"
+
+
 def ensure_unique_sequence_prefixes(draft: dict[str, Any]) -> list[str]:
     notes: list[str] = []
     seqs = draft.get("sequences") or []
@@ -791,31 +1136,29 @@ def ensure_unique_sequence_prefixes(draft: dict[str, Any]) -> list[str]:
     for seq in seqs:
         if not isinstance(seq, dict):
             continue
-        prefix = str(seq.get("prefix") or "")
         model = str(seq.get("model") or "")
-        if not prefix or not model:
+        if not model:
             continue
+        canonical = _sequence_prefix_for_model(model)
+        prefix = str(seq.get("prefix") or "")
+        if prefix != canonical:
+            seq["prefix"] = canonical
+            notes.append(f"apply: sequence prefix {prefix or '?'}→{canonical} for {model}")
+            prefix = canonical
         if prefix not in used:
             used[prefix] = model
             continue
         if used[prefix] == model:
             continue
-        slug = model.replace("x_", "").replace(".", "_").upper()[:8]
-        new_prefix = f"{slug}/"
+        base = canonical.rstrip("/")
+        new_prefix = f"{base}2/"
         n = 2
         while new_prefix in used:
-            new_prefix = f"{slug[:6]}{n}/"
             n += 1
+            new_prefix = f"{base}{n}/"
         seq["prefix"] = new_prefix
         used[new_prefix] = model
-        for m in draft.get("models") or []:
-            if not isinstance(m, dict) or str(m.get("model")) != model:
-                continue
-            for f in m.get("fields") or []:
-                if isinstance(f, dict) and f.get("name") in {"x_code", "x_reference"}:
-                    token = new_prefix.rstrip("/")
-                    f["help"] = f"Auto-numbered via ir.sequence ({token}/00001)"
-        notes.append(f"apply: sequence prefix {prefix}→{new_prefix} for {model}")
+        notes.append(f"apply: sequence prefix collision {prefix}→{new_prefix} for {model}")
     return notes
 
 
@@ -907,6 +1250,325 @@ def normalize_depth_seed_naming(draft: dict[str, Any]) -> list[str]:
     return notes
 
 
+_RETAIL_DEPTH_LABELS: dict[str, str] = {
+    "x_event": "In-store marketing event",
+    "x_task": "Replenishment / shelf task",
+}
+
+_HEADER_LINE_SPECS: tuple[dict[str, Any], ...] = (
+    {
+        "parent": "x_branch_transfer",
+        "line": "x_branch_transfer_line",
+        "description": "Transfer line",
+        "move_fields": ("x_product_id", "x_qty"),
+        "extra_line_fields": (
+            {"name": "x_unit_price", "ttype": "float", "string": "Unit price"},
+        ),
+        "o2m_name": "x_line_ids",
+        "o2m_string": "Lines",
+        "fk_name": "x_transfer_id",
+    },
+    {
+        "parent": "x_inventory_count",
+        "line": "x_inventory_count_line",
+        "description": "Count line",
+        "move_fields": ("x_product_id", "x_qty_system", "x_qty_counted"),
+        "extra_line_fields": (),
+        "o2m_name": "x_line_ids",
+        "o2m_string": "Count lines",
+        "fk_name": "x_count_id",
+    },
+)
+
+
+def promote_retail_depth_seeds(draft: dict[str, Any]) -> list[str]:
+    """Promote generic depth_seed ops models to substantive retail_depth for supermarket packs."""
+    if str(draft.get("domain_pack") or "") != "retail_supermarket":
+        return []
+    notes: list[str] = []
+    label_map = {
+        "Market Event": _RETAIL_DEPTH_LABELS["x_event"],
+        "Market Task": _RETAIL_DEPTH_LABELS["x_task"],
+        "Super Event": _RETAIL_DEPTH_LABELS["x_event"],
+        "Super Task": _RETAIL_DEPTH_LABELS["x_task"],
+    }
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        mid = str(model.get("model") or "")
+        if mid not in _RETAIL_DEPTH_LABELS or model.get("source") != "depth_seed":
+            continue
+        model["source"] = "retail_depth"
+        model["description"] = _RETAIL_DEPTH_LABELS[mid]
+        notes.append(f"apply: promoted depth_seed {mid} → retail_depth")
+    for key in ("actions", "menus", "smart_buttons"):
+        rows = draft.get(key) or []
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            for field in ("name", "label", "string"):
+                val = str(row.get(field) or "")
+                for old, new in label_map.items():
+                    if old in val:
+                        row[field] = val.replace(old, new.split("/")[0].strip())
+    for v in draft.get("views") or []:
+        if not isinstance(v, dict):
+            continue
+        arch = str(v.get("arch") or "")
+        for old, new in label_map.items():
+            short = new.split("/")[0].strip()
+            if old in arch:
+                v["arch"] = arch.replace(old, short)
+                arch = v["arch"]
+    return notes
+
+
+def prune_transfer_country_field(draft: dict[str, Any]) -> list[str]:
+    """Country belongs on branch master data, not inter-branch transfer headers."""
+    notes: list[str] = []
+    by_id = _models_index(draft)
+    transfer = by_id.get("x_branch_transfer")
+    if not transfer:
+        return notes
+    if "x_country_id" not in _field_names(transfer):
+        return notes
+    _drop_model_fields(draft, "x_branch_transfer", {"x_country_id"})
+    for v in draft.get("views") or []:
+        if not isinstance(v, dict) or str(v.get("model") or "") != "x_branch_transfer":
+            continue
+        arch = str(v.get("arch") or "")
+        cleaned = re.sub(r'<field\b[^>]*name="x_country_id"[^>]*/>', "", arch)
+        if cleaned != arch:
+            v["arch"] = cleaned
+    notes.append("apply: removed x_country_id from x_branch_transfer")
+    return notes
+
+
+def ensure_model_access_stubs(draft: dict[str, Any]) -> list[str]:
+    """Add user/manager ACL rows for new x_* models (e.g. scaffolded line models)."""
+    notes: list[str] = []
+    existing = {
+        str(r.get("model") or "").replace("model_", "", 1)
+        for r in (draft.get("access_rules") or [])
+        if isinstance(r, dict)
+    }
+    user_group = mgr_group = ""
+    for group in draft.get("groups") or []:
+        if not isinstance(group, dict):
+            continue
+        gid = str(group.get("id") or "")
+        if "manager" in gid.lower():
+            mgr_group = gid
+        elif "user" in gid.lower():
+            user_group = gid
+    if not user_group or not mgr_group:
+        return notes
+    rules = list(draft.get("access_rules") or [])
+    added = 0
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        mid = str(model.get("model") or "")
+        if not mid.startswith("x_") or mid in existing:
+            continue
+        xml = "model_" + mid.replace(".", "_")
+        label = str(model.get("description") or mid)
+        rules.append(
+            {
+                "id": f"access_{mid.replace('.', '_')}_user",
+                "name": f"{label} user",
+                "model": xml,
+                "group": user_group,
+                "perm_read": 1,
+                "perm_write": 1,
+                "perm_create": 1,
+                "perm_unlink": 0,
+            }
+        )
+        rules.append(
+            {
+                "id": f"access_{mid.replace('.', '_')}_manager",
+                "name": f"{label} manager",
+                "model": xml,
+                "group": mgr_group,
+                "perm_read": 1,
+                "perm_write": 1,
+                "perm_create": 1,
+                "perm_unlink": 1,
+            }
+        )
+        existing.add(mid)
+        added += 1
+    if added:
+        draft["access_rules"] = rules
+        notes.append(f"apply: added access stubs for {added} model(s)")
+    return notes
+
+
+def _copy_field_stub(parent: dict[str, Any], fname: str) -> dict[str, Any] | None:
+    for field in parent.get("fields") or []:
+        if isinstance(field, dict) and str(field.get("name") or "") == fname:
+            return {k: v for k, v in field.items() if k != "source"}
+    return None
+
+
+def ensure_header_line_models(draft: dict[str, Any]) -> list[str]:
+    """Scaffold *_line models when headers still carry single-product qty fields."""
+    notes: list[str] = []
+    by_id = _models_index(draft)
+    added = False
+    for spec in _HEADER_LINE_SPECS:
+        parent_id = str(spec["parent"])
+        line_id = str(spec["line"])
+        parent = by_id.get(parent_id)
+        if not parent or line_id in by_id:
+            continue
+        parent_names = _field_names(parent)
+        move_fields = tuple(spec["move_fields"])
+        if not any(fname in parent_names for fname in move_fields):
+            continue
+        if any(
+            isinstance(f, dict)
+            and f.get("ttype") == "one2many"
+            and str(f.get("relation") or "").endswith("_line")
+            for f in parent.get("fields") or []
+        ):
+            continue
+        fk_name = str(spec["fk_name"])
+        line_fields: list[dict[str, Any]] = [
+            {"name": "x_name", "ttype": "char", "string": "Line", "required": True},
+            {
+                "name": fk_name,
+                "ttype": "many2one",
+                "relation": parent_id,
+                "string": str(parent.get("description") or parent_id),
+                "required": True,
+            },
+        ]
+        for fname in move_fields:
+            stub = _copy_field_stub(parent, fname)
+            if stub:
+                line_fields.append({**stub, "source": "apply_readiness"})
+        for extra in spec.get("extra_line_fields") or ():
+            if isinstance(extra, dict):
+                line_fields.append({**extra, "source": "apply_readiness"})
+        if _LIVE_COMPANY_FIELD not in {str(f.get("name")) for f in line_fields}:
+            line_fields.append(dict(COMPANY_FIELD_LIVE))
+        line_model = {
+            "model": line_id,
+            "description": str(spec["description"]),
+            "mode": "new",
+            "fields": line_fields,
+            "source": "apply_readiness",
+        }
+        draft.setdefault("models", []).append(line_model)
+        by_id[line_id] = line_model
+        parent.setdefault("fields", []).append(
+            {
+                "name": str(spec["o2m_name"]),
+                "ttype": "one2many",
+                "relation": line_id,
+                "relation_field": fk_name,
+                "string": str(spec["o2m_string"]),
+                "source": "apply_readiness",
+            }
+        )
+        _drop_model_fields(draft, parent_id, set(move_fields))
+        notes.append(f"apply: scaffolded {line_id} from header fields on {parent_id}")
+        added = True
+    if added:
+        from app.ai_enrich import ensure_default_ui
+        from app.ai_post_critique import ensure_line_model_parent_links
+
+        notes.extend(ensure_line_model_parent_links(draft))
+        notes.extend(ensure_default_ui(draft))
+        notes.extend(ensure_model_access_stubs(draft))
+    return notes
+
+
+def strip_branch_manager_scope_rules(draft: dict[str, Any]) -> list[str]:
+    """Remove USER-group branch-manager rules that lock out plain staff (GEN2-13 A3)."""
+    notes: list[str] = []
+    kept: list[dict[str, Any]] = []
+    for rule in draft.get("record_rules") or []:
+        if not isinstance(rule, dict):
+            continue
+        dom = str(rule.get("domain_force") or "")
+        tech = str(rule.get("technical_name") or "")
+        groups = rule.get("group_xml_ids") or []
+        user_group = not groups or any(
+            "user" in str(g).lower() and "manager" not in str(g).lower() for g in groups
+        )
+        if (
+            user_group
+            and (
+                "x_branch_id.x_manager_id" in dom
+                or tech.endswith("_branch_manager_scope")
+                or "Branch manager scope" in str(rule.get("name") or "")
+            )
+        ):
+            notes.append(f"apply: removed branch-manager scope rule on {rule.get('model')}")
+            continue
+        kept.append(rule)
+    if len(kept) != len(draft.get("record_rules") or []):
+        draft["record_rules"] = kept
+    if str(draft.get("domain_pack") or "") == "retail_supermarket" and "x_branch" in _models_index(draft):
+        suggestions = draft.setdefault("_branch_scope_suggestions", [])
+        hint = (
+            "Optional branch scoping: attach manager-only record rules to the manager group, "
+            "or use user⇄branch membership — never manager-of-branch on the USER group."
+        )
+        if hint not in suggestions:
+            suggestions.append(hint)
+    return notes
+
+
+def ensure_branch_scoped_record_rules(draft: dict[str, Any]) -> list[str]:
+    """Deprecated — strips incorrect auto rules; opt-in only via suggestions."""
+    return strip_branch_manager_scope_rules(draft)
+
+
+def ensure_retail_comprehensive_floor(draft: dict[str, Any]) -> list[str]:
+    """Close comprehensive depth gaps for retail_supermarket after apply fixes."""
+    if str(draft.get("domain_pack") or "") != "retail_supermarket":
+        return []
+    amb = str(draft.get("_ambition") or "standard")
+    if amb not in {"comprehensive", "standard", "focused"}:
+        return []
+    from app.ai_depth import AMBITION_TARGETS, ensure_min_automations
+
+    if amb not in AMBITION_TARGETS:
+        return []
+    notes: list[str] = list(ensure_min_automations(draft, amb))  # type: ignore[arg-type]
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        mid = str(model.get("model") or "")
+        if not mid.startswith("x_"):
+            continue
+        fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
+        if len(fields) >= 6:
+            continue
+        names = {str(f.get("name")) for f in fields}
+        for fname, ttype, label in (
+            ("x_notes", "text", "Notes"),
+            ("x_sequence", "integer", "Sequence"),
+        ):
+            if fname not in names:
+                model.setdefault("fields", []).append(
+                    {
+                        "name": fname,
+                        "ttype": ttype,
+                        "string": label,
+                        "source": "apply_readiness",
+                    }
+                )
+                notes.append(f"apply: padded {fname} on {mid} (depth floor)")
+    return notes
+
+
 def consolidate_redundant_inventory_models(draft: dict[str, Any]) -> list[str]:
     """Drop x_store_inventory when stock + x_inventory_count already cover inventory."""
     notes: list[str] = []
@@ -949,26 +1611,24 @@ def consolidate_redundant_inventory_models(draft: dict[str, Any]) -> list[str]:
 
 
 def sync_company_fields_with_record_rules(draft: dict[str, Any]) -> list[str]:
-    """Every multi-company record rule must match a company_id field on the model."""
+    """Every multi-company record rule must match an x_company_id field on the model."""
     notes: list[str] = []
     by_id = _models_index(draft)
     for rule in draft.get("record_rules") or []:
         if not isinstance(rule, dict):
             continue
         dom = str(rule.get("domain_force") or "")
-        if _MODULE_COMPANY_FIELD not in dom and _LIVE_COMPANY_FIELD not in dom:
+        if not _MODULE_COMPANY_IN_DOM.search(dom) and not _LIVE_COMPANY_IN_DOM.search(dom):
             continue
         model_id = str(rule.get("model") or "")
         model = by_id.get(model_id)
         if not model or str(model.get("mode") or "new") != "new":
             continue
         names = _field_names(model)
-        if _MODULE_COMPANY_FIELD in names:
+        if _LIVE_COMPANY_FIELD in names or _MODULE_COMPANY_FIELD in names:
             continue
-        if _LIVE_COMPANY_FIELD in names:
-            continue
-        model.setdefault("fields", []).append(dict(COMPANY_FIELD_MODULE))
-        notes.append(f"apply: added company_id on {model_id} (record rule alignment)")
+        model.setdefault("fields", []).append(dict(COMPANY_FIELD_LIVE))
+        notes.append(f"apply: added x_company_id on {model_id} (record rule alignment)")
     return notes
 
 
@@ -1269,17 +1929,38 @@ def ensure_line_currency_fields(draft: dict[str, Any]) -> list[str]:
 
 
 def normalize_line_monetary_fields(draft: dict[str, Any]) -> list[str]:
-    """Align line amount fields with x_currency_id when present."""
+    """Align line amount fields with x_currency_id when present; staff rate pairs (A6)."""
     notes: list[str] = []
-    amount_names = {"x_subtotal", "x_total", "x_amount", "x_price_unit", "x_tax_amount", "x_total_amount"}
+    amount_names = {
+        "x_subtotal",
+        "x_total",
+        "x_amount",
+        "x_price_unit",
+        "x_tax_amount",
+        "x_total_amount",
+        "x_rate",
+    }
     for model in draft.get("models") or []:
         if not isinstance(model, dict):
             continue
         mid = str(model.get("model") or "")
-        if not mid.startswith("x_") or "line" not in mid.lower():
+        if not mid.startswith("x_"):
             continue
         names = _field_names(model)
-        if "x_currency_id" not in names:
+        currency_field = "x_currency_id" if "x_currency_id" in names else None
+        if mid == "x_staff_rate" and "x_rate" in names and not currency_field:
+            model.setdefault("fields", []).append(
+                {
+                    "name": "x_currency_id",
+                    "ttype": "many2one",
+                    "relation": "res.currency",
+                    "string": "Currency",
+                    "source": "apply_readiness",
+                }
+            )
+            currency_field = "x_currency_id"
+            notes.append("apply: added x_currency_id on x_staff_rate for monetary pairing")
+        if not currency_field:
             continue
         for f in model.get("fields") or []:
             if not isinstance(f, dict):
@@ -1289,9 +1970,9 @@ def normalize_line_monetary_fields(draft: dict[str, Any]) -> list[str]:
                 continue
             if str(f.get("ttype") or "") in {"float", "monetary"}:
                 f["ttype"] = "monetary"
-                f["currency_field"] = "x_currency_id"
+                f["currency_field"] = currency_field
                 f.setdefault("widget", "monetary")
-                notes.append(f"apply: monetary line field {mid}.{fname}")
+                notes.append(f"apply: monetary field {mid}.{fname}")
     return notes
 
 
@@ -1757,29 +2438,152 @@ def ensure_operational_companion_models(draft: dict[str, Any]) -> list[str]:
     return notes
 
 
+def dedupe_line_parent_m2o_fields(draft: dict[str, Any]) -> list[str]:
+    """Keep one parent m2o on line models; prefer scaffold canonical names (GEN2-13 A4)."""
+    notes: list[str] = []
+    by_id = _models_index(draft)
+    canonical = {str(spec["line"]): str(spec["fk_name"]) for spec in _HEADER_LINE_SPECS}
+    for mid, model in by_id.items():
+        if not mid.endswith("_line"):
+            continue
+        parent_m2os = [
+            f
+            for f in (model.get("fields") or [])
+            if isinstance(f, dict)
+            and f.get("ttype") == "many2one"
+            and str(f.get("relation") or "") in by_id
+            and not str(f.get("relation") or "").endswith("_line")
+        ]
+        if len(parent_m2os) <= 1:
+            continue
+        keep_name = canonical.get(mid) or str(parent_m2os[0].get("name") or "")
+        drop_names = {str(f.get("name")) for f in parent_m2os if str(f.get("name")) != keep_name}
+        if not drop_names:
+            continue
+        model["fields"] = [
+            f
+            for f in (model.get("fields") or [])
+            if not (isinstance(f, dict) and str(f.get("name")) in drop_names)
+        ]
+        for drop in drop_names:
+            _replace_in_arch(draft, f'name="{drop}"', "")
+            _replace_in_arch(draft, drop, keep_name)
+        for btn in draft.get("smart_buttons") or []:
+            if not isinstance(btn, dict):
+                continue
+            if str(btn.get("related_model") or "") == mid and str(btn.get("relation_field") or "") in drop_names:
+                btn["relation_field"] = keep_name
+        notes.append(f"apply: deduped parent m2o on {mid} (keep {keep_name})")
+    return notes
+
+
+def prune_filler_search_filters(draft: dict[str, Any]) -> list[str]:
+    """Drop generic All / Has name search filters (GEN2-13 A6)."""
+    notes: list[str] = []
+    for v in draft.get("views") or []:
+        if not isinstance(v, dict) or str(v.get("type") or "") != "search":
+            continue
+        arch = str(v.get("arch") or "")
+        if not arch:
+            continue
+        filters = re.findall(r"<filter\b[^>]*(?:/>|>[^<]*</filter>)", arch, flags=re.I)
+        keep: list[str] = []
+        removed = 0
+        for flt in filters:
+            name_m = re.search(r'name="([^"]+)"', flt)
+            string_m = re.search(r'string="([^"]+)"', flt)
+            name = (name_m.group(1) if name_m else "").lower()
+            label = (string_m.group(1) if string_m else "").lower()
+            if name in _FILLER_FILTER_NAMES or label in {"all", "has name"}:
+                removed += 1
+                continue
+            keep.append(flt)
+        if removed:
+            open_tag = re.match(r"(<search[^>]*>)", arch, flags=re.I)
+            if open_tag:
+                v["arch"] = open_tag.group(1) + "".join(keep) + "</search>"
+                notes.append(f"apply: pruned filler search filters on {v.get('model')}")
+    return notes
+
+
+_FILLER_FILTER_NAMES = frozenset({"all", "has_name"})
+
+
+def remove_line_model_root_menus(draft: dict[str, Any]) -> list[str]:
+    """Line models are reachable via parent forms — drop root menus (GEN2-13 A6)."""
+    notes: list[str] = []
+    line_models = {m for m in _models_index(draft) if m.endswith("_line")}
+    if not line_models:
+        return notes
+    action_models = {
+        str(a.get("technical_name") or a.get("id") or ""): str(a.get("model") or "")
+        for a in (draft.get("actions") or [])
+        if isinstance(a, dict)
+    }
+    kept: list[dict[str, Any]] = []
+    for menu in draft.get("menus") or []:
+        if not isinstance(menu, dict):
+            kept.append(menu)
+            continue
+        action_ref = str(menu.get("action_xml_id") or menu.get("action") or "")
+        model = action_models.get(action_ref.split(".")[-1], "")
+        if not model:
+            for a in draft.get("actions") or []:
+                if isinstance(a, dict) and str(a.get("technical_name") or "") in action_ref:
+                    model = str(a.get("model") or "")
+                    break
+        parent = str(menu.get("parent_xml_id") or menu.get("parent") or "")
+        if model in line_models and (not parent or parent.endswith("_menu_root")):
+            notes.append(f"apply: removed root menu for line model {model}")
+            continue
+        kept.append(menu)
+    draft["menus"] = kept
+    return notes
+
+
+def prune_link_table_sequences(draft: dict[str, Any]) -> list[str]:
+    """Link/junction tables should not carry ir.sequence specs."""
+    notes: list[str] = []
+    linkish = {
+        mid
+        for mid in _models_index(draft)
+        if "link" in mid or mid.endswith("_rel")
+    }
+    seqs = draft.get("sequences") or []
+    if not isinstance(seqs, list) or not linkish:
+        return notes
+    kept = [s for s in seqs if isinstance(s, dict) and str(s.get("model") or "") not in linkish]
+    if len(kept) != len(seqs):
+        draft["sequences"] = kept
+        notes.append("apply: dropped sequences on link/junction models")
+    return notes
+
+
 def reconcile_depth_metadata(draft: dict[str, Any]) -> list[str]:
     """Recompute depth block after apply passes; clear stale regenerate flags."""
     notes: list[str] = []
-    from app.ai_depth import compute_depth_metrics, depth_checklist, depth_gaps
+    from app.ai_depth import build_depth_block, depth_checklist
 
-    gaps = depth_gaps(draft)
-    metrics = compute_depth_metrics(draft, exclude_depth_seed=True)
-    checklist = depth_checklist(draft)
+    amb = draft.get("_ambition") or "standard"
+    block = build_depth_block(draft, ambition=amb)
     seeded = any(
         isinstance(m, dict) and m.get("source") == "depth_seed" for m in (draft.get("models") or [])
     )
+    gaps_no_seed = block["metrics_without_seeds"]
+    from app.ai_depth import AMBITION_TARGETS
+
+    t = AMBITION_TARGETS.get(amb, AMBITION_TARGETS["standard"])
+    seeded_only = seeded and int(gaps_no_seed.get("model_count") or 0) < int(t["min_models"])
+    block["seeded"] = seeded_only
+    block["checklist"] = depth_checklist(draft, amb)
     draft["_depth"] = {
         **(draft.get("_depth") if isinstance(draft.get("_depth"), dict) else {}),
-        "ok": not gaps,
-        "gaps": gaps,
-        "checklist": checklist,
-        "metrics_without_seeds": metrics,
-        "seeded": seeded and bool(gaps),
+        **block,
     }
-    if not gaps and seeded:
+    if not block["gaps"] and seeded:
         draft["_depth"]["seeded"] = False
         notes.append("apply: depth targets met — cleared seed regenerate flag")
-    elif not gaps:
+    elif not block["gaps"]:
         notes.append("apply: depth targets met")
     return notes
 
@@ -2063,6 +2867,7 @@ def run_apply_readiness_pass(draft: dict[str, Any]) -> list[str]:
     notes.extend(demote_parallel_billing_models(draft))
     notes.extend(scrub_payment_capture_fields(draft))
     notes.extend(normalize_depth_seed_naming(draft))
+    notes.extend(promote_retail_depth_seeds(draft))
     notes.extend(resolve_duplicate_address_fields(draft))
     notes.extend(polish_branch_address_fields(draft))
     notes.extend(fix_branch_transfer_incoming_o2m(draft))
@@ -2070,10 +2875,15 @@ def run_apply_readiness_pass(draft: dict[str, Any]) -> list[str]:
     notes.extend(ensure_relation_module_depends(draft))
     notes.extend(fix_assignee_staff_relations(draft))
     notes.extend(fix_reuse_link_only_consistency(draft))
-    notes.extend(normalize_company_fields_for_export(draft))
+    notes.extend(wire_reuse_stock_documents(draft))
+    notes.extend(normalize_company_fields_for_live(draft))
     notes.extend(sync_company_fields_with_record_rules(draft))
+    notes.extend(strip_branch_manager_scope_rules(draft))
     notes.extend(ensure_global_branch_fields(draft))
     notes.extend(prune_transfer_timezone_field(draft))
+    notes.extend(prune_transfer_country_field(draft))
+    notes.extend(ensure_header_line_models(draft))
+    notes.extend(dedupe_line_parent_m2o_fields(draft))
     notes.extend(fix_workflow_skip_terminal_transitions(draft))
     notes.extend(fix_inventory_adjustment_workflow(draft))
     notes.extend(consolidate_inventory_count_fields(draft))
@@ -2082,6 +2892,7 @@ def run_apply_readiness_pass(draft: dict[str, Any]) -> list[str]:
     notes.extend(ensure_line_currency_fields(draft))
     notes.extend(normalize_line_monetary_fields(draft))
     notes.extend(apply_line_subtotal_computes(draft))
+    notes.extend(apply_promotion_discount_line_computes(draft))
     notes.extend(apply_order_header_total_computes(draft))
     notes.extend(consolidate_header_monetary_fields(draft))
     notes.extend(scrub_misapplied_stock_document_links(draft))
@@ -2097,7 +2908,14 @@ def run_apply_readiness_pass(draft: dict[str, Any]) -> list[str]:
     notes.extend(dedupe_automation_safe_actions(draft))
     notes.extend(ensure_search_filter_names(draft))
     notes.extend(dedupe_search_view_filters(draft))
+    notes.extend(prune_filler_search_filters(draft))
+    notes.extend(remove_line_model_root_menus(draft))
+    notes.extend(prune_link_table_sequences(draft))
+    notes.extend(scrub_unknown_arch_field_refs(draft))
+    notes.extend(sanitize_empty_field_tags(draft))
+    notes.extend(_repair_corrupted_company_arch_refs(draft))
     notes.extend(ensure_operational_companion_models(draft))
+    notes.extend(ensure_retail_comprehensive_floor(draft))
     notes.extend(reconcile_depth_metadata(draft))
     return notes
 
@@ -2105,6 +2923,7 @@ def run_apply_readiness_pass(draft: dict[str, Any]) -> list[str]:
 __all__ = [
     "apply_line_subtotal_computes",
     "apply_order_header_total_computes",
+    "apply_promotion_discount_line_computes",
     "clear_resolved_compute_suggestions",
     "consolidate_header_monetary_fields",
     "consolidate_inventory_count_fields",
@@ -2115,10 +2934,14 @@ __all__ = [
     "dedupe_enrich_warnings",
     "demote_parallel_billing_models",
     "ensure_campaign_order_links",
+    "ensure_branch_scoped_record_rules",
+    "ensure_header_line_models",
+    "ensure_model_access_stubs",
     "ensure_global_branch_fields",
     "ensure_operational_companion_models",
     "ensure_transaction_document_links",
     "ensure_line_currency_fields",
+    "ensure_retail_comprehensive_floor",
     "ensure_relation_module_depends",
     "ensure_unique_sequence_prefixes",
     "filter_stale_enrich_warnings",
@@ -2132,7 +2955,9 @@ __all__ = [
     "normalize_company_fields_for_export",
     "normalize_line_monetary_fields",
     "polish_branch_address_fields",
-    "prune_transfer_timezone_field",
+    "prepare_spec_for_live_apply",
+    "promote_retail_depth_seeds",
+    "prune_transfer_country_field",
     "reconcile_depth_metadata",
     "resolve_duplicate_address_fields",
     "run_apply_readiness_pass",
@@ -2143,5 +2968,6 @@ __all__ = [
     "scrub_payment_capture_fields",
     "scrub_unused_domain_tags",
     "sync_company_fields_with_record_rules",
+    "wire_reuse_stock_documents",
     "wire_stock_document_links",
 ]

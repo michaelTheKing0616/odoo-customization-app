@@ -6,8 +6,6 @@ import re
 from html import escape
 from typing import Any
 
-from app.multi_company_pack import apply_multi_company_to_draft
-
 
 def _models_index(draft: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {
@@ -196,12 +194,13 @@ def apply_money_and_tracking_defaults(draft: dict[str, Any]) -> list[str]:
 
 
 def ensure_multi_company_record_rules(draft: dict[str, Any]) -> list[str]:
-    """Standard company ir.rule when x_company_id / company_id present."""
-    notes: list[str] = []
-    enriched = apply_multi_company_to_draft(draft)
-    if enriched.get("record_rules"):
-        draft["record_rules"] = enriched["record_rules"]
-        notes.append("production: multi-company record rules")
+    """Standard company ir.rule on live path (x_company_id + company_ids domain)."""
+    from app.ai_apply_readiness import normalize_company_fields_for_live, sync_company_fields_with_record_rules
+
+    notes = list(normalize_company_fields_for_live(draft))
+    notes.extend(sync_company_fields_with_record_rules(draft))
+    if notes:
+        return ["production: multi-company live record rules"] + notes[-3:]
     return notes
 
 
@@ -288,10 +287,6 @@ def run_production_shape_pass(draft: dict[str, Any]) -> list[str]:
     notes.extend(ensure_sequence_specs(draft))
     notes.extend(ensure_unique_sequence_prefixes(draft))
     notes.extend(apply_money_and_tracking_defaults(draft))
-    from app.ai_apply_readiness import apply_line_subtotal_computes, apply_order_header_total_computes
-
-    notes.extend(apply_line_subtotal_computes(draft))
-    notes.extend(apply_order_header_total_computes(draft))
     notes.extend(ensure_multi_company_record_rules(draft))
     notes.extend(polish_arch_richness(draft))
     from app.ai_llm_status import finalize_llm_status
