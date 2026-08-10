@@ -141,11 +141,13 @@ export default function AppWizardPage() {
   const scorecard = aiDraft?._scorecard as
     | {
         score_0_10?: number;
-        findings?: Array<{ element?: string; detail?: string }>;
+        dimensions?: Record<string, number>;
+        findings?: Array<{ dimension?: string; element?: string; detail?: string }>;
         validators?: { all_green?: boolean; xml_ok?: boolean; consistency_ok?: boolean };
       }
     | undefined;
   const draftScore = scorecard?.score_0_10;
+  const scoreDimensions = scorecard?.dimensions;
   const validatorsGreen = scorecard?.validators?.all_green === true;
   const [expertReviewNote, setExpertReviewNote] = useState<string | null>(null);
   const llmStatusBanner =
@@ -1673,10 +1675,22 @@ export default function AppWizardPage() {
               className="mt-2"
               testId="draft-scorecard-chip"
             >
+              {scoreDimensions ? (
+                <p className="text-xs text-muted">
+                  Domain {scoreDimensions.domain_fit?.toFixed(1) ?? "—"} · Structure{" "}
+                  {scoreDimensions.structure?.toFixed(1) ?? "—"} · Semantics{" "}
+                  {scoreDimensions.semantics?.toFixed(1) ?? "—"} · UX{" "}
+                  {scoreDimensions.ux?.toFixed(1) ?? "—"} · Hygiene{" "}
+                  {scoreDimensions.hygiene?.toFixed(1) ?? "—"}
+                </p>
+              ) : null}
               {Array.isArray(scorecard?.findings) && scorecard.findings.length > 0 ? (
                 <ul className="mt-1 list-disc space-y-1 pl-5 text-sm">
                   {scorecard.findings.slice(0, 6).map((f, i) => (
                     <li key={`${f.element}-${i}`}>
+                      {f.dimension ? (
+                        <span className="text-muted">{f.dimension}: </span>
+                      ) : null}
                       {f.element}: {f.detail}
                     </li>
                   ))}

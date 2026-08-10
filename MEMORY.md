@@ -659,3 +659,19 @@ proxied frames), optionally themed from the connected instance's own extracted p
 **Decided:** Local vision operator path is complete (model pull + `INGEST_VISION=ollama` in local `.env`; compose wires `INGEST_VISION` / `OLLAMA_BASE_URL`). **Agents cannot execute Tongyi Qianwen commercial/EU license agreements** — that remains a human/legal action before marketing vision OCR to EU customers. Product code stays default-off in `.env.example` / deploy unless operator sets `INGEST_VISION=ollama`.
 **Why:** Finish all technical operator gates without falsely claiming a legal contract was signed.
 **Rejected:** Pretending EU commercial vision is cleared by a code change.
+
+### 2026-08-10 — Dual LLM paths: Draft Studio vs Universal Ingest
+**Decided:** Two independent Ollama model lanes — do not conflate or share tuning between them.
+| Lane | Env vars | Model | Purpose |
+|------|----------|-------|---------|
+| Draft Studio | `AI_MODEL_BULK`, `AI_MODEL_REASONING`, `OLLAMA_MODEL` | `qwen3:8b` (text) | ModuleSpec generation, quality/depth/critique |
+| Universal Ingest | `INGEST_VISION`, `INGEST_VISION_MODEL` | `qwen3-vl:8b` (vision) | Single + batch document upload OCR (scanned PDFs, images) |
+
+**Why:** Product owner requires batch document upload/processing to work very well; vision OCR is a first-class feature, not an afterthought. Draft timeout tuning must never swap or starve the VL model.
+**Rejected:** Using `AI_MODEL_REASONING` for ingest vision; defaulting ingest vision off in operator `.env` when VL is installed.
+**Operator:** `ollama pull qwen3-vl:8b` + `INGEST_VISION=ollama` in `.env`; verify via `GET …/ingest/vision/status`.
+
+### 2026-08-10 — Semantic apply-readiness + retail pack source hygiene
+**Decided:** Top-3 semantic fixes run in `run_apply_readiness_pass` (selection/domain align, branch dedup, inventory reason M2O + search filters); scorecard flags domain/selection drift; `retail_supermarket` pack seeds clean branch (`x_address_id` + `x_country_id`, no char dupes), workflow `state_field`s, and `x_inventory_reason` / `x_inventory_adjustment` with `x_reason_id`.
+**Why:** Honest grade gap was validators green but semantics/UX not — fix at merge source and after enrich, not only in critique.
+**Rejected:** Relying on LLM/critique alone to drop `sent`/`paid` domain allowlists or text `x_reason` fields.

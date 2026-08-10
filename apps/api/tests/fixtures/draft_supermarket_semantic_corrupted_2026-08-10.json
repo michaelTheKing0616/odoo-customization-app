@@ -1,0 +1,125 @@
+{
+  "_user_prompt": "A large, mega, super market with multiple branches worldwide",
+  "domain_pack": "retail_supermarket",
+  "depends": ["base", "contacts", "mail", "product", "stock", "hr"],
+  "_completeness": [
+    {"id": "has_models", "ok": true, "detail": "14 model(s)"}
+  ],
+  "_meta": {"model_count": 14},
+  "models": [
+    {
+      "model": "x_branch",
+      "fields": [
+        {"name": "x_name", "ttype": "char"},
+        {"name": "x_country", "ttype": "char", "string": "Country"},
+        {"name": "x_country_id", "ttype": "many2one", "relation": "res.country"},
+        {"name": "x_address_id", "ttype": "many2one", "relation": "res.partner"},
+        {"name": "x_street", "ttype": "char"},
+        {"name": "x_logo", "ttype": "binary"},
+        {"name": "x_logo_id", "ttype": "many2many", "relation": "ir.attachment"}
+      ]
+    },
+    {
+      "model": "x_store_order",
+      "is_workflow": true,
+      "fields": [
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "selection": "[('draft','Draft'),('confirmed','Confirmed'),('picking','Picking'),('delivered','Delivered'),('cancelled','Cancelled')]",
+          "domain": ["draft", "sent", "paid", "cancelled"]
+        }
+      ],
+      "state_field": {
+        "states": ["draft", "sent", "paid", "cancelled"],
+        "transitions": [["draft", "sent"]]
+      }
+    },
+    {
+      "model": "x_branch_transfer",
+      "is_workflow": true,
+      "fields": [
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "selection": "[('draft','Draft'),('in_transit','In transit'),('received','Received'),('cancelled','Cancelled')]",
+          "domain": ["draft", "pending", "completed", "cancelled"]
+        }
+      ],
+      "state_field": {
+        "states": ["draft", "pending", "completed", "cancelled"],
+        "transitions": [["draft", "pending"]]
+      }
+    },
+    {
+      "model": "x_promotion",
+      "is_workflow": true,
+      "fields": [
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "selection": "[('draft','Draft'),('active','Active'),('expired','Expired'),('cancelled','Cancelled')]",
+          "domain": ["draft", "active", "expired"]
+        }
+      ],
+      "state_field": {
+        "states": ["draft", "active", "expired"],
+        "transitions": [["draft", "active"]]
+      }
+    },
+    {
+      "model": "x_inventory_reason",
+      "fields": [
+        {"name": "x_name", "ttype": "char"},
+        {
+          "name": "x_type",
+          "ttype": "selection",
+          "selection": "[('adjustment','Adjustment'),('damage','Damage')]"
+        }
+      ]
+    },
+    {
+      "model": "x_inventory_adjustment",
+      "fields": [
+        {"name": "x_name", "ttype": "char"},
+        {"name": "x_reason", "ttype": "text", "string": "Reason"}
+      ]
+    },
+    {
+      "model": "x_staff_schedule",
+      "fields": [
+        {
+          "name": "x_staff_ids",
+          "ttype": "many2many",
+          "relation": "res.users"
+        }
+      ]
+    },
+    {
+      "model": "x_store_order_line",
+      "fields": [{"name": "x_name", "ttype": "char"}]
+    }
+  ],
+  "actions": [
+    {"technical_name": "action_x_store_order_line", "model": "x_store_order_line"}
+  ],
+  "menus": [
+    {
+      "name": "Order line",
+      "action_xml_id": "action_x_store_order_line",
+      "parent_xml_id": "menu_sub_operations"
+    }
+  ],
+  "views": [
+    {
+      "model": "x_inventory_reason",
+      "type": "search",
+      "arch": "<search string=\"Reason\"><filter string=\"Branch\" name=\"group_x_branch_id\" context=\"{'group_by': 'x_branch_id'}\"/></search>"
+    },
+    {
+      "model": "x_inventory_adjustment",
+      "type": "form",
+      "arch": "<form><field name=\"x_reason\"/></form>"
+    }
+  ]
+}

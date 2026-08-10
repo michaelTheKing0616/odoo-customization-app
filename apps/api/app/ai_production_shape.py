@@ -268,20 +268,35 @@ def polish_arch_richness(draft: dict[str, Any]) -> list[str]:
     return notes
 
 
+def _pack_body_for_draft(draft: dict[str, Any]) -> dict[str, Any] | None:
+    vocab = draft.get("vocab")
+    if isinstance(vocab, dict):
+        return {"vocab": vocab}
+    from app.ai_domain_packs import match_domain_pack
+
+    pack_id = str(draft.get("domain_pack") or "")
+    matched = match_domain_pack(str(draft.get("_user_prompt") or ""))
+    if matched and (not pack_id or matched[0] == pack_id):
+        return matched[1]
+    return None
+
+
 def run_production_shape_pass(draft: dict[str, Any]) -> list[str]:
     """Full GEN2-11 production finisher."""
     notes: list[str] = []
-    try:
-        from app.ai_vocab_scrub import scrub_draft_vocabulary
+    from app.ai_apply_readiness import ensure_unique_sequence_prefixes, run_apply_readiness_pass
+    from app.ai_presentation import dedupe_smart_button_labels
+    from app.ai_vocab_scrub import scrub_draft_vocabulary
 
-        pack_body = {"vocab": draft.get("vocab")} if isinstance(draft.get("vocab"), dict) else None
+    pack_body = _pack_body_for_draft(draft)
+    notes.extend(run_apply_readiness_pass(draft))
+    try:
         notes.extend(scrub_draft_vocabulary(draft, pack=pack_body))
     except Exception:  # noqa: BLE001
         pass
-    from app.ai_apply_readiness import ensure_unique_sequence_prefixes, run_apply_readiness_pass
-    from app.ai_presentation import dedupe_smart_button_labels
+    from app.ai_apply_readiness import polish_retail_surface_labels
 
-    notes.extend(run_apply_readiness_pass(draft))
+    notes.extend(polish_retail_surface_labels(draft))
     notes.extend(dedupe_smart_button_labels(draft))
     notes.extend(ensure_search_views(draft))
     notes.extend(ensure_sequence_specs(draft))

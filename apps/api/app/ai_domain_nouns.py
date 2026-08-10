@@ -10,6 +10,14 @@ from app.ai_post_critique import NOUN_STOPWORDS as _STOPWORDS
 # Nouns that are too generic to require a dedicated model when alone.
 _GENERIC_NOUNS = frozenset({"order", "item", "line", "record", "data", "user", "company"})
 
+_GLOBAL_NOUNS = frozenset({"worldwide", "global", "international"})
+
+_GLOBAL_PROMPT_RE = re.compile(
+    r"\b(around\s+the\s+world|international|global|worldwide|multi[\s-]?country|"
+    r"across\s+countries|multiple\s+countries|multiple\s+branches)\b",
+    re.I,
+)
+
 _REUSE_NOUN_MAP = {
     "partner": "res.partner",
     "customer": "res.partner",
@@ -74,12 +82,30 @@ def _model_text_blob(draft: dict[str, Any]) -> str:
     return " ".join(parts).lower()
 
 
+def _branch_has_country(draft: dict[str, Any]) -> bool:
+    for m in draft.get("models") or []:
+        if not isinstance(m, dict) or str(m.get("model") or "") != "x_branch":
+            continue
+        names = {
+            str(f.get("name"))
+            for f in (m.get("fields") or [])
+            if isinstance(f, dict) and f.get("name")
+        }
+        if "x_country_id" in names or "x_region" in names:
+            return True
+    return False
+
+
 def _noun_resolved(
     noun: str,
     draft: dict[str, Any],
     *,
     reuse_models: list[str] | None = None,
 ) -> bool:
+    if noun in _GLOBAL_NOUNS:
+        prompt = str(draft.get("_user_prompt") or "")
+        if _GLOBAL_PROMPT_RE.search(prompt) and _branch_has_country(draft):
+            return True
     blob = _model_text_blob(draft)
     if noun in blob:
         return True

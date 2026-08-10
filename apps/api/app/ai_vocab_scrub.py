@@ -30,6 +30,25 @@ _DEFAULT_NEUTRAL = {
 }
 
 _DUP_LABEL_RE = re.compile(r"\b(\w[\w\s]*?)\s*/\s*\1\b", re.I)
+_REPEAT_WORD_RE = re.compile(r"\b(\w{2,})\s+\1\b", re.I)
+_REPEAT_AND_RE = re.compile(r"\b(\w{2,})\s+and\s+\1\b", re.I)
+
+
+def _collapse_repeated_words(text: str) -> tuple[str, bool]:
+    """Collapse stutter from chained vocab replacements (Supplier Supplier…)."""
+    out = text
+    changed = False
+    for _ in range(8):
+        new, n = _REPEAT_WORD_RE.subn(r"\1", out)
+        if not n:
+            break
+        out = new
+        changed = True
+    new, n = _REPEAT_AND_RE.subn(r"\1", out)
+    if n:
+        out = new
+        changed = True
+    return out, changed
 
 
 def _pack_vocab(pack: dict[str, Any] | None) -> dict[str, str]:
@@ -56,7 +75,7 @@ def scrub_text(text: str, vocab: dict[str, str]) -> tuple[str, bool]:
     for term, repl in sorted(mapping.items(), key=lambda x: -len(x[0])):
         if term.lower() == repl.lower():
             continue
-        pattern = re.compile(re.escape(term), re.I)
+        pattern = re.compile(r"\b" + re.escape(term) + r"\b", re.I)
 
         def _sub(m: re.Match[str]) -> str:
             return _preserve_case(m.group(0), repl)
@@ -68,6 +87,10 @@ def scrub_text(text: str, vocab: dict[str, str]) -> tuple[str, bool]:
     deduped, n = _DUP_LABEL_RE.subn(r"\1", out)
     if n:
         out = deduped.strip()
+        changed = True
+    collapsed, ch = _collapse_repeated_words(out)
+    if ch:
+        out = collapsed
         changed = True
     return out, changed
 
@@ -122,6 +145,19 @@ def scrub_draft_vocabulary(
             if ch:
                 view["arch"] = new
                 notes.append(f"vocab: scrubbed view {view.get('name')}")
+        if _scrub_string_fields(view, ("string",), vocab):
+            notes.append(f"vocab: scrubbed view title {view.get('name')}")
+    for rule in draft.get("access_rules") or []:
+        if isinstance(rule, dict) and _scrub_string_fields(rule, ("name",), vocab):
+            notes.append(f"vocab: scrubbed access rule {rule.get('id')}")
+    for seq in draft.get("sequences") or []:
+        if isinstance(seq, dict) and _scrub_string_fields(seq, ("name",), vocab):
+            notes.append(f"vocab: scrubbed sequence {seq.get('model')}")
+    for auto in draft.get("automations") or []:
+        if isinstance(auto, dict) and _scrub_string_fields(
+            auto, ("name", "description"), vocab
+        ):
+            notes.append(f"vocab: scrubbed automation {auto.get('name')}")
     return notes
 
 

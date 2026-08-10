@@ -215,8 +215,21 @@ def test_retail_supermarket_pack_matches_prompt() -> None:
     assert matched is not None
     pack_id, pack = matched
     assert pack_id == "retail_supermarket"
-    assert any(m.get("model") == "x_branch" for m in pack.get("models") or [])
+    models = {m.get("model"): m for m in pack.get("models") or [] if isinstance(m, dict)}
+    assert "x_branch" in models
     assert pack.get("reuse_stock")
+    branch_names = {f.get("name") for f in models["x_branch"].get("fields") or []}
+    assert "x_address_id" in branch_names
+    assert "x_country_id" in branch_names
+    assert "x_address" not in branch_names
+    assert "x_inventory_reason" in models
+    assert "x_inventory_adjustment" in models
+    adj_names = {f.get("name") for f in models["x_inventory_adjustment"].get("fields") or []}
+    assert "x_reason_id" in adj_names
+    assert "x_reason" not in adj_names
+    order = models["x_store_order"]
+    assert isinstance(order.get("state_field"), dict)
+    assert "confirmed" in (order.get("state_field") or {}).get("states", [])
 
 
 def test_depth_model_floor_excludes_depth_seed_only() -> None:

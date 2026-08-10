@@ -726,6 +726,14 @@ def test_vocab_scrub_no_expense_slash_expense_duplicate() -> None:
     assert "expense" in out.lower()
 
 
+def test_vocab_scrub_collapses_expenses_and_expenses() -> None:
+    from app.ai_vocab_scrub import scrub_text
+
+    out, changed = scrub_text("Store expenses and expenses", {})
+    assert changed
+    assert out.lower() == "store expenses"
+
+
 # --- GEN2-10 / GEN2-11 / GEN2-12 ---
 
 

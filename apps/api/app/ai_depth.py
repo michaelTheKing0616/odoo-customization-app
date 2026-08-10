@@ -1201,13 +1201,13 @@ def llm_expand_depth(
             f"at least {need_models} NEW substantive models (each ≥6 fields)."
         )
     try:
-        from app.llm_provider import generate_json_with_timeout_retry
+        from app.ai_llm_budget import llm_json_with_budget
 
-        raw = generate_json_with_timeout_retry(
+        raw, _ = llm_json_with_budget(
             provider,
+            "depth",
             prompt,
             system=system,
-            timeout_s=240.0,
             reasoning=False,
             temperature=STEP_TEMPERATURES["depth.expand"],
         )

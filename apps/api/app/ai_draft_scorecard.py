@@ -353,6 +353,18 @@ def _score_hygiene(draft: dict[str, Any], *, user_prompt: str = "") -> tuple[flo
                             "detail": "placeholder selection keys",
                         }
                     )
+                from app.ai_apply_readiness import _parse_field_domain_keys
+
+                dom_keys = _parse_field_domain_keys(f.get("domain"))
+                if dom_keys and dom_keys != set(keys):
+                    score -= 1.0
+                    findings.append(
+                        {
+                            "dimension": "semantics",
+                            "element": f"{mid}.{f.get('name')}",
+                            "detail": "selection keys disagree with field domain allowlist",
+                        }
+                    )
     prefixes: dict[str, str] = {}
     for seq in draft.get("sequences") or []:
         if not isinstance(seq, dict):

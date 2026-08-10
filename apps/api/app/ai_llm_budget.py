@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.llm_provider import LLMError, LLMProvider, generate_json_with_timeout_retry
+from app.llm_provider import (
+    LLMError,
+    LLMProvider,
+    generate_json_with_timeout_retry,
+    resolve_bulk_model,
+)
 
 # Seconds per pipeline step (request-scoped budget, not HTTP timeout)
 STEP_BUDGETS: dict[str, float] = {
@@ -15,9 +20,9 @@ STEP_BUDGETS: dict[str, float] = {
     "workflow": 120.0,
     "automations": 90.0,
     "draft_json": 180.0,
-    "quality": 90.0,
-    "depth": 90.0,
-    "critique": 120.0,
+    "quality": 180.0,
+    "depth": 300.0,
+    "critique": 180.0,
 }
 
 MODEL_DOWNSHIFT_LADDER: tuple[str, ...] = (
@@ -70,7 +75,7 @@ def llm_json_with_budget(
         msg = str(exc).lower()
         if "timed out" not in msg and "timeout" not in msg:
             raise
-        smaller = next_smaller_model(model or "")
+        smaller = next_smaller_model(model or resolve_bulk_model())
         if not smaller:
             raise
         raw = generate_json_with_timeout_retry(

@@ -68,7 +68,9 @@ class Settings(BaseSettings):
     ollama_model: str = "qwen3:8b"
     # Per-step model ladder (empty = fall back to ollama_model / openai_compatible_model)
     ai_model_bulk: str = "qwen3:8b"
-    ai_model_reasoning: str = "qwen3:14b"
+    # Draft Studio / ModuleSpec generation only — never used by Universal Ingest vision OCR.
+    # Default to bulk model — qwen3:14b often times out quality/depth/critique on Apple Silicon.
+    ai_model_reasoning: str = "qwen3:8b"
     # auto | on | off — native Ollama `think` when model supports it; else manual CoT
     ai_thinking: str = "auto"
     # OpenAI-compatible (vLLM / LM Studio / OpenAI / Groq)
@@ -83,6 +85,7 @@ class Settings(BaseSettings):
     ai_rag_min_score: float = 0.35
     # Self-critique pass after draft: auto|on|off
     ai_critique: str = "auto"
+    # Production-shape / apply-readiness always run on enrich + reuse merge (not configurable).
     # Self-consistency vote/merge on scaffold + workflow steps: off|on (default off)
     ai_self_consistency: str = "off"
     # Expert RAG (EXP-1) — community Q&A: off | dir (reads expert_community_dir)
@@ -141,7 +144,7 @@ class Settings(BaseSettings):
     field_export_max_rows: int = 100_000
     field_export_batch_size: int = 500
 
-    # Wave 17 — universal ingest
+    # Wave 17 — universal ingest (separate from Draft Studio LLM — uses qwen3-vl for OCR)
     ingest_vision: str = "off"  # off | ollama — ollama requires qwen3-vl pulled
     ingest_vision_model: str = "qwen3-vl:8b"
     ingest_classify_min_confidence: float = 0.55

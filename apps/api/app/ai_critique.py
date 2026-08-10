@@ -16,7 +16,6 @@ from app.ai_rules import completeness_checklist
 from app.ai_depth import classify_ambition, depth_gaps
 from app.ai_prompt_constants import STEP_TEMPERATURES, append_prompt_blocks
 from app.llm_provider import LLMError, LLMProvider, get_llm_provider
-from app.ai_prompt_constants import STEP_TEMPERATURES, append_prompt_blocks
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -130,11 +129,14 @@ def llm_critique(
             "\n\nMANDATORY REPAIRS — prompt nouns without models (add substantive models):\n"
             + ", ".join(uncovered)
         )
-    raw = provider.generate_json(
+    from app.ai_llm_budget import llm_json_with_budget
+
+    raw, _ = llm_json_with_budget(
+        provider,
+        "critique",
         prompt,
         system=system,
-        timeout_s=90.0,
-        reasoning=True,
+        reasoning=False,
         temperature=STEP_TEMPERATURES["critique"],
     )
     data = _extract_json(raw)

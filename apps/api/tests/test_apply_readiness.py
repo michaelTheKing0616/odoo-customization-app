@@ -9,6 +9,9 @@ from pathlib import Path
 import pytest
 
 FIXTURE5 = Path(__file__).parent / "fixtures" / "draft_supermarket5_2026-08-07.json"
+FIXTURE_SEMANTIC = (
+    Path(__file__).parent / "fixtures" / "draft_supermarket_semantic_corrupted_2026-08-10.json"
+)
 PROMPT = "A large, mega, super market with multiple branches around the world"
 
 
@@ -1162,3 +1165,462 @@ def test_finalize_enriched_draft_attaches_scorecard() -> None:
     assert isinstance(draft.get("_scorecard"), dict)
     assert float(draft["_scorecard"].get("score_0_10") or 0) >= 0
     assert any("production:" in w or "apply:" in w for w in warnings)
+
+
+def test_vocab_scrub_no_supplier_stutter() -> None:
+    from app.ai_vocab_scrub import scrub_text
+
+    pack = {"deposit": "Supplier hold", "retainer": "Supplier hold"}
+    out, changed = scrub_text("Customer deposit and holds", pack)
+    assert changed
+    assert "supplier supplier" not in out.lower()
+    assert "hold" in out.lower()
+
+
+def test_consolidate_inventory_drops_orphan_access_rules() -> None:
+    from app.ai_apply_readiness import consolidate_redundant_inventory_models
+
+    draft = {
+        "depends": ["stock"],
+        "models": [
+            {"model": "x_inventory_count", "fields": [{"name": "x_name", "ttype": "char"}]},
+            {"model": "x_store_inventory", "fields": [{"name": "x_name", "ttype": "char"}]},
+        ],
+        "access_rules": [
+            {"id": "access_x_store_inventory_user", "model": "model_x_store_inventory"},
+            {"id": "access_x_inventory_count_user", "model": "model_x_inventory_count"},
+        ],
+    }
+    notes = consolidate_redundant_inventory_models(draft)
+    models = {m["model"] for m in draft["models"]}
+    access_models = {r["model"].replace("model_", "", 1) for r in draft["access_rules"]}
+    assert "x_store_inventory" not in models
+    assert "x_store_inventory" not in access_models
+    assert "x_inventory_count" in access_models
+    assert any("removed x_store_inventory" in n for n in notes)
+
+
+def test_worldwide_noun_covered_by_branch_country() -> None:
+    from app.ai_domain_nouns import domain_noun_coverage
+
+    draft = {
+        "_user_prompt": "A large mega super market with multiple branches worldwide",
+        "models": [
+            {
+                "model": "x_branch",
+                "fields": [
+                    {"name": "x_name", "ttype": "char"},
+                    {"name": "x_country_id", "ttype": "many2one", "relation": "res.country"},
+                ],
+            }
+        ],
+    }
+    _items, uncovered, _w = domain_noun_coverage(draft, draft["_user_prompt"])
+    assert "worldwide" not in uncovered
+
+
+def test_remove_line_model_root_menus_under_app_root() -> None:
+    from app.ai_apply_readiness import remove_line_model_root_menus
+
+    draft = {
+        "models": [{"model": "x_branch_transfer_line", "fields": []}],
+        "actions": [{"technical_name": "action_x_branch_transfer_line", "model": "x_branch_transfer_line"}],
+        "menus": [
+            {"name": "Transfer line", "action_xml_id": "action_x_branch_transfer_line", "parent_xml_id": "menu_root_super_market"},
+            {"name": "Operations", "parent_xml_id": "menu_root_super_market"},
+        ],
+    }
+    notes = remove_line_model_root_menus(draft)
+    assert len(draft["menus"]) == 1
+    assert draft["menus"][0]["name"] == "Operations"
+    assert any("line model" in n for n in notes)
+
+
+def test_prune_timezone_from_line_models() -> None:
+    from app.ai_apply_readiness import prune_transfer_timezone_field
+
+    draft = {
+        "models": [
+            {
+                "model": "x_branch",
+                "fields": [{"name": "x_timezone", "ttype": "char"}, {"name": "x_name", "ttype": "char"}],
+            },
+            {
+                "model": "x_branch_transfer_line",
+                "fields": [{"name": "x_timezone", "ttype": "char"}, {"name": "x_name", "ttype": "char"}],
+            },
+        ],
+        "views": [
+            {
+                "model": "x_branch_transfer_line",
+                "type": "form",
+                "arch": '<form><field name="x_timezone"/><field name="x_name"/></form>',
+            }
+        ],
+    }
+    notes = prune_transfer_timezone_field(draft)
+    line = next(m for m in draft["models"] if m["model"] == "x_branch_transfer_line")
+    branch = next(m for m in draft["models"] if m["model"] == "x_branch")
+    assert any(f["name"] == "x_timezone" for f in branch["fields"])
+    assert not any(f["name"] == "x_timezone" for f in line["fields"])
+    assert 'name="x_timezone"' not in draft["views"][0]["arch"]
+    assert notes
+
+
+def test_priority_hygiene_supermarket_corrupted_labels() -> None:
+    """Regression: all four priority fixes on a corrupted supermarket-shaped draft."""
+    from app.ai_draft_scorecard import attach_scorecard, draft_scorecard
+    from app.ai_production_shape import run_production_shape_pass
+
+    prompt = "A large, mega, super market with multiple branches worldwide"
+    draft = {
+        "_user_prompt": prompt,
+        "domain_pack": "retail_supermarket",
+        "depends": ["stock"],
+        "models": [
+            {
+                "model": "x_branch",
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "string": "Branch"},
+                    {"name": "x_country_id", "ttype": "many2one", "relation": "res.country"},
+                ],
+            },
+            {
+                "model": "x_store_order",
+                "fields": [{"name": "x_name", "ttype": "char"}],
+            },
+            {
+                "model": "x_store_deposit",
+                "description": "Customer Supplier Supplier Supplier deposits and holds",
+                "fields": [
+                    {
+                        "name": "x_name",
+                        "ttype": "char",
+                        "string": "Supplier Supplier deposit",
+                    }
+                ],
+            },
+            {
+                "model": "x_store_expense",
+                "description": "Store expenses and expenses",
+                "fields": [{"name": "x_name", "ttype": "char"}],
+            },
+            {
+                "model": "x_compliance_check",
+                "description": "Food safety check and Supplier approval",
+                "fields": [{"name": "x_name", "ttype": "char"}],
+            },
+            {
+                "model": "x_inventory_count",
+                "fields": [{"name": "x_name", "ttype": "char"}],
+            },
+            {
+                "model": "x_store_inventory",
+                "fields": [{"name": "x_name", "ttype": "char"}],
+            },
+            {
+                "model": "x_branch_transfer_line",
+                "fields": [
+                    {"name": "x_name", "ttype": "char"},
+                    {"name": "x_timezone", "ttype": "char", "string": "Timezone"},
+                ],
+            },
+        ],
+        "access_rules": [
+            {"id": "access_x_store_inventory_user", "model": "model_x_store_inventory"},
+        ],
+        "actions": [
+            {"technical_name": "action_x_store_deposit", "model": "x_store_deposit", "name": "Bad deposit"},
+            {
+                "technical_name": "action_x_branch_transfer_line",
+                "model": "x_branch_transfer_line",
+                "name": "Transfer line",
+            },
+        ],
+        "menus": [
+            {
+                "name": "Bad deposit menu",
+                "action_xml_id": "action_x_store_deposit",
+                "parent_xml_id": "menu_sub_other",
+            },
+            {
+                "name": "Transfer line",
+                "action_xml_id": "action_x_branch_transfer_line",
+                "parent_xml_id": "menu_root_super_market",
+            },
+        ],
+        "smart_buttons": [
+            {
+                "on_model": "x_branch",
+                "label": "Customer Supplier Supplier deposits and holds",
+                "related_model": "x_store_deposit",
+                "relation_field": "x_branch_id",
+            }
+        ],
+        "views": [
+            {
+                "name": "x_branch.search",
+                "model": "x_branch",
+                "type": "search",
+                "arch": '<search string="Branch"><field name="x_name"/></search>',
+            },
+            {
+                "name": "x_store_deposit.form",
+                "model": "x_store_deposit",
+                "type": "form",
+                "arch": '<form string="Bad deposit"><field name="x_name"/></form>',
+            },
+        ],
+    }
+    run_production_shape_pass(draft)
+    by_id = {m["model"]: m for m in draft["models"]}
+    assert "x_store_inventory" not in by_id
+    access_models = {r["model"].replace("model_", "", 1) for r in draft["access_rules"]}
+    assert "x_store_inventory" not in access_models
+    assert "supplier supplier" not in by_id["x_store_deposit"]["description"].lower()
+    assert by_id["x_store_deposit"]["description"] == "Customer deposits and holds"
+    assert by_id["x_store_expense"]["description"] == "Store expense"
+    assert by_id["x_compliance_check"]["description"] == "Food safety and supplier approval"
+    branch_fields = {f["name"] for f in by_id["x_branch"]["fields"]}
+    assert "x_region" in branch_fields
+    line_fields = {f["name"] for f in by_id["x_branch_transfer_line"]["fields"]}
+    assert "x_timezone" not in line_fields
+    menu_action_models = []
+    for menu in draft["menus"]:
+        ref = menu.get("action_xml_id")
+        for action in draft["actions"]:
+            if action.get("technical_name") == ref:
+                menu_action_models.append(action.get("model"))
+    assert "x_branch_transfer_line" not in menu_action_models
+    search_arch = next(v["arch"] for v in draft["views"] if v.get("name") == "x_branch.search")
+    assert "group_x_country_id" in search_arch
+    assert "group_x_region" in search_arch
+    deposit_form = next(v["arch"] for v in draft["views"] if v.get("name") == "x_store_deposit.form")
+    assert "Customer deposits and holds" in deposit_form
+    attach_scorecard(draft, user_prompt=prompt)
+    scored = draft_scorecard(draft, user_prompt=prompt)
+    uncovered = [f["element"] for f in scored.get("findings", []) if "noun:" in str(f.get("element"))]
+    assert "noun:worldwide" not in uncovered
+
+
+def test_align_workflow_selection_domains_clears_conflicting_domain() -> None:
+    from app.ai_apply_readiness import align_workflow_selection_domains
+
+    draft = {
+        "models": [
+            {
+                "model": "x_store_order",
+                "is_workflow": True,
+                "fields": [
+                    {
+                        "name": "x_status",
+                        "ttype": "selection",
+                        "selection": (
+                            "[('draft','Draft'),('confirmed','Confirmed'),"
+                            "('picking','Picking'),('delivered','Delivered'),"
+                            "('cancelled','Cancelled')]"
+                        ),
+                        "domain": ["draft", "sent", "paid", "cancelled"],
+                    }
+                ],
+                "state_field": {
+                    "states": ["draft", "sent", "paid", "cancelled"],
+                    "transitions": [["draft", "sent"]],
+                },
+            }
+        ],
+        "views": [
+            {
+                "model": "x_store_order",
+                "type": "search",
+                "arch": (
+                    '<search string="Order">'
+                    '<filter string="Sent" name="status_sent" '
+                    'domain="[(\'x_status\',\'=\',\'sent\')]"/>'
+                    "</search>"
+                ),
+            }
+        ],
+    }
+    notes = align_workflow_selection_domains(draft)
+    assert notes
+    status = draft["models"][0]["fields"][0]
+    assert "domain" not in status
+    assert draft["models"][0]["state_field"]["states"][1] == "confirmed"
+    assert "status_sent" not in draft["views"][0]["arch"]
+
+
+def test_consolidate_branch_master_data_drops_duplicates() -> None:
+    from app.ai_apply_readiness import consolidate_branch_master_data
+
+    draft = {
+        "models": [
+            {
+                "model": "x_branch",
+                "fields": [
+                    {"name": "x_name", "ttype": "char"},
+                    {"name": "x_country", "ttype": "char", "string": "Country"},
+                    {"name": "x_country_id", "ttype": "many2one", "relation": "res.country"},
+                    {"name": "x_address_id", "ttype": "many2one", "relation": "res.partner"},
+                    {"name": "x_street", "ttype": "char"},
+                    {"name": "x_logo", "ttype": "binary"},
+                    {"name": "x_logo_id", "ttype": "many2many", "relation": "ir.attachment"},
+                ],
+            }
+        ],
+        "views": [
+            {
+                "model": "x_branch",
+                "type": "form",
+                "arch": (
+                    '<form><field name="x_country"/>'
+                    '<field name="x_street"/><field name="x_logo_id"/></form>'
+                ),
+            }
+        ],
+    }
+    notes = consolidate_branch_master_data(draft)
+    assert notes
+    names = {f["name"] for f in draft["models"][0]["fields"]}
+    assert "x_country" not in names
+    assert "x_street" not in names
+    assert "x_logo_id" not in names
+    assert "x_country_id" in names
+    assert "x_address_id" in names
+
+
+def test_wire_inventory_adjustment_reason_and_search() -> None:
+    from app.ai_apply_readiness import ensure_inventory_reason_search, wire_inventory_adjustment_reason
+
+    draft = {
+        "models": [
+            {
+                "model": "x_inventory_reason",
+                "fields": [
+                    {"name": "x_name", "ttype": "char"},
+                    {
+                        "name": "x_type",
+                        "ttype": "selection",
+                        "selection": "[('adjustment','Adjustment'),('damage','Damage')]",
+                    },
+                ],
+            },
+            {
+                "model": "x_inventory_adjustment",
+                "fields": [
+                    {"name": "x_name", "ttype": "char"},
+                    {"name": "x_reason", "ttype": "text", "string": "Reason"},
+                ],
+            },
+        ],
+        "views": [
+            {
+                "model": "x_inventory_reason",
+                "type": "search",
+                "arch": (
+                    '<search string="Reason">'
+                    '<filter string="Branch" name="group_x_branch_id" '
+                    'context="{\'group_by\': \'x_branch_id\'}"/>'
+                    "</search>"
+                ),
+            },
+            {
+                "model": "x_inventory_adjustment",
+                "type": "form",
+                "arch": '<form><field name="x_reason"/></form>',
+            },
+        ],
+    }
+    wire_inventory_adjustment_reason(draft)
+    ensure_inventory_reason_search(draft)
+    adj_names = {f["name"] for f in draft["models"][1]["fields"]}
+    assert "x_reason_id" in adj_names
+    assert "x_reason" not in adj_names
+    assert 'name="x_reason_id"' in draft["views"][1]["arch"]
+    search = draft["views"][0]["arch"]
+    assert "filter_active" in search
+    assert "status_adjustment" in search
+    assert "group_x_type" in search
+
+
+def test_remove_line_model_menus_drops_operations_submenu() -> None:
+    from app.ai_apply_readiness import remove_line_model_root_menus
+
+    draft = {
+        "models": [{"model": "x_store_order_line", "fields": [{"name": "x_name", "ttype": "char"}]}],
+        "actions": [
+            {"technical_name": "action_x_store_order_line", "model": "x_store_order_line"},
+        ],
+        "menus": [
+            {
+                "name": "Order line",
+                "action_xml_id": "action_x_store_order_line",
+                "parent_xml_id": "menu_sub_operations",
+            }
+        ],
+    }
+    notes = remove_line_model_root_menus(draft)
+    assert notes
+    assert draft["menus"] == []
+
+
+def test_fix_assignee_staff_relations_includes_schedule() -> None:
+    from app.ai_apply_readiness import fix_assignee_staff_relations
+
+    draft = {
+        "depends": ["base", "hr"],
+        "models": [
+            {
+                "model": "x_staff_schedule",
+                "fields": [
+                    {
+                        "name": "x_staff_ids",
+                        "ttype": "many2many",
+                        "relation": "res.users",
+                    }
+                ],
+            }
+        ],
+    }
+    fix_assignee_staff_relations(draft)
+    field = draft["models"][0]["fields"][0]
+    assert field["relation"] == "hr.employee"
+    assert field["ttype"] == "many2many"
+
+
+def test_fixture_semantic_corrupted_passes_production_shape() -> None:
+    """Regression fixture: Top-3 semantic bugs → clean after production-shape."""
+    from app.ai_draft_scorecard import draft_scorecard
+    from app.ai_production_shape import run_production_shape_pass
+
+    draft = json.loads(FIXTURE_SEMANTIC.read_text())
+    draft["_user_prompt"] = (
+        "A large, mega, super market with multiple branches worldwide"
+    )
+    run_production_shape_pass(draft)
+    by_id = {m["model"]: m for m in draft["models"]}
+    branch_names = {f["name"] for f in by_id["x_branch"]["fields"]}
+    assert "x_country" not in branch_names
+    assert "x_street" not in branch_names
+    assert "x_logo_id" not in branch_names
+    order_status = next(f for f in by_id["x_store_order"]["fields"] if f["name"] == "x_status")
+    assert "domain" not in order_status
+    assert "confirmed" in order_status["selection"]
+    assert "sent" not in order_status["selection"]
+    adj_names = {f["name"] for f in by_id["x_inventory_adjustment"]["fields"]}
+    assert "x_reason_id" in adj_names
+    assert "x_reason" not in adj_names
+    assert by_id["x_staff_schedule"]["fields"][0]["relation"] == "hr.employee"
+    assert draft["menus"] == []
+    search = next(v for v in draft["views"] if v.get("model") == "x_inventory_reason")
+    assert "filter_active" in search["arch"]
+    assert "status_adjustment" in search["arch"]
+    scored = draft_scorecard(draft, user_prompt=draft["_user_prompt"])
+    semantic_findings = [
+        f for f in scored.get("findings", []) if f.get("dimension") == "semantics"
+    ]
+    assert not any("domain allowlist" in str(f.get("detail")) for f in semantic_findings)
+    assert float(scored.get("dimensions", {}).get("semantics") or 0) >= 9.0
+    assert str(draft.get("_completeness", [{}])[0].get("detail", "")).startswith(
+        f"{len(draft['models'])} model"
+    )

@@ -115,6 +115,7 @@ test.describe("Wizard scorecard + expert review", () => {
     await expect(page.getByTestId("draft-model-review")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId("draft-scorecard-chip")).toBeVisible({ timeout: 5_000 });
     await expect(page.getByText("Draft quality: 7.2/10")).toBeVisible();
+    await expect(page.getByText(/Semantics 8\.0/)).toBeVisible();
     await expect(page.getByTestId("expert-review-fix")).toBeVisible();
 
     await page.getByTestId("expert-review-fix").click();

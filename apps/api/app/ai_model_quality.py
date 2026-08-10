@@ -453,10 +453,14 @@ def llm_emit_missing_scaffold_models(
         f"{json.dumps(sketches)[:5000]}"
     )
     try:
-        raw = provider.generate_json(
+        from app.ai_llm_budget import llm_json_with_budget
+
+        raw, _ = llm_json_with_budget(
+            provider,
+            "quality",
             prompt,
             system=system,
-            reasoning=True,
+            reasoning=False,
             temperature=STEP_TEMPERATURES["quality.scaffold_gap"],
         )
         data = raw if isinstance(raw, dict) else json.loads(raw)
@@ -758,13 +762,13 @@ def llm_deepen_model_fields(
         "loop is missing a substantive role (lines, events, billing, checks)."
     )
     try:
-        from app.llm_provider import generate_json_with_timeout_retry
+        from app.ai_llm_budget import llm_json_with_budget
 
-        raw = generate_json_with_timeout_retry(
+        raw, _ = llm_json_with_budget(
             provider,
+            "quality",
             prompt,
             system=system,
-            timeout_s=120.0,
             reasoning=False,
             temperature=STEP_TEMPERATURES["quality.field_deepen"],
         )

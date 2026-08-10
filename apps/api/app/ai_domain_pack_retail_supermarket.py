@@ -30,11 +30,22 @@ def retail_supermarket_pack() -> dict[str, Any]:
         ("received", "Received"),
         ("cancelled", "Cancelled"),
     )
+    reason_type = _sel(
+        ("adjustment", "Adjustment"),
+        ("damage", "Damage"),
+        ("loss", "Loss"),
+        ("theft", "Theft"),
+    )
+    adjust_status = _sel(
+        ("draft", "Draft"),
+        ("approved", "Approved"),
+        ("rejected", "Rejected"),
+    )
 
     return {
         "technical_name": "retail_supermarket",
         "display_name": "Retail Supermarket",
-        "depends": ["base", "contacts", "mail", "product"],
+        "depends": ["base", "contacts", "mail", "product", "hr"],
         "domain_pack": "retail_supermarket",
         "tags": [
             "supermarket",
@@ -100,8 +111,8 @@ def retail_supermarket_pack() -> dict[str, Any]:
             },
         ],
         "vocab": {
-            "deposit": "Supplier deposit",
-            "retainer": "Supplier deposit",
+            "deposit": "Supplier hold",
+            "retainer": "Supplier hold",
             "compliance": "Food safety check",
             "conflict check": "Supplier approval",
             "matter": "Store record",
@@ -112,6 +123,9 @@ def retail_supermarket_pack() -> dict[str, Any]:
             "Do NOT implement payment capture — link purchase/sale documents only",
             "Branch is x_branch — not a selection on orders alone",
             "Supplier is res.partner with supplier rank — not x_supplier mini-CRM",
+            "Do NOT set x_status field.domain to keys outside the selection list (sent/paid vs confirmed/delivered)",
+            "Do NOT duplicate x_country char when x_country_id exists — use res.country M2O only",
+            "Wire inventory adjustments to x_inventory_reason via x_reason_id — not free-text x_reason",
         ],
         "models": [
             {
@@ -121,7 +135,18 @@ def retail_supermarket_pack() -> dict[str, Any]:
                 "fields": [
                     {"name": "x_name", "ttype": "char", "string": "Branch", "required": True},
                     {"name": "x_code", "ttype": "char", "string": "Code"},
-                    {"name": "x_address", "ttype": "char", "string": "Address"},
+                    {
+                        "name": "x_address_id",
+                        "ttype": "many2one",
+                        "relation": "res.partner",
+                        "string": "Address",
+                    },
+                    {
+                        "name": "x_country_id",
+                        "ttype": "many2one",
+                        "relation": "res.country",
+                        "string": "Country",
+                    },
                     {"name": "x_phone", "ttype": "char", "string": "Phone"},
                     {
                         "name": "x_manager_id",
@@ -149,6 +174,19 @@ def retail_supermarket_pack() -> dict[str, Any]:
                 "description": "Store sales order",
                 "mode": "new",
                 "is_workflow": True,
+                "state_field": {
+                    "field": "x_status",
+                    "states": ["draft", "confirmed", "picking", "delivered", "cancelled"],
+                    "transitions": [
+                        ["draft", "confirmed"],
+                        ["confirmed", "picking"],
+                        ["picking", "delivered"],
+                        ["draft", "cancelled"],
+                        ["confirmed", "cancelled"],
+                        ["picking", "cancelled"],
+                    ],
+                    "statusbar_visible": ["draft", "confirmed", "picking", "delivered"],
+                },
                 "fields": [
                     {"name": "x_name", "ttype": "char", "string": "Order", "required": True},
                     {"name": "x_code", "ttype": "char", "string": "Reference"},
@@ -226,6 +264,17 @@ def retail_supermarket_pack() -> dict[str, Any]:
                 "description": "Promotion / discount campaign",
                 "mode": "new",
                 "is_workflow": True,
+                "state_field": {
+                    "field": "x_status",
+                    "states": ["draft", "active", "expired", "cancelled"],
+                    "transitions": [
+                        ["draft", "active"],
+                        ["active", "expired"],
+                        ["active", "cancelled"],
+                        ["draft", "cancelled"],
+                    ],
+                    "statusbar_visible": ["draft", "active", "expired"],
+                },
                 "fields": [
                     {"name": "x_name", "ttype": "char", "string": "Promotion", "required": True},
                     {
@@ -251,6 +300,17 @@ def retail_supermarket_pack() -> dict[str, Any]:
                 "description": "Inter-branch stock transfer",
                 "mode": "new",
                 "is_workflow": True,
+                "state_field": {
+                    "field": "x_status",
+                    "states": ["draft", "in_transit", "received", "cancelled"],
+                    "transitions": [
+                        ["draft", "in_transit"],
+                        ["in_transit", "received"],
+                        ["draft", "cancelled"],
+                        ["in_transit", "cancelled"],
+                    ],
+                    "statusbar_visible": ["draft", "in_transit", "received"],
+                },
                 "fields": [
                     {"name": "x_name", "ttype": "char", "string": "Transfer", "required": True},
                     {
@@ -355,6 +415,75 @@ def retail_supermarket_pack() -> dict[str, Any]:
                     {"name": "x_qty_system", "ttype": "float", "string": "System qty"},
                     {"name": "x_qty_counted", "ttype": "float", "string": "Counted qty"},
                     {"name": "x_notes", "ttype": "text", "string": "Notes"},
+                ],
+            },
+            {
+                "model": "x_inventory_reason",
+                "description": "Reason for inventory adjustment",
+                "mode": "new",
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "string": "Reason", "required": True},
+                    {"name": "x_code", "ttype": "char", "string": "Code"},
+                    {
+                        "name": "x_type",
+                        "ttype": "selection",
+                        "string": "Type",
+                        "selection": reason_type,
+                        "required": True,
+                    },
+                    {"name": "x_active", "ttype": "boolean", "string": "Active", "default": True},
+                    {
+                        "name": "x_branch_id",
+                        "ttype": "many2one",
+                        "relation": "x_branch",
+                        "string": "Branch",
+                    },
+                ],
+            },
+            {
+                "model": "x_inventory_adjustment",
+                "description": "Stock adjustment record",
+                "mode": "new",
+                "is_workflow": True,
+                "state_field": {
+                    "field": "x_status",
+                    "states": ["draft", "approved", "rejected"],
+                    "transitions": [
+                        ["draft", "approved"],
+                        ["draft", "rejected"],
+                    ],
+                    "statusbar_visible": ["draft", "approved"],
+                },
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "string": "Adjustment", "required": True},
+                    {"name": "x_code", "ttype": "char", "string": "Reference"},
+                    {
+                        "name": "x_branch_id",
+                        "ttype": "many2one",
+                        "relation": "x_branch",
+                        "string": "Branch",
+                    },
+                    {
+                        "name": "x_product_id",
+                        "ttype": "many2one",
+                        "relation": "product.product",
+                        "string": "Product",
+                    },
+                    {"name": "x_date", "ttype": "date", "string": "Date"},
+                    {"name": "x_qty_adjusted", "ttype": "float", "string": "Quantity adjusted"},
+                    {
+                        "name": "x_reason_id",
+                        "ttype": "many2one",
+                        "relation": "x_inventory_reason",
+                        "string": "Reason",
+                    },
+                    {
+                        "name": "x_status",
+                        "ttype": "selection",
+                        "string": "Status",
+                        "selection": adjust_status,
+                        "required": True,
+                    },
                 ],
             },
         ],

@@ -341,6 +341,41 @@ def _selection_keys(selection: Any) -> set[str]:
     return set(re.findall(r"\('([^']+)'", selection))
 
 
+def _parse_field_domain_keys(domain: Any) -> set[str]:
+    """Parse Odoo Selection field `domain` allowlist (list of keys or literal string)."""
+    if domain is None:
+        return set()
+    if isinstance(domain, list):
+        return {str(v) for v in domain if v is not None and str(v)}
+    if isinstance(domain, str):
+        raw = domain.strip()
+        if not raw:
+            return set()
+        try:
+            import ast
+
+            val = ast.literal_eval(raw)
+            if isinstance(val, list):
+                return {str(v) for v in val if v is not None and str(v)}
+        except (ValueError, SyntaxError):
+            pass
+        return set(re.findall(r"'([^']+)'", raw))
+    return set()
+
+
+_BRANCH_MANUAL_ADDRESS_FIELDS = frozenset(
+    {
+        "x_address",
+        "x_street",
+        "x_city",
+        "x_state",
+        "x_zip",
+        "x_postal",
+        "x_postal_code",
+    }
+)
+
+
 def _field_implies_payment_capture(field: dict[str, Any]) -> bool:
     name = str(field.get("name") or "")
     if _PAYMENT_CAPTURE_FIELD_RE.match(name):
@@ -1599,6 +1634,17 @@ def consolidate_redundant_inventory_models(draft: dict[str, Any]) -> list[str]:
     draft["sequences"] = [
         s for s in (draft.get("sequences") or []) if isinstance(s, dict) and s.get("model") != drop
     ]
+    draft["access_rules"] = [
+        r
+        for r in (draft.get("access_rules") or [])
+        if isinstance(r, dict)
+        and str(r.get("model") or "").replace("model_", "", 1) != drop
+    ]
+    draft["automations"] = [
+        a
+        for a in (draft.get("automations") or [])
+        if isinstance(a, dict) and str(a.get("model") or "") != drop
+    ]
     branch = by_id.get("x_branch")
     if branch:
         branch["fields"] = [
@@ -1649,10 +1695,7 @@ def ensure_global_branch_fields(draft: dict[str, Any]) -> list[str]:
         if not isinstance(model, dict):
             continue
         mid = str(model.get("model") or "")
-        desc = str(model.get("description") or "").lower()
-        if mid != "x_branch" and "branch" not in mid and "branch" not in desc:
-            continue
-        if mid == "x_branch_transfer":
+        if mid != "x_branch":
             continue
         names = _field_names(model)
         if "x_timezone" not in names:
@@ -1665,6 +1708,40 @@ def ensure_global_branch_fields(draft: dict[str, Any]) -> list[str]:
                 }
             )
             notes.append(f"apply: added x_timezone on {mid} (global prompt)")
+        if "x_region" not in names:
+            model.setdefault("fields", []).append(
+                {
+                    "name": "x_region",
+                    "ttype": "char",
+                    "string": "Region",
+                    "help": "Territory or region for worldwide branch rollups",
+                    "source": "apply_readiness",
+                }
+            )
+            notes.append(f"apply: added x_region on {mid} (global prompt)")
+    return notes
+
+
+def consolidate_branch_master_data(draft: dict[str, Any]) -> list[str]:
+    """Drop duplicate country/address/logo fields on x_branch (partner link wins)."""
+    notes: list[str] = []
+    branch = _models_index(draft).get("x_branch")
+    if not branch:
+        return notes
+    names = _field_names(branch)
+    drop: set[str] = set()
+    if "x_country_id" in names and "x_country" in names:
+        drop.add("x_country")
+    if "x_address_id" in names:
+        drop |= _BRANCH_MANUAL_ADDRESS_FIELDS & names
+    elif "x_street" in names or "x_city" in names:
+        if "x_address" in names:
+            drop.add("x_address")
+    if "x_logo" in names and "x_logo_id" in names:
+        drop.add("x_logo_id")
+    if drop:
+        _drop_model_fields(draft, "x_branch", drop)
+        notes.append(f"apply: consolidated branch master data ({', '.join(sorted(drop))})")
     return notes
 
 
@@ -1851,7 +1928,7 @@ def fix_broken_shift_assignee_smart_buttons(draft: dict[str, Any]) -> list[str]:
 
 
 def fix_assignee_staff_relations(draft: dict[str, Any]) -> list[str]:
-    """Event/task assignee should point to hr.employee or res.users — not shift rows."""
+    """Event/task/schedule assignee should point to hr.employee or res.users — not shift rows."""
     notes: list[str] = []
     depends = set(draft.get("depends") or [])
     target = "hr.employee" if "hr" in depends else "res.users"
@@ -1860,17 +1937,27 @@ def fix_assignee_staff_relations(draft: dict[str, Any]) -> list[str]:
         if not isinstance(model, dict):
             continue
         mid = str(model.get("model") or "")
-        if mid not in {"x_event", "x_task"}:
+        if mid not in {"x_event", "x_task", "x_staff_schedule"}:
             continue
         for f in model.get("fields") or []:
-            if not isinstance(f, dict) or f.get("name") != "x_staff_id":
+            if not isinstance(f, dict):
                 continue
+            fname = str(f.get("name") or "")
             rel = str(f.get("relation") or "")
-            if rel not in _BAD_ASSIGNEE_RELATIONS:
+            if mid in {"x_event", "x_task"} and fname != "x_staff_id":
+                continue
+            if mid == "x_staff_schedule" and fname != "x_staff_ids":
+                continue
+            if mid in {"x_event", "x_task"} and rel not in _BAD_ASSIGNEE_RELATIONS:
+                continue
+            if mid == "x_staff_schedule" and rel == target:
+                continue
+            if mid == "x_staff_schedule" and rel not in ({"res.users", "x_staff_shift"} | _BAD_ASSIGNEE_RELATIONS):
                 continue
             f["relation"] = target
-            f["string"] = label
-            notes.append(f"apply: x_staff_id on {mid} → {target}")
+            f["ttype"] = "many2one" if fname == "x_staff_id" else "many2many"
+            f["string"] = label if fname == "x_staff_id" else "Staff"
+            notes.append(f"apply: {fname} on {mid} → {target}")
     notes.extend(fix_broken_shift_assignee_smart_buttons(draft))
     return notes
 
@@ -2345,17 +2432,17 @@ def wire_stock_document_links(draft: dict[str, Any]) -> list[str]:
 
 
 def prune_transfer_timezone_field(draft: dict[str, Any]) -> list[str]:
-    """Timezone belongs on branch master data, not inter-branch transfers."""
+    """Timezone belongs on branch master data, not transfers or line models."""
     notes: list[str] = []
     by_id = _models_index(draft)
-    transfer = by_id.get("x_branch_transfer")
-    if not transfer:
-        return notes
-    names = _field_names(transfer)
-    if "x_timezone" not in names:
-        return notes
-    _drop_model_fields(draft, "x_branch_transfer", {"x_timezone"})
-    notes.append("apply: removed x_timezone from x_branch_transfer")
+    for mid in list(by_id):
+        if mid == "x_branch":
+            continue
+        if mid.endswith("_line") or "transfer" in mid:
+            names = _field_names(by_id[mid])
+            if "x_timezone" in names:
+                _drop_model_fields(draft, mid, {"x_timezone"})
+                notes.append(f"apply: removed x_timezone from {mid}")
     return notes
 
 
@@ -2509,8 +2596,451 @@ def prune_filler_search_filters(draft: dict[str, Any]) -> list[str]:
 _FILLER_FILTER_NAMES = frozenset({"all", "has_name"})
 
 
+def _is_root_menu_parent(parent: str) -> bool:
+    if not parent:
+        return True
+    p = parent.lower()
+    if "menu_root" in p or p.startswith("root_") or p.endswith("_root"):
+        return True
+    return False
+
+
+def prune_orphan_access_rules(draft: dict[str, Any]) -> list[str]:
+    """Drop ACL rows for x_* models removed from the spec."""
+    notes: list[str] = []
+    models = {
+        str(m.get("model"))
+        for m in (draft.get("models") or [])
+        if isinstance(m, dict) and m.get("model")
+    }
+    kept: list[dict[str, Any]] = []
+    for rule in draft.get("access_rules") or []:
+        if not isinstance(rule, dict):
+            kept.append(rule)
+            continue
+        mid = str(rule.get("model") or "").replace("model_", "", 1)
+        if mid.startswith("x_") and mid not in models:
+            notes.append(f"apply: dropped orphan access rule for {mid}")
+            continue
+        kept.append(rule)
+    draft["access_rules"] = kept
+    return notes
+
+
+def ensure_global_branch_search_views(draft: dict[str, Any]) -> list[str]:
+    """Add country/region group_by on branch search for global/worldwide prompts."""
+    prompt = str(draft.get("_user_prompt") or "")
+    if not re.search(
+        r"\b(around\s+the\s+world|international|global|worldwide|multi[\s-]?country|"
+        r"across\s+countries|multiple\s+countries|multiple\s+branches)\b",
+        prompt,
+        re.I,
+    ):
+        return []
+    branch = _models_index(draft).get("x_branch")
+    if not branch:
+        return []
+    branch_names = _field_names(branch)
+    notes: list[str] = []
+    for v in draft.get("views") or []:
+        if not isinstance(v, dict):
+            continue
+        if str(v.get("model") or "") != "x_branch" or str(v.get("type") or "") != "search":
+            continue
+        arch = str(v.get("arch") or "")
+        open_tag = re.match(r"(<search[^>]*>)", arch, flags=re.I)
+        if not open_tag:
+            continue
+        prefix = open_tag.group(1)
+        tail = arch[len(prefix) :]
+        changed = False
+        if "x_country_id" in branch_names and "group_x_country_id" not in arch:
+            tail = (
+                '<filter string="Country" name="group_x_country_id" '
+                'context="{\'group_by\': \'x_country_id\'}"/>'
+                + tail
+            )
+            notes.append("apply: added country group_by on x_branch search")
+            changed = True
+        if "x_region" in branch_names and "group_x_region" not in arch:
+            tail = (
+                '<filter string="Region" name="group_x_region" '
+                'context="{\'group_by\': \'x_region\'}"/>'
+                + tail
+            )
+            notes.append("apply: added region group_by on x_branch search")
+            changed = True
+        if changed:
+            v["arch"] = prefix + tail
+    return notes
+
+
+_RETAIL_SURFACE_LABELS: dict[str, dict[str, str]] = {
+    "x_store_deposit": {
+        "description": "Customer deposits and holds",
+        "x_name": "Deposit",
+    },
+    "x_store_expense": {
+        "description": "Store expense",
+    },
+    "x_compliance_check": {
+        "description": "Food safety and supplier approval",
+    },
+}
+
+
+def _is_retail_supermarket_draft(draft: dict[str, Any]) -> bool:
+    if str(draft.get("domain_pack") or "") == "retail_supermarket":
+        return True
+    models = {
+        str(m.get("model"))
+        for m in (draft.get("models") or [])
+        if isinstance(m, dict) and m.get("model")
+    }
+    return "x_store_order" in models and "x_branch" in models
+
+
+def polish_retail_surface_labels(draft: dict[str, Any]) -> list[str]:
+    """Canonical user-visible labels for retail models corrupted by vocab chaining."""
+    if not _is_retail_supermarket_draft(draft):
+        return []
+    from html import escape
+
+    notes: list[str] = []
+    by_id = _models_index(draft)
+    label_by_model: dict[str, str] = {}
+    for mid, canon in _RETAIL_SURFACE_LABELS.items():
+        model = by_id.get(mid)
+        if not model:
+            continue
+        desc = canon["description"]
+        if str(model.get("description") or "") != desc:
+            model["description"] = desc
+            notes.append(f"apply: polished surface labels on {mid}")
+        label_by_model[mid] = desc
+        for field in model.get("fields") or []:
+            if not isinstance(field, dict):
+                continue
+            fname = str(field.get("name") or "")
+            if fname in canon and fname != "description":
+                field["string"] = canon[fname]
+
+    action_model: dict[str, str] = {}
+    for action in draft.get("actions") or []:
+        if not isinstance(action, dict):
+            continue
+        mid = str(action.get("model") or "")
+        tech = str(action.get("technical_name") or action.get("id") or "")
+        if mid in label_by_model:
+            action["name"] = label_by_model[mid]
+            if tech:
+                action_model[tech] = mid
+
+    for menu in draft.get("menus") or []:
+        if not isinstance(menu, dict):
+            continue
+        ref = str(menu.get("action_xml_id") or menu.get("action") or "")
+        tech = ref.split(".")[-1]
+        mid = action_model.get(tech, "")
+        if mid in label_by_model:
+            menu["name"] = label_by_model[mid]
+
+    for btn in draft.get("smart_buttons") or []:
+        if not isinstance(btn, dict):
+            continue
+        rel = str(btn.get("related_model") or "")
+        if rel in label_by_model:
+            btn["label"] = label_by_model[rel]
+            if btn.get("string"):
+                btn["string"] = label_by_model[rel]
+
+    for view in draft.get("views") or []:
+        if not isinstance(view, dict):
+            continue
+        mid = str(view.get("model") or "")
+        if mid not in label_by_model:
+            continue
+        label = escape(label_by_model[mid], quote=True)
+        arch = str(view.get("arch") or "")
+        new_arch = re.sub(
+            r'(<(?:form|list|kanban|search)\b[^>]*\bstring=")[^"]*(")',
+            rf"\1{label}\2",
+            arch,
+            count=1,
+            flags=re.I,
+        )
+        if new_arch != arch:
+            view["arch"] = new_arch
+
+    for seq in draft.get("sequences") or []:
+        if not isinstance(seq, dict):
+            continue
+        mid = str(seq.get("model") or "")
+        if mid in label_by_model:
+            seq["name"] = f"{label_by_model[mid]} Sequence"
+
+    for rule in draft.get("access_rules") or []:
+        if not isinstance(rule, dict):
+            continue
+        mid = str(rule.get("model") or "").replace("model_", "", 1)
+        if mid in label_by_model:
+            rule["name"] = f"{label_by_model[mid]} user"
+
+    return notes
+
+
+def align_workflow_selection_domains(draft: dict[str, Any]) -> list[str]:
+    """Selection keys are canonical — drop conflicting field.domain and sync state_field."""
+    from app.ai_selection import selection_keys as ordered_selection_keys
+    from app.ai_workflow import derive_default_transitions
+    from app.ai_workflow_semantic import classify_state
+
+    notes: list[str] = []
+    status_by_model: dict[str, set[str]] = {}
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        mid = str(model.get("model") or "")
+        status_field = next(
+            (
+                f
+                for f in (model.get("fields") or [])
+                if isinstance(f, dict) and str(f.get("name") or "") == "x_status"
+            ),
+            None,
+        )
+        if not status_field or str(status_field.get("ttype") or "") != "selection":
+            continue
+        keys = ordered_selection_keys(status_field.get("selection"))
+        if not keys:
+            continue
+        key_set = set(keys)
+        status_by_model[mid] = key_set
+        dom_keys = _parse_field_domain_keys(status_field.get("domain"))
+        if dom_keys and dom_keys != key_set:
+            status_field.pop("domain", None)
+            extra = ", ".join(sorted(dom_keys - key_set))
+            notes.append(
+                f"apply: cleared conflicting x_status domain on {mid}"
+                + (f" ({extra})" if extra else "")
+            )
+        sf = model.get("state_field")
+        if not isinstance(sf, dict):
+            continue
+        states = [str(s) for s in (sf.get("states") or [])]
+        if states and set(states) != key_set:
+            sf["states"] = keys
+            transitions = sf.get("transitions") or []
+            kept: list[list[str]] = []
+            for tr in transitions:
+                if isinstance(tr, (list, tuple)) and len(tr) >= 2:
+                    a, b = str(tr[0]), str(tr[1])
+                    if a in key_set and b in key_set and classify_state(a) == "active":
+                        kept.append([a, b])
+            if not kept:
+                kept = [
+                    [a, b]
+                    for a, b in derive_default_transitions(keys)
+                    if classify_state(a) == "active"
+                ]
+            sf["transitions"] = kept
+            visible = [s for s in (sf.get("statusbar_visible") or []) if s in key_set]
+            if not visible:
+                visible = [k for k in keys if classify_state(k) == "active"][:4] or keys[:3]
+            sf["statusbar_visible"] = visible
+            model["state_field"] = sf
+            notes.append(f"apply: synced state_field states on {mid}")
+
+    for v in draft.get("views") or []:
+        if not isinstance(v, dict) or str(v.get("type") or "") != "search":
+            continue
+        mid = str(v.get("model") or "")
+        keys = status_by_model.get(mid)
+        if not keys:
+            continue
+        arch = str(v.get("arch") or "")
+        if "x_status" not in arch:
+            continue
+        changed = False
+
+        def _fix_status_domain(match: re.Match[str]) -> str:
+            nonlocal changed
+            flt = match.group(0)
+            val_m = re.search(r"\(\s*'x_status'\s*,\s*'='\s*,\s*'([^']+)'\s*\)", flt)
+            if val_m and val_m.group(1) not in keys:
+                changed = True
+                return ""
+            in_m = re.search(r"\(\s*'x_status'\s*,\s*'in'\s*,\s*\[(.*?)\]\s*\)", flt)
+            if in_m:
+                vals = set(re.findall(r"'([^']+)'", in_m.group(1)))
+                invalid = vals - keys
+                if invalid:
+                    changed = True
+                    cleaned = sorted(vals & keys)
+                    if not cleaned:
+                        return ""
+                    replacement = ", ".join(f"'{v}'" for v in cleaned)
+                    return flt[: in_m.start(1)] + replacement + flt[in_m.end(1) :]
+            return flt
+
+        cleaned = re.sub(
+            r"<filter\b[^>]*(?:/>|>[^<]*</filter>)",
+            _fix_status_domain,
+            arch,
+            flags=re.I,
+        )
+        if changed and cleaned != arch:
+            v["arch"] = cleaned
+            notes.append(f"apply: aligned search status filters on {mid}")
+    return notes
+
+
+def wire_inventory_adjustment_reason(draft: dict[str, Any]) -> list[str]:
+    """Link adjustment records to the reason catalog via x_reason_id M2O."""
+    notes: list[str] = []
+    by_id = _models_index(draft)
+    if "x_inventory_reason" not in by_id:
+        return notes
+    adj = by_id.get("x_inventory_adjustment")
+    if not adj:
+        return notes
+    names = _field_names(adj)
+    if "x_reason_id" in names:
+        if "x_reason" in names:
+            _drop_model_fields(draft, "x_inventory_adjustment", {"x_reason"})
+            notes.append("apply: dropped x_reason text (keep x_reason_id)")
+        return notes
+    if "x_reason" in names:
+        for f in adj.get("fields") or []:
+            if not isinstance(f, dict) or f.get("name") != "x_reason":
+                continue
+            f["name"] = "x_reason_id"
+            f["ttype"] = "many2one"
+            f["relation"] = "x_inventory_reason"
+            f["string"] = "Reason"
+            for key in ("selection", "domain"):
+                f.pop(key, None)
+            break
+        _replace_in_arch(draft, 'name="x_reason"', 'name="x_reason_id"')
+        notes.append("apply: wired x_reason→x_reason_id on x_inventory_adjustment")
+        return notes
+    adj.setdefault("fields", []).append(
+        {
+            "name": "x_reason_id",
+            "ttype": "many2one",
+            "relation": "x_inventory_reason",
+            "string": "Reason",
+            "source": "apply_readiness",
+        }
+    )
+    notes.append("apply: added x_reason_id on x_inventory_adjustment")
+    return notes
+
+
+def ensure_inventory_reason_search(draft: dict[str, Any]) -> list[str]:
+    """Reason catalog search needs type + active filters (not branch group-by only)."""
+    from app.ai_selection import selection_keys as ordered_selection_keys
+
+    notes: list[str] = []
+    model = _models_index(draft).get("x_inventory_reason")
+    if not model:
+        return notes
+    names = _field_names(model)
+    if "x_active" not in names:
+        model.setdefault("fields", []).append(
+            {
+                "name": "x_active",
+                "ttype": "boolean",
+                "string": "Active",
+                "default": True,
+                "source": "apply_readiness",
+            }
+        )
+        names.add("x_active")
+        notes.append("apply: added x_active on x_inventory_reason")
+    type_field = next(
+        (
+            f
+            for f in (model.get("fields") or [])
+            if isinstance(f, dict) and f.get("name") == "x_type"
+        ),
+        None,
+    )
+    type_keys = ordered_selection_keys(type_field.get("selection")) if type_field else []
+    for v in draft.get("views") or []:
+        if not isinstance(v, dict):
+            continue
+        if str(v.get("model") or "") != "x_inventory_reason" or str(v.get("type") or "") != "search":
+            continue
+        arch = str(v.get("arch") or "")
+        open_tag = re.match(r"(<search[^>]*>)", arch, flags=re.I)
+        if not open_tag:
+            continue
+        prefix = open_tag.group(1)
+        tail = arch[len(prefix) :]
+        changed = False
+        if "x_active" in names and "filter_active" not in arch:
+            tail = (
+                '<filter string="Active" name="filter_active" '
+                'domain="[(\'x_active\',\'=\',True)]"/>'
+                + tail
+            )
+            changed = True
+        if "x_active" in names and "filter_inactive" not in arch:
+            tail = (
+                '<filter string="Inactive" name="filter_inactive" '
+                'domain="[(\'x_active\',\'=\',False)]"/>'
+                + tail
+            )
+            changed = True
+        for key in type_keys[:4]:
+            token = f"status_{key}"
+            if token in arch:
+                continue
+            label = key.replace("_", " ").title()
+            tail = (
+                f'<filter string="{label}" name="{token}" '
+                f'domain="[(\'x_type\',\'=\',\'{key}\')]"/>'
+                + tail
+            )
+            changed = True
+        if "x_type" in names and "group_x_type" not in arch:
+            tail = (
+                '<filter string="Type" name="group_x_type" '
+                'context="{\'group_by\': \'x_type\'}"/>'
+                + tail
+            )
+            changed = True
+        if changed:
+            v["arch"] = prefix + tail
+            notes.append("apply: enriched x_inventory_reason search filters")
+    return notes
+
+
+def reconcile_completeness_metadata(draft: dict[str, Any]) -> list[str]:
+    """Keep _completeness / _meta model counts aligned with models[] after passes."""
+    notes: list[str] = []
+    count = len([m for m in (draft.get("models") or []) if isinstance(m, dict)])
+    comp = draft.get("_completeness")
+    if isinstance(comp, list):
+        for row in comp:
+            if not isinstance(row, dict) or row.get("id") != "has_models":
+                continue
+            expected = f"{count} model(s)"
+            if str(row.get("detail") or "") != expected:
+                row["detail"] = expected
+                row["ok"] = count > 0
+                notes.append("apply: reconciled _completeness model count")
+    meta = draft.get("_meta")
+    if isinstance(meta, dict) and int(meta.get("model_count") or 0) != count:
+        meta["model_count"] = count
+        draft["_meta"] = meta
+        notes.append("apply: reconciled _meta.model_count")
+    return notes
+
+
 def remove_line_model_root_menus(draft: dict[str, Any]) -> list[str]:
-    """Line models are reachable via parent forms — drop root menus (GEN2-13 A6)."""
+    """Line models are reachable via parent forms — drop all leaf menus (GEN2-13 A6)."""
     notes: list[str] = []
     line_models = {m for m in _models_index(draft) if m.endswith("_line")}
     if not line_models:
@@ -2532,9 +3062,8 @@ def remove_line_model_root_menus(draft: dict[str, Any]) -> list[str]:
                 if isinstance(a, dict) and str(a.get("technical_name") or "") in action_ref:
                     model = str(a.get("model") or "")
                     break
-        parent = str(menu.get("parent_xml_id") or menu.get("parent") or "")
-        if model in line_models and (not parent or parent.endswith("_menu_root")):
-            notes.append(f"apply: removed root menu for line model {model}")
+        if model in line_models:
+            notes.append(f"apply: removed menu for line model {model}")
             continue
         kept.append(menu)
     draft["menus"] = kept
@@ -2870,8 +3399,10 @@ def run_apply_readiness_pass(draft: dict[str, Any]) -> list[str]:
     notes.extend(promote_retail_depth_seeds(draft))
     notes.extend(resolve_duplicate_address_fields(draft))
     notes.extend(polish_branch_address_fields(draft))
+    notes.extend(consolidate_branch_master_data(draft))
     notes.extend(fix_branch_transfer_incoming_o2m(draft))
     notes.extend(consolidate_redundant_inventory_models(draft))
+    notes.extend(prune_orphan_access_rules(draft))
     notes.extend(ensure_relation_module_depends(draft))
     notes.extend(fix_assignee_staff_relations(draft))
     notes.extend(fix_reuse_link_only_consistency(draft))
@@ -2885,7 +3416,9 @@ def run_apply_readiness_pass(draft: dict[str, Any]) -> list[str]:
     notes.extend(ensure_header_line_models(draft))
     notes.extend(dedupe_line_parent_m2o_fields(draft))
     notes.extend(fix_workflow_skip_terminal_transitions(draft))
+    notes.extend(align_workflow_selection_domains(draft))
     notes.extend(fix_inventory_adjustment_workflow(draft))
+    notes.extend(wire_inventory_adjustment_reason(draft))
     notes.extend(consolidate_inventory_count_fields(draft))
     notes.extend(wire_stock_document_links(draft))
     notes.extend(scrub_unused_domain_tags(draft))
@@ -2909,6 +3442,8 @@ def run_apply_readiness_pass(draft: dict[str, Any]) -> list[str]:
     notes.extend(ensure_search_filter_names(draft))
     notes.extend(dedupe_search_view_filters(draft))
     notes.extend(prune_filler_search_filters(draft))
+    notes.extend(ensure_global_branch_search_views(draft))
+    notes.extend(ensure_inventory_reason_search(draft))
     notes.extend(remove_line_model_root_menus(draft))
     notes.extend(prune_link_table_sequences(draft))
     notes.extend(scrub_unknown_arch_field_refs(draft))
@@ -2916,6 +3451,7 @@ def run_apply_readiness_pass(draft: dict[str, Any]) -> list[str]:
     notes.extend(_repair_corrupted_company_arch_refs(draft))
     notes.extend(ensure_operational_companion_models(draft))
     notes.extend(ensure_retail_comprehensive_floor(draft))
+    notes.extend(reconcile_completeness_metadata(draft))
     notes.extend(reconcile_depth_metadata(draft))
     return notes
 
@@ -2925,6 +3461,8 @@ __all__ = [
     "apply_order_header_total_computes",
     "apply_promotion_discount_line_computes",
     "clear_resolved_compute_suggestions",
+    "align_workflow_selection_domains",
+    "consolidate_branch_master_data",
     "consolidate_header_monetary_fields",
     "consolidate_inventory_count_fields",
     "consolidate_redundant_inventory_models",
@@ -2938,8 +3476,10 @@ __all__ = [
     "ensure_header_line_models",
     "ensure_model_access_stubs",
     "ensure_global_branch_fields",
+    "ensure_global_branch_search_views",
     "ensure_operational_companion_models",
     "ensure_transaction_document_links",
+    "ensure_inventory_reason_search",
     "ensure_line_currency_fields",
     "ensure_retail_comprehensive_floor",
     "ensure_relation_module_depends",
@@ -2955,9 +3495,12 @@ __all__ = [
     "normalize_company_fields_for_export",
     "normalize_line_monetary_fields",
     "polish_branch_address_fields",
+    "polish_retail_surface_labels",
     "prepare_spec_for_live_apply",
+    "prune_orphan_access_rules",
     "promote_retail_depth_seeds",
     "prune_transfer_country_field",
+    "reconcile_completeness_metadata",
     "reconcile_depth_metadata",
     "resolve_duplicate_address_fields",
     "run_apply_readiness_pass",
@@ -2968,6 +3511,7 @@ __all__ = [
     "scrub_payment_capture_fields",
     "scrub_unused_domain_tags",
     "sync_company_fields_with_record_rules",
+    "wire_inventory_adjustment_reason",
     "wire_reuse_stock_documents",
     "wire_stock_document_links",
 ]
