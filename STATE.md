@@ -3,9 +3,9 @@
 > Read at the start of every session. Updated at the end of every session.
 
 ## Last run
-- Date: 2026-08-10
-- **Shipped:** Semantic apply-readiness (Top 3 + related); retail_supermarket pack source hygiene; regression fixture `draft_supermarket_semantic_corrupted_2026-08-10.json`; wizard scorecard shows dimension breakdown + finding labels; `.env.example` / `settings.py` docs; transition sync skips terminal outgoing edges.
-- **Gate:** apply_readiness **52 passed**; wave15 pack + wave16 green.
+- Date: 2026-08-11
+- **Shipped:** 10/10 apply-readiness passes — statusbar transition chains (`approved→closed`), adjustment header dedupe, `REASON/` sequence prefix + help sync, branch form notebook + Operations menu, manager-only branch record rules, go-live review notes; scorecard allows statusbar terminal chains; stock.picking integrity fix.
+- **Gate:** apply_readiness **55 passed**; wave16 green.
 
 ## Prior (2026-08-08)
 - GEN2-13 + follow-up — live apply prep, reuse wiring, promo compute, wizard reuse UI.

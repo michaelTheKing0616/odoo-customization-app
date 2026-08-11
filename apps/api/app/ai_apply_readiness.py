@@ -1139,10 +1139,12 @@ def dedupe_search_view_filters(draft: dict[str, Any]) -> list[str]:
 
 
 _SEQUENCE_WORD_PREFIXES: tuple[tuple[str, str], ...] = (
+    ("inventory_reason", "REASON"),
     ("promotion", "PROMO"),
     ("transfer", "TRANSFER"),
     ("compliance", "CHECK"),
     ("inventory_count", "COUNT"),
+    ("inventory_adjustment", "ADJ"),
     ("adjustment", "ADJ"),
     ("order", "ORDER"),
     ("branch", "BR"),
@@ -1561,8 +1563,73 @@ def strip_branch_manager_scope_rules(draft: dict[str, Any]) -> list[str]:
 
 
 def ensure_branch_scoped_record_rules(draft: dict[str, Any]) -> list[str]:
-    """Deprecated — strips incorrect auto rules; opt-in only via suggestions."""
-    return strip_branch_manager_scope_rules(draft)
+    """Strip USER-group branch rules; add manager-only scope for retail worldwide."""
+    notes = list(strip_branch_manager_scope_rules(draft))
+    notes.extend(ensure_branch_manager_record_rules(draft))
+    return notes
+
+
+def ensure_branch_manager_record_rules(draft: dict[str, Any]) -> list[str]:
+    """Manager-group branch scoping — never on USER group (GEN2-13 A3)."""
+    if str(draft.get("domain_pack") or "") != "retail_supermarket":
+        return []
+    by_id = _models_index(draft)
+    if "x_branch" not in by_id:
+        return []
+    if "x_manager_id" not in _field_names(by_id["x_branch"]):
+        return []
+    manager_gid: str | None = None
+    for g in draft.get("groups") or []:
+        if isinstance(g, dict) and "manager" in str(g.get("id") or "").lower():
+            manager_gid = str(g.get("id") or "")
+            break
+    if not manager_gid:
+        return []
+    rules = list(draft.get("record_rules") or [])
+    existing = {str(r.get("technical_name") or "") for r in rules if isinstance(r, dict)}
+    notes: list[str] = []
+    added = 0
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        mid = str(model.get("model") or "")
+        if not mid.startswith("x_"):
+            continue
+        names = _field_names(model)
+        tech = f"rule_{mid}_branch_manager_scope"
+        if tech in existing:
+            continue
+        if mid == "x_branch":
+            dom = "['|', ('x_manager_id', '=', user.id), ('x_manager_id', '=', False)]"
+        elif "x_branch_id" in names:
+            dom = (
+                "['|', ('x_branch_id', '=', False), "
+                "('x_branch_id.x_manager_id', '=', user.id)]"
+            )
+        else:
+            continue
+        rules.append(
+            {
+                "name": f"Branch manager scope ({mid})",
+                "model": mid,
+                "model_xml_id": f"model_{mid}",
+                "domain_force": dom,
+                "technical_name": tech,
+                "group_xml_ids": [manager_gid],
+            }
+        )
+        added += 1
+    if added:
+        draft["record_rules"] = rules
+        notes.append(f"apply: added {added} manager-only branch scope rule(s)")
+        suggestions = draft.get("_branch_scope_suggestions")
+        if isinstance(suggestions, list):
+            draft["_branch_scope_suggestions"] = [
+                s
+                for s in suggestions
+                if "Optional branch scoping" not in str(s)
+            ]
+    return notes
 
 
 def ensure_retail_comprehensive_floor(draft: dict[str, Any]) -> list[str]:
@@ -2282,6 +2349,203 @@ def fix_inventory_adjustment_workflow(draft: dict[str, Any]) -> list[str]:
             "apply: inventory adjustment rejected transitions: "
             + ", ".join(f"{a}→{b}" for a, b in added)
         )
+    return notes
+
+
+def ensure_statusbar_transition_paths(draft: dict[str, Any]) -> list[str]:
+    """Every consecutive statusbar step must have a transition (e.g. approved→closed)."""
+    from app.ai_workflow_semantic import classify_state
+
+    notes: list[str] = []
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict) or not model.get("is_workflow"):
+            continue
+        mid = str(model.get("model") or "")
+        sf = model.get("state_field")
+        if not isinstance(sf, dict):
+            continue
+        keys = {str(s) for s in (sf.get("states") or [])}
+        visible = [str(s) for s in (sf.get("statusbar_visible") or []) if str(s) in keys]
+        if len(visible) < 2:
+            continue
+        transitions = list(sf.get("transitions") or [])
+        pairs: set[tuple[str, str]] = {
+            (str(tr[0]), str(tr[1]))
+            for tr in transitions
+            if isinstance(tr, (list, tuple)) and len(tr) >= 2
+        }
+        added: list[tuple[str, str]] = []
+        for i in range(len(visible) - 1):
+            a, b = visible[i], visible[i + 1]
+            if (a, b) in pairs:
+                continue
+            if classify_state(a) == "terminal_negative":
+                continue
+            transitions.append([a, b])
+            pairs.add((a, b))
+            added.append((a, b))
+        if not added:
+            continue
+        sf["transitions"] = transitions
+        model["state_field"] = sf
+        for v in draft.get("views") or []:
+            if not isinstance(v, dict) or str(v.get("model") or "") != mid:
+                continue
+            if str(v.get("type") or "") != "form":
+                continue
+            arch = str(v.get("arch") or "")
+            header_close = "</header>"
+            if header_close not in arch:
+                continue
+            btns: list[str] = []
+            for a, b in added:
+                if f'data-transition-to="{b}"' in arch:
+                    continue
+                label = b.replace("_", " ").title()
+                btns.append(
+                    f'<button string="{label}" type="object" class="oe_highlight" '
+                    f'invisible="x_status != \'{a}\'" data-transition-to="{b}"/>'
+                )
+            if btns:
+                v["arch"] = arch.replace(header_close, "".join(btns) + header_close, 1)
+        notes.append(
+            f"apply: statusbar transitions on {mid}: "
+            + ", ".join(f"{a}→{b}" for a, b in added)
+        )
+    return notes
+
+
+def consolidate_adjustment_header_fields(draft: dict[str, Any]) -> list[str]:
+    """Drop shadow header qty/product when lines or canonical qty field exist."""
+    notes: list[str] = []
+    adj = _models_index(draft).get("x_inventory_adjustment")
+    if not adj:
+        return notes
+    names = _field_names(adj)
+    drop: set[str] = set()
+    if "x_qty_adjusted" in names and "x_quantity" in names:
+        drop.add("x_quantity")
+    if "x_inventory_line_ids" in names and "x_product_id" in names:
+        drop.add("x_product_id")
+    if not drop:
+        return notes
+    _drop_model_fields(draft, "x_inventory_adjustment", drop)
+    notes.append(
+        "apply: consolidated x_inventory_adjustment header fields (drop "
+        + ", ".join(sorted(drop))
+        + ")"
+    )
+    return notes
+
+
+def sync_sequence_field_help(draft: dict[str, Any]) -> list[str]:
+    """Align x_code help text with ir.sequence prefix after normalization."""
+    notes: list[str] = []
+    seq_by = {
+        str(s.get("model") or ""): str(s.get("prefix") or "")
+        for s in (draft.get("sequences") or [])
+        if isinstance(s, dict) and s.get("model")
+    }
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        mid = str(model.get("model") or "")
+        prefix = seq_by.get(mid, "").rstrip("/")
+        if not prefix:
+            continue
+        expected = f"Auto-numbered via ir.sequence ({prefix}/00001)"
+        for f in model.get("fields") or []:
+            if not isinstance(f, dict) or f.get("name") != "x_code":
+                continue
+            if str(f.get("help") or "") == expected:
+                continue
+            f["help"] = expected
+            notes.append(f"apply: synced x_code help on {mid}")
+    return notes
+
+
+def fix_retail_branch_menu_placement(draft: dict[str, Any]) -> list[str]:
+    """Branches belong under Operations for retail_supermarket (not buried in Inventory)."""
+    if str(draft.get("domain_pack") or "") != "retail_supermarket":
+        return []
+    menus = draft.get("menus") or []
+    if not isinstance(menus, list):
+        return []
+    ops_xml: str | None = None
+    inv_xml: str | None = None
+    branch_menu: dict[str, Any] | None = None
+    for menu in menus:
+        if not isinstance(menu, dict):
+            continue
+        tech = str(menu.get("technical_name") or "")
+        xml_id = str(menu.get("xml_id") or "")
+        if tech == "menu_x_branch":
+            branch_menu = menu
+        if "operations" in tech and xml_id:
+            ops_xml = xml_id
+        if "inventory" in tech and xml_id and "sub_" in tech:
+            inv_xml = xml_id
+    if not branch_menu or not ops_xml or not inv_xml:
+        return []
+    if branch_menu.get("parent_xml_id") != inv_xml:
+        return []
+    branch_menu["parent_xml_id"] = ops_xml
+    branch_menu["sequence"] = 5
+    return ["apply: moved branch menu under Operations"]
+
+
+def reorganize_branch_form_relations(draft: dict[str, Any]) -> list[str]:
+    """Collapse flat O2M groups on x_branch into a single notebook."""
+    notes: list[str] = []
+    o2m_group = re.compile(
+        r'<group string="([^"]+)">\s*'
+        r'(<field name="x_[^"]+_ids"[^>]*>.*?</field>)\s*'
+        r"</group>",
+        flags=re.I | re.S,
+    )
+    for v in draft.get("views") or []:
+        if not isinstance(v, dict):
+            continue
+        if str(v.get("model") or "") != "x_branch" or str(v.get("type") or "") != "form":
+            continue
+        arch = str(v.get("arch") or "")
+        if "<notebook" in arch.lower():
+            continue
+        matches = list(o2m_group.finditer(arch))
+        if len(matches) < 3:
+            continue
+        pages = [
+            f'<page string="{m.group(1)}">{m.group(2)}</page>' for m in matches
+        ]
+        notebook = f"<notebook>{''.join(pages)}</notebook>"
+        new_arch = arch
+        for m in matches:
+            new_arch = new_arch.replace(m.group(0), "", 1)
+        if "</sheet>" not in new_arch:
+            continue
+        new_arch = new_arch.replace("</sheet>", f"{notebook}</sheet>", 1)
+        v["arch"] = new_arch
+        notes.append("apply: notebook layout for x_branch O2M relations")
+    return notes
+
+
+def ensure_retail_go_live_review_notes(draft: dict[str, Any]) -> list[str]:
+    """Honest ERP go-live reminders for link-only stock/account integration."""
+    if str(draft.get("domain_pack") or "") != "retail_supermarket":
+        return []
+    notes: list[str] = []
+    review = list(draft.get("review_notes") or [])
+    snippets = (
+        "Manager group record rules scope transactional rows to branches the user manages.",
+        "Promotion discount applies via exported Python compute on order lines — verify in sandbox.",
+        "Stock count variance is computed from system vs counted qty on count sessions.",
+    )
+    for text in snippets:
+        if text not in review:
+            review.append(text)
+            notes.append("apply: added go-live review note")
+    if notes:
+        draft["review_notes"] = review
     return notes
 
 
@@ -3020,17 +3284,36 @@ def ensure_inventory_reason_search(draft: dict[str, Any]) -> list[str]:
 def reconcile_completeness_metadata(draft: dict[str, Any]) -> list[str]:
     """Keep _completeness / _meta model counts aligned with models[] after passes."""
     notes: list[str] = []
-    count = len([m for m in (draft.get("models") or []) if isinstance(m, dict)])
+    models = [m for m in (draft.get("models") or []) if isinstance(m, dict)]
+    count = len(models)
+    workflow_ids = [
+        str(m.get("model") or "")
+        for m in models
+        if m.get("is_workflow") and str(m.get("model") or "")
+    ]
     comp = draft.get("_completeness")
     if isinstance(comp, list):
         for row in comp:
-            if not isinstance(row, dict) or row.get("id") != "has_models":
+            if not isinstance(row, dict):
                 continue
-            expected = f"{count} model(s)"
-            if str(row.get("detail") or "") != expected:
-                row["detail"] = expected
-                row["ok"] = count > 0
-                notes.append("apply: reconciled _completeness model count")
+            if row.get("id") == "has_models":
+                expected = f"{count} model(s)"
+                if str(row.get("detail") or "") != expected:
+                    row["detail"] = expected
+                    row["ok"] = count > 0
+                    notes.append("apply: reconciled _completeness model count")
+            if row.get("id") == "has_workflow":
+                expected = ",".join(workflow_ids)
+                if str(row.get("detail") or "") != expected:
+                    row["detail"] = expected
+                    row["ok"] = len(workflow_ids) >= 1
+                    notes.append("apply: reconciled _completeness workflow list")
+            if row.get("id") == "depth_workflows":
+                target = 3
+                detail = f"{len(workflow_ids)}/{target} workflow models"
+                if str(row.get("detail") or "") != detail:
+                    row["detail"] = detail
+                    row["ok"] = len(workflow_ids) >= target
     meta = draft.get("_meta")
     if isinstance(meta, dict) and int(meta.get("model_count") or 0) != count:
         meta["model_count"] = count
@@ -3128,7 +3411,7 @@ def finalize_draft_readiness_metadata(draft: dict[str, Any]) -> list[str]:
     score = float(scored.get("score_0_10") or 0)
     findings = scored.get("findings") or []
     crit = draft.get("_critique")
-    if isinstance(crit, dict) and score >= 9.9 and not findings:
+    if isinstance(crit, dict) and score >= 9.95 and not findings:
         crit["ready"] = True
         stale = "Critique flagged not ready but gave no details"
         crit_notes = [n for n in (crit.get("notes") or []) if stale not in str(n)]
@@ -3410,6 +3693,7 @@ def run_apply_readiness_pass(draft: dict[str, Any]) -> list[str]:
     notes.extend(normalize_company_fields_for_live(draft))
     notes.extend(sync_company_fields_with_record_rules(draft))
     notes.extend(strip_branch_manager_scope_rules(draft))
+    notes.extend(ensure_branch_manager_record_rules(draft))
     notes.extend(ensure_global_branch_fields(draft))
     notes.extend(prune_transfer_timezone_field(draft))
     notes.extend(prune_transfer_country_field(draft))
@@ -3417,8 +3701,10 @@ def run_apply_readiness_pass(draft: dict[str, Any]) -> list[str]:
     notes.extend(dedupe_line_parent_m2o_fields(draft))
     notes.extend(fix_workflow_skip_terminal_transitions(draft))
     notes.extend(align_workflow_selection_domains(draft))
+    notes.extend(ensure_statusbar_transition_paths(draft))
     notes.extend(fix_inventory_adjustment_workflow(draft))
     notes.extend(wire_inventory_adjustment_reason(draft))
+    notes.extend(consolidate_adjustment_header_fields(draft))
     notes.extend(consolidate_inventory_count_fields(draft))
     notes.extend(wire_stock_document_links(draft))
     notes.extend(scrub_unused_domain_tags(draft))
@@ -3444,6 +3730,7 @@ def run_apply_readiness_pass(draft: dict[str, Any]) -> list[str]:
     notes.extend(prune_filler_search_filters(draft))
     notes.extend(ensure_global_branch_search_views(draft))
     notes.extend(ensure_inventory_reason_search(draft))
+    notes.extend(fix_retail_branch_menu_placement(draft))
     notes.extend(remove_line_model_root_menus(draft))
     notes.extend(prune_link_table_sequences(draft))
     notes.extend(scrub_unknown_arch_field_refs(draft))
@@ -3451,6 +3738,7 @@ def run_apply_readiness_pass(draft: dict[str, Any]) -> list[str]:
     notes.extend(_repair_corrupted_company_arch_refs(draft))
     notes.extend(ensure_operational_companion_models(draft))
     notes.extend(ensure_retail_comprehensive_floor(draft))
+    notes.extend(ensure_retail_go_live_review_notes(draft))
     notes.extend(reconcile_completeness_metadata(draft))
     notes.extend(reconcile_depth_metadata(draft))
     return notes
@@ -3462,6 +3750,7 @@ __all__ = [
     "apply_promotion_discount_line_computes",
     "clear_resolved_compute_suggestions",
     "align_workflow_selection_domains",
+    "consolidate_adjustment_header_fields",
     "consolidate_branch_master_data",
     "consolidate_header_monetary_fields",
     "consolidate_inventory_count_fields",
@@ -3472,6 +3761,7 @@ __all__ = [
     "dedupe_enrich_warnings",
     "demote_parallel_billing_models",
     "ensure_campaign_order_links",
+    "ensure_branch_manager_record_rules",
     "ensure_branch_scoped_record_rules",
     "ensure_header_line_models",
     "ensure_model_access_stubs",
@@ -3482,6 +3772,8 @@ __all__ = [
     "ensure_inventory_reason_search",
     "ensure_line_currency_fields",
     "ensure_retail_comprehensive_floor",
+    "ensure_retail_go_live_review_notes",
+    "ensure_statusbar_transition_paths",
     "ensure_relation_module_depends",
     "ensure_unique_sequence_prefixes",
     "filter_stale_enrich_warnings",
@@ -3490,6 +3782,7 @@ __all__ = [
     "fix_branch_transfer_incoming_o2m",
     "fix_broken_shift_assignee_smart_buttons",
     "fix_inventory_adjustment_workflow",
+    "fix_retail_branch_menu_placement",
     "fix_reuse_link_only_consistency",
     "fix_workflow_skip_terminal_transitions",
     "normalize_company_fields_for_export",
@@ -3502,6 +3795,7 @@ __all__ = [
     "prune_transfer_country_field",
     "reconcile_completeness_metadata",
     "reconcile_depth_metadata",
+    "reorganize_branch_form_relations",
     "resolve_duplicate_address_fields",
     "run_apply_readiness_pass",
     "sanitize_automation_names",
@@ -3511,6 +3805,7 @@ __all__ = [
     "scrub_payment_capture_fields",
     "scrub_unused_domain_tags",
     "sync_company_fields_with_record_rules",
+    "sync_sequence_field_help",
     "wire_inventory_adjustment_reason",
     "wire_reuse_stock_documents",
     "wire_stock_document_links",

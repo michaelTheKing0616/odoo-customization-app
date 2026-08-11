@@ -301,9 +301,13 @@ def run_production_shape_pass(draft: dict[str, Any]) -> list[str]:
     notes.extend(ensure_search_views(draft))
     notes.extend(ensure_sequence_specs(draft))
     notes.extend(ensure_unique_sequence_prefixes(draft))
+    from app.ai_apply_readiness import reorganize_branch_form_relations, sync_sequence_field_help
+
+    notes.extend(sync_sequence_field_help(draft))
     notes.extend(apply_money_and_tracking_defaults(draft))
     notes.extend(ensure_multi_company_record_rules(draft))
     notes.extend(polish_arch_richness(draft))
+    notes.extend(reorganize_branch_form_relations(draft))
     from app.ai_llm_status import finalize_llm_status
 
     status = draft.get("_llm_status") if isinstance(draft.get("_llm_status"), dict) else {}

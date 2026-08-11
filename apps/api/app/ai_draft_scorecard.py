@@ -144,16 +144,25 @@ def _score_semantics(draft: dict[str, Any]) -> tuple[float, list[dict[str, Any]]
         if keys and not transitions:
             transitions, _vis = synthesize_semantic_transitions(keys)
         terminal = {k for k in keys if classify_state(k) != "active"}
-        for a, _b in transitions:
-            if str(a) in terminal:
-                score -= 1.5
-                findings.append(
-                    {
-                        "dimension": "semantics",
-                        "element": f"{mid}.{a}",
-                        "detail": "terminal state has outgoing edge",
-                    }
-                )
+        visible = [str(s) for s in (sf.get("statusbar_visible") or []) if str(s) in set(keys)]
+        for a, b in transitions:
+            if str(a) not in terminal:
+                continue
+            if (
+                visible
+                and str(a) in visible
+                and str(b) in visible
+                and visible.index(str(b)) == visible.index(str(a)) + 1
+            ):
+                continue
+            score -= 1.5
+            findings.append(
+                {
+                    "dimension": "semantics",
+                    "element": f"{mid}.{a}",
+                    "detail": "terminal state has outgoing edge",
+                }
+            )
         if "x_status" in {str(f.get("name")) for f in (model.get("fields") or [])} and not sf:
             score -= 2.0
             findings.append(
@@ -315,6 +324,15 @@ def _score_hygiene(draft: dict[str, Any], *, user_prompt: str = "") -> tuple[flo
                     "dimension": "hygiene",
                     "element": mid,
                     "detail": "duplicate address char + address_id",
+                }
+            )
+        if "x_qty_adjusted" in names and "x_quantity" in names:
+            score -= 0.8
+            findings.append(
+                {
+                    "dimension": "hygiene",
+                    "element": mid,
+                    "detail": "duplicate quantity fields (x_qty_adjusted + x_quantity)",
                 }
             )
         for f in model.get("fields") or []:

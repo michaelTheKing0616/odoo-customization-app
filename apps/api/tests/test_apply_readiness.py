@@ -1624,3 +1624,128 @@ def test_fixture_semantic_corrupted_passes_production_shape() -> None:
     assert str(draft.get("_completeness", [{}])[0].get("detail", "")).startswith(
         f"{len(draft['models'])} model"
     )
+
+
+def test_ensure_statusbar_transition_paths_adds_approved_to_closed() -> None:
+    from app.ai_apply_readiness import ensure_statusbar_transition_paths
+
+    draft = {
+        "models": [
+            {
+                "model": "x_inventory_adjustment",
+                "is_workflow": True,
+                "state_field": {
+                    "states": ["draft", "on_hold", "approved", "closed"],
+                    "statusbar_visible": ["draft", "on_hold", "approved", "closed"],
+                    "transitions": [["draft", "on_hold"], ["on_hold", "approved"]],
+                },
+            }
+        ],
+        "views": [
+            {
+                "model": "x_inventory_adjustment",
+                "type": "form",
+                "arch": (
+                    '<form><header><field name="x_status" widget="statusbar"/>'
+                    "</header><sheet/></form>"
+                ),
+            }
+        ],
+    }
+    notes = ensure_statusbar_transition_paths(draft)
+    assert notes
+    sf = draft["models"][0]["state_field"]
+    assert ["approved", "closed"] in sf["transitions"]
+    form = draft["views"][0]["arch"]
+    assert 'data-transition-to="closed"' in form
+
+
+def test_sync_sequence_field_help_and_reason_prefix() -> None:
+    from app.ai_apply_readiness import ensure_unique_sequence_prefixes, sync_sequence_field_help
+
+    draft = {
+        "models": [
+            {
+                "model": "x_inventory_reason",
+                "fields": [
+                    {
+                        "name": "x_code",
+                        "ttype": "char",
+                        "help": "Auto-numbered via ir.sequence (INVENTOR/00001)",
+                    }
+                ],
+            }
+        ],
+        "sequences": [
+            {"model": "x_inventory_reason", "field": "x_code", "prefix": "INVENTORY/"}
+        ],
+    }
+    ensure_unique_sequence_prefixes(draft)
+    sync_sequence_field_help(draft)
+    assert draft["sequences"][0]["prefix"] == "REASON/"
+    code = draft["models"][0]["fields"][0]
+    assert code["help"] == "Auto-numbered via ir.sequence (REASON/00001)"
+
+
+def test_consolidate_adjustment_header_fields_drops_shadow_qty() -> None:
+    from app.ai_apply_readiness import consolidate_adjustment_header_fields
+
+    draft = {
+        "models": [
+            {
+                "model": "x_inventory_adjustment",
+                "fields": [
+                    {"name": "x_qty_adjusted", "ttype": "float"},
+                    {"name": "x_quantity", "ttype": "float"},
+                    {"name": "x_product_id", "ttype": "many2one", "relation": "product.product"},
+                    {"name": "x_inventory_line_ids", "ttype": "one2many", "relation": "x_inventory_line"},
+                ],
+            }
+        ],
+        "views": [
+            {
+                "model": "x_inventory_adjustment",
+                "type": "form",
+                "arch": '<form><field name="x_quantity"/><field name="x_product_id"/></form>',
+            }
+        ],
+    }
+    notes = consolidate_adjustment_header_fields(draft)
+    assert notes
+    names = {f["name"] for f in draft["models"][0]["fields"]}
+    assert "x_quantity" not in names
+    assert "x_product_id" not in names
+    assert 'name="x_quantity"' not in draft["views"][0]["arch"]
+
+
+def test_ensure_branch_manager_record_rules_manager_group_only() -> None:
+    from app.ai_apply_readiness import ensure_branch_manager_record_rules
+
+    draft = {
+        "domain_pack": "retail_supermarket",
+        "groups": [
+            {"id": "group_super_market_user", "name": "User"},
+            {"id": "group_super_market_manager", "name": "Manager"},
+        ],
+        "models": [
+            {
+                "model": "x_branch",
+                "fields": [
+                    {"name": "x_manager_id", "ttype": "many2one", "relation": "res.users"},
+                ],
+            },
+            {
+                "model": "x_store_order",
+                "fields": [
+                    {"name": "x_branch_id", "ttype": "many2one", "relation": "x_branch"},
+                ],
+            },
+        ],
+        "record_rules": [],
+    }
+    notes = ensure_branch_manager_record_rules(draft)
+    assert notes
+    rules = draft["record_rules"]
+    assert len(rules) == 2
+    assert all("group_super_market_manager" in (r.get("group_xml_ids") or []) for r in rules)
+    assert all("user.id" in str(r.get("domain_force") or "") for r in rules)
