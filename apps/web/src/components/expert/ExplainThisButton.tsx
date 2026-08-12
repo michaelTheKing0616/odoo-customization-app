@@ -28,6 +28,7 @@ export function ExplainThisButton({
   const shell = useShellOptional();
   const [busy, setBusy] = useState(false);
   if (!shell) return null;
+  const { setUiContext, openExpert } = shell;
 
   async function handleClick() {
     if (connectionId && model) {
@@ -39,8 +40,8 @@ export function ExplainThisButton({
           draft,
           connection_id: connectionId,
         });
-        shell.setUiContext({ model, field, draftSummary: model });
-        shell.openExpert({
+        setUiContext({ model, field, draftSummary: model });
+        openExpert({
           question: field ? `Explain ${model}.${field}` : `Explain ${model}`,
           seedQuestion: question,
           seedResponse: res,
@@ -53,7 +54,7 @@ export function ExplainThisButton({
         setBusy(false);
       }
     }
-    shell.openExpert({ question, autoSubmit: true });
+    openExpert({ question, autoSubmit: true });
   }
 
   return (

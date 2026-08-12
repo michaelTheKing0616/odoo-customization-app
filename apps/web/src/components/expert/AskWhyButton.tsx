@@ -25,9 +25,10 @@ export function AskWhyButton({
   const shell = useShellOptional();
   const [busy, setBusy] = useState(false);
   if (!shell) return null;
+  const { setUiContext, openExpert } = shell;
 
   async function handleClick() {
-    shell.setUiContext({
+    setUiContext({
       model: subject.includes(".") ? subject.split(".")[0] : subject,
       field: subject.includes(".") ? subject.split(".").slice(1).join(".") : undefined,
       draftSummary: context ?? subject,
@@ -45,7 +46,7 @@ export function AskWhyButton({
           user_prompt: userPrompt,
           connection_id: connectionId,
         });
-        shell.openExpert({
+        openExpert({
           question: field
             ? `Explain field ${field} on ${model}`
             : `Explain model ${model}`,
@@ -66,7 +67,7 @@ export function AskWhyButton({
     const question = context
       ? `Why did the draft include ${subject}? Context: ${context}`
       : `Why did the draft include ${subject}?`;
-    shell.openExpert({ question, autoSubmit: true });
+    openExpert({ question, autoSubmit: true });
   }
 
   return (
