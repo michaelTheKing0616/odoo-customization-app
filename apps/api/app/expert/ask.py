@@ -30,6 +30,8 @@ from app.expert.model_lookup import try_rule_based_model_lookup
 from app.expert.view_guidance import try_rule_based_view_guidance
 from app.expert.view_mode_guidance import try_rule_based_view_mode_guidance
 from app.expert.retrieval import RetrievedChunk, passes_generation_threshold, retrieve_expert_chunks
+from app.expert.stack_inference import try_rule_based_stack_guidance
+from app.expert.vertical_catalog import match_verticals
 from app.llm_provider import LLMError, LLMProvider, get_llm_provider
 from app.protected_enforcement import manifest_for_connection
 from app.protected_modules import guardrail_prompt, protected_models_for, safe_alternative_for
@@ -75,7 +77,10 @@ EXPERT_PERSONA = (
     "You are the Odoo Expert — a careful advisor for Odoo Community customization via "
     "public ORM/RPC only. Tone: plain, confident, honest (COPY_GUIDE). Cite sources. "
     "When vertical playbook excerpts match the question, prefer their stock-module lists "
-    "and custom-model guidance over generic answers."
+    "and custom-model guidance over generic answers. Never mix modules or models from "
+    "unrelated vertical playbooks in one answer. If SOURCE EXCERPTS do not cover the "
+    "user's industry, say so honestly — do not substitute a different vertical (real estate, "
+    "hotel, library, etc.)."
 )
 
 EXPERT_RESPONSE_SCHEMA: dict[str, Any] = {
@@ -366,16 +371,33 @@ def _build_user_prompt(
     sources_text, _ = _format_sources(chunks)
     grounding_text = _format_grounding(bundle)
     history = _cap_conversation(conversation)
+    vertical_focus = ""
+    vertical_hits = match_verticals(question, limit=1)
+    if vertical_hits:
+        entry = vertical_hits[0]
+        vertical_focus = (
+            f"VERTICAL FOCUS: Question matches **{entry.title}** (`{entry.id}`). "
+            f"Answer using ONLY excerpts from \"Vertical playbook: {entry.title}\" "
+            f"plus INSTANCE GROUNDING — do not cite law firm, hotel, school, or other "
+            f"vertical playbooks."
+        )
+
     parts = [
         "QUESTION:",
         question.strip(),
         "",
-        "INSTANCE GROUNDING:",
-        grounding_text or "(none)",
-        "",
-        "SOURCE EXCERPTS (cite as [n]):",
-        sources_text or "(none — decline if you cannot answer)",
     ]
+    if vertical_focus:
+        parts.extend([vertical_focus, ""])
+    parts.extend(
+        [
+            "INSTANCE GROUNDING:",
+            grounding_text or "(none)",
+            "",
+            "SOURCE EXCERPTS (cite as [n]):",
+            sources_text or "(none — decline if you cannot answer)",
+        ]
+    )
     if history:
         parts.extend(
             [
@@ -644,8 +666,32 @@ def ask_expert(
 
     suggested = list(bundle.suggested_tools or [])
 
+    def _stack_guidance_result(payload: dict[str, Any]) -> ExpertAskResult:
+        stack = payload.get("inferred_stack")
+        citations: list[ExpertCitation] = []
+        if stack is not None:
+            citations = [
+                ExpertCitation(
+                    source="project",
+                    version="all",
+                    breadcrumb=f"Inferred stack: {stack.domain_label}",
+                    chunk_id="stack-inference",
+                    source_index=1,
+                )
+            ]
+        return ExpertAskResult(
+            answer_markdown=str(payload["answer_markdown"]),
+            citations=citations,
+            grounded=True,
+            declined=False,
+            suggested_tools=suggested,
+            caution_flags=list(payload.get("caution_flags") or []),
+            retrieval_version=version,
+        )
+
     def _rule_based_fallback() -> ExpertAskResult | None:
         for resolver in (
+            try_rule_based_stack_guidance,
             try_rule_based_view_guidance,
             try_rule_based_view_mode_guidance,
             try_rule_based_l10n_guidance,
@@ -657,9 +703,14 @@ def ask_expert(
             try_rule_based_field_type_guidance,
             try_rule_based_protected_guidance,
         ):
-            payload = resolver(q, bundle, connection_id=connection_id, client=client)
+            if resolver is try_rule_based_stack_guidance:
+                payload = resolver(q)
+            else:
+                payload = resolver(q, bundle, connection_id=connection_id, client=client)
             if not payload:
                 continue
+            if resolver is try_rule_based_stack_guidance:
+                return _stack_guidance_result(payload)
             diag_flags = payload.get("caution_flags") or []
             if "rule_based_diagnosis" in diag_flags:
                 answer = str(payload["answer_markdown"])
@@ -701,6 +752,7 @@ def ask_expert(
     # High-confidence rule paths must win over weak/unreliable LLM output.
     _PRIORITY_RULE_FLAGS = frozenset(
         {
+            "rule_based_stack_guidance",
             "rule_based_view_guidance",
             "rule_based_view_mode_guidance",
             "rule_based_l10n_guidance",

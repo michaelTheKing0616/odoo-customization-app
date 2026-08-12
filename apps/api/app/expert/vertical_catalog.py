@@ -308,6 +308,50 @@ VERTICAL_CATALOG: tuple[VerticalEntry, ...] = (
         keywords=("logistics", "warehouse", "delivery", "shipping", "inventory", "carrier"),
         summary="Inventory + Delivery carriers + Purchase/Sales; Fleet optional for own trucks.",
     ),
+    VerticalEntry(
+        id="oil_gas_operations",
+        title="Oil & Gas / Energy Operations",
+        pattern=_pat(
+            r"\b(oil[\s&-]?and[\s-]?gas|oil[\s&-]?gas|petroleum|upstream|midstream|"
+            r"downstream|energy\s+operations|refinery|pipeline\s+operations|"
+            r"well\s+site|oilfield|gas\s+plant|hse\s+incident|cmms)\b"
+        ),
+        domain_pack_id=None,
+        stock_modules=(
+            "base",
+            "contacts",
+            "mail",
+            "hr",
+            "maintenance",
+            "stock",
+            "purchase",
+            "project",
+            "account",
+            "fleet",
+        ),
+        keywords=(
+            "oil",
+            "gas",
+            "petroleum",
+            "upstream",
+            "midstream",
+            "maintenance",
+            "CMMS",
+            "asset",
+            "facility",
+            "well",
+            "pipeline",
+            "HSE",
+            "MRO",
+            "turnaround",
+            "x_og_asset",
+            "maintenance.equipment",
+        ),
+        summary=(
+            "Internal ops stack: maintenance + stock/purchase (MRO) + project (jobs/TA) + HR/fleet; "
+            "custom x_og_* for facilities/assets/work orders — not real estate or website/CRM defaults."
+        ),
+    ),
 )
 
 

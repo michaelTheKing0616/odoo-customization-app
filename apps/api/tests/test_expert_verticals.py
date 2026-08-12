@@ -19,7 +19,13 @@ from app.db import SessionLocal, init_db  # noqa: E402
 from app.db_models import ExpertChunk  # noqa: E402
 from app.expert.chunker import DocChunk  # noqa: E402
 from app.expert.ingest import ingest_vertical_docs  # noqa: E402
-from app.expert.retrieval import retrieve_expert_chunks  # noqa: E402
+from app.expert.retrieval import (  # noqa: E402
+    RetrievedChunk,
+    filter_generic_vertical_boilerplate,
+    pin_vertical_playbook_chunks,
+    postprocess_retrieval_chunks,
+    retrieve_expert_chunks,
+)
 from app.expert.store import upsert_chunks  # noqa: E402
 from app.expert.vertical_catalog import expand_expert_query, match_verticals  # noqa: E402
 from app.expert.vertical_playbooks import (  # noqa: E402
@@ -67,6 +73,87 @@ def test_library_playbook_file_exists() -> None:
     assert hits and hits[0].id == "library_management"
     md = render_catalog_playbook(hits[0])
     assert "library_management" in md
+
+
+def test_pin_vertical_playbook_chunks_drops_other_verticals() -> None:
+
+    chunks = [
+        RetrievedChunk(
+            chunk_id="lib",
+            source="vertical",
+            version="all",
+            breadcrumb="Vertical playbook: Library Management > Models",
+            text="x_lib_book res.partner wizard",
+            score=1.0,
+            method="embedding",
+        ),
+        RetrievedChunk(
+            chunk_id="hotel",
+            source="vertical",
+            version="all",
+            breadcrumb="Vertical playbook: Hotel / Lodging > Rollout phases",
+            text="hotel room folio",
+            score=0.9,
+            method="embedding",
+        ),
+        RetrievedChunk(
+            chunk_id="docs",
+            source="odoo_docs",
+            version="19.0",
+            breadcrumb="Views / xpath",
+            text="xpath inherit",
+            score=0.5,
+            method="embedding",
+        ),
+    ]
+    q = "What do I need to setup a library management Odoo DB?"
+    pinned = pin_vertical_playbook_chunks(q, chunks)
+    assert pinned[0].chunk_id == "lib"
+    assert all("Hotel" not in c.breadcrumb for c in pinned)
+    assert any(c.chunk_id == "docs" for c in pinned)
+
+
+def test_vertical_catalog_matches_oil_gas_question() -> None:
+    q = "What do I need to setup an oil and gas company's internal management Odoo DB?"
+    hits = match_verticals(q)
+    assert hits
+    assert hits[0].id == "oil_gas_operations"
+
+
+def test_filter_generic_vertical_boilerplate() -> None:
+    chunks = [
+        RetrievedChunk(
+            chunk_id="re_rollout",
+            source="vertical",
+            version="all",
+            breadcrumb="Vertical playbook: Real Estate / Property Rental > Rollout phases",
+            text="Phase 1 Foundation x_real_estate_property",
+            score=0.95,
+            method="embedding",
+        ),
+        RetrievedChunk(
+            chunk_id="general",
+            source="vertical",
+            version="all",
+            breadcrumb="Vertical playbook: General Odoo Community stack > Core apps",
+            text="base contacts mail maintenance stock",
+            score=0.7,
+            method="embedding",
+        ),
+    ]
+    q = "What do I need to setup an oil and gas company's internal management Odoo DB?"
+    cleaned = filter_generic_vertical_boilerplate(chunks)
+    assert all("Rollout phases" not in c.breadcrumb for c in cleaned)
+    assert any(c.chunk_id == "general" for c in cleaned)
+
+
+def test_postprocess_oil_gas_retrieval_excludes_real_estate_rollout(db_session) -> None:
+    q = "What do I need to setup an oil and gas company's internal management Odoo DB?"
+    hits = retrieve_expert_chunks(db_session, q, version="19.0", top_k=8, min_score=0.01)
+    assert hits
+    assert any("Oil & Gas" in h.breadcrumb for h in hits)
+    assert all("Real Estate" not in h.breadcrumb for h in hits)
+    assert all("Rollout phases" not in h.breadcrumb for h in hits)
 
 
 def test_vertical_playbook_files_exist() -> None:

@@ -75,3 +75,18 @@ def test_conversation_topic_drift_dropped() -> None:
 def test_conversation_same_topic_kept() -> None:
     history = [{"role": "user", "content": "How do I xpath inherit sale order form views?"}]
     assert conversation_is_on_topic(XPATH_Q, history)
+
+
+def test_setup_question_drops_conversation_history() -> None:
+    history = [
+        {"role": "user", "content": "library management Odoo DB setup"},
+        {"role": "assistant", "content": "Install CRM and website for library"},
+    ]
+    q = "What do I need to setup an oil and gas company's internal management Odoo DB?"
+    assert not conversation_is_on_topic(q, history)
+
+
+def test_answer_rejects_real_estate_for_oil_gas_question() -> None:
+    q = "What do I need to setup an oil and gas company's internal management Odoo DB?"
+    bad = "To implement a custom real estate management system, install CRM and website [1]."
+    assert not answer_matches_question(q, bad)

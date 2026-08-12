@@ -11,7 +11,7 @@ import { ExternalLink } from "@/components/ui/icons";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useShell } from "@/context/ShellContext";
 import { api, type ExpertAskResponse, type ExpertCitation } from "@/lib/api";
-import { buildExpertAskPayload, formatExpertDiagnosePrompt } from "@/lib/expert-prompt";
+import { buildExpertAskPayload, formatExpertDiagnosePrompt, isExpertSetupStackQuestion } from "@/lib/expert-prompt";
 import { formatExpertCautionFlag } from "@/lib/expert-caution-flags";
 import { cn } from "@/lib/cn";
 
@@ -230,7 +230,7 @@ export function ExpertPanel() {
       if (!q || busy) return;
       setBusy(true);
       setError(null);
-      const priorTurns = opts?.freshThread ? [] : turns;
+      const priorTurns = opts?.freshThread || isExpertSetupStackQuestion(q) ? [] : turns;
       const conversation = priorTurns.map((t) => ({
         role: t.role,
         content: t.role === "assistant" ? t.response?.answer_markdown ?? t.content : t.content,

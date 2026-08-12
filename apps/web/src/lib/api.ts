@@ -1075,7 +1075,8 @@ export type XPathPreviewOut = {
   issues: string[];
 };
 
-const CONNECTION_READ_TIMEOUT_MS = 8_000;
+const CONNECTION_READ_TIMEOUT_MS = 45_000;
+const ODOO_RPC_READ_TIMEOUT_MS = 45_000;
 
 type ApiRequestInit = RequestInit & { timeoutMs?: number };
 
@@ -1736,6 +1737,7 @@ export const api = {
   listModels: (id: string, customOnly = false, limit = 2000) =>
     request<ModelRow[]>(
       `/api/connections/${id}/models?custom_only=${customOnly}&limit=${limit}`,
+      { timeoutMs: ODOO_RPC_READ_TIMEOUT_MS },
     ),
   listReuseCatalog: (id: string, q?: string, limit = 2000) => {
     const params = new URLSearchParams({ limit: String(limit), stock_only: "true" });
@@ -4096,6 +4098,7 @@ export const api = {
     request<ExpertAskResponse>("/api/expert/ask", {
       method: "POST",
       body: JSON.stringify(body),
+      timeoutMs: 660_000,
     }),
   expertReviewDraft: (body: {
     draft: Record<string, unknown>;

@@ -9,6 +9,8 @@ export function formatExpertCautionFlag(flag: string): string | null {
   if (flag === "pcm_consistent_refusal") return "Protected module policy";
   if (flag === "instance_caveats") return "Instance-specific caveats";
   if (flag === "rule_based_diagnosis") return "Rule-based fix";
+  if (flag === "rule_based_stack_guidance") return "Curated module stack";
+  if (flag === "inferred_stack") return "Stack inferred from your question";
   if (flag.startsWith("rule_based_")) return "Guidance note";
   return null;
 }
