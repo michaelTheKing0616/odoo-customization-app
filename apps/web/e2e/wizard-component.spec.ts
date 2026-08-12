@@ -2,6 +2,21 @@ import { expect, test } from "@playwright/test";
 
 const CONN = "test-conn";
 
+const MOCK_CAPS = {
+  major: 19,
+  edition: "community",
+  server_version: "19.0",
+  supported: [
+    "object_create_crud_model",
+    "view_inject_inherit",
+    "view_inject_mutate",
+    "base_automation_safe_triggers",
+  ],
+  unsupported: [],
+  ga: true,
+  message: "ok",
+};
+
 test.describe("Wizard component flow", () => {
   test.beforeEach(async ({ page }) => {
     await page.route("**/api/connections/**", async (route) => {
@@ -19,6 +34,7 @@ test.describe("Wizard component flow", () => {
             server_version: "19.0",
             created_at: null,
             updated_at: null,
+            capabilities: MOCK_CAPS,
           }),
         });
         return;
@@ -115,11 +131,11 @@ test.describe("Wizard component flow", () => {
       "add inspection checklist to project tasks",
     );
 
-    const draftBtn = page.getByTestId("create-draft");
-    await expect(draftBtn).toBeDisabled();
-
     await page.getByTestId("review-connect-points").click();
     await expect(page.getByTestId("connect-points-review")).toBeVisible();
+
+    const draftBtn = page.getByTestId("create-draft");
+    await expect(draftBtn).toBeDisabled();
 
     await page.getByRole("button", { name: "Approve connect points" }).click();
     await expect(draftBtn).toBeEnabled();

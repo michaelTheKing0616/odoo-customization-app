@@ -60,31 +60,60 @@ function caps19() {
   };
 }
 
+function connectionPayload(caps: ReturnType<typeof caps16>) {
+  return {
+    id: CONN,
+    name: "E2E Automations",
+    url: "http://127.0.0.1:8069",
+    db_name: "odoo_dev",
+    username: "admin",
+    server_version: caps.server_version,
+    created_at: null,
+    updated_at: null,
+    capabilities: caps,
+  };
+}
+
 async function mockAutomationsApi(page: Page, caps: ReturnType<typeof caps16>) {
-  await page.route("**/api/**", async (route) => {
+  const conn = connectionPayload(caps);
+
+  await page.route(`**/api/connections/${CONN}`, async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(conn),
+    });
+  });
+
+  await page.route("**/api/connections/**", async (route) => {
     const url = route.request().url();
     const method = route.request().method();
-    if (method === "GET" && url.includes("/api/connections") && !url.includes(CONN)) {
+
+    if (method === "GET" && /\/api\/connections\/?(\?|$)/.test(url)) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify([
-          {
-            id: CONN,
-            name: "E2E Automations",
-            url: "http://127.0.0.1:8069",
-            db_name: "odoo_dev",
-            username: "admin",
-            server_version: caps.server_version,
-            created_at: null,
-            updated_at: null,
-            capabilities: caps,
-          },
-        ]),
+        body: JSON.stringify([conn]),
       });
       return;
     }
-    if (url.includes(`/api/connections/${CONN}/automations`) && method === "GET") {
+    if (method === "GET" && url.includes(`/api/connections/${CONN}/automations`)) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: url.includes("/gate")
+          ? JSON.stringify({
+              automations: { available: true, reason: null, choices: [] },
+            })
+          : "[]",
+      });
+      return;
+    }
+    if (method === "GET" && (url.includes("activity-types") || url.includes("snapshots"))) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -92,33 +121,23 @@ async function mockAutomationsApi(page: Page, caps: ReturnType<typeof caps16>) {
       });
       return;
     }
-    if (url.includes("activity-types") || url.includes("snapshots")) {
+    if (method === "GET" && url.includes("/migration-assist")) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: "[]",
-      });
-      return;
-    }
-    if (url.includes(`/api/connections/${CONN}`) && method === "GET") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          id: CONN,
-          name: "E2E Automations",
-          url: "http://127.0.0.1:8069",
-          db_name: "odoo_dev",
-          username: "admin",
-          server_version: caps.server_version,
-          created_at: null,
-          updated_at: null,
-          capabilities: caps,
-        }),
+        body: JSON.stringify({ eligible: false }),
       });
       return;
     }
     await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+  });
+
+  await page.route("**/api/expert/**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: "[]",
+    });
   });
 }
 
@@ -128,6 +147,7 @@ test.describe("Production Automations page (mocked API)", () => {
   }) => {
     await mockAutomationsApi(page, caps16());
     await page.goto(`/connections/${CONN}/automations`);
+    await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 60_000 });
     await expect(page.getByTestId("automations-form")).toBeVisible();
     const select = page.getByTestId("automation-action-kind");
     await expect(select.locator('option[value="update_field"]')).toHaveAttribute(
@@ -146,6 +166,7 @@ test.describe("Production Automations page (mocked API)", () => {
   test("Odoo 19 enables update_path actions on real route", async ({ page }) => {
     await mockAutomationsApi(page, caps19());
     await page.goto(`/connections/${CONN}/automations`);
+    await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 60_000 });
     await expect(page.getByTestId("automations-form")).toBeVisible();
     const select = page.getByTestId("automation-action-kind");
     await expect(select.locator('option[value="update_field"]')).not.toHaveAttribute(

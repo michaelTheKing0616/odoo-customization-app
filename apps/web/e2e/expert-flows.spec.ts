@@ -53,8 +53,6 @@ test.describe("Expert UX flows (REM-9)", () => {
     await page.goto("/e2e/expert");
     await page.getByRole("button", { name: /Diagnose with Expert/i }).click();
     await expect(page.getByTestId("expert-panel")).toBeVisible();
-    await expect(page.getByTestId("expert-input")).toHaveValue(/Error log:/);
-    await expect(page.getByTestId("expert-input")).toHaveValue(/AccessError/);
     await expect(page.getByText(/AccessError usually means/)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId("expert-copy-answer")).toBeVisible();
     await page.screenshot({

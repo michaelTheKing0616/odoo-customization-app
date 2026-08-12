@@ -11,6 +11,7 @@ type Props = {
 
 export function ExpertBubble({ className }: Props) {
   const { expertOpen, openExpert } = useShell();
+  const e2e = process.env.NEXT_PUBLIC_E2E === "1";
 
   if (expertOpen) return null;
 
@@ -38,11 +39,15 @@ export function ExpertBubble({ className }: Props) {
             "bg-gradient-to-br from-accent to-accent-hover text-on-accent shadow-lg",
             "ring-4 ring-accent/15 transition-transform duration-200 hover:scale-105 hover:shadow-xl",
             "focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-accent/40",
-            "motion-safe:animate-[expert-bubble-float_4s_ease-in-out_infinite]",
+            !e2e &&
+              "motion-safe:animate-[expert-bubble-float_4s_ease-in-out_infinite]",
           )}
         >
           <span
-            className="absolute inset-0 rounded-full bg-accent/30 opacity-60 blur-md motion-safe:animate-pulse"
+            className={cn(
+              "absolute inset-0 rounded-full bg-accent/30 opacity-60 blur-md",
+              !e2e && "motion-safe:animate-pulse",
+            )}
             aria-hidden
           />
           <IconExpert className="relative h-6 w-6 drop-shadow-sm transition-transform group-hover:scale-110" />
