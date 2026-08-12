@@ -130,11 +130,11 @@ export default function BuilderPage() {
   useSyncShellContext({ model: fieldForm.model });
 
   const refresh = useCallback(async () => {
-    const [conns, customs] = await Promise.all([
-      api.listConnections(),
+    const [conn, customs] = await Promise.all([
+      api.getConnection(connectionId),
       api.listModels(connectionId, true),
     ]);
-    setConnection(conns.find((c) => c.id === connectionId) ?? null);
+    setConnection(conn);
     setCustomModels(customs);
   }, [connectionId]);
 

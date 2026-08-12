@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+from app.expert.stack_inference import is_setup_stack_question
+
 _STOP = frozenset(
     {
         "the",
@@ -50,6 +52,25 @@ _ACCESS_LEAK_RE = re.compile(
     r"(?i)\bir\.model\.access\b.*\bir\.rule\b|accesserror while writing to x_matter"
 )
 
+# Vertical topic markers — reject answers dominated by the wrong industry.
+_WRONG_VERTICAL_ANSWER_MARKERS: tuple[tuple[re.Pattern[str], re.Pattern[str]], ...] = (
+    (
+        re.compile(r"(?i)\b(oil|gas|petroleum|upstream|midstream|downstream|oilfield)\b"),
+        re.compile(
+            r"(?i)\b(real estate|property rental|x_real_estate|tenant portal|"
+            r"hotel room|law firm matter|library member|x_lib_)\b"
+        ),
+    ),
+    (
+        re.compile(r"(?i)\b(library|isbn|book loan|x_lib_)\b"),
+        re.compile(r"(?i)\b(real estate|x_real_estate|hotel room|oil and gas|x_og_)\b"),
+    ),
+    (
+        re.compile(r"(?i)\b(real estate|property rental|tenant)\b"),
+        re.compile(r"(?i)\b(oil and gas|x_og_|library management|x_lib_)\b"),
+    ),
+)
+
 
 def _tokens(text: str) -> set[str]:
     return {
@@ -82,6 +103,24 @@ def answer_matches_question(question: str, answer: str) -> bool:
     ):
         return False
 
+    for q_pat, wrong_pat in _WRONG_VERTICAL_ANSWER_MARKERS:
+        if q_pat.search(q) and wrong_pat.search(a):
+            return False
+
+    # Setup answers must not invent a specific unrelated vertical playbook.
+    if re.search(
+        r"(?i)\b(what do i need|which modules|setup|set up|build an odoo)\b",
+        q,
+    ) and re.search(
+        r"(?i)\b(for a law firm|for a hotel|real estate management|library management system)\b",
+        a,
+    ):
+        if not re.search(
+            r"(?i)\b(law firm|hotel|real estate|library)\b",
+            q,
+        ):
+            return False
+
     # Require at least one “anchor” token from the question in the answer.
     anchors = {t for t in q_tok if len(t) >= 5 or "_" in t}
     if anchors and not (anchors & a_tok):
@@ -99,6 +138,8 @@ def conversation_is_on_topic(question: str, conversation: list[dict[str, str]] |
     """Drop stale thread turns when the new question is a different topic."""
     if not conversation:
         return True
+    if is_setup_stack_question(question or ""):
+        return False
     last_user = ""
     for turn in reversed(conversation):
         if str(turn.get("role") or "").strip().lower() == "user":

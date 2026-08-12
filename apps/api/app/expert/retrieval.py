@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.ai_rag import cosine_similarity, embed_texts, rag_enabled
 from app.db_models import ExpertChunk
-from app.expert.vertical_catalog import expand_expert_query
+from app.expert.vertical_catalog import VerticalEntry, expand_expert_query, match_verticals
 from app.settings import settings
 
 PROJECT_SOURCE_BOOST = 1.25
@@ -20,6 +20,15 @@ COMMUNITY_SOURCE_BOOST = 1.35
 ODOO_SOURCE_BOOST = 1.30
 _DEFAULT_MIN_SCORE = 0.35
 _DEFAULT_JACCARD_MIN_SCORE = 0.12
+
+# Auto-generated domain-pack playbooks share identical rollout/honesty sections — RAG poison
+# when the question does not match that vertical in the catalog.
+_GENERIC_VERTICAL_SECTION_RE = re.compile(
+    r"(?i)Vertical playbook: .+ > "
+    r"(Rollout phases|Community vs Enterprise honesty|How to ask Expert follow-ups|"
+    r"Custom modules vs stock apps)$"
+)
+_GENERAL_STACK_NEEDLE = "Vertical playbook: General Odoo Community stack"
 
 
 @dataclass
@@ -76,6 +85,68 @@ def _embedding_threshold(min_score: float | None) -> float:
 
 def _jaccard_threshold() -> float:
     return float(settings.ai_rag_min_score_jaccard or _DEFAULT_JACCARD_MIN_SCORE)
+
+
+def _vertical_playbook_needle(entry: VerticalEntry) -> str:
+    return f"Vertical playbook: {entry.title}"
+
+
+def pin_vertical_playbook_chunks(
+    query: str,
+    chunks: list[RetrievedChunk],
+) -> list[RetrievedChunk]:
+    """When a vertical catalog match is strong, drop other vertical playbooks from context."""
+    matches = match_verticals(query, limit=1)
+    if not matches:
+        return chunks
+    needle = _vertical_playbook_needle(matches[0])
+    primary = [c for c in chunks if needle in c.breadcrumb]
+    if not primary:
+        return chunks
+    primary.sort(key=lambda c: c.score, reverse=True)
+    rest = [
+        c
+        for c in chunks
+        if c not in primary and (c.source != "vertical" or needle in c.breadcrumb)
+    ]
+    rest.sort(key=lambda c: c.score, reverse=True)
+    return (primary + rest)[: len(chunks)]
+
+
+def filter_generic_vertical_boilerplate(
+    chunks: list[RetrievedChunk],
+) -> list[RetrievedChunk]:
+    """Drop identical auto-generated rollout/honesty sections from domain-pack playbooks."""
+    cleaned = [
+        c
+        for c in chunks
+        if not (c.source == "vertical" and _GENERIC_VERTICAL_SECTION_RE.search(c.breadcrumb))
+    ]
+    return cleaned if cleaned else chunks
+
+
+def prefer_general_stack_when_unmatched(
+    query: str,
+    chunks: list[RetrievedChunk],
+) -> list[RetrievedChunk]:
+    if match_verticals(query, limit=1):
+        return chunks
+    general = [c for c in chunks if _GENERAL_STACK_NEEDLE in c.breadcrumb]
+    if not general:
+        return chunks
+    general.sort(key=lambda c: c.score, reverse=True)
+    rest = [c for c in chunks if c not in general]
+    rest.sort(key=lambda c: c.score, reverse=True)
+    return (general + rest)[: len(chunks)]
+
+
+def postprocess_retrieval_chunks(
+    query: str,
+    chunks: list[RetrievedChunk],
+) -> list[RetrievedChunk]:
+    chunks = filter_generic_vertical_boilerplate(chunks)
+    chunks = pin_vertical_playbook_chunks(query, chunks)
+    return prefer_general_stack_when_unmatched(query, chunks)
 
 
 def passes_generation_threshold(
@@ -149,4 +220,4 @@ def retrieve_expert_chunks(
             )
 
     scored.sort(key=lambda c: c.score, reverse=True)
-    return scored[:top_k]
+    return postprocess_retrieval_chunks(q, scored[:top_k])

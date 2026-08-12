@@ -1,3 +1,10 @@
+/** True for vertical/module-stack setup questions — each gets a fresh retrieval context. */
+export function isExpertSetupStackQuestion(question: string): boolean {
+  return /\b(what do i need|what do we need|which modules|which apps|modules do i need|apps do i need|module stack|setup|set up|build an odoo|odoo db for|database for)\b/i.test(
+    question,
+  );
+}
+
 /** Build a visible Expert question that includes pasted RPC / validation errors. */
 export function formatExpertDiagnosePrompt(question: string, errorText?: string): string {
   const q = (question || "Diagnose this error on my connection").trim();

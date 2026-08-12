@@ -37,6 +37,7 @@ _RULE_BASED_RESOLVERS: tuple[str, ...] = (
     "app.expert.ask.try_rule_based_bulk_routing",
     "app.expert.ask.try_rule_based_field_type_guidance",
     "app.expert.ask.try_rule_based_protected_guidance",
+    "app.expert.ask.try_rule_based_stack_guidance",
 )
 
 

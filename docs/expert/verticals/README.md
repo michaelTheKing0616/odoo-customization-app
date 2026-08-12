@@ -9,6 +9,7 @@ and honest **Community vs Enterprise** limits.
 | Vertical | File | Domain pack in app |
 |----------|------|-------------------|
 | Library Management | `library-management.md` | `library_management` |
+| Oil & Gas / Energy | `oil-gas-operations.md` | — |
 | School / Education | `school-education.md` | — (custom scaffold) |
 | Retail / eCommerce | `retail-ecommerce.md` | — |
 | Manufacturing | `manufacturing.md` | — |
