@@ -90,6 +90,7 @@ EXPERT_RESPONSE_SCHEMA: dict[str, Any] = {
         "caution_flags": {
             "type": "array",
             "items": {"type": "string"},
+            "description": "Always return [] — the server adds caution flags; do not invent flags.",
         },
     },
     "required": ["answer_markdown", "citation_ids"],
@@ -173,6 +174,48 @@ class ExpertCitation:
         }
 
 
+_INTERNAL_CAUTION_FLAGS = frozenset(
+    {
+        "citations_enforced",
+        "reasoning_empty_retry_bulk",
+        "answer_relevance_fallback",
+        "below_retrieval_threshold",
+        "answer_off_topic",
+    }
+)
+
+_PUBLIC_CAUTION_FLAG_EXACT = frozenset(
+    {
+        "legal_tax_deflection",
+        "low_retrieval",
+        "instance_caveats",
+        "pcm_consistent_refusal",
+    }
+)
+
+
+def _sanitize_caution_flags(flags: list[str]) -> list[str]:
+    """Drop internal telemetry and LLM guardrail spam; keep user-meaningful server flags."""
+    out: list[str] = []
+    for raw in flags:
+        f = str(raw).strip()
+        if not f or f in _INTERNAL_CAUTION_FLAGS:
+            continue
+        # LLMs sometimes echo prompt guardrails as caution_flags — reject that pattern.
+        if f.startswith("no_"):
+            continue
+        if "reiterated" in f or "allowed_in_answers" in f or len(f) > 80:
+            continue
+        if (
+            f.startswith("protected_")
+            or f.startswith("rule_based_")
+            or f in _PUBLIC_CAUTION_FLAG_EXACT
+        ):
+            if f not in out:
+                out.append(f)
+    return sorted(out)
+
+
 @dataclass
 class ExpertAskResult:
     answer_markdown: str
@@ -185,6 +228,9 @@ class ExpertAskResult:
     model_used: str | None = None
     reasoning: bool = False
     uncited_warning: bool = False
+
+    def __post_init__(self) -> None:
+        self.caution_flags = _sanitize_caution_flags(self.caution_flags)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -358,6 +404,7 @@ def _build_user_prompt(
             "",
             "Respond with JSON: "
             '{"answer_markdown":"...", "citation_ids":[1], "caution_flags":[]}',
+            "caution_flags must always be an empty array — the server adds flags.",
         ]
     )
     return "\n".join(parts)
@@ -747,9 +794,7 @@ def ask_expert(
             raise LLMError(str(exc), status_code=502) from exc
 
     cited = _citations_from_response(data, index_map, answer=answer)
-    llm_flags = data.get("caution_flags") or []
-    if isinstance(llm_flags, list):
-        caution_flags.extend(str(f) for f in llm_flags if f)
+    # caution_flags come from server-side policy only — ignore LLM-provided flags.
 
     if answer and not _blocks_have_citations(answer):
         try:

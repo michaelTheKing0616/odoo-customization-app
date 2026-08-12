@@ -80,6 +80,40 @@ VERTICAL_CATALOG: tuple[VerticalEntry, ...] = (
         summary="Fleet + Contacts + rental contracts; use the car_rental domain pack for x_ models.",
     ),
     VerticalEntry(
+        id="library_management",
+        title="Library Management",
+        pattern=_pat(
+            r"\b(library|libraries|book[\s-]?loan|book[\s-]?catalog|isbn|"
+            r"library\s+management|overdue\s+loan|library\s+member|"
+            r"circulation|library\s+catalog|book\s+circulation)\b"
+        ),
+        domain_pack_id="library_management",
+        stock_modules=("base", "contacts", "mail", "product"),
+        keywords=(
+            "library",
+            "book",
+            "loan",
+            "isbn",
+            "barcode",
+            "overdue",
+            "fine",
+            "reservation",
+            "member",
+            "catalog",
+            "author",
+            "branch",
+            "circulation",
+            "x_lib_book",
+            "x_lib_loan",
+            "res.partner",
+        ),
+        summary=(
+            "No stock Library app on Community — Contacts for members (res.partner link-only), "
+            "custom x_lib_* models for catalog/circulation; Wizard Library template or "
+            "library_management domain pack with fines, reminders, and QWeb receipt."
+        ),
+    ),
+    VerticalEntry(
         id="hospital",
         title="Hospital / Inpatient",
         pattern=_pat(

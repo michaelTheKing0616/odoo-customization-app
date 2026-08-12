@@ -26,6 +26,19 @@ from app.protected_modules import community_manifest_for_version, manifest_to_js
 
 EVAL_SET_PATH = Path(__file__).parent / "expert_eval" / "eval_set.jsonl"
 
+_RULE_BASED_RESOLVERS: tuple[str, ...] = (
+    "app.expert.ask.try_rule_based_view_guidance",
+    "app.expert.ask.try_rule_based_view_mode_guidance",
+    "app.expert.ask.try_rule_based_l10n_guidance",
+    "app.expert.ask.try_rule_based_required_field_guidance",
+    "app.expert.ask.try_rule_based_error_diagnosis",
+    "app.expert.ask.try_rule_based_access_guidance",
+    "app.expert.ask.try_rule_based_model_lookup",
+    "app.expert.ask.try_rule_based_bulk_routing",
+    "app.expert.ask.try_rule_based_field_type_guidance",
+    "app.expert.ask.try_rule_based_protected_guidance",
+)
+
 
 class _FakeDb:
     pass
@@ -125,6 +138,12 @@ def run_eval_item(item: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> Expe
     provider: LLMProvider | None = None
     fake = item.get("fake_response")
     if fake and not item.get("tier1_refusal"):
+        for path in _RULE_BASED_RESOLVERS:
+            monkeypatch.setattr(path, lambda *a, **k: None)
+        monkeypatch.setattr(
+            "app.expert.ask.answer_matches_question",
+            lambda question, answer: True,
+        )
         provider = _EvalFakeLLM(fake)
 
     return ask_expert(

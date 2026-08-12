@@ -12,6 +12,7 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { useShell } from "@/context/ShellContext";
 import { api, type ExpertAskResponse, type ExpertCitation } from "@/lib/api";
 import { buildExpertAskPayload, formatExpertDiagnosePrompt } from "@/lib/expert-prompt";
+import { formatExpertCautionFlag } from "@/lib/expert-caution-flags";
 import { cn } from "@/lib/cn";
 
 type Turn = { role: "user" | "assistant"; content: string; response?: ExpertAskResponse };
@@ -458,9 +459,12 @@ export function ExpertPanel() {
                       ) : turn.response.grounded ? (
                         <Badge variant="success">Grounded</Badge>
                       ) : null}
-                    {turn.response.caution_flags?.map((f) => (
-                        <Badge key={f} variant="warning">
-                          {f === "rule_based_diagnosis" ? "Rule-based fix" : f}
+                    {turn.response.caution_flags
+                      ?.map((f) => formatExpertCautionFlag(f))
+                      .filter((label): label is string => Boolean(label))
+                      .map((label) => (
+                        <Badge key={label} variant="warning">
+                          {label}
                         </Badge>
                       ))}
                     </div>

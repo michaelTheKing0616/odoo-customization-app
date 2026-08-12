@@ -50,6 +50,25 @@ def test_vertical_catalog_matches_school_question() -> None:
     assert "website_slides" in expanded.lower()
 
 
+def test_vertical_catalog_matches_library_question() -> None:
+    q = "What do I need to setup a library management Odoo DB?"
+    hits = match_verticals(q)
+    assert hits
+    assert hits[0].id == "library_management"
+    expanded = expand_expert_query(q)
+    assert "isbn" in expanded.lower()
+    assert "library management" in expanded.lower()
+
+
+def test_library_playbook_file_exists() -> None:
+    paths = vertical_doc_paths()
+    assert any(p.name == "library-management.md" for p in paths)
+    hits = match_verticals("library books loans isbn overdue")
+    assert hits and hits[0].id == "library_management"
+    md = render_catalog_playbook(hits[0])
+    assert "library_management" in md
+
+
 def test_vertical_playbook_files_exist() -> None:
     paths = vertical_doc_paths()
     assert any(p.name == "school-education.md" for p in paths)

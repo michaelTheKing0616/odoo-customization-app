@@ -169,7 +169,7 @@ def test_ask_retries_bulk_when_reasoning_returns_empty(monkeypatch: pytest.Monke
     assert len(llm.calls) == 2
     assert llm.calls[0]["reasoning"] is True
     assert llm.calls[1]["reasoning"] is False
-    assert "reasoning_empty_retry_bulk" in result.caution_flags
+    assert "reasoning_empty_retry_bulk" not in result.caution_flags
 
 
 def test_detect_legal_tax_question() -> None:
@@ -341,7 +341,7 @@ def test_ask_enforces_citations_when_regeneration_still_uncited(
     assert _blocks_have_citations(result.answer_markdown)
     assert result.citations
     assert result.citations[0].source_index == 1
-    assert "citations_enforced" in result.caution_flags
+    assert "citations_enforced" not in result.caution_flags
     assert not result.uncited_warning
 
 
@@ -434,6 +434,55 @@ def test_ask_legal_tax_flag(monkeypatch: pytest.MonkeyPatch) -> None:
         provider=llm,
     )
     assert "legal_tax_deflection" in result.caution_flags
+
+
+def test_sanitize_caution_flags_strips_llm_guardrail_spam() -> None:
+    from app.expert.ask import ExpertAskResult, _sanitize_caution_flags
+
+    spam = [
+        "no_accounting_mutations_allowed_in_answers_final_reiterated",
+        "citations_enforced",
+        "protected_tier_1:res.partner",
+        "legal_tax_deflection",
+    ]
+    cleaned = _sanitize_caution_flags(spam)
+    assert cleaned == ["legal_tax_deflection", "protected_tier_1:res.partner"]
+
+    result = ExpertAskResult(
+        answer_markdown="ok",
+        caution_flags=[
+            "no_compliance_guidance_provided",
+            "protected_tier_1:res.partner",
+        ],
+    )
+    assert result.caution_flags == ["protected_tier_1:res.partner"]
+
+
+def test_ask_ignores_llm_caution_flags(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.expert.ask.retrieve_expert_chunks",
+        lambda *a, **k: _sample_chunks(),
+    )
+    monkeypatch.setattr(
+        "app.expert.ask.assemble_context",
+        lambda *a, **k: _sample_bundle(),
+    )
+    llm = _FakeLLM(
+        {
+            "answer_markdown": "Use custom models for library books [1].",
+            "citation_ids": [1],
+            "caution_flags": [
+                "no_payroll_mutations_allowed_in_answers_reiterated",
+                "no_enterprise_features_assumed",
+            ],
+        }
+    )
+    result = ask_expert(
+        _FakeDb(),  # type: ignore[arg-type]
+        question="What do I need to setup a library management Odoo DB?",
+        provider=llm,
+    )
+    assert all(not f.startswith("no_") for f in result.caution_flags)
 
 
 def test_expert_ask_endpoint_503_when_ai_off(client: TestClient) -> None:
