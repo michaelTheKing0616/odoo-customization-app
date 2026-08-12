@@ -9,6 +9,8 @@ const MOCK_CAPS = {
   server_version: "19.0",
   supported: [
     "object_create_crud_model",
+    "object_write_update_path",
+    "related_write_dotted_path",
     "view_inject_inherit",
     "view_inject_mutate",
     "base_automation_safe_triggers",

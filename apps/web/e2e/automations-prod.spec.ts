@@ -78,8 +78,10 @@ async function mockAutomationsApi(page: Page, caps: ReturnType<typeof caps16>) {
   const conn = connectionPayload(caps);
 
   await page.route(`**/api/connections/${CONN}`, async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.continue();
+    const url = route.request().url();
+    const path = new URL(url).pathname;
+    if (route.request().method() !== "GET" || path !== `/api/connections/${CONN}`) {
+      await route.fallback();
       return;
     }
     await route.fulfill({
@@ -169,6 +171,7 @@ test.describe("Production Automations page (mocked API)", () => {
     await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 60_000 });
     await expect(page.getByTestId("automations-form")).toBeVisible();
     const select = page.getByTestId("automation-action-kind");
+    await expect(select.locator('option[value="update_field"]')).toBeEnabled({ timeout: 10_000 });
     await expect(select.locator('option[value="update_field"]')).not.toHaveAttribute(
       "disabled",
       "",
