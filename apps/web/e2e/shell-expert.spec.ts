@@ -9,6 +9,14 @@ test.describe("App shell & Expert (mocked API)", () => {
   });
 
   test("expert panel opens from harness with mocked ask", async ({ page }) => {
+    await page.route("**/api/expert/suggested-prompts**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([]),
+      });
+    });
+
     await page.route("**/api/expert/ask", async (route) => {
       await route.fulfill({
         status: 200,

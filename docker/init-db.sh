@@ -4,6 +4,7 @@
 # Default credentials are for local gates only — never for prod.
 set -euo pipefail
 
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CONTAINER="${ODOO_CONTAINER:-odoo-custom-odoo}"
 DB_NAME="${ODOO_DB:-odoo_dev}"
 ADMIN_USER="${ODOO_USER:-admin}"
@@ -39,3 +40,8 @@ docker exec "$CONTAINER" odoo \
   --without-demo=all
 
 echo "Gate modules installed on '${DB_NAME}'."
+
+if [[ "${INSTALL_EXPERT_BRIDGE:-0}" == "1" ]]; then
+  echo "Installing Odoo Expert Bridge (INSTALL_EXPERT_BRIDGE=1)..."
+  INSTALL=1 ODOO_DB="$DB_NAME" "$ROOT/docker/install-expert-bridge.sh" "$CONTAINER"
+fi

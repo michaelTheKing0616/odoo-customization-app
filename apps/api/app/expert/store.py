@@ -79,18 +79,20 @@ def upsert_chunks(
             stats.inserted += 1
             continue
 
+        needs_embedding = embed and not existing.embedding_json and embedding_json
         changed = (
             existing.text != chunk.text
             or existing.breadcrumb != chunk.breadcrumb
             or existing.embedding_json != embedding_json
         )
-        if not changed:
+        if not changed and not needs_embedding:
             stats.skipped += 1
             continue
 
         existing.breadcrumb = chunk.breadcrumb
         existing.text = chunk.text
-        existing.embedding_json = embedding_json
+        if embedding_json or needs_embedding:
+            existing.embedding_json = embedding_json
         stats.updated += 1
 
     db.commit()

@@ -77,12 +77,18 @@ class Settings(BaseSettings):
     openai_compatible_base_url: str = ""
     openai_compatible_model: str = "gpt-4o-mini"
     openai_compatible_api_key: str | None = None
-    # single | staged — staged = Step 0–6 pipeline when LLM available
-    ai_pipeline_mode: str = "single"
+    # single | staged — staged = Step 0–6 pipeline when LLM available (ELITE-1 default)
+    ai_pipeline_mode: str = "staged"
+    # Prefer cloud/openai-compatible for comprehensive drafts (document only; set AI_ASSIST)
+    ai_generation_cloud_preferred: bool = False
+    # Wave 18 ELITE scorecard floor for promote autopilot
+    elite_scorecard_floor: float = 9.0
     # Domain pack RAG: auto|on|off — embeddings when sentence-transformers installed
     ai_rag: str = "auto"
     ai_rag_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     ai_rag_min_score: float = 0.35
+    # Jaccard fallback when embeddings unavailable — lower than embedding threshold
+    ai_rag_min_score_jaccard: float = 0.12
     # Self-critique pass after draft: auto|on|off
     ai_critique: str = "auto"
     # Production-shape / apply-readiness always run on enrich + reuse merge (not configurable).
@@ -91,6 +97,10 @@ class Settings(BaseSettings):
     # Expert RAG (EXP-1) — community Q&A: off | dir (reads expert_community_dir)
     expert_community_source: str = "off"
     expert_community_dir: str = ""
+    # Expert RAG — odoo/odoo source (res.country.state + l10n manifests): on | off
+    expert_odoo_source: str = "on"
+    # Per Expert LLM call (Ollama qwen3 can exceed 120s). Web proxy should allow ~2× + RPC headroom.
+    expert_llm_timeout_s: float = 300.0
 
     # MON-1 — accounts auth (when AUTH_MODE=accounts)
     app_public_url: str = "http://localhost:3000"

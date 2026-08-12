@@ -178,3 +178,12 @@ Orchestrator: `plans/UNIVERSAL_INGESTION_PIPELINE.md` · Cards: `plans/cards/WAV
 - [x] DEV-1 Code Studio: live code server actions + automations (probe-gated per instance) — core 2026-08-03
 - [x] DEV-2 Module code authoring: Option A with a real editor (custom_code_blocks writable) — 2026-08-03
 - [x] DEV-3 Script Runner: ad-hoc Python via typed RPC client in isolated subprocess — 2026-08-03
+
+## Wave 18 — ELITE (developer-grade AI generation; cards in WAVE-18-ELITE.md)
+- [x] ELITE-1 Staged default pipeline + generation reliability settings
+- [x] ELITE-2 NL → sandboxed Python (`run_elite_python_pass`)
+- [x] ELITE-3 Reports / mail / cron artifacts + codec mapping
+- [x] ELITE-4 Promote autopilot API + wizard validate/promote + sandbox validation fix
+- [x] ELITE-5 PCM-safe integration patterns (account/stock link-only)
+- [x] ELITE-6 `library_management` domain pack
+- [x] ELITE-7 Generated tests + i18n in module zip; gate `tests/test_wave18_elite.py` 17 passed

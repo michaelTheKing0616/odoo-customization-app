@@ -16,6 +16,8 @@ type CommandPaletteProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   items: CommandItem[];
+  dynamicItems?: CommandItem[];
+  onSearchChange?: (value: string) => void;
   placeholder?: string;
 };
 
@@ -23,11 +25,14 @@ export function CommandPalette({
   open,
   onOpenChange,
   items,
-  placeholder = "Search navigation and actions…",
+  dynamicItems = [],
+  onSearchChange,
+  placeholder = "Search navigation, models, or ask Expert…",
 }: CommandPaletteProps) {
   if (!open) return null;
 
-  const groups = items.reduce<Record<string, CommandItem[]>>((acc, item) => {
+  const allItems = [...items, ...dynamicItems];
+  const groups = allItems.reduce<Record<string, CommandItem[]>>((acc, item) => {
     acc[item.group] = acc[item.group] ?? [];
     acc[item.group].push(item);
     return acc;
@@ -45,6 +50,7 @@ export function CommandPalette({
         <Command
           className="overflow-hidden rounded-lg border border-border-subtle bg-surface-raised shadow-overlay"
           data-testid="command-palette"
+          onValueChange={onSearchChange}
         >
           <div className="flex items-center gap-2 border-b border-border-subtle px-3">
             <Search className="h-4 w-4 text-muted" />

@@ -5,7 +5,12 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from app.expert.grounding import GroundingBundle, extract_model_field_refs, looks_like_rpc_error
+from app.expert.grounding import (
+    GroundingBundle,
+    extract_model_field_refs,
+    looks_like_conceptual_question,
+    looks_like_rpc_error,
+)
 
 _MODEL_NOT_FOUND_RE = re.compile(
     r"(?i)(?:model not found|unknown model|no model named):\s*['\"]?([a-z][a-z0-9_]*)"
@@ -26,9 +31,13 @@ def try_rule_based_error_diagnosis(
     bundle: GroundingBundle,
     *,
     connection_id: str | None = None,
+    client: Any | None = None,
 ) -> dict[str, Any] | None:
     """Return answer fields when the error matches a known remediation pattern."""
+    del client
     if not looks_like_rpc_error(question):
+        return None
+    if looks_like_conceptual_question(question):
         return None
 
     lines: list[str] = []

@@ -3,17 +3,18 @@
 > Read at the start of every session. Updated at the end of every session.
 
 ## Last run
-- Date: 2026-08-11
-- **Shipped:** 10/10 apply-readiness passes — statusbar transition chains (`approved→closed`), adjustment header dedupe, `REASON/` sequence prefix + help sync, branch form notebook + Operations menu, manager-only branch record rules, go-live review notes; scorecard allows statusbar terminal chains; stock.picking integrity fix.
-- **Gate:** apply_readiness **55 passed**; wave16 green.
-
-## Prior (2026-08-08)
-- GEN2-13 + follow-up — live apply prep, reuse wiring, promo compute, wizard reuse UI.
-- Gate artifact `docs/research/gen2_13_run_2026-08-08.json` — **9.82/10**.
+- Date: 2026-08-12
+- **Shipped:** Web UI + Expert + Docker for Wave 18 ELITE:
+  - Wizard: ELITE workflow (lint, validate, download zip, promote, Ask Expert), route context sync
+  - Next proxy: 660s for elite-autopilot, export-sandbox, validate-live, ai/draft*
+  - Docker: deploy expert-cache volume + ELITE/Expert env; init-db `INSTALL_EXPERT_BRIDGE=1`; sync script
+  - Playwright: elite validate/promote workflow test
+- **Prior:** Staged `_llm_status` parity; library natural score 10.0; live gate script
 
 ## Next
-- Re-enrich saved supermarket draft (or restart API) so new passes run on live JSON.
-- Optional: live LLM supermarket regen (Ollama) for gate artifact refresh.
+- Production migration: see `docs/PRODUCTION-PLAN.md`
+- Operator: `uv run python scripts/run_elite_live_gate.py` with Ollama up (optional sandbox)
+- Cloud generation trial: Grok or other openai-compatible endpoint vs local qwen3 latency/SLO
 
 ## Rule
 - Opening balances never auto-post; inventory via dedicated stock.quant path only

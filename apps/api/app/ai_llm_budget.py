@@ -10,6 +10,7 @@ from app.llm_provider import (
     generate_json_with_timeout_retry,
     resolve_bulk_model,
 )
+from app.settings import settings
 
 # Seconds per pipeline step (request-scoped budget, not HTTP timeout)
 STEP_BUDGETS: dict[str, float] = {
@@ -59,6 +60,8 @@ def llm_json_with_budget(
     Returns (raw_json_text, downshift_model_or_none).
     """
     budget = STEP_BUDGETS.get(step, 120.0)
+    if step == "depth" and settings.expert_llm_timeout_s > budget:
+        budget = min(settings.expert_llm_timeout_s, 360.0)
     try:
         raw = generate_json_with_timeout_retry(
             provider,

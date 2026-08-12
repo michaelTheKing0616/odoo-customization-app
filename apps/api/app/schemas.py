@@ -297,6 +297,15 @@ class ConnectionOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ConnectionResolveOut(BaseModel):
+    """Minimal connection lookup for Odoo Expert Bridge auto-resolve."""
+
+    id: str
+    name: str
+    url: str
+    db_name: str
+
+
 class WriteModeUpdate(BaseModel):
     write_mode: Literal["observer", "standard", "production"]
 
@@ -1420,6 +1429,60 @@ class ExpertDraftReviewFindingOut(BaseModel):
     deterministic: bool
     repair_hint: str | None = None
     citation: str | None = None
+    narrative_paragraph: str | None = None
+    narrative_citations: list[ExpertCitationOut] = Field(default_factory=list)
+
+
+class ExpertExplainModelBody(BaseModel):
+    model: str = Field(..., min_length=1, max_length=128)
+    field: str | None = Field(default=None, max_length=128)
+    draft: dict | None = None
+    user_prompt: str = ""
+    connection_id: str | None = None
+
+
+class ExpertPostChatterBody(BaseModel):
+    connection_id: str
+    model: str = Field(..., min_length=1, max_length=128)
+    res_id: int = Field(..., ge=1)
+    body_markdown: str = Field(..., min_length=1, max_length=32000)
+    subject: str = Field(default="Odoo Expert note", max_length=200)
+    confirmed: bool = Field(
+        default=False,
+        description="Explicit operator confirmation — required to write to Odoo",
+    )
+
+
+class ExpertPostChatterOut(BaseModel):
+    ok: bool
+    posted: bool = False
+    message: str
+
+
+class ExpertSuggestedPromptOut(BaseModel):
+    id: str
+    label: str
+    question: str
+
+
+class ExpertNLSearchBody(BaseModel):
+    query: str = Field(..., min_length=1, max_length=500)
+    connection_id: str
+
+
+class ExpertNLSearchHitOut(BaseModel):
+    id: str
+    kind: str
+    label: str
+    description: str = ""
+    href: str | None = None
+    expert_question: str | None = None
+    score: float = 0.0
+
+
+class ExpertNLSearchOut(BaseModel):
+    query: str
+    hits: list[ExpertNLSearchHitOut] = Field(default_factory=list)
 
 
 class ExpertDraftReviewOut(BaseModel):

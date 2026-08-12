@@ -74,7 +74,12 @@ def ensure_search_views(draft: dict[str, Any]) -> list[str]:
             if f.get("ttype") == "many2one":
                 fname = str(f.get("name") or "")
                 rel = str(f.get("relation") or "")
-                if rel.startswith("x_") or rel in {"res.partner", "res.users"}:
+                if rel.startswith("x_") or rel in {
+                    "res.partner",
+                    "res.users",
+                    "res.country",
+                    "res.company",
+                }:
                     groupbys.append(
                         f'<filter string="{escape(str(f.get("string") or fname))}" '
                         f'name="group_{fname}" '

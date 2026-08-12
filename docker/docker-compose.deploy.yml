@@ -49,6 +49,10 @@ services:
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
       AUDIT_LOG_ENABLED: ${AUDIT_LOG_ENABLED:-true}
       AI_ASSIST: ${AI_ASSIST:-off}
+      AI_PIPELINE_MODE: ${AI_PIPELINE_MODE:-staged}
+      ELITE_SCORECARD_FLOOR: ${ELITE_SCORECARD_FLOOR:-9.0}
+      EXPERT_LLM_TIMEOUT_S: ${EXPERT_LLM_TIMEOUT_S:-300}
+      EXPERT_ODOO_SOURCE: ${EXPERT_ODOO_SOURCE:-on}
       # Container → host Ollama (Docker Desktop). Do not use 127.0.0.1 here —
       # that is the container loopback. Host-side `uv run` can keep 127.0.0.1 in .env;
       # override when starting this service:
@@ -61,6 +65,8 @@ services:
       DB_MIGRATIONS: ${DB_MIGRATIONS:-auto}
     ports:
       - "${API_PORT:-8000}:8000"
+    volumes:
+      - expert-cache:/workspace/.cache/expert
     # Uncomment ONLY when SANDBOX_DOCKER_SOCKET=/var/run/docker.sock — grants host Docker access.
     # volumes:
     #   - /var/run/docker.sock:/var/run/docker.sock
@@ -79,6 +85,7 @@ services:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://127.0.0.1:8000}
       # Server-side /api/* proxy inside the compose network (browser still uses same-origin /api)
       API_PROXY_TARGET: ${API_PROXY_TARGET:-http://api:8000}
+      EXPERT_UPSTREAM_TIMEOUT_MS: ${EXPERT_UPSTREAM_TIMEOUT_MS:-660000}
     ports:
       - "${WEB_PORT:-3000}:3000"
     restart: unless-stopped
@@ -99,4 +106,5 @@ services:
 
 volumes:
   deploy-app-db-data:
+  expert-cache:
   # deploy-ollama-data:

@@ -4,16 +4,19 @@ import { useEffect } from "react";
 import { useShellOptional } from "@/context/ShellContext";
 
 export function useSyncShellContext(patch: {
+  route?: string;
   model?: string;
+  field?: string;
+  resId?: number;
   draftSummary?: string;
   viewType?: string;
   triggerType?: string;
 }) {
   const setUiContext = useShellOptional()?.setUiContext;
-  const { model, draftSummary, viewType, triggerType } = patch;
+  const { route, model, field, resId, draftSummary, viewType, triggerType } = patch;
 
   useEffect(() => {
     if (!setUiContext) return;
-    setUiContext({ model, draftSummary, viewType, triggerType });
-  }, [setUiContext, model, draftSummary, viewType, triggerType]);
+    setUiContext({ route, model, field, resId, draftSummary, viewType, triggerType });
+  }, [setUiContext, route, model, field, resId, draftSummary, viewType, triggerType]);
 }

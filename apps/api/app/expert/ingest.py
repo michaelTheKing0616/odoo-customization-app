@@ -10,6 +10,8 @@ from pathlib import Path
 from app.db import SessionLocal, init_db
 from app.expert.chunker import chunk_file
 from app.expert.fetcher import SUPPORTED_VERSIONS, fetch_documentation, iter_doc_files
+from app.expert.l10n_chunks import chunks_from_odoo_source_files
+from app.expert.odoo_source_fetcher import fetch_odoo_source_paths
 from app.expert.store import UpsertStats, upsert_chunks
 from app.expert.vertical_playbooks import all_vertical_playbook_chunks
 
@@ -24,6 +26,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[4]
 class IngestReport:
     version: str
     odoo_docs: UpsertStats = field(default_factory=UpsertStats)
+    odoo_source: UpsertStats = field(default_factory=UpsertStats)
     project: UpsertStats = field(default_factory=UpsertStats)
     community: UpsertStats = field(default_factory=UpsertStats)
     vertical: UpsertStats = field(default_factory=UpsertStats)
@@ -32,6 +35,7 @@ class IngestReport:
     def total_inserted(self) -> int:
         return (
             self.odoo_docs.inserted
+            + self.odoo_source.inserted
             + self.project.inserted
             + self.community.inserted
             + self.vertical.inserted
@@ -41,6 +45,7 @@ class IngestReport:
     def total_updated(self) -> int:
         return (
             self.odoo_docs.updated
+            + self.odoo_source.updated
             + self.project.updated
             + self.community.updated
             + self.vertical.updated
@@ -63,18 +68,31 @@ def _project_doc_paths() -> list[Path]:
     return paths
 
 
+def _builtin_community_paths() -> list[Path]:
+    """Shipped curated Q&A / forum distillates (always ingested)."""
+    root = _REPO_ROOT / "docs" / "expert" / "community"
+    if not root.is_dir():
+        return []
+    files: list[Path] = []
+    for pattern in ("**/*.md", "**/*.rst"):
+        files.extend(sorted(root.glob(pattern)))
+    return [p for p in files if p.name.lower() != "readme.md"]
+
+
 def _community_doc_paths() -> list[Path]:
+    paths = _builtin_community_paths()
     mode = settings.expert_community_source.strip().lower()
     if mode != "dir":
-        return []
+        return paths
     root = Path(settings.expert_community_dir.strip() or "")
     if not root.is_dir():
         logger.warning("EXPERT_COMMUNITY_DIR is not a directory: %s", root)
-        return []
-    files: list[Path] = []
+        return paths
     for pattern in ("**/*.md", "**/*.markdown", "**/*.rst"):
-        files.extend(sorted(root.glob(pattern)))
-    return files
+        for path in sorted(root.glob(pattern)):
+            if path not in paths:
+                paths.append(path)
+    return paths
 
 
 def ingest_odoo_docs(version: str, *, offline: bool = False, embed: bool = True) -> UpsertStats:
@@ -99,6 +117,23 @@ def ingest_odoo_docs(version: str, *, offline: bool = False, embed: bool = True)
     finally:
         db.close()
     return stats
+
+
+def ingest_odoo_source(version: str, *, offline: bool = False, embed: bool = True) -> UpsertStats:
+    mode = settings.expert_odoo_source.strip().lower()
+    if mode in {"off", "false", "0"}:
+        logger.info("EXPERT_ODOO_SOURCE=off — skipping odoo/odoo source ingest")
+        return UpsertStats()
+    paths = fetch_odoo_source_paths(version, offline=offline)
+    chunks = chunks_from_odoo_source_files(paths, version=version)
+    if not chunks:
+        logger.warning("No odoo source chunks produced for %s", version)
+        return UpsertStats()
+    db = SessionLocal()
+    try:
+        return upsert_chunks(db, source="odoo_source", version=version, chunks=chunks, embed=embed)
+    finally:
+        db.close()
 
 
 def ingest_project_docs(*, embed: bool = True) -> UpsertStats:
@@ -147,6 +182,7 @@ def run_ingest(
     *,
     offline: bool = False,
     skip_odoo_docs: bool = False,
+    skip_odoo_source: bool = False,
     skip_project: bool = False,
     skip_community: bool = False,
     skip_vertical: bool = False,
@@ -158,6 +194,10 @@ def run_ingest(
         report.odoo_docs = UpsertStats()
     else:
         report.odoo_docs = ingest_odoo_docs(version, offline=offline, embed=embed)
+    if skip_odoo_source:
+        report.odoo_source = UpsertStats()
+    else:
+        report.odoo_source = ingest_odoo_source(version, offline=offline, embed=embed)
     if not skip_project:
         report.project = ingest_project_docs(embed=embed)
     if not skip_community:
@@ -188,6 +228,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Skip official Odoo documentation (re-index project/vertical only)",
     )
     parser.add_argument(
+        "--skip-odoo-source",
+        action="store_true",
+        help="Skip odoo/odoo source (res.country.state + l10n manifests)",
+    )
+    parser.add_argument(
         "--skip-vertical",
         action="store_true",
         help="Skip vertical playbook ingest",
@@ -200,6 +245,7 @@ def main(argv: list[str] | None = None) -> int:
         args.version,
         offline=args.offline,
         skip_odoo_docs=args.skip_odoo_docs,
+        skip_odoo_source=args.skip_odoo_source,
         skip_project=args.skip_project,
         skip_community=args.skip_community,
         skip_vertical=args.skip_vertical,
@@ -208,6 +254,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"version={report.version} "
         f"odoo_docs=+{report.odoo_docs.inserted}/~{report.odoo_docs.updated} "
+        f"odoo_source=+{report.odoo_source.inserted}/~{report.odoo_source.updated} "
         f"project=+{report.project.inserted}/~{report.project.updated} "
         f"community=+{report.community.inserted}/~{report.community.updated} "
         f"vertical=+{report.vertical.inserted}/~{report.vertical.updated}"

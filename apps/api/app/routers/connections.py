@@ -19,6 +19,7 @@ from app.schemas import (
     ConnectionCreate,
     ConnectionOut,
     ConnectionUpdate,
+    ConnectionResolveOut,
     MigrationAssistOut,
     PreviewThemeOut,
     ProbeResult,
@@ -80,6 +81,35 @@ def list_connections(
 ) -> list[ConnectionOut]:
     rows = scoped_connection_query(db, auth).order_by(OdooConnection.created_at.desc()).all()
     return [_connection_out(r) for r in rows]
+
+
+@router.get("/resolve/by-instance", response_model=ConnectionResolveOut)
+def resolve_connection_by_instance(
+    url: str,
+    db_name: str,
+    db: Session = Depends(get_db),
+) -> ConnectionResolveOut:
+    """Resolve customization-app connection id from Odoo URL + database (Expert Bridge)."""
+    target = url.rstrip("/")
+    candidates = [target, f"{target}/"]
+    row = (
+        db.query(OdooConnection)
+        .filter(OdooConnection.db_name == db_name)
+        .filter(OdooConnection.url.in_(candidates))
+        .order_by(OdooConnection.updated_at.desc())
+        .first()
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No saved connection for {target} / {db_name}. Add it in the Customization app first.",
+        )
+    return ConnectionResolveOut(
+        id=row.id,
+        name=row.name,
+        url=row.url,
+        db_name=row.db_name,
+    )
 
 
 @router.post("", response_model=ConnectionOut, status_code=201)

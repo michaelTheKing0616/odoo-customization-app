@@ -121,5 +121,112 @@ test.describe("Wizard scorecard + expert review", () => {
     await page.getByTestId("expert-review-fix").click();
     await expect(page.getByText(/7\.2\/10 → 9\.4\/10/)).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText("Draft quality: 9.4/10 ✓")).toBeVisible();
+    await expect(page.getByTestId("elite-promote-workflow")).toBeVisible();
+    await expect(page.getByTestId("elite-validate-module")).toBeVisible();
+  });
+});
+
+test.describe("Wizard ELITE promote workflow", () => {
+  test.beforeEach(async ({ page }) => {
+    const ELITE_DRAFT = {
+      ...FIXED_DRAFT,
+      custom_code_blocks: [{ source_file: "models/x_branch_constraints.py", kind: "python" }],
+    };
+
+    await page.route("**/api/connections/**", async (route) => {
+      const url = route.request().url();
+      if (url.match(/\/api\/connections\/[^/]+$/) && route.request().method() === "GET") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            id: CONN,
+            name: "Test Connection",
+            url: "http://127.0.0.1:8069",
+            db_name: "odoo",
+            username: "admin",
+            server_version: "19.0",
+            created_at: null,
+            updated_at: null,
+          }),
+        });
+        return;
+      }
+      if (url.includes("/module-spec/lint-blocks") && route.request().method() === "POST") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ ok: true, blocks: [] }),
+        });
+        return;
+      }
+      if (url.includes("/module-spec/elite-gate") && route.request().method() === "POST") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ gate_passed: true, gate_reasons: [], score_0_10: 9.4 }),
+        });
+        return;
+      }
+      if (url.includes("/module-spec/elite-autopilot") && route.request().method() === "POST") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: true,
+            gate_passed: true,
+            validation_id: "val-test",
+            zip_base64: "UEsFBg==",
+            score_0_10: 9.4,
+            message: "Sandbox validation passed",
+          }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.route("**/api/apps/templates", async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+    });
+    await page.route("**/api/ai/status", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ enabled: true, ollama_reachable: true }),
+      });
+    });
+    await page.route("**/api/ai/component-gallery", async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+    });
+    await page.route("**/api/ai/draft-cache**", async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+    });
+    await page.route("**/api/ai/draft-module", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          draft: ELITE_DRAFT,
+          warnings: [],
+          note: "Draft only — does not apply.",
+        }),
+      });
+    });
+  });
+
+  test("elite validate enables promote after score >= 9", async ({ page }) => {
+    await page.goto(`/connections/${CONN}/wizard`);
+    await page.getByPlaceholder(/Car rental fleet/i).fill(PROMPT);
+    await page.getByTestId("create-draft").click();
+    await expect(page.getByTestId("draft-scorecard-chip")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("elite-validate-module")).toBeVisible();
+    await page.getByTestId("elite-validate-module").click();
+    await expect(page.getByText(/Sandbox validation passed|validated in sandbox/i)).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByTestId("elite-promote-module")).toBeEnabled();
+    await expect(page.getByTestId("elite-download-zip")).toBeVisible();
   });
 });

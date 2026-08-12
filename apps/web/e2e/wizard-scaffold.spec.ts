@@ -3,6 +3,23 @@ import { expect, test } from "@playwright/test";
 const PHRASE = "I understand the risks";
 const CONN = "test-conn";
 
+const MOCK_CAPS = {
+  major: 19,
+  edition: "community",
+  server_version: "19.0",
+  supported: [
+    "object_create_crud_model",
+    "object_write_update_path",
+    "related_write_dotted_path",
+    "view_inject_inherit",
+    "view_inject_mutate",
+    "base_automation_safe_triggers",
+  ],
+  unsupported: [],
+  ga: true,
+  message: "ok",
+};
+
 test.describe("Wizard scaffold", () => {
   test.beforeEach(async ({ page }) => {
     // Catch API whether absolute or relative
@@ -40,6 +57,7 @@ test.describe("Wizard scaffold", () => {
             server_version: "19.0",
             created_at: null,
             updated_at: null,
+            capabilities: MOCK_CAPS,
           }),
         });
         return;
@@ -85,7 +103,7 @@ test.describe("Wizard scaffold", () => {
   test("Library card scaffolds and shows checklist", async ({ page }) => {
     await page.goto(`/connections/${CONN}/wizard`);
 
-    await expect(page.getByRole("heading", { name: "App wizard" })).toBeVisible();
+    await expect(page.getByTestId("draft-studio")).toBeVisible();
     const libraryCard = page.getByTestId("template-card-library");
     await expect(libraryCard).toBeVisible();
     await libraryCard.click();

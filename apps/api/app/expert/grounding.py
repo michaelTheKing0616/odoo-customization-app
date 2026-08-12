@@ -35,6 +35,10 @@ _MAX_MODELS_FROM_TEXT = 12
 _MODEL_FIELD_RE = re.compile(
     r"\b([a-z][a-z0-9_]*\.[a-z][a-z0-9_]*)\b", re.IGNORECASE
 )
+# Full Odoo technical model names (res.users, ir.ui.view, x_rental.contract).
+_DOTTED_MODEL_RE = re.compile(
+    r"\b((?:[a-z][a-z0-9_]*\.)+[a-z][a-z0-9_]*)\b", re.IGNORECASE
+)
 _MODEL_RE = re.compile(r"\b([a-z][a-z0-9_]{2,}\.[a-z][a-z0-9_]+)\b")
 _ACCESS_ERROR_RE = re.compile(
     r"(?i)(access\s+error|accesserror|forbidden|not\s+allowed\s+to\s+access)"
@@ -49,6 +53,59 @@ _MODEL_NOT_FOUND_RE = re.compile(
 _VALIDATING_VIEW_RE = re.compile(r"(?i)error while validating view")
 _TRACEBACK_RE = re.compile(r"(?i)traceback\s*\(")
 _X_MODEL_RE = re.compile(r"\b(x_[a-z][a-z0-9_]*)\b")
+
+_ODOO_MODULE_PREFIXES = frozenset(
+    {
+        "account",
+        "base",
+        "calendar",
+        "crm",
+        "hr",
+        "ir",
+        "mail",
+        "mrp",
+        "payment",
+        "portal",
+        "product",
+        "project",
+        "purchase",
+        "res",
+        "sale",
+        "stock",
+        "utm",
+        "web",
+    }
+)
+
+
+def _parse_dotted_token(token: str) -> tuple[str, str | None]:
+    """Return (model, field|None) for a dotted technical token."""
+    parts = token.lower().split(".")
+    if len(parts) == 1:
+        return parts[0], None
+    if len(parts) == 2:
+        module, suffix = parts
+        if suffix.startswith("x_"):
+            return module, suffix
+        if module.startswith("x_") and not suffix.startswith("x_"):
+            return token, None
+        if module in _ODOO_MODULE_PREFIXES:
+            return token, None
+        return module, suffix
+    return token, None
+
+
+_CONCEPTUAL_QUESTION_RE = re.compile(
+    r"(?i)\b("
+    r"explain|difference|when would|what happens if|what would happen|"
+    r"compare|versus|vs\.?|which approach|break on upgrade|pros and cons|"
+    r"will existing records|without setting a default"
+    r")\b"
+)
+_EXPLICIT_ERROR_RE = re.compile(
+    r"(?i)(\nerror log:\n|diagnose this error|traceback\s*\(|<fault\s*\d+:|"
+    r"model not found|accesserror|error while validating view)"
+)
 
 _NOTABLE_MODULE_PREFIXES = ("l10n_",)
 _NOTABLE_MODULE_EXACT = frozenset(
@@ -89,19 +146,33 @@ _BULK_TOOL_ROUTES: tuple[dict[str, Any], ...] = (
     {
         "id": "mass_edit",
         "label": "Mass field edit",
-        "keywords": ("mass edit", "bulk edit", "update many", "change field for all", "edit all"),
+        "keywords": (
+            "mass edit",
+            "bulk edit",
+            "update many",
+            "change field for all",
+            "edit all",
+            "bulk suite",
+            "bulk rpc",
+            "bulk tools",
+            "where is the bulk",
+            "bulk rpc suite",
+        ),
         "web_path": "/connections/{connection_id}/bulk-suite",
         "hint": "Use Bulk Suite → mass edit with domain or explicit ids.",
     },
     {
-        "id": "transitions",
+        "id": "transition",
         "label": "Bulk state transition",
         "keywords": (
             "bulk transition",
+            "transition",
             "change state",
             "workflow button",
             "many records",
             "status for all",
+            "done state",
+            "to done",
         ),
         "web_path": "/connections/{connection_id}/bulk-suite",
         "hint": "Discover object buttons then run bulk transition.",
@@ -235,6 +306,7 @@ def extract_model_field_refs(text: str) -> list[tuple[str, str | None]]:
         return []
     seen: set[tuple[str, str | None]] = set()
     out: list[tuple[str, str | None]] = []
+    field_spans: set[str] = set()
 
     def _add(model: str, fld: str | None) -> None:
         key = (model.lower(), fld.lower() if fld else None)
@@ -243,19 +315,33 @@ def extract_model_field_refs(text: str) -> list[tuple[str, str | None]]:
             out.append(key)
 
     for match in _MODEL_FIELD_RE.finditer(text):
-        model, fld = match.group(1).lower().split(".", 1)
-        _add(model, fld)
-    for match in _MODEL_RE.finditer(text):
         token = match.group(1).lower()
-        if "." not in token:
+        model, fld = _parse_dotted_token(token)
+        if fld:
+            field_spans.add(token)
+            _add(model, fld)
+    for match in _DOTTED_MODEL_RE.finditer(text):
+        token = match.group(1).lower()
+        if token in field_spans:
             continue
-        _add(token.split(".", 1)[0], None)
+        _add(token, None)
     for match in _MODEL_NOT_FOUND_RE.finditer(text):
         _add(match.group(1), None)
     if looks_like_rpc_error(text):
         for match in _X_MODEL_RE.finditer(text):
-            _add(match.group(1), None)
+            model = match.group(1).lower()
+            if "." not in model:
+                _add(model, None)
     return out[:_MAX_MODELS_FROM_TEXT]
+
+
+def looks_like_conceptual_question(text: str) -> bool:
+    """Design / what-if questions — not pasted RPC failures."""
+    if not (text or "").strip():
+        return False
+    if _EXPLICIT_ERROR_RE.search(text):
+        return False
+    return bool(_CONCEPTUAL_QUESTION_RE.search(text))
 
 
 def looks_like_rpc_error(text: str) -> bool:
@@ -273,7 +359,7 @@ def looks_like_rpc_error(text: str) -> bool:
         return True
     if _TRACEBACK_RE.search(text):
         return True
-    return bool(_MODEL_FIELD_RE.search(text))
+    return False
 
 
 def match_capability_highlights(
@@ -317,19 +403,18 @@ def route_bulk_tools(question: str, *, connection_id: str | None) -> list[dict[s
     q = (question or "").lower()
     if not q or not connection_id:
         return []
-    if not any(
-        phrase in q
-        for phrase in (
-            "many records",
-            "bulk",
-            "mass edit",
-            "all records",
-            "duplicate",
-            "dedupe",
-            "recompute",
-            "housekeeping",
-        )
-    ):
+    bulk_gate = (
+        "many records",
+        "bulk",
+        "mass edit",
+        "all records",
+        "duplicate",
+        "dedupe",
+        "recompute",
+        "housekeeping",
+        "transition",
+    )
+    if not any(phrase in q for phrase in bulk_gate):
         return []
     routes: list[dict[str, Any]] = []
     for route in _BULK_TOOL_ROUTES:
@@ -342,6 +427,16 @@ def route_bulk_tools(question: str, *, connection_id: str | None) -> list[dict[s
                     "hint": route["hint"],
                 }
             )
+    if not routes and "bulk" in q:
+        hub = _BULK_TOOL_ROUTES[0]
+        routes.append(
+            {
+                "id": hub["id"],
+                "label": "Bulk suite",
+                "deep_link": hub["web_path"].format(connection_id=connection_id),
+                "hint": "Open Bulk Suite for mass edit, transitions, dedupe, and recompute.",
+            }
+        )
     return routes[:5]
 
 
@@ -364,9 +459,9 @@ def cross_check_schema(
             continue
         entry["model_exists"] = model_ok
         if not model_ok:
-            close = difflib.get_close_matches(model, _known_models(client), n=3, cutoff=0.6)
-            if close:
-                entry["suggestion"] = f"Did you mean model {close[0]!r}?"
+            close_hint = _model_typo_suggestion(model, _known_models(client))
+            if close_hint:
+                entry["suggestion"] = close_hint
             entry["status"] = "model_missing"
             diagnostics.append(entry)
             continue
@@ -418,6 +513,27 @@ def _known_models(client: Any) -> list[str]:
         return [str(r["model"]) for r in rows if r.get("model")]
     except Exception:  # noqa: BLE001
         return []
+
+
+def _model_typo_suggestion(model: str, known: list[str]) -> str | None:
+    """Suggest a typo fix only when similarity is strong and plausible."""
+    if not known:
+        return None
+    if model.startswith("x_"):
+        # Missing custom models are usually new — don't suggest unrelated core models.
+        x_models = [m for m in known if m.startswith("x_")]
+        if not x_models:
+            return None
+        close = difflib.get_close_matches(model, x_models, n=1, cutoff=0.78)
+        if close and close[0] != model:
+            return f"Did you mean model {close[0]!r}?"
+        return None
+    close = difflib.get_close_matches(model, known, n=1, cutoff=0.72)
+    if not close or close[0] == model:
+        return None
+    if difflib.SequenceMatcher(None, model, close[0]).ratio() < 0.72:
+        return None
+    return f"Did you mean model {close[0]!r}?"
 
 
 def _truncate_section(text: str, limit: int) -> str:
@@ -610,6 +726,8 @@ def assemble_context(
     models_mentioned = sorted({m for m, _ in refs})
     if ui_context and ui_context.get("model"):
         models_mentioned = sorted(set(models_mentioned) | {str(ui_context["model"]).lower()})
+    if re.search(r"\binvoices?\b", q, re.I):
+        models_mentioned = sorted(set(models_mentioned) | {"account.move"})
 
     for model in models_mentioned:
         tier = protected_models_for(manifest, model) if manifest else None
@@ -622,7 +740,7 @@ def assemble_context(
                 }
             )
 
-    if client is not None and refs and looks_like_rpc_error(q):
+    if client is not None and refs:
         bundle.error_diagnostics = cross_check_schema(client, refs)
 
     return serialize_bundle(bundle)
@@ -634,6 +752,7 @@ __all__ = [
     "assemble_context",
     "cross_check_schema",
     "extract_model_field_refs",
+    "looks_like_conceptual_question",
     "looks_like_rpc_error",
     "merge_question_with_pasted_error",
     "match_capability_highlights",

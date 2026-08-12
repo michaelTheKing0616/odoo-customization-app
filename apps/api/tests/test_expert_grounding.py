@@ -55,7 +55,13 @@ class _FakeClient:
 def test_extract_model_field_refs() -> None:
     refs = extract_model_field_refs("AccessError on x_matter.x_status and account.move")
     assert ("x_matter", "x_status") in refs
-    assert ("account", "move") in refs or any(r[0] == "account" for r in refs)
+    assert ("account.move", None) in refs
+
+
+def test_extract_ir_ui_view_full_model() -> None:
+    refs = extract_model_field_refs("inherit ir.ui.view with mode=extension")
+    assert ("ir.ui.view", None) in refs
+    assert ("ir", None) not in refs
 
 
 def test_looks_like_rpc_error() -> None:
@@ -64,6 +70,20 @@ def test_looks_like_rpc_error() -> None:
     assert looks_like_rpc_error("<Fault 2: 'Model not found: x_ticket'>")
     assert looks_like_rpc_error("Error while validating view near:\nModel not found: x_ticket")
     assert not looks_like_rpc_error("How do I add a custom field?")
+    assert not looks_like_rpc_error(
+        "Explain ir.ui.view extension vs primary form for x_rental.contract"
+    )
+
+
+def test_looks_like_conceptual_question() -> None:
+    from app.expert.grounding import looks_like_conceptual_question
+
+    assert looks_like_conceptual_question(
+        "Explain the difference between extension and primary form views"
+    )
+    assert not looks_like_conceptual_question(
+        "Diagnose this error\n\nError log:\nModel not found: x_ticket"
+    )
 
 
 def test_extract_model_not_found_ref() -> None:
@@ -93,6 +113,23 @@ def test_route_bulk_tools_mass_edit() -> None:
     assert "/connections/conn-1/bulk-suite" in tools[0]["deep_link"]
 
 
+def test_route_bulk_tools_transition_id() -> None:
+    tools = route_bulk_tools(
+        "Bulk transition many x_matter records to done state?",
+        connection_id="conn-1",
+    )
+    assert any(t["id"] == "transition" for t in tools)
+
+
+def test_route_bulk_tools_suite_hub() -> None:
+    tools = route_bulk_tools(
+        "Where is the bulk RPC suite in the app?",
+        connection_id="conn-1",
+    )
+    assert tools
+    assert tools[0]["id"] == "mass_edit"
+
+
 def test_match_capability_highlights_bulk() -> None:
     rows = match_capability_highlights(
         "Can I run bulk transitions on many records?",
@@ -114,6 +151,20 @@ def test_cross_check_typo_suggestion() -> None:
     assert bad["status"] == "field_missing"
     assert "x_status" in bad.get("suggestion", "")
     assert good["status"] == "ok"
+
+
+def test_cross_check_no_spurious_custom_model_suggestion() -> None:
+    class _WideClient(_FakeClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.models.add("ir.model.constraint")
+
+    diags = cross_check_schema(_WideClient(), [("x_rental.contract", None)])
+    missing = diags[0]
+    assert missing["status"] == "model_missing"
+    assert "suggestion" not in missing or "ir.model.constraint" not in missing.get(
+        "suggestion", ""
+    )
 
 
 def test_serialize_bundle_token_estimate() -> None:

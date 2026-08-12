@@ -1,0 +1,37 @@
+{
+  "total": 41,
+  "passed": 38,
+  "pass_rate": 0.927,
+  "grounding_rate": 0.878,
+  "decline_correct": 1.0,
+  "citation_presence": 0.78,
+  "citation_presence_answered": 1.0,
+  "citation_eligible_count": 32,
+  "citation_validity": 1.0,
+  "category_pass_rate": {
+    "doc_grounded": 1.0,
+    "instance_grounded": 1.0,
+    "protected_caution": 0.8,
+    "should_decline": 1.0,
+    "version_diff": 1.0,
+    "bulk_routing": 0.6
+  },
+  "failures": [
+    {
+      "id": "prot-account-link-1",
+      "reasons": ["expected caution_flags"]
+    },
+    {
+      "id": "bulk-transition-1",
+      "reasons": ["missing suggested tool: transition"]
+    },
+    {
+      "id": "bulk-suite-link-1",
+      "reasons": ["missing suggested tool: mass_edit"]
+    }
+  ],
+  "mode": "live_ollama_mock_chunks",
+  "eval_set_size": 41,
+  "eval_set_path": "apps/api/tests/expert_eval/eval_set.jsonl",
+  "notes": "citation_presence_answered=1.0 meets >=0.9 target; run via apps/api/scripts/run_expert_live_bench.py"
+}

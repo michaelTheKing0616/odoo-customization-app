@@ -158,6 +158,16 @@ class ExportSandboxBody(BaseModel):
     odoo_major: int | None = None
 
 
+class EliteAutopilotBody(BaseModel):
+    spec: dict
+    odoo_major: int | None = None
+    skip_gate: bool = False
+
+
+class EliteGateBody(BaseModel):
+    spec: dict
+
+
 class SkeletonBody(BaseModel):
     spec: dict
     model: str
@@ -214,24 +224,39 @@ def export_sandbox_from_draft(
     if not body.async_job:
         result = run_sandbox_install(
             zip_bytes=zip_bytes,
-            technical_name=tech,
+            module_name=tech,
             odoo_major=major,
             extra_modules=list(body.spec.get("depends") or []),
         )
-        if not result.get("ok"):
-            return {"ok": False, "lint": lint, "sandbox": result}
-        validation_id = record_sandbox_validation(
+        if not result.ok:
+            return {
+                "ok": False,
+                "lint": lint,
+                "sandbox": {
+                    "ok": result.ok,
+                    "module": result.module,
+                    "message": result.message,
+                    "log_tail": result.log_tail,
+                },
+            }
+        validation_row = record_sandbox_validation(
             db,
             connection_id=connection_id,
-            zip_sha256=sha256_bytes(zip_bytes),
-            message=result.get("message", "ok"),
+            module_name=tech,
+            zip_bytes=zip_bytes,
         )
         return {
             "ok": True,
             "lint": lint,
-            "validation_id": validation_id,
+            "validation_id": validation_row.id,
+            "zip_sha256": validation_row.zip_sha256,
             "zip_base64": zip_b64,
-            "sandbox": result,
+            "sandbox": {
+                "ok": result.ok,
+                "module": result.module,
+                "message": result.message,
+                "log_tail": result.log_tail,
+            },
         }
 
     job = create_job(db, kind="sandbox", connection_id=connection_id)
@@ -239,7 +264,7 @@ def export_sandbox_from_draft(
     def _work() -> dict:
         result = run_sandbox_install(
             zip_bytes=zip_bytes,
-            technical_name=tech,
+            module_name=tech,
             odoo_major=major,
             job_id=job.id,
             extra_modules=list(body.spec.get("depends") or []),
@@ -249,25 +274,76 @@ def export_sandbox_from_draft(
         wdb = SessionLocal()
         try:
             validation_id = None
-            if result.get("ok"):
-                validation_id = record_sandbox_validation(
+            if result.ok:
+                validation_row = record_sandbox_validation(
                     wdb,
                     connection_id=connection_id,
-                    zip_sha256=sha256_bytes(zip_bytes),
-                    message=result.get("message", "ok"),
+                    module_name=tech,
+                    zip_bytes=zip_bytes,
                 )
+                validation_id = validation_row.id
         finally:
             wdb.close()
         return {
-            "ok": bool(result.get("ok")),
+            "ok": result.ok,
             "validation_id": validation_id,
             "zip_base64": zip_b64,
-            "sandbox": result,
+            "sandbox": {
+                "ok": result.ok,
+                "module": result.module,
+                "message": result.message,
+                "log_tail": result.log_tail,
+            },
             "lint": lint,
         }
 
     enqueue(job.id, _work)
     return {"ok": True, "job_id": job.id, "lint": lint, "message": "Sandbox job queued"}
+
+
+@router.post("/elite-gate")
+def elite_gate_check(
+    connection_id: str,
+    body: EliteGateBody,
+    db: Session = Depends(get_db),
+    auth: WorkspaceAuth = Depends(require_app_auth),
+) -> dict:
+    """Read-only ELITE scorecard + lint gate (no sandbox)."""
+    get_connection_or_404(db, connection_id)
+    from app.ai_elite import elite_promote_gate
+
+    passed, reasons = elite_promote_gate(body.spec)
+    sc = body.spec.get("_scorecard") if isinstance(body.spec.get("_scorecard"), dict) else {}
+    return {
+        "gate_passed": passed,
+        "gate_reasons": reasons,
+        "score_0_10": sc.get("score_0_10"),
+        "dimensions": sc.get("dimensions"),
+    }
+
+
+@router.post("/elite-autopilot")
+def elite_autopilot_route(
+    connection_id: str,
+    body: EliteAutopilotBody,
+    db: Session = Depends(get_db),
+    auth: WorkspaceAuth = Depends(require_app_auth),
+    _lock: Annotated[None, Depends(require_connection_mutation_lock)] = None,
+) -> dict:
+    """ELITE-4 — scorecard-gated export → sandbox → validation_id for promote."""
+    get_connection_or_404(db, connection_id)
+    from app.ai_elite_promote import run_elite_autopilot
+
+    try:
+        return run_elite_autopilot(
+            db,
+            connection_id=connection_id,
+            spec=body.spec,
+            odoo_major=body.odoo_major,
+            skip_gate=body.skip_gate,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/apply", response_model=ModuleSpecApplyOut)

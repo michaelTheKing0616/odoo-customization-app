@@ -45,6 +45,9 @@ def lint_python(content: str, *, source_file: str = "block.py") -> list[dict[str
                     }
                 )
         if isinstance(node, ast.ImportFrom):
+            mod = node.module or ""
+            if mod == "odoo" or mod.startswith("odoo."):
+                continue
             issues.append(
                 {
                     "code": "import_forbidden",
@@ -79,6 +82,8 @@ def lint_custom_code_blocks(spec: dict[str, Any]) -> dict[str, Any]:
         kind = str(block.get("kind") or "")
         if kind.startswith("xml") or block.get("source_file", "").endswith(".xml"):
             issues = lint_xml(content)
+        elif str(block.get("source_file") or "").endswith(".pot"):
+            issues = []
         else:
             issues = lint_python(content, source_file=str(block.get("source_file")))
         if issues:

@@ -24,6 +24,34 @@ const HOP_BY_HOP = new Set([
   "host",
 ]);
 
+const DEFAULT_UPSTREAM_TIMEOUT_MS = 12_000;
+/** Allow ~2× Expert LLM budget (reasoning retry) + RPC/retrieval headroom — see EXPERT_LLM_TIMEOUT_S. */
+const LONG_UPSTREAM_TIMEOUT_MS = Number.parseInt(
+  process.env.EXPERT_UPSTREAM_TIMEOUT_MS ?? "660000",
+  10,
+);
+
+/** Expert + draft review + ingest can exceed the default 12s dev proxy budget. */
+function resolveUpstreamTimeoutMs(path: string): number {
+  if (path.startsWith("expert/")) {
+    return LONG_UPSTREAM_TIMEOUT_MS;
+  }
+  if (path.includes("/ingest/")) {
+    return LONG_UPSTREAM_TIMEOUT_MS;
+  }
+  if (
+    path.includes("/module-spec/elite-autopilot") ||
+    path.includes("/module-spec/export-sandbox") ||
+    path.includes("/module-spec/validate-live")
+  ) {
+    return LONG_UPSTREAM_TIMEOUT_MS;
+  }
+  if (path.startsWith("ai/draft") || path.includes("/ai/enrich-draft")) {
+    return LONG_UPSTREAM_TIMEOUT_MS;
+  }
+  return DEFAULT_UPSTREAM_TIMEOUT_MS;
+}
+
 async function proxyRequest(
   request: NextRequest,
   pathSegments: string[],
@@ -46,11 +74,12 @@ async function proxyRequest(
     body = await request.arrayBuffer();
   }
 
-  const upstreamTimeoutMs = 12_000;
+  const timeoutMs = resolveUpstreamTimeoutMs(path);
+
   const controller = new AbortController();
   const timeout = setTimeout(() => {
     controller.abort(new DOMException("Upstream API timed out", "TimeoutError"));
-  }, upstreamTimeoutMs);
+  }, timeoutMs);
 
   let upstream: Response;
   try {
@@ -73,7 +102,7 @@ async function proxyRequest(
     return NextResponse.json(
       {
         detail: timedOut
-          ? `Timed out reaching API at ${API_PROXY_TARGET} (${upstreamTimeoutMs / 1000}s). Start uvicorn on port 8001.`
+          ? `Timed out reaching API at ${API_PROXY_TARGET} (${timeoutMs / 1000}s). Start uvicorn on port 8001.`
           : `Cannot reach API at ${API_PROXY_TARGET}: ${detail}`,
       },
       { status: timedOut ? 504 : 502 },

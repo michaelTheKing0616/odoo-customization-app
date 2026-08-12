@@ -65,7 +65,7 @@ def extract_prompt_nouns(user_prompt: str) -> list[str]:
 
 
 def _model_text_blob(draft: dict[str, Any]) -> str:
-    parts: list[str] = []
+    parts: list[str] = [str(draft.get("display_name") or "")]
     for m in draft.get("models") or []:
         if not isinstance(m, dict):
             continue
@@ -79,6 +79,15 @@ def _model_text_blob(draft: dict[str, Any]) -> str:
         if isinstance(hint, dict):
             parts.append(str(hint.get("model") or ""))
             parts.append(str(hint.get("reason") or ""))
+    for key in ("mail_templates", "cron_jobs", "reports"):
+        for item in draft.get(key) or []:
+            if not isinstance(item, dict):
+                continue
+            for field in ("name", "subject", "body_html", "code", "report_name"):
+                parts.append(str(item.get(field) or ""))
+    for block in draft.get("custom_code_blocks") or []:
+        if isinstance(block, dict):
+            parts.append(str(block.get("reason") or ""))
     return " ".join(parts).lower()
 
 

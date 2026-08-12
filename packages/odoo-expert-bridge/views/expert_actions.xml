@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <!-- Configure via Settings → Technical → System Parameters:
+       expert_bridge.base_url, expert_bridge.connection_id -->
+  <record id="action_open_customization_expert" model="ir.actions.act_url">
+    <field name="name">Odoo Expert</field>
+    <field name="type">ir.actions.act_url</field>
+    <field name="url">/odoo-expert-bridge/open</field>
+    <field name="target">new</field>
+  </record>
+
+  <menuitem
+    id="menu_customization_expert"
+    name="Expert (Customization App)"
+    parent="base.menu_administration"
+    action="action_open_customization_expert"
+    sequence="260"
+  />
+</odoo>

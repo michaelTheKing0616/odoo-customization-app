@@ -9,10 +9,13 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import type { ExpertAskResponse } from "@/lib/api";
 
 export type ShellUiContext = {
   route?: string;
   model?: string;
+  field?: string;
+  resId?: number;
   draftSummary?: string;
   viewType?: string;
   triggerType?: string;
@@ -25,6 +28,10 @@ export type ExpertPrefill = {
   autoSubmit?: boolean;
   /** Ignore prior Expert turns so diagnosis is not polluted by old context. */
   freshThread?: boolean;
+  /** Pre-computed grounded answer (explain-model) — skips duplicate LLM call. */
+  seedResponse?: ExpertAskResponse;
+  /** User turn shown above seedResponse. */
+  seedQuestion?: string;
 };
 
 type ShellContextValue = {

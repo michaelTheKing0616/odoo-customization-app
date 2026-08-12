@@ -421,11 +421,13 @@ def test_enqueue_draft_job_skips_odoo_client_deepcopy(monkeypatch: pytest.Monkey
 def test_llm_timeout_falls_back_to_pack(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.ai_ollama import draft_module_from_prompt
     from app.llm_provider import LLMError
+    from app.settings import settings
 
     class _TimeoutProvider:
         def generate_json(self, *args: object, **kwargs: object) -> str:
             raise LLMError("Ollama request timed out")
 
+    monkeypatch.setattr(settings, "ai_pipeline_mode", "single")
     monkeypatch.setattr("app.ai_ollama.get_llm_provider", lambda: _TimeoutProvider())
     draft, _raw, warnings, _refusals = draft_module_from_prompt(
         SUPERMARKET_PROMPT,
@@ -437,6 +439,40 @@ def test_llm_timeout_falls_back_to_pack(monkeypatch: pytest.MonkeyPatch) -> None
     )
     assert draft.get("_llm_status", {}).get("mode") == "pack_fallback"
     assert "error" not in draft
+
+
+def test_staged_pipeline_attaches_llm_status_and_scorecard(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.ai_domain_packs import match_domain_pack
+    from app.ai_ollama import draft_module_from_prompt
+    from app.settings import settings
+
+    pack = match_domain_pack(
+        "Build a sophisticated library management system with books, loans, and fines"
+    )
+    assert pack is not None
+    pack_id, pack_body = pack
+
+    def _fake_staged(prompt: str, **kwargs: object) -> tuple[dict[str, Any], str, list[str]]:
+        draft = {
+            "technical_name": pack_id,
+            "display_name": "Library",
+            "depends": list(pack_body.get("depends") or ["base"]),
+            "models": pack_body.get("models") or [],
+            "domain_pack": pack_id,
+            "_ambition": "comprehensive",
+        }
+        return draft, "step0:test", [f"step0: retrieved domain pack '{pack_id}'"]
+
+    monkeypatch.setattr(settings, "ai_pipeline_mode", "staged")
+    monkeypatch.setattr("app.ai_ollama.run_staged_pipeline", _fake_staged)
+    draft, _raw, _warnings, _refusals = draft_module_from_prompt(
+        "Build a sophisticated library management system with books, loans, and fines",
+        expand=False,
+    )
+    assert draft.get("_llm_status", {}).get("mode") in {"llm_full", "llm_partial", "pack_fallback"}
+    assert isinstance(draft.get("_scorecard"), dict)
+    assert draft.get("_meta", {}).get("score_0_10") is not None
+    assert draft.get("_elite", {}).get("passes_applied") is True
 
 
 def test_supermarket3_fixture_has_root_model_leak_before_sanitize() -> None:
@@ -945,8 +981,8 @@ def test_llm_deepen_malformed_json_does_not_raise(monkeypatch: pytest.MonkeyPatc
     from app.ai_model_quality import llm_deepen_model_fields
 
     monkeypatch.setattr(
-        "app.llm_provider.generate_json_with_timeout_retry",
-        lambda *_a, **_k: '{"missing_fields":[{"model":"x_branch","name":}]}',
+        "app.ai_llm_budget.llm_json_with_budget",
+        lambda *_a, **_k: ('{"missing_fields":[{"model":"x_branch","name":}]}', {}),
     )
     draft = {"models": [{"model": "x_branch", "fields": [{"name": "x_name", "ttype": "char"}]}]}
     out, notes = llm_deepen_model_fields(

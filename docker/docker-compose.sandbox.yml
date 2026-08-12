@@ -3,6 +3,8 @@ name: odoo-sandbox
 # Ephemeral Odoo sandbox for Phase 6 module install validation (matching-major).
 # Image: set ODOO_SANDBOX_IMAGE (default odoo:19). API passes odoo:16|17|18|19.
 # Host port **18069** — deliberately not 8070 (reserved for permanent Odoo 18 stack).
+# Library ELITE gate: API sets SANDBOX_EXTRA_MODULES=contacts,mail on install.
+# Expert bridge addons are bind-mounted from docker/sandbox-addons (same as dev stack).
 # Always use project name `odoo-sandbox` so `down -v` never hits the primary stack:
 #   docker compose -p odoo-sandbox -f docker/docker-compose.sandbox.yml up -d
 # Or via API: POST /api/connections/{id}/sandbox/run

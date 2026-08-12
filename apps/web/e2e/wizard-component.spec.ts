@@ -2,6 +2,23 @@ import { expect, test } from "@playwright/test";
 
 const CONN = "test-conn";
 
+const MOCK_CAPS = {
+  major: 19,
+  edition: "community",
+  server_version: "19.0",
+  supported: [
+    "object_create_crud_model",
+    "object_write_update_path",
+    "related_write_dotted_path",
+    "view_inject_inherit",
+    "view_inject_mutate",
+    "base_automation_safe_triggers",
+  ],
+  unsupported: [],
+  ga: true,
+  message: "ok",
+};
+
 test.describe("Wizard component flow", () => {
   test.beforeEach(async ({ page }) => {
     await page.route("**/api/connections/**", async (route) => {
@@ -19,6 +36,7 @@ test.describe("Wizard component flow", () => {
             server_version: "19.0",
             created_at: null,
             updated_at: null,
+            capabilities: MOCK_CAPS,
           }),
         });
         return;
@@ -109,17 +127,18 @@ test.describe("Wizard component flow", () => {
 
   test("connect-points review gates draft then shows component actions", async ({ page }) => {
     await page.goto(`/connections/${CONN}/wizard`);
-    await expect(page.getByRole("heading", { name: "App wizard" })).toBeVisible();
+    await expect(page.getByTestId("draft-studio")).toBeVisible();
 
     await page.getByPlaceholder(/Car rental fleet/i).fill(
       "add inspection checklist to project tasks",
     );
 
-    const draftBtn = page.getByTestId("create-draft");
-    await expect(draftBtn).toBeDisabled();
-
+    await page.getByLabel("Grain override").selectOption("feature_slice");
     await page.getByTestId("review-connect-points").click();
     await expect(page.getByTestId("connect-points-review")).toBeVisible();
+
+    const draftBtn = page.getByTestId("create-draft");
+    await expect(draftBtn).toBeDisabled();
 
     await page.getByRole("button", { name: "Approve connect points" }).click();
     await expect(draftBtn).toBeEnabled();
