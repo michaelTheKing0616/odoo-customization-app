@@ -362,3 +362,13 @@ body {
 .code-block-highlight .token.class-name {
   color: var(--danger);
 }
+
+@keyframes expert-bubble-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}

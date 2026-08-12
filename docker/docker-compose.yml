@@ -5,6 +5,9 @@ name: odoo-custom-dev
 #   docker compose -p odoo-custom-dev -f docker/docker-compose.yml up -d
 #   ./docker/wait-for-odoo.sh
 #   ./docker/init-db.sh
+# Optional Expert bridge install after init-db (Odoo menu → Expert panel deep-link):
+# INSTALL_EXPERT_BRIDGE=1 ./docker/init-db.sh
+# Sync addon source before install: ./docker/sync-expert-bridge.sh
 
 services:
   app-db:
@@ -53,7 +56,8 @@ services:
       PASSWORD: odoo
     volumes:
       - odoo-web-data:/var/lib/odoo
-      - odoo-addons:/mnt/extra-addons
+      # Bind-mount repo addons so local modules (e.g. odoo_expert_bridge) appear without docker cp.
+      - ./sandbox-addons:/mnt/extra-addons
     healthcheck:
       test:
         [
@@ -68,5 +72,4 @@ services:
 volumes:
   odoo-db-data:
   odoo-web-data:
-  odoo-addons:
   app-db-data:

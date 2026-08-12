@@ -75,12 +75,16 @@ def fetch_documentation(version: str, *, offline: bool = False) -> Path:
             raise RuntimeError(f"git clone failed: {cp.stderr.strip() or cp.stdout.strip()}")
 
     _run(["git", "fetch", "origin", version, "--depth", "1"], cwd=dest)
-    _run(["git", "checkout", version], cwd=dest)
+    cp = _run(["git", "reset", "--hard", f"origin/{version}"], cwd=dest)
+    if cp.returncode != 0:
+        cp = _run(["git", "checkout", version], cwd=dest)
+        if cp.returncode != 0:
+            raise RuntimeError(f"git checkout failed: {cp.stderr.strip() or cp.stdout.strip()}")
     _run(["git", "sparse-checkout", "init", "--cone"], cwd=dest)
     _run(["git", "sparse-checkout", "set", SPARSE_PATH], cwd=dest)
-    cp = _run(["git", "pull", "origin", version, "--depth", "1"], cwd=dest)
+    cp = _run(["git", "checkout", version, "--", SPARSE_PATH], cwd=dest)
     if cp.returncode != 0:
-        raise RuntimeError(f"git pull failed: {cp.stderr.strip() or cp.stdout.strip()}")
+        raise RuntimeError(f"git sparse checkout failed: {cp.stderr.strip() or cp.stdout.strip()}")
 
     if not content_dir.is_dir():
         raise RuntimeError(f"Sparse checkout did not produce {content_dir}")

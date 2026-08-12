@@ -10,6 +10,8 @@ import copy
 import re
 from typing import Any
 
+from app.ai_domain_pack_library import library_management_pack
+
 
 def _sel(*pairs: tuple[str, str]) -> str:
     inner = ", ".join(f"('{k}', '{v}')" for k, v in pairs)
@@ -794,6 +796,15 @@ _PACK_FACTORIES: list[tuple[str, Any, re.Pattern[str]]] = [
         field_service_pack,
         re.compile(
             r"\b(field\s+service|job\s+dispatch|work\s*order|technician\s+dispatch)\b",
+            re.I,
+        ),
+    ),
+    (
+        "library_management",
+        library_management_pack,
+        re.compile(
+            r"\b(library|libraries|book\s+loan|book\s+catalog|isbn|"
+            r"library\s+management|overdue\s+loan|library\s+member)\b",
             re.I,
         ),
     ),

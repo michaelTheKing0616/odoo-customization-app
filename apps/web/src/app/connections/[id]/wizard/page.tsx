@@ -12,6 +12,7 @@ import {
   AppTemplate,
   Connection,
   ConfirmationRequiredError,
+  ExpertDraftReviewResponse,
   ProtectedModuleRefusal,
   ScaffoldResult,
   ReuseModelRow,
@@ -22,6 +23,7 @@ import {
   scaffoldOptsFromSpec,
 } from "@/lib/capabilities";
 import { AskWhyButton } from "@/components/expert/AskWhyButton";
+import { useShell } from "@/context/ShellContext";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { reportApiError } from "@/lib/api-error";
@@ -100,6 +102,7 @@ function dedupeTemplates(templates: AppTemplate[]): AppTemplate[] {
 export default function AppWizardPage() {
   const params = useParams<{ id: string }>();
   const connectionId = params.id;
+  const { openExpert } = useShell();
 
   const [connection, setConnection] = useState<Connection | null>(null);
   const [templates, setTemplates] = useState<AppTemplate[]>([]);
@@ -118,7 +121,7 @@ export default function AppWizardPage() {
   const draftSummary = aiDraft
     ? String(aiDraft.display_name ?? aiDraft.technical_name ?? "draft")
     : undefined;
-  useSyncShellContext({ draftSummary });
+  useSyncShellContext({ draftSummary, route: `/connections/${connectionId}/wizard` });
   const [aiNote, setAiNote] = useState<string | null>(null);
   const [aiWarnings, setAiWarnings] = useState<string[]>([]);
   const draftNeedsRegenerate = Boolean(
@@ -150,6 +153,9 @@ export default function AppWizardPage() {
   const scoreDimensions = scorecard?.dimensions;
   const validatorsGreen = scorecard?.validators?.all_green === true;
   const [expertReviewNote, setExpertReviewNote] = useState<string | null>(null);
+  const [expertReviewFindings, setExpertReviewFindings] = useState<
+    ExpertDraftReviewResponse["findings"]
+  >([]);
   const llmStatusBanner =
     llmStatusMode === "llm_partial"
       ? "Some AI steps timed out; pack templates filled in. Retry AI enrichment?"
@@ -174,6 +180,13 @@ export default function AppWizardPage() {
     Array<{ id: string; summary: string; prompt: string; updated_at: string | null }>
   >([]);
   const [genUiConfirmOpen, setGenUiConfirmOpen] = useState(false);
+  const [eliteBusy, setEliteBusy] = useState(false);
+  const [eliteNote, setEliteNote] = useState<string | null>(null);
+  const [eliteValidationId, setEliteValidationId] = useState<string | null>(null);
+  const [eliteZipBase64, setEliteZipBase64] = useState<string | null>(null);
+  const [elitePromoteConfirmOpen, setElitePromoteConfirmOpen] = useState(false);
+  const [eliteLintOk, setEliteLintOk] = useState<boolean | null>(null);
+  const [eliteLintNote, setEliteLintNote] = useState<string | null>(null);
   const [genUiResult, setGenUiResult] = useState<string | null>(null);
   const [validateLiveResult, setValidateLiveResult] = useState<
     import("@/lib/api").ValidateLiveResult | null
@@ -454,6 +467,7 @@ export default function AppWizardPage() {
     setAiBusy(true);
     setAiBusyLabel(applyFixes ? "Expert review + fixes…" : "Expert review…");
     setExpertReviewNote(null);
+    setExpertReviewFindings([]);
     try {
       const res = await api.expertReviewDraft({
         draft: aiDraft,
@@ -464,6 +478,7 @@ export default function AppWizardPage() {
       if (res.draft && applyFixes) {
         setAiDraft(res.draft);
       }
+      setExpertReviewFindings(res.findings ?? []);
       const after = res.score_after ?? res.score_before;
       setExpertReviewNote(
         `Expert review: ${res.score_before.toFixed(1)}/10 → ${after.toFixed(1)}/10 (${res.verdict})`,
@@ -655,6 +670,112 @@ export default function AppWizardPage() {
   function draftWithMultiCompany() {
     if (!aiDraft) return null;
     return multiCompany ? { ...aiDraft, multi_company: true } : aiDraft;
+  }
+
+  function downloadEliteZipBase64(tech: string, zipBase64: string) {
+    const bin = atob(zipBase64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const blob = new Blob([bytes], { type: "application/zip" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${tech}.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function refreshEliteLint() {
+    const spec = draftWithMultiCompany();
+    if (!spec) return;
+    setEliteLintNote(null);
+    try {
+      const lint = await api.lintModuleSpecBlocks(connectionId, spec);
+      const failing = (lint.blocks ?? []).filter((b) => (b.issues?.length ?? 0) > 0);
+      setEliteLintOk(lint.ok && failing.length === 0);
+      setEliteLintNote(
+        failing.length
+          ? `${failing.length} Python block(s) need fixes before promote.`
+          : "Custom Python blocks lint clean.",
+      );
+    } catch (err) {
+      setEliteLintOk(null);
+      setEliteLintNote(err instanceof Error ? err.message : "Lint check failed");
+    }
+  }
+
+  async function onEliteValidateModule() {
+    const spec = draftWithMultiCompany();
+    if (!spec) return;
+    setEliteBusy(true);
+    setEliteNote(null);
+    setError(null);
+    setEliteValidationId(null);
+    setEliteZipBase64(null);
+    setEliteLintOk(null);
+    setEliteLintNote(null);
+    try {
+      const lint = await api.lintModuleSpecBlocks(connectionId, spec);
+      const failing = (lint.blocks ?? []).filter((b) => (b.issues?.length ?? 0) > 0);
+      setEliteLintOk(lint.ok && failing.length === 0);
+      if (failing.length) {
+        setEliteLintNote(
+          `Lint: ${failing.length} block(s) with issues — fix or regenerate before sandbox.`,
+        );
+      }
+      const gate = await api.eliteModuleGate(connectionId, spec);
+      if (!gate.gate_passed) {
+        setEliteNote(
+          `Elite gate: ${(gate.gate_reasons || []).join("; ") || "scorecard below 9.0"}`,
+        );
+        if (gate.dimensions) {
+          const dimLine = Object.entries(gate.dimensions)
+            .map(([k, v]) => `${k} ${Number(v).toFixed(1)}`)
+            .join(" · ");
+          setEliteNote((prev) => `${prev ?? ""}${dimLine ? ` (${dimLine})` : ""}`);
+        }
+        return;
+      }
+      const res = await api.eliteModuleAutopilot(connectionId, { spec });
+      if (!res.ok) {
+        setEliteNote(res.message || "Sandbox validation failed.");
+        return;
+      }
+      setEliteValidationId(res.validation_id ?? null);
+      setEliteZipBase64(res.zip_base64 ?? null);
+      setEliteNote(
+        `Module validated in sandbox (score ${typeof res.score_0_10 === "number" ? res.score_0_10.toFixed(1) : "—"}/10). Ready to promote.`,
+      );
+    } catch (err) {
+      reportApiError(err, setError, { fallback: "Elite validate failed", toast: true });
+    } finally {
+      setEliteBusy(false);
+    }
+  }
+
+  async function onElitePromoteModule(phrase: string) {
+    const spec = draftWithMultiCompany();
+    if (!spec || !eliteValidationId || !eliteZipBase64) return;
+    setEliteBusy(true);
+    setError(null);
+    try {
+      const tech = String(spec.technical_name || "custom_module");
+      const res = await api.promoteModule(connectionId, {
+        technical_name: tech,
+        display_name: String(spec.display_name || tech),
+        zip_base64: eliteZipBase64,
+        validation_id: eliteValidationId,
+        install_mode: "python",
+        confirm_advanced: true,
+        confirm_phrase: phrase,
+      });
+      setElitePromoteConfirmOpen(false);
+      setEliteNote(res.message || `Promoted ${tech} to this connection.`);
+    } catch (err) {
+      reportApiError(err, setError, { fallback: "Promote failed", toast: true });
+    } finally {
+      setEliteBusy(false);
+    }
   }
 
   async function onGenerateUiFromDraft(phrase: string, forceSkipValidate = false) {
@@ -1698,6 +1819,85 @@ export default function AppWizardPage() {
               ) : (
                 <p className="text-sm">No major findings — ready for review.</p>
               )}
+              {draftScore >= 9 ? (
+                <div className="mt-3 space-y-2" data-testid="elite-promote-workflow">
+                  <p className="text-xs text-muted">
+                    ELITE path: sandbox-validate the exported module (Python, mail, cron, tests)
+                    before live promote.
+                  </p>
+                  {eliteLintNote ? (
+                    <p
+                      className={`text-xs ${eliteLintOk === false ? "text-warning" : "text-muted"}`}
+                      data-testid="elite-lint-note"
+                    >
+                      {eliteLintNote}
+                    </p>
+                  ) : null}
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={!aiDraft || eliteBusy}
+                      onClick={() => void refreshEliteLint()}
+                    >
+                      Lint Python blocks
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      loading={eliteBusy}
+                      disabled={!aiDraft || eliteBusy}
+                      data-testid="elite-validate-module"
+                      onClick={() => void onEliteValidateModule()}
+                    >
+                      3. Validate module (sandbox)
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      disabled={!eliteValidationId || !eliteZipBase64 || eliteBusy}
+                      data-testid="elite-promote-module"
+                      onClick={() => setElitePromoteConfirmOpen(true)}
+                    >
+                      4. Promote module
+                    </Button>
+                    {eliteZipBase64 && aiDraft ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        data-testid="elite-download-zip"
+                        onClick={() =>
+                          downloadEliteZipBase64(
+                            String(aiDraft.technical_name || "custom_module"),
+                            eliteZipBase64,
+                          )
+                        }
+                      >
+                        Download validated zip
+                      </Button>
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      data-testid="expert-ask-draft"
+                      onClick={() =>
+                        openExpert({
+                          question: `Review this draft module spec for production readiness: ${draftSummary ?? "module"}. What should I verify before promote?`,
+                          freshThread: true,
+                        })
+                      }
+                    >
+                      Ask Expert about draft
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+              {eliteNote ? <p className="mt-2 text-sm text-muted">{eliteNote}</p> : null}
               {draftScore < 9 ? (
                 <Button
                   type="button"
@@ -1713,6 +1913,19 @@ export default function AppWizardPage() {
               ) : null}
               {expertReviewNote ? (
                 <p className="mt-2 text-sm text-muted">{expertReviewNote}</p>
+              ) : null}
+              {expertReviewFindings.some((f) => f.narrative_paragraph) ? (
+                <div className="mt-3 space-y-3" data-testid="expert-review-narratives">
+                  {expertReviewFindings
+                    .filter((f) => f.narrative_paragraph)
+                    .slice(0, 5)
+                    .map((f) => (
+                      <div key={f.priority} className="rounded-md border border-border-subtle p-2">
+                        <p className="text-xs font-medium text-ink">{f.summary}</p>
+                        <p className="mt-1 text-sm text-muted">{f.narrative_paragraph}</p>
+                      </div>
+                    ))}
+                </div>
               ) : null}
             </Callout>
           ) : null}
@@ -1830,6 +2043,9 @@ export default function AppWizardPage() {
                         <AskWhyButton
                           subject={String(m.model)}
                           context={`Draft model ${m.model}${m.description ? `: ${m.description}` : ""}`}
+                          connectionId={connectionId}
+                          draft={aiDraft ?? undefined}
+                          userPrompt={nlPrompt.trim()}
                         />
                       </li>
                     ),
@@ -2079,6 +2295,20 @@ export default function AppWizardPage() {
           const forceSkip = Boolean(validateLiveResult && !validateLiveResult.ok);
           void onGenerateUiFromDraft(phrase, forceSkip);
         }}
+      />
+      <ConfirmDialog
+        open={elitePromoteConfirmOpen}
+        title="Promote validated module"
+        warning="Installs the sandbox-validated Python module on this live Odoo connection."
+        risks={[
+          "Adds models, fields, views, Python code, reports, and cron jobs",
+          "Uninstall may not fully reverse data",
+          "Only promote after sandbox validation passed",
+        ]}
+        phrase={CONFIRM_PHRASE}
+        busy={eliteBusy}
+        onCancel={() => setElitePromoteConfirmOpen(false)}
+        onConfirm={(phrase) => void onElitePromoteModule(phrase)}
       />
     </div>
   );

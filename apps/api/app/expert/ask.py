@@ -15,8 +15,21 @@ from app.expert.grounding import (
     looks_like_rpc_error,
     merge_question_with_pasted_error,
 )
+from app.expert.access_guidance import try_rule_based_access_guidance
+from app.expert.answer_relevance import answer_matches_question, conversation_is_on_topic
 from app.expert.error_diagnosis import try_rule_based_error_diagnosis
-from app.expert.retrieval import RetrievedChunk, retrieve_expert_chunks
+from app.expert.field_constraint_guidance import try_rule_based_required_field_guidance
+from app.expert.instance_caveats import compose_dual_layer_answer
+from app.expert.l10n_guidance import try_rule_based_l10n_guidance
+from app.expert.knowledge_fallback import (
+    try_rule_based_bulk_routing,
+    try_rule_based_field_type_guidance,
+    try_rule_based_protected_guidance,
+)
+from app.expert.model_lookup import try_rule_based_model_lookup
+from app.expert.view_guidance import try_rule_based_view_guidance
+from app.expert.view_mode_guidance import try_rule_based_view_mode_guidance
+from app.expert.retrieval import RetrievedChunk, passes_generation_threshold, retrieve_expert_chunks
 from app.llm_provider import LLMError, LLMProvider, get_llm_provider
 from app.protected_enforcement import manifest_for_connection
 from app.protected_modules import guardrail_prompt, protected_models_for, safe_alternative_for
@@ -318,14 +331,21 @@ def _build_user_prompt(
         sources_text or "(none — decline if you cannot answer)",
     ]
     if history:
-        parts.extend(["", "PRIOR TURNS:", history])
+        parts.extend(
+            [
+                "",
+                "PRIOR TURNS (background only — may be unrelated; do NOT answer these unless the "
+                "current QUESTION explicitly asks):",
+                history,
+            ]
+        )
     if strict_citations:
         parts.extend(
             [
                 "",
                 "REMINDER — CITATION FORMAT:",
                 "- Every paragraph AND every numbered/bulleted list item must end with [n].",
-                "- Example list item: \"1. Install **Contacts** for students [1].\"",
+                '- Example: "Use xpath position=\\"after\\" on the anchor field [1]."',
                 "- citation_ids must include every [n] used.",
                 "Return JSON with answer_markdown and citation_ids (source numbers used).",
             ]
@@ -333,8 +353,8 @@ def _build_user_prompt(
     parts.extend(
         [
             "",
-            "CITATION EXAMPLE:",
-            '{"answer_markdown":"Install **Contacts** for students [1].\\n\\nUse **CRM** for admissions [1].", "citation_ids":[1], "caution_flags":[]}',
+            "INSTRUCTION: Answer ONLY the QUESTION block above using SOURCE EXCERPTS and "
+            "INSTANCE GROUNDING. Do not copy format examples or unrelated prior topics.",
             "",
             "Respond with JSON: "
             '{"answer_markdown":"...", "citation_ids":[1], "caution_flags":[]}',
@@ -527,6 +547,10 @@ def ask_expert(
             declined=True,
         )
 
+    effective_conversation = conversation
+    if effective_conversation and not conversation_is_on_topic(q, effective_conversation):
+        effective_conversation = []
+
     manifest: dict[str, Any] = {}
     if connection_id:
         from app.odoo_service import get_connection_or_404
@@ -574,18 +598,44 @@ def ask_expert(
     suggested = list(bundle.suggested_tools or [])
 
     def _rule_based_fallback() -> ExpertAskResult | None:
-        payload = try_rule_based_error_diagnosis(q, bundle, connection_id=connection_id)
-        if not payload:
-            return None
-        return ExpertAskResult(
-            answer_markdown=payload["answer_markdown"],
-            citations=[],
-            grounded=bool(payload.get("grounded")),
-            declined=False,
-            suggested_tools=suggested,
-            caution_flags=list(payload.get("caution_flags") or []),
-            retrieval_version=version,
-        )
+        for resolver in (
+            try_rule_based_view_guidance,
+            try_rule_based_view_mode_guidance,
+            try_rule_based_l10n_guidance,
+            try_rule_based_required_field_guidance,
+            try_rule_based_error_diagnosis,
+            try_rule_based_access_guidance,
+            try_rule_based_model_lookup,
+            try_rule_based_bulk_routing,
+            try_rule_based_field_type_guidance,
+            try_rule_based_protected_guidance,
+        ):
+            payload = resolver(q, bundle, connection_id=connection_id, client=client)
+            if not payload:
+                continue
+            diag_flags = payload.get("caution_flags") or []
+            if "rule_based_diagnosis" in diag_flags:
+                answer = str(payload["answer_markdown"])
+                caveat_flags: list[str] = []
+            else:
+                section = "Answer"
+                answer, caveat_flags = compose_dual_layer_answer(
+                    str(payload["answer_markdown"]),
+                    bundle,
+                    connection_id=connection_id,
+                    section_title=section,
+                )
+            flags = list(diag_flags) + caveat_flags
+            return ExpertAskResult(
+                answer_markdown=answer,
+                citations=[],
+                grounded=bool(payload.get("grounded")),
+                declined=False,
+                suggested_tools=suggested,
+                caution_flags=flags,
+                retrieval_version=version,
+            )
+        return None
 
     if not chunks:
         ruled = _rule_based_fallback()
@@ -601,9 +651,24 @@ def ask_expert(
             retrieval_version=version,
         )
 
-    top_score = max(c.score for c in chunks)
-    threshold = min_score
-    if top_score < threshold:
+    # High-confidence rule paths must win over weak/unreliable LLM output.
+    _PRIORITY_RULE_FLAGS = frozenset(
+        {
+            "rule_based_view_guidance",
+            "rule_based_view_mode_guidance",
+            "rule_based_l10n_guidance",
+            "rule_based_required_field_guidance",
+            "rule_based_access_guidance",
+            "rule_based_diagnosis",
+        }
+    )
+    priority = _rule_based_fallback()
+    if priority and any(
+        flag in (priority.caution_flags or []) for flag in _PRIORITY_RULE_FLAGS
+    ):
+        return priority
+
+    if not passes_generation_threshold(chunks, min_score=min_score):
         ruled = _rule_based_fallback()
         if ruled:
             return ruled
@@ -649,7 +714,7 @@ def ask_expert(
             question=q,
             chunks=chunks,
             bundle=bundle,
-            conversation=conversation,
+            conversation=effective_conversation,
             strict_citations=strict_citations,
         )
         raw = llm.generate_json(
@@ -658,6 +723,7 @@ def ask_expert(
             reasoning=use_reasoning,
             temperature=_EXPERT_TEMPERATURE,
             format_schema=EXPERT_RESPONSE_SCHEMA,
+            timeout_s=settings.expert_llm_timeout_s,
         )
         return _parse_llm_response(raw)
 
@@ -722,6 +788,25 @@ def ask_expert(
             cited = _citations_from_response(data, index_map, answer=answer)
 
     uncited_warning = bool(answer) and not _blocks_have_citations(answer)
+
+    if answer and not answer_matches_question(q, answer):
+        ruled = _rule_based_fallback()
+        if ruled:
+            flags = list(ruled.caution_flags or [])
+            if "answer_relevance_fallback" not in flags:
+                flags.append("answer_relevance_fallback")
+            ruled.caution_flags = flags
+            ruled.suggested_tools = suggested
+            return ruled
+        return ExpertAskResult(
+            answer_markdown=DECLINE_LOW_CONFIDENCE,
+            citations=[],
+            grounded=False,
+            declined=True,
+            suggested_tools=suggested,
+            caution_flags=["answer_off_topic"],
+            retrieval_version=version,
+        )
 
     return ExpertAskResult(
         answer_markdown=answer or DECLINE_LOW_CONFIDENCE,

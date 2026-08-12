@@ -291,17 +291,54 @@ def match_verticals(query: str, *, limit: int = 3) -> list[VerticalEntry]:
     return hits
 
 
-def expand_expert_query(query: str) -> str:
-    """Append vertical keywords so embedding retrieval hits playbook chunks."""
-    matches = match_verticals(query, limit=2)
-    if not matches:
+# Odoo developer synonyms appended to retrieval queries (embedding + Jaccard).
+_ODOO_TERM_EXPANSIONS: tuple[tuple[re.Pattern[str], tuple[str, ...]], ...] = (
+    (re.compile(r"(?i)\bxpath|view inherit|inheritance"), ("xpath", "ir.ui.view", "position", "inherit")),
+    (re.compile(r"(?i)\bmany2one|many2many|one2many|field type"), ("fields", "relation", "comodel")),
+    (re.compile(r"(?i)\bautomation|base\.automation|trigger"), ("base.automation", "on_create", "on_write")),
+    (re.compile(r"(?i)\baccess rule|ir\.model\.access|record rule"), ("security", "ir.model.access", "groups")),
+    (re.compile(r"(?i)\bqweb|report template|pdf report"), ("ir.actions.report", "QWeb", "report")),
+    (re.compile(r"(?i)\bcontact|partner|res\.partner"), ("res.partner", "contacts", "partner")),
+    (re.compile(r"(?i)\bcomputed|onchange|constraint"), ("computed field", "store", "api.constrains")),
+    (re.compile(r"(?i)\bmenu|act_window|window action"), ("ir.ui.menu", "ir.actions.act_window", "action")),
+    (re.compile(r"(?i)\bserver action|ir\.actions\.server"), ("server action", "code", "python")),
+    (re.compile(r"(?i)\bbulk|mass edit|dedupe|transition"), ("bulk suite", "mass edit", "RPC")),
+    (
+        re.compile(r"(?i)\bgovernorate|capital governorate|fed\.?\s*states|res\.country\.state"),
+        ("res.country.state", "localization", "Jordan", "Kuwait", "l10n_jo", "l10n_kw"),
+    ),
+    (re.compile(r"(?i)\bstate|province|country states"), ("res.country", "address", "partner")),
+)
+
+
+def _expand_odoo_terms(query: str) -> str:
+    extras: list[str] = []
+    for pattern, terms in _ODOO_TERM_EXPANSIONS:
+        if pattern.search(query):
+            extras.extend(terms)
+    if not extras:
         return query
+    seen: set[str] = set()
+    unique: list[str] = []
+    for term in extras:
+        if term not in seen:
+            seen.add(term)
+            unique.append(term)
+    return f"{query.strip()} {' '.join(unique)}"
+
+
+def expand_expert_query(query: str) -> str:
+    """Append vertical keywords and Odoo developer synonyms for retrieval."""
+    base = _expand_odoo_terms(query)
+    matches = match_verticals(base, limit=2)
+    if not matches:
+        return base
     extras: list[str] = []
     for entry in matches:
         extras.append(entry.title)
         extras.extend(entry.keywords[:10])
         extras.append(entry.summary)
-    return f"{query.strip()} {' '.join(extras)}"
+    return f"{base.strip()} {' '.join(extras)}"
 
 
 def catalog_by_id(vertical_id: str) -> VerticalEntry | None:

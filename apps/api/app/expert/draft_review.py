@@ -6,6 +6,8 @@ import copy
 from dataclasses import dataclass, field
 from typing import Any
 
+from sqlalchemy.orm import Session
+
 from app.ai_critique import apply_critique_repairs, finalize_critique_block
 from app.ai_draft_scorecard import attach_scorecard, draft_scorecard, scorecard_required_repairs
 from app.ai_post_critique import run_post_critique_pipeline
@@ -21,6 +23,8 @@ class DraftReviewFinding:
     deterministic: bool
     repair_hint: str | None = None
     citation: str | None = None
+    narrative_paragraph: str | None = None
+    narrative_citations: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -80,6 +84,9 @@ def review_draft(
     user_prompt: str = "",
     apply_fixes: bool = False,
     overlap_notes: list[str] | None = None,
+    db: Session | None = None,
+    version: str | None = None,
+    include_narratives: bool = True,
 ) -> DraftReviewResult:
     """Run scorecard, build prioritized review, optionally apply deterministic fixes."""
     prompt = user_prompt or str(draft.get("_user_prompt") or "")
@@ -101,6 +108,34 @@ def review_draft(
                     citation="AI-9 overlap planner",
                 )
             )
+
+    narratives_by_priority: dict[int, Any] = {}
+    if include_narratives and findings:
+        from app.expert.narrative import generate_finding_narratives
+
+        for narrative in generate_finding_narratives(
+            db,
+            findings,
+            user_prompt=prompt,
+            version=version,
+            top_n=5,
+        ):
+            narratives_by_priority[narrative.priority] = narrative
+        for finding in findings:
+            narrative = narratives_by_priority.get(finding.priority)
+            if not narrative:
+                continue
+            finding.narrative_paragraph = narrative.paragraph
+            finding.narrative_citations = [
+                {
+                    "source": c.source,
+                    "version": c.version,
+                    "breadcrumb": c.breadcrumb,
+                    "chunk_id": c.chunk_id,
+                    "source_index": c.source_index,
+                }
+                for c in narrative.citations
+            ]
     repairs: list[str] = []
     suggestions: list[str] = []
     score_after: float | None = None
@@ -129,6 +164,14 @@ def review_draft(
     for f in sorted(findings, key=lambda x: x.priority)[:8]:
         tag = "Fix available" if f.deterministic else "Suggestion"
         lines.append(f"- [{tag}] {f.summary}: {f.detail}")
+    narrated = [f for f in sorted(findings, key=lambda x: x.priority) if f.narrative_paragraph][:5]
+    if narrated:
+        lines.append("")
+        lines.append("**Expert review (cited):**")
+        for f in narrated:
+            lines.append("")
+            lines.append(f"**{f.summary}**")
+            lines.append(f.narrative_paragraph or "")
     if score_after is not None:
         lines.append("")
         lines.append(f"After deterministic fixes: **{score_after:.1f}/10**")

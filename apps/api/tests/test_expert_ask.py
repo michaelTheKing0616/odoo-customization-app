@@ -150,7 +150,9 @@ def test_ask_retries_bulk_when_reasoning_returns_empty(monkeypatch: pytest.Monke
                 )
             return json.dumps(
                 {
-                    "answer_markdown": "Grounded answer with citation [1].",
+                    "answer_markdown": (
+                        "Use xpath position=\"after\" on partner_id to add fields below it [1]."
+                    ),
                     "citation_ids": [1],
                     "caution_flags": [],
                 }
@@ -221,6 +223,23 @@ def test_ask_error_diagnosis_without_retrieval(monkeypatch: pytest.MonkeyPatch) 
     assert "x_ticket" in result.answer_markdown
     assert "Models & Fields" in result.answer_markdown
     assert "rule_based_diagnosis" in result.caution_flags
+
+
+def test_ask_model_lookup_without_retrieval(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.expert.ask.retrieve_expert_chunks", lambda *a, **k: [])
+    monkeypatch.setattr(
+        "app.expert.ask.assemble_context",
+        lambda *a, **k: _sample_bundle(),
+    )
+    result = ask_expert(
+        _FakeDb(),  # type: ignore[arg-type]
+        question="what's the model for contacts called in Odoo?",
+        provider=_FakeLLM({}),
+    )
+    assert not result.declined
+    assert "res.partner" in result.answer_markdown
+    assert result.grounded
+    assert "rule_based_model_lookup" in result.caution_flags
 
 
 def test_ask_grounded_with_citations(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -304,8 +323,8 @@ def test_ask_enforces_citations_when_regeneration_still_uncited(
             return json.dumps(
                 {
                     "answer_markdown": (
-                        "1. Install Contacts for students.\n"
-                        "2. Use CRM for admissions.\n\n"
+                        "1. Use Contacts for school student records.\n"
+                        "2. Use Website for the school portal.\n\n"
                         "Remember to sandbox-test first."
                     ),
                     "citation_ids": [],
@@ -353,7 +372,9 @@ def test_ask_regenerates_on_uncited_paragraphs(monkeypatch: pytest.MonkeyPatch) 
                 )
             return json.dumps(
                 {
-                    "answer_markdown": "Grounded answer with citation [1].",
+                    "answer_markdown": (
+                        "Use xpath position=\"after\" on partner_id for sale order fields [1]."
+                    ),
                     "citation_ids": [1],
                 }
             )

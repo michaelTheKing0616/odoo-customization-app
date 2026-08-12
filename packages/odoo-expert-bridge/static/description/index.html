@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Odoo Expert Bridge</title>
+  </head>
+  <body>
+    <h1>Odoo Expert Bridge</h1>
+    <p>
+      Adds a Settings menu entry that opens the No-Code Customization app Expert panel
+      (<code>?expert=1</code>) with optional record context.
+    </p>
+    <p>
+      After install, set system parameter
+      <strong>expert_bridge.base_url</strong> to your web app URL.
+      Local dev is often <code>http://127.0.0.1:3002</code>; Docker deploy uses
+      <code>http://127.0.0.1:3000</code>. Set <strong>expert_bridge.connection_id</strong>
+      to the UUID from <code>/connections/{id}</code> if auto-resolve picks the wrong row.
+    </p>
+  </body>
+</html>

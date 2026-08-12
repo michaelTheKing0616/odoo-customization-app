@@ -1,0 +1,23 @@
+{
+  "total": 41,
+  "passed": 41,
+  "pass_rate": 1.0,
+  "grounding_rate": 0.878,
+  "decline_correct": 1.0,
+  "citation_presence": 0.78,
+  "citation_presence_answered": 1.0,
+  "citation_eligible_count": 32,
+  "citation_validity": 1.0,
+  "category_pass_rate": {
+    "doc_grounded": 1.0,
+    "instance_grounded": 1.0,
+    "protected_caution": 1.0,
+    "should_decline": 1.0,
+    "version_diff": 1.0,
+    "bulk_routing": 1.0
+  },
+  "failures": [],
+  "mode": "live_ollama_mock_chunks",
+  "eval_set_size": 41,
+  "eval_set_path": "apps/api/tests/expert_eval/eval_set.jsonl"
+}

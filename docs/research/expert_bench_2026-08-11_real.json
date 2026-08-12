@@ -1,0 +1,284 @@
+{
+  "total": 41,
+  "passed": 9,
+  "pass_rate": 0.22,
+  "grounding_rate": 0.293,
+  "decline_correct": 0.2,
+  "citation_presence": 0.024,
+  "citation_presence_answered": 0.032,
+  "citation_eligible_count": 31,
+  "citation_validity": 1.0,
+  "category_pass_rate": {
+    "doc_grounded": 0.0,
+    "instance_grounded": 0.0,
+    "protected_caution": 0.8,
+    "should_decline": 1.0,
+    "version_diff": 0.0,
+    "bulk_routing": 0.0
+  },
+  "failures": [
+    {
+      "id": "doc-xpath-inherit-1",
+      "reasons": [
+        "missing must_contain: xpath"
+      ]
+    },
+    {
+      "id": "doc-field-types-1",
+      "reasons": [
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "doc-automation-trigger-1",
+      "reasons": [
+        "unexpected decline",
+        "missing must_contain: automation",
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "doc-access-rules-1",
+      "reasons": [
+        "unexpected decline",
+        "missing must_contain: access",
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "doc-qweb-report-1",
+      "reasons": [
+        "unexpected decline",
+        "missing must_contain: qweb",
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "doc-menu-action-1",
+      "reasons": [
+        "unexpected decline",
+        "missing must_contain: menu",
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "doc-computed-field-1",
+      "reasons": [
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "doc-related-field-1",
+      "reasons": [
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "doc-domain-filter-1",
+      "reasons": [
+        "unexpected decline",
+        "missing must_contain: domain",
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "doc-sequence-1",
+      "reasons": [
+        "unexpected decline",
+        "missing must_contain: sequence",
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "doc-constraint-1",
+      "reasons": [
+        "unexpected decline",
+        "missing must_contain: constraint",
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "doc-onchange-1",
+      "reasons": [
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "doc-inherit-model-1",
+      "reasons": [
+        "unexpected decline",
+        "missing must_contain: inherit",
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "doc-module-manifest-1",
+      "reasons": [
+        "unexpected decline",
+        "missing must_contain: depends",
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "doc-external-id-1",
+      "reasons": [
+        "unexpected decline",
+        "missing must_contain: external",
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "doc-server-action-1",
+      "reasons": [
+        "unexpected decline",
+        "missing must_contain: server action",
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "inst-hosting-1",
+      "reasons": [
+        "unexpected decline",
+        "missing must_contain: self-hosted",
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "inst-modules-1",
+      "reasons": [
+        "unexpected decline",
+        "missing must_contain: account",
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "inst-draft-context-1",
+      "reasons": [
+        "unexpected decline",
+        "missing must_contain: x_matter",
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "inst-capability-1",
+      "reasons": [
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "inst-error-diag-1",
+      "reasons": [
+        "unexpected decline",
+        "missing must_contain: x_status",
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "prot-account-link-1",
+      "reasons": [
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "ver-17-property-1",
+      "reasons": [
+        "unexpected decline",
+        "missing must_contain: 17",
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "ver-19-property-1",
+      "reasons": [
+        "unexpected decline",
+        "missing must_contain: 19",
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "ver-16-dotted-1",
+      "reasons": [
+        "unexpected decline",
+        "missing must_contain: 16",
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "ver-18-barcode-1",
+      "reasons": [
+        "unexpected decline",
+        "missing must_contain: 18",
+        "missing must_contain: barcode",
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "ver-19-automation-1",
+      "reasons": [
+        "unexpected decline",
+        "missing must_contain: 19",
+        "missing must_contain: [1]",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "bulk-mass-edit-1",
+      "reasons": [
+        "missing citations"
+      ]
+    },
+    {
+      "id": "bulk-dedupe-1",
+      "reasons": [
+        "missing must_contain: dedupe",
+        "missing citations"
+      ]
+    },
+    {
+      "id": "bulk-transition-1",
+      "reasons": [
+        "missing citations"
+      ]
+    },
+    {
+      "id": "bulk-recompute-1",
+      "reasons": [
+        "missing citations"
+      ]
+    },
+    {
+      "id": "bulk-suite-link-1",
+      "reasons": [
+        "missing citations"
+      ]
+    }
+  ],
+  "mode": "live_ollama_real_retrieval",
+  "eval_set_size": 41,
+  "eval_set_path": "apps/api/tests/expert_eval/eval_set.jsonl"
+}

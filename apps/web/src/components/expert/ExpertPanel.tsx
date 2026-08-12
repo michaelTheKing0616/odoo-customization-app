@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Markdown from "react-markdown";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -36,6 +37,10 @@ function loadThread(connectionId: string): Turn[] {
 
 function saveThread(connectionId: string, turns: Turn[]) {
   sessionStorage.setItem(storageKey(connectionId), JSON.stringify(turns));
+}
+
+function clearThread(connectionId: string) {
+  sessionStorage.removeItem(storageKey(connectionId));
 }
 
 function CitationChip({ citation, index }: { citation: ExpertCitation; index?: number }) {
@@ -115,6 +120,57 @@ function CopyAnswerButton({ text }: { text: string }) {
   );
 }
 
+function LogToChatterButton({
+  connectionId,
+  model,
+  resId,
+  body,
+}: {
+  connectionId: string;
+  model: string;
+  resId: number;
+  body: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  async function post() {
+    if (!window.confirm("Log this Expert answer as an internal note on the Odoo record?")) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      const res = await api.expertPostToChatter({
+        connection_id: connectionId,
+        model,
+        res_id: resId,
+        body_markdown: body,
+        confirmed: true,
+      });
+      setNote(res.message);
+    } catch (err) {
+      setNote(err instanceof Error ? err.message : "Failed to post note");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        loading={busy}
+        data-testid="expert-log-chatter"
+        onClick={() => void post()}
+      >
+        Log as Odoo note
+      </Button>
+      {note ? <span className="text-xs text-muted">{note}</span> : null}
+    </div>
+  );
+}
+
 export function ExpertPanel() {
   const {
     connectionId,
@@ -134,6 +190,21 @@ export function ExpertPanel() {
   const [autoSubmitNonce, setAutoSubmitNonce] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const pendingAutoSubmit = useRef<SendOptions & { prompt: string } | null>(null);
+
+  const promptsQuery = useQuery({
+    queryKey: ["expert-suggested-prompts", uiContext.route, uiContext.model, uiContext.draftSummary],
+    queryFn: () =>
+      api.expertSuggestedPrompts({
+        route: uiContext.route,
+        model: uiContext.model,
+        view_type: uiContext.viewType,
+        draft_summary: uiContext.draftSummary,
+      }),
+    enabled: expertOpen,
+    staleTime: 60_000,
+  });
+
+  const canLogToChatter = Boolean(uiContext.model && uiContext.resId && uiContext.resId > 0);
 
   useEffect(() => {
     setTurns(loadThread(connectionId));
@@ -204,15 +275,48 @@ export function ExpertPanel() {
     [busy, connectionId, contextEnabled, errorPaste, turns, uiContext],
   );
 
+  const clearHistory = useCallback(() => {
+    if (turns.length === 0 || busy) return;
+    if (!window.confirm("Clear this Expert conversation?")) return;
+    setTurns([]);
+    setError(null);
+    setInput("");
+    setErrorPaste("");
+    clearThread(connectionId);
+  }, [busy, connectionId, turns.length]);
+
   useEffect(() => {
-    if (!expertPrefill?.question) return;
-    const { question, errorText, autoSubmit, freshThread } = expertPrefill;
+    if (!expertPrefill?.question && !expertPrefill?.seedResponse) return;
+    const {
+      question,
+      errorText,
+      autoSubmit,
+      freshThread,
+      seedResponse,
+      seedQuestion,
+    } = expertPrefill;
     const prompt = formatExpertDiagnosePrompt(question, errorText);
     setInput(prompt);
     setErrorPaste(errorText?.trim() ?? "");
     if (freshThread) {
       setTurns([]);
       saveThread(connectionId, []);
+    }
+    if (seedResponse) {
+      const userQ = seedQuestion?.trim() || question.trim() || "Explain this";
+      const seeded: Turn[] = [
+        { role: "user", content: userQ },
+        {
+          role: "assistant",
+          content: seedResponse.answer_markdown,
+          response: seedResponse,
+        },
+      ];
+      setTurns(seeded);
+      saveThread(connectionId, seeded);
+      setInput("");
+      clearExpertPrefill();
+      return;
     }
     if (autoSubmit && prompt.trim()) {
       pendingAutoSubmit.current = {
@@ -249,21 +353,35 @@ export function ExpertPanel() {
     >
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="border-b border-border-subtle px-4 py-2">
-          {contextLabel ? (
-            <div className="flex items-center justify-between gap-2 text-xs">
-              <span className="text-muted">
-                Using context: <span className="text-ink">{contextLabel}</span>
-              </span>
-              <button
-                type="button"
-                className="text-accent hover:underline"
-                onClick={() => setContextEnabled(!contextEnabled)}
-                data-testid="expert-context-toggle"
-              >
-                {contextEnabled ? "Turn off" : "Turn on"}
-              </button>
-            </div>
-          ) : null}
+          <div className="flex items-center justify-between gap-2">
+            {contextLabel ? (
+              <div className="flex min-w-0 flex-1 items-center gap-2 text-xs">
+                <span className="truncate text-muted">
+                  Using context: <span className="text-ink">{contextLabel}</span>
+                </span>
+                <button
+                  type="button"
+                  className="shrink-0 text-accent hover:underline"
+                  onClick={() => setContextEnabled(!contextEnabled)}
+                  data-testid="expert-context-toggle"
+                >
+                  {contextEnabled ? "Turn off" : "Turn on"}
+                </button>
+              </div>
+            ) : (
+              <span className="text-xs text-muted">Expert conversation</span>
+            )}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={turns.length === 0 || busy}
+              data-testid="expert-clear-history"
+              onClick={clearHistory}
+            >
+              Clear history
+            </Button>
+          </div>
           {!errorInMainInput ? (
             <>
               <label className="mt-2 block text-xs font-medium text-muted" htmlFor="expert-error-paste">
@@ -292,16 +410,45 @@ export function ExpertPanel() {
               Connect docs, instance metadata, and your current page context when enabled.
             </Callout>
           ) : null}
+          {turns.length === 0 && (promptsQuery.data?.length ?? 0) > 0 ? (
+            <div className="flex flex-wrap gap-2" data-testid="expert-suggested-prompts">
+              {promptsQuery.data!.map((p) => (
+                <Button
+                  key={p.id}
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void sendQuestion(p.question, { freshThread: true })}
+                >
+                  {p.label}
+                </Button>
+              ))}
+            </div>
+          ) : null}
           {turns.map((turn, idx) => (
             <div
               key={`${turn.role}-${idx}`}
               className={cn(
-                "rounded-md px-3 py-2 text-sm",
-                turn.role === "user"
-                  ? "ml-8 bg-accent-subtle text-ink"
-                  : "mr-4 border border-border-subtle bg-surface-raised",
+                "flex gap-2 text-sm",
+                turn.role === "user" ? "justify-end" : "justify-start",
               )}
             >
+              {turn.role === "assistant" ? (
+                <div
+                  className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-accent to-accent-hover text-[10px] font-semibold text-on-accent shadow-sm"
+                  aria-hidden
+                >
+                  AI
+                </div>
+              ) : null}
+              <div
+                className={cn(
+                  "max-w-[92%] rounded-2xl px-3 py-2.5 shadow-sm",
+                  turn.role === "user"
+                    ? "rounded-br-md bg-gradient-to-br from-accent to-accent-hover text-on-accent"
+                    : "rounded-bl-md border border-border-subtle bg-gradient-to-b from-surface-raised to-surface text-ink",
+                )}
+              >
               {turn.role === "assistant" && turn.response ? (
                 <>
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -319,6 +466,16 @@ export function ExpertPanel() {
                     </div>
                     <CopyAnswerButton text={turn.response.answer_markdown} />
                   </div>
+                  {canLogToChatter && turn.role === "assistant" ? (
+                    <div className="mb-2">
+                      <LogToChatterButton
+                        connectionId={connectionId}
+                        model={uiContext.model!}
+                        resId={uiContext.resId!}
+                        body={turn.response.answer_markdown}
+                      />
+                    </div>
+                  ) : null}
                   <div className="prose prose-sm max-w-none dark:prose-invert">
                     <ExpertAnswerMarkdown
                       markdown={turn.response.answer_markdown}
@@ -355,6 +512,7 @@ export function ExpertPanel() {
               ) : (
                 turn.content
               )}
+              </div>
             </div>
           ))}
           {error ? (

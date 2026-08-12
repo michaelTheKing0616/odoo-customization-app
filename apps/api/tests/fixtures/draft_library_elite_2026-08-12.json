@@ -1,0 +1,1415 @@
+{
+  "technical_name": "library_management",
+  "display_name": "Sophisticated Library Management",
+  "depends": [
+    "base",
+    "contacts",
+    "mail",
+    "product",
+    "sale",
+    "account"
+  ],
+  "models": [
+    {
+      "model": "x_lib_branch",
+      "description": "Library Branch",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Branch Name",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Code",
+          "help": "Auto-numbered via ir.sequence (BR/00001)"
+        },
+        {
+          "name": "x_address",
+          "ttype": "text",
+          "string": "Address"
+        },
+        {
+          "name": "x_phone",
+          "ttype": "char",
+          "string": "Phone"
+        },
+        {
+          "name": "x_manager_id",
+          "ttype": "many2one",
+          "string": "Manager",
+          "relation": "res.users"
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company",
+          "on_delete": "restrict"
+        }
+      ]
+    },
+    {
+      "model": "x_lib_author",
+      "description": "Author",
+      "mode": "new",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Author Name",
+          "required": true
+        },
+        {
+          "name": "x_bio",
+          "ttype": "text",
+          "string": "Biography"
+        },
+        {
+          "name": "x_country_id",
+          "ttype": "many2one",
+          "string": "Country",
+          "relation": "res.country"
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company",
+          "on_delete": "restrict"
+        }
+      ]
+    },
+    {
+      "model": "x_lib_book",
+      "description": "Book",
+      "mode": "new",
+      "is_workflow": true,
+      "state_field": {
+        "name": "x_status",
+        "selection": "[('available', 'Available'), ('loaned', 'Loaned'), ('reserved', 'Reserved'), ('lost', 'Lost')]",
+        "transitions": [
+          [
+            "available",
+            "loaned"
+          ],
+          [
+            "loaned",
+            "reserved"
+          ],
+          [
+            "reserved",
+            "lost"
+          ]
+        ],
+        "statusbar_visible": [
+          "available",
+          "loaned",
+          "reserved",
+          "lost"
+        ],
+        "states": [
+          "available",
+          "loaned",
+          "reserved",
+          "lost"
+        ]
+      },
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Title",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Auto-numbered via ir.sequence (LIB/00001)"
+        },
+        {
+          "name": "x_isbn",
+          "ttype": "char",
+          "string": "ISBN"
+        },
+        {
+          "name": "x_barcode",
+          "ttype": "char",
+          "string": "Barcode"
+        },
+        {
+          "name": "x_copies",
+          "ttype": "integer",
+          "string": "Copies"
+        },
+        {
+          "name": "x_available_copies",
+          "ttype": "integer",
+          "string": "Available Copies"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('available','Available'),('loaned','Loaned'),('reserved','Reserved'),('lost','Lost')]",
+          "tracking": true,
+          "default": "available"
+        },
+        {
+          "name": "x_fine_rate",
+          "ttype": "float",
+          "string": "Daily Fine Rate"
+        },
+        {
+          "name": "x_category_id",
+          "ttype": "many2one",
+          "string": "Category",
+          "relation": "x_lib_category"
+        },
+        {
+          "name": "x_author_id",
+          "ttype": "many2one",
+          "string": "Author",
+          "relation": "x_lib_author"
+        },
+        {
+          "name": "x_branch_id",
+          "ttype": "many2one",
+          "string": "Branch",
+          "relation": "x_lib_branch"
+        },
+        {
+          "name": "x_loan_ids",
+          "ttype": "one2many",
+          "string": "Loans",
+          "relation": "x_lib_loan",
+          "relation_field": "x_book_id"
+        },
+        {
+          "name": "x_lib_reservation_ids",
+          "ttype": "one2many",
+          "string": "Book Reservation",
+          "relation": "x_lib_reservation",
+          "relation_field": "x_book_id",
+          "source": "quality_o2m"
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company",
+          "on_delete": "restrict"
+        }
+      ],
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ]
+    },
+    {
+      "model": "x_lib_loan",
+      "description": "Book Loan",
+      "mode": "new",
+      "is_workflow": true,
+      "state_field": {
+        "name": "x_status",
+        "selection": "[('draft', 'Draft'), ('active', 'Active'), ('returned', 'Returned'), ('overdue', 'Overdue'), ('cancelled', 'Cancelled')]",
+        "transitions": [
+          [
+            "draft",
+            "active"
+          ],
+          [
+            "active",
+            "returned"
+          ],
+          [
+            "returned",
+            "overdue"
+          ],
+          [
+            "draft",
+            "cancelled"
+          ],
+          [
+            "active",
+            "cancelled"
+          ],
+          [
+            "returned",
+            "cancelled"
+          ],
+          [
+            "overdue",
+            "cancelled"
+          ]
+        ],
+        "statusbar_visible": [
+          "draft",
+          "active",
+          "returned",
+          "overdue"
+        ],
+        "states": [
+          "draft",
+          "active",
+          "returned",
+          "overdue",
+          "cancelled"
+        ]
+      },
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Reference",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Auto-numbered via ir.sequence (LIB2/00001)"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('draft','Draft'),('active','Active'),('returned','Returned'),('overdue','Overdue'),('cancelled','Cancelled')]",
+          "tracking": true,
+          "default": "draft"
+        },
+        {
+          "name": "x_book_id",
+          "ttype": "many2one",
+          "string": "Book",
+          "relation": "x_lib_book",
+          "required": true
+        },
+        {
+          "name": "x_member_id",
+          "ttype": "many2one",
+          "string": "Member",
+          "relation": "res.partner",
+          "required": true
+        },
+        {
+          "name": "x_branch_id",
+          "ttype": "many2one",
+          "string": "Branch",
+          "relation": "x_lib_branch"
+        },
+        {
+          "name": "x_loan_date",
+          "ttype": "date",
+          "string": "Loan Date"
+        },
+        {
+          "name": "x_due_date",
+          "ttype": "date",
+          "string": "Due Date"
+        },
+        {
+          "name": "x_return_date",
+          "ttype": "date",
+          "string": "Return Date"
+        },
+        {
+          "name": "x_returned",
+          "ttype": "boolean",
+          "string": "Returned"
+        },
+        {
+          "name": "x_days_overdue",
+          "ttype": "integer",
+          "string": "Days Overdue"
+        },
+        {
+          "name": "x_fine_amount",
+          "ttype": "monetary",
+          "string": "Fine Amount"
+        },
+        {
+          "name": "x_notes",
+          "ttype": "text",
+          "string": "Notes"
+        },
+        {
+          "name": "x_lib_fine_ids",
+          "ttype": "one2many",
+          "string": "Library Fine",
+          "relation": "x_lib_fine",
+          "relation_field": "x_loan_id",
+          "source": "quality_o2m"
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company",
+          "on_delete": "restrict"
+        }
+      ],
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ]
+    },
+    {
+      "model": "x_lib_reservation",
+      "description": "Book Reservation",
+      "mode": "new",
+      "is_workflow": true,
+      "state_field": {
+        "name": "x_status",
+        "selection": "[('pending', 'Pending'), ('confirmed', 'Confirmed'), ('fulfilled', 'Fulfilled'), ('cancelled', 'Cancelled')]",
+        "transitions": [
+          [
+            "confirmed",
+            "pending"
+          ],
+          [
+            "pending",
+            "fulfilled"
+          ],
+          [
+            "confirmed",
+            "cancelled"
+          ],
+          [
+            "pending",
+            "cancelled"
+          ],
+          [
+            "fulfilled",
+            "cancelled"
+          ]
+        ],
+        "statusbar_visible": [
+          "confirmed",
+          "pending",
+          "fulfilled"
+        ],
+        "states": [
+          "pending",
+          "confirmed",
+          "fulfilled",
+          "cancelled"
+        ]
+      },
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Reference",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Auto-numbered via ir.sequence (LIB3/00001)"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('pending','Pending'),('confirmed','Confirmed'),('fulfilled','Fulfilled'),('cancelled','Cancelled')]",
+          "tracking": true,
+          "default": "pending"
+        },
+        {
+          "name": "x_book_id",
+          "ttype": "many2one",
+          "string": "Book",
+          "relation": "x_lib_book",
+          "required": true
+        },
+        {
+          "name": "x_member_id",
+          "ttype": "many2one",
+          "string": "Member",
+          "relation": "res.partner",
+          "required": true
+        },
+        {
+          "name": "x_reservation_date",
+          "ttype": "date",
+          "string": "Reservation Date"
+        },
+        {
+          "name": "x_pickup_date",
+          "ttype": "date",
+          "string": "Pickup Date"
+        },
+        {
+          "name": "x_notes",
+          "ttype": "text",
+          "string": "Notes"
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company",
+          "on_delete": "restrict"
+        },
+        {
+          "name": "x_invoice_id",
+          "ttype": "many2one",
+          "relation": "account.move",
+          "string": "Invoice",
+          "help": "Link-only \u2014 wire to account.move manually",
+          "source": "apply_readiness"
+        },
+        {
+          "name": "x_sale_order_id",
+          "ttype": "many2one",
+          "relation": "sale.order",
+          "string": "Sales order",
+          "help": "Link-only \u2014 wire to sale.order manually",
+          "source": "apply_readiness"
+        }
+      ],
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ]
+    },
+    {
+      "model": "x_lib_fine",
+      "description": "Library Fine",
+      "mode": "new",
+      "is_workflow": true,
+      "state_field": {
+        "name": "x_status",
+        "selection": "[('draft', 'Draft'), ('open', 'Open'), ('paid', 'Paid'), ('waived', 'Waived')]",
+        "transitions": [
+          [
+            "draft",
+            "open"
+          ],
+          [
+            "open",
+            "waived"
+          ],
+          [
+            "waived",
+            "paid"
+          ]
+        ],
+        "statusbar_visible": [
+          "draft",
+          "open",
+          "waived",
+          "paid"
+        ],
+        "states": [
+          "draft",
+          "open",
+          "paid",
+          "waived"
+        ]
+      },
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Reference",
+          "required": true
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Auto-numbered via ir.sequence (LIB4/00001)"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('draft','Draft'),('open','Open'),('paid','Paid'),('waived','Waived')]",
+          "tracking": true,
+          "default": "draft"
+        },
+        {
+          "name": "x_loan_id",
+          "ttype": "many2one",
+          "string": "Loan",
+          "relation": "x_lib_loan",
+          "required": true
+        },
+        {
+          "name": "x_member_id",
+          "ttype": "many2one",
+          "string": "Member",
+          "relation": "res.partner"
+        },
+        {
+          "name": "x_amount",
+          "ttype": "monetary",
+          "string": "Amount"
+        },
+        {
+          "name": "x_paid_date",
+          "ttype": "date",
+          "string": "Paid Date"
+        },
+        {
+          "name": "x_notes",
+          "ttype": "text",
+          "string": "Notes"
+        },
+        {
+          "name": "x_company_id",
+          "ttype": "many2one",
+          "string": "Company",
+          "relation": "res.company",
+          "on_delete": "restrict"
+        }
+      ],
+      "mixins": [
+        "mail.thread",
+        "mail.activity.mixin"
+      ]
+    }
+  ],
+  "domain_pack": "library_management",
+  "_llm_status": {
+    "mode": "llm_full",
+    "completed_steps": [
+      "elite-test"
+    ],
+    "step": 6,
+    "step_label": "Finalizing draft"
+  },
+  "ambition": "comprehensive",
+  "_pack_reuse_stock": [
+    {
+      "model": "res.partner",
+      "modules": [
+        "contacts"
+      ],
+      "reason": "Library members (link-only)",
+      "link_only": true,
+      "forbid_parallel": [
+        "x_member",
+        "x_lib_member"
+      ]
+    },
+    {
+      "model": "product.product",
+      "modules": [
+        "product"
+      ],
+      "reason": "Optional sellable items / fines SKU",
+      "link_only": true
+    }
+  ],
+  "smart_buttons": [
+    {
+      "on_model": "x_lib_book",
+      "related_model": "x_lib_loan",
+      "relation_field": "x_book_id",
+      "label": "Loans"
+    },
+    {
+      "on_model": "x_lib_loan",
+      "related_model": "x_lib_fine",
+      "relation_field": "x_loan_id",
+      "label": "Fines"
+    },
+    {
+      "on_model": "res.partner",
+      "label": "Book Loan",
+      "related_model": "x_lib_loan",
+      "relation_field": "x_member_id",
+      "icon": "fa-list",
+      "requires_inherit_view": true,
+      "note": "Applied as inherit on Contacts button_box"
+    },
+    {
+      "on_model": "res.partner",
+      "label": "Book Reservation",
+      "related_model": "x_lib_reservation",
+      "relation_field": "x_member_id",
+      "icon": "fa-list",
+      "requires_inherit_view": true,
+      "note": "Applied as inherit on Contacts button_box"
+    },
+    {
+      "on_model": "res.partner",
+      "label": "Library Fine",
+      "related_model": "x_lib_fine",
+      "relation_field": "x_member_id",
+      "icon": "fa-list",
+      "requires_inherit_view": true,
+      "note": "Applied as inherit on Contacts button_box"
+    }
+  ],
+  "automations": [
+    {
+      "name": "Flag overdue on x_lib_loan",
+      "model": "x_lib_loan",
+      "trigger": "on_time",
+      "description": "Safety-net: when x_return_date is past and still in active states \u2192 overdue",
+      "filter_domain": "[('x_return_date', '<', 'now'), ('x_status', 'in', ['draft', 'active', 'returned', 'overdue'])]",
+      "safe_actions": [
+        {
+          "kind": "object_write",
+          "field": "x_status",
+          "value": "overdue"
+        },
+        {
+          "kind": "next_activity",
+          "summary": "Overdue follow-up"
+        }
+      ],
+      "source": "rules_engine"
+    }
+  ],
+  "tags": [
+    "library",
+    "libraries",
+    "library management",
+    "sophisticated",
+    "book",
+    "books",
+    "loan",
+    "loans",
+    "member",
+    "members",
+    "isbn",
+    "barcode",
+    "reservation",
+    "reservations",
+    "fine",
+    "fines",
+    "overdue",
+    "reminder",
+    "reminders",
+    "catalog",
+    "author",
+    "branch",
+    "branches",
+    "management"
+  ],
+  "actions": [
+    {
+      "name": "Library Branch",
+      "model": "x_lib_branch",
+      "view_mode": "list,form",
+      "technical_name": "action_x_lib_branch"
+    },
+    {
+      "name": "Author",
+      "model": "x_lib_author",
+      "view_mode": "list,form",
+      "technical_name": "action_x_lib_author"
+    },
+    {
+      "name": "Book",
+      "model": "x_lib_book",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_lib_book"
+    },
+    {
+      "name": "Book Loan",
+      "model": "x_lib_loan",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_lib_loan"
+    },
+    {
+      "name": "Book Reservation",
+      "model": "x_lib_reservation",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_lib_reservation"
+    },
+    {
+      "name": "Library Fine",
+      "model": "x_lib_fine",
+      "view_mode": "list,kanban,form",
+      "technical_name": "action_x_lib_fine"
+    }
+  ],
+  "menus": [
+    {
+      "name": "Sophisticated Library Management",
+      "sequence": 10,
+      "technical_name": "root_library_management",
+      "xml_id": "menu_root_library_management",
+      "groups": [
+        "group_library_management_user"
+      ]
+    },
+    {
+      "name": "Library Branch",
+      "action_xml_id": "action_x_lib_branch",
+      "parent_xml_id": "menu_root_library_management",
+      "sequence": 10,
+      "technical_name": "menu_x_lib_branch"
+    },
+    {
+      "name": "Author",
+      "action_xml_id": "action_x_lib_author",
+      "parent_xml_id": "menu_root_library_management",
+      "sequence": 11,
+      "technical_name": "menu_x_lib_author"
+    },
+    {
+      "name": "Book",
+      "action_xml_id": "action_x_lib_book",
+      "parent_xml_id": "menu_root_library_management",
+      "sequence": 12,
+      "technical_name": "menu_x_lib_book"
+    },
+    {
+      "name": "Book Loan",
+      "action_xml_id": "action_x_lib_loan",
+      "parent_xml_id": "menu_root_library_management",
+      "sequence": 13,
+      "technical_name": "menu_x_lib_loan"
+    },
+    {
+      "name": "Book Reservation",
+      "action_xml_id": "action_x_lib_reservation",
+      "parent_xml_id": "menu_root_library_management",
+      "sequence": 14,
+      "technical_name": "menu_x_lib_reservation"
+    },
+    {
+      "name": "Library Fine",
+      "action_xml_id": "action_x_lib_fine",
+      "parent_xml_id": "menu_root_library_management",
+      "sequence": 15,
+      "technical_name": "menu_x_lib_fine"
+    }
+  ],
+  "views": [
+    {
+      "name": "x_lib_branch.list",
+      "model": "x_lib_branch",
+      "type": "list",
+      "arch": "<list string=\"Library Branch\" sample=\"1\"><field name=\"x_name\"/><field name=\"x_code\"/><field name=\"x_phone\"/><field name=\"x_manager_id\" widget=\"many2one_avatar_user\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lib_branch.form",
+      "model": "x_lib_branch",
+      "type": "form",
+      "arch": "<form string=\"Library Branch\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_manager_id\"/><field name=\"x_company_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_address\"/><field name=\"x_phone\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lib_author.list",
+      "model": "x_lib_author",
+      "type": "list",
+      "arch": "<list string=\"Author\" sample=\"1\"><field name=\"x_name\"/><field name=\"x_country_id\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lib_author.form",
+      "model": "x_lib_author",
+      "type": "form",
+      "arch": "<form string=\"Author\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_country_id\"/><field name=\"x_company_id\"/></group><group string=\"Details\"><field name=\"x_bio\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lib_book.list",
+      "model": "x_lib_book",
+      "type": "list",
+      "arch": "<list string=\"Book\" sample=\"1\" decoration-danger=\"x_status == 'lost'\"><field name=\"x_name\"/><field name=\"x_isbn\"/><field name=\"x_barcode\"/><field name=\"x_copies\"/><field name=\"x_available_copies\"/><field name=\"x_status\"/><field name=\"x_fine_rate\"/><field name=\"x_category_id\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lib_book.form",
+      "model": "x_lib_book",
+      "type": "form",
+      "arch": "<form string=\"Book\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"available,loaned,reserved,lost\"/><button string=\"Loaned\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'available'\" data-transition-to=\"loaned\"/><button string=\"Reserved\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'loaned'\" data-transition-to=\"reserved\"/><button string=\"Lost\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'reserved'\" data-transition-to=\"lost\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_category_id\"/><field name=\"x_author_id\"/><field name=\"x_branch_id\"/><field name=\"x_company_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_isbn\"/><field name=\"x_barcode\"/><field name=\"x_copies\"/><field name=\"x_available_copies\"/><field name=\"x_fine_rate\"/></group><group string=\"Loans\"><field name=\"x_loan_ids\"><list><field name=\"x_name\"/></list></field></group><group string=\"Book Reservation\"><field name=\"x_lib_reservation_ids\"><list><field name=\"x_name\"/></list></field></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lib_book.kanban",
+      "model": "x_lib_book",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\" sample=\"1\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/><field name=\"x_branch_id\"/></t></templates></kanban>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lib_loan.list",
+      "model": "x_lib_loan",
+      "type": "list",
+      "arch": "<list string=\"Book Loan\" sample=\"1\" decoration-danger=\"x_status == 'overdue'\" decoration-muted=\"x_status == 'draft'\"><field name=\"x_name\"/><field name=\"x_status\"/><field name=\"x_book_id\"/><field name=\"x_member_id\"/><field name=\"x_branch_id\"/><field name=\"x_loan_date\"/><field name=\"x_due_date\"/><field name=\"x_return_date\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lib_loan.form",
+      "model": "x_lib_loan",
+      "type": "form",
+      "arch": "<form string=\"Book Loan\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"draft,active,returned,overdue\"/><button string=\"Active\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'draft'\" data-transition-to=\"active\"/><button string=\"Returned\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'active'\" data-transition-to=\"returned\"/><button string=\"Overdue\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'returned'\" data-transition-to=\"overdue\"/><button string=\"Cancel\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'draft'\" data-transition-to=\"cancelled\"/><button string=\"Cancel\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'active'\" data-transition-to=\"cancelled\"/><button string=\"Cancel\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'returned'\" data-transition-to=\"cancelled\"/><button string=\"Cancel\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'overdue'\" data-transition-to=\"cancelled\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_book_id\"/><field name=\"x_member_id\"/><field name=\"x_branch_id\"/><field name=\"x_company_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_loan_date\"/><field name=\"x_due_date\"/><field name=\"x_return_date\"/><field name=\"x_returned\"/><field name=\"x_days_overdue\"/><field name=\"x_fine_amount\"/><field name=\"x_notes\"/></group><group string=\"Library Fine\"><field name=\"x_lib_fine_ids\"><list><field name=\"x_name\"/></list></field></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lib_loan.kanban",
+      "model": "x_lib_loan",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\" sample=\"1\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/><field name=\"x_branch_id\"/></t></templates></kanban>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lib_reservation.list",
+      "model": "x_lib_reservation",
+      "type": "list",
+      "arch": "<list string=\"Book Reservation\" sample=\"1\" decoration-danger=\"x_status == 'cancelled'\"><field name=\"x_name\"/><field name=\"x_status\"/><field name=\"x_book_id\"/><field name=\"x_member_id\"/><field name=\"x_reservation_date\"/><field name=\"x_pickup_date\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lib_reservation.form",
+      "model": "x_lib_reservation",
+      "type": "form",
+      "arch": "<form string=\"Book Reservation\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"confirmed,pending,fulfilled\"/><button string=\"Pending\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'confirmed'\" data-transition-to=\"pending\"/><button string=\"Fulfilled\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'pending'\" data-transition-to=\"fulfilled\"/><button string=\"Cancel\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'confirmed'\" data-transition-to=\"cancelled\"/><button string=\"Cancel\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'pending'\" data-transition-to=\"cancelled\"/><button string=\"Cancel\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'fulfilled'\" data-transition-to=\"cancelled\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_book_id\"/><field name=\"x_member_id\"/><field name=\"x_company_id\"/><field name=\"x_invoice_id\"/><field name=\"x_sale_order_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_reservation_date\"/><field name=\"x_pickup_date\"/><field name=\"x_notes\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lib_reservation.kanban",
+      "model": "x_lib_reservation",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\" sample=\"1\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/></t></templates></kanban>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lib_fine.list",
+      "model": "x_lib_fine",
+      "type": "list",
+      "arch": "<list string=\"Library Fine\" sample=\"1\" decoration-muted=\"x_status == 'draft'\"><field name=\"x_name\"/><field name=\"x_status\"/><field name=\"x_loan_id\"/><field name=\"x_member_id\"/><field name=\"x_amount\"/><field name=\"x_paid_date\"/></list>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lib_fine.form",
+      "model": "x_lib_fine",
+      "type": "form",
+      "arch": "<form string=\"Library Fine\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"draft,open,waived,paid\"/><button string=\"Confirm\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'draft'\" data-transition-to=\"open\"/><button string=\"Waived\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'open'\" data-transition-to=\"waived\"/><button string=\"Paid\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'waived'\" data-transition-to=\"paid\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_loan_id\"/><field name=\"x_member_id\"/><field name=\"x_company_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_amount\"/><field name=\"x_paid_date\"/><field name=\"x_notes\"/></group></sheet></form>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lib_fine.kanban",
+      "model": "x_lib_fine",
+      "type": "kanban",
+      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\" sample=\"1\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/></t></templates></kanban>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lib_author.search",
+      "model": "x_lib_author",
+      "type": "search",
+      "arch": "<search string=\"Author\"><filter string=\"All\" name=\"all\" domain=\"[]\"/><filter string=\"Has name\" name=\"has_name\" domain=\"[('x_name','!=',False)]\"/><filter string=\"Country\" name=\"group_x_country_id\" context=\"{'group_by': 'x_country_id'}\"/><filter string=\"Company\" name=\"group_x_company_id\" context=\"{'group_by': 'x_company_id'}\"/></search>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lib_book.search",
+      "model": "x_lib_book",
+      "type": "search",
+      "arch": "<search string=\"Book\"><filter string=\"Available\" name=\"status_available\" domain=\"[('x_status','=','available')]\"/><filter string=\"Loaned\" name=\"status_loaned\" domain=\"[('x_status','=','loaned')]\"/><filter string=\"Reserved\" name=\"status_reserved\" domain=\"[('x_status','=','reserved')]\"/><filter string=\"Lost\" name=\"status_lost\" domain=\"[('x_status','=','lost')]\"/><filter string=\"Category\" name=\"group_x_category_id\" context=\"{'group_by': 'x_category_id'}\"/><filter string=\"Author\" name=\"group_x_author_id\" context=\"{'group_by': 'x_author_id'}\"/><filter string=\"Branch\" name=\"group_x_branch_id\" context=\"{'group_by': 'x_branch_id'}\"/><filter string=\"Company\" name=\"group_x_company_id\" context=\"{'group_by': 'x_company_id'}\"/></search>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lib_branch.search",
+      "model": "x_lib_branch",
+      "type": "search",
+      "arch": "<search string=\"Library Branch\"><filter string=\"My records\" name=\"my_x_manager_id\" domain=\"[('x_manager_id','=', uid)]\"/><filter string=\"All\" name=\"all\" domain=\"[]\"/><filter string=\"Has name\" name=\"has_name\" domain=\"[('x_name','!=',False)]\"/><filter string=\"Manager\" name=\"group_x_manager_id\" context=\"{'group_by': 'x_manager_id'}\"/><filter string=\"Company\" name=\"group_x_company_id\" context=\"{'group_by': 'x_company_id'}\"/></search>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lib_fine.search",
+      "model": "x_lib_fine",
+      "type": "search",
+      "arch": "<search string=\"Library Fine\"><filter string=\"Draft\" name=\"status_draft\" domain=\"[('x_status','=','draft')]\"/><filter string=\"Open\" name=\"status_open\" domain=\"[('x_status','=','open')]\"/><filter string=\"Paid\" name=\"status_paid\" domain=\"[('x_status','=','paid')]\"/><filter string=\"Waived\" name=\"status_waived\" domain=\"[('x_status','=','waived')]\"/><filter string=\"Loan\" name=\"group_x_loan_id\" context=\"{'group_by': 'x_loan_id'}\"/><filter string=\"Member\" name=\"group_x_member_id\" context=\"{'group_by': 'x_member_id'}\"/><filter string=\"Company\" name=\"group_x_company_id\" context=\"{'group_by': 'x_company_id'}\"/><filter string=\"Status\" name=\"group_x_status\" context=\"{'group_by': 'x_status'}\"/></search>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lib_loan.search",
+      "model": "x_lib_loan",
+      "type": "search",
+      "arch": "<search string=\"Book Loan\"><filter string=\"Draft\" name=\"status_draft\" domain=\"[('x_status','=','draft')]\"/><filter string=\"Active\" name=\"status_active\" domain=\"[('x_status','=','active')]\"/><filter string=\"Returned\" name=\"status_returned\" domain=\"[('x_status','=','returned')]\"/><filter string=\"Overdue\" name=\"status_overdue\" domain=\"[('x_status','=','overdue')]\"/><filter string=\"Book\" name=\"group_x_book_id\" context=\"{'group_by': 'x_book_id'}\"/><filter string=\"Member\" name=\"group_x_member_id\" context=\"{'group_by': 'x_member_id'}\"/><filter string=\"Branch\" name=\"group_x_branch_id\" context=\"{'group_by': 'x_branch_id'}\"/><filter string=\"Company\" name=\"group_x_company_id\" context=\"{'group_by': 'x_company_id'}\"/></search>",
+      "mode": "primary"
+    },
+    {
+      "name": "x_lib_reservation.search",
+      "model": "x_lib_reservation",
+      "type": "search",
+      "arch": "<search string=\"Book Reservation\"><filter string=\"Pending\" name=\"status_pending\" domain=\"[('x_status','=','pending')]\"/><filter string=\"Confirmed\" name=\"status_confirmed\" domain=\"[('x_status','=','confirmed')]\"/><filter string=\"Fulfilled\" name=\"status_fulfilled\" domain=\"[('x_status','=','fulfilled')]\"/><filter string=\"Cancelled\" name=\"status_cancelled\" domain=\"[('x_status','=','cancelled')]\"/><filter string=\"Book\" name=\"group_x_book_id\" context=\"{'group_by': 'x_book_id'}\"/><filter string=\"Member\" name=\"group_x_member_id\" context=\"{'group_by': 'x_member_id'}\"/><filter string=\"Company\" name=\"group_x_company_id\" context=\"{'group_by': 'x_company_id'}\"/><filter string=\"Status\" name=\"group_x_status\" context=\"{'group_by': 'x_status'}\"/></search>",
+      "mode": "primary"
+    }
+  ],
+  "groups": [
+    {
+      "id": "group_library_management_user",
+      "name": "Sophisticated Library Management User",
+      "category_id": "base.module_category_custom"
+    },
+    {
+      "id": "group_library_management_manager",
+      "name": "Sophisticated Library Management Manager",
+      "implied_ids": [
+        "group_library_management_user"
+      ],
+      "category_id": "base.module_category_custom"
+    }
+  ],
+  "access_rules": [
+    {
+      "id": "access_x_lib_branch_user",
+      "name": "Library Branch user",
+      "model": "model_x_lib_branch",
+      "group": "group_library_management_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 0
+    },
+    {
+      "id": "access_x_lib_branch_manager",
+      "name": "Library Branch manager",
+      "model": "model_x_lib_branch",
+      "group": "group_library_management_manager",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_lib_author_user",
+      "name": "Author user",
+      "model": "model_x_lib_author",
+      "group": "group_library_management_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 0
+    },
+    {
+      "id": "access_x_lib_author_manager",
+      "name": "Author manager",
+      "model": "model_x_lib_author",
+      "group": "group_library_management_manager",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_lib_book_user",
+      "name": "Book user",
+      "model": "model_x_lib_book",
+      "group": "group_library_management_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 0
+    },
+    {
+      "id": "access_x_lib_book_manager",
+      "name": "Book manager",
+      "model": "model_x_lib_book",
+      "group": "group_library_management_manager",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_lib_loan_user",
+      "name": "Book Loan user",
+      "model": "model_x_lib_loan",
+      "group": "group_library_management_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 0
+    },
+    {
+      "id": "access_x_lib_loan_manager",
+      "name": "Book Loan manager",
+      "model": "model_x_lib_loan",
+      "group": "group_library_management_manager",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_lib_reservation_user",
+      "name": "Book Reservation user",
+      "model": "model_x_lib_reservation",
+      "group": "group_library_management_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 0
+    },
+    {
+      "id": "access_x_lib_reservation_manager",
+      "name": "Book Reservation manager",
+      "model": "model_x_lib_reservation",
+      "group": "group_library_management_manager",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    },
+    {
+      "id": "access_x_lib_fine_user",
+      "name": "Library Fine user",
+      "model": "model_x_lib_fine",
+      "group": "group_library_management_user",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 0
+    },
+    {
+      "id": "access_x_lib_fine_manager",
+      "name": "Library Fine manager",
+      "model": "model_x_lib_fine",
+      "group": "group_library_management_manager",
+      "perm_read": 1,
+      "perm_write": 1,
+      "perm_create": 1,
+      "perm_unlink": 1
+    }
+  ],
+  "_completeness": [
+    {
+      "id": "model_ui:x_lib_author",
+      "ok": true,
+      "detail": "complete"
+    },
+    {
+      "id": "model_ui:x_lib_book",
+      "ok": true,
+      "detail": "complete"
+    },
+    {
+      "id": "model_ui:x_lib_branch",
+      "ok": true,
+      "detail": "complete"
+    },
+    {
+      "id": "model_ui:x_lib_fine",
+      "ok": true,
+      "detail": "complete"
+    },
+    {
+      "id": "model_ui:x_lib_loan",
+      "ok": true,
+      "detail": "complete"
+    },
+    {
+      "id": "model_ui:x_lib_reservation",
+      "ok": true,
+      "detail": "complete"
+    }
+  ],
+  "reuse": {
+    "models": [
+      "account.move",
+      "sale.order"
+    ],
+    "plan": {
+      "decisions": [
+        {
+          "model": "sale.order",
+          "source": "apply_readiness",
+          "reason": "Sales orders (link-only)",
+          "confirmed": true,
+          "link_only": true
+        },
+        {
+          "model": "account.move",
+          "source": "apply_readiness",
+          "reason": "Invoices / bills (link-only)",
+          "confirmed": true,
+          "link_only": true
+        }
+      ]
+    }
+  },
+  "record_rules": [
+    {
+      "name": "Multi-company (x_lib_branch)",
+      "model": "x_lib_branch",
+      "model_xml_id": "model_x_lib_branch",
+      "domain_force": "['|', ('x_company_id', '=', False), ('x_company_id', 'in', company_ids)]",
+      "technical_name": "rule_x_lib_branch_multi_company"
+    },
+    {
+      "name": "Multi-company (x_lib_author)",
+      "model": "x_lib_author",
+      "model_xml_id": "model_x_lib_author",
+      "domain_force": "['|', ('x_company_id', '=', False), ('x_company_id', 'in', company_ids)]",
+      "technical_name": "rule_x_lib_author_multi_company"
+    },
+    {
+      "name": "Multi-company (x_lib_book)",
+      "model": "x_lib_book",
+      "model_xml_id": "model_x_lib_book",
+      "domain_force": "['|', ('x_company_id', '=', False), ('x_company_id', 'in', company_ids)]",
+      "technical_name": "rule_x_lib_book_multi_company"
+    },
+    {
+      "name": "Multi-company (x_lib_loan)",
+      "model": "x_lib_loan",
+      "model_xml_id": "model_x_lib_loan",
+      "domain_force": "['|', ('x_company_id', '=', False), ('x_company_id', 'in', company_ids)]",
+      "technical_name": "rule_x_lib_loan_multi_company"
+    },
+    {
+      "name": "Multi-company (x_lib_reservation)",
+      "model": "x_lib_reservation",
+      "model_xml_id": "model_x_lib_reservation",
+      "domain_force": "['|', ('x_company_id', '=', False), ('x_company_id', 'in', company_ids)]",
+      "technical_name": "rule_x_lib_reservation_multi_company"
+    },
+    {
+      "name": "Multi-company (x_lib_fine)",
+      "model": "x_lib_fine",
+      "model_xml_id": "model_x_lib_fine",
+      "domain_force": "['|', ('x_company_id', '=', False), ('x_company_id', 'in', company_ids)]",
+      "technical_name": "rule_x_lib_fine_multi_company"
+    }
+  ],
+  "multi_company": true,
+  "review_notes": [
+    "Transactional headers include link-only stock Odoo document fields \u2014 wire in Odoo before go-live; metadata export does not post moves/orders."
+  ],
+  "_compute_suggestions": [],
+  "_depth": {
+    "ambition": "standard",
+    "metrics": {
+      "model_count": 6,
+      "model_count_raw": 6,
+      "hollow_model_count": 0,
+      "field_total": 59,
+      "fields_avg": 9.83,
+      "m2o_count": 20,
+      "workflow_count": 4,
+      "smart_button_count": 5,
+      "automation_count": 1
+    },
+    "metrics_without_seeds": {
+      "model_count": 6,
+      "model_count_raw": 6,
+      "hollow_model_count": 0,
+      "field_total": 59,
+      "fields_avg": 9.83,
+      "m2o_count": 20,
+      "workflow_count": 4,
+      "smart_button_count": 5,
+      "automation_count": 1
+    },
+    "gaps": [],
+    "targets": {
+      "min_models": 5,
+      "min_fields_avg": 5,
+      "min_m2o": 4,
+      "min_workflows": 1,
+      "min_smart_buttons": 2,
+      "min_automations": 1,
+      "max_entities_staged": 12
+    },
+    "ok": true,
+    "seeded": false,
+    "checklist": [
+      {
+        "id": "depth_models",
+        "ok": true,
+        "detail": "6/5 substantive models (excl. depth_seed; raw=6, seeded=0)"
+      },
+      {
+        "id": "depth_fields_avg",
+        "ok": true,
+        "detail": "avg 9.83/5 fields/model"
+      },
+      {
+        "id": "depth_relations",
+        "ok": true,
+        "detail": "20/4 many2one links"
+      },
+      {
+        "id": "depth_workflows",
+        "ok": true,
+        "detail": "4/1 workflow models"
+      },
+      {
+        "id": "depth_smart_buttons",
+        "ok": true,
+        "detail": "5/2 smart buttons"
+      },
+      {
+        "id": "depth_automations",
+        "ok": true,
+        "detail": "1/1 automations"
+      }
+    ]
+  },
+  "sequences": [
+    {
+      "model": "x_lib_branch",
+      "field": "x_code",
+      "name": "Library Branch Sequence",
+      "prefix": "BR/",
+      "padding": 5,
+      "implementation": "base_automation_on_create"
+    },
+    {
+      "model": "x_lib_book",
+      "field": "x_code",
+      "name": "Book Sequence",
+      "prefix": "LIB/",
+      "padding": 5,
+      "implementation": "base_automation_on_create"
+    },
+    {
+      "model": "x_lib_loan",
+      "field": "x_code",
+      "name": "Book Loan Sequence",
+      "prefix": "LIB2/",
+      "padding": 5,
+      "implementation": "base_automation_on_create"
+    },
+    {
+      "model": "x_lib_reservation",
+      "field": "x_code",
+      "name": "Book Reservation Sequence",
+      "prefix": "LIB3/",
+      "padding": 5,
+      "implementation": "base_automation_on_create"
+    },
+    {
+      "model": "x_lib_fine",
+      "field": "x_code",
+      "name": "Library Fine Sequence",
+      "prefix": "LIB4/",
+      "padding": 5,
+      "implementation": "base_automation_on_create"
+    }
+  ],
+  "_meta": {
+    "model_count": 6,
+    "view_count": 22,
+    "menu_count": 7,
+    "smart_button_count": 5,
+    "automation_count": 1,
+    "score_0_10": 9.5
+  },
+  "_scorecard": {
+    "score_0_10": 10.0,
+    "dimensions": {
+      "domain_fit": 10.0,
+      "structure": 10.0,
+      "semantics": 10.0,
+      "ux": 10.0,
+      "hygiene": 10.0
+    },
+    "findings": [],
+    "prompt_nouns": [
+      "sophisticated",
+      "library",
+      "book",
+      "loan",
+      "reservation",
+      "fine",
+      "overdue",
+      "reminder",
+      "member"
+    ],
+    "validators": {
+      "xml_findings": [],
+      "consistency_findings": [],
+      "xml_ok": true,
+      "consistency_ok": true,
+      "all_green": true
+    }
+  },
+  "custom_code_blocks": [
+    {
+      "model": "x_lib_loan",
+      "source_file": "models/x_lib_loan_constraints.py",
+      "kind": "python",
+      "reason": "elite: loan date constraints",
+      "content": "from odoo import api, models\nfrom odoo.exceptions import ValidationError\n\n\nclass XLibLoan(models.Model):\n    _inherit = 'x_lib_loan'\n\n    @api.constrains('x_loan_date', 'x_due_date', 'x_return_date')\n    def _check_loan_dates(self):\n        for record in self:\n            if record.x_loan_date and record.x_due_date and record.x_due_date < record.x_loan_date:\n                raise ValidationError('Due date must be on or after loan date.')\n            if record.x_return_date and record.x_loan_date and record.x_return_date < record.x_loan_date:\n                raise ValidationError('Return date must be on or after loan date.')\n"
+    },
+    {
+      "model": "x_lib_loan",
+      "source_file": "models/x_lib_loan_fine_compute.py",
+      "kind": "python",
+      "reason": "elite: overdue fine compute",
+      "content": "from odoo import api, fields, models\n\n\nclass XLibLoanCompute(models.Model):\n    _inherit = 'x_lib_loan'\n\n    @api.depends('x_due_date', 'x_returned', 'x_book_id', 'x_book_id.x_fine_rate')\n    def _compute_overdue_fine(self):\n        today = fields.Date.context_today(self)\n        for record in self:\n            if record.x_returned or not record.x_due_date:\n                record.x_days_overdue = 0\n                record.x_fine_amount = 0.0\n                continue\n            days = max((today - record.x_due_date).days, 0)\n            rate = (record.x_book_id.x_fine_rate if record.x_book_id else 0.0) or 0.0\n            record.x_days_overdue = days\n            record.x_fine_amount = float(days) * float(rate)\n"
+    },
+    {
+      "model": "x_lib_loan",
+      "source_file": "models/x_lib_loan_cron.py",
+      "kind": "python",
+      "reason": "elite: overdue reminder cron hook",
+      "content": "from odoo import api, fields, models\n\n\nclass XLibLoanCron(models.Model):\n    _inherit = 'x_lib_loan'\n\n    @api.model\n    def cron_send_overdue_reminders(self):\n        today = fields.Date.context_today(self)\n        overdue = self.search([\n            ('x_returned', '=', False),\n            ('x_due_date', '<', today),\n        ])\n        tpl = self.env.ref(\n            'library_management.mail_template_loan_overdue', raise_if_not_found=False\n        )\n        if not tpl:\n            return True\n        for loan in overdue:\n            member = loan.x_member_id\n            if member and member.email:\n                tpl.send_mail(loan.id, force_send=False)\n        return True\n"
+    },
+    {
+      "source_file": "tests/test_library_management_smoke.py",
+      "kind": "test",
+      "reason": "elite: generated smoke tests",
+      "content": "# -*- coding: utf-8 -*-\nfrom odoo.tests import tagged\nfrom odoo.tests.common import TransactionCase\n\n\n@tagged('post_install', '-at_install')\nclass TestLibraryManagementSmoke(TransactionCase):\n    def test_models_registered(self):\n        Model = self.env['ir.model']\n        self.assertTrue(Model.search([('model', '=', 'x_lib_branch')], limit=1))\n        self.assertTrue(Model.search([('model', '=', 'x_lib_author')], limit=1))\n        self.assertTrue(Model.search([('model', '=', 'x_lib_book')], limit=1))\n        self.assertTrue(Model.search([('model', '=', 'x_lib_loan')], limit=1))\n        self.assertTrue(Model.search([('model', '=', 'x_lib_reservation')], limit=1))\n        self.assertTrue(Model.search([('model', '=', 'x_lib_fine')], limit=1))\n"
+    },
+    {
+      "source_file": "i18n/library_management.pot",
+      "kind": "i18n",
+      "reason": "elite: translation template",
+      "content": "msgid \"\"\nmsgstr \"\"\n\"\"\n\"Content-Type: text/plain; charset=UTF-8\\n\"\n\"\"\n\nmsgid \"Sophisticated Library Management\"\nmsgstr \"Sophisticated Library Management\"\n\nmsgid \"Library Branch\"\nmsgstr \"Library Branch\"\n\nmsgid \"Author\"\nmsgstr \"Author\"\n\nmsgid \"Book\"\nmsgstr \"Book\"\n\nmsgid \"Book Loan\"\nmsgstr \"Book Loan\"\n\nmsgid \"Book Reservation\"\nmsgstr \"Book Reservation\"\n\nmsgid \"Library Fine\"\nmsgstr \"Library Fine\"\n\n"
+    }
+  ],
+  "_elite_python": {
+    "library_patterns": true
+  },
+  "mail_templates": [
+    {
+      "xml_id": "mail_template_loan_overdue",
+      "name": "Overdue Library Loan",
+      "model": "x_lib_loan",
+      "subject": "Overdue: {{ object.x_name }}",
+      "body_html": "<p>Dear {{ object.x_member_id.name }},</p><p>Your loan <strong>{{ object.x_name }}</strong> is overdue (due {{ object.x_due_date }}).</p><p>Please return the book or contact the library.</p>",
+      "email_to": "${object.x_member_id.email|safe}"
+    }
+  ],
+  "cron_jobs": [
+    {
+      "xml_id": "ir_cron_library_overdue",
+      "name": "Library: send overdue reminders",
+      "model": "x_lib_loan",
+      "code": "model.cron_send_overdue_reminders()",
+      "interval_number": 1,
+      "interval_type": "days"
+    }
+  ],
+  "reports": [
+    {
+      "name": "Loan Receipt",
+      "model": "x_lib_loan",
+      "report_name": "library_loan_receipt",
+      "template_xml_id": "report_loan_receipt",
+      "body_html": "<div class='page'><h2>Loan Receipt</h2><p>Reference: <span t-field='doc.x_name'/></p><p>Member: <span t-field='doc.x_member_id'/></p><p>Book: <span t-field='doc.x_book_id'/></p><p>Due: <span t-field='doc.x_due_date'/></p></div>",
+      "print_report_name": "'Loan-%s' % (object.x_name or '')",
+      "technical_name": "report_loan_receipt"
+    }
+  ],
+  "_elite_artifacts": {
+    "prompt_matched": true,
+    "technical_name": "library_management"
+  },
+  "_elite": {
+    "passes_applied": true,
+    "notes_count": 8
+  }
+}

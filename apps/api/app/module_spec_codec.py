@@ -7,8 +7,10 @@ from typing import Any
 
 from module_generator import (
     ActionSpec,
+    CronJobSpec,
     FieldSpec,
     GroupSpec,
+    MailTemplateSpec,
     MenuSpec,
     ModelSpec,
     ModuleSpec,
@@ -337,6 +339,40 @@ def draft_dict_to_module_spec(draft: dict[str, Any]) -> ModuleSpec:
                 t_lang=rep.get("t_lang"),
                 technical_name=rep.get("technical_name"),
             )
+            )
+
+    mail_templates: list[MailTemplateSpec] = []
+    for mt in draft.get("mail_templates") or []:
+        if not isinstance(mt, dict) or not mt.get("model"):
+            continue
+        mail_templates.append(
+            MailTemplateSpec(
+                xml_id=str(mt.get("xml_id") or "mail_template"),
+                name=str(mt.get("name") or "Mail Template"),
+                model=str(mt["model"]),
+                subject=str(mt.get("subject") or "{{ object.display_name }}"),
+                body_html=str(mt.get("body_html") or "<p/>"),
+                email_to=str(mt.get("email_to") or "${object.partner_id.email|safe}"),
+                description=mt.get("description"),
+            )
+        )
+
+    cron_jobs: list[CronJobSpec] = []
+    for cj in draft.get("cron_jobs") or []:
+        if not isinstance(cj, dict) or not cj.get("model"):
+            continue
+        cron_jobs.append(
+            CronJobSpec(
+                xml_id=str(cj.get("xml_id") or "ir_cron"),
+                name=str(cj.get("name") or "Scheduled Action"),
+                model=str(cj["model"]),
+                code=str(cj.get("code") or "pass"),
+                interval_number=int(cj.get("interval_number") or 1),
+                interval_type=str(cj.get("interval_type") or "days"),
+                numbercall=int(cj.get("numbercall") or -1),
+                active=bool(cj.get("active", True)),
+                user_id_xml=str(cj.get("user_id_xml") or "base.user_root"),
+            )
         )
 
     blocks = merge_custom_code_blocks(draft)
@@ -372,6 +408,8 @@ def draft_dict_to_module_spec(draft: dict[str, Any]) -> ModuleSpec:
         access_rules=access_rules,
         record_rules=record_rules,
         reports=reports,
+        mail_templates=mail_templates,
+        cron_jobs=cron_jobs,
         custom_code_blocks=blocks,
         include_barcode_scan_widget=include_barcode,
     )

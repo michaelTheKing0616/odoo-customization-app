@@ -112,10 +112,28 @@ export type ExpertDraftReviewResponse = {
     deterministic: boolean;
     repair_hint?: string | null;
     citation?: string | null;
+    narrative_paragraph?: string | null;
+    narrative_citations?: ExpertCitation[];
   }>;
   repairs: string[];
   suggestions: string[];
   draft?: Record<string, unknown> | null;
+};
+
+export type ExpertSuggestedPrompt = {
+  id: string;
+  label: string;
+  question: string;
+};
+
+export type ExpertNLSearchHit = {
+  id: string;
+  kind: string;
+  label: string;
+  description: string;
+  href?: string | null;
+  expert_question?: string | null;
+  score: number;
 };
 
 export type DeploymentPanel = {
@@ -1499,6 +1517,33 @@ export const api = {
       `/api/connections/${connectionId}/module-spec/export-sandbox`,
       { method: "POST", body: JSON.stringify(body) },
     ),
+  eliteModuleGate: (connectionId: string, spec: Record<string, unknown>) =>
+    request<{
+      gate_passed: boolean;
+      gate_reasons: string[];
+      score_0_10?: number;
+      dimensions?: Record<string, number>;
+    }>(`/api/connections/${connectionId}/module-spec/elite-gate`, {
+      method: "POST",
+      body: JSON.stringify({ spec }),
+    }),
+  eliteModuleAutopilot: (
+    connectionId: string,
+    body: { spec: Record<string, unknown>; odoo_major?: number | null; skip_gate?: boolean },
+  ) =>
+    request<{
+      ok: boolean;
+      gate_passed?: boolean;
+      gate_reasons?: string[];
+      validation_id?: string;
+      zip_base64?: string;
+      score_0_10?: number;
+      message?: string;
+    }>(`/api/connections/${connectionId}/module-spec/elite-autopilot`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      timeoutMs: 660_000,
+    }),
   getScriptRunnerTemplates: (connectionId: string) =>
     request<{ templates: Array<{ id: string; label: string; description: string; code: string }> }>(
       `/api/connections/${connectionId}/script-runner/templates`,
@@ -4059,6 +4104,50 @@ export const api = {
     apply_fixes?: boolean;
   }) =>
     request<ExpertDraftReviewResponse>("/api/expert/review-draft", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  expertExplainModel: (body: {
+    model: string;
+    field?: string;
+    draft?: Record<string, unknown>;
+    user_prompt?: string;
+    connection_id?: string;
+  }) =>
+    request<ExpertAskResponse>("/api/expert/explain-model", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  expertPostToChatter: (body: {
+    connection_id: string;
+    model: string;
+    res_id: number;
+    body_markdown: string;
+    subject?: string;
+    confirmed: boolean;
+  }) =>
+    request<{ ok: boolean; posted: boolean; message: string }>("/api/expert/post-to-chatter", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  expertSuggestedPrompts: (params: {
+    route?: string;
+    model?: string;
+    view_type?: string;
+    draft_summary?: string;
+  }) => {
+    const q = new URLSearchParams();
+    if (params.route) q.set("route", params.route);
+    if (params.model) q.set("model", params.model);
+    if (params.view_type) q.set("view_type", params.view_type);
+    if (params.draft_summary) q.set("draft_summary", params.draft_summary);
+    const qs = q.toString();
+    return request<ExpertSuggestedPrompt[]>(
+      `/api/expert/suggested-prompts${qs ? `?${qs}` : ""}`,
+    );
+  },
+  expertNLSearch: (body: { query: string; connection_id: string }) =>
+    request<{ query: string; hits: ExpertNLSearchHit[] }>("/api/expert/nl-search", {
       method: "POST",
       body: JSON.stringify(body),
     }),

@@ -94,6 +94,9 @@ async def lifespan(_app: FastAPI):
             from app.ollama_warm import warm_ollama_models
 
             warm_ollama_models()
+        from app.expert_rag_warm import warm_expert_rag_model
+
+        warm_expert_rag_model()
     finally:
         db.close()
     yield

@@ -343,6 +343,98 @@ def _dedupe_warnings(warnings: list[str]) -> list[str]:
     return out
 
 
+def _infer_llm_mode(
+    draft: dict[str, Any],
+    warnings: list[str],
+    *,
+    llm_initial_failed: bool = False,
+    provider: Any | None = None,
+    matched: tuple[str, dict[str, Any]] | None = None,
+) -> str:
+    """Map pipeline warnings to structured _llm_status.mode."""
+    failed_steps = [
+        w.split(":")[0]
+        for w in warnings
+        if "LLM failed" in w or "timed out" in w.lower() or "staged LLM failed" in w
+    ]
+    pack_markers = (
+        "falling back to pack",
+        "using domain pack",
+        "step1-5 skipped",
+        "step1 empty",
+    )
+    if llm_initial_failed or (provider is None and matched):
+        return "pack_fallback"
+    if any(any(marker in w.lower() for marker in pack_markers) for w in warnings):
+        return "pack_fallback"
+    if failed_steps:
+        return "llm_partial"
+    depth_meta = draft.get("_depth") if isinstance(draft.get("_depth"), dict) else {}
+    if depth_meta.get("seeded"):
+        return "seed_fallback"
+    return "llm_full"
+
+
+def _finalize_draft_generation(
+    draft: dict[str, Any],
+    prompt: str,
+    warnings: list[str],
+    *,
+    llm_mode: str,
+    progress_callback: Callable[[int, str, dict[str, Any] | None], None] | None = None,
+) -> list[str]:
+    """Post-LLM finisher shared by single and staged pipelines."""
+    from app.ai_critique import finalize_critique_block
+    from app.ai_draft_scorecard import attach_scorecard, scorecard_required_repairs
+    from app.ai_elite import run_elite_passes
+    from app.ai_llm_status import STEP_LABELS, attach_llm_status, finalize_llm_status, sanitize_draft_payload
+    from app.ai_post_critique import run_post_critique_pipeline
+    from app.ai_production_shape import run_production_shape_pass
+
+    draft["_user_prompt"] = prompt
+    sanitized = sanitize_draft_payload(draft)
+    if sanitized is not draft:
+        draft.clear()
+        draft.update(sanitized)
+    warnings.extend(finalize_critique_block(draft))
+    failed_steps = [
+        w.split(":")[0]
+        for w in warnings
+        if "LLM failed" in w or "timed out" in w.lower() or "staged LLM failed" in w
+    ]
+    attach_llm_status(
+        draft,
+        mode=llm_mode,  # type: ignore[arg-type]
+        failed_steps=failed_steps,
+        reason="timeout" if failed_steps else None,
+    )
+    finalize_llm_status(draft, mode=llm_mode)  # type: ignore[arg-type]
+    warnings.extend(run_post_critique_pipeline(draft, user_prompt=prompt))
+    warnings.extend(run_production_shape_pass(draft))
+    warnings.extend(run_elite_passes(draft, user_prompt=prompt))
+    attach_scorecard(draft, user_prompt=prompt)
+    sc = draft.get("_scorecard") if isinstance(draft.get("_scorecard"), dict) else {}
+    if float(sc.get("score_0_10") or 0) < 9:
+        crit = draft.get("_critique") if isinstance(draft.get("_critique"), dict) else {}
+        sug = list(crit.get("suggestions") or [])
+        sug.extend(scorecard_required_repairs(sc))
+        crit["suggestions"] = sug
+        draft["_critique"] = crit
+    draft["_meta"] = {
+        **(draft.get("_meta") if isinstance(draft.get("_meta"), dict) else {}),
+        "model_count": len(draft.get("models") or []),
+        "view_count": len(draft.get("views") or []),
+        "menu_count": len(draft.get("menus") or []),
+        "smart_button_count": len(draft.get("smart_buttons") or []),
+        "automation_count": len(draft.get("automations") or []),
+        "domain_pack": draft.get("domain_pack"),
+        "score_0_10": (draft.get("_scorecard") or {}).get("score_0_10"),
+    }
+    if progress_callback:
+        progress_callback(len(STEP_LABELS) - 1, STEP_LABELS[-1], draft)
+    return warnings
+
+
 def _apply_pcm_strip(
     draft: dict[str, Any],
     *,
@@ -456,12 +548,14 @@ def draft_module_from_prompt(
     mode = (pipeline or settings.ai_pipeline_mode or "single").strip().lower()
     if mode == "staged":
         try:
-            draft, raw, warnings = run_staged_pipeline(
+            draft, raw, staged_warnings = run_staged_pipeline(
                 prompt,
                 reuse_models=effective_reuse,
                 protected_manifest=protected_manifest,
                 odoo_version=odoo_version,
             )
+            warnings = list(amb_notes) + staged_warnings
+            draft.setdefault("_ambition", scaled_amb)
             warnings.extend(apply_reuse_plan(draft, reuse_plan))
             if expand:
                 prov = get_llm_provider()
@@ -508,11 +602,28 @@ def draft_module_from_prompt(
                 client=client,
                 warnings=warnings,
             )
-            from app.ai_critique import finalize_critique_block
             from app.ai_enrich import sync_form_archs_to_models
 
             warnings.extend(sync_form_archs_to_models(draft))
-            warnings.extend(finalize_critique_block(draft))
+            staged_provider = get_llm_provider()
+            staged_matched = (
+                (str(draft.get("domain_pack")), {})
+                if draft.get("domain_pack")
+                else early_pack
+            )
+            llm_mode = _infer_llm_mode(
+                draft,
+                warnings,
+                provider=staged_provider,
+                matched=staged_matched,  # type: ignore[arg-type]
+            )
+            warnings = _finalize_draft_generation(
+                draft,
+                prompt,
+                warnings,
+                llm_mode=llm_mode,
+                progress_callback=progress_callback,
+            )
             return draft, raw, warnings, refusals
         except LLMError as exc:
             raise AiAssistUnavailable(str(exc), status_code=exc.status_code) from exc
@@ -721,60 +832,20 @@ def draft_module_from_prompt(
         client=client,
         warnings=warnings,
     )
-    from app.ai_llm_status import STEP_LABELS, attach_llm_status, finalize_llm_status, sanitize_draft_payload
-
-    draft = sanitize_draft_payload(draft)
-    from app.ai_critique import finalize_critique_block
-
-    warnings.extend(finalize_critique_block(draft))
-    failed_steps = [
-        w.split(":")[0]
-        for w in warnings
-        if "LLM failed" in w or "timed out" in w.lower()
-    ]
-    mode = "llm_full"
-    if llm_initial_failed or (provider is None and matched):
-        mode = "pack_fallback"
-    elif failed_steps:
-        mode = "llm_partial"
-    depth_meta = draft.get("_depth") if isinstance(draft.get("_depth"), dict) else {}
-    if depth_meta.get("seeded") and mode == "llm_full":
-        mode = "seed_fallback"
-    attach_llm_status(
+    llm_mode = _infer_llm_mode(
         draft,
-        mode=mode,  # type: ignore[arg-type]
-        failed_steps=failed_steps,
-        reason="timeout" if failed_steps else None,
+        warnings,
+        llm_initial_failed=llm_initial_failed,
+        provider=provider,
+        matched=matched,
     )
-    finalize_llm_status(draft, mode=mode)  # type: ignore[arg-type]
-    from app.ai_post_critique import run_post_critique_pipeline
-    from app.ai_production_shape import run_production_shape_pass
-    from app.ai_draft_scorecard import attach_scorecard
-
-    warnings.extend(run_post_critique_pipeline(draft, user_prompt=prompt))
-    warnings.extend(run_production_shape_pass(draft))
-    attach_scorecard(draft, user_prompt=prompt)
-    sc = draft.get("_scorecard") if isinstance(draft.get("_scorecard"), dict) else {}
-    if float(sc.get("score_0_10") or 0) < 9:
-        from app.ai_draft_scorecard import scorecard_required_repairs
-
-        crit = draft.get("_critique") if isinstance(draft.get("_critique"), dict) else {}
-        sug = list(crit.get("suggestions") or [])
-        sug.extend(scorecard_required_repairs(sc))
-        crit["suggestions"] = sug
-        draft["_critique"] = crit
-    draft["_meta"] = {
-        **(draft.get("_meta") if isinstance(draft.get("_meta"), dict) else {}),
-        "model_count": len(draft.get("models") or []),
-        "view_count": len(draft.get("views") or []),
-        "menu_count": len(draft.get("menus") or []),
-        "smart_button_count": len(draft.get("smart_buttons") or []),
-        "automation_count": len(draft.get("automations") or []),
-        "domain_pack": draft.get("domain_pack"),
-        "score_0_10": (draft.get("_scorecard") or {}).get("score_0_10"),
-    }
-    if progress_callback:
-        progress_callback(len(STEP_LABELS) - 1, STEP_LABELS[-1], draft)
+    warnings = _finalize_draft_generation(
+        draft,
+        prompt,
+        warnings,
+        llm_mode=llm_mode,
+        progress_callback=progress_callback,
+    )
     return draft, raw, warnings, refusals
 
 

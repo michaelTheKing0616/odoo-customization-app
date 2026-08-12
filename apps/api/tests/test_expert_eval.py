@@ -223,6 +223,12 @@ def summarize_scores(scores: list[EvalScore]) -> dict[str, Any]:
     category_rates = {
         cat: round(sum(1 for s in rows if s.passed) / len(rows), 3) for cat, rows in by_cat.items()
     }
+    eligible_citation = [
+        s
+        for s in scores
+        if not (s.declined and s.category == "should_decline")
+        and not (s.category == "protected_caution" and s.citation_count == 0)
+    ]
     return {
         "total": total,
         "passed": passed,
@@ -235,6 +241,12 @@ def summarize_scores(scores: list[EvalScore]) -> dict[str, Any]:
         "citation_presence": round(
             sum(1 for s in scores if s.citation_count > 0) / total, 3 if total else 1.0,
         ),
+        "citation_presence_answered": round(
+            sum(1 for s in eligible_citation if s.citation_count > 0)
+            / max(1, len(eligible_citation)),
+            3,
+        ),
+        "citation_eligible_count": len(eligible_citation),
         "citation_validity": round(
             sum(1 for s in scores if s.citation_valid is True)
             / max(1, sum(1 for s in scores if s.citation_valid is not None)),
@@ -281,6 +293,7 @@ def test_expert_eval_ci_deterministic(
     scores = [score_eval_item(item, run_eval_item(item, monkeypatch)) for item in eval_items]
     summary = summarize_scores(scores)
     assert summary["failures"] == [], summary
+    assert summary["citation_presence_answered"] >= 0.9
 
 
 @pytest.mark.skipif(os.getenv("EXPERT_EVAL_LIVE") != "1", reason="set EXPERT_EVAL_LIVE=1 for live eval")

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/Button";
 import { ExpertPanel } from "@/components/expert/ExpertPanel";
+import { ExpertBubble } from "@/components/expert/ExpertBubble";
 import { Callout } from "@/components/ui/Callout";
 import { CommandPalette, type CommandItem } from "@/components/ui/CommandPalette";
 import { Sidebar } from "@/components/shell/Sidebar";
@@ -27,8 +28,12 @@ export function AppShell({ connectionId, children }: Props) {
     commandOpen,
     setCommandOpen,
     setExpertOpen,
+    openExpert,
     setUiContext,
+    uiContext,
   } = useShell();
+
+  const [commandSearch, setCommandSearch] = useState("");
 
   const connectionQuery = useQuery({
     queryKey: ["connection", connectionId],
@@ -61,6 +66,25 @@ export function AppShell({ connectionId, children }: Props) {
     enabled: commandOpen,
   });
 
+  const suggestedPromptsQuery = useQuery({
+    queryKey: ["expert-suggested-prompts", pathname, uiContext.model],
+    queryFn: () =>
+      api.expertSuggestedPrompts({
+        route: pathname,
+        model: uiContext.model,
+        view_type: uiContext.viewType,
+        draft_summary: uiContext.draftSummary,
+      }),
+    enabled: commandOpen,
+    staleTime: 60_000,
+  });
+
+  const nlSearchQuery = useQuery({
+    queryKey: ["expert-nl-search", connectionId, commandSearch],
+    queryFn: () => api.expertNLSearch({ query: commandSearch, connection_id: connectionId }),
+    enabled: commandOpen && commandSearch.trim().length >= 4,
+  });
+
   const [offline, setOffline] = useState(false);
 
   useEffect(() => {
@@ -82,7 +106,15 @@ export function AppShell({ connectionId, children }: Props) {
     if (searchParams.get("expert") === "1") {
       setExpertOpen(true);
     }
-  }, [searchParams, setExpertOpen]);
+    const resIdRaw = searchParams.get("res_id");
+    const model = searchParams.get("model");
+    if (resIdRaw || model) {
+      setUiContext({
+        ...(model ? { model } : {}),
+        ...(resIdRaw ? { resId: Number.parseInt(resIdRaw, 10) } : {}),
+      });
+    }
+  }, [searchParams, setExpertOpen, setUiContext]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -113,8 +145,43 @@ export function AppShell({ connectionId, children }: Props) {
           router.push(`/connections/${connectionId}/builder?model=${encodeURIComponent(model.model)}`),
       });
     }
+    items.push({
+      id: "open-expert",
+      label: "Open Odoo Expert",
+      group: "Expert",
+      keywords: ["ask", "help", "ai"],
+      onSelect: () => openExpert(),
+    });
+    for (const prompt of suggestedPromptsQuery.data ?? []) {
+      items.push({
+        id: `expert-prompt-${prompt.id}`,
+        label: prompt.label,
+        group: "Expert prompts",
+        keywords: [prompt.question],
+        onSelect: () => openExpert({ question: prompt.question, autoSubmit: true, freshThread: true }),
+      });
+    }
     return items;
-  }, [connectionId, modelsQuery.data, router]);
+  }, [connectionId, modelsQuery.data, openExpert, router, suggestedPromptsQuery.data]);
+
+  const dynamicCommandItems = useMemo(() => {
+    const hits = nlSearchQuery.data?.hits ?? [];
+    return hits.map((hit) => ({
+      id: hit.id,
+      label: hit.label,
+      group: hit.kind === "expert" ? "Expert search" : "Search",
+      keywords: [hit.description, hit.expert_question ?? ""],
+      onSelect: () => {
+        if (hit.href) {
+          router.push(hit.href);
+          return;
+        }
+        if (hit.expert_question) {
+          openExpert({ question: hit.expert_question, autoSubmit: true, freshThread: true });
+        }
+      },
+    }));
+  }, [nlSearchQuery.data, openExpert, router]);
 
   const connection = connectionQuery.data;
   const connections = connectionsQuery.data ?? [];
@@ -179,8 +246,18 @@ export function AppShell({ connectionId, children }: Props) {
         <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
       </div>
       <ExpertPanel />
+      <ExpertBubble />
       <ExpertDiagnoseListener />
-      <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} items={commandItems} />
+      <CommandPalette
+        open={commandOpen}
+        onOpenChange={(open) => {
+          setCommandOpen(open);
+          if (!open) setCommandSearch("");
+        }}
+        items={commandItems}
+        dynamicItems={dynamicCommandItems}
+        onSearchChange={setCommandSearch}
+      />
     </div>
   );
 }

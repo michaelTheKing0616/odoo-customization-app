@@ -16,7 +16,10 @@ from app.settings import settings
 
 PROJECT_SOURCE_BOOST = 1.25
 VERTICAL_SOURCE_BOOST = 1.45
+COMMUNITY_SOURCE_BOOST = 1.35
+ODOO_SOURCE_BOOST = 1.30
 _DEFAULT_MIN_SCORE = 0.35
+_DEFAULT_JACCARD_MIN_SCORE = 0.12
 
 
 @dataclass
@@ -56,9 +59,37 @@ def _parse_embedding(raw: str | None) -> list[float] | None:
 def _source_weight(source: str) -> float:
     if source == "vertical":
         return VERTICAL_SOURCE_BOOST
+    if source == "community":
+        return COMMUNITY_SOURCE_BOOST
+    if source == "odoo_source":
+        return ODOO_SOURCE_BOOST
     if source == "project":
         return PROJECT_SOURCE_BOOST
     return 1.0
+
+
+def _embedding_threshold(min_score: float | None) -> float:
+    if min_score is not None:
+        return min_score
+    return float(settings.ai_rag_min_score or _DEFAULT_MIN_SCORE)
+
+
+def _jaccard_threshold() -> float:
+    return float(settings.ai_rag_min_score_jaccard or _DEFAULT_JACCARD_MIN_SCORE)
+
+
+def passes_generation_threshold(
+    chunks: list[RetrievedChunk],
+    *,
+    min_score: float | None = None,
+) -> bool:
+    """True when the best retrieved chunk clears the bar for its scoring method."""
+    if not chunks:
+        return False
+    best = max(chunks, key=lambda c: c.score)
+    if best.method == "embedding":
+        return best.score >= _embedding_threshold(min_score)
+    return best.score >= _jaccard_threshold()
 
 
 def retrieve_expert_chunks(
@@ -70,7 +101,8 @@ def retrieve_expert_chunks(
     min_score: float | None = None,
 ) -> list[RetrievedChunk]:
     """Return top-k chunks filtered by version with project-source boost."""
-    threshold = min_score if min_score is not None else float(settings.ai_rag_min_score or _DEFAULT_MIN_SCORE)
+    embed_threshold = _embedding_threshold(min_score)
+    jaccard_threshold = _jaccard_threshold()
     q = query.strip()
     if not q:
         return []
@@ -97,9 +129,11 @@ def retrieve_expert_chunks(
         if query_vec and embedding:
             score = cosine_similarity(query_vec, embedding) * weight
             method = "embedding"
+            threshold = embed_threshold
         else:
             score = _jaccard(retrieval_query, f"{row.breadcrumb} {row.text}") * weight
             method = "jaccard"
+            threshold = jaccard_threshold
 
         if score >= threshold:
             scored.append(
