@@ -91,18 +91,22 @@ async function mockAutomationsApi(page: Page, caps: ReturnType<typeof caps16>) {
     });
   });
 
+  await page.route("**/api/connections", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([conn]),
+    });
+  });
+
   await page.route("**/api/connections/**", async (route) => {
     const url = route.request().url();
     const method = route.request().method();
 
-    if (method === "GET" && /\/api\/connections\/?(\?|$)/.test(url)) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify([conn]),
-      });
-      return;
-    }
     if (method === "GET" && url.includes(`/api/connections/${CONN}/automations`)) {
       await route.fulfill({
         status: 200,
