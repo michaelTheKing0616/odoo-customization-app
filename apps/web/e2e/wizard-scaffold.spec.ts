@@ -85,7 +85,7 @@ test.describe("Wizard scaffold", () => {
   test("Library card scaffolds and shows checklist", async ({ page }) => {
     await page.goto(`/connections/${CONN}/wizard`);
 
-    await expect(page.getByRole("heading", { name: "App wizard" })).toBeVisible();
+    await expect(page.getByTestId("draft-studio")).toBeVisible();
     const libraryCard = page.getByTestId("template-card-library");
     await expect(libraryCard).toBeVisible();
     await libraryCard.click();

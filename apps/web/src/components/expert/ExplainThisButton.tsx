@@ -54,7 +54,7 @@ export function ExplainThisButton({
         setBusy(false);
       }
     }
-    openExpert({ question, autoSubmit: true });
+    openExpert({ question, autoSubmit: false });
   }
 
   return (

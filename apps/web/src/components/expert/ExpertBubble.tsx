@@ -30,7 +30,7 @@ export function ExpertBubble({ className }: Props) {
       <Tooltip label="Open Odoo Expert — grounded answers with citations">
         <button
           type="button"
-          data-testid="expert-bubble"
+          data-testid="open-expert"
           aria-label="Open Odoo Expert"
           onClick={() => openExpert()}
           className={cn(

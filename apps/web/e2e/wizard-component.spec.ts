@@ -109,7 +109,7 @@ test.describe("Wizard component flow", () => {
 
   test("connect-points review gates draft then shows component actions", async ({ page }) => {
     await page.goto(`/connections/${CONN}/wizard`);
-    await expect(page.getByRole("heading", { name: "App wizard" })).toBeVisible();
+    await expect(page.getByTestId("draft-studio")).toBeVisible();
 
     await page.getByPlaceholder(/Car rental fleet/i).fill(
       "add inspection checklist to project tasks",

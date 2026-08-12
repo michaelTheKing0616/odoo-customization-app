@@ -1,6 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 const CONN = "e2e-automations-prod";
 
 function caps16() {
@@ -62,7 +61,7 @@ function caps19() {
 }
 
 async function mockAutomationsApi(page: Page, caps: ReturnType<typeof caps16>) {
-  await page.route(`${API}/api/**`, async (route) => {
+  await page.route("**/api/**", async (route) => {
     const url = route.request().url();
     const method = route.request().method();
     if (method === "GET" && url.includes("/api/connections") && !url.includes(CONN)) {

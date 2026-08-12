@@ -70,7 +70,7 @@ export function TopBar({ connection, connections, pathname }: Props) {
             variant="ghost"
             size="sm"
             onClick={() => setExpertOpen(true)}
-            data-testid="open-expert"
+            data-testid="topbar-open-expert"
             aria-label="Open Odoo Expert"
           >
             <IconExpert className="h-4 w-4" />
