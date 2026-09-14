@@ -7,6 +7,7 @@ import {
   AccessMatrixOut,
   AccessRightRow,
   api,
+  ConfirmationRequiredError,
   Connection,
   GroupRow,
   RecordRuleRow,
@@ -33,6 +34,7 @@ import {
   ACCESS_DELETE_RISKS,
   CONFIRM_PHRASE,
   DEFAULT_ACCESS_MODEL,
+  LIVE_PACK_RISKS,
   RULE_DELETE_RISKS,
   composerSessionState,
   defaultAccessForm,
@@ -76,6 +78,7 @@ export default function AccessPage() {
   const [busy, setBusy] = useState(false);
   const [listLoading, setListLoading] = useState(true);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+  const [livePackOpen, setLivePackOpen] = useState(false);
   const [pane, setPane] = useState<AccessPane>("new-access");
   const [selectedAccessId, setSelectedAccessId] = useState<number | null>(null);
   const [selectedRuleId, setSelectedRuleId] = useState<number | null>(null);
@@ -600,24 +603,9 @@ export default function AccessPage() {
           docsFolderId={docsFolderId}
           docsMapping={docsMapping}
           onDocsFolderId={setDocsFolderId}
-          onApplyMultiCompany={async () => {
-            setBusy(true);
+          onApplyMultiCompany={() => {
             setError(null);
-            try {
-              const res = await api.applyMultiCompanyLive(connectionId, [model]);
-              setNotice(
-                `Multi-company: ${res.fields_created} field(s), ${res.rules_created} rule(s)` +
-                  (res.warnings.length ? ` · ${res.warnings.join("; ")}` : ""),
-              );
-              await refresh(model);
-            } catch (err) {
-              reportApiError(err, setError, {
-                fallback: "Multi-company apply failed",
-                toast: true,
-              });
-            } finally {
-              setBusy(false);
-            }
+            setLivePackOpen(true);
           }}
           onLoadFolders={async () => {
             setBusy(true);
@@ -695,6 +683,46 @@ export default function AccessPage() {
             await refresh(model);
           } catch (err) {
             reportApiError(err, setError, { fallback: "Delete failed", toast: true });
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+
+      <ConfirmDialogV2
+        open={livePackOpen}
+        riskLevel="danger"
+        title="Apply live pack"
+        warning={`Creates x_company_id and a global ir.rule on ${model}. This writes live Odoo metadata.`}
+        risks={LIVE_PACK_RISKS}
+        phrase={CONFIRM_PHRASE}
+        snapshotNote="Field and record-rule creates are only partially recoverable."
+        busy={busy}
+        onCancel={() => setLivePackOpen(false)}
+        onConfirm={async (phrase) => {
+          setBusy(true);
+          setError(null);
+          setNotice(null);
+          try {
+            const res = await api.applyMultiCompanyLive(connectionId, [model], {
+              confirm_advanced: true,
+              confirm_phrase: phrase,
+            });
+            setNotice(
+              `Multi-company: ${res.fields_created} field(s), ${res.rules_created} rule(s)` +
+                (res.warnings.length ? ` · ${res.warnings.join("; ")}` : ""),
+            );
+            setLivePackOpen(false);
+            await refresh(model);
+          } catch (err) {
+            if (err instanceof ConfirmationRequiredError) {
+              setError(err.warning || err.message);
+            } else {
+              reportApiError(err, setError, {
+                fallback: "Multi-company apply failed",
+                toast: true,
+              });
+            }
           } finally {
             setBusy(false);
           }

@@ -14,6 +14,8 @@ import {
   isProjectArchived,
   isProjectApplied,
   modulespecHref,
+  projectApplyReviewBlocked,
+  projectCanApplyAfterReview,
   projectDiffHeadline,
   projectDiffStats,
   projectSpecSummary,
@@ -213,6 +215,12 @@ describe("honesty and glossary", () => {
     expect(sessionSubmitHint({ sessionState: "draft", hasDiff: true, canApply: true })).toMatch(
       /Apply on a sandbox/,
     );
+    expect(sessionSubmitHint({ sessionState: "draft" })).toMatch(/Review vs live before Apply/);
+    expect(projectApplyReviewBlocked(false)).toMatch(/Review vs live before Apply/);
+    expect(projectApplyReviewBlocked(true)).toBeNull();
+    expect(projectCanApplyAfterReview({ allowed: true, hasDiff: false })).toBe(false);
+    expect(projectCanApplyAfterReview({ allowed: true, hasDiff: true })).toBe(true);
+    expect(projectCanApplyAfterReview({ allowed: true, hasDiff: true, archived: true })).toBe(false);
   });
 });
 

@@ -6,12 +6,13 @@ import { ModuleSpecHandoffBar } from "./ModuleSpecHandoffBar";
 afterEach(() => cleanup());
 
 describe("ModuleSpecHandoffBar", () => {
-  it("links Draft Studio, View Designer, and Job Autopilot — never Projects or Expert", () => {
+  it("links Draft Studio, View Designer, Job Autopilot, App Studio, and Projects", () => {
     render(
       <ModuleSpecHandoffBar
         connectionId="c1"
         designerHref="/connections/c1/designer?model=x_visitor_log"
         designerModel="x_visitor_log"
+        projectId="p1"
       />,
     );
     expect(screen.getByRole("link", { name: "Draft Studio" })).toHaveAttribute(
@@ -27,8 +28,11 @@ describe("ModuleSpecHandoffBar", () => {
       "href",
       "/connections/c1/studio",
     );
+    expect(screen.getByTestId("modulespec-open-projects")).toHaveAttribute(
+      "href",
+      "/connections/c1/projects?project=p1",
+    );
     expect(screen.getByTestId("modulespec-handoff-bar").textContent).toMatch(/Promote stays human/);
-    expect(screen.queryByRole("link", { name: "Projects" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Expert" })).toBeNull();
   });
 });

@@ -74,7 +74,7 @@ export const NAV_GROUPS: {
   {
     id: "ai",
     label: "AI Studio",
-    tooltip: "Draft with AI, Job Autopilot, ModuleSpec, projects, and Odoo Expert",
+    tooltip: "App Studio, Draft Studio, Job Autopilot, ModuleSpec, projects, and Odoo Expert",
   },
   {
     id: "data",

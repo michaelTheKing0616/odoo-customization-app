@@ -30,4 +30,9 @@ describe("nav IA (UIF-2)", () => {
     expect(isNavItemActive(href, href, "bulk-suite", "")).toBe(true);
     expect(isNavItemActive(`${href}/extra`, href, "bulk-suite", "")).toBe(true);
   });
+
+  it("lists App Studio before Draft Studio in the AI group", () => {
+    const ai = NAV_ITEMS.filter((item) => item.group === "ai");
+    expect(ai.map((item) => item.id).slice(0, 2)).toEqual(["app-studio", "wizard"]);
+  });
 });

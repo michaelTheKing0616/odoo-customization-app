@@ -65,7 +65,11 @@ export function AccessExtras({
         </h2>
         <p className="mt-2 text-sm text-muted">
           {mcGuidance?.body ??
-            "Adds x_company_id plus a global record rule with company_ids domain on custom models."}
+            "Adds x_company_id plus a global record rule with a company_ids domain on custom models."}
+        </p>
+        <p className="mt-2 text-xs text-muted">
+          Confirm with the phrase before apply. This writes live Odoo and must not create a global
+          ir.rule without confirmation.
         </p>
         <Button
           type="button"
@@ -73,6 +77,7 @@ export function AccessExtras({
           className="mt-3"
           disabled={busy || !model.startsWith("x_")}
           onClick={onApplyMultiCompany}
+          data-testid="access-apply-live-pack"
         >
           Apply live pack to loaded model
         </Button>

@@ -27,8 +27,11 @@ describe("ModuleSpecShell", () => {
       "href",
       "/connections/c1/job",
     );
+    expect(screen.getByRole("link", { name: "Projects" })).toHaveAttribute(
+      "href",
+      "/connections/c1/projects",
+    );
     expect(screen.getByTestId("modulespec-steps")).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "Projects" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Expert" })).toBeNull();
   });
 });

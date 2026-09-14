@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   ConfirmationRequiredError,
@@ -11,6 +11,7 @@ import {
   JobAutopilotQueued,
   JobAutopilotResult,
   JobPacket,
+  JobRow,
   ConfigPacketDiff,
   InstanceFingerprint,
 } from "@/lib/api";
@@ -18,6 +19,13 @@ import { JobPollError, pollJob } from "@/lib/jobs";
 import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { readJobAutopilotBrief } from "@/lib/job-brief-handoff";
+import {
+  classifyJobAutopilotResume,
+  forgetJobAutopilot,
+  jobResumeNotice,
+  readRememberedJobAutopilot,
+  rememberJobAutopilot,
+} from "@/lib/job-autopilot-resume";
 import { odooMenuUrl, odooRecordUrl, isLocalSandboxUrl } from "@/lib/odoo-urls";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
 import { JobAutopilotShell } from "@/components/job-autopilot/JobAutopilotShell";
@@ -53,30 +61,36 @@ const AUTOPILOT_POLL_MS = 3_000;
 /** Last-resort only — backend job cap is 45 min; poll until that terminal status. */
 const AUTOPILOT_POLL_ATTEMPTS = 2_400;
 
-function jobStorageKey(connectionId: string): string {
-  return `job-autopilot:${connectionId}`;
-}
-
-function rememberJob(connectionId: string, jobId: string): void {
-  try {
-    sessionStorage.setItem(jobStorageKey(connectionId), jobId);
-  } catch {
-    /* private mode */
-  }
-}
-
-function forgetJob(connectionId: string): void {
-  try {
-    sessionStorage.removeItem(jobStorageKey(connectionId));
-  } catch {
-    /* private mode */
-  }
-}
-
 function isAutopilotQueued(
   out: JobAutopilotResult | JobAutopilotQueued,
 ): out is JobAutopilotQueued {
   return "queued" in out && out.queued === true && Boolean(out.job_id);
+}
+
+function resultFromJobRow(row: JobRow): JobAutopilotResult | null {
+  const raw = row.result;
+  if (!raw || typeof raw !== "object") return null;
+  const candidate = raw as unknown as JobAutopilotResult;
+  if (!candidate.packet) return null;
+  return candidate;
+}
+
+async function attachJobArtifacts(
+  jobId: string,
+  out: JobAutopilotResult,
+): Promise<JobAutopilotResult> {
+  if (out.custom && !out.custom.zip_base64) {
+    try {
+      const art = await api.getJobArtifact(jobId);
+      if (art.zip_base64) out.custom.zip_base64 = art.zip_base64;
+      if (art.elite_zip_base64 && out.custom.elite && typeof out.custom.elite === "object") {
+        out.custom.elite = { ...out.custom.elite, zip_base64: art.elite_zip_base64 };
+      }
+    } catch {
+      /* Promote can still run stock-only if the zip sidecar is missing. */
+    }
+  }
+  return out;
 }
 
 async function excerptsFromFiles(files: File[]): Promise<Array<{ filename: string; text: string }>> {
@@ -121,6 +135,7 @@ export default function JobAutopilotPage() {
     risks: string[];
     phrase: string;
   } | null>(null);
+  const resumeLock = useRef(false);
 
   useEffect(() => {
     api
@@ -149,6 +164,10 @@ export default function JobAutopilotPage() {
     if (filled) {
       setNotice("Brief carried from Draft Studio. Review, then Plan packet / Run Autopilot.");
     }
+  }, [connectionId]);
+
+  useEffect(() => {
+    resumeLock.current = false;
   }, [connectionId]);
 
   const packet: JobPacket | null = result?.packet ?? packetOut?.packet ?? null;
@@ -192,6 +211,100 @@ export default function JobAutopilotPage() {
     result?.custom?.open_action_id,
     result?.custom?.root_menu_id,
   ]);
+
+  async function followQueuedJob(jobId: string): Promise<JobAutopilotResult> {
+    rememberJobAutopilot(connectionId, jobId);
+    const job = await pollJob(jobId, {
+      fetchJob: api.getJob,
+      intervalMs: AUTOPILOT_POLL_MS,
+      maxAttempts: AUTOPILOT_POLL_ATTEMPTS,
+      untilTerminal: true,
+      onUpdate: (row) => {
+        const label = row.result?.step_label;
+        const startedAt = row.created_at ? Date.parse(row.created_at) : Number.NaN;
+        const minutes = Number.isFinite(startedAt)
+          ? Math.max(0, Math.round((Date.now() - startedAt) / 60_000))
+          : 0;
+        setElapsedMinutes(minutes);
+        if (typeof label === "string" && label) {
+          setStepLabel(label);
+          setNotice(`Autopilot: ${label} (${minutes} min)…`);
+        }
+        const stages = row.result?.stages;
+        if (Array.isArray(stages) && stages.every((s) => typeof s === "string")) {
+          setResult((prev) => (prev ? { ...prev, stages: stages as string[] } : null));
+        }
+      },
+    });
+    const raw = resultFromJobRow(job);
+    if (!raw) {
+      throw new Error(job.error || "Autopilot finished without a result payload.");
+    }
+    const out = await attachJobArtifacts(job.id, raw);
+    forgetJobAutopilot(connectionId);
+    return out;
+  }
+
+  async function resumeRememberedJob(): Promise<void> {
+    const jobId = readRememberedJobAutopilot(connectionId);
+    if (!jobId) return;
+    try {
+      const row = await api.getJob(jobId);
+      const kind = classifyJobAutopilotResume(row, connectionId);
+      if (kind === "stale") {
+        forgetJobAutopilot(connectionId);
+        setNotice(jobResumeNotice("stale"));
+        return;
+      }
+      if (kind === "running") {
+        setBusy("run");
+        setError(null);
+        setRunFailed(false);
+        setNotice(jobResumeNotice("running"));
+        const out = await followQueuedJob(jobId);
+        setResult(out);
+        setNotice(out.message);
+        if (out.refused) setError(out.refuse_reason || out.message);
+        return;
+      }
+      if (kind === "succeeded") {
+        const raw = resultFromJobRow(row);
+        if (raw) {
+          setResult(await attachJobArtifacts(jobId, raw));
+          setNotice(jobResumeNotice("succeeded"));
+        } else {
+          setNotice(jobResumeNotice("stale"));
+        }
+        forgetJobAutopilot(connectionId);
+        return;
+      }
+      forgetJobAutopilot(connectionId);
+      const failed = resultFromJobRow(row);
+      if (failed) setResult(failed);
+      setRunFailed(true);
+      setError(row.error || "Last Autopilot job did not finish.");
+      setNotice(jobResumeNotice("failed"));
+    } catch (err) {
+      forgetJobAutopilot(connectionId);
+      if (err instanceof JobPollError) {
+        setRunFailed(true);
+        setError(err.message);
+        setNotice(jobResumeNotice("failed"));
+        return;
+      }
+      setNotice(jobResumeNotice("stale"));
+    } finally {
+      setBusy((current) => (current === "run" ? null : current));
+      setStepLabel(null);
+    }
+  }
+
+  useEffect(() => {
+    if (resumeLock.current) return;
+    if (!readRememberedJobAutopilot(connectionId)) return;
+    resumeLock.current = true;
+    void resumeRememberedJob();
+  }, [connectionId]);
 
   async function planPacket() {
     if (!prompt.trim()) {
@@ -256,50 +369,8 @@ export default function JobAutopilotPage() {
           });
       let out: JobAutopilotResult;
       if (isAutopilotQueued(started)) {
-        rememberJob(connectionId, started.job_id);
         setNotice(started.message);
-        const job = await pollJob(started.job_id, {
-          fetchJob: api.getJob,
-          intervalMs: AUTOPILOT_POLL_MS,
-          maxAttempts: AUTOPILOT_POLL_ATTEMPTS,
-          untilTerminal: true,
-          onUpdate: (row) => {
-            const label = row.result?.step_label;
-            const startedAt = row.created_at ? Date.parse(row.created_at) : Number.NaN;
-            const minutes = Number.isFinite(startedAt)
-              ? Math.max(0, Math.round((Date.now() - startedAt) / 60_000))
-              : 0;
-            setElapsedMinutes(minutes);
-            if (typeof label === "string" && label) {
-              setStepLabel(label);
-              setNotice(`Autopilot: ${label} (${minutes} min)…`);
-            }
-            const stages = row.result?.stages;
-            if (Array.isArray(stages) && stages.every((s) => typeof s === "string")) {
-              setResult((prev) =>
-                prev
-                  ? { ...prev, stages: stages as string[] }
-                  : null,
-              );
-            }
-          },
-        });
-        out = job.result as unknown as JobAutopilotResult;
-        if (!out?.packet) {
-          throw new Error(job.error || "Autopilot finished without a result payload.");
-        }
-        if (out.custom && !out.custom.zip_base64) {
-          try {
-            const art = await api.getJobArtifact(job.id);
-            if (art.zip_base64) out.custom.zip_base64 = art.zip_base64;
-            if (art.elite_zip_base64 && out.custom.elite && typeof out.custom.elite === "object") {
-              out.custom.elite = { ...out.custom.elite, zip_base64: art.elite_zip_base64 };
-            }
-          } catch {
-            /* Promote can still run stock-only if the zip sidecar is missing. */
-          }
-        }
-        forgetJob(connectionId);
+        out = await followQueuedJob(started.job_id);
       } else {
         out = started;
       }
@@ -323,7 +394,7 @@ export default function JobAutopilotPage() {
         err.job &&
         ["failed", "timeout", "cancelled", "interrupted"].includes(err.job.status)
       ) {
-        forgetJob(connectionId);
+        forgetJobAutopilot(connectionId);
       }
     } finally {
       setBusy(null);

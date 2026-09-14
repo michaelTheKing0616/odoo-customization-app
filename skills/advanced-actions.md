@@ -3,8 +3,10 @@
 ## Product rules
 1. **Safe by default** — no-code path: update field, activity, standard view/model edits.
 2. **Advanced with eyes open** — code, webhook, equation compute, delete field/model, promote
-   Python module to prod: show Odoo-style warning (risk summary + what may be irreversible)
-   and require explicit confirm (`confirm_advanced=true` and optionally typed phrase).
+   Python module to prod, **and live packs that create a global `ir.rule`**: show Odoo-style
+   warning (risk summary + what may be irreversible) and require explicit confirm
+   (`confirm_advanced=true` and optionally typed phrase). The HTTP route must refuse before
+   any RPC client is opened.
 3. **Python = Option A** — never write live `ir.actions.server` `state=code` from the default
    builder without going through: generate module → sandbox → promote.
 4. **Snapshot first** — before risky mutate, store a restore payload in app DB keyed by

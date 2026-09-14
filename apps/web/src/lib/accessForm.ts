@@ -16,6 +16,12 @@ export const RULE_DELETE_RISKS = [
   "A snapshot is taken so the rule definition can be restored when Odoo allows it",
 ];
 
+export const LIVE_PACK_RISKS = [
+  "Writes live Odoo metadata on this connection",
+  "Creates a global ir.rule — it applies to every user unless other rules restrict rows",
+  "Field and record-rule creates are only partially recoverable",
+];
+
 export type CrudPermits = {
   perm_read: boolean;
   perm_write: boolean;

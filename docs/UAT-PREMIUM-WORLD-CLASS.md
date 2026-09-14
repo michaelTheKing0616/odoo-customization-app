@@ -19,6 +19,24 @@ It is **not world-class**. Average surface score is **~3.3 / 5**. The strongest 
 
 ---
 
+## P0 remediation (2026-09-14 follow-up)
+
+PR off tip `cursor/premium-uat-world-class-595a`. **Not world-class complete.** Designer density is still a follow-up.
+
+| Item | Status |
+|---|---|
+| Access “Apply live pack” confirm phrase | **Fixed.** API `POST …/access/multi-company/apply-live` returns 403 without `I understand the risks`. UI uses ConfirmDialogV2. Does not create a global `ir.rule` without confirmation. |
+| Job Autopilot leave-and-return | **Fixed (resume).** `sessionStorage` job id is now read on return: running jobs resume polling; succeeded jobs open the last result; missing jobs show start-new copy. Progress copy no longer claims “the job keeps running” without resume. |
+| Overview “Draft with AI” dual entry | **Fixed.** Primary CTA → App Studio (`/studio`). Draft Studio is secondary (`/wizard`). App Studio chrome says “Draft Studio”, not “Draft Studio wizard”. |
+| Projects Apply gated on Review | **Fixed.** Apply stays disabled until Review vs live has produced a diff for the selected draft. |
+| ModuleSpec → Projects | **Fixed.** Shell + handoff bar link Projects (`?project=` when a draft is loaded). |
+| Designer inject/checkpoint contrast | **Partial.** Inject-strategy label uses `text-muted`; select and checkpoint rows already used `text-ink` on the tip. Remaining mauve hex (`#a8909e`) across the 5.7k dump is **open**. |
+| Auto-promote implication copy | **No remaining “will auto-promote” copy found** on Job / Overview / Access / Projects. Expert already repeats never auto-promote. |
+
+**Still open (not this PR):** extract View Designer `page.tsx` (~5.7k); Access matrix live CRUD confirm; Config Packet apply-target defaulting to self; Draft Studio Promote ConfirmDialog v1; App Studio gold/Accounting CTA; Expert destination cleanup.
+
+---
+
 ## Scope honesty
 
 | Layer | This run |
@@ -97,7 +115,7 @@ Best interaction of the list→composer family. Hide-in-view vs remove-from-mode
 
 Menus tree + composer is sibling-correct (407 LOC). Access is 705 LOC with **four stacked jobs** in the left column.
 
-**P0 (not patched — API confirm, not chrome):** `AccessExtras` “Apply live pack to loaded model” calls `api.applyMultiCompanyLive` with **no confirm phrase**. Creates `x_company_id` **and a global record rule**. Matrix toggles CRUD live, including creating ACL rows.
+**P0 (patched in follow-up):** `AccessExtras` “Apply live pack to loaded model” now opens ConfirmDialogV2 and the API refuses without `I understand the risks`. Still creates `x_company_id` **and a global record rule** after confirm. Matrix toggles CRUD live, including creating ACL rows (not gated in this follow-up).
 
 - Default model is `res.partner`, not the `x_*` the operator just built.
 - Header: Access does not link Menus (detail does).
@@ -132,7 +150,7 @@ Honesty copy is the best of the AI pair. Playwright actually hits `/wizard`. Cro
 **Production header bug is fixed.** `write_mode=production` → *“Autopilot refuses production. Run on a sandbox.”* Tests lock `not.toMatch(/sandbox-only —/)`. Named sandbox copy still uses `sandbox-only —` **by design**.
 
 - Brief + config + promote mount together; stage rail is display-only.
-- **P1:** Progress says *“You can leave this page — the job keeps running”* but job id is write-only (`rememberJob` with no resume).
+- **P1 (patched in follow-up):** Progress used to say *“You can leave this page — the job keeps running”* while job id was write-only. Resume now reads that id.
 - Config Packet apply target defaults to **current connection** if the picker (on another card) is empty.
 - Connection load failure masquerades as a staging gate.
 
@@ -176,13 +194,13 @@ Copilot drawer, citations, ⌘ Enter (traceback paste), never apply / certify / 
 |---|---|---|---|
 | 1 | **P0** | Designer production page is still a 5.7k dump; leftover `#a8909e` / dual canvases / overlay hidden | `designer/page.tsx` |
 | 2 | **P0** | Access multi-company live pack + ACL matrix write **without confirm phrase** | `AccessExtras.tsx`, `access/page.tsx`, API `apply-live` |
-| 3 | **P0** | Two AI products for one job. Overview “Draft with AI” → wizard, not App Studio | `nav.ts`, Overview, Studio vs Draft |
-| 4 | **P1** | Job Autopilot “leave this page” is a resume lie | `JobAutopilotProgress.tsx` vs `job/page.tsx` |
+| 3 | **P0** | Two AI products for one job. Overview “Draft with AI” (**now App Studio; Draft Studio secondary**) | `nav.ts`, Overview, Studio vs Draft |
+| 4 | **P1** | Job Autopilot leave-and-return (**resume patched in follow-up**) | `JobAutopilotProgress.tsx` vs `job/page.tsx` |
 | 5 | **P1** | Config Packet apply target defaults to **self** | `job/page.tsx` `targetId \|\| connectionId` |
-| 6 | **P1** | Projects Apply without required Review; unconfirmed delete + Odoo rollback | `ProjectApplyBar`, `ProjectDetail`, `ProjectHistory` |
+| 6 | **P1** | Projects Apply without required Review (**gated in follow-up**); unconfirmed delete + Odoo rollback | `ProjectApplyBar`, `ProjectDetail`, `ProjectHistory` |
 | 7 | **P1** | App Studio gold inspect CTA assumes Accounting/CBN | `StudioOpenLinks.tsx`, `StudioOptionAPanel.tsx` |
 | 8 | **P1** | Draft Studio Promote still uses ConfirmDialog v1 (Python install) | `wizard/page.tsx` |
-| 9 | **P1** | ModuleSpec never points at Projects | `ModuleSpecShell` / `ModuleSpecHandoffBar` |
+| 9 | **P1** | ModuleSpec → Projects (**linked in follow-up**) | `ModuleSpecShell` / `ModuleSpecHandoffBar` |
 | 10 | **P2** | Stage rails do not collapse later panels; honesty glossary stacks twice; `/e2e/designer` still purple `#714B67` | chain-wide + designer harness |
 
 ---
@@ -272,10 +290,10 @@ Follow-up card (next maker, one at a time — not this PR):
 **Live write UAT: not proven in this environment.** Blockers before calling the chain “founder-ready”:
 
 1. **No Odoo in this audit.** Repeat on `:8069`: create `x_` model → Designer inherit save → automation → Access ACL (skip live pack) → App Studio apply on sandbox → Job Autopilot **refused** on a production-flagged connection.
-2. **Do not click** Access “Apply live pack to loaded model” without a confirm phrase (P0).
+2. **Do not click** Access “Apply live pack to loaded model” without typing `I understand the risks` (P0 — now confirm-gated in API + UI; still a live write).
 3. **Do not treat Completeness 10.0 as go-live.** Job Autopilot and Expert copy already say this; Designer/Builder still omit the triad.
-4. **Do not demo leave-and-return Autopilot** until resume exists.
-5. **Pick one AI studio** for the first live demo: App Studio brief **or** Draft Studio scorecard — not both unexplained.
+4. **Leave-and-return Autopilot** now resumes the remembered job in this browser tab, or opens the last result. Do not expect resume across a new tab.
+5. **First live demo AI entry is App Studio brief.** Draft Studio is the ModuleSpec workshop — keep it secondary.
 
 If those five are respected, the chain is **safe enough for a founder sandbox demo**. It is **not** ready to put in front of a design-partner as Linear-class software.
 

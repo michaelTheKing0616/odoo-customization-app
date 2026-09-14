@@ -1,6 +1,7 @@
 "use client";
 
 import { InfinityLoop } from "@/components/loading-ui/infinity-loop";
+import { jobProgressHonestyLine } from "@/lib/job-autopilot-resume";
 import { JobAutopilotRunLedger } from "./JobAutopilotRunLedger";
 
 type JobAutopilotProgressProps = {
@@ -20,9 +21,8 @@ export function JobAutopilotProgress({
       <p className="studio-progress-label" data-testid="job-autopilot-progress-label">
         {label}
       </p>
-      <p className="studio-progress-detail">
-        Completeness ≠ Cert ≠ Autopilot. Promote stays human. You can leave this page —
-        the job keeps running.
+      <p className="studio-progress-detail" data-testid="job-autopilot-progress-honesty">
+        {jobProgressHonestyLine()}
       </p>
       <div className="progress-bar-track" aria-hidden>
         <div className="progress-bar-fill" />

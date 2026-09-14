@@ -10,6 +10,14 @@ describe("FirstRunCard (UIF-3)", () => {
   it("shows when there are zero models and dismisses", () => {
     render(<FirstRunCard connectionId="conn-1" modelCount={0} />);
     expect(screen.getByTestId("overview-first-run")).toBeInTheDocument();
+    expect(screen.getByTestId("overview-first-run-app-studio")).toHaveAttribute(
+      "href",
+      "/connections/conn-1/studio",
+    );
+    expect(screen.getByTestId("overview-first-run-draft-studio")).toHaveAttribute(
+      "href",
+      "/connections/conn-1/wizard",
+    );
     fireEvent.click(screen.getByTestId("overview-first-run-dismiss"));
     expect(screen.queryByTestId("overview-first-run")).not.toBeInTheDocument();
   });
