@@ -3278,6 +3278,9 @@ export const api = {
       filter_pre_domain?: string | null;
       trigger_field_names?: string[];
       trg_date_field_name?: string | null;
+      trg_date_range?: number | null;
+      trg_date_range_type?: "minutes" | "hour" | "day" | "month" | null;
+      trg_date_range_mode?: "after" | "before" | null;
       active?: boolean;
       action_kind: AutomationActionKind;
       field_name?: string;
@@ -3318,6 +3321,20 @@ export const api = {
     request<AutomationRow>(`/api/connections/${id}/automations/${automationId}`, {
       method: "PATCH",
       body: JSON.stringify({ active }),
+    }),
+  updateAutomation: (
+    id: string,
+    automationId: number,
+    body: {
+      active?: boolean;
+      name?: string;
+      filter_domain?: string | null;
+      model?: string;
+    },
+  ) =>
+    request<AutomationRow>(`/api/connections/${id}/automations/${automationId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
     }),
   deleteAutomation: (
     id: string,

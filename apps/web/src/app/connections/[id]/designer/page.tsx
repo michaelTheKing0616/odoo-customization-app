@@ -1,6 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { DomainBuilder } from "@/components/DomainBuilder";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -47,6 +48,7 @@ import {
 import { useDesignerHistory } from "@/components/designer/useDesignerHistory";
 import { fallbackWidgetsForTtype, type WidgetOption } from "@/lib/widgetCatalog";
 import { semanticInjectExpr } from "@/lib/xpathLocator";
+import { automationsHref } from "@/lib/automationForm";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Callout } from "@/components/ui/Callout";
@@ -2855,7 +2857,15 @@ export default function DesignerPage() {
       />
       {connection ? <FirstWriteInterstitial connection={connection} /> : null}
       <p className="mt-2 text-sm text-muted">
-        Removing a field from the view does not delete the database column.
+        Removing a field from the view does not delete the database column.{" "}
+        <Link
+          href={automationsHref(connectionId, model)}
+          className="text-accent hover:underline"
+          data-testid="designer-automations-link"
+        >
+          Open automations for this model
+        </Link>
+        .
       </p>
       <VersionAwarenessBanner capabilities={connection?.capabilities} />
         <CapabilityProbePanel

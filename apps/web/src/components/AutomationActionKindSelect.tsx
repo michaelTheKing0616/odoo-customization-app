@@ -2,6 +2,7 @@
 
 import type { AutomationActionKind, Connection } from "@/lib/api";
 import { connectionSupports } from "@/lib/capabilities";
+import { cn } from "@/lib/cn";
 
 type Props = {
   connection: Connection | null | undefined;
@@ -9,58 +10,92 @@ type Props = {
   onChange: (kind: AutomationActionKind) => void;
   className?: string;
   "data-testid"?: string;
+  id?: string;
 };
 
-/** Automations “Do” action kind select — gates update_path caps fail-closed. */
+type KindOption = {
+  value: AutomationActionKind;
+  label: string;
+  disabled?: boolean;
+};
+
+function safeOptions(connection: Connection | null | undefined): KindOption[] {
+  return [
+    {
+      value: "update_field",
+      label: "Update field",
+      disabled: !connectionSupports(connection, "object_write_update_path"),
+    },
+    {
+      value: "related_write",
+      label: connectionSupports(connection, "related_write_dotted_path")
+        ? "Update linked record"
+        : "Update linked record — unavailable on this Odoo",
+      disabled: !connectionSupports(connection, "related_write_dotted_path"),
+    },
+    { value: "create_activity", label: "Schedule activity" },
+    {
+      value: "create_record",
+      label: "Create record",
+      disabled: !connectionSupports(connection, "object_create_crud_model"),
+    },
+    { value: "mail_post", label: "Send or post mail" },
+  ];
+}
+
+const ADVANCED_OPTIONS: KindOption[] = [
+  { value: "webhook", label: "Call webhook (confirm)" },
+  { value: "sms", label: "Send SMS (confirm)" },
+  { value: "followers", label: "Add followers (confirm)" },
+  { value: "remove_followers", label: "Remove followers (confirm)" },
+  { value: "code_live", label: "Run Python live (confirm)" },
+];
+
+const OPTION_A: KindOption[] = [
+  { value: "python_module", label: "Export Python module (not live)" },
+];
+
+/** Automations “Then” action kind select — gates update_path caps fail-closed. */
 export function AutomationActionKindSelect({
   connection,
   value,
   onChange,
   className,
+  id,
   "data-testid": testId = "automation-action-kind",
 }: Props) {
   return (
     <select
+      id={id}
       data-testid={testId}
       value={value}
       onChange={(e) => onChange(e.target.value as AutomationActionKind)}
-      className={className}
+      className={cn(
+        "h-9 w-full rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2",
+        className,
+      )}
     >
-      <option
-        value="update_field"
-        disabled={!connectionSupports(connection, "object_write_update_path")}
-      >
-        Update field (safe)
-      </option>
-      <option
-        value="related_write"
-        disabled={!connectionSupports(connection, "related_write_dotted_path")}
-      >
-        Related write — update linked record (safe)
-        {!connectionSupports(connection, "related_write_dotted_path")
-          ? " — unavailable on this Odoo"
-          : ""}
-      </option>
-      <option value="create_activity">Create activity (safe)</option>
-      <option
-        value="create_record"
-        disabled={!connectionSupports(connection, "object_create_crud_model")}
-      >
-        Create record (safe)
-      </option>
-      <option value="mail_post">Send / post mail (safe)</option>
-      <option value="webhook">Webhook (advanced, requires confirm)</option>
-      <option value="sms">Send SMS (advanced, requires confirm)</option>
-      <option value="followers">Add followers (advanced, requires confirm)</option>
-      <option value="remove_followers">
-        Remove followers (advanced, requires confirm)
-      </option>
-      <option value="python_module">
-        Custom Python → module zip (Option A, not live yet)
-      </option>
-      <option value="code_live">
-        Custom Python → live now (advanced, requires confirm)
-      </option>
+      <optgroup label="Safe">
+        {safeOptions(connection).map((opt) => (
+          <option key={opt.value} value={opt.value} disabled={opt.disabled}>
+            {opt.label}
+          </option>
+        ))}
+      </optgroup>
+      <optgroup label="Advanced">
+        {ADVANCED_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </optgroup>
+      <optgroup label="Option A">
+        {OPTION_A.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </optgroup>
     </select>
   );
 }

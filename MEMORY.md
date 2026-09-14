@@ -1,3 +1,8 @@
+### 2026-09-14 — Automations premium list → composer, no second snapshot system
+**Decided:** Split Automations into list + composer/detail. Create stays the full safe-action path. Existing rules edit name + apply-on domain via PATCH (snapshot already taken on create/delete). Trigger/action changes duplicate into a new rule rather than rewriting `ir.actions.server`. Session bar is draft/unsaved/saved only — reuse automation snapshots, do not copy Designer undo/redo. Python/`state=code` stay off the default path (Option A + confirm). Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+**Why:** View Designer A–D set the chrome bar; Automations was still a 1.2k-line form dump. Operators need list → compose with honest capability grey-outs and Designer deep links.
+**Rejected:** Rewriting server actions on PATCH; a second snapshot/undo stack; App Studio / AI refactors; live `state=code` as a default action.
+
 ### 2026-09-14 — View Designer Track D: overlay form structure, Studio-adjacent HUD
 **Decided:** Overlay can add a notebook page (or create notebook+page on sheet), add a named group, and move a field inside a named group/page. New pages/groups get `x_page_*` / `x_group_*` `@name` for later locators. Track B classify/422 still blocks missing/ambiguous expr. Kanban/search only add or hide card/search fields — filter domains and card templates stay NOT_V1. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
 **Why:** Biggest Studio gap was form structure from the live view, not another canvas-only editor.
