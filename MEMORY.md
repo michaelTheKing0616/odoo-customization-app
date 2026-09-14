@@ -1,3 +1,8 @@
+### 2026-09-14 — Premium Menus & Access list → composer
+**Decided:** Split Menus into tree + composer/detail (parent, sequence, action bind or create, visibility groups). Split Access into model ACL list + record-rule list → composer/detail, with DomainBuilder on rules. Session bar is draft/unsaved/saved only; reuse menu/access/rule snapshots on create/edit/delete. Confirm-phrase stays on destructive deletes. Matrix, groups, multi-company, Documents stay secondary disclosures. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+**Why:** Automations/Builder set the list→composer bar; Menus (~373) and Access (~837) were still form dumps. Operators need to create a menu and an ACL/record rule with elite clarity and jump to Designer/Builder.
+**Rejected:** Designer-style undo/redo; App Studio / Draft Studio / Job Autopilot / ModuleSpec / Projects / Expert; rewriting confirm-phrase semantics; making the matrix the primary surface.
+
 ### 2026-09-14 — Premium Models & Fields list → composer
 **Decided:** Split Builder into custom-model list + model composer / model detail + field composer. New `x_` models keep default list/form/search and a success CTA to View Designer. Field create stays full types + inject; field edit is label/help/required/readonly/tracking/selection (no ttype rename). Session bar is draft/unsaved/saved only; reuse field/model snapshots on delete. Layout teaser shows stacked form + list (not Radix tabs). Hide-in-view vs remove-from-model is explicit. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
 **Why:** Automations premium set the list→composer bar; Builder was still a dual form dump (~1.2k). Operators need to create a model + field with elite clarity and jump to Designer.

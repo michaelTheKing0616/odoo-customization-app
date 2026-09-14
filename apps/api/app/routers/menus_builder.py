@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.menu_groups import m2m_ids, menu_group_m2m_field
 from app.odoo_service import OdooClientError, client_from_connection, get_connection_or_404
 from app.schemas import ConfirmAdvancedBody
 from app.snapshots import (
@@ -46,6 +47,16 @@ def _confirm_http(exc: ConfirmationRequired) -> HTTPException:
     )
 
 
+MENU_READ_FIELDS = ["name", "parent_id", "action", "sequence", "web_icon", "child_id"]
+
+
+def _menu_read_fields(group_field: str | None) -> list[str]:
+    fields = list(MENU_READ_FIELDS)
+    if group_field:
+        fields.append(group_field)
+    return fields
+
+
 class MenuNodeOut(BaseModel):
     id: int
     name: str
@@ -57,6 +68,7 @@ class MenuNodeOut(BaseModel):
     sequence: int = 10
     web_icon: str | None = None
     child_count: int = 0
+    group_ids: list[int] = Field(default_factory=list)
 
 
 class WindowActionOut(BaseModel):
@@ -104,6 +116,7 @@ class CreateMenuBody(BaseModel):
     action_id: int | None = None
     sequence: int = 10
     web_icon: str | None = None
+    group_ids: list[int] | None = None
 
 
 class UpdateMenuBody(BaseModel):
@@ -114,6 +127,8 @@ class UpdateMenuBody(BaseModel):
     clear_action: bool = False
     sequence: int | None = None
     web_icon: str | None = None
+    group_ids: list[int] | None = None
+    clear_groups: bool = False
 
 
 class CreateWindowActionBody(BaseModel):
@@ -147,7 +162,11 @@ def _parse_action_ref(action: Any) -> tuple[str | None, int | None]:
         return typ.strip(), None
 
 
-def _menu_out(row: dict[str, Any], child_counts: dict[int, int]) -> MenuNodeOut:
+def _menu_out(
+    row: dict[str, Any],
+    child_counts: dict[int, int],
+    group_field: str | None = None,
+) -> MenuNodeOut:
     parent = row.get("parent_id")
     parent_id = int(parent[0]) if isinstance(parent, (list, tuple)) and parent else None
     parent_name = (
@@ -167,7 +186,15 @@ def _menu_out(row: dict[str, Any], child_counts: dict[int, int]) -> MenuNodeOut:
         sequence=int(row.get("sequence") or 10),
         web_icon=row.get("web_icon") or None,
         child_count=child_counts.get(mid, 0),
+        group_ids=m2m_ids(row.get(group_field)) if group_field else [],
     )
+
+
+def _write_menu_groups(client: Any, menu_id: int, group_ids: list[int]) -> None:
+    field = menu_group_m2m_field(client)
+    if not field:
+        return
+    client.execute_kw("ir.ui.menu", "write", [[menu_id], {field: [(6, 0, group_ids)]}])
 
 
 @router.get("/tree", response_model=list[MenuNodeOut])
@@ -183,13 +210,14 @@ def list_menu_tree(
         domain = [("parent_id", "=", False)]
     elif parent_id is not None:
         domain = [("parent_id", "=", parent_id)]
+    group_field = menu_group_m2m_field(client)
     try:
         rows = client.execute_kw(
             "ir.ui.menu",
             "search_read",
             [domain],
             {
-                "fields": ["name", "parent_id", "action", "sequence", "web_icon", "child_id"],
+                "fields": _menu_read_fields(group_field),
                 "limit": 500,
                 "order": "sequence, id",
             },
@@ -201,7 +229,7 @@ def list_menu_tree(
         children = r.get("child_id") or []
         if isinstance(children, list):
             child_counts[int(r["id"])] = len(children)
-    return [_menu_out(r, child_counts) for r in rows]
+    return [_menu_out(r, child_counts, group_field) for r in rows]
 
 
 @router.post("/menus", response_model=MenuNodeOut, status_code=201)
@@ -209,6 +237,7 @@ def create_menu(
     connection_id: str, body: CreateMenuBody, db: Session = Depends(get_db)
 ) -> MenuNodeOut:
     client = _client(connection_id, db)
+    group_field = menu_group_m2m_field(client)
     try:
         mid = client.create_menu(
             name=body.name,
@@ -217,6 +246,11 @@ def create_menu(
             sequence=body.sequence,
             web_icon=body.web_icon,
         )
+        if body.group_ids is not None:
+            try:
+                _write_menu_groups(client, mid, body.group_ids)
+            except OdooClientError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
         try:
             from app.snapshots import snapshot_created_menu
 
@@ -227,20 +261,11 @@ def create_menu(
             "ir.ui.menu",
             "read",
             [[mid]],
-            {
-                "fields": [
-                    "name",
-                    "parent_id",
-                    "action",
-                    "sequence",
-                    "web_icon",
-                    "child_id",
-                ]
-            },
+            {"fields": _menu_read_fields(group_field)},
         )
     except OdooClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return _menu_out(rows[0], {mid: 0})
+    return _menu_out(rows[0], {mid: 0}, group_field)
 
 
 @router.patch("/menus/{menu_id}", response_model=MenuNodeOut)
@@ -257,6 +282,7 @@ def update_menu(
         snapshot_menu(db, connection_id, client, menu_id)
     except Exception:  # noqa: BLE001 — snapshot best-effort before mutate
         pass
+    group_field = menu_group_m2m_field(client)
     vals: dict[str, Any] = {}
     if body.name is not None:
         vals["name"] = body.name
@@ -272,6 +298,12 @@ def update_menu(
         vals["sequence"] = body.sequence
     if body.web_icon is not None:
         vals["web_icon"] = body.web_icon
+    if body.clear_groups:
+        if group_field:
+            vals[group_field] = [(6, 0, [])]
+    elif body.group_ids is not None:
+        if group_field:
+            vals[group_field] = [(6, 0, body.group_ids)]
     if not vals:
         raise HTTPException(status_code=400, detail="No fields to update")
     try:
@@ -280,22 +312,15 @@ def update_menu(
             "ir.ui.menu",
             "read",
             [[menu_id]],
-            {
-                "fields": [
-                    "name",
-                    "parent_id",
-                    "action",
-                    "sequence",
-                    "web_icon",
-                    "child_id",
-                ]
-            },
+            {"fields": _menu_read_fields(group_field)},
         )
     except OdooClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     children = rows[0].get("child_id") or []
     return _menu_out(
-        rows[0], {menu_id: len(children) if isinstance(children, list) else 0}
+        rows[0],
+        {menu_id: len(children) if isinstance(children, list) else 0},
+        group_field,
     )
 
 
@@ -337,6 +362,7 @@ def delete_menu(
     from app.snapshots import snapshot_menu
     import json
 
+    snapshot_id: str | None = None
     try:
         snap = snapshot_menu(db, connection_id, client, menu_id)
         payload = json.loads(snap.payload_json)
@@ -344,13 +370,14 @@ def delete_menu(
         snap.payload_json = json.dumps(payload)
         db.add(snap)
         db.commit()
+        snapshot_id = snap.id
     except Exception:  # noqa: BLE001 — snapshot best-effort before delete
         pass
     try:
         client.execute_kw("ir.ui.menu", "unlink", [[menu_id]])
     except OdooClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"ok": True, "menu_id": menu_id}
+    return {"ok": True, "menu_id": menu_id, "snapshot_id": snapshot_id}
 
 
 @router.get("/actions", response_model=list[WindowActionOut])

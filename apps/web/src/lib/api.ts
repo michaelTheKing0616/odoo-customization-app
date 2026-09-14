@@ -690,6 +690,31 @@ export type SnapshotRow = {
   created_at: string | null;
 };
 
+export type MenuNode = {
+  id: number;
+  name: string;
+  parent_id: number | null;
+  parent_name?: string | null;
+  action: string | null;
+  action_id: number | null;
+  action_type?: string | null;
+  sequence: number;
+  web_icon: string | null;
+  child_count: number;
+  group_ids?: number[];
+};
+
+export type WindowActionRow = {
+  id: number;
+  name: string;
+  res_model: string | null;
+  view_mode: string | null;
+  domain?: string | null;
+  context?: string | null;
+  target?: string | null;
+  requires_active_id?: boolean;
+};
+
 export type AccessMatrixOut = {
   models: string[];
   groups: GroupRow[];
@@ -4355,20 +4380,9 @@ export const api = {
     if (opts?.rootsOnly) q.set("roots_only", "true");
     if (opts?.parentId != null) q.set("parent_id", String(opts.parentId));
     const qs = q.toString();
-    return request<
-      Array<{
-        id: number;
-        name: string;
-        parent_id: number | null;
-        parent_name: string | null;
-        action: string | null;
-        action_id: number | null;
-        action_type: string | null;
-        sequence: number;
-        web_icon: string | null;
-        child_count: number;
-      }>
-    >(`/api/connections/${id}/menus-builder/tree${qs ? `?${qs}` : ""}`);
+    return request<MenuNode[]>(
+      `/api/connections/${id}/menus-builder/tree${qs ? `?${qs}` : ""}`,
+    );
   },
   createBuilderMenu: (
     id: string,
@@ -4378,9 +4392,10 @@ export const api = {
       action_id?: number | null;
       sequence?: number;
       web_icon?: string | null;
+      group_ids?: number[];
     },
   ) =>
-    request<{ id: number; name: string }>(`/api/connections/${id}/menus-builder/menus`, {
+    request<MenuNode>(`/api/connections/${id}/menus-builder/menus`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
@@ -4389,7 +4404,7 @@ export const api = {
     menuId: number,
     body: Record<string, unknown>,
   ) =>
-    request<{ id: number; name: string }>(
+    request<MenuNode>(
       `/api/connections/${id}/menus-builder/menus/${menuId}`,
       { method: "PATCH", body: JSON.stringify(body) },
     ),
@@ -4398,10 +4413,10 @@ export const api = {
     menuId: number,
     body: { confirm_advanced?: boolean; confirm_phrase?: string | null },
   ) =>
-    request<{ ok: boolean }>(`/api/connections/${id}/menus-builder/menus/${menuId}`, {
-      method: "DELETE",
-      body: JSON.stringify(body),
-    }),
+    request<{ ok: boolean; menu_id?: number; snapshot_id?: string | null }>(
+      `/api/connections/${id}/menus-builder/menus/${menuId}`,
+      { method: "DELETE", body: JSON.stringify(body) },
+    ),
   listWindowActions: (
     id: string,
     opts?: { model?: string; q?: string; standaloneOnly?: boolean },
@@ -4411,18 +4426,9 @@ export const api = {
     if (opts?.q) q.set("q", opts.q);
     if (opts?.standaloneOnly) q.set("standalone_only", "true");
     const qs = q.toString();
-    return request<
-      Array<{
-        id: number;
-        name: string;
-        res_model: string | null;
-        view_mode: string | null;
-        domain: string | null;
-        context: string | null;
-        target: string | null;
-        requires_active_id?: boolean;
-      }>
-    >(`/api/connections/${id}/menus-builder/actions${qs ? `?${qs}` : ""}`);
+    return request<WindowActionRow[]>(
+      `/api/connections/${id}/menus-builder/actions${qs ? `?${qs}` : ""}`,
+    );
   },
   createWindowAction: (
     id: string,

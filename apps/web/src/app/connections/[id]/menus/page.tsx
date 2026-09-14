@@ -1,85 +1,87 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
-import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import { api, Connection } from "@/lib/api";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { api, Connection, GroupRow, MenuNode, SnapshotRow, WindowActionRow } from "@/lib/api";
 import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
+import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
+import { ExplainThisButton } from "@/components/expert/ExplainThisButton";
 import {
   advancedMutationAllowed,
   advancedMutationBlockedReason,
+  connectionSupports,
   defaultWindowViewMode,
   mutationAllowed,
   mutationBlockedReason,
-  connectionSupports,
 } from "@/lib/capabilities";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
-import { Input } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
-import { Card, PageHeader } from "@/components/ui/layout-primitives";
-
-const MENUS_REPORTS_CAVEAT =
-  "Menus / QWeb reports are experimental on Odoo 16 — verify in Open-in-Odoo after create.";
-
-const CONFIRM_PHRASE = "I understand the risks";
-
-type MenuNode = {
-  id: number;
-  name: string;
-  parent_id: number | null;
-  action: string | null;
-  action_id: number | null;
-  sequence: number;
-  web_icon: string | null;
-  child_count: number;
-};
-
-type ActionRow = {
-  id: number;
-  name: string;
-  res_model: string | null;
-  view_mode: string | null;
-};
+import { PageHeader } from "@/components/ui/layout-primitives";
+import { reportApiError } from "@/lib/api-error";
+import { useSyncShellContext } from "@/lib/use-sync-shell-context";
+import {
+  CONFIRM_PHRASE,
+  MENUS_REPORTS_CAVEAT,
+  MENU_DELETE_RISKS,
+  boundAction,
+  composerSessionState,
+  defaultMenuForm,
+  designerHref,
+  isComposerDirty,
+  type MenuComposerForm,
+} from "@/lib/menuForm";
+import { MenuComposer } from "@/components/menus/MenuComposer";
+import { MenuDetail } from "@/components/menus/MenuDetail";
+import { MenuSessionBar } from "@/components/menus/MenuSessionBar";
+import { MenuSnapshots } from "@/components/menus/MenuSnapshots";
+import { MenusTree } from "@/components/menus/MenusTree";
 
 export default function MenusBuilderPage() {
   const params = useParams<{ id: string }>();
   const connectionId = params.id;
 
   const [connection, setConnection] = useState<Connection | null>(null);
+  const [probing, setProbing] = useState(false);
   const [menus, setMenus] = useState<MenuNode[]>([]);
-  const [actions, setActions] = useState<ActionRow[]>([]);
+  const [actions, setActions] = useState<WindowActionRow[]>([]);
+  const [groups, setGroups] = useState<GroupRow[]>([]);
+  const [snapshots, setSnapshots] = useState<SnapshotRow[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [listQuery, setListQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [listLoading, setListLoading] = useState(true);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [menuForm, setMenuForm] = useState({
-    name: "",
-    parent_id: "" as string,
-    sequence: 10,
-    web_icon: "base,static/description/icon.png",
-  });
-  const [actionForm, setActionForm] = useState({
-    name: "",
-    model: "res.partner",
-    view_mode: "list,form",
-  });
-  const [bindActionId, setBindActionId] = useState("");
+  const [savedOnce, setSavedOnce] = useState(false);
 
-  const selected = useMemo(
-    () => menus.find((m) => m.id === selectedId) ?? null,
-    [menus, selectedId],
-  );
+  const viewMode = defaultWindowViewMode(connection);
+  const [form, setForm] = useState<MenuComposerForm>(() => defaultMenuForm(viewMode));
+  const [baseline, setBaseline] = useState<MenuComposerForm>(() => defaultMenuForm(viewMode));
+
+  useSyncShellContext({
+    model: form.action_model,
+    draftSummary: form.name || undefined,
+  });
+
+  const patchForm = useCallback((next: Partial<MenuComposerForm>) => {
+    setForm((f) => ({ ...f, ...next }));
+  }, []);
 
   const refresh = useCallback(async () => {
-    const [tree, acts] = await Promise.all([
+    const [tree, acts, gs, snaps] = await Promise.all([
       api.listMenuTree(connectionId),
       api.listWindowActions(connectionId),
+      api.listGroups(connectionId).catch(() => [] as GroupRow[]),
+      api.listSnapshots(connectionId).catch(() => [] as SnapshotRow[]),
     ]);
     setMenus(tree);
     setActions(acts);
+    setGroups(gs);
+    setSnapshots(snaps);
   }, [connectionId]);
 
   useEffect(() => {
@@ -90,22 +92,28 @@ export default function MenusBuilderPage() {
   }, [connectionId]);
 
   useEffect(() => {
-    if (!mutationAllowed(connection)) return;
-    setActionForm((f) => ({
-      ...f,
-      view_mode: defaultWindowViewMode(connection),
-    }));
+    setListLoading(true);
+    refresh()
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setListLoading(false));
+  }, [refresh]);
+
+  useEffect(() => {
+    const next = defaultWindowViewMode(connection);
+    setForm((f) => (f.action_view_mode === next ? f : { ...f, action_view_mode: next }));
+    setBaseline((b) => (b.action_view_mode === next ? b : { ...b, action_view_mode: next }));
   }, [connection]);
 
   useEffect(() => {
-    refresh().catch((err: Error) => setError(err.message));
-  }, [refresh]);
+    if (typeof window === "undefined") return;
+    const fromQuery = new URLSearchParams(window.location.search).get("model");
+    if (!fromQuery) return;
+    setForm((f) => ({ ...f, action_model: fromQuery, action_mode: "create" }));
+    setBaseline((b) => ({ ...b, action_model: fromQuery, action_mode: "create" }));
+  }, []);
 
   const menusCaveat = useMemo(() => {
-    if (
-      mutationAllowed(connection) &&
-      !connectionSupports(connection, "list_as_list_type")
-    ) {
+    if (mutationAllowed(connection) && !connectionSupports(connection, "list_as_list_type")) {
       return MENUS_REPORTS_CAVEAT;
     }
     return null;
@@ -116,227 +124,249 @@ export default function MenusBuilderPage() {
   const canAdvanced = advancedMutationAllowed(connection);
   const advancedBlocked = advancedMutationBlockedReason(connection);
 
-  const roots = menus.filter((m) => !m.parent_id);
-  const childrenOf = (pid: number) =>
-    menus.filter((m) => m.parent_id === pid).sort((a, b) => a.sequence - b.sequence);
+  const selected = menus.find((m) => m.id === selectedId) ?? null;
+  const dirty = isComposerDirty(form, baseline);
+  const sessionState = composerSessionState({ dirty, savedOnce });
+  const bound = selected ? boundAction(actions, selected.action_id) : null;
+
+  function discardComposer() {
+    setForm(baseline);
+    setSelectedId(null);
+  }
+
+  function startNew() {
+    setSelectedId(null);
+    setNotice(null);
+  }
 
   async function createMenu(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
+      let actionId = form.action_id ? Number(form.action_id) : null;
+      if (form.action_mode === "create") {
+        const createdAction = await api.createWindowAction(connectionId, {
+          name: form.action_name || `${form.name} list`,
+          model: form.action_model,
+          view_mode: form.action_view_mode,
+        });
+        actionId = createdAction.id;
+      }
       const created = await api.createBuilderMenu(connectionId, {
-        name: menuForm.name,
-        parent_id: menuForm.parent_id ? Number(menuForm.parent_id) : null,
-        sequence: menuForm.sequence,
-        web_icon: menuForm.parent_id ? null : menuForm.web_icon,
+        name: form.name.trim(),
+        parent_id: form.parent_id ? Number(form.parent_id) : null,
+        sequence: form.sequence,
+        web_icon: form.parent_id ? null : form.web_icon,
+        action_id: actionId,
+        group_ids: form.group_ids,
       });
       setNotice(`Created menu #${created.id}`);
-      setMenuForm((f) => ({ ...f, name: "" }));
+      setSavedOnce(true);
+      const next = { ...form, name: "", action_name: "" };
+      setForm(next);
+      setBaseline(next);
       await refresh();
       setSelectedId(created.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Create failed");
+      reportApiError(err, setError, { fallback: "Create failed", toast: true });
     } finally {
       setBusy(false);
     }
   }
 
-  async function createAction(e: FormEvent) {
-    e.preventDefault();
+  async function onRollback(snapshotId: string) {
     setBusy(true);
+    setError(null);
     try {
-      const created = await api.createWindowAction(connectionId, actionForm);
-      setNotice(`Created action #${created.id}`);
-      setBindActionId(String(created.id));
+      const res = await api.rollbackSnapshot(connectionId, snapshotId);
+      setNotice(`Restored ${res.restored} #${res.id}`);
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Action create failed");
+      reportApiError(err, setError, { fallback: "Rollback failed", toast: true });
     } finally {
       setBusy(false);
     }
-  }
-
-  function renderTree(nodes: MenuNode[], depth = 0): ReactNode {
-    return nodes.map((m) => (
-      <li key={m.id}>
-        <button
-          type="button"
-          onClick={() => setSelectedId(m.id)}
-          className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm ${
-            selectedId === m.id
-              ? "bg-accent-subtle text-ink ring-1 ring-accent"
-              : "text-muted hover:bg-surface-muted"
-          }`}
-          style={{ paddingLeft: 8 + depth * 14 }}
-        >
-          <span className="font-medium text-ink">{m.name}</span>
-          <span className="font-mono text-[10px] text-muted">#{m.id}</span>
-          {m.action_id ? (
-            <span className="text-[10px] text-accent">act:{m.action_id}</span>
-          ) : null}
-        </button>
-        <ul>{renderTree(childrenOf(m.id), depth + 1)}</ul>
-      </li>
-    ));
   }
 
   return (
     <div className="mx-auto max-w-6xl" data-testid="menus-page">
       <PageHeader
-        title="Menus and actions"
-        description="Visual tree for ir.ui.menu + ir.actions.act_window"
+        title="Menus"
+        description={`${connection?.name ?? connectionId} · Tree, parent, sequence, action binding, and visibility groups.`}
+        actions={
+          <>
+            <Button variant="secondary" size="sm" asChild>
+              <Link
+                href={designerHref(connectionId, bound?.res_model || form.action_model)}
+                data-testid="menus-designer-link"
+              >
+                Open in View Designer
+              </Link>
+            </Button>
+            <ExplainThisButton
+              question={`Explain ir.ui.menu and window actions for ${form.action_model || "this instance"}`}
+              label="Explain menus"
+            />
+          </>
+        }
       />
+      <p className="mt-2 text-sm text-muted">
+        Root menus need a file-path icon on Odoo 19. Bind a standalone window action so the item
+        opens a model — related-button actions that need active_id stay off this tree.
+      </p>
       <VersionAwarenessBanner
         capabilities={connection?.capabilities}
         caveat={menusCaveat}
+        className="mt-4"
       />
+      <CapabilityProbePanel
+        capabilities={connection?.capabilities}
+        defaultOpen={false}
+        className="mt-2"
+        refreshing={probing}
+        onRefresh={() => {
+          void (async () => {
+            setProbing(true);
+            setError(null);
+            try {
+              const result = await api.probeConnection(connectionId);
+              setConnection((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      server_version: result.server_version,
+                      capabilities: result.capabilities,
+                    }
+                  : prev,
+              );
+            } catch (err) {
+              setError(err instanceof Error ? err.message : "Probe failed");
+            } finally {
+              setProbing(false);
+            }
+          })();
+        }}
+      />
+
       {mutateBlocked ? (
         <Callout variant="warning" title="Mutations blocked" className="mt-4">
           {mutateBlocked}
         </Callout>
       ) : null}
 
-      {error ? <ErrorNotice message={error} className="mt-4" /> : null}
+      {error ? (
+        <ErrorNotice message={error} className="mt-4" onRetry={() => void refresh()} />
+      ) : null}
       {notice ? (
         <Callout variant="info" title="Notice" className="mt-4">
           {notice}
         </Callout>
       ) : null}
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_320px]">
-        <Card className="p-4">
-          <h2 className="text-sm font-semibold text-ink">Menu tree</h2>
-          <ul className="mt-3 max-h-[28rem] overflow-auto">{renderTree(roots)}</ul>
-        </Card>
+      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(240px,320px)_minmax(0,1fr)]">
+        <div>
+          <MenusTree
+            menus={menus}
+            loading={listLoading}
+            selectedId={selectedId}
+            query={listQuery}
+            onQueryChange={setListQuery}
+            onSelect={(menu) => {
+              setSelectedId(menu.id);
+              setNotice(null);
+            }}
+            onCreate={startNew}
+          />
+          <MenuSnapshots
+            connectionId={connectionId}
+            snapshots={snapshots}
+            busy={busy}
+            onRollback={onRollback}
+          />
+        </div>
 
         <div className="space-y-4">
-          <Card className="p-4">
-            <form onSubmit={createMenu} className="space-y-3">
-              <h2 className="text-sm font-semibold text-ink">New menu</h2>
-              <Input
-                required
-                value={menuForm.name}
-                onChange={(e) => setMenuForm({ ...menuForm, name: e.target.value })}
-                placeholder="Label"
-              />
-              <Select
-                options={[
-                  { value: "", label: "— root app —" },
-                  ...menus.map((m) => ({
-                    value: String(m.id),
-                    label: `${m.name} (#${m.id})`,
-                  })),
-                ]}
-                value={menuForm.parent_id}
-                onChange={(e) => setMenuForm({ ...menuForm, parent_id: e.target.value })}
-              />
-              <Input
-                type="number"
-                value={String(menuForm.sequence)}
-                onChange={(e) =>
-                  setMenuForm({ ...menuForm, sequence: Number(e.target.value) })
-                }
-              />
-              <Button
-                type="submit"
-                variant="primary"
-                className="w-full"
-                disabled={busy || !canMutate}
-                title={mutateBlocked ?? undefined}
-                loading={busy}
-              >
-                Create menu
-              </Button>
-            </form>
-          </Card>
-
-          <Card className="p-4">
-            <form onSubmit={createAction} className="space-y-3">
-              <h2 className="text-sm font-semibold text-ink">New window action</h2>
-              <Input
-                required
-                value={actionForm.name}
-                onChange={(e) => setActionForm({ ...actionForm, name: e.target.value })}
-                placeholder="Action name"
-              />
-              <Input
-                required
-                value={actionForm.model}
-                onChange={(e) => setActionForm({ ...actionForm, model: e.target.value })}
-                placeholder="model"
-                className="font-mono text-sm"
-              />
-              <Input
-                value={actionForm.view_mode}
-                onChange={(e) =>
-                  setActionForm({ ...actionForm, view_mode: e.target.value })
-                }
-                className="font-mono text-sm"
-              />
-              <Button
-                type="submit"
-                variant="secondary"
-                className="w-full"
-                disabled={busy || !canMutate}
-                title={mutateBlocked ?? undefined}
-                loading={busy}
-              >
-                Create action
-              </Button>
-            </form>
-          </Card>
-
           {selected ? (
-            <Card className="space-y-3 p-4">
-              <h2 className="text-sm font-semibold text-ink">Selected #{selected.id}</h2>
-              <p className="text-xs text-muted">{selected.name}</p>
-              <Select
-                options={[
-                  { value: "", label: "Bind action…" },
-                  ...actions.map((a) => ({
-                    value: String(a.id),
-                    label: `#${a.id} ${a.name} (${a.res_model})`,
-                  })),
-                ]}
-                value={bindActionId}
-                onChange={(e) => setBindActionId(e.target.value)}
+            <MenuDetail
+              key={selected.id}
+              connectionId={connectionId}
+              menu={selected}
+              menus={menus}
+              actions={actions}
+              groups={groups}
+              busy={busy}
+              canMutate={canMutate}
+              canDelete={canAdvanced}
+              mutateBlocked={mutateBlocked}
+              deleteBlocked={advancedBlocked}
+              onSave={async (patch) => {
+                setBusy(true);
+                setError(null);
+                try {
+                  await api.updateBuilderMenu(connectionId, selected.id, {
+                    name: patch.name,
+                    parent_id: patch.parent_id,
+                    clear_parent: patch.clear_parent,
+                    sequence: patch.sequence,
+                    action_id: patch.action_id,
+                    clear_action: patch.clear_action,
+                    group_ids: patch.group_ids,
+                    clear_groups: patch.clear_groups,
+                  });
+                  setNotice(`Updated menu #${selected.id}`);
+                  await refresh();
+                } catch (err) {
+                  reportApiError(err, setError, { fallback: "Update failed", toast: true });
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              onCreateAndBind={async ({ name, model, view_mode }) => {
+                setBusy(true);
+                setError(null);
+                try {
+                  const created = await api.createWindowAction(connectionId, {
+                    name,
+                    model,
+                    view_mode,
+                  });
+                  await api.updateBuilderMenu(connectionId, selected.id, {
+                    action_id: created.id,
+                  });
+                  setNotice(`Bound action #${created.id}`);
+                  await refresh();
+                } catch (err) {
+                  reportApiError(err, setError, { fallback: "Action create failed", toast: true });
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              onDelete={() => setConfirmDelete(true)}
+            />
+          ) : (
+            <>
+              <MenuSessionBar
+                sessionState={sessionState}
+                busy={busy}
+                canDiscard={dirty}
+                submitLabel="Create menu"
+                onDiscard={discardComposer}
               />
-              <Button
-                type="button"
-                variant="secondary"
-                className="w-full"
-                disabled={busy || !bindActionId || !canMutate}
-                title={mutateBlocked ?? undefined}
-                onClick={async () => {
-                  setBusy(true);
-                  try {
-                    await api.updateBuilderMenu(connectionId, selected.id, {
-                      action_id: Number(bindActionId),
-                    });
-                    setNotice(`Bound action ${bindActionId}`);
-                    await refresh();
-                  } catch (err) {
-                    setError(err instanceof Error ? err.message : "Bind failed");
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
-              >
-                Bind action
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full text-danger"
-                disabled={busy || !canAdvanced}
-                title={advancedBlocked ?? undefined}
-                onClick={() => setConfirmDelete(true)}
-              >
-                Delete menu
-              </Button>
-            </Card>
-          ) : null}
+              <MenuComposer
+                form={form}
+                menus={menus}
+                actions={actions}
+                groups={groups}
+                onChange={patchForm}
+                onSubmit={createMenu}
+                busy={busy}
+                canSubmit={canMutate}
+                submitBlockedReason={mutateBlocked}
+              />
+            </>
+          )}
         </div>
       </div>
 
@@ -344,25 +374,29 @@ export default function MenusBuilderPage() {
         open={confirmDelete}
         riskLevel="danger"
         title="Delete menu"
-        warning="Removes this menu from Odoo."
-        risks={["Child menus may cascade", "Action remains but is harder to find"]}
+        warning="Removes this menu from the Odoo app switcher / navbar."
+        risks={MENU_DELETE_RISKS}
         phrase={CONFIRM_PHRASE}
+        snapshotNote="A snapshot is taken so the menu definition can be restored when Odoo allows it."
         busy={busy}
         onCancel={() => setConfirmDelete(false)}
         onConfirm={async (phrase) => {
           if (!selected) return;
           setBusy(true);
           try {
-            await api.deleteBuilderMenu(connectionId, selected.id, {
+            const res = await api.deleteBuilderMenu(connectionId, selected.id, {
               confirm_advanced: true,
               confirm_phrase: phrase,
             });
             setConfirmDelete(false);
             setSelectedId(null);
-            setNotice("Menu deleted");
+            setNotice(
+              `Deleted menu #${selected.id}` +
+                (res.snapshot_id ? ` · snapshot ${res.snapshot_id.slice(0, 8)}…` : ""),
+            );
             await refresh();
           } catch (err) {
-            setError(err instanceof Error ? err.message : "Delete failed");
+            reportApiError(err, setError, { fallback: "Delete failed", toast: true });
           } finally {
             setBusy(false);
           }
