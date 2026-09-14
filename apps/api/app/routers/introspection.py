@@ -72,7 +72,7 @@ def list_installed_modules(
 def list_models(
     connection_id: str,
     custom_only: bool = Query(False),
-    limit: int = Query(500, ge=1, le=2000),
+    limit: int = Query(STOCK_CATALOG_LIMIT, ge=1, le=STOCK_CATALOG_LIMIT),
     db: Session = Depends(get_db),
 ) -> list[ModelOut]:
     client = _client(connection_id, db)

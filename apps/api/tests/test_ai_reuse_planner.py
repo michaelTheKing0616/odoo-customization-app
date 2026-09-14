@@ -24,6 +24,8 @@ def test_offline_intent_adds_account_and_calendar() -> None:
     assert "account.move" in plan.models
     assert "calendar.event" in plan.models
     assert "x_invoice" in plan.forbid_new_models
+    assert "x_bill" in plan.forbid_new_models
+    assert "x_event" in plan.forbid_new_models
     assert "contacts" in plan.depends
     assert "account" in plan.depends
     assert "calendar" in plan.depends
@@ -108,13 +110,11 @@ def test_apply_collapses_x_client_and_x_invoice() -> None:
     ids = {m["model"] for m in draft["models"]}
     assert "x_client" not in ids
     assert "x_invoice" not in ids
+    assert "x_payment" not in ids
     assert "x_matter" in ids
     matter = next(m for m in draft["models"] if m["model"] == "x_matter")
     rels = {f.get("relation") for f in matter["fields"]}
     assert "res.partner" in rels
-    payment = next(m for m in draft["models"] if m["model"] == "x_payment")
-    inv = next(f for f in payment["fields"] if f["name"] == "x_invoice_id")
-    assert inv["relation"] == "account.move"
     assert draft["reuse"]["plan"]["source"] == "offline_ce19"
     assert "contacts" in draft["depends"]
     assert any("collapsed" in n for n in notes)
@@ -142,3 +142,82 @@ def test_apply_collapses_invoice_when_bill_exists_without_accounting() -> None:
     ids = {m["model"] for m in draft["models"]}
     assert "x_bill" in ids
     assert "x_invoice" not in ids
+
+
+def test_apply_collapses_staff_and_bill_clones_when_stock_reused() -> None:
+    plan = plan_reuse(
+        "Professional practice with attorneys, payroll, quotations, and invoicing"
+    )
+    assert "hr.employee" in plan.models
+    assert "account.move" in plan.models
+    assert "x_attorney" in plan.forbid_new_models
+    assert "x_bill" in plan.forbid_new_models
+    draft = {
+        "models": [
+            {
+                "model": "x_policy",
+                "is_workflow": True,
+                "fields": [
+                    {"name": "x_name", "ttype": "char"},
+                    {
+                        "name": "x_attorney_id",
+                        "ttype": "many2one",
+                        "relation": "x_attorney",
+                    },
+                    {
+                        "name": "x_bill_id",
+                        "ttype": "many2one",
+                        "relation": "x_bill",
+                    },
+                ],
+            },
+            {"model": "x_attorney", "fields": [{"name": "x_name", "ttype": "char"}]},
+            {"model": "x_bill", "fields": [{"name": "x_name", "ttype": "char"}]},
+        ],
+        "depends": ["base"],
+    }
+    apply_reuse_plan(draft, plan)
+    ids = {m["model"] for m in draft["models"]}
+    assert "x_policy" in ids
+    assert "x_attorney" not in ids
+    assert "x_bill" not in ids
+    header = next(m for m in draft["models"] if m["model"] == "x_policy")
+    rels = {f.get("relation") for f in header["fields"]}
+    assert "hr.employee" in rels
+    assert "account.move" in rels
+
+
+def test_pack_keep_does_not_collapse_pack_bill() -> None:
+    plan = plan_reuse("Hotel with room bookings and guest invoicing")
+    draft = {
+        "_pack_model_ids": ["x_booking", "x_bill", "x_room"],
+        "domain_pack": "hotel",
+        "models": [
+            {"model": "x_booking", "fields": [{"name": "x_name", "ttype": "char"}]},
+            {"model": "x_bill", "fields": [{"name": "x_name", "ttype": "char"}]},
+            {"model": "x_invoice", "fields": [{"name": "x_name", "ttype": "char"}]},
+        ],
+    }
+    apply_reuse_plan(draft, plan)
+    ids = {m["model"] for m in draft["models"]}
+    assert "x_bill" in ids
+    assert "x_invoice" not in ids
+
+
+def test_thin_register_skips_unknown_always_hosts() -> None:
+    from tests.test_ai_pack_disambiguation import VISITOR_LOG_PROMPT
+    from tests.test_ai_studio_seed import SLA_INVOICE_FIELD_PROMPT
+
+    accra = plan_reuse(VISITOR_LOG_PROMPT)
+    assert "res.company" not in accra.models
+    assert "res.currency" not in accra.models
+    assert "res.users" not in accra.models
+    assert "hr.employee" in accra.models
+    blob = accra.prompt_block()
+    assert "res.company" not in blob
+    assert "when the brief uses that host" in blob
+
+    sla = plan_reuse(SLA_INVOICE_FIELD_PROMPT)
+    assert "res.company" not in sla.models
+    assert "res.users" not in sla.models
+    assert "res.currency" not in sla.models

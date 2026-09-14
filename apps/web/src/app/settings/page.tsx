@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { DataTable, type DataTableColumn } from "@/components/ui/DataTable";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { InlineWait } from "@/components/studio/StudioBusyLabel";
 import { Input } from "@/components/ui/Input";
 import { Card, PageHeader } from "@/components/ui/layout-primitives";
 
@@ -185,7 +186,7 @@ export default function SettingsPage() {
             <li>Bootstrap available: {String(status.bootstrap_available)}</li>
           </ul>
         ) : (
-          <p className="mt-3 text-muted">Loading…</p>
+          <InlineWait className="mt-3 text-sm text-muted" />
         )}
         {status?.bootstrap_available ? (
           <Button

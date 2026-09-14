@@ -72,6 +72,7 @@ def llm_json_with_budget(
             format_schema=format_schema,
             temperature=temperature,
             model=model,
+            log_step=step,
         )
         return raw, None
     except LLMError as exc:

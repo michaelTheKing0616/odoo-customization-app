@@ -14,6 +14,7 @@ import logging
 from collections.abc import Generator
 
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.settings import settings
@@ -49,21 +50,45 @@ def run_migrations() -> None:
     command.upgrade(cfg, "head")
 
 
+def _is_postgres_url(url: str) -> bool:
+    return url.startswith("postgresql") or "+psycopg" in url or "+asyncpg" in url
+
+
+def _db_unreachable_message() -> str:
+    from urllib.parse import urlparse
+
+    raw = settings.database_url
+    parsed = urlparse(raw.replace("postgresql+psycopg", "postgresql", 1))
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or 5432
+    return (
+        f"App Postgres is not reachable at {host}:{port}. "
+        "Start Docker Desktop, then run:\n"
+        "  docker compose -p odoo-custom-dev -f docker/docker-compose.yml up -d app-db\n"
+        "Wait until odoo-custom-app-db is healthy, then restart uvicorn."
+    )
+
+
 def init_db(*, bootstrap: bool = True) -> None:
     """Bootstrap schema — create_all for tests; optional Alembic when configured."""
     from app import db_models  # noqa: F401
 
-    mode = settings.db_migrations.strip().lower()
-    if mode == "auto":
-        run_migrations()
-        _ensure_schema_columns()
-        return
-    if bootstrap:
-        from app import account_models  # noqa: F401
-        from app import billing_models  # noqa: F401
+    try:
+        mode = settings.db_migrations.strip().lower()
+        if mode == "auto":
+            run_migrations()
+            _ensure_schema_columns()
+            return
+        if bootstrap:
+            from app import account_models  # noqa: F401
+            from app import billing_models  # noqa: F401
 
-        Base.metadata.create_all(bind=engine)
-        _ensure_schema_columns()
+            Base.metadata.create_all(bind=engine)
+            _ensure_schema_columns()
+    except OperationalError as exc:
+        if _is_postgres_url(settings.database_url):
+            raise RuntimeError(_db_unreachable_message()) from exc
+        raise
 
 
 def _ensure_schema_columns() -> None:

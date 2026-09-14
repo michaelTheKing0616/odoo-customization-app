@@ -270,6 +270,7 @@ def draft_dict_to_module_spec(draft: dict[str, Any]) -> ModuleSpec:
                     for g in (mu.get("groups") or mu.get("group_xml_ids") or [])
                     if g
                 ],
+                web_icon=str(mu["web_icon"]) if mu.get("web_icon") else None,
             )
         )
 
@@ -376,6 +377,18 @@ def draft_dict_to_module_spec(draft: dict[str, Any]) -> ModuleSpec:
         )
 
     blocks = merge_custom_code_blocks(draft)
+    try:
+        from app.ai_static_odoo import rewrite_stock_inherit_xpaths
+
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            content = str(block.get("content") or "")
+            rewritten = rewrite_stock_inherit_xpaths(content)
+            if rewritten != content:
+                block["content"] = rewritten
+    except Exception:  # noqa: BLE001
+        pass
     include_barcode = bool(draft.get("include_barcode_scan_widget"))
     if draft.get("multi_company"):
         from app.multi_company_pack import apply_multi_company_to_draft

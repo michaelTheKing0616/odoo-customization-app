@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.db import SessionLocal, init_db
-from app.expert.chunker import chunk_file
+from app.expert.chunker import DocChunk, chunk_file
 from app.expert.fetcher import SUPPORTED_VERSIONS, fetch_documentation, iter_doc_files
 from app.expert.l10n_chunks import chunks_from_odoo_source_files
 from app.expert.odoo_source_fetcher import fetch_odoo_source_paths
@@ -20,6 +20,47 @@ from app.settings import settings
 logger = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
+
+# Always ingest these product docs first (operator/investor how-tos).
+_PRIORITY_PROJECT_DOCS: tuple[str, ...] = (
+    "docs/OPERATOR-FEATURE-DEMO-GUIDE.md",
+    "docs/USER-GUIDE.md",
+    "docs/OPERATOR.md",
+    "docs/SAFETY.md",
+    "docs/START-HERE.md",
+    "docs/LOCAL-UAT.md",
+    "docs/reference/MASTER_REFERENCE.md",
+    "AGENTS.md",
+    "MEMORY.md",
+    "docs/expert/product/app-studio-host-install.md",
+)
+
+
+def _project_doc_paths() -> list[Path]:
+    paths: list[Path] = []
+    seen: set[Path] = set()
+
+    def _add(path: Path) -> None:
+        resolved = path.resolve()
+        if resolved in seen or not path.is_file():
+            return
+        seen.add(resolved)
+        paths.append(path)
+
+    for rel in _PRIORITY_PROJECT_DOCS:
+        _add(_REPO_ROOT / rel)
+
+    docs_dir = _REPO_ROOT / "docs"
+    if docs_dir.is_dir():
+        for path in sorted(docs_dir.glob("*.md")):
+            if path.name.startswith("."):
+                continue
+            _add(path)
+        # Nested operator-facing docs (not entire research dump / not community —
+        # community is ingested as source=community).
+        for rel in ("docs/DEPLOY.md", "docs/BETA_PROTOCOL.md"):
+            _add(_REPO_ROOT / rel)
+    return paths
 
 
 @dataclass
@@ -50,22 +91,6 @@ class IngestReport:
             + self.community.updated
             + self.vertical.updated
         )
-
-
-def _project_doc_paths() -> list[Path]:
-    paths: list[Path] = []
-    master = _REPO_ROOT / "docs" / "reference" / "MASTER_REFERENCE.md"
-    if master.is_file():
-        paths.append(master)
-    docs_dir = _REPO_ROOT / "docs"
-    if docs_dir.is_dir():
-        for pattern in ("*.md",):
-            for path in sorted(docs_dir.glob(pattern)):
-                if path.name.startswith("."):
-                    continue
-                if path not in paths:
-                    paths.append(path)
-    return paths
 
 
 def _builtin_community_paths() -> list[Path]:
@@ -145,7 +170,18 @@ def ingest_project_docs(*, embed: bool = True) -> UpsertStats:
     try:
         chunks = []
         for path in paths:
-            chunks.extend(chunk_file(path))
+            for chunk in chunk_file(path):
+                # Prefix filename so retrieval can boost product guides by path/name
+                # (markdown breadcrumbs are heading stacks, not file names).
+                name = path.name
+                if name and not chunk.breadcrumb.startswith(name):
+                    bc = f"{name} > {chunk.breadcrumb}" if chunk.breadcrumb else name
+                    chunk = DocChunk(
+                        breadcrumb=bc,
+                        text=chunk.text,
+                        source_path=chunk.source_path or str(path),
+                    )
+                chunks.append(chunk)
         return upsert_chunks(db, source="project", version="all", chunks=chunks, embed=embed)
     finally:
         db.close()

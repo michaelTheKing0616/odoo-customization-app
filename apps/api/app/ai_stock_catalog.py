@@ -11,7 +11,60 @@ STOCK_CATALOG_LIMIT = 2000
 PROMPT_MODEL_LIMIT = 400
 CATALOG_INFER_MAX = 15
 CATALOG_INFER_MIN_SCORE = 3
-CATALOG_NOISE_PREFIXES = ("report.", "res.role", "ir.", "bus.")
+CATALOG_NOISE_PREFIXES = (
+    "report.",
+    "res.role",
+    "ir.",
+    "bus.",
+    "format.",
+    "iap.",
+)
+CATALOG_NOISE_LEAVES = frozenset(
+    {
+        "mixin",
+        "mixins",
+        "settings",
+        "apikeys",
+        "embedded",
+        "scoring",
+        "helpers",
+        "common",
+    }
+)
+
+# Tokens that appear in many industries and in stock technical names
+# (mrp.production). Matching them must not +3 a false-friend model.
+_WEAK_CROSS_INDUSTRY_TOKENS = frozenset(
+    {
+        "production",
+        "company",
+        "business",
+        "management",
+        "system",
+        "operations",
+        "service",
+        "multiple",
+        "record",
+    }
+)
+# "stock Odoo documents" / "stock apps" means Community reuse — not Inventory.
+_STOCK_BOILERPLATE_RE = re.compile(
+    r"\bstock[\s-]+(odoo|community|apps?|documents?|accounting|invoicing|"
+    r"calendar|crm|first|hosts?|models?|modules?|reuse)\b",
+    re.I,
+)
+_INVENTORY_INTENT_RE = re.compile(
+    r"\b(inventory|warehouse|stock\s+quant|stock\s+picking|stock\s+levels?|"
+    r"stock\s+moves?|goods\s+in|replenish|delivery\s+order|stock\s+location)\b",
+    re.I,
+)
+_MRP_INTENT_RE = re.compile(
+    r"\b("
+    r"manufactur(?:e|ed|er|ing)?|factor(?:y|ies)|"
+    r"bill\s+of\s+materials|\bboms?\b|work\s*orders?"
+    r")\b",
+    re.I,
+)
 
 # Models that exist on every Odoo instance — always safe to suggest offline.
 _UNIVERSAL_STOCK = frozenset(
@@ -115,43 +168,66 @@ def filter_catalog(
     return filtered
 
 
+def catalog_prompt_text(text: str) -> str:
+    """Strip 'stock Odoo documents' false friends before lexical scoring."""
+    return _STOCK_BOILERPLATE_RE.sub(" ", text or "")
+
+
 def _prompt_tokens(text: str) -> set[str]:
-    return {t.lower() for t in re.findall(r"[a-zA-Z][a-zA-Z0-9_]{2,}", text)}
+    return {
+        t.lower()
+        for t in re.findall(r"[a-zA-Z][a-zA-Z0-9_]{2,}", catalog_prompt_text(text))
+    }
 
 
-def score_model_for_prompt(model: str, name: str, app: str, tokens: set[str]) -> int:
+def score_model_for_prompt(
+    model: str,
+    name: str,
+    app: str,
+    tokens: set[str],
+    *,
+    prompt: str = "",
+) -> int:
     if not tokens:
         return 0
     score = 0
-    low = " ".join(tokens)
+    hay = catalog_prompt_text(prompt) if prompt else " ".join(tokens)
+    inventory = bool(_INVENTORY_INTENT_RE.search(hay))
     for part in re.split(r"[._]", model):
-        if len(part) >= 3 and part.lower() in tokens:
-            score += 3
+        pl = part.lower()
+        if len(pl) < 3 or pl not in tokens:
+            continue
+        if pl in _WEAK_CROSS_INDUSTRY_TOKENS:
+            continue
+        if pl == "stock" and not inventory:
+            continue
+        score += 3
     for word in re.findall(r"\w{3,}", name.lower()):
-        if word in tokens:
-            score += 2
-    if app.lower() in tokens:
+        if word not in tokens or word in _WEAK_CROSS_INDUSTRY_TOKENS:
+            continue
+        score += 2
+    if app.lower() in tokens and not (app == "stock" and not inventory):
         score += 2
     # Phrase hints (e.g. "sales order" → sale.order)
-    if app == "sale" and re.search(r"\b(sales?|order|checkout)\b", low):
+    if app == "sale" and re.search(r"\b(sales?|order|checkout)\b", hay):
         score += 2
-    if app == "purchase" and re.search(r"\b(purchase|vendor|supplier|procurement)\b", low):
+    if app == "purchase" and re.search(r"\b(purchase|vendor|supplier|procurement)\b", hay):
         score += 2
-    if app == "stock" and re.search(r"\b(inventory|warehouse|stock|picking|delivery)\b", low):
+    if app == "stock" and inventory:
         score += 2
-    if app == "crm" and re.search(r"\b(crm|lead|pipeline|opportunity)\b", low):
+    if app == "crm" and re.search(r"\b(crm|lead|pipeline|opportunity)\b", hay):
         score += 2
-    if app == "mrp" and re.search(r"\b(manufactur|production|bom|work\s*order)\b", low):
+    if app == "mrp" and _MRP_INTENT_RE.search(hay):
         score += 2
-    if app == "fleet" and re.search(r"\b(fleet|vehicle)\b", low):
+    if app == "fleet" and re.search(r"\b(fleet|vehicle)\b", hay):
         score += 2
-    if app == "helpdesk" and re.search(r"\b(helpdesk|ticket|support)\b", low):
+    if app == "helpdesk" and re.search(r"\b(helpdesk|ticket|support)\b", hay):
         score += 2
-    if app == "project" and re.search(r"\b(project|task|kanban)\b", low):
+    if app == "project" and re.search(r"\b(project|task|kanban)\b", hay):
         score += 2
-    if app == "hr" and re.search(r"\b(employee|staff|payroll|hr)\b", low):
+    if app == "hr" and re.search(r"\b(employee|staff|payroll|hr)\b", hay):
         score += 2
-    if app == "account" and re.search(r"\b(invoice|billing|accounting|payment)\b", low):
+    if app == "account" and re.search(r"\b(invoice|billing|accounting|payment)\b", hay):
         score += 2
     return score
 
@@ -164,14 +240,19 @@ def rank_stock_models_for_prompt(
 ) -> list[str]:
     """Return stock model technical names ranked by prompt relevance."""
     tokens = _prompt_tokens(prompt)
+    from app.ai_domain_briefing import build_domain_briefing
+
+    briefing = build_domain_briefing(prompt)
     scored: list[tuple[int, str]] = []
     for row in entries:
         model = str(row.get("model") or "")
         if not is_stock_model(model):
             continue
+        if briefing.bans_stock(model):
+            continue
         name = str(row.get("name") or model)
         app = str(row.get("app") or model_app_prefix(model))
-        score = score_model_for_prompt(model, name, app, tokens)
+        score = score_model_for_prompt(model, name, app, tokens, prompt=prompt)
         if model in _UNIVERSAL_STOCK:
             score += 1
         scored.append((score, model))
@@ -185,6 +266,8 @@ def rank_stock_models_for_prompt(
     for row in entries:
         model = str(row.get("model") or "")
         if not is_stock_model(model):
+            continue
+        if briefing.bans_stock(model):
             continue
         by_app.setdefault(model_app_prefix(model), []).append(model)
     flat: list[str] = []
@@ -243,16 +326,28 @@ def infer_catalog_reuse(
     if not tokens:
         return []
     skip = rejected or set()
+    from app.ai_domain_briefing import build_domain_briefing
+
+    briefing = build_domain_briefing(text)
     scored: list[tuple[int, dict[str, Any]]] = []
     for row in stock_entries:
         model = str(row.get("model") or "")
         if not model or model in skip or not is_stock_model(model):
             continue
+        if briefing.bans_stock(model):
+            continue
         if any(model.startswith(p) for p in CATALOG_NOISE_PREFIXES):
+            continue
+        if ".iap." in model or model.startswith("iap."):
+            continue
+        parts = model.split(".")
+        if len(parts) >= 4:
+            continue
+        if any(p in CATALOG_NOISE_LEAVES for p in parts):
             continue
         name = str(row.get("name") or model)
         app = str(row.get("app") or model_app_prefix(model))
-        score = score_model_for_prompt(model, name, app, tokens)
+        score = score_model_for_prompt(model, name, app, tokens, prompt=text)
         if score < min_score:
             continue
         if available_models is not None and model not in available_models:
@@ -288,5 +383,6 @@ __all__ = [
     "rank_stock_models_for_prompt",
     "format_stock_models_for_llm",
     "infer_catalog_reuse",
+    "score_model_for_prompt",
     "stock_entry",
 ]

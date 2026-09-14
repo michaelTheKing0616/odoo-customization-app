@@ -1,4 +1,4 @@
-"""Keep Ollama models warm — reduces cold-start timeouts on draft generation."""
+"""Wake local Ollama and probe configured LLM backends for Retry recovery."""
 
 from __future__ import annotations
 
@@ -7,24 +7,34 @@ import logging
 from typing import Any
 from urllib import error, request
 
-from app.llm_provider import resolve_bulk_model, resolve_reasoning_model
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
 
 def warm_ollama_models(*, keep_alive: str | None = None) -> dict[str, Any]:
-    """Ping Ollama generate with keep_alive so bulk + reasoning models stay loaded."""
-    mode = settings.ai_assist.strip().lower()
-    if mode != "ollama":
-        return {"skipped": True, "reason": f"ai_assist={mode}"}
+    """Ping Ollama generate with keep_alive so bulk + reasoning models stay loaded.
+
+    Runs whenever ``OLLAMA_BASE_URL`` is set — including when primary AI is Gemini —
+    so Retry can bring local fallback online after a cloud outage.
+    """
+    from app.llm_provider import resolve_bulk_model, resolve_reasoning_model
+
+    base = (settings.ollama_base_url or "").strip().rstrip("/")
+    if not base:
+        return {"skipped": True, "reason": "no ollama_base_url"}
 
     alive = (keep_alive or settings.ollama_keep_alive or "30m").strip()
-    base = settings.ollama_base_url.rstrip("/")
-    models = []
-    for m in (resolve_bulk_model(), resolve_reasoning_model()):
-        if m and m not in models:
-            models.append(m)
+    models: list[str] = []
+    for m in (resolve_bulk_model(), resolve_reasoning_model(), settings.ollama_model):
+        tag = (m or "").strip()
+        # Never POST a cloud model id to Ollama.
+        if not tag or tag.startswith(("gemini-", "gpt-", "claude-", "o1", "o3")):
+            continue
+        if tag not in models:
+            models.append(tag)
+    if not models:
+        models = ["qwen3:8b"]
 
     results: list[dict[str, str]] = []
     for model in models:
@@ -58,4 +68,60 @@ def warm_ollama_models(*, keep_alive: str | None = None) -> dict[str, Any]:
     return {"keep_alive": alive, "models": results}
 
 
-__all__ = ["warm_ollama_models"]
+def revive_llm_providers(*, timeout_s: float = 3.0) -> tuple[Any | None, list[str]]:
+    """Warm local Ollama and return the first reachable configured provider.
+
+    Used by Retry AI enrichment so production operators can wake Flash/local/cloud
+    and finish work that failed on Create draft.
+    """
+    from app.llm_provider import (
+        OllamaProvider,
+        get_llm_provider,
+        list_configured_fallback_providers,
+    )
+
+    notes: list[str] = []
+    warm = warm_ollama_models()
+    if warm.get("skipped"):
+        notes.append(f"revive: ollama warm skipped ({warm.get('reason')})")
+    else:
+        for row in warm.get("models") or []:
+            if isinstance(row, dict):
+                notes.append(
+                    f"revive: ollama {row.get('model')} → {row.get('status')}"
+                )
+
+    candidates: list[Any] = []
+    primary = get_llm_provider()
+    if primary is not None:
+        candidates.append(primary)
+        for alt in list_configured_fallback_providers(primary):
+            candidates.append(alt)
+    else:
+        # AI_ASSIST may still leave Ollama usable as a local revive target.
+        try:
+            ollama = OllamaProvider()
+            candidates.append(ollama)
+        except Exception:  # noqa: BLE001
+            pass
+
+    seen: set[str] = set()
+    for prov in candidates:
+        name = str(getattr(prov, "name", type(prov).__name__) or "")
+        if name in seen:
+            continue
+        seen.add(name)
+        try:
+            ok, detail = prov.reachable(timeout_s=timeout_s)
+        except Exception as exc:  # noqa: BLE001
+            notes.append(f"revive: {name} probe failed ({exc})")
+            continue
+        notes.append(f"revive: {name} → {detail}")
+        if ok:
+            return prov, notes
+
+    notes.append("revive: no LLM reachable — residual recovery still applies")
+    return None, notes
+
+
+__all__ = ["revive_llm_providers", "warm_ollama_models"]

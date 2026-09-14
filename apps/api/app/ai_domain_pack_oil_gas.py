@@ -1,0 +1,523 @@
+"""Oil & gas / energy operations domain pack — facilities, assets, work orders, HSE."""
+
+from __future__ import annotations
+
+from typing import Any
+
+
+def _sel(*pairs: tuple[str, str]) -> str:
+    inner = ", ".join(f"('{k}', '{v}')" for k, v in pairs)
+    return f"[{inner}]"
+
+
+def oil_gas_operations_pack() -> dict[str, Any]:
+    facility_type = _sel(
+        ("upstream", "Upstream"),
+        ("midstream", "Midstream"),
+        ("downstream", "Downstream"),
+        ("refining", "Refining"),
+        ("terminal", "Terminal"),
+    )
+    asset_status = _sel(
+        ("active", "Active"),
+        ("standby", "Standby"),
+        ("maintenance", "In maintenance"),
+        ("retired", "Retired"),
+    )
+    wo_status = _sel(
+        ("draft", "Draft"),
+        ("planned", "Planned"),
+        ("in_progress", "In progress"),
+        ("done", "Done"),
+        ("cancelled", "Cancelled"),
+    )
+    permit_status = _sel(
+        ("draft", "Draft"),
+        ("approved", "Approved"),
+        ("active", "Active"),
+        ("expired", "Expired"),
+        ("cancelled", "Cancelled"),
+    )
+    hse_status = _sel(
+        ("reported", "Reported"),
+        ("investigating", "Investigating"),
+        ("closed", "Closed"),
+    )
+    severity = _sel(
+        ("low", "Low"),
+        ("medium", "Medium"),
+        ("high", "High"),
+        ("critical", "Critical"),
+    )
+
+    return {
+        "technical_name": "oil_gas_operations",
+        "display_name": "Oil & Gas Operations",
+        "depends": [
+            "base",
+            "contacts",
+            "mail",
+            "maintenance",
+            "stock",
+            "purchase",
+            "project",
+            "account",
+            "hr",
+        ],
+        "domain_pack": "oil_gas_operations",
+        "document_shape": "workspace",
+        "tags": [
+            "oil",
+            "gas",
+            "petroleum",
+            "upstream",
+            "midstream",
+            "downstream",
+            "drilling",
+            "refining",
+            "refinery",
+            "pipeline",
+            "well",
+            "rig",
+            "field",
+            "operations",
+            "maintenance",
+            "hse",
+            "asset",
+            "facility",
+            "branch",
+            "branches",
+            "energy",
+        ],
+        "reuse_stock": [
+            {
+                "model": "maintenance.equipment",
+                "modules": ["maintenance"],
+                "reason": "CMMS equipment register (link-only)",
+                "link_only": True,
+                "forbid_parallel": ["x_equipment", "x_asset"],
+            },
+            {
+                "model": "maintenance.request",
+                "modules": ["maintenance"],
+                "reason": "Breakdown / preventive maintenance requests (link-only)",
+                "link_only": True,
+                "forbid_parallel": ["x_maintenance_request"],
+            },
+            {
+                "model": "product.product",
+                "modules": ["product", "stock"],
+                "reason": "MRO spare parts catalog",
+                "forbid_parallel": ["x_product"],
+            },
+            {
+                "model": "purchase.order",
+                "modules": ["purchase"],
+                "reason": "MRO procurement (link-only)",
+                "link_only": True,
+            },
+            {
+                "model": "project.project",
+                "modules": ["project"],
+                "reason": "Turnaround / engineering projects (link-only)",
+                "link_only": True,
+                "forbid_parallel": ["x_project"],
+            },
+            {
+                "model": "account.move",
+                "modules": ["account"],
+                "reason": "Vendor bills / invoices (link-only)",
+                "link_only": True,
+                "forbid_parallel": ["x_invoice", "x_bill"],
+            },
+            {
+                "model": "res.company",
+                "modules": ["base"],
+                "reason": "Multi-company / operating entity",
+                "forbid_parallel": ["x_company"],
+            },
+            {
+                "model": "res.currency",
+                "modules": ["base"],
+                "reason": "Currency for cost fields",
+                "forbid_parallel": ["x_currency"],
+            },
+        ],
+        "vocab": {
+            "matter": "Work order",
+            "retainer": "Contract hold",
+            "compliance": "Permit / regulatory check",
+            "conflict check": "Permit approval",
+        },
+        "display_prefix": "Oil & Gas",
+        "anti_patterns": [
+            "Do NOT duplicate maintenance.equipment as x_asset when reuse is confirmed — link stock CMMS",
+            "Do NOT implement payment capture — link account.move only",
+            "Facility is x_og_facility — not a generic x_branch retail store",
+            "Do NOT duplicate res.company as x_company",
+            "Do NOT duplicate res.currency as x_currency",
+        ],
+        "models": [
+            {
+                "model": "x_og_facility",
+                "description": "Facility",
+                "mode": "new",
+                "mixins": ["mail.thread", "mail.activity.mixin"],
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "string": "Facility", "required": True},
+                    {"name": "x_code", "ttype": "char", "string": "Code"},
+                    {
+                        "name": "x_type",
+                        "ttype": "selection",
+                        "string": "Segment",
+                        "selection": facility_type,
+                        "required": True,
+                    },
+                    {
+                        "name": "x_partner_id",
+                        "ttype": "many2one",
+                        "relation": "res.partner",
+                        "string": "Operator",
+                    },
+                    {
+                        "name": "x_country_id",
+                        "ttype": "many2one",
+                        "relation": "res.country",
+                        "string": "Country",
+                    },
+                    {"name": "x_region", "ttype": "char", "string": "Region"},
+                    {
+                        "name": "x_company_id",
+                        "ttype": "many2one",
+                        "relation": "res.company",
+                        "string": "Company",
+                    },
+                    {
+                        "name": "x_warehouse_id",
+                        "ttype": "many2one",
+                        "relation": "stock.warehouse",
+                        "string": "Warehouse",
+                    },
+                    {
+                        "name": "x_asset_ids",
+                        "ttype": "one2many",
+                        "string": "Assets",
+                        "relation": "x_og_asset",
+                        "relation_field": "x_facility_id",
+                    },
+                    {
+                        "name": "x_work_order_ids",
+                        "ttype": "one2many",
+                        "string": "Work orders",
+                        "relation": "x_og_work_order",
+                        "relation_field": "x_facility_id",
+                    },
+                    {
+                        "name": "x_incident_ids",
+                        "ttype": "one2many",
+                        "string": "Incidents",
+                        "relation": "x_og_hse_incident",
+                        "relation_field": "x_facility_id",
+                    },
+                ],
+            },
+            {
+                "model": "x_og_asset",
+                "description": "Asset",
+                "mode": "new",
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "string": "Asset", "required": True},
+                    {"name": "x_tag", "ttype": "char", "string": "Tag / API number"},
+                    {
+                        "name": "x_facility_id",
+                        "ttype": "many2one",
+                        "relation": "x_og_facility",
+                        "string": "Facility",
+                        "required": True,
+                    },
+                    {
+                        "name": "x_status",
+                        "ttype": "selection",
+                        "string": "Status",
+                        "selection": asset_status,
+                        "required": True,
+                    },
+                    {
+                        "name": "x_equipment_id",
+                        "ttype": "many2one",
+                        "relation": "maintenance.equipment",
+                        "string": "Maintenance equipment",
+                    },
+                    {"name": "x_notes", "ttype": "text", "string": "Notes"},
+                ],
+            },
+            {
+                "model": "x_og_work_order",
+                "description": "Work Order",
+                "mode": "new",
+                "is_workflow": True,
+                "state_field": {
+                    "field": "x_status",
+                    "states": ["draft", "planned", "in_progress", "done", "cancelled"],
+                    "transitions": [
+                        ["draft", "planned"],
+                        ["planned", "in_progress"],
+                        ["in_progress", "done"],
+                        ["draft", "cancelled"],
+                        ["planned", "cancelled"],
+                        ["in_progress", "cancelled"],
+                    ],
+                    "statusbar_visible": ["draft", "planned", "in_progress", "done"],
+                },
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "string": "Work order", "required": True},
+                    {"name": "x_code", "ttype": "char", "string": "Reference"},
+                    {
+                        "name": "x_status",
+                        "ttype": "selection",
+                        "string": "Status",
+                        "selection": wo_status,
+                        "required": True,
+                    },
+                    {
+                        "name": "x_facility_id",
+                        "ttype": "many2one",
+                        "relation": "x_og_facility",
+                        "string": "Facility",
+                        "required": True,
+                    },
+                    {
+                        "name": "x_asset_id",
+                        "ttype": "many2one",
+                        "relation": "x_og_asset",
+                        "string": "Asset",
+                    },
+                    {
+                        "name": "x_partner_id",
+                        "ttype": "many2one",
+                        "relation": "res.partner",
+                        "string": "Contractor",
+                    },
+                    {
+                        "name": "x_employee_id",
+                        "ttype": "many2one",
+                        "relation": "hr.employee",
+                        "string": "Crew lead",
+                    },
+                    {
+                        "name": "x_maintenance_request_id",
+                        "ttype": "many2one",
+                        "relation": "maintenance.request",
+                        "string": "Maintenance request",
+                    },
+                    {
+                        "name": "x_purchase_order_id",
+                        "ttype": "many2one",
+                        "relation": "purchase.order",
+                        "string": "Purchase order",
+                    },
+                    {
+                        "name": "x_project_id",
+                        "ttype": "many2one",
+                        "relation": "project.project",
+                        "string": "Project / turnaround",
+                    },
+                    {"name": "x_date_start", "ttype": "datetime", "string": "Start"},
+                    {"name": "x_date_end", "ttype": "datetime", "string": "End"},
+                    {"name": "x_description", "ttype": "text", "string": "Scope"},
+                    {
+                        "name": "x_line_ids",
+                        "ttype": "one2many",
+                        "string": "Lines",
+                        "relation": "x_og_work_order_line",
+                        "relation_field": "x_work_order_id",
+                    },
+                    {
+                        "name": "x_permit_ids",
+                        "ttype": "one2many",
+                        "string": "Permits",
+                        "relation": "x_og_permit",
+                        "relation_field": "x_work_order_id",
+                    },
+                ],
+            },
+            {
+                "model": "x_og_work_order_line",
+                "description": "Work Order Line",
+                "mode": "new",
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "string": "Line", "required": True},
+                    {
+                        "name": "x_work_order_id",
+                        "ttype": "many2one",
+                        "relation": "x_og_work_order",
+                        "string": "Work order",
+                        "required": True,
+                    },
+                    {
+                        "name": "x_product_id",
+                        "ttype": "many2one",
+                        "relation": "product.product",
+                        "string": "Spare / product",
+                    },
+                    {"name": "x_qty", "ttype": "float", "string": "Quantity", "default": 1.0},
+                    {"name": "x_notes", "ttype": "text", "string": "Notes"},
+                ],
+            },
+            {
+                "model": "x_og_permit",
+                "description": "Permit to work",
+                "mode": "new",
+                "is_workflow": True,
+                "state_field": {
+                    "field": "x_status",
+                    "states": ["draft", "approved", "active", "expired", "cancelled"],
+                    "transitions": [
+                        ["draft", "approved"],
+                        ["approved", "active"],
+                        ["active", "expired"],
+                        ["draft", "cancelled"],
+                        ["approved", "cancelled"],
+                    ],
+                    "statusbar_visible": ["draft", "approved", "active", "expired"],
+                },
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "string": "Permit", "required": True},
+                    {
+                        "name": "x_status",
+                        "ttype": "selection",
+                        "string": "Status",
+                        "selection": permit_status,
+                        "required": True,
+                    },
+                    {
+                        "name": "x_work_order_id",
+                        "ttype": "many2one",
+                        "relation": "x_og_work_order",
+                        "string": "Work order",
+                        "required": True,
+                    },
+                    {"name": "x_date_start", "ttype": "datetime", "string": "Valid from"},
+                    {"name": "x_date_end", "ttype": "datetime", "string": "Valid to"},
+                    {"name": "x_notes", "ttype": "text", "string": "Conditions"},
+                ],
+            },
+            {
+                "model": "x_og_hse_incident",
+                "description": "HSE Incident",
+                "mode": "new",
+                "is_workflow": True,
+                "state_field": {
+                    "field": "x_status",
+                    "states": ["reported", "investigating", "closed"],
+                    "transitions": [
+                        ["reported", "investigating"],
+                        ["investigating", "closed"],
+                    ],
+                    "statusbar_visible": ["reported", "investigating", "closed"],
+                },
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "string": "Incident", "required": True},
+                    {
+                        "name": "x_status",
+                        "ttype": "selection",
+                        "string": "Status",
+                        "selection": hse_status,
+                        "required": True,
+                    },
+                    {
+                        "name": "x_facility_id",
+                        "ttype": "many2one",
+                        "relation": "x_og_facility",
+                        "string": "Facility",
+                        "required": True,
+                    },
+                    {
+                        "name": "x_severity",
+                        "ttype": "selection",
+                        "string": "Severity",
+                        "selection": severity,
+                        "required": True,
+                    },
+                    {"name": "x_date", "ttype": "datetime", "string": "Occurred on"},
+                    {"name": "x_description", "ttype": "text", "string": "Description"},
+                ],
+            },
+        ],
+        "smart_buttons": [
+            {
+                "on_model": "x_og_facility",
+                "related_model": "x_og_asset",
+                "relation_field": "x_facility_id",
+                "label": "Assets",
+                "icon": "fa-cogs",
+            },
+            {
+                "on_model": "x_og_facility",
+                "related_model": "x_og_work_order",
+                "relation_field": "x_facility_id",
+                "label": "Work Orders",
+                "icon": "fa-wrench",
+            },
+            {
+                "on_model": "x_og_facility",
+                "related_model": "x_og_hse_incident",
+                "relation_field": "x_facility_id",
+                "label": "Incidents",
+                "icon": "fa-exclamation-triangle",
+            },
+            {
+                "on_model": "x_og_work_order",
+                "related_model": "x_og_permit",
+                "relation_field": "x_work_order_id",
+                "label": "Permits",
+                "icon": "fa-id-card",
+            },
+            {
+                "on_model": "res.partner",
+                "related_model": "x_og_facility",
+                "relation_field": "x_partner_id",
+                "label": "Facilities",
+                "icon": "fa-building",
+                "requires_inherit_view": True,
+            },
+            {
+                "on_model": "res.partner",
+                "related_model": "x_og_work_order",
+                "relation_field": "x_partner_id",
+                "label": "Work Orders",
+                "icon": "fa-list",
+                "requires_inherit_view": True,
+            },
+        ],
+        "automations": [
+            {
+                "name": "Expire overdue permits",
+                "model": "x_og_permit",
+                "trigger": "on_time",
+                "description": "Mark permit expired when validity end has passed.",
+                "filter_domain": "[('x_date_end', '!=', False), ('x_date_end', '<', 'now'), ('x_status', 'not in', ['expired', 'cancelled'])]",
+                "safe_actions": [{"kind": "object_write", "field": "x_status", "value": "expired"}],
+            },
+            {
+                "name": "Follow up overdue work orders",
+                "model": "x_og_work_order",
+                "trigger": "on_time",
+                "description": "Schedule an activity when a work order is past its end date.",
+                "filter_domain": "[('x_date_end', '!=', False), ('x_date_end', '<', 'now'), ('x_status', 'in', ['planned', 'in_progress'])]",
+                "safe_actions": [
+                    {"kind": "next_activity", "summary": "Overdue work order"}
+                ],
+            },
+            {
+                "name": "Notify critical HSE incident",
+                "model": "x_og_hse_incident",
+                "trigger": "on_create",
+                "description": "Chatter note when a critical incident is logged.",
+                "filter_domain": "[('x_severity', '=', 'critical')]",
+                "safe_actions": [
+                    {"kind": "mail_post", "body": "Critical incident reported — review immediately."}
+                ],
+            },
+        ],
+    }

@@ -4,6 +4,12 @@ export function formatApiError(err: unknown, fallback = "Request failed"): strin
   return err instanceof Error ? err.message : fallback;
 }
 
+export function isApiNotFound(err: unknown): boolean {
+  const msg = formatApiError(err);
+  if (/model not found/i.test(msg)) return false;
+  return /\b404\b/.test(msg) || /not found/i.test(msg);
+}
+
 /** Set inline error state and optionally surface a toast with Expert diagnose action. */
 export function reportApiError(
   err: unknown,

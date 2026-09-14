@@ -42,6 +42,7 @@ def library_management_pack() -> dict[str, Any]:
         "display_name": "Library Management",
         "depends": ["base", "contacts", "mail", "product"],
         "domain_pack": "library_management",
+        "document_shape": "workspace",
         "tags": [
             "library",
             "libraries",

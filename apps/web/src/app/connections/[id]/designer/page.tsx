@@ -1,16 +1,20 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { DomainBuilder } from "@/components/DomainBuilder";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import { FirstWriteInterstitial } from "@/components/shell/FirstWriteInterstitial";
 import { FormCanvas } from "@/components/designer/FormCanvas";
+import {
+  OdooControlPanel,
+  OdooListView,
+  OdooPreviewScope,
+} from "@/components/odoo-preview";
 import { OverlayEditor } from "@/components/designer/OverlayEditor";
 import { KanbanCardPreview } from "@/components/designer/KanbanCardPreview";
-import { FieldPalette } from "@/components/designer/FieldPalette";
 import {
   NicheWidgetPalette,
   type NicheWidgetEntry,
@@ -193,6 +197,34 @@ function mapParsedField(n: Record<string, unknown>): DesignerField {
     widget: n.widget ? String(n.widget) : undefined,
     options: n.options ? String(n.options) : undefined,
   };
+}
+
+/** Flatten nested groups from parse; drop empty-name fields (invalid Odoo arch). */
+function mapFormGroupChildren(
+  kids: Array<Record<string, unknown>>,
+): Array<DesignerField | DesignerButton> {
+  const out: Array<DesignerField | DesignerButton> = [];
+  for (const n of kids) {
+    const kind = String(n.kind || "");
+    if (kind === "group" && Array.isArray(n.children)) {
+      out.push(
+        ...mapFormGroupChildren(n.children as Array<Record<string, unknown>>),
+      );
+      continue;
+    }
+    if (kind === "notebook") {
+      // Nested notebooks inside a group are rare; skip rather than emit blank fields.
+      continue;
+    }
+    if (kind === "button") {
+      out.push(mapParsedButton(n));
+      continue;
+    }
+    const name = String(n.name || "").trim();
+    if (!name) continue;
+    out.push(mapParsedField({ ...n, name }));
+  }
+  return out;
 }
 
 function resolveFieldLabel(
@@ -383,6 +415,7 @@ export default function DesignerPage() {
   const [previewKey, setPreviewKey] = useState(0);
   const [saveStrategy, setSaveStrategy] = useState<"inherit" | "overwrite">("inherit");
   const [confirmOverwriteOpen, setConfirmOverwriteOpen] = useState(false);
+  const [confirmUnlinkInheritOpen, setConfirmUnlinkInheritOpen] = useState(false);
   const [searchFilters, setSearchFilters] = useState<SearchFilter[]>([]);
   const [headerButtons, setHeaderButtons] = useState<DesignerButton[]>([]);
   const [buttonBox, setButtonBox] = useState<DesignerButton[]>([]);
@@ -484,8 +517,12 @@ export default function DesignerPage() {
 
   useEffect(() => {
     if (!canvasFlashId || typeof document === "undefined") return;
-    const el = document.querySelector(`[data-canvas-id="${canvasFlashId}"]`);
-    el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    // Prefer the structural editor (editable drop target), not the Odoo-style preview —
+    // both used to share data-canvas-id so scrollIntoView stopped at the preview on top.
+    const el =
+      document.querySelector(`[data-structure-id="${canvasFlashId}"]`) ??
+      document.querySelector(`[data-canvas-id="${canvasFlashId}"]`);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
     const t = window.setTimeout(() => setCanvasFlashId(null), 2200);
     return () => window.clearTimeout(t);
   }, [canvasFlashId]);
@@ -648,6 +685,64 @@ export default function DesignerPage() {
     }
   }
 
+  /** Refresh field metadata without wiping a loaded / edited view layout. */
+  async function refreshModelFieldsOnly(target: string): Promise<FieldRow[]> {
+    const rows = await api.listFields(connectionId, target);
+    setFields(rows);
+    setFieldsModel(target);
+    return rows;
+  }
+
+  function appendFieldToCurrentLayout(name: string, rows: FieldRow[]) {
+    const meta = rows.find((f) => f.name === name);
+    const node: DesignerField = {
+      kind: "field",
+      id: uid("f"),
+      name,
+      string: meta?.field_description,
+    };
+    if (viewType === "form") {
+      setFormChildren((children) => {
+        const already = children.some(
+          (c) =>
+            (c.kind === "group" &&
+              c.children.some((n) => n.kind === "field" && n.name === name)) ||
+            (c.kind === "notebook" &&
+              c.pages.some((p) =>
+                p.children.some((n) => n.kind === "field" && n.name === name),
+              )),
+        );
+        if (already) return children;
+        const firstGroupIdx = children.findIndex((c) => c.kind === "group");
+        if (firstGroupIdx < 0) {
+          return [
+            ...children,
+            { kind: "group", id: uid("g"), string: "Main", children: [node] },
+          ];
+        }
+        return children.map((child, i) =>
+          i === firstGroupIdx && child.kind === "group"
+            ? { ...child, children: [...child.children, node] }
+            : child,
+        );
+      });
+      return;
+    }
+    if (viewType === "list") {
+      setListColumns((cols) =>
+        cols.some((c) => c.name === name) ? cols : [...cols, node],
+      );
+    } else if (viewType === "search") {
+      setSearchFields((cols) =>
+        cols.some((c) => c.name === name) ? cols : [...cols, node],
+      );
+    } else if (viewType === "kanban") {
+      setKanbanFields((cols) =>
+        cols.some((c) => c.name === name) ? cols : [...cols, node],
+      );
+    }
+  }
+
   async function ensureFieldsForModel(target: string) {
     const trimmed = target.trim();
     if (!trimmed || !connectionId) return;
@@ -721,10 +816,9 @@ export default function DesignerPage() {
                   pages: pages.map((p) => ({
                     id: uid("p"),
                     string: String(p.string || "Page"),
-                    children: ((p.children as Array<Record<string, unknown>> | undefined) ?? []).map((n) =>
-                      n.kind === "button"
-                        ? mapParsedButton(n)
-                        : { kind: "field" as const, id: uid("f"), name: String(n.name || ""), string: n.string ? String(n.string) : undefined, required: n.required as boolean | undefined, readonly: n.readonly as boolean | undefined, invisible: n.invisible ? String(n.invisible) : undefined, widget: n.widget ? String(n.widget) : undefined },
+                    children: mapFormGroupChildren(
+                      ((p.children as Array<Record<string, unknown>> | undefined) ??
+                        []) as Array<Record<string, unknown>>,
                     ),
                   })),
                 };
@@ -734,11 +828,7 @@ export default function DesignerPage() {
                 kind: "group" as const,
                 id: uid("g"),
                 string: child.string ? String(child.string) : undefined,
-                children: kids.map((n) =>
-                  n.kind === "button"
-                    ? mapParsedButton(n)
-                    : { kind: "field" as const, id: uid("f"), name: String(n.name || ""), string: n.string ? String(n.string) : undefined, required: n.required as boolean | undefined, readonly: n.readonly as boolean | undefined, invisible: n.invisible ? String(n.invisible) : undefined, widget: n.widget ? String(n.widget) : undefined },
-                ),
+                children: mapFormGroupChildren(kids),
               };
             });
             setFormChildren(children.length ? children : [{ kind: "group", id: uid("g"), string: "Main", children: [] }]);
@@ -974,7 +1064,9 @@ export default function DesignerPage() {
           return {
             kind: "group",
             string: child.string,
-            children: child.children.map((n) => {
+            children: child.children
+              .filter((n) => n.kind === "button" || (n.kind === "field" && n.name.trim()))
+              .map((n) => {
               if (n.kind === "button") return nodeSpec(n);
               return fieldSpec({
                 ...n,
@@ -987,7 +1079,9 @@ export default function DesignerPage() {
           kind: "notebook",
           pages: child.pages.map((p) => ({
             string: p.string,
-            children: p.children.map((n) => {
+            children: p.children
+              .filter((n) => n.kind === "button" || (n.kind === "field" && n.name.trim()))
+              .map((n) => {
               if (n.kind === "button") return nodeSpec(n);
               return fieldSpec({
                 ...n,
@@ -1687,19 +1781,26 @@ export default function DesignerPage() {
     openBindDialog("inline", "create_update");
   }
 
-  function dropOnGroup(groupId: string) {
-    if (!dragField) return;
-    const meta = fields.find((f) => f.name === dragField);
+  function resolveDragFieldName(e?: DragEvent | null): string | null {
+    const fromTransfer = e?.dataTransfer?.getData("text/odoo-field")?.trim();
+    if (fromTransfer) return fromTransfer;
+    return dragField;
+  }
+
+  function dropOnGroup(groupId: string, e?: DragEvent | null) {
+    const fieldName = resolveDragFieldName(e);
+    if (!fieldName) return;
+    const meta = fields.find((f) => f.name === fieldName);
     const node: DesignerField = {
       kind: "field",
       id: uid("f"),
-      name: dragField,
+      name: fieldName,
       string: meta?.field_description,
     };
     setFormChildren((children) =>
       children.map((child) => {
         if (child.kind === "group" && child.id === groupId) {
-          if (child.children.some((n) => n.kind === "field" && n.name === dragField)) {
+          if (child.children.some((n) => n.kind === "field" && n.name === fieldName)) {
             return child;
           }
           return { ...child, children: [...child.children, node] };
@@ -1708,16 +1809,17 @@ export default function DesignerPage() {
       }),
     );
     announceAction(
-      `Added ${meta?.field_description || dragField} to group.`,
+      `Added ${meta?.field_description || fieldName} to group.`,
       groupId,
       "drop",
     );
     setDragField(null);
   }
 
-  function dropOnPage(notebookId: string, pageId: string) {
-    if (!dragField) return;
-    dropFieldOnPage(notebookId, pageId, dragField);
+  function dropOnPage(notebookId: string, pageId: string, e?: DragEvent | null) {
+    const fieldName = resolveDragFieldName(e);
+    if (!fieldName) return;
+    dropFieldOnPage(notebookId, pageId, fieldName);
     setDragField(null);
   }
 
@@ -1943,11 +2045,12 @@ export default function DesignerPage() {
     }
     setBusy(true);
     setError(null);
+    const createdName = newFieldName;
     try {
       await api.createField(connectionId, {
         model,
-        name: newFieldName,
-        field_description: newFieldLabel || newFieldName,
+        name: createdName,
+        field_description: newFieldLabel || createdName,
         ttype: newFieldType,
         inject_into_views: true,
         inject_strategy: injectStrategy,
@@ -1971,13 +2074,16 @@ export default function DesignerPage() {
             }
           : {}),
       });
-      setNotice(
-        `Created ${newFieldName}` +
-          (injectStrategy === "mutate" ? " (mutate inject)" : " (inherit inject)"),
-      );
       setNewFieldName("");
       setConfirmMutateOpen(false);
-      await loadModelFields(model);
+      // Soft refresh: keep loaded Form layout; do not call loadModelFields (that reseeds/wipes).
+      const rows = await refreshModelFieldsOnly(model);
+      appendFieldToCurrentLayout(createdName, rows);
+      setNotice(
+        `Created ${createdName}` +
+          (injectStrategy === "mutate" ? " (mutate inject)" : " (inherit inject)") +
+          ". Field list and layout kept — no need to reload the view.",
+      );
     } catch (err) {
       if (err instanceof ConfirmationRequiredError) {
         setConfirmMutateOpen(true);
@@ -2053,6 +2159,66 @@ export default function DesignerPage() {
         setError(err.warning);
       } else {
         setError(err instanceof Error ? err.message : "Save failed");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRepairDuplicateChrome() {
+    if (!model) {
+      setError("Load a model first");
+      return;
+    }
+    if (model.startsWith("x_") || viewType !== "form") {
+      setError("Fix duplicate chrome applies to stock form views (e.g. account.move).");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const out = await api.repairDesignerInherit(connectionId, {
+        model,
+        view_type: "form",
+      });
+      if (out.snapshot_id) setLastSnapshotId(out.snapshot_id);
+      setNotice(out.detail || `Repair: ${out.action}`);
+      await refreshSnapshots();
+      await loadExistingView();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Repair failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onUnlinkDesignerInherit(phrase: string) {
+    if (!model) {
+      setError("Load a model first");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const out = await api.unlinkDesignerInherit(connectionId, {
+        model,
+        view_type: viewType,
+        confirm_advanced: true,
+        confirm_phrase: phrase,
+      });
+      setConfirmUnlinkInheritOpen(false);
+      if (out.snapshot_id) setLastSnapshotId(out.snapshot_id);
+      setNotice(out.detail || `Unlink: ${out.action}`);
+      await refreshSnapshots();
+      await loadExistingView();
+    } catch (err) {
+      if (err instanceof ConfirmationRequiredError) {
+        setConfirmUnlinkInheritOpen(true);
+        setError(err.warning);
+      } else {
+        setError(err instanceof Error ? err.message : "Unlink failed");
       }
     } finally {
       setBusy(false);
@@ -2177,26 +2343,40 @@ export default function DesignerPage() {
           }}
         />
         <Callout variant="info" title="Production defaults" className="mt-4">
-          <ul className="mt-1 list-disc space-y-1 pl-4 text-sm">
-            <li>
-              Save strategy defaults to <strong>Inherit</strong> (extension view) — safe for
-              installed modules.
-            </li>
-            <li>
-              <strong>Overwrite</strong> requires confirm and snapshots the primary view first.
-            </li>
-            <li>
-              Buttons bind to real <code>ir.actions.server</code> /{" "}
-              <code>ir.actions.act_window</code> (type=action). Python object methods need Option A.
-            </li>
-            <li>
-              Prefer <strong>Open in Odoo</strong> for truth; iframe preview is best-effort via
-              authenticated proxy.
-            </li>
-            <li>
-              Create field requires the confirm phrase and injects via inherit xpath.
-            </li>
-          </ul>
+          <details>
+            <summary className="cursor-pointer text-sm text-muted">
+              Show save / button / preview notes
+            </summary>
+            <ul className="mt-2 list-disc space-y-1 pl-4 text-sm">
+              <li>
+                Save strategy defaults to <strong>Inherit</strong> (extension view) — safe for
+                installed modules.
+              </li>
+              <li>
+                On stock models (e.g. <code>account.move</code>), Inherit saves only{" "}
+                <strong>new custom fields/groups</strong> — it does not re-emit Send/Print/Pay or
+                notebook tabs (that caused duplicates on Bills).
+              </li>
+              <li>
+                Vendor bills open as <strong>Bills</strong> in Odoo; customer invoices as{" "}
+                <strong>Invoices</strong> — same model <code>account.move</code>.
+              </li>
+              <li>
+                <strong>Overwrite</strong> requires confirm and snapshots the primary view first.
+              </li>
+              <li>
+                Buttons bind to real <code>ir.actions.server</code> /{" "}
+                <code>ir.actions.act_window</code> (type=action). Python object methods need Option A.
+              </li>
+              <li>
+                Prefer <strong>Open in Odoo</strong> for truth; iframe preview is best-effort via
+                authenticated proxy.
+              </li>
+              <li>
+                Create field requires the confirm phrase and injects via inherit xpath.
+              </li>
+            </ul>
+          </details>
         </Callout>
 
         <Card className="mt-6 flex flex-wrap items-end gap-3 p-4">
@@ -2802,6 +2982,30 @@ export default function DesignerPage() {
           >
             {busy ? "Saving…" : archOverride ? "Save arch override" : "Save to Odoo"}
           </button>
+          {!model.startsWith("x_") && viewType === "form" ? (
+            <>
+              <button
+                type="button"
+                disabled={busy || !model}
+                onClick={() => void onRepairDuplicateChrome()}
+                className="h-10 border border-border-subtle px-4 text-sm text-muted disabled:opacity-40"
+                data-testid="designer-fix-duplicate-chrome"
+                title="Rewrites account.move.designer.form (etc.) from full form replace to additive x_* only"
+              >
+                Fix duplicate chrome
+              </button>
+              <button
+                type="button"
+                disabled={busy || !model}
+                onClick={() => setConfirmUnlinkInheritOpen(true)}
+                className="h-10 border border-danger/50 px-4 text-sm text-danger disabled:opacity-40"
+                data-testid="designer-unlink-inherit"
+                title="Deletes {model}.designer.form inherit — restores stock toolbar/tabs"
+              >
+                Unlink designer inherit
+              </button>
+            </>
+          ) : null}
           <button
             type="button"
             disabled={busy || !model}
@@ -2866,6 +3070,9 @@ export default function DesignerPage() {
           Preview uses a same-origin proxy (strips X-Frame-Options).{" "}
           <strong className="text-muted">Open in Odoo is authoritative</strong> — the iframe
           is best-effort. Save defaults to <strong>inherit</strong> extension views.
+          Stock forms write additive x_* only (no full form replace). Duplicate
+          Send/Print/Pay or Other Info → <strong>Fix duplicate chrome</strong> (keeps
+          TEST GROUP when possible) or <strong>Unlink designer inherit</strong>.
           {archOverride ? " Arch override active — Save will POST raw inherit arch." : ""}
         </p>
         {error ? <ErrorNotice message={error} className="mt-4" /> : null}
@@ -2876,33 +3083,40 @@ export default function DesignerPage() {
         ) : null}
 
         {viewType === "form" && model && (
-          <div
-            className="mt-6 grid gap-4 lg:grid-cols-[200px_1fr_240px]"
-            data-testid="designer-form-layout"
-          >
+          <details className="mt-6 rounded border border-border-subtle bg-surface-muted/30 p-3" data-testid="designer-form-preview">
+            <summary className="cursor-pointer text-sm font-semibold text-accent">
+              Optional Odoo-style preview
+            </summary>
+            <p className="mt-2 text-xs text-muted">
+              Edit groups and drop fields in <strong>Form layout</strong> below — that is the
+              primary editor. This preview mirrors the same structure and is optional.
+            </p>
+            <div
+              className="mt-4 grid gap-4 lg:grid-cols-[1fr_240px]"
+              data-testid="designer-form-layout"
+            >
             <div>
-              <FieldPalette
-                fields={fields.map((f) => ({
-                  name: f.name,
-                  ttype: f.ttype,
-                  label: f.field_description,
-                }))}
-              />
-              <NicheWidgetPalette
-                widgets={nicheWidgets}
-                colorPalette={colorPalette}
-                onPick={(w) => void addNicheWidget(w)}
-              />
-            </div>
-            <div>
-              <h2 className="mb-2 text-sm font-semibold text-accent">
-                Odoo-style canvas
-              </h2>
               <PreviewThemeScope previewVars={previewTheme?.preview_vars}>
-              <FormCanvas
+              <OdooPreviewScope showBanner>
+                <OdooControlPanel
+                  breadcrumb={`View Designer › ${title || model}`}
+                  activeView="form"
+                  availableViews={["form"]}
+                  showSearchPlaceholder
+                />
+                <FormCanvas
               title={title || model}
               statusbar={statusbarField || null}
-              headerButtons={headerButtons.map((b) => b.string)}
+              statusbarVisible={statusbarVisible || null}
+              groupLayout={
+                formChildren.filter((c) => c.kind === "group").length >= 2
+                  ? "two-column"
+                  : "stack"
+              }
+              headerButtons={headerButtons.map((b) => ({
+                id: b.id,
+                string: b.string || "Button",
+              }))}
               smartButtons={buttonBox.map((b) => ({ id: b.id, string: b.string }))}
               flashId={canvasFlashId}
               groups={formChildren
@@ -2996,6 +3210,7 @@ export default function DesignerPage() {
                 dropFieldOnPage(notebookId, pageId, fieldName);
               }}
             />
+              </OdooPreviewScope>
               </PreviewThemeScope>
             </div>
             <PropsInspector title="Field properties">
@@ -3037,29 +3252,16 @@ export default function DesignerPage() {
                 </div>
               ) : (
                 <p className="text-xs text-[var(--odoo-muted)]">
-                  Select a field on the canvas, or drag from the palette.
+                  Select a field on the canvas, or drag from the field list below.
                 </p>
               )}
             </PropsInspector>
-          </div>
+            </div>
+          </details>
         )}
 
         {viewType === "kanban" && model && (
-          <div className="mt-6 grid gap-4 lg:grid-cols-[200px_1fr_240px]">
-            <div>
-              <FieldPalette
-                fields={fields.map((f) => ({
-                  name: f.name,
-                  ttype: f.ttype,
-                  label: f.field_description,
-                }))}
-              />
-              <NicheWidgetPalette
-                widgets={nicheWidgets}
-                colorPalette={colorPalette}
-                onPick={(w) => void addNicheWidget(w)}
-              />
-            </div>
+          <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_240px]">
             <div>
               <h2 className="mb-2 text-sm font-semibold text-accent">
                 Kanban card preview
@@ -3089,6 +3291,9 @@ export default function DesignerPage() {
                 onDropFieldName={(fieldName) => addKanbanField(fieldName)}
               />
               </PreviewThemeScope>
+              <p className="mt-2 text-xs text-muted">
+                Drag fields from the field list below (or click a field to add).
+              </p>
             </div>
             <PropsInspector title="Card field">
               {selectedField && selected?.scope === "kanban" ? (
@@ -3122,7 +3327,7 @@ export default function DesignerPage() {
                 </div>
               ) : (
                 <p className="text-xs text-[var(--odoo-muted)]">
-                  Select a card field, or drop from the palette. Set group-by above.
+                  Select a card field, or drop from the field list below. Set group-by above.
                 </p>
               )}
             </PropsInspector>
@@ -3919,7 +4124,7 @@ export default function DesignerPage() {
                 Create + inject
               </button>
             </div>
-            <ul className="mt-3 max-h-[28rem] space-y-1 overflow-auto text-sm">
+            <ul className="mt-3 max-h-[28rem] space-y-1 overflow-auto text-sm" data-testid="designer-field-list">
               {fields.map((f) => (
                 <li
                   key={f.id}
@@ -3927,6 +4132,7 @@ export default function DesignerPage() {
                   onDragStart={(e) => {
                     setDragField(f.name);
                     e.dataTransfer.setData("text/odoo-field", f.name);
+                    e.dataTransfer.effectAllowed = "copy";
                   }}
                   onClick={() => {
                     if (viewType === "list") addListColumn(f.name);
@@ -3945,9 +4151,27 @@ export default function DesignerPage() {
                 <li className="text-muted">Load a model to populate.</li>
               )}
             </ul>
+            {(viewType === "form" || viewType === "kanban") && (
+              <NicheWidgetPalette
+                widgets={nicheWidgets}
+                colorPalette={colorPalette}
+                onPick={(w) => void addNicheWidget(w)}
+              />
+            )}
           </aside>
 
-          <section className="border border-border-subtle bg-surface-muted/50 p-4">
+          <section className="border border-border-subtle bg-surface-muted/50 p-4" data-testid="designer-structure-editor">
+            <div className="mb-3">
+              <h2 className="text-sm font-semibold text-accent">
+                {viewType === "form" ? "Form layout (primary)" : "Layout editor"}
+              </h2>
+              {viewType === "form" && (
+                <p className="mt-1 text-xs text-muted">
+                  Add a group, then drag a field from the list on the left onto that group. The
+                  page auto-scrolls when you drag near the edge.
+                </p>
+              )}
+            </div>
             <div className="mb-4 flex flex-wrap gap-2">
               {viewType === "form" && (
                 <>
@@ -4166,9 +4390,13 @@ export default function DesignerPage() {
                   return (
                     <div
                       key={child.id}
+                      data-structure-id={child.id}
                       data-canvas-id={child.id}
                       onDragOver={(e) => e.preventDefault()}
-                      onDrop={() => dropOnGroup(child.id)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        dropOnGroup(child.id, e);
+                      }}
                       className={`mb-4 min-h-24 border border-dashed border-[#4a3550] p-3 ${
                         canvasFlashId === child.id ? "ring-2 ring-accent" : ""
                       }`}
@@ -4243,6 +4471,7 @@ export default function DesignerPage() {
                 return (
                   <div
                     key={child.id}
+                    data-structure-id={child.id}
                     data-canvas-id={child.id}
                     className={`mb-4 border border-border-subtle p-3 ${
                       canvasFlashId === child.id ? "ring-2 ring-accent" : ""
@@ -4270,9 +4499,13 @@ export default function DesignerPage() {
                     {child.pages.map((page) => (
                       <div
                         key={page.id}
+                        data-structure-id={page.id}
                         data-canvas-id={page.id}
                         onDragOver={(e) => e.preventDefault()}
-                        onDrop={() => dropOnPage(child.id, page.id)}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          dropOnPage(child.id, page.id, e);
+                        }}
                         className={`mb-3 min-h-20 border border-dashed border-[#4a3550] p-3 ${
                           canvasFlashId === page.id ? "ring-2 ring-accent" : ""
                         }`}
@@ -4468,6 +4701,36 @@ export default function DesignerPage() {
                     </li>
                   ))}
                 </ul>
+                {listColumns.length > 0 ? (
+                  <details className="mt-4 rounded border border-border-subtle bg-surface-muted/30 p-3" data-testid="designer-list-preview">
+                    <summary className="cursor-pointer text-sm font-semibold text-accent">
+                      Odoo-style list preview
+                    </summary>
+                    <div className="mt-3">
+                      <PreviewThemeScope previewVars={previewTheme?.preview_vars}>
+                        <OdooPreviewScope showBanner={false}>
+                          <OdooListView
+                            view={{
+                              type: "list",
+                              model: model,
+                              title: title || model,
+                              columns: listColumns.map((f) => ({
+                                id: f.id,
+                                name: f.name,
+                                string: resolveFieldLabel(f.name, f.string, fields) || f.name,
+                              })),
+                              decorations: {
+                                danger: listDecorationDanger || null,
+                                info: listDecorationInfo || null,
+                                muted: listDecorationMuted || null,
+                              },
+                            }}
+                          />
+                        </OdooPreviewScope>
+                      </PreviewThemeScope>
+                    </div>
+                  </details>
+                ) : null}
               </div>
             )}
 
@@ -5001,6 +5264,21 @@ export default function DesignerPage() {
         onConfirm={(phrase) =>
           void onSave({ strategy: "overwrite", confirm_phrase: phrase })
         }
+      />
+      <ConfirmDialog
+        open={confirmUnlinkInheritOpen}
+        title="Unlink designer inherit"
+        warning={`Delete ${model || "model"}.designer.${viewType} — the Designer extension that can duplicate Send/Print/Pay and Other Info. Prefer Fix duplicate chrome if you want to keep TEST GROUP / x_* layout.`}
+        risks={[
+          "Removes the inherit child only (stock primary form stays)",
+          "Custom groups that lived only in that inherit disappear",
+          "Field inject views ({model}.custom.x_*.form) are not deleted",
+          "Undo cannot recreate a deleted view from a normal arch snapshot",
+        ]}
+        phrase={CONFIRM_PHRASE}
+        busy={busy}
+        onCancel={() => setConfirmUnlinkInheritOpen(false)}
+        onConfirm={(phrase) => void onUnlinkDesignerInherit(phrase)}
       />
       <ConfirmDialog
         open={confirmMutateOpen}

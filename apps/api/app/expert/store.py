@@ -65,6 +65,8 @@ def upsert_chunks(
         existing = db.scalar(select(ExpertChunk).where(ExpertChunk.content_hash == digest))
         embedding_json = json.dumps(vector) if vector else None
 
+        source_path = (chunk.source_path or "")[:500] or None
+
         if existing is None:
             db.add(
                 ExpertChunk(
@@ -74,6 +76,7 @@ def upsert_chunks(
                     text=chunk.text,
                     content_hash=digest,
                     embedding_json=embedding_json,
+                    source_path=source_path,
                 )
             )
             stats.inserted += 1
@@ -84,6 +87,7 @@ def upsert_chunks(
             existing.text != chunk.text
             or existing.breadcrumb != chunk.breadcrumb
             or existing.embedding_json != embedding_json
+            or (existing.source_path or None) != source_path
         )
         if not changed and not needs_embedding:
             stats.skipped += 1
@@ -91,6 +95,7 @@ def upsert_chunks(
 
         existing.breadcrumb = chunk.breadcrumb
         existing.text = chunk.text
+        existing.source_path = source_path
         if embedding_json or needs_embedding:
             existing.embedding_json = embedding_json
         stats.updated += 1

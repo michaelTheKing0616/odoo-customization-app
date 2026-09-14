@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 
@@ -15,6 +16,7 @@ from app.job_runner import (
     InProcessJobRunner,
     cancel_job,
     mark_interrupted_jobs_on_boot,
+    update_job_progress,
 )
 
 
@@ -93,6 +95,76 @@ def test_job_timeout_sets_status(monkeypatch: pytest.MonkeyPatch) -> None:
             status = refreshed.status
         assert status == "timeout"
         assert refreshed.error and "exceeded" in refreshed.error.lower()
+    finally:
+        db.close()
+
+
+def test_job_timeout_keeps_progress_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Timeout must not wipe a draft already written via progress()."""
+    monkeypatch.setitem(JOB_TIMEOUTS, "health_check", 0.2)
+    runner = InProcessJobRunner(max_workers=1)
+    init_db()
+    db = SessionLocal()
+    try:
+        row = BackgroundJob(kind="health_check", status="queued")
+        db.add(row)
+        db.commit()
+        jid = row.id
+
+        def slow_with_progress() -> dict:
+            update_job_progress(
+                jid,
+                {"partial_draft": {"models": [{"name": "x_matter"}], "module": "x_legal"}},
+            )
+            time.sleep(1.0)
+            return {"ok": True}
+
+        runner.enqueue(jid, slow_with_progress)
+        deadline = time.time() + 3.0
+        status = "running"
+        refreshed = None
+        while time.time() < deadline and status in ("queued", "running"):
+            time.sleep(0.05)
+            db.expire_all()
+            refreshed = db.get(BackgroundJob, jid)
+            assert refreshed is not None
+            status = refreshed.status
+        assert status == "timeout"
+        assert refreshed is not None
+        result = json.loads(refreshed.result_json or "{}")
+        assert result.get("draft", {}).get("module") == "x_legal"
+        warnings = result.get("warnings") or []
+        assert any("time cap" in str(w).lower() for w in warnings)
+    finally:
+        db.close()
+
+
+def test_job_timeout_does_not_wait_for_inner_worker(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(JOB_TIMEOUTS, "health_check", 0.2)
+    runner = InProcessJobRunner(max_workers=1)
+    init_db()
+    db = SessionLocal()
+    try:
+        row = BackgroundJob(kind="health_check", status="queued")
+        db.add(row)
+        db.commit()
+        jid = row.id
+
+        def slow() -> dict:
+            time.sleep(5.0)
+            return {"ok": True}
+
+        started = time.time()
+        runner.enqueue(jid, slow)
+        status = "running"
+        while time.time() - started < 2.0 and status == "running":
+            time.sleep(0.05)
+            db.expire_all()
+            refreshed = db.get(BackgroundJob, jid)
+            assert refreshed is not None
+            status = refreshed.status
+        assert status == "timeout"
+        assert time.time() - started < 2.0
     finally:
         db.close()
 

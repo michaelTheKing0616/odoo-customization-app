@@ -70,6 +70,7 @@ def real_estate_pack() -> dict[str, Any]:
         "display_name": "Real Estate Management",
         "depends": ["base", "contacts", "mail"],
         "domain_pack": "real_estate",
+        "document_shape": "workspace",
         "tags": [
             "real estate",
             "property",

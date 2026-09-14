@@ -30,11 +30,25 @@ def _fernet() -> Fernet:
         ) from exc
 
 
+# Fernet tokens are urlsafe-base64 of version(0x80)+timestamp+IV+ciphertext+HMAC.
+# They are well over 60 chars and typically start with "gAAAA".
+_FERNET_TOKEN_MIN_LEN = 60
+
+
+def looks_like_fernet_token(token: str) -> bool:
+    raw = (token or "").strip()
+    return len(raw) >= _FERNET_TOKEN_MIN_LEN and raw.startswith("gAAAA")
+
+
 def encrypt_secret(plaintext: str) -> str:
     return _fernet().encrypt(plaintext.encode("utf-8")).decode("utf-8")
 
 
 def decrypt_secret(token: str) -> str:
+    if not looks_like_fernet_token(token):
+        raise CryptoError(
+            "Saved credential is not encrypted. Re-enter the Odoo password on this connection."
+        )
     try:
         return _fernet().decrypt(token.encode("utf-8")).decode("utf-8")
     except InvalidToken as exc:

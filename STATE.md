@@ -1,21 +1,16 @@
 # STATE.md — Current Run / Loop State
 
-> Read at the start of every session. Updated at the end of every session.
+> Read at the start of every session. Updated at the end of this session.
 
 ## Last run
-- Date: 2026-08-12
-- **Shipped:** Web UI + Expert + Docker for Wave 18 ELITE:
-  - Wizard: ELITE workflow (lint, validate, download zip, promote, Ask Expert), route context sync
-  - Next proxy: 660s for elite-autopilot, export-sandbox, validate-live, ai/draft*
-  - Docker: deploy expert-cache volume + ELITE/Expert env; init-db `INSTALL_EXPERT_BRIDGE=1`; sync script
-  - Playwright: elite validate/promote workflow test
-- **Prior:** Staged `_llm_status` parity; library natural score 10.0; live gate script
+- Date: 2026-09-14
+- **Shipped:** Expert no longer treats `xmlrpc.py` as a missing model. Sandbox ParseError `//field[@name='amount_tax']` is xpath-miss on `sale.order`; zip rewrite → `tax_totals`. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+- **Proof:** `test_sandbox_amount_tax_xpath_not_xmlrpc_model`, `test_extract_skips_xmlrpc_py_traceback`, `test_rewrite_sale_order_amount_tax_xpath`
 
-## Next
-- Production migration: see `docs/PRODUCTION-PLAN.md`
-- Operator: `uv run python scripts/run_elite_live_gate.py` with Ollama up (optional sandbox)
-- Cloud generation trial: Grok or other openai-compatible endpoint vs local qwen3 latency/SLO
+## Next (operator)
+1. Kill/restart `:8001` without `--reload`. Hard-refresh App Studio.
+2. Retry **Sandbox Install and smoke** (zip rewrite, no re-author required). Do **not** Install this app.
+3. Gate pass → human Promote.
 
-## Rule
-- Opening balances never auto-post; inventory via dedicated stock.quant path only
-- Vision default-off in `.env.example`; local unlock ≠ EU commercial clearance
+## Docket (later — do not start)
+- **PROD-FAULT-LOG:** Production log of **in-app** faults with a founder dashboard/export. **Blocked on** honest diagnosis. See `docs/PRODUCTION-PLAN.md` § Docket.

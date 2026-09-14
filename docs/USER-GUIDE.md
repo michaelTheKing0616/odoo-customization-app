@@ -38,6 +38,7 @@ That phrase unlocks actions that change live data or install modules. It is inte
 20. [What lives in this app vs what lives in Odoo](#20-what-lives-in-this-app-vs-what-lives-in-odoo)
 21. [Warnings, confirmations & safety](#21-warnings-confirmations--safety)
 22. [Troubleshooting](#22-troubleshooting)
+23. [Feature demo & investor scenarios](#23-feature-demo--investor-scenarios)
 23. [Glossary](#23-glossary)
 
 ---
@@ -389,6 +390,8 @@ This is the closest screen to “Studio for views.”
 | **Title** | View title string |
 | **Save strategy** | **Inherit (safe)** (default) or **Overwrite primary** |
 | **Save to Odoo** | Write the designed screen |
+| **Fix duplicate chrome** | Stock forms only — rewrite a bad full-form Designer inherit to additive `x_*` (clears duplicate Send/Print/Pay / Other Info) |
+| **Unlink designer inherit** | Delete `{model}.designer.{type}` after confirm phrase (restores stock chrome; confirm required) |
 | **Polish form layout** | Apply a clean Identity / Details / Lines style grouping when possible |
 | **Undo last save** | Restore from a snapshot when available |
 | **Open in Odoo** | Open the real Odoo UI for this model (authoritative) |
@@ -412,7 +415,18 @@ This is the closest screen to “Studio for views.”
 
 **Statusbar:** Pick a selection (or suitable) field to show as Odoo’s chevron status widget; optional visible stages list.
 
-**Field properties (right):** Required, Readonly, Invisible (with **domain builder**), Widget (e.g. barcode).
+**Field properties (right aside — full panel):** Select a field on Form layout, then edit:
+
+| Property | Options | Notes |
+|----------|---------|-------|
+| **Label** | Text | View `string=` — display name on this form |
+| **Required** | Off / Always / When… (domain) | View-level required (not ORM column required) |
+| **Readonly** | Off / Always / When… | View-level readonly |
+| **Invisible** | Domain builder or raw domain | Hide when rules match |
+| **Widget** | Curated by type, or Advanced free text | barcode, email, radio, image, … |
+| **Image size** | When widget=image | 90 / 128 / 256 presets |
+
+See `docs/OPERATOR-FEATURE-DEMO-GUIDE.md` § Field properties for the FP1–FP12 test matrix. Type/selection/relation changes stay in **Models & Fields**.
 
 **Generated arch:** Technical XML preview for transparency — you do not need to edit it for normal use.
 
@@ -858,6 +872,14 @@ The UI tries to be honest when something is irreversible.
 | Keep an offline draft | **Drafts** |
 | Test zip safely then install | Hub → **Sandbox** → **Promote** |
 | See the real result | **Open in Odoo** (from Designer) or log into Odoo directly |
+
+---
+
+## 23. Feature demo & investor scenarios
+
+For full per-feature how-tos, pass/fail test matrices, model-vs-module guidance (`account.move` not `account`), Draft Studio Option A score caps, and 12–20 minute investor scripts, see:
+
+**[`docs/OPERATOR-FEATURE-DEMO-GUIDE.md`](./OPERATOR-FEATURE-DEMO-GUIDE.md)**
 
 ---
 

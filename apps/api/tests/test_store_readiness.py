@@ -74,18 +74,22 @@ def test_category_allowlist_includes_customization() -> None:
 def test_library_store_ready_export_zero_fails() -> None:
     spec = library_module_spec("library_mgmt", "Library Management")
     zip_bytes = build_module_zip(spec)
-    zip_bytes, _, report = apply_store_packaging(zip_bytes, spec, major=19)
+    zip_bytes, placeholder, report = apply_store_packaging(zip_bytes, spec, major=19)
+    assert placeholder is False
     assert report["fail_count"] == 0
     with zipfile.ZipFile(BytesIO(zip_bytes)) as zf:
         names = zf.namelist()
+        icon = zf.read("library_mgmt/static/description/icon.png")
     assert "library_mgmt/STORE_READINESS.json" in names
     assert "library_mgmt/static/description/icon.png" in names
     assert "library_mgmt/static/description/index.html" in names
+    assert icon.startswith(b"\x89PNG")
+    assert len(icon) > 80
     readiness = check_zip_store_readiness(
         zip_bytes,
         technical_name="library_mgmt",
         major=19,
-        icon_is_placeholder=True,
+        icon_is_placeholder=False,
     )
     assert readiness.fail_count == 0
-    assert readiness.warn_count >= 1  # placeholder icon
+    assert any(i.key == "icon" and i.status == "pass" for i in readiness.items)

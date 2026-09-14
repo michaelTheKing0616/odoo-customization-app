@@ -30,3 +30,71 @@ def test_major19_readonly_domain() -> None:
     out = emit_field_modifiers(major=18, readonly="[('active', '=', False)]")
     assert "readonly" in out
     assert "active" in out["readonly"]
+
+
+def test_major19_required_domain() -> None:
+    out = emit_field_modifiers(major=19, required="[('x_status', '=', 'done')]")
+    assert out.get("required")
+    assert "x_status" in out["required"]
+
+
+def test_empty_invisible_omitted() -> None:
+    out = emit_field_modifiers(major=19, invisible="  ")
+    assert "invisible" not in out
+
+
+def test_field_xml_emits_label_widget_options_modifiers() -> None:
+    from odoo_client.view_arch import FieldNode, _field_xml
+
+    xml = _field_xml(
+        FieldNode(
+            name="x_photo",
+            string="Photo",
+            required=True,
+            readonly="[('state', '=', 'done')]",
+            invisible="[('active', '=', False)]",
+            widget="image",
+            options='{"size": [128, 128]}',
+        ),
+        major=19,
+    )
+    assert 'name="x_photo"' in xml
+    assert 'string="Photo"' in xml
+    assert 'required="1"' in xml
+    assert 'widget="image"' in xml
+    assert "128" in xml
+    assert "readonly" in xml
+    assert "invisible" in xml
+
+
+def test_additive_inherit_preserves_field_properties() -> None:
+    from odoo_client.view_arch import (
+        FieldNode,
+        FormViewSpec,
+        GroupNode,
+        build_additive_form_inherit_arch,
+    )
+
+    arch = build_additive_form_inherit_arch(
+        FormViewSpec(
+            string="Form",
+            children=[
+                GroupNode(
+                    string="Props",
+                    children=[
+                        FieldNode(
+                            name="x_code",
+                            string="Scan code",
+                            required=True,
+                            widget="barcode",
+                        )
+                    ],
+                )
+            ],
+        ),
+        existing_field_names=set(),
+    )
+    assert 'string="Scan code"' in arch
+    assert 'required="1"' in arch
+    assert 'widget="barcode"' in arch
+    assert 'name="x_code"' in arch

@@ -29,17 +29,22 @@ docker exec "$CONTAINER" odoo db \
 
 echo "Database '${DB_NAME}' ready. Login: ${ADMIN_USER} / ${ADMIN_PASSWORD}"
 
-echo "Installing gate modules (sale, project, crm) for AI-8/REM-3 live smokes..."
-docker exec "$CONTAINER" odoo \
-  --db_host=db \
-  -r odoo \
-  -w odoo \
-  -d "$DB_NAME" \
-  -i sale,project,crm \
-  --stop-after-init \
-  --without-demo=all
-
-echo "Gate modules installed on '${DB_NAME}'."
+if [[ "${SKIP_GATE_MODULES:-0}" == "1" ]]; then
+  echo "SKIP_GATE_MODULES=1 — leaving Accounting uninstalled so Job Autopilot can set country/currency first."
+else
+  echo "Installing gate modules (sale, project, crm) for AI-8/REM-3 live smokes..."
+  docker exec "$CONTAINER" odoo \
+    --db_host=db \
+    -r odoo \
+    -w odoo \
+    -d "$DB_NAME" \
+    -i sale,project,crm \
+    --stop-after-init \
+    --without-demo=all
+  echo "Gate modules installed on '${DB_NAME}'."
+  echo "Note: sale/account loads a US CoA. Job Autopilot cannot change company currency after that."
+  echo "For a Nigeria/naira Autopilot run, recreate with SKIP_GATE_MODULES=1 ./docker/init-db.sh"
+fi
 
 if [[ "${INSTALL_EXPERT_BRIDGE:-0}" == "1" ]]; then
   echo "Installing Odoo Expert Bridge (INSTALL_EXPERT_BRIDGE=1)..."

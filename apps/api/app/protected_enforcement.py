@@ -3,8 +3,10 @@
 AI path uses ``strip_protected_module_effects`` (PCM-3). This module gates Builder,
 ModuleSpec apply, and Automations with the same effect-not-mechanism rules:
 
-- Tier-1: no field/model mutations ON protected models; link-only relational fields
-  FROM custom (``x_*``) models INTO protected models are allowed.
+- Tier-1: no **stock** field/model mutations and no write-logic ON protected models.
+  Additive Studio-like custom (``x_*``) fields + inherit/extension views are allowed
+  (field packs / stock-first ``x_matter_id`` bridges). Link-only relations FROM
+  custom models INTO protected models remain allowed.
 - Tier-2: additive custom fields allowed; delete/rename of stock (non-``x_*``) fields
   blocked.
 - Automations: reject writes targeting tier-1 unless chatter/activity-only.
@@ -106,8 +108,8 @@ def check_field_create(
     """Gate creating a field on ``model``.
 
     Link-only: relational field ON a custom model (any relation target) is allowed.
-    Creating any field ON a tier-1 model is blocked.
-    Tier-2: additive custom fields allowed.
+    Tier-1 / tier-2 stock hosts: additive custom (``x_*``) fields only — Studio parity
+    for field packs and stock-first inherit bridges. Non-``x_*`` names are blocked.
     """
     model = (model or "").strip()
     if not model:
@@ -122,23 +124,25 @@ def check_field_create(
     if is_custom_model(model) and tier is None:
         return None
 
-    if tier == "tier_1":
+    if tier in {"tier_1", "tier_2"}:
+        if field_name and is_custom_field(field_name):
+            # O2M on tier-1 still mutates the protected form graph (inverse + lines).
+            # Field packs / stock-first bridges use scalars and M2O only.
+            if tier == "tier_1" and ttype_l == "one2many":
+                return _violation(
+                    model,
+                    tier,
+                    "Cannot create one2many on tier-1 protected models. "
+                    "Put the relation on a custom (x_*) model instead.",
+                )
+            return None
         return _violation(
             model,
             tier,
-            "Cannot create or mutate fields on tier-1 protected models. "
-            "Link from a custom (x_*) model via many2one/one2many/many2many instead.",
+            f"{tier.replace('_', '-')} models allow additive custom (x_*) fields only; "
+            "cannot create or rename stock fields. "
+            "Write-logic on protected records stays blocked (use chatter/activity).",
         )
-    if tier == "tier_2":
-        # Additive custom fields OK; refuse non-custom names as stock mutations
-        if field_name and not is_custom_field(field_name):
-            return _violation(
-                model,
-                tier,
-                "Tier-2 models allow additive custom (x_*) fields only; "
-                "cannot create or rename stock fields.",
-            )
-        return None
     return None
 
 
@@ -290,47 +294,9 @@ def scrub_spec_for_protected_apply(
             mid = str(entry.get("model") or "")
             tier = protected_models_for(manifest, mid) if mid else None
             mode = str(entry.get("mode") or "new")
-            if tier == "tier_1" and not is_custom_model(mid):
-                # Do not create/inherit behaviour on stock tier-1; keep entry only if
-                # we will strip all fields (still allow empty for skip messaging).
-                fields = entry.get("fields") or []
-                kept_fields: list[Any] = []
-                if isinstance(fields, list):
-                    for f in fields:
-                        if not isinstance(f, dict):
-                            continue
-                        fname = str(f.get("name") or "")
-                        ttype = str(f.get("ttype") or f.get("type") or "")
-                        rel = str(f.get("relation") or "") or None
-                        viol = check_field_create(
-                            manifest,
-                            model=mid,
-                            ttype=ttype,
-                            relation=rel,
-                            field_name=fname,
-                        )
-                        if viol:
-                            skips.append(
-                                f"field:{mid}.{fname or '?'}: {viol.skip_reason()}"
-                            )
-                            continue
-                        kept_fields.append(f)
-                if mode == "inherit" or kept_fields:
-                    entry = {**entry, "fields": kept_fields}
-                    if not kept_fields and mode == "inherit":
-                        skips.append(f"model:{mid}: { _violation(mid, 'tier_1', 'tier-1 inherit/mutate blocked').skip_reason() }")
-                        continue
-                    kept_models.append(entry)
-                else:
-                    skips.append(
-                        f"model:{mid}: "
-                        f"{_violation(mid, 'tier_1', 'tier-1 model mutation blocked').skip_reason()}"
-                    )
-                continue
-
             fields = entry.get("fields") or []
             if isinstance(fields, list):
-                kept_fields = []
+                kept_fields: list[Any] = []
                 for f in fields:
                     if not isinstance(f, dict):
                         kept_fields.append(f)
@@ -352,6 +318,17 @@ def scrub_spec_for_protected_apply(
                         continue
                     kept_fields.append(f)
                 entry = {**entry, "fields": kept_fields}
+                if (
+                    tier == "tier_1"
+                    and not is_custom_model(mid)
+                    and mode == "inherit"
+                    and not kept_fields
+                ):
+                    skips.append(
+                        f"model:{mid}: "
+                        f"{_violation(mid, 'tier_1', 'tier-1 inherit with no additive x_* fields').skip_reason()}"
+                    )
+                    continue
             kept_models.append(entry)
         out["models"] = kept_models
 
@@ -409,7 +386,9 @@ def scrub_spec_for_protected_apply(
             kept.append(auto)
         out[key] = kept
 
-    # Smart buttons that would create fields ON tier-1
+    # Smart buttons: allow stock-host → custom residual navigation (Contacts / PoS
+    # button_box inherit). Block only when the related *target* is tier-1 (would
+    # create inverse FKs on protected models) or both sides are stock.
     buttons = out.get("smart_buttons")
     if isinstance(buttons, list):
         kept_btns: list[Any] = []
@@ -419,14 +398,25 @@ def scrub_spec_for_protected_apply(
                 continue
             on_model = str(btn.get("on_model") or btn.get("model") or "")
             related = str(btn.get("related_model") or "")
-            # Creating O2M/count on on_model — block if tier-1
-            if on_model and protected_models_for(manifest, on_model) == "tier_1":
+            rel_field = str(btn.get("relation_field") or btn.get("field") or "")
+            on_tier = protected_models_for(manifest, on_model) if on_model else None
+            related_tier = protected_models_for(manifest, related) if related else None
+            # Studio-style: Punch Cards on Contacts — M2O lives on custom residual.
+            stock_host_to_custom = (
+                on_tier in {"tier_1", "tier_2"}
+                and is_custom_model(related)
+                and (not rel_field or is_custom_field(rel_field))
+            )
+            if stock_host_to_custom:
+                kept_btns.append(btn)
+                continue
+            if on_model and on_tier == "tier_1":
                 skips.append(
                     f"smart_button:{btn.get('name') or on_model}: "
                     f"{_violation(on_model, 'tier_1', 'smart button mutates tier-1').skip_reason()}"
                 )
                 continue
-            if related and protected_models_for(manifest, related) == "tier_1":
+            if related and related_tier == "tier_1":
                 # M2O created ON related (target) — blocked if related is tier-1
                 skips.append(
                     f"smart_button:{btn.get('name') or related}: "

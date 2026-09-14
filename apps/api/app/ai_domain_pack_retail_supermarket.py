@@ -47,6 +47,7 @@ def retail_supermarket_pack() -> dict[str, Any]:
         "display_name": "Retail Supermarket",
         "depends": ["base", "contacts", "mail", "product", "hr"],
         "domain_pack": "retail_supermarket",
+        "document_shape": "workspace",
         "tags": [
             "supermarket",
             "grocery",
@@ -108,6 +109,18 @@ def retail_supermarket_pack() -> dict[str, Any]:
                 "reason": "Warehouse / stock locations (link-only)",
                 "link_only": True,
                 "forbid_parallel": ["x_warehouse"],
+            },
+            {
+                "model": "res.company",
+                "modules": ["base"],
+                "reason": "Multi-company / operating entity",
+                "forbid_parallel": ["x_company"],
+            },
+            {
+                "model": "res.currency",
+                "modules": ["base"],
+                "reason": "Currency for monetary fields",
+                "forbid_parallel": ["x_currency"],
             },
         ],
         "vocab": {

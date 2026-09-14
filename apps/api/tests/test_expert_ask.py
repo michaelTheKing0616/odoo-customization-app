@@ -71,6 +71,8 @@ class _FakeLLM(LLMProvider):
                 "reasoning": reasoning,
                 "temperature": temperature,
                 "strict": "REMINDER" in prompt,
+                "system": system or "",
+                "prompt": prompt,
             }
         )
         return json.dumps(self._payload)
@@ -203,6 +205,72 @@ def test_ask_declines_when_no_retrieval(monkeypatch: pytest.MonkeyPatch) -> None
     assert result.declined
     assert not result.grounded
     assert DECLINE_LOW_CONFIDENCE in result.answer_markdown
+    assert "intent_clarification" not in (result.caution_flags or [])
+    assert "Should we build a new app" not in result.answer_markdown
+
+
+def test_ask_platform_404_uses_llm_not_odoo_rpc(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.expert.ask.retrieve_expert_chunks", lambda *a, **k: [])
+    monkeypatch.setattr(
+        "app.expert.ask.assemble_context",
+        lambda *a, **k: _sample_bundle(),
+    )
+    llm = _FakeLLM(
+        {
+            "answer_markdown": (
+                "This is our API 404 after Install Sales, not an Odoo view fault [1]. "
+                "Restart uvicorn on :8001 without --reload, then Re-check authoring gate [1]."
+            ),
+            "citation_ids": [1],
+        }
+    )
+    result = ask_expert(
+        _FakeDb(),  # type: ignore[arg-type]
+        question=(
+            "Diagnose this error on my connection\n\nError log:\n"
+            "Not Found (POST /api/ai/option-a/reverify)"
+        ),
+        provider=llm,
+    )
+    assert not result.declined
+    assert llm.calls, "Gemini/fast LLM must run — do not skip to generic RPC fallback"
+    system = str(llm.calls[0].get("system") or "")
+    prompt = str(llm.calls[0].get("prompt") or "")
+    assert "THIS-APP FAULT" in system
+    assert "Give numbered remediation steps" not in system
+    assert "ERROR DIAGNOSIS" not in system
+    assert "product-platform-host-install" in prompt or "PRODUCT FACTS" in prompt
+    assert "rule_based_diagnosis" not in (result.caution_flags or [])
+    assert "designer" not in result.answer_markdown.lower()
+    assert "uvicorn" in result.answer_markdown.lower()
+
+
+def test_ask_empty_diagnose_paste_is_not_generation_clarify(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("app.expert.ask.retrieve_expert_chunks", lambda *a, **k: [])
+    monkeypatch.setattr(
+        "app.expert.ask.assemble_context",
+        lambda *a, **k: _sample_bundle(),
+    )
+    llm = _FakeLLM(
+        {
+            "answer_markdown": (
+                "The Error log is empty — this is a platform Diagnose paste, not an Odoo Fault [1]."
+            ),
+            "citation_ids": [1],
+        }
+    )
+    result = ask_expert(
+        _FakeDb(),  # type: ignore[arg-type]
+        question="Diagnose this error on my connection\n\nError log:\n",
+        provider=llm,
+    )
+    assert not result.declined
+    assert "intent_clarification" not in (result.caution_flags or [])
+    assert "Should we build a new app" not in result.answer_markdown
+    assert "rule_based_diagnosis" not in (result.caution_flags or [])
+    assert llm.calls
 
 
 def test_ask_error_diagnosis_without_retrieval(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -485,8 +553,12 @@ def test_ask_ignores_llm_caution_flags(monkeypatch: pytest.MonkeyPatch) -> None:
     assert all(not f.startswith("no_") for f in result.caution_flags)
 
 
-def test_expert_ask_endpoint_503_when_ai_off(client: TestClient) -> None:
-    settings.ai_assist = "off"
+def test_expert_ask_endpoint_503_when_ai_off(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "ai_assist", "off")
+    monkeypatch.setattr(settings, "ai_llm_tier_fast", "off")
+    monkeypatch.setattr(settings, "ai_llm_tier_refine", "off")
     res = client.post("/api/expert/ask", json={"question": "What is xpath?"})
     assert res.status_code == 503
 

@@ -114,3 +114,26 @@ def test_ask_setup_question_uses_stack_guidance_without_llm(
     assert "property rental" not in result.answer_markdown.lower()
     assert result.citations
     assert result.citations[0].chunk_id == "stack-inference"
+
+
+def test_music_production_setup_does_not_recommend_mrp() -> None:
+    q = (
+        "What modules do I need for a music production company "
+        "with multiple recording studios?"
+    )
+    stack = infer_odoo_stack(q)
+    assert stack is not None
+    assert "mrp" not in stack.stock_modules
+    body = compose_setup_stack_answer(stack).lower()
+    assert "**mrp**" not in body
+    assert "`mrp`" not in body
+
+
+def test_factory_setup_still_recommends_mrp() -> None:
+    q = (
+        "What modules do I need to setup a factory manufacturing plant "
+        "with BOM and work orders?"
+    )
+    stack = infer_odoo_stack(q)
+    assert stack is not None
+    assert "mrp" in stack.stock_modules

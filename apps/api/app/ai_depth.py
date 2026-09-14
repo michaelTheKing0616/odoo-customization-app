@@ -25,13 +25,13 @@ AMBITION_TARGETS: dict[Ambition, dict[str, float]] = {
         "max_entities_staged": 6,
     },
     "standard": {
-        "min_models": 5,
+        "min_models": 8,
         "min_fields_avg": 5,
         "min_m2o": 4,
         "min_workflows": 1,
         "min_smart_buttons": 2,
         "min_automations": 1,
-        "max_entities_staged": 12,
+        "max_entities_staged": 16,
     },
     "comprehensive": {
         "min_models": 10,
@@ -40,7 +40,7 @@ AMBITION_TARGETS: dict[Ambition, dict[str, float]] = {
         "min_workflows": 3,
         "min_smart_buttons": 6,
         "min_automations": 2,
-        "max_entities_staged": 18,
+        "max_entities_staged": 22,
     },
 }
 
@@ -60,9 +60,10 @@ _THIN_HINT_RE = re.compile(
 )
 
 
+# Bare "multiple" is a normal business ("multiple studios") — not world-class ERP.
 _SCALE_RE = re.compile(
-    r"\b(mega|large|multiple|multi[\s-]?branch|branches|chain|franchise|"
-    r"nationwide|worldwide)\b",
+    r"\b(mega|large|nationwide|worldwide|chain|franchise|"
+    r"multi[\s-]?branch|multi[\s-]?site|large[\s-]?scale)\b",
     re.I,
 )
 
@@ -89,25 +90,34 @@ def classify_ambition_with_notes(prompt: str) -> tuple[Ambition, list[str]]:
         return "standard", notes
     if _COMPREHENSIVE_RE.search(text):
         return "comprehensive", notes
+    try:
+        from app.ai_document_shape import THIN_SHAPES, classify_document_shape
+
+        shape = classify_document_shape(text)
+        if shape in THIN_SHAPES:
+            notes.append(f"ambition: document_shape={shape} → thin floors")
+            return "thin", notes
+        if _THIN_HINT_RE.search(text) and shape != "workspace":
+            notes.append("ambition: simple/minimal hint beats word count")
+            return "thin", notes
+    except Exception:  # noqa: BLE001
+        shape = None
     if _SCALE_RE.search(text) and not _THIN_HINT_RE.search(text):
         notes.append(
-            "ambition: prompt scale cues (mega/large/multiple branches/chain) "
+            "ambition: prompt scale cues (mega/large/nationwide/chain) "
             "→ comprehensive targets"
         )
         return "comprehensive", notes
     if _THIN_HINT_RE.search(text) and len(text.split()) < 16:
         return "thin", notes
-    ops = re.findall(
-        r"\b(manage|management|system|platform|operations|workflow|inventory|"
-        r"billing|scheduling|crm|erp|portal)\b",
-        text,
-        flags=re.I,
-    )
-    if len(ops) >= 1 and len(text.split()) >= 8:
-        return "standard", notes
     if len(text.split()) <= 5:
         return "thin", notes
-    return "standard", notes
+    # Full-scale Odoo apps are the default. Bare "multiple" is still not a scale
+    # keyword (_SCALE_RE); a real business prompt of 6+ words is comprehensive.
+    notes.append(
+        "ambition: non-thin business prompt (≥6 words) → comprehensive Odoo-app floor"
+    )
+    return "comprehensive", notes
 
 
 def _models(draft: dict[str, Any]) -> list[dict[str, Any]]:
@@ -233,7 +243,7 @@ def build_depth_block(
         "metrics": metrics,
         "metrics_without_seeds": metrics_no_seed,
         "gaps": gaps,
-        "targets": AMBITION_TARGETS[amb],
+        "targets": _floors_for_draft(draft, amb),
         "ok": not gaps,
         "seeded": False,
     }
@@ -241,12 +251,63 @@ def build_depth_block(
     return block
 
 
+def _floors_for_draft(draft: dict[str, Any], amb: Ambition) -> dict[str, float]:
+    """Ambition floors, scaled to grain / pack / reuse-rich residual / document shape."""
+    t = dict(AMBITION_TARGETS[amb])
+    try:
+        from app.ai_document_shape import SHAPE_DEPTH_FLOORS, THIN_SHAPES, document_shape_of
+
+        shape = document_shape_of(draft)
+        if shape in THIN_SHAPES and shape in SHAPE_DEPTH_FLOORS:
+            return dict(SHAPE_DEPTH_FLOORS[shape])
+    except Exception:  # noqa: BLE001
+        pass
+    grain = str(draft.get("grain") or "")
+    if draft.get("_component"):
+        from app.ai_grain import GRAIN_TARGETS
+
+        if grain in GRAIN_TARGETS:
+            gt = GRAIN_TARGETS[grain]  # type: ignore[index]
+            return {
+                "min_models": gt["min_models"],
+                "min_fields_avg": gt["min_fields_avg"],
+                "min_m2o": gt["min_m2o"],
+                "min_workflows": gt["min_workflows"],
+                "min_smart_buttons": gt["min_smart_buttons"],
+                "min_automations": gt["min_automations"],
+            }
+    packed = bool(draft.get("domain_pack"))
+    if packed:
+        # Pack size is the floor — never treat 3 skinny models as comprehensive.
+        pack_x = [
+            str(x)
+            for x in (draft.get("_pack_model_ids") or [])
+            if str(x).startswith("x_")
+        ]
+        floor = max(5, len(pack_x)) if pack_x else 5
+        t["min_models"] = min(int(t["min_models"]), floor)
+        t["min_m2o"] = min(int(t["min_m2o"]), 10)
+        t["min_workflows"] = min(int(t["min_workflows"]), 2)
+        t["min_smart_buttons"] = min(int(t["min_smart_buttons"]), 8)
+        t["min_automations"] = min(int(t["min_automations"]), 3)
+        return t
+    from app.ai_stock_first import is_reuse_rich
+
+    if is_reuse_rich(draft):
+        t["min_models"] = min(int(t["min_models"]), 5)
+        t["min_m2o"] = min(int(t["min_m2o"]), 8)
+        t["min_workflows"] = min(int(t["min_workflows"]), 2)
+        t["min_smart_buttons"] = min(int(t["min_smart_buttons"]), 6)
+        t["min_automations"] = min(int(t["min_automations"]), 2)
+    return t
+
+
 def depth_gaps(draft: dict[str, Any], ambition: Ambition | None = None) -> list[str]:
     """Return failed depth criterion ids (empty = meets floor)."""
     amb: Ambition = ambition or draft.get("_ambition") or "standard"  # type: ignore[assignment]
     if amb not in AMBITION_TARGETS:
         amb = "standard"
-    t = AMBITION_TARGETS[amb]
+    t = _floors_for_draft(draft, amb)
     m = compute_depth_metrics(draft)
     m_real = compute_depth_metrics(draft, exclude_depth_seed=True)
     gaps: list[str] = []
@@ -271,7 +332,7 @@ def depth_checklist(
     amb: Ambition = ambition or draft.get("_ambition") or "standard"  # type: ignore[assignment]
     if amb not in AMBITION_TARGETS:
         amb = "standard"
-    t = AMBITION_TARGETS[amb]
+    t = _floors_for_draft(draft, amb)
     m = compute_depth_metrics(draft)
     m_real = compute_depth_metrics(draft, exclude_depth_seed=True)
     gaps = set(depth_gaps(draft, amb))
@@ -340,6 +401,17 @@ def synthesize_smart_buttons_from_relations(draft: dict[str, Any]) -> list[str]:
             parent_s, fname_s = str(parent), str(fname)
             if parent_s not in known or not parent_s.startswith("x_"):
                 continue
+            parent_row = next(
+                (m for m in models if str(m.get("model") or "") == parent_s),
+                None,
+            )
+            if parent_row and any(
+                isinstance(pf, dict)
+                and pf.get("ttype") == "one2many"
+                and str(pf.get("relation") or "") == child_id
+                for pf in (parent_row.get("fields") or [])
+            ):
+                continue
             key = (parent_s, child_id, fname_s)
             if key in existing:
                 continue
@@ -361,6 +433,16 @@ def synthesize_smart_buttons_from_relations(draft: dict[str, Any]) -> list[str]:
             added += 1
     if added:
         notes.append(f"depth: synthesized {added} smart button(s) from many2one graph")
+    try:
+        from app.ai_stock_host_smart_buttons import apply_stock_host_smart_buttons
+
+        notes.extend(
+            apply_stock_host_smart_buttons(
+                draft, prompt=str(draft.get("_user_prompt") or "")
+            )
+        )
+    except Exception:  # noqa: BLE001
+        pass
     return notes
 
 
@@ -777,6 +859,15 @@ def seed_operational_loop_models(
     Skips roles already present. Never adds type/tag/client mini-CRM stubs.
     """
     notes: list[str] = []
+    from app.ai_document_shape import additive_model_growth_blocked
+    from app.ai_stock_first import forbid_new_models_from_draft, is_reuse_rich
+
+    if (
+        draft.get("_component")
+        or is_reuse_rich(draft)
+        or additive_model_growth_blocked(draft, prompt=user_prompt)
+    ):
+        return notes
     need = int(AMBITION_TARGETS[ambition]["min_models"]) - int(
         compute_depth_metrics(draft)["model_count"]
     )
@@ -855,9 +946,12 @@ def seed_operational_loop_models(
         ),
     ]
 
+    blocked = forbid_new_models_from_draft(draft)
     for mid, desc, keywords, opts in seeds:
         if need <= 0:
             break
+        if mid in blocked or any(mid.endswith(f"_{b[2:]}") for b in blocked if b.startswith("x_")):
+            continue
         if _role_already_present(draft, keywords):
             continue
         model_name = mid if mid not in known else f"{parent_id}_{mid[2:]}"
@@ -1059,9 +1153,14 @@ def apply_deterministic_depth(
         amb = "standard"
     out["_ambition"] = amb
     notes: list[str] = []
+    prompt = user_prompt or str(out.get("_user_prompt") or "")
+    if prompt and not out.get("_component"):
+        from app.ai_stock_first import attach_reuse_plan_to_draft
+
+        notes.extend(attach_reuse_plan_to_draft(out, user_prompt=prompt))
 
     def _gaps_for_metrics(m: dict[str, Any]) -> list[str]:
-        t = AMBITION_TARGETS[amb]
+        t = _floors_for_draft(out, amb)
         gaps: list[str] = []
         if m["model_count"] < t["min_models"]:
             gaps.append("depth_models")
@@ -1080,26 +1179,33 @@ def apply_deterministic_depth(
     metrics_before_seed = compute_depth_metrics(out, exclude_depth_seed=True)
     gaps_before = _gaps_for_metrics(metrics_before_seed)
     notes.extend(strip_unsafe_automations(out))
-    from app.ai_model_quality import (
-        collapse_hollow_catalogs_to_selections,
-        collapse_thin_padding_models,
-    )
+    if out.get("_component"):
+        from app.ai_senior_shape import finish_senior_component
 
-    notes.extend(collapse_hollow_catalogs_to_selections(out))
-    notes.extend(collapse_thin_padding_models(out))
-    notes.extend(seed_operational_loop_models(
-        out, amb, user_prompt=user_prompt or str(out.get("_user_prompt") or "")
-    ))
-    notes.extend(
-        ensure_country_on_branch_for_global_prompt(
-            out, user_prompt or str(out.get("_user_prompt") or "")
+        grain = str(out.get("grain") or "feature_slice")
+        if grain in {"field_pack", "feature_slice"}:
+            notes.extend(finish_senior_component(out, prompt=prompt, grain=grain))  # type: ignore[arg-type]
+    else:
+        from app.ai_model_quality import (
+            collapse_hollow_catalogs_to_selections,
+            collapse_thin_padding_models,
         )
-    )
-    notes.extend(ensure_min_automations(out, amb))
-    notes.extend(_ensure_workflow_minimum_fields(out))
-    notes.extend(_ensure_currency_on_amounts(out))
-    notes.extend(_ensure_company_on_transactional(out, amb))
-    notes.extend(synthesize_smart_buttons_from_relations(out))
+
+        notes.extend(collapse_hollow_catalogs_to_selections(out))
+        notes.extend(collapse_thin_padding_models(out))
+        notes.extend(seed_operational_loop_models(
+            out, amb, user_prompt=user_prompt or str(out.get("_user_prompt") or "")
+        ))
+        notes.extend(
+            ensure_country_on_branch_for_global_prompt(
+                out, user_prompt or str(out.get("_user_prompt") or "")
+            )
+        )
+        notes.extend(ensure_min_automations(out, amb))
+        notes.extend(_ensure_workflow_minimum_fields(out))
+        notes.extend(_ensure_currency_on_amounts(out))
+        notes.extend(_ensure_company_on_transactional(out, amb))
+        notes.extend(synthesize_smart_buttons_from_relations(out))
     out["_depth"] = build_depth_block(out, ambition=amb)
     gaps = out["_depth"]["gaps"]
     gaps_no_seed = _gaps_for_metrics(out["_depth"]["metrics_without_seeds"])
@@ -1178,12 +1284,15 @@ def llm_expand_depth(
         "FORBIDDEN: x_client mini-CRM when res.partner already links clients. "
         "No Python code automations.\n"
         + MODEL_CREATION_RULES,
+        user_prompt=user_prompt,
     )
     loop_hints = (
-        "Add operational roles NOT already covered (rename to THIS domain): "
-        "events/hearings/appointments; tasks/deadlines; expenses/disbursements; "
-        "trust/retainer/deposit; compliance/conflict check; multi-party links; "
-        "staff rates — only if missing. Prefer NEW roles over cloning bill/invoice."
+        "Add domain-named operational roles NOT already covered: sites/facilities, "
+        "parties (artists/patients/…), engagements/projects, bookings + lines, "
+        "deliverables, equipment, rate cards, agreements, unavailability, revisions, "
+        "job-cost expenses. FORBIDDEN filler: deposit, party_link, parallel x_bill, "
+        "generic task/event/document/staff. Link crew via hr.employee, invoices via "
+        "account.move. Prefer NEW domain roles over cloning CRM/billing/task apps."
     )
     prompt = (
         f"User request (ambition={ambition}):\n{user_prompt}\n\n"
@@ -1259,36 +1368,45 @@ def run_depth_pass(
     out, notes = apply_deterministic_depth(draft, ambition, user_prompt=user_prompt)
     warnings.extend(notes)
 
+    if out.get("_component"):
+        expand_llm = False
+        warnings.append("depth: skipped LLM expand — component grain")
+
     if expand_llm and provider is not None:
-        for round_i in range(2):
-            gaps = depth_gaps(out, ambition)
-            if not gaps:
-                break
-            # Only re-expand when still missing models/fields/workflows (not just soft gaps)
-            hard = {
-                g
-                for g in gaps
-                if g
-                in {
-                    "depth_models",
-                    "depth_fields_avg",
-                    "depth_workflows",
-                    "depth_relations",
-                    "depth_automations",
+        from app.ai_stock_first import is_reuse_rich
+
+        if is_reuse_rich(out):
+            warnings.append("depth: skipped LLM expand — reuse-rich residual floor")
+        else:
+            for round_i in range(2):
+                gaps = depth_gaps(out, ambition)
+                if not gaps:
+                    break
+                # Only re-expand when still missing models/fields/workflows (not just soft gaps)
+                hard = {
+                    g
+                    for g in gaps
+                    if g
+                    in {
+                        "depth_models",
+                        "depth_fields_avg",
+                        "depth_workflows",
+                        "depth_relations",
+                        "depth_automations",
+                    }
                 }
-            }
-            if not hard and round_i > 0:
-                break
-            out, expand_notes = llm_expand_depth(
-                provider,
-                out,
-                user_prompt=user_prompt,
-                ambition=ambition,
-                gaps=gaps,
-            )
-            warnings.extend(expand_notes)
-            out, notes2 = apply_deterministic_depth(out, ambition)
-            warnings.extend(notes2)
+                if not hard and round_i > 0:
+                    break
+                out, expand_notes = llm_expand_depth(
+                    provider,
+                    out,
+                    user_prompt=user_prompt,
+                    ambition=ambition,
+                    gaps=gaps,
+                )
+                warnings.extend(expand_notes)
+                out, notes2 = apply_deterministic_depth(out, ambition)
+                warnings.extend(notes2)
 
     return out, warnings
 

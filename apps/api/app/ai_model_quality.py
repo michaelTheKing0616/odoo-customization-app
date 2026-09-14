@@ -14,9 +14,22 @@ from typing import Any
 # Shared with system / staged / expand prompts so every path says the same thing.
 MODEL_CREATION_RULES = """
 MODEL CREATION QUALITY (mandatory — every domain):
+0) OPERATOR BRIEF IS LAW. Unknowns listed in the brief are omitted — never filled with
+   CE-19 defaults (currency, company name, industry, multi-company). Out of scope and
+   forbidden bridges are never inherited. Field labels copy the brief's words
+   (time in ≠ check-in unless the brief said check-in). Do not add models, fields, or
+   automations the brief did not ask for. Document shape overrides ambition floors:
+   - register: exactly one x_* header; list+form; no workflow/kanban/x_status/x_code
+     unless named; no x_company_id / x_currency_id unless the brief named a legal-entity
+     split or a currency; at most one on_time duration alert, clocked on the header
+     datetime (not create_date).
+   - field_pack: inherit the named stock model only; no new app menu.
+   - stock_reuse: models: [] — Job Autopilot is the done-bar.
+   Ambition floors (thin ≥2 models, etc.) apply only to workspace / transactional_header.
 1) Every custom model must be SUBSTANTIVE — typically ≥6 fields (≥8 if is_workflow).
    Required pattern: x_name + domain attributes + ≥1 many2one (peer or res.partner)
    + dates/status when lifecycle exists. Never ship x_name+x_code only.
+   Register exception: the stated columns only — do not pad to 6 with company/notes/status.
 2) Taxonomy (type / category / tag / stage / priority / status / specialty) = selection
    fields on the parent. NEVER create separate name+code catalog models for those.
 3) Name models for THIS domain (e.g. x_order, x_vehicle, x_patient, x_student). NEVER keep
@@ -25,28 +38,32 @@ MODEL CREATION QUALITY (mandatory — every domain):
    mini-CRM unless the domain needs multi-role parties (then a party-link model, not a duplicate CRM).
 5) many2one: name ends with _id; relation MUST exist in the same draft (or stock model).
    Never leave orphan relations. O2M needs relation + relation_field.
-6) Workflows: x_status with real stages + x_code help matching THIS domain (never RNT/00001).
-7) Amounts: float + x_currency_id. Multi-company: x_company_id → res.company.
+6) Workflows: x_status with real stages + x_code help matching THIS domain (never RNT/00001)
+   — only when the brief named a lifecycle. Registers are not workflows.
+7) Amounts: float + x_currency_id ONLY if the brief named money/currency.
+   Multi-company: x_company_id → res.company ONLY if the brief named a legal-entity split.
+   Unknown currency / multi-company slots stay empty.
 8) smart_buttons shape: {on_model, label, related_model, relation_field} only.
 9) Prefer fewer rich models over generic filler (random x_project trees) unless the user
    asked for project management.
-10) Obey the REUSE PLAN: link stock models listed there; never recreate forbidden parallels
-    (x_client, x_invoice when account.move is reused, etc.). Domain entities still become x_*.
+10) Obey the REUSE PLAN only for hosts the brief actually uses. Do not add fields just
+    because CE-19 listed res.company / res.currency / res.users. Never recreate forbidden
+    parallels (x_client, x_invoice when account.move is reused, etc.). Domain residual still becomes x_*.
 
 WORLD-CLASS OPS DEPTH (comprehensive / world-class prompts — meet this bar):
-11) Operational loop on the primary transaction: children for events/appointments, tasks,
-    expenses/disbursements, deposits/retainers/holds, party-role links, documents when
-    relevant — each with M2O to the parent AND parent one2many (relation_field set).
-12) Line/time models link to the bill/invoice model (x_bill_id or equivalent) when billing
-    exists. Bill/invoice is a workflow with real statuses (draft/sent/paid/…), not a float.
-13) Selection keys must be meaningful domain words (litigation/corporate/… or
-    intake/open/closed) — NEVER specialty_a, option_a, area_b placeholders.
+11) Residual custom models cover what stock apps do not. Link CRM/Sale/Account/HR/
+    Timesheet/Calendar/Project when the brief uses them — do NOT clone those as
+    x_lead / x_bill / x_attorney / x_task / x_event / x_payment.
+12) Line/time models link stock account.move (x_invoice_id, PCM link-only) when
+    invoicing is in the stack. Invent x_bill only if the brief forbids Accounting.
+13) Selection keys must be meaningful domain words (litigation/corporate/advisory or
+    intake/open/billed/closed) — NEVER specialty_a, option_a, area_b placeholders.
 14) Automations only on models that exist in the draft; safe_actions only
     (object_write / related_write / next_activity). Values must be valid selection keys.
-15) When a domain scaffold is provided, match or exceed its field richness and loop
-    coverage — adapt names to the user request; do not dilute into thin CRUD.
-16) Staff/fee-earner/counsel many2ones relation the domain staff model (x_attorney/…),
-    never res.users (login link stays x_user_id on the staff master only).
+15) When a domain scaffold is provided, match its stock-first residual — do not pad
+    model count with a second ERP. Deepen fields and stock links instead.
+16) Staff/fee-earner/counsel many2ones relation hr.employee when HR is in depends.
+    res.users is only the login (x_user_id). Do not invent x_attorney / x_doctor / x_staff.
 17) Party/role-link models are NOT is_workflow. Header workflows include terminal
     statuses (closed/done/cancelled/on_hold).
 
@@ -60,8 +77,9 @@ PROTECTED MODULES (PCM — effect not mechanism):
 
 _FEW_SHOT_EXEMPLAR = {
     "note": (
-        "PLACEHOLDER exemplar only — RENAME every x_ex_* model to THIS domain's terms "
-        "(staff→teacher/doctor/attorney/technician; job→order/matter/enrollment/workorder). "
+        "PLACEHOLDER exemplar only — RENAME every x_ex_* model to THIS domain's residual. "
+        "Staff/fee-earners are hr.employee links, not x_ex_staff clones. "
+        "Invoices are account.move, not x_bill. Residual job/matter/enrollment stays x_*. "
         "Never leave x_ex_* or generic x_resource/x_transaction names in the final draft."
     ),
     "models": [
@@ -368,8 +386,51 @@ _FEW_SHOT_EXEMPLAR = {
     ],
 }
 
+_REGISTER_FEW_SHOT_EXEMPLAR = {
+    "technical_name": "paper_register",
+    "display_name": "Paper Register",
+    "depends": ["base", "mail", "hr"],
+    "models": [
+        {
+            "model": "x_paper_register",
+            "description": "Paper Register",
+            "mode": "new",
+            "fields": [
+                {"name": "x_name", "ttype": "char", "string": "Name", "required": True},
+                {
+                    "name": "x_employee_id",
+                    "ttype": "many2one",
+                    "relation": "hr.employee",
+                    "string": "Employee",
+                    "required": True,
+                },
+                {"name": "x_purpose", "ttype": "char", "string": "Purpose", "required": True},
+                {
+                    "name": "x_time_in",
+                    "ttype": "datetime",
+                    "string": "Time in",
+                    "required": True,
+                },
+                {"name": "x_time_out", "ttype": "datetime", "string": "Time out"},
+            ],
+        }
+    ],
+    "smart_buttons": [],
+    "automations": [],
+    "anti_patterns": [
+        "Do NOT add party/line satellites or inherit crm.lead / account.move",
+        "Do NOT invent a second Contacts app",
+        "Do NOT add x_company_id or x_currency_id unless the brief named them",
+        "Do NOT relabel time in/out as check-in/check-out unless the brief said check-in",
+        "One x_* header — fill the stated columns; do not architect an ERP",
+        "Duration on_time uses the header datetime, never create_date",
+    ],
+}
 
-def few_shot_exemplar_json(*, max_chars: int = 6500) -> str:
+
+def few_shot_exemplar_json(*, max_chars: int = 6500, document_shape: str | None = None) -> str:
+    if document_shape == "register":
+        return json.dumps(_REGISTER_FEW_SHOT_EXEMPLAR, indent=None)[:max_chars]
     return json.dumps(_FEW_SHOT_EXEMPLAR, indent=None)[:max_chars]
 
 
@@ -444,6 +505,7 @@ def llm_emit_missing_scaffold_models(
         "Fee-earner/counsel M2Os must relation the staff model, not res.users. "
         "Party/role-link models must NOT set is_workflow.\n"
         + MODEL_CREATION_RULES,
+        user_prompt=user_prompt,
     )
     prompt = (
         f"User request:\n{user_prompt}\n\n"
@@ -510,6 +572,14 @@ _CORE_SCAFFOLD_LEAF_KEYS = (
     "trust",
 )
 
+_PACK_SCAFFOLD_LEAF_KEYS: dict[str, tuple[str, ...]] = {
+    "law_firm": ("matter",),
+    "retail_supermarket": ("staff", "compliance", "deposit"),
+    "oil_gas_operations": ("facility", "asset", "work_order", "permit", "staff", "compliance"),
+    "hospital": ("doctor", "staff", "compliance", "deposit"),
+    "clinic": ("doctor", "staff", "compliance"),
+}
+
 
 def seed_missing_core_scaffold_models(
     draft: dict[str, Any],
@@ -519,6 +589,7 @@ def seed_missing_core_scaffold_models(
 
     Generation-gap warnings fire only when merge_domain_pack adds these models.
     Seeding here preserves pack merge as field-upgrade only — no gap warnings.
+    Only seeds models that exist in the matched pack scaffold (never cross-industry).
     """
     notes: list[str] = []
     have = {
@@ -531,11 +602,13 @@ def seed_missing_core_scaffold_models(
         for m in (scaffold.get("models") or [])
         if isinstance(m, dict) and m.get("model")
     }
+    pack_id = str(scaffold.get("domain_pack") or "")
+    allowed_keys = _PACK_SCAFFOLD_LEAF_KEYS.get(pack_id, ("staff", "compliance", "deposit"))
     for mid, sm in scaffold_by_id.items():
         if mid in have:
             continue
         leaf = mid.replace("x_", "")
-        if not any(k in leaf for k in _CORE_SCAFFOLD_LEAF_KEYS):
+        if not any(k in leaf for k in allowed_keys):
             continue
         seeded = copy.deepcopy(sm)
         seeded["source"] = "scaffold_core_seed"
@@ -547,52 +620,47 @@ def seed_missing_core_scaffold_models(
     return draft, notes
 
 
-_CORE_SCAFFOLD_LEAF_KEYS = (
-    "attorney",
-    "doctor",
-    "staff",
-    "bill",
-    "invoice",
-    "compliance",
-    "deposit",
-    "trust",
-)
-
-
-def seed_missing_core_scaffold_models(
-    draft: dict[str, Any],
-    scaffold: dict[str, Any],
-) -> tuple[dict[str, Any], list[str]]:
-    """Pre-merge deterministic floor for core ops masters the LLM still omitted.
-
-    Generation-gap warnings fire only when merge_domain_pack adds these models.
-    Seeding here preserves pack merge as field-upgrade only — no gap warnings.
-    """
+def strip_invalid_relational_keys(draft: dict[str, Any]) -> list[str]:
+    """Remove relation/relation_field on non-relational field types."""
     notes: list[str] = []
-    have = {
-        str(m.get("model"))
-        for m in (draft.get("models") or [])
-        if isinstance(m, dict) and m.get("model")
-    }
-    scaffold_by_id = {
-        str(m["model"]): m
-        for m in (scaffold.get("models") or [])
-        if isinstance(m, dict) and m.get("model")
-    }
-    for mid, sm in scaffold_by_id.items():
-        if mid in have:
+    rel_types = {"many2one", "one2many", "many2many", "reference"}
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict):
             continue
-        leaf = mid.replace("x_", "")
-        if not any(k in leaf for k in _CORE_SCAFFOLD_LEAF_KEYS):
+        mid = str(model.get("model") or "")
+        for field in model.get("fields") or []:
+            if not isinstance(field, dict):
+                continue
+            ttype = str(field.get("ttype") or "")
+            if ttype in rel_types:
+                continue
+            fname = str(field.get("name") or "")
+            if field.pop("relation", None) is not None:
+                notes.append(f"quality: stripped relation on {mid}.{fname} ({ttype})")
+            if field.pop("relation_field", None) is not None:
+                notes.append(f"quality: stripped relation_field on {mid}.{fname} ({ttype})")
+    return notes
+
+
+def repair_company_fk_targets(draft: dict[str, Any]) -> list[str]:
+    """x_company_id must point at res.company, never a parallel x_company model."""
+    notes: list[str] = []
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict):
             continue
-        seeded = copy.deepcopy(sm)
-        seeded["source"] = "scaffold_core_seed"
-        draft.setdefault("models", []).append(seeded)
-        have.add(mid)
-        notes.append(
-            f"quality: seeded core scaffold model {mid} before pack merge (LLM omitted)"
-        )
-    return draft, notes
+        mid = str(model.get("model") or "")
+        for field in model.get("fields") or []:
+            if not isinstance(field, dict):
+                continue
+            if str(field.get("name") or "") != "x_company_id":
+                continue
+            if str(field.get("ttype") or "") != "many2one":
+                continue
+            rel = str(field.get("relation") or "")
+            if rel and rel != "res.company":
+                field["relation"] = "res.company"
+                notes.append(f"quality: fixed {mid}.x_company_id → res.company (was {rel})")
+    return notes
 
 
 def min_fields_for_ambition(ambition: str, *, workflow: bool = False) -> int:
@@ -752,9 +820,22 @@ def llm_deepen_model_fields(
         + MODEL_CREATION_RULES
         + "\nNever add hollow catalog models (type/tag/stage/priority name+code only). "
         "Deepen listed thin models first. Triggers/automations are out of scope here.",
+        user_prompt=user_prompt,
     )
+    from app.ai_domain_briefing import attach_domain_briefing, briefing_prompt_block
+
+    briefing = attach_domain_briefing(draft, user_prompt=user_prompt)
+    brief_block = briefing_prompt_block(briefing)
+    try:
+        from app.ai_operator_brief import prompt_for_generators
+
+        user_block = prompt_for_generators(user_prompt, draft)
+    except Exception:
+        user_block = user_prompt
     prompt = (
-        f"User request (ambition={ambition}):\n{user_prompt}\n\n"
+        f"{brief_block}\n\n" if brief_block else ""
+    ) + (
+        f"User request (ambition={ambition}):\n{user_block}\n\n"
         f"Thin / hollow models to deepen (min ~{min_fields} fields):\n"
         f"{json.dumps(thin, default=str)[:5000]}\n\n"
         f"All models:\n{json.dumps([m.get('model') for m in _models(draft)])}\n"
@@ -937,6 +1018,14 @@ def repair_orphan_relations(draft: dict[str, Any]) -> list[str]:
             for mid in plan.get("models") or []:
                 if mid:
                     reuse_known.add(str(mid))
+    catalog = draft.get("_connection_catalog")
+    if isinstance(catalog, dict):
+        for mid in catalog.get("available_models") or []:
+            if mid:
+                reuse_known.add(str(mid))
+        for entry in catalog.get("stock") or []:
+            if isinstance(entry, dict) and entry.get("model"):
+                reuse_known.add(str(entry["model"]))
     known = draft_ids | set(_BUILTIN_MODELS) | reuse_known
     for m in draft.get("models") or []:
         if not isinstance(m, dict):
@@ -955,6 +1044,10 @@ def repair_orphan_relations(draft: dict[str, Any]) -> list[str]:
                 new_fields.append(cleaned)
                 continue
             rel_s = str(rel)
+            if not rel_s.startswith("x_"):
+                # Stock Community relations are never spec orphans.
+                new_fields.append(f)
+                continue
             if rel_s in known:
                 new_fields.append(f)
                 continue
@@ -1337,6 +1430,13 @@ def filter_redundant_missing_models(
         r"matter_type|client_contact|^client$|^customer$|^contact$)",
         re.I,
     )
+    from app.ai_stock_first import (
+        STAFF_ROLE_LEAVES,
+        STOCK_CLONE_LEAVES,
+        is_reuse_rich,
+        stock_ops_reused,
+    )
+
     out: list[dict[str, Any]] = []
     for row in missing:
         if not isinstance(row, dict):
@@ -1347,6 +1447,20 @@ def filter_redundant_missing_models(
         leaf = mid.replace("x_", "")
         if catalog_leaf.search(leaf):
             continue
+        if is_reuse_rich(draft):
+            if leaf in STAFF_ROLE_LEAVES:
+                continue
+            ops = stock_ops_reused(draft)
+            skip_clone = False
+            for stock, leaves in STOCK_CLONE_LEAVES.items():
+                if stock in ops and leaf in leaves:
+                    skip_clone = True
+                    break
+            if skip_clone:
+                continue
+            pack_keep = {str(x) for x in (draft.get("_pack_model_ids") or []) if x}
+            if pack_keep and mid not in pack_keep and not mid.endswith("_line") and not mid.endswith("_party"):
+                continue
         if billing and leaf in {"invoice", "bill", "charge"}:
             continue
         if leaf in {"client", "customer", "contact", "client_contact"} and has_partner_client:
@@ -1658,24 +1772,35 @@ def scrub_placeholder_selections(draft: dict[str, Any]) -> list[str]:
     return notes
 
 
+def odoo_o2m_field_name(child_model: str) -> str:
+    """Legal ``x_*_ids`` name — stock models must not keep dots (``x_calendar.event_ids``)."""
+    leaf = str(child_model or "").replace("x_", "", 1).replace(".", "_")
+    leaf = re.sub(r"[^a-zA-Z0-9_]", "_", leaf).strip("_")
+    return f"x_{leaf or 'related'}_ids"
+
+
 def ensure_parent_o2ms_for_children(
     draft: dict[str, Any], *, max_o2m_per_parent: int = 8
 ) -> list[str]:
-    """Add missing one2many on parents for each child M2O pointing at them."""
+    """Add missing one2many on custom parents for each child M2O pointing at them."""
     notes: list[str] = []
     by_id = {
         str(m["model"]): m
         for m in (draft.get("models") or [])
         if isinstance(m, dict) and m.get("model")
     }
-    # Prefer workflow / primary transaction as parents to decorate
+    # Only custom x_* headers. Stock inherit (sale.order, project.task) is not a
+    # parent to decorate — inverse of inherit x_matter_id lives on the residual.
     parents = [
         m
         for m in by_id.values()
-        if m.get("is_workflow")
-        or any(
-            k in str(m.get("model") or "")
-            for k in ("matter", "order", "job", "case", "project", "workorder")
+        if str(m.get("model") or "").startswith("x_")
+        and (
+            m.get("is_workflow")
+            or any(
+                k in str(m.get("model") or "")
+                for k in ("matter", "order", "job", "case", "project", "workorder")
+            )
         )
     ]
     if not parents:
@@ -1692,10 +1817,34 @@ def ensure_parent_o2ms_for_children(
         existing_names = {
             str(f.get("name")) for f in fields if isinstance(f, dict)
         }
+        # Drop illegal dotted O2M names left by earlier passes
+        cleaned: list[dict[str, Any]] = []
+        for f in fields:
+            if not isinstance(f, dict):
+                continue
+            fname = str(f.get("name") or "")
+            if f.get("ttype") == "one2many" and "." in fname:
+                notes.append(f"quality: dropped illegal O2M name {pid}.{fname}")
+                existing_rels.discard(str(f.get("relation") or ""))
+                existing_names.discard(fname)
+                continue
+            cleaned.append(f)
+        fields = cleaned
+        existing_names = {str(f.get("name")) for f in fields if isinstance(f, dict)}
+        existing_rels = {
+            str(f.get("relation"))
+            for f in fields
+            if isinstance(f, dict) and f.get("ttype") == "one2many"
+        }
         added = 0
         for child in by_id.values():
             cid = str(child["model"])
             if cid == pid or cid in existing_rels:
+                continue
+            # Stock inherit (sale.order, calendar.event) is a smart-button
+            # target. Nested O2M lists would emit x_name, which those models
+            # do not have. Inverse M2O already lives on the inherit.
+            if not cid.startswith("x_"):
                 continue
             inverse = None
             for f in child.get("fields") or []:
@@ -1708,17 +1857,15 @@ def ensure_parent_o2ms_for_children(
                     break
             if not inverse:
                 continue
-            leaf = cid.replace("x_", "")
-            fname = f"x_{leaf}_ids"
+            fname = odoo_o2m_field_name(cid)
             if fname in existing_names:
-                # Same name, different relation — skip
                 continue
-            label = str(child.get("description") or leaf).split("/")[0].strip()
+            label = str(child.get("description") or cid).split("/")[0].strip()
             fields.append(
                 {
                     "name": fname,
                     "ttype": "one2many",
-                    "string": label or leaf,
+                    "string": label or cid,
                     "relation": cid,
                     "relation_field": inverse,
                     "source": "quality_o2m",
@@ -1730,8 +1877,56 @@ def ensure_parent_o2ms_for_children(
             notes.append(f"quality: added O2M {pid}.{fname} → {cid}.{inverse}")
             if len(existing_rels) >= max_o2m_per_parent:
                 break
-        if added:
+        if added or len(cleaned) != len(list(parent.get("fields") or [])):
             parent["fields"] = fields
+    notes.extend(drop_illegal_o2ms(draft))
+    return notes
+
+
+def drop_illegal_o2ms(draft: dict[str, Any]) -> list[str]:
+    """Drop dotted O2M names and inverses whose FK is missing on the related model."""
+    notes: list[str] = []
+    by_id = {
+        str(m["model"]): m
+        for m in (draft.get("models") or [])
+        if isinstance(m, dict) and m.get("model")
+    }
+    for mid, model in by_id.items():
+        kept: list[dict[str, Any]] = []
+        changed = False
+        for field in model.get("fields") or []:
+            if not isinstance(field, dict):
+                continue
+            if field.get("ttype") != "one2many":
+                kept.append(field)
+                continue
+            fname = str(field.get("name") or "")
+            child_id = str(field.get("relation") or "")
+            inverse = str(field.get("relation_field") or "")
+            if "." in fname:
+                notes.append(f"quality: dropped illegal O2M name {mid}.{fname}")
+                changed = True
+                continue
+            child = by_id.get(child_id)
+            if child and inverse:
+                child_fk = next(
+                    (
+                        f
+                        for f in (child.get("fields") or [])
+                        if isinstance(f, dict) and str(f.get("name") or "") == inverse
+                    ),
+                    None,
+                )
+                if not child_fk:
+                    notes.append(
+                        f"quality: dropped O2M {mid}.{fname} "
+                        f"(missing inverse {child_id}.{inverse})"
+                    )
+                    changed = True
+                    continue
+            kept.append(field)
+        if changed:
+            model["fields"] = kept
     return notes
 
 
@@ -1883,6 +2078,33 @@ def cap_partner_smart_buttons(draft: dict[str, Any], *, max_partner: int = 4) ->
     buttons = draft.get("smart_buttons")
     if not isinstance(buttons, list):
         return notes
+    notebook_children = {
+        str(f.get("relation") or "")
+        for m in (draft.get("models") or [])
+        if isinstance(m, dict)
+        and str(m.get("model") or "").startswith("x_")
+        and str(m.get("mode") or "new") != "inherit"
+        for f in (m.get("fields") or [])
+        if isinstance(f, dict)
+        and f.get("ttype") == "one2many"
+        and str(f.get("relation") or "").startswith("x_")
+    }
+    pruned = [
+        b
+        for b in buttons
+        if not (
+            isinstance(b, dict)
+            and b.get("on_model") == "res.partner"
+            and str(b.get("related_model") or "") in notebook_children
+        )
+    ]
+    if len(pruned) != len(buttons):
+        dropped_nb = len(buttons) - len(pruned)
+        draft["smart_buttons"] = pruned
+        buttons = pruned
+        notes.append(
+            f"quality: dropped {dropped_nb} Contacts notebook-child smart button(s)"
+        )
     partner_btns = [
         b
         for b in buttons
@@ -1909,6 +2131,8 @@ def cap_partner_smart_buttons(draft: dict[str, Any], *, max_partner: int = 4) ->
             s += 30
         if leaf.endswith("line") or "line" in leaf:
             s -= 20
+        if leaf.endswith("party") or "party" in leaf:
+            s -= 40
         if m.get("source") == "depth_seed":
             s -= 5
         return (-s, mid)
@@ -2052,46 +2276,55 @@ def drop_redundant_role_name_fields(draft: dict[str, Any]) -> list[str]:
 def dedupe_redundant_partner_fields(draft: dict[str, Any]) -> list[str]:
     """Canonicalize res.partner links to x_partner_id (views/buttons stay in sync)."""
     notes: list[str] = []
+    _LABEL_ALIASES = frozenset({"customer", "contact", "partner", "client"})
+    _NAME_ALIASES = frozenset(
+        {"x_partner_id", "x_client_id", "x_customer_id", "x_contact_id"}
+    )
+
+    def _is_partner_alias(field: dict[str, Any], *, model_name: str) -> bool:
+        if field.get("relation") != "res.partner":
+            return False
+        name = str(field.get("name") or "")
+        if name in _NAME_ALIASES:
+            return True
+        # Flash often names the M2O after the model (x_punch_card → Customer).
+        if name and name == model_name:
+            return True
+        label = str(field.get("string") or "").strip().lower()
+        return label in _LABEL_ALIASES
+
     for m in draft.get("models") or []:
         if not isinstance(m, dict):
             continue
+        mid = str(m.get("model") or "")
         fields = [f for f in (m.get("fields") or []) if isinstance(f, dict)]
-        aliases = [
-            f
-            for f in fields
-            if f.get("relation") == "res.partner"
-            and str(f.get("name") or "")
-            in {"x_partner_id", "x_client_id", "x_customer_id"}
-        ]
+        aliases = [f for f in fields if _is_partner_alias(f, model_name=mid)]
         if not aliases:
             continue
         label = next(
-            (
-                str(f.get("string") or "")
-                for f in aliases
-                if f.get("string")
-            ),
+            (str(f.get("string") or "") for f in aliases if f.get("string")),
             "Contact",
         )
         kept: list[dict[str, Any]] = []
         wrote_partner = False
         renamed = False
+        dropped_names: list[str] = []
         for f in fields:
             name = str(f.get("name") or "")
-            if (
-                f.get("relation") == "res.partner"
-                and name in {"x_partner_id", "x_client_id", "x_customer_id"}
-            ):
+            if _is_partner_alias(f, model_name=mid):
                 if wrote_partner:
                     renamed = True
+                    dropped_names.append(name)
                     continue
                 if name != "x_partner_id":
                     renamed = True
+                    dropped_names.append(name)
                 kept.append(
                     {
                         **f,
                         "name": "x_partner_id",
                         "string": f.get("string") or label,
+                        "relation": "res.partner",
                     }
                 )
                 wrote_partner = True
@@ -2100,32 +2333,42 @@ def dedupe_redundant_partner_fields(draft: dict[str, Any]) -> list[str]:
         if renamed or any(f.get("name") != "x_partner_id" for f in aliases):
             m["fields"] = kept
             notes.append(
-                f"quality: normalized partner link on {m.get('model')} → x_partner_id"
+                f"quality: normalized partner link on {mid} → x_partner_id"
+                + (f" (dropped {', '.join(dropped_names)})" if dropped_names else "")
             )
-            # Fix smart buttons / view arches that still point at old alias
             for btn in draft.get("smart_buttons") or []:
                 if (
                     isinstance(btn, dict)
-                    and btn.get("related_model") == m.get("model")
-                    and btn.get("relation_field") in {"x_client_id", "x_customer_id"}
+                    and btn.get("related_model") == mid
+                    and btn.get("relation_field") in (_NAME_ALIASES | {mid})
                 ):
                     btn["relation_field"] = "x_partner_id"
             for v in draft.get("views") or []:
-                if not isinstance(v, dict) or v.get("model") != m.get("model"):
+                if not isinstance(v, dict) or v.get("model") != mid:
                     continue
                 arch = str(v.get("arch") or "")
-                if "x_client_id" in arch or "x_customer_id" in arch:
-                    v["arch"] = (
-                        arch.replace("x_client_id", "x_partner_id").replace(
-                            "x_customer_id", "x_partner_id"
-                        )
-                    )
+                new_arch = arch
+                for old in dropped_names:
+                    if old and old != "x_partner_id":
+                        new_arch = new_arch.replace(old, "x_partner_id")
+                for old in ("x_client_id", "x_customer_id", "x_contact_id"):
+                    new_arch = new_arch.replace(old, "x_partner_id")
+                if new_arch != arch:
+                    v["arch"] = new_arch
     return notes
 
 
 def fill_empty_selection_fields(draft: dict[str, Any]) -> list[str]:
     """Give empty selection fields a usable default set."""
     notes: list[str] = []
+    from app.ai_domain_briefing import briefing_from_dict
+    from app.ai_selection import serialize_selection
+
+    brief = briefing_from_dict(
+        draft.get("_domain_briefing")
+        if isinstance(draft.get("_domain_briefing"), dict)
+        else None
+    )
     defaults = {
         "x_status": (
             "[('draft','Draft'),('open','Open'),('done','Done'),"
@@ -2140,6 +2383,7 @@ def fill_empty_selection_fields(draft: dict[str, Any]) -> list[str]:
     for m in draft.get("models") or []:
         if not isinstance(m, dict):
             continue
+        mid = str(m.get("model") or "")
         for f in m.get("fields") or []:
             if not isinstance(f, dict) or f.get("ttype") != "selection":
                 continue
@@ -2147,6 +2391,22 @@ def fill_empty_selection_fields(draft: dict[str, Any]) -> list[str]:
                 continue
             name = str(f.get("name") or "")
             sel = defaults.get(name)
+            if (
+                not sel
+                and brief
+                and brief.equipment_types
+                and any(tok in mid for tok in ("equipment", "asset", "gear"))
+                and "type" in name
+            ):
+                sel = serialize_selection(brief.equipment_types)
+            if (
+                not sel
+                and brief
+                and brief.rate_uoms
+                and any(tok in mid for tok in ("rate", "tariff"))
+                and any(tok in name for tok in ("uom", "unit", "rate_type"))
+            ):
+                sel = serialize_selection(brief.rate_uoms)
             if not sel and "status" in name:
                 sel = defaults["x_status"]
             if not sel and "rate" in name:
@@ -2209,17 +2469,20 @@ def deepen_thin_ops_children(draft: dict[str, Any]) -> list[str]:
         if not isinstance(m, dict):
             continue
         mid = str(m.get("model") or "")
+        if not mid.startswith("x_") or str(m.get("mode") or "") == "inherit":
+            continue
         leaf = mid.replace("x_", "")
         names = {
             str(f.get("name"))
             for f in (m.get("fields") or [])
             if isinstance(f, dict)
         }
+        # Join tables (party/role) are not ops children — a role column is not a workflow.
+        if any(k in leaf for k in ("party", "role_link", "participant", "stakeholder")):
+            continue
         wants_status = any(
-            k in leaf for k in ("task", "compliance", "party", "milestone")
-        ) or any(
-            n in names for n in ("x_date_deadline", "x_role")
-        )
+            k in leaf for k in ("task", "compliance", "milestone")
+        ) or "x_date_deadline" in names
         if not wants_status or "x_status" in names:
             continue
         m.setdefault("fields", []).append(
@@ -2494,17 +2757,16 @@ def remap_staff_fks_from_users(draft: dict[str, Any]) -> list[str]:
     return notes
 
 
-def is_party_link_model(model: dict[str, Any]) -> bool:
-    """Party/role-link models are relational join rows, not header workflows."""
-    if not isinstance(model, dict):
-        return False
-    mid = str(model.get("model") or "")
-    leaf = mid.replace("x_", "")
-    desc = str(model.get("description") or "").lower()
-    return any(
-        k in leaf or k in desc
-        for k in ("party", "role_link", "participant", "stakeholder")
-    )
+def is_embedded_line_model(model: dict[str, Any] | str) -> bool:
+    """Nested document line (sale.order.line): scalar row, not a header.
+
+    Billing ``x_status`` stays a column. No statusbar, chatter, kanban, or Confirm.
+    """
+    if isinstance(model, dict):
+        mid = str(model.get("model") or "")
+    else:
+        mid = str(model or "")
+    return mid.endswith("_line")
 
 
 def is_party_link_model(model: dict[str, Any]) -> bool:
@@ -2521,7 +2783,7 @@ def is_party_link_model(model: dict[str, Any]) -> bool:
 
 
 def demote_spurious_link_workflows(draft: dict[str, Any]) -> list[str]:
-    """Party/role-link models are not workflows — drop is_workflow + generic status kanban."""
+    """Party/role-link models are not workflows — drop is_workflow + generic status."""
     notes: list[str] = []
     generic_status = {
         "draft",
@@ -2530,11 +2792,11 @@ def demote_spurious_link_workflows(draft: dict[str, Any]) -> list[str]:
         "cancelled",
     }
     for m in draft.get("models") or []:
-        if not isinstance(m, dict) or not m.get("is_workflow"):
+        if not isinstance(m, dict):
             continue
-        mid = str(m.get("model") or "")
         if not is_party_link_model(m):
             continue
+        mid = str(m.get("model") or "")
         status = next(
             (
                 f
@@ -2547,26 +2809,42 @@ def demote_spurious_link_workflows(draft: dict[str, Any]) -> list[str]:
             re.findall(r"\(\s*'([^']+)'\s*,", str((status or {}).get("selection") or ""))
         )
         # Domain-specific status (pending/cleared/…) → keep workflow; generic → demote
-        if not keys or keys <= generic_status:
+        if keys and not (keys <= generic_status):
+            continue
+        changed = False
+        if m.get("is_workflow"):
             m["is_workflow"] = False
-            notes.append(f"quality: demoted link model {mid} from is_workflow")
-            views = draft.get("views")
-            if isinstance(views, list):
-                draft["views"] = [
-                    v
-                    for v in views
-                    if not (
-                        isinstance(v, dict)
-                        and v.get("model") == mid
-                        and v.get("type") == "kanban"
-                    )
-                ]
-            for a in draft.get("actions") or []:
-                if isinstance(a, dict) and a.get("model") == mid:
-                    mode = str(a.get("view_mode") or "list,form")
-                    a["view_mode"] = ",".join(
-                        p for p in mode.split(",") if p.strip() != "kanban"
-                    ) or "list,form"
+            changed = True
+        if isinstance(m.get("state_field"), dict):
+            m.pop("state_field", None)
+            changed = True
+        if status is not None:
+            m["fields"] = [
+                f
+                for f in (m.get("fields") or [])
+                if not (isinstance(f, dict) and f.get("name") == "x_status")
+            ]
+            changed = True
+        if not changed:
+            continue
+        notes.append(f"quality: demoted link model {mid} from is_workflow")
+        views = draft.get("views")
+        if isinstance(views, list):
+            draft["views"] = [
+                v
+                for v in views
+                if not (
+                    isinstance(v, dict)
+                    and v.get("model") == mid
+                    and v.get("type") == "kanban"
+                )
+            ]
+        for a in draft.get("actions") or []:
+            if isinstance(a, dict) and a.get("model") == mid:
+                mode = str(a.get("view_mode") or "list,form")
+                a["view_mode"] = ",".join(
+                    p for p in mode.split(",") if p.strip() != "kanban"
+                ) or "list,form"
     return notes
 
 
@@ -2651,10 +2929,14 @@ def scrub_automation_filter_domains(draft: dict[str, Any]) -> list[str]:
 
 
 def ensure_required_on_name_fields(draft: dict[str, Any]) -> list[str]:
-    """x_name should be required on substantive models."""
+    """x_name should be required on new x_* models — never on stock inherits."""
     notes: list[str] = []
     for m in draft.get("models") or []:
         if not isinstance(m, dict):
+            continue
+        mid = str(m.get("model") or "")
+        mode = str(m.get("mode") or "new")
+        if mode == "inherit" and not mid.startswith("x_"):
             continue
         for f in m.get("fields") or []:
             if (
@@ -2687,6 +2969,10 @@ def ensure_min_workflows(draft: dict[str, Any], ambition: str) -> list[str]:
         leaf = mid.replace("x_", "")
         # Never promote party/role-link models into workflows
         if is_party_link_model(m):
+            continue
+        from app.ai_odoo_app_bar import looks_like_register
+
+        if looks_like_register(mid):
             continue
         names = {
             str(f.get("name") or "")
@@ -2904,6 +3190,8 @@ def repair_draft_integrity(draft: dict[str, Any], *, ambition: str = "standard")
     """Deterministic integrity + shape repairs after LLM generation."""
     notes: list[str] = []
     notes.extend(strip_internal_scaffold(draft))
+    notes.extend(strip_invalid_relational_keys(draft))
+    notes.extend(repair_company_fk_targets(draft))
     notes.extend(dedupe_fields_by_name(draft))
     notes.extend(gate_llm_field_quality(draft))
     notes.extend(normalize_selection_field_shapes(draft))
@@ -2967,7 +3255,7 @@ def repair_draft_integrity(draft: dict[str, Any], *, ambition: str = "standard")
     notes.extend(purge_ghost_ui(draft))
     notes.extend(refresh_forms_missing_relational_fields(draft))
     prompt = str(draft.get("_user_prompt") or "")
-    if prompt.strip():
+    if prompt.strip() and not str(draft.get("domain_pack") or ""):
         from app.ai_domain_nouns import expand_uncovered_noun_models
 
         reuse = []
@@ -3017,8 +3305,7 @@ __all__ = [
     "seed_missing_core_scaffold_models",
     "run_model_quality_pass",
     "repair_draft_integrity",
-    "is_party_link_model",
-    "demote_spurious_link_workflows",
+    "is_embedded_line_model",
     "is_party_link_model",
     "demote_spurious_link_workflows",
     "repair_orphan_relations",

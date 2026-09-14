@@ -217,6 +217,8 @@ export type Connection = {
   upgrade_detected_at?: string | null;
   write_mode: "observer" | "standard" | "production";
   writes_paused?: boolean;
+  /** odoo.sh / online vs self-hosted — used for Online capability callouts. */
+  hosting?: string | null;
   created_at: string | null;
   updated_at: string | null;
   capabilities?: CapabilityMatrix | null;
@@ -918,6 +920,33 @@ function isConfirmationDetail(detail: unknown): detail is ConfirmationRequiredDe
   );
 }
 
+export class ClarificationRequiredError extends Error {
+  readonly clarification: import("@/lib/studio-session").StudioClarification | null;
+  readonly status = 409;
+
+  constructor(detail: {
+    message?: string;
+    clarification?: import("@/lib/studio-session").StudioClarification | null;
+  }) {
+    super(detail.message ?? "Clarification required before generation");
+    this.name = "ClarificationRequiredError";
+    this.clarification = detail.clarification ?? null;
+  }
+}
+
+function isClarificationRequiredDetail(
+  detail: unknown,
+): detail is {
+  message?: string;
+  clarification?: import("@/lib/studio-session").StudioClarification | null;
+} {
+  return (
+    typeof detail === "object" &&
+    detail !== null &&
+    "clarification" in detail
+  );
+}
+
 export class FeatureGatedError extends Error {
   featureKey: string;
   planId?: string;
@@ -938,6 +967,9 @@ function formatDetailMessage(detail: unknown): string {
     if (typeof obj.message === "string") return obj.message;
     if (typeof obj.warning === "string") return obj.warning;
     if (typeof obj.detail === "string") return obj.detail;
+    if (Array.isArray(obj.findings) && obj.findings.length) {
+      return obj.findings.map(String).join("; ");
+    }
     try {
       return JSON.stringify(detail);
     } catch {
@@ -1164,6 +1196,9 @@ async function request<T>(path: string, init?: ApiRequestInit): Promise<T> {
     if (isConfirmationDetail(detail)) {
       throw new ConfirmationRequiredError(detail, res.status);
     }
+    if (res.status === 409 && isClarificationRequiredDetail(detail)) {
+      throw new ClarificationRequiredError(detail);
+    }
     if (
       typeof detail === "object" &&
       detail !== null &&
@@ -1171,7 +1206,11 @@ async function request<T>(path: string, init?: ApiRequestInit): Promise<T> {
     ) {
       throw new FeatureGatedError(detail as { message?: string; feature_key?: string; plan_id?: string });
     }
-    throw new Error(formatDetailMessage(detail) || `Request failed (${res.status})`);
+    throw new Error(
+      res.status === 404
+        ? `${formatDetailMessage(detail) || "Not Found"} (${(init?.method || "GET").toUpperCase()} ${path})`
+        : formatDetailMessage(detail) || `Request failed (${res.status})`,
+    );
   }
   if (res.status === 204) {
     return undefined as T;
@@ -1264,7 +1303,13 @@ export const api = {
     request<void>(`/api/auth/keys/${keyId}`, { method: "DELETE" }),
   listAuditLogs: (limit = 100) =>
     request<AuditLogRow[]>(`/api/audit/logs?limit=${limit}`),
-  getJob: (jobId: string) => request<JobRow>(`/api/jobs/${jobId}`),
+  getJob: (jobId: string) =>
+    request<JobRow>(`/api/jobs/${jobId}`, { timeoutMs: 25_000 }),
+  getJobArtifact: (jobId: string) =>
+    request<{ zip_base64?: string | null; elite_zip_base64?: string | null }>(
+      `/api/jobs/${jobId}/artifact`,
+      { timeoutMs: 120_000 },
+    ),
   listAppTemplates: () => request<AppTemplate[]>("/api/apps/templates"),
   exportLibraryModule: (
     body: {
@@ -1322,6 +1367,7 @@ export const api = {
       job_id?: string | null;
     }>("/api/ai/draft-module", {
       method: "POST",
+      timeoutMs: 660_000,
       body: JSON.stringify({
         prompt,
         connection_id: opts?.connection_id,
@@ -1339,6 +1385,106 @@ export const api = {
         async_job: opts?.async_job ?? false,
       }),
     }),
+  createStudioSession: (body: { prompt: string; connection_id?: string; feature?: string }) =>
+    request<import("@/lib/studio-session").StudioSession>("/api/ai/sessions", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getStudioSession: (sessionId: string) =>
+    request<import("@/lib/studio-session").StudioSession>(`/api/ai/sessions/${sessionId}`),
+  clarifyStudioSession: (
+    sessionId: string,
+    body: {
+      merge_key: string;
+      answer_id?: string;
+      answer_text?: string;
+      understanding?: import("@/lib/studio-session").StudioUnderstanding;
+    },
+  ) =>
+    request<import("@/lib/studio-session").StudioSession>(
+      `/api/ai/sessions/${sessionId}/clarify`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
+  generateStudioSession: (sessionId: string, force = false) =>
+    request<import("@/lib/studio-session").StudioSession & { job_id?: string }>(
+      `/api/ai/sessions/${sessionId}/generate`,
+      {
+        method: "POST",
+        body: JSON.stringify({ force }),
+      },
+    ),
+  refineStudioSession: (sessionId: string, instruction: string) =>
+    request<{
+      ok: boolean;
+      session: import("@/lib/studio-session").StudioSession;
+      patch_summary?: string;
+      highlighted_field_ids?: string[];
+      needs_clarification?: import("@/lib/studio-session").StudioClarification;
+      assistant_reply?: string;
+      error?: string;
+    }>(`/api/ai/sessions/${sessionId}/refine`, {
+      method: "POST",
+      body: JSON.stringify({ instruction }),
+    }),
+  syncStudioJob: (sessionId: string) =>
+    request<import("@/lib/studio-session").StudioSession>(
+      `/api/ai/sessions/${sessionId}/sync-job`,
+      { method: "POST" },
+    ),
+  reverifyOptionAAuthoring: async (body: {
+    connection_id?: string;
+    session_id?: string;
+    draft?: Record<string, unknown>;
+  }) => {
+    type Out = {
+      ok: boolean;
+      draft: Record<string, unknown>;
+      status?: string;
+      findings?: Array<{ code?: string; message?: string }>;
+      host_install?: Array<{ module: string; label: string; models: string[]; message?: string }>;
+      message?: string;
+      session?: import("@/lib/studio-session").StudioSession;
+    };
+    if (body.session_id) {
+      try {
+        return await request<Out>(`/api/ai/sessions/${body.session_id}/reverify-authoring`, {
+          method: "POST",
+          timeoutMs: 120_000,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "";
+        if (!/not found/i.test(msg)) throw err;
+      }
+    }
+    return request<Out>("/api/ai/option-a/reverify", {
+      method: "POST",
+      body: JSON.stringify(body),
+      timeoutMs: 120_000,
+    });
+  },
+  applyStudioSession: (
+    sessionId: string,
+    body: {
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+      skip_validate_live?: boolean;
+    },
+  ) =>
+    request<{
+      ok: boolean;
+      message: string;
+      root_menu_id?: number | null;
+      open_action_id?: number | null;
+      warnings?: string[];
+      session?: import("@/lib/studio-session").StudioSession;
+    }>(`/api/ai/sessions/${sessionId}/apply`, {
+      method: "POST",
+      timeoutMs: 660_000,
+      body: JSON.stringify(body),
+    }),
   enrichDraft: (body: {
     prompt: string;
     draft: Record<string, unknown>;
@@ -1354,6 +1500,7 @@ export const api = {
       note?: string;
     }>("/api/ai/enrich-draft", {
       method: "POST",
+      timeoutMs: 660_000,
       body: JSON.stringify({ ...body, async_job: body.async_job ?? true }),
     }),
   reapplyReusePlan: (body: {
@@ -1498,18 +1645,56 @@ export const api = {
       menus_created: number;
       smart_buttons: number;
       automations_created?: number;
+      root_menu_id?: number | null;
+      open_action_id?: number | null;
       skipped: string[];
       warnings: string[];
       message: string;
     }>(`/api/connections/${connectionId}/module-spec/apply`, {
       method: "POST",
       body: JSON.stringify(body),
+      timeoutMs: 660_000,
+    }),
+  seedModuleSpecWalkthrough: (
+    connectionId: string,
+    body: {
+      spec: Record<string, unknown>;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<{
+      ok: boolean;
+      created: Record<string, number>;
+      open_model: string | null;
+      open_record_id: number | null;
+      warnings: string[];
+      message: string;
+    }>(`/api/connections/${connectionId}/module-spec/seed-walkthrough`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      timeoutMs: 120_000,
     }),
   lintModuleSpecBlocks: (connectionId: string, spec: Record<string, unknown>) =>
     request<{ ok: boolean; blocks: Array<{ source_file?: string; issues?: { message: string }[] }> }>(
       `/api/connections/${connectionId}/module-spec/lint-blocks`,
       { method: "POST", body: JSON.stringify({ spec }) },
     ),
+  exportModuleSpecZip: (
+    connectionId: string,
+    body: { spec: Record<string, unknown>; odoo_major?: number | null },
+  ) =>
+    request<{
+      ok: boolean;
+      module?: string;
+      zip_base64?: string;
+      structural_zip?: { ok?: boolean; findings?: string[] };
+      odoo_major?: number;
+    }>(`/api/connections/${connectionId}/module-spec/export-zip`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      timeoutMs: 120_000,
+    }),
   exportModuleSpecSandbox: (
     connectionId: string,
     body: { spec: Record<string, unknown>; async_job?: boolean; odoo_major?: number | null },
@@ -1517,6 +1702,92 @@ export const api = {
     request<{ ok: boolean; job_id?: string; validation_id?: string; message?: string }>(
       `/api/connections/${connectionId}/module-spec/export-sandbox`,
       { method: "POST", body: JSON.stringify(body) },
+    ),
+  proveOptionA: (
+    connectionId: string,
+    body: {
+      spec: Record<string, unknown>;
+      odoo_major?: number | null;
+      structural_only?: boolean;
+    },
+  ) =>
+    request<{
+      ok: boolean;
+      draft?: Record<string, unknown>;
+      smoke?: Record<string, unknown>;
+      sandbox?: { ok?: boolean; message?: string; log_tail?: string };
+      score_0_10?: number;
+      go_live_ready?: boolean;
+      grain_label?: string;
+      done_bar?: Record<string, unknown>;
+      structural_only?: boolean;
+      message?: string;
+      validation_id?: string;
+      zip_base64?: string;
+      promote_ready?: boolean;
+      module?: string;
+      feedback_repair?: {
+        ok?: boolean;
+        applied?: boolean;
+        files?: string[];
+        deterministic?: boolean;
+        llm?: boolean;
+        gate_status?: string;
+        message?: string;
+        reason?: string;
+      };
+    }>(`/api/connections/${connectionId}/module-spec/option-a-prove`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      timeoutMs: 660_000,
+    }),
+  repairOptionAFeedback: (
+    connectionId: string,
+    body: {
+      spec: Record<string, unknown>;
+      error_text?: string;
+      operator_notes?: string;
+      retry_sandbox?: boolean;
+      odoo_major?: number | null;
+    },
+  ) =>
+    request<{
+      ok: boolean;
+      draft?: Record<string, unknown>;
+      message?: string;
+      feedback_repair?: {
+        ok?: boolean;
+        applied?: boolean;
+        files?: string[];
+        deterministic?: boolean;
+        llm?: boolean;
+        gate_status?: string;
+        message?: string;
+        reason?: string;
+      };
+      sandbox?: { ok?: boolean; message?: string; log_tail?: string };
+      smoke?: Record<string, unknown>;
+      validation_id?: string;
+      zip_base64?: string;
+      promote_ready?: boolean;
+    }>(`/api/connections/${connectionId}/module-spec/option-a-repair-feedback`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      timeoutMs: 660_000,
+    }),
+  goldInspect: (connectionId: string, goldId: string) =>
+    request<{
+      gold_id: string;
+      host_ready: boolean;
+      missing_depends: string[];
+      install_module?: string | null;
+      install_label?: string | null;
+      action_id?: number | null;
+      href?: string | null;
+      label?: string;
+      message?: string;
+    }>(
+      `/api/connections/${connectionId}/module-spec/gold-inspect?gold_id=${encodeURIComponent(goldId)}`,
     ),
   eliteModuleGate: (connectionId: string, spec: Record<string, unknown>) =>
     request<{
@@ -1545,6 +1816,134 @@ export const api = {
       body: JSON.stringify(body),
       timeoutMs: 660_000,
     }),
+  jobAutopilotContract: (connectionId: string) =>
+    request<JobAutopilotContract>(`/api/connections/${connectionId}/job-autopilot/contract`),
+  jobAutopilotPacket: (
+    connectionId: string,
+    body: {
+      prompt: string;
+      file_excerpts?: Array<{ filename: string; text: string }>;
+      country_code?: string | null;
+      company_name?: string | null;
+      use_llm?: boolean | null;
+    },
+  ) =>
+    request<JobAutopilotPacketOut>(`/api/connections/${connectionId}/job-autopilot/packet`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      timeoutMs: 120_000,
+    }),
+  jobAutopilotRun: (
+    connectionId: string,
+    body: {
+      prompt: string;
+      packet?: Record<string, unknown> | null;
+      spec?: Record<string, unknown> | null;
+      use_llm?: boolean | null;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<JobAutopilotResult | JobAutopilotQueued>(
+      `/api/connections/${connectionId}/job-autopilot/run`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+        timeoutMs: 120_000,
+      },
+    ),
+  jobAutopilotRunFiles: async (
+    connectionId: string,
+    body: {
+      prompt: string;
+      files: File[];
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+      use_llm?: boolean | null;
+    },
+  ) => {
+    const fd = new FormData();
+    fd.append("prompt", body.prompt);
+    fd.append("confirm_advanced", body.confirm_advanced ? "true" : "false");
+    if (body.confirm_phrase) fd.append("confirm_phrase", body.confirm_phrase);
+    if (body.use_llm != null) fd.append("use_llm", body.use_llm ? "true" : "false");
+    for (const f of body.files) fd.append("files", f);
+    return requestForm<JobAutopilotResult | JobAutopilotQueued>(
+      `/api/connections/${connectionId}/job-autopilot/run-files`,
+      fd,
+      120_000,
+    );
+  },
+    jobAutopilotPromoteTo: (
+    connectionId: string,
+    body: {
+      target_connection_id: string;
+      zip_base64?: string | null;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<JobAutopilotPromoteToResult>(
+      `/api/connections/${connectionId}/job-autopilot/promote-to`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+        timeoutMs: 660_000,
+      },
+    ),
+  jobAutopilotFingerprint: (connectionId: string) =>
+    request<{
+      fingerprint: InstanceFingerprint;
+      connection_kind: string;
+      sandbox: boolean;
+      message: string;
+    }>(`/api/connections/${connectionId}/job-autopilot/fingerprint`),
+  jobAutopilotCaptureSettings: (connectionId: string) =>
+    request<{ settings: Record<string, unknown>; keys: string[]; message: string }>(
+      `/api/connections/${connectionId}/job-autopilot/capture-settings`,
+      { method: "POST" },
+    ),
+  jobAutopilotConfigDryRun: (connectionId: string, packet: Record<string, unknown>) =>
+    request<{
+      diff: ConfigPacketDiff;
+      fingerprint: InstanceFingerprint;
+      connection_kind: string;
+      sandbox: boolean;
+      warning: string;
+      risks: string[];
+      message: string;
+    }>(`/api/connections/${connectionId}/job-autopilot/config-packet/dry-run`, {
+      method: "POST",
+      body: JSON.stringify({ packet }),
+      timeoutMs: 120_000,
+    }),
+  jobAutopilotConfigApply: (
+    connectionId: string,
+    body: {
+      packet: Record<string, unknown>;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<ConfigPacketApplyReport>(
+      `/api/connections/${connectionId}/job-autopilot/config-packet/apply`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+        timeoutMs: 180_000,
+      },
+    ),
+  jobAutopilotReportPdf: async (connectionId: string, result: JobAutopilotResult) => {
+    const res = await fetchApi(`/api/connections/${connectionId}/job-autopilot/report.pdf`, {
+      method: "POST",
+      body: JSON.stringify(result),
+      timeoutMs: 120_000,
+    });
+    if (!res.ok) {
+      throw new Error(`UAT PDF failed (${res.status})`);
+    }
+    return res.blob();
+  },
   getScriptRunnerTemplates: (connectionId: string) =>
     request<{ templates: Array<{ id: string; label: string; description: string; code: string }> }>(
       `/api/connections/${connectionId}/script-runner/templates`,
@@ -1592,10 +1991,14 @@ export const api = {
     request<{
       ai_assist: string;
       enabled: boolean;
+      provider?: string;
+      provider_label?: string;
       ollama_base_url: string;
       ollama_model: string;
       ollama_reachable?: boolean;
       ollama_detail?: string;
+      provider_reachable?: boolean;
+      provider_detail?: string;
       domain_packs?: string;
     }>("/api/ai/status"),
   scaffoldApp: (
@@ -1734,17 +2137,47 @@ export const api = {
       `/api/connections/${id}/modules/installed${qs ? `?${qs}` : ""}`,
     );
   },
+  installCommunityModule: (id: string, moduleName: string) =>
+    request<{
+      ok: boolean;
+      module: string;
+      module_state?: string | null;
+      message: string;
+    }>(`/api/connections/${id}/modules/install-community`, {
+      method: "POST",
+      body: JSON.stringify({ module_name: moduleName }),
+      timeoutMs: 300_000,
+    }),
   listModels: (id: string, customOnly = false, limit = 2000) =>
     request<ModelRow[]>(
       `/api/connections/${id}/models?custom_only=${customOnly}&limit=${limit}`,
       { timeoutMs: ODOO_RPC_READ_TIMEOUT_MS },
     ),
-  listReuseCatalog: (id: string, q?: string, limit = 2000) => {
+  listReuseCatalog: async (id: string, q?: string, limit = 2000) => {
     const params = new URLSearchParams({ limit: String(limit), stock_only: "true" });
     if (q?.trim()) params.set("q", q.trim());
-    return request<ReuseModelRow[]>(
-      `/api/connections/${id}/reuse-catalog?${params.toString()}`,
-    );
+    try {
+      return await request<ReuseModelRow[]>(
+        `/api/connections/${id}/reuse-catalog?${params.toString()}`,
+        { timeoutMs: ODOO_RPC_READ_TIMEOUT_MS },
+      );
+    } catch {
+      const models = await api.listModels(id, false, limit);
+      const needle = (q || "").trim().toLowerCase();
+      return models
+        .filter((m) => m.model && !m.model.startsWith("x_"))
+        .filter((m) => {
+          if (!needle) return true;
+          const hay = `${m.model} ${m.name}`.toLowerCase();
+          return hay.includes(needle);
+        })
+        .map((m) => ({
+          model: m.model,
+          name: m.name || m.model,
+          app: m.model.split(".")[0] || m.model,
+          link_only: false,
+        }));
+    }
   },
   listDraftCache: (connectionId?: string, limit = 20) => {
     const qs = connectionId
@@ -2586,6 +3019,47 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  repairDesignerInherit: (
+    id: string,
+    body: { model: string; view_type?: string },
+  ) =>
+    request<{
+      action: "repaired" | "already_additive" | "unlinked" | "missing";
+      model: string;
+      view_type: string;
+      view_id?: number | null;
+      view_name?: string | null;
+      snapshot_id?: string | null;
+      kept_custom_fields: string[];
+      remaining_custom_injects: string[];
+      detail: string;
+    }>(`/api/connections/${id}/views/designer-inherit/repair`, {
+      method: "POST",
+      body: JSON.stringify({ view_type: "form", ...body }),
+    }),
+  unlinkDesignerInherit: (
+    id: string,
+    body: {
+      model: string;
+      view_type?: string;
+      confirm_advanced: boolean;
+      confirm_phrase: string;
+    },
+  ) =>
+    request<{
+      action: "repaired" | "already_additive" | "unlinked" | "missing";
+      model: string;
+      view_type: string;
+      view_id?: number | null;
+      view_name?: string | null;
+      snapshot_id?: string | null;
+      kept_custom_fields: string[];
+      remaining_custom_injects: string[];
+      detail: string;
+    }>(`/api/connections/${id}/views/designer-inherit/unlink`, {
+      method: "POST",
+      body: JSON.stringify({ view_type: "form", ...body }),
+    }),
   polishForm: (
     id: string,
     model: string,
@@ -2828,6 +3302,10 @@ export const api = {
   dataImportTemplate: (id: string, model: string) =>
     request<{ model: string; filename: string; csv: string }>(
       `/api/connections/${id}/data-import/template?model=${encodeURIComponent(model)}`,
+    ),
+  usersCsvTemplate: (id: string) =>
+    request<{ model: string; filename: string; csv: string }>(
+      `/api/connections/${id}/data-import/users-template`,
     ),
   dataImportPreview: async (id: string, file: File, model?: string) => {
     const fd = new FormData();
@@ -4109,6 +4587,7 @@ export const api = {
     request<ExpertDraftReviewResponse>("/api/expert/review-draft", {
       method: "POST",
       body: JSON.stringify(body),
+      timeoutMs: 660_000,
     }),
   expertExplainModel: (body: {
     model: string;
@@ -4227,6 +4706,314 @@ export type IngestBatchOut = {
   notify_mode?: "batch_summary" | "individual";
   allow_coa_as_is?: boolean;
   meta?: Record<string, unknown>;
+};
+
+export type JobAutopilotContract = {
+  stock_first: boolean;
+  sandbox_only: boolean;
+  promote_stays_human: boolean;
+  scorecard_is_not_golive: boolean;
+  refuse_production: boolean;
+  implementation_job_scorecard?: boolean;
+  promote_to_other_connection?: boolean;
+  no_prod_db_clone?: boolean;
+  note: string;
+  confirm_phrase: string;
+  smoke_done_bar?: string;
+};
+
+export type JobCustomResidual = {
+  key: string;
+  model: string;
+  reason: string;
+};
+
+export type JobDataFileClass = {
+  filename: string;
+  doc_type: string;
+  confidence: number;
+  excerpt?: string;
+};
+
+export type JobPacket = {
+  prompt: string;
+  domain_label: string;
+  actors: string[];
+  processes: string[];
+  documents: string[];
+  stock_apps: string[];
+  custom_residuals: JobCustomResidual[];
+  data_files: JobDataFileClass[];
+  country_code: string | null;
+  l10n_module: string | null;
+  company_name: string | null;
+  currency: string | null;
+  warehouse_needed: boolean;
+  roles: string[];
+  org_emails?: string[];
+  grounding?: string[];
+  risks: string[];
+  decision_record: string[];
+  warnings: string[];
+  planner: string;
+  scorecard_note: string;
+  connectors?: string[];
+  structured_brief?: string;
+  operator_brief?: {
+    formatted?: string;
+    capability_path?: string;
+    unknowns?: string[];
+  };
+};
+
+export type JobAutopilotPacketOut = {
+  packet: JobPacket;
+  connection_kind: string;
+  sandbox: boolean;
+  scorecard_note: string;
+  message: string;
+};
+
+export type JobProbeResult = {
+  name: string;
+  ok: boolean;
+  detail: string;
+};
+
+export type JobScorecard = {
+  stack_fit: number;
+  stock_coverage: number;
+  data_load: number;
+  process_smoke: number;
+  overall: number;
+  findings: string[];
+  modulespec_completeness_note: string;
+};
+
+export type JobAutopilotQueued = {
+  job_id: string;
+  queued: true;
+  status: string;
+  message: string;
+};
+
+export type JobAutopilotResult = {
+  ok: boolean;
+  refused: boolean;
+  refuse_reason: string | null;
+  connection_kind: string;
+  sandbox: boolean;
+  packet: JobPacket;
+  bootstrap: {
+    installed: string[];
+    already_installed: string[];
+    skipped: string[];
+    probes: JobProbeResult[];
+    warnings: string[];
+    recipe_version?: number;
+    message: string;
+  } | null;
+  connectors?: {
+    ok: boolean;
+    skipped: boolean;
+    ran: string[];
+    failed: string[];
+    skipped_ids?: string[];
+    steps: JobProbeResult[];
+    warnings: string[];
+    message: string;
+  } | null;
+  custom: {
+    skipped: boolean;
+    reason: string | null;
+    apply_message: string | null;
+    models_created: string[];
+    fields_created: number;
+    fields_relaxed: number;
+    root_menu_id: number | null;
+    open_action_id: number | null;
+    elite: Record<string, unknown> | null;
+    zip_base64?: string | null;
+    zip_omitted?: boolean;
+    expert_score_before?: number | null;
+    expert_score_after?: number | null;
+    warnings: string[];
+    spec: Record<string, unknown> | null;
+  } | null;
+  ingest: {
+    skipped: boolean;
+    reason: string | null;
+    ingest_job_id: string | null;
+    status: string | null;
+    committed: boolean;
+    dry_run_only: boolean;
+    source_rows?: number;
+    loaded_rows?: number;
+    unmatched_m2o?: string[];
+    gaps: string[];
+    warnings: string[];
+    message: string;
+  } | null;
+  smoke: {
+    ok: boolean;
+    steps: JobProbeResult[];
+    named_process?: string | null;
+    ingest_source_rows?: number;
+    ingest_loaded_rows?: number;
+    unmatched_m2o?: string[];
+    partner_id?: number | null;
+    sale_order_id?: number | null;
+    invoice_id?: number | null;
+    open_model?: string | null;
+    open_id?: number | null;
+    open_action_id?: number | null;
+    message: string;
+  } | null;
+  job_scorecard?: JobScorecard | null;
+  promote_ready: boolean;
+  stages: string[];
+  retry_count?: number;
+  walkthrough_seeded?: boolean;
+  report_markdown?: string | null;
+  message: string;
+  scorecard_note: string;
+  clone_required?: boolean;
+  config_packet?: ConfigPacket | null;
+};
+
+export type ConfigChecklistItem = {
+  id: string;
+  label: string;
+  status: "done" | "todo" | "blocked" | "secret";
+  surface: string;
+  href_hint?: string;
+  action_id?: number | null;
+  odoo_model?: string;
+};
+
+export type ConfigPacket = {
+  packet_version: number;
+  recipe_version: number;
+  source_kind: string;
+  modules: string[];
+  company: { name?: string | null; currency?: string | null; country_code?: string | null };
+  accounting: {
+    journals: Array<{ name: string; type: string; code: string }>;
+    tax_xmlids: string[];
+    fiscal_position_names: string[];
+    account_code_count: number;
+    taxes_invented?: boolean;
+  };
+  stock: {
+    warehouse_code?: string | null;
+    delivery_steps?: string | null;
+    reception_steps?: string | null;
+    lot_tracking?: boolean;
+    mto?: boolean;
+    dropship?: boolean;
+  };
+  users: Array<{ login: string; name?: string | null; email?: string | null; group_xmlids: string[] }>;
+  connectors: Array<{
+    id: string;
+    title: string;
+    needs_secret: boolean;
+    odoo_model: string;
+    brands: string[];
+    open_hint?: string;
+    action_id?: number | null;
+    action_xmlid?: string | null;
+  }>;
+  mail: {
+    smtp_servers: number;
+    alias_domains: number;
+    ok: boolean;
+    warnings: string[];
+    action_id?: number | null;
+    odoo_model?: string;
+  };
+  settings?: { values: Record<string, unknown> };
+  smoke: { processes: string[]; passed: string[]; failed: string[] };
+  opening: {
+    tb_present: boolean;
+    tb_allowed: boolean;
+    coa_threshold: number;
+    account_code_count: number;
+    message: string;
+    lock_date_blocked?: boolean;
+    period_lock_date?: string | null;
+    fiscalyear_lock_date?: string | null;
+    tax_lock_date?: string | null;
+  };
+  checklist: ConfigChecklistItem[];
+  sha256: string;
+  secrets_excluded: boolean;
+  custom_zip_present?: boolean;
+  residual_models?: string[];
+  documents?: {
+    paperformat_name?: string | null;
+    option_a_qweb_needed?: boolean;
+    logo_upload_needed?: boolean;
+    font?: string | null;
+    layout_background?: string | null;
+    external_report_layout_xmlid?: string | null;
+    report_header?: string | null;
+    report_footer?: string | null;
+  };
+};
+
+export type InstanceFingerprint = {
+  major?: number | null;
+  modules_installed: string[];
+  journal_types: string[];
+  journal_names: string[];
+  warehouse_codes: string[];
+  tax_xmlids: string[];
+  user_logins: string[];
+  account_code_count: number;
+  company_name?: string | null;
+  currency?: string | null;
+  country_code?: string | null;
+  sha256: string;
+  warnings: string[];
+  mail?: { smtp_servers: number; alias_domains: number; ok: boolean; warnings: string[]; action_id?: number | null };
+  period_lock_date?: string | null;
+  fiscalyear_lock_date?: string | null;
+  tax_lock_date?: string | null;
+  fiscal_position_names?: string[];
+};
+
+export type ConfigPacketDiff = {
+  ops: Array<{ op: string; target: string; detail: string; risky: boolean }>;
+  skipped: string[];
+  blocked: string[];
+  checklist: ConfigChecklistItem[];
+  message: string;
+};
+
+export type ConfigPacketApplyReport = {
+  ok: boolean;
+  refused: boolean;
+  refuse_reason: string | null;
+  snapshot_id?: string | null;
+  applied: string[];
+  skipped: string[];
+  warnings: string[];
+  checklist: ConfigChecklistItem[];
+  message: string;
+  target_kind: string;
+};
+
+export type JobAutopilotPromoteToResult = {
+  ok: boolean;
+  refused: boolean;
+  refuse_reason: string | null;
+  source_connection_id: string;
+  target_connection_id: string;
+  target_kind: string;
+  module: string | null;
+  method: string | null;
+  message: string;
+  confirm_phrase: string;
 };
 
 export type IngestJobOut = {
@@ -4545,10 +5332,11 @@ export type CronListOut = {
   probe: Record<string, unknown>;
 };
 
-async function requestForm<T>(path: string, form: FormData): Promise<T> {
+async function requestForm<T>(path: string, form: FormData, timeoutMs?: number): Promise<T> {
   const res = await fetchApi(path, {
     method: "POST",
     body: form,
+    timeoutMs,
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {

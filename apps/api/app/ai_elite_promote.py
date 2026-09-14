@@ -58,6 +58,17 @@ def run_elite_autopilot(
     major = resolve_sandbox_major(odoo_major or _connection_odoo_major(conn.server_version))
     tech = str(spec.get("technical_name") or "custom_module")
     zip_bytes = export_draft_module_zip(spec, odoo_major=major)
+    from app.ai_structural_zip_gate import structural_zip_gate
+
+    gate = structural_zip_gate(zip_bytes)
+    if not gate.get("ok"):
+        return {
+            "ok": False,
+            "gate_passed": gate_ok,
+            "structural_zip": gate,
+            "message": "Structural zip gate failed: "
+            + "; ".join(gate.get("findings") or []),
+        }
 
     result = run_sandbox_install(
         zip_bytes=zip_bytes,
@@ -65,11 +76,29 @@ def run_elite_autopilot(
         odoo_major=major,
         extra_modules=list(spec.get("depends") or []),
     )
+    from app.ai_draft_scorecard import attach_scorecard
+    from app.ai_failure_ir import failures_from_sandbox_log, stamp_failures
+    from app.ai_repair_loop import begin_repair_attempt, lock_certified_artifacts, repair_guidance
+    from app.ai_static_odoo import stamp_static_odoo
+
+    stamp_static_odoo(spec)
     if not result.ok:
+        fails = failures_from_sandbox_log(
+            result.log_tail or "", ok=False, message=result.message or ""
+        )
+        stamp_failures(spec, fails)
+        repair_meta = begin_repair_attempt(spec, fails)
+        spec["_sandbox_install"] = {"ok": False, "message": result.message}
+        attach_scorecard(spec, user_prompt=str(spec.get("_user_prompt") or ""))
         return {
             "ok": False,
             "gate_passed": gate_ok,
             "lint": lint,
+            "draft": spec,
+            "failures": spec.get("_failures"),
+            "repair": repair_meta,
+            "repair_hints": repair_guidance(fails),
+            "certification": spec.get("_certification"),
             "sandbox": {
                 "ok": result.ok,
                 "module": result.module,
@@ -80,6 +109,13 @@ def run_elite_autopilot(
             "message": result.message or "Sandbox install failed",
         }
 
+    lock_certified_artifacts(spec, run_id=str(result.module or tech))
+    spec["_sandbox_install"] = {
+        "ok": True,
+        "message": result.message,
+        "module": result.module,
+    }
+    attach_scorecard(spec, user_prompt=str(spec.get("_user_prompt") or ""))
     validation = record_sandbox_validation(
         db,
         connection_id=connection_id,
@@ -101,6 +137,9 @@ def run_elite_autopilot(
             "message": result.message,
             "log_tail": result.log_tail,
         },
+        "draft": spec,
+        "certification": spec.get("_certification"),
+        "certified_artifacts": spec.get("_certified_artifacts"),
         "score_0_10": scorecard.get("score_0_10"),
         "technical_name": tech,
         "message": "Sandbox validation passed — ready to promote.",

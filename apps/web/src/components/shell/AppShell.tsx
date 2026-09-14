@@ -234,7 +234,7 @@ export function AppShell({ connectionId, children }: Props) {
   }
 
   return (
-    <div className="flex min-h-screen bg-surface" data-testid="app-shell">
+    <div className="flex min-h-screen bg-background" data-testid="app-shell">
       <Sidebar connection={connection} />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar connection={connection} connections={connections} pathname={pathname} />
@@ -243,7 +243,7 @@ export function AppShell({ connectionId, children }: Props) {
             You appear to be offline. Changes that need Odoo will fail until connectivity returns.
           </div>
         ) : null}
-        <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
+        <main className="flex-1 overflow-auto bg-background p-4 md:p-6">{children}</main>
       </div>
       <ExpertPanel />
       <ExpertBubble />

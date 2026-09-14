@@ -422,3 +422,22 @@ API_URL=https://app.yourdomain.com WEB_URL=https://app.yourdomain.com bash scrip
 6. **Fix:** billing plans route on deploy image.
 
 Track progress in `STATE.md` after each phase ships.
+
+---
+
+## Docket (later — do not start in this phase)
+
+### PROD-FAULT-LOG — in-app fault log + founder dashboard
+
+**Status:** Tableed 2026-09-14. Do not implement until Expert/platform diagnosis is honest (empty Diagnose / FastAPI 404 ≠ Odoo view/ACL). See MEMORY `Production in-app fault log is later`.
+
+**Need:** In production, a durable log of **this app’s** faults (API 404, host-install reverify miss, stale process, UI “Something went wrong”) that the founder can open from a dashboard or export — so issues the LLM cannot repair, or that require a codebase change, get a human queue.
+
+**Must include (when un-tabled):**
+
+1. **Diagnosis first** — classify this-app vs customer Odoo RPC; never store a blank `Error log:` as a generic Fault.
+2. **Disposition** — `llm_operator` (Expert/copy/restart) vs `codebase` (new route, ingest, gate) vs `needs_human`.
+3. **Access** — in-app founder surface and/or downloadable log. No paid error SaaS while bootstrapping (`AGENTS.md`).
+4. **Privacy** — no credentials, no customer Odoo passwords, no full prompt dumps with secrets.
+
+**Not this item:** Expert RAG of Odoo docs; Job Autopilot scorecards; customer instance health checks (already a different surface).

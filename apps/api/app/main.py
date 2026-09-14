@@ -21,6 +21,7 @@ from app.routers import (
     actions,
     admin,
     ai,
+    ai_studio,
     apps,
     audit,
     auth,
@@ -43,6 +44,7 @@ from app.routers import (
     health_check,
     ingest,
     introspection,
+    job_autopilot,
     jobs,
     menus_builder,
     module_spec,
@@ -67,7 +69,11 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    init_db()
+    try:
+        init_db()
+    except RuntimeError as exc:
+        logger.error("%s", exc)
+        raise
     from app.jobs import mark_interrupted_jobs_on_boot
 
     db = SessionLocal()
@@ -135,6 +141,8 @@ app.include_router(ee_drivers.router, prefix="/api", dependencies=_protected)
 app.include_router(approvals.router, prefix="/api", dependencies=_protected + [Depends(require_feature("approvals"))])
 app.include_router(apps.router, prefix="/api", dependencies=_protected)
 app.include_router(ai.router, prefix="/api", dependencies=_protected + [Depends(require_feature("ai_draft"))])
+app.include_router(ai_studio.router, prefix="/api", dependencies=_protected + [Depends(require_feature("ai_draft"))])
+app.include_router(job_autopilot.router, prefix="/api", dependencies=_protected + [Depends(require_feature("ai_draft"))])
 app.include_router(expert.router, prefix="/api", dependencies=_protected + [Depends(require_feature("expert"))])
 app.include_router(module_spec.router, prefix="/api", dependencies=_protected)
 app.include_router(module_spec.import_router, prefix="/api", dependencies=_protected + [Depends(require_feature("import"))])
@@ -208,16 +216,24 @@ def health() -> dict[str, str | bool]:
         out["auth_warning"] = (
             "AUTH_MODE is off — enable AUTH_MODE=api_key before any shared/deployed use"
         )
-    if settings.ai_assist.strip().lower() == "ollama":
+    assist = settings.ai_assist.strip().lower()
+    if assist not in {"", "off", "false", "0", "none"}:
         from app.ai_ollama import ollama_reachable
-        from app.llm_provider import llm_routing_status
+        from app.llm_provider import llm_routing_status, resolve_provider_mode
 
         routing = llm_routing_status()
-        out["ai_assist"] = "ollama"
-        out["ollama_model"] = settings.ollama_model
+        mode = resolve_provider_mode()
+        out["ai_assist"] = settings.ai_assist
+        out["ai_provider"] = mode
         out["ai_model_bulk"] = routing.get("ai_model_bulk")
         out["ai_model_reasoning"] = routing.get("ai_model_reasoning")
-        ok, detail = ollama_reachable()
-        out["ollama_reachable"] = ok
-        out["ollama_detail"] = detail
+        if mode == "off":
+            out["ollama_reachable"] = False
+            out["ollama_detail"] = "auto: no API key configured"
+        else:
+            if mode == "ollama":
+                out["ollama_model"] = settings.ollama_model
+            ok, detail = ollama_reachable()
+            out["ollama_reachable"] = ok
+            out["ollama_detail"] = detail
     return out

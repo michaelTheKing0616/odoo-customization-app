@@ -42,6 +42,7 @@ def subscription_pack() -> dict[str, Any]:
         "display_name": "Subscription Management",
         "depends": ["base", "contacts", "mail"],
         "domain_pack": "subscription",
+        "document_shape": "workspace",
         "tags": [
             "subscription",
             "membership",

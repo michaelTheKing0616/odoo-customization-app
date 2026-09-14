@@ -29,6 +29,7 @@ import { Select } from "@/components/ui/Select";
 import { Card, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
 import { Tabs } from "@/components/ui/Tabs";
 import { FirstRunCard } from "@/components/overview/FirstRunCard";
+import { InstanceFingerprintCard } from "@/components/overview/InstanceFingerprintCard";
 import { Disclosure } from "@/components/ui/Disclosure";
 import { CodeBlock } from "@/components/ui/CodeBlock";
 import { WriteModeUnlockPanel } from "@/components/shell/WriteModeUnlockPanel";
@@ -650,6 +651,7 @@ export default function BrowserPage() {
         </div>
 
         <FirstRunCard connectionId={connectionId} modelCount={models.length} />
+        <InstanceFingerprintCard connectionId={connectionId} />
 
         <Tabs
           className="mt-8"

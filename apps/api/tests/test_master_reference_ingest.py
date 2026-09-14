@@ -54,25 +54,32 @@ def test_master_reference_ingest_chunk_count(db_session) -> None:
     )
     assert count and count > 10
 
-    breadcrumbs = {
-        row.breadcrumb
-        for row in db_session.query(ExpertChunk.breadcrumb)
-        .filter(ExpertChunk.source == "project")
-        .limit(50)
-    }
-    assert any("Tier" in bc or "Document" in bc or "Reference" in bc for bc in breadcrumbs)
+    master_rows = (
+        db_session.query(ExpertChunk)
+        .filter(
+            ExpertChunk.source == "project",
+            ExpertChunk.source_path.contains("MASTER_REFERENCE"),
+        )
+        .all()
+    )
+    assert master_rows, "MASTER_REFERENCE.md must be ingested with source_path set"
+    breadcrumbs = {row.breadcrumb for row in master_rows}
+    assert any(
+        "Tier" in bc or "Document" in bc or "Reference" in bc or "Protected" in bc
+        for bc in breadcrumbs
+    )
 
 
 def test_master_reference_retrieves_protected_tiers(db_session) -> None:
     ingest_project_docs(embed=False)
     hits = retrieve_expert_chunks(
         db_session,
-        "what are the protected module tiers",
+        "protected core modules guardrail tier categories",
         version="19.0",
         min_score=0.01,
-        top_k=5,
+        top_k=8,
     )
     assert hits
-    joined = " ".join(h.text.lower() for h in hits)
-    assert "tier" in joined
+    joined = " ".join(f"{h.breadcrumb} {h.text}".lower() for h in hits)
+    assert "tier" in joined or "protected" in joined
     assert hits[0].source == "project"

@@ -5,8 +5,10 @@ import { useShellOptional } from "@/context/ShellContext";
 
 export function diagnoseWithExpert(errorText: string) {
   if (typeof window === "undefined") return;
+  const text =
+    (errorText || "").trim() || "Something went wrong (no banner text captured)";
   window.dispatchEvent(
-    new CustomEvent("expert:diagnose", { detail: { errorText } }),
+    new CustomEvent("expert:diagnose", { detail: { errorText: text } }),
   );
 }
 

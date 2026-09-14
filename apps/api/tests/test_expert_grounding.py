@@ -64,6 +64,17 @@ def test_extract_ir_ui_view_full_model() -> None:
     assert ("ir", None) not in refs
 
 
+def test_extract_skips_xmlrpc_py_traceback() -> None:
+    refs = extract_model_field_refs(
+        "File \"/usr/lib/python3/dist-packages/odoo/addons/rpc/controllers/xmlrpc.py\"\n"
+        "ParseError: xpath //field[@name='amount_tax'] on sale.order"
+    )
+    models = {m for m, _ in refs}
+    assert "xmlrpc" not in models
+    assert "odoo" not in models
+    assert ("sale.order", None) in refs
+
+
 def test_looks_like_rpc_error() -> None:
     assert looks_like_rpc_error("KeyError: x_mattr does not exist")
     assert looks_like_rpc_error("AccessError: not allowed")
@@ -72,6 +83,32 @@ def test_looks_like_rpc_error() -> None:
     assert not looks_like_rpc_error("How do I add a custom field?")
     assert not looks_like_rpc_error(
         "Explain ir.ui.view extension vs primary form for x_rental.contract"
+    )
+    assert not looks_like_rpc_error(
+        "Diagnose this error on my connection\n\nError log:\n"
+    )
+    assert not looks_like_rpc_error(
+        "Diagnose this error on my connection\n\nError log:\n"
+        "Something went wrong (no banner text captured)"
+    )
+    assert not looks_like_rpc_error(
+        "Something went wrong\nNot Found (POST /api/ai/option-a/reverify)"
+    )
+
+
+def test_looks_like_platform_error() -> None:
+    from app.expert.grounding import looks_like_platform_error
+
+    assert looks_like_platform_error(
+        "Diagnose this error on my connection\n\nError log:\n"
+    )
+    assert looks_like_platform_error(
+        "Diagnose this error on my connection\n\nError log:\n"
+        "Something went wrong (no banner text captured)"
+    )
+    assert looks_like_platform_error("Not Found (POST /api/ai/option-a/reverify)")
+    assert not looks_like_platform_error(
+        "Error while validating view near:\nModel not found: x_ticket"
     )
 
 

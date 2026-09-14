@@ -39,7 +39,9 @@ def test_match_car_rental_pack() -> None:
     models = {m["model"] for m in pack["models"]}
     assert "x_rent_vehicle" in models
     assert "x_rent_contract" in models
-    assert "x_rent_customer" in models
+    assert "res.partner" in models
+    assert "x_rent_customer" not in models
+    assert "x_rent_payment" not in models
     assert pack["smart_buttons"]
     assert pack["automations"]
 
@@ -94,18 +96,30 @@ def test_draft_module_offline_domain_pack(client: TestClient) -> None:
     assert body["draft"]["smart_buttons"]
 
 
-def test_draft_module_503_when_ai_off_and_no_pack(client: TestClient) -> None:
+def test_draft_module_ai_off_no_pack_is_honesty_seed(client: TestClient) -> None:
     settings.ai_assist = "off"
-    res = client.post("/api/ai/draft-module", json={"prompt": "Books and loans"})
-    assert res.status_code == 503
+    res = client.post(
+        "/api/ai/draft-module",
+        json={"prompt": "quantum widget fabrication scheduling"},
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["ok"] is True
+    assert not body.get("domain_pack")
+    assert isinstance(body.get("draft"), dict)
+    status = (body["draft"] or {}).get("_llm_status") or {}
+    assert status.get("reason") == "honesty_seed"
 
 
 def test_draft_module_with_monkeypatched_ollama(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     settings.ai_assist = "ollama"
+    settings.ai_pipeline_mode = "single"
+    settings.ai_critique = "off"
     settings.ollama_base_url = "http://127.0.0.1:11434"
     settings.ollama_model = "llama3.2"
+    monkeypatch.setattr("app.ollama_warm.warm_ollama_models", lambda: None)
 
     fake = {
         "technical_name": "demo_books",
@@ -151,11 +165,17 @@ def test_draft_module_with_monkeypatched_ollama(
         ) -> str:
             return json.dumps(fake)
 
-    monkeypatch.setattr(ai_ollama, "get_llm_provider", lambda: _FakeProvider())
+    fake_provider = _FakeProvider()
+    monkeypatch.setattr("app.llm_provider.get_llm_provider", lambda: fake_provider)
+    monkeypatch.setattr(ai_ollama, "get_llm_provider", lambda: fake_provider)
 
     res = client.post(
         "/api/ai/draft-module",
-        json={"prompt": "Books with barcode and loans"},
+        json={
+            "prompt": "Artisan commission studio with barcode labels",
+            "expand": False,
+            "grain": "full_app",
+        },
     )
     assert res.status_code == 200, res.text
     body = res.json()

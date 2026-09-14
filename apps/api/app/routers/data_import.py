@@ -112,6 +112,18 @@ def get_template(connection_id: str, model: str = "res.partner") -> TemplateOut:
     )
 
 
+@router.get("/users-template", response_model=TemplateOut)
+def get_users_template(connection_id: str) -> TemplateOut:
+    _ = connection_id
+    from app.config_packet.users import users_csv_template
+
+    return TemplateOut(
+        model="res.users",
+        filename="users.csv",
+        csv=users_csv_template(),
+    )
+
+
 class SeedPackSummary(BaseModel):
     id: str
     name: str

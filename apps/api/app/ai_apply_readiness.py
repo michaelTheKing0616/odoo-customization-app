@@ -11,6 +11,9 @@ from app.multi_company_pack import (
     COMPANY_FIELD_MODULE,
     COMPANY_RULE_DOMAIN_LIVE,
     apply_multi_company_to_live_draft,
+    draft_explicitly_rejects_multi_company,
+    draft_wants_multi_company,
+    strip_multi_company_record_rules,
 )
 
 _MODULE_COMPANY_FIELD = "company_id"
@@ -21,6 +24,7 @@ _BAD_ASSIGNEE_RELATIONS = frozenset({"x_staff_shift"})
 _LINE_QTY_NAMES = ("x_qty", "x_quantity", "quantity", "x_hours", "x_units")
 _LINE_PRICE_NAMES = ("x_price", "x_unit_price", "x_price_unit", "x_rate", "price_unit")
 _LINE_TOTAL_NAMES = ("x_subtotal", "x_total", "x_amount")
+_HEADER_TOTAL_NAMES = ("x_amount_total", "x_total_cost", "x_total", "x_amount")
 
 _SCALE_WORDS = frozenset({"super", "mega", "large", "multiple", "around", "world", "global"})
 _DOMAIN_WORDS = (
@@ -65,6 +69,45 @@ def _replace_in_arch(draft: dict[str, Any], old: str, new: str) -> None:
             v["arch"] = arch.replace(old, new)
 
 
+_EMPTY_GROUP_RE = re.compile(r"<group\b[^>]*>\s*</group>", re.I)
+_EMPTY_PAGE_RE = re.compile(r"<page\b[^>]*>\s*</page>", re.I)
+_EMPTY_NOTEBOOK_RE = re.compile(r"<notebook>\s*</notebook>", re.I)
+
+
+def _strip_empty_view_wrappers(arch: str) -> str:
+    """Remove leftover empty groups after dropping stock O2M field nodes."""
+    out = arch
+    prev = None
+    while out != prev:
+        prev = out
+        out = _EMPTY_GROUP_RE.sub("", out)
+        out = _EMPTY_PAGE_RE.sub("", out)
+        out = _EMPTY_NOTEBOOK_RE.sub("", out)
+    return out
+
+
+def _scrub_unknown_modifier_attrs(arch: str, names: set[str]) -> tuple[str, int]:
+    """Drop decoration/invisible modifiers that name fields no longer on the model."""
+    removed = 0
+
+    def repl(match: re.Match[str]) -> str:
+        nonlocal removed
+        expr = match.group(2)
+        refs = re.findall(r"\bx_[a-z0-9_]+\b", expr)
+        if refs and any(ref not in names for ref in refs):
+            removed += 1
+            return ""
+        return match.group(0)
+
+    cleaned = re.sub(
+        r'\s+(decoration-[\w-]+|invisible|column_invisible)="([^"]*)"',
+        repl,
+        arch,
+        flags=re.I,
+    )
+    return cleaned, removed
+
+
 def scrub_unknown_arch_field_refs(draft: dict[str, Any]) -> list[str]:
     """Drop arch nodes that reference fields removed from the model (e.g. moved to lines)."""
     notes: list[str] = []
@@ -88,6 +131,12 @@ def scrub_unknown_arch_field_refs(draft: dict[str, Any]) -> list[str]:
             cleaned,
             flags=re.I,
         )
+        cleaned = re.sub(
+            r'<field\b[^>]*\bname="([^"]+)"[^>]*>\s*<(?:list|tree|kanban|notebook)\b[\s\S]*?</field>',
+            repl,
+            cleaned,
+            flags=re.I,
+        )
         return cleaned, removed
 
     for v in draft.get("views") or []:
@@ -99,9 +148,15 @@ def scrub_unknown_arch_field_refs(draft: dict[str, Any]) -> list[str]:
             continue
         arch = str(v.get("arch") or "")
         cleaned, n = _scrub(arch, _field_names(model))
-        if n:
-            v["arch"] = cleaned
-            notes.append(f"apply: scrubbed {n} stale arch field ref(s) on {mid}")
+        cleaned, n_attr = _scrub_unknown_modifier_attrs(cleaned, _field_names(model))
+        n += n_attr
+        stripped = _strip_empty_view_wrappers(cleaned)
+        if n or stripped != arch:
+            v["arch"] = stripped
+            if n:
+                notes.append(f"apply: scrubbed {n} stale arch field ref(s) on {mid}")
+            if stripped != cleaned:
+                notes.append(f"apply: stripped empty groups on {mid}")
     return notes
 
 
@@ -189,15 +244,21 @@ def normalize_company_fields_for_live(draft: dict[str, Any]) -> list[str]:
             rule["domain_force"] = _MODULE_COMPANY_IN_DOM.sub("('x_company_id',", dom)
             notes.append(f"apply: record rule domain uses {_LIVE_COMPANY_FIELD}")
 
-    enriched = apply_multi_company_to_live_draft(draft)
-    if enriched.get("record_rules"):
-        draft["record_rules"] = enriched["record_rules"]
-    for rule in draft.get("record_rules") or []:
-        if isinstance(rule, dict):
-            dom = str(rule.get("domain_force") or "")
-            if _LIVE_COMPANY_IN_DOM.search(dom) or _MODULE_COMPANY_IN_DOM.search(dom):
-                rule["domain_force"] = COMPANY_RULE_DOMAIN_LIVE
-    draft["multi_company"] = True
+    wants = draft_wants_multi_company(draft)
+    if wants:
+        enriched = apply_multi_company_to_live_draft(draft)
+        if enriched.get("record_rules"):
+            draft["record_rules"] = enriched["record_rules"]
+        for rule in draft.get("record_rules") or []:
+            if isinstance(rule, dict):
+                dom = str(rule.get("domain_force") or "")
+                if _LIVE_COMPANY_IN_DOM.search(dom) or _MODULE_COMPANY_IN_DOM.search(dom):
+                    rule["domain_force"] = COMPANY_RULE_DOMAIN_LIVE
+        draft["multi_company"] = True
+        notes.append("apply: multi-company record rules (legal entities)")
+    elif draft_explicitly_rejects_multi_company(draft):
+        notes.extend(strip_multi_company_record_rules(draft))
+        draft["multi_company"] = False
     return notes
 
 
@@ -232,8 +293,15 @@ def ensure_relation_module_depends(draft: dict[str, Any]) -> list[str]:
         "hr.contract": "hr",
         "stock.quant": "stock",
         "stock.picking": "stock",
+        "stock.warehouse": "stock",
         "sale.order": "sale",
         "purchase.order": "purchase",
+        "account.move": "account",
+        "product.product": "product",
+        "product.template": "product",
+        "project.project": "project",
+        "maintenance.equipment": "maintenance",
+        "maintenance.request": "maintenance",
     }
     found: set[str] = set()
     for model in draft.get("models") or []:
@@ -258,19 +326,32 @@ def ensure_relation_module_depends(draft: dict[str, Any]) -> list[str]:
     return notes
 
 
+def _pack_body_for_draft(draft: dict[str, Any]) -> dict[str, Any] | None:
+    """Prefer an already-chosen pack id; only re-match the prompt when unset."""
+    pack_id = str(draft.get("domain_pack") or "")
+    if pack_id:
+        from app.ai_domain_packs import load_domain_pack
+
+        loaded = load_domain_pack(pack_id)
+        if isinstance(loaded, dict):
+            return loaded
+    from app.ai_domain_packs import match_domain_pack
+
+    matched = match_domain_pack(str(draft.get("_user_prompt") or ""))
+    if matched and isinstance(matched[1], dict):
+        return matched[1]
+    return None
+
+
 def _pack_reuse_stock_rows(draft: dict[str, Any]) -> list[dict[str, Any]]:
     rows = draft.get("_pack_reuse_stock") or draft.get("reuse_stock") or []
     if isinstance(rows, list) and rows:
         return [r for r in rows if isinstance(r, dict)]
-    if draft.get("domain_pack"):
-        from app.ai_domain_packs import match_domain_pack
-
-        prompt = str(draft.get("_user_prompt") or "")
-        matched = match_domain_pack(prompt)
-        if matched and isinstance(matched[1], dict):
-            stock = matched[1].get("reuse_stock")
-            if isinstance(stock, list):
-                return [r for r in stock if isinstance(r, dict)]
+    pack = _pack_body_for_draft(draft)
+    if isinstance(pack, dict):
+        stock = pack.get("reuse_stock")
+        if isinstance(stock, list):
+            return [r for r in stock if isinstance(r, dict)]
     return []
 
 
@@ -278,12 +359,9 @@ def _draft_anti_patterns(draft: dict[str, Any]) -> list[str]:
     patterns = list(draft.get("anti_patterns") or [])
     if patterns:
         return [str(p) for p in patterns]
-    if draft.get("domain_pack"):
-        from app.ai_domain_packs import match_domain_pack
-
-        matched = match_domain_pack(str(draft.get("_user_prompt") or ""))
-        if matched and isinstance(matched[1], dict):
-            return [str(p) for p in (matched[1].get("anti_patterns") or [])]
+    pack = _pack_body_for_draft(draft)
+    if isinstance(pack, dict):
+        return [str(p) for p in (pack.get("anti_patterns") or [])]
     return []
 
 
@@ -300,9 +378,33 @@ _EMPTY_FIELD_TAG_RE = re.compile(r"<field\b(?![^>]*\bname=)[^>]*/>", re.I)
 _PRIMARY_HEADER_TOTALS = ("x_amount_total", "x_total", "x_amount")
 _SHADOW_HEADER_TOTALS = ("x_total_amount", "x_amount_untaxed", "x_grand_total", "x_amount_gross")
 _HEADER_TAX_FIELDS = ("x_tax_amount", "x_amount_tax", "x_tax_total")
-_TRANSACTION_HEADER_TOKENS = ("order", "matter", "case", "job", "booking", "reservation", "quote")
+_TRANSACTION_HEADER_TOKENS = (
+    "order",
+    "matter",
+    "case",
+    "job",
+    "booking",
+    "reservation",
+    "quote",
+    "session",
+    "appointment",
+    "project",
+)
 _PROCUREMENT_HEADER_TOKENS = ("supplier", "purchase", "procurement", "vendor", "rfq", "requisition")
-_SALES_HEADER_TOKENS = ("order", "sale", "booking", "reservation", "quote")
+# Bare "order" is not sales — work orders / jobs / tickets are operations documents.
+_SALES_HEADER_TOKENS = ("sale", "sales", "store", "booking", "reservation", "quote", "pos")
+_OPERATIONS_HEADER_TOKENS = (
+    "work",
+    "job",
+    "ticket",
+    "intervention",
+    "maintenance",
+    "mro",
+    "repair",
+    "session",
+    "appointment",
+    "project",
+)
 _INTERNAL_HEADER_TOKENS = (
     "transfer",
     "adjustment",
@@ -433,8 +535,22 @@ def _is_procurement_header(model: dict[str, Any]) -> bool:
     return False
 
 
+def _is_operations_header(model: dict[str, Any]) -> bool:
+    """Work orders, jobs, tickets — operational docs that may MRO-link purchase.order."""
+    if not _is_transaction_header(model) or _is_procurement_header(model):
+        return False
+    tokens = _model_name_tokens(model)
+    if tokens & set(_OPERATIONS_HEADER_TOKENS):
+        return True
+    mid = str(model.get("model") or "").lower()
+    desc = str(model.get("description") or "").lower()
+    return "work_order" in mid or "work order" in desc
+
+
 def _is_sales_header(model: dict[str, Any]) -> bool:
     if not _is_transaction_header(model) or _is_procurement_header(model):
+        return False
+    if _is_operations_header(model):
         return False
     tokens = _model_name_tokens(model)
     desc = str(model.get("description") or "").lower()
@@ -443,16 +559,30 @@ def _is_sales_header(model: dict[str, Any]) -> bool:
     return any(word in desc for word in ("sales", "customer order", "retail", "pos"))
 
 
+def _keeps_purchase_document_link(model: dict[str, Any]) -> bool:
+    """purchase.order is valid on procurement and operations headers, never on sales."""
+    if _is_sales_header(model):
+        return False
+    mid = str(model.get("model") or "").lower()
+    if "line" in mid or any(tok in mid for tok in _INTERNAL_HEADER_TOKENS):
+        return False
+    return _is_procurement_header(model) or _is_operations_header(model)
+
+
 def _stock_link_applies(stock_model: str, model: dict[str, Any]) -> bool:
     if stock_model == "purchase.order":
-        return _is_procurement_header(model)
+        return _keeps_purchase_document_link(model)
     if stock_model == "sale.order":
         return _is_sales_header(model)
     if stock_model == "account.move":
         mid = str(model.get("model") or "").lower()
         if any(tok in mid for tok in _INTERNAL_HEADER_TOKENS):
             return False
-        return _is_sales_header(model) or _is_procurement_header(model)
+        return (
+            _is_sales_header(model)
+            or _is_procurement_header(model)
+            or _is_operations_header(model)
+        )
     return False
 
 
@@ -558,12 +688,10 @@ def _purge_draft_models(draft: dict[str, Any], removed: set[str]) -> None:
 
 
 def demote_parallel_billing_models(draft: dict[str, Any]) -> list[str]:
-    """Drop parallel x_* invoice/bill workflows when pack forbids payment capture."""
+    """Drop parallel x_* invoice/bill workflows (wrap account.move or pack forbids capture)."""
     notes: list[str] = []
     forbid_capture = _forbids_payment_capture(draft)
     reuse_models = _reuse_models(draft)
-    if not forbid_capture and "account.move" not in reuse_models:
-        return notes
 
     removed: set[str] = set()
     for model in draft.get("models") or []:
@@ -572,11 +700,26 @@ def demote_parallel_billing_models(draft: dict[str, Any]) -> list[str]:
         mid = str(model.get("model") or "")
         if not mid.startswith("x_"):
             continue
-        if mid == "x_bill" and not model.get("is_workflow"):
+        wraps_move = any(
+            isinstance(f, dict) and str(f.get("relation") or "") == "account.move"
+            for f in (model.get("fields") or [])
+        )
+        billing_name = bool(
+            _PARALLEL_BILLING_MODEL_RE.match(mid)
+            or "invoice" in mid.lower()
+            or "bill" in mid.lower()
+        )
+        if not billing_name:
             continue
-        if not (_PARALLEL_BILLING_MODEL_RE.match(mid) or "invoice" in mid.lower()):
-            if "bill" not in mid.lower():
-                continue
+        if mid.endswith("_line"):
+            continue
+        if wraps_move and model.get("is_workflow"):
+            removed.add(mid)
+            continue
+        if mid == "x_bill" and not model.get("is_workflow") and not wraps_move:
+            continue
+        if not forbid_capture and "account.move" not in reuse_models:
+            continue
         if model.get("is_workflow"):
             sf = model.get("state_field") if isinstance(model.get("state_field"), dict) else {}
             sel = str(sf.get("selection") or "")
@@ -701,7 +844,7 @@ def scrub_misapplied_stock_document_links(draft: dict[str, Any]) -> list[str]:
     """Drop stock-document M2O fields on semantically wrong header models."""
     notes: list[str] = []
     checks = (
-        ("x_purchase_order_id", lambda model: _is_procurement_header(model)),
+        ("x_purchase_order_id", _keeps_purchase_document_link),
         ("x_sale_order_id", lambda model: _is_sales_header(model)),
         ("x_invoice_id", lambda model: _stock_link_applies("account.move", model)),
     )
@@ -832,7 +975,7 @@ def _needs_reuse_stock_document(model: str, by_id: dict[str, dict[str, Any]]) ->
             _is_sales_header(m) or _is_procurement_header(m) for m in by_id.values()
         )
     if model == "purchase.order":
-        return any(_is_procurement_header(m) for m in by_id.values())
+        return any(_keeps_purchase_document_link(m) for m in by_id.values())
     return False
 
 
@@ -1030,6 +1173,14 @@ def prepare_spec_for_live_apply(spec: dict[str, Any]) -> tuple[dict[str, Any], l
 
     out = copy.deepcopy(spec)
     notes = run_apply_readiness_pass(out)
+    # Re-author inherit xpath from the current slot compiler so Apply is not
+    # stuck on a stale session arch (e.g. TIN inside the Vendor widget).
+    try:
+        from app.ai_form_slots import apply_form_slots
+
+        notes.extend(apply_form_slots(out, prompt=str(out.get("_user_prompt") or "")))
+    except Exception:  # noqa: BLE001
+        pass
     return out, notes
 
 
@@ -1391,17 +1542,57 @@ def ensure_model_access_stubs(draft: dict[str, Any]) -> list[str]:
         for r in (draft.get("access_rules") or [])
         if isinstance(r, dict)
     }
+    tech = str(draft.get("technical_name") or "").replace(".", "_")
+    preferred_user = f"group_{tech}_user" if tech else ""
+    preferred_mgr = f"group_{tech}_manager" if tech else ""
     user_group = mgr_group = ""
     for group in draft.get("groups") or []:
         if not isinstance(group, dict):
             continue
         gid = str(group.get("id") or "")
-        if "manager" in gid.lower():
-            mgr_group = gid
-        elif "user" in gid.lower():
+        if preferred_user and gid == preferred_user:
             user_group = gid
+        elif preferred_mgr and gid == preferred_mgr:
+            mgr_group = gid
+        elif "manager" in gid.lower() and not mgr_group:
+            mgr_group = gid
+        elif "user" in gid.lower() and not user_group:
+            user_group = gid
+    if preferred_user and any(
+        isinstance(g, dict) and str(g.get("id") or "") == preferred_user
+        for g in (draft.get("groups") or [])
+    ):
+        user_group = preferred_user
+    if preferred_mgr and any(
+        isinstance(g, dict) and str(g.get("id") or "") == preferred_mgr
+        for g in (draft.get("groups") or [])
+    ):
+        mgr_group = preferred_mgr
     if not user_group or not mgr_group:
-        return notes
+        tech_id = tech or str(draft.get("technical_name") or "custom_app").replace(".", "_")
+        user_group = user_group or f"group_{tech_id}_user"
+        mgr_group = mgr_group or f"group_{tech_id}_manager"
+        groups = list(draft.get("groups") or []) if isinstance(draft.get("groups"), list) else []
+        gids = {str(g.get("id") or "") for g in groups if isinstance(g, dict)}
+        display = str(draft.get("display_name") or tech_id)
+        if user_group not in gids:
+            groups.append(
+                {
+                    "id": user_group,
+                    "name": f"{display} User",
+                    "category_id": "base.module_category_custom",
+                }
+            )
+        if mgr_group not in gids:
+            groups.append(
+                {
+                    "id": mgr_group,
+                    "name": f"{display} Manager",
+                    "implied_ids": [user_group],
+                    "category_id": "base.module_category_custom",
+                }
+            )
+        draft["groups"] = groups
     rules = list(draft.get("access_rules") or [])
     added = 0
     for model in draft.get("models") or []:
@@ -2191,6 +2382,78 @@ def apply_line_subtotal_computes(draft: dict[str, Any]) -> list[str]:
     return notes
 
 
+def ensure_header_line_subtotals(draft: dict[str, Any]) -> list[str]:
+    """Order headers with a total + line O2M get qty / rate / subtotal on the line."""
+    notes: list[str] = []
+    by_id = _models_index(draft)
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        mid = str(model.get("model") or "")
+        fields = {
+            str(f.get("name")): f for f in (model.get("fields") or []) if isinstance(f, dict)
+        }
+        if not any(n in fields for n in _HEADER_TOTAL_NAMES):
+            continue
+        line_field = next(
+            (
+                f
+                for f in fields
+                if fields[f].get("ttype") == "one2many"
+                and str(fields[f].get("relation") or "") in by_id
+                and "line" in str(fields[f].get("relation") or "").lower()
+            ),
+            None,
+        )
+        if not line_field:
+            continue
+        line_model = str(fields[line_field].get("relation") or "")
+        child = by_id.get(line_model) or {}
+        child_names = _field_names(child)
+        added: list[str] = []
+        if not any(n in child_names for n in _LINE_QTY_NAMES):
+            child.setdefault("fields", []).append(
+                {"name": "x_qty", "ttype": "float", "string": "Quantity", "default": 1}
+            )
+            added.append("x_qty")
+            child_names.add("x_qty")
+        if not any(n in child_names for n in _LINE_PRICE_NAMES):
+            curr = next(
+                (n for n in ("x_currency_id",) if n in child_names or n in fields),
+                "x_currency_id",
+            )
+            row: dict[str, Any] = {
+                "name": "x_rate",
+                "ttype": "monetary",
+                "string": "Rate",
+                "currency_field": curr,
+                "widget": "monetary",
+                "source": "apply_readiness",
+            }
+            child.setdefault("fields", []).append(row)
+            added.append("x_rate")
+            child_names.add("x_rate")
+        if not any(n in child_names for n in _LINE_TOTAL_NAMES):
+            curr = next(
+                (n for n in ("x_currency_id",) if n in child_names),
+                "x_currency_id",
+            )
+            child.setdefault("fields", []).append(
+                {
+                    "name": "x_subtotal",
+                    "ttype": "monetary",
+                    "string": "Subtotal",
+                    "currency_field": curr,
+                    "widget": "monetary",
+                    "source": "apply_readiness",
+                }
+            )
+            added.append("x_subtotal")
+        if added:
+            notes.append(f"apply: line money fields on {line_model} ({', '.join(added)})")
+    return notes
+
+
 def apply_order_header_total_computes(draft: dict[str, Any]) -> list[str]:
     """Roll up line subtotals into header x_amount_total on order models."""
     notes: list[str] = []
@@ -2213,7 +2476,7 @@ def apply_order_header_total_computes(draft: dict[str, Any]) -> list[str]:
             None,
         )
         total_field = next(
-            (n for n in ("x_amount_total", "x_total", "x_amount") if n in fields),
+            (n for n in _HEADER_TOTAL_NAMES if n in fields),
             None,
         )
         if not line_field or not total_field:
@@ -2450,6 +2713,8 @@ def sync_sequence_field_help(draft: dict[str, Any]) -> list[str]:
         if not isinstance(model, dict):
             continue
         mid = str(model.get("model") or "")
+        if mid.endswith("_line"):
+            continue
         prefix = seq_by.get(mid, "").rstrip("/")
         if not prefix:
             continue
@@ -2802,6 +3067,7 @@ def dedupe_line_parent_m2o_fields(draft: dict[str, Any]) -> list[str]:
             for f in (model.get("fields") or [])
             if isinstance(f, dict)
             and f.get("ttype") == "many2one"
+            and str(f.get("relation") or "").startswith("x_")
             and str(f.get("relation") or "") in by_id
             and not str(f.get("relation") or "").endswith("_line")
         ]
@@ -3428,6 +3694,12 @@ def finalize_draft_readiness_metadata(draft: dict[str, Any]) -> list[str]:
         **(draft.get("_meta") if isinstance(draft.get("_meta"), dict) else {}),
         "score_0_10": score,
     }
+    try:
+        from app.ai_operator_surface import attach_operator_surface
+
+        notes.extend(attach_operator_surface(draft))
+    except Exception as exc:  # noqa: BLE001
+        notes.append(f"operator_surface: skipped ({exc})")
     return notes
 
 
@@ -3444,13 +3716,87 @@ def dedupe_enrich_warnings(warnings: list[str]) -> list[str]:
     return kept
 
 
+_X_MODEL_RE = re.compile(r"\bx_[a-z0-9_]+\b")
+_KEEP_STALE_MODEL_WARNING_RE = re.compile(
+    r"pruned|dropped generic|in favor of|emitted none|scaffold-gap|Prompt mentions",
+    re.I,
+)
+_GENERIC_WARNING_RENAMES: dict[str, tuple[str, ...]] = {
+    "x_site": (
+        "studio",
+        "facility",
+        "clinic",
+        "hotel",
+        "branch",
+        "store",
+        "warehouse",
+        "ward",
+        "booth",
+    ),
+    "x_location": (
+        "studio",
+        "facility",
+        "clinic",
+        "hotel",
+        "branch",
+        "store",
+        "warehouse",
+        "ward",
+    ),
+    "x_place": ("studio", "facility", "clinic", "hotel", "branch", "store"),
+    "x_party": (
+        "artist",
+        "guest",
+        "patient",
+        "member",
+        "tenant",
+        "attorney",
+        "doctor",
+        "student",
+        "resident",
+    ),
+    "x_booking_document": ("session", "booking", "appointment", "reservation"),
+}
+
+
+def _generic_warning_rename_map(draft: dict[str, Any]) -> dict[str, str]:
+    """Map leftover generic model ids to the live prompt-noun model.
+
+    Skip ids the closer already pruned — those notes should drop, not retarget.
+    """
+    known = set(_models_index(draft))
+    pruned = {str(x) for x in (draft.get("_app_bar_pruned") or []) if x}
+    mapping: dict[str, str] = {}
+    for old, leaves in _GENERIC_WARNING_RENAMES.items():
+        if old in known or old in pruned:
+            continue
+        for leaf in leaves:
+            cand = f"x_{leaf}"
+            if cand in known:
+                mapping[old] = cand
+                break
+    return mapping
+
+
 def filter_stale_enrich_warnings(warnings: list[str], draft: dict[str, Any]) -> list[str]:
     """Drop enrich warnings superseded by apply-readiness fixes."""
     by_id = _models_index(draft)
+    known = set(by_id)
+    rename = _generic_warning_rename_map(draft)
     depth = draft.get("_depth") if isinstance(draft.get("_depth"), dict) else {}
     kept: list[str] = []
     for warning in warnings:
         w = str(warning or "")
+        keep_stale = bool(_KEEP_STALE_MODEL_WARNING_RE.search(w))
+        if rename and not keep_stale:
+            w = _X_MODEL_RE.sub(lambda m: rename.get(m.group(0), m.group(0)), w)
+        leftover = [
+            tok
+            for tok in _GENERIC_WARNING_RENAMES
+            if re.search(rf"\b{re.escape(tok)}\b", w) and tok not in known
+        ]
+        if leftover and not keep_stale:
+            continue
         if w.startswith("depth: company on "):
             model = w.replace("depth: company on ", "", 1).strip()
             names = _field_names(by_id.get(model) or {})
@@ -3589,7 +3935,13 @@ def _automation_keep_rank(auto: dict[str, Any]) -> tuple[int, int, int, str]:
     )
     activity_only = bool(actions) and not has_write
     src = str(auto.get("source") or "")
-    src_pri = {"rules_engine": 0, "depth_seed": 1, "depth_floor": 1, "critique": 2}.get(src, 5)
+    src_pri = {
+        "honesty_ir": 0,
+        "rules_engine": 0,
+        "depth_seed": 1,
+        "depth_floor": 1,
+        "critique": 2,
+    }.get(src, 5)
     return (0 if activity_only else 1, len(actions), src_pri, str(auto.get("name") or ""))
 
 
@@ -3741,6 +4093,9 @@ def run_apply_readiness_pass(draft: dict[str, Any]) -> list[str]:
     notes.extend(ensure_retail_go_live_review_notes(draft))
     notes.extend(reconcile_completeness_metadata(draft))
     notes.extend(reconcile_depth_metadata(draft))
+    from app.ai_live_apply_contract import attach_live_apply_contract
+
+    notes.extend(attach_live_apply_contract(draft))
     return notes
 
 
@@ -3764,6 +4119,7 @@ __all__ = [
     "ensure_branch_manager_record_rules",
     "ensure_branch_scoped_record_rules",
     "ensure_header_line_models",
+    "ensure_header_line_subtotals",
     "ensure_model_access_stubs",
     "ensure_global_branch_fields",
     "ensure_global_branch_search_views",

@@ -59,7 +59,7 @@ def expert_ask(body: ExpertAskBody, db: Session = Depends(get_db)) -> ExpertAskO
     if not expert_assist_enabled():
         raise HTTPException(
             status_code=503,
-            detail="Expert requires AI_ASSIST enabled (ollama or openai-compatible)",
+            detail="Expert requires AI_ASSIST enabled (auto, ollama, openai, claude, or gemini)",
         )
     try:
         client = None
@@ -90,7 +90,7 @@ def expert_explain_model(body: ExpertExplainModelBody, db: Session = Depends(get
     if not expert_assist_enabled():
         raise HTTPException(
             status_code=503,
-            detail="Expert requires AI_ASSIST enabled (ollama or openai-compatible)",
+            detail="Expert requires AI_ASSIST enabled (auto, ollama, openai, claude, or gemini)",
         )
     client = None
     version: str | None = None
@@ -212,8 +212,24 @@ def expert_review_draft(body: ExpertDraftReviewBody, db: Session = Depends(get_d
         overlap_notes=overlap_notes or None,
         db=db,
         version=version,
-        include_narratives=True,
+        include_narratives=not body.apply_fixes,
     )
+    if body.apply_fixes and isinstance(result.draft, dict):
+        try:
+            from app.ai_draft_cache import save_draft_cache
+
+            prompt = (body.user_prompt or "").strip() or str(
+                result.draft.get("_user_prompt") or ""
+            )
+            save_draft_cache(
+                db,
+                connection_id=body.connection_id,
+                prompt=prompt,
+                draft=result.draft,
+                domain_pack=str(result.draft.get("domain_pack") or "") or None,
+            )
+        except Exception:  # noqa: BLE001 — cache is recovery, not the closer
+            pass
     return ExpertDraftReviewOut(
         score_before=result.score_before,
         score_after=result.score_after,

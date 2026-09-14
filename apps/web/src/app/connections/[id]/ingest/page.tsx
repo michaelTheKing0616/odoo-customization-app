@@ -68,6 +68,21 @@ export default function UniversalIngestPage() {
   );
   const log = job?.batch.commit_log;
 
+  async function downloadUsersTemplate() {
+    try {
+      const t = await api.usersCsvTemplate(connectionId);
+      const blob = new Blob([t.csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = t.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not download users.csv template");
+    }
+  }
+
   async function uploadAndPlan() {
     if (!files.length) {
       setError("Select at least one CSV, XLSX, PDF, or image file.");
@@ -177,6 +192,11 @@ export default function UniversalIngestPage() {
         title="Universal ingest"
         description="Upload CSV/XLSX/PDF/images or build starter data with Expert — classify, order, dry-run, commit."
       />
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="secondary" size="sm" onClick={() => void downloadUsersTemplate()}>
+          Download users.csv template
+        </Button>
+      </div>
 
       {visionMsg && (
         <Callout variant="info" title="Vision OCR">

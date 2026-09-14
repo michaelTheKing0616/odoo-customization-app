@@ -49,6 +49,18 @@ def render_module_readme(spec: "ModuleSpec", *, odoo_major: int = 19) -> str:
         "| `data/` | Sequences, automations, mail templates |",
         "| `.meta.json` | Machine-readable ModuleSpec sidecar (reverse import) |",
         "",
+        "## Test scenario",
+        "",
+        "After install on a staging database matching this Odoo major:",
+        "",
+        "1. Open the app from the home screen (or Settings → Technical if inherit-only).",
+        "2. Create one header record with required fields; confirm the statusbar / chatter if present.",
+        "3. Open a related stock document from a smart button (Contact, Quotation, or Invoice) — "
+        "do not expect a parallel `x_customer` / `x_invoice` / `x_receipt`.",
+        "4. Run the module's TransactionCase tests (`odoo-bin --test-enable -i <module>` in sandbox).",
+        "5. Certification stays Reject for Option A (OWL/QWeb/Python) until that sandbox prove. "
+        "Promote stays human.",
+        "",
         "## Hand to your developer",
         "",
         "This module was produced from a no-code specification. Before production:",

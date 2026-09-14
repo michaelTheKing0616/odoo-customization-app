@@ -17,6 +17,7 @@ DOC_TYPE_PRIMARY_MODEL: dict[DocType, str] = {
     "employee_roster": "hr.employee",
     "opening_trial_balance": "account.move",
     "inventory_count": "stock.quant",
+    "user_roster": "res.users",
     "other": "res.partner",
 }
 
@@ -27,6 +28,7 @@ NATURAL_KEY_FIELDS: dict[str, list[str]] = {
     "product.pricelist.item": ["product_id", "min_quantity"],
     "account.account": ["code"],
     "hr.employee": ["work_email", "name"],
+    "res.users": ["login"],
     "mrp.bom": ["product_tmpl_id"],
 }
 
@@ -45,6 +47,7 @@ CLASSIFY_HEADER_SIGNALS: dict[DocType, frozenset[str]] = {
     "employee_roster": frozenset({"employee", "department", "manager", "hire", "role", "job"}),
     "opening_trial_balance": frozenset({"trial", "balance", "opening", "debit", "credit"}),
     "inventory_count": frozenset({"inventory", "onhand", "quantity", "location", "stock"}),
+    "user_roster": frozenset({"login", "email", "groups", "group", "roles", "xmlid"}),
     "other": frozenset(),
 }
 
@@ -86,7 +89,7 @@ OPENING_TB_DOC_TYPE: DocType = "opening_trial_balance"
 
 # Doc types with dedicated commit handlers (not generic dry_run_or_commit)
 DEDICATED_COMMIT_DOC_TYPES: frozenset[DocType] = frozenset(
-    {"opening_trial_balance", "inventory_count"}
+    {"opening_trial_balance", "inventory_count", "user_roster"}
 )
 
 # Kept for backward-compatible imports; inventory now has a real path

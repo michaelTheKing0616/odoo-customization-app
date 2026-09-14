@@ -26,6 +26,16 @@ class OdooClientError(Exception):
     """Raised when an Odoo RPC call fails or returns an unexpected shape."""
 
 
+def _rpc_error_text(exc: BaseException) -> str:
+    if isinstance(exc, xmlrpc.client.Fault):
+        return str(exc.faultString or exc)
+    return str(exc)
+
+
+def _is_child_action_warning(exc: BaseException) -> bool:
+    return "child actions have warnings" in _rpc_error_text(exc).lower()
+
+
 class ObserverModeError(OdooClientError):
     """Raised when observer write mode blocks a mutating RPC call."""
 
@@ -827,6 +837,53 @@ class OdooClient:
         self.execute_kw("ir.ui.view", "write", [[view_id], {"arch": arch}])
         return self.get_view(view_id)
 
+    def unlink_view(self, view_id: int) -> None:
+        """Delete an ``ir.ui.view`` row (typically a Designer inherit child)."""
+        self.execute_kw("ir.ui.view", "unlink", [[int(view_id)]])
+
+    def find_designer_inherit_rows(
+        self, model: str, view_type: str
+    ) -> list[dict[str, Any]]:
+        """Return Designer child views named ``{model}.designer.{view_type}``."""
+        vt = "list" if view_type == "tree" else view_type
+        child_name = f"{model}.designer.{vt}"
+        rows = self.execute_kw(
+            "ir.ui.view",
+            "search_read",
+            [[("name", "=", child_name), ("model", "=", model)]],
+            {
+                "fields": [
+                    "id",
+                    "name",
+                    "model",
+                    "type",
+                    "arch",
+                    "inherit_id",
+                    "mode",
+                    "priority",
+                ],
+                "limit": 20,
+            },
+        )
+        return [dict(r) for r in (rows or [])]
+
+    def list_custom_field_inject_names(self, model: str, view_type: str) -> list[str]:
+        """Names of ``{model}.custom.*.{view_type}`` inject inherits (if any)."""
+        vt = "list" if view_type == "tree" else view_type
+        rows = self.execute_kw(
+            "ir.ui.view",
+            "search_read",
+            [
+                [
+                    ("model", "=", model),
+                    ("type", "=", vt),
+                    ("name", "like", f"{model}.custom."),
+                ]
+            ],
+            {"fields": ["name"], "limit": 80},
+        )
+        return [str(r["name"]) for r in (rows or []) if r.get("name")]
+
     def _find_view_by_exact_name(self, name: str) -> ViewInfo | None:
         ids = self.execute_kw(
             "ir.ui.view",
@@ -904,6 +961,44 @@ class OdooClient:
                     )
                 )
         return updated
+
+    def get_combined_view_arch(self, model: str, view_type: str = "form") -> str:
+        """Return the combined (primary + inherits) form/list arch for ``model``.
+
+        Used so Designer additive saves know which fields already appear on the
+        live UI and must not be re-injected.
+        """
+        vt = "list" if view_type == "tree" else view_type
+        # Odoo 17+ get_views; fall back to fields_view_get on older/ odd builds.
+        try:
+            result = self.execute_kw(
+                model,
+                "get_views",
+                [],
+                {"views": [(False, vt)], "options": {"toolbar": False}},
+            )
+            views = (result or {}).get("views") or {}
+            bucket = views.get(vt) or views.get("form") or {}
+            arch = bucket.get("arch")
+            if isinstance(arch, str) and arch.strip():
+                return arch
+        except Exception:  # noqa: BLE001 — fall through
+            pass
+        try:
+            result = self.execute_kw(
+                model,
+                "fields_view_get",
+                [],
+                {"view_type": "tree" if vt == "list" else vt, "toolbar": False},
+            )
+            arch = (result or {}).get("arch")
+            if isinstance(arch, str) and arch.strip():
+                return arch
+        except Exception as exc:  # noqa: BLE001
+            raise OdooClientError(
+                f"Could not load combined {vt} arch for {model}: {exc}"
+            ) from exc
+        raise OdooClientError(f"Empty combined {vt} arch for {model}")
 
     def find_view(
         self,
@@ -1142,6 +1237,16 @@ class OdooClient:
                 name=request.name, model_id=model_id, action=action
             )
         elif isinstance(action, CreateActivityAction):
+            self.ensure_module_installed("mail")
+            mixins = self.ensure_mail_mixins(request.model)
+            if not mixins.get("is_mail_activity") and not self._model_has_field(
+                request.model, "activity_ids"
+            ):
+                raise OdooClientError(
+                    f"Model {request.model!r} does not support activities "
+                    "(ir.model is_mail_activity is off). Enable mail.activity mixin "
+                    "or install the generated module (Option A)."
+                )
             try:
                 if action.user_type == "specific":
                     server_vals = automation.encode_create_activity_server_vals(
@@ -1253,7 +1358,43 @@ class OdooClient:
         except ValueError as exc:
             raise OdooClientError(str(exc)) from exc
 
-        auto_id = self.execute_kw("base.automation", "create", [auto_vals])
+        try:
+            auto_id = self.execute_kw("base.automation", "create", [auto_vals])
+        except Exception as exc:
+            if not (
+                isinstance(action, CreateActivityAction)
+                and action.user_type != "specific"
+                and _is_child_action_warning(exc)
+            ):
+                raise
+            specific = action.model_copy(
+                update={"user_type": "specific", "user_id": int(self.uid)}
+            )
+            server_vals = automation.encode_create_activity_server_vals(
+                name=request.name, model_id=model_id, action=specific
+            )
+            try:
+                auto_vals = automation.build_automation_record_vals(
+                    name=request.name,
+                    model_id=model_id,
+                    trigger=request.trigger.value,
+                    active=request.active,
+                    server_vals=server_vals,
+                    filter_domain=request.filter_domain,
+                    filter_pre_domain=request.filter_pre_domain,
+                    trigger_field_ids=trigger_field_ids,
+                    trg_date_id=trg_date_id,
+                    trg_date_range=request.trg_date_range,
+                    trg_date_range_type=request.trg_date_range_type,
+                    trg_date_range_mode=request.trg_date_range_mode,
+                    allow_advanced=allow_advanced,
+                )
+                auto_id = self.execute_kw("base.automation", "create", [auto_vals])
+            except Exception as retry_exc:
+                raise OdooClientError(
+                    f"next_activity on {request.model!r} failed: "
+                    f"{_rpc_error_text(retry_exc)}"
+                ) from retry_exc
         rows = self.list_automations()
         for row in rows:
             if row.id == auto_id:
@@ -1283,7 +1424,7 @@ class OdooClient:
             "mail.activity.type",
             "search_read",
             [[]],
-            {"fields": ["id", "name"], "limit": limit, "order": "name"},
+            {"fields": ["id", "name", "res_model"], "limit": limit, "order": "name"},
         )
 
     def create_code_automation(
@@ -2357,7 +2498,17 @@ class OdooClient:
             vals["action"] = f"ir.actions.act_window,{action_id}"
         if web_icon:
             vals["web_icon"] = web_icon
-        return int(self.execute_kw("ir.ui.menu", "create", [vals]))
+        try:
+            return int(self.execute_kw("ir.ui.menu", "create", [vals]))
+        except Exception:
+            # Odoo 19 rejects Font Awesome ``fa-*,#hex`` as a file path.
+            if vals.get("web_icon") and str(vals["web_icon"]).lower().startswith("fa-"):
+                vals["web_icon"] = "base,static/description/icon.png"
+                return int(self.execute_kw("ir.ui.menu", "create", [vals]))
+            if "web_icon" in vals:
+                vals.pop("web_icon", None)
+                return int(self.execute_kw("ir.ui.menu", "create", [vals]))
+            raise
 
     def ensure_app_menus(
         self,

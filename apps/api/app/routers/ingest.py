@@ -119,6 +119,20 @@ def _job_out(row) -> IngestJobOut:
     )
 
 
+class UsersTemplateOut(BaseModel):
+    filename: str
+    csv: str
+    model: str = "res.users"
+
+
+@router.get("/users-template", response_model=UsersTemplateOut)
+def get_users_template(connection_id: str) -> UsersTemplateOut:
+    _ = connection_id
+    from app.config_packet.users import users_csv_template
+
+    return UsersTemplateOut(filename="users.csv", csv=users_csv_template())
+
+
 @router.get("/vision/status", response_model=VisionStatusOut)
 def vision_status(connection_id: str) -> VisionStatusOut:
     _ = connection_id

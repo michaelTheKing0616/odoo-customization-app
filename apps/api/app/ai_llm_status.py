@@ -31,6 +31,7 @@ DRAFT_TOP_LEVEL_ALLOWLIST = frozenset(
         "automations",
         "reuse",
         "reuse_hints",
+        "reuse_stock",
         "anti_patterns",
         "domain_pack",
         "multi_company",
@@ -50,6 +51,36 @@ DRAFT_TOP_LEVEL_ALLOWLIST = frozenset(
         "_critique",
         "_pack_reuse_stock",
         "_compute_suggestions",
+        "_generation_incomplete",
+        "_odoo_app_bar",
+        "_scorecard",
+        "_domain_briefing",
+        "_pack_model_ids",
+        "_live_apply",
+        "_connection_catalog",
+        "custom_code_blocks",
+        "_capability_gaps",
+        "_capability_primary_option_a",
+        "_noun_skips",
+        "_done_bar",
+        "_go_live_ready",
+        "_option_a_smoke",
+        "_grain_display_kind",
+        "_component",
+        "_senior_shape",
+        "_architecture_plan",
+        "_architecture_drift",
+        "_certification",
+        "_static_odoo",
+        "_failures",
+        "_repair_count",
+        "_repair_history",
+        "_certified_artifacts",
+        "_sandbox_install",
+        "_planner_grounding",
+        "_operator_brief",
+        "_generation_engine",
+        "_delivery_preference",
     }
 )
 
@@ -174,6 +205,15 @@ def finalize_llm_status(draft: dict[str, Any], *, mode: LlmMode | None = None) -
     status = draft.get("_llm_status")
     if not isinstance(status, dict):
         return
+    if draft.get("_component"):
+        status["step_total"] = 4
+        status["step"] = 3
+        status["step_label"] = "Ready"
+        status["completed_steps"] = ["Host", "Fields", "View", "Ready"]
+        if mode:
+            status["mode"] = mode
+        draft["_llm_status"] = status
+        return
     total = int(status.get("step_total") or len(STEP_LABELS))
     final_step = max(0, total - 1)
     status["step"] = final_step
@@ -185,6 +225,26 @@ def finalize_llm_status(draft: dict[str, Any], *, mode: LlmMode | None = None) -
         failed = set(status.get("failed_steps") or [])
         completed = [label for i, label in enumerate(STEP_LABELS) if label not in failed]
     status["completed_steps"] = completed
+    resolved_mode = str(mode or status.get("mode") or "")
+    try:
+        from app.ai_document_shape import draft_needs_hygiene_repair, draft_needs_residual_recovery
+
+        prompt = str(draft.get("_user_prompt") or "")
+        needs = draft_needs_hygiene_repair(draft, prompt=prompt) or draft_needs_residual_recovery(
+            draft, prompt=prompt
+        )
+    except Exception:  # noqa: BLE001
+        needs = False
+    failed = list(status.get("failed_steps") or [])
+    status["retry_recommended"] = bool(
+        needs
+        or failed
+        or resolved_mode in {"llm_partial", "pack_fallback", "seed_fallback"}
+    )
+    status["enrichment_clean"] = bool(
+        resolved_mode == "llm_full" and not status["retry_recommended"]
+    )
+    # Always present so the wizard never treats omitted keys as "still dirty llm_full".
     draft["_llm_status"] = status
 
 
@@ -211,16 +271,34 @@ def merge_llm_status(
     return base
 
 
-def banner_for_mode(mode: str | None, *, seeded: bool | None = None) -> str | None:
+def banner_for_mode(
+    mode: str | None,
+    *,
+    seeded: bool | None = None,
+    reason: str | None = None,
+) -> str | None:
     if mode == "llm_partial":
         return (
-            "Some AI steps timed out; pack templates filled in. "
-            "Retry AI enrichment?"
+            "Some AI steps timed out; the draft was finished from your prompt. "
+            "Click Retry AI enrichment to wake AI, re-run missed steps, and "
+            "complete residual fields from your brief if AI stays down."
         )
     if mode == "pack_fallback":
+        if reason == "residual_recovered":
+            return (
+                "Residual completed from your brief "
+                "(AI was unavailable). Review fields, then Apply. "
+                "Click Retry AI enrichment again to wake AI and polish when a model is back."
+            )
+        if reason in {"timeout", "unavailable", "honesty_seed"}:
+            return (
+                "AI was unavailable on Create draft. Click Retry AI enrichment — "
+                "it wakes Flash/local/cloud, re-runs missed AI steps, and still "
+                "completes residual fields from your brief if AI stays down."
+            )
         return (
-            "Built from the retail template — the AI model was unavailable. "
-            "Retry AI enrichment for tailored results."
+            "Draft Studio used the domain pack (not a retail template). "
+            "Click Retry AI enrichment to wake AI and tailor when available."
         )
     if mode == "seed_fallback":
         if seeded is False:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import logging
 import os
@@ -13,6 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from sqlalchemy.orm import Session
@@ -49,6 +51,39 @@ def is_local_docker_connection(url: str, *, port: int = 8069) -> bool:
     host = (parsed.hostname or "").lower()
     p = parsed.port or (443 if parsed.scheme == "https" else 80)
     return host in LOCAL_HOSTS and p == port
+
+
+def stamp_option_a_promote_token(
+    db: Session,
+    *,
+    connection_id: str,
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    """Pop raw zip bytes from a prove result and attach validation_id + zip_base64.
+
+    Bytes must never remain on the HTTP payload. TTL matches sandbox validation (2h).
+    """
+    zip_bytes = result.pop("zip_bytes", None)
+    if not result.get("ok") or not isinstance(zip_bytes, (bytes, bytearray)):
+        return result
+    draft = result.get("draft") if isinstance(result.get("draft"), dict) else {}
+    sandbox = result.get("sandbox") if isinstance(result.get("sandbox"), dict) else {}
+    tech = str(
+        draft.get("technical_name")
+        or sandbox.get("module")
+        or "custom_module"
+    )
+    row = record_sandbox_validation(
+        db,
+        connection_id=connection_id,
+        module_name=tech,
+        zip_bytes=bytes(zip_bytes),
+    )
+    result["validation_id"] = row.id
+    result["zip_base64"] = base64.b64encode(bytes(zip_bytes)).decode("ascii")
+    result["promote_ready"] = True
+    result["module"] = tech
+    return result
 
 
 def record_sandbox_validation(

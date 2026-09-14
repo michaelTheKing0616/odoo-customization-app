@@ -8,7 +8,26 @@ from typing import Any
 from app.ai_post_critique import NOUN_STOPWORDS as _STOPWORDS
 
 # Nouns that are too generic to require a dedicated model when alone.
-_GENERIC_NOUNS = frozenset({"order", "item", "line", "record", "data", "user", "company"})
+_GENERIC_NOUNS = frozenset(
+    {
+        "order",
+        "item",
+        "line",
+        "record",
+        "data",
+        "user",
+        "company",
+        "code",
+        "click",
+        "button",
+        "directly",
+        "dynamic",
+        "pdf",
+        "print",
+        "extra",
+        "extras",
+    }
+)
 
 _GLOBAL_NOUNS = frozenset({"worldwide", "global", "international"})
 
@@ -27,10 +46,35 @@ _REUSE_NOUN_MAP = {
     "supplier": "res.partner",
     "employee": "hr.employee",
     "staff": "hr.employee",
+    "attorney": "hr.employee",
+    "lawyer": "hr.employee",
+    "counsel": "hr.employee",
+    "invoice": "account.move",
+    "quotation": "sale.order",
     "user": "res.users",
     "company": "res.company",
     "product": "product.product",
 }
+
+# Prompt spelling / near-synonyms → model-leaf tokens (artiste → x_artist).
+_NOUN_SYNONYMS: dict[str, str] = {
+    "artiste": "artist",
+    "recording": "studio",
+    "booth": "studio",
+    "host": "employee",
+}
+
+
+def noun_search_tokens(noun: str) -> set[str]:
+    """Tokens that count as covering `noun` (canonical + aliases)."""
+    raw = str(noun or "").strip().lower()
+    if not raw:
+        return set()
+    tokens = {raw, _NOUN_SYNONYMS.get(raw, raw)}
+    for alias, target in _NOUN_SYNONYMS.items():
+        if raw == target:
+            tokens.add(alias)
+    return {t for t in tokens if t}
 
 
 def _lemmatize(token: str) -> str:
@@ -48,33 +92,48 @@ def extract_prompt_nouns(user_prompt: str) -> list[str]:
     """Simple noun-ish tokens from the prompt (lemmatized, deduped)."""
     if not user_prompt.strip():
         return []
-    tokens = re.findall(r"[a-zA-Z']+", user_prompt.lower())
+    # Markdown headings ("## Goal", "# Operator brief") are chrome, not domain nouns.
+    body = "\n".join(
+        ln
+        for ln in user_prompt.splitlines()
+        if not re.match(r"^#{1,3}\s+", ln.strip())
+    )
+    tokens = re.findall(r"[a-zA-Z']+", (body or user_prompt).lower())
     out: list[str] = []
     seen: set[str] = set()
-    for tok in tokens:
-        if tok in _STOPWORDS:
-            continue
-        lemma = _lemmatize(tok)
-        if lemma in _STOPWORDS or lemma in seen:
-            continue
-        if len(lemma) < 3:
-            continue
-        seen.add(lemma)
-        out.append(lemma)
+    for raw in tokens:
+        parts = [p for p in re.split(r"['’]+", raw) if p]
+        for tok in parts:
+            if tok in _STOPWORDS:
+                continue
+            lemma = _lemmatize(tok)
+            if lemma in _STOPWORDS or lemma in seen:
+                continue
+            if len(lemma) < 3:
+                continue
+            seen.add(lemma)
+            out.append(lemma)
     return out
 
 
 def _model_text_blob(draft: dict[str, Any]) -> str:
-    parts: list[str] = [str(draft.get("display_name") or "")]
+    cp = draft.get("connect_points") if isinstance(draft.get("connect_points"), dict) else {}
+    parts: list[str] = [
+        str(draft.get("display_name") or ""),
+        str(cp.get("host_model") or ""),
+        str(cp.get("host_label") or ""),
+    ]
     for m in draft.get("models") or []:
         if not isinstance(m, dict):
             continue
         parts.append(str(m.get("model") or ""))
         parts.append(str(m.get("description") or ""))
+        parts.append(str(m.get("inherit") or ""))
         for f in m.get("fields") or []:
             if isinstance(f, dict):
                 parts.append(str(f.get("string") or ""))
                 parts.append(str(f.get("name") or ""))
+                parts.append(str(f.get("relation") or ""))
     for hint in draft.get("reuse_hints") or []:
         if isinstance(hint, dict):
             parts.append(str(hint.get("model") or ""))
@@ -92,16 +151,17 @@ def _model_text_blob(draft: dict[str, Any]) -> str:
 
 
 def _branch_has_country(draft: dict[str, Any]) -> bool:
-    for m in draft.get("models") or []:
-        if not isinstance(m, dict) or str(m.get("model") or "") != "x_branch":
-            continue
-        names = {
-            str(f.get("name"))
-            for f in (m.get("fields") or [])
-            if isinstance(f, dict) and f.get("name")
-        }
-        if "x_country_id" in names or "x_region" in names:
-            return True
+    for branch_model in ("x_branch", "x_og_facility"):
+        for m in draft.get("models") or []:
+            if not isinstance(m, dict) or str(m.get("model") or "") != branch_model:
+                continue
+            names = {
+                str(f.get("name"))
+                for f in (m.get("fields") or [])
+                if isinstance(f, dict) and f.get("name")
+            }
+            if "x_country_id" in names or "x_region" in names:
+                return True
     return False
 
 
@@ -116,17 +176,70 @@ def _noun_resolved(
         if _GLOBAL_PROMPT_RE.search(prompt) and _branch_has_country(draft):
             return True
     blob = _model_text_blob(draft)
-    if noun in blob:
+    candidates = noun_search_tokens(noun)
+    for cand in candidates:
+        if cand in blob:
+            return True
+        if cand.endswith("y") and f"{cand[:-1]}i" in blob:
+            return True
+    reuse = list(reuse_models or [])
+    if not reuse:
+        reuse_block = draft.get("reuse") if isinstance(draft.get("reuse"), dict) else {}
+        reuse = [str(m) for m in (reuse_block.get("models") or []) if m]
+        for hint in draft.get("reuse_hints") or []:
+            if isinstance(hint, dict) and hint.get("model"):
+                reuse.append(str(hint["model"]))
+    mapped = _REUSE_NOUN_MAP.get(noun) or next(
+        (_REUSE_NOUN_MAP[c] for c in candidates if c in _REUSE_NOUN_MAP),
+        None,
+    )
+    known_models = {
+        str(m.get("model"))
+        for m in (draft.get("models") or [])
+        if isinstance(m, dict) and m.get("model")
+    }
+    if mapped and mapped in known_models:
         return True
-    if noun.endswith("y") and f"{noun[:-1]}i" in blob:
-        return True
-    reuse = reuse_models or []
-    mapped = _REUSE_NOUN_MAP.get(noun)
     if mapped and mapped in reuse:
         return True
+    # Contacts/customer covered by any res.partner M2O on the residual.
+    if noun in {"contact", "customer", "client", "partner", "vendor", "supplier"}:
+        for model in draft.get("models") or []:
+            if not isinstance(model, dict):
+                continue
+            for field in model.get("fields") or []:
+                if isinstance(field, dict) and field.get("relation") == "res.partner":
+                    return True
+        if "res.partner" in reuse or "contacts" in {
+            str(d).lower() for d in (draft.get("depends") or [])
+        }:
+            return True
+    if noun in {"alert", "activity", "deadline", "mail", "notification", "notifications"}:
+        depends = {str(d).lower() for d in (draft.get("depends") or [])}
+        if "mail" in depends:
+            return True
+        for model in draft.get("models") or []:
+            if not isinstance(model, dict):
+                continue
+            mixins = {str(x) for x in (model.get("mixins") or [])}
+            if mixins & {"mail.thread", "mail.activity.mixin"}:
+                return True
+        for auto in draft.get("automations") or []:
+            if not isinstance(auto, dict):
+                continue
+            trig = str(auto.get("trigger") or auto.get("trg") or "")
+            if trig == "on_time":
+                return True
+            for act in auto.get("safe_actions") or []:
+                if isinstance(act, dict) and act.get("kind") in {
+                    "next_activity",
+                    "mail_post",
+                }:
+                    return True
     for rm in reuse:
         leaf = rm.split(".")[-1].replace("_", " ")
-        if noun in leaf or noun in rm.lower():
+        low = rm.lower()
+        if any(c in leaf or c in low for c in candidates):
             return True
     skips = draft.get("_noun_skips") or []
     if isinstance(skips, list) and noun in skips:
@@ -142,10 +255,33 @@ def domain_noun_coverage(
 ) -> tuple[list[dict[str, Any]], list[str], list[str]]:
     """Return (checklist rows, uncovered nouns, draft warnings)."""
     nouns = extract_prompt_nouns(user_prompt)
+    extra_stop: set[str] = set()
+    brief = draft.get("_operator_brief") if isinstance(draft.get("_operator_brief"), dict) else {}
+    scope = " ".join(str(x) for x in (brief.get("out_of_scope") or [])).lower()
+    if "python" in scope:
+        extra_stop.add("python")
+    for item in list(brief.get("out_of_scope") or []) + list(brief.get("forbidden_bridges") or []):
+        for tok in re.findall(r"[a-zA-Z']+", str(item).lower()):
+            lemma = _lemmatize(tok)
+            if len(lemma) >= 3:
+                extra_stop.add(lemma)
+                extra_stop.add(tok)
+    if extra_stop & {"invoicing", "invoice", "invoices", "account"}:
+        extra_stop.update({"invoice", "invoices", "invoicing"})
+    country = str(brief.get("country") or "").strip().lower()
+    if country:
+        extra_stop.update(country.split())
+    from app.ai_operator_brief import gazetteer_place_tokens
+
+    extra_stop.update(gazetteer_place_tokens())
+    # Lemmatizer turns Lagos → lago; keep place stems out of domain_fit.
+    for place in list(gazetteer_place_tokens()):
+        if place.endswith("s") and len(place) > 3:
+            extra_stop.add(place[:-1])
     key_nouns = [
         n
         for n in nouns
-        if n not in _GENERIC_NOUNS and len(n) >= 4
+        if n not in _GENERIC_NOUNS and n not in extra_stop and len(n) >= 4
     ]
     items: list[dict[str, Any]] = []
     uncovered: list[str] = []
@@ -256,4 +392,5 @@ __all__ = [
     "extract_prompt_nouns",
     "domain_noun_coverage",
     "expand_uncovered_noun_models",
+    "noun_search_tokens",
 ]

@@ -6,6 +6,7 @@ import { Suspense } from "react";
 import { FieldPalette } from "@/components/designer/FieldPalette";
 import { FormCanvas } from "@/components/designer/FormCanvas";
 import { KanbanCardPreview } from "@/components/designer/KanbanCardPreview";
+import { OdooListView, OdooPreviewScope } from "@/components/odoo-preview";
 import {
   NicheWidgetPalette,
   type NicheWidgetEntry,
@@ -297,15 +298,38 @@ function DesignerHarnessInner() {
                 Odoo-style canvas
               </h2>
               <PreviewThemeScope previewVars={MOCK_PREVIEW_VARS}>
+              <OdooPreviewScope showBanner>
               <FormCanvas
                 title={title}
                 statusbar="x_stage"
-                headerButtons={["Confirm", "Cancel"]}
+                statusbarVisible="new,in_progress,done"
+                groupLayout="two-column"
+                headerButtons={[
+                  { id: "confirm", string: "Confirm", variant: "primary" },
+                  { id: "cancel", string: "Cancel", variant: "secondary" },
+                ]}
                 smartButtons={[
-                  { id: "sb1", string: "Orders" },
-                  { id: "sb2", string: "Invoices" },
+                  { id: "sb1", string: "Orders", count: 3 },
+                  { id: "sb2", string: "Invoices", count: 1 },
                 ]}
                 groups={formGroups}
+                notebooks={[
+                  {
+                    id: "nb1",
+                    pages: [
+                      {
+                        id: "pg1",
+                        string: "Lines",
+                        fields: [{ id: "line1", name: "x_qty", string: "Qty" }],
+                      },
+                      {
+                        id: "pg2",
+                        string: "Notes",
+                        fields: [{ id: "note1", name: "x_notes", string: "Notes" }],
+                      },
+                    ],
+                  },
+                ]}
                 selectedFieldId={selectedFieldId}
                 onSelectField={setSelectedFieldId}
                 onMoveField={(fieldId, dir) => {
@@ -317,6 +341,7 @@ function DesignerHarnessInner() {
                   );
                 }}
               />
+              </OdooPreviewScope>
               </PreviewThemeScope>
             </div>
             <PropsInspector title="Field properties">
@@ -359,75 +384,26 @@ function DesignerHarnessInner() {
               <h2 className="mb-2 text-sm font-semibold text-[var(--odoo-primary-light)]">
                 List columns
               </h2>
-              <div className="odoo-form-canvas overflow-hidden shadow-sm">
-                <div className="odoo-form-header flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold text-[var(--odoo-primary)]">
-                    {title}
-                  </span>
-                  <span className="rounded border border-[var(--odoo-border)] bg-white px-2 py-0.5 text-xs">
-                    list
-                  </span>
-                </div>
-                <div className="space-y-3 p-3">
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    <label className="block text-xs text-[var(--odoo-muted)]">
-                      decoration-danger
-                      <input
-                        readOnly
-                        value="x_priority == 'urgent'"
-                        className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1 font-mono text-xs text-[var(--odoo-sheet-fg)]"
-                      />
-                    </label>
-                    <label className="block text-xs text-[var(--odoo-muted)]">
-                      decoration-info
-                      <input
-                        readOnly
-                        value="x_stage == 'new'"
-                        className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1 font-mono text-xs text-[var(--odoo-sheet-fg)]"
-                      />
-                    </label>
-                    <label className="block text-xs text-[var(--odoo-muted)]">
-                      decoration-muted
-                      <input
-                        readOnly
-                        value="x_amount == 0"
-                        className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1 font-mono text-xs text-[var(--odoo-sheet-fg)]"
-                      />
-                    </label>
-                  </div>
-                  <div className="overflow-x-auto border border-[var(--odoo-border)] bg-white">
-                    <table className="w-full text-left text-sm" data-testid="list-preview-table">
-                      <thead className="bg-[#f0eeeb] text-xs uppercase text-[var(--odoo-muted)]">
-                        <tr>
-                          {listColumns.map((c) => (
-                            <th key={c.id} className="border-b border-[var(--odoo-border)] px-3 py-2">
-                              {c.string || c.name}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr className="text-[var(--odoo-sheet-fg)]">
-                          <td className="border-b border-[var(--odoo-border)] px-3 py-2">
-                            Sample ticket
-                          </td>
-                          <td className="border-b border-[var(--odoo-border)] px-3 py-2">New</td>
-                          <td className="border-b border-[var(--odoo-border)] px-3 py-2">
-                            Acme Corp
-                          </td>
-                          <td className="border-b border-[var(--odoo-border)] px-3 py-2">
-                            120.00
-                          </td>
-                        </tr>
-                        <tr className="bg-[#f5eef3]/40 text-[var(--odoo-sheet-fg)]">
-                          <td className="px-3 py-2">Urgent follow-up</td>
-                          <td className="px-3 py-2">In progress</td>
-                          <td className="px-3 py-2">Beta LLC</td>
-                          <td className="px-3 py-2">0.00</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
+              <OdooPreviewScope showBanner={false}>
+                <OdooListView
+                  view={{
+                    type: "list",
+                    model: "x_ticket",
+                    title,
+                    columns: listColumns.map((c) => ({
+                      id: c.id,
+                      name: c.name,
+                      string: c.string || c.name,
+                    })),
+                    decorations: {
+                      danger: "x_priority == 'urgent'",
+                      info: "x_stage == 'new'",
+                      muted: "x_amount == 0",
+                    },
+                  }}
+                />
+              </OdooPreviewScope>
+              <div className="mt-3">
                   <ul className="space-y-1">
                     {listColumns.map((f, idx) => (
                       <li
@@ -473,7 +449,6 @@ function DesignerHarnessInner() {
                       </li>
                     ))}
                   </ul>
-                </div>
               </div>
             </div>
             <PropsInspector title="Column properties">

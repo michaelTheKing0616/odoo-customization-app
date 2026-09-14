@@ -83,6 +83,12 @@ export default function ConfigPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [mailHealth, setMailHealth] = useState<{
+    smtp_servers: number;
+    alias_domains: number;
+    ok: boolean;
+    warnings: string[];
+  } | null>(null);
 
   const refresh = useCallback(async () => {
     const [conn, cos, seqs, mails, acts, languages, papers, cronRows, sitePages, propsRes] =
@@ -128,6 +134,10 @@ export default function ConfigPage() {
     const defs = await api.listIrDefaults(connectionId, defaultModel);
     setDefaults(defs);
     api.probeI18n(connectionId).then(setI18nProbe).catch(() => setI18nProbe(null));
+    api
+      .jobAutopilotFingerprint(connectionId)
+      .then((out) => setMailHealth(out.fingerprint.mail ?? null))
+      .catch(() => setMailHealth(null));
   }, [connectionId, seqQuery, lang, defaultModel]);
 
   useEffect(() => {
@@ -174,6 +184,20 @@ export default function ConfigPage() {
       {notice ? (
         <Callout variant="info" title="Notice" className="mt-4">
           {notice}
+        </Callout>
+      ) : null}
+
+      {mailHealth ? (
+        <Callout
+          variant={mailHealth.ok ? "info" : "warning"}
+          title="Mail health"
+          className="mt-4"
+          testId="config-mail-health"
+        >
+          {mailHealth.ok
+            ? `${mailHealth.smtp_servers} outgoing mail server(s), ${mailHealth.alias_domains} alias domain(s). Passwords stay in Odoo.`
+            : mailHealth.warnings[0] ||
+              "No outgoing mail server. Paste SMTP in Odoo — this app never stores the password."}
         </Callout>
       ) : null}
 

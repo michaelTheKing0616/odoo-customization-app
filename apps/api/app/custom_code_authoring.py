@@ -8,6 +8,26 @@ from typing import Any
 
 from app.module_spec_codec import merge_custom_code_blocks
 
+# Option A gold may fetch public HTTP (CBN) or parse JSON. Still forbid os/subprocess.
+_STDLIB_IMPORT_ALLOW = frozenset(
+    {
+        "json",
+        "logging",
+        "re",
+        "math",
+        "decimal",
+        "datetime",
+        "urllib",
+        "html",
+        "xml",
+    }
+)
+
+
+def _import_module_allowed(name: str) -> bool:
+    top = (name or "").split(".", 1)[0]
+    return top in _STDLIB_IMPORT_ALLOW
+
 
 def normalize_block(block: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -37,6 +57,8 @@ def lint_python(content: str, *, source_file: str = "block.py") -> list[dict[str
             names.add(node.id)
         if isinstance(node, ast.Import):
             for alias in node.names:
+                if _import_module_allowed(alias.name):
+                    continue
                 issues.append(
                     {
                         "code": "import_forbidden",
@@ -46,7 +68,12 @@ def lint_python(content: str, *, source_file: str = "block.py") -> list[dict[str
                 )
         if isinstance(node, ast.ImportFrom):
             mod = node.module or ""
+            if node.level and node.level > 0:
+                # Relative imports (models/__init__.py) are required in Odoo modules.
+                continue
             if mod == "odoo" or mod.startswith("odoo."):
+                continue
+            if _import_module_allowed(mod):
                 continue
             issues.append(
                 {
@@ -96,7 +123,55 @@ def lint_custom_code_blocks(spec: dict[str, Any]) -> dict[str, Any]:
                 "issues": issues,
             }
         )
-    return {"ok": ok, "blocks": results}
+    # Phase 4 — fold deterministic static analyzers into lint payload
+    static_findings: list[dict[str, Any]] = []
+    try:
+        from app.ai_static_odoo import analyze_draft_static
+
+        static = analyze_draft_static(spec)
+        static_findings = list(static.get("findings") or [])
+        # Critical static findings fail lint (gate zip/sandbox)
+        if int(static.get("critical_count") or 0) > 0:
+            ok = False
+        for f in static_findings:
+            if not isinstance(f, dict):
+                continue
+            sev = str(f.get("severity") or "medium").lower()
+            # Only fail lint surface on critical static (syntax/raw SQL). High/medium stay on _static_odoo.
+            if sev != "critical":
+                continue
+            path = str(f.get("file") or "")
+            matched = False
+            for row in results:
+                if path and str(row.get("source_file")) == path:
+                    row.setdefault("issues", []).append(
+                        {
+                            "code": str(f.get("rule") or "static"),
+                            "message": str(f.get("message") or ""),
+                            "line": str(f.get("line") or "0"),
+                            "severity": f.get("severity"),
+                        }
+                    )
+                    matched = True
+                    break
+            if not matched:
+                results.append(
+                    {
+                        "index": len(results),
+                        "source_file": path or "__manifest__.py",
+                        "kind": "static",
+                        "issues": [
+                            {
+                                "code": str(f.get("rule") or "static"),
+                                "message": str(f.get("message") or ""),
+                                "line": str(f.get("line") or "0"),
+                            }
+                        ],
+                    }
+                )
+    except Exception:  # noqa: BLE001
+        static_findings = []
+    return {"ok": ok, "blocks": results, "static_findings": static_findings}
 
 
 def model_class_skeleton(spec: dict[str, Any], model_name: str) -> str:

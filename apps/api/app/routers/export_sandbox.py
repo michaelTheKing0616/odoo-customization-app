@@ -39,6 +39,8 @@ from app.schemas import (
     SuggestDependsOut,
     UninstallModuleBody,
     UninstallModuleOut,
+    InstallCommunityModuleBody,
+    InstallCommunityModuleOut,
 )
 from app.store_packaging import apply_store_packaging
 from app.snapshots import ConfirmationRequired, require_advanced_confirmation
@@ -670,6 +672,41 @@ def list_promoted(
         item.models = models
         out.append(item)
     return out
+
+
+@router.post("/modules/install-community", response_model=InstallCommunityModuleOut)
+def install_community_module(
+    connection_id: str, body: InstallCommunityModuleBody, db: Session = Depends(get_db)
+) -> InstallCommunityModuleOut:
+    """Install a stock CE app so Draft Studio can reuse its models (not custom zips)."""
+    from app.protected_modules import load_vendored_community_modules
+
+    name = (body.module_name or "").strip()
+    if not name or name.startswith("x_") or "/" in name or "\\" in name:
+        raise HTTPException(status_code=400, detail="Invalid community module name")
+    ce = load_vendored_community_modules("19.0")
+    if name not in ce and name not in {"l10n_ng", "l10n_generic_coa"}:
+        # Allow official l10n_* even if not in the vendored sample set
+        if not name.startswith("l10n_"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{name!r} is not a known Community app — refuse non-CE install here",
+            )
+    client = _client(connection_id, db)
+    try:
+        row = client.install_module_by_name(name)
+    except OdooClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("community module install failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    state = str((row or {}).get("state") or "")
+    return InstallCommunityModuleOut(
+        ok=state == "installed",
+        module=name,
+        module_state=state or None,
+        message=f"Module {name} is {state or 'unknown'}",
+    )
 
 
 @router.post("/modules/uninstall", response_model=UninstallModuleOut)

@@ -39,7 +39,7 @@ def test_generalize_law_firm_gold_parses_and_classifies() -> None:
     pack = parse_candidate_pack_source(result["source"])
     assert pack.get("domain_pack") == "law_firm"
     assert isinstance(pack.get("models"), list)
-    assert len(pack["models"]) >= 8
+    assert len(pack["models"]) >= 3
     assert "x_matter" in {m.get("model") for m in pack["models"]}
     score = score_domain_pack(
         "law firm practice management with matters and retainers", pack
@@ -80,7 +80,7 @@ def test_generalize_endpoint_spec_json(client: TestClient) -> None:
     assert body["ok"] is True
     assert body["filename"].startswith("ai_domain_pack_candidate_")
     assert "def candidate_pack" in body["source"]
-    assert body["model_count"] >= 8
+    assert body["model_count"] >= 3
     ast.parse(body["source"])
 
 

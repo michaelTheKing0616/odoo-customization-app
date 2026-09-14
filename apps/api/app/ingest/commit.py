@@ -54,6 +54,57 @@ def _commit_table(
             rpc_context=rpc_context_for_notify(notify_mode),
         )
 
+    if table.doc_type == "user_roster":
+        from app.config_packet.schema import ConfigUser
+        from app.config_packet.users import provision_users
+
+        users = []
+        for row in table.rows:
+            login = str(
+                row.values.get("login")
+                or row.raw.get("login")
+                or row.values.get("email")
+                or row.raw.get("email")
+                or ""
+            ).strip().lower()
+            if not login:
+                continue
+            groups = str(row.values.get("groups") or row.raw.get("groups") or "").strip()
+            xmlids = [g.strip() for g in groups.split(",") if g.strip()] if groups else []
+            users.append(
+                ConfigUser(
+                    login=login,
+                    name=str(row.values.get("name") or row.raw.get("name") or login.split("@")[0]),
+                    email=str(row.values.get("email") or row.raw.get("email") or login),
+                    group_xmlids=xmlids or ["base.group_user"],
+                )
+            )
+        if dry_run:
+            return {
+                "table_id": table.id,
+                "model": "res.users",
+                "created": len(users),
+                "updated": 0,
+                "failed": 0,
+                "skipped": 0,
+                "ok": True,
+                "message": f"Dry-run: would create {len(users)} login(s) without passwords",
+            }
+        created, existing, warnings = provision_users(client, users)
+        return {
+            "table_id": table.id,
+            "model": "res.users",
+            "created": created,
+            "updated": existing,
+            "failed": len(warnings),
+            "skipped": 0,
+            "ok": not warnings,
+            "message": (
+                f"Users created={created} existing={existing} "
+                f"(no passwords; send reset in Odoo). {'; '.join(warnings[:3])}"
+            ).strip(),
+        }
+
     if table.doc_type == "inventory_count":
         return commit_inventory_count(
             client,

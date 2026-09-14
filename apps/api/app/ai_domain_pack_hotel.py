@@ -51,6 +51,7 @@ def hotel_pack() -> dict[str, Any]:
         "display_name": "Hotel Management",
         "depends": ["base", "contacts", "mail"],
         "domain_pack": "hotel",
+        "document_shape": "workspace",
         "tags": [
             "hotel",
             "pms",

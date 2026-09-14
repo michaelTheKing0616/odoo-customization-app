@@ -12,6 +12,7 @@ from app.sandbox import (
     _resolve_extra_modules,
     resolve_sandbox_major,
     sandbox_image_for_major,
+    sandbox_major_for_connection,
 )
 
 
@@ -21,6 +22,17 @@ def test_resolve_sandbox_major_defaults_and_bounds() -> None:
     assert resolve_sandbox_major(16) == 16
     with pytest.raises(ValueError, match="unsupported"):
         resolve_sandbox_major(15)
+
+
+def test_resolve_sandbox_major_parses_stored_server_version() -> None:
+    """export-zip used to 500: int('19.0') on connection.server_version."""
+    assert resolve_sandbox_major("19.0") == 19
+    assert resolve_sandbox_major("19.0+e") == 19
+    assert resolve_sandbox_major("18.0+e-20240101") == 18
+    assert sandbox_major_for_connection("19.0") == 19
+    assert sandbox_major_for_connection("15.0") == 19
+    assert sandbox_major_for_connection("") == 19
+    assert sandbox_major_for_connection(None) == 19
 
 
 def test_sandbox_image_for_major() -> None:

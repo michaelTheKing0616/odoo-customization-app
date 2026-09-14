@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.expert.grounding import (
     GroundingBundle,
     assemble_context,
+    looks_like_platform_error,
     looks_like_rpc_error,
     merge_question_with_pasted_error,
 )
@@ -25,6 +26,12 @@ from app.expert.knowledge_fallback import (
     try_rule_based_bulk_routing,
     try_rule_based_field_type_guidance,
     try_rule_based_protected_guidance,
+)
+from app.expert.product_guidance import try_rule_based_product_guidance
+from app.expert.platform_guidance import (
+    PLATFORM_DIAGNOSIS_RULES,
+    PLATFORM_GROUNDING,
+    try_rule_based_platform_guidance,
 )
 from app.expert.model_lookup import try_rule_based_model_lookup
 from app.expert.view_guidance import try_rule_based_view_guidance
@@ -65,12 +72,16 @@ GROUND OR DECLINE (mandatory — no exceptions):
 """.strip()
 
 ERROR_DIAGNOSIS_RULES = """
-ERROR DIAGNOSIS (when ERROR LOG, Fault, traceback, or validation error text is present):
-1. Diagnose the specific error immediately — never ask the user to paste the error again.
-2. Use INSTANCE GROUNDING error_diagnostics when present (model_missing, field_missing, suggestions).
-3. For "Model not found" on x_* custom models during view save: the ir.model record must exist
-   before the view validates — create it in Models & Fields or re-save from Designer (auto-create).
-4. Give concrete remediation steps in numbered order with [n] citations from sources.
+ERROR DIAGNOSIS (when ERROR LOG, Fault, traceback, Request failed, or validation text is present):
+1. Diagnose THIS error immediately — never ask the user to paste it again.
+2. Quote the fault's decisive phrase (e.g. empty name="", Model not found, AccessError).
+3. Use INSTANCE GROUNDING error_diagnostics when present (model_missing, field_missing).
+4. Give numbered remediation steps for THIS connection (Designer / Models & Fields / Access Matrix).
+5. NEVER cite unrelated verticals, tutorial models (estate.property), Peppol Studio fields,
+   or payment-provider class docs unless the fault text itself names them.
+6. If sources are thin, still answer from the fault text + instance grounding — do not invent
+   a different product story.
+7. Empty <field name=""/> → blank Designer field rows after loading nested groups; reload/fix Save inherit.
 """.strip()
 
 EXPERT_PERSONA = (
@@ -233,6 +244,7 @@ class ExpertAskResult:
     model_used: str | None = None
     reasoning: bool = False
     uncited_warning: bool = False
+    clarification: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         self.caution_flags = _sanitize_caution_flags(self.caution_flags)
@@ -249,6 +261,7 @@ class ExpertAskResult:
             "model_used": self.model_used,
             "reasoning": self.reasoning,
             "uncited_warning": self.uncited_warning,
+            "clarification": self.clarification,
         }
 
 
@@ -270,13 +283,25 @@ def classify_expert_intent(question: str, *, retrieval_chars: int) -> bool:
 
 
 def looks_like_error_question(text: str) -> bool:
-    return looks_like_rpc_error(text)
+    return looks_like_rpc_error(text) or looks_like_platform_error(text)
 
 
 def _expand_error_retrieval_query(question: str) -> str:
     """Bias retrieval toward remediation docs when the user pasted an RPC fault."""
     ql = question.lower()
     extra: list[str] = []
+    if looks_like_platform_error(question):
+        extra.extend(
+            [
+                "App Studio",
+                "Install Sales",
+                "authoring gate",
+                "uvicorn 8001",
+                "option-a reverify",
+                "AGENTS.md",
+                "stock Community sale",
+            ]
+        )
     if "model not found" in ql or "validating view" in ql:
         extra.extend(["ir.model", "custom model", "view validation", "designer"])
     if "accesserror" in ql or "access error" in ql:
@@ -286,6 +311,19 @@ def _expand_error_retrieval_query(question: str) -> str:
     if not extra:
         return question
     return f"{question} {' '.join(extra)}"
+
+
+def _platform_product_chunk(version: str | None) -> RetrievedChunk:
+    """Citeable product facts when App Studio/API 404s must not look like Odoo RPC."""
+    return RetrievedChunk(
+        chunk_id="product-platform-host-install",
+        source="project",
+        version=version or "all",
+        breadcrumb="docs/expert/product/app-studio-host-install.md",
+        text=PLATFORM_GROUNDING,
+        score=1.0,
+        method="product_facts",
+    )
 
 
 def detect_legal_tax_question(question: str) -> bool:
@@ -663,6 +701,9 @@ def ask_expert(
         top_k=_RETRIEVAL_TOP_K,
         min_score=min_score,
     )
+    if looks_like_platform_error(q):
+        facts = _platform_product_chunk(version)
+        chunks = [facts, *[c for c in chunks if c.chunk_id != facts.chunk_id]]
 
     suggested = list(bundle.suggested_tools or [])
 
@@ -689,8 +730,10 @@ def ask_expert(
             retrieval_version=version,
         )
 
-    def _rule_based_fallback() -> ExpertAskResult | None:
-        for resolver in (
+    def _rule_based_fallback(*, prefer_diagnosis: bool = False) -> ExpertAskResult | None:
+        resolvers: tuple = (
+            try_rule_based_platform_guidance,
+            try_rule_based_product_guidance,
             try_rule_based_stack_guidance,
             try_rule_based_view_guidance,
             try_rule_based_view_mode_guidance,
@@ -702,7 +745,26 @@ def ask_expert(
             try_rule_based_bulk_routing,
             try_rule_based_field_type_guidance,
             try_rule_based_protected_guidance,
-        ):
+        )
+        if prefer_diagnosis or looks_like_rpc_error(q):
+            # Software-bug pastes: diagnosis first — never let product/how-to steal the turn.
+            # Platform 404s are first so FastAPI "Not Found" is not treated as an Odoo Fault.
+            resolvers = (
+                try_rule_based_platform_guidance,
+                try_rule_based_error_diagnosis,
+                try_rule_based_access_guidance,
+                try_rule_based_required_field_guidance,
+                try_rule_based_view_mode_guidance,
+                try_rule_based_product_guidance,
+                try_rule_based_stack_guidance,
+                try_rule_based_view_guidance,
+                try_rule_based_l10n_guidance,
+                try_rule_based_model_lookup,
+                try_rule_based_bulk_routing,
+                try_rule_based_field_type_guidance,
+                try_rule_based_protected_guidance,
+            )
+        for resolver in resolvers:
             if resolver is try_rule_based_stack_guidance:
                 payload = resolver(q)
             else:
@@ -712,7 +774,7 @@ def ask_expert(
             if resolver is try_rule_based_stack_guidance:
                 return _stack_guidance_result(payload)
             diag_flags = payload.get("caution_flags") or []
-            if "rule_based_diagnosis" in diag_flags:
+            if "rule_based_diagnosis" in diag_flags or "rule_based_product_guidance" in diag_flags:
                 answer = str(payload["answer_markdown"])
                 caveat_flags: list[str] = []
             else:
@@ -724,21 +786,30 @@ def ask_expert(
                     section_title=section,
                 )
             flags = list(diag_flags) + caveat_flags
+            tools_out = list(payload.get("suggested_tools") or suggested)
             return ExpertAskResult(
                 answer_markdown=answer,
                 citations=[],
-                grounded=bool(payload.get("grounded")),
+                grounded=True,
                 declined=False,
-                suggested_tools=suggested,
+                suggested_tools=tools_out,
                 caution_flags=flags,
                 retrieval_version=version,
             )
         return None
 
+    # Pasted Fault / Request failed / traceback: rule diagnosis wins before RAG/LLM.
+    # Platform 404s skip this so project RAG + Gemini can answer with PLATFORM_GROUNDING.
+    if looks_like_rpc_error(q) and not looks_like_platform_error(q):
+        diagnosed = _rule_based_fallback(prefer_diagnosis=True)
+        if diagnosed:
+            return diagnosed
+
     if not chunks:
         ruled = _rule_based_fallback()
         if ruled:
             return ruled
+        # Expert is Q&A — do not run App Studio generation-intent chips (stock vs new app).
         return ExpertAskResult(
             answer_markdown=DECLINE_LOW_CONFIDENCE,
             citations=[],
@@ -752,6 +823,7 @@ def ask_expert(
     # High-confidence rule paths must win over weak/unreliable LLM output.
     _PRIORITY_RULE_FLAGS = frozenset(
         {
+            "rule_based_product_guidance",
             "rule_based_stack_guidance",
             "rule_based_view_guidance",
             "rule_based_view_mode_guidance",
@@ -801,7 +873,10 @@ def ask_expert(
         EXPERT_PERSONA,
         GROUND_OR_DECLINE_RULES,
     ]
-    if looks_like_error_question(q):
+    if looks_like_platform_error(q):
+        system_parts.append(PLATFORM_DIAGNOSIS_RULES)
+        system_parts.append(PLATFORM_GROUNDING)
+    elif looks_like_error_question(q):
         system_parts.append(ERROR_DIAGNOSIS_RULES)
     if manifest:
         system_parts.append(guardrail_prompt(manifest))

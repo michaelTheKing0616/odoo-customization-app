@@ -1,23 +1,8 @@
 import type { Metadata } from "next";
-import { Fraunces, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AppProviders } from "@/components/AppProviders";
+import { DragAutoScroll } from "@/components/DragAutoScroll";
 import { ThemeScript } from "@/components/theme/ThemeScript";
-
-const display = Fraunces({
-  variable: "--font-display",
-  subsets: ["latin"],
-});
-
-const sans = Inter({
-  variable: "--font-sans",
-  subsets: ["latin"],
-});
-
-const mono = JetBrains_Mono({
-  variable: "--font-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "Odoo Custom — No-code customization for Community",
@@ -36,10 +21,13 @@ export default function RootLayout({
         <ThemeScript />
       </head>
       <body
-        className={`${display.variable} ${sans.variable} ${mono.variable} antialiased bg-surface text-ink`}
+        className="min-h-screen antialiased bg-background text-ink"
         suppressHydrationWarning
       >
-        <AppProviders>{children}</AppProviders>
+        <AppProviders>
+          <DragAutoScroll />
+          {children}
+        </AppProviders>
       </body>
     </html>
   );

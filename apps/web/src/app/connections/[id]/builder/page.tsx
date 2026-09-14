@@ -26,6 +26,7 @@ import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { Callout } from "@/components/ui/Callout";
 import { PageHeader } from "@/components/ui/layout-primitives";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
+import { BuilderModelPreview } from "@/components/builder/BuilderModelPreview";
 import { PropertyFieldsPanel } from "@/components/builder/PropertyFieldsPanel";
 import { InvoicingConnectPanel } from "@/components/builder/InvoicingConnectPanel";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
@@ -80,6 +81,11 @@ export default function BuilderPage() {
   const [busy, setBusy] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [confirmTyped, setConfirmTyped] = useState("");
+  const [previewModel, setPreviewModel] = useState<{
+    model: string;
+    label: string;
+    enableMailThread: boolean;
+  } | null>(null);
 
   const [modelForm, setModelForm] = useState({
     name: "",
@@ -248,6 +254,11 @@ export default function BuilderPage() {
       setNotice(
         `Created model ${created.model} with x_name, default list/form/search views, and Internal User ACL.${mailNote}`,
       );
+      setPreviewModel({
+        model: created.model,
+        label: modelForm.name || created.model,
+        enableMailThread: modelForm.enable_mail_thread,
+      });
       setFieldForm((f) => ({ ...f, model: created.model }));
       setO2mForm((f) => ({
         ...f,
@@ -624,6 +635,16 @@ export default function BuilderPage() {
             >
               Create model
             </button>
+
+            {previewModel && previewModel.model === fieldForm.model && modelFields.length > 0 ? (
+              <BuilderModelPreview
+                connectionId={connectionId}
+                model={previewModel.model}
+                modelLabel={previewModel.label}
+                fields={modelFields}
+                enableMailThread={previewModel.enableMailThread}
+              />
+            ) : null}
 
             {customModels.length > 0 && (
               <div className="pt-4">

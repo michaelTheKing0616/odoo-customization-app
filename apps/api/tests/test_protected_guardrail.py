@@ -125,14 +125,21 @@ def test_strip_allows_link_only_m2o() -> None:
     assert not refusals
 
 
-def test_strip_inherit_on_tier1_host() -> None:
+def test_strip_inherit_keeps_additive_x_on_tier1_host() -> None:
     draft = {
-        "models": [{"model": "account.move", "mode": "inherit", "fields": [{"name": "x_note", "ttype": "char"}]}],
+        "models": [
+            {
+                "model": "account.move",
+                "mode": "inherit",
+                "fields": [{"name": "x_note", "ttype": "char"}],
+            }
+        ],
         "automations": [],
     }
     cleaned, refusals, _w = strip_protected_module_effects(draft, manifest=_manifest())
-    assert cleaned.get("models") == []
-    assert any(r["kind"] == "inherit_strip" for r in refusals)
+    assert cleaned.get("models")
+    assert cleaned["models"][0]["fields"][0]["name"] == "x_note"
+    assert not any(r.get("kind") == "inherit_strip" for r in refusals)
 
 
 def test_mechanism_swap_webhook_still_blocked_on_tier1() -> None:
@@ -152,19 +159,27 @@ def test_chatter_allowed_on_tier1() -> None:
     assert check_automation_create(m, model="account.move", action_kind="create_activity") is None
 
 
-def test_scrub_spec_apply_skips_tier1_field_on_stock() -> None:
+def test_scrub_spec_keeps_additive_x_on_tier1() -> None:
     spec = {
         "models": [
             {
                 "model": "account.move",
-                "fields": [{"name": "x_custom_note", "ttype": "char"}],
+                "mode": "inherit",
+                "fields": [
+                    {"name": "x_custom_note", "ttype": "char"},
+                    {"name": "ref", "ttype": "char"},
+                ],
             }
         ],
         "automations": [],
     }
     cleaned, skips = scrub_spec_for_protected_apply(spec, _manifest())
-    assert skips
-    assert not cleaned.get("models")
+    models = cleaned.get("models") or []
+    assert len(models) == 1
+    names = {f["name"] for f in models[0]["fields"]}
+    assert "x_custom_note" in names
+    assert "ref" not in names
+    assert any("ref" in s for s in skips)
 
 
 def test_full_app_style_draft_returns_refusals_not_empty() -> None:
@@ -252,13 +267,15 @@ def test_api_automation_update_rejects_tier1(api_client: TestClient) -> None:
     assert detail["model"] == "account.move"
 
 
-def test_api_builder_field_create_rejects_tier1_mutation(api_client: TestClient) -> None:
+def test_api_builder_field_create_rejects_stock_name_on_tier1(
+    api_client: TestClient,
+) -> None:
     conn = _mk_connection("pcm-field")
     res = api_client.post(
         f"/api/connections/{conn.id}/fields",
         json={
             "model": "account.move",
-            "name": "x_evil_note",
+            "name": "evil_note",
             "field_description": "Evil",
             "ttype": "char",
         },
@@ -267,6 +284,47 @@ def test_api_builder_field_create_rejects_tier1_mutation(api_client: TestClient)
     detail = res.json()["detail"]
     assert detail["error"] == "protected_module_violation"
     assert detail["model"] == "account.move"
+
+
+def test_api_builder_field_create_allows_additive_x_on_tier1(
+    api_client: TestClient,
+) -> None:
+    conn = _mk_connection("pcm-field-ok")
+    with patch("app.routers.builder.client_from_connection") as mock_client_fn:
+        mock_client = MagicMock()
+        mock_client.create_field.return_value = MagicMock(
+            id=1,
+            name="x_sla_due",
+            model_dump=lambda: {
+                "id": 1,
+                "name": "x_sla_due",
+                "field_description": "SLA due date",
+                "ttype": "date",
+                "required": False,
+                "readonly": False,
+                "relation": None,
+                "state": "manual",
+                "help": None,
+                "selection": None,
+                "related": None,
+                "currency_field": None,
+                "relation_field": None,
+                "tracking": False,
+            },
+        )
+        mock_client.inject_field_into_views.return_value = []
+        mock_client_fn.return_value = mock_client
+        res = api_client.post(
+            f"/api/connections/{conn.id}/fields",
+            json={
+                "model": "account.move",
+                "name": "x_sla_due",
+                "field_description": "SLA due date",
+                "ttype": "date",
+            },
+        )
+    assert res.status_code == 201, res.text
+    assert res.json()["name"] == "x_sla_due"
 
 
 def test_api_builder_link_only_m2o_allowed_before_odoo(api_client: TestClient) -> None:
@@ -324,7 +382,10 @@ def test_api_module_spec_apply_skips_tier1_items(
         "models": [
             {
                 "model": "account.move",
-                "fields": [{"name": "x_bad", "ttype": "char"}],
+                "fields": [
+                    {"name": "x_ok", "ttype": "char"},
+                    {"name": "ref", "ttype": "char"},
+                ],
             }
         ],
         "automations": [],
@@ -338,3 +399,13 @@ def test_api_module_spec_apply_skips_tier1_items(
     assert body["ok"] is True
     assert any("protected" in s for s in body["skipped"])
     assert any("PCM" in w for w in body["warnings"])
+    # Additive x_* reached apply; stock field name was scrubbed.
+    applied_spec = mock_apply.call_args.args[1]
+    names = {
+        f["name"]
+        for m in applied_spec["models"]
+        for f in (m.get("fields") or [])
+        if isinstance(f, dict)
+    }
+    assert "x_ok" in names
+    assert "ref" not in names

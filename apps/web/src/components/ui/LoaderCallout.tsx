@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { InlineWait } from "@/components/studio/StudioBusyLabel";
 import { formatFetchError } from "@/lib/format-fetch-error";
 
 type LoaderProps<T> = {
@@ -39,7 +40,7 @@ export function LoaderCallout<T>({ load, children, className, testId }: LoaderPr
 
   return (
     <div className={className} data-testid={testId}>
-      {loading ? <p className="text-xs text-muted">Loading…</p> : null}
+      {loading ? <InlineWait /> : null}
       {error ? (
         <ErrorNotice
           message={error}

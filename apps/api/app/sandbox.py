@@ -72,14 +72,42 @@ class SandboxResult:
     odoo_major: int | None = None
 
 
-def resolve_sandbox_major(major: int | None) -> int:
-    """Normalize major for ephemeral sandbox; default 19."""
-    m = 19 if major is None else int(major)
+def _coerce_sandbox_major(major: int | str | None) -> int:
+    """Accept 19, ``'19.0'``, ``'19.0+e'``; empty/unparseable → 19."""
+    if major is None or isinstance(major, bool):
+        return 19
+    if isinstance(major, int):
+        return major
+    text = str(major).strip()
+    if not text:
+        return 19
+    core = text.split("+", 1)[0].split("-", 1)[0]
+    major_s = core.split(".", 1)[0]
+    if major_s.isdigit():
+        return int(major_s)
+    return 19
+
+
+def resolve_sandbox_major(major: int | str | None) -> int:
+    """Normalize major for ephemeral sandbox; default 19.
+
+    Connection ``server_version`` is stored as ``'19.0'`` / ``'19.0+e'``. Callers
+    that pass that string must not hit ``int('19.0')`` (ValueError → HTTP 500).
+    """
+    m = _coerce_sandbox_major(major)
     if m not in SUPPORTED_SANDBOX_MAJORS:
         raise ValueError(
             f"Sandbox major {m} unsupported; allowed: {sorted(SUPPORTED_SANDBOX_MAJORS)}"
         )
     return m
+
+
+def sandbox_major_for_connection(server_version: int | str | None) -> int:
+    """Best-effort sandbox/export major from a stored Odoo version; never raises."""
+    try:
+        return resolve_sandbox_major(server_version)
+    except (ValueError, TypeError):
+        return 19
 
 
 def sandbox_image_for_major(major: int) -> str:
@@ -419,6 +447,7 @@ def run_sandbox_install(
     extra_modules: list[str] | None = None,
     odoo_major: int | None = None,
     job_id: str | None = None,
+    after_install: object | None = None,
 ) -> SandboxResult:
     """Install zip in ephemeral sandbox. Serialized — only one run at a time.
 
@@ -427,7 +456,22 @@ def run_sandbox_install(
 
     ``extra_modules``: if provided, install these after DB init before the candidate.
     If ``None``, use ``settings.sandbox_extra_modules`` / ``SANDBOX_EXTRA_MODULES``.
+
+    ``after_install``: optional ``callable(uid, models, odoo_major)`` run while the
+    sandbox is still up (Option A PDF/RPC smoke). Exceptions fail the run.
     """
+    from app.ai_structural_zip_gate import structural_zip_gate
+
+    gate = structural_zip_gate(zip_bytes)
+    if not gate.get("ok"):
+        detail = "; ".join(gate.get("findings") or ["structural zip gate failed"])
+        return SandboxResult(
+            ok=False,
+            module=module_name or "unknown",
+            message=f"Structural zip gate failed: {detail}",
+            odoo_major=odoo_major,
+        )
+
     if not SANDBOX_COMPOSE.exists():
         raise FileNotFoundError(f"Missing {SANDBOX_COMPOSE}")
 
@@ -467,6 +511,7 @@ def run_sandbox_install(
             extra_modules=extra_modules,
             odoo_major=major,
             job_id=job_id,
+            after_install=after_install,
         )
     finally:
         _sandbox_lock.release()
@@ -480,6 +525,7 @@ def _run_sandbox_install_unlocked(
     extra_modules: list[str] | None = None,
     odoo_major: int = 19,
     job_id: str | None = None,
+    after_install: object | None = None,
 ) -> SandboxResult:
     global _active_sandbox_job_id
     from app.jobs import job_cancelled
@@ -526,6 +572,11 @@ def _run_sandbox_install_unlocked(
 
         _install_module_rpc(technical, odoo_major=odoo_major)
         logs.append(f"installed {technical}")
+
+        if callable(after_install):
+            uid, models = _sandbox_rpc(odoo_major)
+            after_install(uid, models, odoo_major)
+            logs.append("after_install hook ok")
 
         extra_msg = ""
         if extras:

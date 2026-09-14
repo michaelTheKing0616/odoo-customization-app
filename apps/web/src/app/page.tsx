@@ -39,7 +39,7 @@ const screenshots = [
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-surface">
+    <main className="min-h-screen bg-background">
       <div className="mx-auto flex min-h-screen max-w-5xl flex-col justify-center px-6 py-16 sm:px-10">
         <p className="font-[family-name:var(--font-display)] text-sm uppercase tracking-widest text-accent">
           Odoo Custom

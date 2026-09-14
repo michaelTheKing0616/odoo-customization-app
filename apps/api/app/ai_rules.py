@@ -82,7 +82,10 @@ def check_referential_integrity(draft: dict[str, Any]) -> list[str]:
             rel = f.get("relation")
             if not rel:
                 continue
-            if str(rel) not in known:
+            rel_s = str(rel)
+            if not rel_s.startswith("x_"):
+                continue
+            if rel_s not in known:
                 errors.append(
                     f"orphan relation {mid}.{f.get('name')} → {rel} "
                     "(not in draft models / builtins / reuse)"
@@ -132,6 +135,27 @@ def _ensure_partner_backref_smart_button(
         return False
     if leaf.endswith("_line") or leaf.endswith("line"):
         return False
+    if leaf.endswith("_party") or "party" in leaf.split("_"):
+        return False
+    from app.ai_odoo_app_bar import looks_like_register
+    from app.ai_document_shape import document_shape_of
+
+    if looks_like_register(str(mid or "")) or document_shape_of(draft) == "register":
+        return False
+    # Notebook children already live on the residual form — Contacts shows the header.
+    for header in draft.get("models") or []:
+        if not isinstance(header, dict):
+            continue
+        hmid = str(header.get("model") or "")
+        if not hmid.startswith("x_") or str(header.get("mode") or "new") == "inherit":
+            continue
+        if any(
+            isinstance(f, dict)
+            and f.get("ttype") == "one2many"
+            and str(f.get("relation") or "") == mid
+            for f in (header.get("fields") or [])
+        ):
+            return False
     partner_fields = [
         f
         for f in (model.get("fields") or [])
@@ -214,6 +238,7 @@ def _ensure_overdue_automation(draft: dict[str, Any], model: dict[str, Any]) -> 
             "name": f"Flag overdue on {mid}",
             "model": mid,
             "trigger": "on_time",
+            "trg_date_field_name": due_fields[0],
             "description": (
                 f"Safety-net: when {due_fields[0]} is past and still in active states → overdue"
             ),
@@ -298,25 +323,140 @@ def repair_smart_buttons_and_automations(draft: dict[str, Any]) -> list[str]:
     return notes
 
 
+def _collapse_custom_requesters(draft: dict[str, Any]) -> list[str]:
+    """Collapse generated `x_requester` master-data into a stock hr.employee relation.
+
+    For approval-style prompts, "Requester" is usually an attribute of the
+    purchase/request record (who submitted it), not a standalone entity that
+    should appear as a separate menu/model.
+    """
+
+    models = draft.get("models")
+    if not isinstance(models, list):
+        return []
+
+    requester_models: set[str] = set()
+    for m in models:
+        if not isinstance(m, dict):
+            continue
+        mid = str(m.get("model") or "")
+        if mid in {"x_requester", "x_requesters"}:
+            requester_models.add(mid)
+            continue
+        if mid.startswith("x_requester"):
+            desc = str(m.get("description") or "").lower()
+            if "requester" in desc:
+                requester_models.add(mid)
+
+    if not requester_models:
+        return []
+
+    # Retarget requester relations to hr.employee and prune one2many pointers.
+    for m in models:
+        if not isinstance(m, dict):
+            continue
+        fields = m.get("fields")
+        if not isinstance(fields, list):
+            continue
+        kept_fields: list[dict[str, Any]] = []
+        for f in fields:
+            if not isinstance(f, dict) or not f.get("name"):
+                continue
+            rel = f.get("relation")
+            if rel and str(rel) in requester_models:
+                ttype = str(f.get("ttype") or "")
+                if ttype in {"many2one", "many2one_selection"}:
+                    f["relation"] = "hr.employee"
+                    kept_fields.append(f)
+                else:
+                    # Avoid broken inverse relations for one2many/m2m pointers.
+                    continue
+            else:
+                kept_fields.append(f)
+        m["fields"] = kept_fields
+
+    # Remove requester satellite models + their actions/menus/views.
+    draft["models"] = [
+        m for m in models if isinstance(m, dict) and str(m.get("model") or "") not in requester_models
+    ]
+
+    actions = draft.get("actions")
+    if isinstance(actions, list):
+        draft["actions"] = [
+            a
+            for a in actions
+            if not (isinstance(a, dict) and str(a.get("model") or "") in requester_models)
+        ]
+
+    views = draft.get("views")
+    if isinstance(views, list):
+        draft["views"] = [
+            v
+            for v in views
+            if not (isinstance(v, dict) and str(v.get("model") or "") in requester_models)
+        ]
+
+    menus = draft.get("menus")
+    if isinstance(menus, list):
+        def _lower(x: Any) -> str:
+            return str(x).lower() if x is not None else ""
+
+        draft["menus"] = [
+            menu
+            for menu in menus
+            if not (
+                isinstance(menu, dict)
+                and (
+                    "action_x_requester" in _lower(menu.get("action_xml_id"))
+                    or _lower(menu.get("technical_name")).startswith("menu_x_requester")
+                    or _lower(menu.get("name")).lower() in {"requesters"}
+                )
+            )
+        ]
+
+    return [
+        "requester-scrub: removed "
+        + ", ".join(sorted(requester_models))
+        + " and retargeted requester relations to hr.employee"
+    ]
+
+
 def apply_pattern_rules(draft: dict[str, Any]) -> list[str]:
     """Mutate draft with deterministic enrichments. Returns warning notes."""
     notes: list[str] = []
     out = draft
     notes.extend(repair_smart_buttons_and_automations(out))
+    # Approval requests: keep "Requester" as a field (hr.employee), not a standalone model.
+    if isinstance(out.get("_approval_flow"), dict):
+        notes.extend(_collapse_custom_requesters(out))
+    from app.ai_document_shape import document_shape_of
+    from app.ai_model_quality import is_embedded_line_model, is_party_link_model
+    from app.ai_odoo_app_bar import looks_like_register
+
+    register_shape = document_shape_of(out) == "register"
     for model in out.get("models") or []:
         if not isinstance(model, dict):
             continue
         names = _field_names(model)
+        mid = str(model.get("model") or "")
+        is_line = is_embedded_line_model(model)
+        is_register = register_shape or looks_like_register(mid)
         if "x_status" in names:
-            from app.ai_model_quality import is_party_link_model
-
-            if not is_party_link_model(model):
+            if (
+                not is_line
+                and not is_party_link_model(model)
+                and not is_register
+            ):
                 model["is_workflow"] = True
-            if _ensure_sequence_field(model):
+            if (
+                not is_line
+                and not is_register
+                and _ensure_sequence_field(model)
+            ):
                 notes.append(
                     f"rules: added x_code reference on workflow model {model.get('model')}"
                 )
-            if _ensure_overdue_automation(out, model):
+            if not is_line and not is_register and _ensure_overdue_automation(out, model):
                 notes.append(
                     f"rules: suggested overdue automation for {model.get('model')}"
                 )
@@ -325,8 +465,8 @@ def apply_pattern_rules(draft: dict[str, Any]) -> list[str]:
                 f"rules: partner back-ref smart button for {model.get('model')}"
             )
 
-        # mail.thread mixin hint for workflow / transactional models
-        if model.get("is_workflow") or "x_status" in names:
+        # mail.thread mixin hint for workflow / transactional headers — not *_line
+        if not is_line and (model.get("is_workflow") or "x_status" in names):
             mixins = list(model.get("mixins") or [])
             if "mail.thread" not in mixins:
                 mixins.append("mail.thread")
@@ -485,7 +625,18 @@ def completeness_checklist(
         items.append({"id": key, "ok": ok, "detail": detail})
 
     add("has_models", bool(models), f"{len(models)} model(s)")
-    add("has_menus", bool(draft.get("menus")), "")
+    try:
+        from app.ai_document_shape import document_shape_of
+
+        shape = document_shape_of(draft, prompt=user_prompt)
+    except Exception:  # noqa: BLE001
+        shape = ""
+    thin_hygiene = shape in {"register", "catalog", "field_pack", "stock_reuse"}
+    add(
+        "has_menus",
+        bool(draft.get("menus")) or shape in {"field_pack", "stock_reuse"},
+        "",
+    )
     by_id = _models_index(draft)
     view_types: dict[str, set[str]] = {}
     for v in draft.get("views") or []:
@@ -493,8 +644,10 @@ def completeness_checklist(
             view_types.setdefault(str(v["model"]), set()).add(str(v.get("type") or ""))
     models_missing_views = [
         mid
-        for mid in by_id
-        if not (
+        for mid, model in by_id.items()
+        if str(model.get("mode") or "new") != "inherit"
+        and str(mid).startswith("x_")
+        and not (
             ("list" in view_types.get(mid, set()) or "tree" in view_types.get(mid, set()))
             and "form" in view_types.get(mid, set())
         )
@@ -508,35 +661,44 @@ def completeness_checklist(
         mid for mid, m in models.items() if "x_status" in _field_names(m)
     ]
     workflow = [models[mid] for mid in workflow_models]
-    add(
-        "has_workflow",
-        bool(workflow_models),
-        ",".join(workflow_models) if workflow_models else "none",
-    )
-    has_kanban = any(
-        isinstance(v, dict) and v.get("type") == "kanban" for v in (draft.get("views") or [])
-    )
-    add(
-        "kanban_for_workflow",
-        (not workflow) or has_kanban,
-        "kanban present" if has_kanban else "missing kanban",
-    )
-    has_mail = any(
-        "mail.thread" in (m.get("mixins") or []) for m in models.values() if isinstance(m, dict)
-    )
-    add("mail_thread", has_mail or not workflow, "")
-    has_seq = any("x_code" in _field_names(m) for m in workflow) if workflow else True
-    add("sequence_on_workflow", has_seq, "")
-    add("has_access_stubs", bool(draft.get("access_rules")), "")
-    add("has_smart_buttons", bool(draft.get("smart_buttons")), "")
-    partner_links = any(
-        isinstance(f, dict) and f.get("relation") == "res.partner"
-        for m in models.values()
-        for f in (m.get("fields") or [])
-    )
-    add("contacts_link", partner_links, "res.partner M2O present" if partner_links else "none")
+    if thin_hygiene:
+        add("has_workflow", True, f"n/a for {shape}")
+        add("kanban_for_workflow", True, f"n/a for {shape}")
+        add("mail_thread", True, f"n/a for {shape}")
+        add("sequence_on_workflow", True, f"n/a for {shape}")
+        add("has_access_stubs", bool(draft.get("access_rules")) or shape in {"field_pack", "stock_reuse"}, "")
+        add("has_smart_buttons", True, f"n/a for {shape}")
+        add("contacts_link", True, f"n/a for {shape}")
+    else:
+        add(
+            "has_workflow",
+            bool(workflow_models),
+            ",".join(workflow_models) if workflow_models else "none",
+        )
+        has_kanban = any(
+            isinstance(v, dict) and v.get("type") == "kanban" for v in (draft.get("views") or [])
+        )
+        add(
+            "kanban_for_workflow",
+            (not workflow) or has_kanban,
+            "kanban present" if has_kanban else "missing kanban",
+        )
+        has_mail = any(
+            "mail.thread" in (m.get("mixins") or []) for m in models.values() if isinstance(m, dict)
+        )
+        add("mail_thread", has_mail or not workflow, "")
+        has_seq = any("x_code" in _field_names(m) for m in workflow) if workflow else True
+        add("sequence_on_workflow", has_seq, "")
+        add("has_access_stubs", bool(draft.get("access_rules")), "")
+        add("has_smart_buttons", bool(draft.get("smart_buttons")), "")
+        partner_links = any(
+            isinstance(f, dict) and f.get("relation") == "res.partner"
+            for m in models.values()
+            for f in (m.get("fields") or [])
+        )
+        add("contacts_link", partner_links, "res.partner M2O present" if partner_links else "none")
 
-    if user_prompt.strip():
+    if user_prompt.strip() and not str(draft.get("domain_pack") or ""):
         noun_items, _uncovered, _noun_w = domain_noun_coverage(
             draft, user_prompt, reuse_models=reuse_models
         )
@@ -562,7 +724,9 @@ def validate_and_enrich_draft(
         warnings.extend(apply_pattern_rules(out))
         # Re-check after rules may add partner smart buttons pointing at known models
         errors = check_referential_integrity(out)
-    checklist = completeness_checklist(out)
+    checklist = completeness_checklist(
+        out, user_prompt=str(out.get("_user_prompt") or "")
+    )
     out["_completeness"] = checklist
     missing = [c["id"] for c in checklist if not c["ok"]]
     if missing:

@@ -19,7 +19,7 @@ def _sel(*pairs: tuple[str, str]) -> str:
 
 
 def car_rental_pack() -> dict[str, Any]:
-    """Serious car-rental ops ModuleSpec (fleet, customers, contracts, pricing, …)."""
+    """Stock-first rental residual: vehicle + contract + damage. Contacts/invoices reused."""
     vehicle_status = _sel(
         ("available", "Available"),
         ("rented", "Rented"),
@@ -53,18 +53,13 @@ def car_rental_pack() -> dict[str, Any]:
         ("done", "Done"),
         ("cancelled", "Cancelled"),
     )
-    pay_status = _sel(
-        ("draft", "Draft"),
-        ("posted", "Posted"),
-        ("paid", "Paid"),
-        ("cancelled", "Cancelled"),
-    )
 
     return {
         "technical_name": "car_rental",
         "display_name": "Car Rental",
-        "depends": ["base", "contacts", "mail"],
+        "depends": ["base", "contacts", "mail", "sale", "account"],
         "domain_pack": "car_rental",
+        "document_shape": "workspace",
         "models": [
             {
                 "model": "x_rent_branch",
@@ -119,28 +114,20 @@ def car_rental_pack() -> dict[str, Any]:
                 ],
             },
             {
-                "model": "x_rent_customer",
-                "description": "Rental Customer",
-                "mode": "new",
+                "model": "res.partner",
+                "description": "Contact",
+                "mode": "inherit",
                 "fields": [
-                    {"name": "x_name", "ttype": "char", "string": "Name", "required": True},
                     {
-                        "name": "x_partner_id",
-                        "ttype": "many2one",
-                        "string": "Contact",
-                        "relation": "res.partner",
-                        "required": True,
+                        "name": "x_driver_license",
+                        "ttype": "char",
+                        "string": "Driver license",
                     },
-                    {"name": "x_license_number", "ttype": "char", "string": "Driver License"},
-                    {"name": "x_license_expiry", "ttype": "date", "string": "License Expiry"},
-                    {"name": "x_license_country", "ttype": "char", "string": "License Country"},
                     {
-                        "name": "x_documents",
-                        "ttype": "binary",
-                        "string": "Documents",
-                        "help": "Upload ID / license scans (stub)",
+                        "name": "x_license_expiry",
+                        "ttype": "date",
+                        "string": "License expiry",
                     },
-                    {"name": "x_notes", "ttype": "text", "string": "Notes"},
                 ],
             },
             {
@@ -180,13 +167,14 @@ def car_rental_pack() -> dict[str, Any]:
                 "description": "Rental Contract",
                 "mode": "new",
                 "mixins": ["mail.thread", "mail.activity.mixin"],
+                "is_workflow": True,
                 "fields": [
                     {"name": "x_name", "ttype": "char", "string": "Reference", "required": True},
                     {
-                        "name": "x_customer_id",
+                        "name": "x_partner_id",
                         "ttype": "many2one",
                         "string": "Customer",
-                        "relation": "x_rent_customer",
+                        "relation": "res.partner",
                         "required": True,
                     },
                     {
@@ -233,11 +221,17 @@ def car_rental_pack() -> dict[str, Any]:
                     {"name": "x_odometer_in", "ttype": "integer", "string": "Odometer In"},
                     {"name": "x_notes", "ttype": "text", "string": "Notes"},
                     {
-                        "name": "x_payment_ids",
-                        "ttype": "one2many",
-                        "string": "Payments",
-                        "relation": "x_rent_payment",
-                        "relation_field": "x_contract_id",
+                        "name": "x_invoice_id",
+                        "ttype": "many2one",
+                        "string": "Invoice",
+                        "relation": "account.move",
+                        "help": "Stock customer invoice — not a custom payment document.",
+                    },
+                    {
+                        "name": "x_sale_order_id",
+                        "ttype": "many2one",
+                        "string": "Quotation",
+                        "relation": "sale.order",
                     },
                     {
                         "name": "x_damage_ids",
@@ -245,35 +239,6 @@ def car_rental_pack() -> dict[str, Any]:
                         "string": "Damages",
                         "relation": "x_rent_damage",
                         "relation_field": "x_contract_id",
-                    },
-                ],
-            },
-            {
-                "model": "x_rent_payment",
-                "description": "Rental Payment (stub)",
-                "mode": "new",
-                "fields": [
-                    {"name": "x_name", "ttype": "char", "string": "Label", "required": True},
-                    {
-                        "name": "x_contract_id",
-                        "ttype": "many2one",
-                        "string": "Contract",
-                        "relation": "x_rent_contract",
-                        "required": True,
-                    },
-                    {"name": "x_amount", "ttype": "float", "string": "Amount", "required": True},
-                    {
-                        "name": "x_status",
-                        "ttype": "selection",
-                        "string": "Status",
-                        "selection": pay_status,
-                    },
-                    {"name": "x_date", "ttype": "date", "string": "Date"},
-                    {
-                        "name": "x_notes",
-                        "ttype": "text",
-                        "string": "Notes",
-                        "help": "Stub until accounting (account.move) link",
                     },
                 ],
             },
@@ -345,11 +310,10 @@ def car_rental_pack() -> dict[str, Any]:
             },
             {
                 "on_model": "x_rent_contract",
-                "label": "Payments",
-                "related_model": "x_rent_payment",
-                "relation_field": "x_contract_id",
-                "one2many_field": "x_payment_ids",
-                "icon": "fa-money",
+                "label": "Invoice",
+                "related_model": "account.move",
+                "relation_field": "x_invoice_id",
+                "icon": "fa-file-text-o",
             },
             {
                 "on_model": "x_rent_contract",
@@ -406,15 +370,19 @@ def car_rental_pack() -> dict[str, Any]:
                 ],
             },
         ],
+        "reuse_stock": [
+            {"model": "res.partner", "reason": "Renter is a Contact"},
+            {"model": "sale.order", "reason": "Quote the rental (link-only)"},
+            {"model": "account.move", "reason": "Invoice the contract (link-only)"},
+        ],
         "reuse_hints": [
             {
                 "model": "res.partner",
-                "reason": "Link rental customers to Contacts (already in Odoo)",
+                "reason": "Renter is a Contact — never a parallel x_customer",
             },
             {
                 "model": "account.move",
-                "reason": "Optional later: invoice from payments (accounting stub)",
-                "optional": True,
+                "reason": "Stock invoice — never x_rent_payment",
             },
         ],
         "tags": [
@@ -445,6 +413,7 @@ def clinic_pack() -> dict[str, Any]:
         "display_name": "Clinic Booking",
         "depends": ["base", "contacts", "mail"],
         "domain_pack": "clinic",
+        "document_shape": "workspace",
         "tags": [
             "clinic",
             "appointment",
@@ -563,6 +532,7 @@ def field_service_pack() -> dict[str, Any]:
         "display_name": "Field Service",
         "depends": ["base", "contacts", "mail"],
         "domain_pack": "field_service",
+        "document_shape": "workspace",
         "tags": [
             "field",
             "service",
@@ -689,10 +659,28 @@ def _project_tracker_pack() -> dict[str, Any]:
     return project_tracker_pack()
 
 
+def _helpdesk_tickets_pack() -> dict[str, Any]:
+    from app.ai_domain_pack_helpdesk import helpdesk_tickets_pack
+
+    return helpdesk_tickets_pack()
+
+
+def _purchase_request_pack() -> dict[str, Any]:
+    from app.ai_domain_pack_purchase_request import purchase_request_pack
+
+    return purchase_request_pack()
+
+
 def _retail_supermarket_pack() -> dict[str, Any]:
     from app.ai_domain_pack_retail_supermarket import retail_supermarket_pack
 
     return retail_supermarket_pack()
+
+
+def _oil_gas_operations_pack() -> dict[str, Any]:
+    from app.ai_domain_pack_oil_gas import oil_gas_operations_pack
+
+    return oil_gas_operations_pack()
 
 
 _PACK_FACTORIES: list[tuple[str, Any, re.Pattern[str]]] = [
@@ -731,8 +719,14 @@ _PACK_FACTORIES: list[tuple[str, Any, re.Pattern[str]]] = [
         "hotel",
         _hotel_pack,
         re.compile(
-            r"\b(hotel|pms|property\s+management\s+system|check[\s-]?in|check[\s-]?out|"
-            r"housekeeping|front\s+desk|room\s+booking|hotel\s+management|lodging|guest\s+folio)\b",
+            r"\b("
+            r"hotel|pms|property\s+management\s+system|hotel\s+management|"
+            r"lodging|guest\s+folio|room\s+booking|housekeeping|"
+            r"(?:hotel|pms|lodging|guest\s+room|guest\s+folio).{0,48}"
+            r"(?:front\s+desk|check[\s-]?in|check[\s-]?out)|"
+            r"(?:front\s+desk|check[\s-]?in|check[\s-]?out).{0,48}"
+            r"(?:hotel|pms|lodging|guest\s+room|guest\s+folio|room\s+booking|housekeeping)"
+            r")\b",
             re.I,
         ),
     ),
@@ -740,8 +734,23 @@ _PACK_FACTORIES: list[tuple[str, Any, re.Pattern[str]]] = [
         "restaurant",
         _restaurant_pack,
         re.compile(
-            r"\b(restaurant|dining|menu|kitchen|food\s+service|pos\s+lite|"
-            r"table\s+reservation|waiter|bistro|cafe|dining\s+order)\b",
+            r"\b(restaurant|dining|kitchen|food\s+service|pos\s+lite|"
+            r"table\s+reservation|waiter|bistro|cafe|dining\s+order|"
+            r"(?:food|dinner|lunch|breakfast|restaurant|dining)\s+menu|"
+            r"menu\s+item)\b",
+            re.I,
+        ),
+    ),
+    # Oil & gas BEFORE retail — "multiple branches" alone must not route to supermarket.
+    (
+        "oil_gas_operations",
+        _oil_gas_operations_pack,
+        re.compile(
+            r"\b("
+            r"oil\s*(?:and|&|\/)?\s*gas|oilfield|petroleum|hydrocarbon|"
+            r"upstream|midstream|downstream|drilling|refining|refinery|"
+            r"well\s*site|wellhead|rig\b|pipeline\b|oil\s+gas"
+            r")\b",
             re.I,
         ),
     ),
@@ -749,8 +758,10 @@ _PACK_FACTORIES: list[tuple[str, Any, re.Pattern[str]]] = [
         "retail_supermarket",
         _retail_supermarket_pack,
         re.compile(
-            r"\b(super[\s-]?market|grocery|mega\s+store|retail\s+chain|"
-            r"multiple\s+branches|store\s+chain|hypermarket)\b",
+            r"\b("
+            r"super[\s-]?market|super\s+market|grocery|mega\s+store|"
+            r"retail\s+chain|store\s+chain|hypermarket|mega\s+super"
+            r")\b",
             re.I,
         ),
     ),
@@ -770,6 +781,31 @@ _PACK_FACTORIES: list[tuple[str, Any, re.Pattern[str]]] = [
             r"\b(subscription|membership\s+plan|renewal\s+workflow|saas\s+plan|"
             r"usage[\s-]?based|member\s+portal)\b",
             re.I,
+        ),
+    ),
+    (
+        "helpdesk_tickets",
+        _helpdesk_tickets_pack,
+        re.compile(
+            r"\b("
+            r"helpdesk|support\s+(?:desk|ticket)|IT\s+support|"
+            r"slack\s+screenshots?|internal\s+helpdesk|IT\s+ticket"
+            r")\b",
+            re.I,
+        ),
+    ),
+    (
+        "purchase_request",
+        _purchase_request_pack,
+        re.compile(
+            r"(?i)\b(?:"
+            r"purchase\s+requests?|purchase\s+requisitions?|"
+            r"approval\s+requests?|"
+            r"spend(?:ing)?\s+(?:request|approval)|"
+            r"budget\s+(?:request|approval)|"
+            r"requisitions?|"
+            r"manager\s+approv(?:e|al|ed)?"
+            r")",
         ),
     ),
     (
@@ -827,8 +863,11 @@ def score_domain_pack(prompt: str, pack: dict[str, Any]) -> float:
     bag |= _tokenize(str(pack.get("domain_pack") or ""))
     for m in pack.get("models") or []:
         if isinstance(m, dict):
+            mid = str(m.get("model") or "")
+            if str(m.get("mode") or "new") == "inherit" or not mid.startswith("x_"):
+                continue
             bag |= _tokenize(str(m.get("description") or ""))
-            bag |= _tokenize(str(m.get("model") or "").replace("_", " ").replace("x ", ""))
+            bag |= _tokenize(mid.replace("_", " ").replace("x ", ""))
     if not bag:
         return 0.0
     inter = len(pt & bag)
@@ -843,13 +882,21 @@ def _all_packs() -> list[tuple[str, dict[str, Any]]]:
 def retrieve_domain_pack_lexical(
     prompt: str, *, min_score: float = 0.08
 ) -> tuple[str, dict[str, Any], float] | None:
-    """Regex first, then Jaccard — no embeddings."""
+    """Regex hint, then Jaccard — regex hits still carry Jaccard as the score."""
+    from app.ai_grain import classify_grain
+    from app.ai_operator_brief import intent_corpus
+    from app.text_negation import has_positive_match
+
     text = (prompt or "").strip()
     if not text:
         return None
+    if classify_grain(intent_corpus(text) or text) == "field_pack":
+        return None
     for pack_id, factory, pattern in _PACK_FACTORIES:
-        if pattern.search(text):
+        if has_positive_match(pattern, text):
             pack = copy.deepcopy(factory())
+            # Regex match is high-confidence; Jaccard is only for the fallback path.
+            pack["_retrieval"] = {"method": "regex", "score": 1.0}
             return pack_id, pack, 1.0
     best: tuple[str, dict[str, Any], float] | None = None
     for pack_id, factory, _pattern in _PACK_FACTORIES:
@@ -857,7 +904,37 @@ def retrieve_domain_pack_lexical(
         score = score_domain_pack(text, pack)
         if score >= min_score and (best is None or score > best[2]):
             best = (pack_id, copy.deepcopy(pack), score)
-    return best
+    if best:
+        pid, pack, score = best
+        pack["_retrieval"] = {"method": "jaccard", "score": score}
+        return pid, pack, score
+    return None
+
+
+def resolve_domain_pack_candidate(
+    prompt: str,
+    candidate: tuple[str, dict[str, Any], float] | None,
+) -> tuple[tuple[str, dict[str, Any]] | None, list[str]]:
+    """Apply domain-agnostic coherence gate before pack merge / scaffold injection."""
+    if not candidate:
+        return None, []
+    pack_id, pack, score = candidate
+    method = ""
+    retrieval = pack.get("_retrieval") if isinstance(pack.get("_retrieval"), dict) else {}
+    if isinstance(retrieval, dict):
+        method = str(retrieval.get("method") or "")
+    from app.ai_domain_coherence import should_apply_domain_pack
+
+    ok, notes = should_apply_domain_pack(
+        prompt,
+        pack_id,
+        pack,
+        retrieval_score=float(score or 0.0),
+        retrieval_method=method,
+    )
+    if ok:
+        return (pack_id, pack), notes
+    return None, notes
 
 
 def retrieve_domain_pack(
@@ -898,21 +975,263 @@ def retrieve_domain_pack(
             pid, p, sc = voted
             if warnings and isinstance(p, dict):
                 p.setdefault("_self_consistency_warnings", warnings)
-            return pid, p, sc
-        return baseline
+            baseline = pid, p, sc
 
-    return baseline
+    if baseline:
+        resolved, notes = resolve_domain_pack_candidate(prompt, baseline)
+        if notes and isinstance(baseline[1], dict):
+            baseline[1].setdefault("_coherence_warnings", notes)
+        if resolved:
+            return resolved[0], resolved[1], baseline[2]
+        return None
+
+    return None
 
 
 def match_domain_pack(prompt: str) -> tuple[str, dict[str, Any]] | None:
-    """Strict regex-only match for offline / AI-off paths (no Jaccard false positives)."""
+    """Regex-only hint, gated by domain coherence (offline / AI-off paths)."""
+    from app.ai_grain import classify_grain
+    from app.ai_operator_brief import (
+        intent_corpus,
+        is_cbn_currency_rates_prompt,
+        is_pos_receipt_prompt,
+    )
+    from app.text_negation import has_positive_match
+
     text = (prompt or "").strip()
     if not text:
         return None
+    # Inherit-and-wire field packs must not steal a vertical pack ("new menu").
+    if classify_grain(intent_corpus(text) or text) == "field_pack":
+        return None
+    # Marketing copy that mentions restaurant/retail as examples must not
+    # steal a POS receipt Option A prompt into a vertical pack.
+    if is_pos_receipt_prompt(text) or is_cbn_currency_rates_prompt(text):
+        return None
     for pack_id, factory, pattern in _PACK_FACTORIES:
-        if pattern.search(text):
-            return pack_id, copy.deepcopy(factory())
+        if has_positive_match(pattern, text):
+            pack = copy.deepcopy(factory())
+            jaccard = score_domain_pack(text, pack)
+            pack["_retrieval"] = {"method": "regex", "score": jaccard}
+            resolved, _notes = resolve_domain_pack_candidate(
+                text,
+                (pack_id, pack, jaccard),
+            )
+            return resolved
     return None
+
+
+def load_domain_pack(pack_id: str) -> dict[str, Any] | None:
+    """Load a curated pack body by id (factory fresh copy)."""
+    for pid, factory, _ in _PACK_FACTORIES:
+        if pid == pack_id:
+            return copy.deepcopy(factory())
+    return None
+
+
+_VALID_PACK_SHAPES = frozenset(
+    {
+        "stock_reuse",
+        "field_pack",
+        "register",
+        "catalog",
+        "transactional_header",
+        "workspace",
+        "option_a",
+    }
+)
+
+
+def pack_document_shape(pack: dict[str, Any] | None) -> str:
+    """Declared Community document shape for a pack. Default workspace."""
+    if not isinstance(pack, dict):
+        return "workspace"
+    shape = str(pack.get("document_shape") or "").strip()
+    if shape in _VALID_PACK_SHAPES:
+        return shape
+    return "workspace"
+
+
+def pack_allowed_model_ids(pack: dict[str, Any]) -> set[str]:
+    """Pack template models plus O2M line targets and *_line children of allowed parents."""
+    allowed: set[str] = {
+        str(m["model"])
+        for m in (pack.get("models") or [])
+        if isinstance(m, dict) and m.get("model")
+    }
+    if not allowed:
+        return allowed
+    by_id = {
+        str(m["model"]): m
+        for m in (pack.get("models") or [])
+        if isinstance(m, dict) and m.get("model")
+    }
+    changed = True
+    while changed:
+        changed = False
+        for mid in list(allowed):
+            model = by_id.get(mid)
+            if not model:
+                continue
+            for field in model.get("fields") or []:
+                if not isinstance(field, dict):
+                    continue
+                if str(field.get("ttype") or "") != "one2many":
+                    continue
+                rel = str(field.get("relation") or "")
+                if rel and rel not in allowed:
+                    allowed.add(rel)
+                    changed = True
+    expanded = set(allowed)
+    for mid in list(expanded):
+        if mid.endswith("_line"):
+            continue
+        line_id = f"{mid}_line"
+        expanded.add(line_id)
+    return expanded
+
+
+def _purge_draft_artifacts_for_models(draft: dict[str, Any], removed: set[str]) -> None:
+    """Drop UI/metadata rows referencing removed custom models."""
+    if not removed:
+        return
+    models = [
+        m for m in (draft.get("models") or []) if str(m.get("model") or "") not in removed
+    ]
+    draft["models"] = models
+
+    for key in ("actions", "views", "access_rules", "sequences"):
+        rows = draft.get(key)
+        if not isinstance(rows, list):
+            continue
+        kept: list[Any] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            mid = row.get("model")
+            if key == "access_rules" and isinstance(mid, str) and mid.startswith("model_"):
+                leaf = mid[len("model_") :]
+                if leaf in removed:
+                    continue
+            if mid in removed:
+                continue
+            kept.append(row)
+        draft[key] = kept
+
+    menus = draft.get("menus")
+    if isinstance(menus, list):
+        action_xml = {
+            str(a.get("technical_name") or ""): str(a.get("model") or "")
+            for a in (draft.get("actions") or [])
+            if isinstance(a, dict)
+        }
+        known_actions = {
+            str(a.get("technical_name") or "")
+            for a in (draft.get("actions") or [])
+            if isinstance(a, dict)
+        }
+        draft["menus"] = [
+            m
+            for m in menus
+            if isinstance(m, dict)
+            and (
+                not m.get("action_xml_id")
+                or (
+                    str(m.get("action_xml_id") or "") in known_actions
+                    and action_xml.get(str(m.get("action_xml_id") or ""), "") not in removed
+                )
+            )
+        ]
+
+    buttons = draft.get("smart_buttons")
+    if isinstance(buttons, list):
+        draft["smart_buttons"] = [
+            b
+            for b in buttons
+            if isinstance(b, dict)
+            and b.get("related_model") not in removed
+            and b.get("on_model") not in removed
+        ]
+
+    autos = draft.get("automations")
+    if isinstance(autos, list):
+        draft["automations"] = [
+            a for a in autos if isinstance(a, dict) and a.get("model") not in removed
+        ]
+
+    blocks = draft.get("custom_code_blocks")
+    if isinstance(blocks, list):
+        draft["custom_code_blocks"] = [
+            b
+            for b in blocks
+            if not isinstance(b, dict) or str(b.get("model") or "") not in removed
+        ]
+
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        fields: list[Any] = []
+        for field in model.get("fields") or []:
+            if not isinstance(field, dict):
+                fields.append(field)
+                continue
+            rel = str(field.get("relation") or "")
+            if rel in removed and str(field.get("ttype") or "") in {
+                "many2one",
+                "one2many",
+                "many2many",
+            }:
+                continue
+            fields.append(field)
+        model["fields"] = fields
+
+
+def foreign_models_in_draft(
+    draft: dict[str, Any],
+    pack: dict[str, Any] | None = None,
+) -> list[str]:
+    """Custom models incoherent with the user prompt (domain-agnostic)."""
+    from app.ai_domain_coherence import list_incoherent_models
+
+    prompt = str(draft.get("_user_prompt") or "")
+    if not prompt.strip():
+        return []
+    return list_incoherent_models(draft, prompt, pack=pack)
+
+
+def prune_extraneous_models(
+    draft: dict[str, Any],
+    pack: dict[str, Any] | None = None,
+) -> list[str]:
+    """Remove incoherent / cross-industry models (any domain)."""
+    from app.ai_domain_coherence import prune_incoherent_models
+
+    notes: list[str] = []
+    pack_id = str(draft.get("domain_pack") or "")
+    if pack is None and pack_id:
+        pack = load_domain_pack(pack_id)
+
+    if pack:
+        forbid: list[str] = []
+        for row in pack.get("reuse_stock") or []:
+            if isinstance(row, dict):
+                forbid.extend(str(x) for x in (row.get("forbid_parallel") or []))
+        from app.ai_reuse_planner import collapse_forbidden_parallel_models
+
+        notes.extend(collapse_forbidden_parallel_models(draft, forbid))
+
+    prompt = str(draft.get("_user_prompt") or "")
+    if not prompt.strip():
+        return notes
+    notes.extend(
+        prune_incoherent_models(
+            draft,
+            prompt,
+            pack=pack,
+            purge_fn=_purge_draft_artifacts_for_models,
+        )
+    )
+    return notes
 
 
 def merge_domain_pack(
@@ -924,8 +1243,19 @@ def merge_domain_pack(
     out.setdefault("technical_name", pack.get("technical_name"))
     out.setdefault("display_name", pack.get("display_name"))
     out["domain_pack"] = pack.get("domain_pack")
+    declared_shape = pack_document_shape(pack)
+    if declared_shape:
+        out["_document_shape"] = declared_shape
+        out["document_shape"] = declared_shape
     if pack.get("reuse_stock"):
         out["_pack_reuse_stock"] = copy.deepcopy(pack.get("reuse_stock"))
+    pack_ids = [
+        str(m.get("model"))
+        for m in (pack.get("models") or [])
+        if isinstance(m, dict) and m.get("model")
+    ]
+    if pack_ids:
+        out["_pack_model_ids"] = pack_ids
 
     depends = list(out.get("depends") or [])
     for dep in pack.get("depends") or []:
@@ -983,12 +1313,13 @@ def merge_domain_pack(
                 fields.append(copy.deepcopy(pf))
                 warnings.append(f"domain pack added field {mid}.{fname}")
                 continue
-            # Upgrade thin/truncated selections from pack (LLM kept weaker keys)
+            # Pack owns selection literals on pack fields (LLM "more keys" is not better —
+            # discovery/trial on a matter file beats intake→open→billed→closed).
             df = existing_by_name[fname]
             if (
                 str(pf.get("ttype") or df.get("ttype")) == "selection"
                 and pf.get("selection")
-                and df.get("selection")
+                and str(df.get("selection") or "") != str(pf.get("selection") or "")
             ):
                 pack_keys = set(
                     re.findall(r"\(\s*'([^']+)'\s*,", str(pf.get("selection") or ""))
@@ -996,14 +1327,15 @@ def merge_domain_pack(
                 draft_keys = set(
                     re.findall(r"\(\s*'([^']+)'\s*,", str(df.get("selection") or ""))
                 )
-                if len(pack_keys) > len(draft_keys):
-                    df["selection"] = pf["selection"]
-                    if pf.get("string") and not df.get("string"):
-                        df["string"] = pf["string"]
-                    warnings.append(
-                        f"domain pack upgraded selection {mid}.{fname} "
-                        f"({len(draft_keys)}→{len(pack_keys)} keys)"
-                    )
+                df["selection"] = pf["selection"]
+                if pf.get("string"):
+                    df["string"] = pf["string"]
+                if pf.get("default") is not None:
+                    df["default"] = pf["default"]
+                warnings.append(
+                    f"domain pack upgraded selection {mid}.{fname} "
+                    f"({len(draft_keys)}→{len(pack_keys)} keys)"
+                )
             # Fix wrong M2O targets (e.g. fee earner → res.users instead of x_attorney)
             if (
                 str(pf.get("ttype") or df.get("ttype")) == "many2one"
@@ -1014,12 +1346,28 @@ def merge_domain_pack(
                 cur = str(df.get("relation") or "")
                 prefer_pack = False
                 fname = str(df.get("name") or pf.get("name") or "").lower()
+                _STOCK_RELATIONS = {
+                    "hr.employee",
+                    "account.move",
+                    "sale.order",
+                    "calendar.event",
+                    "crm.lead",
+                    "project.task",
+                    "res.partner",
+                    "account.analytic.line",
+                    "account.analytic.account",
+                }
                 # Keep generic assignee/login on res.users even if pack points at staff
                 if fname in {"x_assignee_id", "assignee_id", "x_user_id", "user_id"}:
                     prefer_pack = False
+                elif pref in _STOCK_RELATIONS and (
+                    cur.startswith("x_") or cur in {"res.users", "", "False"}
+                ):
+                    prefer_pack = True
+                elif pref.startswith("x_") and cur == "hr.employee":
+                    prefer_pack = False
                 elif pref.startswith("x_") and cur in {
                     "res.users",
-                    "hr.employee",
                     "",
                     "False",
                 }:
@@ -1038,13 +1386,21 @@ def merge_domain_pack(
                 df["required"] = True
                 warnings.append(f"domain pack set required {mid}.{fname}")
         dm["fields"] = fields
-        if not dm.get("description") and pm.get("description"):
+        if pm.get("description") and dm.get("description") != pm.get("description"):
             dm["description"] = pm["description"]
-        if pm.get("is_workflow") and not dm.get("is_workflow"):
-            # Don't promote party-link stubs here — quality demotes those
-            leaf = mid.replace("x_", "")
-            if not any(k in leaf for k in ("party", "role_link", "participant")):
-                dm["is_workflow"] = True
+            warnings.append(f"domain pack restored description {mid}")
+        if "is_workflow" in pm and dm.get("is_workflow") != pm.get("is_workflow"):
+            dm["is_workflow"] = bool(pm.get("is_workflow"))
+            if not pm.get("is_workflow"):
+                dm.pop("state_field", None)
+            warnings.append(
+                f"domain pack set is_workflow {mid}={bool(pm.get('is_workflow'))}"
+            )
+        if isinstance(pm.get("state_field"), dict):
+            dm["state_field"] = copy.deepcopy(pm["state_field"])
+            warnings.append(f"domain pack restored state_field {mid}")
+        if pm.get("mixins") and not dm.get("mixins"):
+            dm["mixins"] = copy.deepcopy(pm["mixins"])
         merged_models.append(dm)
 
     for mid, dm in draft_models.items():
@@ -1109,6 +1465,14 @@ __all__ = [
     "hospital_pack",
     "hotel_pack",
     "law_firm_pack",
+    "resolve_domain_pack_candidate",
+    "foreign_models_in_draft",
+    "load_domain_pack",
+    "pack_document_shape",
+    "pack_allowed_model_ids",
+    "prune_extraneous_models",
+    "helpdesk_tickets_pack",
+    "purchase_request_pack",
     "project_tracker_pack",
     "real_estate_pack",
     "restaurant_pack",
@@ -1150,4 +1514,12 @@ def subscription_pack() -> dict[str, Any]:
 
 def project_tracker_pack() -> dict[str, Any]:
     return _project_tracker_pack()
+
+
+def helpdesk_tickets_pack() -> dict[str, Any]:
+    return _helpdesk_tickets_pack()
+
+
+def purchase_request_pack() -> dict[str, Any]:
+    return _purchase_request_pack()
 

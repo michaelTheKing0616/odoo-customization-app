@@ -13,6 +13,7 @@ import {
   Connection,
   ConfirmationRequiredError,
   ExpertDraftReviewResponse,
+  JobRow,
   ProtectedModuleRefusal,
   ScaffoldResult,
   ReuseModelRow,
@@ -26,8 +27,9 @@ import { AskWhyButton } from "@/components/expert/AskWhyButton";
 import { useShell } from "@/context/ShellContext";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
-import { reportApiError } from "@/lib/api-error";
+import { reportApiError, isApiNotFound } from "@/lib/api-error";
 import { Button } from "@/components/ui/Button";
+import { InfinityLoop } from "@/components/loading-ui/infinity-loop";
 import { Callout } from "@/components/ui/Callout";
 import { Card, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
 import { Input } from "@/components/ui/Input";
@@ -35,6 +37,55 @@ import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
 import { Badge } from "@/components/ui/Badge";
 import { CodeBlock } from "@/components/ui/CodeBlock";
+import { DraftOdooPreview } from "@/components/odoo-preview";
+import { HostInstallPanel } from "@/components/studio/HostInstallDialog";
+import { odooMenuUrl, odooViewUrl } from "@/lib/odoo-urls";
+import { JobPollError, pollJob } from "@/lib/jobs";
+import {
+  draftFromJobResult,
+  pickRecoverableDraft,
+  resolveJobDraftOutcome,
+  successNoteForDraft,
+} from "@/lib/draft-job-outcome";
+import { confirmedReuseModelsFromDraft } from "@/lib/reuse-chips";
+import { SCORE_BARS } from "@/lib/copy-guide";
+import {
+  briefTextForJobAutopilot,
+  stashJobAutopilotBrief,
+} from "@/lib/job-brief-handoff";
+import { stashPromptForStudio } from "@/lib/studio-session";
+import {
+  busyLabelFromJobResult,
+  draftFinisherComplete,
+  generationEngineFromDraft,
+  isOptionAAuthoredDraft,
+  isRefuseCloneDraft,
+  isStockReuseDraft,
+  optionAAuthoringPassed,
+  optionASettingsFromDraft,
+  residualFormPreviewFromDraft,
+  stockAppsFromDraft,
+  hostInstallOffersFromDraft,
+  authoringFindingsWithoutHostInstall,
+  type HostInstallOffer,
+  wantsModuleDelivery,
+} from "@/lib/draft-form-preview";
+import { primaryCustomModelFromDraft, viewDesignerHref } from "@/lib/draft-models";
+import {
+  displayedCertificationTier,
+  expertCloserHint,
+  expertShouldRepair,
+  liveApplyGapBanner,
+  unfinishedDraftBanner,
+} from "@/lib/draft-studio-banners";
+import {
+  draftEnrichmentClean,
+  withEnrichmentCleanFlags,
+} from "@/lib/draft-llm-status";
+import {
+  operatorSurfaceFromDraft,
+  operatorSurfaceHasPlacement,
+} from "@/lib/operator-surface";
 
 const CONFIRM_PHRASE = "I understand the risks";
 
@@ -57,6 +108,37 @@ function pipelineStepIndex(draft: Record<string, unknown> | null): number {
   return 0;
 }
 
+const BACKGROUND_JOB_POLL_MS = 2000;
+
+async function pollBackgroundJob(
+  jobId: string,
+  opts: {
+    setBusyLabel: (label: string | null) => void;
+    onPartial?: (partial: Record<string, unknown>) => void;
+    maxMs?: number;
+  },
+): Promise<JobRow> {
+  try {
+    return await pollJob(jobId, {
+      intervalMs: BACKGROUND_JOB_POLL_MS,
+      maxAttempts: 2400,
+      untilTerminal: true,
+      fetchJob: (id) => api.getJob(id),
+      onUpdate: (job) => {
+        const phase = busyLabelFromJobResult(job.result);
+        if (phase) opts.setBusyLabel(phase);
+        const partial = draftFromJobResult(job);
+        if (partial) opts.onPartial?.(partial);
+      },
+    });
+  } catch (err) {
+    if (err instanceof JobPollError && err.job) {
+      return err.job;
+    }
+    throw err;
+  }
+}
+
 const REUSE_SUGGESTIONS = [
   "res.partner",
   "res.users",
@@ -76,7 +158,7 @@ const FALLBACK_TEMPLATES: AppTemplate[] = [
     id: "car_rental",
     name: "Car Rental",
     description:
-      "Fleet, customers, contracts, rates, payments, damages & maintenance.",
+      "Fleet, Contacts, contracts, rates, damages & maintenance — invoices stay stock.",
   },
   {
     id: "crm_lite",
@@ -152,28 +234,134 @@ export default function AppWizardPage() {
   const draftScore = scorecard?.score_0_10;
   const scoreDimensions = scorecard?.dimensions;
   const validatorsGreen = scorecard?.validators?.all_green === true;
+  const finisherComplete = draftFinisherComplete(aiDraft);
+  const liveApplyBanner = liveApplyGapBanner(aiDraft);
+  const liveApply = aiDraft?._live_apply as
+    | {
+        ready?: boolean;
+        findings?: Array<{ detail?: string }>;
+        option_a?: string[];
+        done_bar?: {
+          mode?: string;
+          next_step?: string;
+          go_live_ready?: boolean;
+        };
+        go_live_ready?: boolean;
+      }
+    | undefined;
+  const doneBar =
+    (aiDraft?._done_bar as
+      | { mode?: string; next_step?: string; go_live_ready?: boolean }
+      | undefined) ?? liveApply?.done_bar;
+  const goLiveReady = Boolean(
+    aiDraft?._go_live_ready || liveApply?.go_live_ready || doneBar?.go_live_ready,
+  );
+  const certification = aiDraft?._certification as
+    | {
+        tier?: string;
+        quality?: number;
+        evidence?: number;
+        risk?: number;
+        hard_failures?: string[];
+        option_a_pending?: boolean;
+        note?: string;
+      }
+    | undefined;
+  const generationEngine = generationEngineFromDraft(aiDraft);
+  const refuseClone = isRefuseCloneDraft(aiDraft);
+  const stockReuse = isStockReuseDraft(aiDraft);
+  const authoredOptionA = isOptionAAuthoredDraft(aiDraft);
+  const authoringPassed = optionAAuthoringPassed(aiDraft);
+  const hostInstallOffers = hostInstallOffersFromDraft(aiDraft);
+  const leftoverAuthoringFindings = authoringFindingsWithoutHostInstall(aiDraft);
+  const zipLocked = authoredOptionA && !authoringPassed;
+  const isOdooOnline = connection?.hosting === "online";
+  const stockApps = stockAppsFromDraft(aiDraft);
+  const operatorSurface = operatorSurfaceFromDraft(aiDraft);
+  const jobAutopilotHref = `/connections/${connectionId}/job`;
+  const designerHref = viewDesignerHref(connectionId, aiDraft);
+  const designerModel = primaryCustomModelFromDraft(aiDraft);
+  function stashBriefForJobAutopilot() {
+    const text = briefTextForJobAutopilot(aiDraft, nlPrompt);
+    if (text) stashJobAutopilotBrief(connectionId, text);
+  }
+  const certTierDisplay = displayedCertificationTier(aiDraft);
+  const certShipReady =
+    (certTierDisplay === "Production" || certTierDisplay === "Gold") &&
+    !certification?.option_a_pending &&
+    !stockReuse;
+  const operatorBrief = aiDraft?._operator_brief as
+    | {
+        formatted?: string;
+        capability_path?: string;
+        ir_confidence?: string;
+        unknowns?: string[];
+      }
+    | undefined;
+  const moduleDelivery = wantsModuleDelivery(aiDraft);
+  const residualPreview = residualFormPreviewFromDraft(aiDraft);
+  const optionASettings = optionASettingsFromDraft(aiDraft);
+  const [zipBusy, setZipBusy] = useState(false);
+  const [optionAProveBusy, setOptionAProveBusy] = useState(false);
+  const [optionAProveNote, setOptionAProveNote] = useState<string | null>(null);
   const [expertReviewNote, setExpertReviewNote] = useState<string | null>(null);
   const [expertReviewFindings, setExpertReviewFindings] = useState<
     ExpertDraftReviewResponse["findings"]
   >([]);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiBusyLabel, setAiBusyLabel] = useState<string | null>(null);
+  const llmStatus = aiDraft?._llm_status as
+    | {
+        mode?: string;
+        reason?: string;
+        failed_steps?: string[];
+        retry_recommended?: boolean;
+        enrichment_clean?: boolean;
+      }
+    | undefined;
+  const llmStatusReason = llmStatus?.reason;
+  const showRetryEnrichment = Boolean(
+    aiDraft && !aiDraft._component && !stockReuse && !refuseClone,
+  );
+  // Disabled when enrich finished cleanly (explicit flag or llm_full heuristic).
+  const retryEnrichmentDisabled = Boolean(
+    aiBusy || !aiDraft || draftEnrichmentClean(aiDraft),
+  );
   const llmStatusBanner =
-    llmStatusMode === "llm_partial"
-      ? "Some AI steps timed out; pack templates filled in. Retry AI enrichment?"
-      : llmStatusMode === "pack_fallback"
-        ? "Built from the retail template — the AI model was unavailable. Retry AI enrichment for tailored results."
+    aiDraft?._component || stockReuse
+      ? null
+      : llmStatusMode === "llm_partial"
+        ? "Some AI steps timed out; the draft was finished from your prompt. Click Retry AI enrichment to wake AI, re-run missed steps, and complete residual fields from your brief if AI stays down."
+        : llmStatusMode === "pack_fallback" && llmStatusReason === "residual_recovered"
+          ? "Residual completed from your brief (AI was unavailable). Review fields, then Apply — or Retry again when a model is back for LLM polish."
+        : llmStatusMode === "pack_fallback" &&
+            (llmStatusReason === "timeout" ||
+              llmStatusReason === "unavailable" ||
+              llmStatusReason === "honesty_seed")
+          ? "AI was unavailable on Create draft. Click Retry AI enrichment — it wakes Flash/local/cloud, re-runs missed AI steps, and still completes residual fields from your brief if AI stays down."
+        : llmStatusMode === "pack_fallback"
+        ? "Draft Studio used the domain pack. Click Retry AI enrichment to tailor when a model is available."
         : llmStatusMode === "seed_fallback" &&
             (aiDraft?._depth as { seeded?: boolean } | undefined)?.seeded
           ? "Depth targets were met via generic operational seeds — review entities before apply."
+          : llmStatusMode === "llm_full" && retryEnrichmentDisabled
+            ? "AI enrichment completed successfully. Retry stays available only if hygiene gaps return."
+          : llmStatusMode === "llm_full"
+            ? "AI draft finished. Retry AI enrichment to wake providers and collapse residual hygiene if needed."
           : null;
   const [aiRefusals, setAiRefusals] = useState<ProtectedModuleRefusal[]>([]);
-  const [aiBusy, setAiBusy] = useState(false);
-  const [aiBusyLabel, setAiBusyLabel] = useState<string | null>(null);
+  const unfinishedBanner = unfinishedDraftBanner(aiDraft, { generating: aiBusy });
   const [aiEnabled, setAiEnabled] = useState(false);
+  const [aiProviderLabel, setAiProviderLabel] = useState("AI");
   const [ollamaDetail, setOllamaDetail] = useState<string | null>(null);
   const [reuseModels, setReuseModels] = useState<string[]>(["res.partner"]);
   const [rejectedInferredReuse, setRejectedInferredReuse] = useState<string[]>([]);
   const [reuseCatalog, setReuseCatalog] = useState<ReuseModelRow[]>([]);
   const [reuseSearch, setReuseSearch] = useState("");
+  const [reuseCatalogStatus, setReuseCatalogStatus] = useState<"loading" | "ready" | "error">(
+    "loading",
+  );
+  const [reuseCatalogError, setReuseCatalogError] = useState<string | null>(null);
   const [jsonPaste, setJsonPaste] = useState("");
   const [jsonPasteOpen, setJsonPasteOpen] = useState(false);
   const [draftCacheEntries, setDraftCacheEntries] = useState<
@@ -188,6 +376,8 @@ export default function AppWizardPage() {
   const [eliteLintOk, setEliteLintOk] = useState<boolean | null>(null);
   const [eliteLintNote, setEliteLintNote] = useState<string | null>(null);
   const [genUiResult, setGenUiResult] = useState<string | null>(null);
+  const [odooAppUrl, setOdooAppUrl] = useState<string | null>(null);
+  const [walkthroughConfirmOpen, setWalkthroughConfirmOpen] = useState(false);
   const [validateLiveResult, setValidateLiveResult] = useState<
     import("@/lib/api").ValidateLiveResult | null
   >(null);
@@ -233,6 +423,11 @@ export default function AppWizardPage() {
     (!needsConnectReview || (connectPointsApproved && connectPoints !== null));
 
   useEffect(() => {
+    if (!stockReuse) return;
+    stashBriefForJobAutopilot();
+  }, [stockReuse, connectionId, aiDraft, nlPrompt]);
+
+  useEffect(() => {
     let cancelled = false;
     async function load() {
       setLoading(true);
@@ -254,15 +449,10 @@ export default function AppWizardPage() {
       try {
         // Never block the whole wizard on slow Odoo/AI status (RAG used to
         // load MiniLM inside /ai/status and freeze "Loading templates…").
-        const [conn, tpls, status, models, gallery] = await Promise.all([
+        const [conn, tpls, status, gallery] = await Promise.all([
           withTimeout(api.getConnection(connectionId), 8000, null as Connection | null),
           withTimeout(api.listAppTemplates(), 5000, FALLBACK_TEMPLATES),
           withTimeout(api.aiStatus().catch(() => null), 4000, null),
-          withTimeout(
-            api.listReuseCatalog(connectionId).catch(() => []),
-            12000,
-            [],
-          ),
           withTimeout(api.listComponentGallery().catch(() => []), 4000, []),
         ]);
         if (cancelled) return;
@@ -274,7 +464,16 @@ export default function AppWizardPage() {
         setTemplates(dedupeTemplates(tpls.length ? tpls : FALLBACK_TEMPLATES));
         setComponentGallery(gallery || []);
         setAiEnabled(Boolean(status?.enabled));
-        setReuseCatalog(models || []);
+        setAiProviderLabel(status?.provider_label || "AI");
+        const reachable = status?.provider_reachable ?? status?.ollama_reachable;
+        const detail = status?.provider_detail ?? status?.ollama_detail;
+        if (reachable === false && detail) {
+          setOllamaDetail(detail);
+        } else if (reachable === true) {
+          setOllamaDetail(null);
+        } else if (detail) {
+          setOllamaDetail(detail);
+        }
         try {
           const cached = await api.listDraftCache(connectionId, 10);
           setDraftCacheEntries(
@@ -287,13 +486,6 @@ export default function AppWizardPage() {
           );
         } catch {
           setDraftCacheEntries([]);
-        }
-        if (status?.ollama_reachable === false && status.ollama_detail) {
-          setOllamaDetail(status.ollama_detail);
-        } else if (status?.ollama_reachable === true) {
-          setOllamaDetail(null);
-        } else if (status?.ollama_detail) {
-          setOllamaDetail(status.ollama_detail);
         }
       } catch (err) {
         if (!cancelled) {
@@ -311,12 +503,58 @@ export default function AppWizardPage() {
   }, [connectionId]);
 
   useEffect(() => {
-    if (!aiDraft) return;
-    const reuse = aiDraft.reuse as { models?: string[] } | undefined;
-    if (Array.isArray(reuse?.models) && reuse.models.length > 0) {
-      setReuseModels(reuse.models);
+    let cancelled = false;
+    async function loadCatalog() {
+      setReuseCatalogStatus("loading");
+      setReuseCatalogError(null);
+      try {
+        const rows = await api.listReuseCatalog(connectionId);
+        if (cancelled) return;
+        setReuseCatalog(rows);
+        setReuseCatalogStatus("ready");
+        if (!rows.length) {
+          setReuseCatalogError(
+            "No stock models returned. Check that this connection’s Odoo is running.",
+          );
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setReuseCatalogStatus("error");
+        setReuseCatalogError(
+          err instanceof Error ? err.message : "Failed to load stock Odoo models",
+        );
+      }
     }
-  }, [aiDraft]);
+    void loadCatalog();
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionId]);
+
+  async function reloadReuseCatalog() {
+    setReuseCatalogStatus("loading");
+    setReuseCatalogError(null);
+    try {
+      const rows = await api.listReuseCatalog(connectionId);
+      setReuseCatalog(rows);
+      setReuseCatalogStatus("ready");
+      if (!rows.length) {
+        setReuseCatalogError(
+          "No stock models returned. Check that this connection’s Odoo is running.",
+        );
+      }
+    } catch (err) {
+      setReuseCatalogStatus("error");
+      setReuseCatalogError(
+        err instanceof Error ? err.message : "Failed to load stock Odoo models",
+      );
+    }
+  }
+
+  // Do NOT sync reuse.plan.models or auto-confirmed connection decisions into chips.
+  // Those lists include suggestions. Merging them into operator chips makes the next
+  // Confirm/Install reapply treat every sibling as operator_reuse — Suggested and
+  // Installable rows vanish. Snapshot restore uses confirmedReuseModelsFromDraft.
 
   function openConfirm(tpl: AppTemplate) {
     setSelected(tpl);
@@ -446,17 +684,75 @@ export default function AppWizardPage() {
     }
   }
 
+  async function refreshDraftCacheList() {
+    const cached = await api.listDraftCache(connectionId, 10).catch(() => []);
+    setDraftCacheEntries(
+      (cached || []).map((c) => ({
+        id: c.id,
+        summary: c.summary,
+        prompt: c.prompt,
+        updated_at: c.updated_at,
+      })),
+    );
+  }
+
   async function restoreDraftFromCache(cacheId: string) {
     setAiBusy(true);
     setAiBusyLabel("Restoring cached draft…");
     try {
       const row = await api.getDraftCache(cacheId);
       setAiDraft(row.draft);
+      const confirmed = confirmedReuseModelsFromDraft(row.draft);
+      if (confirmed.length > 0) {
+        setReuseModels(confirmed);
+      }
       setNlPrompt(row.prompt || nlPrompt);
-      setAiNote(`Restored cached draft: ${row.summary}`);
+      setAiNote(
+        expertShouldRepair(row.draft)
+          ? `Restored saved snapshot: ${row.summary}. This is not Expert review — click “Ask the Expert to review and fix” only if JSON findings remain.`
+          : `Restored saved snapshot: ${row.summary}. No JSON gaps to repair — Expert will leave this spec unchanged.`,
+      );
     } catch (err) {
       reportApiError(err, setError, { fallback: "Failed to restore cached draft" });
     } finally {
+      setAiBusy(false);
+      setAiBusyLabel(null);
+    }
+  }
+
+  async function proveOptionASandbox() {
+    if (!aiDraft) return;
+    setOptionAProveBusy(true);
+    setOptionAProveNote(null);
+    setAiBusy(true);
+    setAiBusyLabel("Sandbox install & Option A smoke…");
+    try {
+      const res = await api.proveOptionA(connectionId, { spec: aiDraft });
+      if (res.draft) {
+        setAiDraft(res.draft);
+      }
+      const score =
+        typeof res.score_0_10 === "number"
+          ? res.score_0_10.toFixed(1)
+          : String(
+              (res.draft?._scorecard as { score_0_10?: number } | undefined)?.score_0_10 ??
+                "—",
+            );
+      if (res.ok) {
+        setOptionAProveNote(
+          `Sandbox smoke passed. Score ${score}/10. go_live_ready=${Boolean(res.go_live_ready)} — promote stays human.`,
+        );
+      } else {
+        const msg =
+          (res.sandbox as { message?: string } | undefined)?.message ||
+          (res.smoke as { message?: string } | undefined)?.message ||
+          "Sandbox smoke failed";
+        setOptionAProveNote(`${msg} (score capped until smoke passes)`);
+      }
+    } catch (err) {
+      reportApiError(err, setError, { fallback: "Option A sandbox prove failed" });
+    } finally {
+      setOptionAProveBusy(false);
       setAiBusy(false);
       setAiBusyLabel(null);
     }
@@ -484,6 +780,9 @@ export default function AppWizardPage() {
         `Expert review: ${res.score_before.toFixed(1)}/10 → ${after.toFixed(1)}/10 (${res.verdict})`,
       );
       setAiNote(res.review_markdown);
+      if (applyFixes) {
+        await refreshDraftCacheList();
+      }
     } catch (err) {
       reportApiError(err, setError, { fallback: "Expert draft review failed" });
     } finally {
@@ -496,53 +795,105 @@ export default function AppWizardPage() {
     if (!aiDraft || !nlPrompt.trim()) return;
     const status = aiDraft._llm_status as { failed_steps?: string[] } | undefined;
     setAiBusy(true);
-    setAiBusyLabel("Retrying AI enrichment…");
+    setAiBusyLabel("Retrying AI enrichment (waking providers)…");
+    let recoveredPartial: Record<string, unknown> | null = aiDraft;
     try {
       const res = await api.enrichDraft({
         prompt: nlPrompt.trim(),
         draft: aiDraft,
         connection_id: connectionId,
-        failed_steps: status?.failed_steps || ["quality", "depth", "critique"],
+        // Empty = production recovery (deterministic residual + optional LLM polish).
+        // Do not force quality/depth/critique — that burned 900s on hollow honesty seeds.
+        failed_steps: status?.failed_steps || [],
         async_job: true,
       });
       if (res.job_id) {
         setAiBusyLabel("AI enrichment (background)…");
-        let job = await api.getJob(res.job_id);
-        for (let i = 0; i < 180 && (job.status === "queued" || job.status === "running"); i++) {
-          await new Promise((r) => setTimeout(r, 2000));
-          job = await api.getJob(res.job_id);
-          const stepLabel = job.result?.step_label as string | undefined;
-          if (stepLabel) setAiBusyLabel(`${stepLabel}…`);
-          const partial = job.result?.partial_draft as Record<string, unknown> | undefined;
-          if (partial && Object.keys(partial).length > 0) setAiDraft(partial);
-        }
-        if (job.status === "succeeded" && job.result?.draft) {
-          const merged = job.result.draft as Record<string, unknown>;
+        const job = await pollBackgroundJob(res.job_id, {
+          setBusyLabel: setAiBusyLabel,
+          onPartial: (partial) => {
+            recoveredPartial = partial;
+            setAiDraft(partial);
+          },
+        });
+        const outcome = resolveJobDraftOutcome(
+          job,
+          "AI enrichment merged into existing draft.",
+        );
+        if (outcome.kind === "succeeded") {
+          const merged = withEnrichmentCleanFlags(outcome.draft);
           setAiDraft(merged);
-          setAiWarnings((job.result.warnings as string[]) || []);
+          setAiWarnings(outcome.warnings ?? []);
           const enrichScore = (merged._scorecard as { score_0_10?: number } | undefined)
             ?.score_0_10;
+          const clean = draftEnrichmentClean(merged);
           setAiNote(
             typeof enrichScore === "number"
-              ? `AI enrichment complete — draft quality ${enrichScore.toFixed(1)}/10.`
-              : "AI enrichment merged into existing draft.",
+              ? clean
+                ? `AI enrichment complete — draft quality ${enrichScore.toFixed(1)}/10. Retry is disabled until hygiene gaps return.`
+                : `AI enrichment complete — draft quality ${enrichScore.toFixed(1)}/10. Retry stays on for remaining hygiene (e.g. create-gated fields).`
+              : outcome.note,
           );
-        } else if (job.status === "failed" || job.status === "timeout") {
-          throw new Error(job.error || "AI enrichment job failed");
+        } else if (outcome.kind === "partial") {
+          recoveredPartial = outcome.draft;
+          setAiDraft(outcome.draft);
+          setAiNote(outcome.note);
+        } else if (outcome.kind === "still_running") {
+          setAiNote(outcome.note);
+        } else {
+          throw new Error(outcome.error);
         }
       } else {
-        setAiDraft(res.draft);
+        const syncDraft = withEnrichmentCleanFlags(res.draft);
+        setAiDraft(syncDraft);
         if (res.warnings?.length) setAiWarnings(res.warnings);
-        const enrichScore = (res.draft?._scorecard as { score_0_10?: number } | undefined)
+        const enrichScore = (syncDraft?._scorecard as { score_0_10?: number } | undefined)
           ?.score_0_10;
+        const clean = draftEnrichmentClean(syncDraft);
         setAiNote(
           typeof enrichScore === "number"
-            ? `AI enrichment complete — draft quality ${enrichScore.toFixed(1)}/10.`
+            ? clean
+              ? `AI enrichment complete — draft quality ${enrichScore.toFixed(1)}/10. Retry is disabled until hygiene gaps return.`
+              : `AI enrichment complete — draft quality ${enrichScore.toFixed(1)}/10. Retry stays on for remaining hygiene (e.g. create-gated fields).`
             : "AI enrichment merged into existing draft.",
         );
       }
     } catch (err) {
-      reportApiError(err, setError, { fallback: "AI enrichment failed" });
+      const jobErr =
+        err instanceof JobPollError
+          ? err.job?.error || err.message
+          : err instanceof Error
+            ? err.message
+            : null;
+      const listed = await api.listDraftCache(connectionId, 10).catch(() => []);
+      const recovered = pickRecoverableDraft(
+        recoveredPartial,
+        listed || [],
+        nlPrompt.trim(),
+      );
+      if (recovered) {
+        setAiDraft(recovered);
+        setAiNote(
+          (jobErr ? `Enrichment failed: ${jobErr.slice(0, 240)}. ` : "") +
+            "Showing last saved snapshot. Restart the API if Retry dies in ~2s " +
+            "(code changes need a fresh :8001), then Retry again to wake AI and " +
+            "complete residual fields from your brief.",
+        );
+        if (jobErr) {
+          setError(jobErr.slice(0, 400));
+        }
+        setDraftCacheEntries(
+          (listed || []).map((c) => ({
+            id: c.id,
+            summary: c.summary,
+            prompt: c.prompt,
+            updated_at: c.updated_at,
+          })),
+        );
+      } else {
+        if (!recoveredPartial) setAiDraft(null);
+        reportApiError(err, setError, { fallback: "AI enrichment failed" });
+      }
     } finally {
       setAiBusy(false);
       setAiBusyLabel(null);
@@ -566,6 +917,7 @@ export default function AppWizardPage() {
     setAiWarnings([]);
     setAiRefusals([]);
     setGenUiResult(null);
+    let recoveredPartial: Record<string, unknown> | null = null;
     try {
       const res = await api.draftModuleFromPrompt(nlPrompt.trim(), {
         connection_id: connectionId,
@@ -583,21 +935,26 @@ export default function AppWizardPage() {
       });
       if (res.job_id) {
         setAiBusyLabel("Generating draft (background)…");
-        let job = await api.getJob(res.job_id);
-        for (let i = 0; i < 360 && (job.status === "queued" || job.status === "running"); i++) {
-          await new Promise((r) => setTimeout(r, 2000));
-          job = await api.getJob(res.job_id);
-          const stepLabel = job.result?.step_label as string | undefined;
-          if (stepLabel) setAiBusyLabel(`${stepLabel}…`);
-          const partial = job.result?.partial_draft as Record<string, unknown> | undefined;
-          if (partial && Object.keys(partial).length > 0) setAiDraft(partial);
-        }
-        if (job.status === "succeeded" && job.result?.draft) {
-          setAiDraft(job.result.draft as Record<string, unknown>);
-          setAiWarnings((job.result.warnings as string[]) || []);
-          setAiNote("Draft recovered from background job.");
-        } else if (job.status === "failed" || job.status === "timeout") {
-          throw new Error(job.error || "Draft job failed");
+        const job = await pollBackgroundJob(res.job_id, {
+          setBusyLabel: setAiBusyLabel,
+          onPartial: (partial) => {
+            recoveredPartial = partial;
+            setAiDraft(partial);
+          },
+        });
+        const outcome = resolveJobDraftOutcome(job, successNoteForDraft(draftFromJobResult(job)));
+        if (outcome.kind === "succeeded") {
+          setAiDraft(outcome.draft);
+          setAiWarnings(outcome.warnings ?? []);
+          setAiNote(outcome.note);
+        } else if (outcome.kind === "partial") {
+          recoveredPartial = outcome.draft;
+          setAiDraft(outcome.draft);
+          setAiNote(outcome.note);
+        } else if (outcome.kind === "still_running") {
+          setAiNote(outcome.note);
+        } else {
+          throw new Error(outcome.error);
         }
       } else {
         setAiDraft(res.draft);
@@ -619,12 +976,36 @@ export default function AppWizardPage() {
         })),
       );
     } catch (err) {
-      setAiDraft(null);
-      reportApiError(err, setError, { fallback: "AI draft failed", toast: true });
-      setAiNote(
-        "Use Car Rental / Library template below if Ollama is unavailable. " +
-          "Domain prompts like “car rental” still work offline via curated packs.",
+      const listed = await api.listDraftCache(connectionId, 10).catch(() => []);
+      const recovered = pickRecoverableDraft(
+        recoveredPartial,
+        listed || [],
+        nlPrompt.trim(),
       );
+      if (recovered) {
+        setAiDraft(recovered);
+        setAiNote(
+          "Draft recovered from a saved snapshot after the job timed out. " +
+            "The JSON below is the last saved pack — not an empty failure. " +
+            "Retry AI enrichment to wake AI, re-run missed steps, and complete residual " +
+            "fields from your brief if AI stays down.",
+        );
+        setDraftCacheEntries(
+          (listed || []).map((c) => ({
+            id: c.id,
+            summary: c.summary,
+            prompt: c.prompt,
+            updated_at: c.updated_at,
+          })),
+        );
+      } else {
+        setAiDraft(null);
+        reportApiError(err, setError, { fallback: "AI draft failed", toast: true });
+        setAiNote(
+          "Use Car Rental / Library template below if Ollama is unavailable. " +
+            "Domain prompts like “car rental” still work offline via curated packs.",
+        );
+      }
     } finally {
       setAiBusy(false);
       setAiBusyLabel(null);
@@ -683,6 +1064,31 @@ export default function AppWizardPage() {
     a.download = `${tech}.zip`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function onDownloadModuleZip() {
+    const spec = draftWithMultiCompany();
+    if (!spec) return;
+    setZipBusy(true);
+    setError(null);
+    try {
+      const res = await api.exportModuleSpecZip(connectionId, { spec });
+      if (!res.zip_base64) {
+        setError("Zip export returned no file.");
+        return;
+      }
+      downloadEliteZipBase64(
+        String(spec.technical_name || res.module || "custom_module"),
+        res.zip_base64,
+      );
+      setAiNote(
+        "Module zip downloaded. Sandbox-prove before promote — promote stays human.",
+      );
+    } catch (err) {
+      reportApiError(err, setError, { fallback: "Zip export failed", toast: true });
+    } finally {
+      setZipBusy(false);
+    }
   }
 
   async function refreshEliteLint() {
@@ -784,6 +1190,7 @@ export default function AppWizardPage() {
     setBusy(true);
     setError(null);
     setGenUiResult(null);
+    setOdooAppUrl(null);
     try {
       const res = await api.applyModuleSpec(connectionId, {
         spec,
@@ -793,9 +1200,23 @@ export default function AppWizardPage() {
       });
       setGenUiConfirmOpen(false);
       setGenUiResult(res.message);
+      const menuId = res.root_menu_id;
+      const appUrl =
+        menuId && connection?.url
+          ? odooMenuUrl(connection.url, menuId, res.open_action_id)
+          : connection?.url
+            ? `${connection.url.replace(/\/$/, "")}/web`
+            : null;
+      setOdooAppUrl(appUrl);
+      const sb = Number(res.smart_buttons || 0);
+      const hostHint =
+        sb > 0
+          ? " Check linked apps’ smart-button row (e.g. Contacts) — see «Where this app shows up»."
+          : "";
       setAiNote(
-        `${res.message} · ${res.smart_buttons} smart button(s). ` +
-          "Open Odoo app switcher or Designer to polish.",
+        appUrl
+          ? `${res.message} · ${sb} smart button(s). Open the app in Odoo to walk Operations → Inventory → People — you do not pick models one by one.${hostHint}`
+          : `${res.message} · ${sb} smart button(s). Open Odoo’s app switcher and click this app.${hostHint}`,
       );
       if (res.warnings?.length) setAiWarnings(res.warnings);
     } catch (err) {
@@ -807,6 +1228,52 @@ export default function AppWizardPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function onSeedWalkthrough(phrase: string) {
+    const spec = draftWithMultiCompany();
+    if (!spec) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.seedModuleSpecWalkthrough(connectionId, {
+        spec,
+        confirm_advanced: true,
+        confirm_phrase: phrase,
+      });
+      setWalkthroughConfirmOpen(false);
+      setAiNote(res.message);
+      if (res.warnings?.length) setAiWarnings(res.warnings);
+      if (res.open_model && res.open_record_id && connection?.url) {
+        setOdooAppUrl(
+          odooViewUrl(connection.url, res.open_model, "form", null, res.open_record_id),
+        );
+      }
+    } catch (err) {
+      if (err instanceof ConfirmationRequiredError) {
+        setError(err.warning);
+      } else {
+        reportApiError(err, setError, { fallback: "Walkthrough seed failed", toast: true });
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function openModuleSpecEditor() {
+    if (!aiDraft) return;
+    const modelCount = Array.isArray(aiDraft.models) ? aiDraft.models.length : 0;
+    if (modelCount === 0) {
+      setError("Draft has 0 models — create the draft again before opening ModuleSpec.");
+      return;
+    }
+    try {
+      sessionStorage.setItem(`modulespec-draft:${connectionId}`, JSON.stringify(aiDraft));
+    } catch {
+      setError("Could not store draft in this browser session.");
+      return;
+    }
+    window.location.href = `/connections/${connectionId}/modulespec`;
   }
 
   async function onPrepareGenerateUi() {
@@ -988,11 +1455,106 @@ export default function AppWizardPage() {
   }
 
   async function confirmInstallableReuse(model: string) {
+    if (!aiDraft || !nlPrompt.trim()) return;
+    const plan = (
+      aiDraft.reuse as
+        | {
+            plan?: {
+              decisions?: Array<{ model?: string; module?: string }>;
+            };
+          }
+        | undefined
+    )?.plan;
+    const row = (plan?.decisions ?? []).find((d) => d.model === model);
+    const moduleName = row?.module;
     const nextReuse = reuseModels.includes(model)
       ? reuseModels
       : [...reuseModels, model];
     setReuseModels(nextReuse);
-    await reapplyReuseToDraft(nextReuse);
+    setAiBusy(true);
+    setAiBusyLabel(
+      moduleName
+        ? `Installing ${moduleName} on this connection…`
+        : "Applying reuse plan…",
+    );
+    setError(null);
+    try {
+      if (moduleName) {
+        const installed = await api.installCommunityModule(connectionId, moduleName);
+        if (!installed.ok) {
+          setError(installed.message || `Failed to install ${moduleName}`);
+          return;
+        }
+        setAiBusyLabel("Applying reuse plan…");
+        void reloadReuseCatalog();
+      }
+      const res = await api.reapplyReusePlan({
+        prompt: nlPrompt.trim(),
+        draft: aiDraft,
+        connection_id: connectionId,
+        reuse_models: nextReuse,
+        rejected_reuse_models: rejectedInferredReuse,
+      });
+      setAiDraft(res.draft);
+      if (res.warnings?.length) {
+        setAiWarnings((prev) => Array.from(new Set([...prev, ...res.warnings!])));
+      }
+      setAiNote(
+        moduleName
+          ? `Installed ${moduleName} and reused ${model}. Other installable apps remain below — Install each you need.`
+          : `Reuse plan updated for ${model}. Other suggestions remain available.`,
+      );
+    } catch (err) {
+      reportApiError(err, setError, {
+        fallback: "Install & reuse failed",
+        toast: true,
+      });
+    } finally {
+      setAiBusy(false);
+      setAiBusyLabel(null);
+    }
+  }
+
+  async function installAuthoredHostModule(offer: HostInstallOffer, phrase: string) {
+    if (!aiDraft || !offer.module || phrase !== CONFIRM_PHRASE) return;
+    setAiBusy(true);
+    setAiBusyLabel(`Installing ${offer.label} on this connection…`);
+    setError(null);
+    let sent = false;
+    try {
+      const installed = await api.installCommunityModule(connectionId, offer.module);
+      if (!installed.ok) {
+        setError(installed.message || `Could not install ${offer.label}`);
+        return;
+      }
+      sent = true;
+      setAiBusyLabel("Re-checking the authoring gate…");
+      const verified = await api.reverifyOptionAAuthoring({
+        connection_id: connectionId,
+        draft: aiDraft,
+      });
+      if (verified.draft) setAiDraft(verified.draft);
+      setAiNote(
+        verified.ok
+          ? `${offer.label} is on this connection. Authoring gate passed — zip and sandbox unlocked. Promote stays human.`
+          : verified.message ||
+            `${offer.label} is installed. The authoring gate still has findings.`,
+      );
+    } catch (err) {
+      if (sent && isApiNotFound(err)) {
+        setAiNote(
+          `${offer.label} was sent to this Odoo. Authoring re-check returned 404 — kill/restart uvicorn on :8001 without --reload, then refresh and re-check the gate. Do not Live Install the zip.`,
+        );
+        return;
+      }
+      reportApiError(err, setError, {
+        fallback: `Could not install ${offer.label} on this connection`,
+        toast: true,
+      });
+    } finally {
+      setAiBusy(false);
+      setAiBusyLabel(null);
+    }
   }
 
   async function rejectInstallableReuse(model: string) {
@@ -1032,7 +1594,7 @@ export default function AppWizardPage() {
           return hay.includes(needle);
         })
       : reuseCatalog;
-    return rows.slice(0, 80);
+    return rows.slice(0, 120);
   }, [reuseCatalog, reuseSearch]);
 
   /** Library scaffold creates an object_write loan automation. */
@@ -1083,14 +1645,17 @@ export default function AppWizardPage() {
         title="Draft Studio"
         description={
           connection
-            ? `${connection.name} · describe an app, create a draft, then apply it to Odoo — or pick a template below`
+            ? `${connection.name} · describe a field, a feature, or a full app — then apply it to Odoo`
             : connectionId
         }
       />
       <VersionAwarenessBanner capabilities={connection?.capabilities} />
 
       <ol className="mb-6 flex flex-wrap gap-2 text-xs">
-        {PIPELINE_STEPS.map((step, i) => (
+        {(aiDraft && (aiDraft._component || aiDraft.grain === "feature_slice" || aiDraft.grain === "field_pack")
+          ? (["Host", "Fields", "View", "Ready"] as const)
+          : PIPELINE_STEPS
+        ).map((step, i) => (
           <li
             key={step}
             className={
@@ -1170,11 +1735,15 @@ export default function AppWizardPage() {
         )}
 
         <Card className="mb-6 p-5">
-          <h2 className="text-xl font-semibold text-ink">Describe your app</h2>
+          <h2 className="text-xl font-semibold text-ink">What should we implement?</h2>
           <p className="mt-1 text-sm text-muted">
-            AI drafts a reviewable spec ({aiEnabled ? "Ollama on" : "AI off"}
-            {ollamaDetail ? ` · ${ollamaDetail}` : ""}). Nothing is written to Odoo until
-            you click <strong className="font-medium text-ink">Apply to Odoo</strong>.
+            Same bar as a senior Odoo team: a field pack on a stock form, a feature under an
+            existing app, or a full residual workspace. AI drafts a{" "}
+            <strong className="font-medium text-ink">ModuleSpec</strong> (
+            {aiEnabled ? `${aiProviderLabel} on` : "AI off"}
+            {ollamaDetail ? ` · ${ollamaDetail}` : ""}
+            ). Nothing is written to Odoo until you click{" "}
+            <strong className="font-medium text-ink">Apply to Odoo</strong>.
           </p>
 
           <ol className="mt-4 grid gap-2 sm:grid-cols-3" data-testid="draft-studio-steps">
@@ -1182,19 +1751,19 @@ export default function AppWizardPage() {
               {
                 n: 1,
                 title: "Describe",
-                detail: "Write what you need in plain language.",
+                detail: "A field on invoices, a feature under Sales, or a full practice app.",
                 done: nlPrompt.trim().length >= 3,
               },
               {
                 n: 2,
-                title: "Create draft",
-                detail: "AI returns JSON you can review and edit.",
+                title: "Draft ModuleSpec",
+                detail: "JSON blueprint of models, views, menus, and workflows.",
                 done: Boolean(aiDraft),
               },
               {
                 n: 3,
-                title: "Apply to Odoo",
-                detail: "Creates models, fields, and views on this connection.",
+                title: "Generate UI",
+                detail: "Apply writes the app menu tree. Then Open app in Odoo — no model picker.",
                 done: Boolean(genUiResult),
               },
             ].map((step) => (
@@ -1225,8 +1794,31 @@ export default function AppWizardPage() {
               setOverlapFindingId(null);
             }}
             rows={3}
-            placeholder="Car rental fleet: vehicles, contracts, deposits, overdue returns…"
+            placeholder="Add SLA due date on invoices — or a law-firm practice with matters, time, and stock quotations…"
           />
+          {operatorBrief?.ir_confidence === "low" ||
+          generationEngine?.needs_clarification?.question ? (
+            <Callout
+              variant="warning"
+              title="Intent needs confirmation"
+              className="mt-3"
+              testId="wizard-studio-bridge"
+            >
+              <p className="text-sm">
+                App Studio can ask one clarifying question before generation so the wrong
+                vertical pack is not merged silently.
+              </p>
+              <Link
+                href={`/connections/${connectionId}/studio`}
+                className="mt-2 inline-flex text-sm font-medium text-accent underline"
+                onClick={() => {
+                  if (nlPrompt.trim()) stashPromptForStudio(connectionId, nlPrompt.trim());
+                }}
+              >
+                Open in App Studio
+              </Link>
+            </Callout>
+          ) : null}
 
           <div className="mt-4 rounded-md border border-border-subtle bg-surface-muted p-3">
             <button
@@ -1414,13 +2006,21 @@ export default function AppWizardPage() {
             </section>
           ) : null}
 
-          <div className="mt-4">
+          <div className="mt-4" data-testid="stock-model-picker">
             <p className="text-xs uppercase tracking-wide text-muted">
               Reuse existing Odoo models
             </p>
             <p className="mt-1 text-xs text-muted">
-              Link stock Odoo models instead of inventing duplicates. Search the full
-              instance catalog ({reuseCatalog.length.toLocaleString()} models).
+              Link stock Odoo models instead of inventing duplicates. Catalog is every
+              non-custom model on this connection
+              {reuseCatalog.length
+                ? ` (${reuseCatalog.length.toLocaleString()} models)`
+                : reuseCatalogStatus === "loading"
+                  ? " (loading…)"
+                  : ""}
+              — not the full unused CE Apps list. After Job Autopilot or Install &amp;
+              reuse, refresh so newly installed apps appear. Install &amp; reuse shows
+              after the draft when a suggested app is not yet installed.
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {REUSE_SUGGESTIONS.map((m) => {
@@ -1444,54 +2044,72 @@ export default function AppWizardPage() {
                 );
               })}
             </div>
-            {reuseCatalog.length > 0 && (
-              <div className="mt-3 space-y-2">
-                <Input
-                  type="search"
-                  placeholder="Search stock models by name or technical name…"
-                  value={reuseSearch}
-                  onChange={(e) => setReuseSearch(e.target.value)}
-                  className="max-w-md font-mono text-xs"
-                />
-                <div className="max-h-48 overflow-y-auto border border-border-subtle bg-surface">
-                  {filteredReuseCatalog.length === 0 ? (
-                    <p className="px-2 py-2 text-xs text-muted">No models match.</p>
-                  ) : (
-                    filteredReuseCatalog.map((row) => {
-                      const on = reuseModels.includes(row.model);
-                      return (
-                        <button
-                          key={row.model}
-                          type="button"
-                          onClick={() => toggleReuse(row.model)}
-                          className={`flex w-full items-start gap-2 border-b border-border-subtle px-2 py-1.5 text-left text-xs last:border-b-0 ${
-                            on ? "bg-surface-raised" : "hover:bg-surface-raised/60"
-                          }`}
-                        >
-                          <span className="shrink-0 text-muted">{on ? "✓" : "+"}</span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-ink">{row.name}</span>
-                            <span className="font-mono text-muted">
-                              {row.model}
-                              {row.link_only ? " · link-only" : ""}
-                            </span>
-                          </span>
-                          <Badge variant="default" className="shrink-0 font-mono">
-                            {row.app}
-                          </Badge>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-                {reuseSearch.trim() === "" && reuseCatalog.length > 80 ? (
-                  <p className="text-xs text-muted">
-                    Showing first 80 — type to search all {reuseCatalog.length.toLocaleString()}{" "}
-                    stock models.
+            <div className="mt-3 space-y-2">
+              <Input
+                type="search"
+                placeholder="Search stock models by name or technical name…"
+                value={reuseSearch}
+                onChange={(e) => setReuseSearch(e.target.value)}
+                className="max-w-md font-mono text-xs"
+                disabled={reuseCatalogStatus === "loading" && reuseCatalog.length === 0}
+              />
+              <div className="max-h-48 overflow-y-auto border border-border-subtle bg-surface">
+                {reuseCatalogStatus === "loading" && reuseCatalog.length === 0 ? (
+                  <p className="px-2 py-2 text-xs text-muted">Loading stock models…</p>
+                ) : filteredReuseCatalog.length === 0 ? (
+                  <p className="px-2 py-2 text-xs text-muted">
+                    {reuseCatalogError || "No models match."}
                   </p>
-                ) : null}
+                ) : (
+                  filteredReuseCatalog.map((row) => {
+                    const on = reuseModels.includes(row.model);
+                    return (
+                      <button
+                        key={row.model}
+                        type="button"
+                        onClick={() => toggleReuse(row.model)}
+                        className={`flex w-full items-start gap-2 border-b border-border-subtle px-2 py-1.5 text-left text-xs last:border-b-0 ${
+                          on ? "bg-surface-raised" : "hover:bg-surface-raised/60"
+                        }`}
+                      >
+                        <span className="shrink-0 text-muted">{on ? "✓" : "+"}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-ink">{row.name}</span>
+                          <span className="font-mono text-muted">
+                            {row.model}
+                            {row.link_only ? " · link-only" : ""}
+                          </span>
+                        </span>
+                        <Badge variant="default" className="shrink-0 font-mono">
+                          {row.app}
+                        </Badge>
+                      </button>
+                    );
+                  })
+                )}
               </div>
-            )}
+              {reuseCatalogError ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs text-muted">{reuseCatalogError}</p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    loading={reuseCatalogStatus === "loading"}
+                    onClick={() => void reloadReuseCatalog()}
+                  >
+                    Retry catalog
+                  </Button>
+                </div>
+              ) : null}
+              {reuseSearch.trim() === "" && reuseCatalog.length > 120 ? (
+                <p className="text-xs text-muted">
+                  Showing first 120 — type to search all{" "}
+                  {reuseCatalog.length.toLocaleString()} stock models on this
+                  instance.
+                </p>
+              ) : null}
+            </div>
             {reuseModels.length > 0 && (
               <p className="mt-2 font-mono text-xs text-muted">
                 Selected: {reuseModels.join(", ")}
@@ -1504,8 +2122,10 @@ export default function AppWizardPage() {
               >
                 <p className="text-xs font-medium text-ink">Auto-wired (link-only)</p>
                 <p className="text-xs text-muted">
-                  Backend confirmed these stock models during apply-readiness. Apply adds
-                  link-only M2O fields — it does not post orders, invoices, or stock moves.
+                  Backend confirmed these stock models during apply-readiness because the
+                  apps are already installed. Install &amp; reuse is not offered in that
+                  case. Apply adds link-only M2O fields — it does not post orders,
+                  invoices, or stock moves.
                 </p>
                 <ul className="space-y-1 text-xs">
                   {autoWiredReuse.map((d) => (
@@ -1567,6 +2187,10 @@ export default function AppWizardPage() {
                 data-testid="installable-reuse-suggestions"
               >
                 <p className="text-xs font-medium text-ink">Installable Odoo apps</p>
+                <p className="text-xs text-muted">
+                  Install one app at a time — the others stay listed until you Install or
+                  generate custom. Installing does not clear sibling suggestions.
+                </p>
                 {installableReuseSuggestions.map((d) => (
                   <div key={String(d.model)} className="rounded border border-border-subtle p-2">
                     <p className="font-mono text-xs text-ink">{d.model}</p>
@@ -1636,34 +2260,119 @@ export default function AppWizardPage() {
               >
                 1. Create draft
               </Button>
+              {aiBusy ? (
+                <div
+                  className="flex w-full flex-col items-center gap-2 rounded-md border border-border-subtle bg-surface px-4 py-6"
+                  data-testid="draft-studio-progress"
+                >
+                  <InfinityLoop aria-hidden />
+                  <p className="text-sm font-medium text-ink" data-testid="generation-phase">
+                    {aiBusyLabel || "Creating draft…"}
+                  </p>
+                </div>
+              ) : null}
               <Button
                 type="button"
-                variant={aiDraft ? "primary" : "secondary"}
-                disabled={!aiDraft || busy || !canGenerateUi}
-                title={generateUiBlocked ?? undefined}
+                variant={
+                  aiDraft && !moduleDelivery && !refuseClone && !stockReuse
+                    ? "primary"
+                    : "secondary"
+                }
+                disabled={
+                  !aiDraft ||
+                  busy ||
+                  !canGenerateUi ||
+                  !finisherComplete ||
+                  refuseClone ||
+                  stockReuse
+                }
+                title={
+                  stockReuse
+                    ? "No custom ModuleSpec to apply — use Job Autopilot"
+                    : !finisherComplete
+                    ? "Wait for the Apps-store finisher (quality score) before applying"
+                    : (generateUiBlocked ?? undefined)
+                }
                 onClick={() => void onPrepareGenerateUi()}
                 data-testid="apply-to-odoo"
               >
                 2. Apply to Odoo
               </Button>
+              {stockReuse ? (
+                <Link
+                  href={jobAutopilotHref}
+                  className="inline-flex items-center justify-center rounded-md bg-ink px-3 py-2 text-sm font-medium text-white"
+                  data-testid="open-job-autopilot"
+                  onClick={() => stashBriefForJobAutopilot()}
+                >
+                  Open Job Autopilot
+                </Link>
+              ) : null}
+              {aiDraft && !refuseClone && !stockReuse ? (
+                <Button
+                  type="button"
+                  variant={moduleDelivery ? "primary" : "secondary"}
+                  disabled={zipBusy || !finisherComplete || zipLocked}
+                  loading={zipBusy}
+                  data-testid="download-module-zip"
+                  title={
+                    zipLocked
+                      ? "Authoring gate has not passed — zip stays locked"
+                      : undefined
+                  }
+                  onClick={() => void onDownloadModuleZip()}
+                >
+                  {moduleDelivery ? "Download module zip" : "Download zip"}
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={!aiDraft || stockReuse}
+                data-testid="open-modulespec"
+                onClick={() => openModuleSpecEditor()}
+              >
+                Open ModuleSpec
+              </Button>
+              {aiDraft && !refuseClone && !stockReuse ? (
+                <Button variant="secondary" asChild>
+                  <Link
+                    href={designerHref}
+                    data-testid="open-view-designer"
+                    title={
+                      designerModel
+                        ? `Opens View Designer on ${designerModel}. Apply to Odoo first so the form exists on this connection.`
+                        : "Opens View Designer. Apply to Odoo first so views exist on this connection."
+                    }
+                  >
+                    Open View Designer
+                  </Link>
+                </Button>
+              ) : null}
             </div>
             {!aiDraft ? (
               <p className="text-xs text-muted">
                 {nlPrompt.trim().length < 3
-                  ? "Type your app idea above (at least a few words), then click Create draft."
+                  ? "Type what you need (a field, a feature, or a full app), then click Create draft."
                   : needsConnectReview && (!connectPoints || !connectPointsApproved)
                     ? "Component / field pack: click Review connect points, approve the host model, then Create draft."
                     : overlapFindings.length > 0 && !overlapResolved
                       ? "Resolve overlap findings above (Use, Extend, or Build anyway), then Create draft."
                       : isFullAppGrain
-                        ? "Full app detected — click Create draft. AI generates JSON below; nothing touches Odoo until Apply."
-                        : "Click Create draft — AI detects full app vs component and generates JSON for review."}
+                        ? "Full app detected — click Create draft. Stock first; custom models only for the residual. Nothing touches Odoo until Apply."
+                        : "Click Create draft — we implement on the host app (inherit + fields + view), not a second ERP."}
               </p>
             ) : (
               <p className="text-xs text-muted">
-                Draft ready below. Review the JSON, then click{" "}
-                <strong className="font-medium text-ink">Apply to Odoo</strong> to generate models
-                and views on this connection.
+                The JSON below <strong className="font-medium text-ink">is</strong> the
+                ModuleSpec. Click{" "}
+                <strong className="font-medium text-ink">Apply to Odoo</strong> to write
+                models, forms, and the Operations / Inventory / People menu tree, then{" "}
+                <strong className="font-medium text-ink">Open app in Odoo</strong>. Line
+                items stay on parent forms — you do not pick models one by one. Or{" "}
+                <strong className="font-medium text-ink">Open ModuleSpec</strong> /{" "}
+                <strong className="font-medium text-ink">Open View Designer</strong> to
+                edit the spec or the live form.
               </p>
             )}
             <div className="flex flex-wrap gap-2 border-t border-border-subtle pt-3">
@@ -1680,36 +2389,6 @@ export default function AppWizardPage() {
               </Button>
               <Button
                 type="button"
-                variant="secondary"
-                size="sm"
-                disabled={!aiDraft}
-                onClick={() => {
-                  if (!aiDraft) return;
-                  const modelCount = Array.isArray(aiDraft.models)
-                    ? aiDraft.models.length
-                    : 0;
-                  if (modelCount === 0) {
-                    setError(
-                      "Draft has 0 models — create the draft again before opening the editor.",
-                    );
-                    return;
-                  }
-                  try {
-                    sessionStorage.setItem(
-                      `modulespec-draft:${connectionId}`,
-                      JSON.stringify(aiDraft),
-                    );
-                  } catch {
-                    setError("Could not store draft in this browser session.");
-                    return;
-                  }
-                  window.location.href = `/connections/${connectionId}/modulespec`;
-                }}
-              >
-                Edit draft (advanced)
-              </Button>
-              <Button
-                type="button"
                 variant="ghost"
                 size="sm"
                 onClick={() => {
@@ -1722,6 +2401,7 @@ export default function AppWizardPage() {
                   setOverlapChoice(null);
                   setOverlapFindingId(null);
                   setGenUiResult(null);
+                  setOdooAppUrl(null);
                   setValidateLiveResult(null);
                   setGrainLabel(null);
                   setEffectiveGrain("");
@@ -1743,6 +2423,26 @@ export default function AppWizardPage() {
               {generateUiBlocked}
             </Callout>
           ) : null}
+          {liveApplyBanner ? (
+            <Callout
+              variant="warning"
+              title={liveApplyBanner.title}
+              className="mt-3"
+              testId={liveApplyBanner.testId}
+            >
+              {liveApplyBanner.body}
+            </Callout>
+          ) : null}
+          {unfinishedBanner ? (
+            <Callout
+              variant="warning"
+              title={unfinishedBanner.title}
+              className="mt-3"
+              testId={unfinishedBanner.testId}
+            >
+              {unfinishedBanner.body}
+            </Callout>
+          ) : null}
           {aiNote ? (
             <Callout variant="info" title="Note" className="mt-3">
               {aiNote}
@@ -1750,12 +2450,42 @@ export default function AppWizardPage() {
           ) : null}
           {genUiResult ? (
             <Callout variant="info" title="Applied to Odoo" className="mt-2">
-              {genUiResult}
+              <p>{genUiResult}</p>
+              {odooAppUrl ? (
+                <p className="mt-2 flex flex-wrap items-center gap-2">
+                  <Button asChild variant="primary" size="sm">
+                    <a
+                      href={odooAppUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-testid="open-app-in-odoo"
+                    >
+                      Open app in Odoo
+                    </a>
+                  </Button>
+                  <span className="text-xs text-muted">
+                    Opens the app root. Use Operations, Inventory, and People — not a
+                    per-model list.
+                  </span>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    data-testid="load-demo-walkthrough"
+                    onClick={() => setWalkthroughConfirmOpen(true)}
+                  >
+                    Load demo walkthrough
+                  </Button>
+                </p>
+              ) : null}
             </Callout>
           ) : null}
           {draftCacheEntries.length > 0 ? (
             <div className="mt-3">
-              <p className="text-xs uppercase tracking-wide text-muted">Saved drafts</p>
+              <p className="text-xs uppercase tracking-wide text-muted">Saved snapshots</p>
+              <p className="text-[11px] text-muted">
+                Clicking a row replaces the current JSON. It does not run Expert review.
+              </p>
               <ul className="mt-1 space-y-1">
                 {draftCacheEntries.slice(0, 5).map((c) => (
                   <li key={c.id}>
@@ -1772,27 +2502,221 @@ export default function AppWizardPage() {
               </ul>
             </div>
           ) : null}
-          {llmStatusBanner ? (
-            <Callout variant="warning" title="AI draft status" className="mt-2">
-              <p className="text-sm">{llmStatusBanner}</p>
+          {llmStatusBanner || showRetryEnrichment ? (
+            <Callout
+              variant={
+                llmStatusMode === "llm_full" && retryEnrichmentDisabled
+                  ? "info"
+                  : llmStatusBanner
+                    ? "warning"
+                    : "info"
+              }
+              title="AI draft status"
+              className="mt-2"
+              testId="retry-ai-enrichment"
+            >
+              <p className="text-sm">
+                {llmStatusBanner ||
+                  "Retry AI enrichment wakes Flash/local/cloud, re-runs missed polish, and completes residual hygiene from your brief."}
+              </p>
               <Button
                 type="button"
                 variant="secondary"
                 size="sm"
                 className="mt-2"
-                disabled={aiBusy || !aiDraft}
+                disabled={retryEnrichmentDisabled}
+                loading={aiBusy}
+                title={
+                  retryEnrichmentDisabled && !aiBusy
+                    ? "Enrichment already completed successfully"
+                    : "Wake AI providers and re-run missed polish / residual hygiene"
+                }
                 onClick={() => void retryAiEnrichment()}
+                data-testid="retry-ai-enrichment-btn"
               >
                 Retry AI enrichment
               </Button>
             </Callout>
           ) : null}
+          {operatorBrief?.formatted ? (
+            <Callout
+              variant="info"
+              title={`Structured brief${
+                operatorBrief.capability_path
+                  ? ` · ${operatorBrief.capability_path}`
+                  : ""
+              }`}
+              className="mt-2"
+              testId="operator-brief"
+            >
+              <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap text-xs text-ink">
+                {operatorBrief.formatted}
+              </pre>
+              {operatorBrief.unknowns?.length ? (
+                <p className="mt-2 text-xs text-muted">
+                  Unknowns (not assumed): {operatorBrief.unknowns.join("; ")}
+                </p>
+              ) : null}
+            </Callout>
+          ) : null}
+          {refuseClone ? (
+            <Callout
+              variant="warning"
+              title="Not generated — Apps Store clone refused"
+              className="mt-2"
+              testId="generation-refuse-clone"
+            >
+              <p className="text-sm">
+                {generationEngine?.honesty ||
+                  "This platform does not clone Apps Store or GM modules. Describe the residual process, or ask for the honest POS receipt options template."}
+              </p>
+            </Callout>
+          ) : null}
+          {!refuseClone && generationEngine?.honesty ? (
+            <Callout
+              variant="info"
+              title="Honest capability"
+              className="mt-2"
+              testId="generation-honesty"
+            >
+              <p className="text-sm">{generationEngine.honesty}</p>
+            </Callout>
+          ) : null}
+          {operatorSurfaceHasPlacement(operatorSurface) && operatorSurface ? (
+            <Callout
+              variant="info"
+              title="Where this app shows up"
+              className="mt-2"
+              testId="operator-surface"
+            >
+              {operatorSurface.summary ? (
+                <p className="text-sm">{operatorSurface.summary}</p>
+              ) : null}
+              {operatorSurface.app_menu?.label ? (
+                <p className="mt-2 text-sm">
+                  <span className="font-medium">App menu:</span>{" "}
+                  {operatorSurface.app_menu.label}
+                  {operatorSurface.app_menu.technical_name ? (
+                    <span className="font-mono text-xs text-muted">
+                      {" "}
+                      ({operatorSurface.app_menu.technical_name})
+                    </span>
+                  ) : null}
+                </p>
+              ) : null}
+              {operatorSurface.host_buttons.length > 0 ? (
+                <div className="mt-2">
+                  <p className="text-sm font-medium">Smart buttons on stock apps</p>
+                  <ul className="mt-1 list-disc space-y-1 pl-5 text-sm">
+                    {operatorSurface.host_buttons.map((b) => (
+                      <li key={`${b.host_model}:${b.residual_model}:${b.button_label}`}>
+                        «{b.button_label}» on {b.host_label}{" "}
+                        <span className="font-mono text-xs text-muted">
+                          ({b.host_model})
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {operatorSurface.residual_buttons.length > 0 ? (
+                <div className="mt-2">
+                  <p className="text-sm font-medium">Smart buttons on this app</p>
+                  <ul className="mt-1 list-disc space-y-1 pl-5 text-sm">
+                    {operatorSurface.residual_buttons.map((b) => (
+                      <li key={`${b.on_model}:${b.related_model}:${b.button_label}`}>
+                        «{b.button_label}» on{" "}
+                        <span className="font-mono text-xs">{b.on_model}</span> →{" "}
+                        <span className="font-mono text-xs">{b.related_model}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {operatorSurface.stock_links.length > 0 ? (
+                <div className="mt-2">
+                  <p className="text-sm font-medium">Stock links on the form</p>
+                  <ul className="mt-1 list-disc space-y-1 pl-5 text-sm">
+                    {operatorSurface.stock_links.map((l) => (
+                      <li key={`${l.on_model}:${l.field}`}>
+                        {l.field_label} → {l.stock_label}{" "}
+                        <span className="font-mono text-xs text-muted">
+                          ({l.stock_model})
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-1 text-xs text-muted">
+                    These stay as form fields — not duplicate smart buttons next to the
+                    many2one.
+                  </p>
+                </div>
+              ) : null}
+            </Callout>
+          ) : null}
+          {stockReuse && stockApps.length > 0 ? (
+            <Callout
+              variant="info"
+              title="Community apps covering this brief"
+              className="mt-2"
+              testId="stock-reuse-apps"
+            >
+              <ul className="list-disc space-y-1 pl-5 text-sm">
+                {stockApps.map((app) => (
+                  <li key={app.id}>
+                    {app.label}{" "}
+                    <span className="font-mono text-xs text-muted">({app.id})</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-sm text-muted">
+                Empty models/views is the correct ModuleSpec — stock already covers cashiers,
+                quotations, and invoices. Completeness 10.0 is hygiene on an empty spec, not
+                a shippable custom app.
+              </p>
+              <Link
+                href={jobAutopilotHref}
+                className="mt-2 inline-flex text-sm font-medium text-accent underline"
+                onClick={() => stashBriefForJobAutopilot()}
+              >
+                Open Job Autopilot for sandbox install and quote→invoice smoke
+              </Link>
+            </Callout>
+          ) : null}
+          {generationEngine?.needs_clarification?.question ? (
+            <Callout
+              variant="warning"
+              title="One question"
+              className="mt-2"
+              testId="generation-clarify"
+            >
+              <p className="text-sm">{generationEngine.needs_clarification.question}</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+                {(generationEngine.needs_clarification.options || []).map((opt) => (
+                  <li key={opt.id}>
+                    {opt.label}
+                    {generationEngine.needs_clarification?.default_id === opt.id
+                      ? " (default)"
+                      : ""}
+                  </li>
+                ))}
+              </ul>
+            </Callout>
+          ) : null}
           {typeof draftScore === "number" ? (
             <Callout
               variant="info"
-              title={`Draft quality: ${draftScore.toFixed(1)}/10${
-                validatorsGreen ? " · all validators green" : ""
-              }${draftScore >= 9 ? " ✓" : ""}`}
+              title={
+                stockReuse
+                  ? `Stock coverage — empty ModuleSpec (hygiene ${draftScore.toFixed(1)}/10)${
+                      certTierDisplay ? ` · Cert: ${certTierDisplay}` : ""
+                    }`
+                  : `Completeness: ${draftScore.toFixed(1)}/10${
+                      validatorsGreen ? " · validators green" : ""
+                    }${goLiveReady ? " · sandbox proven" : ""}${
+                      certTierDisplay ? ` · Cert: ${certTierDisplay}` : ""
+                    }`
+              }
               className="mt-2"
               testId="draft-scorecard-chip"
             >
@@ -1805,6 +2729,41 @@ export default function AppWizardPage() {
                   {scoreDimensions.hygiene?.toFixed(1) ?? "—"}
                 </p>
               ) : null}
+              {certification ? (
+                <p className="mt-1 text-xs text-muted" data-testid="certification-chip">
+                  Certification {certTierDisplay ?? "—"} — Quality{" "}
+                  {typeof certification.quality === "number"
+                    ? certification.quality.toFixed(0)
+                    : "—"}
+                  · Evidence{" "}
+                  {typeof certification.evidence === "number"
+                    ? certification.evidence.toFixed(0)
+                    : "—"}
+                  · Risk{" "}
+                  {typeof certification.risk === "number"
+                    ? certification.risk.toFixed(0)
+                    : "—"}
+                  {!certShipReady
+                    ? stockReuse
+                      ? " — empty-spec hygiene is not go-live; Autopilot smoke is the done-bar"
+                      : " — completeness 10.0 is not go-live until Cert ≥ Production (and Option A smoke if pending)"
+                    : " — promote stays human; Autopilot smoke is a separate job scorecard"}
+                </p>
+              ) : null}
+              {doneBar?.mode ? (
+                <p className="mt-1 text-xs text-muted" data-testid="done-bar-chip">
+                  Done-bar: {doneBar.mode}
+                  {doneBar.next_step ? ` — ${doneBar.next_step}` : ""}
+                </p>
+              ) : null}
+              <ul
+                className="mt-2 list-disc space-y-1 pl-5 text-[11px] text-muted"
+                data-testid="score-bars-legend"
+              >
+                <li>{SCORE_BARS.completeness}</li>
+                <li>{SCORE_BARS.certification}</li>
+                <li>{SCORE_BARS.autopilot}</li>
+              </ul>
               {Array.isArray(scorecard?.findings) && scorecard.findings.length > 0 ? (
                 <ul className="mt-1 list-disc space-y-1 pl-5 text-sm">
                   {scorecard.findings.slice(0, 6).map((f, i) => (
@@ -1817,13 +2776,38 @@ export default function AppWizardPage() {
                   ))}
                 </ul>
               ) : (
-                <p className="text-sm">No major findings — ready for review.</p>
+                <p className="text-sm">
+                  {stockReuse
+                    ? "Empty spec is correct. Open Job Autopilot for sandbox install and quote→invoice RPC smoke. Completeness ≠ Cert ≠ Autopilot. Promote stays human."
+                    : certShipReady && goLiveReady
+                    ? "Sandbox proven + Certification Production/Gold — ready for human promote."
+                    : certShipReady
+                      ? "Certification Production/Gold — review before promote."
+                      : draftScore >= 9.5 && !certShipReady
+                        ? "High completeness — not shippable until Certification ≥ Production."
+                        : "No major findings — ready for review."}
+                </p>
               )}
-              {draftScore >= 9 ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="mt-2"
+                disabled={aiBusy || !aiDraft || refuseClone}
+                data-testid="expert-review-fix"
+                onClick={() => void askExpertReviewDraft(true)}
+              >
+                Ask the Expert to review and fix
+              </Button>
+              <p className="mt-1 text-[11px] text-muted" data-testid="expert-review-fix-hint">
+                {expertCloserHint(aiDraft)}
+              </p>
+              {!stockReuse && !aiDraft?._component && draftScore >= 9 ? (
                 <div className="mt-3 space-y-2" data-testid="elite-promote-workflow">
                   <p className="text-xs text-muted">
-                    ELITE path: sandbox-validate the exported module (Python, mail, cron, tests)
-                    before live promote.
+                    Optional installable module (Python, mail, cron, tests). Not required to
+                    view the app — Apply to Odoo / Open ModuleSpec already generate the UI.
+                    Use this path when you want a zip, sandbox install, then promote.
                   </p>
                   {eliteLintNote ? (
                     <p
@@ -1848,11 +2832,11 @@ export default function AppWizardPage() {
                       variant="secondary"
                       size="sm"
                       loading={eliteBusy}
-                      disabled={!aiDraft || eliteBusy}
+                      disabled={!aiDraft || eliteBusy || !finisherComplete}
                       data-testid="elite-validate-module"
                       onClick={() => void onEliteValidateModule()}
                     >
-                      3. Validate module (sandbox)
+                      Validate module (sandbox)
                     </Button>
                     <Button
                       type="button"
@@ -1862,7 +2846,7 @@ export default function AppWizardPage() {
                       data-testid="elite-promote-module"
                       onClick={() => setElitePromoteConfirmOpen(true)}
                     >
-                      4. Promote module
+                      Promote module
                     </Button>
                     {eliteZipBase64 && aiDraft ? (
                       <Button
@@ -1898,19 +2882,6 @@ export default function AppWizardPage() {
                 </div>
               ) : null}
               {eliteNote ? <p className="mt-2 text-sm text-muted">{eliteNote}</p> : null}
-              {draftScore < 9 ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  className="mt-2"
-                  disabled={aiBusy || !aiDraft}
-                  data-testid="expert-review-fix"
-                  onClick={() => void askExpertReviewDraft(true)}
-                >
-                  Ask the Expert to review and fix
-                </Button>
-              ) : null}
               {expertReviewNote ? (
                 <p className="mt-2 text-sm text-muted">{expertReviewNote}</p>
               ) : null}
@@ -1929,7 +2900,7 @@ export default function AppWizardPage() {
               ) : null}
             </Callout>
           ) : null}
-          {draftNeedsRegenerate && !llmStatusBanner ? (
+          {draftNeedsRegenerate && !llmStatusBanner && !stockReuse ? (
             <Callout variant="warning" title="Generic placeholders detected" className="mt-2">
               <p className="text-sm">
                 The AI model timed out — generic placeholders filled the gaps. Regenerate for
@@ -1949,13 +2920,118 @@ export default function AppWizardPage() {
               </Button>
             </Callout>
           ) : null}
-          {aiWarnings.length > 0 ? (
+          {aiWarnings.filter((w) => {
+            if (w.startsWith("senior: ")) return false;
+            if (w.startsWith("live_apply:") && !w.toLowerCase().includes("gap")) return false;
+            return true;
+          }).length > 0 ? (
             <Callout variant="warning" title="Draft warnings" className="mt-2">
               <ul className="list-disc space-y-1 pl-5">
-                {aiWarnings.slice(0, 12).map((w, i) => (
+                {aiWarnings
+                  .filter((w) => {
+                    if (w.startsWith("senior: ")) return false;
+                    if (w.startsWith("live_apply:") && !w.toLowerCase().includes("gap"))
+                      return false;
+                    return true;
+                  })
+                  .slice(0, 12)
+                  .map((w, i) => (
                   <li key={`${i}-${w}`}>{w}</li>
                 ))}
               </ul>
+            </Callout>
+          ) : null}
+          {authoredOptionA ? (
+            <Callout
+              variant={authoringPassed ? "info" : "warning"}
+              title={
+                authoringPassed
+                  ? "Authoring gate passed — zip and sandbox unlocked"
+                  : "LLM-authored module locked until the gate passes"
+              }
+              className="mt-2"
+              data-testid="option-a-authoring-gate"
+            >
+              <p className="text-sm">
+                Completeness is not this bar. Zip download and sandbox install stay
+                disabled until lint, policy (no invented taxes, no SSRF, no secrets),
+                and a dry structural zip pass. Promote stays human.
+              </p>
+              {hostInstallOffers.length > 0 ? (
+                <HostInstallPanel
+                  offers={hostInstallOffers}
+                  busy={aiBusy}
+                  disabled={aiBusy || isOdooOnline}
+                  disabledReason={
+                    isOdooOnline
+                      ? "Odoo Online cannot install Community apps from here"
+                      : undefined
+                  }
+                  onInstall={(offer, phrase) => void installAuthoredHostModule(offer, phrase)}
+                />
+              ) : null}
+              {leftoverAuthoringFindings.length > 0 ? (
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+                  {leftoverAuthoringFindings.slice(0, 8).map((row, i) => (
+                    <li key={`auth-${i}`}>
+                      {row.code ? `${row.code}: ` : ""}
+                      {row.message}
+                      {row.file ? ` (${row.file})` : ""}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </Callout>
+          ) : null}
+          {Array.isArray((aiDraft?._live_apply as { option_a?: string[] } | undefined)?.option_a) &&
+          ((aiDraft?._live_apply as { option_a?: string[] }).option_a?.length ?? 0) > 0 ? (
+            <Callout
+              variant={goLiveReady ? "info" : "warning"}
+              title={
+                goLiveReady
+                  ? "Option A sandbox proven — promote stays human"
+                  : Boolean(aiDraft?._capability_primary_option_a)
+                    ? "Option A required — not a form-field pack"
+                    : "Option A surfaces in this draft"
+              }
+              className="mt-2"
+              data-testid="option-a-gaps"
+            >
+              <p className="text-sm">
+                {Boolean(aiDraft?._capability_primary_option_a)
+                  ? "This prompt needs a QWeb/PDF module (sandbox → promote). The draft zip scaffolds Pay now + QR. Live Apply only lands Char stubs — run Sandbox install & smoke to lift the scorecap."
+                  : "Some requested surfaces need an installable module. Live Apply still works for metadata; finish Option A separately."}
+              </p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+                {((aiDraft?._live_apply as { option_a?: string[] }).option_a ?? [])
+                  .slice(0, 8)
+                  .map((line, i) => (
+                    <li key={`oa-${i}`}>{line}</li>
+                  ))}
+              </ul>
+              {Boolean(aiDraft?._capability_primary_option_a) ? (
+                <div className="mt-3 space-y-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={aiBusy || optionAProveBusy || !aiDraft || zipLocked}
+                    data-testid="option-a-prove"
+                    title={
+                      zipLocked
+                        ? "Authoring gate has not passed — sandbox stays locked"
+                        : undefined
+                    }
+                    onClick={() => void proveOptionASandbox()}
+                  >
+                    {optionAProveBusy ? "Sandbox smoke…" : "Sandbox install & smoke"}
+                  </Button>
+                  {optionAProveNote ? (
+                    <p className="text-xs text-muted" data-testid="option-a-prove-note">
+                      {optionAProveNote}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
             </Callout>
           ) : null}
           {Array.isArray(aiDraft?._compute_suggestions) &&
@@ -2007,18 +3083,69 @@ export default function AppWizardPage() {
           ) : null}
           {aiDraft && (
             <>
+              {residualPreview || aiDraft ? (
+                <div className="mt-3" data-testid="stage-h-form-preview">
+                  <p className="mb-2 text-xs uppercase tracking-wide text-muted">
+                    Review the header form
+                  </p>
+                  <DraftOdooPreview
+                    draft={aiDraft}
+                    breadcrumb="Draft Wizard"
+                    formPreview={residualPreview}
+                  />
+                </div>
+              ) : null}
+              {optionASettings ? (
+                <Callout
+                  variant="info"
+                  title={`Option A settings · ${optionASettings.model}`}
+                  className="mt-3"
+                  testId="option-a-settings-pane"
+                >
+                  <p className="text-sm text-muted">
+                    These toggles inherit stock POS / document hosts. This is not a live
+                    thermal studio and not an x_receipt app.
+                  </p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+                    {optionASettings.fields.map((f) => (
+                      <li key={f.name}>
+                        <span className="font-mono text-xs">{f.name}</span>
+                        {f.string ? ` — ${f.string}` : ""}
+                        {f.help ? <span className="text-muted"> ({f.help})</span> : null}
+                      </li>
+                    ))}
+                  </ul>
+                </Callout>
+              ) : null}
               {Boolean(aiDraft._component) || (aiDraft.grain && aiDraft.grain !== "full_app") ? (
-                <p className="mt-3 text-xs text-muted">
-                  Component summary — host{" "}
-                  <span className="font-mono">
+                <p className="mt-3 text-sm text-ink">
+                  Extends{" "}
+                  <span className="font-medium">
                     {String(
-                      (connectPoints?.host_model as string) ||
+                      (aiDraft.connect_points as { host_label?: string } | undefined)
+                        ?.host_label ||
                         (aiDraft.connect_points as { host_model?: string } | undefined)
                           ?.host_model ||
-                        "?",
+                        "a stock app",
                     )}
                   </span>
-                  · depends {JSON.stringify(aiDraft.depends ?? [])} · no new app root
+                  <span className="text-muted">
+                    {" "}
+                    (
+                    {String(
+                      (aiDraft.connect_points as { host_model?: string } | undefined)
+                        ?.host_model || "?",
+                    )}
+                    ) — custom models only if the prompt asked for a register or checklist.
+                    Nothing writes to Odoo until Apply.
+                  </span>
+                </p>
+              ) : stockReuse ? (
+                <p className="mt-3 text-sm text-ink" data-testid="stock-reuse-surface">
+                  {stockApps.length
+                    ? stockApps.map((app) => app.label).join(" · ")
+                    : "Named Community apps"}{" "}
+                  — no custom models, views, or smart buttons. Use Job Autopilot.
                 </p>
               ) : (
                 <p className="mt-3 text-xs text-muted">
@@ -2309,6 +3436,21 @@ export default function AppWizardPage() {
         busy={eliteBusy}
         onCancel={() => setElitePromoteConfirmOpen(false)}
         onConfirm={(phrase) => void onElitePromoteModule(phrase)}
+      />
+      <ConfirmDialog
+        open={walkthroughConfirmOpen}
+        title="Load demo walkthrough"
+        warning="Creates sample records on this live Odoo so Operations / smart buttons are not empty."
+        risks={[
+          "Writes data rows on custom x_* models (named Walkthrough …)",
+          "Links site, party, job, booking, and equipment lines when those models exist",
+          "Reuses the first Contact / Employee / Currency if the spec points at them",
+          "Prefer a sandbox connection before production",
+        ]}
+        phrase={CONFIRM_PHRASE}
+        busy={busy}
+        onCancel={() => setWalkthroughConfirmOpen(false)}
+        onConfirm={(phrase) => void onSeedWalkthrough(phrase)}
       />
     </div>
   );

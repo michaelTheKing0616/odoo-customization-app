@@ -21,10 +21,23 @@ _BASE_MODULES: tuple[str, ...] = ("base", "web", "mail", "contacts")
 
 _MODULE_SIGNALS: tuple[tuple[re.Pattern[str], str, int], ...] = (
     (re.compile(r"(?i)\b(maintenance|cmms|preventive|breakdown|work order|asset integrity)\b"), "maintenance", 12),
-    (re.compile(r"(?i)\b(inventory|warehouse|spare part|mro|stock|consumable|parts)\b"), "stock", 11),
+    (
+        re.compile(
+            r"(?i)\b(inventory|warehouses?|spare parts?|mro|"
+            r"stock picking|stock location|consumable)\b"
+        ),
+        "stock",
+        11,
+    ),
     (re.compile(r"(?i)\b(purchase|procurement|vendor|rfq|supplier)\b"), "purchase", 10),
     (re.compile(r"(?i)\b(project|turnaround|shutdown|engineering job|milestone)\b"), "project", 10),
-    (re.compile(r"(?i)\b(manufactur|mrp|production|bom|assembly|factory)\b"), "mrp", 11),
+    # Bare "production" is not MRP (music production, film production, …).
+    (re.compile(
+        r"(?i)\b("
+        r"manufactur(?:e|ed|er|ing)?|mrp|factor(?:y|ies)|"
+        r"bill\s+of\s+materials|\bboms?\b|assembl(?:y|ies)|work\s*orders?"
+        r")\b"
+    ), "mrp", 11),
     (re.compile(r"(?i)\b(fleet|vehicle|truck|dispatch)\b"), "fleet", 9),
     (re.compile(r"(?i)\b(hr|employee|crew|payroll stub|timesheet)\b"), "hr", 8),
     (re.compile(r"(?i)\b(timesheet|time entry)\b"), "hr_timesheet", 9),
@@ -235,6 +248,11 @@ def _stack_from_keywords(question: str) -> InferredStack:
     for pattern, module, weight in _MODULE_SIGNALS:
         if pattern.search(question):
             scores[module] = scores.get(module, 0) + weight
+    from app.ai_domain_briefing import build_domain_briefing
+
+    briefing = build_domain_briefing(question)
+    for app in briefing.banned_stock_apps:
+        scores.pop(app, None)
     picked = list(_BASE_MODULES)
     if "stock" in scores or "purchase" in scores:
         picked.append("product")
@@ -267,9 +285,8 @@ def _stack_from_keywords(question: str) -> InferredStack:
     )
 
 
-def infer_odoo_stack(question: str) -> InferredStack | None:
-    if not is_setup_stack_question(question):
-        return None
+def infer_odoo_stack_for_job(question: str) -> InferredStack:
+    """Always infer a Community stack from a job brief (no setup-phrasing gate)."""
     hits = match_verticals(question, limit=1)
     if hits:
         pack: dict[str, Any] | None = None
@@ -290,6 +307,12 @@ def infer_odoo_stack(question: str) -> InferredStack | None:
             return _stack_from_catalog(entry, pack)
         return _stack_from_domain_pack(pack_id, pack, question)
     return _stack_from_keywords(question)
+
+
+def infer_odoo_stack(question: str) -> InferredStack | None:
+    if not is_setup_stack_question(question):
+        return None
+    return infer_odoo_stack_for_job(question)
 
 
 def render_inferred_stack_markdown(stack: InferredStack) -> str:
@@ -362,6 +385,7 @@ __all__ = [
     "InferredStack",
     "compose_setup_stack_answer",
     "infer_odoo_stack",
+    "infer_odoo_stack_for_job",
     "is_setup_stack_question",
     "render_inferred_stack_markdown",
     "try_rule_based_stack_guidance",

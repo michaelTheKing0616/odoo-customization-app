@@ -50,9 +50,43 @@ _FAULT_RE = re.compile(r"(?i)(?:<fault\s*\d+:|fault\s+\d+:)")
 _MODEL_NOT_FOUND_RE = re.compile(
     r"(?i)(?:model not found|unknown model|no model named):\s*['\"]?([a-z][a-z0-9_]*)"
 )
-_VALIDATING_VIEW_RE = re.compile(r"(?i)error while validating view")
+_VALIDATING_VIEW_RE = re.compile(
+    r"(?i)error while (?:parsing or )?validating view"
+)
 _TRACEBACK_RE = re.compile(r"(?i)traceback\s*\(")
+_REQUEST_FAILED_RE = re.compile(r"(?i)\brequest failed\b")
+_FIELD_TAG_NAME_RE = re.compile(
+    r'(?i)field tag must have a ["\']?name["\']? attribute'
+)
+_ODOO_EXCEPTION_RE = re.compile(
+    r"(?i)\b(usererror|validationerror|missingerror|accesserror|parseerror|"
+    r"integrityerror|odoo\.exceptions)\b"
+)
 _X_MODEL_RE = re.compile(r"\b(x_[a-z][a-z0-9_]*)\b")
+_FILE_SUFFIXES = frozenset(
+    {"py", "pyc", "pyo", "xml", "js", "css", "html", "png", "jpg", "svg", "po", "pot", "md"}
+)
+_TRACEBACK_TOKEN_DENY = frozenset(
+    {
+        "odoo",
+        "xmlrpc",
+        "jsonrpc",
+        "http",
+        "wsgi",
+        "werkzeug",
+        "controllers",
+        "dist",
+        "packages",
+        "usr",
+        "lib",
+        "mnt",
+        "addons",
+        "extra",
+        "python3",
+        "site",
+        "traceback",
+    }
+)
 
 _ODOO_MODULE_PREFIXES = frozenset(
     {
@@ -85,6 +119,8 @@ def _parse_dotted_token(token: str) -> tuple[str, str | None]:
         return parts[0], None
     if len(parts) == 2:
         module, suffix = parts
+        if suffix in _FILE_SUFFIXES:
+            return "", None
         if suffix.startswith("x_"):
             return module, suffix
         if module.startswith("x_") and not suffix.startswith("x_"):
@@ -95,6 +131,20 @@ def _parse_dotted_token(token: str) -> tuple[str, str | None]:
     return token, None
 
 
+def is_traceback_junk_ref(model: str, fld: str | None) -> bool:
+    m = (model or "").lower()
+    f = (fld or "").lower()
+    if not m:
+        return True
+    if m in _TRACEBACK_TOKEN_DENY or f in _TRACEBACK_TOKEN_DENY:
+        return True
+    if f in _FILE_SUFFIXES:
+        return True
+    if ".models" in m or ".controllers" in m or "dist-packages" in m:
+        return True
+    return False
+
+
 _CONCEPTUAL_QUESTION_RE = re.compile(
     r"(?i)\b("
     r"explain|difference|when would|what happens if|what would happen|"
@@ -103,8 +153,9 @@ _CONCEPTUAL_QUESTION_RE = re.compile(
     r")\b"
 )
 _EXPLICIT_ERROR_RE = re.compile(
-    r"(?i)(\nerror log:\n|diagnose this error|traceback\s*\(|<fault\s*\d+:|"
-    r"model not found|accesserror|error while validating view)"
+    r"(?i)(\nerror log:\n|diagnose this error|diagnose with expert|traceback\s*\(|"
+    r"<fault\s*\d+:|request failed|model not found|accesserror|"
+    r"error while validating view|field tag must have)"
 )
 
 _NOTABLE_MODULE_PREFIXES = ("l10n_",)
@@ -309,6 +360,8 @@ def extract_model_field_refs(text: str) -> list[tuple[str, str | None]]:
     field_spans: set[str] = set()
 
     def _add(model: str, fld: str | None) -> None:
+        if is_traceback_junk_ref(model, fld):
+            return
         key = (model.lower(), fld.lower() if fld else None)
         if key not in seen and len(out) < _MAX_MODELS_FROM_TEXT:
             seen.add(key)
@@ -344,8 +397,53 @@ def looks_like_conceptual_question(text: str) -> bool:
     return bool(_CONCEPTUAL_QUESTION_RE.search(text))
 
 
+_ERROR_LOG_BODY_RE = re.compile(r"(?is)\nerror log:\s*\n(.*)$")
+_MODEL_NOT_FOUND_LABEL_RE = re.compile(r"(?i)model not found\s*:")
+_PLATFORM_API_RE = re.compile(
+    r"(?i)("
+    r"/api/ai/option-a/reverify|reverify-authoring|install-community|"
+    r"install(?:ing)?\s+sales|authoring gate|uvicorn|:8001|without --reload"
+    r")"
+)
+_APP_STUDIO_BANNER_RE = re.compile(
+    r"(?i)(something went wrong|no banner text captured)"
+)
+
+
+def error_log_body(text: str) -> str:
+    """Text after an ``Error log:`` heading — empty means the operator pasted nothing."""
+    match = _ERROR_LOG_BODY_RE.search(text or "")
+    return (match.group(1) if match else "").strip()
+
+
+def looks_like_platform_error(text: str) -> bool:
+    """HTTP/UI faults from this app (404 Not Found, host-install) — not an Odoo RPC Fault."""
+    blob = text or ""
+    if not blob.strip():
+        return False
+    if _MODEL_NOT_FOUND_LABEL_RE.search(blob) or _FAULT_RE.search(blob):
+        return False
+    if _VALIDATING_VIEW_RE.search(blob) or _TRACEBACK_RE.search(blob):
+        return False
+    body = error_log_body(blob)
+    diagnose = bool(re.search(r"(?i)diagnose this error", blob))
+    if diagnose and not body:
+        return True
+    if diagnose and _APP_STUDIO_BANNER_RE.search(blob):
+        return True
+    if _PLATFORM_API_RE.search(blob):
+        return True
+    low = blob.lower()
+    if "not found" in low or "404" in low:
+        if "/api/" in low or diagnose or _APP_STUDIO_BANNER_RE.search(blob):
+            return True
+    return False
+
+
 def looks_like_rpc_error(text: str) -> bool:
     if not text:
+        return False
+    if looks_like_platform_error(text):
         return False
     if _ACCESS_ERROR_RE.search(text):
         return True
@@ -358,6 +456,23 @@ def looks_like_rpc_error(text: str) -> bool:
     if _VALIDATING_VIEW_RE.search(text):
         return True
     if _TRACEBACK_RE.search(text):
+        return True
+    if _REQUEST_FAILED_RE.search(text) and (
+        _FAULT_RE.search(text)
+        or _VALIDATING_VIEW_RE.search(text)
+        or _FIELD_TAG_NAME_RE.search(text)
+        or _ODOO_EXCEPTION_RE.search(text)
+    ):
+        return True
+    if _FIELD_TAG_NAME_RE.search(text):
+        return True
+    if _ODOO_EXCEPTION_RE.search(text):
+        return True
+    if _EXPLICIT_ERROR_RE.search(text) and (
+        _FAULT_RE.search(text)
+        or _VALIDATING_VIEW_RE.search(text)
+        or error_log_body(text)
+    ):
         return True
     return False
 
@@ -438,6 +553,20 @@ def route_bulk_tools(question: str, *, connection_id: str | None) -> list[dict[s
             }
         )
     return routes[:5]
+
+
+def merge_suggested_tools(*groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Dedupe deep-link tools by id, preserving order."""
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for group in groups:
+        for tool in group:
+            tid = str(tool.get("id") or tool.get("deep_link") or "")
+            if not tid or tid in seen:
+                continue
+            seen.add(tid)
+            out.append(tool)
+    return out[:8]
 
 
 def cross_check_schema(
@@ -714,6 +843,12 @@ def assemble_context(
                 connection_id=connection_id,
             )
             bundle.suggested_tools = route_bulk_tools(q, connection_id=connection_id)
+            from app.expert.product_guidance import route_product_tools
+
+            bundle.suggested_tools = merge_suggested_tools(
+                bundle.suggested_tools,
+                route_product_tools(q, connection_id=connection_id),
+            )
     else:
         bundle.no_connection_note = (
             "No connection_id — Expert retrieval is not version-filtered; "
@@ -752,10 +887,14 @@ __all__ = [
     "assemble_context",
     "cross_check_schema",
     "extract_model_field_refs",
+    "error_log_body",
+    "is_traceback_junk_ref",
     "looks_like_conceptual_question",
+    "looks_like_platform_error",
     "looks_like_rpc_error",
     "merge_question_with_pasted_error",
     "match_capability_highlights",
     "route_bulk_tools",
+    "merge_suggested_tools",
     "serialize_bundle",
 ]

@@ -35,6 +35,9 @@ apps/web/playwright-report/
 
 # Expert RAG ingest cache (odoo/documentation sparse clones + manifests)
 .cache/expert/
+.cache/job_docs/
+.cache/job_autopilot/
+.cache/ai_llm_prompts/
 
 # Docker local volume bind mounts (if used)
 docker/**/odoo-data/

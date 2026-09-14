@@ -36,7 +36,8 @@ def test_retrieve_with_rag_falls_back_to_regex(monkeypatch: pytest.MonkeyPatch) 
     hit = retrieve_domain_pack("car rental fleet management")
     assert hit is not None
     assert hit[0] == "car_rental"
-    assert hit[2] == 1.0
+    assert hit[2] > 0.0
+    assert hit[1].get("_retrieval", {}).get("method") in {"regex", "jaccard"}
 
 
 def test_retrieve_with_rag_uses_embeddings_when_scored(
@@ -216,3 +217,69 @@ def test_critique_rejects_non_x_field_names() -> None:
     )
     assert notes == []
     assert all(f["name"].startswith("x_") for f in out["models"][0]["fields"])
+
+
+def test_apply_critique_skips_identity_duplicate_when_x_code_exists() -> None:
+    draft = {
+        "technical_name": "demo",
+        "display_name": "Demo",
+        "models": [
+            {
+                "model": "x_matter",
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "string": "Title"},
+                    {"name": "x_code", "ttype": "char", "string": "Matter No."},
+                ],
+            }
+        ],
+    }
+    out, notes = apply_critique_repairs(
+        draft,
+        {
+            "missing_fields": [
+                {
+                    "model": "x_matter",
+                    "name": "x_reference",
+                    "ttype": "char",
+                    "string": "Matter Reference",
+                }
+            ]
+        },
+    )
+    names = {f["name"] for f in out["models"][0]["fields"]}
+    assert "x_code" in names
+    assert "x_reference" not in names
+
+
+def test_apply_critique_skips_status_on_party_join() -> None:
+    draft = {
+        "technical_name": "demo",
+        "display_name": "Demo",
+        "models": [
+            {
+                "model": "x_matter_party",
+                "description": "Matter party",
+                "fields": [
+                    {"name": "x_name", "ttype": "char"},
+                    {"name": "x_partner_id", "ttype": "many2one", "relation": "res.partner"},
+                    {"name": "x_role", "ttype": "char"},
+                ],
+            }
+        ],
+    }
+    out, notes = apply_critique_repairs(
+        draft,
+        {
+            "missing_fields": [
+                {
+                    "model": "x_matter_party",
+                    "name": "x_status",
+                    "ttype": "selection",
+                    "string": "Status",
+                }
+            ]
+        },
+    )
+    names = {f["name"] for f in out["models"][0]["fields"]}
+    assert "x_status" not in names
+    assert any("party join" in n for n in notes)

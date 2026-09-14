@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, type DomainPlaybook } from "@/lib/api";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { InlineWait } from "@/components/studio/StudioBusyLabel";
 import { formatFetchError } from "@/lib/format-fetch-error";
 
 type Props = {
@@ -48,7 +49,7 @@ export function DomainPlaybooksPanel({ connectionId, className = "" }: Props) {
       <p className="mt-0.5 text-[11px] text-[#6b5a66]">
         Greyed out when the required module is not installed. List/read only via public ORM.
       </p>
-      {loading && <p className="mt-2 text-xs text-muted">Loading…</p>}
+      {loading && <InlineWait />}
       {error ? (
         <ErrorNotice
           message={error}

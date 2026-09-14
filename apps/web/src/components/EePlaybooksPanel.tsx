@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, type EePlaybook } from "@/lib/api";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { InlineWait } from "@/components/studio/StudioBusyLabel";
 import { formatFetchError } from "@/lib/format-fetch-error";
 
 type Props = {
@@ -48,7 +49,7 @@ export function EePlaybooksPanel({ connectionId, className = "" }: Props) {
         Greyed out when the required module is not installed. Public ORM only — never
         Studio source.
       </p>
-      {loading && <p className="mt-2 text-xs text-muted">Loading…</p>}
+      {loading && <InlineWait />}
       {error ? (
         <ErrorNotice
           message={error}

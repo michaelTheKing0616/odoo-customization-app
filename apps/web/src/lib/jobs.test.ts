@@ -43,6 +43,16 @@ describe("pollJob", () => {
     expect(onUpdate).toHaveBeenCalledTimes(2);
   });
 
+  it("throws JobPollError when status is timeout", async () => {
+    const fetchJob = vi.fn().mockResolvedValue(
+      job({ status: "timeout", error: "Job exceeded 1800s limit" }),
+    );
+
+    await expect(
+      pollJob("job-1", { fetchJob, sleep: async () => undefined }),
+    ).rejects.toMatchObject({ message: "Job exceeded 1800s limit" });
+  });
+
   it("throws JobPollError when status is failed", async () => {
     const fetchJob = vi.fn().mockResolvedValue(
       job({ status: "failed", error: "sandbox exploded" }),
@@ -76,5 +86,81 @@ describe("pollJob", () => {
 
     expect(fetchJob).toHaveBeenCalledTimes(3);
     expect(sleep).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries transient ECONNRESET then succeeds", async () => {
+    const fetchJob = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new Error("Cannot reach API at http://127.0.0.1:8001: read ECONNRESET"),
+      )
+      .mockResolvedValueOnce(job({ status: "succeeded" }));
+    const sleep = vi.fn(async () => undefined);
+
+    const result = await pollJob("job-1", {
+      fetchJob,
+      sleep,
+      intervalMs: 10,
+      maxAttempts: 5,
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(fetchJob).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps polling when step_label advances past the stale window", async () => {
+    const fetchJob = vi
+      .fn()
+      .mockResolvedValueOnce(job({ status: "running", result: { step_label: "stock" } }))
+      .mockResolvedValueOnce(job({ status: "running", result: { step_label: "stock" } }))
+      .mockResolvedValueOnce(job({ status: "running", result: { step_label: "smoke" } }))
+      .mockResolvedValueOnce(job({ status: "succeeded", result: { step_label: "smoke" } }));
+    const sleep = vi.fn(async () => undefined);
+
+    const result = await pollJob("job-1", {
+      fetchJob,
+      sleep,
+      staleAttempts: 2,
+      maxAttempts: 10,
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(fetchJob).toHaveBeenCalledTimes(4);
+  });
+
+  it("throws when a running job stops advancing", async () => {
+    const fetchJob = vi.fn().mockResolvedValue(
+      job({ status: "running", result: { step_label: "smoke" } }),
+    );
+
+    await expect(
+      pollJob("job-1", {
+        fetchJob,
+        sleep: async () => undefined,
+        staleAttempts: 2,
+        maxAttempts: 20,
+      }),
+    ).rejects.toThrow(/stalled/);
+  });
+
+  it("untilTerminal does not abort a long running stage", async () => {
+    const fetchJob = vi
+      .fn()
+      .mockResolvedValueOnce(job({ status: "running", result: { step_label: "custom" } }))
+      .mockResolvedValueOnce(job({ status: "running", result: { step_label: "custom" } }))
+      .mockResolvedValueOnce(job({ status: "running", result: { step_label: "custom" } }))
+      .mockResolvedValueOnce(job({ status: "succeeded", result: { step_label: "custom" } }));
+
+    const result = await pollJob("job-1", {
+      fetchJob,
+      sleep: async () => undefined,
+      untilTerminal: true,
+      staleAttempts: 2,
+      maxAttempts: 20,
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(fetchJob).toHaveBeenCalledTimes(4);
   });
 });

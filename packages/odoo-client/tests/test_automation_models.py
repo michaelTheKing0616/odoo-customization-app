@@ -25,7 +25,17 @@ def test_create_automation_update_field() -> None:
     assert req.trigger == AutomationTrigger.ON_CREATE
 
 
-def test_on_time_requires_date_field() -> None:
+def test_child_action_warning_detects_odoo_fault() -> None:
+    import xmlrpc.client
+
+    from odoo_client.client import _is_child_action_warning
+
+    fault = xmlrpc.client.Fault(
+        2,
+        "Following child actions have warnings: Notify on Project completed / activity",
+    )
+    assert _is_child_action_warning(fault)
+    assert not _is_child_action_warning(ValueError("unrelated"))
     with pytest.raises(ValidationError):
         CreateAutomationRequest(
             name="Timed",

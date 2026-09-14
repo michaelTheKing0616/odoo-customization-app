@@ -760,6 +760,19 @@ class UninstallModuleOut(BaseModel):
     residual_note: str | None = None
 
 
+class InstallCommunityModuleBody(BaseModel):
+    """Install a stock Community app (sale, product, …) for Draft Studio reuse."""
+
+    module_name: str = Field(..., min_length=1, max_length=120)
+
+
+class InstallCommunityModuleOut(BaseModel):
+    ok: bool = True
+    module: str
+    module_state: str | None = None
+    message: str = ""
+
+
 class PromotedModuleOut(BaseModel):
     id: str
     module_name: str
@@ -1356,7 +1369,24 @@ class ModuleSpecApplyOut(BaseModel):
     menus_created: int = 0
     smart_buttons: int = 0
     automations_created: int = 0
+    root_menu_id: int | None = None
+    open_action_id: int | None = None
     skipped: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    message: str = ""
+
+
+class ModuleSpecWalkthroughBody(BaseModel):
+    spec: dict = Field(..., description="Applied ModuleSpec (models + fields)")
+    confirm_advanced: bool = False
+    confirm_phrase: str | None = None
+
+
+class ModuleSpecWalkthroughOut(BaseModel):
+    ok: bool = True
+    created: dict[str, int] = Field(default_factory=dict)
+    open_model: str | None = None
+    open_record_id: int | None = None
     warnings: list[str] = Field(default_factory=list)
     message: str = ""
 

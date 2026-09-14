@@ -1,7 +1,7 @@
 "use client";
 
 import { Slot } from "@radix-ui/react-slot";
-import { Loader2 } from "@/components/ui/icons";
+import { Spokes } from "@/components/loading-ui/spokes";
 import { cn } from "@/lib/cn";
 
 /** One primary action per screen — use variant="primary" sparingly. */
@@ -64,7 +64,7 @@ export function Button({
       disabled={disabled || loading}
       {...props}
     >
-      {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+      {loading ? <Spokes className="studio-loader-spokes h-4 w-4" aria-hidden /> : null}
       {children}
     </Comp>
   );

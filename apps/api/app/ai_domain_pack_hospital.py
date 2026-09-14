@@ -130,6 +130,7 @@ def hospital_pack() -> dict[str, Any]:
         "display_name": "Hospital Management",
         "depends": ["base", "contacts", "mail"],
         "domain_pack": "hospital",
+        "document_shape": "workspace",
         "tags": [
             "hospital",
             "inpatient",

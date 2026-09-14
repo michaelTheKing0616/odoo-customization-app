@@ -6,18 +6,80 @@ import re
 from typing import Any
 
 _MENU_CATEGORIES: dict[str, tuple[str, ...]] = {
-    "Operations": ("order", "sale", "task", "event", "appointment", "service"),
-    "Inventory": ("stock", "inventory", "warehouse", "product", "branch", "store"),
-    "People": ("employee", "staff", "team", "member", "hr", "user"),
+    "Operations": (
+        "order",
+        "sale",
+        "task",
+        "event",
+        "appointment",
+        "service",
+        "work_order",
+        "job",
+        "transfer",
+        "project",
+        "session",
+        "booking",
+        "reservation",
+        "recording",
+        "deliverable",
+        "revision",
+        "maintenance",
+        "engagement",
+        "agreement",
+        "contract",
+        "license",
+        "matter",
+        "conflict",
+        "document",
+        "party",
+        "check",
+    ),
+    "HSE": ("incident", "permit", "hse", "safety", "near_miss"),
+    "Inventory": (
+        "stock",
+        "inventory",
+        "warehouse",
+        "product",
+        "branch",
+        "store",
+        "asset",
+        "facility",
+        "studio",
+        "room",
+        "booth",
+        "equipment",
+        "unavailability",
+        "rate",
+    ),
+    "People": (
+        "employee",
+        "staff",
+        "team",
+        "member",
+        "hr",
+        "user",
+        "shift",
+        "crew",
+        "artist",
+        "artiste",
+        "client",
+    ),
     "Finance": ("invoice", "bill", "payment", "deposit", "expense", "account"),
+    "Configuration": ("reason", "type", "category", "tag", "config"),
 }
 
 
 def _menu_category(label: str, model: str) -> str:
     hay = f"{label} {model}".lower()
+    token_hay = hay.replace("_", " ").replace("-", " ")
+    tokens = set(re.findall(r"[a-z0-9]+", token_hay))
     for cat, keys in _MENU_CATEGORIES.items():
-        if any(k in hay for k in keys):
-            return cat
+        for key in keys:
+            if "_" in key:
+                if key in hay.replace(" ", "_"):
+                    return cat
+            elif key in tokens:
+                return cat
     return "Other"
 
 
@@ -33,13 +95,24 @@ def group_menus_if_needed(draft: dict[str, Any], *, threshold: int = 8) -> list[
     if not root:
         return notes
     root_xml = str(root.get("xml_id") or root.get("technical_name") or "")
+    action_model = {
+        str(a.get("technical_name") or ""): str(a.get("model") or "")
+        for a in (draft.get("actions") or [])
+        if isinstance(a, dict)
+    }
     by_cat: dict[str, list[dict[str, Any]]] = {}
     for leaf in leaves:
-        cat = _menu_category(str(leaf.get("name") or ""), str(leaf.get("technical_name") or ""))
+        mid = action_model.get(str(leaf.get("action_xml_id") or ""), "")
+        cat = _menu_category(
+            str(leaf.get("name") or ""),
+            mid or str(leaf.get("technical_name") or ""),
+        )
         by_cat.setdefault(cat, []).append(leaf)
+    if len(by_cat) <= 1:
+        return notes
     new_menus = [root]
     seq = 20
-    for cat in ("Operations", "Inventory", "People", "Finance", "Other"):
+    for cat in ("Operations", "HSE", "Inventory", "People", "Finance", "Configuration", "Other"):
         items = by_cat.get(cat) or []
         if not items:
             continue
@@ -87,6 +160,10 @@ def dedupe_smart_button_labels(draft: dict[str, Any]) -> list[str]:
                 suffix = " (out)"
             elif "in" in field.lower() or field.endswith("_to_id"):
                 suffix = " (in)"
+            elif field.endswith("_a_id"):
+                suffix = " (A)"
+            elif field.endswith("_b_id"):
+                suffix = " (B)"
             elif i > 0:
                 suffix = f" ({i + 1})"
             new_label = base_label if not suffix else f"{base_label}{suffix}"

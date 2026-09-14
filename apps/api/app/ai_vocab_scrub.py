@@ -113,6 +113,9 @@ def scrub_draft_vocabulary(
     pack: dict[str, Any] | None = None,
 ) -> list[str]:
     """Scrub banned law-firm terms from all user-visible draft surfaces."""
+    pack_id = str(draft.get("domain_pack") or (pack or {}).get("domain_pack") or "")
+    if pack_id == "law_firm":
+        return []
     vocab = _pack_vocab(pack)
     notes: list[str] = []
     for model in draft.get("models") or []:

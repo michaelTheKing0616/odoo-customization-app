@@ -20,6 +20,7 @@ import {
   IconProjects,
   IconReminders,
   IconReports,
+  IconSandbox,
   IconScriptRunner,
   IconSnapshots,
   IconViews,
@@ -72,7 +73,7 @@ export const NAV_GROUPS: {
   {
     id: "ai",
     label: "AI Studio",
-    tooltip: "Draft with AI, ModuleSpec, projects, and Odoo Expert",
+    tooltip: "Draft with AI, Job Autopilot, ModuleSpec, projects, and Odoo Expert",
   },
   {
     id: "data",
@@ -187,11 +188,27 @@ export const NAV_ITEMS: NavItem[] = [
     shipped: true,
   },
   {
+    id: "app-studio",
+    label: "App Studio",
+    href: (id) => `/connections/${id}/studio`,
+    group: "ai",
+    icon: IconExpert,
+    shipped: true,
+  },
+  {
     id: "wizard",
     label: "Draft Studio",
     href: (id) => `/connections/${id}/wizard`,
     group: "ai",
     icon: IconExpert,
+    shipped: true,
+  },
+  {
+    id: "job-autopilot",
+    label: "Job Autopilot",
+    href: (id) => `/connections/${id}/job`,
+    group: "ai",
+    icon: IconSandbox,
     shipped: true,
   },
   {

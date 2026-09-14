@@ -19,6 +19,7 @@ _FILENAME_HINTS: list[tuple[DocType, re.Pattern[str]]] = [
     ("vendor_list", re.compile(r"\b(vendor|supplier)s?\b", re.I)),
     ("price_list", re.compile(r"\b(price|pricelist)\b", re.I)),
     ("employee_roster", re.compile(r"\b(employee|staff|roster|hr)\b", re.I)),
+    ("user_roster", re.compile(r"\b(users?|logins?)\b", re.I)),
     ("opening_trial_balance", re.compile(r"\b(trial.?balance|opening)\b", re.I)),
     ("inventory_count", re.compile(r"\b(inventory|stock.?count)\b", re.I)),
 ]
@@ -127,7 +128,7 @@ def classify_with_llm(
     prompt = (
         "Classify this business document into exactly one doc_type from the closed vocabulary.\n"
         "Types: coa, bom, product_catalog, customer_list, vendor_list, price_list, "
-        "employee_roster, opening_trial_balance, inventory_count, other.\n"
+        "employee_roster, user_roster, opening_trial_balance, inventory_count, other.\n"
         f"Filename: {filename}\n"
         f"Headers: {headers[:30]}\n"
         f"Sample rows: {json.dumps(preview, ensure_ascii=False)[:1200]}\n"

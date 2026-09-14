@@ -53,6 +53,8 @@ class GeneralizePackBody(BaseModel):
 
 @router.get("/status")
 def ai_status() -> dict[str, object]:
+    from app.llm_provider import resolve_provider_mode
+
     enabled = ai_assist_enabled()
     reachable = False
     detail = "disabled"
@@ -61,10 +63,19 @@ def ai_status() -> dict[str, object]:
     rag = rag_status()
     routing = llm_routing_status()
     consistency = self_consistency_status()
+    mode = str(routing.get("provider") or resolve_provider_mode())
+    labels = {
+        "ollama": "Ollama",
+        "openai": "OpenAI",
+        "anthropic": "Claude",
+        "gemini": "Gemini",
+        "openai-compatible": "OpenAI-compatible",
+    }
     return {
         "ai_assist": settings.ai_assist,
         "enabled": enabled,
-        "provider": settings.ai_assist,
+        "provider": mode,
+        "provider_label": labels.get(mode, mode),
         "pipeline_mode": settings.ai_pipeline_mode,
         "ai_critique": settings.ai_critique,
         "ai_self_consistency": consistency.get("ai_self_consistency"),
@@ -79,6 +90,9 @@ def ai_status() -> dict[str, object]:
         "openai_compatible_model": settings.openai_compatible_model,
         "ollama_reachable": reachable,
         "ollama_detail": detail,
+        "provider_reachable": reachable,
+        "provider_detail": detail,
+        "api_key_configured": bool(routing.get("api_key_configured")),
         "domain_packs": [p["id"] for p in list_domain_packs()],
         "depth_floors": AMBITION_TARGETS,
         "rag": rag,
@@ -337,6 +351,52 @@ def generalize_pack(body: GeneralizePackBody) -> dict[str, object]:
 def draft_module(
     body: AiDraftModuleBody, db: Session = Depends(get_db)
 ) -> AiDraftModuleOut:
+    from app.ai_draft_jobs import complete_matched_pack_draft, pack_seed_skips_llm
+    from app.ai_pipeline import seed_studio_draft
+    from app.db import SessionLocal
+
+    # Domain-pack Create draft is deterministic. Skip the Odoo catalog + 1800s LLM job
+    # so the wizard gets JSON in seconds (Saved snapshots is written before return).
+    pack_seed = seed_studio_draft(body.prompt)
+    if pack_seed_skips_llm(pack_seed) or not ai_assist_enabled():
+        available, installed, _views, _actions, stock_catalog = _load_reuse_catalog(
+            db, body
+        )
+        result = complete_matched_pack_draft(
+            prompt=body.prompt,
+            seed=pack_seed,
+            db_factory=SessionLocal,
+            connection_id=body.connection_id,
+            available_models=available,
+            installed_modules=installed,
+            stock_catalog=stock_catalog,
+        )
+        draft = result["draft"]
+        if isinstance(draft, dict) and body.overlap_choice:
+            from app.ai_overlap import record_overlap_choice
+
+            draft = record_overlap_choice(
+                draft,
+                finding_id=body.overlap_finding_id,
+                choice=body.overlap_choice,
+            )
+        return AiDraftModuleOut(
+            ok=True,
+            draft=draft if isinstance(draft, dict) else {},
+            raw_response=str(result.get("raw_response") or "") or None,
+            note=str(result.get("note") or ""),
+            warnings=list(result.get("warnings") or []),
+            refusals=list(result.get("refusals") or []),
+            domain_pack=result.get("domain_pack"),
+            grain=result.get("grain"),
+            grain_label=result.get("grain_label"),
+            connect_points=result.get("connect_points")
+            if isinstance(result.get("connect_points"), dict)
+            else None,
+            host_candidates=list(result.get("host_candidates") or []),
+            job_id=None,
+        )
+
     available, installed, reuse_views, reuse_actions, stock_catalog = _load_reuse_catalog(
         db, body
     )
@@ -360,31 +420,30 @@ def draft_module(
             protected_manifest = None
 
     if body.async_job:
-        from app.ai_draft_jobs import enqueue_draft_job
+        from app.ai_draft_jobs import build_draft_job_kwargs, enqueue_draft_job
 
         job_id = enqueue_draft_job(
             db,
             connection_id=body.connection_id,
-            body_kwargs={
-                "prompt": body.prompt,
-                "available_models": available,
-                "installed_modules": installed,
-                "stock_catalog": stock_catalog,
-                "reuse_models": body.reuse_models or None,
-                "rejected_reuse_models": body.rejected_reuse_models or None,
-                "reuse_views": reuse_views or None,
-                "reuse_actions": reuse_actions or None,
-                "expand": body.expand,
-                "pipeline": body.pipeline,
-                "protected_manifest": protected_manifest,
-                "odoo_version": odoo_version,
-                "grain_override": body.grain,
-                "gallery_id": body.gallery_id,
-                "host_model_override": body.host_model,
-                "connect_points_override": body.connect_points,
-                "client": odoo_client,
-                "connection_id": body.connection_id,
-            },
+            body_kwargs=build_draft_job_kwargs(
+                prompt=body.prompt,
+                connection_id=body.connection_id,
+                available_models=available,
+                installed_modules=installed,
+                stock_catalog=stock_catalog,
+                reuse_views=reuse_views or None,
+                reuse_actions=reuse_actions or None,
+                protected_manifest=protected_manifest,
+                odoo_version=odoo_version,
+                reuse_models=body.reuse_models or None,
+                rejected_reuse_models=body.rejected_reuse_models or None,
+                expand=body.expand,
+                pipeline=body.pipeline,
+                grain_override=body.grain,
+                gallery_id=body.gallery_id,
+                host_model_override=body.host_model,
+                connect_points_override=body.connect_points,
+            ),
         )
         return AiDraftModuleOut(
             ok=True,
@@ -497,6 +556,16 @@ def reapply_reuse(
         matched = match_domain_pack(body.prompt)
         if matched:
             pack_stock = matched[1].get("reuse_stock")
+    prior_plan = (
+        (draft.get("reuse") or {}).get("plan")
+        if isinstance(draft.get("reuse"), dict)
+        else None
+    )
+    prior_decisions = (
+        list(prior_plan.get("decisions") or [])
+        if isinstance(prior_plan, dict)
+        else []
+    )
     plan = plan_reuse(
         body.prompt,
         available_models=available,
@@ -505,6 +574,7 @@ def reapply_reuse(
         pack_reuse_stock=pack_stock if isinstance(pack_stock, list) else None,
         rejected_reuse_models=body.rejected_reuse_models or None,
         stock_catalog=stock_catalog or None,
+        prior_decisions=prior_decisions,
     )
     warnings = apply_reuse_plan(draft, plan)
     from app.ai_production_shape import run_production_shape_pass
@@ -559,48 +629,71 @@ def enrich_draft_route(
 
     import copy
 
+    from app.ai_critique import run_self_critique
+    from app.ai_depth import run_depth_pass
+    from app.ai_enrich_jobs import (
+        _import_enrich_runtime,
+        enrich_steps_for_draft,
+        finalize_enriched_draft,
+        needs_draft_llm_retry,
+    )
     from app.ai_llm_status import sanitize_draft_payload
     from app.ai_model_quality import run_model_quality_pass
-    from app.ai_depth import run_depth_pass
-    from app.ai_critique import run_self_critique
-    from app.llm_provider import get_llm_provider
+
+    _rt = _import_enrich_runtime()
+    recover_residual_draft = _rt["recover_residual_draft"]
+    revive_llm_providers = _rt["revive_llm_providers"]
 
     draft = copy.deepcopy(body.draft)
-    provider = get_llm_provider()
-    warnings: list[str] = []
+    provider, revive_notes = revive_llm_providers()
+    warnings: list[str] = list(revive_notes)
+    warnings.extend(recover_residual_draft(draft, prompt=body.prompt))
     failed = set(body.failed_steps or [])
     status = draft.get("_llm_status") if isinstance(draft.get("_llm_status"), dict) else {}
     if not failed and status.get("failed_steps"):
         failed = set(status.get("failed_steps") or [])
 
-    if provider and ("quality" in failed or "depth" in failed or "critique" in failed):
-        if "quality" in failed:
+    if needs_draft_llm_retry(draft, prompt=body.prompt, failed_steps=list(failed)):
+        warnings.append(
+            "enrich: full draft_llm re-run uses async Retry (background job); "
+            "sync path woke providers + completed residual from your brief"
+        )
+
+    steps = enrich_steps_for_draft(
+        draft,
+        prompt=body.prompt,
+        failed_steps=list(failed) if failed else None,
+        provider=provider,
+    )
+    for step in steps:
+        if not provider:
+            break
+        if step == "quality":
             draft, q_w = run_model_quality_pass(
                 draft,
                 user_prompt=body.prompt,
                 ambition=str(draft.get("_ambition") or "standard"),
                 provider=provider,
-                expand_llm=True,
+                expand_llm=False,
             )
             warnings.extend(q_w)
-        if "depth" in failed:
+        elif step == "depth":
             draft, d_w = run_depth_pass(
                 draft, user_prompt=body.prompt, provider=provider, expand_llm=True
             )
             warnings.extend(d_w)
-        if "critique" in failed:
+        elif step == "critique":
             draft, c_w = run_self_critique(draft, user_prompt=body.prompt, repair=True)
             warnings.extend(c_w)
 
-    from app.ai_enrich_jobs import finalize_enriched_draft
-
     draft = sanitize_draft_payload(draft)
+    llm_mode = "llm_full" if steps and provider else "residual_recovered"
     warnings = finalize_enriched_draft(
         draft,
         prompt=body.prompt,
         warnings=warnings,
-        llm_mode="llm_full",
-        completed_steps=list(failed),
+        llm_mode=llm_mode,
+        completed_steps=["revive", "recover", *steps],
     )
     from app.ai_draft_cache import save_draft_cache
 
@@ -612,3 +705,27 @@ def enrich_draft_route(
         domain_pack=str(draft.get("domain_pack") or "") or None,
     )
     return AiDraftModuleOut(ok=True, draft=draft, warnings=warnings)
+
+
+class OptionAReverifyBody(BaseModel):
+    connection_id: str | None = None
+    session_id: str | None = None
+    draft: dict[str, Any] | None = None
+
+
+@router.post("/option-a/reverify")
+def reverify_option_a_authoring(
+    body: OptionAReverifyBody, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """Re-run the Option A authoring gate after a stock host app is installed.
+
+    Does not call the LLM. Zip stays locked until the gate passes. Promote stays human.
+    """
+    from app.ai_option_a_reverify import run_option_a_reverify
+
+    return run_option_a_reverify(
+        db,
+        connection_id=body.connection_id,
+        session_id=body.session_id,
+        draft=body.draft,
+    )

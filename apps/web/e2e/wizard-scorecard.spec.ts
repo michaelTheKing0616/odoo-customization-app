@@ -116,11 +116,19 @@ test.describe("Wizard scorecard + expert review", () => {
     await expect(page.getByTestId("draft-scorecard-chip")).toBeVisible({ timeout: 5_000 });
     await expect(page.getByText("Draft quality: 7.2/10")).toBeVisible();
     await expect(page.getByText(/Semantics 8\.0/)).toBeVisible();
+    await expect(page.getByTestId("score-bars-legend")).toBeVisible();
+    await expect(page.getByTestId("score-bars-legend")).toContainText("Completeness is ModuleSpec hygiene");
+    await expect(page.getByTestId("score-bars-legend")).toContainText("Certification is the ship bar");
+    await expect(page.getByTestId("score-bars-legend")).toContainText("Autopilot done-bar");
     await expect(page.getByTestId("expert-review-fix")).toBeVisible();
+    await expect(page.getByTestId("expert-review-fix-hint")).toContainText(
+      "will not raise Certification to Production",
+    );
 
     await page.getByTestId("expert-review-fix").click();
     await expect(page.getByText(/7\.2\/10 → 9\.4\/10/)).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText("Draft quality: 9.4/10 ✓")).toBeVisible();
+    await expect(page.getByTestId("expert-review-fix")).toBeVisible();
     await expect(page.getByTestId("elite-promote-workflow")).toBeVisible();
     await expect(page.getByTestId("elite-validate-module")).toBeVisible();
   });
@@ -221,6 +229,7 @@ test.describe("Wizard ELITE promote workflow", () => {
     await page.getByPlaceholder(/Car rental fleet/i).fill(PROMPT);
     await page.getByTestId("create-draft").click();
     await expect(page.getByTestId("draft-scorecard-chip")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("expert-review-fix")).toBeVisible();
     await expect(page.getByTestId("elite-validate-module")).toBeVisible();
     await page.getByTestId("elite-validate-module").click();
     await expect(page.getByText(/Sandbox validation passed|validated in sandbox/i)).toBeVisible({

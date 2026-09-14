@@ -191,3 +191,110 @@ def test_staged_run_artifact_written(tmp_path: Path, monkeypatch: pytest.MonkeyP
     out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     assert out_path.is_file()
     assert payload["model_count"] >= 1
+
+
+def test_staged_timeout_without_pack_seeds_instead_of_raising() -> None:
+    from app.llm_provider import LLMError
+
+    class _TimeoutProvider(LLMProvider):
+        @property
+        def name(self) -> str:
+            return "timeout"
+
+        def reachable(self, *, timeout_s: float = 2.0) -> tuple[bool, str]:
+            return True, "ok"
+
+        def generate_json(self, *args: object, **kwargs: object) -> str:
+            raise LLMError("Ollama request timed out")
+
+    draft, _trace, warnings = run_staged_pipeline(
+        "A music production company with multiple recording studios and artistes",
+        provider=_TimeoutProvider(),
+    )
+    assert isinstance(draft.get("models"), list)
+    assert any("step1 timed out" in w for w in warnings)
+    assert draft.get("_pipeline", {}).get("mode") == "staged"
+
+
+def test_step1_llm_404_does_not_claim_timeout() -> None:
+    from app.llm_provider import LLMError
+    from tests.test_ai_pack_disambiguation import VISITOR_LOG_PROMPT
+
+    class _NotFoundProvider(LLMProvider):
+        @property
+        def name(self) -> str:
+            return "ollama"
+
+        def reachable(self, *, timeout_s: float = 2.0) -> tuple[bool, str]:
+            return True, "ok"
+
+        def generate_json(self, *args: object, **kwargs: object) -> str:
+            raise LLMError("Ollama HTTP 404: Not Found", status_code=404)
+
+    draft, _trace, warnings = run_staged_pipeline(
+        VISITOR_LOG_PROMPT,
+        provider=_NotFoundProvider(),
+    )
+    assert isinstance(draft.get("models"), list)
+    assert any("step1 LLM failed" in w for w in warnings)
+    assert any("step1 empty — seeding unpacked draft" in w for w in warnings)
+    assert not any("step1 timed out" in w for w in warnings)
+    assert draft.get("_pipeline", {}).get("mode") == "staged"
+
+
+def test_register_step1_does_not_ask_for_full_vertical() -> None:
+    from app.ai_pipeline import step1_entities
+    from tests.test_ai_pack_disambiguation import VISITOR_LOG_PROMPT
+
+    class _Capture(LLMProvider):
+        def __init__(self) -> None:
+            self.system = ""
+
+        @property
+        def name(self) -> str:
+            return "capture"
+
+        def reachable(self, *, timeout_s: float = 2.0) -> tuple[bool, str]:
+            return True, "ok"
+
+        def generate_json(self, prompt: str, *, system: str | None = None, **kwargs: object) -> str:
+            self.system = system or ""
+            return json.dumps(
+                [
+                    {
+                        "name": "visitor_log",
+                        "purpose": "paper register row",
+                        "is_workflow": True,
+                        "loop_role": "transaction",
+                    }
+                ]
+            )
+
+    provider = _Capture()
+    entities = step1_entities(
+        provider,
+        VISITOR_LOG_PROMPT,
+        None,
+        max_entities=1,
+        document_shape="register",
+    )
+    assert "OPERATOR BRIEF CONTRACT" in provider.system
+    assert "FULL vertical" in provider.system
+    assert "Do NOT invent a FULL vertical" in provider.system
+    assert "SUBSTANTIVE entities for a serious ops app" not in provider.system
+    assert "sites/facilities" not in provider.system
+    assert len(entities) == 1
+    assert entities[0]["is_workflow"] is False
+
+
+def test_workspace_step1_still_asks_for_substantive_vertical() -> None:
+    from app.ai_pipeline import _step1_instruction
+
+    blob = _step1_instruction("workspace", 12)
+    assert "SUBSTANTIVE entities" in blob
+    assert "Cover a FULL vertical" in blob
+    register = _step1_instruction("register", 1)
+    assert "ONE entity" in register
+    assert "Do NOT invent a FULL vertical" in register
+    assert "one row in the named paper book" not in register.lower()
+    assert "paper_register" not in register

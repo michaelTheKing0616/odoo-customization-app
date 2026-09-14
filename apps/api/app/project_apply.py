@@ -8,6 +8,8 @@ from typing import Any
 from odoo_client import CreateFieldRequest, CreateModelRequest, FieldType, OdooClient
 from odoo_client.client import OdooClientError
 
+from app.field_helpers import ensure_currency_field_for_monetary
+
 
 @dataclass
 class ApplyResult:
@@ -37,6 +39,45 @@ _TTYPE_MAP = {
 }
 
 
+def _is_currency_companion(field_entry: dict[str, Any]) -> bool:
+    if field_entry.get("related"):
+        return False
+    name = str(field_entry.get("name") or "")
+    relation = str(field_entry.get("relation") or "")
+    ttype = str(field_entry.get("ttype") or "").lower()
+    return ttype == "many2one" and (
+        relation == "res.currency" or name.endswith("currency_id")
+    )
+
+
+def _is_monetary_field(field_entry: dict[str, Any]) -> bool:
+    ttype = str(field_entry.get("ttype") or "").lower()
+    return ttype == "monetary" or bool(field_entry.get("currency_field"))
+
+
+def _field_create_rank(field_entry: dict[str, Any]) -> int:
+    """Currency M2O before scalars, related, then monetary. O2M is a later pass.
+
+    Related fields (including related x_currency_id) must not rank as currency
+    companions — Odoo rejects a related path whose hop is not yet on the model.
+    """
+    if field_entry.get("related"):
+        return 2
+    if _is_currency_companion(field_entry):
+        return 0
+    if _is_monetary_field(field_entry):
+        return 3
+    return 1
+
+
+def _spec_models_index(spec: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    for model in spec.get("models") or []:
+        if isinstance(model, dict) and model.get("model"):
+            out[str(model["model"])] = model
+    return out
+
+
 def _create_one_field(
     client: OdooClient,
     model_name: str,
@@ -51,6 +92,14 @@ def _create_one_field(
     if client.field_exists(model_name, fname):
         result.skipped.append(f"field:{model_name}.{fname}")
         return
+    related = str(field_entry.get("related") or "").strip()
+    if related:
+        hop = related.split(".")[0]
+        if hop and not client.field_exists(model_name, hop):
+            result.warnings.append(
+                f"Skipped {model_name}.{fname}: related hop {hop!r} missing"
+            )
+            return
     ttype_raw = str(field_entry.get("ttype") or "char").lower()
     ttype = _TTYPE_MAP.get(ttype_raw)
     if ttype is None:
@@ -84,8 +133,82 @@ def _create_one_field(
         result.warnings.append(f"Failed {model_name}.{fname}: {exc}")
 
 
+def _ensure_live_currency_for_monetary(
+    client: OdooClient,
+    model_name: str,
+    field_entry: dict[str, Any],
+    result: ApplyResult,
+) -> None:
+    currency_name = str(field_entry.get("currency_field") or "x_currency_id").strip()
+    if not currency_name:
+        return
+    try:
+        name, created = ensure_currency_field_for_monetary(
+            client, model_name, currency_field=currency_name
+        )
+        if created:
+            result.fields_created += 1
+            result.warnings.append(f"Created {model_name}.{name} for monetary apply")
+    except (OdooClientError, ValueError, Exception) as exc:  # noqa: BLE001
+        result.warnings.append(
+            f"Currency field {model_name}.{currency_name} before monetary failed: {exc}"
+        )
+
+
+def _ensure_o2m_inverse_on_live(
+    client: OdooClient,
+    spec: dict[str, Any],
+    parent_model: str,
+    field_entry: dict[str, Any],
+    result: ApplyResult,
+) -> bool:
+    """Odoo rejects O2M unless the inverse M2O already exists on the target."""
+    relation = str(field_entry.get("relation") or "")
+    inverse = str(field_entry.get("relation_field") or "")
+    fname = str(field_entry.get("name") or "")
+    if not relation or not inverse:
+        result.warnings.append(
+            f"Skipped {parent_model}.{fname}: O2M missing relation/relation_field"
+        )
+        return False
+    if not relation.startswith("x_"):
+        if client.field_exists(relation, inverse):
+            return True
+        result.warnings.append(
+            f"Skipped {parent_model}.{fname}: stock {relation} has no inverse {inverse}"
+        )
+        return False
+    if client.field_exists(relation, inverse):
+        return True
+    child = _spec_models_index(spec).get(relation)
+    inv_spec = None
+    if child:
+        inv_spec = next(
+            (
+                f
+                for f in (child.get("fields") or [])
+                if isinstance(f, dict) and str(f.get("name") or "") == inverse
+            ),
+            None,
+        )
+    if not isinstance(inv_spec, dict):
+        inv_spec = {
+            "name": inverse,
+            "ttype": "many2one",
+            "string": parent_model,
+            "relation": parent_model,
+        }
+    _create_one_field(client, relation, inv_spec, result)
+    if client.field_exists(relation, inverse):
+        return True
+    result.warnings.append(
+        f"Skipped {parent_model}.{fname}: inverse {relation}.{inverse} missing"
+    )
+    return False
+
+
 def apply_project_spec(client: OdooClient, spec: dict[str, Any]) -> ApplyResult:
-    """Create missing models + fields (two-pass: scalars/M2O first, then O2M)."""
+    """Create missing models + fields (currency, then scalars/M2O, then O2M)."""
     result = ApplyResult()
     models = spec.get("models") or []
     if not isinstance(models, list):
@@ -123,19 +246,25 @@ def apply_project_spec(client: OdooClient, spec: dict[str, Any]) -> ApplyResult:
             result.skipped.append(f"model:{model_name}")
         ready_models.append((model_name, model_entry))
 
-    # Pass 1: everything except one2many (so inverse M2Os exist first)
+    # Pass 1: everything except one2many, currency companions first
     for model_name, model_entry in ready_models:
         fields = model_entry.get("fields") or []
         if not isinstance(fields, list):
             continue
-        for field_entry in fields:
-            if not isinstance(field_entry, dict):
-                continue
-            if str(field_entry.get("ttype") or "").lower() == "one2many":
-                continue
+        ordered = [
+            f
+            for f in fields
+            if isinstance(f, dict) and str(f.get("ttype") or "").lower() != "one2many"
+        ]
+        ordered.sort(key=_field_create_rank)
+        for field_entry in ordered:
+            if _is_monetary_field(field_entry):
+                _ensure_live_currency_for_monetary(
+                    client, model_name, field_entry, result
+                )
             _create_one_field(client, model_name, field_entry, result)
 
-    # Pass 2: one2many
+    # Pass 2: one2many after inverses exist (create missing custom inverses)
     for model_name, model_entry in ready_models:
         fields = model_entry.get("fields") or []
         if not isinstance(fields, list):
@@ -144,6 +273,10 @@ def apply_project_spec(client: OdooClient, spec: dict[str, Any]) -> ApplyResult:
             if not isinstance(field_entry, dict):
                 continue
             if str(field_entry.get("ttype") or "").lower() != "one2many":
+                continue
+            if not _ensure_o2m_inverse_on_live(
+                client, spec, model_name, field_entry, result
+            ):
                 continue
             _create_one_field(client, model_name, field_entry, result)
 

@@ -37,16 +37,71 @@ def repair_json_text(text: str) -> str:
     return s
 
 
+def _in_unterminated_json_string(text: str) -> tuple[bool, bool]:
+    """Return (inside_string, dangling_escape) using JSON string rules."""
+    in_string = False
+    escape = False
+    for ch in text:
+        if not in_string:
+            if ch == '"':
+                in_string = True
+            continue
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == '"':
+            in_string = False
+    return in_string, escape
+
+
+def close_unterminated_string(text: str) -> str:
+    """Close a JSON string that was cut off at the token limit."""
+    s = text.rstrip()
+    in_string, escape = _in_unterminated_json_string(s)
+    if escape and s.endswith("\\"):
+        s = s[:-1]
+        in_string, escape = _in_unterminated_json_string(s)
+    if in_string:
+        s += '"'
+    return s
+
+
 def close_truncated_json(text: str) -> str:
     """Close unbalanced brackets/braces when the model hit token limits."""
-    s = text.rstrip()
+    s = close_unterminated_string(text.rstrip())
     if not s:
         return s
-    # Drop a trailing partial key/value (after last comma at top level-ish)
-    s = re.sub(r",\s*[^,\]\}]*$", "", s)
-    open_brackets = max(0, s.count("[") - s.count("]"))
-    open_braces = max(0, s.count("{") - s.count("}"))
-    return s + ("]" * open_brackets) + ("}" * open_braces)
+    in_string, _escape = _in_unterminated_json_string(s)
+    if not in_string:
+        tail = re.search(r",\s*\"[^\"]*$", s)
+        if tail:
+            s = s[: tail.start()]
+    stack: list[str] = []
+    in_string = False
+    escape = False
+    for ch in s:
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+            continue
+        if ch in "{[":
+            stack.append(ch)
+        elif ch == "}" and stack and stack[-1] == "{":
+            stack.pop()
+        elif ch == "]" and stack and stack[-1] == "[":
+            stack.pop()
+    closers = {"{": "}", "[": "]"}
+    return s + "".join(closers[ch] for ch in reversed(stack))
 
 
 def parse_llm_json(text: str) -> Any:
@@ -66,6 +121,7 @@ def parse_llm_json(text: str) -> Any:
             candidate,
             repair_json_text(candidate),
             close_truncated_json(repair_json_text(candidate)),
+            close_unterminated_string(candidate),
         ):
             if variant and variant not in seen:
                 seen.add(variant)
@@ -73,11 +129,12 @@ def parse_llm_json(text: str) -> Any:
 
     last_err: json.JSONDecodeError | None = None
     for variant in variants:
-        try:
-            return json.loads(variant)
-        except json.JSONDecodeError as exc:
-            last_err = exc
-            continue
+        for strict in (True, False):
+            try:
+                return json.loads(variant, strict=strict)
+            except json.JSONDecodeError as exc:
+                last_err = exc
+                continue
 
     detail = str(last_err) if last_err else "invalid JSON"
     raise ValueError(

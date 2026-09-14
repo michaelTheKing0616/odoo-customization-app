@@ -53,9 +53,81 @@ NOUN_STOPWORDS = frozenset(
         "super",
         "market",
         "store",
+        "they",
+        "came",
+        "just",
+        "unless",
+        "already",
+        "would",
+        "nice",
+        "only",
+        "safe",
+        "optional",
+        "someone",
+        "sits",
+        "reception",
+        "hours",
+        "hour",
+        "paper",
+        "book",
+        "office",
+        "lobby",
+        "person",
+        "who",
+        "see",
+        "are",
+        "not",
+        "use",
+        "stay",
+        "more",
+        "than",
+        "two",
+        "second",
+        "invent",
+        "dont",
+        "don't",
+        "desk",
+        "front",
+        "still",
+        "can",
+        "but",
+        "don",
+        "uses",
+        "paper",
+        "completeness",
+        "certification",
+        "production",
+        # Function / chrome words (Lagos punch-card class — not domain nouns).
+        "what",
+        "have",
+        "should",
+        "tied",
+        "adjacent",
+        "back",
+        "residual",
+        "get",
+        "buy",
+        "copy",
+        "fake",
+        "designer",
+        "studio",
+        "new",
+        "one",
+        "shop",
+        "free",
+        "cashier",  # actor role — covered by reuse/actors, not x_cashier
+        "coffee",  # product noun on punch-card residual, not a parallel model
+        "community",  # "Community POS" chrome
+        "remaining",  # covered by remaining-punches field, not x_remaining
+        "stock",  # "stock POS" / receipts stay stock — not inventory residual
+        "loyalty",  # covered by punch-card residual
+        "customer",  # covered by res.partner when punch card / Contacts
+        "contact",  # "Contacts" / tied to customer — res.partner, not x_contact
     }
 )
 
+# Header geometry copied onto lines (transfer from/to). Do not treat timesheet
+# ``x_date`` or optional ``x_company_id`` as dupes — sale.order.line keeps company.
 _LINE_PARENT_DUP_FIELDS = frozenset(
     {
         "x_from_branch_id",
@@ -63,11 +135,11 @@ _LINE_PARENT_DUP_FIELDS = frozenset(
         "x_branch_from_id",
         "x_branch_to_id",
         "x_transfer_date",
-        "x_date",
         "x_country_id",
-        "x_company_id",
     }
 )
+# Only a duplicate when the parent already stores the same name (header date).
+_LINE_PARENT_DUP_IF_ON_PARENT = frozenset({"x_date"})
 
 
 def _models_index(draft: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -79,13 +151,16 @@ def _models_index(draft: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def _infer_line_parent_model(line_id: str, by_id: dict[str, dict[str, Any]]) -> str | None:
-    """x_branch_transfer_line → x_branch_transfer when present."""
+    """x_branch_transfer_line → x_branch_transfer; x_rate_line → x_rate_card."""
     if not line_id.endswith("_line"):
         return None
     base = line_id[: -len("_line")]
     if base in by_id:
         return base
-    # x_order_line may parent to x_store_order via existing m2o
+    for suffix in ("_card", "_order", "_booking", "_session"):
+        cand = f"{base}{suffix}"
+        if cand in by_id:
+            return cand
     for mid, model in by_id.items():
         if mid == line_id:
             continue
@@ -94,6 +169,23 @@ def _infer_line_parent_model(line_id: str, by_id: dict[str, dict[str, Any]]) -> 
                 continue
             if f.get("ttype") == "one2many" and f.get("relation") == line_id:
                 return mid
+    stem = base.replace("x_", "", 1)
+    fuzzy: list[str] = []
+    for mid in by_id:
+        if mid == line_id or mid.endswith("_line") or not mid.startswith("x_"):
+            continue
+        leaf_parts = mid.replace("x_", "", 1).split("_")
+        if stem in leaf_parts or mid.replace("x_", "", 1).startswith(stem + "_"):
+            fuzzy.append(mid)
+    if len(fuzzy) == 1:
+        return fuzzy[0]
+    if stem in {"service", "item", "product", "fee"}:
+        for token in ("booking", "session", "engagement", "order"):
+            for mid in by_id:
+                if mid.endswith("_line"):
+                    continue
+                if token in mid.replace("x_", "", 1).split("_"):
+                    return mid
     return None
 
 
@@ -103,6 +195,14 @@ def ensure_line_model_parent_links(draft: dict[str, Any]) -> list[str]:
     by_id = _models_index(draft)
     for mid, model in list(by_id.items()):
         if not mid.endswith("_line"):
+            continue
+        stem = mid[: -len("_line")]
+        # Catalog+booking usage lines already have two intended parents —
+        # do not infer a third (rate card, register, …).
+        if stem in by_id and any(
+            tok in stem
+            for tok in ("equipment", "asset", "gear", "vehicle", "instrument")
+        ):
             continue
         parent_id = _infer_line_parent_model(mid, by_id)
         if not parent_id:
@@ -123,12 +223,31 @@ def ensure_line_model_parent_links(draft: dict[str, Any]) -> list[str]:
             fk_name = "x_count_id"
 
         fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
+        existing_parent_fk = next(
+            (
+                str(f.get("name") or "")
+                for f in fields
+                if f.get("ttype") == "many2one"
+                and str(f.get("relation") or "") == parent_id
+                and f.get("name")
+            ),
+            None,
+        )
+        if existing_parent_fk:
+            fk_name = existing_parent_fk
         names = {str(f.get("name")) for f in fields}
+        parent_names = {
+            str(f.get("name"))
+            for f in (parent.get("fields") or [])
+            if isinstance(f, dict) and f.get("name")
+        }
+        dup_drop = set(_LINE_PARENT_DUP_FIELDS) | (
+            _LINE_PARENT_DUP_IF_ON_PARENT & parent_names
+        )
         kept = [
             f
             for f in fields
-            if str(f.get("name")) not in _LINE_PARENT_DUP_FIELDS
-            or str(f.get("name")) == fk_name
+            if str(f.get("name")) not in dup_drop or str(f.get("name")) == fk_name
         ]
         if len(kept) != len(fields):
             notes.append(f"post_critique: stripped duplicate header fields on {mid}")
@@ -248,6 +367,11 @@ def ensure_workflow_models_have_state_field(draft: dict[str, Any]) -> list[str]:
         }
         if "x_status" not in names:
             continue
+        from app.ai_odoo_app_bar import looks_like_register
+        from app.ai_model_quality import is_party_link_model
+
+        if looks_like_register(mid) or mid.endswith("_line") or is_party_link_model(model):
+            continue
         if not model.get("is_workflow"):
             model["is_workflow"] = True
             notes.append(f"post_critique: promoted {mid} to workflow (x_status)")
@@ -334,6 +458,11 @@ def verify_model_ui_completeness(draft: dict[str, Any]) -> list[dict[str, Any]]:
     }
     items: list[dict[str, Any]] = []
     for mid in sorted(by_id):
+        model = by_id[mid]
+        if str(model.get("mode") or "new") == "inherit":
+            continue
+        if not str(mid).startswith("x_"):
+            continue
         vt = view_types.get(mid, set())
         has_lf = "list" in vt or "tree" in vt
         has_form = "form" in vt
@@ -404,6 +533,12 @@ def run_post_critique_pipeline(
     missing_ui = [c["id"] for c in ui_items if not c.get("ok")]
     if missing_ui:
         notes.append(f"post_critique: UI gaps remain: {', '.join(missing_ui)}")
+    from app.ai_domain_packs import load_domain_pack, prune_extraneous_models
+
+    pack_id = str(draft.get("domain_pack") or "")
+    pack_body = load_domain_pack(pack_id) if pack_id else None
+    if pack_body:
+        notes.extend(prune_extraneous_models(draft, pack_body))
     return notes
 
 

@@ -11,6 +11,12 @@ from sqlalchemy.orm import Session
 from odoo_client import CreateModelRequest, CreateViewRequest, parse_arch, render_arch, render_inherit_replace_arch
 from odoo_client.blueprint import apply_form_layout, auto_form_layout_for_model
 from odoo_client.view_arch import (
+    build_additive_form_inherit_arch,
+    extract_replaced_form_arch,
+    field_names_in_arch,
+    form_spec_for_additive_repair,
+    inherit_arch_looks_like_full_form_replace,
+    list_x_field_names_in_form_spec,
     merge_inherit_data_arch,
     render_inherit_xpath_arch,
     render_overlay_operation_arch,
@@ -146,6 +152,260 @@ class PolishFormOut(BaseModel):
     applied: bool
     detail: dict[str, Any] = Field(default_factory=dict)
     snapshot_id: str | None = None
+
+
+class DesignerInheritBody(ConfirmAdvancedBody):
+    model: str
+    view_type: str = Field("form", examples=["form", "list"])
+
+
+class DesignerInheritOut(BaseModel):
+    action: Literal["repaired", "already_additive", "unlinked", "missing"]
+    model: str
+    view_type: str
+    view_id: int | None = None
+    view_name: str | None = None
+    snapshot_id: str | None = None
+    kept_custom_fields: list[str] = Field(default_factory=list)
+    remaining_custom_injects: list[str] = Field(default_factory=list)
+    detail: str = ""
+
+
+def _designer_child_name(model: str, view_type: str) -> str:
+    vt = "list" if view_type == "tree" else view_type
+    return f"{model}.designer.{vt}"
+
+
+def _inherit_id_int(raw: Any) -> int | None:
+    if raw in (False, None, 0, "0"):
+        return None
+    if isinstance(raw, (list, tuple)) and raw:
+        return int(raw[0])
+    return int(raw)
+
+
+def _existing_names_for_repair(client: Any, model: str, view_type: str, dumped_arch: str) -> set[str]:
+    """Stock + already-injected fields — keep only truly new x_* in the repair arch."""
+    existing = {n for n in field_names_in_arch(dumped_arch) if not n.startswith("x_")}
+    try:
+        for inject_name in client.list_custom_field_inject_names(model, view_type):
+            # account.move.custom.x_demo_note.form → x_demo_note
+            parts = inject_name.split(".")
+            if len(parts) >= 4 and parts[-1] in {"form", "list", "tree", "search", "kanban"}:
+                field_leaf = parts[-2]
+                if field_leaf.startswith("x_"):
+                    existing.add(field_leaf)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        primary = client.find_view(model, view_type, primary_only=True) or client.find_view(
+            model, view_type
+        )
+        if primary and primary.arch:
+            existing |= {n for n in field_names_in_arch(primary.arch) if not n.startswith("x_")}
+    except Exception:  # noqa: BLE001
+        pass
+    return existing
+
+
+@router.post("/designer-inherit/repair", response_model=DesignerInheritOut)
+def repair_designer_inherit(
+    connection_id: str, body: DesignerInheritBody, db: Session = Depends(get_db)
+) -> DesignerInheritOut:
+    """Rewrite a full-form-replace Designer inherit to additive ``x_*`` only.
+
+    Fixes duplicate Send/Print/Pay and Other Info on stock forms (e.g. Bills)
+    while keeping TEST GROUP / custom fields when possible. If nothing additive
+    remains, unlinks the broken inherit (chrome restored; inject views may still
+    show ``x_*`` fields).
+    """
+    from app.snapshots import save_snapshot, snapshot_view
+
+    if body.model.startswith("x_"):
+        raise HTTPException(
+            status_code=422,
+            detail="Repair is for stock models with a Designer inherit child — custom x_* models own their primary.",
+        )
+    vt = "list" if body.view_type == "tree" else body.view_type
+    if vt != "form":
+        raise HTTPException(status_code=422, detail="Repair is only implemented for form views")
+
+    client = _client(connection_id, db)
+    major = _connection_major(db, connection_id)
+    rows = client.find_designer_inherit_rows(body.model, vt)
+    injects = client.list_custom_field_inject_names(body.model, vt)
+    child_name = _designer_child_name(body.model, vt)
+
+    if not rows:
+        return DesignerInheritOut(
+            action="missing",
+            model=body.model,
+            view_type=vt,
+            view_name=child_name,
+            remaining_custom_injects=injects,
+            detail=f"No view named {child_name!r} — chrome may already be stock, or the inherit used another name.",
+        )
+
+    row = rows[0]
+    view_id = int(row["id"])
+    inherit_id = _inherit_id_int(row.get("inherit_id"))
+    if inherit_id is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{child_name!r} is a primary view, not an inherit child — "
+                "refusing repair/unlink. Fix manually in Odoo Technical → Views."
+            ),
+        )
+
+    arch = row.get("arch") or ""
+    snap = snapshot_view(db, connection_id, client, view_id)
+    snapshot_id = snap.id
+
+    if not inherit_arch_looks_like_full_form_replace(arch):
+        return DesignerInheritOut(
+            action="already_additive",
+            model=body.model,
+            view_type=vt,
+            view_id=view_id,
+            view_name=str(row.get("name") or child_name),
+            snapshot_id=snapshot_id,
+            remaining_custom_injects=injects,
+            detail="Designer inherit is already additive (no full form replace) — hard-refresh Odoo if duplicates persist.",
+        )
+
+    dumped = extract_replaced_form_arch(arch) or arch
+    existing = _existing_names_for_repair(client, body.model, vt, dumped)
+    spec = form_spec_for_additive_repair(arch)
+    try:
+        new_arch = build_additive_form_inherit_arch(
+            spec, existing_field_names=existing, major=major
+        )
+    except ValueError:
+        # Nothing left to inject — drop the chrome-duplicating inherit.
+        client.unlink_view(view_id)
+        save_snapshot(
+            db,
+            connection_id=connection_id,
+            resource_type="view",
+            resource_key=f"view:{view_id}:unlinked",
+            label=f"Unlinked {child_name} (repair had no additive fields)",
+            payload={"view": row, "deleted": True},
+            reversible="no",
+        )
+        return DesignerInheritOut(
+            action="unlinked",
+            model=body.model,
+            view_type=vt,
+            view_id=view_id,
+            view_name=child_name,
+            snapshot_id=snapshot_id,
+            remaining_custom_injects=injects,
+            detail=(
+                "Full-replace inherit removed (no leftover x_* to keep). "
+                "Hard-refresh the Bill/Invoice. Custom inject views listed in remaining_custom_injects may still show fields."
+            ),
+        )
+
+    kept = [n for n in field_names_in_arch(new_arch) if n.startswith("x_")]
+    client.update_view_arch(view_id, new_arch)
+    return DesignerInheritOut(
+        action="repaired",
+        model=body.model,
+        view_type=vt,
+        view_id=view_id,
+        view_name=child_name,
+        snapshot_id=snapshot_id,
+        kept_custom_fields=kept,
+        remaining_custom_injects=injects,
+        detail=(
+            "Rewrote Designer inherit to additive sheet inject — duplicates gone; "
+            f"kept custom fields: {', '.join(kept) or '(none)'}."
+        ),
+    )
+
+
+@router.post("/designer-inherit/unlink", response_model=DesignerInheritOut)
+def unlink_designer_inherit(
+    connection_id: str, body: DesignerInheritBody, db: Session = Depends(get_db)
+) -> DesignerInheritOut:
+    """Unlink ``{model}.designer.{view_type}`` after confirm — restores stock chrome.
+
+    Does not delete ``ir.model.fields`` or ``{model}.custom.*`` inject views.
+    """
+    from app.snapshots import save_snapshot, snapshot_view
+
+    try:
+        require_advanced_confirmation(
+            confirm_advanced=body.confirm_advanced,
+            confirm_phrase=body.confirm_phrase,
+            warning=(
+                f"Unlink will delete the Designer inherit view "
+                f"{_designer_child_name(body.model, body.view_type)!r}. "
+                "Stock Send/Print/Pay / Other Info duplicates clear; custom groups "
+                "that lived only in that inherit disappear (fields may remain via inject views)."
+            ),
+            risks=[
+                "Deletes the extension view row (not the primary stock form)",
+                "TEST GROUP / layout that existed only in that inherit is removed",
+                "Undo cannot recreate a deleted view from a normal arch snapshot",
+                "Prefer Fix duplicate chrome (repair) when you want to keep x_* groups",
+            ],
+        )
+    except ConfirmationRequired as exc:
+        raise _confirm_http(exc) from exc
+
+    client = _client(connection_id, db)
+    vt = "list" if body.view_type == "tree" else body.view_type
+    child_name = _designer_child_name(body.model, vt)
+    rows = client.find_designer_inherit_rows(body.model, vt)
+    injects = client.list_custom_field_inject_names(body.model, vt)
+
+    if not rows:
+        return DesignerInheritOut(
+            action="missing",
+            model=body.model,
+            view_type=vt,
+            view_name=child_name,
+            remaining_custom_injects=injects,
+            detail=f"No view named {child_name!r} to unlink.",
+        )
+
+    row = rows[0]
+    view_id = int(row["id"])
+    if _inherit_id_int(row.get("inherit_id")) is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{child_name!r} is a primary view — refusing unlink. "
+                "Use Odoo Technical → Views and inspect carefully."
+            ),
+        )
+
+    snap = snapshot_view(db, connection_id, client, view_id)
+    client.unlink_view(view_id)
+    save_snapshot(
+        db,
+        connection_id=connection_id,
+        resource_type="view",
+        resource_key=f"view:{view_id}:unlinked",
+        label=f"Unlinked {child_name}",
+        payload={"view": row, "deleted": True},
+        reversible="no",
+    )
+    return DesignerInheritOut(
+        action="unlinked",
+        model=body.model,
+        view_type=vt,
+        view_id=view_id,
+        view_name=child_name,
+        snapshot_id=snap.id,
+        remaining_custom_injects=injects,
+        detail=(
+            f"Unlinked {child_name}. Hard-refresh Odoo. "
+            "To put custom fields back without duplicates: Load existing view → Save Inherit."
+        ),
+    )
 
 
 class XPathPreviewBody(BaseModel):
@@ -339,6 +599,53 @@ def _build_overlay_fragment(body: OverlayApplyBody) -> str:
         widget=body.widget,
         label_target=body.label_target,
     )
+
+
+def _stock_field_names_only(names: set[str] | list[str]) -> set[str]:
+    return {n for n in names if n and not str(n).startswith("x_")}
+
+
+def _unlink_redundant_field_injects(
+    client: Any, model: str, view_type: str, field_names: list[str]
+) -> list[str]:
+    """Remove ``{model}.custom.{field}.{view_type}`` injects now covered by Designer inherit.
+
+    Create-field defaults to inject-into-views; Form layout Save then owns placement.
+    Leaving both produces duplicate widgets (or a false 'already on form' Save refusal).
+    """
+    vt = "list" if view_type == "tree" else view_type
+    removed: list[str] = []
+    for fname in field_names:
+        if not fname.startswith("x_"):
+            continue
+        inject_name = f"{model}.custom.{fname}.{vt}"
+        try:
+            ids = client.execute_kw(
+                "ir.ui.view",
+                "search",
+                [[("name", "=", inject_name), ("model", "=", model)]],
+                {"limit": 1},
+            )
+            if not ids:
+                continue
+            client.unlink_view(int(ids[0]))
+            removed.append(inject_name)
+        except Exception:  # noqa: BLE001 — best-effort cleanup
+            continue
+    return removed
+
+
+def _existing_names_for_designer_additive(
+    client: Any, model: str, primary_arch: str | None
+) -> set[str]:
+    """Stock field names only — canvas ``x_*`` must be free to rewrite the designer inherit."""
+    existing = _stock_field_names_only(field_names_in_arch(primary_arch or ""))
+    try:
+        combined = client.get_combined_view_arch(model, "form")
+        existing |= _stock_field_names_only(field_names_in_arch(combined))
+    except Exception:  # noqa: BLE001
+        pass
+    return existing
 
 
 @router.get("/primary", response_model=ViewOut)
@@ -574,13 +881,89 @@ def save_view(
         )
         snap = snapshot_view(db, connection_id, client, primary.id)
         snapshot_id = snap.id
+
+        stock_model = not body.model.startswith("x_")
+        use_additive_form = (
+            stock_model
+            and vt == "form"
+            and body.spec is not None
+            and not body.arch
+        )
+
         if designer_owns_primary:
+            # Custom models that own the primary still get a full typed arch.
             view = client.update_view_arch(primary.id, arch)
+        elif use_additive_form:
+            # Stock forms: never replace //form with a re-emitted combined dump —
+            # that duplicates Send/Print/Pay and notebook pages from module inherits.
+            # existing = stock fields only so canvas x_* always rewrite designer.form
+            # (create-field inject already put x_* on the combined form — must not
+            # treat that as "nothing to save").
+            existing_names = _existing_names_for_designer_additive(
+                client, body.model, primary.arch
+            )
+            try:
+                inherit_arch = build_additive_form_inherit_arch(
+                    body.spec,
+                    existing_field_names=existing_names,
+                    major=major,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            if existing_child:
+                child_id = int(existing_child[0])
+                view = client.update_view_arch(child_id, inherit_arch)
+            else:
+                view = client.create_inherit_view(
+                    model=body.model,
+                    name=child_name,
+                    view_type=vt,
+                    inherit_id=primary.id,
+                    arch=inherit_arch,
+                )
+            placed = list_x_field_names_in_form_spec(body.spec)
+            _unlink_redundant_field_injects(client, body.model, vt, placed)
         elif existing_child:
-            inherit_arch = render_inherit_replace_arch(vt, arch)
+            inherit_arch = (
+                arch
+                if body.arch and arch.lstrip().startswith("<data")
+                else render_inherit_replace_arch(vt, arch)
+            )
+            # Guard: stock + accidental full replace body still gets rewritten if we
+            # can see form chrome in a raw arch override path — leave raw xpath alone.
+            if (
+                stock_model
+                and vt == "form"
+                and inherit_arch_looks_like_full_form_replace(inherit_arch)
+                and body.spec is not None
+            ):
+                inherit_arch = build_additive_form_inherit_arch(
+                    body.spec,
+                    existing_field_names=_existing_names_for_designer_additive(
+                        client, body.model, primary.arch
+                    ),
+                    major=major,
+                )
             view = client.update_view_arch(int(existing_child[0]), inherit_arch)
         else:
-            inherit_arch = render_inherit_replace_arch(vt, arch)
+            inherit_arch = (
+                arch
+                if body.arch and arch.lstrip().startswith("<data")
+                else render_inherit_replace_arch(vt, arch)
+            )
+            if (
+                stock_model
+                and vt == "form"
+                and inherit_arch_looks_like_full_form_replace(inherit_arch)
+                and body.spec is not None
+            ):
+                inherit_arch = build_additive_form_inherit_arch(
+                    body.spec,
+                    existing_field_names=_existing_names_for_designer_additive(
+                        client, body.model, primary.arch
+                    ),
+                    major=major,
+                )
             view = client.create_inherit_view(
                 model=body.model,
                 name=child_name,

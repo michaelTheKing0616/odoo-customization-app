@@ -25,6 +25,7 @@ import {
   scaffoldOptsFromSpec,
   connectionSupports,
 } from "@/lib/capabilities";
+import { odooMenuUrl, odooViewUrl } from "@/lib/odoo-urls";
 
 const CONFIRM_PHRASE = "I understand the risks";
 const DRAFT_KEY = (cid: string) => `modulespec-draft:${cid}`;
@@ -53,6 +54,8 @@ export default function ModuleSpecPageInner() {
   const [canDevCode, setCanDevCode] = useState(false);
   const [lintBusy, setLintBusy] = useState(false);
   const [sandboxBusy, setSandboxBusy] = useState(false);
+  const [odooAppUrl, setOdooAppUrl] = useState<string | null>(null);
+  const [walkthroughConfirmOpen, setWalkthroughConfirmOpen] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -168,12 +171,48 @@ export default function ModuleSpecPageInner() {
       });
       setGenConfirmOpen(false);
       setNotice(res.message);
+      const menuId = res.root_menu_id;
+      const appUrl =
+        menuId && connection?.url
+          ? odooMenuUrl(connection.url, menuId, res.open_action_id)
+          : connection?.url
+            ? `${connection.url.replace(/\/$/, "")}/web`
+            : null;
+      setOdooAppUrl(appUrl);
       if (res.warnings?.length) setImportWarnings(res.warnings);
     } catch (err) {
       if (err instanceof ConfirmationRequiredError) {
         setError(err.warning);
       } else {
         setError(err instanceof Error ? err.message : "Generate UI failed");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onSeedWalkthrough(phrase: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.seedModuleSpecWalkthrough(connectionId, {
+        spec: spec as Record<string, unknown>,
+        confirm_advanced: true,
+        confirm_phrase: phrase,
+      });
+      setWalkthroughConfirmOpen(false);
+      setNotice(res.message);
+      if (res.warnings?.length) setImportWarnings(res.warnings);
+      if (res.open_model && res.open_record_id && connection?.url) {
+        setOdooAppUrl(
+          odooViewUrl(connection.url, res.open_model, "form", null, res.open_record_id),
+        );
+      }
+    } catch (err) {
+      if (err instanceof ConfirmationRequiredError) {
+        setError(err.warning);
+      } else {
+        setError(err instanceof Error ? err.message : "Walkthrough seed failed");
       }
     } finally {
       setBusy(false);
@@ -248,7 +287,7 @@ export default function ModuleSpecPageInner() {
     <div className="mx-auto max-w-6xl" data-testid="modulespec-page">
       <PageHeader
         title="ModuleSpec"
-        description="The blueprint of your app — single contract for AI drafts, import, and Generate UI."
+        description="The same contract as the wizard JSON — models, views, menus, and workflows. Generate UI writes the Operations / Inventory / People tree. Then Open app in Odoo — you do not pick models one by one."
       />
       <VersionAwarenessBanner capabilities={connection?.capabilities} />
       {(applyBlocked || saveBlocked) ? (
@@ -260,7 +299,23 @@ export default function ModuleSpecPageInner() {
       {error ? <ErrorNotice message={error} className="mt-4" /> : null}
       {notice ? (
         <Callout variant="info" title="Notice" className="mt-4">
-          {notice}
+          <p>{notice}</p>
+          {odooAppUrl ? (
+            <p className="mt-2">
+              <a
+                href={odooAppUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="open-app-in-odoo"
+                className="inline-flex bg-accent px-3 py-1.5 text-sm font-semibold text-white"
+              >
+                Open app in Odoo
+              </a>
+              <span className="ml-2 text-xs text-muted">
+                Opens the app root. Line items stay on parent forms.
+              </span>
+            </p>
+          ) : null}
         </Callout>
       ) : null}
         {importWarnings.length > 0 && (
@@ -309,6 +364,26 @@ export default function ModuleSpecPageInner() {
           >
             Generate UI from ModuleSpec
           </button>
+          {odooAppUrl ? (
+            <>
+              <a
+                href={odooAppUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-accent px-3 py-1.5 text-sm font-semibold text-white"
+              >
+                Open app in Odoo
+              </a>
+              <button
+                type="button"
+                disabled={busy || !canApply}
+                onClick={() => setWalkthroughConfirmOpen(true)}
+                className="border border-accent px-3 py-1.5 text-sm text-muted disabled:opacity-50"
+              >
+                Load demo walkthrough
+              </button>
+            </>
+          ) : null}
         </div>
 
         {barcodeModuleAllowed ? (
@@ -357,6 +432,20 @@ export default function ModuleSpecPageInner() {
         busy={busy}
         onCancel={() => setGenConfirmOpen(false)}
         onConfirm={onGenerateUi}
+      />
+      <ConfirmDialogV2
+        open={walkthroughConfirmOpen}
+        riskLevel="standard"
+        title="Load demo walkthrough"
+        warning="Creates sample records on this live Odoo so Operations / smart buttons are not empty."
+        risks={[
+          "Writes data rows on custom x_* models (named Walkthrough …)",
+          "Prefer sandbox first",
+        ]}
+        phrase={CONFIRM_PHRASE}
+        busy={busy}
+        onCancel={() => setWalkthroughConfirmOpen(false)}
+        onConfirm={onSeedWalkthrough}
       />
     </div>
   );

@@ -174,7 +174,7 @@ def score_packs_with_embeddings(
         return None
     q = prompt_vecs[0]
     scored = [
-        (pid, _cosine(q, vec or []))
+        (pid, cosine_similarity(q, vec or []))
         for (pid, _pack), vec in zip(packs, pack_vecs, strict=True)
     ]
     scored.sort(key=lambda x: x[1], reverse=True)
@@ -200,8 +200,11 @@ def retrieve_with_rag(
     )
     # Regex / Jaccard path first for strong lexical hits (score==1.0 from regex)
     lexical = jaccard_retrieve(prompt)
-    if lexical is not None and lexical[2] >= 0.99:
-        return lexical[0], lexical[1], lexical[2], "regex"
+    if lexical is not None:
+        _pid, pack, score = lexical
+        retrieval = pack.get("_retrieval") if isinstance(pack, dict) else None
+        if isinstance(retrieval, dict) and str(retrieval.get("method") or "") == "regex":
+            return lexical[0], lexical[1], float(score), "regex"
 
     packs = pack_loader()
     emb = score_packs_with_embeddings(prompt, packs) if rag_enabled() else None

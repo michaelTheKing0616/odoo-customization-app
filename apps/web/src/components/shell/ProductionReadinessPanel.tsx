@@ -6,8 +6,10 @@ import { api, Connection, ProductionReadinessReport } from "@/lib/api";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
+import { Disclosure } from "@/components/ui/Disclosure";
 import { Card } from "@/components/ui/layout-primitives";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { isLocalSandboxUrl } from "@/lib/odoo-urls";
 
 type Props = {
   connection: Connection;
@@ -25,6 +27,9 @@ export function ProductionReadinessPanel({ connection, onRefreshConnection }: Pr
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ackAdmin, setAckAdmin] = useState(false);
+
+  const sandbox = isLocalSandboxUrl(connection.url);
+  const required = connection.write_mode === "production";
 
   const load = useCallback(async () => {
     setError(null);
@@ -83,20 +88,8 @@ export function ProductionReadinessPanel({ connection, onRefreshConnection }: Pr
   const checklist =
     report && !Array.isArray(report) && Array.isArray(report.items) ? report : null;
 
-  return (
-    <Callout
-      variant={checklist?.passed ? "info" : "warning"}
-      title="Production readiness checklist"
-      testId="production-readiness-panel"
-      className="mt-4"
-    >
-      <p className="text-sm">
-        Required before enabling <strong>production</strong> write mode.{" "}
-        <Link href="/settings/trust-safety" className="text-accent hover:underline">
-          Read the safety contract
-        </Link>
-        .
-      </p>
+  const body = (
+    <>
       {error ? <ErrorNotice message={error} className="mt-3" /> : null}
       {checklist ? (
         <ul className="mt-3 space-y-2">
@@ -178,6 +171,53 @@ export function ProductionReadinessPanel({ connection, onRefreshConnection }: Pr
           Checklist complete — production write mode can be enabled.
         </p>
       ) : null}
+    </>
+  );
+
+  if (!required && sandbox) {
+    return (
+      <Callout
+        variant="info"
+        title="Production readiness — not required for sandbox Autopilot"
+        testId="production-readiness-panel"
+        className="mt-4"
+      >
+        <p className="text-sm">
+          Job Autopilot on this local sandbox does not use this checklist. Health-check,
+          admin-user, and backup-artifact fails here do <strong>not</strong> block a sandbox
+          run. Complete the list only before unlocking <strong>production</strong> write mode.{" "}
+          <Link href="/settings/trust-safety" className="text-accent hover:underline">
+            Safety contract
+          </Link>
+          .
+        </p>
+        <Disclosure
+          title="Show production checklist"
+          defaultOpen={false}
+          className="mt-3"
+          testId="production-readiness-disclosure"
+        >
+          {body}
+        </Disclosure>
+      </Callout>
+    );
+  }
+
+  return (
+    <Callout
+      variant={checklist?.passed ? "info" : "warning"}
+      title="Production readiness checklist"
+      testId="production-readiness-panel"
+      className="mt-4"
+    >
+      <p className="text-sm">
+        Required before enabling <strong>production</strong> write mode.{" "}
+        <Link href="/settings/trust-safety" className="text-accent hover:underline">
+          Read the safety contract
+        </Link>
+        .
+      </p>
+      {body}
     </Callout>
   );
 }

@@ -2,7 +2,7 @@
   "prompt": "Simple task tracker",
   "trace": "step1:entities=1\nstep2:models=1\nstep3:rels=1\nstep4:workflows\nstep5:autos=1\nstep6:views\nrules",
   "warnings": [
-    "step1: ambition=thin max_entities=6",
+    "step1: ambition=thin shape=workspace max_entities=6",
     "added 1 default action(s)",
     "added root + 1 menu(s)",
     "added 3 default view arch(es)",
@@ -15,6 +15,6 @@
   ],
   "model_count": 1,
   "pipeline_mode": "staged",
-  "guardrail_steps": 7,
-  "llm_calls": 7
+  "guardrail_steps": 5,
+  "llm_calls": 5
 }

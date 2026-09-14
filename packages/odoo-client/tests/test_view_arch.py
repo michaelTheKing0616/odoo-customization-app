@@ -48,6 +48,186 @@ def test_render_form_with_group_and_notebook() -> None:
     assert 'name="x_notes"' in arch
 
 
+def test_render_skips_empty_field_names() -> None:
+    arch = render_form_arch(
+        FormViewSpec(
+            string="Invoice",
+            children=[
+                GroupNode(
+                    string="Extras",
+                    children=[
+                        FieldNode(name=""),
+                        FieldNode(name="   "),
+                        FieldNode(name="x_my_test"),
+                        FieldNode(name="x_demo_note"),
+                    ],
+                ),
+                NotebookNode(
+                    pages=[
+                        PageNode(
+                            string="Invoice Lines",
+                            children=[FieldNode(name="invoice_line_ids")],
+                        )
+                    ]
+                ),
+            ],
+        )
+    )
+    assert 'name=""' not in arch
+    assert 'name="x_my_test"' in arch
+    assert 'name="x_demo_note"' in arch
+    assert 'name="invoice_line_ids"' in arch
+
+
+def test_additive_form_inherit_skips_stock_chrome() -> None:
+    from odoo_client.view_arch import (
+        ButtonNode,
+        build_additive_form_inherit_arch,
+        inherit_arch_looks_like_full_form_replace,
+        render_form_arch,
+        render_inherit_replace_arch,
+    )
+
+    spec = FormViewSpec(
+        string="Bills",
+        header_buttons=[
+            ButtonNode(string="Send", name="action_invoice_sent", type="object"),
+            ButtonNode(string="Print", name="action_print", type="object"),
+            ButtonNode(string="Pay", name="action_register_payment", type="object"),
+        ],
+        button_box=[ButtonNode(string="Payments", name="1", type="action")],
+        children=[
+            GroupNode(string="Main", children=[FieldNode(name="partner_id")]),
+            GroupNode(
+                string="TEST GROUP",
+                children=[
+                    FieldNode(name="x_my_test"),
+                    FieldNode(name="x_demo_note"),
+                ],
+            ),
+            NotebookNode(
+                pages=[
+                    PageNode(string="Invoice Lines", children=[FieldNode(name="invoice_line_ids")]),
+                    PageNode(string="Other Info", children=[FieldNode(name="narration")]),
+                    PageNode(string="Other Info", children=[FieldNode(name="narration")]),
+                ]
+            ),
+        ],
+    )
+    arch = build_additive_form_inherit_arch(
+        spec,
+        existing_field_names={"partner_id", "invoice_line_ids", "narration"},
+    )
+    assert 'position="inside"' in arch
+    assert "//sheet" in arch
+    assert "TEST GROUP" in arch
+    assert 'name="x_my_test"' in arch
+    assert 'name="x_demo_note"' in arch
+    # Must NOT re-emit stock chrome (would duplicate under module inherits)
+    assert "<header" not in arch
+    assert "action_invoice_sent" not in arch
+    assert "button_box" not in arch
+    assert "<notebook" not in arch
+    assert 'name="partner_id"' not in arch
+    assert 'name="narration"' not in arch
+
+    bad = render_inherit_replace_arch("form", render_form_arch(spec))
+    assert inherit_arch_looks_like_full_form_replace(bad)
+    assert not inherit_arch_looks_like_full_form_replace(arch)
+
+    from odoo_client.view_arch import (
+        extract_replaced_form_arch,
+        form_spec_for_additive_repair,
+    )
+
+    inner = extract_replaced_form_arch(bad)
+    assert inner is not None
+    assert inner.lstrip().startswith("<form")
+    repaired_spec = form_spec_for_additive_repair(bad)
+    repaired = build_additive_form_inherit_arch(
+        repaired_spec,
+        existing_field_names={"partner_id", "invoice_line_ids", "narration"},
+    )
+    assert "TEST GROUP" in repaired
+    assert 'name="x_demo_note"' in repaired
+    assert "<header" not in repaired
+    assert "<notebook" not in repaired
+
+
+def test_additive_emits_x_fields_even_if_already_on_combined() -> None:
+    """Designer Save must rewrite x_* groups; pass stock-only names as existing."""
+    from odoo_client.view_arch import build_additive_form_inherit_arch
+
+    spec = FormViewSpec(
+        string="Bills",
+        children=[
+            GroupNode(string="Main", children=[FieldNode(name="partner_id")]),
+            GroupNode(
+                string="My Group",
+                children=[FieldNode(name="x_demo_note"), FieldNode(name="x_test_field")],
+            ),
+        ],
+    )
+    # If x_* were wrongly treated as existing (old combined-arch bug), Save would refuse.
+    try:
+        build_additive_form_inherit_arch(
+            spec,
+            existing_field_names={"partner_id", "x_demo_note", "x_test_field"},
+        )
+        assert False, "x_* listed in existing_field_names must be skipped"
+    except ValueError:
+        pass
+
+    arch = build_additive_form_inherit_arch(
+        spec,
+        existing_field_names={"partner_id"},
+    )
+    assert "My Group" in arch
+    assert 'name="x_demo_note"' in arch
+    assert 'name="x_test_field"' in arch
+    assert 'name="partner_id"' not in arch
+
+
+def test_additive_walks_nested_groups() -> None:
+    from odoo_client.view_arch import build_additive_form_inherit_arch
+
+    spec = FormViewSpec(
+        string="Bills",
+        children=[
+            GroupNode(
+                string="Outer",
+                children=[
+                    GroupNode(
+                        string="Inner custom",
+                        children=[FieldNode(name="x_nested")],
+                    )
+                ],
+            )
+        ],
+    )
+    arch = build_additive_form_inherit_arch(spec, existing_field_names=set())
+    assert "Inner custom" in arch
+    assert 'name="x_nested"' in arch
+
+
+def test_additive_refuses_stock_only_canvas() -> None:
+    from odoo_client.view_arch import build_additive_form_inherit_arch
+
+    spec = FormViewSpec(
+        string="Bills",
+        children=[
+            GroupNode(string="Main", children=[FieldNode(name="partner_id")]),
+        ],
+    )
+    try:
+        build_additive_form_inherit_arch(spec, existing_field_names={"partner_id"})
+        assert False, "expected ValueError"
+    except ValueError as exc:
+        msg = str(exc)
+        assert "x_*" in msg
+        assert "Send/Print/Pay" in msg or "stock" in msg.lower()
+
+
 def test_render_form_header_and_smart_buttons() -> None:
     from odoo_client.view_arch import ButtonNode, parse_form_arch
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, type StudioFeatureRecipe } from "@/lib/api";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { InlineWait } from "@/components/studio/StudioBusyLabel";
 import { formatFetchError } from "@/lib/format-fetch-error";
 
 type Props = {
@@ -48,7 +49,7 @@ export function StudioFeatureRecipesPanel({ className = "" }: Props) {
         How each Studio-doc suggested feature maps to Builder / Designer / Option A — honesty
         statuses, not a Studio clone.
       </p>
-      {loading && <p className="mt-2 text-xs text-muted">Loading…</p>}
+      {loading && <InlineWait />}
       {error ? (
         <ErrorNotice
           message={error}

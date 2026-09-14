@@ -32,6 +32,7 @@ JOB_TIMEOUTS: dict[str, float | None] = {
     "script_run": 120.0,
     "ai_draft": 1800.0,
     "ai_enrich": 900.0,
+    "job_autopilot": 2700.0,
 }
 
 _TERMINAL_STATUSES = frozenset(
@@ -52,13 +53,17 @@ def _execute_with_timeout(
         raise RuntimeError("Cancelled before start")
     if timeout_s is None:
         return fn()
-    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="odoo-job-inner") as inner:
-        fut = inner.submit(fn)
-        try:
-            return fut.result(timeout=timeout_s)
-        except FuturesTimeoutError as exc:
-            cancel_ev.set()
-            raise TimeoutError(f"Job exceeded {timeout_s:g}s limit") from exc
+    # Do not `with ThreadPoolExecutor`: its shutdown(wait=True) blocks until the
+    # worker finishes, so a 45-minute cap only lands after Autopilot actually stops.
+    inner = ThreadPoolExecutor(max_workers=1, thread_name_prefix="odoo-job-inner")
+    fut = inner.submit(fn)
+    try:
+        return fut.result(timeout=timeout_s)
+    except FuturesTimeoutError as exc:
+        cancel_ev.set()
+        raise TimeoutError(f"Job exceeded {timeout_s:g}s limit") from exc
+    finally:
+        inner.shutdown(wait=False, cancel_futures=True)
 
 
 class JobRunner(Protocol):
@@ -127,7 +132,32 @@ class InProcessJobRunner:
                     "job.timeout",
                     extra={"job_id": job_id, "kind": kind, "timeout_s": timeout},
                 )
-                _set_status(job_id, "timeout", error=str(exc))
+                kept = _job_result_dict(job_id)
+                draft = kept.get("draft") if isinstance(kept.get("draft"), dict) else None
+                if not draft:
+                    draft = (
+                        kept.get("partial_draft")
+                        if isinstance(kept.get("partial_draft"), dict)
+                        else None
+                    )
+                if isinstance(draft, dict) and draft:
+                    kept["draft"] = draft
+                    kept["partial_draft"] = draft
+                    kept["ok"] = True
+                    warnings = kept.get("warnings")
+                    if not isinstance(warnings, list):
+                        warnings = []
+                    warnings.append(
+                        "Job hit the time cap — returning the last saved draft. "
+                        "Open Saved snapshots if the editor is empty."
+                    )
+                    kept["warnings"] = warnings
+                _set_status(
+                    job_id,
+                    "timeout",
+                    result=kept or None,
+                    error=str(exc),
+                )
             except Exception as exc:  # noqa: BLE001
                 if cancel_ev.is_set():
                     _set_status(job_id, "cancelled", error=f"Cancelled: {exc}")
@@ -202,6 +232,25 @@ def get_job(db: Session, job_id: str) -> BackgroundJob | None:
     return db.get(BackgroundJob, job_id)
 
 
+def find_in_flight_job(
+    db: Session,
+    *,
+    connection_id: str,
+    kind: str,
+) -> BackgroundJob | None:
+    """Latest queued/running job of this kind on the connection, if any."""
+    return (
+        db.query(BackgroundJob)
+        .filter(
+            BackgroundJob.connection_id == connection_id,
+            BackgroundJob.kind == kind,
+            BackgroundJob.status.in_(["queued", "running"]),
+        )
+        .order_by(BackgroundJob.created_at.desc())
+        .first()
+    )
+
+
 def mark_interrupted_jobs_on_boot(db: Session) -> int:
     """Jobs left queued/running after process death → interrupted."""
     rows = (
@@ -245,6 +294,21 @@ def job_cancelled(job_id: str) -> bool:
     if isinstance(runner, InProcessJobRunner):
         return runner.is_cancelled(job_id)
     return False
+
+
+def _job_result_dict(job_id: str) -> dict[str, Any]:
+    db = SessionLocal()
+    try:
+        row = db.get(BackgroundJob, job_id)
+        if row is None or not row.result_json:
+            return {}
+        try:
+            parsed = json.loads(row.result_json)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    finally:
+        db.close()
 
 
 def _set_status(

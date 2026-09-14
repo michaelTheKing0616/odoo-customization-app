@@ -16,14 +16,24 @@ def _manifest():
     return community_manifest_for_version("19.0")
 
 
-def test_block_field_create_on_tier1() -> None:
+def test_block_stock_field_create_on_tier1() -> None:
     m = _manifest()
     viol = check_field_create(
-        m, model="account.move", ttype="char", field_name="x_note"
+        m, model="account.move", ttype="char", field_name="note"
     )
     assert viol is not None
     assert viol.tier == "tier_1"
     assert "docs" in viol.http_detail()
+
+
+def test_allow_additive_x_field_on_tier1() -> None:
+    m = _manifest()
+    assert (
+        check_field_create(
+            m, model="account.move", ttype="date", field_name="x_sla_due"
+        )
+        is None
+    )
 
 
 def test_allow_link_only_from_custom() -> None:
@@ -126,6 +136,9 @@ def test_scrub_spec_skips_tier1_keeps_link_only() -> None:
     }
     cleaned, skips = scrub_spec_for_protected_apply(spec, m)
     assert any("protected:" in s for s in skips)
+    # Additive x_* on tier-1 kept (Studio field-pack parity)
+    move = next(x for x in cleaned["models"] if x["model"] == "account.move")
+    assert any(f.get("name") == "x_bad" for f in move["fields"])
     # Link-only field retained
     matter = next(x for x in cleaned["models"] if x["model"] == "x_matter")
     names = {f["name"] for f in matter["fields"]}
@@ -155,3 +168,37 @@ def test_pcm_invoicing_m2m_link_only_no_violation() -> None:
         )
         is None
     )
+
+
+def test_scrub_keeps_stock_host_smart_buttons_to_custom_residual() -> None:
+    """Contacts / PoS button_box → x_* residual must survive Apply scrub."""
+    m = _manifest()
+    spec = {
+        "smart_buttons": [
+            {
+                "on_model": "res.partner",
+                "label": "Punch Cards",
+                "related_model": "x_punch_card",
+                "relation_field": "x_partner_id",
+            },
+            {
+                "on_model": "pos.order",
+                "label": "Punch Cards",
+                "related_model": "x_punch_card",
+                "relation_field": "x_last_transaction_id",
+            },
+            {
+                # Still blocked: button *into* a tier-1 related model
+                "on_model": "x_punch_card",
+                "label": "Invoices",
+                "related_model": "account.move",
+                "relation_field": "x_move_id",
+            },
+        ]
+    }
+    cleaned, skips = scrub_spec_for_protected_apply(spec, m)
+    hosts = {b.get("on_model") for b in cleaned["smart_buttons"]}
+    assert "res.partner" in hosts
+    assert "pos.order" in hosts
+    assert "x_punch_card" not in hosts
+    assert any("account.move" in s for s in skips)

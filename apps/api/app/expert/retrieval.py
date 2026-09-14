@@ -15,11 +15,19 @@ from app.expert.vertical_catalog import VerticalEntry, expand_expert_query, matc
 from app.settings import settings
 
 PROJECT_SOURCE_BOOST = 1.25
+PRODUCT_GUIDE_BOOST = 1.55
 VERTICAL_SOURCE_BOOST = 1.45
 COMMUNITY_SOURCE_BOOST = 1.35
 ODOO_SOURCE_BOOST = 1.30
 _DEFAULT_MIN_SCORE = 0.35
 _DEFAULT_JACCARD_MIN_SCORE = 0.12
+
+_PRODUCT_GUIDE_BREADCRUMB_RE = re.compile(
+    r"(?i)(OPERATOR-FEATURE-DEMO-GUIDE|USER-GUIDE|User Guide|"
+    r"Feature Operator|OPERATOR\.md|SAFETY\.md|START-HERE|"
+    r"MASTER_REFERENCE|Protected Core Modules|"
+    r"AGENTS\.md|MEMORY\.md|app-studio-host-install)"
+)
 
 # Auto-generated domain-pack playbooks share identical rollout/honesty sections — RAG poison
 # when the question does not match that vertical in the catalog.
@@ -65,7 +73,12 @@ def _parse_embedding(raw: str | None) -> list[float] | None:
     return None
 
 
-def _source_weight(source: str) -> float:
+def _source_weight(
+    source: str, *, breadcrumb: str = "", source_path: str = ""
+) -> float:
+    blob = f"{breadcrumb} {source_path}"
+    if source == "project" and _PRODUCT_GUIDE_BREADCRUMB_RE.search(blob):
+        return PRODUCT_GUIDE_BOOST
     if source == "vertical":
         return VERTICAL_SOURCE_BOOST
     if source == "community":
@@ -195,7 +208,11 @@ def retrieve_expert_chunks(
 
     scored: list[RetrievedChunk] = []
     for row in rows:
-        weight = _source_weight(row.source)
+        weight = _source_weight(
+            row.source,
+            breadcrumb=str(row.breadcrumb or ""),
+            source_path=str(getattr(row, "source_path", None) or ""),
+        )
         embedding = _parse_embedding(row.embedding_json)
         if query_vec and embedding:
             score = cosine_similarity(query_vec, embedding) * weight

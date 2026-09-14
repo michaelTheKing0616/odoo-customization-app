@@ -26,10 +26,20 @@ def test_classify_ambition_thin() -> None:
     assert classify_ambition("simple todo list") == "thin"
 
 
-def test_classify_ambition_standard_management() -> None:
+def test_classify_ambition_fleet_management_is_comprehensive() -> None:
     assert (
         classify_ambition("Build a fleet management system for our delivery vans")
-        == "standard"
+        == "comprehensive"
+    )
+
+
+def test_classify_ambition_business_prompt_is_comprehensive() -> None:
+    """Full-scale Odoo apps are the default; 'multiple' is still not a scale keyword."""
+    assert (
+        classify_ambition(
+            "A music production company with multiple recording studios and artistes"
+        )
+        == "comprehensive"
     )
 
 
@@ -340,6 +350,44 @@ def test_law_firm_gold_meets_comprehensive_depth() -> None:
     assert out["_depth"]["ok"] is True
     assert out["_depth"]["metrics"]["model_count"] >= 10
     assert out["_depth"]["metrics"]["hollow_model_count"] == 0
+
+
+def test_law_firm_pack_meets_senior_depth_floor() -> None:
+    from app.ai_depth import depth_gaps
+    from app.ai_domain_pack_law_firm import law_firm_pack
+
+    pack = law_firm_pack()
+    gaps = depth_gaps(pack, "comprehensive")
+    assert "depth_models" not in gaps
+    assert "depth_workflows" not in gaps
+    assert "depth_smart_buttons" not in gaps
+
+
+def test_packed_three_models_are_below_senior_floor() -> None:
+    from app.ai_depth import depth_gaps
+
+    draft = {
+        "domain_pack": "law_firm",
+        "_pack_model_ids": ["x_matter", "x_matter_party", "x_matter_line"],
+        "models": [
+            {
+                "model": "x_matter",
+                "is_workflow": True,
+                "fields": [
+                    {"name": "x_name", "ttype": "char"},
+                    {"name": "x_status", "ttype": "selection"},
+                    {
+                        "name": "x_partner_id",
+                        "ttype": "many2one",
+                        "relation": "res.partner",
+                    },
+                ],
+            },
+            {"model": "x_matter_party", "fields": [{"name": "x_name", "ttype": "char"}]},
+            {"model": "x_matter_line", "fields": [{"name": "x_name", "ttype": "char"}]},
+        ],
+    }
+    assert "depth_models" in depth_gaps(draft, "comprehensive")
 
 
 def test_run_depth_pass_without_llm_sets_ambition() -> None:

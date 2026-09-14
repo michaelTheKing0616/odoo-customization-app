@@ -59,7 +59,9 @@ def _upsert_block(draft: dict[str, Any], block: dict[str, Any]) -> None:
     for i, existing in enumerate(blocks):
         if not isinstance(existing, dict):
             continue
-        if model and existing.get("model") == model and existing.get("source_file") == source:
+        if source and existing.get("source_file") == source:
+            if model and existing.get("model") and existing.get("model") != model:
+                continue
             blocks[i] = block
             return
     blocks.append(block)
@@ -360,6 +362,52 @@ def run_elite_integration_pass(draft: dict[str, Any], *, user_prompt: str = "") 
     return notes
 
 
+def _has_gold_tests(draft: dict[str, Any]) -> bool:
+    for block in draft.get("custom_code_blocks") or []:
+        if not isinstance(block, dict):
+            continue
+        reason = str(block.get("reason") or "")
+        src = str(block.get("source_file") or "")
+        if reason.startswith("gold:") and src.startswith("tests/") and src.endswith(".py"):
+            if src != "tests/__init__.py":
+                return True
+    return False
+
+
+def _test_module_names(draft: dict[str, Any]) -> list[str]:
+    names: list[str] = []
+    for block in draft.get("custom_code_blocks") or []:
+        if not isinstance(block, dict):
+            continue
+        src = str(block.get("source_file") or "").replace("\\", "/")
+        base = src.rsplit("/", 1)[-1]
+        if base.startswith("test_") and base.endswith(".py"):
+            names.append(base[:-3])
+    return names
+
+
+def _first_workflow_header(draft: dict[str, Any]) -> str | None:
+    fallback: str | None = None
+    for row in draft.get("models") or []:
+        if not isinstance(row, dict):
+            continue
+        mid = str(row.get("model") or "")
+        if not mid.startswith("x_") or mid.endswith("_line") or mid.endswith("_party"):
+            continue
+        names = {
+            str(f.get("name"))
+            for f in (row.get("fields") or [])
+            if isinstance(f, dict) and f.get("name")
+        }
+        if "x_status" not in names:
+            continue
+        if row.get("is_workflow"):
+            return mid
+        if fallback is None:
+            fallback = mid
+    return fallback
+
+
 def run_elite_quality_pass(draft: dict[str, Any]) -> list[str]:
     """Emit module tests + i18n pot as custom_code_blocks."""
     notes: list[str] = []
@@ -368,29 +416,84 @@ def run_elite_quality_pass(draft: dict[str, Any]) -> list[str]:
     if not models:
         return notes
 
-    test_content = (
-        "# -*- coding: utf-8 -*-\n"
-        "from odoo.tests import tagged\n"
-        "from odoo.tests.common import TransactionCase\n\n\n"
-        "@tagged('post_install', '-at_install')\n"
-        f"class Test{tech.replace('_', ' ').title().replace(' ', '')}Smoke(TransactionCase):\n"
-        "    def test_models_registered(self):\n"
-        "        Model = self.env['ir.model']\n"
-        + "".join(
-            f"        self.assertTrue(Model.search([('model', '=', '{mid}')], limit=1))\n"
-            for mid in models[:8]
+    cls = tech.replace("_", " ").title().replace(" ", "")
+    gold = _has_gold_tests(draft)
+    if not gold:
+        test_content = (
+            "# -*- coding: utf-8 -*-\n"
+            "from odoo.tests import tagged\n"
+            "from odoo.tests.common import TransactionCase\n\n\n"
+            "@tagged('post_install', '-at_install')\n"
+            f"class Test{cls}Smoke(TransactionCase):\n"
+            "    def test_models_registered(self):\n"
+            "        Model = self.env['ir.model']\n"
+            + "".join(
+                f"        self.assertTrue(Model.search([('model', '=', '{mid}')], limit=1))\n"
+                for mid in models[:8]
+            )
         )
-    )
-    _upsert_block(
-        draft,
-        {
-            "source_file": f"tests/test_{tech}_smoke.py",
-            "kind": "test",
-            "reason": "elite: generated smoke tests",
-            "content": test_content,
-        },
-    )
-    notes.append("elite: tests/test smoke")
+        _upsert_block(
+            draft,
+            {
+                "source_file": f"tests/test_{tech}_smoke.py",
+                "kind": "test",
+                "reason": "elite: generated smoke tests",
+                "content": test_content,
+            },
+        )
+        notes.append("elite: tests/test smoke")
+        header = _first_workflow_header(draft)
+        if header:
+            workflow = (
+                "# -*- coding: utf-8 -*-\n"
+                "from odoo.tests import tagged\n"
+                "from odoo.tests.common import TransactionCase\n\n\n"
+                "@tagged('post_install', '-at_install')\n"
+                f"class Test{cls}Workflow(TransactionCase):\n"
+                f"    def test_header_status_field(self):\n"
+                f"        Model = self.env['{header}']\n"
+                "        self.assertIn('x_status', Model._fields)\n"
+                "        rec = Model.new({'x_name': 'Elite workflow probe'})\n"
+                "        rec.x_status = 'draft'\n"
+                "        self.assertEqual(rec.x_status, 'draft')\n"
+            )
+            _upsert_block(
+                draft,
+                {
+                    "source_file": f"tests/test_{tech}_workflow.py",
+                    "kind": "test",
+                    "reason": "elite: workflow TransactionCase",
+                    "content": workflow,
+                },
+            )
+            notes.append("elite: tests/workflow")
+
+    imports = _test_module_names(draft)
+    if imports:
+        init_body = "# -*- coding: utf-8 -*-\n" + "".join(
+            f"from . import {name}\n" for name in imports
+        )
+        existing_init = next(
+            (
+                b
+                for b in (draft.get("custom_code_blocks") or [])
+                if isinstance(b, dict) and b.get("source_file") == "tests/__init__.py"
+            ),
+            None,
+        )
+        existing_txt = str((existing_init or {}).get("content") or "")
+        missing = [n for n in imports if f"import {n}" not in existing_txt]
+        if missing or not existing_init:
+            _upsert_block(
+                draft,
+                {
+                    "source_file": "tests/__init__.py",
+                    "kind": "test",
+                    "reason": "elite: tests package" if not gold else "gold: tests package",
+                    "content": init_body,
+                },
+            )
+            notes.append("elite: tests/__init__.py")
 
     pot_lines = ['msgid ""', 'msgstr ""', '""', '"Content-Type: text/plain; charset=UTF-8\\n"', '""', ""]
     display = str(draft.get("display_name") or tech)
@@ -481,6 +584,20 @@ def elite_promote_gate(draft: dict[str, Any]) -> tuple[bool, list[str]]:
         content = str(block.get("content") or "")
         if content and ("import os" in content or "import subprocess" in content):
             reasons.append("forbidden import in custom code")
+    # Phase 4 — static Odoo critical findings block elite gate
+    from app.ai_static_odoo import analyze_draft_static
+
+    static = draft.get("_static_odoo") if isinstance(draft.get("_static_odoo"), dict) else None
+    if static is None and blocks:
+        static = analyze_draft_static(draft)
+    if static and int(static.get("critical_count") or 0) > 0:
+        reasons.append("static_odoo critical findings (sudo/SQL/syntax)")
+    # Phase 3 — Option A primary needs Certification ≥ Production when stamped
+    cert = draft.get("_certification") if isinstance(draft.get("_certification"), dict) else {}
+    if draft.get("_capability_primary_option_a"):
+        tier = str(cert.get("tier") or "")
+        if tier and tier not in {"Production", "Gold"}:
+            reasons.append(f"certification {tier} < Production")
     status = draft.get("_llm_status") if isinstance(draft.get("_llm_status"), dict) else {}
     mode = str(status.get("mode") or "")
     ambition = str((draft.get("_meta") or {}).get("ambition") or draft.get("ambition") or "")

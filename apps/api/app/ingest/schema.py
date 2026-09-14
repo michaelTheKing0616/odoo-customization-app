@@ -17,6 +17,7 @@ DocType = Literal[
     "employee_roster",
     "opening_trial_balance",
     "inventory_count",
+    "user_roster",
     "other",
 ]
 
@@ -31,6 +32,7 @@ DOC_TYPE_ALLOWLIST: frozenset[str] = frozenset(
         "employee_roster",
         "opening_trial_balance",
         "inventory_count",
+        "user_roster",
         "other",
     }
 )

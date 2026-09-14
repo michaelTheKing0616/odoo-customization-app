@@ -35,6 +35,18 @@ def test_parse_friendly_error() -> None:
         parse_llm_json_object("{not json at all")
 
 
+def test_parse_unterminated_content_string() -> None:
+    raw = (
+        '{"technical_name":"custom_markup","blocks":['
+        '{"source_file":"models/sale.py","kind":"python",'
+        '"content":"from odoo import fields, models'
+    )
+    draft = parse_llm_json_object(raw)
+    assert draft["technical_name"] == "custom_markup"
+    assert draft["blocks"][0]["source_file"] == "models/sale.py"
+    assert "fields, models" in draft["blocks"][0]["content"]
+
+
 def test_strip_thinking_preamble_before_json() -> None:
     from app.llm_provider import strip_thinking_trace
 

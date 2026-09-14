@@ -610,6 +610,7 @@ class MenuSpec:
     sequence: int = 10
     technical_name: str | None = None
     group_xml_ids: list[str] = field(default_factory=list)
+    web_icon: str | None = None
 
     def xml_id(self) -> str:
         base = self.technical_name or self.name
@@ -830,6 +831,7 @@ class ModuleSpec:
             name=self.display_name,
             sequence=10,
             technical_name=f"root_{self.technical_name}",
+            web_icon="fa-th-large,#714B67",
         )
         self.menus.append(root)
         for i, model in enumerate(new_models):
@@ -993,13 +995,18 @@ def render_module_files(spec: ModuleSpec) -> dict[str, str]:
     )
 
     # AI-7: re-emit imported custom logic verbatim (correct relative paths)
+    custom_xml_added = False
     for i, block in enumerate(spec.custom_code_blocks or []):
         if not isinstance(block, dict):
             continue
         content = block.get("content")
         if not isinstance(content, str) or not content:
             continue
-        rel = str(block.get("source_file") or f"custom/preserved_{i}.txt")
+        rel = str(
+            block.get("source_file")
+            or block.get("path")
+            or f"custom/preserved_{i}.txt"
+        )
         rel = rel.replace("\\", "/").lstrip("/")
         parts = rel.split("/")
         if parts and parts[0] == root:
@@ -1014,6 +1021,12 @@ def render_module_files(spec: ModuleSpec) -> dict[str, str]:
         if rel.endswith(".xml") and rel not in data_files:
             data_files.append(rel)
             data_files = order_manifest_data_files(data_files, install_mode=spec.install_mode)
+            custom_xml_added = True
+
+    if custom_xml_added:
+        files[f"{root}/__manifest__.py"] = env.get_template("manifest.py.j2").render(
+            spec=spec, data_files=data_files, application=is_app
+        )
 
     # Sidecar ModuleSpec for Code→UI reverse import (own output = trivial read-back)
     import dataclasses

@@ -314,6 +314,38 @@ class AiDraftCache(Base):
     )
 
 
+class AiSession(Base):
+    """Conversational refinement session — prompt, turns, artifact, job link."""
+
+    __tablename__ = "ai_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    connection_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("odoo_connections.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    feature: Mapped[str] = mapped_column(String(32), nullable=False, default="studio")
+    prompt_original: Mapped[str] = mapped_column(Text, nullable=False)
+    prompt_resolved: Mapped[str] = mapped_column(Text, nullable=False)
+    conversation_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    artifact_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    resolved_answers_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    pending_clarification_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="clarifying")
+    job_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    draft_cache_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    provider_used: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    fallback_used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    artifact_hash: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    metrics_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class CustomizationProject(Base):
     """Draft ModuleSpec-like project stored in app DB; Apply pushes models/fields via RPC."""
 

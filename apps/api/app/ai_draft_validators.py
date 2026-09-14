@@ -10,6 +10,26 @@ from app.ai_depth import compute_depth_metrics
 
 _EMPTY_FIELD_RE = re.compile(r"<field\b(?![^>]*\bname=)[^>]*/>", re.I)
 _FILLER_FILTER_NAMES = frozenset({"all", "has_name"})
+_USAGE_LINE_BOOKING_TOKENS = (
+    "booking",
+    "session",
+    "appointment",
+    "reservation",
+)
+_USAGE_LINE_ASSET_TOKENS = ("equipment", "asset", "gear", "vehicle", "instrument")
+
+
+def _is_asset_usage_line(mid: str, parent_rels: list[str]) -> bool:
+    """Catalog item on a booking/session is one usage line, not a duplicate parent."""
+    if len(parent_rels) != 2:
+        return False
+    catalog = mid[: -len("_line")] if mid.endswith("_line") else ""
+    if not catalog or catalog not in parent_rels:
+        return False
+    if not any(tok in catalog for tok in _USAGE_LINE_ASSET_TOKENS):
+        return False
+    other = next((rel for rel in parent_rels if rel != catalog), "")
+    return any(tok in other for tok in _USAGE_LINE_BOOKING_TOKENS)
 
 
 def _models_index(draft: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -142,6 +162,22 @@ def validate_view_archs(draft: dict[str, Any]) -> list[dict[str, Any]]:
     return findings
 
 
+def _custom_line_header_m2o(field: dict[str, Any], by_id: dict[str, Any]) -> bool:
+    """True when a line M2O points at another custom x_* header in this spec.
+
+    Stock inherit in the spec (hr.employee, account.analytic.line) is a
+    fee-earner / timesheet FK — the same pattern as sale.order.line.product_id
+    plus order_id. Those must not count as a second document parent.
+    """
+    rel = str(field.get("relation") or "")
+    return (
+        field.get("ttype") == "many2one"
+        and rel.startswith("x_")
+        and rel in by_id
+        and not rel.endswith("_line")
+    )
+
+
 def validate_consistency(draft: dict[str, Any]) -> list[dict[str, Any]]:
     """Cross-check counts, depth metrics order, duplicate parent m2o, live field naming."""
     findings: list[dict[str, Any]] = []
@@ -198,15 +234,17 @@ def validate_consistency(draft: dict[str, Any]) -> list[dict[str, Any]]:
             )
         if not mid.endswith("_line"):
             continue
+        parent_rels = [
+            str(f.get("relation") or "")
+            for f in (model.get("fields") or [])
+            if isinstance(f, dict) and _custom_line_header_m2o(f, by_id)
+        ]
         parent_m2os = [
             str(f.get("name"))
             for f in (model.get("fields") or [])
-            if isinstance(f, dict)
-            and f.get("ttype") == "many2one"
-            and str(f.get("relation") or "") in by_id
-            and not str(f.get("relation") or "").endswith("_line")
+            if isinstance(f, dict) and _custom_line_header_m2o(f, by_id)
         ]
-        if len(parent_m2os) > 1:
+        if len(parent_m2os) > 1 and not _is_asset_usage_line(mid, parent_rels):
             findings.append(
                 {
                     "validator": "consistency",

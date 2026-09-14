@@ -6,7 +6,7 @@ from odoo_client import ConnectionConfig, OdooClient
 from odoo_client.client import OdooClientError
 from sqlalchemy.orm import Session
 
-from app.crypto import decrypt_secret
+from app.crypto import CryptoError, decrypt_secret
 from app.db_models import OdooConnection
 from app.workspace_auth import current_workspace_auth, scoped_connection_query
 
@@ -32,7 +32,10 @@ def client_from_connection(
     db: Session | None = None,
     watch_version: bool = False,
 ) -> OdooClient:
-    secret = decrypt_secret(row.secret_encrypted)
+    try:
+        secret = decrypt_secret(row.secret_encrypted)
+    except CryptoError as exc:
+        raise OdooClientError(str(exc)) from exc
     client = OdooClient(
         ConnectionConfig(
             url=row.url,

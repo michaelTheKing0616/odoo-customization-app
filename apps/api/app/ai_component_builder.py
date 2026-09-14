@@ -9,60 +9,18 @@ from odoo_client.client import OdooClient
 
 from app.ai_connect_points import detect_field_collisions, propose_connect_points
 from app.ai_grain import (
+    HOST_LABELS,
     Grain,
     HostCandidate,
     classify_grain,
     discover_hosts,
     grain_display,
     module_for_model,
+    named_host_from_prompt,
     parent_menu_xml_id_for_module,
 )
+from app.ai_senior_shape import finish_senior_component, infer_extension_fields
 from app.component_gallery import get_gallery_seed, list_gallery
-
-
-def _fields_from_prompt(prompt: str) -> list[dict[str, Any]]:
-    text = (prompt or "").lower()
-    fields: list[dict[str, Any]] = []
-    if "warranty" in text:
-        fields.extend(
-            [
-                {"name": "x_warranty_start", "ttype": "date", "string": "Warranty Start"},
-                {"name": "x_warranty_end", "ttype": "date", "string": "Warranty End"},
-                {
-                    "name": "x_warranty_status",
-                    "ttype": "selection",
-                    "string": "Warranty Status",
-                    "selection": "[('active','Active'),('expired','Expired')]",
-                },
-            ]
-        )
-    if "inspection" in text or "checklist" in text:
-        fields.extend(
-            [
-                {
-                    "name": "x_inspection_state",
-                    "ttype": "selection",
-                    "string": "Inspection",
-                    "selection": "[('todo','To Do'),('pass','Pass'),('fail','Fail')]",
-                },
-                {"name": "x_inspection_due", "ttype": "date", "string": "Inspection Due"},
-            ]
-        )
-    if "compliance" in text or "expiry" in text:
-        fields.extend(
-            [
-                {
-                    "name": "x_compliance_status",
-                    "ttype": "selection",
-                    "string": "Compliance Status",
-                    "selection": "[('ok','OK'),('review','Review')]",
-                },
-                {"name": "x_compliance_expiry", "ttype": "date", "string": "Expiry Date"},
-            ]
-        )
-    if not fields:
-        fields.append({"name": "x_extension_note", "ttype": "text", "string": "Extension note"})
-    return fields
 
 
 def _match_gallery(prompt: str) -> dict[str, Any] | None:
@@ -122,31 +80,9 @@ def build_component_draft(
             }
         )
 
-    inherit_xml = connect_points.get("form_inherit_xml_id")
+    # Extension arch is authored by ai_form_slots in finish_senior_component
+    # (named slots, never a nested EXTENSION group).
     views: list[dict[str, Any]] = []
-    if inherit_xml:
-        field_xml = "\n".join(
-            f'                <field name="{f["name"]}"/>'
-            for f in fields
-            if isinstance(f, dict) and f.get("name")
-        )
-        views.append(
-            {
-                "name": f"{host_model}.form.extension",
-                "model": host_model,
-                "type": "form",
-                "mode": "extension",
-                "inherit_xml_id": inherit_xml,
-                "arch": (
-                    "<data>\n"
-                    f'  <xpath expr="{connect_points.get("form_xpath", "//sheet")}" '
-                    f'position="{connect_points.get("form_position", "inside")}">\n'
-                    f"{field_xml}\n"
-                    f"  </xpath>\n"
-                    f"</data>"
-                ),
-            }
-        )
 
     menus: list[dict[str, Any]] = []
     actions: list[dict[str, Any]] = []
@@ -183,9 +119,20 @@ def build_component_draft(
 
     depends = [mod] if mod and mod != "base" else ["base"]
 
+    display = connect_points.get("sub_menu_name") or f"{host.label} extension"
+    if grain == "field_pack":
+        display = connect_points.get("sub_menu_name") or f"{host.label} fields"
+        low = (prompt or "").lower()
+        if (
+            not connect_points.get("sub_menu_name")
+            and host.model == "account.move"
+            and re.search(r"\b(vendor\s+bills?|supplier\s+bills?)\b", low)
+        ):
+            display = "Vendor bill fields"
+
     draft: dict[str, Any] = {
         "technical_name": technical,
-        "display_name": connect_points.get("sub_menu_name") or f"{host.label} extension",
+        "display_name": display,
         "depends": depends,
         "grain": grain,
         "connect_points": connect_points,
@@ -230,12 +177,25 @@ def draft_component_from_prompt(
 ) -> tuple[dict[str, Any], list[HostCandidate], list[str]]:
     """Build a component draft without running the full-app pipeline."""
     resolved_grain = grain or classify_grain(prompt)
+    named = named_host_from_prompt(prompt)
+    extra_warnings: list[str] = []
+    override_host = host_model_override or (
+        str(connect_points_override.get("host_model") or "")
+        if isinstance(connect_points_override, dict)
+        else ""
+    )
+    if named and override_host and named != override_host:
+        extra_warnings.append(
+            f"Prompt names {named}; ignoring approved host {override_host}."
+        )
+        host_model_override = None
+        connect_points_override = None
     hosts = discover_hosts(prompt, available_models=available_models)
     if host_model_override:
         hosts = [
             HostCandidate(
                 model=host_model_override,
-                label=host_model_override,
+                label=HOST_LABELS.get(host_model_override, host_model_override),
                 score=1.0,
                 module=module_for_model(host_model_override),
                 reason="operator override",
@@ -277,7 +237,7 @@ def draft_component_from_prompt(
     if gallery_seed:
         fields = list(gallery_seed.get("fields") or [])
     else:
-        fields = _fields_from_prompt(prompt)
+        fields = infer_extension_fields(prompt, pad=resolved_grain != "field_pack")
 
     cp = connect_points_override or propose_connect_points(
         prompt, grain=resolved_grain, host=host, gallery_seed=gallery_seed
@@ -299,6 +259,15 @@ def draft_component_from_prompt(
         {"model": h.model, "label": h.label, "score": h.score, "reason": h.reason}
         for h in hosts
     ]
+    notes = finish_senior_component(draft, prompt=prompt, grain=resolved_grain)
+    warnings.extend(extra_warnings)
+    # Capability stamp notes are operator noise when the Option A callout exists;
+    # keep only junk-drop lines so Apply honesty stays visible.
+    for note in notes:
+        if note.startswith("capability: dropped"):
+            warnings.append(note)
+        elif not note.startswith("capability:"):
+            warnings.append(note)
     return draft, hosts, warnings
 
 
@@ -329,7 +298,7 @@ def preview_connect_points(
         hosts = [
             HostCandidate(
                 model=host_model_override,
-                label=host_model_override,
+                label=HOST_LABELS.get(host_model_override, host_model_override),
                 score=1.0,
                 module=module_for_model(host_model_override),
                 reason="operator override",

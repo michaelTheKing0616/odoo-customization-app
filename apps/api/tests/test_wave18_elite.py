@@ -70,6 +70,7 @@ def _build_library_elite_draft() -> dict[str, Any]:
 
 
 def _make_test_connection(db, cid: str, name: str) -> None:
+    from app.crypto import encrypt_secret
     from app.db_models import OdooConnection
 
     db.add(
@@ -79,11 +80,25 @@ def _make_test_connection(db, cid: str, name: str) -> None:
             url="http://127.0.0.1:8069",
             db_name="odoo_dev",
             username="admin",
-            secret_encrypted="dev-only-test",
+            secret_encrypted=encrypt_secret(settings.odoo_password),
             server_version="19.0",
         )
     )
     db.commit()
+
+
+def _delete_test_connection(cid: str) -> None:
+    from app.db import SessionLocal
+    from app.db_models import OdooConnection
+
+    db = SessionLocal()
+    try:
+        row = db.get(OdooConnection, cid)
+        if row is not None:
+            db.delete(row)
+            db.commit()
+    finally:
+        db.close()
 
 
 @pytest.fixture(scope="module")
@@ -221,19 +236,25 @@ def test_elite_autopilot_route_gate_failure(client: TestClient) -> None:
     import uuid
 
     init_db()
+    cid = str(uuid.uuid4())
     db = SessionLocal()
     try:
-        cid = str(uuid.uuid4())
         _make_test_connection(db, cid, "Elite Test")
+        bad = {
+            "technical_name": "x",
+            "models": [],
+            "_scorecard": {"score_0_10": 4.0, "dimensions": {}, "validators": {}},
+        }
+        res = client.post(
+            f"/api/connections/{cid}/module-spec/elite-autopilot", json={"spec": bad}
+        )
+        assert res.status_code == 200
+        body = res.json()
+        assert body.get("ok") is False
+        assert body.get("gate_passed") is False
     finally:
         db.close()
-
-    bad = {"technical_name": "x", "models": [], "_scorecard": {"score_0_10": 4.0, "dimensions": {}, "validators": {}}}
-    res = client.post(f"/api/connections/{cid}/module-spec/elite-autopilot", json={"spec": bad})
-    assert res.status_code == 200
-    body = res.json()
-    assert body.get("ok") is False
-    assert body.get("gate_passed") is False
+        _delete_test_connection(cid)
 
 
 def test_elite_autopilot_mock_sandbox(client: TestClient, library_elite_draft: dict[str, Any]) -> None:
@@ -245,36 +266,36 @@ def test_elite_autopilot_mock_sandbox(client: TestClient, library_elite_draft: d
     import uuid
 
     init_db()
+    cid = str(uuid.uuid4())
     db = SessionLocal()
     try:
-        cid = str(uuid.uuid4())
         _make_test_connection(db, cid, "Elite Sandbox")
+        fake_result = MagicMock()
+        fake_result.ok = True
+        fake_result.module = "library_management"
+        fake_result.message = "ok"
+        fake_result.log_tail = ""
+
+        fake_validation = MagicMock()
+        fake_validation.id = "val-test-id"
+        fake_validation.zip_sha256 = "abc"
+
+        with (
+            patch("app.ai_elite_promote.run_sandbox_install", return_value=fake_result),
+            patch("app.ai_elite_promote.record_sandbox_validation", return_value=fake_validation),
+        ):
+            res = client.post(
+                f"/api/connections/{cid}/module-spec/elite-autopilot",
+                json={"spec": library_elite_draft},
+            )
+        assert res.status_code == 200
+        body = res.json()
+        assert body.get("ok") is True
+        assert body.get("validation_id") == "val-test-id"
+        assert body.get("gate_passed") is True
     finally:
         db.close()
-
-    fake_result = MagicMock()
-    fake_result.ok = True
-    fake_result.module = "library_management"
-    fake_result.message = "ok"
-    fake_result.log_tail = ""
-
-    fake_validation = MagicMock()
-    fake_validation.id = "val-test-id"
-    fake_validation.zip_sha256 = "abc"
-
-    with (
-        patch("app.ai_elite_promote.run_sandbox_install", return_value=fake_result),
-        patch("app.ai_elite_promote.record_sandbox_validation", return_value=fake_validation),
-    ):
-        res = client.post(
-            f"/api/connections/{cid}/module-spec/elite-autopilot",
-            json={"spec": library_elite_draft},
-        )
-    assert res.status_code == 200
-    body = res.json()
-    assert body.get("ok") is True
-    assert body.get("validation_id") == "val-test-id"
-    assert body.get("gate_passed") is True
+        _delete_test_connection(cid)
 
 
 def test_elite_gate_route(client: TestClient, library_elite_draft: dict[str, Any]) -> None:
@@ -282,20 +303,20 @@ def test_elite_gate_route(client: TestClient, library_elite_draft: dict[str, Any
     import uuid
 
     init_db()
+    cid = str(uuid.uuid4())
     db = SessionLocal()
     try:
-        cid = str(uuid.uuid4())
         _make_test_connection(db, cid, "Elite Gate")
+        res = client.post(
+            f"/api/connections/{cid}/module-spec/elite-gate",
+            json={"spec": library_elite_draft},
+        )
+        assert res.status_code == 200
+        body = res.json()
+        assert body.get("gate_passed") is True
     finally:
         db.close()
-
-    res = client.post(
-        f"/api/connections/{cid}/module-spec/elite-gate",
-        json={"spec": library_elite_draft},
-    )
-    assert res.status_code == 200
-    body = res.json()
-    assert body.get("gate_passed") is True
+        _delete_test_connection(cid)
 
 
 def test_write_library_elite_fixture(library_elite_draft: dict[str, Any]) -> None:

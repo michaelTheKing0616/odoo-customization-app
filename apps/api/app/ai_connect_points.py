@@ -7,7 +7,7 @@ from typing import Any
 
 from odoo_client.client import OdooClient, OdooClientError
 
-from app.ai_grain import Grain, HostCandidate, INHERIT_FORM_XML, module_for_model
+from app.ai_grain import Grain, HostCandidate, INHERIT_FORM_XML, INHERIT_FORM_XPATH, module_for_model
 
 
 def propose_connect_points(
@@ -33,35 +33,44 @@ def propose_connect_points(
         "host_module": host.module or module_for_model(host_model),
         "host_label": host.label,
         "form_inherit_xml_id": INHERIT_FORM_XML.get(host_model),
-        "form_xpath": "//sheet",
+        "form_xpath": INHERIT_FORM_XPATH.get(host_model, "//sheet"),
         "form_position": "inside",
         "menu_mode": "none" if grain == "field_pack" else "sub",
-        "sub_menu_name": _infer_sub_menu(prompt, host_model),
+        "sub_menu_name": _infer_sub_menu(prompt, host_model, grain=grain),
         "fk_direction": "component_to_host",
         "prompt_excerpt": (prompt or "")[:120],
     }
-    if grain == "feature_slice" and host_model == "sale.order":
-        cp["smart_button"] = {
-            "label": "Warranties",
-            "relation_field": "order_id",
-            "target_model": "x_warranty_claim",
-        }
     return cp
 
 
-def _infer_sub_menu(prompt: str, host_model: str) -> str | None:
+def _infer_sub_menu(prompt: str, host_model: str, grain: Grain | None = None) -> str | None:
     text = (prompt or "").lower()
     if "warranty" in text:
         return "Warranty"
     if "inspection" in text or "checklist" in text:
-        return "Inspections"
-    if "compliance" in text:
+        return "Inspection"
+    if "compliance" in text or "expiry" in text:
         return "Compliance"
-    if host_model == "sale.order":
-        return "Extensions"
-    if host_model == "project.task":
-        return "Task extras"
-    return None
+    if re.search(r"\bsla\b", text):
+        return "SLA"
+    if re.search(r"\b(qr|click[\s-]?to[\s-]?pay|payment\s+link|pay\s+button)\b", text):
+        return "Pay / QR"
+    if "pdf" in text or "qweb" in text or "report template" in text:
+        return "Document extras"
+    if grain == "field_pack":
+        return None
+    defaults = {
+        "sale.order": "Extensions",
+        "project.task": "Task extras",
+        "account.move": "Invoice extras",
+        "hr.employee": "HR extras",
+        "calendar.event": "Calendar extras",
+        "crm.lead": "CRM extras",
+        "res.partner": "Contact extras",
+        "purchase.order": "Purchase extras",
+        "stock.picking": "Inventory extras",
+    }
+    return defaults.get(host_model, "Extension")
 
 
 def detect_field_collisions(

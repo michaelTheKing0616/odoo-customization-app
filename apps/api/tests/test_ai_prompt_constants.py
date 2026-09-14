@@ -27,6 +27,21 @@ def test_append_prompt_blocks_includes_json_and_vocab() -> None:
     assert "Allowed ttypes" in out
     assert ANTI_PATTERN_BLOCK.splitlines()[0] in out
     assert "PROTECTED MODULES" in out
+    assert "OPERATOR UX" in out
+    assert "pos.order" in ANTI_PATTERN_BLOCK
+    assert "no_create" in ANTI_PATTERN_BLOCK
+    assert "OPERATOR BRIEF CONTRACT" not in out
+
+
+def test_append_prompt_blocks_injects_brief_contract() -> None:
+    from tests.test_ai_pack_disambiguation import VISITOR_LOG_PROMPT
+
+    out = append_prompt_blocks("Base system.", user_prompt=VISITOR_LOG_PROMPT)
+    assert "OPERATOR BRIEF CONTRACT" in out
+    assert "Document shape: register" in out
+    assert "no x_company_id" in out
+    assert "check-in" in out.lower()
+    assert "Base system." in out
 
 
 def test_few_shot_exemplar_skips_matched_car_rental_pack() -> None:

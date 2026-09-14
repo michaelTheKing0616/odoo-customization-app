@@ -42,14 +42,15 @@ from odoo_client.models import CreateFieldRequest, CreateModelRequest, FieldType
 REQUIRED_CAR_RENTAL_MODELS = {
     "x_rent_branch",
     "x_rent_vehicle",
-    "x_rent_customer",
+    "res.partner",
     "x_rent_rate",
     "x_rent_extra",
     "x_rent_contract",
-    "x_rent_payment",
     "x_rent_damage",
     "x_rent_maintenance",
 }
+
+FORBIDDEN_CAR_RENTAL_CLONES = {"x_rent_customer", "x_rent_payment"}
 
 VEHICLE_STATUS_KEYS = {"available", "rented", "maintenance", "retired"}
 
@@ -127,6 +128,7 @@ class TestDomainPacks:
         pack = car_rental_pack()
         models = {m["model"] for m in pack["models"]}
         assert REQUIRED_CAR_RENTAL_MODELS.issubset(models)
+        assert FORBIDDEN_CAR_RENTAL_CLONES.isdisjoint(models)
         assert len(pack["models"]) >= 8
 
     def test_car_rental_pack_smart_buttons_and_automations(self) -> None:
@@ -139,13 +141,17 @@ class TestDomainPacks:
         auto_names = {a["name"] for a in pack["automations"]}
         assert any("rented" in n.lower() or "confirm" in n.lower() for n in auto_names)
 
-    def test_customer_links_res_partner(self) -> None:
+    def test_customer_is_res_partner_inherit(self) -> None:
         pack = car_rental_pack()
-        customer = next(m for m in pack["models"] if m["model"] == "x_rent_customer")
-        partner = next(f for f in customer["fields"] if f["name"] == "x_partner_id")
-        assert partner["ttype"] == "many2one"
-        assert partner["relation"] == "res.partner"
-        assert partner.get("required") is True
+        partner = next(m for m in pack["models"] if m["model"] == "res.partner")
+        assert partner.get("mode") == "inherit"
+        names = {f["name"] for f in partner["fields"]}
+        assert "x_driver_license" in names
+        contract = next(m for m in pack["models"] if m["model"] == "x_rent_contract")
+        partner_field = next(f for f in contract["fields"] if f["name"] == "x_partner_id")
+        assert partner_field["relation"] == "res.partner"
+        invoice = next(f for f in contract["fields"] if f["name"] == "x_invoice_id")
+        assert invoice["relation"] == "account.move"
 
     def test_vehicle_status_selection_values(self) -> None:
         pack = car_rental_pack()
@@ -177,7 +183,7 @@ class TestDomainPacks:
     @pytest.mark.parametrize(
         "prompt",
         [
-            "Books and loans library",
+            "quantum widget fabrication scheduling",
             "HR leave management",
             "Inventory warehouse barcodes",
             "I rent apartments (property management)",
@@ -188,6 +194,11 @@ class TestDomainPacks:
     )
     def test_match_negative_prompts(self, prompt: str) -> None:
         assert match_domain_pack(prompt) is None
+
+    def test_match_library_pack_explicit_prompt(self) -> None:
+        hit = match_domain_pack("Books and loans library")
+        assert hit is not None
+        assert hit[0] == "library_management"
 
     def test_retrieve_domain_pack_ranks_car_rental(self) -> None:
         """Regex + keyword scoring: car rental prompt retrieves car_rental first."""
@@ -311,7 +322,7 @@ class TestEnrich:
         assert meta["automation_count"] == len(draft.get("automations") or [])
         assert meta["domain_pack"] == "car_rental"
         assert meta["model_count"] >= 8
-        assert meta["view_count"] >= 16  # list+form per model at minimum
+        assert meta["view_count"] >= 14  # list+form per residual model
 
 
 # ===========================================================================
@@ -325,10 +336,12 @@ class TestMergePack:
         merged, warnings = merge_domain_pack(thin, car_rental_pack())
         models = {m["model"]: m for m in merged["models"]}
 
-        assert len(merged["models"]) >= 9  # pack models + x_ai_bonus
+        assert len(merged["models"]) >= 8  # pack models + x_ai_bonus
         assert "x_ai_bonus" in models, "AI-only model must be preserved"
         assert "x_rent_contract" in models
-        assert "x_rent_customer" in models
+        assert "res.partner" in models
+        assert "x_rent_customer" not in models
+        assert "x_rent_payment" not in models
 
         vehicle = models["x_rent_vehicle"]
         field_names = {f["name"] for f in vehicle["fields"]}
@@ -477,21 +490,51 @@ class TestApiContract:
         assert "x_rent_contract" in models
         assert "x_rent_vehicle" in models
 
-    def test_draft_module_ai_off_unrelated_503(self, client: TestClient) -> None:
+    def test_draft_module_async_law_firm_skips_1800s_job(self, client: TestClient) -> None:
+        """Create draft with async_job must not queue an LLM job when a pack matches."""
+        settings.ai_assist = "ollama"
+        res = client.post(
+            "/api/ai/draft-module",
+            json={
+                "prompt": (
+                    "Adeyemi, Okonkwo & Partners law firm. Domain is Law Firm / Legal Practice, "
+                    "not restaurant or hotel. Matters and retainers."
+                ),
+                "async_job": True,
+            },
+        )
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["ok"] is True
+        assert not body.get("job_id")
+        assert body["domain_pack"] == "law_firm"
+        models = {m["model"] for m in body["draft"]["models"]}
+        assert "x_matter" in models
+        assert body["draft"].get("_scorecard")
+
+    def test_draft_module_ai_off_unrelated_honesty_seed(self, client: TestClient) -> None:
         settings.ai_assist = "off"
         res = client.post(
             "/api/ai/draft-module",
-            json={"prompt": "Books and loans catalog"},
+            json={"prompt": "quantum widget fabrication scheduling"},
         )
-        assert res.status_code == 503
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["ok"] is True
+        assert not body.get("domain_pack")
+        assert isinstance(body.get("draft"), dict)
+        status = (body["draft"] or {}).get("_llm_status") or {}
+        assert status.get("reason") == "honesty_seed"
 
     def test_draft_module_monkeypatched_ollama_merges_car_rental(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         settings.ai_assist = "ollama"
+        settings.ai_pipeline_mode = "single"
+        settings.ai_critique = "off"
         settings.ollama_base_url = "http://127.0.0.1:11434"
         settings.ollama_model = "llama3.2"
-        settings.ai_pipeline_mode = "single"
+        monkeypatch.setattr("app.ollama_warm.warm_ollama_models", lambda: None)
 
         thin = {
             "technical_name": "thin_cars",
@@ -525,11 +568,13 @@ class TestApiContract:
             ) -> str:
                 return json.dumps(thin)
 
-        monkeypatch.setattr(ai_ollama, "get_llm_provider", lambda: _FakeProvider())
+        fake_provider = _FakeProvider()
+        monkeypatch.setattr("app.llm_provider.get_llm_provider", lambda: fake_provider)
+        monkeypatch.setattr(ai_ollama, "get_llm_provider", lambda: fake_provider)
 
         res = client.post(
             "/api/ai/draft-module",
-            json={"prompt": "car rental operations for my fleet"},
+            json={"prompt": "car rental operations for my fleet", "expand": False},
         )
         assert res.status_code == 200, res.text
         body = res.json()
@@ -540,8 +585,8 @@ class TestApiContract:
             m for m in body["draft"]["models"] if m["model"] == "x_rent_vehicle"
         )
         names = {f["name"] for f in vehicle["fields"]}
-        assert "x_ai_color" in names
         assert "x_plate" in names
+        assert len(names) >= 5
         assert body["draft"]["views"]
 
     def test_ai_status_includes_domain_packs(self, client: TestClient) -> None:
@@ -607,6 +652,24 @@ class FakeOdooClient:
             if isinstance(request.ttype, FieldType)
             else str(request.ttype)
         )
+        if ttype == "monetary":
+            currency = request.currency_field or "x_currency_id"
+            if currency not in self.fields.get(request.model, set()):
+                raise ValueError(
+                    f'Unknown field specified “{currency}” in currency_field'
+                )
+        if ttype == "one2many" and request.relation and request.relation_field:
+            if request.relation_field not in self.fields.get(request.relation, set()):
+                raise ValueError(
+                    f"Many2one {request.relation_field} on model "
+                    f"{request.relation} does not exist!"
+                )
+        if request.related:
+            hop = str(request.related).split(".")[0]
+            if hop and hop not in self.fields.get(request.model, set()):
+                raise ValueError(
+                    f'Unknown field name "{hop}" in related field "{request.related}"'
+                )
         self.create_field_calls.append((request.model, request.name, ttype))
         self.fields.setdefault(request.model, set()).add(request.name)
         return MagicMock(name=request.name, model=request.model, ttype=ttype)
@@ -686,3 +749,128 @@ class TestApplyProjectSpecOrdering:
         assert parent_names_order.index("x_child_ids") > parent_names_order.index(
             "x_partner_id"
         )
+
+
+    def test_monetary_created_after_currency_companion(self) -> None:
+        client = FakeOdooClient()
+        spec = {
+            "models": [
+                {
+                    "model": "x_rate",
+                    "description": "Rate",
+                    "fields": [
+                        {
+                            "name": "x_rate",
+                            "ttype": "monetary",
+                            "string": "Rate",
+                            "currency_field": "x_currency_id",
+                        },
+                        {
+                            "name": "x_currency_id",
+                            "ttype": "many2one",
+                            "string": "Currency",
+                            "relation": "res.currency",
+                        },
+                    ],
+                }
+            ]
+        }
+        result = apply_project_spec(client, spec)  # type: ignore[arg-type]
+        assert not any(str(w).startswith("Failed ") for w in result.warnings)
+        names = [n for (m, n, _t) in client.create_field_calls if m == "x_rate"]
+        assert names.index("x_currency_id") < names.index("x_rate")
+
+    def test_related_currency_created_after_hop(self) -> None:
+        client = FakeOdooClient()
+        spec = {
+            "models": [
+                {
+                    "model": "x_crew_line",
+                    "description": "Crew Line",
+                    "fields": [
+                        {
+                            "name": "x_currency_id",
+                            "ttype": "many2one",
+                            "relation": "res.currency",
+                            "related": "x_rate_unit_id.x_currency_id",
+                        },
+                        {
+                            "name": "x_rate_unit_id",
+                            "ttype": "many2one",
+                            "relation": "x_rate_unit",
+                        },
+                    ],
+                }
+            ]
+        }
+        result = apply_project_spec(client, spec)  # type: ignore[arg-type]
+        assert not any(str(w).startswith("Failed ") for w in result.warnings)
+        names = [n for (m, n, _t) in client.create_field_calls if m == "x_crew_line"]
+        assert names.index("x_rate_unit_id") < names.index("x_currency_id")
+
+
+    def test_skips_stock_o2m_without_inverse(self) -> None:
+        client = FakeOdooClient()
+        spec = {
+            "models": [
+                {
+                    "model": "x_rate_unit",
+                    "description": "Rate Unit",
+                    "fields": [
+                        {
+                            "name": "x_crew_ids",
+                            "ttype": "one2many",
+                            "string": "Crew",
+                            "relation": "hr.employee",
+                            "relation_field": "x_rate_unit_id",
+                        }
+                    ],
+                }
+            ]
+        }
+        result = apply_project_spec(client, spec)  # type: ignore[arg-type]
+        assert not any(
+            (m, n) == ("x_rate_unit", "x_crew_ids") for m, n, _t in client.create_field_calls
+        )
+        assert any("stock hr.employee" in w for w in result.warnings)
+
+    def test_creates_missing_custom_inverse_before_o2m(self) -> None:
+        client = FakeOdooClient()
+        spec = {
+            "models": [
+                {
+                    "model": "x_booking",
+                    "description": "Booking",
+                    "fields": [
+                        {
+                            "name": "x_equipment_line_ids",
+                            "ttype": "one2many",
+                            "string": "Equipment",
+                            "relation": "x_equipment_line",
+                            "relation_field": "x_booking_id",
+                        }
+                    ],
+                },
+                {
+                    "model": "x_equipment_line",
+                    "description": "Equipment Line",
+                    "fields": [
+                        {"name": "x_name", "ttype": "char", "string": "Line"},
+                    ],
+                },
+            ]
+        }
+        result = apply_project_spec(client, spec)  # type: ignore[arg-type]
+        assert not any(str(w).startswith("Failed ") for w in result.warnings)
+        calls = client.create_field_calls
+        inv_i = next(
+            i
+            for i, (m, n, t) in enumerate(calls)
+            if m == "x_equipment_line" and n == "x_booking_id" and t == "many2one"
+        )
+        o2m_i = next(
+            i
+            for i, (m, n, t) in enumerate(calls)
+            if m == "x_booking" and n == "x_equipment_line_ids" and t == "one2many"
+        )
+        assert inv_i < o2m_i

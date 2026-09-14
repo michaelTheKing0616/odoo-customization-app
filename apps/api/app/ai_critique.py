@@ -21,6 +21,7 @@ from app.settings import settings
 logger = logging.getLogger(__name__)
 
 _FIELD_RE = re.compile(r"^x_[A-Za-z0-9_]+$")
+_IDENTITY_FIELDS = frozenset({"x_code", "x_reference", "x_ref", "x_number"})
 _REPAIR_ADDED_FIELD = re.compile(r"^critique: added field ([^.]+)\.(\S+)$")
 _REPAIR_ADDED_MODEL = re.compile(r"^critique: added model (\S+)$")
 _REPAIR_ADDED_AUTO = re.compile(r"^critique: added automation (.+)$")
@@ -110,20 +111,45 @@ def llm_critique(
         "(use selections on parents).\n"
         "- FORBIDDEN: x_client / x_client_contact / mini-CRM when res.partner is used.\n"
         "- FORBIDDEN: second invoice/bill header when one billing model exists.\n"
+        "- FORBIDDEN when a reuse plan or domain_pack is present: x_bill / x_invoice / "
+        "x_payment / x_attorney / x_task / x_event clones of stock Accounting/HR/"
+        "Project/Calendar. Deepen existing residual models only.\n"
         "- Automations must include non-empty safe_actions (object_write or next_activity). "
         "No Python/email_send.\n"
-        "If comprehensive and <10 models, ready=false and propose substantive missing_models. "
-        "Custom fields/models must start with x_. Triggers must be on_*. No markdown."
+        + (
+            "Packed/reuse-rich drafts are ready with the residual models already listed. "
+            "Do not propose missing_models to hit a 10-model count.\n"
+            if str(draft.get("domain_pack") or "")
+            else "If comprehensive and <10 models, ready=false and propose substantive missing_models.\n"
+        )
+        + "Custom fields/models must start with x_. Triggers must be on_*. No markdown.\n"
+        "Obey the operator brief contract: do not propose company/currency/status/"
+        "satellite models the brief did not ask for. Registers with one header are ready."
     )
+    try:
+        from app.ai_operator_brief import brief_llm_contract
+
+        system = brief_llm_contract(user_prompt or "", draft=draft) + "\n\n" + system
+    except Exception:
+        pass
     prompt = (
-        f"Original user request:\n{user_prompt or '(n/a)'}\n\n"
-        f"Draft ModuleSpec:\n{json.dumps(slim, default=str)[:7000]}"
+        f"Original user request:\n{user_prompt or '(n/a)'}\n"
     )
+    try:
+        from app.ai_operator_brief import prompt_for_generators
+
+        prompt = f"{prompt_for_generators(user_prompt or '', draft)}\n\n"
+    except Exception:
+        prompt = f"Original user request:\n{user_prompt or '(n/a)'}\n\n"
+    prompt += f"Draft ModuleSpec:\n{json.dumps(slim, default=str)[:7000]}"
     from app.ai_domain_nouns import domain_noun_coverage
 
-    _items, uncovered, noun_warnings = domain_noun_coverage(
-        draft, user_prompt or str(draft.get("_user_prompt") or "")
-    )
+    uncovered: list[str] = []
+    noun_warnings: list[str] = []
+    if not str(draft.get("domain_pack") or ""):
+        _items, uncovered, noun_warnings = domain_noun_coverage(
+            draft, user_prompt or str(draft.get("_user_prompt") or "")
+        )
     if uncovered:
         prompt += (
             "\n\nMANDATORY REPAIRS — prompt nouns without models (add substantive models):\n"
@@ -147,6 +173,8 @@ def llm_critique(
 
 def _apply_missing_fields(draft: dict[str, Any], missing: list[Any]) -> list[str]:
     notes: list[str] = []
+    from app.ai_model_quality import is_party_link_model
+
     by_model = {
         m.get("model"): m
         for m in (draft.get("models") or [])
@@ -170,6 +198,12 @@ def _apply_missing_fields(draft: dict[str, Any], missing: list[Any]) -> list[str
         }
         if fname in existing:
             notes.append(f"critique: merged (already present) {mid}.{fname}")
+            continue
+        if fname in _IDENTITY_FIELDS and (existing & _IDENTITY_FIELDS):
+            notes.append(f"critique: skipped identity duplicate {mid}.{fname}")
+            continue
+        if is_party_link_model(model) and fname == "x_status":
+            notes.append(f"critique: skipped workflow field on party join {mid}.{fname}")
             continue
         field: dict[str, Any] = {
             "name": fname,
@@ -352,6 +386,21 @@ def _draft_has_inventory_coverage(draft: dict[str, Any]) -> bool:
     return False
 
 
+def _as_note_list(value: Any) -> list[str]:
+    """LLM sometimes returns notes as a string; list(str) would split into characters."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text else []
+    if isinstance(value, list):
+        if value and all(isinstance(n, str) and len(n) == 1 for n in value):
+            joined = "".join(value).strip()
+            return [joined] if joined else []
+        return [str(n).strip() for n in value if str(n).strip()]
+    return [str(value).strip()] if str(value).strip() else []
+
+
 def _scrub_stale_critique_notes(
     draft: dict[str, Any], notes_list: list[str]
 ) -> list[str]:
@@ -408,7 +457,7 @@ def finalize_critique_block(draft: dict[str, Any]) -> list[str]:
             continue
         verified.append(repair)
     notes_list = _scrub_stale_critique_notes(
-        draft, list(crit.get("notes") or [])
+        draft, _as_note_list(crit.get("notes"))
     )
     checklist = _filter_off_schema_checklist(list(crit.get("checklist") or []))
     ready = bool(crit.get("ready"))
@@ -432,7 +481,7 @@ def _normalize_critique_block(
     suggestions: list[str] | None = None,
 ) -> dict[str, Any]:
     ready = bool(critique.get("ready"))
-    notes_list = list(critique.get("notes") or [])
+    notes_list = _as_note_list(critique.get("notes"))
     raw_checklist = list(critique.get("checklist") or [])
     checklist = _filter_off_schema_checklist(raw_checklist)
     sug = list(suggestions or [])
@@ -480,11 +529,13 @@ def apply_critique_repairs(
             }
             suggestions.append("shape: wrapped bare model LLM response into missing_models")
     from app.ai_model_quality import filter_redundant_missing_models
+    from app.ai_document_shape import clip_missing_models_to_budget
 
     applied.extend(_apply_missing_fields(out, critique.get("missing_fields") or []))
     filtered = filter_redundant_missing_models(
         out, critique.get("missing_models") or []
     )
+    filtered = clip_missing_models_to_budget(out, filtered)
     skipped = len(critique.get("missing_models") or []) - len(filtered)
     if skipped:
         suggestions.append(
@@ -525,7 +576,9 @@ def run_self_critique(
     checklist = completeness_checklist(out, user_prompt=user_prompt)
     out["_completeness"] = checklist
     gaps = [c["id"] for c in checklist if not c.get("ok")]
-    _noun_items, uncovered, noun_warnings = domain_noun_coverage(out, user_prompt)
+    _noun_items, uncovered, noun_warnings = ([], [], [])
+    if not str(out.get("domain_pack") or ""):
+        _noun_items, uncovered, noun_warnings = domain_noun_coverage(out, user_prompt)
     warnings.extend(noun_warnings)
     ambition = out.get("_ambition") or classify_ambition(user_prompt)
     d_gaps = depth_gaps(out, ambition if ambition in {"thin", "standard", "comprehensive"} else "standard")  # type: ignore[arg-type]

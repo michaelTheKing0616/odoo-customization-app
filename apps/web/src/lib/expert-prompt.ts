@@ -8,9 +8,9 @@ export function isExpertSetupStackQuestion(question: string): boolean {
 /** Build a visible Expert question that includes pasted RPC / validation errors. */
 export function formatExpertDiagnosePrompt(question: string, errorText?: string): string {
   const q = (question || "Diagnose this error on my connection").trim();
-  const err = errorText?.trim();
-  if (!err) return q;
-  if (q.includes(err)) return q;
+  const err = (errorText || "").trim();
+  if (q.includes(err) && /\nError log:\n/i.test(q)) return q;
+  if (/\nError log:\n/i.test(q)) return q;
   return `${q}\n\nError log:\n${err}`;
 }
 

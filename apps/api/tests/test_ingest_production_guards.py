@@ -43,6 +43,8 @@ class FakeAcctClient:
         kwargs = kwargs or {}
         if model == "account.journal" and method == "search_read":
             return list(self.journals)
+        if model == "account.account" and method == "search_count":
+            return max(len(self.accounts), 12)
         if model == "account.account" and method == "search_read":
             domain = args[0] if args else []
             if not domain:

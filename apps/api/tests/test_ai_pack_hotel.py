@@ -29,7 +29,8 @@ def test_retrieve_hotel_from_prompt() -> None:
     assert hit is not None
     pack_id, pack, score = hit
     assert pack_id == "hotel"
-    assert score >= 0.99
+    assert (pack.get("_retrieval") or {}).get("method") == "regex"
+    assert score >= 0.0
     assert pack.get("domain_pack") == "hotel"
 
 

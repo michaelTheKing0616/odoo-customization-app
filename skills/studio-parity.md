@@ -34,8 +34,14 @@ what users expect from Odoo Studio **capability**, without copying Studio source
   `ir.actions.server` / `ir.actions.act_window` via `type="action"` + action id.
 - Header buttons + smart button box (`oe_button_box` / `oe_stat_button`) for related
   window actions (`domain` with `active_id`); optional **computed count** badge
-  (`widget=statinfo`) with advanced confirm.
-- Statusbar field in header (`widget=statusbar` + optional `statusbar_visible`).
+  (`widget=statinfo`) with advanced confirm. Custom `x_*` children already on the
+  form as O2M stay in the notebook (sale.order.line). Nested lists put qty/hours/rate/amount
+  before reference/notes. Related stock *documents* (SO, invoice, lead, picking, task) are
+  button_box only — not Identity M2Os — and use Community labels (Quotations / Invoices /
+  Meetings / Tasks / Leads). Contacts button_box shows the residual header, not every
+  notebook child. Line `x_date` is the work date (keep it); `*_line` has no ir.sequence.
+  Analytic account is a header dimension, not a related document.
+- Statusbar field in header (`widget=statusbar` + optional `statusbar_visible`) on **document** forms. Nested `*_line` forms are `sale.order.line`: billing `x_status` is a sheet column — no statusbar, chatter, or kanban.
 - Safe button actions: `object_write`, `next_activity`, `mail_post`, related windows.
   Python `type="object"` / `state=code` stay on Option A.
 - List/tree: columns + decoration-danger/info/muted UI.

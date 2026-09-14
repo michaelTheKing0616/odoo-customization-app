@@ -6,6 +6,7 @@ If no Opening journal / accounts missing, gap-blocks commit instead of guessing.
 
 from __future__ import annotations
 
+from datetime import date, datetime
 from typing import Any
 
 from odoo_client import OdooClient
@@ -85,6 +86,32 @@ def validate_opening_tb_table(
                 ),
             )
         )
+    from app.config_packet.schema import COA_THRESHOLD
+    from app.config_packet.rpc import search_read, exists as rpc_exists
+
+    account_count = 0
+    if rpc_exists(client, "account.account"):
+        try:
+            raw = client.execute_kw("account.account", "search_count", [[]])
+            if isinstance(raw, int):
+                account_count = raw
+            else:
+                raise TypeError("search_count unavailable")
+        except Exception:  # noqa: BLE001
+            rows = search_read(client, "account.account", [], ["code"], limit=5000)
+            account_count = len(rows)
+    if account_count < COA_THRESHOLD:
+        gaps.append(
+            IngestGap(
+                model="account.account",
+                field="*",
+                value=str(account_count),
+                message=(
+                    f"Chart of accounts has {account_count} codes (need ≥ {COA_THRESHOLD}). "
+                    "Install l10n / import CoA before opening trial balance — do not guess."
+                ),
+            )
+        )
     for row in table.rows:
         code = str(
             row.values.get("code")
@@ -132,7 +159,68 @@ def validate_opening_tb_table(
         "Opening TB commits as a single DRAFT journal entry on the Opening journal — "
         "never auto-posted; human must review and post in Odoo."
     )
+    _append_lock_date_gaps(client, table, gaps)
     return gaps, warnings
+
+
+def _parse_iso_date(raw: Any) -> date | None:
+    text = str(raw or "").strip()[:10]
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        try:
+            return datetime.strptime(text, "%Y-%m-%d").date()
+        except ValueError:
+            return None
+
+
+def _tb_as_of_date(table: IngestTable) -> date | None:
+    for row in table.rows:
+        for key in ("date", "as_of", "as_of_date", "period", "tb_date"):
+            parsed = _parse_iso_date(row.values.get(key) or row.raw.get(key))
+            if parsed:
+                return parsed
+    return None
+
+
+def _append_lock_date_gaps(client: Any, table: IngestTable, gaps: list[IngestGap]) -> None:
+    from app.config_packet.fingerprint import read_company_lock_dates
+
+    locks = read_company_lock_dates(client)
+    present = {k: _parse_iso_date(v) for k, v in locks.items() if v}
+    if not any(present.values()):
+        return
+    tb_date = _tb_as_of_date(table)
+    if tb_date is None:
+        gaps.append(
+            IngestGap(
+                model="res.company",
+                field="period_lock_date",
+                value=",".join(f"{k}={v}" for k, v in locks.items() if v),
+                message=(
+                    "Opening TB has no date while company lock dates are set. "
+                    "Add a date/as_of column or clear the lock in Odoo before ingest."
+                ),
+            )
+        )
+        return
+    for field, lock in present.items():
+        if lock is None:
+            continue
+        if tb_date <= lock:
+            gaps.append(
+                IngestGap(
+                    model="res.company",
+                    field=field,
+                    value=str(lock),
+                    message=(
+                        f"Opening TB date {tb_date.isoformat()} is on or before {field}={lock.isoformat()}. "
+                        "Clear or move the lock in Odoo before ingest — still never auto-posted."
+                    ),
+                )
+            )
 
 
 def commit_opening_tb(

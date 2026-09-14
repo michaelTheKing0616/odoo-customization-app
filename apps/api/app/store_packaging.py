@@ -12,7 +12,6 @@ from module_generator import ModuleSpec
 
 from app.deploy_odoo_sh import inject_file_into_zip
 from app.store_readiness import (
-    PLACEHOLDER_ICON_PNG,
     STORE_REVIEW_DISCLAIMER,
     check_zip_store_readiness,
     parse_manifest_py,
@@ -122,7 +121,10 @@ def apply_store_packaging(
             zip_bytes = inject_file_into_zip(zip_bytes, manifest_path, patched)
 
     icon_path = f"{root}/static/description/icon.png"
-    zip_bytes = inject_file_into_zip(zip_bytes, icon_path, PLACEHOLDER_ICON_PNG)
+    from app.app_icons import render_app_icon_png
+
+    icon_png = render_app_icon_png(spec.display_name or root, seed=root)
+    zip_bytes = inject_file_into_zip(zip_bytes, icon_path, icon_png)
     index_path = f"{root}/static/description/index.html"
     zip_bytes = inject_file_into_zip(zip_bytes, index_path, listing_index_html(spec, description=description))
 
@@ -131,7 +133,7 @@ def apply_store_packaging(
         zip_bytes,
         technical_name=root,
         major=major,
-        icon_is_placeholder=True,
+        icon_is_placeholder=False,
     )
     report_payload = {
         "disclaimer": readiness.disclaimer,
@@ -139,6 +141,7 @@ def apply_store_packaging(
         "fail_count": readiness.fail_count,
         "warn_count": readiness.warn_count,
         "message": readiness.message,
+        "icon_is_placeholder": False,
         "items": [
             {"key": i.key, "label": i.label, "status": i.status, "message": i.message}
             for i in readiness.items
@@ -149,4 +152,4 @@ def apply_store_packaging(
         report_path,
         json.dumps(report_payload, indent=2),
     )
-    return zip_bytes, True, report_payload
+    return zip_bytes, False, report_payload

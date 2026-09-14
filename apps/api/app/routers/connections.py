@@ -204,13 +204,13 @@ def update_connection(
         row.secret_encrypted = encrypt_secret(body.password)
 
     if body.verify:
-        from app.crypto import decrypt_secret
+        from app.crypto import CryptoError, decrypt_secret
 
         password = body.password if body.password is not None else decrypt_secret(row.secret_encrypted)
         try:
             _, version = probe_credentials(row.url, row.db_name, row.username, password)
             row.server_version = version
-        except OdooClientError as exc:
+        except (OdooClientError, CryptoError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     elif body.url is not None or body.db_name is not None or body.username is not None or body.password is not None:
         # Connection endpoint changed without verify — clear stale version so UI
@@ -320,7 +320,7 @@ def probe_connection(connection_id: str, db: Session = Depends(get_db)) -> Probe
     row = db.get(OdooConnection, connection_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Connection not found")
-    from app.crypto import decrypt_secret
+    from app.crypto import CryptoError, decrypt_secret
     from app.odoo_service import client_from_connection
 
     prior_version = row.server_version
@@ -372,6 +372,8 @@ def probe_connection(connection_id: str, db: Session = Depends(get_db)) -> Probe
             upgrade_detected=watch.upgrade_detected,
             health_job_id=watch.health_job_id,
         )
+    except CryptoError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except OdooClientError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 

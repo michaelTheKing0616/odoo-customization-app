@@ -52,36 +52,58 @@ STOCK_NOUN_RULES: tuple[StockNounRule, ...] = (
         also_match=re.compile(r"\b(purchase|procurement|replenish)\b", re.I),
     ),
     StockNounRule(
-        ("staff", "employee", "cashier", "roster"),
+        (
+            "staff",
+            "employee",
+            "cashier",
+            "roster",
+            "lawyer",
+            "attorney",
+            "counsel",
+            "doctor",
+        ),
         ("hr.employee",),
         ("hr",),
         "Staff / employees",
-        forbid_parallel=("x_employee", "x_staff"),
+        forbid_parallel=(
+            "x_employee",
+            "x_staff",
+            "x_attorney",
+            "x_lawyer",
+            "x_counsel",
+            "x_doctor",
+        ),
     ),
     StockNounRule(
-        ("inventory", "stock", "warehouse", "replenish"),
+        ("inventory", "warehouse", "replenish", "picking"),
         ("stock.warehouse", "stock.quant"),
         ("stock",),
         "Inventory / warehouse (link-only)",
         forbid_parallel=("x_warehouse", "x_stock_location"),
         link_only=True,
+        also_match=re.compile(
+            r"\b(inventory|warehouse|stock\s+quant|stock\s+picking|"
+            r"goods\s+in|replenish|delivery\s+order)\b",
+            re.I,
+        ),
     ),
     StockNounRule(
         ("invoice", "billing"),
         ("account.move",),
         ("account",),
         "Invoices / bills (link-only)",
-        forbid_parallel=("x_invoice", "x_bill"),
+        forbid_parallel=("x_invoice", "x_bill", "x_payment"),
         link_only=True,
+        also_match=re.compile(r"\b(invoicing|accounts?\s+receivable)\b", re.I),
     ),
     StockNounRule(
-        ("sale", "order", "checkout"),
+        ("sale", "checkout"),
         ("sale.order",),
         ("sale",),
         "Sales orders (link-only)",
-        forbid_parallel=("x_sale_order",),
+        forbid_parallel=("x_sale_order", "x_quotation", "x_quote"),
         link_only=True,
-        also_match=re.compile(r"\bsales?\s+order\b", re.I),
+        also_match=re.compile(r"\b(sales?\s+order|quotations?|quotes?)\b", re.I),
     ),
     StockNounRule(
         ("expense", "reimburse"),
@@ -95,7 +117,7 @@ STOCK_NOUN_RULES: tuple[StockNounRule, ...] = (
         ("calendar.event",),
         ("calendar",),
         "Calendar events / appointments",
-        forbid_parallel=("x_event", "x_appointment"),
+        forbid_parallel=("x_event", "x_meeting"),
     ),
 )
 
@@ -106,14 +128,23 @@ def _load_ce_modules() -> frozenset[str]:
     return frozenset(load_vendored_community_modules("19.0"))
 
 
+def _surface_pat(noun: str) -> re.Pattern[str]:
+    if noun.endswith("s"):
+        return re.compile(rf"\b{re.escape(noun)}\b", re.I)
+    return re.compile(rf"\b{re.escape(noun)}s?\b", re.I)
+
+
 def _rule_matches(rule: StockNounRule, nouns: set[str], text: str) -> bool:
-    low = text.lower()
-    if any(n in nouns for n in rule.nouns):
-        return True
+    from app.text_negation import has_positive_match
+
     for noun in rule.nouns:
-        if re.search(rf"\b{re.escape(noun)}\b", low):
+        pat = _surface_pat(noun)
+        if has_positive_match(pat, text):
             return True
-    if rule.also_match and rule.also_match.search(text):
+        # Lemmatized extract (attorneys → attorney) still needs a positive surface
+        if noun in nouns and has_positive_match(pat, text):
+            return True
+    if rule.also_match and has_positive_match(rule.also_match, text):
         return True
     return False
 
@@ -240,7 +271,7 @@ def infer_stock_reuse(
                 link_only=rule.link_only,
             )
 
-    if stock_catalog:
+    if stock_catalog and not pack_reuse_stock:
         from app.ai_stock_catalog import infer_catalog_reuse
 
         catalog_rows = infer_catalog_reuse(

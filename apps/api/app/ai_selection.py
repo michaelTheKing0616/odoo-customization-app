@@ -55,6 +55,64 @@ def serialize_selection(pairs: list[tuple[str, str]]) -> str:
     return "[" + ",".join(f"('{k}','{lbl}')" for k, lbl in pairs) + "]"
 
 
+_ANTONYM_PAIRS = frozenset(
+    {
+        frozenset({"active", "inactive"}),
+        frozenset({"open", "closed"}),
+        frozenset({"yes", "no"}),
+        frozenset({"true", "false"}),
+        frozenset({"on", "off"}),
+        frozenset({"enabled", "disabled"}),
+        frozenset({"available", "unavailable"}),
+    }
+)
+_TERMINAL_ALIASES = {"completed": "done", "complete": "done"}
+
+
+def snake_selection_key(key: str) -> str:
+    """Odoo selection keys are snake_case identifiers, not Title Case labels."""
+    raw = str(key or "").strip()
+    if not raw:
+        return raw
+    if re.search(r"[\s-]", raw):
+        return re.sub(r"[\s-]+", "_", raw).lower()
+    if raw[:1].isupper():
+        return raw.lower()
+    return raw
+
+
+def canonicalize_selection_pairs(
+    pairs: list[tuple[str, str]],
+) -> tuple[list[tuple[str, str]], dict[str, str], bool]:
+    """Snake keys, fold Draft/draft, and unswap antonym value/label pairs.
+
+    Domain-agnostic: no industry vocab. Antonym pairs are generic status words.
+    """
+    mapping: dict[str, str] = {}
+    rebuilt: list[tuple[str, str]] = []
+    for key, label in pairs:
+        new_key = snake_selection_key(key)
+        folded_terminal = new_key in _TERMINAL_ALIASES
+        if folded_terminal:
+            new_key = _TERMINAL_ALIASES[new_key]
+        new_label = str(label or "").strip() or new_key.replace("_", " ").title()
+        if (folded_terminal or new_key == "done") and snake_selection_key(
+            new_label
+        ) in _TERMINAL_ALIASES:
+            new_label = "Done"
+        label_as_key = snake_selection_key(new_label)
+        if (
+            frozenset({new_key.lower(), label_as_key.lower()}) in _ANTONYM_PAIRS
+            and new_key.lower() != label_as_key.lower()
+        ):
+            new_label = new_key.replace("_", " ").title()
+        mapping[str(key)] = new_key
+        rebuilt.append((new_key, new_label))
+    deduped, duped = dedupe_selection_pairs(rebuilt)
+    changed = duped or deduped != list(pairs)
+    return deduped, mapping, changed
+
+
 def dedupe_selection_pairs(
     pairs: list[tuple[str, str]],
 ) -> tuple[list[tuple[str, str]], bool]:
@@ -107,13 +165,30 @@ def normalize_selection_field(
         return notes
     pairs = parse_selection_literal(raw)
     if pairs is None:
-        notes.append(f"quality: unparsable selection on {context} — left unchanged")
-        return notes
-    deduped, duped = dedupe_selection_pairs(pairs)
-    canonical = serialize_selection(deduped)
-    if canonical != str(raw).strip() or duped:
+        bare: list[str] | None = None
+        for candidate in (raw, raw.replace("(", "[").replace(")", "]")):
+            try:
+                val = ast.literal_eval(candidate)
+            except (ValueError, SyntaxError):
+                continue
+            if isinstance(val, (list, tuple)) and val and all(isinstance(x, str) for x in val):
+                bare = [str(x) for x in val]
+                break
+        if bare:
+            pairs = [(k, k.replace("_", " ").title()) for k in bare]
+            field["selection"] = serialize_selection(pairs)
+            notes.append(f"quality: coerced bare string selection on {context}")
+        else:
+            notes.append(f"quality: unparsable selection on {context} — left unchanged")
+            return notes
+    canonical_pairs, mapping, changed = canonicalize_selection_pairs(pairs)
+    canonical = serialize_selection(canonical_pairs)
+    if canonical != str(raw).strip() or changed:
         field["selection"] = canonical
-        notes.append(f"quality: deduped/normalized selection on {context}")
+        notes.append(f"quality: canonicalized selection on {context}")
+    default = field.get("default")
+    if isinstance(default, str) and default in mapping and mapping[default] != default:
+        field["default"] = mapping[default]
     field.pop("selection_values", None)
     return notes
 
@@ -123,5 +198,7 @@ __all__ = [
     "serialize_selection",
     "dedupe_selection_pairs",
     "selection_keys",
+    "snake_selection_key",
+    "canonicalize_selection_pairs",
     "normalize_selection_field",
 ]

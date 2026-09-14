@@ -24,6 +24,7 @@ def test_readme_golden_sections() -> None:
     assert "## Install steps" in readme
     assert "## Module contents map" in readme
     assert "## Hand to your developer" in readme
+    assert "## Test scenario" in readme
     assert "`x_book`" in readme
     assert "Self-hosted" in readme
 

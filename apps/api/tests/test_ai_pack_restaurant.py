@@ -27,10 +27,10 @@ def test_retrieve_restaurant_from_prompt() -> None:
         "Build a restaurant POS-lite app with table reservations and kitchen order flow"
     )
     assert hit is not None
-    pack_id, pack, score = hit
+    pack_id, pack, _score = hit
     assert pack_id == "restaurant"
-    assert score >= 0.99
     assert pack.get("domain_pack") == "restaurant"
+    assert (pack.get("_retrieval") or {}).get("method") == "regex"
 
 
 def test_restaurant_teaching_blob_depth() -> None:

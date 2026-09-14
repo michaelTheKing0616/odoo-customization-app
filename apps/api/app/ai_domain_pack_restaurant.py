@@ -66,6 +66,7 @@ def restaurant_pack() -> dict[str, Any]:
         "display_name": "Restaurant Management",
         "depends": ["base", "contacts", "mail"],
         "domain_pack": "restaurant",
+        "document_shape": "workspace",
         "tags": [
             "restaurant",
             "dining",

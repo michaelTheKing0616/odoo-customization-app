@@ -61,38 +61,64 @@ def derive_draft_naming_from_prompt(
     warnings: list[str] = []
     if not user_prompt.strip():
         return warnings
-    raw_tech = data.get("technical_name")
-    if not raw_tech or raw_tech == "custom_app":
-        tokens = re.findall(r"[a-zA-Z]+", user_prompt.lower())
-        skip = {
-            "a",
-            "an",
-            "the",
-            "and",
-            "or",
-            "with",
-            "for",
-            "to",
-            "of",
-            "in",
-            "on",
-            "around",
-            "world",
-            "across",
-            "large",
-            "mega",
-            "multiple",
-            "full",
-            "simple",
-            "app",
-            "system",
-            "management",
-            "build",
-            "create",
-        }
-        words = [t for t in tokens if t not in skip and len(t) > 2][:4]
-        slug_source = "_".join(words) if words else user_prompt
-        slug = normalize_technical_name(slug_source, fallback="custom_app")
+    if data.get("domain_pack"):
+        return warnings
+    from app.ai_document_shape import naming_from_residual
+
+    residual_display, residual_tech = naming_from_residual(user_prompt)
+    if residual_display and residual_tech:
+        data["display_name"] = residual_display
+        data["technical_name"] = residual_tech
+        from app.ai_document_shape import align_root_menu_to_residual
+
+        warnings.extend(align_root_menu_to_residual(data, prompt=user_prompt))
+        warnings.append(f"naming from residual → {residual_display!r} / {residual_tech!r}")
+        return warnings
+    tokens = re.findall(r"[a-zA-Z]+", user_prompt.lower())
+    skip = {
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "with",
+        "for",
+        "to",
+        "of",
+        "in",
+        "on",
+        "around",
+        "world",
+        "across",
+        "large",
+        "mega",
+        "multiple",
+        "full",
+        "simple",
+        "app",
+        "system",
+        "management",
+        "build",
+        "create",
+        "company",
+        "companies",
+    }
+    words = [t for t in tokens if t not in skip and len(t) > 2][:4]
+    slug_source = "_".join(words) if words else user_prompt
+    slug = normalize_technical_name(slug_source, fallback="custom_app")
+    raw_tech = str(data.get("technical_name") or "")
+    truncated = bool(
+        raw_tech
+        and len(raw_tech) <= 24
+        and slug.startswith(raw_tech.rstrip("_"))
+        and slug != raw_tech
+    )
+    if (
+        not raw_tech
+        or raw_tech == "custom_app"
+        or raw_tech.startswith("a_")
+        or truncated
+    ):
         if slug == "custom_app":
             warnings.append(
                 "technical_name defaulted to custom_app — could not slugify prompt"
@@ -100,15 +126,19 @@ def derive_draft_naming_from_prompt(
         else:
             data["technical_name"] = slug
             warnings.append(f"technical_name derived from prompt → {slug!r}")
-    if not data.get("display_name"):
-        from app.ai_domain_packs import match_domain_pack
-        from app.ai_vocab_scrub import derive_domain_prefix
-
-        pack = match_domain_pack(user_prompt)
-        data["display_name"] = derive_domain_prefix(
-            user_prompt, pack=pack[1] if pack else None
-        )
-        warnings.append(f"display_name derived from prompt → {data['display_name']!r}")
+    nice = " ".join(w.title() for w in words) if words else ""
+    display = str(data.get("display_name") or "")
+    if nice and (
+        not display
+        or display.startswith("A ")
+        or display.lower().startswith("x ")
+        or (warnings and any("technical_name derived" in w for w in warnings) and len(display) <= 32)
+    ):
+        data["display_name"] = nice
+        warnings.append(f"display_name derived from prompt → {nice!r}")
+        for menu in data.get("menus") or []:
+            if isinstance(menu, dict) and not menu.get("parent_xml_id"):
+                menu["name"] = nice
     return warnings
 
 
@@ -128,45 +158,50 @@ def sanitize_draft_module_spec(data: dict[str, Any]) -> list[str]:
     return warnings
 
 _SYSTEM_PROMPT = f"""You are a ModuleSpec JSON generator for Odoo Community 19 customizations
-(public ORM/RPC only — never Studio Enterprise). Your #1 job is MODEL CREATION QUALITY:
-rich, apply-ready models that mirror real operations — not thin CRUD or lookup-table padding.
+(public ORM/RPC only — never Studio Enterprise). Your #1 job is to honor the operator
+brief: stated residual only, unknowns omitted, out-of-scope never inherited.
 
 Reply with ONLY a JSON object.
 
 {MODEL_CREATION_RULES}
 
-Ambition floors (meet or exceed):
-- thin / "simple" → ≥2 substantive models
+Ambition floors apply to workspace / transactional_header only
+(register / field_pack / stock_reuse ignore these):
+- thin / "simple" workspace → ≥2 substantive models
 - normal management / system / app → ≥5 substantive models, ≥1 workflow (x_status)
 - comprehensive / world-class / end-to-end → ≥10 substantive models, ≥3 workflows,
   rich many2one graph, smart buttons, safe automations
 
-Operational loop (adapt roles to the domain):
+Operational loop (workspace only — adapt roles to the domain):
   master data → transactional documents → line/support/events → billing/compliance stubs
 
 Field & apply-ready rules:
-- Custom models/fields start with x_; workflows need x_status (+ x_code with domain-specific help)
-- many2one to res.partner / res.users / res.company when contacts, assignees, multi-company matter
-- Amounts → x_currency_id (res.currency)
-- smart_buttons: relation_field MUST be x_* many2one on related_model pointing at on_model
+- Custom models/fields start with x_; workflows need x_status only when the brief named a lifecycle
+- many2one to res.partner when the brief named a contact; res.users only for login/assignee;
+  res.company / res.currency only when the brief named multi-company or a currency
+- many2one to pos.order / pos.session: include options no_create + no_create_edit
+  (pick existing PoS records only — do not invent backend create)
+- Every operator-facing field SHOULD include a short `help` tooltip (cashier/clerk guidance)
+- smart_buttons: useful host↔residual links (Punch Cards on Contacts, residual on
+  Employees / Orders / Invoices when an x_* M2O points there);
+  relation_field MUST be x_* many2one on related_model pointing at on_model;
+  skip Contacts buttons on visitor/key/call logs
 - automations: triggers on_create|on_write|on_create_or_write|on_time|… only;
   safe_actions only (object_write, related_write, next_activity). Never Python / email_send.
-- reuse_hints + depends: include contacts + mail when relevant
+  Duration alerts: header datetime + trg_date_range, not create_date.
+- reuse_hints + depends: only hosts the brief uses (hr when an employee is named)
 
 Schema (required keys):
 {{
   "technical_name": "snake_case",
   "display_name": "Label",
-  "depends": ["base", "contacts", "mail"],
+  "depends": ["base", "mail"],
   "models": [{{
     "model": "x_thing",
     "description": "Thing",
     "mode": "new",
     "fields": [
-      {{"name": "x_name", "ttype": "char", "string": "Name", "required": true}},
-      {{"name": "x_status", "ttype": "selection", "string": "Status",
-       "selection": "[('draft','Draft'),('done','Done')]"}},
-      {{"name": "x_partner_id", "ttype": "many2one", "relation": "res.partner", "string": "Contact"}}
+      {{"name": "x_name", "ttype": "char", "string": "Name", "required": true}}
     ]
   }}],
   "smart_buttons": [],
@@ -176,6 +211,15 @@ Schema (required keys):
 
 No markdown. Prefer fewer rich models over many hollow catalogs.
 """
+
+
+def module_spec_system_prompt(user_prompt: str = "") -> str:
+    """System prompt plus the operator-brief contract for this request."""
+    if not (user_prompt or "").strip():
+        return _SYSTEM_PROMPT
+    from app.ai_operator_brief import brief_llm_contract
+
+    return _SYSTEM_PROMPT + "\n\n" + brief_llm_contract(user_prompt)
 
 
 class AiAssistUnavailable(Exception):
@@ -206,13 +250,13 @@ def call_ollama_generate(prompt: str, *, timeout_s: float = 120.0) -> str:
     provider = get_llm_provider()
     if provider is None:
         raise AiAssistUnavailable(
-            "AI assist is disabled. Set AI_ASSIST=ollama (or openai-compatible) "
-            "and pull qwen3:8b (+ qwen3:14b for reasoning steps), or use a domain-matched prompt."
+            "AI assist is disabled. Set AI_ASSIST=auto (or ollama|openai|claude|gemini) "
+            "and provide the matching API key, or use a domain-matched prompt."
         )
     try:
         return provider.generate_json(
             prompt,
-            system=_SYSTEM_PROMPT,
+            system=module_spec_system_prompt(prompt),
             timeout_s=timeout_s,
             reasoning=True,
             temperature=STEP_TEMPERATURES["single_pipeline"],
@@ -232,7 +276,9 @@ def validate_draft_module_spec(data: dict[str, Any]) -> list[str]:
     if not data.get("display_name"):
         warnings.append("display_name missing — defaulting may be required")
     models = data.get("models")
-    if not isinstance(models, list) or not models:
+    ir = data.get("_generation_engine") if isinstance(data.get("_generation_engine"), dict) else {}
+    empty_ok = ir.get("capability") in {"stock_reuse", "refuse_clone"}
+    if not isinstance(models, list) or (not models and not empty_ok):
         raise ValueError("draft.models must be a non-empty list")
     for i, model in enumerate(models):
         if not isinstance(model, dict):
@@ -274,12 +320,56 @@ def _build_prompt_with_context(
     reuse_plan: ReusePlan | None = None,
     scaffold: dict[str, Any] | None = None,
     matched_pack_id: str | None = None,
+    architecture_plan: dict[str, Any] | None = None,
+    document_shape: str | None = None,
+    operator_brief: str | None = None,
 ) -> str:
-    parts = [prompt.strip()]
+    from app.ai_domain_briefing import build_domain_briefing
+    from app.ai_operator_brief import brief_llm_contract, build_operator_brief
+
+    # Prefer raw operator text. If a labeled prompt_for_generators blob was passed,
+    # strip our section headers so contract/shape classify on the original.
+    raw = (prompt or "").strip()
+    if raw.startswith("## Original operator message"):
+        parts_raw = raw.split(
+            "## Upstream operator brief IR (may be wrong — verify against original)",
+            1,
+        )
+        head = parts_raw[0]
+        raw = head.replace(
+            "## Original operator message (verbatim — authoritative)", "", 1
+        ).strip()
+        if len(parts_raw) > 1 and not (operator_brief or "").strip():
+            operator_brief = parts_raw[1].strip()
+
+    brief_text = (operator_brief or "").strip()
+    if not brief_text:
+        brief_text = build_operator_brief(raw).formatted
+
+    parts = [
+        brief_llm_contract(raw),
+        "## Original operator message (verbatim — authoritative)\n" + raw,
+        "## Upstream operator brief IR (may be wrong — verify against original)\n"
+        + brief_text,
+    ]
+    parts.append(build_domain_briefing(raw).prompt_block())
+    if architecture_plan:
+        parts.append(
+            "LOCKED architecture_plan (emit fields/views/automations ONLY for new_x_models; "
+            "adding any other x_* model is invalid JSON):\n"
+            + json.dumps(architecture_plan, default=str)
+        )
+        if str(architecture_plan.get("document_shape") or document_shape) == "register":
+            parts.append(
+                "This is a register: one header model, no party/line satellites, "
+                "no CRM or invoice inherits. Do not invent an ERP."
+            )
     parts.append(
         "Follow these model-creation rules exactly:\n" + MODEL_CREATION_RULES
     )
-    exemplar = few_shot_exemplar_block(matched_pack_id)
+    exemplar = few_shot_exemplar_block(
+        matched_pack_id, document_shape=document_shape
+    )
     if exemplar:
         parts.append(
             "Quality exemplar (adapt roles to THIS domain; do not invent hollow type/tag models):\n"
@@ -321,7 +411,7 @@ def _build_prompt_with_context(
     if stock_catalog:
         from app.ai_stock_catalog import format_stock_models_for_llm
 
-        block = format_stock_models_for_llm(stock_catalog, prompt)
+        block = format_stock_models_for_llm(stock_catalog, raw)
         if block:
             parts.append(block)
     elif available_models:
@@ -361,7 +451,6 @@ def _infer_llm_mode(
         "falling back to pack",
         "using domain pack",
         "step1-5 skipped",
-        "step1 empty",
     )
     if llm_initial_failed or (provider is None and matched):
         return "pack_fallback"
@@ -375,6 +464,25 @@ def _infer_llm_mode(
     return "llm_full"
 
 
+def _emit_partial_progress(
+    progress_callback: Callable[[int, str, dict[str, Any] | None], None] | None,
+    step: int,
+    draft: dict[str, Any],
+) -> None:
+    """Surface in-progress ModuleSpec JSON to async job pollers.
+
+    Tagged incomplete so the wizard never treats a mid-pipeline snapshot as the app.
+    """
+    if progress_callback is None:
+        return
+    from app.ai_llm_status import STEP_LABELS, sanitize_draft_payload
+
+    payload = sanitize_draft_payload(draft)
+    payload["_generation_incomplete"] = True
+    idx = max(0, min(step, len(STEP_LABELS) - 1))
+    progress_callback(idx, STEP_LABELS[idx], payload)
+
+
 def _finalize_draft_generation(
     draft: dict[str, Any],
     prompt: str,
@@ -385,6 +493,7 @@ def _finalize_draft_generation(
 ) -> list[str]:
     """Post-LLM finisher shared by single and staged pipelines."""
     from app.ai_critique import finalize_critique_block
+    from app.ai_domain_briefing import attach_domain_briefing
     from app.ai_draft_scorecard import attach_scorecard, scorecard_required_repairs
     from app.ai_elite import run_elite_passes
     from app.ai_llm_status import STEP_LABELS, attach_llm_status, finalize_llm_status, sanitize_draft_payload
@@ -392,10 +501,16 @@ def _finalize_draft_generation(
     from app.ai_production_shape import run_production_shape_pass
 
     draft["_user_prompt"] = prompt
+    from app.ai_operator_brief import attach_operator_brief
+
+    attach_operator_brief(draft, user_prompt=prompt)
+    attach_domain_briefing(draft, user_prompt=prompt)
+    draft.pop("_generation_incomplete", None)
     sanitized = sanitize_draft_payload(draft)
     if sanitized is not draft:
         draft.clear()
         draft.update(sanitized)
+    warnings.extend(derive_draft_naming_from_prompt(draft, prompt))
     warnings.extend(finalize_critique_block(draft))
     failed_steps = [
         w.split(":")[0]
@@ -410,8 +525,25 @@ def _finalize_draft_generation(
     )
     finalize_llm_status(draft, mode=llm_mode)  # type: ignore[arg-type]
     warnings.extend(run_post_critique_pipeline(draft, user_prompt=prompt))
+    from app.ai_odoo_app_bar import (
+        apply_senior_sequence_prefixes,
+        humanize_app_surface,
+        inject_chatter_on_forms,
+        run_odoo_app_bar_pass,
+    )
+
+    warnings.extend(run_odoo_app_bar_pass(draft, user_prompt=prompt))
     warnings.extend(run_production_shape_pass(draft))
+    warnings.extend(apply_senior_sequence_prefixes(draft))
     warnings.extend(run_elite_passes(draft, user_prompt=prompt))
+    warnings.extend(inject_chatter_on_forms(draft))
+    warnings.extend(humanize_app_surface(draft))
+    from app.ai_odoo_app_bar import close_odoo_architecture
+
+    warnings.extend(close_odoo_architecture(draft, user_prompt=prompt))
+    from app.ai_apply_readiness import filter_stale_enrich_warnings
+
+    warnings = filter_stale_enrich_warnings(warnings, draft)
     attach_scorecard(draft, user_prompt=prompt)
     sc = draft.get("_scorecard") if isinstance(draft.get("_scorecard"), dict) else {}
     if float(sc.get("score_0_10") or 0) < 9:
@@ -478,11 +610,36 @@ def draft_module_from_prompt(
 ) -> tuple[dict[str, Any], str, list[str], list[dict[str, Any]]]:
     """Return (draft_dict, raw_response, warnings, refusals). Never mutates Odoo."""
     from app.ai_component_builder import draft_component_from_prompt
+    from app.ai_generation_engine import maybe_seed_from_capability
     from app.ai_grain import classify_grain
+    from app.ai_operator_brief import intent_corpus
     from app.ai_rules import strip_protected_module_effects
     from app.protected_modules import refresh_connection_protected_manifest
 
-    grain = grain_override or classify_grain(prompt)
+    capability_seed = maybe_seed_from_capability(prompt)
+    if capability_seed:
+        from app.ai_draft_scorecard import attach_scorecard
+        from app.ai_live_apply_contract import attach_live_apply_contract
+        from app.ai_llm_status import finalize_llm_status, sanitize_draft_payload
+
+        warnings: list[str] = []
+        try:
+            warnings.extend(attach_live_apply_contract(capability_seed))
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"Live-apply stamp skipped: {exc}")
+        attach_scorecard(capability_seed, user_prompt=prompt)
+        finalize_llm_status(capability_seed, mode="seed_fallback")
+        draft = sanitize_draft_payload(capability_seed)
+        warnings = _dedupe_warnings(warnings + validate_draft_module_spec(draft))
+        raw = json.dumps(
+            {
+                "grain": draft.get("grain"),
+                "capability": (draft.get("_generation_engine") or {}).get("capability"),
+            }
+        )
+        return draft, raw, warnings, []
+
+    grain = grain_override or classify_grain(intent_corpus(prompt) or prompt)
     if grain != "full_app":
         draft, _hosts, comp_warnings = draft_component_from_prompt(
             prompt,
@@ -499,6 +656,18 @@ def draft_module_from_prompt(
         )
         draft, late_refusals, late_w = strip_protected_module_effects(draft, manifest=manifest)
         refusals = list(late_refusals)
+        from app.ai_draft_scorecard import attach_scorecard
+        from app.ai_live_apply_contract import attach_live_apply_contract
+        from app.ai_llm_status import attach_llm_status, finalize_llm_status, sanitize_draft_payload
+
+        try:
+            comp_warnings = list(comp_warnings) + attach_live_apply_contract(draft)
+        except Exception as exc:  # noqa: BLE001
+            comp_warnings = list(comp_warnings) + [f"Live-apply stamp skipped: {exc}"]
+        attach_scorecard(draft, user_prompt=prompt)
+        attach_llm_status(draft, mode="llm_full", reason="component_grain")
+        finalize_llm_status(draft, mode="llm_full")
+        draft = sanitize_draft_payload(draft)
         warnings = _dedupe_warnings(comp_warnings + late_w + validate_draft_module_spec(draft))
         raw = json.dumps(
             {"grain": grain, "component": True, "connect_points": draft.get("connect_points")}
@@ -547,6 +716,8 @@ def draft_module_from_prompt(
 
     mode = (pipeline or settings.ai_pipeline_mode or "single").strip().lower()
     if mode == "staged":
+        from app.ai_pipeline import seed_unpacked_draft
+
         try:
             draft, raw, staged_warnings = run_staged_pipeline(
                 prompt,
@@ -555,78 +726,87 @@ def draft_module_from_prompt(
                 odoo_version=odoo_version,
             )
             warnings = list(amb_notes) + staged_warnings
-            draft.setdefault("_ambition", scaled_amb)
-            warnings.extend(apply_reuse_plan(draft, reuse_plan))
-            if expand:
-                prov = get_llm_provider()
-                draft, q_w = run_model_quality_pass(
-                    draft,
-                    user_prompt=prompt,
-                    ambition=str(draft.get("_ambition") or "standard"),
-                    provider=prov,
-                    expand_llm=True,
-                )
-                warnings.extend(q_w)
-                draft, depth_w = run_depth_pass(
-                    draft,
-                    user_prompt=prompt,
-                    provider=prov,
-                    expand_llm=True,
-                )
-                warnings.extend(depth_w)
-                draft, critique_w = run_self_critique(
-                    draft, user_prompt=prompt, repair=True
-                )
-                warnings.extend(critique_w)
-                draft, q_w2 = run_model_quality_pass(
-                    draft,
-                    user_prompt=prompt,
-                    ambition=str(draft.get("_ambition") or "standard"),
-                    provider=None,
-                    expand_llm=False,
-                )
-                warnings.extend(q_w2)
-                warnings.extend(apply_reuse_plan(draft, reuse_plan))
-                draft, depth_w2 = run_depth_pass(
-                    draft,
-                    user_prompt=prompt,
-                    provider=None,
-                    expand_llm=False,
-                )
-                warnings.extend(depth_w2)
-            warnings.extend(validate_draft_module_spec(draft))
-            draft, warnings, refusals = _apply_pcm_strip(
-                draft,
-                protected_manifest=protected_manifest,
-                odoo_version=odoo_version,
-                client=client,
-                warnings=warnings,
-            )
-            from app.ai_enrich import sync_form_archs_to_models
-
-            warnings.extend(sync_form_archs_to_models(draft))
-            staged_provider = get_llm_provider()
-            staged_matched = (
-                (str(draft.get("domain_pack")), {})
-                if draft.get("domain_pack")
-                else early_pack
-            )
-            llm_mode = _infer_llm_mode(
-                draft,
-                warnings,
-                provider=staged_provider,
-                matched=staged_matched,  # type: ignore[arg-type]
-            )
-            warnings = _finalize_draft_generation(
-                draft,
-                prompt,
-                warnings,
-                llm_mode=llm_mode,
-                progress_callback=progress_callback,
-            )
-            return draft, raw, warnings, refusals
         except LLMError as exc:
-            raise AiAssistUnavailable(str(exc), status_code=exc.status_code) from exc
+            warnings.append(f"staged LLM failed ({exc}); seeding unpacked draft")
+            from app.ai_domain_briefing import build_domain_briefing
+
+            draft = seed_unpacked_draft(
+                prompt,
+                briefing=build_domain_briefing(prompt),
+                ambition=scaled_amb,
+            )
+            raw = ""
+        _emit_partial_progress(progress_callback, 2, draft)
+        draft.setdefault("_ambition", scaled_amb)
+        warnings.extend(apply_reuse_plan(draft, reuse_plan))
+        if expand:
+            prov = get_llm_provider()
+            draft, q_w = run_model_quality_pass(
+                draft,
+                user_prompt=prompt,
+                ambition=str(draft.get("_ambition") or "standard"),
+                provider=prov,
+                expand_llm=True,
+            )
+            warnings.extend(q_w)
+            draft, depth_w = run_depth_pass(
+                draft,
+                user_prompt=prompt,
+                provider=prov,
+                expand_llm=True,
+            )
+            warnings.extend(depth_w)
+            draft, critique_w = run_self_critique(
+                draft, user_prompt=prompt, repair=True
+            )
+            warnings.extend(critique_w)
+            draft, q_w2 = run_model_quality_pass(
+                draft,
+                user_prompt=prompt,
+                ambition=str(draft.get("_ambition") or "standard"),
+                provider=None,
+                expand_llm=False,
+            )
+            warnings.extend(q_w2)
+            warnings.extend(apply_reuse_plan(draft, reuse_plan))
+            draft, depth_w2 = run_depth_pass(
+                draft,
+                user_prompt=prompt,
+                provider=None,
+                expand_llm=False,
+            )
+            warnings.extend(depth_w2)
+        warnings.extend(validate_draft_module_spec(draft))
+        draft, warnings, refusals = _apply_pcm_strip(
+            draft,
+            protected_manifest=protected_manifest,
+            odoo_version=odoo_version,
+            client=client,
+            warnings=warnings,
+        )
+        from app.ai_enrich import sync_form_archs_to_models
+
+        warnings.extend(sync_form_archs_to_models(draft))
+        staged_provider = get_llm_provider()
+        staged_matched = (
+            (str(draft.get("domain_pack")), {})
+            if draft.get("domain_pack")
+            else early_pack
+        )
+        llm_mode = _infer_llm_mode(
+            draft,
+            warnings,
+            provider=staged_provider,
+            matched=staged_matched,  # type: ignore[arg-type]
+        )
+        warnings = _finalize_draft_generation(
+            draft,
+            prompt,
+            warnings,
+            llm_mode=llm_mode,
+            progress_callback=progress_callback,
+        )
+        return draft, raw, warnings, refusals
 
     provider = get_llm_provider()
     from app.ai_domain_packs import match_domain_pack
@@ -634,6 +814,37 @@ def draft_module_from_prompt(
     retrieved = retrieve_domain_pack(prompt, provider=provider)
     matched = (retrieved[0], retrieved[1]) if retrieved else early_pack
     scaffold = matched[1] if matched else None
+
+    from app.ai_architecture_plan import stamp_architecture_plan
+    from app.ai_document_shape import (
+        classify_document_shape,
+        clip_llm_models_to_plan,
+        honor_operator_brief,
+        llm_models_outside_plan,
+        merge_llm_fields_into_locked,
+    )
+    from app.ai_pipeline import seed_unpacked_draft
+    from app.llm_provider import generate_json_with_timeout_retry
+
+    locked_seed: dict[str, Any] | None = None
+    doc_shape = classify_document_shape(prompt)
+    if doc_shape == "register" and not matched:
+        from app.ai_domain_briefing import build_domain_briefing
+
+        locked_seed = seed_unpacked_draft(
+            prompt,
+            briefing=build_domain_briefing(prompt),
+            ambition="thin",
+        )
+        stamp_architecture_plan(locked_seed, prompt=prompt, rebuild=True)
+
+    plan_blob = None
+    if locked_seed and isinstance(locked_seed.get("_architecture_plan"), dict):
+        plan_blob = dict(locked_seed["_architecture_plan"])
+
+    brief_fmt = ""
+    if locked_seed and isinstance(locked_seed.get("_operator_brief"), dict):
+        brief_fmt = str(locked_seed["_operator_brief"].get("formatted") or "")
 
     enriched_prompt = _build_prompt_with_context(
         prompt,
@@ -645,6 +856,9 @@ def draft_module_from_prompt(
         reuse_plan=reuse_plan,
         scaffold=scaffold,
         matched_pack_id=matched[0] if matched else None,
+        architecture_plan=plan_blob,
+        document_shape=doc_shape,
+        operator_brief=brief_fmt or None,
     )
 
     raw = ""
@@ -655,13 +869,23 @@ def draft_module_from_prompt(
         parse_exc: Exception | None = None
         for attempt in range(2):
             try:
-                raw = provider.generate_json(
+                raw = generate_json_with_timeout_retry(
+                    provider,
                     enriched_prompt,
-                    system=_SYSTEM_PROMPT,
+                    system=module_spec_system_prompt(prompt),
                     reasoning=False,
                     temperature=0.15 if attempt else None,
+                    log_step="draft_json",
                 )
                 draft = _extract_json_object(raw)
+                if (
+                    locked_seed
+                    and plan_blob
+                    and llm_models_outside_plan(draft, plan_blob)
+                    and attempt == 0
+                ):
+                    parse_exc = ValueError("LLM emitted models outside architecture_plan")
+                    continue
                 parse_exc = None
                 break
             except (LLMError, ValueError, json.JSONDecodeError) as exc:
@@ -671,28 +895,35 @@ def draft_module_from_prompt(
                 break
         if draft is None and parse_exc is not None:
             llm_initial_failed = isinstance(parse_exc, LLMError)
-            pack_fallback = matched
-            if pack_fallback is None:
-                lexical = match_domain_pack(prompt)
-                if lexical:
-                    pack_fallback = lexical
-                    warnings.append(
-                        f"LLM JSON failed; falling back to domain pack '{lexical[0]}'"
-                    )
-            if pack_fallback:
-                warnings.append(f"LLM draft failed ({parse_exc}); using domain pack")
-                draft = copy.deepcopy(pack_fallback[1])
+            if locked_seed is not None:
+                warnings.append(
+                    f"LLM draft failed ({parse_exc}); honesty-IR register seed (no density pad)"
+                )
+                draft = locked_seed
                 raw = raw or json.dumps(draft)
-                if matched is None:
-                    matched = pack_fallback
             else:
-                msg = str(parse_exc)
-                if isinstance(parse_exc, json.JSONDecodeError) or "malformed JSON" in msg:
-                    msg = (
-                        "AI returned malformed JSON. Click Create draft again, shorten the "
-                        "prompt, or use a ready-made template at the bottom of Draft Studio."
-                    )
-                raise AiAssistUnavailable(msg, status_code=422) from parse_exc
+                pack_fallback = matched
+                if pack_fallback is None:
+                    lexical = match_domain_pack(prompt)
+                    if lexical:
+                        pack_fallback = lexical
+                        warnings.append(
+                            f"LLM JSON failed; falling back to domain pack '{lexical[0]}'"
+                        )
+                if pack_fallback:
+                    warnings.append(f"LLM draft failed ({parse_exc}); using domain pack")
+                    draft = copy.deepcopy(pack_fallback[1])
+                    raw = raw or json.dumps(draft)
+                    if matched is None:
+                        matched = pack_fallback
+                else:
+                    msg = str(parse_exc)
+                    if isinstance(parse_exc, json.JSONDecodeError) or "malformed JSON" in msg:
+                        msg = (
+                            "AI returned malformed JSON. Click Create draft again, shorten the "
+                            "prompt, or use a ready-made template at the bottom of Draft Studio."
+                        )
+                    raise AiAssistUnavailable(msg, status_code=422) from parse_exc
     elif matched:
         draft = matched[1]
         raw = json.dumps(draft)
@@ -702,21 +933,32 @@ def draft_module_from_prompt(
             f"(retrieval score={score:.2f})"
         )
     else:
-        raise AiAssistUnavailable(
-            "AI assist is disabled and no domain pack matched. "
-            "Set AI_ASSIST=ollama (depth floors still apply when the LLM is on), "
-            "or prompt a known domain pack as offline fallback "
-            "(car rental, hospital, law firm, clinic, field service)."
-        )
+        if locked_seed is not None:
+            draft = locked_seed
+            raw = json.dumps(draft)
+            warnings.append(
+                "AI assist off — honesty-IR unlocked residual (not a padded workspace)"
+            )
+        else:
+            raise AiAssistUnavailable(
+                "AI assist is disabled and no domain pack matched this prompt with sufficient "
+                "confidence. Enable AI assist (Ollama) to generate drafts for arbitrary domains, "
+                "or use a prompt that clearly matches a curated vertical (car rental, hospital, "
+                "law firm, clinic, field service, retail, oil & gas, …)."
+            )
 
     assert draft is not None
+    if locked_seed is not None and draft is not locked_seed:
+        draft = merge_llm_fields_into_locked(locked_seed, draft, plan_blob)
+        warnings.extend(clip_llm_models_to_plan(draft, plan_blob))
     draft["_user_prompt"] = prompt
-    draft["_ambition"] = scaled_amb
+    draft["_ambition"] = "thin" if doc_shape in {"register", "field_pack", "stock_reuse"} else scaled_amb
+    _emit_partial_progress(progress_callback, 1, draft)
     warnings.extend(sanitize_draft_module_spec(draft))
     warnings.extend(derive_draft_naming_from_prompt(draft, prompt))
 
     # Pure-AI repair: emit omitted scaffold models before pack merge fills them
-    if matched and provider is not None:
+    if matched and provider is not None and doc_shape != "register":
         draft, gap_notes = llm_emit_missing_scaffold_models(
             provider, draft, matched[1], user_prompt=prompt
         )
@@ -724,9 +966,13 @@ def draft_module_from_prompt(
         draft, seed_notes = seed_missing_core_scaffold_models(draft, matched[1])
         warnings.extend(seed_notes)
 
-    if matched:
+    if matched and doc_shape != "register":
+        coherence_notes = list((matched[1] or {}).get("_coherence_warnings") or [])
+        if coherence_notes:
+            warnings.extend(coherence_notes)
         draft, pack_warnings = merge_domain_pack(draft, matched[1])
         warnings.extend(pack_warnings)
+        _emit_partial_progress(progress_callback, 3, draft)
         pack_stock = matched[1].get("reuse_stock") or draft.get("_pack_reuse_stock")
         if pack_stock:
             reuse_plan = plan_reuse(
@@ -763,18 +1009,20 @@ def draft_module_from_prompt(
             user_prompt=prompt,
             ambition=str(draft.get("_ambition") or scaled_amb),
             provider=provider,
-            expand_llm=True,
+            expand_llm=doc_shape not in {"register", "field_pack", "stock_reuse"},
         )
         warnings.extend(q_w)
         draft, depth_w = run_depth_pass(
             draft,
             user_prompt=prompt,
             provider=provider,
-            expand_llm=True,
+            expand_llm=doc_shape not in {"register", "field_pack", "stock_reuse"},
         )
         warnings.extend(depth_w)
         draft, critique_w = run_self_critique(
-            draft, user_prompt=prompt, repair=True
+            draft,
+            user_prompt=prompt,
+            repair=doc_shape not in {"register", "field_pack", "stock_reuse"},
         )
         warnings.extend(critique_w)
         draft, q_w2 = run_model_quality_pass(
@@ -821,6 +1069,9 @@ def draft_module_from_prompt(
     else:
         warnings.extend(apply_reuse_plan(draft, reuse_plan))
 
+    warnings.extend(honor_operator_brief(draft, user_prompt=prompt))
+    if plan_blob:
+        warnings.extend(clip_llm_models_to_plan(draft, plan_blob))
     warnings.extend(validate_draft_module_spec(draft))
     from app.ai_model_quality import strip_internal_scaffold
 

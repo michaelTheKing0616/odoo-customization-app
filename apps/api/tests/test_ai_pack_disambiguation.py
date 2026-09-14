@@ -29,6 +29,35 @@ def test_restaurant_prompt_not_hotel_or_real_estate() -> None:
     assert hit[0] == "restaurant"
 
 
+def test_invoice_sla_field_is_not_restaurant_pack() -> None:
+    from app.ai_domain_packs import match_domain_pack
+
+    prompt = (
+        "Single extra field on customer invoices: SLA due date and time. "
+        "Do not create a new Invoices app. Cashiers shouldn't see a new menu."
+    )
+    assert match_domain_pack(prompt) is None
+    assert retrieve_domain_pack_lexical(prompt) is None
+
+
+VISITOR_LOG_PROMPT = (
+    "Front desk still uses a paper book. I want a simple visitor log in Odoo: "
+    "visitor name, who they came to see (an employee), purpose, time in, time out, "
+    "optional ID number. This is not CRM and not a second Contacts app — the host "
+    "is an Employee, the visitor can just be a name unless they're already a contact. "
+    "We're a 40-person office in Accra. Don't invent invoicing. Mail notifications "
+    "if someone sits in reception more than two hours would be nice but only if "
+    "that's safe no-code, not Python."
+)
+
+
+def test_office_visitor_log_is_not_hotel_pack() -> None:
+    from app.ai_domain_packs import match_domain_pack
+
+    assert match_domain_pack(VISITOR_LOG_PROMPT) is None
+    assert retrieve_domain_pack_lexical(VISITOR_LOG_PROMPT) is None
+
+
 def test_subscription_and_project_tracker_distinct() -> None:
     sub = retrieve_domain_pack_lexical("SaaS membership subscription renewal workflow")
     proj = retrieve_domain_pack_lexical("Project tracker with milestones and time entries")

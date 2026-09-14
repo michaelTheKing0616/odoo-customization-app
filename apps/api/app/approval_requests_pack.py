@@ -75,9 +75,10 @@ def approval_requests_draft(
                         "ttype": "many2one",
                         "relation": "res.users",
                         "string": "Requester",
+                        "required": True,
                     },
                     {"name": "x_subject", "ttype": "char", "string": "Subject"},
-                    {"name": "x_amount", "ttype": "float", "string": "Amount"},
+                    {"name": "x_amount", "ttype": "float", "string": "Amount", "required": True},
                     {
                         "name": "x_state",
                         "ttype": "selection",

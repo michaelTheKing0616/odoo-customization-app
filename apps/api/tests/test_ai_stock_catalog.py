@@ -87,3 +87,19 @@ def test_infer_catalog_respects_rejected() -> None:
         rejected={"crm.lead"},
     )
     assert hits == []
+
+
+def test_music_production_does_not_infer_mrp() -> None:
+    rows = [
+        stock_entry("mrp.production", "Production Order"),
+        stock_entry("mrp.production.group", "Production Group"),
+        stock_entry("res.partner", "Contact"),
+    ]
+    hits = infer_catalog_reuse(
+        "A music production company with multiple recording studios and artistes",
+        rows,
+        available_models={r["model"] for r in rows},
+    )
+    models = [h["model"] for h in hits]
+    assert "mrp.production" not in models
+    assert "mrp.production.group" not in models

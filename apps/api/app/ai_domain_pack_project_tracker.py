@@ -45,6 +45,7 @@ def project_tracker_pack() -> dict[str, Any]:
         "display_name": "Project Tracker",
         "depends": ["base", "contacts", "mail"],
         "domain_pack": "project_tracker",
+        "document_shape": "workspace",
         "tags": [
             "project",
             "task",

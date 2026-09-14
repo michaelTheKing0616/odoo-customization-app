@@ -15,6 +15,9 @@ def test_system_prompt_prioritizes_model_creation_quality() -> None:
     assert "MODEL CREATION QUALITY" in _SYSTEM_PROMPT
     assert "hollow" in _SYSTEM_PROMPT.lower() or "NEVER create separate models" in MODEL_CREATION_RULES
     assert "selection" in MODEL_CREATION_RULES.lower()
+    assert "OPERATOR BRIEF IS LAW" in MODEL_CREATION_RULES
+    assert "honor the operator" in _SYSTEM_PROMPT.lower()
+    assert "workspace / transactional_header only" in _SYSTEM_PROMPT
 
 
 def test_few_shot_exemplar_has_substantive_models() -> None:

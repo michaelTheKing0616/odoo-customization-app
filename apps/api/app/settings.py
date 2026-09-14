@@ -60,7 +60,8 @@ class Settings(BaseSettings):
     # off | auto — auto runs alembic upgrade head on startup (deploy profile)
     db_migrations: str = "off"
     # Phase P3 — NL → ModuleSpec
-    # off | ollama | openai-compatible
+    # off | auto | ollama | openai | claude | gemini | openai-compatible
+    # auto = first configured cloud key (Anthropic, OpenAI, Gemini).
     ai_assist: str = "off"
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_keep_alive: str = "30m"
@@ -73,10 +74,25 @@ class Settings(BaseSettings):
     ai_model_reasoning: str = "qwen3:8b"
     # auto | on | off — native Ollama `think` when model supports it; else manual CoT
     ai_thinking: str = "auto"
-    # OpenAI-compatible (vLLM / LM Studio / OpenAI / Groq)
+    # OpenAI-compatible (vLLM / LM Studio / xAI Grok) when AI_ASSIST=openai-compatible
     openai_compatible_base_url: str = ""
     openai_compatible_model: str = "gpt-4o-mini"
     openai_compatible_api_key: str | None = None
+    # Native cloud keys — set one of these + AI_ASSIST=auto|openai|claude|gemini
+    openai_api_key: str | None = None
+    openai_model: str = "gpt-4.1"
+    anthropic_api_key: str | None = None
+    anthropic_model: str = "claude-sonnet-4-5"
+    gemini_api_key: str | None = None
+    google_api_key: str | None = None
+    gemini_model: str = "gemini-2.5-flash"
+    # Conversational refinement tiers — fast (generate/clarify) vs refine (chat patches)
+    ai_llm_tier_fast: str = "gemini"
+    ai_llm_tier_refine: str = "gemini"
+    ai_refine_model: str = ""
+    # Optional LLM tie-break when deterministic intent gate is ambiguous (pack/material/low IR).
+    # auto = on when fast LLM provider available; never overrides pack_conflict or rental chips.
+    ai_intent_llm: str = "auto"
     # single | staged — staged = Step 0–6 pipeline when LLM available (ELITE-1 default)
     ai_pipeline_mode: str = "staged"
     # Prefer cloud/openai-compatible for comprehensive drafts (document only; set AI_ASSIST)
@@ -91,6 +107,8 @@ class Settings(BaseSettings):
     ai_rag_min_score_jaccard: float = 0.12
     # Self-critique pass after draft: auto|on|off
     ai_critique: str = "auto"
+    # Write verbatim final LLM prompt payloads to .cache/ai_llm_prompts/ (UAT hop debug)
+    ai_log_llm_prompts: bool = False
     # Production-shape / apply-readiness always run on enrich + reuse merge (not configurable).
     # Self-consistency vote/merge on scaffold + workflow steps: off|on (default off)
     ai_self_consistency: str = "off"
@@ -140,6 +158,10 @@ class Settings(BaseSettings):
     paystack_extra_slot_business_kobo: int = 0
     business_trial_enabled: bool = True
     business_trial_days: int = 14
+
+    # Job Autopilot partner connectors — never reuse billing keys; never log; never write to Odoo.
+    autopilot_payment_secret: str = ""
+    autopilot_webhook_token: str = ""
 
     # TRUST-3 — blast-radius limits
     bulk_sample_first_enabled: bool = True
@@ -209,6 +231,9 @@ class Settings(BaseSettings):
     @property
     def sandbox_docker_enabled(self) -> bool:
         return bool(self.sandbox_docker_socket.strip())
+
+    def resolved_gemini_api_key(self) -> str:
+        return (self.gemini_api_key or self.google_api_key or "").strip()
 
 
 settings = Settings()

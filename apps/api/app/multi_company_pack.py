@@ -32,6 +32,98 @@ COMPANY_FIELD_LIVE: dict[str, Any] = {
     "name": COMPANY_FIELD_LIVE_NAME,
 }
 
+# Explicit legal-entity split — not "two offices of one company".
+_MULTI_CO_YES_RE = re.compile(
+    r"\b(multi[\s-]?compan(?:y|ies)|separate\s+legal\s+entit|"
+    r"multiple\s+compan(?:y|ies)|several\s+compan(?:y|ies)|"
+    r"group\s+of\s+compan(?:y|ies))\b",
+    re.I,
+)
+_MULTI_CO_NO_RE = re.compile(
+    r"(?i)("
+    r"multi[\s-]?compan(?:y|ies)\s+is\s+not\s+required|"
+    r"not\s+(?:a\s+)?multi[\s-]?compan|"
+    r"no\s+multi[\s-]?compan|"
+    r"single\s+compan(?:y|ies)|"
+    r"one\s+compan(?:y|ies)|"
+    r"two\s+offices?\s+of\s+(?:the\s+)?(?:same\s+|one\s+)?compan|"
+    r"offices?\s+of\s+(?:a\s+|the\s+)?(?:same\s+|single\s+|one\s+)compan"
+    r")"
+)
+_MC_RULE_NAME_RE = re.compile(r"multi[\s-]?compan", re.I)
+
+
+def draft_explicitly_rejects_multi_company(draft: dict[str, Any]) -> bool:
+    if draft.get("multi_company") is False:
+        return True
+    return bool(_MULTI_CO_NO_RE.search(str(draft.get("_user_prompt") or "")))
+
+
+def prompt_asks_multi_company(prompt: str) -> bool:
+    """Explicit legal-entity split in the brief — not an existing x_company_id field."""
+    return bool(_MULTI_CO_YES_RE.search(prompt or ""))
+
+
+def _draft_has_company_field(draft: dict[str, Any]) -> bool:
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        for field in model.get("fields") or []:
+            if isinstance(field, dict) and str(field.get("name") or "") in {
+                "x_company_id",
+                "company_id",
+            }:
+                return True
+    return False
+
+
+def draft_wants_multi_company(draft: dict[str, Any]) -> bool:
+    """True for an explicit legal-entity split, or legacy x_company_id isolation.
+
+    ``multi_company: false`` / \"two offices of one company\" always wins — optional
+    ``x_company_id`` on those drafts is tagging, not ir.rule isolation.
+    Unset supermarket-style drafts that already carry company fields still get rules
+    so live Apply stays company-safe.
+    """
+    if draft_explicitly_rejects_multi_company(draft):
+        return False
+    if draft.get("multi_company") is True:
+        return True
+    prompt = str(draft.get("_user_prompt") or "")
+    if _MULTI_CO_YES_RE.search(prompt):
+        return True
+    return _draft_has_company_field(draft)
+
+
+def is_auto_multi_company_rule(rule: dict[str, Any]) -> bool:
+    if not isinstance(rule, dict):
+        return False
+    name = str(rule.get("name") or "")
+    tech = str(rule.get("technical_name") or "")
+    return bool(_MC_RULE_NAME_RE.search(name) or tech.endswith("_multi_company"))
+
+
+def strip_multi_company_record_rules(draft: dict[str, Any]) -> list[str]:
+    """Drop auto Multi-company ir.rule rows. Keep optional x_company_id fields."""
+    notes: list[str] = []
+    rules = draft.get("record_rules")
+    if not isinstance(rules, list):
+        return notes
+    kept: list[Any] = []
+    dropped = 0
+    for rule in rules:
+        if is_auto_multi_company_rule(rule) if isinstance(rule, dict) else False:
+            dropped += 1
+            continue
+        kept.append(rule)
+    if dropped:
+        draft["record_rules"] = kept
+        notes.append(
+            f"multi_company: stripped {dropped} record rule(s) "
+            "(single company / offices, not legal entities)"
+        )
+    return notes
+
 
 def apply_multi_company_to_live_draft(draft: dict[str, Any]) -> dict[str, Any]:
     """Enrich draft with x_company_id + live record rules on new x_* models."""

@@ -19,6 +19,20 @@ claim as "the rendered result looks right."
    inconsistent, card 3 overflows container at widths below 480px") rather than a general
    impression.
 
+## Odoo preview kit (2026-09)
+
+When verifying App Studio / Wizard / Designer preview changes, capture light-mode
+screenshots showing:
+
+1. `odoo-preview-banner` honesty line (Studio/Wizard)
+2. `odoo-statusbar` with an active stage pill
+3. `odoo-form-groups` with two-column layout when draft has sibling groups
+4. `odoo-button-box` smart buttons (≤6 visible)
+5. `list-preview-table` when list preview is in scope
+
+Testids: `odoo-form-view`, `odoo-list-view`, `designer-list-preview`, `builder-model-preview`.
+Reference: `docs/reference/ODOO_PREVIEW_SPEC.md`.
+
 ## Known failure modes
 - Skipping this for "just a small CSS change" — small visual regressions are exactly what
   text-only review misses.

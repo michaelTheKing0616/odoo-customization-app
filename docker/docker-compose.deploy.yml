@@ -53,11 +53,24 @@ services:
       ELITE_SCORECARD_FLOOR: ${ELITE_SCORECARD_FLOOR:-9.0}
       EXPERT_LLM_TIMEOUT_S: ${EXPERT_LLM_TIMEOUT_S:-300}
       EXPERT_ODOO_SOURCE: ${EXPERT_ODOO_SOURCE:-on}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-}
+      AI_MODEL_BULK: ${AI_MODEL_BULK:-}
+      AI_MODEL_REASONING: ${AI_MODEL_REASONING:-}
+      OPENAI_COMPATIBLE_BASE_URL: ${OPENAI_COMPATIBLE_BASE_URL:-}
+      OPENAI_COMPATIBLE_API_KEY: ${OPENAI_COMPATIBLE_API_KEY:-}
+      OPENAI_COMPATIBLE_MODEL: ${OPENAI_COMPATIBLE_MODEL:-gpt-4o-mini}
       # Container → host Ollama (Docker Desktop). Do not use 127.0.0.1 here —
       # that is the container loopback. Host-side `uv run` can keep 127.0.0.1 in .env;
       # override when starting this service:
       #   OLLAMA_BASE_URL=http://host.docker.internal:11434 docker compose ... up -d api
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:8b}
       INGEST_VISION: ${INGEST_VISION:-off}
       INGEST_VISION_MODEL: ${INGEST_VISION_MODEL:-qwen3-vl:8b}
       # Empty = sandbox Docker disabled (safe default for containerized API)

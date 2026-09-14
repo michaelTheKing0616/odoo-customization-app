@@ -183,6 +183,17 @@ export default function DataImportPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function downloadUsersTemplate() {
+    const t = await api.usersCsvTemplate(connectionId);
+    const blob = new Blob([t.csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = t.filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function onImagePreview() {
     if (!imgManifest || !imgZip) {
       setError("Choose manifest CSV and images ZIP");
@@ -301,6 +312,13 @@ export default function DataImportPage() {
               className="border border-accent px-3 py-1.5 text-sm text-accent"
             >
               Download template
+            </button>
+            <button
+              type="button"
+              onClick={() => void downloadUsersTemplate()}
+              className="border border-accent px-3 py-1.5 text-sm text-accent"
+            >
+              Download users.csv
             </button>
             <input
               type="file"

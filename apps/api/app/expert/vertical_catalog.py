@@ -77,7 +77,7 @@ VERTICAL_CATALOG: tuple[VerticalEntry, ...] = (
         domain_pack_id="car_rental",
         stock_modules=("base", "contacts", "mail", "fleet", "sale", "account"),
         keywords=("car rental", "vehicle", "fleet", "contract", "branch", "odometer"),
-        summary="Fleet + Contacts + rental contracts; use the car_rental domain pack for x_ models.",
+        summary="Fleet + Contacts + rental contracts; stock invoices — never x_customer / x_payment.",
     ),
     VerticalEntry(
         id="library_management",
@@ -153,8 +153,12 @@ VERTICAL_CATALOG: tuple[VerticalEntry, ...] = (
         id="hotel",
         title="Hotel / Lodging",
         pattern=_pat(
-            r"\b(hotel|pms|check[\s-]?in|check[\s-]?out|housekeeping|front\s+desk|"
-            r"room\s+booking|lodging|guest\s+folio)\b"
+            r"\b(pms|housekeeping|room\s+booking|lodging|guest\s+folio)\b"
+            r"|\bhotels?\b(?!\s+occupancy)"
+            r"|(?:hotel|pms|lodging|guest\s+room|guest\s+folio).{0,48}"
+            r"(?:front\s+desk|check[\s-]?in|check[\s-]?out)"
+            r"|(?:front\s+desk|check[\s-]?in|check[\s-]?out).{0,48}"
+            r"(?:hotel|pms|lodging|guest\s+room|guest\s+folio|room\s+booking|housekeeping)"
         ),
         domain_pack_id="hotel",
         stock_modules=("base", "contacts", "mail", "sale", "account", "website"),
@@ -166,10 +170,12 @@ VERTICAL_CATALOG: tuple[VerticalEntry, ...] = (
         title="Restaurant / Food Service",
         pattern=_pat(
             r"\b(restaurant|dining|menu|kitchen|food\s+service|table\s+reservation|"
-            r"waiter|bistro|cafe|dining\s+order)\b"
+            r"waiter|bistro|cafe|dining\s+order|lounge|dine-?in|takeaway|drive-?thru|"
+            r"kitchen\s+display|\bkds\b|food\s+and\s+beverage|\bf&b\b|jollof|"
+            r"pos\s+terminal|point\s+of\s+sale)\b"
         ),
         domain_pack_id="restaurant",
-        stock_modules=("base", "contacts", "mail", "sale", "stock", "point_of_sale", "website"),
+        stock_modules=("base", "contacts", "mail", "sale", "stock", "point_of_sale", "mrp", "website"),
         keywords=("restaurant", "menu", "table", "order", "kitchen", "pos"),
         summary="POS + inventory for dining; restaurant pack for tables/menus/orders.",
     ),
@@ -355,18 +361,22 @@ VERTICAL_CATALOG: tuple[VerticalEntry, ...] = (
 )
 
 
+def _vertical_score(entry: VerticalEntry, query: str) -> int:
+    found = entry.pattern.findall(query)
+    if not found:
+        return 0
+    return len(found)
+
+
 def match_verticals(query: str, *, limit: int = 3) -> list[VerticalEntry]:
-    """Return catalog entries whose pattern matches the user question."""
+    """Return catalog entries whose pattern matches, strongest evidence first."""
     q = (query or "").strip()
     if not q:
         return []
-    hits: list[VerticalEntry] = []
-    for entry in VERTICAL_CATALOG:
-        if entry.pattern.search(q):
-            hits.append(entry)
-            if len(hits) >= limit:
-                break
-    return hits
+    ranked = [( _vertical_score(entry, q), i, entry) for i, entry in enumerate(VERTICAL_CATALOG)]
+    ranked = [row for row in ranked if row[0] > 0]
+    ranked.sort(key=lambda row: (-row[0], row[1]))
+    return [entry for _, _, entry in ranked[:limit]]
 
 
 # Odoo developer synonyms appended to retrieval queries (embedding + Jaccard).

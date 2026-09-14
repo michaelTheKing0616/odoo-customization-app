@@ -200,6 +200,7 @@ def _llm_workflow_sample(
         '"transitions":[["draft","open"],["open","done"]]}\n'
         "Terminal states (done/cancelled) should not require outgoing transitions.",
         guardrail=guardrail,
+        user_prompt=user_prompt,
     )
     prompt = (
         f"User app request:\n{user_prompt}\n\n"
@@ -316,8 +317,13 @@ def step4_workflow_models(
 def ensure_workflow_transitions_on_draft(draft: dict[str, Any]) -> list[str]:
     """Single pipeline: derive/validate transitions from x_status when state_field missing."""
     notes: list[str] = []
+    from app.ai_odoo_app_bar import looks_like_register
+
     for model in draft.get("models") or []:
         if not isinstance(model, dict):
+            continue
+        mid = str(model.get("model") or "")
+        if looks_like_register(mid) or mid.endswith("_line"):
             continue
         sf = model.get("state_field")
         if isinstance(sf, dict) and sf.get("transitions"):
@@ -356,25 +362,58 @@ def transition_button_label(from_state: str, to_state: str) -> str:
         return "Cancel"
     if to_state in {"done", "closed", "paid", "delivered", "received", "posted", "passed"}:
         return to_state.replace("_", " ").title()
-    if from_state == "draft" and to_state in {"open", "confirmed", "submitted"}:
+    if to_state in {"submitted"}:
+        return "Submit"
+    if to_state in {"approved"}:
+        return "Approve"
+    if to_state in {"refused", "rejected"}:
+        return "Refuse"
+    if from_state in {"draft", "new", "intake"} and to_state in {
+        "open",
+        "confirmed",
+        "qualified",
+    }:
         return "Confirm"
     return to_state.replace("_", " ").title()
 
 
 def build_transition_header_buttons(
     transitions: list[list[str]],
+    *,
+    field: str = "x_status",
+    manager_dests: set[str] | frozenset[str] | None = None,
 ) -> str:
-    """Form header buttons derived from transition edges (draft metadata / enrich arch)."""
+    """Form header buttons derived from transition edges (draft metadata / enrich arch).
+
+    Emits ``type=object`` + ``data-transition-to`` as a marker. Live apply rewrites
+    those tags to ``type=action`` + ``ir.actions.server`` object_write. Custom
+    ``x_*`` models have no Python methods unless an Option A module is installed.
+    Manager dests (Approve/Refuse) stamp ``data-approval-role="manager"`` so Apply
+    can restrict the bound server action to the app Manager group.
+    """
     if not transitions:
         return ""
-    bits: list[str] = []
+    state_field = str(field or "x_status")
+    gated = {str(x) for x in (manager_dests or ())}
+    grouped: dict[tuple[str, str], list[str]] = {}
     for tr in transitions:
         if not isinstance(tr, (list, tuple)) or len(tr) < 2:
             continue
         a, b = str(tr[0]), str(tr[1])
         label = transition_button_label(a, b)
+        grouped.setdefault((label, b), []).append(a)
+    bits: list[str] = []
+    for (label, dest), sources in grouped.items():
+        unique = list(dict.fromkeys(sources))
+        if len(unique) == 1:
+            invisible = f"{state_field} != '{unique[0]}'"
+        else:
+            quoted = ", ".join(f"'{s}'" for s in unique)
+            invisible = f"{state_field} not in ({quoted})"
+        role = ' data-approval-role="manager"' if dest in gated else ""
+        css = "oe_highlight" if dest not in {"refused", "rejected", "cancelled", "canceled"} else "btn-secondary"
         bits.append(
-            f'<button string="{label}" type="object" class="oe_highlight" '
-            f'invisible="x_status != \'{a}\'" data-transition-to="{b}"/>'
+            f'<button string="{label}" type="object" class="{css}" '
+            f'invisible="{invisible}" data-transition-to="{dest}"{role}/>'
         )
     return "".join(bits)

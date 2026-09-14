@@ -84,12 +84,12 @@ _OPTIONAL: tuple[ReuseCandidate, ...] = (
         model="account.move",
         modules=("account",),
         intent=re.compile(
-            r"\b(invoice|invoicing|billing|accounting|accounts?\s*receivable|"
+            r"\b(invoices?|invoicing|billing|accounting|accounts?\s*receivable|"
             r"accounts?\s*payable)\b",
             re.I,
         ),
         reason="Customer/vendor invoices (Accounting)",
-        forbid_parallel=("x_invoice",),
+        forbid_parallel=("x_invoice", "x_bill", "x_payment"),
         offline_assume=True,
     ),
     ReuseCandidate(
@@ -118,6 +118,23 @@ _OPTIONAL: tuple[ReuseCandidate, ...] = (
             re.I,
         ),
         reason="Calendar events / appointments",
+        forbid_parallel=("x_event", "x_meeting"),
+        offline_assume=True,
+    ),
+    ReuseCandidate(
+        model="sale.order",
+        modules=("sale",),
+        intent=re.compile(r"\b(quotations?|quotes?|sales?\s+orders?)\b", re.I),
+        reason="Quotations / sales orders (link-only)",
+        forbid_parallel=("x_sale_order", "x_quotation", "x_quote"),
+        offline_assume=True,
+    ),
+    ReuseCandidate(
+        model="crm.lead",
+        modules=("crm",),
+        intent=re.compile(r"\b(crm|leads?|opportunit(?:y|ies)|pipeline)\b", re.I),
+        reason="CRM leads / opportunities",
+        forbid_parallel=("x_lead", "x_opportunity", "x_pipeline"),
         offline_assume=True,
     ),
     ReuseCandidate(
@@ -132,14 +149,36 @@ _OPTIONAL: tuple[ReuseCandidate, ...] = (
         modules=("project",),
         intent=re.compile(r"\b(project\s+task|kanban\s+task)\b", re.I),
         reason="Project tasks",
+        forbid_parallel=("x_task", "x_todo"),
         offline_assume=True,
     ),
     ReuseCandidate(
         model="hr.employee",
         modules=("hr",),
-        intent=re.compile(r"\b(employee|human\s*resources|\bhr\b|payroll)\b", re.I),
-        reason="Employees (HR)",
-        forbid_parallel=("x_employee",),
+        intent=re.compile(
+            r"\b(employees?|human\s*resources|\bhr\b|payroll|"
+            r"lawyers?|attorneys?|counsel|fee[\s-]?earner|practitioners?|"
+            r"doctors?|nurses?|staff)\b",
+            re.I,
+        ),
+        reason="Employees (HR) — staff/fee-earners are not custom rosters",
+        forbid_parallel=(
+            "x_employee",
+            "x_staff",
+            "x_attorney",
+            "x_lawyer",
+            "x_counsel",
+            "x_doctor",
+            "x_crew",
+        ),
+        offline_assume=True,
+    ),
+    ReuseCandidate(
+        model="account.analytic.line",
+        modules=("hr_timesheet",),
+        intent=re.compile(r"\b(timesheet|billable\s+hours?|time\s+entr(?:y|ies))\b", re.I),
+        reason="Timesheets (link-only)",
+        forbid_parallel=("x_timesheet",),
         offline_assume=True,
     ),
     ReuseCandidate(
@@ -167,6 +206,8 @@ _DEPENDS_FOR_MODEL: dict[str, tuple[str, ...]] = {
     "stock.warehouse": ("stock",),
     "stock.quant": ("stock",),
     "hr.expense": ("hr_expense",),
+    "crm.lead": ("crm",),
+    "account.analytic.line": ("hr_timesheet", "analytic"),
 }
 
 REUSE_BUILTIN_MODELS: frozenset[str] = frozenset(
@@ -178,9 +219,30 @@ _PARALLEL_REMAP = {
     "x_client": "res.partner",
     "x_customer": "res.partner",
     "x_contact": "res.partner",
+    "x_client_contact": "res.partner",
     "x_invoice": "account.move",
+    "x_bill": "account.move",
+    "x_payment": "account.move",
     "x_product": "product.product",
     "x_employee": "hr.employee",
+    "x_staff": "hr.employee",
+    "x_attorney": "hr.employee",
+    "x_lawyer": "hr.employee",
+    "x_counsel": "hr.employee",
+    "x_doctor": "hr.employee",
+    "x_crew": "hr.employee",
+    "x_event": "calendar.event",
+    "x_meeting": "calendar.event",
+    "x_hearing": "calendar.event",
+    "x_task": "project.task",
+    "x_todo": "project.task",
+    "x_sale_order": "sale.order",
+    "x_quotation": "sale.order",
+    "x_quote": "sale.order",
+    "x_lead": "crm.lead",
+    "x_opportunity": "crm.lead",
+    "x_expense": "hr.expense",
+    "x_timesheet": "account.analytic.line",
 }
 
 
@@ -214,14 +276,21 @@ class ReusePlan:
             flag = "confirmed" if d.confirmed else "suggested"
             suffix = " (link-only)" if d.link_only else ""
             lines.append(f"- {d.model} ({flag}{suffix}): {d.reason}")
+        lines.append(
+            "Only emit a many2one to a listed host when the brief uses that host. "
+            "Do not add x_company_id / x_currency_id / x_user_id from this list "
+            "unless the brief named a legal-entity split, a currency, or a login assignee."
+        )
         if self.forbid_new_models:
             lines.append(
                 "FORBIDDEN new models (use stock instead): "
                 + ", ".join(self.forbid_new_models)
             )
         lines.append(
-            "Domain entities with unique workflows/fields still become x_* "
-            "(e.g. matter, attorney) and many2one to the reused stock models."
+            "Domain residual (the document stock apps do not cover) still becomes x_* "
+            "(e.g. matter, booking, loan, visit) and many2one to reused stock. "
+            "Do not clone staff as x_attorney/x_doctor — use hr.employee. "
+            "Do not clone invoices, tasks, or calendar as x_bill/x_task/x_event."
         )
         if self.source == "offline_ce19":
             lines.append(
@@ -271,6 +340,33 @@ def _model_available(
     return False
 
 
+_LOGIN_ASSIGNEE_RE = re.compile(
+    r"(?i)\b(assignee|assigned to|internal users?|logins?|"
+    r"res\.users|odoo users?|current user)\b"
+)
+_LEGAL_ENTITY_SPLIT_RE = re.compile(
+    r"\b(multi[\s-]?compan(?:y|ies)|separate\s+legal\s+entit|"
+    r"multiple\s+compan(?:y|ies)|several\s+compan(?:y|ies)|"
+    r"group\s+of\s+compan(?:y|ies))\b",
+    re.I,
+)
+
+
+def _thin_skip_always_hosts(user_prompt: str) -> set[str]:
+    """CE-19 always-hosts Flash treats as 'add a field'. Thin briefs omit unknowns."""
+    from app.ai_document_shape import THIN_SHAPES, classify_document_shape
+
+    text = user_prompt or ""
+    if classify_document_shape(text) not in THIN_SHAPES:
+        return set()
+    skip: set[str] = {"res.currency"}
+    if not _LEGAL_ENTITY_SPLIT_RE.search(text):
+        skip.add("res.company")
+    if not _LOGIN_ASSIGNEE_RE.search(text):
+        skip.add("res.users")
+    return skip
+
+
 def plan_reuse(
     user_prompt: str,
     *,
@@ -280,6 +376,7 @@ def plan_reuse(
     pack_reuse_stock: list[dict[str, Any]] | None = None,
     rejected_reuse_models: list[str] | None = None,
     stock_catalog: list[dict[str, Any]] | None = None,
+    prior_decisions: list[dict[str, Any]] | None = None,
 ) -> ReusePlan:
     """Build a reuse plan from prompt intent + offline allowlist or live catalog."""
     from app.ai_stock_reuse import infer_stock_reuse
@@ -294,9 +391,19 @@ def plan_reuse(
     decisions: list[ReuseDecision] = []
     seen: set[str] = set()
     notes: list[str] = []
+    prior_by_model = {
+        str(d.get("model")): d
+        for d in (prior_decisions or [])
+        if isinstance(d, dict) and d.get("model")
+    }
 
     def add(cand: ReuseCandidate, *, confirmed: bool, src: ReuseSource) -> None:
         if cand.model in seen:
+            for d in decisions:
+                if d.model == cand.model:
+                    d.forbid_parallel = tuple(
+                        dict.fromkeys([*d.forbid_parallel, *cand.forbid_parallel])
+                    )
             return
         seen.add(cand.model)
         decisions.append(
@@ -317,18 +424,31 @@ def plan_reuse(
             confirmed = mid in available or _module_installed(
                 modules, _DEPENDS_FOR_MODEL.get(mid, ())
             )
+        prior = prior_by_model.get(mid) or {}
         forbid = next(
             (c.forbid_parallel for c in (*_ALWAYS, *_OPTIONAL) if c.model == mid),
             (),
         )
+        extra_forbid = tuple(str(x) for x in (prior.get("forbid_parallel") or []) if x)
+        # Keep installable source so siblings stay in the Install list until each is acted on
+        src: ReuseSource = "operator"
+        req_mod = None
+        if str(prior.get("source") or "") == "installable" or prior.get("module"):
+            src = "installable"
+            req_mod = str(prior["module"]) if prior.get("module") else None
+            if not req_mod:
+                deps = _DEPENDS_FOR_MODEL.get(mid, ())
+                req_mod = deps[0] if deps else None
         seen.add(mid)
         decisions.append(
             ReuseDecision(
                 model=mid,
-                reason="Operator selected",
-                source="operator",
-                confirmed=confirmed,
-                forbid_parallel=forbid,
+                reason=str(prior.get("reason") or "Operator selected"),
+                source=src,
+                confirmed=True if src == "installable" else confirmed,
+                forbid_parallel=tuple(dict.fromkeys([*forbid, *extra_forbid])),
+                link_only=bool(prior.get("link_only")),
+                required_module=req_mod,
             )
         )
 
@@ -337,7 +457,16 @@ def plan_reuse(
     else:
         notes.append("reuse: connection-aware plan")
 
+    skip_always = _thin_skip_always_hosts(text)
+    if skip_always:
+        notes.append(
+            "reuse: skipped CE-19 always-hosts the brief left unused: "
+            + ", ".join(sorted(skip_always))
+        )
+
     for cand in _ALWAYS:
+        if cand.model in skip_always:
+            continue
         if not (cand.always or cand.intent.search(text)):
             continue
         if connection:
@@ -354,8 +483,10 @@ def plan_reuse(
         else:
             add(cand, confirmed=False, src="offline_ce19")
 
+    from app.text_negation import has_positive_match
+
     for cand in _OPTIONAL:
-        if not cand.intent.search(text):
+        if not has_positive_match(cand.intent, text):
             continue
         if connection:
             ok = _model_available(
@@ -387,8 +518,17 @@ def plan_reuse(
     for row in inferred_rows:
         mid = str(row.get("model") or "")
         if not mid or mid in seen:
+            if mid in seen:
+                extra = tuple(str(x) for x in (row.get("forbid_parallel") or []) if x)
+                for d in decisions:
+                    if d.model == mid:
+                        d.forbid_parallel = tuple(
+                            dict.fromkeys([*d.forbid_parallel, *extra])
+                        )
+                        if row.get("module") and not d.required_module:
+                            d.required_module = str(row["module"])
             continue
-        src: ReuseSource = (
+        src = (
             "pack_reuse_stock"
             if row.get("source") == "pack_reuse_stock"
             else "installable"
@@ -415,14 +555,42 @@ def plan_reuse(
             )
         )
 
+    # Preserve prior suggestions that re-infer dropped (sibling keep)
+    rejected = set(rejected_reuse_models or [])
+    for mid, prior in prior_by_model.items():
+        if mid in seen or mid in rejected:
+            continue
+        src = str(prior.get("source") or "")
+        if src not in {"installable", "inferred", "pack_reuse_stock"}:
+            continue
+        if src == "installable" and connection and available is not None and mid in available:
+            continue  # now on instance — infer/connection should own it
+        seen.add(mid)
+        req_mod = str(prior["module"]) if prior.get("module") else None
+        decisions.append(
+            ReuseDecision(
+                model=mid,
+                reason=str(prior.get("reason") or "Stock reuse suggestion"),
+                source=src,  # type: ignore[arg-type]
+                confirmed=mid in operator_set,
+                forbid_parallel=tuple(
+                    str(x) for x in (prior.get("forbid_parallel") or []) if x
+                ),
+                link_only=bool(prior.get("link_only")),
+                required_module=req_mod,
+            )
+        )
+        notes.append(f"reuse: preserved pending {src} {mid}")
+
     models = [
         d.model
         for d in decisions
         if d.confirmed or d.source != "installable"
     ]
     forbid: list[str] = []
+    reuse_set = set(models)
     for d in decisions:
-        if d.source in {"inferred", "pack_reuse_stock", "installable"} and not d.confirmed:
+        if d.model not in reuse_set:
             continue
         for f in d.forbid_parallel:
             if f not in forbid:
@@ -445,6 +613,39 @@ def plan_reuse(
         catalog_suggestions=catalog_suggestions,
         notes=notes,
     )
+
+
+def _pack_keep_ids(draft: dict[str, Any]) -> set[str]:
+    return {str(x) for x in (draft.get("_pack_model_ids") or []) if x}
+
+
+def _expand_forbid_aliases(draft: dict[str, Any], forbid: list[str], plan: ReusePlan) -> list[str]:
+    """Also collapse x_bill/x_attorney/… by leaf when the stock model is reused.
+
+    Pack-stamped models (``_pack_model_ids``) stay — packs are an explicit floor.
+    """
+    from app.ai_stock_first import STOCK_CLONE_LEAVES
+
+    pack_keep = _pack_keep_ids(draft)
+    out = [f for f in forbid if f not in pack_keep]
+    reuse_set = set(plan.models)
+    known = {
+        str(m.get("model"))
+        for m in (draft.get("models") or [])
+        if isinstance(m, dict) and m.get("model")
+    }
+    for stock, leaves in STOCK_CLONE_LEAVES.items():
+        if stock not in reuse_set:
+            continue
+        for mid in known:
+            if not mid.startswith("x_") or mid in pack_keep or mid in out:
+                continue
+            if mid.endswith("_line") or mid.endswith("_party"):
+                continue
+            leaf = mid[2:]
+            if leaf in leaves:
+                out.append(mid)
+    return out
 
 
 def collapse_forbidden_parallel_models(
@@ -578,17 +779,29 @@ def apply_reuse_plan(draft: dict[str, Any], plan: ReusePlan) -> list[str]:
         notes.extend(plan.notes)
 
     reuse = dict(reuse_prev or {})
-    confirmed_models = [d.model for d in plan.decisions if d.confirmed]
     reuse["models"] = list(
-        dict.fromkeys([*(reuse.get("models") or []), *confirmed_models])
+        dict.fromkeys([*(reuse.get("models") or []), *plan.models])
     )
     reuse["plan"] = plan.to_draft_meta()
     if plan.catalog_suggestions:
         reuse["catalog_suggestions"] = list(plan.catalog_suggestions)
     draft["reuse"] = reuse
 
+    brief = draft.get("_operator_brief") if isinstance(draft.get("_operator_brief"), dict) else {}
+    forbidden_apps = {str(x).strip().lower() for x in (brief.get("forbidden_bridges") or []) if x}
+    skip_models: set[str] = set()
+    if "crm" in forbidden_apps:
+        skip_models.update({"crm.lead", "crm.team", "crm.tag"})
+    if "account" in forbidden_apps:
+        skip_models.update({"account.move", "account.move.line", "account.payment"})
+    if "sale" in forbidden_apps:
+        skip_models.update({"sale.order", "sale.order.line"})
+    reuse["models"] = [m for m in reuse["models"] if m not in skip_models]
+
     depends = list(draft.get("depends") or [])
     for dep in plan.depends:
+        if dep in forbidden_apps and dep in {"crm", "account", "sale"}:
+            continue
         if dep not in depends:
             depends.append(dep)
     draft["depends"] = depends
@@ -596,25 +809,61 @@ def apply_reuse_plan(draft: dict[str, Any], plan: ReusePlan) -> list[str]:
     hints = list(draft.get("reuse_hints") or [])
     existing = {str(h.get("model")) for h in hints if isinstance(h, dict)}
     for d in plan.decisions:
+        if d.model in skip_models:
+            continue
         if d.model not in existing:
             hints.append({"model": d.model, "reason": d.reason})
     draft["reuse_hints"] = hints
 
     # Also collapse x_invoice when a domain bill header already exists (even without Accounting)
-    forbid = list(plan.forbid_new_models)
+    forbid = _expand_forbid_aliases(draft, list(plan.forbid_new_models), plan)
     model_ids = {
         str(m.get("model"))
         for m in (draft.get("models") or [])
         if isinstance(m, dict) and m.get("model")
     }
-    if "x_bill" in model_ids and "x_invoice" in model_ids and "x_invoice" not in forbid:
+    pack_keep = _pack_keep_ids(draft)
+    if (
+        "x_bill" in model_ids
+        and "x_invoice" in model_ids
+        and "x_invoice" not in forbid
+        and "x_invoice" not in pack_keep
+    ):
         forbid.append("x_invoice")
 
     notes.extend(collapse_forbidden_parallel_models(draft, forbid))
     notes.extend(ensure_partner_links_on_transactional(draft))
+    # Keep Architecture Plan IR aligned with reuse (Phase 1)
+    arch = draft.get("_architecture_plan") if isinstance(draft.get("_architecture_plan"), dict) else {}
+    stock_hosts = list(arch.get("stock_hosts") or [])
+    for mid in plan.models:
+        if mid in skip_models:
+            continue
+        if mid and not str(mid).startswith("x_") and mid not in stock_hosts:
+            stock_hosts.append(mid)
+    forbidden = list(arch.get("forbidden_clones") or [])
+    for mid in forbid:
+        if mid and mid not in forbidden:
+            forbidden.append(mid)
+    if stock_hosts or forbidden:
+        from app.ai_architecture_plan import stamp_architecture_plan
+
+        draft["_architecture_plan"] = {
+            **arch,
+            "stock_hosts": stock_hosts,
+            "forbidden_clones": forbidden or arch.get("forbidden_clones"),
+        }
+        stamp_architecture_plan(
+            draft,
+            prompt=str(draft.get("_user_prompt") or ""),
+            rebuild=False,
+        )
+    from app.ai_document_shape import clip_forbidden_reuse_surfaces
+
+    notes.extend(clip_forbidden_reuse_surfaces(draft))
     if first_apply:
         notes.append(
-            f"reuse: plan applied ({plan.source}) → {', '.join(plan.models) or '(none)'}"
+            f"reuse: plan applied ({plan.source}) → {', '.join(reuse.get('models') or []) or '(none)'}"
         )
     elif notes:
         notes.append(f"reuse: re-applied collapses ({plan.source})")

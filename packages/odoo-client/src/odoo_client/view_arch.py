@@ -276,8 +276,13 @@ def _parse_bool_attr(raw: str | None) -> bool | None:
 
 def _render_node(parent: Element, node: ViewNode, *, major: int = 19) -> None:
     if isinstance(node, FieldNode):
+        name = (node.name or "").strip()
+        if not name:
+            # Never emit <field name=""/> — Odoo rejects it (common after Designer
+            # flattened nested <group> nodes into empty field placeholders).
+            return
         el = SubElement(parent, "field")
-        el.set("name", node.name)
+        el.set("name", name)
         if node.string:
             el.set("string", node.string)
         for key, val in emit_field_modifiers(
@@ -1378,7 +1383,12 @@ def parse_arch(view_type: str, arch: str) -> dict[str, Any]:
 
 
 def render_inherit_replace_arch(view_type: str, inner_arch: str) -> str:
-    """Wrap a full view arch as an inherit that replaces the root node."""
+    """Wrap a full view arch as an inherit that replaces the root node.
+
+    Prefer :func:`build_additive_form_inherit_arch` for stock models — full
+    replace of a combined/loaded form re-emits chrome that other module inherits
+    then inject again (duplicate Send/Print/Pay / Other Info).
+    """
     vt = "list" if view_type == "tree" else view_type
     # Strip XML declaration / pretty whitespace that breaks xpath replace bodies
     body = inner_arch.strip()
@@ -1420,6 +1430,228 @@ def render_inherit_replace_arch(view_type: str, inner_arch: str) -> str:
         f"    {body}\n"
         "  </xpath>\n"
         "</data>"
+    )
+
+
+def _field_xml(node: FieldNode, *, major: int = 19) -> str:
+    el = Element("field")
+    el.set("name", (node.name or "").strip())
+    if node.string:
+        el.set("string", node.string)
+    for key, val in emit_field_modifiers(
+        major=major,
+        required=node.required,
+        readonly=node.readonly,
+        invisible=node.invisible,
+    ).items():
+        el.set(key, val)
+    if node.widget:
+        el.set("widget", node.widget)
+    if node.options:
+        el.set("options", node.options)
+    return tostring(el, encoding="unicode")
+
+
+def build_additive_form_inherit_arch(
+    spec: FormViewSpec | dict[str, Any],
+    *,
+    existing_field_names: set[str] | frozenset[str] | None = None,
+    major: int = 19,
+) -> str:
+    """Build a stock-safe inherit that only injects **new** ``x_*`` fields/groups.
+
+    Never re-emits header buttons, smart buttons, statusbar, or stock notebook
+    pages — those belong to module inherits and duplicating them causes the classic
+    Send/Send · Print/Print · Pay/Pay · Other Info/Other Info Bill form.
+
+    ``existing_field_names`` should be **stock** field names to skip (and any
+    ``x_*`` you explicitly want to leave to another inherit). Designer Save should
+    pass stock-only names so canvas ``x_*`` groups rewrite ``{model}.designer.form``
+    even when a prior field-inject already put the column on the form.
+    """
+    if isinstance(spec, dict):
+        form = FormViewSpec.model_validate(spec)
+    else:
+        form = spec
+    existing = {n for n in (existing_field_names or set()) if n}
+    group_chunks: list[str] = []
+    loose_fields: list[str] = []
+    seen_x: set[str] = set()
+
+    def _is_additive_field(node: FieldNode) -> bool:
+        name = (node.name or "").strip()
+        if not name or name in existing or name in seen_x:
+            return False
+        # Stock hosts: only custom columns. Never re-home partner_id / narration / etc.
+        return name.startswith("x_")
+
+    def _emit_group(label: str, fields: list[FieldNode]) -> None:
+        if not fields:
+            return
+        title = (label or "").strip() or "Custom fields"
+        inner = "\n".join(f"      {_field_xml(f, major=major)}" for f in fields)
+        group_chunks.append(
+            f'    <group string="{_xml_attr(title)}">\n{inner}\n    </group>'
+        )
+        for f in fields:
+            seen_x.add(f.name.strip())
+
+    def _walk_group(node: GroupNode, fallback_label: str | None = None) -> None:
+        label = (node.string or "").strip() or fallback_label
+        direct = [
+            c for c in node.children if isinstance(c, FieldNode) and _is_additive_field(c)
+        ]
+        _emit_group(label or "Custom fields", direct)
+        for c in node.children:
+            if isinstance(c, GroupNode):
+                _walk_group(c, label)
+            elif isinstance(c, NotebookNode):
+                _walk_notebook(c)
+
+    def _walk_notebook(node: NotebookNode) -> None:
+        for page in node.pages:
+            page_label = (page.string or "Custom").strip()
+            fields = [
+                c
+                for c in page.children
+                if isinstance(c, FieldNode) and _is_additive_field(c)
+            ]
+            _emit_group(page_label, fields)
+            for c in page.children:
+                if isinstance(c, GroupNode):
+                    _walk_group(c, page_label)
+
+    for child in form.children:
+        if isinstance(child, GroupNode):
+            _walk_group(child)
+        elif isinstance(child, NotebookNode):
+            _walk_notebook(child)
+        elif isinstance(child, FieldNode) and _is_additive_field(child):
+            loose_fields.append(f"    {_field_xml(child, major=major)}")
+            seen_x.add(child.name.strip())
+
+    body_parts = list(group_chunks)
+    if loose_fields:
+        body_parts.append(
+            '    <group string="Custom fields">\n'
+            + "\n".join(loose_fields)
+            + "\n    </group>"
+        )
+    if not body_parts:
+        raise ValueError(
+            "No custom x_* fields in the Form layout to inherit. "
+            "On stock models (e.g. account.move), Inherit Save only writes new custom "
+            "fields/groups — rearranging Partner, Invoice Date, or other stock fields "
+            "is ignored (would duplicate Send/Print/Pay and notebook tabs). "
+            "Add a group, drop an x_* field into it (create one if needed), then Save again."
+        )
+
+    # Using //sheet position=inside appends after existing content (custom groups at bottom).
+    inner = "\n".join(body_parts)
+    return (
+        "<data>\n"
+        '  <xpath expr="//sheet" position="inside">\n'
+        f"{inner}\n"
+        "  </xpath>\n"
+        "</data>"
+    )
+
+
+def list_x_field_names_in_form_spec(spec: FormViewSpec | dict[str, Any]) -> list[str]:
+    """Ordered unique ``x_*`` field names present in a form spec (incl. nested groups)."""
+    if isinstance(spec, dict):
+        form = FormViewSpec.model_validate(spec)
+    else:
+        form = spec
+    names: list[str] = []
+    seen: set[str] = set()
+
+    def _walk(nodes: list[ViewNode]) -> None:
+        for node in nodes:
+            if isinstance(node, FieldNode):
+                n = (node.name or "").strip()
+                if n.startswith("x_") and n not in seen:
+                    seen.add(n)
+                    names.append(n)
+            elif isinstance(node, GroupNode):
+                _walk(node.children)
+            elif isinstance(node, NotebookNode):
+                for page in node.pages:
+                    _walk(page.children)
+
+    _walk(form.children)
+    return names
+
+
+def inherit_arch_looks_like_full_form_replace(arch: str) -> bool:
+    """True when a designer inherit wraps a whole <form> replace (duplication hazard)."""
+    if not arch or "<form" not in arch:
+        return False
+    if 'position="replace"' not in arch and "position='replace'" not in arch:
+        return False
+    # Header chrome or notebook pages in the replace body ≈ combined form dump
+    markers = ("<header", "button_box", "oe_stat_button", "<notebook", 'string="Other Info"')
+    return any(m in arch for m in markers)
+
+
+def extract_replaced_form_arch(inherit_arch: str) -> str | None:
+    """Return the inner ``<form>…</form>`` from a full-form xpath replace inherit.
+
+    Used to recover custom ``x_*`` groups (e.g. TEST GROUP) when rewriting a
+    duplication-causing ``//form`` replace into an additive sheet inject.
+    """
+    if not inherit_arch or "<form" not in inherit_arch:
+        return None
+    from xml.etree.ElementTree import fromstring, tostring
+
+    body = inherit_arch.strip()
+    if body.startswith("<?xml"):
+        body = "\n".join(body.splitlines()[1:]).strip()
+    try:
+        root = fromstring(body)
+    except Exception:  # noqa: BLE001 — best-effort recovery
+        return None
+    if root.tag == "form":
+        return tostring(root, encoding="unicode")
+    for xpath in root.iter("xpath"):
+        pos = (xpath.get("position") or "").strip().lower()
+        if pos != "replace":
+            continue
+        form_el = xpath.find("form")
+        if form_el is None:
+            # Rare: replace body is the form as the only element under xpath
+            for child in list(xpath):
+                if child.tag == "form":
+                    form_el = child
+                    break
+        if form_el is not None:
+            return tostring(form_el, encoding="unicode")
+    return None
+
+
+def form_spec_for_additive_repair(form_or_inherit_arch: str) -> FormViewSpec:
+    """Build a FormViewSpec from a dumped form (or full-replace inherit) for repair.
+
+    Prefers a real parse so group labels (TEST GROUP) survive. Falls back to
+    collecting ``x_*`` field names when the dumped arch is too exotic to parse.
+    """
+    form_arch = extract_replaced_form_arch(form_or_inherit_arch) or form_or_inherit_arch
+    try:
+        if form_arch.lstrip().startswith("<form"):
+            return parse_form_arch(form_arch)
+    except Exception:  # noqa: BLE001
+        pass
+    names = [n for n in field_names_in_arch(form_or_inherit_arch) if n.startswith("x_")]
+    return FormViewSpec(
+        string="Form",
+        children=[
+            GroupNode(
+                string="Custom fields",
+                children=[FieldNode(name=n) for n in names],
+            )
+        ]
+        if names
+        else [],
     )
 
 

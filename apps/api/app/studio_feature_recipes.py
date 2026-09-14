@@ -98,6 +98,18 @@ FEATURE_RECIPES: list[dict[str, Any]] = [
         "app_surfaces": ["builder", "designer:list"],
     },
     {
+        "id": "approval_flow",
+        "name": "Approval / execution flow",
+        "status": "supported",
+        "how": (
+            "Community path: residual x_* status workflow with Submit / Approve / Refuse "
+            "header buttons bound to ir.actions.server object_write. Approve/Refuse are "
+            "restricted to the app Manager group. Submit creates a To Do activity. "
+            "Not Enterprise Approvals / Studio button-gating."
+        ),
+        "app_surfaces": ["app_studio", "draft_studio", "apply"],
+    },
+    {
         "id": "chatter",
         "name": "Chatter",
         "status": "option_a",

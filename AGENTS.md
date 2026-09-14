@@ -73,6 +73,39 @@
   dropped columns/data loss only partially recoverable — warn honestly).
 - Never install unvalidated modules into a customer prod instance — sandbox gate first
   (advanced confirm can still require sandbox for Python promote).
+- **Job Autopilot** (sandbox only): stock-first install/config, custom `x_*` residual only,
+  ingest dry-run then sandbox auto-commit, RPC process smoke as the done bar (quote→confirm→
+  invoice wizard; custom Confirm server action). Domain-agnostic connector recipes run in
+  fixed order (payments → inbound orders → messaging → hardware → statutory compute-only)
+  on stock models; they do not invent a vertical `x_*` or write partner API keys.
+  Implementation-job scorecard is separate from ModuleSpec 10.0. **Promote to another
+  connection stays human.** Refuse `write_mode=production`. Do not clone a customer
+  production database.
+- **Generation Engine** (Draft Studio): classify before pack/LLM **and before component
+  grain**. Residual → stock-first pack or unpacked seed. Explicit `stock_first` + residual
+  none → `stock_reuse` (empty spec; Job Autopilot is the done-bar) **only when residual
+  is explicitly none and the brief is not an inherit/extension ask**. Empty ModuleSpec is
+  **not** Cert Gold — cap to ReviewRequired; Completeness 10.0 is hygiene, not a custom app.
+  Named residual or
+  “add X on invoices” still draft/apply custom x_* or field packs. Out of scope / “later
+  Option A only if we ask” must not select gold POS or invoice Pay/QR. Option A gold
+  (`pos_receipt_options` / `invoice_qweb` / `currency_rate_cbn`) is a shortcut when the
+  prompt matches. Any other Python/QWeb/HTTP/OWL ask is LLM-authored (`option_a_authored`);
+  zip and sandbox stay locked until the authoring gate passes. Missing inherit hosts
+  (`sale.order` not on the connection) offer to install the stock CE app (Sales / `sale`);
+  that is not Live Install of the zip — re-verify the gate, then zip → sandbox → Promote.
+  App Studio skips pack/stock chips when classify is gold or authored; inherit seeds `sale.order` for sales markup/WHT
+  (not a new home tile). Intent LLM may extract `host_model` / `needs_module`. App Studio
+  shows a locked diagnosis card (host, inherit vs new app, Option A vs fields) and generate
+  waits for confirm; the compiler fails the draft if it contradicts that lock. Never invent `x_receipt` /
+  `x_fx` from the prompt. Community 19 has no ECB Service (upgrade tease); CBN gold
+  inherits Settings and writes stock `res.currency.rate`.
+  Explicit Apps Store clone/copy/reverse-engineer is refuse; a GM product-name paste is
+  still the honest POS options template. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+  Surface/Install gates are invariants + mutants (`ai_surface_invariants.py`), not
+  screenshot denylists — new Odoo failures add a property, never `if display_name == "…"`.
+  Local uvicorn on `:8001` is started **without `--reload`** — routing fixes are not live
+  until that process is killed and restarted.
 - Credentials encrypted at rest; prefer Odoo API keys over passwords.
 - **App API auth (Phase 7):** `AUTH_MODE=api_key` + `APP_API_KEY` or hashed keys in
   `app_api_keys`. Send `Authorization: Bearer …` or `X-API-Key`. Default `AUTH_MODE=off`
