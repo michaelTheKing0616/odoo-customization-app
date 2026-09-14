@@ -1,6 +1,8 @@
 /** COPY_GUIDE empty-state and honesty strings — single source for product copy (UIX-5). */
 
 export const EMPTY_STATES = {
+  builder:
+    "Create an x_ model with default list, form, and search views, then add fields. Stock models stay available by technical name.",
   automations:
     "Automations react to record changes — update fields, send emails, schedule activities. Create your first automation.",
   snapshots:

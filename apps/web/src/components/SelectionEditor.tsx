@@ -72,13 +72,13 @@ export function SelectionEditor({ value, onChange, className }: Props) {
             value={row.value}
             onChange={(e) => updateRow(i, { value: e.target.value })}
             placeholder="value"
-            className="min-w-[7rem] flex-1 border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm"
+            className="h-9 min-w-[7rem] flex-1 rounded-md border border-border-subtle bg-surface px-3 font-mono text-sm text-ink outline-none placeholder:text-muted focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
           />
           <input
             value={row.label}
             onChange={(e) => updateRow(i, { label: e.target.value })}
             placeholder="Label"
-            className="min-w-[7rem] flex-1 border border-border-subtle bg-surface px-2 py-1.5 text-sm"
+            className="h-9 min-w-[7rem] flex-1 rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink outline-none placeholder:text-muted focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
           />
           <button
             type="button"
@@ -92,9 +92,9 @@ export function SelectionEditor({ value, onChange, className }: Props) {
       <button
         type="button"
         onClick={addRow}
-        className="text-xs text-muted hover:underline"
+        className="text-xs font-medium text-accent hover:underline"
       >
-        + Add option
+        Add option
       </button>
     </div>
   );

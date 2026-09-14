@@ -4,6 +4,11 @@ import Link from "next/link";
 import type { FieldRow } from "@/lib/api";
 import type { PreviewFormView, PreviewListView } from "@/lib/draft-form-preview";
 import { OdooFormView, OdooListView, OdooPreviewScope } from "@/components/odoo-preview";
+import { Button } from "@/components/ui/Button";
+import { Card, EmptyState } from "@/components/ui/layout-primitives";
+import { Tabs } from "@/components/ui/Tabs";
+import { IconViews } from "@/components/ui/icons";
+import { automationsHref, viewDesignerHref } from "@/lib/builderForm";
 
 type BuilderModelPreviewProps = {
   connectionId: string;
@@ -65,31 +70,60 @@ export function BuilderModelPreview({
   fields,
   enableMailThread,
 }: BuilderModelPreviewProps) {
-  if (!model || fields.length === 0) return null;
+  if (!model) return null;
+
+  const designer = viewDesignerHref(connectionId, model);
+  const automations = automationsHref(connectionId, model);
+
+  if (fields.length === 0) {
+    return (
+      <Card className="p-4" data-testid="builder-model-preview">
+        <EmptyState
+          icon={<IconViews className="h-5 w-5" />}
+          title="Layout preview waits on fields"
+          description="Add a field to see a form and list teaser. Default views already exist on new x_ models."
+          action={
+            <Button variant="secondary" size="sm" asChild>
+              <Link href={designer}>Open View Designer</Link>
+            </Button>
+          }
+        />
+      </Card>
+    );
+  }
 
   const form = buildFormPreview(model, modelLabel, fields, enableMailThread);
   const list = buildListPreview(model, modelLabel, fields);
 
   return (
-    <div className="mt-4 rounded border border-border-subtle bg-surface-muted/30 p-4" data-testid="builder-model-preview">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+    <Card className="space-y-4 p-5" data-testid="builder-model-preview">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-ink">Layout preview</h3>
-          <p className="text-xs text-muted">Read-only teaser from live fields — customize in View Designer.</p>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Preview</p>
+          <h3 className="text-sm font-semibold text-ink">Layout teaser</h3>
+          <p className="mt-1 text-xs text-muted">
+            Read-only from live fields — not the saved arch. View Designer is the source of truth
+            for layout.
+          </p>
         </div>
-        <Link
-          href={`/connections/${connectionId}/designer?model=${encodeURIComponent(model)}`}
-          className="text-sm font-medium text-accent hover:underline"
-        >
-          Customize layout in View Designer →
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" size="sm" asChild>
+            <Link href={designer}>Customize layout in View Designer</Link>
+          </Button>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href={automations}>Automations for this model</Link>
+          </Button>
+        </div>
       </div>
       <OdooPreviewScope showBanner={false}>
-        <OdooFormView view={form} />
-        <div className="mt-4">
-          <OdooListView view={list} />
-        </div>
+        <Tabs
+          defaultValue="form"
+          items={[
+            { value: "form", label: "Form", content: <OdooFormView view={form} /> },
+            { value: "list", label: "List", content: <OdooListView view={list} /> },
+          ]}
+        />
       </OdooPreviewScope>
-    </div>
+    </Card>
   );
 }
