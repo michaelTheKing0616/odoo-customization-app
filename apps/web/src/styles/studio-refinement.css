@@ -1040,3 +1040,146 @@
 .studio-refinement .studio-form-slot-row select {
   max-width: 220px;
 }
+
+/* Job Autopilot — operator chrome (same kit as Draft Studio) */
+.studio-refinement .job-packet-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md) var(--space-lg);
+}
+
+.studio-refinement .job-packet-facts dt {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.studio-refinement .job-packet-facts dd {
+  margin: 2px 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+.studio-refinement .job-run-ledger {
+  display: grid;
+  gap: 2px;
+  list-style: none;
+  margin: var(--space-lg) 0 0;
+  padding: 0;
+  text-align: left;
+}
+
+.studio-refinement .job-run-ledger.is-compact {
+  max-width: 420px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.studio-refinement .job-run-step {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: var(--font-size-sm);
+}
+
+.studio-refinement .job-run-step.is-done {
+  background: var(--bg-success);
+}
+
+.studio-refinement .job-run-step.is-current {
+  background: var(--bg-accent);
+}
+
+.studio-refinement .job-run-step-mark {
+  color: var(--text-accent);
+  font-size: 11px;
+  text-align: center;
+}
+
+.studio-refinement .job-run-step-state {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.studio-refinement .job-score-overall {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+}
+
+.studio-refinement .job-score-overall-value {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.studio-refinement .job-score-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.studio-refinement .job-score-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.studio-refinement .job-score-meter-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.studio-refinement .job-score-meter-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-1);
+  overflow: hidden;
+}
+
+.studio-refinement .job-score-meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--color-accent);
+}
+
+.studio-refinement .job-smoke-strip {
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border);
+}
+
+.studio-refinement .job-smoke-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.studio-refinement .job-smoke-step {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: start;
+}
+
+.studio-refinement .job-handoff-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  align-items: center;
+}
+
+@media (max-width: 640px) {
+  .studio-refinement .job-score-grid,
+  .studio-refinement .job-packet-facts {
+    grid-template-columns: 1fr;
+  }
+}
