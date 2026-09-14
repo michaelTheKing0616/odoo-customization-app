@@ -11,7 +11,6 @@ type Props = {
 
 export function ExpertBubble({ className }: Props) {
   const { expertOpen, openExpert } = useShell();
-  const e2e = process.env.NEXT_PUBLIC_E2E === "1";
 
   if (expertOpen) return null;
 
@@ -22,35 +21,23 @@ export function ExpertBubble({ className }: Props) {
         className,
       )}
     >
-      <p
-        className="pointer-events-none hidden rounded-full border border-accent/20 bg-surface-raised/95 px-3 py-1 text-xs text-muted shadow-sm backdrop-blur-sm sm:block"
-        aria-hidden
-      >
-        Ask Odoo Expert
+      <p className="expert-launcher-hint pointer-events-none hidden sm:block" aria-hidden>
+        Odoo Expert
       </p>
-      <Tooltip label="Open Odoo Expert — grounded answers with citations">
+      <Tooltip label="Open Odoo Expert — grounded answers, never auto-promotes">
         <button
           type="button"
           data-testid="open-expert"
           aria-label="Open Odoo Expert"
           onClick={() => openExpert()}
           className={cn(
-            "pointer-events-auto group relative flex h-14 w-14 items-center justify-center rounded-full",
-            "bg-gradient-to-br from-accent to-accent-hover text-on-accent shadow-lg",
-            "ring-4 ring-accent/15 transition-transform duration-200 hover:scale-105 hover:shadow-xl",
+            "expert-launcher pointer-events-auto group relative flex h-12 w-12 items-center justify-center rounded-full",
+            "bg-accent text-on-accent shadow-lg",
+            "ring-4 ring-accent/10 transition-transform duration-200 hover:scale-[1.04] hover:bg-accent-hover hover:shadow-xl",
             "focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-accent/40",
-            !e2e &&
-              "motion-safe:animate-[expert-bubble-float_4s_ease-in-out_infinite]",
           )}
         >
-          <span
-            className={cn(
-              "absolute inset-0 rounded-full bg-accent/30 opacity-60 blur-md",
-              !e2e && "motion-safe:animate-pulse",
-            )}
-            aria-hidden
-          />
-          <IconExpert className="relative h-6 w-6 drop-shadow-sm transition-transform group-hover:scale-110" />
+          <IconExpert className="relative h-5 w-5 transition-transform group-hover:scale-110" />
         </button>
       </Tooltip>
     </div>

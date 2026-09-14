@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { formatExpertDiagnosePrompt } from "./expert-prompt";
+import {
+  buildExpertAskPayload,
+  expertPrefillPrompt,
+  formatExpertDiagnosePrompt,
+  isExpertSetupStackQuestion,
+} from "./expert-prompt";
 
 describe("formatExpertDiagnosePrompt", () => {
   it("always includes an Error log block so Expert can see a blank paste", () => {
@@ -17,3 +22,40 @@ describe("formatExpertDiagnosePrompt", () => {
     expect(out).toContain("POST /api/ai/option-a/reverify");
   });
 });
+
+describe("buildExpertAskPayload", () => {
+  it("merges a separate error paste into the question once", () => {
+    const payload = buildExpertAskPayload("Why did this fail?", "AccessError: denied");
+    expect(payload.question).toContain("Error log:");
+    expect(payload.question).toContain("AccessError: denied");
+    expect(payload.pastedError).toBe("AccessError: denied");
+  });
+
+  it("does not duplicate an error already in the main input", () => {
+    const q = "Diagnose\n\nError log:\nAccessError";
+    const payload = buildExpertAskPayload(q, "AccessError");
+    expect(payload.question).toBe(q);
+  });
+});
+
+describe("isExpertSetupStackQuestion", () => {
+  it("treats module-stack asks as a fresh retrieval context", () => {
+    expect(isExpertSetupStackQuestion("Which modules do I need for a law firm?")).toBe(true);
+    expect(isExpertSetupStackQuestion("How does xpath inherit work?")).toBe(false);
+  });
+});
+
+describe("expertPrefillPrompt", () => {
+  it("does not attach a blank Error log for explain-this / ask-why", () => {
+    expect(expertPrefillPrompt("What does the x_status selection field control?")).toBe(
+      "What does the x_status selection field control?",
+    );
+  });
+
+  it("keeps the Error log block for diagnose prefills", () => {
+    expect(expertPrefillPrompt("Diagnose this error on my connection", "AccessError")).toContain(
+      "Error log:\nAccessError",
+    );
+  });
+});
+

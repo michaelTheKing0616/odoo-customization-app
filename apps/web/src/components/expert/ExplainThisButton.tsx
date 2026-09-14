@@ -5,6 +5,7 @@ import { HelpCircle } from "@/components/ui/icons";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useShellOptional } from "@/context/ShellContext";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/cn";
 
 type Props = {
   question: string;
@@ -58,10 +59,13 @@ export function ExplainThisButton({
   }
 
   return (
-    <Tooltip label={label}>
+    <Tooltip label={`${label} — grounded Expert answer, never auto-promotes`}>
       <button
         type="button"
-        className={className ?? "rounded p-1 text-muted hover:bg-surface-muted hover:text-accent"}
+        className={cn(
+          "expert-entry-icon rounded-md p-1 text-muted hover:bg-accent-subtle hover:text-accent",
+          className,
+        )}
         aria-label={label}
         aria-busy={busy}
         data-testid="explain-this"
