@@ -179,6 +179,13 @@ describe("copy helpers", () => {
     );
     expect(jobAutopilotErrorTitle("")).toBe("Job Autopilot request failed");
     expect(jobAutopilotHeaderDescription("Lab 19")).toMatch(/Lab 19/);
+    expect(jobAutopilotHeaderDescription("Lab 19", "standard")).toMatch(/sandbox-only/);
+    expect(jobAutopilotHeaderDescription("Client production", "production")).toMatch(
+      /refuses production/,
+    );
+    expect(jobAutopilotHeaderDescription("Client production", "production")).not.toMatch(
+      /sandbox-only —/,
+    );
     expect(jobAutopilotHeaderDescription()).toMatch(/Promote stays human/);
     expect(jobAutopilotProductionRefuseMessage()).toMatch(/refuses write_mode=production/);
     expect(jobAutopilotObserverRefuseMessage()).toMatch(/Observer/);

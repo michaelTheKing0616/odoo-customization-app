@@ -11,6 +11,7 @@ import {
 type JobAutopilotShellProps = {
   connectionId: string;
   connectionName?: string;
+  writeMode?: string | null;
   journey: JobAutopilotJourneyState;
   children: React.ReactNode;
 };
@@ -18,6 +19,7 @@ type JobAutopilotShellProps = {
 export function JobAutopilotShell({
   connectionId,
   connectionName,
+  writeMode,
   journey,
   children,
 }: JobAutopilotShellProps) {
@@ -26,7 +28,7 @@ export function JobAutopilotShell({
       <div className="studio-page">
         <PageHeader
           title="Job Autopilot"
-          description={jobAutopilotHeaderDescription(connectionName)}
+          description={jobAutopilotHeaderDescription(connectionName, writeMode)}
           actions={
             <>
               <Link

@@ -513,6 +513,7 @@ export default function JobAutopilotPage() {
     <JobAutopilotShell
       connectionId={connectionId}
       connectionName={connection?.name}
+      writeMode={connection?.write_mode}
       journey={journey}
     >
       <JobAutopilotHonestyBanners

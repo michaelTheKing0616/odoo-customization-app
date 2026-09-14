@@ -74,11 +74,12 @@ export function JobAutopilotBriefPanel({
         </Button>
         <Button
           type="button"
-          variant="primary"
+          variant={runBlocked ? "secondary" : "primary"}
           disabled={busy !== null || runBlocked}
           loading={busy === "run"}
           onClick={onRun}
           title={runBlocked ? runBlockedReason : undefined}
+          aria-disabled={runBlocked || undefined}
           data-testid="job-run-autopilot"
         >
           Run Autopilot

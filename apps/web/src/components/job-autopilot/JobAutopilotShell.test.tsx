@@ -19,6 +19,7 @@ describe("JobAutopilotShell", () => {
     expect(screen.getByTestId("job-autopilot")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Job Autopilot" })).toBeTruthy();
     expect(screen.getByText(/Lab 19/)).toBeTruthy();
+    expect(screen.getByText(/sandbox-only/)).toBeTruthy();
     expect(screen.getByRole("link", { name: "Draft Studio" })).toHaveAttribute(
       "href",
       "/connections/c1/wizard",
@@ -31,5 +32,20 @@ describe("JobAutopilotShell", () => {
     expect(screen.queryByRole("link", { name: "ModuleSpec" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Projects" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Expert" })).toBeNull();
+  });
+
+  it("does not call a production connection a sandbox", () => {
+    render(
+      <JobAutopilotShell
+        connectionId="c1"
+        connectionName="Client production"
+        writeMode="production"
+        journey={{ id: "brief" }}
+      >
+        <p>brief body</p>
+      </JobAutopilotShell>,
+    );
+    expect(screen.getByText(/refuses production/)).toBeTruthy();
+    expect(screen.queryByText(/sandbox-only —/)).toBeNull();
   });
 });

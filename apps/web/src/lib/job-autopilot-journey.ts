@@ -268,7 +268,21 @@ export function sandboxOpenLabel(result: {
   return "Open sandbox";
 }
 
-export function jobAutopilotHeaderDescription(connectionName?: string): string {
+export function jobAutopilotHeaderDescription(
+  connectionName?: string,
+  writeMode?: JobWriteMode | null,
+): string {
+  const mode = (writeMode || "").toLowerCase();
+  if (mode === "production") {
+    return connectionName
+      ? `${connectionName} · Autopilot refuses production. Run on a sandbox.`
+      : "Autopilot refuses production. Clone a sandbox, then Promote.";
+  }
+  if (mode === "observer") {
+    return connectionName
+      ? `${connectionName} · observer cannot run Autopilot`
+      : "Observer cannot install or apply. Use a sandbox.";
+  }
   if (connectionName) {
     return `${connectionName} · sandbox-only — stock first, residual x_*, human promote`;
   }
