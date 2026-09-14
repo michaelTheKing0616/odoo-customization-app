@@ -11,6 +11,16 @@
 **Note for next time:** one line, generalized if possible
 ```
 
+### 2026-09-14 — TRUST-6 LLM tests ignored AI_ASSIST
+**Didn't work:** Asserting `get_llm_provider().name` follows `AI_ASSIST=auto` while `settings.ai_llm_tier_fast` defaults to `"gemini"`.
+**Worked instead:** Autouse fixture sets `ai_llm_tier_fast`/`refine` to `"auto"`; mark the module `no_app_db`.
+**Note for next time:** `get_llm_provider()` is `get_llm_provider_for_tier("fast")`. Tests that assert AI_ASSIST routing must not leave the default Gemini tier.
+
+### 2026-09-14 — Designer CMP-3 two preview-theme-scope nodes
+**Didn't work:** Wrapping `OdooPreviewScope` in `PreviewThemeScope` (both render `data-testid="preview-theme-scope"`).
+**Worked instead:** Pass `previewVars` into `OdooPreviewScope`; one theme scope per canvas.
+**Note for next time:** Playwright `getByTestId("preview-theme-scope")` is strict. Nested theme scopes fail CMP-3.
+
 ### 2026-09-14 — Sandbox ParseError was amount_tax xpath; Expert blamed xmlrpc.py
 **Didn't work:** Live schema treated traceback `xmlrpc.py` as `ir.model` `xmlrpc` and won over the ParseError.
 **Worked instead:** ParseError / cannot-be-located xpath wins; skip traceback filenames; rewrite sale.order `amount_tax` inherit to `tax_totals` on zip.

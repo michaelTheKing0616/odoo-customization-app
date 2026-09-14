@@ -107,7 +107,7 @@ test.describe("Wizard scorecard + expert review", () => {
     await page.goto(`/connections/${CONN}/wizard`);
     await expect(page.getByTestId("draft-studio")).toBeVisible();
 
-    await page.getByPlaceholder(/Car rental fleet/i).fill(PROMPT);
+    await page.getByTestId("draft-nl-prompt").fill(PROMPT);
     const draftBtn = page.getByTestId("create-draft");
     await expect(draftBtn).toBeEnabled();
     await draftBtn.click();
@@ -226,7 +226,7 @@ test.describe("Wizard ELITE promote workflow", () => {
 
   test("elite validate enables promote after score >= 9", async ({ page }) => {
     await page.goto(`/connections/${CONN}/wizard`);
-    await page.getByPlaceholder(/Car rental fleet/i).fill(PROMPT);
+    await page.getByTestId("draft-nl-prompt").fill(PROMPT);
     await page.getByTestId("create-draft").click();
     await expect(page.getByTestId("draft-scorecard-chip")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId("expert-review-fix")).toBeVisible();

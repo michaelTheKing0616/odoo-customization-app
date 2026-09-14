@@ -3299,8 +3299,7 @@ export default function DesignerPage() {
               data-testid="designer-form-layout"
             >
             <div>
-              <PreviewThemeScope previewVars={previewTheme?.preview_vars}>
-              <OdooPreviewScope showBanner>
+              <OdooPreviewScope showBanner previewVars={previewTheme?.preview_vars}>
                 <OdooControlPanel
                   breadcrumb={`View Designer › ${title || model}`}
                   activeView="form"
@@ -3414,7 +3413,6 @@ export default function DesignerPage() {
               }}
             />
               </OdooPreviewScope>
-              </PreviewThemeScope>
             </div>
             <aside className="rounded-md border border-border-subtle bg-surface-raised p-3 shadow-subtle">
               <p className="text-[11px] font-medium uppercase tracking-wide text-muted">
@@ -4876,8 +4874,7 @@ export default function DesignerPage() {
                       Odoo-style list preview
                     </summary>
                     <div className="mt-3">
-                      <PreviewThemeScope previewVars={previewTheme?.preview_vars}>
-                        <OdooPreviewScope showBanner={false}>
+                      <OdooPreviewScope showBanner={false} previewVars={previewTheme?.preview_vars}>
                           <OdooListView
                             view={{
                               type: "list",
@@ -4896,7 +4893,6 @@ export default function DesignerPage() {
                             }}
                           />
                         </OdooPreviewScope>
-                      </PreviewThemeScope>
                     </div>
                   </details>
                 ) : null}

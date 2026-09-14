@@ -41,8 +41,11 @@ test.describe("Expert UX flows (REM-9)", () => {
     await expect(page.getByTestId("expert-panel")).toBeVisible();
     await expect(page.getByTestId("expert-input")).toHaveValue(/x_status/);
     await page.getByRole("button", { name: "Ask Expert" }).click();
-    await expect(page.getByText("Grounded")).toBeVisible();
-    await expect(page.getByText(/Selection fields constrain/)).toBeVisible();
+    await expect(page.getByTestId("expert-panel")).toContainText("Grounded");
+    await expect(page.getByTestId("expert-answer")).toContainText(
+      /Selection fields constrain/,
+      { timeout: 15_000 },
+    );
     await page.screenshot({
       path: path.join(OUT_DIR, "expert-explain-this.png"),
       fullPage: true,

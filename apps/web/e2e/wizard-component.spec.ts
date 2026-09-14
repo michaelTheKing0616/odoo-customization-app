@@ -129,7 +129,7 @@ test.describe("Wizard component flow", () => {
     await page.goto(`/connections/${CONN}/wizard`);
     await expect(page.getByTestId("draft-studio")).toBeVisible();
 
-    await page.getByPlaceholder(/Car rental fleet/i).fill(
+    await page.getByTestId("draft-nl-prompt").fill(
       "add inspection checklist to project tasks",
     );
 

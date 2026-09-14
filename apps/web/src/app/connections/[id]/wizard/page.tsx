@@ -1784,6 +1784,7 @@ export default function AppWizardPage() {
           </ol>
           <Textarea
             className="mt-3"
+            data-testid="draft-nl-prompt"
             value={nlPrompt}
             onChange={(e) => {
               setNlPrompt(e.target.value);
