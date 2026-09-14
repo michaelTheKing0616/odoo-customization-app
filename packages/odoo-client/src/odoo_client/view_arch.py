@@ -24,9 +24,13 @@ class FieldNode(BaseModel):
     string: str | None = None
     required: bool | str | None = None
     readonly: bool | str | None = None
-    invisible: str | None = None  # domain / expr
+    invisible: bool | str | None = None  # True / domain / expr
     widget: str | None = None
     options: str | None = None  # JSON string for widget options (e.g. image size)
+    help: str | None = None  # view-layer tooltip (help=)
+    placeholder: str | None = None
+    class_name: str | None = None  # XML class= on <field>
+    groups: str | None = None  # comma-separated xml ids, optional ! prefix
 
 
 class ButtonNode(BaseModel):
@@ -274,6 +278,41 @@ def _parse_bool_attr(raw: str | None) -> bool | None:
     return None
 
 
+def _opt_xml_attr(el: Element, name: str) -> str | None:
+    raw = el.get(name)
+    if raw is None:
+        return None
+    stripped = raw.strip()
+    return stripped or None
+
+
+def _write_field_element(el: Element, node: FieldNode, *, major: int, set_name: bool = True) -> None:
+    """Apply FieldNode view-layer attrs onto an XML <field> element."""
+    if set_name:
+        el.set("name", (node.name or "").strip())
+    if node.string:
+        el.set("string", node.string)
+    for key, val in emit_field_modifiers(
+        major=major,
+        required=node.required,
+        readonly=node.readonly,
+        invisible=node.invisible,
+    ).items():
+        el.set(key, val)
+    if node.widget:
+        el.set("widget", node.widget)
+    if node.options:
+        el.set("options", node.options)
+    if node.help:
+        el.set("help", node.help)
+    if node.placeholder:
+        el.set("placeholder", node.placeholder)
+    if node.class_name:
+        el.set("class", node.class_name)
+    if node.groups:
+        el.set("groups", node.groups)
+
+
 def _render_node(parent: Element, node: ViewNode, *, major: int = 19) -> None:
     if isinstance(node, FieldNode):
         name = (node.name or "").strip()
@@ -282,20 +321,7 @@ def _render_node(parent: Element, node: ViewNode, *, major: int = 19) -> None:
             # flattened nested <group> nodes into empty field placeholders).
             return
         el = SubElement(parent, "field")
-        el.set("name", name)
-        if node.string:
-            el.set("string", node.string)
-        for key, val in emit_field_modifiers(
-            major=major,
-            required=node.required,
-            readonly=node.readonly,
-            invisible=node.invisible,
-        ).items():
-            el.set(key, val)
-        if node.widget:
-            el.set("widget", node.widget)
-        if node.options:
-            el.set("options", node.options)
+        _write_field_element(el, node, major=major)
         return
 
     if isinstance(node, ButtonNode):
@@ -877,16 +903,20 @@ def _parse_field_el(el: Element) -> FieldNode:
     else:
         required = _parse_modifier_attr(el.get("required"))
         readonly = _parse_modifier_attr(el.get("readonly"))
-        invisible = el.get("invisible")
+        invisible = _parse_modifier_attr(el.get("invisible"))
 
     return FieldNode(
         name=el.get("name") or "",
-        string=el.get("string"),
+        string=_opt_xml_attr(el, "string"),
         required=required,
         readonly=readonly,
         invisible=invisible,
-        widget=el.get("widget"),
-        options=el.get("options"),
+        widget=_opt_xml_attr(el, "widget"),
+        options=_opt_xml_attr(el, "options"),
+        help=_opt_xml_attr(el, "help"),
+        placeholder=_opt_xml_attr(el, "placeholder"),
+        class_name=_opt_xml_attr(el, "class"),
+        groups=_opt_xml_attr(el, "groups"),
     )
 
 
@@ -1435,20 +1465,7 @@ def render_inherit_replace_arch(view_type: str, inner_arch: str) -> str:
 
 def _field_xml(node: FieldNode, *, major: int = 19) -> str:
     el = Element("field")
-    el.set("name", (node.name or "").strip())
-    if node.string:
-        el.set("string", node.string)
-    for key, val in emit_field_modifiers(
-        major=major,
-        required=node.required,
-        readonly=node.readonly,
-        invisible=node.invisible,
-    ).items():
-        el.set(key, val)
-    if node.widget:
-        el.set("widget", node.widget)
-    if node.options:
-        el.set("options", node.options)
+    _write_field_element(el, node, major=major)
     return tostring(el, encoding="unicode")
 
 

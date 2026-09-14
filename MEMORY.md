@@ -1,3 +1,8 @@
+### 2026-09-14 — View Designer Track A: field properties are view-layer chrome
+**Decided:** FieldNode round-trips `help`, `placeholder`, `class`, `groups`. Related path is ORM metadata + `listRelatedPaths` picker (not an arch attr — dotted names are not valid view field names). Remove-from-view stays view-only. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+**Why:** Studio-class inspector for day-to-day field editing; `groups=` needs xml ids, not `res.groups` numeric ids.
+**Rejected:** Tracks B/C/D this run; writing `related=` from Designer; treating group display names as xml ids.
+
 ### 2026-09-14 — Sale inherit xpath is tax_totals, not amount_tax
 **Decided:** Option A sale.order form inherit xpaths `amount_tax` / `amount_untaxed` rewrite to `tax_totals` at author + zip. Expert ParseError/xpath-miss beats live schema on traceback filenames (`xmlrpc.py`). Completeness ≠ Cert ≠ Autopilot. Promote stays human. Restart `:8001`.
 **Why:** Sandbox Install ParseError: xpath `//field[@name='amount_tax']` not in parent view. Expert said `xmlrpc` missing.

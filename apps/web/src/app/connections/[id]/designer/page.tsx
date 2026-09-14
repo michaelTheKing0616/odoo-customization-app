@@ -28,12 +28,17 @@ import {
   ConfirmationRequiredError,
   Connection,
   FieldRow,
+  GroupRow,
   MailTemplateRow,
   PreviewTheme,
+  RelatedPathOption,
   SnapshotRow,
 } from "@/lib/api";
-import { DesignerFieldInspector } from "@/components/designer/DesignerFieldInspector";
-import { ExplainThisButton } from "@/components/expert/ExplainThisButton";
+import {
+  DesignerFieldInspector,
+  DesignerFieldInspectorEmpty,
+  type DesignerFieldInspectorValues,
+} from "@/components/designer/DesignerFieldInspector";
 import { fallbackWidgetsForTtype, type WidgetOption } from "@/lib/widgetCatalog";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
@@ -81,9 +86,13 @@ type DesignerField = {
   string?: string;
   required?: boolean | string;
   readonly?: boolean | string;
-  invisible?: string;
+  invisible?: boolean | string;
   widget?: string;
   options?: string;
+  help?: string;
+  placeholder?: string;
+  class_name?: string;
+  groups?: string;
 };
 
 type DesignerButton = {
@@ -182,6 +191,10 @@ function fieldSpec(f: DesignerField) {
     invisible: f.invisible || undefined,
     widget: f.widget || undefined,
     options: f.options || undefined,
+    help: f.help || undefined,
+    placeholder: f.placeholder || undefined,
+    class_name: f.class_name || undefined,
+    groups: f.groups || undefined,
   };
 }
 
@@ -193,9 +206,17 @@ function mapParsedField(n: Record<string, unknown>): DesignerField {
     string: n.string ? String(n.string) : undefined,
     required: n.required as boolean | string | undefined,
     readonly: n.readonly as boolean | string | undefined,
-    invisible: n.invisible ? String(n.invisible) : undefined,
+    invisible: n.invisible as boolean | string | undefined,
     widget: n.widget ? String(n.widget) : undefined,
     options: n.options ? String(n.options) : undefined,
+    help: n.help ? String(n.help) : undefined,
+    placeholder: n.placeholder ? String(n.placeholder) : undefined,
+    class_name: n.class
+      ? String(n.class)
+      : n.class_name
+        ? String(n.class_name)
+        : undefined,
+    groups: n.groups ? String(n.groups) : undefined,
   };
 }
 
@@ -391,6 +412,14 @@ export default function DesignerPage() {
   const [viewSample, setViewSample] = useState(false);
   const [widgetAdvanced, setWidgetAdvanced] = useState(false);
   const [inspectorWidgets, setInspectorWidgets] = useState<WidgetOption[]>([]);
+  const [inspectorGroups, setInspectorGroups] = useState<GroupRow[]>([]);
+  const [inspectorGroupsState, setInspectorGroupsState] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [relatedPaths, setRelatedPaths] = useState<RelatedPathOption[]>([]);
+  const [relatedPathsState, setRelatedPathsState] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
   const [nicheWidgets, setNicheWidgets] = useState<NicheWidgetEntry[]>([]);
   const [colorPalette, setColorPalette] = useState<Array<{ index: number; name: string }>>(
     [],
@@ -1386,23 +1415,66 @@ export default function DesignerPage() {
     return null;
   }
 
-  function updateSelectedField(patch: Partial<DesignerField>) {
+  function removeSelectedField() {
     if (!selected) return;
+    const fieldId = selected.fieldId;
+    if (selected.scope === "list") {
+      setListColumns((cols) => cols.filter((c) => c.id !== fieldId));
+    } else if (selected.scope === "search") {
+      setSearchFields((cols) => cols.filter((c) => c.id !== fieldId));
+    } else if (selected.scope === "kanban") {
+      setKanbanFields((cols) => cols.filter((c) => c.id !== fieldId));
+    } else if (selected.scope === "form-group") {
+      const groupId = selected.groupId;
+      setFormChildren((children) =>
+        children.map((child) => {
+          if (child.kind !== "group" || child.id !== groupId) return child;
+          return {
+            ...child,
+            children: child.children.filter((n) => n.id !== fieldId),
+          };
+        }),
+      );
+    } else {
+      const { notebookId, pageId } = selected;
+      setFormChildren((children) =>
+        children.map((child) => {
+          if (child.kind !== "notebook" || child.id !== notebookId) return child;
+          return {
+            ...child,
+            pages: child.pages.map((p) =>
+              p.id !== pageId
+                ? p
+                : {
+                    ...p,
+                    children: p.children.filter((n) => n.id !== fieldId),
+                  },
+            ),
+          };
+        }),
+      );
+    }
+    setSelected(null);
+  }
+
+  function updateSelectedField(patch: Partial<DesignerFieldInspectorValues>) {
+    if (!selected) return;
+    const { ttype: _ttype, name: _name, ...fieldPatch } = patch;
     if (selected.scope === "list") {
       setListColumns((cols) =>
-        cols.map((f) => (f.id === selected.fieldId ? { ...f, ...patch } : f)),
+        cols.map((f) => (f.id === selected.fieldId ? { ...f, ...fieldPatch } : f)),
       );
       return;
     }
     if (selected.scope === "search") {
       setSearchFields((cols) =>
-        cols.map((f) => (f.id === selected.fieldId ? { ...f, ...patch } : f)),
+        cols.map((f) => (f.id === selected.fieldId ? { ...f, ...fieldPatch } : f)),
       );
       return;
     }
     if (selected.scope === "kanban") {
       setKanbanFields((cols) =>
-        cols.map((f) => (f.id === selected.fieldId ? { ...f, ...patch } : f)),
+        cols.map((f) => (f.id === selected.fieldId ? { ...f, ...fieldPatch } : f)),
       );
       return;
     }
@@ -1414,7 +1486,7 @@ export default function DesignerPage() {
             ...child,
             children: child.children.map((node) => {
               if (node.id !== selected.fieldId || node.kind !== "field") return node;
-              return { ...node, ...patch };
+              return { ...node, ...fieldPatch };
             }),
           };
         }),
@@ -1432,7 +1504,7 @@ export default function DesignerPage() {
               ...p,
               children: p.children.map((node) => {
                 if (node.id !== selected.fieldId || node.kind !== "field") return node;
-                return { ...node, ...patch };
+                return { ...node, ...fieldPatch };
               }),
             };
           }),
@@ -2285,6 +2357,82 @@ export default function DesignerPage() {
 
   const selectedField = findSelectedField();
 
+  const viewFieldNames = useMemo(() => {
+    const names = new Set<string>();
+    if (viewType === "form") {
+      for (const child of formChildren) {
+        if (child.kind === "group") {
+          for (const n of child.children) {
+            if (n.kind === "field") names.add(n.name);
+          }
+        } else {
+          for (const page of child.pages) {
+            for (const n of page.children) {
+              if (n.kind === "field") names.add(n.name);
+            }
+          }
+        }
+      }
+    } else if (viewType === "list") {
+      for (const c of listColumns) names.add(c.name);
+    } else if (viewType === "search") {
+      for (const c of searchFields) names.add(c.name);
+    } else if (viewType === "kanban") {
+      for (const c of kanbanFields) names.add(c.name);
+    }
+    return [...names];
+  }, [viewType, formChildren, listColumns, searchFields, kanbanFields]);
+
+  const selectedFieldMeta = selectedField
+    ? fields.find((f) => f.name === selectedField.name) ?? null
+    : null;
+
+  useEffect(() => {
+    if (!connectionId) return;
+    let cancelled = false;
+    setInspectorGroupsState("loading");
+    api
+      .listGroups(connectionId)
+      .then((rows) => {
+        if (cancelled) return;
+        setInspectorGroups(rows);
+        setInspectorGroupsState("ready");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setInspectorGroups([]);
+        setInspectorGroupsState("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionId]);
+
+  useEffect(() => {
+    if (!connectionId || !model) {
+      setRelatedPaths([]);
+      setRelatedPathsState("idle");
+      return;
+    }
+    let cancelled = false;
+    setRelatedPathsState("loading");
+    api
+      .listRelatedPaths(connectionId, model, 2)
+      .then((rows) => {
+        if (cancelled) return;
+        setRelatedPaths(rows);
+        setRelatedPathsState("ready");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRelatedPaths([]);
+        setRelatedPathsState("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionId, model]);
+
   useEffect(() => {
     if (!selectedField) {
       setInspectorWidgets([]);
@@ -2302,6 +2450,30 @@ export default function DesignerPage() {
         /* fallback */
       });
   }, [connectionId, fields, selectedField?.name]);
+
+  const fieldInspector = selectedField ? (
+    <DesignerFieldInspector
+      field={{
+        ...selectedField,
+        ttype: selectedFieldMeta?.ttype,
+      }}
+      fieldMeta={selectedFieldMeta}
+      widgetOptions={inspectorWidgets}
+      widgetAdvanced={widgetAdvanced}
+      onWidgetAdvancedChange={setWidgetAdvanced}
+      onChange={updateSelectedField}
+      groups={inspectorGroups}
+      groupsState={inspectorGroupsState}
+      relatedPaths={relatedPaths}
+      relatedState={relatedPathsState}
+      fieldsOnModel={fields}
+      viewFieldNames={viewFieldNames}
+      onAddRelatedField={(name) => appendFieldToCurrentLayout(name, fields)}
+      onRemoveFromView={removeSelectedField}
+    />
+  ) : (
+    <DesignerFieldInspectorEmpty />
+  );
 
   return (
     <div className="mx-auto max-w-7xl" data-testid="designer-page">
@@ -3213,49 +3385,15 @@ export default function DesignerPage() {
               </OdooPreviewScope>
               </PreviewThemeScope>
             </div>
-            <PropsInspector title="Field properties">
-              {selectedField ? (
-                <div className="space-y-3 text-sm text-[#1a1a1a]">
-                  <p className="font-mono text-accent">{selectedField.name}</p>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={!!selectedField.required}
-                      onChange={(e) => updateSelectedField({ required: e.target.checked })}
-                    />
-                    <span>Required</span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={!!selectedField.readonly}
-                      onChange={(e) => updateSelectedField({ readonly: e.target.checked })}
-                    />
-                    <span>Readonly</span>
-                  </label>
-                  <label className="block text-xs">
-                    <span className="flex items-center gap-1">
-                      Widget
-                      <ExplainThisButton
-                        question={`Explain widget choices for ${selectedField.name} on ${model}`}
-                        label="Explain widgets"
-                      />
-                    </span>
-                    <input
-                      value={selectedField.widget ?? ""}
-                      onChange={(e) =>
-                        updateSelectedField({ widget: e.target.value || undefined })
-                      }
-                      className="mt-1 w-full border border-[var(--odoo-border)] px-2 py-1 font-mono text-xs"
-                    />
-                  </label>
-                </div>
-              ) : (
-                <p className="text-xs text-[var(--odoo-muted)]">
-                  Select a field on the canvas, or drag from the field list below.
-                </p>
-              )}
-            </PropsInspector>
+            <aside className="rounded-md border border-border-subtle bg-surface-raised p-3 shadow-subtle">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted">
+                Field properties
+              </p>
+              <p className="mt-2 text-xs leading-relaxed text-muted">
+                Select a field here or in Form layout. The properties rail on the
+                right is the editor — label, help, modifiers, widget, and related path.
+              </p>
+            </aside>
             </div>
           </details>
         )}
@@ -5072,26 +5210,16 @@ export default function DesignerPage() {
           </section>
 
           <aside className="space-y-4">
-            <div className="border border-border-subtle bg-surface-muted/70 p-4">
-              <p className="text-xs uppercase tracking-wide text-muted">
-                Field properties
-              </p>
-              {selectedField ? (
-                <>
-                  <p className="mt-3 font-mono text-muted">{selectedField.name}</p>
-                  <DesignerFieldInspector
-                    field={selectedField}
-                    widgetOptions={inspectorWidgets}
-                    widgetAdvanced={widgetAdvanced}
-                    onWidgetAdvancedChange={setWidgetAdvanced}
-                    onChange={updateSelectedField}
-                  />
-                </>
-              ) : (
-                <p className="mt-3 text-xs text-muted">
-                  Select a field on the canvas to edit properties.
+            <div
+              className="rounded-md border border-border-subtle bg-surface-raised shadow-subtle"
+              data-testid="designer-props-rail"
+            >
+              <div className="border-b border-border-subtle px-4 py-3">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted">
+                  Field properties
                 </p>
-              )}
+              </div>
+              <div className="p-4">{fieldInspector}</div>
             </div>
 
             <div className="border border-border-subtle bg-surface-muted/70 p-4">
