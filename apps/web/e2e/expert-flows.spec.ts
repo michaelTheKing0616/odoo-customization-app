@@ -8,7 +8,12 @@ test.describe("Expert UX flows (REM-9)", () => {
     await page.route("**/api/expert/ask", async (route) => {
       const body = route.request().postDataJSON() as { question?: string };
       const q = body.question ?? "";
-      const isError = q.includes("Error log:") || q.toLowerCase().includes("diagnose");
+      const isStatus = q.includes("x_status");
+      const isError =
+        !isStatus &&
+        (q.includes("AccessError") ||
+          q.toLowerCase().includes("diagnose") ||
+          q.includes("Error log:"));
       await route.fulfill({
         status: 200,
         contentType: "application/json",
