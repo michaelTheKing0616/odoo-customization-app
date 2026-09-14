@@ -5,7 +5,7 @@
 ## Last run
 - Date: 2026-09-14
 - **Shipped:** Automations premium UX on `cursor/automations-premium-011f` (off Designer A–D). List → composer/detail, DomainBuilder apply-on validation, grouped safe/advanced actions, Designer deep links, draft/unsaved/saved bar. PATCH name + filter_domain. Existing snapshots reused.
-- **Proof:** `automationForm.test.ts`, `DomainBuilder.test.tsx`, `AutomationSessionBar.test.tsx`, `AutomationsList.test.tsx`, `AutomationActionKindSelect.test.tsx`, `builders.test.ts`.
+- **Proof:** Vitest 270 (incl. `automationForm`, DomainBuilder, session bar, list, action-kind). Playwright: `automations-prod`, `automation-caps`, `automation-gating` (7 passed).
 - **Rule:** Automations session chrome is dirty/save only. Do not copy Designer undo/redo. Do not rewrite server actions on PATCH.
 
 ## Next (operator)
