@@ -170,7 +170,7 @@ test.describe("App shell & Expert (mocked API)", () => {
     await expect(page.getByTestId("expert-panel")).toBeVisible();
     await page.getByTestId("expert-input").fill("What is xpath inheritance?");
     await page.getByRole("button", { name: "Ask Expert" }).click();
-    await expect(page.getByText("Grounded")).toBeVisible();
+    await expect(page.getByTestId("expert-thread").getByText("Grounded", { exact: true })).toBeVisible();
     await expect(page.getByText("XPath extends views")).toBeVisible();
   });
 
