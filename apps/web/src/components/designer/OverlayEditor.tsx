@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { api, type FieldRow } from "@/lib/api";
+import { api, type FieldRow, type LocatorIssue } from "@/lib/api";
 import { fallbackWidgetsForTtype } from "@/lib/widgetCatalog";
+import { isFragile, preferSemanticCandidates } from "@/lib/xpathLocator";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { CodeBlock } from "@/components/ui/CodeBlock";
@@ -20,6 +21,9 @@ type Candidate = {
   xpath: string;
   match?: string;
   from_spec?: boolean;
+  score?: number;
+  fragile?: boolean;
+  match_count?: number | null;
 };
 
 export type OverlayOperation =
@@ -81,7 +85,9 @@ export function OverlayEditor({
   const [addPosition, setAddPosition] = useState<"before" | "after" | "inside">("after");
   const [widget, setWidget] = useState("");
   const [xpathArch, setXpathArch] = useState("");
-  const [xpathIssues, setXpathIssues] = useState<string[]>([]);
+  const [xpathIssues, setXpathIssues] = useState<LocatorIssue[]>([]);
+  const [xpathSuggested, setXpathSuggested] = useState<string | null>(null);
+  const [primaryArch, setPrimaryArch] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -101,12 +107,14 @@ export function OverlayEditor({
       setSelectedField(fieldName);
       try {
         const primary = await api.getPrimaryView(connectionId, model, viewType);
+        const parentArch = primary.arch ?? "";
+        setPrimaryArch(parentArch);
         const resolved = await api.resolveFieldNode(connectionId, {
           view_type: viewType,
-          arch: primary.arch ?? "",
+          arch: parentArch,
           field_name: fieldName,
         });
-        const list = resolved.candidates as Candidate[];
+        const list = preferSemanticCandidates(resolved.candidates as Candidate[]);
         setCandidates(list);
         const first = list[0]?.xpath ?? `//field[@name='${fieldName}']`;
         setSelectedXpath(first);
@@ -161,6 +169,7 @@ export function OverlayEditor({
       help_text: operation === "relabel" && labelTarget === "field" ? helpText : undefined,
       widget: operation === "set_widget" ? widget : undefined,
       label_target: operation === "relabel" ? labelTarget : undefined,
+      parent_arch: primaryArch || undefined,
     };
   }, [
     addFieldName,
@@ -179,6 +188,7 @@ export function OverlayEditor({
     widget,
     activeField,
     activeXpath,
+    primaryArch,
   ]);
 
   useEffect(() => {
@@ -193,12 +203,19 @@ export function OverlayEditor({
       .then((res) => {
         if (cancelled) return;
         setXpathArch(res.xpath_arch);
-        setXpathIssues(res.issues ?? []);
+        setXpathIssues(res.locator_issues ?? []);
+        setXpathSuggested(res.suggested_expr ?? null);
       })
       .catch((err) => {
         if (cancelled) return;
         setXpathArch("");
-        setXpathIssues([err instanceof Error ? err.message : "Preview failed"]);
+        setXpathIssues([
+          {
+            severity: "error",
+            code: "preview_failed",
+            message: err instanceof Error ? err.message : "Preview failed",
+          },
+        ]);
       });
     return () => {
       cancelled = true;
@@ -216,7 +233,8 @@ export function OverlayEditor({
     try {
       const res = await api.applyOverlayOp(connectionId, applyBody);
       setXpathArch(res.xpath_arch);
-      setXpathIssues(res.issues ?? []);
+      setXpathIssues(res.locator_issues ?? []);
+      setXpathSuggested(res.suggested_expr ?? null);
       setNotice(
         res.snapshot_id
           ? `Saved inherit #${res.view_id} — snapshot ${res.snapshot_id.slice(0, 8)}…`
@@ -262,9 +280,11 @@ export function OverlayEditor({
         )}
       </p>
 
-      {candidates.length > 1 ? (
+      {candidates.length > 0 ? (
         <label className="block text-sm">
-          <span className="text-muted">Ambiguous match — pick xpath</span>
+          <span className="text-muted">
+            {candidates.length > 1 ? "Multiple nodes — pick a named locator" : "Locator"}
+          </span>
           <select
             data-testid="overlay-xpath-picker"
             className="mt-1 w-full rounded-md border border-border-subtle bg-surface px-2 py-1.5 font-mono text-xs"
@@ -274,10 +294,29 @@ export function OverlayEditor({
             {candidates.map((c) => (
               <option key={c.xpath} value={c.xpath}>
                 {c.xpath}
+                {c.fragile || isFragile(c.xpath) ? " · upgrade-fragile" : ""}
               </option>
             ))}
           </select>
         </label>
+      ) : null}
+
+      {activeXpath && isFragile(activeXpath) ? (
+        <Callout variant="warning" title="This locator may break on upgrade" testId="overlay-fragile-hint">
+          Prefer [@name] or [@id] when the parent view has a named alternative.
+          {xpathSuggested && xpathSuggested !== activeXpath ? (
+            <p className="mt-1">
+              Named alternative:{" "}
+              <button
+                type="button"
+                className="font-mono text-accent hover:underline"
+                onClick={() => setSelectedXpath(xpathSuggested)}
+              >
+                {xpathSuggested}
+              </button>
+            </p>
+          ) : null}
+        </Callout>
       ) : null}
 
       <Select
@@ -391,8 +430,25 @@ export function OverlayEditor({
             Generated xpath
           </p>
           <CodeBlock code={xpathArch} language="xml" />
-          {xpathIssues.length > 0 ? (
-            <p className="mt-1 text-xs text-danger">{xpathIssues.join(" · ")}</p>
+          {xpathIssues.some((i) => i.severity === "error") ? (
+            <Callout
+              variant="danger"
+              title="Locator cannot be saved as-is"
+              className="mt-2"
+              testId="overlay-xpath-error"
+            >
+              {xpathIssues
+                .filter((i) => i.severity === "error")
+                .map((i) => i.message)
+                .join(" ")}
+            </Callout>
+          ) : xpathIssues.some((i) => i.severity === "warning") ? (
+            <p className="mt-1 text-xs text-warning" data-testid="overlay-xpath-warning">
+              {xpathIssues
+                .filter((i) => i.severity === "warning")
+                .map((i) => i.message)
+                .join(" ")}
+            </p>
           ) : null}
         </div>
       ) : null}
@@ -405,7 +461,11 @@ export function OverlayEditor({
         size="md"
         type="button"
         data-testid="overlay-save"
-        disabled={busy || !activeField}
+        disabled={
+          busy ||
+          !activeField ||
+          xpathIssues.some((i) => i.severity === "error" && i.code !== "preview_failed")
+        }
         loading={busy}
         onClick={() => void onSave()}
       >

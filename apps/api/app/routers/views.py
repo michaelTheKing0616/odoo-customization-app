@@ -21,7 +21,15 @@ from odoo_client.view_arch import (
     render_inherit_xpath_arch,
     render_overlay_operation_arch,
     render_xpath_wrap_arch,
-    validate_xpath_arch,
+)
+from odoo_client.xpath_locator import (
+    blocking_issues,
+    classify_xpath_arch,
+    count_xpath_matches,
+    looks_like_xpath_inherit,
+    semantic_field_candidates,
+    semantic_inject_expr,
+    suggested_expr_from_issues,
 )
 
 from app.db import get_db
@@ -107,6 +115,51 @@ def _spec_with_major(spec: dict[str, Any], major: int) -> dict[str, Any]:
     merged = dict(spec)
     merged.setdefault("major", major)
     return merged
+
+
+def _locator_issue_out(issues: list[Any]) -> list[LocatorIssueOut]:
+    return [LocatorIssueOut.model_validate(item.as_dict()) for item in issues]
+
+
+def _xpath_preview_fields(
+    arch: str,
+    *,
+    expr: str,
+    parent_arch: str | None,
+    view_type: str = "form",
+) -> tuple[list[Any], str | None, int | None, bool, str | None]:
+    classified = classify_xpath_arch(arch, parent_arch=parent_arch)
+    suggested = suggested_expr_from_issues(classified, expr)
+    match_count = count_xpath_matches(parent_arch, expr) if parent_arch else None
+    default_inject = semantic_inject_expr(parent_arch, view_type)
+    return (
+        classified,
+        suggested,
+        match_count,
+        bool(blocking_issues(classified)),
+        default_inject,
+    )
+
+
+def _raise_if_blocking_xpath(arch: str, parent_arch: str | None) -> None:
+    """Refuse inherit writes whose operator xpath misses or is ambiguous."""
+    if not parent_arch or not looks_like_xpath_inherit(arch):
+        return
+    classified = classify_xpath_arch(arch, parent_arch=parent_arch)
+    blocking = blocking_issues(classified)
+    if not blocking:
+        return
+    first = blocking[0]
+    raise HTTPException(
+        status_code=422,
+        detail={
+            "message": first.as_text(),
+            "code": first.code,
+            "expr": first.expr,
+            "suggestion": first.suggestion,
+            "issues": [item.as_dict() for item in classified],
+        },
+    )
 
 
 class PreviewArchBody(BaseModel):
@@ -415,6 +468,8 @@ class XPathPreviewBody(BaseModel):
     ] = "inside"
     body_xml: str = ""
     wrapper_xml: str | None = None
+    parent_arch: str | None = None
+    view_type: str = "form"
 
 
 class OverlayApplyBody(BaseModel):
@@ -435,11 +490,22 @@ class OverlayApplyBody(BaseModel):
     widget: str | None = None
     label_target: Literal["field", "group", "page"] = "field"
     preview_only: bool = False
+    parent_arch: str | None = None
+
+
+class LocatorIssueOut(BaseModel):
+    severity: Literal["error", "warning"]
+    code: str
+    message: str
+    expr: str | None = None
+    suggestion: str | None = None
 
 
 class OverlayApplyOut(BaseModel):
     xpath_arch: str
     issues: list[str] = Field(default_factory=list)
+    locator_issues: list[LocatorIssueOut] = Field(default_factory=list)
+    suggested_expr: str | None = None
     view_id: int | None = None
     snapshot_id: str | None = None
     inherit_name: str | None = None
@@ -448,6 +514,11 @@ class OverlayApplyOut(BaseModel):
 class XPathPreviewOut(BaseModel):
     arch: str
     issues: list[str] = Field(default_factory=list)
+    locator_issues: list[LocatorIssueOut] = Field(default_factory=list)
+    suggested_expr: str | None = None
+    default_inject_expr: str | None = None
+    match_count: int | None = None
+    blocking: bool = False
 
 
 @router.post("/preview", response_model=PreviewArchOut)
@@ -539,7 +610,21 @@ def xpath_preview(connection_id: str, body: XPathPreviewBody) -> XPathPreviewOut
             )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return XPathPreviewOut(arch=arch, issues=validate_xpath_arch(arch))
+    classified, suggested, match_count, blocking, default_inject = _xpath_preview_fields(
+        arch,
+        expr=body.expr,
+        parent_arch=body.parent_arch,
+        view_type=body.view_type,
+    )
+    return XPathPreviewOut(
+        arch=arch,
+        issues=[item.as_text() for item in classified],
+        locator_issues=_locator_issue_out(classified),
+        suggested_expr=suggested,
+        default_inject_expr=default_inject,
+        match_count=match_count,
+        blocking=blocking,
+    )
 
 
 class ResolveFieldBody(BaseModel):
@@ -550,17 +635,21 @@ class ResolveFieldBody(BaseModel):
 
 @router.post("/resolve-field")
 def resolve_field_node(body: ResolveFieldBody) -> dict[str, object]:
-    """Map overlay field descriptor → candidate arch nodes (UIX-6)."""
-    import re
-
+    """Map overlay field descriptor → ranked semantic arch nodes (UIX-6)."""
     name = body.field_name.strip()
     if not name:
         raise HTTPException(status_code=422, detail="field_name required")
-    pattern = re.compile(
-        rf'<field\b[^>]*\bname=["\']{re.escape(name)}["\'][^>]*/?>',
-        re.I,
-    )
-    candidates = [{"xpath": f"//field[@name='{name}']", "match": m.group(0)} for m in pattern.finditer(body.arch)]
+    ranked = semantic_field_candidates(body.arch, name)
+    candidates = [
+        {
+            "xpath": item.xpath,
+            "match": item.match,
+            "score": item.score,
+            "fragile": item.fragile,
+            "match_count": item.match_count,
+        }
+        for item in ranked
+    ]
     if not candidates:
         try:
             spec = parse_arch(body.view_type, body.arch)
@@ -572,10 +661,23 @@ def resolve_field_node(body: ResolveFieldBody) -> dict[str, object]:
                         fields.extend(val)
             for f in fields:
                 if isinstance(f, dict) and f.get("name") == name:
-                    candidates.append({"xpath": f"//field[@name='{name}']", "from_spec": True})
+                    xpath = f"//field[@name='{name}']"
+                    candidates.append(
+                        {
+                            "xpath": xpath,
+                            "from_spec": True,
+                            "score": 0,
+                            "fragile": True,
+                            "match_count": None,
+                        }
+                    )
         except Exception:  # noqa: BLE001
             pass
-    return {"field_name": name, "candidates": candidates, "ambiguous": len(candidates) > 1}
+    return {
+        "field_name": name,
+        "candidates": candidates,
+        "ambiguous": len(candidates) > 1,
+    }
 
 
 def _overlay_child_name(model: str, view_type: str) -> str:
@@ -675,7 +777,13 @@ def overlay_preview(connection_id: str, body: OverlayApplyBody) -> OverlayApplyO
         arch = _build_overlay_fragment(body)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return OverlayApplyOut(xpath_arch=arch, issues=validate_xpath_arch(arch))
+    classified = classify_xpath_arch(arch, parent_arch=body.parent_arch)
+    return OverlayApplyOut(
+        xpath_arch=arch,
+        issues=[item.as_text() for item in classified],
+        locator_issues=_locator_issue_out(classified),
+        suggested_expr=suggested_expr_from_issues(classified, body.expr),
+    )
 
 
 @router.post("/overlay/apply", response_model=OverlayApplyOut)
@@ -695,12 +803,15 @@ def overlay_apply(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    issues = validate_xpath_arch(fragment)
     primary = client.find_view(body.model, vt, primary_only=True) or client.find_view(
         body.model, vt
     )
     if primary is None:
         raise HTTPException(status_code=404, detail=f"No {vt} view for {body.model}")
+
+    parent_arch = body.parent_arch or getattr(primary, "arch", None)
+    _raise_if_blocking_xpath(fragment, parent_arch)
+    classified = classify_xpath_arch(fragment, parent_arch=parent_arch)
 
     snap = snapshot_view(db, connection_id, client, primary.id)
     child_name = _overlay_child_name(body.model, vt)
@@ -718,7 +829,9 @@ def overlay_apply(
         )
     return OverlayApplyOut(
         xpath_arch=fragment,
-        issues=issues,
+        issues=[item.as_text() for item in classified],
+        locator_issues=_locator_issue_out(classified),
+        suggested_expr=suggested_expr_from_issues(classified, body.expr),
         view_id=view.id,
         snapshot_id=snap.id,
         inherit_name=child_name,
@@ -879,6 +992,8 @@ def save_view(
             (existing_child and int(existing_child[0]) == primary.id)
             or getattr(primary, "name", None) == child_name
         )
+        if body.arch and looks_like_xpath_inherit(arch) and not designer_owns_primary:
+            _raise_if_blocking_xpath(arch, getattr(primary, "arch", None))
         snap = snapshot_view(db, connection_id, client, primary.id)
         snapshot_id = snap.id
 

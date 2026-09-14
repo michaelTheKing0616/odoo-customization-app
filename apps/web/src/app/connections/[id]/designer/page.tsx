@@ -39,7 +39,9 @@ import {
   DesignerFieldInspectorEmpty,
   type DesignerFieldInspectorValues,
 } from "@/components/designer/DesignerFieldInspector";
+import { XPathInheritPanel, type LocatorIssue } from "@/components/designer/XPathInheritPanel";
 import { fallbackWidgetsForTtype, type WidgetOption } from "@/lib/widgetCatalog";
+import { semanticInjectExpr } from "@/lib/xpathLocator";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Callout } from "@/components/ui/Callout";
@@ -498,8 +500,12 @@ export default function DesignerPage() {
     "inside" | "after" | "before" | "replace" | "attributes"
   >("inside");
   const [xpathBody, setXpathBody] = useState('<field name="x_name"/>');
-  const [xpathIssues, setXpathIssues] = useState<string[]>([]);
+  const [xpathIssues, setXpathIssues] = useState<LocatorIssue[]>([]);
   const [xpathArchPreview, setXpathArchPreview] = useState("");
+  const [xpathSuggested, setXpathSuggested] = useState<string | null>(null);
+  const [xpathDefaultInject, setXpathDefaultInject] = useState<string | null>(null);
+  const [xpathMatchCount, setXpathMatchCount] = useState<number | null>(null);
+  const [xpathBlocking, setXpathBlocking] = useState(false);
   const [archOverride, setArchOverride] = useState<string | null>(null);
   const [editingFilterId, setEditingFilterId] = useState<string | null>(null);
 
@@ -831,6 +837,11 @@ export default function DesignerPage() {
       const full = match.arch ? match : await api.getView(connectionId, match.id);
       setLoadedViewId(full.id);
       setArch(full.arch ?? "");
+      setXpathExpr((prev) =>
+        prev === "//sheet" || prev === "//form" || prev === "//list"
+          ? semanticInjectExpr(full.arch ?? null, viewType)
+          : prev,
+      );
       if (full.arch) {
         try {
           const parsed = await api.parseViewArch(connectionId, viewType, full.arch);
@@ -2305,21 +2316,41 @@ export default function DesignerPage() {
         expr: xpathExpr,
         position: xpathPosition,
         body_xml: xpathBody,
+        parent_arch: arch || null,
+        view_type: viewType,
       });
       setXpathArchPreview(res.arch);
-      setXpathIssues(res.issues ?? []);
-      if (res.issues?.length) {
-        setNotice(`XPath preview built with ${res.issues.length} validation issue(s).`);
+      const located = res.locator_issues ?? [];
+      setXpathIssues(located);
+      setXpathSuggested(res.suggested_expr ?? null);
+      setXpathDefaultInject(res.default_inject_expr ?? null);
+      setXpathMatchCount(res.match_count ?? null);
+      setXpathBlocking(Boolean(res.blocking));
+      if (res.blocking) {
+        setNotice("XPath preview found a blocking locator issue.");
+      } else if (located.some((i) => i.severity === "warning") || (res.issues?.length ?? 0) > 0) {
+        setNotice("XPath preview built with upgrade-safety warnings.");
       } else {
-        setNotice("XPath preview OK — no validation issues.");
+        setNotice("XPath preview OK — named locator matches the parent view.");
       }
+      return res;
     } catch (err) {
       setError(err instanceof Error ? err.message : "XPath preview failed");
       setXpathArchPreview("");
       setXpathIssues([]);
+      setXpathBlocking(false);
+      return null;
     } finally {
       setBusy(false);
     }
+  }
+
+  async function onSaveXpathInherit() {
+    const res = await runXpathPreview();
+    if (!res || res.blocking) {
+      return;
+    }
+    await onSave({ arch: res.arch, strategy: "inherit" });
   }
 
   async function onUndo() {
@@ -5222,109 +5253,42 @@ export default function DesignerPage() {
               <div className="p-4">{fieldInspector}</div>
             </div>
 
-            <div className="border border-border-subtle bg-surface-muted/70 p-4">
-              <p className="text-xs uppercase tracking-wide text-muted">
-                XPath inherit editor
-              </p>
-              <div className="mt-3 space-y-2 text-sm">
-                <label className="block text-xs text-[#a8909e]">
-                  expr
-                  <input
-                    value={xpathExpr}
-                    onChange={(e) => setXpathExpr(e.target.value)}
-                    className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-xs"
-                  />
-                </label>
-                <label className="block text-xs text-[#a8909e]">
-                  position
-                  <select
-                    value={xpathPosition}
-                    onChange={(e) =>
-                      setXpathPosition(
-                        e.target.value as
-                          | "inside"
-                          | "after"
-                          | "before"
-                          | "replace"
-                          | "attributes",
-                      )
-                    }
-                    className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-xs"
-                  >
-                    <option value="inside">inside</option>
-                    <option value="after">after</option>
-                    <option value="before">before</option>
-                    <option value="replace">replace</option>
-                    <option value="attributes">attributes</option>
-                  </select>
-                </label>
-                <label className="block text-xs text-[#a8909e]">
-                  body_xml
-                  <textarea
-                    value={xpathBody}
-                    onChange={(e) => setXpathBody(e.target.value)}
-                    rows={4}
-                    className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-xs"
-                  />
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void runXpathPreview()}
-                    className="border border-border-subtle px-2 py-1 text-xs text-muted disabled:opacity-40"
-                  >
-                    Preview
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!xpathArchPreview}
-                    onClick={() => {
-                      setArch(xpathArchPreview);
-                      setArchOverride(xpathArchPreview);
-                      setNotice("Arch override set from XPath preview. Save will use inherit arch.");
-                    }}
-                    className="border border-border-subtle px-2 py-1 text-xs text-muted disabled:opacity-40"
-                  >
-                    Use as arch override
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy || !model || !xpathArchPreview}
-                    onClick={() =>
-                      void onSave({ arch: xpathArchPreview, strategy: "inherit" })
-                    }
-                    className="border border-border-subtle px-2 py-1 text-xs text-muted disabled:opacity-40"
-                  >
-                    Save xpath inherit
-                  </button>
-                  {archOverride && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setArchOverride(null);
-                        setNotice("Cleared arch override — Save uses canvas spec again.");
-                      }}
-                      className="border border-danger/50 px-2 py-1 text-xs text-danger"
-                    >
-                      Clear override
-                    </button>
-                  )}
-                </div>
-                {xpathIssues.length > 0 && (
-                  <ul className="space-y-1 text-xs text-danger">
-                    {xpathIssues.map((issue, i) => (
-                      <li key={i}>• {issue}</li>
-                    ))}
-                  </ul>
-                )}
-                {xpathArchPreview && (
-                  <pre className="max-h-32 overflow-auto text-xs text-muted">
-                    {xpathArchPreview}
-                  </pre>
-                )}
-              </div>
-            </div>
+            <XPathInheritPanel
+              expr={xpathExpr}
+              position={xpathPosition}
+              bodyXml={xpathBody}
+              previewArch={xpathArchPreview}
+              issues={xpathIssues}
+              suggestedExpr={xpathSuggested}
+              defaultInjectExpr={xpathDefaultInject}
+              matchCount={xpathMatchCount}
+              blocking={xpathBlocking}
+              busy={busy}
+              model={model}
+              hasOverride={Boolean(archOverride)}
+              onExprChange={(value) => {
+                setXpathExpr(value);
+                setXpathBlocking(false);
+              }}
+              onPositionChange={setXpathPosition}
+              onBodyChange={setXpathBody}
+              onPreview={() => void runXpathPreview()}
+              onUseNamedLocator={(value) => {
+                setXpathExpr(value);
+                setXpathBlocking(false);
+                setNotice("Switched to a named locator. Preview again before save.");
+              }}
+              onUseAsOverride={() => {
+                setArch(xpathArchPreview);
+                setArchOverride(xpathArchPreview);
+                setNotice("Arch override set from XPath preview. Save will use inherit arch.");
+              }}
+              onSave={() => void onSaveXpathInherit()}
+              onClearOverride={() => {
+                setArchOverride(null);
+                setNotice("Cleared arch override — Save uses canvas spec again.");
+              }}
+            />
 
             <div className="border border-border-subtle bg-surface p-4">
               <p className="text-xs uppercase tracking-wide text-muted">

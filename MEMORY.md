@@ -1,3 +1,8 @@
+### 2026-09-14 — View Designer Track B: semantic XPath, ElementTree `//` is eval-only
+**Decided:** Score/rewrite locators toward `@name`/`@id` (unique `@string` only if needed). Classify preview issues as error (missing/ambiguous/invalid XML) vs warning (positional / `@string` fragility). Block inherit/overlay writes on errors; warnings do not block. ElementTree evaluates Odoo `//field` as `.//field` and inherit XML still emits `//`. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+**Why:** Studio’s #1 upgrade pain is positional `group[2]`. Python `xml.etree` rejects absolute `//` on an element, which made every locator look unevaluable until the eval mapping.
+**Rejected:** Track C/D; rewriting the whole Designer page; silently rewriting operator expr on save; treating `@string` as as-safe-as `@name`.
+
 ### 2026-09-14 — View Designer Track A: field properties are view-layer chrome
 **Decided:** FieldNode round-trips `help`, `placeholder`, `class`, `groups`. Related path is ORM metadata + `listRelatedPaths` picker (not an arch attr — dotted names are not valid view field names). Remove-from-view stays view-only. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
 **Why:** Studio-class inspector for day-to-day field editing; `groups=` needs xml ids, not `res.groups` numeric ids.

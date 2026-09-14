@@ -1102,9 +1102,22 @@ export type SmartButtonBundleOut = {
   button_spec: Record<string, unknown>;
 };
 
+export type LocatorIssue = {
+  severity: "error" | "warning";
+  code: string;
+  message: string;
+  expr?: string | null;
+  suggestion?: string | null;
+};
+
 export type XPathPreviewOut = {
   arch: string;
   issues: string[];
+  locator_issues?: LocatorIssue[];
+  suggested_expr?: string | null;
+  default_inject_expr?: string | null;
+  match_count?: number | null;
+  blocking?: boolean;
 };
 
 const CONNECTION_READ_TIMEOUT_MS = 45_000;
@@ -2954,6 +2967,8 @@ export const api = {
       expr: string;
       position?: "inside" | "after" | "before" | "replace" | "attributes";
       body_xml: string;
+      parent_arch?: string | null;
+      view_type?: string;
     },
   ) =>
     request<XPathPreviewOut>(`/api/connections/${id}/views/xpath/preview`, {
@@ -2970,7 +2985,14 @@ export const api = {
   ) =>
     request<{
       field_name: string;
-      candidates: Array<{ xpath: string; match?: string; from_spec?: boolean }>;
+      candidates: Array<{
+        xpath: string;
+        match?: string;
+        from_spec?: boolean;
+        score?: number;
+        fragile?: boolean;
+        match_count?: number | null;
+      }>;
       ambiguous: boolean;
     }>(`/api/connections/${id}/views/resolve-field`, {
       method: "POST",
@@ -2980,7 +3002,12 @@ export const api = {
     id: string,
     body: Record<string, unknown>,
   ) =>
-    request<{ xpath_arch: string; issues: string[] }>(
+    request<{
+      xpath_arch: string;
+      issues: string[];
+      locator_issues?: LocatorIssue[];
+      suggested_expr?: string | null;
+    }>(
       `/api/connections/${id}/views/overlay/preview`,
       { method: "POST", body: JSON.stringify(body) },
     ),
@@ -2991,6 +3018,8 @@ export const api = {
     request<{
       xpath_arch: string;
       issues: string[];
+      locator_issues?: LocatorIssue[];
+      suggested_expr?: string | null;
       view_id?: number | null;
       snapshot_id?: string | null;
       inherit_name?: string | null;

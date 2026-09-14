@@ -817,13 +817,9 @@ def render_inherit_field_arch(
     parent = parent_arch or ""
 
     if vt == "form":
-        # Prefer first <group> so Odoo renders field labels (sheet children often look bare).
-        if "<group" in parent:
-            expr = "//group[1]"
-        elif "<sheet" in parent or not parent:
-            expr = "//sheet"
-        else:
-            expr = "//form"
+        from odoo_client.xpath_locator import semantic_inject_expr
+
+        expr = semantic_inject_expr(parent or None, "form")
         return (
             "<data>\n"
             f'  <xpath expr="{expr}" position="inside">\n'
@@ -1793,31 +1789,11 @@ def render_inherit_smart_buttons_arch(
     )
 
 
-def validate_xpath_arch(arch: str) -> list[str]:
+def validate_xpath_arch(arch: str, *, parent_arch: str | None = None) -> list[str]:
     """Return human-readable issues for an inherit xpath arch (best-effort)."""
-    from xml.etree.ElementTree import ParseError, fromstring
+    from odoo_client.xpath_locator import classify_xpath_arch
 
-    issues: list[str] = []
-    try:
-        root = fromstring(arch)
-    except ParseError as exc:
-        return [f"Invalid XML: {exc}"]
-    if root.tag not in {"data", "xpath"}:
-        issues.append(f"Root should be <data> or <xpath>, got <{root.tag}>")
-    xpaths = root.findall(".//xpath") if root.tag == "data" else (
-        [root] if root.tag == "xpath" else []
-    )
-    if not xpaths:
-        issues.append("No <xpath> elements found")
-    for xp in xpaths:
-        if not (xp.get("expr") or "").strip():
-            issues.append("xpath missing expr attribute")
-        pos = xp.get("position") or "inside"
-        if pos not in {"inside", "after", "before", "replace", "attributes", "move"}:
-            issues.append(f"Unusual xpath position={pos!r}")
-        if pos != "move" and not list(xp) and not (xp.text or "").strip():
-            issues.append("xpath body is empty")
-    return issues
+    return [item.as_text() for item in classify_xpath_arch(arch, parent_arch=parent_arch)]
 
 
 def _xml_attr(value: str) -> str:

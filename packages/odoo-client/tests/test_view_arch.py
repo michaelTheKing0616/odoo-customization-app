@@ -360,8 +360,15 @@ def test_render_inherit_field_arch_form() -> None:
         "form",
         parent_arch='<form><sheet><group><field name="x_name"/></group></sheet></form>',
     )
-    assert 'expr="//group[1]"' in grouped
+    assert 'expr="//group"' in grouped
+    assert "group[1]" not in grouped
     assert 'name="x_status"' in grouped
+    named = render_inherit_field_arch(
+        "x_status",
+        "form",
+        parent_arch='<form><sheet><group string="Main"><field name="x_name"/></group></sheet></form>',
+    )
+    assert "expr=\"//group[@string='Main']\"" in named
 
 
 def test_render_inherit_field_arch_list_and_tree() -> None:
