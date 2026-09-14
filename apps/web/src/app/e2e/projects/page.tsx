@@ -75,6 +75,7 @@ const SNAPSHOTS: SnapshotRow[] = [
 ];
 
 export default function ProjectsE2ePage() {
+  const enabled = process.env.NEXT_PUBLIC_E2E === "1";
   const [selectedId, setSelectedId] = useState(SAMPLE.id);
   const selected = selectedId === SAMPLE.id ? SAMPLE : APPLIED;
   const journey = projectsJourneyFromState({
@@ -83,6 +84,10 @@ export default function ProjectsE2ePage() {
     applied: selected.status === "applied",
   });
   const sessionState = projectsSessionState(selected);
+
+  if (!enabled) {
+    return <main className="p-6 text-sm text-muted">E2E harness disabled.</main>;
+  }
 
   return (
     <ProjectShell connectionId="e2e-mock" connectionName="E2E mock" projectName={selected.name} journey={journey}>

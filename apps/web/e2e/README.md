@@ -4,7 +4,19 @@ Harness pages (gated by `NEXT_PUBLIC_E2E=1`):
 
 - `/e2e/confirm` — ConfirmDialog phrase gating
 - `/e2e/automation-caps` — mock Odoo 16 greys out update_path action kinds
-- `/e2e/designer?mode=form|list|kanban` — Designer chrome + sample fields (vision-verify)
+- `/e2e/designer?mode=form|list|kanban` — legacy Designer canvas (vision-verify; stale purple chrome)
+- `/e2e/designer-premium` — Tracks A–D chrome (session bar, overlay HUD, inspector, XPath)
+- `/e2e/overlay` — OverlayEditor without a live iframe
+- `/e2e/automations` — Automations list → composer/detail
+- `/e2e/builder` — Models & Fields list → composer/detail
+- `/e2e/menus` — Menus tree → composer
+- `/e2e/access` — Access rights + record rules → composer
+- `/e2e/studio` — App Studio brief + honesty
+- `/e2e/draft-studio` — Draft Studio scorecard + honesty
+- `/e2e/job` — Job Autopilot sandbox (`?mode=production` for refuse chrome)
+- `/e2e/modulespec` — ModuleSpec workbench
+- `/e2e/projects` — Projects board
+- `/e2e/expert` — Odoo Expert copilot drawer harness
 
 ```bash
 pnpm --filter @odoo-custom/web exec playwright install chromium

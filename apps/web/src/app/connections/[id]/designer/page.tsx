@@ -3857,8 +3857,8 @@ export default function DesignerPage() {
           viewType === "cohort" ||
           viewType === "grid") &&
           model && (
-          <div className="mt-6 border border-border-subtle bg-[#0b1210] p-4">
-            <h2 className="mb-2 text-sm font-semibold text-muted">
+          <div className="mt-6 border border-border-subtle bg-surface-muted p-4">
+            <h2 className="mb-2 text-sm font-semibold text-ink">
               {viewType} view fields
             </h2>
             <p className="mb-3 text-xs text-muted">
@@ -4566,7 +4566,7 @@ export default function DesignerPage() {
                   onChange={(e) =>
                     setInjectStrategy(e.target.value as "inherit" | "mutate")
                   }
-                  className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 text-sm text-[#faf6f9]"
+                  className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 text-sm text-ink"
                 >
                   <option
                     value="inherit"
@@ -5662,10 +5662,10 @@ export default function DesignerPage() {
                 {snapshots.map((s) => (
                   <li
                     key={s.id}
-                    className="flex items-start justify-between gap-2 border border-[#1e2f29] px-2 py-1.5"
+                    className="flex items-start justify-between gap-2 border border-border-subtle px-2 py-1.5"
                   >
                     <div>
-                      <p className="text-[#faf6f9]">{s.label}</p>
+                      <p className="text-ink">{s.label}</p>
                       <p className="text-muted">
                         {s.reversible} · {s.created_at}
                       </p>

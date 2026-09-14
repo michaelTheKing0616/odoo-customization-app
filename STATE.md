@@ -4,17 +4,15 @@
 
 ## Last run
 - Date: 2026-09-14
-- **Shipped:** Premium Odoo Expert UX (surface 8) — PR off `cursor/premium-projects-ux-371f`
-  - Copilot drawer: header, context bar, thread, sources, caution flags, composer (`apps/web/src/components/expert/*`)
-  - `?expert=1` Overview destination card + inbound studio links
-  - Honesty: Completeness ≠ Cert ≠ Autopilot; Expert never auto-promotes
-  - Tests: vitest expert libs/components 28 passed; Playwright `expert-flows` + `shell-expert` 5 passed
-- **Failed:** First Playwright run lacked Chromium; installed browsers. Visual review caught blank Error log on explain-this — fixed.
-- **Rule:** `formatExpertDiagnosePrompt` is diagnose-only. Explain-this / Ask-why must not attach an empty Error log.
+- **Shipped:** World-class UAT report on tip `cursor/premium-odoo-expert-ux-77b3` @ `efda9a9`
+  - `docs/UAT-PREMIUM-WORLD-CLASS.md` — chain average **3.3/5**, Expert ~4.1, Designer ~2.4
+  - Chrome harnesses: `/e2e/designer-premium`, automations, builder, menus, access, studio, draft-studio, job
+  - P0 polish: Designer inject/checkpoint contrast; gate ModuleSpec/Projects e2e
+- **Failed:** No live Odoo/API — chrome UAT only, not RPC UAT. Screenshots from `/e2e/*`.
+- **Rule:** `/e2e/*` must gate `NEXT_PUBLIC_E2E=1`. Designer production dump ≠ extracted A–D widgets. Access live pack is unconfirmed.
 
 ## Next
-- Parent coordinates world-class UAT (not this run)
-- Operator: `/connections/{id}?expert=1` and `/e2e/expert` (`NEXT_PUBLIC_E2E=1`)
+- Founder live UAT on `:8069` (skip Access “Apply live pack”). Confirm-gate Access. Extract Designer page. Pick one AI studio CTA.
 
 ## Rule
 - Opening balances never auto-post; inventory via dedicated stock.quant path only
