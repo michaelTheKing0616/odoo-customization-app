@@ -80,7 +80,10 @@ export function expertCloserHint(draft: unknown): string {
  * Live-apply warning only when `_live_apply.findings` has real rows.
  * `ready: false` with empty findings is intentional (stock_reuse) — not missing dates.
  */
-export function liveApplyGapBanner(draft: unknown): DraftBanner | null {
+export function liveApplyGapBanner(
+  draft: unknown,
+  opts?: { surface?: "wizard" | "studio" },
+): DraftBanner | null {
   const rec = asRecord(draft);
   if (!rec) return null;
   if (isStockReuseDraft(rec) || isRefuseCloneDraft(rec)) return null;
@@ -89,9 +92,12 @@ export function liveApplyGapBanner(draft: unknown): DraftBanner | null {
   const details = quotedLiveFindings(rec);
   if (details.length === 0) return null;
   const quoted = details.slice(0, 4).join(" ");
+  const studio = opts?.surface === "studio";
   return {
     title: "Not live-apply ready",
-    body: `This draft still has live-apply gaps: ${quoted} Click Expert review and fix, then Apply.`,
+    body: studio
+      ? `This draft still has live-apply gaps: ${quoted} Repair with Expert, then Apply.`
+      : `This draft still has live-apply gaps: ${quoted} Click Expert review and fix, then Apply.`,
     testId: "live-apply-not-ready",
   };
 }
@@ -128,17 +134,20 @@ export function displayedCertificationTier(draft: unknown): string | undefined {
 
 export function unfinishedDraftBanner(
   draft: unknown,
-  opts?: { generating?: boolean },
+  opts?: { generating?: boolean; surface?: "wizard" | "studio" },
 ): DraftBanner | null {
   const rec = asRecord(draft);
   if (!rec) return null;
   if (draftFinisherComplete(rec)) return null;
   const generating = Boolean(opts?.generating);
+  const studio = opts?.surface === "studio";
   return {
     title: generating ? "Still generating" : "Unfinished draft",
     body: generating
       ? "This is a live preview. Wait for the quality score before applying."
-      : "This draft is missing a quality score. Click Create draft again — do not Apply yet.",
+      : studio
+        ? "This draft is missing a quality score. Start a new app — do not Apply yet."
+        : "This draft is missing a quality score. Click Create draft again — do not Apply yet.",
     testId: "draft-finisher-incomplete",
   };
 }

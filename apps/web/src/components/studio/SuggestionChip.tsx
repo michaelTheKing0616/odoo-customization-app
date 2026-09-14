@@ -14,6 +14,7 @@ export function SuggestionChip({ label, onClick, disabled, selected }: Suggestio
       disabled={disabled}
       onClick={onClick}
       className={`chip ${selected ? "is-selected" : ""}`}
+      title={label}
     >
       {label}
     </button>

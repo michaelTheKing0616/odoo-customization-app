@@ -1,0 +1,69 @@
+"use client";
+
+import { Spokes } from "@/components/loading-ui/spokes";
+import { SuggestionChip } from "./SuggestionChip";
+
+type StudioRefineComposerProps = {
+  chips: string[];
+  value: string;
+  fieldPack: boolean;
+  hostFormName: string;
+  busy: boolean;
+  onChange: (value: string) => void;
+  onSubmit: (instruction?: string) => void;
+};
+
+export function StudioRefineComposer({
+  chips,
+  value,
+  fieldPack,
+  hostFormName,
+  busy,
+  onChange,
+  onSubmit,
+}: StudioRefineComposerProps) {
+  return (
+    <div className="chat-composer">
+      {chips.length ? (
+        <div className="studio-chip-row studio-refine-chips">
+          {chips.map((chip) => (
+            <SuggestionChip
+              key={chip}
+              label={chip}
+              disabled={busy}
+              onClick={() => onChange(chip)}
+            />
+          ))}
+        </div>
+      ) : null}
+      <div className="chat-input-row">
+        <input
+          type="text"
+          className="input"
+          placeholder={
+            fieldPack
+              ? `Describe a change — e.g. make ${hostFormName.toLowerCase()} fields required`
+              : "Describe a change — e.g. remove the priority field"
+          }
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={busy}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && value.trim().length >= 3) {
+              onSubmit();
+            }
+          }}
+        />
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            aria-label="Send refinement"
+            disabled={busy || value.trim().length < 3}
+            onClick={() => onSubmit()}
+          >
+            {busy ? <Spokes className="studio-loader-spokes" aria-hidden /> : "Send"}
+          </button>
+      </div>
+    </div>
+  );
+}

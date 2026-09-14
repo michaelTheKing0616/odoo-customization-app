@@ -95,7 +95,7 @@ function DiagnosisCard({
 
   return (
     <div className="card clarify-card" data-testid="studio-diagnosis">
-      <p className="clarify-kicker">Before we build — edit if this is wrong</p>
+      <p className="clarify-kicker">Diagnosis — edit if this is wrong</p>
       <label className="diagnosis-field">
         <span>Name</span>
         <input

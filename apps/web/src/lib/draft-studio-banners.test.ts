@@ -31,6 +31,22 @@ describe("draft-studio-banners", () => {
     expect(expertCloserHint(draft)).toMatch(/leave this spec unchanged/);
   });
 
+  it("uses App Studio repair copy when surface is studio", () => {
+    const draft = {
+      _scorecard: { score_0_10: 8, findings: [] },
+      _live_apply: {
+        ready: false,
+        findings: [{ detail: "live apply: next_activity needs mail.activity.mixin" }],
+      },
+    };
+    const banner = liveApplyGapBanner(draft, { surface: "studio" });
+    expect(banner?.body).toContain("Repair with Expert, then Apply");
+    expect(banner?.body).not.toContain("Click Expert review");
+    expect(
+      unfinishedDraftBanner({ _generation_incomplete: true }, { surface: "studio" })?.body,
+    ).toMatch(/Start a new app/);
+  });
+
   it("quotes actual live-apply findings and recommends Expert", () => {
     const draft = {
       _scorecard: { score_0_10: 8, findings: [] },
