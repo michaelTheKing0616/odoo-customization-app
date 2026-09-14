@@ -379,6 +379,14 @@ export function glossaryLines(): string[] {
   ];
 }
 
+export function glossaryStrip(): string {
+  return "Draft · Apply · Promote · Snapshot · Rollback · Sandbox. Promote stays human.";
+}
+
+export function countLabel(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
 export function modulespecHref(connectionId: string, projectId: string): string {
   return `/connections/${connectionId}/modulespec?project=${encodeURIComponent(projectId)}`;
 }

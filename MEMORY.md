@@ -1,3 +1,8 @@
+### 2026-09-14 — Premium Projects UX (surface 7)
+**Decided:** Extract Projects into a four-stage release board (browse → inspect → review → apply). Session chrome is Draft / Applied / Archived. Diff is a change review (stats + sentence-case filters + DiffView). Snapshot history uses connection restore points with partial-column honesty. Cross-links: ModuleSpec, View Designer, change journal. Apply stays confirm-gated; Promote stays human. Completeness ≠ Cert ≠ Autopilot.
+**Why:** Designer → ModuleSpec set the elite bar; Projects was a table dump of CTAs (~387). Operators need versioned customization history, not a button row.
+**Rejected:** Rewriting apply/promote engines; Expert; Autopilot executor; auto-promote; fusing Completeness with Cert or Autopilot; claiming full rollback of created columns.
+
 ### 2026-09-14 — Premium ModuleSpec UX (surface 6)
 **Decided:** Extract ModuleSpec into a four-stage operator shell (load → edit → validate → apply). Session chrome is draft/unsaved/saved. Structured workbench sections: models/fields, views, menus, security, relations, automations, custom code. Raw JSON is a disclosure, not a peer tab. Live validate + local readiness stay honest (Completeness ≠ Cert ≠ Autopilot). Cross-links: Draft Studio, View Designer, Job Autopilot, App Studio. Promote stays human.
 **Why:** Designer → Job Autopilot set the elite bar; ModuleSpec was a JSON-first dump (~592 editor + page actions). Operators need to open, edit, and validate an IR like a schema workbench.

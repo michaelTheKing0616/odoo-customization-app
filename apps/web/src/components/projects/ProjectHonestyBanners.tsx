@@ -2,7 +2,7 @@
 
 import { Callout } from "@/components/ui/Callout";
 import {
-  glossaryLines,
+  glossaryStrip,
   honestyLegend,
   type ProjectsHonestyGate,
 } from "@/lib/projects-journey";
@@ -22,12 +22,10 @@ export function ProjectHonestyBanners({
     <div className="studio-banner-stack" data-testid="projects-honesty-banners">
       <Callout variant={gate.variant} title={gate.title} testId={`projects-${gate.reason}-gate`}>
         <p data-testid="projects-gate-body">{gate.body}</p>
-        <ul className="mt-2 list-disc space-y-1 pl-5 text-[11px]" data-testid="projects-glossary">
-          {glossaryLines().map((line) => (
-            <li key={line}>{line}</li>
-          ))}
-        </ul>
-        <ul className="mt-2 list-disc space-y-1 pl-5 text-[11px]" data-testid="projects-score-bars-legend">
+        <p className="mt-2 text-[11px] text-muted" data-testid="projects-glossary">
+          {glossaryStrip()}
+        </p>
+        <ul className="mt-2 space-y-0.5 text-[11px] text-muted" data-testid="projects-score-bars-legend">
           {honestyLegend().map((line) => (
             <li key={line}>{line}</li>
           ))}

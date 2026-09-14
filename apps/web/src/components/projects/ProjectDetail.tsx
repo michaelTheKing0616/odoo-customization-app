@@ -122,20 +122,20 @@ export function ProjectDetail({
           {isComponentSpec(project.spec_json) ? (
             <SaveAsComponentButton spec={project.spec_json} disabled={busy} />
           ) : null}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={busy || !canDelete}
+            title={deleteBlocked ?? undefined}
+            className="text-danger"
+            onClick={onDelete}
+            data-testid="projects-detail-delete"
+          >
+            Delete draft
+          </Button>
         </div>
       </Card>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        disabled={busy || !canDelete}
-        title={deleteBlocked ?? undefined}
-        className="text-danger"
-        onClick={onDelete}
-        data-testid="projects-detail-delete"
-      >
-        Delete draft
-      </Button>
     </div>
   );
 }

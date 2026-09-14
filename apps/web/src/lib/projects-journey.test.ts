@@ -30,6 +30,8 @@ import {
   snapshotsForProject,
   sortProjectBoard,
   specModelNames,
+  glossaryStrip,
+  countLabel,
   type ProjectRow,
 } from "./projects-journey";
 
@@ -203,6 +205,9 @@ describe("honesty and glossary", () => {
     expect(applyRisks().join(" ")).toMatch(/partially recoverable/);
     expect(applySnapshotNote()).toMatch(/partially recoverable/);
     expect(glossaryLines().join(" ")).toMatch(/Promote stays human/);
+    expect(glossaryStrip()).toMatch(/Draft · Apply · Promote/);
+    expect(countLabel(1, "model")).toBe("1 model");
+    expect(countLabel(2, "field")).toBe("2 fields");
     expect(projectsHeaderDescription("Lab 19")).toMatch(/Lab 19/);
     expect(projectsErrorTitle("Diff vs live failed")).toBe("Review vs live failed");
     expect(sessionSubmitHint({ sessionState: "draft", hasDiff: true, canApply: true })).toMatch(

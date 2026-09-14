@@ -7,6 +7,7 @@ import { IconProjects } from "@/components/ui/icons";
 import { EMPTY_STATES } from "@/lib/copy-guide";
 import { cn } from "@/lib/cn";
 import {
+  countLabel,
   filterProjectBoard,
   formatProjectWhen,
   projectSpecSummary,
@@ -143,7 +144,8 @@ export function ProjectBoard({
                     <Badge variant={statusVariant(status)}>{status}</Badge>
                   </div>
                   <p className="mt-2 text-[11px] text-muted">
-                    {summary.models} models · {summary.fields} fields · {formatProjectWhen(project.updated_at ?? project.created_at)}
+                    {countLabel(summary.models, "model")} · {countLabel(summary.fields, "field")} ·{" "}
+                    {formatProjectWhen(project.updated_at ?? project.created_at)}
                   </p>
                 </Card>
               </li>

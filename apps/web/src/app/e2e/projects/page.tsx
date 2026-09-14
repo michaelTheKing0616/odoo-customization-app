@@ -106,13 +106,15 @@ export default function ProjectsE2ePage() {
           onCreate={() => undefined}
         />
         <div className="space-y-4">
-          <ProjectCreateCard
-            name="Library draft"
-            templateId="library"
-            onNameChange={() => undefined}
-            onTemplateChange={() => undefined}
-            onSubmit={(event) => event.preventDefault()}
-          />
+          {selectedId ? null : (
+            <ProjectCreateCard
+              name="Library draft"
+              templateId="library"
+              onNameChange={() => undefined}
+              onTemplateChange={() => undefined}
+              onSubmit={(event) => event.preventDefault()}
+            />
+          )}
           <ProjectDetail
             connectionId="e2e-mock"
             project={selected}
