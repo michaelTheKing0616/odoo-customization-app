@@ -1,3 +1,8 @@
+### 2026-09-14 — Premium Job Autopilot UX (surface 5)
+**Decided:** Extract Job Autopilot into a four-stage operator shell (brief → run → scorecard → promote) plus extracted chrome. Production header must say refuse, not “sandbox-only —”. Run stays disabled on production/observer. ModuleSpec link only when residual spec exists. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+**Why:** Designer → Draft Studio set the elite bar; `/job` was a ~1k dump. Sandbox-first honesty is the product edge.
+**Rejected:** Rewriting the executor/recipes; auto-promote; ModuleSpec editor / Projects / Expert in this run.
+
 ### 2026-09-14 — Premium Draft Studio UX (surface 4)
 **Decided:** Extract Draft Studio (wizard) into a four-stage rail (prompt → enrich → review → apply) plus extracted chrome (shell, reuse chips, honesty banners, scorecard, preview pane, apply bar, templates). Completeness ≠ Cert ≠ Autopilot. Promote stays human. Banner helpers keep wizard defaults — App Studio still passes `surface: "studio"`. Cross-links stay ModuleSpec / App Studio / View Designer / Job Autopilot where already product-intended. Playwright testids on the wizard stay stable.
 **Why:** Designer / Automations / Builder / Menus / Access / App Studio set the elite bar; the wizard was a ~3.5k dump. Operators need a calm staged journey from prompt to scorecard without rewriting the AI draft pipeline.

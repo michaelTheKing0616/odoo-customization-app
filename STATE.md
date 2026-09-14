@@ -4,16 +4,17 @@
 
 ## Last run
 - Date: 2026-09-14
-- **Shipped:** Premium Draft Studio UX (surface 4) on `cursor/draft-studio-premium-6fd4` off App Studio:
-  - Stage rail: prompt → enrich → review → apply
-  - Extracted chrome: `DraftStudioShell`, prompt/reuse, honesty banners, scorecard, preview, apply bar
-  - Wizard page ~3.5k → ~1.9k; e2e testids kept (`draft-studio`, `create-draft`, `draft-scorecard-chip`, …)
-- **Tests:** journey + llm-status + reuse + scorecard/rail/shell vitest green
-- **Not in this run:** Job Autopilot, ModuleSpec editor, Projects, Expert; live browser against Odoo; AI pipeline rewrite
+- **Shipped:** Premium Job Autopilot UX (surface 5) on `cursor/premium-job-autopilot-fc2c` off Draft Studio:
+  - Stage rail: brief → run → scorecard → promote
+  - Extracted chrome in `apps/web/src/components/job-autopilot/` + `job-autopilot-journey.ts`
+  - Production refuse is header + danger gate + disabled Run; sandbox-only honesty kept
+  - PR: https://github.com/michaelTheKing0616/odoo-customization-app/pull/9
+- **Tests:** 23 vitest (journey + shell/rail/banners/scorecard/brief/handoff) green
+- **Failed:** none. Video OCR hallucinated typos that are not in source.
 
 ## Next
-- Verify Draft Studio on a probed connection: prompt → Create draft → scorecard → Apply / Open ModuleSpec
-- Continue premium sweep only if asked (do not start Autopilot / ModuleSpec / Projects / Expert here)
+- Continue premium sweep only if asked (do not start ModuleSpec / Projects / Expert here)
+- Live Autopilot run still needs a real sandbox + API, not the mock used for chrome verify
 
 ## Rule
-- Draft Studio premium is a stage journey + extracted chrome — do not copy App Studio chat/clarify or change Completeness / Cert / Autopilot semantics
+- Job Autopilot premium is a four-stage operator shell. Never fuse Completeness / Cert / Autopilot, and never auto-promote.
