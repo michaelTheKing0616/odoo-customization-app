@@ -137,7 +137,7 @@ export function HostInstallPanel({
               </p>
             ) : null}
             <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted">Missing on this Odoo</p>
+              <p className="text-xs font-medium text-muted">Missing on this Odoo</p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {active.models.map((model) => (
                   <Badge key={model} variant="lock" className="font-mono">

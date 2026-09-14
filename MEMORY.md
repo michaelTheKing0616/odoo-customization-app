@@ -1,3 +1,8 @@
+### 2026-09-14 — Premium App Studio UX (surface 3)
+**Decided:** Extract App Studio into a five-stage rail (brief → clarify → generate → review → apply) plus extracted chrome (brief, honesty banners, Option A panel, chat/refine, apply bar, View Designer / Open in Odoo links). Diagnosis still locks with **Yes — build this**. Completeness ≠ Cert ≠ Autopilot. Promote stays human. Live-apply / unfinished banners keep wizard copy by default; App Studio passes `surface: "studio"`. View Designer stays the primary `x_*` deep link.
+**Why:** Designer / Automations / Builder / Menus / Access set the elite bar; App Studio was a ~1.9k chat dump. Operators need a calm hero journey from brief to review, not a busy transcript.
+**Rejected:** Draft Studio wizard, Job Autopilot, ModuleSpec, Projects, Expert deep work; rewriting the AI generation engine; Designer undo/redo on Studio; changing Completeness / Cert / Autopilot semantics.
+
 ### 2026-09-14 — Premium Menus & Access list → composer
 **Decided:** Split Menus into tree + composer/detail (parent, sequence, action bind or create, visibility groups). Split Access into model ACL list + record-rule list → composer/detail, with DomainBuilder on rules. Session bar is draft/unsaved/saved only; reuse menu/access/rule snapshots on create/edit/delete. Confirm-phrase stays on destructive deletes. Matrix, groups, multi-company, Documents stay secondary disclosures. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
 **Why:** Automations/Builder set the list→composer bar; Menus (~373) and Access (~837) were still form dumps. Operators need to create a menu and an ACL/record rule with elite clarity and jump to Designer/Builder.

@@ -76,7 +76,7 @@ export function RefineHistoryPopover({
       {open ? (
         <div className="studio-history-pop" role="dialog" aria-label="Refine history">
           {items.length === 0 ? (
-            <p className="studio-history-empty">No refinements yet. Chat changes appear here.</p>
+            <p className="studio-history-empty">No refinements yet.</p>
           ) : (
             <ul className="studio-history-list">
               {items.map((item, idx) => (

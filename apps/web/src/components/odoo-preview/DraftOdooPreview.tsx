@@ -77,7 +77,7 @@ export function DraftOdooPreview({
     return (
       <p
         data-testid="draft-odoo-preview-empty"
-        style={{ color: "var(--text-secondary)", fontSize: "var(--font-size-sm)" }}
+        className="text-sm text-muted"
       >
         {emptyReason}
       </p>
