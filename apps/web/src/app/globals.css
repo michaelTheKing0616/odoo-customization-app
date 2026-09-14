@@ -15,7 +15,7 @@
  * | Pair | Ratio | Role |
  * | ink on paper (n12/n1) | ~19:1 | body text |
  * | muted on paper (n8/n1) | ~10:1 | secondary text |
- * | on-accent on accent6 | ~4.6:1 | primary button label |
+ * | on-accent on accent7 | ~5.5:1 | primary button label |
  * | success-3 on success-2 | ~4.8:1 | success badge text |
  * | warning-3 on warning-2 | ~4.6:1 | warning badge text |
  * | danger-3 on danger-2 | ~5.1:1 | danger badge text |
@@ -116,8 +116,8 @@ html.dark {
   --subtle: var(--n6);
   --border-subtle: var(--n3);
   --border-strong: var(--n5);
-  --accent: var(--accent6);
-  --accent-hover: var(--accent7);
+  --accent: var(--accent7);
+  --accent-hover: var(--accent8);
   --accent-subtle: var(--accent1);
   --on-accent: #ffffff;
 
@@ -154,8 +154,8 @@ html.dark {
   --font-mono: var(--font-mono-stack);
 
   /* Legacy Odoo aliases → accent teal (migration note: remove in UIX-4*) */
-  --odoo-primary: var(--accent6);
-  --odoo-primary-hover: var(--accent7);
+  --odoo-primary: var(--accent7);
+  --odoo-primary-hover: var(--accent8);
   --odoo-primary-light: var(--accent3);
   --odoo-success: var(--success);
   --odoo-danger: var(--danger);
@@ -243,6 +243,10 @@ html.dark {
   --brand-hover: #f97316;
   --brand-subtle: #431407;
   --on-brand: #ffffff;
+  --accent: var(--accent4);
+  --accent-hover: var(--accent3);
+  --odoo-primary: var(--accent4);
+  --odoo-primary-hover: var(--accent3);
 
   --shadow-subtle: 0 1px 2px rgb(0 0 0 / 35%);
   --shadow-raised: 0 4px 12px rgb(0 0 0 / 40%);

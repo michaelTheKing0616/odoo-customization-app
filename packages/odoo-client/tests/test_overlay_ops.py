@@ -74,3 +74,107 @@ def test_render_overlay_add_field() -> None:
 def test_merge_rejects_non_data_root() -> None:
     with pytest.raises(ValueError, match="data"):
         merge_inherit_data_arch("<form/>", "<data/>")
+
+
+PARTNER_FORM = """
+<form>
+  <sheet>
+    <group id="header_left_group">
+      <field name="email"/>
+    </group>
+    <notebook>
+      <page string="Main">
+        <field name="name"/>
+      </page>
+    </notebook>
+  </sheet>
+</form>
+"""
+
+
+def test_overlay_add_page_inside_named_notebook() -> None:
+    arch = render_overlay_operation_arch(
+        "add_page",
+        expr="",
+        view_type="form",
+        string="Notes",
+        parent_arch=PARTNER_FORM,
+    )
+    assert 'position="inside"' in arch
+    assert 'name="x_page_notes"' in arch
+    assert "Notes" in arch
+    assert "//notebook" in arch
+    inner = arch[arch.find("<xpath") : arch.find("</xpath>")]
+    assert "<page" in inner
+    assert "<notebook" not in inner
+    assert validate_xpath_arch(arch, parent_arch=PARTNER_FORM) == []
+
+
+def test_overlay_add_page_creates_notebook_when_missing() -> None:
+    parent = '<form><sheet><group id="g"><field name="email"/></group></sheet></form>'
+    arch = render_overlay_operation_arch(
+        "add_page",
+        expr="",
+        view_type="form",
+        string="Extra",
+        parent_arch=parent,
+    )
+    assert "//sheet" in arch
+    assert "<notebook>" in arch
+    assert 'name="x_page_extra"' in arch
+    assert validate_xpath_arch(arch, parent_arch=parent) == []
+
+
+def test_overlay_add_group_semantic_inject() -> None:
+    arch = render_overlay_operation_arch(
+        "add_group",
+        expr="//group[@id='header_left_group']",
+        view_type="form",
+        string="Flags",
+        add_position="after",
+        add_field_name="x_flag",
+        parent_arch=PARTNER_FORM,
+    )
+    assert 'name="x_group_flags"' in arch
+    assert 'name="x_flag"' in arch
+    assert 'position="after"' in arch
+    assert validate_xpath_arch(arch, parent_arch=PARTNER_FORM) == []
+
+
+def test_overlay_move_inside_group() -> None:
+    arch = render_overlay_operation_arch(
+        "move",
+        expr="//field[@name='email']",
+        view_type="form",
+        anchor_expr="//group[@id='header_left_group']",
+        move_position="inside",
+    )
+    assert 'position="inside"' in arch
+    assert 'position="move"' in arch
+    assert validate_xpath_arch(arch) == []
+
+
+def test_overlay_kanban_add_field_defaults_to_card() -> None:
+    kanban = '<kanban><templates><t t-name="card"><field name="name"/></t></templates></kanban>'
+    arch = render_overlay_operation_arch(
+        "add_field",
+        expr="",
+        view_type="kanban",
+        add_field_name="email",
+        parent_arch=kanban,
+    )
+    assert "t-name=" in arch
+    assert 'name="email"' in arch
+
+
+def test_overlay_search_add_field_inside_search() -> None:
+    arch = render_overlay_operation_arch(
+        "add_field",
+        expr="",
+        view_type="search",
+        add_field_name="email",
+        parent_arch="<search><field name='name'/></search>",
+    )
+    assert "//search" in arch
+    assert 'name="email"' in arch
+    assert 'position="inside"' in arch

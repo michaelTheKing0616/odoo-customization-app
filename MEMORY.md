@@ -1,3 +1,23 @@
+### 2026-09-14 — View Designer Track D: overlay form structure, Studio-adjacent HUD
+**Decided:** Overlay can add a notebook page (or create notebook+page on sheet), add a named group, and move a field inside a named group/page. New pages/groups get `x_page_*` / `x_group_*` `@name` for later locators. Track B classify/422 still blocks missing/ambiguous expr. Kanban/search only add or hide card/search fields — filter domains and card templates stay NOT_V1. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+**Why:** Biggest Studio gap was form structure from the live view, not another canvas-only editor.
+**Rejected:** Full card designer; search filter-domain editor; reopening Tracks A–C; changing inherit-default save / confirm-phrase.
+
+### 2026-09-14 — View Designer Track C: session undo/redo, draft vs published
+**Decided:** In-session undo/redo snapshots canvas state (cap 50, inspector coalesced). Dirty chrome is Unpublished / Published / Draft. Save to Odoo stays inherit-default publish. Snapshot list is published checkpoints; Cmd+Z does not silently RPC-rollback. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+**Why:** Studio persists immediately; operators need a design workflow before publish.
+**Rejected:** Track D; changing overwrite confirm semantics; treating snapshot rollback as session undo.
+
+### 2026-09-14 — View Designer Track B: semantic XPath, ElementTree `//` is eval-only
+**Decided:** Score/rewrite locators toward `@name`/`@id` (unique `@string` only if needed). Classify preview issues as error (missing/ambiguous/invalid XML) vs warning (positional / `@string` fragility). Block inherit/overlay writes on errors; warnings do not block. ElementTree evaluates Odoo `//field` as `.//field` and inherit XML still emits `//`. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+**Why:** Studio’s #1 upgrade pain is positional `group[2]`. Python `xml.etree` rejects absolute `//` on an element, which made every locator look unevaluable until the eval mapping.
+**Rejected:** Track C/D; rewriting the whole Designer page; silently rewriting operator expr on save; treating `@string` as as-safe-as `@name`.
+
+### 2026-09-14 — View Designer Track A: field properties are view-layer chrome
+**Decided:** FieldNode round-trips `help`, `placeholder`, `class`, `groups`. Related path is ORM metadata + `listRelatedPaths` picker (not an arch attr — dotted names are not valid view field names). Remove-from-view stays view-only. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+**Why:** Studio-class inspector for day-to-day field editing; `groups=` needs xml ids, not `res.groups` numeric ids.
+**Rejected:** Tracks B/C/D this run; writing `related=` from Designer; treating group display names as xml ids.
+
 ### 2026-09-14 — Sale inherit xpath is tax_totals, not amount_tax
 **Decided:** Option A sale.order form inherit xpaths `amount_tax` / `amount_untaxed` rewrite to `tax_totals` at author + zip. Expert ParseError/xpath-miss beats live schema on traceback filenames (`xmlrpc.py`). Completeness ≠ Cert ≠ Autopilot. Promote stays human. Restart `:8001`.
 **Why:** Sandbox Install ParseError: xpath `//field[@name='amount_tax']` not in parent view. Expert said `xmlrpc` missing.

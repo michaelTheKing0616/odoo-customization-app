@@ -43,6 +43,17 @@ def test_empty_invisible_omitted() -> None:
     assert "invisible" not in out
 
 
+def test_major19_always_invisible_emits_one() -> None:
+    out = emit_field_modifiers(major=19, invisible=True)
+    assert out.get("invisible") == "1"
+
+
+def test_major16_always_invisible_uses_attrs() -> None:
+    out = emit_field_modifiers(major=16, invisible=True)
+    assert "attrs" in out
+    assert "invisible" in out["attrs"]
+
+
 def test_field_xml_emits_label_widget_options_modifiers() -> None:
     from odoo_client.view_arch import FieldNode, _field_xml
 
@@ -55,6 +66,10 @@ def test_field_xml_emits_label_widget_options_modifiers() -> None:
             invisible="[('active', '=', False)]",
             widget="image",
             options='{"size": [128, 128]}',
+            help="Company logo",
+            placeholder="Drop an image",
+            class_name="oe_avatar",
+            groups="base.group_user",
         ),
         major=19,
     )
@@ -65,6 +80,10 @@ def test_field_xml_emits_label_widget_options_modifiers() -> None:
     assert "128" in xml
     assert "readonly" in xml
     assert "invisible" in xml
+    assert 'help="Company logo"' in xml
+    assert 'placeholder="Drop an image"' in xml
+    assert 'class="oe_avatar"' in xml
+    assert 'groups="base.group_user"' in xml
 
 
 def test_additive_inherit_preserves_field_properties() -> None:
@@ -87,6 +106,10 @@ def test_additive_inherit_preserves_field_properties() -> None:
                             string="Scan code",
                             required=True,
                             widget="barcode",
+                            help="Scan the shelf tag",
+                            placeholder="Code",
+                            class_name="oe_inline",
+                            groups="base.group_user",
                         )
                     ],
                 )
@@ -98,3 +121,7 @@ def test_additive_inherit_preserves_field_properties() -> None:
     assert 'required="1"' in arch
     assert 'widget="barcode"' in arch
     assert 'name="x_code"' in arch
+    assert 'help="Scan the shelf tag"' in arch
+    assert 'placeholder="Code"' in arch
+    assert 'class="oe_inline"' in arch
+    assert 'groups="base.group_user"' in arch

@@ -480,7 +480,10 @@ export function ExpertPanel() {
                       />
                     </div>
                   ) : null}
-                  <div className="prose prose-sm max-w-none dark:prose-invert">
+                  <div
+                    className="prose prose-sm max-w-none dark:prose-invert"
+                    data-testid="expert-answer"
+                  >
                     <ExpertAnswerMarkdown
                       markdown={turn.response.answer_markdown}
                       citations={turn.response.citations ?? []}

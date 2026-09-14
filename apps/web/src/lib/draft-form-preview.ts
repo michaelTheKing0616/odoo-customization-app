@@ -388,14 +388,14 @@ export function inheritModelFromFinding(row: AuthoringFinding): string {
 }
 
 function offerFromUnknown(row: Record<string, unknown>): HostInstallOffer | null {
-  const module = String(row.module || "").trim();
+  const moduleName = String(row.module || "").trim();
   const label = String(row.label || "").trim();
   const models = Array.isArray(row.models)
     ? row.models.map((m) => String(m).trim()).filter(Boolean)
     : [];
-  if (!module || !label || !models.length) return null;
+  if (!moduleName || !label || !models.length) return null;
   return {
-    module,
+    module: moduleName,
     label,
     models,
     message: typeof row.message === "string" ? row.message : undefined,

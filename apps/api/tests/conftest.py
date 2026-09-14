@@ -12,7 +12,9 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def _unpause_workspace_writes() -> None:
+def _unpause_workspace_writes(request: pytest.FixtureRequest) -> None:
+    if "no_app_db" in request.keywords:
+        return
     from app.account_models import Workspace
     from app.db import SessionLocal, init_db
 

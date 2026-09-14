@@ -30,6 +30,15 @@ from app.llm_provider import (
 )
 from app.settings import settings
 
+pytestmark = pytest.mark.no_app_db
+
+
+@pytest.fixture(autouse=True)
+def _tier_follows_ai_assist(monkeypatch: pytest.MonkeyPatch) -> None:
+    """CI defaults AI_LLM_TIER_FAST=gemini; these tests assert AI_ASSIST routing."""
+    monkeypatch.setattr(settings, "ai_llm_tier_fast", "auto")
+    monkeypatch.setattr(settings, "ai_llm_tier_refine", "auto")
+
 
 def test_strip_thinking_trace_discards_before_marker() -> None:
     raw = "Let me think...\n---JSON---\n{\"ok\": true}"
@@ -222,6 +231,7 @@ def test_auto_prefers_anthropic_then_openai_then_gemini(
     monkeypatch.setattr(settings, "anthropic_api_key", "sk-ant-test")
     monkeypatch.setattr(settings, "openai_api_key", "sk-openai-test")
     monkeypatch.setattr(settings, "gemini_api_key", "gem-test")
+    monkeypatch.setattr(settings, "google_api_key", "")
     monkeypatch.setattr(settings, "openai_compatible_api_key", "")
     monkeypatch.setattr(settings, "openai_compatible_base_url", "")
     assert resolve_provider_mode() == "anthropic"
@@ -333,6 +343,7 @@ def test_get_llm_provider_openai_uses_api_openai_com(
     monkeypatch.setattr(settings, "openai_api_key", "sk-test")
     monkeypatch.setattr(settings, "openai_compatible_base_url", "")
     monkeypatch.setattr(settings, "openai_compatible_api_key", "")
+    monkeypatch.setattr(settings, "ai_llm_tier_fast", "auto")
     provider = get_llm_provider()
     assert provider is not None
     assert provider.name == "openai"

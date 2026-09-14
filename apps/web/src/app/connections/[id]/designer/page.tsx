@@ -28,13 +28,25 @@ import {
   ConfirmationRequiredError,
   Connection,
   FieldRow,
+  GroupRow,
   MailTemplateRow,
   PreviewTheme,
+  RelatedPathOption,
   SnapshotRow,
 } from "@/lib/api";
-import { DesignerFieldInspector } from "@/components/designer/DesignerFieldInspector";
-import { ExplainThisButton } from "@/components/expert/ExplainThisButton";
+import {
+  DesignerFieldInspector,
+  DesignerFieldInspectorEmpty,
+  type DesignerFieldInspectorValues,
+} from "@/components/designer/DesignerFieldInspector";
+import { XPathInheritPanel, type LocatorIssue } from "@/components/designer/XPathInheritPanel";
+import {
+  DesignerSessionBar,
+  designerPublishState,
+} from "@/components/designer/DesignerSessionBar";
+import { useDesignerHistory } from "@/components/designer/useDesignerHistory";
 import { fallbackWidgetsForTtype, type WidgetOption } from "@/lib/widgetCatalog";
+import { semanticInjectExpr } from "@/lib/xpathLocator";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Callout } from "@/components/ui/Callout";
@@ -81,9 +93,13 @@ type DesignerField = {
   string?: string;
   required?: boolean | string;
   readonly?: boolean | string;
-  invisible?: string;
+  invisible?: boolean | string;
   widget?: string;
   options?: string;
+  help?: string;
+  placeholder?: string;
+  class_name?: string;
+  groups?: string;
 };
 
 type DesignerButton = {
@@ -144,6 +160,71 @@ type SearchGroupByFilter = {
   context?: string;
 };
 
+/** Canvas bits session undo/redo snapshots. Keep JSON-small; cap is in designerHistory. */
+type DesignerCanvasSnapshot = {
+  title: string;
+  formChildren: FormChild[];
+  headerButtons: DesignerButton[];
+  buttonBox: DesignerButton[];
+  statusbarField: string;
+  statusbarVisible: string;
+  formCanCreate: boolean;
+  formCanEdit: boolean;
+  formCanDelete: boolean;
+  formCanDuplicate: boolean;
+  listColumns: DesignerField[];
+  listDecorationDanger: string;
+  listDecorationInfo: string;
+  listDecorationMuted: string;
+  listCanCreate: boolean;
+  listCanEdit: boolean;
+  listCanDelete: boolean;
+  listMultiEdit: boolean;
+  listDefaultOrder: string;
+  viewSample: boolean;
+  searchFields: DesignerField[];
+  searchFilters: SearchFilter[];
+  searchGroupByFilters: SearchGroupByFilter[];
+  kanbanFields: DesignerField[];
+  kanbanGroupBy: string;
+  kanbanCanCreate: boolean;
+  kanbanQuickCreate: boolean;
+  calendarDateStart: string;
+  calendarDateStop: string;
+  calendarColor: string;
+  calendarMode: string;
+  calendarFields: DesignerField[];
+  graphType: "bar" | "line" | "pie";
+  graphFields: AxisDesignerField[];
+  pivotFields: AxisDesignerField[];
+  mapResPartner: string;
+  mapRouting: boolean;
+  mapFields: DesignerField[];
+  activityFields: DesignerField[];
+  ganttDateStart: string;
+  ganttDateStop: string;
+  ganttGroupBy: string;
+  ganttColor: string;
+  ganttProgress: string;
+  ganttDefaultScale: string;
+  ganttDependencyField: string;
+  ganttFields: DesignerField[];
+  cohortDateStart: string;
+  cohortDateStop: string;
+  cohortInterval: "day" | "week" | "month" | "year" | "";
+  cohortMode: "retention" | "churn" | "";
+  cohortTimeline: "forward" | "backward" | "";
+  cohortMeasure: string;
+  gridRowField: string;
+  gridColField: string;
+  gridMeasure: string;
+  gridAdjustment: string;
+  gridDateStart: string;
+  gridDateStop: string;
+  gridFields: DesignerField[];
+  archOverride: string | null;
+};
+
 function asSpecBool(v: unknown): boolean | null {
   if (typeof v === "boolean") return v;
   return null;
@@ -182,6 +263,10 @@ function fieldSpec(f: DesignerField) {
     invisible: f.invisible || undefined,
     widget: f.widget || undefined,
     options: f.options || undefined,
+    help: f.help || undefined,
+    placeholder: f.placeholder || undefined,
+    class_name: f.class_name || undefined,
+    groups: f.groups || undefined,
   };
 }
 
@@ -193,9 +278,17 @@ function mapParsedField(n: Record<string, unknown>): DesignerField {
     string: n.string ? String(n.string) : undefined,
     required: n.required as boolean | string | undefined,
     readonly: n.readonly as boolean | string | undefined,
-    invisible: n.invisible ? String(n.invisible) : undefined,
+    invisible: n.invisible as boolean | string | undefined,
     widget: n.widget ? String(n.widget) : undefined,
     options: n.options ? String(n.options) : undefined,
+    help: n.help ? String(n.help) : undefined,
+    placeholder: n.placeholder ? String(n.placeholder) : undefined,
+    class_name: n.class
+      ? String(n.class)
+      : n.class_name
+        ? String(n.class_name)
+        : undefined,
+    groups: n.groups ? String(n.groups) : undefined,
   };
 }
 
@@ -391,6 +484,14 @@ export default function DesignerPage() {
   const [viewSample, setViewSample] = useState(false);
   const [widgetAdvanced, setWidgetAdvanced] = useState(false);
   const [inspectorWidgets, setInspectorWidgets] = useState<WidgetOption[]>([]);
+  const [inspectorGroups, setInspectorGroups] = useState<GroupRow[]>([]);
+  const [inspectorGroupsState, setInspectorGroupsState] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [relatedPaths, setRelatedPaths] = useState<RelatedPathOption[]>([]);
+  const [relatedPathsState, setRelatedPathsState] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
   const [nicheWidgets, setNicheWidgets] = useState<NicheWidgetEntry[]>([]);
   const [colorPalette, setColorPalette] = useState<Array<{ index: number; name: string }>>(
     [],
@@ -469,10 +570,231 @@ export default function DesignerPage() {
     "inside" | "after" | "before" | "replace" | "attributes"
   >("inside");
   const [xpathBody, setXpathBody] = useState('<field name="x_name"/>');
-  const [xpathIssues, setXpathIssues] = useState<string[]>([]);
+  const [xpathIssues, setXpathIssues] = useState<LocatorIssue[]>([]);
   const [xpathArchPreview, setXpathArchPreview] = useState("");
+  const [xpathSuggested, setXpathSuggested] = useState<string | null>(null);
+  const [xpathDefaultInject, setXpathDefaultInject] = useState<string | null>(null);
+  const [xpathMatchCount, setXpathMatchCount] = useState<number | null>(null);
+  const [xpathBlocking, setXpathBlocking] = useState(false);
   const [archOverride, setArchOverride] = useState<string | null>(null);
   const [editingFilterId, setEditingFilterId] = useState<string | null>(null);
+
+  const history = useDesignerHistory<DesignerCanvasSnapshot>();
+  const historySkipRef = useRef<"reset" | "apply" | null>("reset");
+  const pendingCoalesceRef = useRef<string | undefined>(undefined);
+  const pendingHistoryLabelRef = useRef<string | undefined>(undefined);
+
+  const canvasSnapshot = useMemo<DesignerCanvasSnapshot>(
+    () => ({
+      title,
+      formChildren,
+      headerButtons,
+      buttonBox,
+      statusbarField,
+      statusbarVisible,
+      formCanCreate,
+      formCanEdit,
+      formCanDelete,
+      formCanDuplicate,
+      listColumns,
+      listDecorationDanger,
+      listDecorationInfo,
+      listDecorationMuted,
+      listCanCreate,
+      listCanEdit,
+      listCanDelete,
+      listMultiEdit,
+      listDefaultOrder,
+      viewSample,
+      searchFields,
+      searchFilters,
+      searchGroupByFilters,
+      kanbanFields,
+      kanbanGroupBy,
+      kanbanCanCreate,
+      kanbanQuickCreate,
+      calendarDateStart,
+      calendarDateStop,
+      calendarColor,
+      calendarMode,
+      calendarFields,
+      graphType,
+      graphFields,
+      pivotFields,
+      mapResPartner,
+      mapRouting,
+      mapFields,
+      activityFields,
+      ganttDateStart,
+      ganttDateStop,
+      ganttGroupBy,
+      ganttColor,
+      ganttProgress,
+      ganttDefaultScale,
+      ganttDependencyField,
+      ganttFields,
+      cohortDateStart,
+      cohortDateStop,
+      cohortInterval,
+      cohortMode,
+      cohortTimeline,
+      cohortMeasure,
+      gridRowField,
+      gridColField,
+      gridMeasure,
+      gridAdjustment,
+      gridDateStart,
+      gridDateStop,
+      gridFields,
+      archOverride,
+    }),
+    [
+      title,
+      formChildren,
+      headerButtons,
+      buttonBox,
+      statusbarField,
+      statusbarVisible,
+      formCanCreate,
+      formCanEdit,
+      formCanDelete,
+      formCanDuplicate,
+      listColumns,
+      listDecorationDanger,
+      listDecorationInfo,
+      listDecorationMuted,
+      listCanCreate,
+      listCanEdit,
+      listCanDelete,
+      listMultiEdit,
+      listDefaultOrder,
+      viewSample,
+      searchFields,
+      searchFilters,
+      searchGroupByFilters,
+      kanbanFields,
+      kanbanGroupBy,
+      kanbanCanCreate,
+      kanbanQuickCreate,
+      calendarDateStart,
+      calendarDateStop,
+      calendarColor,
+      calendarMode,
+      calendarFields,
+      graphType,
+      graphFields,
+      pivotFields,
+      mapResPartner,
+      mapRouting,
+      mapFields,
+      activityFields,
+      ganttDateStart,
+      ganttDateStop,
+      ganttGroupBy,
+      ganttColor,
+      ganttProgress,
+      ganttDefaultScale,
+      ganttDependencyField,
+      ganttFields,
+      cohortDateStart,
+      cohortDateStop,
+      cohortInterval,
+      cohortMode,
+      cohortTimeline,
+      cohortMeasure,
+      gridRowField,
+      gridColField,
+      gridMeasure,
+      gridAdjustment,
+      gridDateStart,
+      gridDateStop,
+      gridFields,
+      archOverride,
+    ],
+  );
+
+  function applyCanvasSnapshot(snapshot: DesignerCanvasSnapshot) {
+    setTitle(snapshot.title);
+    setFormChildren(snapshot.formChildren);
+    setHeaderButtons(snapshot.headerButtons);
+    setButtonBox(snapshot.buttonBox);
+    setStatusbarField(snapshot.statusbarField);
+    setStatusbarVisible(snapshot.statusbarVisible);
+    setFormCanCreate(snapshot.formCanCreate);
+    setFormCanEdit(snapshot.formCanEdit);
+    setFormCanDelete(snapshot.formCanDelete);
+    setFormCanDuplicate(snapshot.formCanDuplicate);
+    setListColumns(snapshot.listColumns);
+    setListDecorationDanger(snapshot.listDecorationDanger);
+    setListDecorationInfo(snapshot.listDecorationInfo);
+    setListDecorationMuted(snapshot.listDecorationMuted);
+    setListCanCreate(snapshot.listCanCreate);
+    setListCanEdit(snapshot.listCanEdit);
+    setListCanDelete(snapshot.listCanDelete);
+    setListMultiEdit(snapshot.listMultiEdit);
+    setListDefaultOrder(snapshot.listDefaultOrder);
+    setViewSample(snapshot.viewSample);
+    setSearchFields(snapshot.searchFields);
+    setSearchFilters(snapshot.searchFilters);
+    setSearchGroupByFilters(snapshot.searchGroupByFilters);
+    setKanbanFields(snapshot.kanbanFields);
+    setKanbanGroupBy(snapshot.kanbanGroupBy);
+    setKanbanCanCreate(snapshot.kanbanCanCreate);
+    setKanbanQuickCreate(snapshot.kanbanQuickCreate);
+    setCalendarDateStart(snapshot.calendarDateStart);
+    setCalendarDateStop(snapshot.calendarDateStop);
+    setCalendarColor(snapshot.calendarColor);
+    setCalendarMode(snapshot.calendarMode);
+    setCalendarFields(snapshot.calendarFields);
+    setGraphType(snapshot.graphType);
+    setGraphFields(snapshot.graphFields);
+    setPivotFields(snapshot.pivotFields);
+    setMapResPartner(snapshot.mapResPartner);
+    setMapRouting(snapshot.mapRouting);
+    setMapFields(snapshot.mapFields);
+    setActivityFields(snapshot.activityFields);
+    setGanttDateStart(snapshot.ganttDateStart);
+    setGanttDateStop(snapshot.ganttDateStop);
+    setGanttGroupBy(snapshot.ganttGroupBy);
+    setGanttColor(snapshot.ganttColor);
+    setGanttProgress(snapshot.ganttProgress);
+    setGanttDefaultScale(snapshot.ganttDefaultScale);
+    setGanttDependencyField(snapshot.ganttDependencyField);
+    setGanttFields(snapshot.ganttFields);
+    setCohortDateStart(snapshot.cohortDateStart);
+    setCohortDateStop(snapshot.cohortDateStop);
+    setCohortInterval(snapshot.cohortInterval);
+    setCohortMode(snapshot.cohortMode);
+    setCohortTimeline(snapshot.cohortTimeline);
+    setCohortMeasure(snapshot.cohortMeasure);
+    setGridRowField(snapshot.gridRowField);
+    setGridColField(snapshot.gridColField);
+    setGridMeasure(snapshot.gridMeasure);
+    setGridAdjustment(snapshot.gridAdjustment);
+    setGridDateStart(snapshot.gridDateStart);
+    setGridDateStop(snapshot.gridDateStop);
+    setGridFields(snapshot.gridFields);
+    setArchOverride(snapshot.archOverride);
+  }
+
+  useEffect(() => {
+    const skip = historySkipRef.current;
+    if (skip === "reset") {
+      history.reset(canvasSnapshot);
+      historySkipRef.current = null;
+      return;
+    }
+    if (skip === "apply") {
+      historySkipRef.current = null;
+      return;
+    }
+    history.record(canvasSnapshot, {
+      label: pendingHistoryLabelRef.current,
+      coalesceKey: pendingCoalesceRef.current,
+    });
+    pendingHistoryLabelRef.current = undefined;
+    pendingCoalesceRef.current = undefined;
+  }, [canvasSnapshot, history.record, history.reset]);
 
   const refreshSnapshots = useCallback(async () => {
     try {
@@ -568,6 +890,7 @@ export default function DesignerPage() {
     : null;
 
   function applyFieldNamesToCanvas(names: string[], rows: FieldRow[]) {
+    historySkipRef.current = "reset";
     const nodes: DesignerField[] = names.map((name) => {
       const meta = rows.find((f) => f.name === name);
       return {
@@ -783,6 +1106,7 @@ export default function DesignerPage() {
     setBusy(true);
     setError(null);
     setNotice(null);
+    historySkipRef.current = "reset";
     try {
       const [rows, views] = await Promise.all([
         api.listFields(connectionId, model),
@@ -802,6 +1126,11 @@ export default function DesignerPage() {
       const full = match.arch ? match : await api.getView(connectionId, match.id);
       setLoadedViewId(full.id);
       setArch(full.arch ?? "");
+      setXpathExpr((prev) =>
+        prev === "//sheet" || prev === "//form" || prev === "//list"
+          ? semanticInjectExpr(full.arch ?? null, viewType)
+          : prev,
+      );
       if (full.arch) {
         try {
           const parsed = await api.parseViewArch(connectionId, viewType, full.arch);
@@ -1042,6 +1371,7 @@ export default function DesignerPage() {
       }
       setSelected(null);
     } catch (err) {
+      historySkipRef.current = null;
       setError(err instanceof Error ? err.message : "Load view failed");
     } finally {
       setBusy(false);
@@ -1386,23 +1716,68 @@ export default function DesignerPage() {
     return null;
   }
 
-  function updateSelectedField(patch: Partial<DesignerField>) {
+  function removeSelectedField() {
     if (!selected) return;
+    const fieldId = selected.fieldId;
+    if (selected.scope === "list") {
+      setListColumns((cols) => cols.filter((c) => c.id !== fieldId));
+    } else if (selected.scope === "search") {
+      setSearchFields((cols) => cols.filter((c) => c.id !== fieldId));
+    } else if (selected.scope === "kanban") {
+      setKanbanFields((cols) => cols.filter((c) => c.id !== fieldId));
+    } else if (selected.scope === "form-group") {
+      const groupId = selected.groupId;
+      setFormChildren((children) =>
+        children.map((child) => {
+          if (child.kind !== "group" || child.id !== groupId) return child;
+          return {
+            ...child,
+            children: child.children.filter((n) => n.id !== fieldId),
+          };
+        }),
+      );
+    } else {
+      const { notebookId, pageId } = selected;
+      setFormChildren((children) =>
+        children.map((child) => {
+          if (child.kind !== "notebook" || child.id !== notebookId) return child;
+          return {
+            ...child,
+            pages: child.pages.map((p) =>
+              p.id !== pageId
+                ? p
+                : {
+                    ...p,
+                    children: p.children.filter((n) => n.id !== fieldId),
+                  },
+            ),
+          };
+        }),
+      );
+    }
+    setSelected(null);
+  }
+
+  function updateSelectedField(patch: Partial<DesignerFieldInspectorValues>) {
+    if (!selected) return;
+    pendingCoalesceRef.current = `inspector:${selected.fieldId}`;
+    pendingHistoryLabelRef.current = "Edit field properties";
+    const { ttype: _ttype, name: _name, ...fieldPatch } = patch;
     if (selected.scope === "list") {
       setListColumns((cols) =>
-        cols.map((f) => (f.id === selected.fieldId ? { ...f, ...patch } : f)),
+        cols.map((f) => (f.id === selected.fieldId ? { ...f, ...fieldPatch } : f)),
       );
       return;
     }
     if (selected.scope === "search") {
       setSearchFields((cols) =>
-        cols.map((f) => (f.id === selected.fieldId ? { ...f, ...patch } : f)),
+        cols.map((f) => (f.id === selected.fieldId ? { ...f, ...fieldPatch } : f)),
       );
       return;
     }
     if (selected.scope === "kanban") {
       setKanbanFields((cols) =>
-        cols.map((f) => (f.id === selected.fieldId ? { ...f, ...patch } : f)),
+        cols.map((f) => (f.id === selected.fieldId ? { ...f, ...fieldPatch } : f)),
       );
       return;
     }
@@ -1414,7 +1789,7 @@ export default function DesignerPage() {
             ...child,
             children: child.children.map((node) => {
               if (node.id !== selected.fieldId || node.kind !== "field") return node;
-              return { ...node, ...patch };
+              return { ...node, ...fieldPatch };
             }),
           };
         }),
@@ -1432,7 +1807,7 @@ export default function DesignerPage() {
               ...p,
               children: p.children.map((node) => {
                 if (node.id !== selected.fieldId || node.kind !== "field") return node;
-                return { ...node, ...patch };
+                return { ...node, ...fieldPatch };
               }),
             };
           }),
@@ -2144,7 +2519,7 @@ export default function DesignerPage() {
       if (saved.snapshot_id) {
         setLastSnapshotId(saved.snapshot_id);
         setNotice(
-          `Saved ${viewType} view #${saved.id}. Snapshot ${saved.snapshot_id.slice(0, 8)}… ready to undo.`,
+          `Published ${viewType} view #${saved.id}. Checkpoint ${saved.snapshot_id.slice(0, 8)}… is in published history.`,
         );
       } else {
         setNotice(`Saved new ${viewType} view #${saved.id} for ${model}`);
@@ -2152,6 +2527,10 @@ export default function DesignerPage() {
       setArch(saved.arch ?? arch);
       setArchOverride(null);
       setPreviewKey((k) => k + 1);
+      if (archOverride !== null) {
+        historySkipRef.current = "apply";
+      }
+      history.reset({ ...canvasSnapshot, archOverride: null });
       await refreshSnapshots();
     } catch (err) {
       if (err instanceof ConfirmationRequiredError) {
@@ -2233,24 +2612,67 @@ export default function DesignerPage() {
         expr: xpathExpr,
         position: xpathPosition,
         body_xml: xpathBody,
+        parent_arch: arch || null,
+        view_type: viewType,
       });
       setXpathArchPreview(res.arch);
-      setXpathIssues(res.issues ?? []);
-      if (res.issues?.length) {
-        setNotice(`XPath preview built with ${res.issues.length} validation issue(s).`);
+      const located = res.locator_issues ?? [];
+      setXpathIssues(located);
+      setXpathSuggested(res.suggested_expr ?? null);
+      setXpathDefaultInject(res.default_inject_expr ?? null);
+      setXpathMatchCount(res.match_count ?? null);
+      setXpathBlocking(Boolean(res.blocking));
+      if (res.blocking) {
+        setNotice("XPath preview found a blocking locator issue.");
+      } else if (located.some((i) => i.severity === "warning") || (res.issues?.length ?? 0) > 0) {
+        setNotice("XPath preview built with upgrade-safety warnings.");
       } else {
-        setNotice("XPath preview OK — no validation issues.");
+        setNotice("XPath preview OK — named locator matches the parent view.");
       }
+      return res;
     } catch (err) {
       setError(err instanceof Error ? err.message : "XPath preview failed");
       setXpathArchPreview("");
       setXpathIssues([]);
+      setXpathBlocking(false);
+      return null;
     } finally {
       setBusy(false);
     }
   }
 
-  async function onUndo() {
+  async function onSaveXpathInherit() {
+    const res = await runXpathPreview();
+    if (!res || res.blocking) {
+      return;
+    }
+    await onSave({ arch: res.arch, strategy: "inherit" });
+  }
+
+  function onSessionUndo() {
+    const snapshot = history.undo();
+    if (!snapshot) {
+      setNotice(
+        lastSnapshotId
+          ? "Nothing to undo in this session. Use roll back last publish to restore a snapshot."
+          : "Nothing to undo in this session. Save to Odoo first creates a published checkpoint.",
+      );
+      return;
+    }
+    historySkipRef.current = "apply";
+    applyCanvasSnapshot(snapshot);
+    setNotice("Reverted the last unpublished canvas edit.");
+  }
+
+  function onSessionRedo() {
+    const snapshot = history.redo();
+    if (!snapshot) return;
+    historySkipRef.current = "apply";
+    applyCanvasSnapshot(snapshot);
+    setNotice("Restored the unpublished canvas edit.");
+  }
+
+  async function onRollbackLastPublish() {
     if (!lastSnapshotId) return;
     setBusy(true);
     setError(null);
@@ -2261,7 +2683,7 @@ export default function DesignerPage() {
       await loadExistingView();
       await refreshSnapshots();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Undo failed");
+      setError(err instanceof Error ? err.message : "Rollback failed");
     } finally {
       setBusy(false);
     }
@@ -2285,6 +2707,82 @@ export default function DesignerPage() {
 
   const selectedField = findSelectedField();
 
+  const viewFieldNames = useMemo(() => {
+    const names = new Set<string>();
+    if (viewType === "form") {
+      for (const child of formChildren) {
+        if (child.kind === "group") {
+          for (const n of child.children) {
+            if (n.kind === "field") names.add(n.name);
+          }
+        } else {
+          for (const page of child.pages) {
+            for (const n of page.children) {
+              if (n.kind === "field") names.add(n.name);
+            }
+          }
+        }
+      }
+    } else if (viewType === "list") {
+      for (const c of listColumns) names.add(c.name);
+    } else if (viewType === "search") {
+      for (const c of searchFields) names.add(c.name);
+    } else if (viewType === "kanban") {
+      for (const c of kanbanFields) names.add(c.name);
+    }
+    return [...names];
+  }, [viewType, formChildren, listColumns, searchFields, kanbanFields]);
+
+  const selectedFieldMeta = selectedField
+    ? fields.find((f) => f.name === selectedField.name) ?? null
+    : null;
+
+  useEffect(() => {
+    if (!connectionId) return;
+    let cancelled = false;
+    setInspectorGroupsState("loading");
+    api
+      .listGroups(connectionId)
+      .then((rows) => {
+        if (cancelled) return;
+        setInspectorGroups(rows);
+        setInspectorGroupsState("ready");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setInspectorGroups([]);
+        setInspectorGroupsState("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionId]);
+
+  useEffect(() => {
+    if (!connectionId || !model) {
+      setRelatedPaths([]);
+      setRelatedPathsState("idle");
+      return;
+    }
+    let cancelled = false;
+    setRelatedPathsState("loading");
+    api
+      .listRelatedPaths(connectionId, model, 2)
+      .then((rows) => {
+        if (cancelled) return;
+        setRelatedPaths(rows);
+        setRelatedPathsState("ready");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRelatedPaths([]);
+        setRelatedPathsState("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionId, model]);
+
   useEffect(() => {
     if (!selectedField) {
       setInspectorWidgets([]);
@@ -2303,11 +2801,57 @@ export default function DesignerPage() {
       });
   }, [connectionId, fields, selectedField?.name]);
 
+  const fieldInspector = selectedField ? (
+    <DesignerFieldInspector
+      field={{
+        ...selectedField,
+        ttype: selectedFieldMeta?.ttype,
+      }}
+      fieldMeta={selectedFieldMeta}
+      widgetOptions={inspectorWidgets}
+      widgetAdvanced={widgetAdvanced}
+      onWidgetAdvancedChange={setWidgetAdvanced}
+      onChange={updateSelectedField}
+      groups={inspectorGroups}
+      groupsState={inspectorGroupsState}
+      relatedPaths={relatedPaths}
+      relatedState={relatedPathsState}
+      fieldsOnModel={fields}
+      viewFieldNames={viewFieldNames}
+      onAddRelatedField={(name) => appendFieldToCurrentLayout(name, fields)}
+      onRemoveFromView={removeSelectedField}
+    />
+  ) : (
+    <DesignerFieldInspectorEmpty />
+  );
+
   return (
     <div className="mx-auto max-w-7xl" data-testid="designer-page">
       <PageHeader
         title="View designer"
-        description={`${connection?.name ?? connectionId} · drag fields onto the canvas · saves real ir.ui.view arch`}
+        description={`${connection?.name ?? connectionId} · drag fields onto the canvas · Save to Odoo publishes an inherit view`}
+      />
+      <DesignerSessionBar
+        publishState={designerPublishState({
+          dirty: history.dirty,
+          hasPublishedView: loadedViewId != null,
+        })}
+        canUndo={history.canUndo}
+        canRedo={history.canRedo}
+        canRollbackPublish={Boolean(lastSnapshotId)}
+        undoLabel={history.undoLabel}
+        redoLabel={history.redoLabel}
+        busy={busy}
+        onUndo={onSessionUndo}
+        onRedo={onSessionRedo}
+        onRollbackPublish={() => void onRollbackLastPublish()}
+        onEmptyUndo={() =>
+          setNotice(
+            lastSnapshotId
+              ? "Nothing to undo in this session. Use roll back last publish to restore a snapshot."
+              : "Nothing to undo in this session. Save to Odoo first creates a published checkpoint.",
+          )
+        }
       />
       {connection ? <FirstWriteInterstitial connection={connection} /> : null}
       <p className="mt-2 text-sm text-muted">
@@ -2959,7 +3503,11 @@ export default function DesignerPage() {
             <span className="text-[#a8909e]">Title</span>
             <input
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => {
+                pendingCoalesceRef.current = "title";
+                pendingHistoryLabelRef.current = "Edit title";
+                setTitle(e.target.value);
+              }}
               className="mt-1 block w-48 border border-border-subtle bg-surface px-3 py-2"
             />
           </label>
@@ -3022,14 +3570,6 @@ export default function DesignerPage() {
             className="h-10 border border-border-subtle px-4 text-sm text-muted disabled:opacity-40"
           >
             Polish form layout
-          </button>
-          <button
-            type="button"
-            disabled={busy || !lastSnapshotId}
-            onClick={onUndo}
-            className="h-10 border border-danger/50 px-4 text-sm text-danger disabled:opacity-40"
-          >
-            Undo last save
           </button>
           <a
             href={liveOdooUrl ?? "#"}
@@ -3096,8 +3636,7 @@ export default function DesignerPage() {
               data-testid="designer-form-layout"
             >
             <div>
-              <PreviewThemeScope previewVars={previewTheme?.preview_vars}>
-              <OdooPreviewScope showBanner>
+              <OdooPreviewScope showBanner previewVars={previewTheme?.preview_vars}>
                 <OdooControlPanel
                   breadcrumb={`View Designer › ${title || model}`}
                   activeView="form"
@@ -3211,51 +3750,16 @@ export default function DesignerPage() {
               }}
             />
               </OdooPreviewScope>
-              </PreviewThemeScope>
             </div>
-            <PropsInspector title="Field properties">
-              {selectedField ? (
-                <div className="space-y-3 text-sm text-[#1a1a1a]">
-                  <p className="font-mono text-accent">{selectedField.name}</p>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={!!selectedField.required}
-                      onChange={(e) => updateSelectedField({ required: e.target.checked })}
-                    />
-                    <span>Required</span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={!!selectedField.readonly}
-                      onChange={(e) => updateSelectedField({ readonly: e.target.checked })}
-                    />
-                    <span>Readonly</span>
-                  </label>
-                  <label className="block text-xs">
-                    <span className="flex items-center gap-1">
-                      Widget
-                      <ExplainThisButton
-                        question={`Explain widget choices for ${selectedField.name} on ${model}`}
-                        label="Explain widgets"
-                      />
-                    </span>
-                    <input
-                      value={selectedField.widget ?? ""}
-                      onChange={(e) =>
-                        updateSelectedField({ widget: e.target.value || undefined })
-                      }
-                      className="mt-1 w-full border border-[var(--odoo-border)] px-2 py-1 font-mono text-xs"
-                    />
-                  </label>
-                </div>
-              ) : (
-                <p className="text-xs text-[var(--odoo-muted)]">
-                  Select a field on the canvas, or drag from the field list below.
-                </p>
-              )}
-            </PropsInspector>
+            <aside className="rounded-md border border-border-subtle bg-surface-raised p-3 shadow-subtle">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted">
+                Field properties
+              </p>
+              <p className="mt-2 text-xs leading-relaxed text-muted">
+                Select a field here or in Form layout. The properties rail on the
+                right is the editor — label, help, modifiers, widget, and related path.
+              </p>
+            </aside>
             </div>
           </details>
         )}
@@ -4707,8 +5211,7 @@ export default function DesignerPage() {
                       Odoo-style list preview
                     </summary>
                     <div className="mt-3">
-                      <PreviewThemeScope previewVars={previewTheme?.preview_vars}>
-                        <OdooPreviewScope showBanner={false}>
+                      <OdooPreviewScope showBanner={false} previewVars={previewTheme?.preview_vars}>
                           <OdooListView
                             view={{
                               type: "list",
@@ -4727,7 +5230,6 @@ export default function DesignerPage() {
                             }}
                           />
                         </OdooPreviewScope>
-                      </PreviewThemeScope>
                     </div>
                   </details>
                 ) : null}
@@ -5072,131 +5574,54 @@ export default function DesignerPage() {
           </section>
 
           <aside className="space-y-4">
-            <div className="border border-border-subtle bg-surface-muted/70 p-4">
-              <p className="text-xs uppercase tracking-wide text-muted">
-                Field properties
-              </p>
-              {selectedField ? (
-                <>
-                  <p className="mt-3 font-mono text-muted">{selectedField.name}</p>
-                  <DesignerFieldInspector
-                    field={selectedField}
-                    widgetOptions={inspectorWidgets}
-                    widgetAdvanced={widgetAdvanced}
-                    onWidgetAdvancedChange={setWidgetAdvanced}
-                    onChange={updateSelectedField}
-                  />
-                </>
-              ) : (
-                <p className="mt-3 text-xs text-muted">
-                  Select a field on the canvas to edit properties.
+            <div
+              className="rounded-md border border-border-subtle bg-surface-raised shadow-subtle"
+              data-testid="designer-props-rail"
+            >
+              <div className="border-b border-border-subtle px-4 py-3">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted">
+                  Field properties
                 </p>
-              )}
+              </div>
+              <div className="p-4">{fieldInspector}</div>
             </div>
 
-            <div className="border border-border-subtle bg-surface-muted/70 p-4">
-              <p className="text-xs uppercase tracking-wide text-muted">
-                XPath inherit editor
-              </p>
-              <div className="mt-3 space-y-2 text-sm">
-                <label className="block text-xs text-[#a8909e]">
-                  expr
-                  <input
-                    value={xpathExpr}
-                    onChange={(e) => setXpathExpr(e.target.value)}
-                    className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-xs"
-                  />
-                </label>
-                <label className="block text-xs text-[#a8909e]">
-                  position
-                  <select
-                    value={xpathPosition}
-                    onChange={(e) =>
-                      setXpathPosition(
-                        e.target.value as
-                          | "inside"
-                          | "after"
-                          | "before"
-                          | "replace"
-                          | "attributes",
-                      )
-                    }
-                    className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-xs"
-                  >
-                    <option value="inside">inside</option>
-                    <option value="after">after</option>
-                    <option value="before">before</option>
-                    <option value="replace">replace</option>
-                    <option value="attributes">attributes</option>
-                  </select>
-                </label>
-                <label className="block text-xs text-[#a8909e]">
-                  body_xml
-                  <textarea
-                    value={xpathBody}
-                    onChange={(e) => setXpathBody(e.target.value)}
-                    rows={4}
-                    className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-xs"
-                  />
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void runXpathPreview()}
-                    className="border border-border-subtle px-2 py-1 text-xs text-muted disabled:opacity-40"
-                  >
-                    Preview
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!xpathArchPreview}
-                    onClick={() => {
-                      setArch(xpathArchPreview);
-                      setArchOverride(xpathArchPreview);
-                      setNotice("Arch override set from XPath preview. Save will use inherit arch.");
-                    }}
-                    className="border border-border-subtle px-2 py-1 text-xs text-muted disabled:opacity-40"
-                  >
-                    Use as arch override
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy || !model || !xpathArchPreview}
-                    onClick={() =>
-                      void onSave({ arch: xpathArchPreview, strategy: "inherit" })
-                    }
-                    className="border border-border-subtle px-2 py-1 text-xs text-muted disabled:opacity-40"
-                  >
-                    Save xpath inherit
-                  </button>
-                  {archOverride && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setArchOverride(null);
-                        setNotice("Cleared arch override — Save uses canvas spec again.");
-                      }}
-                      className="border border-danger/50 px-2 py-1 text-xs text-danger"
-                    >
-                      Clear override
-                    </button>
-                  )}
-                </div>
-                {xpathIssues.length > 0 && (
-                  <ul className="space-y-1 text-xs text-danger">
-                    {xpathIssues.map((issue, i) => (
-                      <li key={i}>• {issue}</li>
-                    ))}
-                  </ul>
-                )}
-                {xpathArchPreview && (
-                  <pre className="max-h-32 overflow-auto text-xs text-muted">
-                    {xpathArchPreview}
-                  </pre>
-                )}
-              </div>
-            </div>
+            <XPathInheritPanel
+              expr={xpathExpr}
+              position={xpathPosition}
+              bodyXml={xpathBody}
+              previewArch={xpathArchPreview}
+              issues={xpathIssues}
+              suggestedExpr={xpathSuggested}
+              defaultInjectExpr={xpathDefaultInject}
+              matchCount={xpathMatchCount}
+              blocking={xpathBlocking}
+              busy={busy}
+              model={model}
+              hasOverride={Boolean(archOverride)}
+              onExprChange={(value) => {
+                setXpathExpr(value);
+                setXpathBlocking(false);
+              }}
+              onPositionChange={setXpathPosition}
+              onBodyChange={setXpathBody}
+              onPreview={() => void runXpathPreview()}
+              onUseNamedLocator={(value) => {
+                setXpathExpr(value);
+                setXpathBlocking(false);
+                setNotice("Switched to a named locator. Preview again before save.");
+              }}
+              onUseAsOverride={() => {
+                setArch(xpathArchPreview);
+                setArchOverride(xpathArchPreview);
+                setNotice("Arch override set from XPath preview. Save will use inherit arch.");
+              }}
+              onSave={() => void onSaveXpathInherit()}
+              onClearOverride={() => {
+                setArchOverride(null);
+                setNotice("Cleared arch override — Save uses canvas spec again.");
+              }}
+            />
 
             <div className="border border-border-subtle bg-surface p-4">
               <p className="text-xs uppercase tracking-wide text-muted">
@@ -5210,7 +5635,7 @@ export default function DesignerPage() {
             <div className="border border-border-subtle bg-surface-muted/70 p-4">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs uppercase tracking-wide text-muted">
-                  Snapshots / undo
+                  Published checkpoints
                 </p>
                 <button
                   type="button"
@@ -5222,7 +5647,7 @@ export default function DesignerPage() {
               </div>
               <ul className="mt-3 max-h-48 space-y-2 overflow-auto text-xs">
                 {snapshots.length === 0 && (
-                  <li className="text-muted">No view snapshots yet.</li>
+                  <li className="text-muted">No published checkpoints yet. Save to Odoo creates one.</li>
                 )}
                 {snapshots.map((s) => (
                   <li
@@ -5241,7 +5666,7 @@ export default function DesignerPage() {
                       onClick={() => onRollback(s.id)}
                       className="shrink-0 border border-border-subtle px-2 py-0.5 text-muted disabled:opacity-40"
                     >
-                      Undo
+                      Restore
                     </button>
                   </li>
                 ))}
@@ -5256,7 +5681,7 @@ export default function DesignerPage() {
         risks={[
           "Can break stock xpath inherits (e.g. Contacts)",
           "Module upgrades may conflict",
-          "Snapshot is taken — Undo from the sidebar when reversible",
+          "Snapshot is taken — restore from published checkpoints when reversible",
         ]}
         phrase={CONFIRM_PHRASE}
         busy={busy}
@@ -5273,7 +5698,7 @@ export default function DesignerPage() {
           "Removes the inherit child only (stock primary form stays)",
           "Custom groups that lived only in that inherit disappear",
           "Field inject views ({model}.custom.x_*.form) are not deleted",
-          "Undo cannot recreate a deleted view from a normal arch snapshot",
+          "A published checkpoint cannot recreate a deleted inherit view",
         ]}
         phrase={CONFIRM_PHRASE}
         busy={busy}

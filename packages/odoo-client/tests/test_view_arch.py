@@ -360,8 +360,15 @@ def test_render_inherit_field_arch_form() -> None:
         "form",
         parent_arch='<form><sheet><group><field name="x_name"/></group></sheet></form>',
     )
-    assert 'expr="//group[1]"' in grouped
+    assert 'expr="//group"' in grouped
+    assert "group[1]" not in grouped
     assert 'name="x_status"' in grouped
+    named = render_inherit_field_arch(
+        "x_status",
+        "form",
+        parent_arch='<form><sheet><group string="Main"><field name="x_name"/></group></sheet></form>',
+    )
+    assert "expr=\"//group[@string='Main']\"" in named
 
 
 def test_render_inherit_field_arch_list_and_tree() -> None:
@@ -493,3 +500,65 @@ def test_major16_form_field_attrs_roundtrip() -> None:
     field = spec.children[0].children[0]
     assert isinstance(field, FieldNode)
     assert field.invisible == "[('active', '=', False)]"
+
+
+def test_field_chrome_attrs_round_trip() -> None:
+    from odoo_client.view_arch import parse_form_arch, parse_list_arch
+
+    spec = FormViewSpec(
+        string="Partner",
+        children=[
+            GroupNode(
+                children=[
+                    FieldNode(
+                        name="email",
+                        string="Email",
+                        help="Shown on hover",
+                        placeholder="name@company.com",
+                        class_name="oe_inline",
+                        groups="base.group_user,!base.group_portal",
+                        widget="email",
+                        invisible=True,
+                    )
+                ]
+            )
+        ],
+    )
+    arch = render_form_arch(spec)
+    assert 'help="Shown on hover"' in arch
+    assert 'placeholder="name@company.com"' in arch
+    assert 'class="oe_inline"' in arch
+    assert 'groups="base.group_user,!base.group_portal"' in arch
+    assert 'invisible="1"' in arch
+    parsed = parse_form_arch(arch)
+    field = parsed.children[0].children[0]
+    assert isinstance(field, FieldNode)
+    assert field.help == "Shown on hover"
+    assert field.placeholder == "name@company.com"
+    assert field.class_name == "oe_inline"
+    assert field.groups == "base.group_user,!base.group_portal"
+    assert field.widget == "email"
+    assert field.invisible is True
+    again = render_form_arch(parsed)
+    assert 'placeholder="name@company.com"' in again
+    assert 'class="oe_inline"' in again
+
+    list_arch = render_list_arch(
+        ListViewSpec(
+            string="Partners",
+            columns=[
+                FieldNode(
+                    name="email",
+                    string="Email",
+                    help="List hint",
+                    class_name="oe_highlight",
+                    groups="base.group_system",
+                )
+            ],
+        )
+    )
+    list_spec = parse_list_arch(list_arch)
+    col = list_spec.columns[0]
+    assert col.help == "List hint"
+    assert col.class_name == "oe_highlight"
+    assert col.groups == "base.group_system"

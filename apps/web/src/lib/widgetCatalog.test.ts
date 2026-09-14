@@ -4,6 +4,8 @@ import {
   IMAGE_SIZE_PRESETS,
   modifierToMode,
   modeToModifier,
+  parseGroupsAttr,
+  serializeGroupsAttr,
 } from "./widgetCatalog";
 import {
   domainRulesToString,
@@ -53,6 +55,20 @@ describe("widget catalog fallbacks", () => {
   it("has image size presets", () => {
     expect(IMAGE_SIZE_PRESETS.length).toBeGreaterThanOrEqual(3);
     expect(IMAGE_SIZE_PRESETS.some((p) => p.options.includes("128"))).toBe(true);
+  });
+});
+
+describe("groups attr helpers", () => {
+  it("parses allow and forbid xml ids", () => {
+    expect(parseGroupsAttr("base.group_user,!base.group_portal")).toEqual([
+      { xmlId: "base.group_user", forbid: false },
+      { xmlId: "base.group_portal", forbid: true },
+    ]);
+    expect(serializeGroupsAttr([
+      { xmlId: "base.group_user", forbid: false },
+      { xmlId: "base.group_portal", forbid: true },
+    ])).toBe("base.group_user,!base.group_portal");
+    expect(serializeGroupsAttr([])).toBeUndefined();
   });
 });
 

@@ -6,7 +6,11 @@
     "GHSA-mh99-v99m-4gvg",
     "GHSA-rgw5-rvv9-x895",
     "GHSA-2v37-7h3g-55p8",
-    "GHSA-5p4m-2wfm-xmqj"
+    "GHSA-5p4m-2wfm-xmqj",
+    "GHSA-2883-xcg3-v3hh",
+    "GHSA-2jg2-4ch7-h545",
+    "GHSA-g89c-p67h-r497",
+    "GHSA-rgj7-g3m4-5g8c"
   ],
-  "_note": "Transitive via next@15 / eslint / sharp toolchain — review on dependency bump; remove when patched."
+  "_note": "Transitive via next@15.5.24 / eslint / sharp toolchain — Next RCE GHSA-p293 and GHSA-2xp9 patched by 15.5.24; remaining sharp/postcss/js-yaml/nanoid are pinned by Next/eslint. Review on dependency bump; remove when patched."
 }

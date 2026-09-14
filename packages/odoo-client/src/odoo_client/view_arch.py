@@ -24,9 +24,13 @@ class FieldNode(BaseModel):
     string: str | None = None
     required: bool | str | None = None
     readonly: bool | str | None = None
-    invisible: str | None = None  # domain / expr
+    invisible: bool | str | None = None  # True / domain / expr
     widget: str | None = None
     options: str | None = None  # JSON string for widget options (e.g. image size)
+    help: str | None = None  # view-layer tooltip (help=)
+    placeholder: str | None = None
+    class_name: str | None = None  # XML class= on <field>
+    groups: str | None = None  # comma-separated xml ids, optional ! prefix
 
 
 class ButtonNode(BaseModel):
@@ -274,6 +278,41 @@ def _parse_bool_attr(raw: str | None) -> bool | None:
     return None
 
 
+def _opt_xml_attr(el: Element, name: str) -> str | None:
+    raw = el.get(name)
+    if raw is None:
+        return None
+    stripped = raw.strip()
+    return stripped or None
+
+
+def _write_field_element(el: Element, node: FieldNode, *, major: int, set_name: bool = True) -> None:
+    """Apply FieldNode view-layer attrs onto an XML <field> element."""
+    if set_name:
+        el.set("name", (node.name or "").strip())
+    if node.string:
+        el.set("string", node.string)
+    for key, val in emit_field_modifiers(
+        major=major,
+        required=node.required,
+        readonly=node.readonly,
+        invisible=node.invisible,
+    ).items():
+        el.set(key, val)
+    if node.widget:
+        el.set("widget", node.widget)
+    if node.options:
+        el.set("options", node.options)
+    if node.help:
+        el.set("help", node.help)
+    if node.placeholder:
+        el.set("placeholder", node.placeholder)
+    if node.class_name:
+        el.set("class", node.class_name)
+    if node.groups:
+        el.set("groups", node.groups)
+
+
 def _render_node(parent: Element, node: ViewNode, *, major: int = 19) -> None:
     if isinstance(node, FieldNode):
         name = (node.name or "").strip()
@@ -282,20 +321,7 @@ def _render_node(parent: Element, node: ViewNode, *, major: int = 19) -> None:
             # flattened nested <group> nodes into empty field placeholders).
             return
         el = SubElement(parent, "field")
-        el.set("name", name)
-        if node.string:
-            el.set("string", node.string)
-        for key, val in emit_field_modifiers(
-            major=major,
-            required=node.required,
-            readonly=node.readonly,
-            invisible=node.invisible,
-        ).items():
-            el.set(key, val)
-        if node.widget:
-            el.set("widget", node.widget)
-        if node.options:
-            el.set("options", node.options)
+        _write_field_element(el, node, major=major)
         return
 
     if isinstance(node, ButtonNode):
@@ -791,13 +817,9 @@ def render_inherit_field_arch(
     parent = parent_arch or ""
 
     if vt == "form":
-        # Prefer first <group> so Odoo renders field labels (sheet children often look bare).
-        if "<group" in parent:
-            expr = "//group[1]"
-        elif "<sheet" in parent or not parent:
-            expr = "//sheet"
-        else:
-            expr = "//form"
+        from odoo_client.xpath_locator import semantic_inject_expr
+
+        expr = semantic_inject_expr(parent or None, "form")
         return (
             "<data>\n"
             f'  <xpath expr="{expr}" position="inside">\n'
@@ -877,16 +899,20 @@ def _parse_field_el(el: Element) -> FieldNode:
     else:
         required = _parse_modifier_attr(el.get("required"))
         readonly = _parse_modifier_attr(el.get("readonly"))
-        invisible = el.get("invisible")
+        invisible = _parse_modifier_attr(el.get("invisible"))
 
     return FieldNode(
         name=el.get("name") or "",
-        string=el.get("string"),
+        string=_opt_xml_attr(el, "string"),
         required=required,
         readonly=readonly,
         invisible=invisible,
-        widget=el.get("widget"),
-        options=el.get("options"),
+        widget=_opt_xml_attr(el, "widget"),
+        options=_opt_xml_attr(el, "options"),
+        help=_opt_xml_attr(el, "help"),
+        placeholder=_opt_xml_attr(el, "placeholder"),
+        class_name=_opt_xml_attr(el, "class"),
+        groups=_opt_xml_attr(el, "groups"),
     )
 
 
@@ -1435,20 +1461,7 @@ def render_inherit_replace_arch(view_type: str, inner_arch: str) -> str:
 
 def _field_xml(node: FieldNode, *, major: int = 19) -> str:
     el = Element("field")
-    el.set("name", (node.name or "").strip())
-    if node.string:
-        el.set("string", node.string)
-    for key, val in emit_field_modifiers(
-        major=major,
-        required=node.required,
-        readonly=node.readonly,
-        invisible=node.invisible,
-    ).items():
-        el.set(key, val)
-    if node.widget:
-        el.set("widget", node.widget)
-    if node.options:
-        el.set("options", node.options)
+    _write_field_element(el, node, major=major)
     return tostring(el, encoding="unicode")
 
 
@@ -1776,31 +1789,11 @@ def render_inherit_smart_buttons_arch(
     )
 
 
-def validate_xpath_arch(arch: str) -> list[str]:
+def validate_xpath_arch(arch: str, *, parent_arch: str | None = None) -> list[str]:
     """Return human-readable issues for an inherit xpath arch (best-effort)."""
-    from xml.etree.ElementTree import ParseError, fromstring
+    from odoo_client.xpath_locator import classify_xpath_arch
 
-    issues: list[str] = []
-    try:
-        root = fromstring(arch)
-    except ParseError as exc:
-        return [f"Invalid XML: {exc}"]
-    if root.tag not in {"data", "xpath"}:
-        issues.append(f"Root should be <data> or <xpath>, got <{root.tag}>")
-    xpaths = root.findall(".//xpath") if root.tag == "data" else (
-        [root] if root.tag == "xpath" else []
-    )
-    if not xpaths:
-        issues.append("No <xpath> elements found")
-    for xp in xpaths:
-        if not (xp.get("expr") or "").strip():
-            issues.append("xpath missing expr attribute")
-        pos = xp.get("position") or "inside"
-        if pos not in {"inside", "after", "before", "replace", "attributes", "move"}:
-            issues.append(f"Unusual xpath position={pos!r}")
-        if pos != "move" and not list(xp) and not (xp.text or "").strip():
-            issues.append("xpath body is empty")
-    return issues
+    return [item.as_text() for item in classify_xpath_arch(arch, parent_arch=parent_arch)]
 
 
 def _xml_attr(value: str) -> str:
@@ -1892,15 +1885,102 @@ def render_overlay_move_arch(
     field_expr: str,
     anchor_expr: str,
     *,
-    position: Literal["before", "after"],
+    position: Literal["before", "after", "inside"],
 ) -> str:
     return (
         "<data>\n"
-        f'  <xpath expr="{anchor_expr.strip()}" position="{position}">\n'
-        f'    <xpath expr="{field_expr.strip()}" position="move"/>\n'
+        f'  <xpath expr="{_xml_attr(anchor_expr.strip())}" position="{position}">\n'
+        f'    <xpath expr="{_xml_attr(field_expr.strip())}" position="move"/>\n'
         "  </xpath>\n"
         "</data>"
     )
+
+
+def _unique_x_name(prefix: str, label: str, parent_arch: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", (label or "").lower()).strip("_")[:32] or "new"
+    base = f"{prefix}_{slug}"
+    if f'name="{base}"' not in parent_arch and f"name='{base}'" not in parent_arch:
+        return base
+    for idx in range(2, 50):
+        cand = f"{base}_{idx}"
+        if f'name="{cand}"' not in parent_arch and f"name='{cand}'" not in parent_arch:
+            return cand
+    return f"{base}_{len(parent_arch) % 997}"
+
+
+def _page_body_xml(label: str, *, page_name: str, field_name: str | None) -> str:
+    inner = (
+        f'<field name="{_xml_attr(field_name)}"/>' if field_name and field_name.strip() else ""
+    )
+    return (
+        f'<page name="{_xml_attr(page_name)}" string="{_xml_attr(label)}">'
+        f"<group>{inner}</group>"
+        "</page>"
+    )
+
+
+def render_overlay_add_page_arch(
+    *,
+    string: str,
+    parent_arch: str | None = None,
+    expr: str | None = None,
+    field_name: str | None = None,
+) -> str:
+    """Inject a notebook page (or a notebook+page when the form has none)."""
+    from odoo_client.xpath_locator import (
+        count_xpath_matches,
+        semantic_notebook_expr,
+    )
+
+    label = (string or "").strip()
+    if not label:
+        raise ValueError("page string is required")
+    parent = parent_arch or ""
+    inject = (expr or "").strip()
+    targets_notebook = "notebook" in inject
+    if not inject:
+        notebook = semantic_notebook_expr(parent or None)
+        if notebook:
+            inject = notebook
+            targets_notebook = True
+        elif parent and count_xpath_matches(parent, "//sheet") == 1:
+            inject = "//sheet"
+        elif parent and count_xpath_matches(parent, "//form") == 1:
+            inject = "//form"
+        else:
+            inject = "//sheet"
+            targets_notebook = False
+    page_name = _unique_x_name("x_page", label, parent)
+    first = field_name.strip() if field_name else None
+    page_xml = _page_body_xml(label, page_name=page_name, field_name=first)
+    body = page_xml if targets_notebook else f"<notebook>{page_xml}</notebook>"
+    return render_inherit_xpath_arch(expr=inject, position="inside", body_xml=body)
+
+
+def render_overlay_add_group_arch(
+    *,
+    string: str,
+    parent_arch: str | None = None,
+    expr: str | None = None,
+    position: Literal["before", "after", "inside"] = "inside",
+    field_name: str | None = None,
+) -> str:
+    """Inject a named group into sheet / page / group using a semantic locator."""
+    from odoo_client.xpath_locator import semantic_inject_expr
+
+    label = (string or "").strip()
+    if not label:
+        raise ValueError("group string is required")
+    parent = parent_arch or ""
+    inject = (expr or "").strip() or semantic_inject_expr(parent or None, "form")
+    group_name = _unique_x_name("x_group", label, parent)
+    inner = (
+        f'<field name="{_xml_attr(field_name)}"/>' if field_name and field_name.strip() else ""
+    )
+    body = (
+        f'<group name="{_xml_attr(group_name)}" string="{_xml_attr(label)}">{inner}</group>'
+    )
+    return render_inherit_xpath_arch(expr=inject, position=position, body_xml=body)
 
 
 def render_overlay_group_label_arch(
@@ -1931,7 +2011,7 @@ def render_overlay_operation_arch(
     view_type: str,
     field_name: str | None = None,
     anchor_expr: str | None = None,
-    move_position: Literal["before", "after"] | None = None,
+    move_position: Literal["before", "after", "inside"] | None = None,
     add_field_name: str | None = None,
     add_position: Literal["before", "after", "inside"] = "after",
     string: str | None = None,
@@ -1939,6 +2019,7 @@ def render_overlay_operation_arch(
     help_text: str | None = None,
     widget: str | None = None,
     label_target: Literal["field", "group", "page"] = "field",
+    parent_arch: str | None = None,
 ) -> str:
     """Build a single-operation inherit ``<data>`` arch for the live overlay editor."""
     op = operation.strip()
@@ -1966,11 +2047,19 @@ def render_overlay_operation_arch(
     if op == "add_field":
         if not add_field_name:
             raise ValueError("add_field_name is required")
-        anchor = anchor_expr or expr
+        from odoo_client.xpath_locator import semantic_inject_expr
+
+        vt = "list" if view_type == "tree" else view_type
+        anchor = (anchor_expr or expr or "").strip()
+        if not anchor:
+            anchor = semantic_inject_expr(parent_arch, vt)
+        pos = add_position
+        if vt in {"kanban", "search"} and not (anchor_expr or expr):
+            pos = "inside"
         return render_overlay_add_field_arch(
             anchor,
             field_name=add_field_name,
-            position=add_position,
+            position=pos,
             widget=widget,
         )
     if op == "move":
@@ -1981,4 +2070,23 @@ def render_overlay_operation_arch(
         if not field_name or not string:
             raise ValueError("group_label requires field_name and string")
         return render_overlay_group_label_arch(field_name, string=string, target="group")
+    if op == "add_page":
+        if not string:
+            raise ValueError("add_page requires string")
+        return render_overlay_add_page_arch(
+            string=string,
+            parent_arch=parent_arch,
+            expr=expr or None,
+            field_name=add_field_name or field_name,
+        )
+    if op == "add_group":
+        if not string:
+            raise ValueError("add_group requires string")
+        return render_overlay_add_group_arch(
+            string=string,
+            parent_arch=parent_arch,
+            expr=expr or None,
+            position=add_position if add_position in {"before", "after", "inside"} else "inside",
+            field_name=add_field_name,
+        )
     raise ValueError(f"Unsupported overlay operation: {operation!r}")

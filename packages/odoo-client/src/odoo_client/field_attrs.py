@@ -63,13 +63,13 @@ def emit_field_modifiers(
     major: int,
     required: bool | str | None = None,
     readonly: bool | str | None = None,
-    invisible: str | None = None,
+    invisible: bool | str | None = None,
 ) -> dict[str, str]:
     """Return XML attributes for a field node."""
     out: dict[str, str] = {}
     req_val, req_bool = _norm_modifier(required)
     ro_val, ro_bool = _norm_modifier(readonly)
-    inv_val = invisible.strip() if isinstance(invisible, str) and invisible.strip() else None
+    inv_val, inv_bool = _norm_modifier(invisible)
 
     if major <= 16:
         attrs: dict[str, Any] = {}
@@ -81,7 +81,9 @@ def emit_field_modifiers(
             attrs["readonly"] = True
         elif ro_val and not ro_bool:
             attrs["readonly"] = _parse_domain(ro_val) if _is_domain_literal(ro_val) else ro_val
-        if inv_val:
+        if inv_val == "1":
+            attrs["invisible"] = True
+        elif inv_val and not inv_bool:
             attrs["invisible"] = _parse_domain(inv_val) if _is_domain_literal(inv_val) else inv_val
         if attrs:
             out["attrs"] = _attrs_literal(attrs)
@@ -100,6 +102,8 @@ def emit_field_modifiers(
         out["readonly"] = "1"
     elif ro_val and not ro_bool:
         out["readonly"] = _domain_to_expr(ro_val)
-    if inv_val:
+    if inv_val == "1":
+        out["invisible"] = "1"
+    elif inv_val and not inv_bool:
         out["invisible"] = _domain_to_expr(inv_val)
     return out

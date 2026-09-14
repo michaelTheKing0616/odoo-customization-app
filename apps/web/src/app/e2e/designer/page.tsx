@@ -297,8 +297,7 @@ function DesignerHarnessInner() {
               <h2 className="mb-2 text-sm font-semibold text-[var(--odoo-primary-light)]">
                 Odoo-style canvas
               </h2>
-              <PreviewThemeScope previewVars={MOCK_PREVIEW_VARS}>
-              <OdooPreviewScope showBanner>
+              <OdooPreviewScope showBanner previewVars={MOCK_PREVIEW_VARS}>
               <FormCanvas
                 title={title}
                 statusbar="x_stage"
@@ -342,7 +341,6 @@ function DesignerHarnessInner() {
                 }}
               />
               </OdooPreviewScope>
-              </PreviewThemeScope>
             </div>
             <PropsInspector title="Field properties">
               {selectedMeta ? (
@@ -384,7 +382,7 @@ function DesignerHarnessInner() {
               <h2 className="mb-2 text-sm font-semibold text-[var(--odoo-primary-light)]">
                 List columns
               </h2>
-              <OdooPreviewScope showBanner={false}>
+              <OdooPreviewScope showBanner={false} previewVars={MOCK_PREVIEW_VARS}>
                 <OdooListView
                   view={{
                     type: "list",
