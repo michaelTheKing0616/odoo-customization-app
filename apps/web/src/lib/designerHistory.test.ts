@@ -100,7 +100,7 @@ describe("designerHistory", () => {
   });
 
   it("ignores a push that equals the present snapshot", () => {
-    let state = resetDesignerHistory<Snap>({ n: 1 });
+    const state = resetDesignerHistory<Snap>({ n: 1 });
     const same = pushDesignerHistory(state, { n: 1 }, { now: 1 });
     expect(same).toBe(state);
   });
