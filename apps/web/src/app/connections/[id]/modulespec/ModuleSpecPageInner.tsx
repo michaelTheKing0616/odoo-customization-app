@@ -1,20 +1,24 @@
 "use client";
 
 import { useParams, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { Callout } from "@/components/ui/Callout";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
-import { PageHeader } from "@/components/ui/layout-primitives";
-import {
-  ModuleSpecDoc,
-  ModuleSpecEditor,
-} from "@/components/ModuleSpecEditor";
+import { ModuleSpecEditor, type ModuleSpecDoc } from "@/components/ModuleSpecEditor";
+import { ModuleSpecApplyBar } from "@/components/modulespec/ModuleSpecApplyBar";
+import { ModuleSpecHandoffBar } from "@/components/modulespec/ModuleSpecHandoffBar";
+import { ModuleSpecHonestyBanners } from "@/components/modulespec/ModuleSpecHonestyBanners";
+import { ModuleSpecIdentityCard } from "@/components/modulespec/ModuleSpecIdentityCard";
+import { ModuleSpecReadiness } from "@/components/modulespec/ModuleSpecReadiness";
+import { ModuleSpecSessionBar } from "@/components/modulespec/ModuleSpecSessionBar";
+import { ModuleSpecShell } from "@/components/modulespec/ModuleSpecShell";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import {
   api,
   ConfirmationRequiredError,
   Connection,
+  type ValidateLiveResult,
 } from "@/lib/api";
 import { pollJob } from "@/lib/jobs";
 import {
@@ -25,6 +29,26 @@ import {
   scaffoldOptsFromSpec,
   connectionSupports,
 } from "@/lib/capabilities";
+import { isStockReuseDraft } from "@/lib/draft-form-preview";
+import { viewDesignerHref } from "@/lib/builderForm";
+import {
+  cloneModuleSpec,
+  emptyModuleSpec,
+} from "@/lib/modulespec-types";
+import {
+  completenessNote,
+  downloadZipBase64,
+  hasModuleSpecContent,
+  isSpecDirty,
+  localReadiness,
+  moduleSpecErrorTitle,
+  moduleSpecJourneyFromState,
+  moduleSpecSessionState,
+  moduleSpecSummary,
+  primaryDesignerModel,
+  sessionSubmitHint,
+  type ModuleSpecBusy,
+} from "@/lib/modulespec-journey";
 import { odooMenuUrl, odooViewUrl } from "@/lib/odoo-urls";
 
 const CONFIRM_PHRASE = "I understand the risks";
@@ -37,25 +61,23 @@ export default function ModuleSpecPageInner() {
   const projectId = search.get("project");
 
   const [connection, setConnection] = useState<Connection | null>(null);
-  const [spec, setSpec] = useState<ModuleSpecDoc>({
-    technical_name: "custom_app",
-    display_name: "Custom App",
-    depends: ["base"],
-    models: [],
-  });
+  const [spec, setSpec] = useState<ModuleSpecDoc>(emptyModuleSpec());
+  const [baseline, setBaseline] = useState<ModuleSpecDoc>(emptyModuleSpec());
   const [hydrated, setHydrated] = useState(false);
   const sessionHydratedRef = useRef(false);
   const [projectName, setProjectName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<ModuleSpecBusy>(null);
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
   const [genConfirmOpen, setGenConfirmOpen] = useState(false);
   const [canDevCode, setCanDevCode] = useState(false);
-  const [lintBusy, setLintBusy] = useState(false);
-  const [sandboxBusy, setSandboxBusy] = useState(false);
   const [odooAppUrl, setOdooAppUrl] = useState<string | null>(null);
   const [walkthroughConfirmOpen, setWalkthroughConfirmOpen] = useState(false);
+  const [savedOnce, setSavedOnce] = useState(Boolean(projectId));
+  const [applied, setApplied] = useState(false);
+  const [liveResult, setLiveResult] = useState<ValidateLiveResult | null>(null);
+  const [failed, setFailed] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -63,13 +85,14 @@ export default function ModuleSpecPageInner() {
       const conn = await api.getConnection(connectionId);
       setConnection(conn);
       if (projectId) {
-        const p = await api.getProject(connectionId, projectId);
-        setProjectName(p.name);
-        setSpec((p.spec_json || {}) as ModuleSpecDoc);
+        const project = await api.getProject(connectionId, projectId);
+        setProjectName(project.name);
+        const next = (project.spec_json || emptyModuleSpec()) as ModuleSpecDoc;
+        setSpec(next);
+        setBaseline(cloneModuleSpec(next));
+        setSavedOnce(true);
         return;
       }
-      // Hydrate from session only once — re-running would remount inputs mid-typing
-      // and overwrite in-progress edits (focus lost after each character).
       if (!sessionHydratedRef.current) {
         sessionHydratedRef.current = true;
         try {
@@ -77,11 +100,12 @@ export default function ModuleSpecPageInner() {
           if (raw) {
             const parsed = JSON.parse(raw) as ModuleSpecDoc;
             setSpec(parsed);
+            setBaseline(cloneModuleSpec(parsed));
             const modelCount = Array.isArray(parsed.models) ? parsed.models.length : 0;
             setNotice(
               modelCount > 0
                 ? `Restored ModuleSpec from this browser session (${modelCount} model(s)).`
-                : "Restored session draft — but it has 0 models. Go back to Wizard, re-draft, then Open in ModuleSpec again.",
+                : "Restored session draft — but it has 0 models. Go back to Draft Studio, re-draft, then Open ModuleSpec again.",
             );
           }
         } catch {
@@ -102,11 +126,10 @@ export default function ModuleSpecPageInner() {
     load().catch((err: Error) => {
       setError(err.message);
       setHydrated(true);
+      setFailed(true);
     });
   }, [load]);
 
-  // Do not persist until load() finishes — otherwise the empty default
-  // { models: [] } overwrites the Wizard AI draft in sessionStorage.
   useEffect(() => {
     if (!hydrated || projectId) return;
     try {
@@ -116,8 +139,12 @@ export default function ModuleSpecPageInner() {
     }
   }, [spec, connectionId, projectId, hydrated]);
 
+  useEffect(() => {
+    setLiveResult(null);
+  }, [spec]);
+
   async function onSaveProject() {
-    setBusy(true);
+    setBusy("save");
     setError(null);
     setNotice(null);
     try {
@@ -126,6 +153,8 @@ export default function ModuleSpecPageInner() {
           spec_json: spec as Record<string, unknown>,
         });
         setNotice("Project ModuleSpec saved.");
+        setBaseline(cloneModuleSpec(spec));
+        setSavedOnce(true);
       } else {
         const created = await api.createProject(connectionId, {
           name: String(spec.display_name || "ModuleSpec draft"),
@@ -136,32 +165,34 @@ export default function ModuleSpecPageInner() {
         window.location.href = `/connections/${connectionId}/modulespec?project=${created.id}`;
       }
     } catch (err) {
+      setFailed(true);
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
   async function onImportFile(file: File) {
-    setBusy(true);
+    setBusy("import");
     setError(null);
     setNotice(null);
     try {
       const res = await api.importModuleSpec(file);
-      setSpec(res.spec as ModuleSpecDoc);
+      const next = res.spec as ModuleSpecDoc;
+      setSpec(next);
       setImportWarnings(res.warnings || []);
-      setNotice(
-        `Imported (${res.source}): review models/unmapped, then save or Generate UI.`,
-      );
+      setNotice(`Imported (${res.source}): review models and unmapped blocks, then validate.`);
+      setFailed(false);
     } catch (err) {
+      setFailed(true);
       setError(err instanceof Error ? err.message : "Import failed");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
   async function onGenerateUi(phrase: string) {
-    setBusy(true);
+    setBusy("apply");
     setError(null);
     try {
       const res = await api.applyModuleSpec(connectionId, {
@@ -171,6 +202,9 @@ export default function ModuleSpecPageInner() {
       });
       setGenConfirmOpen(false);
       setNotice(res.message);
+      setApplied(true);
+      setFailed(false);
+      setBaseline(cloneModuleSpec(spec));
       const menuId = res.root_menu_id;
       const appUrl =
         menuId && connection?.url
@@ -181,18 +215,19 @@ export default function ModuleSpecPageInner() {
       setOdooAppUrl(appUrl);
       if (res.warnings?.length) setImportWarnings(res.warnings);
     } catch (err) {
+      setFailed(true);
       if (err instanceof ConfirmationRequiredError) {
         setError(err.warning);
       } else {
         setError(err instanceof Error ? err.message : "Generate UI failed");
       }
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
   async function onSeedWalkthrough(phrase: string) {
-    setBusy(true);
+    setBusy("walkthrough");
     setError(null);
     try {
       const res = await api.seedModuleSpecWalkthrough(connectionId, {
@@ -202,6 +237,7 @@ export default function ModuleSpecPageInner() {
       });
       setWalkthroughConfirmOpen(false);
       setNotice(res.message);
+      setFailed(false);
       if (res.warnings?.length) setImportWarnings(res.warnings);
       if (res.open_model && res.open_record_id && connection?.url) {
         setOdooAppUrl(
@@ -209,50 +245,74 @@ export default function ModuleSpecPageInner() {
         );
       }
     } catch (err) {
+      setFailed(true);
       if (err instanceof ConfirmationRequiredError) {
         setError(err.warning);
       } else {
         setError(err instanceof Error ? err.message : "Walkthrough seed failed");
       }
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
   useEffect(() => {
-    api.accountMe().then((me) => {
-      const role = me.workspace?.role ?? "";
-      setCanDevCode(
-        me.user.is_superadmin || role === "developer" || role === "admin" || role === "owner",
-      );
-    }).catch(() => setCanDevCode(false));
+    api
+      .accountMe()
+      .then((me) => {
+        const role = me.workspace?.role ?? "";
+        setCanDevCode(
+          me.user.is_superadmin || role === "developer" || role === "admin" || role === "owner",
+        );
+      })
+      .catch(() => setCanDevCode(false));
   }, []);
 
   async function onLintBlocks() {
-    setLintBusy(true);
+    setBusy("lint");
     setError(null);
     try {
       const res = await api.lintModuleSpecBlocks(connectionId, spec as Record<string, unknown>);
       if (res.ok) {
         setNotice("Lint passed for all custom code blocks.");
+        setFailed(false);
       } else {
         setImportWarnings(
-          (res.blocks || [])
-            .flatMap((b: { issues?: { message: string }[]; source_file?: string }) =>
-              (b.issues || []).map((i) => `${b.source_file}: ${i.message}`),
-            ),
+          (res.blocks || []).flatMap((block: { issues?: { message: string }[]; source_file?: string }) =>
+            (block.issues || []).map((issue) => `${block.source_file}: ${issue.message}`),
+          ),
         );
+        setFailed(true);
         setError("Lint found issues in custom code blocks.");
       }
     } catch (err) {
+      setFailed(true);
       setError(err instanceof Error ? err.message : "Lint failed");
     } finally {
-      setLintBusy(false);
+      setBusy(null);
+    }
+  }
+
+  async function onValidateLive() {
+    setBusy("validate");
+    setError(null);
+    try {
+      const res = await api.validateModuleSpecLive(connectionId, {
+        spec: spec as Record<string, unknown>,
+      });
+      setLiveResult(res);
+      setFailed(!res.ok);
+      setNotice(res.message || (res.ok ? "Live validate passed." : "Live validate found issues."));
+    } catch (err) {
+      setFailed(true);
+      setError(err instanceof Error ? err.message : "Validation failed");
+    } finally {
+      setBusy(null);
     }
   }
 
   async function onExportSandbox() {
-    setSandboxBusy(true);
+    setBusy("sandbox");
     setError(null);
     setNotice(null);
     try {
@@ -265,14 +325,40 @@ export default function ModuleSpecPageInner() {
         const result = job.result as Record<string, unknown> | undefined;
         if (result?.ok) {
           setNotice(`Sandbox passed — validation ${String(result.validation_id ?? "recorded")}`);
+          setFailed(false);
         } else {
+          setFailed(true);
           setError(String((result?.sandbox as { message?: string })?.message ?? "Sandbox failed"));
         }
       }
     } catch (err) {
+      setFailed(true);
       setError(err instanceof Error ? err.message : "Export/sandbox failed");
     } finally {
-      setSandboxBusy(false);
+      setBusy(null);
+    }
+  }
+
+  async function onDownloadZip() {
+    setBusy("zip");
+    setError(null);
+    try {
+      const res = await api.exportModuleSpecZip(connectionId, {
+        spec: spec as Record<string, unknown>,
+      });
+      if (!res.zip_base64) {
+        setFailed(true);
+        setError("Zip export returned no file.");
+        return;
+      }
+      downloadZipBase64(String(spec.technical_name || res.module || "custom_module"), res.zip_base64);
+      setNotice("Module zip downloaded. Sandbox-prove before promote — promote stays human.");
+      setFailed(false);
+    } catch (err) {
+      setFailed(true);
+      setError(err instanceof Error ? err.message : "Zip export failed");
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -282,140 +368,120 @@ export default function ModuleSpecPageInner() {
   const canApply = scaffoldApplyAllowed(connection, applyOpts);
   const applyBlocked = scaffoldApplyBlockedReason(connection, applyOpts);
   const barcodeModuleAllowed = connectionSupports(connection, "barcode_scan_module");
+  const stockReuse = isStockReuseDraft(spec as Record<string, unknown>);
+  const summary = moduleSpecSummary(spec);
+  const hasContent = hasModuleSpecContent(spec);
+  const dirty = isSpecDirty(spec, baseline);
+  const sessionState = moduleSpecSessionState({ dirty, savedOnce, applied });
+  const readiness = useMemo(() => localReadiness(spec), [spec]);
+  const journey = moduleSpecJourneyFromState({
+    hydrated,
+    hasContent,
+    busy,
+    hasLiveValidation: Boolean(liveResult),
+    applied,
+    failed,
+  });
+  const designerModel = primaryDesignerModel(spec);
+  const designerHref = viewDesignerHref(connectionId, designerModel || "");
 
   return (
-    <div className="mx-auto max-w-6xl" data-testid="modulespec-page">
-      <PageHeader
-        title="ModuleSpec"
-        description="The same contract as the wizard JSON — models, views, menus, and workflows. Generate UI writes the Operations / Inventory / People tree. Then Open app in Odoo — you do not pick models one by one."
-      />
+    <ModuleSpecShell
+      connectionId={connectionId}
+      connectionName={connection?.name}
+      projectName={projectName}
+      journey={journey}
+    >
       <VersionAwarenessBanner capabilities={connection?.capabilities} />
-      {(applyBlocked || saveBlocked) ? (
-        <Callout variant="warning" title="Blocked" className="mt-4">
-          {applyBlocked ?? saveBlocked}
-        </Callout>
+      <ModuleSpecHonestyBanners
+        applyBlocked={applyBlocked}
+        saveBlocked={saveBlocked}
+        stockReuse={stockReuse}
+        completenessNote={completenessNote(spec)}
+      />
+      {error ? (
+        <ErrorNotice message={error} title={moduleSpecErrorTitle(error)} className="mt-0" />
       ) : null}
-
-      {error ? <ErrorNotice message={error} className="mt-4" /> : null}
       {notice ? (
-        <Callout variant="info" title="Notice" className="mt-4">
+        <Callout variant="info" title="Notice">
           <p>{notice}</p>
-          {odooAppUrl ? (
-            <p className="mt-2">
-              <a
-                href={odooAppUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                data-testid="open-app-in-odoo"
-                className="inline-flex bg-accent px-3 py-1.5 text-sm font-semibold text-white"
-              >
-                Open app in Odoo
-              </a>
-              <span className="ml-2 text-xs text-muted">
-                Opens the app root. Line items stay on parent forms.
-              </span>
-            </p>
-          ) : null}
         </Callout>
       ) : null}
-        {importWarnings.length > 0 && (
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-warning">
-            {importWarnings.slice(0, 10).map((w, i) => (
-              <li key={`${i}-${w}`}>{w}</li>
-            ))}
-          </ul>
-        )}
+      {importWarnings.length > 0 ? (
+        <ul className="list-disc space-y-1 pl-5 text-xs text-warning">
+          {importWarnings.slice(0, 10).map((warning, index) => (
+            <li key={`${index}-${warning}`}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
 
-        <div className="mt-6 flex flex-wrap items-center gap-3">
-          <label className="cursor-pointer border border-warning px-3 py-1.5 text-sm text-warning">
-            {busy ? "Working…" : "Import zip / .py / .xml / .meta.json"}
-            <input
-              type="file"
-              accept=".zip,.py,.xml,.json"
-              className="hidden"
-              disabled={busy}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void onImportFile(f);
-                e.target.value = "";
-              }}
-            />
-          </label>
-          <button
-            type="button"
-            disabled={busy || !canSave}
-            title={saveBlocked ?? undefined}
-            onClick={() => onSaveProject()}
-            className="border border-accent px-3 py-1.5 text-sm text-muted disabled:opacity-50"
-          >
-            {projectId ? "Save project" : "Save as project"}
-          </button>
-          <button
-            type="button"
-            disabled={
-              busy ||
-              !Array.isArray(spec.models) ||
-              spec.models.length === 0 ||
-              !canApply
-            }
-            title={applyBlocked ?? undefined}
-            onClick={() => setGenConfirmOpen(true)}
-            className="bg-accent px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-          >
-            Generate UI from ModuleSpec
-          </button>
-          {odooAppUrl ? (
-            <>
-              <a
-                href={odooAppUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="bg-accent px-3 py-1.5 text-sm font-semibold text-white"
-              >
-                Open app in Odoo
-              </a>
-              <button
-                type="button"
-                disabled={busy || !canApply}
-                onClick={() => setWalkthroughConfirmOpen(true)}
-                className="border border-accent px-3 py-1.5 text-sm text-muted disabled:opacity-50"
-              >
-                Load demo walkthrough
-              </button>
-            </>
-          ) : null}
-        </div>
+      <ModuleSpecSessionBar
+        sessionState={sessionState}
+        busy={busy !== null}
+        canDiscard={dirty}
+        submitLabel={sessionSubmitHint({ sessionState, projectId, applied })}
+        onDiscard={() => {
+          setSpec(cloneModuleSpec(baseline));
+          setFailed(false);
+          setNotice("Discarded unsaved edits.");
+        }}
+      />
 
-        {barcodeModuleAllowed ? (
-          <label className="mt-4 flex items-center gap-2 text-sm text-muted">
-            <input
-              type="checkbox"
-              checked={Boolean(spec.include_barcode_scan_widget)}
-              onChange={(e) =>
-                setSpec({ ...spec, include_barcode_scan_widget: e.target.checked })
-              }
-            />
-            Include exported <code className="text-xs">x_barcode_scan</code> OWL widget module
-            (our add-on — not native Odoo; Apache-2 ZXing attribution in README)
-          </label>
-        ) : (
-          <p className="mt-4 text-xs text-muted">
-            Exported barcode widget module is unavailable on Odoo Online — use Bulk Suite in-app
-            scanner instead.
-          </p>
-        )}
+      <ModuleSpecApplyBar
+        busy={busy}
+        canSave={canSave}
+        canApply={canApply && !readiness.applyBlocked}
+        canValidate={hasContent && !stockReuse}
+        hasModels={summary.models > 0}
+        hasContent={hasContent}
+        stockReuse={stockReuse}
+        projectId={projectId}
+        saveBlocked={saveBlocked}
+        applyBlocked={applyBlocked ?? (readiness.applyBlocked ? readiness.headline : null)}
+        odooAppUrl={odooAppUrl}
+        canDevCode={canDevCode}
+        onImportFile={onImportFile}
+        onSaveProject={() => void onSaveProject()}
+        onGenerateUi={() => setGenConfirmOpen(true)}
+        onDownloadZip={() => void onDownloadZip()}
+        onExportSandbox={canDevCode ? () => void onExportSandbox() : undefined}
+        onWalkthrough={odooAppUrl ? () => setWalkthroughConfirmOpen(true) : undefined}
+      />
 
-        <div className="mt-6">
-          <ModuleSpecEditor
-            value={spec}
-            onChange={setSpec}
-            canEditCustomCode={canDevCode}
-            onLintBlocks={canDevCode ? onLintBlocks : undefined}
-            onExportSandbox={canDevCode ? onExportSandbox : undefined}
-            lintBusy={lintBusy}
-            sandboxBusy={sandboxBusy}
-          />
-        </div>
+      <ModuleSpecIdentityCard
+        value={spec}
+        barcodeModuleAllowed={barcodeModuleAllowed}
+        onChange={setSpec}
+      />
+
+      <ModuleSpecReadiness
+        report={readiness}
+        live={liveResult}
+        validating={busy === "validate"}
+        canValidate={hasContent && !stockReuse && busy === null}
+        validateBlocked={stockReuse ? "Stock reuse has nothing to validate on this IR" : null}
+        onValidate={() => void onValidateLive()}
+      />
+
+      <ModuleSpecEditor
+        value={spec}
+        onChange={setSpec}
+        canEditCustomCode={canDevCode}
+        onLintBlocks={canDevCode ? () => void onLintBlocks() : undefined}
+        onExportSandbox={canDevCode ? () => void onExportSandbox() : undefined}
+        lintBusy={busy === "lint"}
+        sandboxBusy={busy === "sandbox"}
+        designerHref={designerHref}
+      />
+
+      <ModuleSpecHandoffBar
+        connectionId={connectionId}
+        designerHref={designerHref}
+        designerModel={designerModel}
+        stockReuse={stockReuse}
+        applied={applied}
+        odooAppUrl={odooAppUrl}
+      />
 
       <ConfirmDialogV2
         open={genConfirmOpen}
@@ -429,7 +495,7 @@ export default function ModuleSpecPageInner() {
           "Automations remain review-only",
         ]}
         phrase={CONFIRM_PHRASE}
-        busy={busy}
+        busy={busy === "apply"}
         onCancel={() => setGenConfirmOpen(false)}
         onConfirm={onGenerateUi}
       />
@@ -443,10 +509,10 @@ export default function ModuleSpecPageInner() {
           "Prefer sandbox first",
         ]}
         phrase={CONFIRM_PHRASE}
-        busy={busy}
+        busy={busy === "walkthrough"}
         onCancel={() => setWalkthroughConfirmOpen(false)}
         onConfirm={onSeedWalkthrough}
       />
-    </div>
+    </ModuleSpecShell>
   );
 }
