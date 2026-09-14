@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@/components/ui/Button";
-import { Kbd } from "@/components/ui/layout-primitives";
 import { expertComposerPlaceholder } from "@/lib/expert-journey";
 
 type ExpertComposerProps = {
@@ -65,10 +64,7 @@ export function ExpertComposer({
         data-testid="expert-input"
       />
       <div className="mt-2 flex items-center justify-between gap-2">
-        <p className="text-[11px] text-muted">
-          <Kbd>⌘</Kbd>
-          <Kbd>↵</Kbd> to send. Expert never auto-promotes.
-        </p>
+        <p className="text-[11px] text-muted">⌘ Enter to send. Expert never auto-promotes.</p>
         <Button type="submit" variant="primary" loading={busy} disabled={!value.trim()}>
           Ask Expert
         </Button>

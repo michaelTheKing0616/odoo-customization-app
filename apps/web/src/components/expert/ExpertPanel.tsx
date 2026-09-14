@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Sheet } from "@/components/ui/Sheet";
 import { useShell } from "@/context/ShellContext";
 import { api } from "@/lib/api";
-import { buildExpertAskPayload, formatExpertDiagnosePrompt, isExpertSetupStackQuestion } from "@/lib/expert-prompt";
+import { buildExpertAskPayload, expertPrefillPrompt, isExpertSetupStackQuestion } from "@/lib/expert-prompt";
 import { EXPERT_HONESTY_LINE, formatExpertContextLabel } from "@/lib/expert-journey";
 import {
   clearExpertThread,
@@ -142,7 +142,7 @@ export function ExpertPanel() {
       seedResponse,
       seedQuestion,
     } = expertPrefill;
-    const prompt = formatExpertDiagnosePrompt(question, errorText);
+    const prompt = expertPrefillPrompt(question, errorText);
     setInput(prompt);
     setErrorPaste(errorText?.trim() ?? "");
     if (freshThread) {

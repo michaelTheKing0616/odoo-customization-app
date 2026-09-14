@@ -31,3 +31,9 @@ export function buildExpertAskPayload(mainInput: string, errorPaste: string): {
     pastedError: err,
   };
 }
+
+/** Prefill the composer. Only attach an Error log block when diagnose provided errorText. */
+export function expertPrefillPrompt(question: string, errorText?: string): string {
+  if (errorText === undefined) return (question || "").trim();
+  return formatExpertDiagnosePrompt(question, errorText);
+}

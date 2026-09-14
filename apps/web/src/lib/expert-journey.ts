@@ -38,13 +38,9 @@ export function expertSessionHint(opts: {
   contextEnabled: boolean;
   contextLabel: string | null;
 }): string {
-  if (!opts.contextEnabled) {
-    return "Page context is off. Answers use docs only unless you paste an error.";
-  }
-  if (opts.contextLabel) {
-    return `Using ${opts.contextLabel}. Completeness ≠ Cert ≠ Autopilot.`;
-  }
-  return "Page context is on. Completeness ≠ Cert ≠ Autopilot. Expert never auto-promotes.";
+  if (!opts.contextEnabled) return "Page context off";
+  if (opts.contextLabel) return `Using ${opts.contextLabel}`;
+  return "Page context on";
 }
 
 export function formatExpertContextLabel(

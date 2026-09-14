@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildExpertAskPayload,
+  expertPrefillPrompt,
   formatExpertDiagnosePrompt,
   isExpertSetupStackQuestion,
 } from "./expert-prompt";
@@ -41,6 +42,20 @@ describe("isExpertSetupStackQuestion", () => {
   it("treats module-stack asks as a fresh retrieval context", () => {
     expect(isExpertSetupStackQuestion("Which modules do I need for a law firm?")).toBe(true);
     expect(isExpertSetupStackQuestion("How does xpath inherit work?")).toBe(false);
+  });
+});
+
+describe("expertPrefillPrompt", () => {
+  it("does not attach a blank Error log for explain-this / ask-why", () => {
+    expect(expertPrefillPrompt("What does the x_status selection field control?")).toBe(
+      "What does the x_status selection field control?",
+    );
+  });
+
+  it("keeps the Error log block for diagnose prefills", () => {
+    expect(expertPrefillPrompt("Diagnose this error on my connection", "AccessError")).toContain(
+      "Error log:\nAccessError",
+    );
   });
 });
 
