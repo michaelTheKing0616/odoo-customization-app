@@ -107,6 +107,7 @@ what users expect from Odoo Studio **capability**, without copying Studio source
 - Instant feedback: optimistic UI + clear apply/error states from RPC.
 - Destructive actions: confirm + snapshot + show blast radius (records/views using field).
 - Visual density: one job per screen; view designer is the only heavy canvas.
+- Projects is versioned draft history (Draft / Apply / Snapshot / Rollback / Sandbox), not a CTA dump. Apply creates models/fields only; do not claim full rollback of created columns.
 - Vision-verify every designer milestone (`skills/vision-verify-ui.md`).
 
 ## v1 parity checklist (gate for "Studio-class")

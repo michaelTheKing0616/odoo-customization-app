@@ -4,17 +4,18 @@
 
 ## Last run
 - Date: 2026-09-14
-- **Shipped:** Premium ModuleSpec UX (surface 6) on `cursor/premium-modulespec-ux-e324` off Job Autopilot:
-  - Stage rail: load → edit → validate → apply
-  - Extracted chrome in `apps/web/src/components/modulespec/` + `modulespec-journey.ts`
-  - Structured models/views/menus/security; JSON is an escape hatch
-  - Local + live readiness; Generate UI / zip kept; Completeness ≠ Cert ≠ Autopilot
-- **Tests:** 20 vitest (journey + shell/rail/session/banners/readiness/handoff/editor) green
-- **Failed:** none. Browser verified on `/e2e/modulespec`.
+- **Shipped:** Premium Projects UX (surface 7) — PR off `cursor/premium-modulespec-ux-e324`
+  - Four-stage shell: browse → inspect → review → apply (`apps/web/src/components/projects/*`)
+  - Release board, elevated Review vs live diff, snapshot history + rollback CTAs
+  - Glossary: Draft / Apply / Promote / Snapshot / Rollback / Sandbox; Completeness ≠ Cert ≠ Autopilot
+  - Tests: `pnpm test src/lib/projects-journey.test.ts src/components/projects` (22 passing)
+- **Failed:** Live `/connections/{id}/projects` needs API + Odoo; verified harness `/e2e/projects` instead. Next overlay “1 Issue” is `/api/billing/entitlements` 502 in this VM, not Projects chrome.
+- **Rule:** Projects Apply creates models/fields only. Do not claim full rollback of created columns; snapshot restore is views/automations when Odoo allows.
 
 ## Next
-- Continue premium sweep only if asked (do not start Projects / Expert here)
-- Live Generate UI / validate-live still need a real connection + API
+- Operator: open `/connections/{id}/projects`, pick a draft, Review vs live, then Apply on a sandbox
+- Remaining premium sweep: Odoo Expert (not this run)
 
 ## Rule
-- ModuleSpec premium is a four-stage IR workbench. JSON stays secondary. Completeness is hygiene, not go-live. Promote stays human.
+- Opening balances never auto-post; inventory via dedicated stock.quant path only
+- Vision default-off in `.env.example`; local unlock ≠ EU commercial clearance
