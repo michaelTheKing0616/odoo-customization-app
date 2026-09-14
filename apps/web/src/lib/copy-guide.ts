@@ -21,7 +21,8 @@ export const EMPTY_STATES = {
     "Ask anything about Odoo or this instance. Answers cite their sources — and say so when they don't know.",
   journal:
     "Snapshots are restore points taken before risky changes. They appear here automatically — or take one now.",
-  projects: "Create a draft from a template or start blank, then edit in ModuleSpec.",
+  projects:
+    "Create a draft from a template or start blank, then review vs live and apply on a sandbox. Completeness is not go-live. Promote stays human.",
   moduleSpec:
     "Load a Draft Studio handoff, import a zip, or add an x_ model. Completeness is hygiene — not Certification or Autopilot.",
 } as const;
