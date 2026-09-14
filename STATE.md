@@ -4,17 +4,17 @@
 
 ## Last run
 - Date: 2026-09-14
-- **Shipped:** Premium Projects UX (surface 7) — PR off `cursor/premium-modulespec-ux-e324`
-  - Four-stage shell: browse → inspect → review → apply (`apps/web/src/components/projects/*`)
-  - Release board, elevated Review vs live diff, snapshot history + rollback CTAs
-  - Glossary: Draft / Apply / Promote / Snapshot / Rollback / Sandbox; Completeness ≠ Cert ≠ Autopilot
-  - Tests: `pnpm test src/lib/projects-journey.test.ts src/components/projects` (22 passing)
-- **Failed:** Live `/connections/{id}/projects` needs API + Odoo; verified harness `/e2e/projects` instead. Next overlay “1 Issue” is `/api/billing/entitlements` 502 in this VM, not Projects chrome.
-- **Rule:** Projects Apply creates models/fields only. Do not claim full rollback of created columns; snapshot restore is views/automations when Odoo allows.
+- **Shipped:** Premium Odoo Expert UX (surface 8) — PR off `cursor/premium-projects-ux-371f`
+  - Copilot drawer: header, context bar, thread, sources, caution flags, composer (`apps/web/src/components/expert/*`)
+  - `?expert=1` Overview destination card + inbound studio links
+  - Honesty: Completeness ≠ Cert ≠ Autopilot; Expert never auto-promotes
+  - Tests: vitest expert libs/components 28 passed; Playwright `expert-flows` + `shell-expert` 5 passed
+- **Failed:** First Playwright run lacked Chromium; installed browsers. Visual review caught blank Error log on explain-this — fixed.
+- **Rule:** `formatExpertDiagnosePrompt` is diagnose-only. Explain-this / Ask-why must not attach an empty Error log.
 
 ## Next
-- Operator: open `/connections/{id}/projects`, pick a draft, Review vs live, then Apply on a sandbox
-- Remaining premium sweep: Odoo Expert (not this run)
+- Parent coordinates world-class UAT (not this run)
+- Operator: `/connections/{id}?expert=1` and `/e2e/expert` (`NEXT_PUBLIC_E2E=1`)
 
 ## Rule
 - Opening balances never auto-post; inventory via dedicated stock.quant path only

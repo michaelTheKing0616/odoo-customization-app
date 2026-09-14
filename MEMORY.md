@@ -1,3 +1,8 @@
+### 2026-09-14 — Premium Expert UX is a copilot drawer
+**Decided:** Odoo Expert is a global Sheet copilot (Linear/Intercom chrome), not a chat widget. Completeness ≠ Cert ≠ Autopilot; Expert never applies, certifies, or auto-promotes. `/connections/{id}?expert=1` is an Overview destination card plus the open drawer. `formatExpertDiagnosePrompt` is diagnose-only — explain-this / ask-why must not attach a blank Error log.
+**Why:** Surface 8 (last build surface before UAT). Visual review of `/e2e/expert` showed explain-this sending `Error log:` with no error.
+**Rejected:** RAG ingest/retrieval/LLM rewrites; treating Expert as Job Autopilot; Enter-to-send (operators paste tracebacks — ⌘ Enter only).
+
 ### 2026-09-14 — Premium Projects UX (surface 7)
 **Decided:** Extract Projects into a four-stage release board (browse → inspect → review → apply). Session chrome is Draft / Applied / Archived. Diff is a change review (stats + sentence-case filters + DiffView). Snapshot history uses connection restore points with partial-column honesty. Cross-links: ModuleSpec, View Designer, change journal. Apply stays confirm-gated; Promote stays human. Completeness ≠ Cert ≠ Autopilot.
 **Why:** Designer → ModuleSpec set the elite bar; Projects was a table dump of CTAs (~387). Operators need versioned customization history, not a button row.
