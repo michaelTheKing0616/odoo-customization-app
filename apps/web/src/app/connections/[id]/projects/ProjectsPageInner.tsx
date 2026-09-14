@@ -39,6 +39,8 @@ import {
   applyRisks,
   applySnapshotNote,
   firstCustomModel,
+  projectApplyReviewBlocked,
+  projectCanApplyAfterReview,
   projectsErrorTitle,
   projectsHonestyGate,
   projectsJourneyFromState,
@@ -317,7 +319,13 @@ export default function ProjectsPageInner() {
         submitLabel={sessionSubmitHint({
           sessionState,
           hasDiff: Boolean(selectedDiff),
-          canApply: selected ? projectApplyAllowed(selected) : false,
+          canApply: selected
+            ? projectCanApplyAfterReview({
+                allowed: projectApplyAllowed(selected),
+                hasDiff: Boolean(selectedDiff),
+                archived: sessionState === "archived",
+              })
+            : false,
         })}
       />
 
@@ -383,12 +391,19 @@ export default function ProjectsPageInner() {
                 project={selected}
                 busy={busy}
                 canMutate={canMutate}
-                canApply={projectApplyAllowed(selected)}
-                applyBlocked={projectApplyBlocked(selected)}
+                canApply={projectCanApplyAfterReview({
+                  allowed: projectApplyAllowed(selected),
+                  hasDiff: Boolean(selectedDiff),
+                  archived: sessionState === "archived",
+                })}
+                applyBlocked={
+                  projectApplyReviewBlocked(Boolean(selectedDiff)) ?? projectApplyBlocked(selected)
+                }
                 mutateBlocked={mutateBlocked}
                 hasDiff={Boolean(selectedDiff)}
                 onReview={() => void onDiff(selected)}
                 onApply={() => {
+                  if (!selectedDiff) return;
                   setApplyTarget(selected);
                   setConfirmOpen(true);
                 }}

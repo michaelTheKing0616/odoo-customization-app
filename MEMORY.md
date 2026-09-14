@@ -1,3 +1,8 @@
+### 2026-09-14 — P0 UAT blockers: confirm live pack, honest Autopilot resume, one AI hero
+**Decided:** Access live pack HTTP route requires `I understand the risks` before `x_company_id` + global `ir.rule`. Job Autopilot reads the remembered job id (half-implemented write) so leave-and-return resumes or opens last result. Overview “Draft with AI” is App Studio; Draft Studio is secondary. Projects Apply waits for Review vs live. ModuleSpec chrome links Projects. Do not extract the 5.7k Designer page in this PR.
+**Why:** UAT `docs/UAT-PREMIUM-WORLD-CLASS.md` ranked these as founder-demo blockers / safety holds.
+**Rejected:** Mega Designer refactor; rewriting Autopilot executor; claiming world-class complete; putting confirm inside `apply_multi_company_live()` (templates already call it after their own path).
+
 ### 2026-09-14 — Premium chain UAT is chrome-only, mid-premium not world-class
 **Decided:** Score PR chain #3–#12 against Linear/Figma/Intercom/Stripe — not Studio cloning. Verdict: merge as premium chrome v1 (avg ~3.3/5). Expert is strongest; Designer production dump is weakest. This Cloud Agent had no Odoo — do not treat the report as live RPC proof.
 **Why:** Founder asked for a ruthless UAT scorecard before calling the chain world-class.

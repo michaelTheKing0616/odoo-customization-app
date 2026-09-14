@@ -2855,7 +2855,11 @@ export const api = {
       `/api/connections/${id}/access/multi-company/apply-draft`,
       { method: "POST", body: JSON.stringify({ draft }) },
     ),
-  applyMultiCompanyLive: (id: string, models: string[]) =>
+  applyMultiCompanyLive: (
+    id: string,
+    models: string[],
+    confirm?: { confirm_advanced?: boolean; confirm_phrase?: string | null },
+  ) =>
     request<{
       ok: boolean;
       models: string[];
@@ -2864,7 +2868,11 @@ export const api = {
       warnings: string[];
     }>(`/api/connections/${id}/access/multi-company/apply-live`, {
       method: "POST",
-      body: JSON.stringify({ models }),
+      body: JSON.stringify({
+        models,
+        confirm_advanced: confirm?.confirm_advanced ?? false,
+        confirm_phrase: confirm?.confirm_phrase ?? null,
+      }),
     }),
   previewViewArch: (id: string, view_type: string, spec: unknown) =>
     request<{ arch: string }>(`/api/connections/${id}/views/preview`, {

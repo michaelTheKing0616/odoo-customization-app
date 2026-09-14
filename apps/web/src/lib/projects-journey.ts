@@ -204,7 +204,20 @@ export function sessionSubmitHint(opts: {
   if (opts.sessionState === "applied") return "Review vs live, or open ModuleSpec to continue.";
   if (opts.hasDiff && opts.canApply) return "Review the diff, then Apply on a sandbox.";
   if (opts.hasDiff) return "Diff is ready. Fix Apply gates before writing Odoo.";
-  return "Select a draft, then Review vs live.";
+  return "Review vs live before Apply.";
+}
+
+export function projectApplyReviewBlocked(hasDiff: boolean): string | null {
+  if (hasDiff) return null;
+  return "Open Review vs live before Apply";
+}
+
+export function projectCanApplyAfterReview(opts: {
+  allowed: boolean;
+  hasDiff: boolean;
+  archived?: boolean;
+}): boolean {
+  return opts.allowed && opts.hasDiff && !opts.archived;
 }
 
 export function projectsErrorTitle(message: string | null | undefined): string {

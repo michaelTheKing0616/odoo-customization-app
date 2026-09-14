@@ -11,6 +11,7 @@ import {
   isComposerDirty,
   isGlobalAccess,
   isGlobalRule,
+  LIVE_PACK_RISKS,
   menusHref,
   parseModelList,
   ruleFormFromRow,
@@ -46,6 +47,13 @@ describe("crudLetters", () => {
       }),
     ).toBe("—");
     expect(crudLetters(defaultRuleForm())).toBe("RWCD");
+  });
+});
+
+describe("live pack confirm", () => {
+  it("names the global ir.rule risk in the confirm list", () => {
+    expect(LIVE_PACK_RISKS.join(" ")).toMatch(/global ir\.rule/);
+    expect(LIVE_PACK_RISKS.join(" ")).not.toMatch(/!/);
   });
 });
 

@@ -36,10 +36,24 @@ export function FirstRunCard({ connectionId, modelCount }: Props) {
           <span className="text-ink">Connect</span> — this instance is linked.
         </li>
         <li>
-          <Link href={`/connections/${connectionId}/wizard`} className="text-accent hover:underline">
+          <Link
+            href={`/connections/${connectionId}/studio`}
+            className="text-accent hover:underline"
+            data-testid="overview-first-run-app-studio"
+          >
             Draft with AI
           </Link>{" "}
-          — describe your app and review a ModuleSpec before anything touches Odoo.
+          — App Studio brief. Describe the work, then review a form before anything writes Odoo.
+        </li>
+        <li>
+          <Link
+            href={`/connections/${connectionId}/wizard`}
+            className="text-accent hover:underline"
+            data-testid="overview-first-run-draft-studio"
+          >
+            Draft Studio
+          </Link>{" "}
+          — ModuleSpec workshop if you already know the IR.
         </li>
         <li>
           <Link href={`/connections/${connectionId}/builder`} className="text-accent hover:underline">

@@ -4559,7 +4559,7 @@ export default function DesignerPage() {
                 <option value="many2one">many2one</option>
                 <option value="json">json</option>
               </select>
-              <label className="block text-[11px] text-[#a8909e]">
+              <label className="block text-[11px] text-muted">
                 Inject strategy
                 <select
                   value={injectStrategy}

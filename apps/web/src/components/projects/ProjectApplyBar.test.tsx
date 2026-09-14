@@ -40,4 +40,26 @@ describe("ProjectApplyBar", () => {
     expect(screen.getByTestId("projects-review")).toHaveTextContent("Review vs live");
     expect(screen.queryByText(/!/)).toBeNull();
   });
+
+  it("keeps Apply disabled until Review vs live has run", () => {
+    const onApply = vi.fn();
+    render(
+      <ProjectApplyBar
+        project={project}
+        busy={null}
+        canMutate
+        canApply={false}
+        applyBlocked="Open Review vs live before Apply"
+        hasDiff={false}
+        onReview={() => undefined}
+        onApply={onApply}
+        onArchive={() => undefined}
+      />,
+    );
+    expect(screen.getByTestId("projects-apply")).toBeDisabled();
+    expect(screen.getByTestId("projects-apply")).toHaveAttribute(
+      "title",
+      "Open Review vs live before Apply",
+    );
+  });
 });

@@ -390,6 +390,7 @@ export default function ModuleSpecPageInner() {
       connectionId={connectionId}
       connectionName={connection?.name}
       projectName={projectName}
+      projectId={projectId}
       journey={journey}
     >
       <VersionAwarenessBanner capabilities={connection?.capabilities} />
@@ -478,6 +479,7 @@ export default function ModuleSpecPageInner() {
         connectionId={connectionId}
         designerHref={designerHref}
         designerModel={designerModel}
+        projectId={projectId}
         stockReuse={stockReuse}
         applied={applied}
         odooAppUrl={odooAppUrl}

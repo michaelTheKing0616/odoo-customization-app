@@ -12,6 +12,7 @@ type ModuleSpecShellProps = {
   connectionId: string;
   connectionName?: string | null;
   projectName?: string | null;
+  projectId?: string | null;
   journey: ModuleSpecJourneyState;
   children: React.ReactNode;
 };
@@ -20,9 +21,13 @@ export function ModuleSpecShell({
   connectionId,
   connectionName,
   projectName,
+  projectId,
   journey,
   children,
 }: ModuleSpecShellProps) {
+  const projectsHref = projectId
+    ? `/connections/${connectionId}/projects?project=${encodeURIComponent(projectId)}`
+    : `/connections/${connectionId}/projects`;
   return (
     <div className="studio-refinement" data-testid="modulespec-page">
       <div className="studio-page is-canvas">
@@ -48,6 +53,9 @@ export function ModuleSpecShell({
                 className="text-sm text-muted hover:text-ink"
               >
                 Job Autopilot
+              </Link>
+              <Link href={projectsHref} className="text-sm text-muted hover:text-ink">
+                Projects
               </Link>
             </>
           }

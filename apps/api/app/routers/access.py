@@ -440,6 +440,8 @@ class ApplyMultiCompanyDraftOut(BaseModel):
 
 class ApplyMultiCompanyLiveBody(BaseModel):
     models: list[str] = Field(..., min_length=1)
+    confirm_advanced: bool = False
+    confirm_phrase: str | None = None
 
 
 class ApplyMultiCompanyLiveOut(BaseModel):
@@ -448,6 +450,17 @@ class ApplyMultiCompanyLiveOut(BaseModel):
     fields_created: int
     rules_created: int
     warnings: list[str] = Field(default_factory=list)
+
+
+APPLY_LIVE_PACK_WARNING = (
+    "Apply live pack creates x_company_id and a global ir.rule with a company_ids "
+    "domain on each listed custom model."
+)
+APPLY_LIVE_PACK_RISKS = [
+    "Writes live Odoo metadata on this connection",
+    "Creates a global ir.rule — it applies to every user unless other rules restrict rows",
+    "Field and record-rule creates are only partially recoverable",
+]
 
 
 @router.get("/multi-company/guidance", response_model=MultiCompanyGuidanceOut)
@@ -475,61 +488,15 @@ def apply_multi_company_live_route(
 ) -> ApplyMultiCompanyLiveOut:
     from app.multi_company_pack import apply_multi_company_live
 
-    client = _client(connection_id, db)
-    result = apply_multi_company_live(client, body.models)
-    return ApplyMultiCompanyLiveOut.model_validate(result)
-
-
-class MultiCompanyGuidanceOut(BaseModel):
-    title: str
-    body: str
-
-
-class ApplyMultiCompanyDraftBody(BaseModel):
-    draft: dict[str, Any] = Field(default_factory=dict)
-
-
-class ApplyMultiCompanyDraftOut(BaseModel):
-    ok: bool
-    draft: dict[str, Any]
-
-
-class ApplyMultiCompanyLiveBody(BaseModel):
-    models: list[str] = Field(..., min_length=1)
-
-
-class ApplyMultiCompanyLiveOut(BaseModel):
-    ok: bool
-    models: list[str]
-    fields_created: int
-    rules_created: int
-    warnings: list[str] = Field(default_factory=list)
-
-
-@router.get("/multi-company/guidance", response_model=MultiCompanyGuidanceOut)
-def get_multi_company_guidance() -> MultiCompanyGuidanceOut:
-    from app.multi_company_pack import multi_company_guidance
-
-    return MultiCompanyGuidanceOut(**multi_company_guidance())
-
-
-@router.post("/multi-company/apply-draft", response_model=ApplyMultiCompanyDraftOut)
-def apply_multi_company_draft(body: ApplyMultiCompanyDraftBody) -> ApplyMultiCompanyDraftOut:
-    from app.multi_company_pack import apply_multi_company_to_draft
-
-    return ApplyMultiCompanyDraftOut(
-        ok=True,
-        draft=apply_multi_company_to_draft(body.draft or {}),
-    )
-
-
-@router.post("/multi-company/apply-live", response_model=ApplyMultiCompanyLiveOut)
-def apply_multi_company_live_route(
-    connection_id: str,
-    body: ApplyMultiCompanyLiveBody,
-    db: Session = Depends(get_db),
-) -> ApplyMultiCompanyLiveOut:
-    from app.multi_company_pack import apply_multi_company_live
+    try:
+        require_advanced_confirmation(
+            confirm_advanced=body.confirm_advanced,
+            confirm_phrase=body.confirm_phrase,
+            warning=APPLY_LIVE_PACK_WARNING,
+            risks=APPLY_LIVE_PACK_RISKS,
+        )
+    except ConfirmationRequired as exc:
+        raise _confirm_http(exc) from exc
 
     client = _client(connection_id, db)
     result = apply_multi_company_live(client, body.models)

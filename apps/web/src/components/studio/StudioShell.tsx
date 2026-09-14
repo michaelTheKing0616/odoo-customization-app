@@ -46,7 +46,7 @@ export function StudioShell({
                 href={`/connections/${connectionId}/wizard`}
                 className="text-sm text-muted hover:text-ink"
               >
-                Draft Studio wizard
+                Draft Studio
               </Link>
             </>
           }

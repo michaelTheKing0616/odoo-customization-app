@@ -661,9 +661,16 @@ export default function BrowserPage() {
 
         <div className="mt-6 flex flex-wrap gap-2">
           <Button variant="primary" size="sm" asChild>
-            <Link href={`/connections/${connectionId}/wizard`}>Draft with AI</Link>
+            <Link href={`/connections/${connectionId}/studio`} data-testid="overview-draft-with-ai">
+              Draft with AI
+            </Link>
           </Button>
           <Button variant="secondary" size="sm" asChild>
+            <Link href={`/connections/${connectionId}/wizard`} data-testid="overview-draft-studio">
+              Draft Studio
+            </Link>
+          </Button>
+          <Button variant="ghost" size="sm" asChild>
             <Link href={`/connections/${connectionId}/builder`}>Open Builder</Link>
           </Button>
           <Button variant="ghost" size="sm" asChild>
