@@ -5,6 +5,7 @@ import {
   pickCachedDraft,
   pickRecoverableDraft,
   resolveJobDraftOutcome,
+  visibleDraftWarnings,
 } from "./draft-job-outcome";
 
 function job(partial: Partial<JobRow> & Pick<JobRow, "status">): JobRow {
@@ -188,5 +189,18 @@ describe("pickRecoverableDraft", () => {
       visitor,
     );
     expect(draft).toBeNull();
+  });
+});
+
+describe("visibleDraftWarnings", () => {
+  it("drops senior: and non-gap live_apply rows", () => {
+    expect(
+      visibleDraftWarnings([
+        "senior: skip",
+        "live_apply: mixins ok",
+        "live_apply: gap on next_activity",
+        "pack merge warning",
+      ]),
+    ).toEqual(["live_apply: gap on next_activity", "pack merge warning"]);
   });
 });

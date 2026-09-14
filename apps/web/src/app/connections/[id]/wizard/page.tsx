@@ -1,11 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { SuggestTemplateButton } from "@/components/SuggestTemplateButton";
-import { SaveAsComponentButton } from "@/components/SaveAsComponentButton";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import {
   api,
@@ -23,22 +20,21 @@ import {
   scaffoldApplyBlockedReason,
   scaffoldOptsFromSpec,
 } from "@/lib/capabilities";
-import { AskWhyButton } from "@/components/expert/AskWhyButton";
 import { useShell } from "@/context/ShellContext";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { reportApiError, isApiNotFound } from "@/lib/api-error";
-import { Button } from "@/components/ui/Button";
-import { InfinityLoop } from "@/components/loading-ui/infinity-loop";
-import { Callout } from "@/components/ui/Callout";
-import { Card, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
-import { Input } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
-import { Textarea } from "@/components/ui/Textarea";
-import { Badge } from "@/components/ui/Badge";
-import { CodeBlock } from "@/components/ui/CodeBlock";
-import { DraftOdooPreview } from "@/components/odoo-preview";
-import { HostInstallPanel } from "@/components/studio/HostInstallDialog";
+import { Skeleton } from "@/components/ui/layout-primitives";
+import { DraftStudioApplyBar } from "@/components/draft-studio/DraftStudioApplyBar";
+import { DraftStudioHonestyBanners } from "@/components/draft-studio/DraftStudioHonestyBanners";
+import { DraftStudioIdentityCard } from "@/components/draft-studio/DraftStudioIdentityCard";
+import { DraftStudioPreviewPane } from "@/components/draft-studio/DraftStudioPreviewPane";
+import { DraftStudioProgress } from "@/components/draft-studio/DraftStudioProgress";
+import { DraftStudioPromptPanel } from "@/components/draft-studio/DraftStudioPromptPanel";
+import { DraftStudioReviewLayout } from "@/components/draft-studio/DraftStudioReviewLayout";
+import { DraftStudioScorecard } from "@/components/draft-studio/DraftStudioScorecard";
+import { DraftStudioShell } from "@/components/draft-studio/DraftStudioShell";
+import { DraftStudioTemplates } from "@/components/draft-studio/DraftStudioTemplates";
 import { odooMenuUrl, odooViewUrl } from "@/lib/odoo-urls";
 import { JobPollError, pollJob } from "@/lib/jobs";
 import {
@@ -46,14 +42,18 @@ import {
   pickRecoverableDraft,
   resolveJobDraftOutcome,
   successNoteForDraft,
+  visibleDraftWarnings,
 } from "@/lib/draft-job-outcome";
-import { confirmedReuseModelsFromDraft } from "@/lib/reuse-chips";
-import { SCORE_BARS } from "@/lib/copy-guide";
+import {
+  autoWiredReuseDecisions,
+  confirmedReuseModelsFromDraft,
+  inferredReuseSuggestions as inferredReuseFromDraft,
+  installableReuseSuggestions as installableReuseFromDraft,
+} from "@/lib/reuse-chips";
 import {
   briefTextForJobAutopilot,
   stashJobAutopilotBrief,
 } from "@/lib/job-brief-handoff";
-import { stashPromptForStudio } from "@/lib/studio-session";
 import {
   busyLabelFromJobResult,
   draftFinisherComplete,
@@ -80,33 +80,23 @@ import {
 } from "@/lib/draft-studio-banners";
 import {
   draftEnrichmentClean,
+  llmStatusBannerCopy,
+  llmStatusFromDraft,
+  showRetryEnrichment,
   withEnrichmentCleanFlags,
 } from "@/lib/draft-llm-status";
+import { operatorSurfaceFromDraft } from "@/lib/operator-surface";
 import {
-  operatorSurfaceFromDraft,
-  operatorSurfaceHasPlacement,
-} from "@/lib/operator-surface";
+  certificationFromDraft,
+  doneBarFromDraft,
+  draftNeedsRegenerate,
+  draftStudioJourneyFromState,
+  goLiveReadyFromDraft,
+  scorecardFromDraft,
+} from "@/lib/draft-studio-journey";
+import "@/styles/studio-refinement.css";
 
 const CONFIRM_PHRASE = "I understand the risks";
-
-const PIPELINE_STEPS = [
-  "Entities",
-  "Fields",
-  "Relationships",
-  "Workflow",
-  "Automations",
-  "Views",
-] as const;
-
-function pipelineStepIndex(draft: Record<string, unknown> | null): number {
-  if (!draft) return 0;
-  if (Array.isArray(draft.views) && draft.views.length > 0) return 5;
-  if (Array.isArray(draft.automations) && draft.automations.length > 0) return 4;
-  if (draft.workflow || draft.states) return 3;
-  if (Array.isArray(draft.models) && draft.models.length > 1) return 2;
-  if (Array.isArray(draft.models) && draft.models.length > 0) return 1;
-  return 0;
-}
 
 const BACKGROUND_JOB_POLL_MS = 2000;
 
@@ -138,15 +128,6 @@ async function pollBackgroundJob(
     throw err;
   }
 }
-
-const REUSE_SUGGESTIONS = [
-  "res.partner",
-  "res.users",
-  "product.product",
-  "sale.order",
-  "account.move",
-  "hr.employee",
-];
 
 const FALLBACK_TEMPLATES: AppTemplate[] = [
   {
@@ -206,34 +187,10 @@ export default function AppWizardPage() {
   useSyncShellContext({ draftSummary, route: `/connections/${connectionId}/wizard` });
   const [aiNote, setAiNote] = useState<string | null>(null);
   const [aiWarnings, setAiWarnings] = useState<string[]>([]);
-  const draftNeedsRegenerate = Boolean(
-    aiDraft &&
-      (
-        (aiDraft._llm_status as { mode?: string } | undefined)?.mode === "llm_partial" ||
-        (aiDraft._llm_status as { mode?: string } | undefined)?.mode === "pack_fallback" ||
-        (
-          (aiDraft._depth as { seeded?: boolean } | undefined)?.seeded &&
-          (aiDraft._llm_status as { mode?: string } | undefined)?.mode === "seed_fallback"
-        ) ||
-        aiWarnings.some(
-          (w) =>
-            w.includes("field-deepen skipped") ||
-            w.includes("depth met via generic seeds"),
-        )
-      ),
-  );
-  const llmStatusMode = (aiDraft?._llm_status as { mode?: string } | undefined)?.mode;
-  const scorecard = aiDraft?._scorecard as
-    | {
-        score_0_10?: number;
-        dimensions?: Record<string, number>;
-        findings?: Array<{ dimension?: string; element?: string; detail?: string }>;
-        validators?: { all_green?: boolean; xml_ok?: boolean; consistency_ok?: boolean };
-      }
-    | undefined;
-  const draftScore = scorecard?.score_0_10;
-  const scoreDimensions = scorecard?.dimensions;
-  const validatorsGreen = scorecard?.validators?.all_green === true;
+  const needsRegenerate = draftNeedsRegenerate(aiDraft, aiWarnings);
+  const llmStatus = llmStatusFromDraft(aiDraft);
+  const llmStatusMode = llmStatus?.mode;
+  const scorecard = scorecardFromDraft(aiDraft);
   const finisherComplete = draftFinisherComplete(aiDraft);
   const liveApplyBanner = liveApplyGapBanner(aiDraft);
   const liveApply = aiDraft?._live_apply as
@@ -249,24 +206,9 @@ export default function AppWizardPage() {
         go_live_ready?: boolean;
       }
     | undefined;
-  const doneBar =
-    (aiDraft?._done_bar as
-      | { mode?: string; next_step?: string; go_live_ready?: boolean }
-      | undefined) ?? liveApply?.done_bar;
-  const goLiveReady = Boolean(
-    aiDraft?._go_live_ready || liveApply?.go_live_ready || doneBar?.go_live_ready,
-  );
-  const certification = aiDraft?._certification as
-    | {
-        tier?: string;
-        quality?: number;
-        evidence?: number;
-        risk?: number;
-        hard_failures?: string[];
-        option_a_pending?: boolean;
-        note?: string;
-      }
-    | undefined;
+  const doneBar = doneBarFromDraft(aiDraft);
+  const goLiveReady = goLiveReadyFromDraft(aiDraft);
+  const certification = certificationFromDraft(aiDraft);
   const generationEngine = generationEngineFromDraft(aiDraft);
   const refuseClone = isRefuseCloneDraft(aiDraft);
   const stockReuse = isStockReuseDraft(aiDraft);
@@ -310,45 +252,19 @@ export default function AppWizardPage() {
   >([]);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiBusyLabel, setAiBusyLabel] = useState<string | null>(null);
-  const llmStatus = aiDraft?._llm_status as
-    | {
-        mode?: string;
-        reason?: string;
-        failed_steps?: string[];
-        retry_recommended?: boolean;
-        enrichment_clean?: boolean;
-      }
-    | undefined;
-  const llmStatusReason = llmStatus?.reason;
-  const showRetryEnrichment = Boolean(
-    aiDraft && !aiDraft._component && !stockReuse && !refuseClone,
-  );
-  // Disabled when enrich finished cleanly (explicit flag or llm_full heuristic).
+  const retryAvailable = showRetryEnrichment({
+    draft: aiDraft,
+    stockReuse,
+    refuseClone,
+  });
   const retryEnrichmentDisabled = Boolean(
     aiBusy || !aiDraft || draftEnrichmentClean(aiDraft),
   );
-  const llmStatusBanner =
-    aiDraft?._component || stockReuse
-      ? null
-      : llmStatusMode === "llm_partial"
-        ? "Some AI steps timed out; the draft was finished from your prompt. Click Retry AI enrichment to wake AI, re-run missed steps, and complete residual fields from your brief if AI stays down."
-        : llmStatusMode === "pack_fallback" && llmStatusReason === "residual_recovered"
-          ? "Residual completed from your brief (AI was unavailable). Review fields, then Apply — or Retry again when a model is back for LLM polish."
-        : llmStatusMode === "pack_fallback" &&
-            (llmStatusReason === "timeout" ||
-              llmStatusReason === "unavailable" ||
-              llmStatusReason === "honesty_seed")
-          ? "AI was unavailable on Create draft. Click Retry AI enrichment — it wakes Flash/local/cloud, re-runs missed AI steps, and still completes residual fields from your brief if AI stays down."
-        : llmStatusMode === "pack_fallback"
-        ? "Draft Studio used the domain pack. Click Retry AI enrichment to tailor when a model is available."
-        : llmStatusMode === "seed_fallback" &&
-            (aiDraft?._depth as { seeded?: boolean } | undefined)?.seeded
-          ? "Depth targets were met via generic operational seeds — review entities before apply."
-          : llmStatusMode === "llm_full" && retryEnrichmentDisabled
-            ? "AI enrichment completed successfully. Retry stays available only if hygiene gaps return."
-          : llmStatusMode === "llm_full"
-            ? "AI draft finished. Retry AI enrichment to wake providers and collapse residual hygiene if needed."
-          : null;
+  const llmStatusBanner = llmStatusBannerCopy({
+    draft: aiDraft,
+    stockReuse,
+    retryDisabled: retryEnrichmentDisabled,
+  });
   const [aiRefusals, setAiRefusals] = useState<ProtectedModuleRefusal[]>([]);
   const unfinishedBanner = unfinishedDraftBanner(aiDraft, { generating: aiBusy });
   const [aiEnabled, setAiEnabled] = useState(false);
@@ -1303,87 +1219,17 @@ export default function AppWizardPage() {
   }
 
 
-  const inferredReuseSuggestions = useMemo(() => {
-    if (!aiDraft) return [];
-    const plan = (
-      aiDraft.reuse as
-        | {
-            plan?: {
-              decisions?: Array<{
-                model?: string;
-                reason?: string;
-                source?: string;
-                confirmed?: boolean;
-                link_only?: boolean;
-                module?: string;
-              }>;
-            };
-          }
-        | undefined
-    )?.plan;
-    return (plan?.decisions ?? []).filter(
-      (d) =>
-        d.model &&
-        !d.confirmed &&
-        !rejectedInferredReuse.includes(String(d.model)) &&
-        (d.source === "inferred" || d.source === "pack_reuse_stock"),
-    );
-  }, [aiDraft, rejectedInferredReuse]);
+  const inferredReuseSuggestions = useMemo(
+    () => inferredReuseFromDraft(aiDraft, rejectedInferredReuse),
+    [aiDraft, rejectedInferredReuse],
+  );
 
-  const installableReuseSuggestions = useMemo(() => {
-    if (!aiDraft) return [];
-    const plan = (
-      aiDraft.reuse as
-        | {
-            plan?: {
-              decisions?: Array<{
-                model?: string;
-                reason?: string;
-                source?: string;
-                confirmed?: boolean;
-                link_only?: boolean;
-                module?: string;
-              }>;
-            };
-          }
-        | undefined
-    )?.plan;
-    return (plan?.decisions ?? []).filter(
-      (d) =>
-        d.model &&
-        !d.confirmed &&
-        !rejectedInferredReuse.includes(String(d.model)) &&
-        d.source === "installable",
-    );
-  }, [aiDraft, rejectedInferredReuse]);
+  const installableReuseSuggestions = useMemo(
+    () => installableReuseFromDraft(aiDraft, rejectedInferredReuse),
+    [aiDraft, rejectedInferredReuse],
+  );
 
-  const autoWiredReuse = useMemo(() => {
-    if (!aiDraft) return [];
-    const plan = (
-      aiDraft.reuse as
-        | {
-            plan?: {
-              decisions?: Array<{
-                model?: string;
-                reason?: string;
-                source?: string;
-                confirmed?: boolean;
-                link_only?: boolean;
-              }>;
-            };
-          }
-        | undefined
-    )?.plan;
-    return (plan?.decisions ?? []).filter(
-      (d) =>
-        d.model &&
-        d.confirmed &&
-        d.link_only &&
-        (d.source === "apply_readiness" ||
-          d.source === "pack_reuse_stock" ||
-          d.source === "inferred"),
-    );
-  }, [aiDraft]);
+  const autoWiredReuse = useMemo(() => autoWiredReuseDecisions(aiDraft), [aiDraft]);
 
   async function onLoadPastedJson(source: "paste" | "file", file?: File) {
     setError(null);
@@ -1637,1748 +1483,322 @@ export default function AppWizardPage() {
     }
   }
 
-  const activeStep = pipelineStepIndex(aiDraft);
+  const journey = draftStudioJourneyFromState({
+    generating: aiBusy,
+    hasDraft: Boolean(aiDraft),
+    applied: Boolean(genUiResult),
+  });
+
+  function startNewDraft() {
+    setAiDraft(null);
+    setNlPrompt("");
+    setAiWarnings([]);
+    setConnectPoints(null);
+    setConnectPointsApproved(false);
+    setOverlapFindings([]);
+    setOverlapChoice(null);
+    setOverlapFindingId(null);
+    setGenUiResult(null);
+    setOdooAppUrl(null);
+    setValidateLiveResult(null);
+    setGrainLabel(null);
+    setEffectiveGrain("");
+    setAiNote(null);
+    setError(null);
+  }
+
+  const applyBarProps = {
+    canDraft: canDraftModule,
+    canApply: canGenerateUi,
+    hasDraft: Boolean(aiDraft),
+    aiBusy,
+    busy,
+    zipBusy,
+    finisherComplete,
+    refuseClone,
+    stockReuse,
+    moduleDelivery,
+    zipLocked,
+    generateUiBlocked,
+    overlapPending: overlapFindings.length > 0 && !overlapResolved,
+    needsConnectReview,
+    connectApproved: connectPointsApproved,
+    designerHref,
+    designerModel,
+    jobAutopilotHref,
+    applied: Boolean(genUiResult),
+    onCreateDraft: () => void onDraftFromPrompt(),
+    onApply: () => void onPrepareGenerateUi(),
+    onDownloadZip: () => void onDownloadModuleZip(),
+    onOpenModuleSpec: () => openModuleSpecEditor(),
+    onStashJobBrief: () => stashBriefForJobAutopilot(),
+  };
+
+  const reuseProps = {
+    reuseModels,
+    reuseCatalog,
+    reuseCatalogByModel,
+    filteredReuseCatalog,
+    reuseSearch,
+    reuseCatalogStatus,
+    reuseCatalogError,
+    autoWiredReuse,
+    inferredReuseSuggestions,
+    installableReuseSuggestions,
+    aiBusy,
+    aiBusyLabel,
+    onToggleReuse: toggleReuse,
+    onSearch: setReuseSearch,
+    onReloadCatalog: () => void reloadReuseCatalog(),
+    onConfirmInferred: (model: string) => void confirmInferredReuse(model),
+    onRejectInferred: (model: string) => void rejectInferredReuse(model),
+    onConfirmInstallable: (model: string) => void confirmInstallableReuse(model),
+    onRejectInstallable: (model: string) => void rejectInstallableReuse(model),
+  };
+
+  const promptPanel = (
+    <DraftStudioPromptPanel
+      connectionId={connectionId}
+      nlPrompt={nlPrompt}
+      aiEnabled={aiEnabled}
+      aiProviderLabel={aiProviderLabel}
+      ollamaDetail={ollamaDetail}
+      grainOverride={grainOverride}
+      grainLabel={grainLabel}
+      jsonPasteOpen={jsonPasteOpen}
+      jsonPaste={jsonPaste}
+      jsonBusy={busy && aiBusyLabel === "Preparing JSON draft…"}
+      busy={busy}
+      overlapFindings={overlapFindings}
+      overlapChoice={overlapChoice}
+      overlapBusy={overlapBusy}
+      overlapResolved={overlapResolved}
+      connectPoints={connectPoints}
+      needsConnectReview={needsConnectReview}
+      connectPointsApproved={connectPointsApproved}
+      connectReviewBusy={connectReviewBusy}
+      hostCandidates={hostCandidates}
+      gallery={componentGallery}
+      selectedGalleryId={selectedGalleryId}
+      showStudioBridge={Boolean(
+        operatorBrief?.ir_confidence === "low" ||
+          generationEngine?.needs_clarification?.question,
+      )}
+      hasDraft={Boolean(aiDraft)}
+      isFullAppGrain={isFullAppGrain}
+      showActions={journey.id === "prompt"}
+      applyBar={applyBarProps}
+      reuse={reuseProps}
+      onPromptChange={(value) => {
+        setNlPrompt(value);
+        setConnectPointsApproved(false);
+        setConnectPoints(null);
+        setOverlapFindings([]);
+        setOverlapChoice(null);
+        setOverlapFindingId(null);
+      }}
+      onToggleJson={() => setJsonPasteOpen((v) => !v)}
+      onJsonChange={setJsonPaste}
+      onLoadJson={() => void onLoadPastedJson("paste")}
+      onUploadJson={(file) => void onLoadPastedJson("file", file)}
+      onGrainChange={(value) => {
+        setGrainOverride(value);
+        setConnectPointsApproved(value === "full_app");
+        setConnectPoints(null);
+      }}
+      onOverlapUse={onOverlapUse}
+      onOverlapExtend={onOverlapExtend}
+      onOverlapBuildAnyway={(id) => onOverlapBuildAnyway(id)}
+      onConnectField={(key, value) => {
+        setConnectPoints({ ...(connectPoints || {}), [key]: value });
+        setConnectPointsApproved(false);
+      }}
+      onApproveConnect={() => setConnectPointsApproved(true)}
+      onReviewConnect={() => void onReviewConnectPoints()}
+      onCheckOverlap={() => void onCheckOverlap()}
+      onSelectGallery={(c) => {
+        setSelectedGalleryId(c.id);
+        setNlPrompt(`Add ${c.name.toLowerCase()} to my ${c.host_slot.replace(".", " ")}s`);
+        setConnectPointsApproved(false);
+        setConnectPoints(null);
+      }}
+      onClear={startNewDraft}
+    />
+  );
 
   return (
-    <div className="mx-auto max-w-4xl" data-testid="draft-studio">
-      <PageHeader
-        title="Draft Studio"
-        description={
-          connection
-            ? `${connection.name} · describe a field, a feature, or a full app — then apply it to Odoo`
-            : connectionId
-        }
-      />
+    <DraftStudioShell
+      connectionId={connectionId}
+      connectionName={connection?.name}
+      journey={journey}
+      canvas={journey.id === "review" || journey.id === "apply"}
+      hasDraft={Boolean(aiDraft)}
+      onStartNew={startNewDraft}
+    >
       <VersionAwarenessBanner capabilities={connection?.capabilities} />
+      {loading ? (
+        <div className="mt-4 space-y-2">
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-24 w-full" />
+        </div>
+      ) : null}
+      {error ? <ErrorNotice message={error} className="mt-4" /> : null}
 
-      <ol className="mb-6 flex flex-wrap gap-2 text-xs">
-        {(aiDraft && (aiDraft._component || aiDraft.grain === "feature_slice" || aiDraft.grain === "field_pack")
-          ? (["Host", "Fields", "View", "Ready"] as const)
-          : PIPELINE_STEPS
-        ).map((step, i) => (
-          <li
-            key={step}
-            className={
-              i <= activeStep
-                ? "rounded-full border border-accent/30 bg-accent-subtle px-2.5 py-1 font-medium text-accent"
-                : "rounded-full border border-border-subtle px-2.5 py-1 text-muted"
+      {journey.id === "prompt" ? (
+        <>
+          <DraftStudioIdentityCard
+            displayName={displayName}
+            technicalPrefix={technicalPrefix}
+            multiCompany={multiCompany}
+            onDisplayName={setDisplayName}
+            onTechnicalPrefix={setTechnicalPrefix}
+            onMultiCompany={setMultiCompany}
+          />
+          {promptPanel}
+          <DraftStudioTemplates
+            connectionId={connectionId}
+            connection={connection}
+            templates={templates}
+            selectedId={selected?.id}
+            result={result}
+            onOpenTemplate={openConfirm}
+            templateScaffoldOpts={templateScaffoldOpts}
+          />
+        </>
+      ) : null}
+
+      {journey.id === "enrich" ? (
+        <DraftStudioProgress label={aiBusyLabel || "Creating draft…"} />
+      ) : null}
+
+      {(journey.id === "review" || journey.id === "apply") && aiDraft ? (
+        <div className="studio-review">
+          <DraftStudioHonestyBanners
+            connectionId={connectionId}
+            liveApplyBanner={liveApplyBanner}
+            unfinishedBanner={unfinishedBanner}
+            generateUiBlocked={generateUiBlocked}
+            aiNote={aiNote}
+            genUiResult={genUiResult}
+            odooAppUrl={odooAppUrl}
+            llmStatusBanner={llmStatusBanner}
+            llmStatusMode={llmStatusMode}
+            retryDisabled={retryEnrichmentDisabled}
+            showRetry={retryAvailable}
+            aiBusy={aiBusy}
+            operatorBrief={operatorBrief}
+            refuseClone={refuseClone}
+            refuseHonesty={generationEngine?.honesty}
+            generationHonesty={generationEngine?.honesty}
+            operatorSurface={operatorSurface}
+            stockReuse={stockReuse}
+            stockApps={stockApps}
+            jobAutopilotHref={jobAutopilotHref}
+            clarifyQuestion={generationEngine?.needs_clarification?.question}
+            clarifyOptions={generationEngine?.needs_clarification?.options}
+            clarifyDefaultId={generationEngine?.needs_clarification?.default_id}
+            draftNeedsRegenerate={needsRegenerate}
+            canDraft={canDraftModule}
+            warnings={visibleDraftWarnings(aiWarnings)}
+            authoredOptionA={authoredOptionA}
+            authoringPassed={authoringPassed}
+            hostInstallOffers={hostInstallOffers}
+            leftoverAuthoringFindings={leftoverAuthoringFindings}
+            isOdooOnline={Boolean(isOdooOnline)}
+            optionALines={liveApply?.option_a ?? []}
+            capabilityPrimaryOptionA={Boolean(aiDraft._capability_primary_option_a)}
+            goLiveReady={goLiveReady}
+            zipLocked={zipLocked}
+            optionAProveBusy={optionAProveBusy}
+            optionAProveNote={optionAProveNote}
+            computeSuggestions={
+              Array.isArray(aiDraft._compute_suggestions)
+                ? (aiDraft._compute_suggestions as Array<{ model?: string; message?: string }>)
+                : []
             }
-          >
-            {step}
-          </li>
-        ))}
-      </ol>
-
-      <Card className="mb-6 space-y-4 p-5">
-        <Input
-          label="Display name"
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-          placeholder="e.g. Acme Library"
-        />
-        <Input
-          label="Technical prefix (optional)"
-          value={technicalPrefix}
-          onChange={(e) => setTechnicalPrefix(e.target.value)}
-          placeholder="e.g. lib_demo → x_lib_demo_book"
-          hint="Omit for fixed template model names (library: x_lib_book, …)."
-          className="font-mono"
-        />
-        <label className="flex max-w-md items-start gap-2 text-sm text-ink">
-          <input
-            type="checkbox"
-            checked={multiCompany}
-            onChange={(e) => setMultiCompany(e.target.checked)}
-            className="mt-1"
+            refusals={aiRefusals}
+            snapshots={draftCacheEntries}
+            onRetryEnrichment={() => void retryAiEnrichment()}
+            onRegenerate={() => void onDraftFromPrompt()}
+            onStashJobBrief={() => stashBriefForJobAutopilot()}
+            onInstallHost={(offer, phrase) => void installAuthoredHostModule(offer, phrase)}
+            onProveOptionA={() => void proveOptionASandbox()}
+            onRestoreSnapshot={(id) => void restoreDraftFromCache(id)}
+            onLoadWalkthrough={() => setWalkthroughConfirmOpen(true)}
           />
-          <span>
-            <span className="font-medium">Multi-company aware</span>
-            <span className="mt-0.5 block text-xs text-muted">
-              Adds company field + record rules for template scaffold, Generate UI, and library export.
-            </span>
-          </span>
-        </label>
-      </Card>
-
-        {componentGallery.length > 0 && (
-          <Card className="mb-6 p-5">
-            <h2 className="text-xl font-semibold text-ink">Component gallery</h2>
-            <p className="mt-1 text-xs text-muted">
-              Reusable slices that attach to stock or custom hosts.
-            </p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              {componentGallery.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedGalleryId(c.id);
-                    setNlPrompt(`Add ${c.name.toLowerCase()} to my ${c.host_slot.replace(".", " ")}s`);
-                    setConnectPointsApproved(false);
-                    setConnectPoints(null);
-                  }}
-                  className={`rounded-md border p-3 text-left text-sm transition ${
-                    selectedGalleryId === c.id
-                      ? "border-accent bg-accent-subtle"
-                      : "border-border-subtle hover:bg-surface-muted"
-                  }`}
-                >
-                  <span className="font-semibold text-ink">{c.name}</span>
-                  <span className="mt-1 block text-xs text-muted">{c.description}</span>
-                  <span className="mt-1 block font-mono text-[10px] text-accent">
-                    Host: {c.host_slot}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </Card>
-        )}
-
-        <Card className="mb-6 p-5">
-          <h2 className="text-xl font-semibold text-ink">What should we implement?</h2>
-          <p className="mt-1 text-sm text-muted">
-            Same bar as a senior Odoo team: a field pack on a stock form, a feature under an
-            existing app, or a full residual workspace. AI drafts a{" "}
-            <strong className="font-medium text-ink">ModuleSpec</strong> (
-            {aiEnabled ? `${aiProviderLabel} on` : "AI off"}
-            {ollamaDetail ? ` · ${ollamaDetail}` : ""}
-            ). Nothing is written to Odoo until you click{" "}
-            <strong className="font-medium text-ink">Apply to Odoo</strong>.
-          </p>
-
-          <ol className="mt-4 grid gap-2 sm:grid-cols-3" data-testid="draft-studio-steps">
-            {[
-              {
-                n: 1,
-                title: "Describe",
-                detail: "A field on invoices, a feature under Sales, or a full practice app.",
-                done: nlPrompt.trim().length >= 3,
-              },
-              {
-                n: 2,
-                title: "Draft ModuleSpec",
-                detail: "JSON blueprint of models, views, menus, and workflows.",
-                done: Boolean(aiDraft),
-              },
-              {
-                n: 3,
-                title: "Generate UI",
-                detail: "Apply writes the app menu tree. Then Open app in Odoo — no model picker.",
-                done: Boolean(genUiResult),
-              },
-            ].map((step) => (
-              <li
-                key={step.n}
-                className={`rounded-md border px-3 py-2 text-sm ${
-                  step.done
-                    ? "border-accent/40 bg-accent-subtle"
-                    : "border-border-subtle bg-surface-muted"
-                }`}
-              >
-                <p className="font-medium text-ink">
-                  {step.n}. {step.title}
-                </p>
-                <p className="mt-0.5 text-xs text-muted">{step.detail}</p>
-              </li>
-            ))}
-          </ol>
-          <Textarea
-            className="mt-3"
-            data-testid="draft-nl-prompt"
-            value={nlPrompt}
-            onChange={(e) => {
-              setNlPrompt(e.target.value);
-              setConnectPointsApproved(false);
-              setConnectPoints(null);
-              setOverlapFindings([]);
-              setOverlapChoice(null);
-              setOverlapFindingId(null);
-            }}
-            rows={3}
-            placeholder="Add SLA due date on invoices — or a law-firm practice with matters, time, and stock quotations…"
+          <DraftStudioReviewLayout
+            header={
+              <div className="panel-header">
+                <div className="breadcrumb">
+                  <span>{String(aiDraft.display_name || aiDraft.technical_name || "Draft")}</span>
+                  <span aria-hidden>›</span>
+                  <span className="current">{residualPreview?.title || "Form preview"}</span>
+                </div>
+              </div>
+            }
+            preview={
+              <DraftStudioPreviewPane
+                connectionId={connectionId}
+                draft={aiDraft}
+                preview={residualPreview}
+                optionASettings={optionASettings}
+                stockReuse={stockReuse}
+                stockApps={stockApps}
+                nlPrompt={nlPrompt}
+              />
+            }
+            chrome={
+              <DraftStudioScorecard
+                scorecard={scorecard}
+                certification={certification}
+                certTierDisplay={certTierDisplay}
+                certShipReady={certShipReady}
+                doneBar={doneBar}
+                goLiveReady={goLiveReady}
+                stockReuse={stockReuse}
+                isComponent={Boolean(aiDraft._component)}
+                refuseClone={refuseClone}
+                aiBusy={aiBusy}
+                hasDraft
+                expertHint={expertCloserHint(aiDraft)}
+                eliteBusy={eliteBusy}
+                eliteLintOk={eliteLintOk}
+                eliteLintNote={eliteLintNote}
+                eliteValidationId={eliteValidationId}
+                eliteZipBase64={eliteZipBase64}
+                eliteNote={eliteNote}
+                expertReviewNote={expertReviewNote}
+                expertReviewFindings={expertReviewFindings}
+                finisherComplete={finisherComplete}
+                draftSummary={draftSummary}
+                onExpertFix={() => void askExpertReviewDraft(true)}
+                onLint={() => void refreshEliteLint()}
+                onValidate={() => void onEliteValidateModule()}
+                onPromote={() => setElitePromoteConfirmOpen(true)}
+                onDownloadValidatedZip={() =>
+                  downloadEliteZipBase64(
+                    String(aiDraft.technical_name || "custom_module"),
+                    eliteZipBase64 || "",
+                  )
+                }
+                onAskExpert={() =>
+                  openExpert({
+                    question: `Review this draft module spec for production readiness: ${draftSummary ?? "module"}. What should I verify before promote?`,
+                    freshThread: true,
+                  })
+                }
+              />
+            }
+            footer={<DraftStudioApplyBar {...applyBarProps} />}
           />
-          {operatorBrief?.ir_confidence === "low" ||
-          generationEngine?.needs_clarification?.question ? (
-            <Callout
-              variant="warning"
-              title="Intent needs confirmation"
-              className="mt-3"
-              testId="wizard-studio-bridge"
-            >
-              <p className="text-sm">
-                App Studio can ask one clarifying question before generation so the wrong
-                vertical pack is not merged silently.
-              </p>
-              <Link
-                href={`/connections/${connectionId}/studio`}
-                className="mt-2 inline-flex text-sm font-medium text-accent underline"
-                onClick={() => {
-                  if (nlPrompt.trim()) stashPromptForStudio(connectionId, nlPrompt.trim());
-                }}
-              >
-                Open in App Studio
-              </Link>
-            </Callout>
-          ) : null}
-
-          <div className="mt-4 rounded-md border border-border-subtle bg-surface-muted p-3">
-            <button
-              type="button"
-              className="flex w-full items-center justify-between text-left text-sm font-medium text-ink"
-              onClick={() => setJsonPasteOpen((v) => !v)}
-              data-testid="toggle-json-import"
-            >
-              <span>Or paste ModuleSpec JSON</span>
-              <span className="text-xs text-muted">{jsonPasteOpen ? "Hide" : "Show"}</span>
-            </button>
-            {jsonPasteOpen ? (
-              <div className="mt-3 space-y-2">
-                <p className="text-xs text-muted">
-                  Bring your own draft JSON — we run apply-readiness (reuse wiring, live
-                  field naming, promo math) and load it here. Then click Apply to Odoo.
-                </p>
-                <Textarea
-                  value={jsonPaste}
-                  onChange={(e) => setJsonPaste(e.target.value)}
-                  rows={6}
-                  className="font-mono text-xs"
-                  placeholder='{"technical_name":"my_app","models":[...]}'
-                  data-testid="json-paste-input"
-                />
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    loading={busy && aiBusyLabel === "Preparing JSON draft…"}
-                    disabled={busy}
-                    onClick={() => void onLoadPastedJson("paste")}
-                    data-testid="load-json-draft"
-                  >
-                    Load JSON draft
-                  </Button>
-                  <label className="inline-flex cursor-pointer items-center">
-                    <input
-                      type="file"
-                      accept=".json,application/json"
-                      className="sr-only"
-                      data-testid="json-file-input"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) void onLoadPastedJson("file", file);
-                        e.target.value = "";
-                      }}
-                    />
-                    <span className="inline-flex h-8 items-center rounded-md border border-border-subtle px-3 text-xs text-ink hover:bg-surface-raised">
-                      Upload .json file
-                    </span>
-                  </label>
-                </div>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Select
-              label="Grain override"
-              options={[
-                { value: "", label: "Auto-detect" },
-                { value: "field_pack", label: "Field pack" },
-                { value: "feature_slice", label: "Component / feature slice" },
-                { value: "full_app", label: "Full app" },
-              ]}
-              value={grainOverride}
-              onChange={(e) => {
-                setGrainOverride(e.target.value);
-                setConnectPointsApproved(e.target.value === "full_app");
-                setConnectPoints(null);
-              }}
-            />
-            {grainLabel ? <Badge variant="info">Detected: {grainLabel}</Badge> : null}
-          </div>
-
-          {overlapFindings.length > 0 ? (
-            <section
-              className="mt-4 space-y-3 rounded-md border border-border-subtle bg-surface-muted p-4"
-              data-testid="overlap-findings"
-            >
-              <h3 className="text-sm font-semibold text-ink">Already exists on this instance</h3>
-              <p className="text-xs text-muted">
-                Review before drafting — choose how to proceed for each finding.
-              </p>
-              <ul className="space-y-3">
-                {overlapFindings.map((f) => (
-                  <li key={f.id} className="border-b border-border-subtle pb-3 text-sm">
-                    <p className="font-medium">{f.title}</p>
-                    <p className="mt-1 text-xs text-muted">{f.evidence}</p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {f.deep_link ? (
-                        <Button type="button" size="sm" variant="secondary" onClick={() => onOverlapUse(f)}>
-                          Use what exists
-                        </Button>
-                      ) : null}
-                      {f.extend_host_model ? (
-                        <Button type="button" size="sm" variant="secondary" onClick={() => onOverlapExtend(f)}>
-                          Extend it
-                        </Button>
-                      ) : null}
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => onOverlapBuildAnyway(f.id)}
-                      >
-                        Build anyway
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-              {overlapChoice === "build_anyway" ? (
-                <Callout variant="warning" title="Building anyway">
-                  Your choice is recorded on the draft audit trail.
-                </Callout>
-              ) : null}
-            </section>
-          ) : null}
-
-          {connectPoints && needsConnectReview ? (
-            <section
-              className="mt-4 rounded-md border border-border-subtle bg-surface-muted p-4"
-              data-testid="connect-points-review"
-            >
-              <h3 className="text-sm font-semibold text-ink">Connect points (review before draft)</h3>
-              <p className="mt-1 text-xs text-muted">
-                Confirm host model and form placement. Edit below, then approve before drafting.
-              </p>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2 text-xs">
-                <label>
-                  Host model
-                  <input
-                    value={String(connectPoints.host_model ?? "")}
-                    onChange={(e) => {
-                      setConnectPoints({ ...connectPoints, host_model: e.target.value });
-                      setConnectPointsApproved(false);
-                    }}
-                    className="mt-1 w-full rounded border border-border-subtle bg-surface px-2 py-1 font-mono"
-                  />
-                </label>
-                <label>
-                  Form xpath
-                  <input
-                    value={String(connectPoints.form_xpath ?? "//sheet")}
-                    onChange={(e) => {
-                      setConnectPoints({ ...connectPoints, form_xpath: e.target.value });
-                      setConnectPointsApproved(false);
-                    }}
-                    className="mt-1 w-full rounded border border-border-subtle bg-surface px-2 py-1 font-mono"
-                  />
-                </label>
-              </div>
-              {hostCandidates.length > 1 ? (
-                <p className="mt-2 text-xs text-muted">
-                  Other hosts:{" "}
-                  {hostCandidates
-                    .slice(1, 4)
-                    .map((h) => `${h.label} (${h.model})`)
-                    .join(" · ")}
-                </p>
-              ) : null}
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  disabled={connectPointsApproved}
-                  onClick={() => setConnectPointsApproved(true)}
-                >
-                  {connectPointsApproved ? "Approved" : "Approve connect points"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  loading={connectReviewBusy}
-                  onClick={() => void onReviewConnectPoints()}
-                >
-                  Re-run review
-                </Button>
-              </div>
-            </section>
-          ) : null}
-
-          <div className="mt-4" data-testid="stock-model-picker">
-            <p className="text-xs uppercase tracking-wide text-muted">
-              Reuse existing Odoo models
-            </p>
-            <p className="mt-1 text-xs text-muted">
-              Link stock Odoo models instead of inventing duplicates. Catalog is every
-              non-custom model on this connection
-              {reuseCatalog.length
-                ? ` (${reuseCatalog.length.toLocaleString()} models)`
-                : reuseCatalogStatus === "loading"
-                  ? " (loading…)"
-                  : ""}
-              — not the full unused CE Apps list. After Job Autopilot or Install &amp;
-              reuse, refresh so newly installed apps appear. Install &amp; reuse shows
-              after the draft when a suggested app is not yet installed.
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {REUSE_SUGGESTIONS.map((m) => {
-                const on = reuseModels.includes(m);
-                const label = reuseCatalogByModel.get(m)?.name;
-                return (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => toggleReuse(m)}
-                    className={`border px-2 py-1 font-mono text-xs ${
-                      on
-                        ? "border-border-subtle bg-surface-raised text-muted"
-                        : "border-border-subtle text-muted hover:border-[#4a3550]"
-                    }`}
-                    title={label || m}
-                  >
-                    {on ? "✓ " : ""}
-                    {label ? `${label} (${m})` : m}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="mt-3 space-y-2">
-              <Input
-                type="search"
-                placeholder="Search stock models by name or technical name…"
-                value={reuseSearch}
-                onChange={(e) => setReuseSearch(e.target.value)}
-                className="max-w-md font-mono text-xs"
-                disabled={reuseCatalogStatus === "loading" && reuseCatalog.length === 0}
-              />
-              <div className="max-h-48 overflow-y-auto border border-border-subtle bg-surface">
-                {reuseCatalogStatus === "loading" && reuseCatalog.length === 0 ? (
-                  <p className="px-2 py-2 text-xs text-muted">Loading stock models…</p>
-                ) : filteredReuseCatalog.length === 0 ? (
-                  <p className="px-2 py-2 text-xs text-muted">
-                    {reuseCatalogError || "No models match."}
-                  </p>
-                ) : (
-                  filteredReuseCatalog.map((row) => {
-                    const on = reuseModels.includes(row.model);
-                    return (
-                      <button
-                        key={row.model}
-                        type="button"
-                        onClick={() => toggleReuse(row.model)}
-                        className={`flex w-full items-start gap-2 border-b border-border-subtle px-2 py-1.5 text-left text-xs last:border-b-0 ${
-                          on ? "bg-surface-raised" : "hover:bg-surface-raised/60"
-                        }`}
-                      >
-                        <span className="shrink-0 text-muted">{on ? "✓" : "+"}</span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-ink">{row.name}</span>
-                          <span className="font-mono text-muted">
-                            {row.model}
-                            {row.link_only ? " · link-only" : ""}
-                          </span>
-                        </span>
-                        <Badge variant="default" className="shrink-0 font-mono">
-                          {row.app}
-                        </Badge>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-              {reuseCatalogError ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-xs text-muted">{reuseCatalogError}</p>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    loading={reuseCatalogStatus === "loading"}
-                    onClick={() => void reloadReuseCatalog()}
-                  >
-                    Retry catalog
-                  </Button>
-                </div>
-              ) : null}
-              {reuseSearch.trim() === "" && reuseCatalog.length > 120 ? (
-                <p className="text-xs text-muted">
-                  Showing first 120 — type to search all{" "}
-                  {reuseCatalog.length.toLocaleString()} stock models on this
-                  instance.
-                </p>
-              ) : null}
-            </div>
-            {reuseModels.length > 0 && (
-              <p className="mt-2 font-mono text-xs text-muted">
-                Selected: {reuseModels.join(", ")}
-              </p>
-            )}
-            {autoWiredReuse.length > 0 ? (
-              <div
-                className="mt-3 space-y-2 rounded-md border border-emerald-900/30 bg-emerald-950/20 p-3"
-                data-testid="auto-wired-reuse"
-              >
-                <p className="text-xs font-medium text-ink">Auto-wired (link-only)</p>
-                <p className="text-xs text-muted">
-                  Backend confirmed these stock models during apply-readiness because the
-                  apps are already installed. Install &amp; reuse is not offered in that
-                  case. Apply adds link-only M2O fields — it does not post orders,
-                  invoices, or stock moves.
-                </p>
-                <ul className="space-y-1 text-xs">
-                  {autoWiredReuse.map((d) => (
-                    <li key={String(d.model)} className="flex flex-wrap items-center gap-2">
-                      <Badge variant="default" className="font-mono">
-                        {d.model}
-                      </Badge>
-                      <span className="text-muted">{d.reason ?? "Link-only reuse"}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-            {inferredReuseSuggestions.length > 0 ? (
-              <div
-                className="mt-3 space-y-2 rounded-md border border-border-subtle bg-surface-muted p-3"
-                data-testid="inferred-reuse-suggestions"
-              >
-                <p className="text-xs font-medium text-ink">Suggested stock models</p>
-                {aiBusy && aiBusyLabel ? (
-                  <p className="text-xs text-muted">{aiBusyLabel}</p>
-                ) : null}
-                {inferredReuseSuggestions.map((d) => (
-                  <div key={String(d.model)} className="rounded border border-border-subtle p-2">
-                    <p className="font-mono text-xs text-ink">{d.model}</p>
-                    <p className="mt-1 text-xs text-muted">
-                      Suggested — {d.reason}
-                      {d.link_only ? " (link-only)" : ""}
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        disabled={aiBusy}
-                        onClick={() => void confirmInferredReuse(String(d.model))}
-                        data-testid={`confirm-reuse-${d.model}`}
-                      >
-                        Use installed model
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={aiBusy}
-                        onClick={() => void rejectInferredReuse(String(d.model))}
-                        data-testid={`reject-reuse-${d.model}`}
-                      >
-                        Generate custom instead
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            {installableReuseSuggestions.length > 0 ? (
-              <div
-                className="mt-3 space-y-2 rounded-md border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900/40 dark:bg-amber-950/20"
-                data-testid="installable-reuse-suggestions"
-              >
-                <p className="text-xs font-medium text-ink">Installable Odoo apps</p>
-                <p className="text-xs text-muted">
-                  Install one app at a time — the others stay listed until you Install or
-                  generate custom. Installing does not clear sibling suggestions.
-                </p>
-                {installableReuseSuggestions.map((d) => (
-                  <div key={String(d.model)} className="rounded border border-border-subtle p-2">
-                    <p className="font-mono text-xs text-ink">{d.model}</p>
-                    <p className="mt-1 text-xs text-muted">
-                      Install <span className="font-mono">{d.module ?? "?"}</span> and reuse, or
-                      generate a custom model — {d.reason}
-                      {d.link_only ? " (link-only)" : ""}
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        disabled={aiBusy}
-                        onClick={() => void confirmInstallableReuse(String(d.model))}
-                        data-testid={`confirm-install-reuse-${d.model}`}
-                      >
-                        Install &amp; reuse
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={aiBusy}
-                        onClick={() => void rejectInstallableReuse(String(d.model))}
-                        data-testid={`reject-install-reuse-${d.model}`}
-                      >
-                        Generate custom instead
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </div>
-
-          <div className="mt-4 space-y-3 rounded-md border border-border-subtle bg-surface-muted p-4">
-            <p className="text-sm font-medium text-ink">What to click</p>
-            <div className="flex flex-wrap gap-2">
-              {needsConnectReview ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  disabled={connectReviewBusy || nlPrompt.trim().length < 3}
-                  loading={connectReviewBusy}
-                  onClick={() => void onReviewConnectPoints()}
-                  data-testid="review-connect-points"
-                >
-                  Review connect points
-                </Button>
-              ) : null}
-              <Button
-                type="button"
-                variant="primary"
-                disabled={aiBusy || !canDraftModule}
-                loading={aiBusy}
-                title={
-                  overlapFindings.length > 0 && !overlapResolved
-                    ? "Resolve overlap findings first (Build anyway, Use, or Extend)"
-                    : needsConnectReview && !connectPointsApproved
-                      ? "Review and approve connect points first"
-                      : undefined
-                }
-                onClick={() => void onDraftFromPrompt()}
-                data-testid="create-draft"
-              >
-                1. Create draft
-              </Button>
-              {aiBusy ? (
-                <div
-                  className="flex w-full flex-col items-center gap-2 rounded-md border border-border-subtle bg-surface px-4 py-6"
-                  data-testid="draft-studio-progress"
-                >
-                  <InfinityLoop aria-hidden />
-                  <p className="text-sm font-medium text-ink" data-testid="generation-phase">
-                    {aiBusyLabel || "Creating draft…"}
-                  </p>
-                </div>
-              ) : null}
-              <Button
-                type="button"
-                variant={
-                  aiDraft && !moduleDelivery && !refuseClone && !stockReuse
-                    ? "primary"
-                    : "secondary"
-                }
-                disabled={
-                  !aiDraft ||
-                  busy ||
-                  !canGenerateUi ||
-                  !finisherComplete ||
-                  refuseClone ||
-                  stockReuse
-                }
-                title={
-                  stockReuse
-                    ? "No custom ModuleSpec to apply — use Job Autopilot"
-                    : !finisherComplete
-                    ? "Wait for the Apps-store finisher (quality score) before applying"
-                    : (generateUiBlocked ?? undefined)
-                }
-                onClick={() => void onPrepareGenerateUi()}
-                data-testid="apply-to-odoo"
-              >
-                2. Apply to Odoo
-              </Button>
-              {stockReuse ? (
-                <Link
-                  href={jobAutopilotHref}
-                  className="inline-flex items-center justify-center rounded-md bg-ink px-3 py-2 text-sm font-medium text-white"
-                  data-testid="open-job-autopilot"
-                  onClick={() => stashBriefForJobAutopilot()}
-                >
-                  Open Job Autopilot
-                </Link>
-              ) : null}
-              {aiDraft && !refuseClone && !stockReuse ? (
-                <Button
-                  type="button"
-                  variant={moduleDelivery ? "primary" : "secondary"}
-                  disabled={zipBusy || !finisherComplete || zipLocked}
-                  loading={zipBusy}
-                  data-testid="download-module-zip"
-                  title={
-                    zipLocked
-                      ? "Authoring gate has not passed — zip stays locked"
-                      : undefined
-                  }
-                  onClick={() => void onDownloadModuleZip()}
-                >
-                  {moduleDelivery ? "Download module zip" : "Download zip"}
-                </Button>
-              ) : null}
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={!aiDraft || stockReuse}
-                data-testid="open-modulespec"
-                onClick={() => openModuleSpecEditor()}
-              >
-                Open ModuleSpec
-              </Button>
-              {aiDraft && !refuseClone && !stockReuse ? (
-                <Button variant="secondary" asChild>
-                  <Link
-                    href={designerHref}
-                    data-testid="open-view-designer"
-                    title={
-                      designerModel
-                        ? `Opens View Designer on ${designerModel}. Apply to Odoo first so the form exists on this connection.`
-                        : "Opens View Designer. Apply to Odoo first so views exist on this connection."
-                    }
-                  >
-                    Open View Designer
-                  </Link>
-                </Button>
-              ) : null}
-            </div>
-            {!aiDraft ? (
-              <p className="text-xs text-muted">
-                {nlPrompt.trim().length < 3
-                  ? "Type what you need (a field, a feature, or a full app), then click Create draft."
-                  : needsConnectReview && (!connectPoints || !connectPointsApproved)
-                    ? "Component / field pack: click Review connect points, approve the host model, then Create draft."
-                    : overlapFindings.length > 0 && !overlapResolved
-                      ? "Resolve overlap findings above (Use, Extend, or Build anyway), then Create draft."
-                      : isFullAppGrain
-                        ? "Full app detected — click Create draft. Stock first; custom models only for the residual. Nothing touches Odoo until Apply."
-                        : "Click Create draft — we implement on the host app (inherit + fields + view), not a second ERP."}
-              </p>
-            ) : (
-              <p className="text-xs text-muted">
-                The JSON below <strong className="font-medium text-ink">is</strong> the
-                ModuleSpec. Click{" "}
-                <strong className="font-medium text-ink">Apply to Odoo</strong> to write
-                models, forms, and the Operations / Inventory / People menu tree, then{" "}
-                <strong className="font-medium text-ink">Open app in Odoo</strong>. Line
-                items stay on parent forms — you do not pick models one by one. Or{" "}
-                <strong className="font-medium text-ink">Open ModuleSpec</strong> /{" "}
-                <strong className="font-medium text-ink">Open View Designer</strong> to
-                edit the spec or the live form.
-              </p>
-            )}
-            <div className="flex flex-wrap gap-2 border-t border-border-subtle pt-3">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                loading={overlapBusy}
-                disabled={nlPrompt.trim().length < 3}
-                onClick={() => void onCheckOverlap()}
-                data-testid="check-overlap"
-              >
-                Check overlap
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setAiDraft(null);
-                  setNlPrompt("");
-                  setAiWarnings([]);
-                  setConnectPoints(null);
-                  setConnectPointsApproved(false);
-                  setOverlapFindings([]);
-                  setOverlapChoice(null);
-                  setOverlapFindingId(null);
-                  setGenUiResult(null);
-                  setOdooAppUrl(null);
-                  setValidateLiveResult(null);
-                  setGrainLabel(null);
-                  setEffectiveGrain("");
-                  setAiNote(null);
-                }}
-              >
-                Clear
-              </Button>
-            </div>
-          </div>
-          {needsConnectReview && !connectPointsApproved ? (
-            <Callout variant="info" title="Component grain" className="mt-3">
-              This prompt looks like a feature slice or field pack — review connect points and
-              approve before creating the draft.
-            </Callout>
-          ) : null}
-          {aiDraft && generateUiBlocked ? (
-            <Callout variant="warning" title="Apply to Odoo blocked" className="mt-3">
-              {generateUiBlocked}
-            </Callout>
-          ) : null}
-          {liveApplyBanner ? (
-            <Callout
-              variant="warning"
-              title={liveApplyBanner.title}
-              className="mt-3"
-              testId={liveApplyBanner.testId}
-            >
-              {liveApplyBanner.body}
-            </Callout>
-          ) : null}
-          {unfinishedBanner ? (
-            <Callout
-              variant="warning"
-              title={unfinishedBanner.title}
-              className="mt-3"
-              testId={unfinishedBanner.testId}
-            >
-              {unfinishedBanner.body}
-            </Callout>
-          ) : null}
-          {aiNote ? (
-            <Callout variant="info" title="Note" className="mt-3">
-              {aiNote}
-            </Callout>
-          ) : null}
-          {genUiResult ? (
-            <Callout variant="info" title="Applied to Odoo" className="mt-2">
-              <p>{genUiResult}</p>
-              {odooAppUrl ? (
-                <p className="mt-2 flex flex-wrap items-center gap-2">
-                  <Button asChild variant="primary" size="sm">
-                    <a
-                      href={odooAppUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      data-testid="open-app-in-odoo"
-                    >
-                      Open app in Odoo
-                    </a>
-                  </Button>
-                  <span className="text-xs text-muted">
-                    Opens the app root. Use Operations, Inventory, and People — not a
-                    per-model list.
-                  </span>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    data-testid="load-demo-walkthrough"
-                    onClick={() => setWalkthroughConfirmOpen(true)}
-                  >
-                    Load demo walkthrough
-                  </Button>
-                </p>
-              ) : null}
-            </Callout>
-          ) : null}
-          {draftCacheEntries.length > 0 ? (
-            <div className="mt-3">
-              <p className="text-xs uppercase tracking-wide text-muted">Saved snapshots</p>
-              <p className="text-[11px] text-muted">
-                Clicking a row replaces the current JSON. It does not run Expert review.
-              </p>
-              <ul className="mt-1 space-y-1">
-                {draftCacheEntries.slice(0, 5).map((c) => (
-                  <li key={c.id}>
-                    <button
-                      type="button"
-                      className="text-left text-xs text-muted hover:text-ink underline"
-                      onClick={() => void restoreDraftFromCache(c.id)}
-                    >
-                      {c.summary}
-                      {c.updated_at ? ` · ${new Date(c.updated_at).toLocaleString()}` : ""}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-          {llmStatusBanner || showRetryEnrichment ? (
-            <Callout
-              variant={
-                llmStatusMode === "llm_full" && retryEnrichmentDisabled
-                  ? "info"
-                  : llmStatusBanner
-                    ? "warning"
-                    : "info"
-              }
-              title="AI draft status"
-              className="mt-2"
-              testId="retry-ai-enrichment"
-            >
-              <p className="text-sm">
-                {llmStatusBanner ||
-                  "Retry AI enrichment wakes Flash/local/cloud, re-runs missed polish, and completes residual hygiene from your brief."}
-              </p>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="mt-2"
-                disabled={retryEnrichmentDisabled}
-                loading={aiBusy}
-                title={
-                  retryEnrichmentDisabled && !aiBusy
-                    ? "Enrichment already completed successfully"
-                    : "Wake AI providers and re-run missed polish / residual hygiene"
-                }
-                onClick={() => void retryAiEnrichment()}
-                data-testid="retry-ai-enrichment-btn"
-              >
-                Retry AI enrichment
-              </Button>
-            </Callout>
-          ) : null}
-          {operatorBrief?.formatted ? (
-            <Callout
-              variant="info"
-              title={`Structured brief${
-                operatorBrief.capability_path
-                  ? ` · ${operatorBrief.capability_path}`
-                  : ""
-              }`}
-              className="mt-2"
-              testId="operator-brief"
-            >
-              <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap text-xs text-ink">
-                {operatorBrief.formatted}
-              </pre>
-              {operatorBrief.unknowns?.length ? (
-                <p className="mt-2 text-xs text-muted">
-                  Unknowns (not assumed): {operatorBrief.unknowns.join("; ")}
-                </p>
-              ) : null}
-            </Callout>
-          ) : null}
-          {refuseClone ? (
-            <Callout
-              variant="warning"
-              title="Not generated — Apps Store clone refused"
-              className="mt-2"
-              testId="generation-refuse-clone"
-            >
-              <p className="text-sm">
-                {generationEngine?.honesty ||
-                  "This platform does not clone Apps Store or GM modules. Describe the residual process, or ask for the honest POS receipt options template."}
-              </p>
-            </Callout>
-          ) : null}
-          {!refuseClone && generationEngine?.honesty ? (
-            <Callout
-              variant="info"
-              title="Honest capability"
-              className="mt-2"
-              testId="generation-honesty"
-            >
-              <p className="text-sm">{generationEngine.honesty}</p>
-            </Callout>
-          ) : null}
-          {operatorSurfaceHasPlacement(operatorSurface) && operatorSurface ? (
-            <Callout
-              variant="info"
-              title="Where this app shows up"
-              className="mt-2"
-              testId="operator-surface"
-            >
-              {operatorSurface.summary ? (
-                <p className="text-sm">{operatorSurface.summary}</p>
-              ) : null}
-              {operatorSurface.app_menu?.label ? (
-                <p className="mt-2 text-sm">
-                  <span className="font-medium">App menu:</span>{" "}
-                  {operatorSurface.app_menu.label}
-                  {operatorSurface.app_menu.technical_name ? (
-                    <span className="font-mono text-xs text-muted">
-                      {" "}
-                      ({operatorSurface.app_menu.technical_name})
-                    </span>
-                  ) : null}
-                </p>
-              ) : null}
-              {operatorSurface.host_buttons.length > 0 ? (
-                <div className="mt-2">
-                  <p className="text-sm font-medium">Smart buttons on stock apps</p>
-                  <ul className="mt-1 list-disc space-y-1 pl-5 text-sm">
-                    {operatorSurface.host_buttons.map((b) => (
-                      <li key={`${b.host_model}:${b.residual_model}:${b.button_label}`}>
-                        «{b.button_label}» on {b.host_label}{" "}
-                        <span className="font-mono text-xs text-muted">
-                          ({b.host_model})
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-              {operatorSurface.residual_buttons.length > 0 ? (
-                <div className="mt-2">
-                  <p className="text-sm font-medium">Smart buttons on this app</p>
-                  <ul className="mt-1 list-disc space-y-1 pl-5 text-sm">
-                    {operatorSurface.residual_buttons.map((b) => (
-                      <li key={`${b.on_model}:${b.related_model}:${b.button_label}`}>
-                        «{b.button_label}» on{" "}
-                        <span className="font-mono text-xs">{b.on_model}</span> →{" "}
-                        <span className="font-mono text-xs">{b.related_model}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-              {operatorSurface.stock_links.length > 0 ? (
-                <div className="mt-2">
-                  <p className="text-sm font-medium">Stock links on the form</p>
-                  <ul className="mt-1 list-disc space-y-1 pl-5 text-sm">
-                    {operatorSurface.stock_links.map((l) => (
-                      <li key={`${l.on_model}:${l.field}`}>
-                        {l.field_label} → {l.stock_label}{" "}
-                        <span className="font-mono text-xs text-muted">
-                          ({l.stock_model})
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="mt-1 text-xs text-muted">
-                    These stay as form fields — not duplicate smart buttons next to the
-                    many2one.
-                  </p>
-                </div>
-              ) : null}
-            </Callout>
-          ) : null}
-          {stockReuse && stockApps.length > 0 ? (
-            <Callout
-              variant="info"
-              title="Community apps covering this brief"
-              className="mt-2"
-              testId="stock-reuse-apps"
-            >
-              <ul className="list-disc space-y-1 pl-5 text-sm">
-                {stockApps.map((app) => (
-                  <li key={app.id}>
-                    {app.label}{" "}
-                    <span className="font-mono text-xs text-muted">({app.id})</span>
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-2 text-sm text-muted">
-                Empty models/views is the correct ModuleSpec — stock already covers cashiers,
-                quotations, and invoices. Completeness 10.0 is hygiene on an empty spec, not
-                a shippable custom app.
-              </p>
-              <Link
-                href={jobAutopilotHref}
-                className="mt-2 inline-flex text-sm font-medium text-accent underline"
-                onClick={() => stashBriefForJobAutopilot()}
-              >
-                Open Job Autopilot for sandbox install and quote→invoice smoke
-              </Link>
-            </Callout>
-          ) : null}
-          {generationEngine?.needs_clarification?.question ? (
-            <Callout
-              variant="warning"
-              title="One question"
-              className="mt-2"
-              testId="generation-clarify"
-            >
-              <p className="text-sm">{generationEngine.needs_clarification.question}</p>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
-                {(generationEngine.needs_clarification.options || []).map((opt) => (
-                  <li key={opt.id}>
-                    {opt.label}
-                    {generationEngine.needs_clarification?.default_id === opt.id
-                      ? " (default)"
-                      : ""}
-                  </li>
-                ))}
-              </ul>
-            </Callout>
-          ) : null}
-          {typeof draftScore === "number" ? (
-            <Callout
-              variant="info"
-              title={
-                stockReuse
-                  ? `Stock coverage — empty ModuleSpec (hygiene ${draftScore.toFixed(1)}/10)${
-                      certTierDisplay ? ` · Cert: ${certTierDisplay}` : ""
-                    }`
-                  : `Completeness: ${draftScore.toFixed(1)}/10${
-                      validatorsGreen ? " · validators green" : ""
-                    }${goLiveReady ? " · sandbox proven" : ""}${
-                      certTierDisplay ? ` · Cert: ${certTierDisplay}` : ""
-                    }`
-              }
-              className="mt-2"
-              testId="draft-scorecard-chip"
-            >
-              {scoreDimensions ? (
-                <p className="text-xs text-muted">
-                  Domain {scoreDimensions.domain_fit?.toFixed(1) ?? "—"} · Structure{" "}
-                  {scoreDimensions.structure?.toFixed(1) ?? "—"} · Semantics{" "}
-                  {scoreDimensions.semantics?.toFixed(1) ?? "—"} · UX{" "}
-                  {scoreDimensions.ux?.toFixed(1) ?? "—"} · Hygiene{" "}
-                  {scoreDimensions.hygiene?.toFixed(1) ?? "—"}
-                </p>
-              ) : null}
-              {certification ? (
-                <p className="mt-1 text-xs text-muted" data-testid="certification-chip">
-                  Certification {certTierDisplay ?? "—"} — Quality{" "}
-                  {typeof certification.quality === "number"
-                    ? certification.quality.toFixed(0)
-                    : "—"}
-                  · Evidence{" "}
-                  {typeof certification.evidence === "number"
-                    ? certification.evidence.toFixed(0)
-                    : "—"}
-                  · Risk{" "}
-                  {typeof certification.risk === "number"
-                    ? certification.risk.toFixed(0)
-                    : "—"}
-                  {!certShipReady
-                    ? stockReuse
-                      ? " — empty-spec hygiene is not go-live; Autopilot smoke is the done-bar"
-                      : " — completeness 10.0 is not go-live until Cert ≥ Production (and Option A smoke if pending)"
-                    : " — promote stays human; Autopilot smoke is a separate job scorecard"}
-                </p>
-              ) : null}
-              {doneBar?.mode ? (
-                <p className="mt-1 text-xs text-muted" data-testid="done-bar-chip">
-                  Done-bar: {doneBar.mode}
-                  {doneBar.next_step ? ` — ${doneBar.next_step}` : ""}
-                </p>
-              ) : null}
-              <ul
-                className="mt-2 list-disc space-y-1 pl-5 text-[11px] text-muted"
-                data-testid="score-bars-legend"
-              >
-                <li>{SCORE_BARS.completeness}</li>
-                <li>{SCORE_BARS.certification}</li>
-                <li>{SCORE_BARS.autopilot}</li>
-              </ul>
-              {Array.isArray(scorecard?.findings) && scorecard.findings.length > 0 ? (
-                <ul className="mt-1 list-disc space-y-1 pl-5 text-sm">
-                  {scorecard.findings.slice(0, 6).map((f, i) => (
-                    <li key={`${f.element}-${i}`}>
-                      {f.dimension ? (
-                        <span className="text-muted">{f.dimension}: </span>
-                      ) : null}
-                      {f.element}: {f.detail}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm">
-                  {stockReuse
-                    ? "Empty spec is correct. Open Job Autopilot for sandbox install and quote→invoice RPC smoke. Completeness ≠ Cert ≠ Autopilot. Promote stays human."
-                    : certShipReady && goLiveReady
-                    ? "Sandbox proven + Certification Production/Gold — ready for human promote."
-                    : certShipReady
-                      ? "Certification Production/Gold — review before promote."
-                      : draftScore >= 9.5 && !certShipReady
-                        ? "High completeness — not shippable until Certification ≥ Production."
-                        : "No major findings — ready for review."}
-                </p>
-              )}
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="mt-2"
-                disabled={aiBusy || !aiDraft || refuseClone}
-                data-testid="expert-review-fix"
-                onClick={() => void askExpertReviewDraft(true)}
-              >
-                Ask the Expert to review and fix
-              </Button>
-              <p className="mt-1 text-[11px] text-muted" data-testid="expert-review-fix-hint">
-                {expertCloserHint(aiDraft)}
-              </p>
-              {!stockReuse && !aiDraft?._component && draftScore >= 9 ? (
-                <div className="mt-3 space-y-2" data-testid="elite-promote-workflow">
-                  <p className="text-xs text-muted">
-                    Optional installable module (Python, mail, cron, tests). Not required to
-                    view the app — Apply to Odoo / Open ModuleSpec already generate the UI.
-                    Use this path when you want a zip, sandbox install, then promote.
-                  </p>
-                  {eliteLintNote ? (
-                    <p
-                      className={`text-xs ${eliteLintOk === false ? "text-warning" : "text-muted"}`}
-                      data-testid="elite-lint-note"
-                    >
-                      {eliteLintNote}
-                    </p>
-                  ) : null}
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={!aiDraft || eliteBusy}
-                      onClick={() => void refreshEliteLint()}
-                    >
-                      Lint Python blocks
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      loading={eliteBusy}
-                      disabled={!aiDraft || eliteBusy || !finisherComplete}
-                      data-testid="elite-validate-module"
-                      onClick={() => void onEliteValidateModule()}
-                    >
-                      Validate module (sandbox)
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="primary"
-                      size="sm"
-                      disabled={!eliteValidationId || !eliteZipBase64 || eliteBusy}
-                      data-testid="elite-promote-module"
-                      onClick={() => setElitePromoteConfirmOpen(true)}
-                    >
-                      Promote module
-                    </Button>
-                    {eliteZipBase64 && aiDraft ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        data-testid="elite-download-zip"
-                        onClick={() =>
-                          downloadEliteZipBase64(
-                            String(aiDraft.technical_name || "custom_module"),
-                            eliteZipBase64,
-                          )
-                        }
-                      >
-                        Download validated zip
-                      </Button>
-                    ) : null}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      data-testid="expert-ask-draft"
-                      onClick={() =>
-                        openExpert({
-                          question: `Review this draft module spec for production readiness: ${draftSummary ?? "module"}. What should I verify before promote?`,
-                          freshThread: true,
-                        })
-                      }
-                    >
-                      Ask Expert about draft
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
-              {eliteNote ? <p className="mt-2 text-sm text-muted">{eliteNote}</p> : null}
-              {expertReviewNote ? (
-                <p className="mt-2 text-sm text-muted">{expertReviewNote}</p>
-              ) : null}
-              {expertReviewFindings.some((f) => f.narrative_paragraph) ? (
-                <div className="mt-3 space-y-3" data-testid="expert-review-narratives">
-                  {expertReviewFindings
-                    .filter((f) => f.narrative_paragraph)
-                    .slice(0, 5)
-                    .map((f) => (
-                      <div key={f.priority} className="rounded-md border border-border-subtle p-2">
-                        <p className="text-xs font-medium text-ink">{f.summary}</p>
-                        <p className="mt-1 text-sm text-muted">{f.narrative_paragraph}</p>
-                      </div>
-                    ))}
-                </div>
-              ) : null}
-            </Callout>
-          ) : null}
-          {draftNeedsRegenerate && !llmStatusBanner && !stockReuse ? (
-            <Callout variant="warning" title="Generic placeholders detected" className="mt-2">
-              <p className="text-sm">
-                The AI model timed out — generic placeholders filled the gaps. Regenerate for
-                domain-specific results.
-              </p>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="mt-2"
-                disabled={aiBusy || !canDraftModule}
-                loading={aiBusy}
-                onClick={() => void onDraftFromPrompt()}
-                data-testid="regenerate-draft"
-              >
-                Regenerate
-              </Button>
-            </Callout>
-          ) : null}
-          {aiWarnings.filter((w) => {
-            if (w.startsWith("senior: ")) return false;
-            if (w.startsWith("live_apply:") && !w.toLowerCase().includes("gap")) return false;
-            return true;
-          }).length > 0 ? (
-            <Callout variant="warning" title="Draft warnings" className="mt-2">
-              <ul className="list-disc space-y-1 pl-5">
-                {aiWarnings
-                  .filter((w) => {
-                    if (w.startsWith("senior: ")) return false;
-                    if (w.startsWith("live_apply:") && !w.toLowerCase().includes("gap"))
-                      return false;
-                    return true;
-                  })
-                  .slice(0, 12)
-                  .map((w, i) => (
-                  <li key={`${i}-${w}`}>{w}</li>
-                ))}
-              </ul>
-            </Callout>
-          ) : null}
-          {authoredOptionA ? (
-            <Callout
-              variant={authoringPassed ? "info" : "warning"}
-              title={
-                authoringPassed
-                  ? "Authoring gate passed — zip and sandbox unlocked"
-                  : "LLM-authored module locked until the gate passes"
-              }
-              className="mt-2"
-              data-testid="option-a-authoring-gate"
-            >
-              <p className="text-sm">
-                Completeness is not this bar. Zip download and sandbox install stay
-                disabled until lint, policy (no invented taxes, no SSRF, no secrets),
-                and a dry structural zip pass. Promote stays human.
-              </p>
-              {hostInstallOffers.length > 0 ? (
-                <HostInstallPanel
-                  offers={hostInstallOffers}
-                  busy={aiBusy}
-                  disabled={aiBusy || isOdooOnline}
-                  disabledReason={
-                    isOdooOnline
-                      ? "Odoo Online cannot install Community apps from here"
-                      : undefined
-                  }
-                  onInstall={(offer, phrase) => void installAuthoredHostModule(offer, phrase)}
-                />
-              ) : null}
-              {leftoverAuthoringFindings.length > 0 ? (
-                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
-                  {leftoverAuthoringFindings.slice(0, 8).map((row, i) => (
-                    <li key={`auth-${i}`}>
-                      {row.code ? `${row.code}: ` : ""}
-                      {row.message}
-                      {row.file ? ` (${row.file})` : ""}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </Callout>
-          ) : null}
-          {Array.isArray((aiDraft?._live_apply as { option_a?: string[] } | undefined)?.option_a) &&
-          ((aiDraft?._live_apply as { option_a?: string[] }).option_a?.length ?? 0) > 0 ? (
-            <Callout
-              variant={goLiveReady ? "info" : "warning"}
-              title={
-                goLiveReady
-                  ? "Option A sandbox proven — promote stays human"
-                  : Boolean(aiDraft?._capability_primary_option_a)
-                    ? "Option A required — not a form-field pack"
-                    : "Option A surfaces in this draft"
-              }
-              className="mt-2"
-              data-testid="option-a-gaps"
-            >
-              <p className="text-sm">
-                {Boolean(aiDraft?._capability_primary_option_a)
-                  ? "This prompt needs a QWeb/PDF module (sandbox → promote). The draft zip scaffolds Pay now + QR. Live Apply only lands Char stubs — run Sandbox install & smoke to lift the scorecap."
-                  : "Some requested surfaces need an installable module. Live Apply still works for metadata; finish Option A separately."}
-              </p>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
-                {((aiDraft?._live_apply as { option_a?: string[] }).option_a ?? [])
-                  .slice(0, 8)
-                  .map((line, i) => (
-                    <li key={`oa-${i}`}>{line}</li>
-                  ))}
-              </ul>
-              {Boolean(aiDraft?._capability_primary_option_a) ? (
-                <div className="mt-3 space-y-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={aiBusy || optionAProveBusy || !aiDraft || zipLocked}
-                    data-testid="option-a-prove"
-                    title={
-                      zipLocked
-                        ? "Authoring gate has not passed — sandbox stays locked"
-                        : undefined
-                    }
-                    onClick={() => void proveOptionASandbox()}
-                  >
-                    {optionAProveBusy ? "Sandbox smoke…" : "Sandbox install & smoke"}
-                  </Button>
-                  {optionAProveNote ? (
-                    <p className="text-xs text-muted" data-testid="option-a-prove-note">
-                      {optionAProveNote}
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-            </Callout>
-          ) : null}
-          {Array.isArray(aiDraft?._compute_suggestions) &&
-          (aiDraft._compute_suggestions as Array<{ model?: string; message?: string }>)
-            .length > 0 ? (
-            <div className="mt-2 space-y-2" data-testid="compute-suggestions">
-              {(
-                aiDraft._compute_suggestions as Array<{ model?: string; message?: string }>
-              ).map((s, i) => (
-                <Callout
-                  key={`${s.model ?? "line"}-${i}`}
-                  variant="info"
-                  title="Line total suggestion"
-                >
-                  <p className="text-sm">{s.message}</p>
-                  <Link
-                    href={`/connections/${connectionId}/automations`}
-                    className="mt-2 inline-block text-sm text-accent underline"
-                  >
-                    Configure equation compute (advanced — confirm before apply)
-                  </Link>
-                </Callout>
-              ))}
-            </div>
-          ) : null}
-          {connectPoints && !needsConnectReview ? (
-            <section className="mt-4 border border-border-subtle bg-surface p-4">
-              <h3 className="text-sm font-semibold text-muted">Connect points</h3>
-              <p className="mt-1 text-xs text-muted">
-                Full-app draft — connect points not required.
-              </p>
-            </section>
-          ) : null}
-          {aiRefusals.length > 0 ? (
-            <div className="mt-4 space-y-2" data-testid="protected-refusals">
-              {aiRefusals.map((r, i) => (
-                <Callout key={`${r.protected_module}-${i}`} variant="warning" title="Protected module">
-                  <p className="text-sm">
-                    <strong>{r.requested_capability}</strong>
-                  </p>
-                  <p className="mt-1 break-all font-mono text-sm text-muted">
-                    Model: {r.protected_module}
-                  </p>
-                  <p className="mt-1 text-sm">{r.reason || r.requested_capability}</p>
-                  <p className="mt-2 text-sm text-accent">{r.safe_alternative}</p>
-                </Callout>
-              ))}
-            </div>
-          ) : null}
-          {aiDraft && (
-            <>
-              {residualPreview || aiDraft ? (
-                <div className="mt-3" data-testid="stage-h-form-preview">
-                  <p className="mb-2 text-xs uppercase tracking-wide text-muted">
-                    Review the header form
-                  </p>
-                  <DraftOdooPreview
-                    draft={aiDraft}
-                    breadcrumb="Draft Wizard"
-                    formPreview={residualPreview}
-                  />
-                </div>
-              ) : null}
-              {optionASettings ? (
-                <Callout
-                  variant="info"
-                  title={`Option A settings · ${optionASettings.model}`}
-                  className="mt-3"
-                  testId="option-a-settings-pane"
-                >
-                  <p className="text-sm text-muted">
-                    These toggles inherit stock POS / document hosts. This is not a live
-                    thermal studio and not an x_receipt app.
-                  </p>
-                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
-                    {optionASettings.fields.map((f) => (
-                      <li key={f.name}>
-                        <span className="font-mono text-xs">{f.name}</span>
-                        {f.string ? ` — ${f.string}` : ""}
-                        {f.help ? <span className="text-muted"> ({f.help})</span> : null}
-                      </li>
-                    ))}
-                  </ul>
-                </Callout>
-              ) : null}
-              {Boolean(aiDraft._component) || (aiDraft.grain && aiDraft.grain !== "full_app") ? (
-                <p className="mt-3 text-sm text-ink">
-                  Extends{" "}
-                  <span className="font-medium">
-                    {String(
-                      (aiDraft.connect_points as { host_label?: string } | undefined)
-                        ?.host_label ||
-                        (aiDraft.connect_points as { host_model?: string } | undefined)
-                          ?.host_model ||
-                        "a stock app",
-                    )}
-                  </span>
-                  <span className="text-muted">
-                    {" "}
-                    (
-                    {String(
-                      (aiDraft.connect_points as { host_model?: string } | undefined)
-                        ?.host_model || "?",
-                    )}
-                    ) — custom models only if the prompt asked for a register or checklist.
-                    Nothing writes to Odoo until Apply.
-                  </span>
-                </p>
-              ) : stockReuse ? (
-                <p className="mt-3 text-sm text-ink" data-testid="stock-reuse-surface">
-                  {stockApps.length
-                    ? stockApps.map((app) => app.label).join(" · ")
-                    : "Named Community apps"}{" "}
-                  — no custom models, views, or smart buttons. Use Job Autopilot.
-                </p>
-              ) : (
-                <p className="mt-3 text-xs text-muted">
-                  {Array.isArray(aiDraft.models) ? aiDraft.models.length : "?"} models
-                  · {Array.isArray(aiDraft.views) ? aiDraft.views.length : 0} views
-                  ·{" "}
-                  {Array.isArray(aiDraft.smart_buttons)
-                    ? aiDraft.smart_buttons.length
-                    : 0}{" "}
-                  smart buttons
-                  {typeof aiDraft.domain_pack === "string"
-                    ? ` · pack: ${aiDraft.domain_pack}`
-                    : ""}
-                </p>
-              )}
-              {Array.isArray(aiDraft.models) ? (
-                <ul className="mt-3 space-y-1 text-sm" data-testid="draft-model-review">
-                  {(aiDraft.models as Array<{ model?: string; description?: string }>).map(
-                    (m) => (
-                      <li key={String(m.model)} className="flex items-center gap-2">
-                        <span className="font-mono text-muted">{m.model}</span>
-                        <AskWhyButton
-                          subject={String(m.model)}
-                          context={`Draft model ${m.model}${m.description ? `: ${m.description}` : ""}`}
-                          connectionId={connectionId}
-                          draft={aiDraft ?? undefined}
-                          userPrompt={nlPrompt.trim()}
-                        />
-                      </li>
-                    ),
-                  )}
-                </ul>
-              ) : null}
-              <CodeBlock
-                className="mt-2"
-                language="json"
-                code={JSON.stringify(aiDraft, null, 2)}
-              />
-              <div className="mt-3 flex flex-wrap gap-2">
-                <SuggestTemplateButton spec={aiDraft} connectionId={connectionId} />
-                {(aiDraft._component ||
-                  (typeof aiDraft.grain === "string" &&
-                    aiDraft.grain !== "full_app")) && (
-                  <SaveAsComponentButton spec={aiDraft} />
-                )}
-              </div>
-            </>
-          )}
-        </Card>
-
-        {loading ? (
-          <div className="mt-4 space-y-2">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-24 w-full" />
-          </div>
-        ) : null}
-        {error ? <ErrorNotice message={error} className="mt-4" /> : null}
-
-        <div className="mt-10 border-t border-border-subtle pt-8">
-          <h2 className="text-xl font-semibold text-ink">Ready-made templates</h2>
-          <p className="mt-1 text-sm text-muted">
-            Skip AI — one click scaffolds a full app (Library, CRM Lite, …) directly on this connection.
-          </p>
+          <details className="draft-studio-disclosure mt-6">
+            <summary className="cursor-pointer text-sm font-medium text-muted">
+              Adjust prompt
+            </summary>
+            <div className="mt-3">{promptPanel}</div>
+          </details>
         </div>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {templates.map((tpl) => {
-            const active = selected?.id === tpl.id;
-            const opts = templateScaffoldOpts(tpl.id);
-            const canScaffold = scaffoldApplyAllowed(connection, opts);
-            const blocked = scaffoldApplyBlockedReason(connection, opts);
-            return (
-              <button
-                key={tpl.id}
-                type="button"
-                data-testid={`template-card-${tpl.id}`}
-                disabled={!canScaffold}
-                title={blocked ?? undefined}
-                onClick={() => {
-                  if (!canScaffold) return;
-                  openConfirm(tpl);
-                }}
-                className={`rounded-md border p-4 text-left transition ${
-                  !canScaffold
-                    ? "cursor-not-allowed border-border-subtle bg-surface-muted opacity-50"
-                    : active
-                      ? "border-accent bg-accent-subtle"
-                      : "border-border-subtle bg-surface-raised hover:bg-surface-muted"
-                }`}
-              >
-                <p className="text-lg font-semibold text-ink">{tpl.name}</p>
-                <p className="mt-1 font-mono text-xs text-accent">{tpl.id}</p>
-                <p className="mt-2 text-sm text-muted">{tpl.description}</p>
-                {blocked ? (
-                  <p className="mt-2 text-xs text-warning">{blocked}</p>
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
-
-        {result ? (
-          <Card className="mt-8 p-5" data-testid="scaffold-result">
-            <h2 className="text-xl font-semibold text-ink">Scaffold result</h2>
-            <p className="mt-2 text-sm text-ink">
-              {result.ok ? "Complete" : "Partial"} · {result.message}
-            </p>
-            <p className="mt-1 text-sm text-muted">
-              Template <code className="font-mono text-accent">{result.template_id}</code> ·{" "}
-              {result.fields_created} fields created
-              {typeof result.view_injects === "number"
-                ? ` · ${result.view_injects} view inject(s)`
-                : ""}
-            </p>
-            {result.warnings && result.warnings.length > 0 ? (
-              <Callout variant="warning" title="Warnings" className="mt-3">
-                <ul className="list-disc space-y-1 pl-5">
-                  {result.warnings.map((w, i) => (
-                    <li key={`${i}-${w}`}>{w}</li>
-                  ))}
-                </ul>
-              </Callout>
-            ) : null}
-
-            <ol
-              data-testid="scaffold-checklist"
-              className="mt-5 space-y-2 text-sm"
-            >
-              <li className="flex items-start gap-2 border border-[#1e2f29] px-3 py-2">
-                <span
-                  className={
-                    result.models.length > 0 ? "text-muted" : "text-muted"
-                  }
-                  aria-hidden
-                >
-                  {result.models.length > 0 ? "✓" : "○"}
-                </span>
-                <span>
-                  Models created
-                  {result.models.length > 0
-                    ? ` (${result.models.length})`
-                    : " — none reported"}
-                  {result.models_skipped && result.models_skipped.length > 0
-                    ? ` · skipped: ${result.models_skipped.join(", ")}`
-                    : ""}
-                </span>
-              </li>
-              <li className="flex items-start gap-2 border border-[#1e2f29] px-3 py-2">
-                <span
-                  className={
-                    (result.menus_created ?? 0) > 0
-                      ? "text-muted"
-                      : "text-muted"
-                  }
-                  aria-hidden
-                >
-                  {(result.menus_created ?? 0) > 0 ? "✓" : "○"}
-                </span>
-                <span>
-                  Menus created
-                  {typeof result.menus_created === "number"
-                    ? ` (${result.menus_created})`
-                    : " — n/a"}
-                </span>
-              </li>
-              <li className="flex items-start gap-2 border border-[#1e2f29] px-3 py-2">
-                <span className="text-muted" aria-hidden>
-                  →
-                </span>
-                <Link
-                  href={
-                    result.models[0]
-                      ? `/connections/${connectionId}/designer?model=${encodeURIComponent(result.models[0])}`
-                      : `/connections/${connectionId}/designer`
-                  }
-                  className="text-muted hover:underline"
-                >
-                  Open designer
-                </Link>
-              </li>
-              <li className="flex items-start gap-2 border border-[#1e2f29] px-3 py-2">
-                <span className="text-muted" aria-hidden>
-                  →
-                </span>
-                <Link
-                  href={`/connections/${connectionId}`}
-                  className="text-muted hover:underline"
-                >
-                  Run sandbox
-                </Link>
-                <span className="text-muted">(on connection page)</span>
-              </li>
-            </ol>
-
-            <ul
-              data-testid="scaffold-models"
-              className="mt-4 space-y-2 text-sm"
-            >
-              {result.models.map((model) => (
-                <li
-                  key={model}
-                  className="flex flex-wrap items-center gap-3 border border-[#1e2f29] px-3 py-2"
-                >
-                  <span className="font-mono text-muted">{model}</span>
-                  <AskWhyButton subject={model} context={`Scaffold created model ${model}`} />
-                  <Link
-                    href={`/connections/${connectionId}/builder`}
-                    className="text-xs text-muted hover:underline"
-                  >
-                    Builder
-                  </Link>
-                  <Link
-                    href={`/connections/${connectionId}/designer?model=${encodeURIComponent(model)}`}
-                    className="text-xs text-muted hover:underline"
-                  >
-                    Designer
-                  </Link>
-                </li>
-              ))}
-              {result.models.length === 0 && (
-                <li className="text-muted">No models reported.</li>
-              )}
-            </ul>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button variant="secondary" asChild>
-                <Link href={`/connections/${connectionId}`}>Back to overview</Link>
-              </Button>
-              <Button variant="primary" asChild>
-                <Link href={`/connections/${connectionId}/builder`}>Open builder</Link>
-              </Button>
-            </div>
-          </Card>
-        ) : null}
+      ) : null}
 
       <ConfirmDialog
         open={confirmOpen}
@@ -3453,6 +1873,6 @@ export default function AppWizardPage() {
         onCancel={() => setWalkthroughConfirmOpen(false)}
         onConfirm={(phrase) => void onSeedWalkthrough(phrase)}
       />
-    </div>
+    </DraftStudioShell>
   );
 }

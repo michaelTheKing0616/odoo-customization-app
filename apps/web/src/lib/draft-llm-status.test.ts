@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   draftEnrichmentClean,
   draftHasUnguardedCreateGate,
+  llmStatusBannerCopy,
+  showRetryEnrichment,
   withEnrichmentCleanFlags,
 } from "./draft-llm-status";
 
@@ -71,5 +73,32 @@ describe("draftEnrichmentClean", () => {
         },
       }),
     ).toBe(false);
+  });
+});
+
+describe("llmStatusBannerCopy", () => {
+  it("keeps wizard pack-fallback copy and hides on stock_reuse", () => {
+    expect(
+      llmStatusBannerCopy({
+        draft: { _llm_status: { mode: "pack_fallback" } },
+      }),
+    ).toMatch(/domain pack/);
+    expect(
+      llmStatusBannerCopy({
+        draft: { _llm_status: { mode: "llm_full" } },
+        stockReuse: true,
+      }),
+    ).toBeNull();
+    expect(
+      llmStatusBannerCopy({
+        draft: { _llm_status: { mode: "llm_full" } },
+        retryDisabled: true,
+      }),
+    ).toMatch(/completed successfully/);
+  });
+
+  it("does not offer Retry on component drafts", () => {
+    expect(showRetryEnrichment({ draft: { _component: true } })).toBe(false);
+    expect(showRetryEnrichment({ draft: { models: [] } })).toBe(true);
   });
 });

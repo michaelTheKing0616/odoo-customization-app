@@ -1,3 +1,8 @@
+### 2026-09-14 — Premium Draft Studio UX (surface 4)
+**Decided:** Extract Draft Studio (wizard) into a four-stage rail (prompt → enrich → review → apply) plus extracted chrome (shell, reuse chips, honesty banners, scorecard, preview pane, apply bar, templates). Completeness ≠ Cert ≠ Autopilot. Promote stays human. Banner helpers keep wizard defaults — App Studio still passes `surface: "studio"`. Cross-links stay ModuleSpec / App Studio / View Designer / Job Autopilot where already product-intended. Playwright testids on the wizard stay stable.
+**Why:** Designer / Automations / Builder / Menus / Access / App Studio set the elite bar; the wizard was a ~3.5k dump. Operators need a calm staged journey from prompt to scorecard without rewriting the AI draft pipeline.
+**Rejected:** Job Autopilot page, ModuleSpec editor, Projects, Expert; changing generation/enrich semantics; copying App Studio’s brief→clarify chat product role onto Draft Studio.
+
 ### 2026-09-14 — Premium App Studio UX (surface 3)
 **Decided:** Extract App Studio into a five-stage rail (brief → clarify → generate → review → apply) plus extracted chrome (brief, honesty banners, Option A panel, chat/refine, apply bar, View Designer / Open in Odoo links). Diagnosis still locks with **Yes — build this**. Completeness ≠ Cert ≠ Autopilot. Promote stays human. Live-apply / unfinished banners keep wizard copy by default; App Studio passes `surface: "studio"`. View Designer stays the primary `x_*` deep link.
 **Why:** Designer / Automations / Builder / Menus / Access set the elite bar; App Studio was a ~1.9k chat dump. Operators need a calm hero journey from brief to review, not a busy transcript.

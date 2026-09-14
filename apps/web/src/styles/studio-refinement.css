@@ -193,6 +193,20 @@
   line-height: 1.45;
 }
 
+.studio-refinement .draft-studio-disclosure {
+  margin: 0;
+}
+
+.studio-refinement .draft-studio-disclosure > summary {
+  list-style: none;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.studio-refinement .draft-studio-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
 .studio-refinement .studio-banner-stack,
 .studio-refinement .studio-review {
   display: flex;
