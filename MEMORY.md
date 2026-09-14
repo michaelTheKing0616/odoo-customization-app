@@ -1,3 +1,8 @@
+### 2026-09-14 — Premium Models & Fields list → composer
+**Decided:** Split Builder into custom-model list + model composer / model detail + field composer. New `x_` models keep default list/form/search and a success CTA to View Designer. Field create stays full types + inject; field edit is label/help/required/readonly/tracking/selection (no ttype rename). Session bar is draft/unsaved/saved only; reuse field/model snapshots on delete. Layout teaser shows stacked form + list (not Radix tabs). Hide-in-view vs remove-from-model is explicit. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+**Why:** Automations premium set the list→composer bar; Builder was still a dual form dump (~1.2k). Operators need to create a model + field with elite clarity and jump to Designer.
+**Rejected:** Designer-style undo/redo; App Studio / Menus / Access / AI; changing confirm-phrase deprecate vs hard-delete; hiding preview behind tabs.
+
 ### 2026-09-14 — Automations premium list → composer, no second snapshot system
 **Decided:** Split Automations into list + composer/detail. Create stays the full safe-action path. Existing rules edit name + apply-on domain via PATCH (snapshot already taken on create/delete). Trigger/action changes duplicate into a new rule rather than rewriting `ir.actions.server`. Session bar is draft/unsaved/saved only — reuse automation snapshots, do not copy Designer undo/redo. Python/`state=code` stay off the default path (Option A + confirm). Completeness ≠ Cert ≠ Autopilot. Promote stays human.
 **Why:** View Designer A–D set the chrome bar; Automations was still a 1.2k-line form dump. Operators need list → compose with honest capability grey-outs and Designer deep links.

@@ -316,6 +316,7 @@ export default function BuilderPage() {
       setFieldBaseline(next);
       setSelectedFieldId(null);
       setSavedOnce(true);
+      setJustCreatedModel(false);
       setConfirmMutateOpen(false);
       await loadFieldsForModel(fieldForm.model);
     } catch (err) {
@@ -478,6 +479,7 @@ export default function BuilderPage() {
 
   function onSelectField(row: FieldRow) {
     if (!isCustomTechnicalName(row.name) || !selectedModel) return;
+    setJustCreatedModel(false);
     setSelectedFieldId(row.id);
     const next = fieldFormFromRow(row, selectedModel);
     setFieldForm(next);
@@ -487,6 +489,7 @@ export default function BuilderPage() {
   function onNewField() {
     const model = selectedModel || fieldForm.model;
     const next = defaultFieldForm(model);
+    setJustCreatedModel(false);
     setSelectedFieldId(null);
     setFieldForm(next);
     setFieldBaseline(next);

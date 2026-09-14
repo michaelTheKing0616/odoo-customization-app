@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import React from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { BuilderModelPreview } from "./BuilderModelPreview";
 import type { FieldRow } from "@/lib/api";
@@ -16,10 +16,8 @@ const fields: FieldRow[] = [
     required: true,
     readonly: false,
     relation: null,
-    relation_field: null,
-    selection: null,
-    modules: [],
-  } as FieldRow,
+    state: "manual",
+  },
   {
     id: 2,
     name: "x_partner_id",
@@ -28,14 +26,12 @@ const fields: FieldRow[] = [
     required: false,
     readonly: false,
     relation: "res.partner",
-    relation_field: null,
-    selection: null,
-    modules: [],
-  } as FieldRow,
+    state: "manual",
+  },
 ];
 
 describe("BuilderModelPreview", () => {
-  it("renders form teaser, list tab, and designer plus automations links", () => {
+  it("renders form and list teasers plus designer and automations links", () => {
     render(
       <BuilderModelPreview
         connectionId="conn-1"
@@ -47,9 +43,8 @@ describe("BuilderModelPreview", () => {
     );
     expect(screen.getByTestId("builder-model-preview")).toBeTruthy();
     expect(screen.getByTestId("odoo-form-view")).toBeTruthy();
-    expect(screen.getByTestId("odoo-chatter-stub")).toBeTruthy();
-    fireEvent.click(screen.getByRole("tab", { name: "List" }));
     expect(screen.getByTestId("odoo-list-view")).toBeTruthy();
+    expect(screen.getByTestId("odoo-chatter-stub")).toBeTruthy();
     const link = screen.getByRole("link", { name: /Customize layout in View Designer/i });
     expect(link.getAttribute("href")).toContain("/connections/conn-1/designer");
     expect(link.getAttribute("href")).toContain("model=x_demo");

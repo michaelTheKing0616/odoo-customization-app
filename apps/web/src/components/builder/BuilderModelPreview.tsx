@@ -6,7 +6,6 @@ import type { PreviewFormView, PreviewListView } from "@/lib/draft-form-preview"
 import { OdooFormView, OdooListView, OdooPreviewScope } from "@/components/odoo-preview";
 import { Button } from "@/components/ui/Button";
 import { Card, EmptyState } from "@/components/ui/layout-primitives";
-import { Tabs } from "@/components/ui/Tabs";
 import { IconViews } from "@/components/ui/icons";
 import { automationsHref, viewDesignerHref } from "@/lib/builderForm";
 
@@ -116,13 +115,16 @@ export function BuilderModelPreview({
         </div>
       </div>
       <OdooPreviewScope showBanner={false}>
-        <Tabs
-          defaultValue="form"
-          items={[
-            { value: "form", label: "Form", content: <OdooFormView view={form} /> },
-            { value: "list", label: "List", content: <OdooListView view={list} /> },
-          ]}
-        />
+        <div className="space-y-4">
+          <div>
+            <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted">Form</p>
+            <OdooFormView view={form} />
+          </div>
+          <div>
+            <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted">List</p>
+            <OdooListView view={list} />
+          </div>
+        </div>
       </OdooPreviewScope>
     </Card>
   );
