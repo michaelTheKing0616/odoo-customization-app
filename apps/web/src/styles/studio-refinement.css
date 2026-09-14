@@ -1177,6 +1177,90 @@
   align-items: center;
 }
 
+.studio-refinement .ms-section-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+  padding: 0 var(--space-sm);
+}
+
+.studio-refinement .ms-section-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+
+.studio-refinement .ms-section-tab.is-current {
+  color: var(--text-primary);
+  border-bottom-color: var(--color-accent);
+}
+
+.studio-refinement .ms-section-count {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.studio-refinement .ms-workbench {
+  display: grid;
+  gap: 0;
+  min-height: 280px;
+}
+
+@media (min-width: 768px) {
+  .studio-refinement .ms-workbench {
+    grid-template-columns: 16rem 1fr;
+  }
+}
+
+.studio-refinement .ms-model-rail {
+  border-right: 1px solid var(--border);
+  padding-right: var(--space-md);
+}
+
+.studio-refinement .ms-model-detail {
+  padding-left: var(--space-md);
+}
+
+.studio-refinement .ms-readiness-grid {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+@media (min-width: 768px) {
+  .studio-refinement .ms-readiness-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.studio-refinement .ms-readiness-item {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: flex-start;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-2);
+}
+
+.studio-refinement .ms-json-disclosure {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.studio-refinement .ms-json-disclosure > summary {
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
 @media (max-width: 640px) {
   .studio-refinement .job-score-grid,
   .studio-refinement .job-packet-facts {

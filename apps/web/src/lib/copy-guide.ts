@@ -22,6 +22,8 @@ export const EMPTY_STATES = {
   journal:
     "Snapshots are restore points taken before risky changes. They appear here automatically — or take one now.",
   projects: "Create a draft from a template or start blank, then edit in ModuleSpec.",
+  moduleSpec:
+    "Load a Draft Studio handoff, import a zip, or add an x_ model. Completeness is hygiene — not Certification or Autopilot.",
 } as const;
 
 export const REVERSIBILITY = {

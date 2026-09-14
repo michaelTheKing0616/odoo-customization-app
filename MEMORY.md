@@ -1,3 +1,8 @@
+### 2026-09-14 — Premium ModuleSpec UX (surface 6)
+**Decided:** Extract ModuleSpec into a four-stage operator shell (load → edit → validate → apply). Session chrome is draft/unsaved/saved. Structured workbench sections: models/fields, views, menus, security, relations, automations, custom code. Raw JSON is a disclosure, not a peer tab. Live validate + local readiness stay honest (Completeness ≠ Cert ≠ Autopilot). Cross-links: Draft Studio, View Designer, Job Autopilot, App Studio. Promote stays human.
+**Why:** Designer → Job Autopilot set the elite bar; ModuleSpec was a JSON-first dump (~592 editor + page actions). Operators need to open, edit, and validate an IR like a schema workbench.
+**Rejected:** Rewriting apply/export engines; Projects / Expert / Autopilot executor; Designer undo/redo; fusing Completeness with Cert or Autopilot.
+
 ### 2026-09-14 — Premium Job Autopilot UX (surface 5)
 **Decided:** Extract Job Autopilot into a four-stage operator shell (brief → run → scorecard → promote) plus extracted chrome. Production header must say refuse, not “sandbox-only —”. Run stays disabled on production/observer. ModuleSpec link only when residual spec exists. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
 **Why:** Designer → Draft Studio set the elite bar; `/job` was a ~1k dump. Sandbox-first honesty is the product edge.
