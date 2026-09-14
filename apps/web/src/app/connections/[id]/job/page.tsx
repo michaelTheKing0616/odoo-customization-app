@@ -1,12 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   api,
   ConfirmationRequiredError,
   Connection,
+  JobAutopilotContract,
   JobAutopilotPacketOut,
   JobAutopilotQueued,
   JobAutopilotResult,
@@ -16,17 +16,37 @@ import {
 } from "@/lib/api";
 import { JobPollError, pollJob } from "@/lib/jobs";
 import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
-import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
-import { InfinityLoop } from "@/components/loading-ui/infinity-loop";
-import { Callout } from "@/components/ui/Callout";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
-import { Card, PageHeader } from "@/components/ui/layout-primitives";
-import { Textarea } from "@/components/ui/Textarea";
-import { EMPTY_STATES, SCORE_BARS } from "@/lib/copy-guide";
 import { readJobAutopilotBrief } from "@/lib/job-brief-handoff";
-import { odooMenuUrl, odooRecordUrl, isLocalSandboxUrl, checklistOpenHref } from "@/lib/odoo-urls";
+import { odooMenuUrl, odooRecordUrl, isLocalSandboxUrl } from "@/lib/odoo-urls";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
+import { JobAutopilotShell } from "@/components/job-autopilot/JobAutopilotShell";
+import { JobAutopilotHonestyBanners } from "@/components/job-autopilot/JobAutopilotHonestyBanners";
+import { JobAutopilotBriefPanel } from "@/components/job-autopilot/JobAutopilotBriefPanel";
+import { JobAutopilotPacketCard } from "@/components/job-autopilot/JobAutopilotPacketCard";
+import { JobAutopilotProgress } from "@/components/job-autopilot/JobAutopilotProgress";
+import { JobAutopilotRunLedger } from "@/components/job-autopilot/JobAutopilotRunLedger";
+import { JobAutopilotScorecard } from "@/components/job-autopilot/JobAutopilotScorecard";
+import { JobAutopilotDeliveryLedger } from "@/components/job-autopilot/JobAutopilotDeliveryLedger";
+import { JobAutopilotHandoffBar } from "@/components/job-autopilot/JobAutopilotHandoffBar";
+import { JobAutopilotConfigPanel } from "@/components/job-autopilot/JobAutopilotConfigPanel";
+import {
+  deliveryReportMarkdown,
+  hasResidualModuleSpec,
+  isStockOnlyPacket,
+  jobAutopilotErrorTitle,
+  jobAutopilotGate,
+  jobAutopilotJourneyFromState,
+  jobAutopilotObserverRefuseMessage,
+  jobAutopilotProductionRefuseMessage,
+  jobProgressLabel,
+  jobRunBlocked,
+  jobRunStepCurrent,
+  residualZipBase64,
+  sandboxOpenLabel,
+  type JobAutopilotBusy,
+} from "@/lib/job-autopilot-journey";
+import "@/styles/studio-refinement.css";
 
 const CONFIRM_PHRASE = "I understand the risks";
 const AUTOPILOT_POLL_MS = 3_000;
@@ -59,38 +79,6 @@ function isAutopilotQueued(
   return "queued" in out && out.queued === true && Boolean(out.job_id);
 }
 
-const STAGES = ["packet", "stock", "connectors", "custom", "data", "smoke"] as const;
-
-function stageDone(stages: string[] | undefined, id: string): boolean {
-  if (!stages?.length) return false;
-  if (id === "custom") return stages.includes("custom") || stages.includes("custom_retry");
-  return stages.includes(id);
-}
-
-function deliveryReportMarkdown(result: JobAutopilotResult): string {
-  return result.report_markdown || [
-    "# Job Autopilot UAT report",
-    "",
-    result.scorecard_note,
-    "",
-    `Status: ${result.ok ? "smoke passed" : "not ready"}`,
-    `Job scorecard overall: ${result.job_scorecard?.overall ?? "n/a"}/10`,
-    `Promote ready: ${result.promote_ready ? "yes (human step)" : "no"}`,
-    "",
-    result.message,
-  ].join("\n");
-}
-
-function residualZipBase64(result: JobAutopilotResult | null): string | null {
-  const direct = result?.custom?.zip_base64;
-  if (direct) return direct;
-  const elite = result?.custom?.elite;
-  if (elite && typeof elite === "object" && typeof (elite as { zip_base64?: string }).zip_base64 === "string") {
-    return (elite as { zip_base64: string }).zip_base64;
-  }
-  return null;
-}
-
 async function excerptsFromFiles(files: File[]): Promise<Array<{ filename: string; text: string }>> {
   const out: Array<{ filename: string; text: string }> = [];
   for (const f of files) {
@@ -116,9 +104,13 @@ export default function JobAutopilotPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [packetOut, setPacketOut] = useState<JobAutopilotPacketOut | null>(null);
   const [result, setResult] = useState<JobAutopilotResult | null>(null);
-  const [busy, setBusy] = useState<"packet" | "run" | "promote" | "pdf" | "fingerprint" | "dryrun" | "applypacket" | "settings" | null>(null);
+  const [contract, setContract] = useState<JobAutopilotContract | null>(null);
+  const [busy, setBusy] = useState<JobAutopilotBusy>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [stepLabel, setStepLabel] = useState<string | null>(null);
+  const [elapsedMinutes, setElapsedMinutes] = useState(0);
+  const [runFailed, setRunFailed] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [applyPacketOpen, setApplyPacketOpen] = useState(false);
@@ -139,6 +131,10 @@ export default function JobAutopilotPage() {
       .listConnections()
       .then((rows) => setTargets(rows.filter((c) => c.id !== connectionId)))
       .catch(() => setTargets([]));
+    api
+      .jobAutopilotContract(connectionId)
+      .then(setContract)
+      .catch(() => setContract(null));
   }, [connectionId]);
 
   useEffect(() => {
@@ -159,6 +155,21 @@ export default function JobAutopilotPage() {
   const sandbox = result?.sandbox ?? packetOut?.sandbox ?? false;
   const production = connection?.write_mode === "production";
   const observer = connection?.write_mode === "observer";
+  const localSandbox = Boolean(connection?.url && isLocalSandboxUrl(connection.url));
+  const gate = jobAutopilotGate({
+    writeMode: connection?.write_mode,
+    sandbox,
+    localSandboxUrl: localSandbox,
+  });
+  const runBlocked = jobRunBlocked(connection?.write_mode);
+  const journey = jobAutopilotJourneyFromState({
+    busy,
+    hasPacket: Boolean(packet),
+    hasResult: Boolean(result),
+    promoteReady: Boolean(result?.promote_ready),
+    refused: Boolean(result?.refused),
+    failed: runFailed || Boolean(result?.refused),
+  });
 
   const sandboxUrl = useMemo(() => {
     const base = connection?.url;
@@ -182,14 +193,6 @@ export default function JobAutopilotPage() {
     result?.custom?.root_menu_id,
   ]);
 
-  const sandboxLabel = result?.smoke?.invoice_id
-    ? "Open smoke invoice"
-    : result?.smoke?.sale_order_id
-      ? "Open smoke quotation"
-      : result?.custom?.root_menu_id
-        ? "Open sandbox app"
-        : "Open sandbox";
-
   async function planPacket() {
     if (!prompt.trim()) {
       setError("Describe the job in natural language first.");
@@ -198,6 +201,7 @@ export default function JobAutopilotPage() {
     setBusy("packet");
     setError(null);
     setNotice(null);
+    setRunFailed(false);
     setResult(null);
     try {
       const excerpts = files.length ? await excerptsFromFiles(files) : [];
@@ -221,18 +225,21 @@ export default function JobAutopilotPage() {
       return;
     }
     if (production) {
-      setError(
-        "Autopilot refuses write_mode=production. Clone a sandbox, run Autopilot there, then Promote.",
-      );
+      setRunFailed(true);
+      setError(jobAutopilotProductionRefuseMessage());
       return;
     }
     if (observer) {
-      setError("Observer connections cannot install or apply. Switch write_mode to standard on a sandbox.");
+      setRunFailed(true);
+      setError(jobAutopilotObserverRefuseMessage());
       return;
     }
     setBusy("run");
     setError(null);
     setNotice(null);
+    setRunFailed(false);
+    setStepLabel(null);
+    setElapsedMinutes(0);
     try {
       const started = files.length
         ? await api.jobAutopilotRunFiles(connectionId, {
@@ -262,7 +269,9 @@ export default function JobAutopilotPage() {
             const minutes = Number.isFinite(startedAt)
               ? Math.max(0, Math.round((Date.now() - startedAt) / 60_000))
               : 0;
+            setElapsedMinutes(minutes);
             if (typeof label === "string" && label) {
+              setStepLabel(label);
               setNotice(`Autopilot: ${label} (${minutes} min)…`);
             }
             const stages = row.result?.stages;
@@ -307,6 +316,7 @@ export default function JobAutopilotPage() {
         setConfirmOpen(true);
         return;
       }
+      setRunFailed(true);
       setError(err instanceof Error ? err.message : String(err));
       if (
         err instanceof JobPollError &&
@@ -317,6 +327,7 @@ export default function JobAutopilotPage() {
       }
     } finally {
       setBusy(null);
+      setStepLabel(null);
     }
   }
 
@@ -496,500 +507,102 @@ export default function JobAutopilotPage() {
   }
 
   const stages = result?.stages;
+  const running = busy === "run";
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Job Autopilot"
-        description={EMPTY_STATES.jobAutopilot}
+    <JobAutopilotShell
+      connectionId={connectionId}
+      connectionName={connection?.name}
+      journey={journey}
+    >
+      <JobAutopilotHonestyBanners
+        gate={gate}
+        showOverviewNote={localSandbox && !production}
+        contractNote={contract?.note}
       />
 
-      <Callout variant={production ? "danger" : "info"} title="Product contract">
-        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
-          <li>Prefer stock Odoo apps. Custom <code>x_*</code> models are residual only.</li>
-          <li>
-            Expedited configuration is this page — <strong>Job Autopilot</strong> on a sandbox —
-            then the Config Packet replay on the client. Instance Config is the manual knob, not
-            the fast path.
-          </li>
-          <li>Autopilot writes a sandbox (or staging with confirm). Production Autopilot is refused.</li>
-          <li>Done bar is RPC process smoke (quote→confirm→invoice-from-SO; Purchase/POS/CRM probes when those apps are named), not ModuleSpec completeness.</li>
-          <li>{SCORE_BARS.completeness}</li>
-          <li>{SCORE_BARS.certification}</li>
-          <li>
-            After smoke: (1) Promote residual <em>module zip</em> if any, (2) Apply Config Packet
-            delta on the client with the confirm phrase. Secrets stay paste-in-Odoo.
-          </li>
-        </ul>
-      </Callout>
-
-      {connection && isLocalSandboxUrl(connection.url) && !production ? (
-        <Callout variant="info" title="Overview checklist is not this job">
-          <p className="text-sm">
-            The Overview <strong>production readiness</strong> panel (health, least-privilege,
-            backup download) gates production write mode only. It does not score or block
-            sandbox Autopilot. Amber bootstrap warnings on this page are the job signal.
-          </p>
-        </Callout>
+      {error ? (
+        <ErrorNotice message={error} title={jobAutopilotErrorTitle(error)} />
       ) : null}
-
-      {error ? <ErrorNotice message={error} /> : null}
       {notice ? (
         <p className="text-sm text-muted" data-testid="job-autopilot-notice">
           {notice}
         </p>
       ) : null}
 
-      <Card>
-        <div className="space-y-4 p-4">
-          <Textarea
-            label="Job brief"
-            hint="Natural language: who you are, what to sell/stock/invoice, country, and any custom document stock apps do not cover. Opening Job Autopilot from a stock-first Draft Studio result fills this from that brief."
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            rows={6}
-            data-testid="job-brief"
-            placeholder="Recording studio in Lagos. Clients book sessions. We invoice in naira. Contacts CSV attached."
+      {running ? (
+        <JobAutopilotProgress
+          label={jobProgressLabel({ busy, stepLabel, elapsedMinutes })}
+          stages={stages}
+          currentStep={jobRunStepCurrent(stages, busy)}
+        />
+      ) : (
+        <>
+          <JobAutopilotBriefPanel
+            prompt={prompt}
+            files={files}
+            busy={busy}
+            runBlocked={runBlocked}
+            runBlockedReason={gate.runBlocked ? gate.body : undefined}
+            onPromptChange={setPrompt}
+            onFilesChange={setFiles}
+            onPlan={() => void planPacket()}
+            onRun={() => void runJob()}
           />
-          <div>
-            <label className="block text-sm font-medium text-ink" htmlFor="job-files">
-              Client files
-            </label>
-            <input
-              id="job-files"
-              type="file"
-              multiple
-              className="mt-1 block w-full text-sm text-ink"
-              onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+
+          {packet ? (
+            <JobAutopilotPacketCard
+              packet={packet}
+              connectionKind={result?.connection_kind ?? packetOut?.connection_kind}
+              sandbox={sandbox}
             />
-            {files.length ? (
-              <p className="mt-1 text-xs text-muted">{files.length} file(s) selected</p>
-            ) : (
-              <p className="mt-1 text-xs text-muted">CSV, XLSX, or PDF. Optional for packet planning.</p>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={busy !== null}
-              loading={busy === "packet"}
-              onClick={() => void planPacket()}
-            >
-              Plan packet
-            </Button>
-            <Button
-              type="button"
-              disabled={busy !== null || production || observer}
-              loading={busy === "run"}
-              onClick={() => void runJob()}
-            >
-              Run Autopilot
-            </Button>
-          </div>
-        </div>
-      </Card>
-
-      <Card>
-        <div className="space-y-3 p-4">
-          <h2 className="font-[family-name:var(--font-display)] text-lg text-ink">Progress</h2>
-          {busy ? (
-            <div
-              className="flex flex-col items-center gap-2 py-4"
-              data-testid="job-autopilot-progress"
-            >
-              <InfinityLoop aria-hidden />
-              <p className="text-sm text-muted">
-                {busy === "run"
-                  ? "Running Autopilot…"
-                  : busy === "packet"
-                    ? "Planning packet…"
-                    : "Working…"}
-              </p>
-            </div>
           ) : null}
-          <ol className="flex flex-wrap gap-2">
-            {STAGES.map((id) => (
-              <li key={id}>
-                <Badge variant={stageDone(stages, id) ? "success" : "default"}>{id}</Badge>
-              </li>
-            ))}
-          </ol>
-          {result?.connection_kind ? (
-            <p className="text-xs text-muted">
-              Connection: {result.connection_kind}
-              {result.sandbox ? " (unattended sandbox)" : ""}
-            </p>
-          ) : packetOut ? (
-            <p className="text-xs text-muted">
-              Connection: {packetOut.connection_kind}
-              {packetOut.sandbox ? " (sandbox)" : " — run will need confirm"}
-            </p>
-          ) : null}
-        </div>
-      </Card>
 
-      {packet ? (
-        <Card>
-          <div className="space-y-3 p-4">
-            <h2 className="font-[family-name:var(--font-display)] text-lg text-ink">Job packet</h2>
-            {packet.structured_brief ? (
-              <pre
-                className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-surface-muted p-3 text-xs text-ink"
-                data-testid="job-structured-brief"
-              >
-                {packet.structured_brief}
-              </pre>
-            ) : null}
-            <p className="text-sm text-ink">
-              Domain: {packet.domain_label}
-              {packet.country_code ? ` · ${packet.country_code}` : ""}
-              {packet.currency ? ` · ${packet.currency}` : ""}
-              {packet.l10n_module ? ` · ${packet.l10n_module}` : ""}
-            </p>
-            <p className="text-sm">
-              <span className="font-medium">Stock apps:</span>{" "}
-              {packet.stock_apps.join(", ") || "(none)"}
-            </p>
-            <p className="text-sm">
-              <span className="font-medium">Connectors:</span>{" "}
-              {packet.connectors?.length
-                ? packet.connectors.join(" → ")
-                : "none detected"}
-            </p>
-            <p className="text-sm">
-              <span className="font-medium">Custom residual:</span>{" "}
-              {packet.custom_residuals.length
-                ? packet.custom_residuals.map((r) => `${r.model} (${r.key})`).join(", ")
-                : "none — stock + data only"}
-            </p>
-            {packet.data_files.length ? (
-              <p className="text-sm">
-                <span className="font-medium">Files:</span>{" "}
-                {packet.data_files.map((f) => `${f.filename}→${f.doc_type}`).join(", ")}
-              </p>
-            ) : null}
-            {packet.grounding?.length ? (
-              <p className="text-sm">
-                <span className="font-medium">Client-doc grounding:</span>{" "}
-                {packet.grounding.length} chunk(s)
-              </p>
-            ) : null}
-            <ul className="list-disc space-y-1 pl-5 text-sm text-muted">
-              {packet.decision_record.map((d) => (
-                <li key={d}>{d}</li>
-              ))}
-            </ul>
-          </div>
-        </Card>
-      ) : null}
-
-      {result?.bootstrap ? (
-        <Card>
-          <div className="space-y-2 p-4 text-sm">
-            <h2 className="font-[family-name:var(--font-display)] text-lg text-ink">Stock bootstrap</h2>
-            <p>{result.bootstrap.message}</p>
-            {result.bootstrap.installed.length ? (
-              <p>Installed: {result.bootstrap.installed.join(", ")}</p>
-            ) : null}
-            {result.bootstrap.skipped.length ? (
-              <p>
-                Skipped: {result.bootstrap.skipped.join(", ")}
-              </p>
-            ) : null}
-            {result.bootstrap.warnings.length ? (
-              <ul className="list-disc space-y-1 pl-5 text-sm text-amber-800">
-                {result.bootstrap.warnings.map((w) => (
-                  <li key={w}>{w}</li>
-                ))}
-              </ul>
-            ) : null}
-            {result.bootstrap.probes.map((p, i) => (
-              <p key={`${p.name}-${i}`}>
-                <Badge variant={p.ok ? "success" : "warning"}>{p.name}</Badge> {p.detail}
-              </p>
-            ))}
-          </div>
-        </Card>
-      ) : null}
-
-      {result?.connectors && !result.connectors.skipped ? (
-        <Card>
-          <div className="space-y-2 p-4 text-sm">
-            <h2 className="font-[family-name:var(--font-display)] text-lg text-ink">
-              Connectors (domain-agnostic)
-            </h2>
-            <p>{result.connectors.message}</p>
-            {result.connectors.ran.length ? (
-              <p>Ran: {result.connectors.ran.join(", ")}</p>
-            ) : null}
-            {result.connectors.skipped_ids?.length ? (
-              <p>Skipped: {result.connectors.skipped_ids.join(", ")}</p>
-            ) : null}
-            {result.connectors.failed.length ? (
-              <p>Gaps: {result.connectors.failed.join(", ")}</p>
-            ) : null}
-            {result.connectors.steps.map((p, i) => (
-              <p key={`${p.name}-${i}`}>
-                <Badge variant={p.ok ? "success" : "warning"}>{p.name}</Badge> {p.detail}
-              </p>
-            ))}
-          </div>
-        </Card>
-      ) : null}
-
-      {result?.custom ? (
-        <Card>
-          <div className="space-y-2 p-4 text-sm">
-            <h2 className="font-[family-name:var(--font-display)] text-lg text-ink">Custom residual</h2>
-            <p>
-              {result.custom.skipped
-                ? result.custom.reason || "Skipped."
-                : result.custom.apply_message || "Applied."}
-            </p>
-            {result.custom.fields_relaxed ? (
-              <p>Relaxed {result.custom.fields_relaxed} leftover required field(s).</p>
-            ) : null}
-            {result.custom.expert_score_after != null ? (
-              <p>
-                Expert-fix {result.custom.expert_score_before ?? "?"} → {result.custom.expert_score_after}
-              </p>
-            ) : null}
-          </div>
-        </Card>
-      ) : null}
-
-      {result?.ingest && !result.ingest.skipped ? (
-        <Card>
-          <div className="space-y-2 p-4 text-sm">
-            <h2 className="font-[family-name:var(--font-display)] text-lg text-ink">Data</h2>
-            <p>{result.ingest.message}</p>
-            {result.ingest.source_rows || result.ingest.loaded_rows ? (
-              <p>
-                Rows: {result.ingest.loaded_rows ?? 0}/{result.ingest.source_rows ?? 0}
-                {result.ingest.unmatched_m2o?.length
-                  ? ` · unmatched M2O ${result.ingest.unmatched_m2o.length}`
-                  : ""}
-              </p>
-            ) : null}
-            {result.ingest.gaps.length ? (
-              <ul className="list-disc pl-5">
-                {result.ingest.gaps.map((g) => (
-                  <li key={g}>{g}</li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
-        </Card>
-      ) : null}
-
-      {result?.job_scorecard ? (
-        <Card>
-          <div className="space-y-2 p-4 text-sm">
-            <h2 className="font-[family-name:var(--font-display)] text-lg text-ink">
-              Implementation-job scorecard
-            </h2>
-            <p className="text-xs text-muted">{result.job_scorecard.modulespec_completeness_note}</p>
-            <p>
-              overall {result.job_scorecard.overall.toFixed(1)} · stack {result.job_scorecard.stack_fit.toFixed(1)} ·
-              coverage {result.job_scorecard.stock_coverage.toFixed(1)} · data {result.job_scorecard.data_load.toFixed(1)} ·
-              smoke {result.job_scorecard.process_smoke.toFixed(1)}
-            </p>
-            {typeof result.retry_count === "number" && result.retry_count > 0 ? (
-              <p>Retries: {result.retry_count}</p>
-            ) : null}
-            <ul className="list-disc space-y-1 pl-5 text-muted">
-              {result.job_scorecard.findings.map((f) => (
-                <li key={f}>{f}</li>
-              ))}
-            </ul>
-          </div>
-        </Card>
-      ) : null}
-
-      {result?.smoke ? (
-        <Card>
-          <div className="space-y-2 p-4 text-sm">
-            <h2 className="font-[family-name:var(--font-display)] text-lg text-ink">Process smoke</h2>
-            <p>
-              <Badge variant={result.smoke.ok ? "success" : "danger"}>
-              {result.smoke.ok ? "passed" : "failed"}
-            </Badge>{" "}
-            {result.smoke.named_process ? `${result.smoke.named_process} · ` : ""}
-            {result.smoke.message}
-            </p>
-            {result.smoke.steps.map((s) => (
-              <p key={s.name}>
-                {s.ok ? "ok" : "fail"} · {s.name}: {s.detail}
-              </p>
-            ))}
-          </div>
-        </Card>
-      ) : null}
-
-      <Card>
-        <div className="space-y-3 p-4 text-sm">
-          <h2 className="font-[family-name:var(--font-display)] text-lg text-ink">
-            Config Packet — client replay
-          </h2>
-          <p className="text-muted">
-            Autopilot never writes production. After sandbox smoke, fingerprint the client,
-            dry-run the delta, then apply with the confirm phrase. SMTP and payment keys stay
-            a paste-in-Odoo checklist.
-          </p>
-          {configPacket ? (
+          {result ? (
             <>
-              <p>
-                sha256 {configPacket.sha256} · recipe v{configPacket.recipe_version} ·{" "}
-                {configPacket.modules.length} module(s) · {configPacket.users.length} user(s)
-              </p>
-              <ul className="list-disc space-y-1 pl-5">
-                {(configDiff?.checklist || configPacket.checklist).map((item) => (
-                  <li key={item.id}>
-                    <Badge
-                      variant={
-                        item.status === "done"
-                          ? "success"
-                          : item.status === "blocked"
-                            ? "danger"
-                            : item.status === "secret"
-                              ? "warning"
-                              : "default"
-                      }
-                    >
-                      {item.status}
-                    </Badge>{" "}
-                    {item.label}
-                    {(() => {
-                      const href = checklistOpenHref(item, connection?.url);
-                      if (href) {
-                        return (
-                          <a
-                            href={href}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="ml-2 text-xs text-accent hover:underline"
-                          >
-                            Open in Odoo
-                          </a>
-                        );
-                      }
-                      if (item.href_hint) {
-                        return <span className="block text-xs text-muted">{item.href_hint}</span>;
-                      }
-                      return null;
-                    })()}
-                  </li>
-                ))}
-              </ul>
+              <JobAutopilotRunLedger stages={stages} />
+              <JobAutopilotScorecard
+                scorecard={result.job_scorecard}
+                smoke={result.smoke}
+                promoteReady={result.promote_ready}
+                stockOnly={isStockOnlyPacket(result.packet)}
+                retryCount={result.retry_count}
+              />
+              <JobAutopilotDeliveryLedger result={result} />
             </>
-          ) : (
-            <p className="text-muted">Run Autopilot on the sandbox to emit a packet.</p>
-          )}
-          {fingerprint ? (
-            <p className="text-xs text-muted">
-              Fingerprint {fingerprint.sha256}: {fingerprint.modules_installed.length} installed
-              apps, {fingerprint.account_code_count} CoA codes, {fingerprint.user_logins.length}{" "}
-              users.
-            </p>
           ) : null}
-          {configDiff ? (
-            <p>
-              Dry-run: {configDiff.message}
-            </p>
-          ) : null}
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={busy !== null}
-              loading={busy === "fingerprint"}
-              onClick={() => void runFingerprint()}
-            >
-              Fingerprint target
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={busy !== null}
-              loading={busy === "settings"}
-              onClick={() => void captureSettings()}
-            >
-              Capture Settings
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={busy !== null || !configPacket}
-              loading={busy === "dryrun"}
-              onClick={() => void runConfigDryRun()}
-            >
-              Dry-run packet
-            </Button>
-            <Button
-              type="button"
-              disabled={busy !== null || !configPacket}
-              onClick={() => setApplyPacketOpen(true)}
-            >
-              Apply packet to target
-            </Button>
-            <Button type="button" variant="ghost" disabled={!configPacket} onClick={downloadConfigPacket}>
-              Download packet JSON
-            </Button>
-          </div>
-        </div>
-      </Card>
 
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="text-sm text-ink">
-          Promote target
-          <select
-            className="mt-1 block min-w-[16rem] rounded border border-line bg-white px-2 py-1 text-sm"
-            value={targetId}
-            onChange={(e) => setTargetId(e.target.value)}
-          >
-            <option value="">Select another connection…</option>
-            {targets.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} ({c.write_mode})
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+          <JobAutopilotConfigPanel
+            configPacket={configPacket}
+            fingerprint={fingerprint}
+            configDiff={configDiff}
+            connectionUrl={connection?.url}
+            busy={busy}
+            onFingerprint={() => void runFingerprint()}
+            onCaptureSettings={() => void captureSettings()}
+            onDryRun={() => void runConfigDryRun()}
+            onApply={() => setApplyPacketOpen(true)}
+            onDownload={downloadConfigPacket}
+          />
 
-      <div className="flex flex-wrap gap-2">
-        {sandboxUrl ? (
-          <Button asChild>
-            <a href={sandboxUrl} target="_blank" rel="noreferrer">
-              {sandboxLabel}
-            </a>
-          </Button>
-        ) : null}
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={!result?.promote_ready || busy !== null}
-          onClick={() => setPromoteOpen(true)}
-        >
-          {residualZipBase64(result) ? "Promote to target" : "Handoff"}
-        </Button>
-        <Button type="button" variant="ghost" disabled={!result} onClick={downloadReport}>
-          Download markdown
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          disabled={!result || busy !== null}
-          loading={busy === "pdf"}
-          onClick={() => void downloadPdf()}
-        >
-          Download PDF
-        </Button>
-        <Button asChild variant="ghost">
-          <Link href={`/connections/${connectionId}/wizard`}>Draft Studio</Link>
-        </Button>
-      </div>
+          <JobAutopilotHandoffBar
+            connectionId={connectionId}
+            targets={targets}
+            targetId={targetId}
+            sandboxUrl={sandboxUrl}
+            sandboxLabel={sandboxOpenLabel(result)}
+            hasResult={Boolean(result)}
+            promoteReady={Boolean(result?.promote_ready)}
+            hasResidualZip={Boolean(residualZipBase64(result))}
+            showModuleSpec={hasResidualModuleSpec(result)}
+            busy={busy}
+            onTargetChange={setTargetId}
+            onPromote={() => setPromoteOpen(true)}
+            onDownloadReport={downloadReport}
+            onDownloadPdf={() => void downloadPdf()}
+          />
+        </>
+      )}
 
       <ConfirmDialogV2
         open={confirmOpen}
@@ -1057,6 +670,6 @@ export default function JobAutopilotPage() {
         onConfirm={(phrase) => void applyConfigPacket(phrase)}
         busy={busy === "applypacket"}
       />
-    </div>
+    </JobAutopilotShell>
   );
 }
