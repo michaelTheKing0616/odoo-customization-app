@@ -68,3 +68,63 @@ export function withEnrichmentCleanFlags(
   };
   return { ...draft, _llm_status: status };
 }
+
+export function llmStatusFromDraft(draft: unknown): LlmStatusBlock | undefined {
+  const rec = asRecord(draft);
+  const status = rec?._llm_status;
+  if (!status || typeof status !== "object" || Array.isArray(status)) return undefined;
+  return status as LlmStatusBlock;
+}
+
+export function showRetryEnrichment(opts: {
+  draft: unknown;
+  stockReuse?: boolean;
+  refuseClone?: boolean;
+}): boolean {
+  const rec = asRecord(opts.draft);
+  if (!rec) return false;
+  if (rec._component || opts.stockReuse || opts.refuseClone) return false;
+  return true;
+}
+
+/**
+ * Operator-facing enrichment copy. Wizard defaults — App Studio does not use this helper.
+ */
+export function llmStatusBannerCopy(opts: {
+  draft: unknown;
+  stockReuse?: boolean;
+  retryDisabled?: boolean;
+}): string | null {
+  const rec = asRecord(opts.draft);
+  if (!rec || rec._component || opts.stockReuse) return null;
+  const status = llmStatusFromDraft(rec);
+  const mode = status?.mode;
+  const reason = status?.reason;
+  const seeded = Boolean((rec._depth as { seeded?: boolean } | undefined)?.seeded);
+
+  if (mode === "llm_partial") {
+    return "Some AI steps timed out; the draft was finished from your prompt. Click Retry AI enrichment to wake AI, re-run missed steps, and complete residual fields from your brief if AI stays down.";
+  }
+  if (mode === "pack_fallback" && reason === "residual_recovered") {
+    return "Residual completed from your brief (AI was unavailable). Review fields, then Apply — or Retry again when a model is back for LLM polish.";
+  }
+  if (
+    mode === "pack_fallback" &&
+    (reason === "timeout" || reason === "unavailable" || reason === "honesty_seed")
+  ) {
+    return "AI was unavailable on Create draft. Click Retry AI enrichment — it wakes Flash/local/cloud, re-runs missed AI steps, and still completes residual fields from your brief if AI stays down.";
+  }
+  if (mode === "pack_fallback") {
+    return "Draft Studio used the domain pack. Click Retry AI enrichment to tailor when a model is available.";
+  }
+  if (mode === "seed_fallback" && seeded) {
+    return "Depth targets were met via generic operational seeds — review entities before apply.";
+  }
+  if (mode === "llm_full" && opts.retryDisabled) {
+    return "AI enrichment completed successfully. Retry stays available only if hygiene gaps return.";
+  }
+  if (mode === "llm_full") {
+    return "AI draft finished. Retry AI enrichment to wake providers and collapse residual hygiene if needed.";
+  }
+  return null;
+}

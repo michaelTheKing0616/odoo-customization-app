@@ -72,12 +72,17 @@ export function successNoteForDraft(draft: Record<string, unknown> | null): stri
   return "Draft ready for review. Nothing writes to Odoo until you Apply.";
 }
 
-function operatorWarnings(warnings: unknown): string[] {
+/** Hide senior: noise and live_apply rows that are not real gaps. */
+export function visibleDraftWarnings(warnings: unknown): string[] {
   return ((warnings as string[]) || []).filter((w) => {
     if (w.startsWith("senior: ")) return false;
     if (w.startsWith("live_apply:") && !w.toLowerCase().includes("gap")) return false;
     return true;
   });
+}
+
+function operatorWarnings(warnings: unknown): string[] {
+  return visibleDraftWarnings(warnings);
 }
 
 export function resolveJobDraftOutcome(job: JobRow, successNote?: string): JobDraftOutcome {
