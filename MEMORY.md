@@ -1,4 +1,9 @@
-### 2026-09-14 — Premium Expert UX is a copilot drawer
+### 2026-09-14 — Premium chain UAT is chrome-only, mid-premium not world-class
+**Decided:** Score PR chain #3–#12 against Linear/Figma/Intercom/Stripe — not Studio cloning. Verdict: merge as premium chrome v1 (avg ~3.3/5). Expert is strongest; Designer production dump is weakest. This Cloud Agent had no Odoo — do not treat the report as live RPC proof.
+**Why:** Founder asked for a ruthless UAT scorecard before calling the chain world-class.
+**Rejected:** Starting a mega surface rewrite; claiming world-class; silent-passing Access live pack without confirm.
+
+
 **Decided:** Odoo Expert is a global Sheet copilot (Linear/Intercom chrome), not a chat widget. Completeness ≠ Cert ≠ Autopilot; Expert never applies, certifies, or auto-promotes. `/connections/{id}?expert=1` is an Overview destination card plus the open drawer. `formatExpertDiagnosePrompt` is diagnose-only — explain-this / ask-why must not attach a blank Error log.
 **Why:** Surface 8 (last build surface before UAT). Visual review of `/e2e/expert` showed explain-this sending `Error log:` with no error.
 **Rejected:** RAG ingest/retrieval/LLM rewrites; treating Expert as Job Autopilot; Enter-to-send (operators paste tracebacks — ⌘ Enter only).

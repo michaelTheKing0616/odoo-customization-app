@@ -63,6 +63,7 @@ const SAMPLE: ModuleSpecDoc = {
 };
 
 export default function ModuleSpecE2ePage() {
+  const enabled = process.env.NEXT_PUBLIC_E2E === "1";
   const [spec, setSpec] = useState<ModuleSpecDoc>(SAMPLE);
   const [baseline] = useState<ModuleSpecDoc>(() => cloneModuleSpec(SAMPLE));
   const dirty = isSpecDirty(spec, baseline);
@@ -73,6 +74,10 @@ export default function ModuleSpecE2ePage() {
     hasContent: true,
     hasLiveValidation: false,
   });
+
+  if (!enabled) {
+    return <main className="p-6 text-sm text-muted">E2E harness disabled.</main>;
+  }
 
   return (
     <ModuleSpecShell connectionId="e2e-mock" connectionName="E2E mock" journey={journey}>
