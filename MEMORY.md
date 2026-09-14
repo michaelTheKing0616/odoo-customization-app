@@ -1,3 +1,8 @@
+### 2026-09-14 — View Designer Track C: session undo/redo, draft vs published
+**Decided:** In-session undo/redo snapshots canvas state (cap 50, inspector coalesced). Dirty chrome is Unpublished / Published / Draft. Save to Odoo stays inherit-default publish. Snapshot list is published checkpoints; Cmd+Z does not silently RPC-rollback. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+**Why:** Studio persists immediately; operators need a design workflow before publish.
+**Rejected:** Track D; changing overwrite confirm semantics; treating snapshot rollback as session undo.
+
 ### 2026-09-14 — View Designer Track B: semantic XPath, ElementTree `//` is eval-only
 **Decided:** Score/rewrite locators toward `@name`/`@id` (unique `@string` only if needed). Classify preview issues as error (missing/ambiguous/invalid XML) vs warning (positional / `@string` fragility). Block inherit/overlay writes on errors; warnings do not block. ElementTree evaluates Odoo `//field` as `.//field` and inherit XML still emits `//`. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
 **Why:** Studio’s #1 upgrade pain is positional `group[2]`. Python `xml.etree` rejects absolute `//` on an element, which made every locator look unevaluable until the eval mapping.

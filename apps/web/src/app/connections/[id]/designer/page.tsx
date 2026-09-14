@@ -40,6 +40,11 @@ import {
   type DesignerFieldInspectorValues,
 } from "@/components/designer/DesignerFieldInspector";
 import { XPathInheritPanel, type LocatorIssue } from "@/components/designer/XPathInheritPanel";
+import {
+  DesignerSessionBar,
+  designerPublishState,
+} from "@/components/designer/DesignerSessionBar";
+import { useDesignerHistory } from "@/components/designer/useDesignerHistory";
 import { fallbackWidgetsForTtype, type WidgetOption } from "@/lib/widgetCatalog";
 import { semanticInjectExpr } from "@/lib/xpathLocator";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
@@ -153,6 +158,71 @@ type SearchGroupByFilter = {
   name: string;
   string: string;
   context?: string;
+};
+
+/** Canvas bits session undo/redo snapshots. Keep JSON-small; cap is in designerHistory. */
+type DesignerCanvasSnapshot = {
+  title: string;
+  formChildren: FormChild[];
+  headerButtons: DesignerButton[];
+  buttonBox: DesignerButton[];
+  statusbarField: string;
+  statusbarVisible: string;
+  formCanCreate: boolean;
+  formCanEdit: boolean;
+  formCanDelete: boolean;
+  formCanDuplicate: boolean;
+  listColumns: DesignerField[];
+  listDecorationDanger: string;
+  listDecorationInfo: string;
+  listDecorationMuted: string;
+  listCanCreate: boolean;
+  listCanEdit: boolean;
+  listCanDelete: boolean;
+  listMultiEdit: boolean;
+  listDefaultOrder: string;
+  viewSample: boolean;
+  searchFields: DesignerField[];
+  searchFilters: SearchFilter[];
+  searchGroupByFilters: SearchGroupByFilter[];
+  kanbanFields: DesignerField[];
+  kanbanGroupBy: string;
+  kanbanCanCreate: boolean;
+  kanbanQuickCreate: boolean;
+  calendarDateStart: string;
+  calendarDateStop: string;
+  calendarColor: string;
+  calendarMode: string;
+  calendarFields: DesignerField[];
+  graphType: "bar" | "line" | "pie";
+  graphFields: AxisDesignerField[];
+  pivotFields: AxisDesignerField[];
+  mapResPartner: string;
+  mapRouting: boolean;
+  mapFields: DesignerField[];
+  activityFields: DesignerField[];
+  ganttDateStart: string;
+  ganttDateStop: string;
+  ganttGroupBy: string;
+  ganttColor: string;
+  ganttProgress: string;
+  ganttDefaultScale: string;
+  ganttDependencyField: string;
+  ganttFields: DesignerField[];
+  cohortDateStart: string;
+  cohortDateStop: string;
+  cohortInterval: "day" | "week" | "month" | "year" | "";
+  cohortMode: "retention" | "churn" | "";
+  cohortTimeline: "forward" | "backward" | "";
+  cohortMeasure: string;
+  gridRowField: string;
+  gridColField: string;
+  gridMeasure: string;
+  gridAdjustment: string;
+  gridDateStart: string;
+  gridDateStop: string;
+  gridFields: DesignerField[];
+  archOverride: string | null;
 };
 
 function asSpecBool(v: unknown): boolean | null {
@@ -509,6 +579,223 @@ export default function DesignerPage() {
   const [archOverride, setArchOverride] = useState<string | null>(null);
   const [editingFilterId, setEditingFilterId] = useState<string | null>(null);
 
+  const history = useDesignerHistory<DesignerCanvasSnapshot>();
+  const historySkipRef = useRef<"reset" | "apply" | null>("reset");
+  const pendingCoalesceRef = useRef<string | undefined>(undefined);
+  const pendingHistoryLabelRef = useRef<string | undefined>(undefined);
+
+  const canvasSnapshot = useMemo<DesignerCanvasSnapshot>(
+    () => ({
+      title,
+      formChildren,
+      headerButtons,
+      buttonBox,
+      statusbarField,
+      statusbarVisible,
+      formCanCreate,
+      formCanEdit,
+      formCanDelete,
+      formCanDuplicate,
+      listColumns,
+      listDecorationDanger,
+      listDecorationInfo,
+      listDecorationMuted,
+      listCanCreate,
+      listCanEdit,
+      listCanDelete,
+      listMultiEdit,
+      listDefaultOrder,
+      viewSample,
+      searchFields,
+      searchFilters,
+      searchGroupByFilters,
+      kanbanFields,
+      kanbanGroupBy,
+      kanbanCanCreate,
+      kanbanQuickCreate,
+      calendarDateStart,
+      calendarDateStop,
+      calendarColor,
+      calendarMode,
+      calendarFields,
+      graphType,
+      graphFields,
+      pivotFields,
+      mapResPartner,
+      mapRouting,
+      mapFields,
+      activityFields,
+      ganttDateStart,
+      ganttDateStop,
+      ganttGroupBy,
+      ganttColor,
+      ganttProgress,
+      ganttDefaultScale,
+      ganttDependencyField,
+      ganttFields,
+      cohortDateStart,
+      cohortDateStop,
+      cohortInterval,
+      cohortMode,
+      cohortTimeline,
+      cohortMeasure,
+      gridRowField,
+      gridColField,
+      gridMeasure,
+      gridAdjustment,
+      gridDateStart,
+      gridDateStop,
+      gridFields,
+      archOverride,
+    }),
+    [
+      title,
+      formChildren,
+      headerButtons,
+      buttonBox,
+      statusbarField,
+      statusbarVisible,
+      formCanCreate,
+      formCanEdit,
+      formCanDelete,
+      formCanDuplicate,
+      listColumns,
+      listDecorationDanger,
+      listDecorationInfo,
+      listDecorationMuted,
+      listCanCreate,
+      listCanEdit,
+      listCanDelete,
+      listMultiEdit,
+      listDefaultOrder,
+      viewSample,
+      searchFields,
+      searchFilters,
+      searchGroupByFilters,
+      kanbanFields,
+      kanbanGroupBy,
+      kanbanCanCreate,
+      kanbanQuickCreate,
+      calendarDateStart,
+      calendarDateStop,
+      calendarColor,
+      calendarMode,
+      calendarFields,
+      graphType,
+      graphFields,
+      pivotFields,
+      mapResPartner,
+      mapRouting,
+      mapFields,
+      activityFields,
+      ganttDateStart,
+      ganttDateStop,
+      ganttGroupBy,
+      ganttColor,
+      ganttProgress,
+      ganttDefaultScale,
+      ganttDependencyField,
+      ganttFields,
+      cohortDateStart,
+      cohortDateStop,
+      cohortInterval,
+      cohortMode,
+      cohortTimeline,
+      cohortMeasure,
+      gridRowField,
+      gridColField,
+      gridMeasure,
+      gridAdjustment,
+      gridDateStart,
+      gridDateStop,
+      gridFields,
+      archOverride,
+    ],
+  );
+
+  function applyCanvasSnapshot(snapshot: DesignerCanvasSnapshot) {
+    setTitle(snapshot.title);
+    setFormChildren(snapshot.formChildren);
+    setHeaderButtons(snapshot.headerButtons);
+    setButtonBox(snapshot.buttonBox);
+    setStatusbarField(snapshot.statusbarField);
+    setStatusbarVisible(snapshot.statusbarVisible);
+    setFormCanCreate(snapshot.formCanCreate);
+    setFormCanEdit(snapshot.formCanEdit);
+    setFormCanDelete(snapshot.formCanDelete);
+    setFormCanDuplicate(snapshot.formCanDuplicate);
+    setListColumns(snapshot.listColumns);
+    setListDecorationDanger(snapshot.listDecorationDanger);
+    setListDecorationInfo(snapshot.listDecorationInfo);
+    setListDecorationMuted(snapshot.listDecorationMuted);
+    setListCanCreate(snapshot.listCanCreate);
+    setListCanEdit(snapshot.listCanEdit);
+    setListCanDelete(snapshot.listCanDelete);
+    setListMultiEdit(snapshot.listMultiEdit);
+    setListDefaultOrder(snapshot.listDefaultOrder);
+    setViewSample(snapshot.viewSample);
+    setSearchFields(snapshot.searchFields);
+    setSearchFilters(snapshot.searchFilters);
+    setSearchGroupByFilters(snapshot.searchGroupByFilters);
+    setKanbanFields(snapshot.kanbanFields);
+    setKanbanGroupBy(snapshot.kanbanGroupBy);
+    setKanbanCanCreate(snapshot.kanbanCanCreate);
+    setKanbanQuickCreate(snapshot.kanbanQuickCreate);
+    setCalendarDateStart(snapshot.calendarDateStart);
+    setCalendarDateStop(snapshot.calendarDateStop);
+    setCalendarColor(snapshot.calendarColor);
+    setCalendarMode(snapshot.calendarMode);
+    setCalendarFields(snapshot.calendarFields);
+    setGraphType(snapshot.graphType);
+    setGraphFields(snapshot.graphFields);
+    setPivotFields(snapshot.pivotFields);
+    setMapResPartner(snapshot.mapResPartner);
+    setMapRouting(snapshot.mapRouting);
+    setMapFields(snapshot.mapFields);
+    setActivityFields(snapshot.activityFields);
+    setGanttDateStart(snapshot.ganttDateStart);
+    setGanttDateStop(snapshot.ganttDateStop);
+    setGanttGroupBy(snapshot.ganttGroupBy);
+    setGanttColor(snapshot.ganttColor);
+    setGanttProgress(snapshot.ganttProgress);
+    setGanttDefaultScale(snapshot.ganttDefaultScale);
+    setGanttDependencyField(snapshot.ganttDependencyField);
+    setGanttFields(snapshot.ganttFields);
+    setCohortDateStart(snapshot.cohortDateStart);
+    setCohortDateStop(snapshot.cohortDateStop);
+    setCohortInterval(snapshot.cohortInterval);
+    setCohortMode(snapshot.cohortMode);
+    setCohortTimeline(snapshot.cohortTimeline);
+    setCohortMeasure(snapshot.cohortMeasure);
+    setGridRowField(snapshot.gridRowField);
+    setGridColField(snapshot.gridColField);
+    setGridMeasure(snapshot.gridMeasure);
+    setGridAdjustment(snapshot.gridAdjustment);
+    setGridDateStart(snapshot.gridDateStart);
+    setGridDateStop(snapshot.gridDateStop);
+    setGridFields(snapshot.gridFields);
+    setArchOverride(snapshot.archOverride);
+  }
+
+  useEffect(() => {
+    const skip = historySkipRef.current;
+    if (skip === "reset") {
+      history.reset(canvasSnapshot);
+      historySkipRef.current = null;
+      return;
+    }
+    if (skip === "apply") {
+      historySkipRef.current = null;
+      return;
+    }
+    history.record(canvasSnapshot, {
+      label: pendingHistoryLabelRef.current,
+      coalesceKey: pendingCoalesceRef.current,
+    });
+    pendingHistoryLabelRef.current = undefined;
+    pendingCoalesceRef.current = undefined;
+  }, [canvasSnapshot, history.record, history.reset]);
+
   const refreshSnapshots = useCallback(async () => {
     try {
       const snaps = await api.listSnapshots(connectionId);
@@ -603,6 +890,7 @@ export default function DesignerPage() {
     : null;
 
   function applyFieldNamesToCanvas(names: string[], rows: FieldRow[]) {
+    historySkipRef.current = "reset";
     const nodes: DesignerField[] = names.map((name) => {
       const meta = rows.find((f) => f.name === name);
       return {
@@ -818,6 +1106,7 @@ export default function DesignerPage() {
     setBusy(true);
     setError(null);
     setNotice(null);
+    historySkipRef.current = "reset";
     try {
       const [rows, views] = await Promise.all([
         api.listFields(connectionId, model),
@@ -1082,6 +1371,7 @@ export default function DesignerPage() {
       }
       setSelected(null);
     } catch (err) {
+      historySkipRef.current = null;
       setError(err instanceof Error ? err.message : "Load view failed");
     } finally {
       setBusy(false);
@@ -1470,6 +1760,8 @@ export default function DesignerPage() {
 
   function updateSelectedField(patch: Partial<DesignerFieldInspectorValues>) {
     if (!selected) return;
+    pendingCoalesceRef.current = `inspector:${selected.fieldId}`;
+    pendingHistoryLabelRef.current = "Edit field properties";
     const { ttype: _ttype, name: _name, ...fieldPatch } = patch;
     if (selected.scope === "list") {
       setListColumns((cols) =>
@@ -2227,7 +2519,7 @@ export default function DesignerPage() {
       if (saved.snapshot_id) {
         setLastSnapshotId(saved.snapshot_id);
         setNotice(
-          `Saved ${viewType} view #${saved.id}. Snapshot ${saved.snapshot_id.slice(0, 8)}… ready to undo.`,
+          `Published ${viewType} view #${saved.id}. Checkpoint ${saved.snapshot_id.slice(0, 8)}… is in published history.`,
         );
       } else {
         setNotice(`Saved new ${viewType} view #${saved.id} for ${model}`);
@@ -2235,6 +2527,10 @@ export default function DesignerPage() {
       setArch(saved.arch ?? arch);
       setArchOverride(null);
       setPreviewKey((k) => k + 1);
+      if (archOverride !== null) {
+        historySkipRef.current = "apply";
+      }
+      history.reset({ ...canvasSnapshot, archOverride: null });
       await refreshSnapshots();
     } catch (err) {
       if (err instanceof ConfirmationRequiredError) {
@@ -2353,7 +2649,30 @@ export default function DesignerPage() {
     await onSave({ arch: res.arch, strategy: "inherit" });
   }
 
-  async function onUndo() {
+  function onSessionUndo() {
+    const snapshot = history.undo();
+    if (!snapshot) {
+      setNotice(
+        lastSnapshotId
+          ? "Nothing to undo in this session. Use roll back last publish to restore a snapshot."
+          : "Nothing to undo in this session. Save to Odoo first creates a published checkpoint.",
+      );
+      return;
+    }
+    historySkipRef.current = "apply";
+    applyCanvasSnapshot(snapshot);
+    setNotice("Reverted the last unpublished canvas edit.");
+  }
+
+  function onSessionRedo() {
+    const snapshot = history.redo();
+    if (!snapshot) return;
+    historySkipRef.current = "apply";
+    applyCanvasSnapshot(snapshot);
+    setNotice("Restored the unpublished canvas edit.");
+  }
+
+  async function onRollbackLastPublish() {
     if (!lastSnapshotId) return;
     setBusy(true);
     setError(null);
@@ -2364,7 +2683,7 @@ export default function DesignerPage() {
       await loadExistingView();
       await refreshSnapshots();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Undo failed");
+      setError(err instanceof Error ? err.message : "Rollback failed");
     } finally {
       setBusy(false);
     }
@@ -2510,7 +2829,29 @@ export default function DesignerPage() {
     <div className="mx-auto max-w-7xl" data-testid="designer-page">
       <PageHeader
         title="View designer"
-        description={`${connection?.name ?? connectionId} · drag fields onto the canvas · saves real ir.ui.view arch`}
+        description={`${connection?.name ?? connectionId} · drag fields onto the canvas · Save to Odoo publishes an inherit view`}
+      />
+      <DesignerSessionBar
+        publishState={designerPublishState({
+          dirty: history.dirty,
+          hasPublishedView: loadedViewId != null,
+        })}
+        canUndo={history.canUndo}
+        canRedo={history.canRedo}
+        canRollbackPublish={Boolean(lastSnapshotId)}
+        undoLabel={history.undoLabel}
+        redoLabel={history.redoLabel}
+        busy={busy}
+        onUndo={onSessionUndo}
+        onRedo={onSessionRedo}
+        onRollbackPublish={() => void onRollbackLastPublish()}
+        onEmptyUndo={() =>
+          setNotice(
+            lastSnapshotId
+              ? "Nothing to undo in this session. Use roll back last publish to restore a snapshot."
+              : "Nothing to undo in this session. Save to Odoo first creates a published checkpoint.",
+          )
+        }
       />
       {connection ? <FirstWriteInterstitial connection={connection} /> : null}
       <p className="mt-2 text-sm text-muted">
@@ -3162,7 +3503,11 @@ export default function DesignerPage() {
             <span className="text-[#a8909e]">Title</span>
             <input
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => {
+                pendingCoalesceRef.current = "title";
+                pendingHistoryLabelRef.current = "Edit title";
+                setTitle(e.target.value);
+              }}
               className="mt-1 block w-48 border border-border-subtle bg-surface px-3 py-2"
             />
           </label>
@@ -3225,14 +3570,6 @@ export default function DesignerPage() {
             className="h-10 border border-border-subtle px-4 text-sm text-muted disabled:opacity-40"
           >
             Polish form layout
-          </button>
-          <button
-            type="button"
-            disabled={busy || !lastSnapshotId}
-            onClick={onUndo}
-            className="h-10 border border-danger/50 px-4 text-sm text-danger disabled:opacity-40"
-          >
-            Undo last save
           </button>
           <a
             href={liveOdooUrl ?? "#"}
@@ -5298,7 +5635,7 @@ export default function DesignerPage() {
             <div className="border border-border-subtle bg-surface-muted/70 p-4">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs uppercase tracking-wide text-muted">
-                  Snapshots / undo
+                  Published checkpoints
                 </p>
                 <button
                   type="button"
@@ -5310,7 +5647,7 @@ export default function DesignerPage() {
               </div>
               <ul className="mt-3 max-h-48 space-y-2 overflow-auto text-xs">
                 {snapshots.length === 0 && (
-                  <li className="text-muted">No view snapshots yet.</li>
+                  <li className="text-muted">No published checkpoints yet. Save to Odoo creates one.</li>
                 )}
                 {snapshots.map((s) => (
                   <li
@@ -5329,7 +5666,7 @@ export default function DesignerPage() {
                       onClick={() => onRollback(s.id)}
                       className="shrink-0 border border-border-subtle px-2 py-0.5 text-muted disabled:opacity-40"
                     >
-                      Undo
+                      Restore
                     </button>
                   </li>
                 ))}
@@ -5344,7 +5681,7 @@ export default function DesignerPage() {
         risks={[
           "Can break stock xpath inherits (e.g. Contacts)",
           "Module upgrades may conflict",
-          "Snapshot is taken — Undo from the sidebar when reversible",
+          "Snapshot is taken — restore from published checkpoints when reversible",
         ]}
         phrase={CONFIRM_PHRASE}
         busy={busy}
@@ -5361,7 +5698,7 @@ export default function DesignerPage() {
           "Removes the inherit child only (stock primary form stays)",
           "Custom groups that lived only in that inherit disappear",
           "Field inject views ({model}.custom.x_*.form) are not deleted",
-          "Undo cannot recreate a deleted view from a normal arch snapshot",
+          "A published checkpoint cannot recreate a deleted inherit view",
         ]}
         phrase={CONFIRM_PHRASE}
         busy={busy}

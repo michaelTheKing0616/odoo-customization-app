@@ -24,6 +24,7 @@ export {
   Zap as IconAutomations,
   Code2 as IconCodeStudio,
   Undo2 as IconUndo,
+  Redo2 as IconRedo,
   Search,
   Moon,
   Sun,
