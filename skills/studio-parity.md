@@ -67,6 +67,10 @@ what users expect from Odoo Studio **capability**, without copying Studio source
 - Form-bound twin of the same server actions lives in **Designer** (cross-linked).
 - Advanced: live code (confirm); Option A Python module → sandbox → promote.
 - **Never** expose unrestricted Python in the default no-code path (AGENTS.md).
+- Premium chrome: list → composer/detail, apply-on validation, draft/unsaved/saved
+  session bar. Reuse automation snapshots — do not clone Designer undo/redo.
+  PATCH existing rules for name/domain/active; duplicate into a new rule to change
+  trigger or action.
 
 ### Security
 - Record rules and access rights as first-class builders (Studio docs list this explicitly).

@@ -1493,10 +1493,26 @@ class OdooClient:
         )
 
     def set_automation_active(self, automation_id: int, active: bool) -> Any:
-        from odoo_client.automation import AutomationInfo
+        return self.update_automation_definition(automation_id, active=active)
 
+    def update_automation_definition(
+        self,
+        automation_id: int,
+        *,
+        name: str | None = None,
+        filter_domain: str | None = None,
+        active: bool | None = None,
+    ) -> Any:
         self.ensure_module_installed("base_automation")
-        self.execute_kw("base.automation", "write", [[automation_id], {"active": active}])
+        vals: dict[str, Any] = {}
+        if name is not None:
+            vals["name"] = name
+        if filter_domain is not None:
+            vals["filter_domain"] = filter_domain
+        if active is not None:
+            vals["active"] = active
+        if vals:
+            self.execute_kw("base.automation", "write", [[automation_id], vals])
         return self._read_automation_info(automation_id)
 
     def update_automation_model(self, automation_id: int, model: str) -> Any:

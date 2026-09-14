@@ -3,7 +3,11 @@ import {
   parseSelectionInput,
   selectionRowsToString,
 } from "./SelectionEditor";
-import { domainRulesToString, parseDomainString } from "./DomainBuilder";
+import {
+  domainRulesToString,
+  parseDomainString,
+  validateDomainString,
+} from "./DomainBuilder";
 
 describe("SelectionEditor serializers", () => {
   it("builds Odoo selection string", () => {
@@ -37,5 +41,12 @@ describe("DomainBuilder serializers", () => {
     const rules = parseDomainString("[('x_returned', '=', True)]");
     expect(rules[0].field).toBe("x_returned");
     expect(rules[0].op).toBe("=");
+  });
+
+  it("validates empty, balanced, and unparseable domains", () => {
+    expect(validateDomainString("[]")).toEqual({ ok: true, message: null });
+    expect(validateDomainString("[('x_status', '=', 'open')]").ok).toBe(true);
+    expect(validateDomainString("[('x_status', '=', 'open'").ok).toBe(false);
+    expect(validateDomainString("not-a-domain").ok).toBe(false);
   });
 });

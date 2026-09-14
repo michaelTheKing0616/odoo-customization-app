@@ -190,6 +190,8 @@ class ActivityTypeOut(BaseModel):
 
 class UpdateAutomationBody(BaseModel):
     active: bool | None = None
+    name: str | None = None
+    filter_domain: str | None = None
     model: str | None = None
     action_kind: str | None = None
     field_name: str | None = None
@@ -575,7 +577,13 @@ def update_automation(
     body: UpdateAutomationBody,
     db: Session = Depends(get_db),
 ) -> AutomationOut:
-    if body.active is None and body.model is None and body.action_kind is None:
+    if (
+        body.active is None
+        and body.model is None
+        and body.action_kind is None
+        and body.name is None
+        and body.filter_domain is None
+    ):
         raise HTTPException(status_code=422, detail="Provide active and/or definition fields to update")
 
     try:
@@ -597,11 +605,17 @@ def update_automation(
 
     client = _client(connection_id, db)
     try:
+        updated = None
         if body.model is not None:
-            client.update_automation_model(automation_id, body.model)
-        if body.active is not None:
-            updated = client.set_automation_active(automation_id, body.active)
-        else:
+            updated = client.update_automation_model(automation_id, body.model)
+        if body.name is not None or body.filter_domain is not None or body.active is not None:
+            updated = client.update_automation_definition(
+                automation_id,
+                name=body.name,
+                filter_domain=body.filter_domain,
+                active=body.active,
+            )
+        if updated is None:
             updated = next(
                 (row for row in client.list_automations() if row.id == automation_id),
                 None,

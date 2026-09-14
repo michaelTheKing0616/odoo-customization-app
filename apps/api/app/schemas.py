@@ -948,6 +948,8 @@ class DeleteModelOut(BaseModel):
 
 class UpdateAutomationBody(BaseModel):
     active: bool | None = None
+    name: str | None = None
+    filter_domain: str | None = None
     model: str | None = None
     action_kind: str | None = None
     field_name: str | None = None

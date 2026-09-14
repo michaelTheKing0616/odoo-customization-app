@@ -155,6 +155,9 @@ test.describe("Production Automations page (mocked API)", () => {
     await page.goto(`/connections/${CONN}/automations`);
     await expect(page.getByTestId("app-shell")).toBeVisible({ timeout: 60_000 });
     await expect(page.getByTestId("automations-form")).toBeVisible();
+    await expect(page.getByTestId("automations-session-bar")).toBeVisible();
+    await expect(page.getByTestId("automations-designer-link")).toBeVisible();
+    await expect(page.getByTestId("automations-list")).toBeVisible();
     const select = page.getByTestId("automation-action-kind");
     await expect(select.locator('option[value="update_field"]')).toHaveAttribute(
       "disabled",
