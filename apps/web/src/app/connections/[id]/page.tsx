@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { ExpertOverviewCard } from "@/components/expert/ExpertOverviewCard";
+import { expertHeaderDescription } from "@/lib/expert-journey";
+import "@/styles/studio-refinement.css";
 import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
 import { HealthCheckBanner } from "@/components/HealthCheckBanner";
 import { EePlaybooksPanel } from "@/components/EePlaybooksPanel";
@@ -54,7 +57,9 @@ function downloadBase64Zip(filename: string, contentBase64: string) {
 
 export default function BrowserPage() {
   const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
   const connectionId = params.id;
+  const expertMode = searchParams.get("expert") === "1";
 
   const [connection, setConnection] = useState<Connection | null>(null);
   const [tab, setTab] = useState<Tab>("models");
@@ -567,9 +572,25 @@ export default function BrowserPage() {
   return (
     <div className="mx-auto max-w-6xl" data-testid="connection-overview">
       <PageHeader
-        title="Overview"
-        description="Your connection at a glance — health, models, and export paths."
+        title={expertMode ? "Odoo Expert" : "Overview"}
+        description={
+          expertMode
+            ? expertHeaderDescription(connection?.name)
+            : "Your connection at a glance — health, models, and export paths."
+        }
+        actions={
+          expertMode ? (
+            <Link href={`/connections/${connectionId}`} className="text-sm text-muted hover:text-ink">
+              Overview
+            </Link>
+          ) : undefined
+        }
       />
+      {expertMode ? (
+        <div className="studio-refinement">
+          <ExpertOverviewCard connectionId={connectionId} connectionName={connection?.name} />
+        </div>
+      ) : null}
 
       {connection ? (
         <WriteModeUnlockPanel

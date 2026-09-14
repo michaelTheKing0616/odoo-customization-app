@@ -9,6 +9,8 @@ type SheetProps = {
   onOpenChange: (open: boolean) => void;
   title?: string;
   description?: string;
+  /** Replaces the default title/description block. Title stays available to screen readers. */
+  header?: React.ReactNode;
   side?: "right" | "left";
   children: React.ReactNode;
   className?: string;
@@ -20,6 +22,7 @@ export function Sheet({
   onOpenChange,
   title,
   description,
+  header,
   side = "right",
   children,
   className,
@@ -38,15 +41,27 @@ export function Sheet({
           )}
         >
           <div className="flex items-start justify-between gap-3 border-b border-border-subtle px-4 py-3">
-            <div>
-              {title ? (
-                <Dialog.Title className="text-md font-semibold text-ink">{title}</Dialog.Title>
-              ) : null}
-              {description ? (
-                <Dialog.Description className="mt-1 text-sm text-muted">
-                  {description}
-                </Dialog.Description>
-              ) : null}
+            <div className="min-w-0 flex-1">
+              {header ? (
+                <>
+                  {title ? <Dialog.Title className="sr-only">{title}</Dialog.Title> : null}
+                  {description ? (
+                    <Dialog.Description className="sr-only">{description}</Dialog.Description>
+                  ) : null}
+                  {header}
+                </>
+              ) : (
+                <>
+                  {title ? (
+                    <Dialog.Title className="text-md font-semibold text-ink">{title}</Dialog.Title>
+                  ) : null}
+                  {description ? (
+                    <Dialog.Description className="mt-1 text-sm text-muted">
+                      {description}
+                    </Dialog.Description>
+                  ) : null}
+                </>
+              )}
             </div>
             <Dialog.Close
               className="rounded-md p-1 text-muted hover:bg-surface-muted"

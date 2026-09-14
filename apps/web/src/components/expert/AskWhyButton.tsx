@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { IconExpert } from "@/components/ui/icons";
 import { useShellOptional } from "@/context/ShellContext";
 import { api } from "@/lib/api";
 
@@ -76,9 +77,11 @@ export function AskWhyButton({
       variant="ghost"
       size="sm"
       loading={busy}
+      className="expert-entry-btn"
       data-testid="ask-why"
       onClick={() => void handleClick()}
     >
+      <IconExpert className="h-3.5 w-3.5" aria-hidden />
       {label}
     </Button>
   );

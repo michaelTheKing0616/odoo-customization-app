@@ -10,6 +10,7 @@ import { Kbd } from "@/components/ui/layout-primitives";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import { useShell } from "@/context/ShellContext";
 import { breadcrumbForPath } from "@/lib/nav";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { WriteModeBadge } from "@/components/shell/WriteModeBadge";
 import { AnomalyBanner } from "@/components/shell/AnomalyBanner";
 import { WorkspacePlanBadge } from "@/components/billing/WorkspacePlanBadge";
@@ -66,16 +67,18 @@ export function TopBar({ connection, connections, pathname }: Props) {
             <span className="hidden sm:inline">Command</span>
             <Kbd>⌘K</Kbd>
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setExpertOpen(true)}
-            data-testid="topbar-open-expert"
-            aria-label="Open Odoo Expert"
-          >
-            <IconExpert className="h-4 w-4" />
-            <span className="hidden sm:inline">Expert</span>
-          </Button>
+          <Tooltip label="Odoo Expert — grounded answers, never auto-promotes">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setExpertOpen(true)}
+              data-testid="topbar-open-expert"
+              aria-label="Open Odoo Expert"
+            >
+              <IconExpert className="h-4 w-4" />
+              <span className="hidden sm:inline">Expert</span>
+            </Button>
+          </Tooltip>
           <Button
             variant="ghost"
             size="sm"
