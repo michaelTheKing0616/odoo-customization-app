@@ -18,6 +18,7 @@ export {
   Settings2 as IconConfig,
   Shield as IconAccess,
   Sparkles as IconExpert,
+  FilePen as IconDraftStudio,
   Upload as IconImport,
   Globe as IconWebsite,
   Zap as IconAutomations,

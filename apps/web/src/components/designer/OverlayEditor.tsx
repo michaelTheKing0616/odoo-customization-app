@@ -182,8 +182,6 @@ export function OverlayEditor({
     movePosition,
     operation,
     placeholder,
-    selectedField,
-    selectedXpath,
     viewType,
     widget,
     activeField,

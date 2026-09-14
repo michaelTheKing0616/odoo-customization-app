@@ -7,6 +7,7 @@ import {
   IconCodeStudio,
   IconConnection,
   IconCron,
+  IconDraftStudio,
   IconExpert,
   IconFields,
   IconHousekeeping,
@@ -200,7 +201,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Draft Studio",
     href: (id) => `/connections/${id}/wizard`,
     group: "ai",
-    icon: IconExpert,
+    icon: IconDraftStudio,
     shipped: true,
   },
   {
