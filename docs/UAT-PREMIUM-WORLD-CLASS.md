@@ -283,6 +283,28 @@ If those five are respected, the chain is **safe enough for a founder sandbox de
 
 ## Screenshots
 
-Light + dark captures live in [`docs/uat-premium/screenshots/`](uat-premium/screenshots/). Naming: `{nn}-{surface}-{light|dark}.png`.
+Light + dark captures live in [`docs/uat-premium/screenshots/`](uat-premium/screenshots/). Playwright: **28/28 passed** (`e2e/uat-premium-screenshots.spec.ts`). Chrome harnesses only — no live `/connections/{id}` RPC.
 
-This UAT did **not** screenshot live `/connections/{id}/…` routes (API/Odoo down). Harnesses mount the same extracted chrome with visitor-log sample data.
+### Visual evidence (light)
+
+| Surface | Evidence from screenshot |
+|---|---|
+| Designer A–D | Inspector + session bar + named locator is the closest to Figma properties. False “may break on upgrade” warning still fires on a Named xpath. |
+| Legacy `/e2e/designer` | **Broken on light:** ghost title, black field wells, Odoo purple `#714B67`. Do not treat this harness as production chrome. |
+| Automations | List→detail is Linear-shaped. Session bar absent on detail (matches code). |
+| Builder | Hide vs remove is visible. Form+list teaser is honest (“not the saved arch”). |
+| Menus | Tree + composer is calm. Harness shows create form while a row is selected; production uses `MenuDetail`. |
+| App Studio | Brief is Intercom-grade. CTA is **orange** while sibling primaries are petrol teal. Shell still says “Draft Studio wizard”. Preview-only banner on a brief (harness stacked banners early). |
+| Draft Studio | Honesty is correct. Dimension chips render as empty `—` unless keys are `domain_fit` / `structure_fit` (not `models`/`views`). |
+| Job (sandbox) | Stripe-like meters. Glossary **twice**. Stage rail says Promote while Brief+Scorecard+Handoff all stay mounted. |
+| Job (production) | **Refuse is real:** header + red banner + Run Autopilot disabled. No auto-promote copy. |
+| ModuleSpec | JSON is a disclosure. Generate UI is the primary. Session hint duplicated on the right. |
+| Projects | Best Linear board. **Apply is enabled without requiring Review vs live.** Rollback has no confirm chrome. |
+| Expert | Never auto-promotes is repeated and true. Card is a glossary essay. Overview destination is not isolated. |
+
+![Designer A–D](uat-premium/screenshots/01-designer-premium-light.png)
+![Job production refuse](uat-premium/screenshots/08b-job-autopilot-production-refuse-light.png)
+![App Studio brief](uat-premium/screenshots/06-app-studio-light.png)
+![Projects board](uat-premium/screenshots/10-projects-light.png)
+![Legacy designer harness (broken)](uat-premium/screenshots/01b-designer-legacy-harness-light.png)
+
