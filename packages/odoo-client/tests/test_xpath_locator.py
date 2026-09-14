@@ -9,6 +9,8 @@ from odoo_client.xpath_locator import (
     score_locator,
     semantic_field_candidates,
     semantic_inject_expr,
+    semantic_notebook_expr,
+    semantic_structure_candidates,
 )
 from odoo_client.view_arch import render_inherit_xpath_arch, validate_xpath_arch
 
@@ -109,3 +111,21 @@ def test_classify_xpath_arch_invalid_xml() -> None:
     issues = classify_xpath_arch("<data><xpath")
     assert issues[0].code == "invalid_xml"
     assert issues[0].severity == "error"
+
+
+def test_structure_candidates_prefer_named_notebook_and_group() -> None:
+    cands = semantic_structure_candidates(PARTNER_ARCH)
+    tags = {c.tag for c in cands}
+    assert "notebook" in tags
+    assert "group" in tags
+    group = next(c for c in cands if c.tag == "group" and "header_left" in c.xpath)
+    assert group.xpath == "//group[@id='header_left_group']"
+    assert not group.fragile
+    assert semantic_notebook_expr(PARTNER_ARCH) == "//notebook"
+
+
+def test_kanban_card_inject_uses_t_name() -> None:
+    kanban = '<kanban><templates><t t-name="card"><field name="name"/></t></templates></kanban>'
+    assert semantic_inject_expr(kanban, "kanban") == "//t[@t-name='card']"
+    cands = semantic_structure_candidates(kanban, tags=("kanban", "t"))
+    assert any(c.xpath == "//t[@t-name='card']" for c in cands)

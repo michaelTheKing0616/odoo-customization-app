@@ -1,3 +1,8 @@
+### 2026-09-14 — View Designer Track D: overlay form structure, Studio-adjacent HUD
+**Decided:** Overlay can add a notebook page (or create notebook+page on sheet), add a named group, and move a field inside a named group/page. New pages/groups get `x_page_*` / `x_group_*` `@name` for later locators. Track B classify/422 still blocks missing/ambiguous expr. Kanban/search only add or hide card/search fields — filter domains and card templates stay NOT_V1. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+**Why:** Biggest Studio gap was form structure from the live view, not another canvas-only editor.
+**Rejected:** Full card designer; search filter-domain editor; reopening Tracks A–C; changing inherit-default save / confirm-phrase.
+
 ### 2026-09-14 — View Designer Track C: session undo/redo, draft vs published
 **Decided:** In-session undo/redo snapshots canvas state (cap 50, inspector coalesced). Dirty chrome is Unpublished / Published / Draft. Save to Odoo stays inherit-default publish. Snapshot list is published checkpoints; Cmd+Z does not silently RPC-rollback. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
 **Why:** Studio persists immediately; operators need a design workflow before publish.

@@ -1,9 +1,27 @@
 /** Client-side locator scoring — Python `xpath_locator` remains source of truth for preview/save. */
 
 const POSITIONAL_RE = /\[\s*(?:\d+|last\(\)|last\(\)\s*-\s*\d+)\s*\]/;
-const NAME_OR_ID_RE = /\[@(?:name|id)\s*=/;
+const NAME_OR_ID_RE = /\[@(?:name|id|t-name)\s*=/;
 const STRING_RE = /\[@string\s*=/;
-const STABLE_ROOTS = new Set(["//sheet", "//form", "//list", "//tree", "//search", "//kanban"]);
+const STABLE_ROOTS = new Set([
+  "//sheet",
+  "//form",
+  "//list",
+  "//tree",
+  "//search",
+  "//kanban",
+  "//notebook",
+]);
+
+export type LocatorKind = "named" | "positional" | "fragile" | "unknown";
+
+export function locatorKind(expr: string): LocatorKind {
+  const raw = (expr || "").trim();
+  if (!raw) return "unknown";
+  if (isPositional(raw)) return "positional";
+  if (isFragile(raw)) return "fragile";
+  return "named";
+}
 
 export function isPositional(expr: string): boolean {
   return POSITIONAL_RE.test(expr || "");
@@ -56,6 +74,20 @@ export function semanticInjectExpr(
     return "//list";
   }
   if (vt === "search") return "//search";
+  if (vt === "kanban") {
+    if (!parentArch) return "//t[@t-name='card']";
+    if (typeof DOMParser === "undefined") return "//kanban";
+    const doc = new DOMParser().parseFromString(parentArch, "application/xml");
+    if (doc.querySelector("parsererror")) return "//kanban";
+    for (const tName of ["card", "kanban-box", "kanban-card"]) {
+      const expr = `//t[@t-name='${tName}']`;
+      const hits = [...doc.getElementsByTagName("t")].filter(
+        (el) => el.getAttribute("t-name") === tName,
+      );
+      if (hits.length === 1) return expr;
+    }
+    return "//kanban";
+  }
   if (vt !== "form") return `//${vt}`;
   if (!parentArch) return "//sheet";
   if (typeof DOMParser === "undefined") {

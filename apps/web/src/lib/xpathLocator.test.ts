@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isFragile,
   isPositional,
+  locatorKind,
   preferSemanticCandidates,
   scoreLocator,
   semanticInjectExpr,
@@ -43,5 +44,14 @@ describe("xpathLocator", () => {
       { xpath: "//group[@id='header_left_group']//field[@name='partner_id']" },
     ]);
     expect(ranked[0].xpath).toContain("@id=");
+  });
+
+  it("treats t-name card locators as named", () => {
+    expect(locatorKind("//t[@t-name='card']")).toBe("named");
+    expect(scoreLocator("//t[@t-name='card']")).toBeGreaterThan(
+      scoreLocator("//kanban/templates/t[1]"),
+    );
+    const kanban = `<kanban><templates><t t-name="card"><field name="name"/></t></templates></kanban>`;
+    expect(semanticInjectExpr(kanban, "kanban")).toBe("//t[@t-name='card']");
   });
 });

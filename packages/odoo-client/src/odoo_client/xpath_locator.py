@@ -14,9 +14,12 @@ from xml.etree.ElementTree import Element, ParseError, fromstring, tostring
 Severity = Literal["error", "warning"]
 
 POSITIONAL_RE = re.compile(r"\[\s*(?:\d+|last\(\)|last\(\)\s*-\s*\d+)\s*\]")
-NAME_OR_ID_RE = re.compile(r"\[@(?:name|id)\s*=")
+NAME_OR_ID_RE = re.compile(r"\[@(?:name|id|t-name)\s*=")
 STRING_RE = re.compile(r"\[@string\s*=")
-STABLE_ROOTS = frozenset({"//sheet", "//form", "//list", "//tree", "//search", "//kanban"})
+STABLE_ROOTS = frozenset(
+    {"//sheet", "//form", "//list", "//tree", "//search", "//kanban", "//notebook"}
+)
+DEFAULT_STRUCTURE_TAGS = ("notebook", "page", "group", "sheet", "kanban")
 
 BLOCKING_CODES = frozenset(
     {
@@ -57,6 +60,17 @@ class LocatorIssue:
 class FieldLocatorCandidate:
     xpath: str
     match: str = ""
+    score: int = 0
+    fragile: bool = False
+    match_count: int | None = None
+    order: int = 0
+
+
+@dataclass
+class StructureLocatorCandidate:
+    xpath: str
+    tag: str
+    label: str
     score: int = 0
     fragile: bool = False
     match_count: int | None = None
@@ -165,6 +179,8 @@ def semantic_inject_expr(parent_arch: str | None, view_type: str = "form") -> st
         return "//list"
     if vt == "search":
         return "//search"
+    if vt == "kanban":
+        return semantic_kanban_card_expr(parent_arch)
     if vt != "form":
         return f"//{vt}"
     if not parent_arch:
@@ -259,10 +275,94 @@ def semantic_xpath_for_element(root: Element, el: Element) -> str | None:
                 if _unique(root, cand):
                     return cand
         return simple
-    named = _unique_named_xpath(root, el, ("name", "id", "string"))
+    named = _unique_named_xpath(root, el, ("name", "id", "string", "t-name"))
     if named:
         return named
     return None
+
+
+def semantic_kanban_card_expr(parent_arch: str | None) -> str:
+    """Unique card template locator, then //kanban."""
+    if not parent_arch:
+        return "//t[@t-name='card']"
+    tree = _parse_root(parent_arch)
+    if tree is None:
+        return "//kanban"
+    for t_name in ("card", "kanban-box", "kanban-card"):
+        expr = f"//t[@t-name='{t_name}']"
+        if _unique(tree, expr):
+            return expr
+    if _unique(tree, "//kanban"):
+        return "//kanban"
+    return "//kanban"
+
+
+def semantic_notebook_expr(parent_arch: str | None) -> str | None:
+    """Unique notebook locator, or None when the parent has no notebook."""
+    if not parent_arch:
+        return "//notebook"
+    tree = _parse_root(parent_arch)
+    if tree is None:
+        return "//notebook" if "<notebook" in parent_arch else None
+    notebooks = [el for el in tree.iter() if el.tag == "notebook"]
+    if not notebooks:
+        return None
+    if len(notebooks) == 1:
+        named = _unique_named_xpath(tree, notebooks[0], ("name", "id", "string"))
+        return named or "//notebook"
+    for nb in notebooks:
+        named = _unique_named_xpath(tree, nb, ("name", "id", "string"))
+        if named:
+            return named
+    return "//notebook"
+
+
+def semantic_structure_candidates(
+    parent_arch: str,
+    tags: tuple[str, ...] | None = None,
+) -> list[StructureLocatorCandidate]:
+    """Ranked locators for notebook / page / group / sheet / kanban containers."""
+    wanted = set(tags or DEFAULT_STRUCTURE_TAGS)
+    tree = _parse_root(parent_arch)
+    if tree is None:
+        return []
+    out: list[StructureLocatorCandidate] = []
+    seen: set[str] = set()
+    for order, el in enumerate(tree.iter()):
+        tag = el.tag if isinstance(el.tag, str) else ""
+        if tag not in wanted:
+            continue
+        xpath = semantic_xpath_for_element(tree, el)
+        if not xpath:
+            fallback = f"//{tag}"
+            if tag in {"sheet", "form", "notebook", "kanban", "search"} and _unique(
+                tree, fallback
+            ):
+                xpath = fallback
+        if not xpath or xpath in seen:
+            continue
+        seen.add(xpath)
+        count = count_xpath_matches(parent_arch, xpath)
+        label = (
+            el.get("string")
+            or el.get("name")
+            or el.get("id")
+            or el.get("t-name")
+            or tag
+        )
+        out.append(
+            StructureLocatorCandidate(
+                xpath=xpath,
+                tag=tag,
+                label=label,
+                score=score_locator(xpath),
+                fragile=is_fragile(xpath) or (count is not None and count != 1),
+                match_count=count,
+                order=order,
+            )
+        )
+    out.sort(key=lambda c: (-c.score, c.order, len(c.xpath)))
+    return out
 
 
 def classify_locator(

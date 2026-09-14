@@ -36,6 +36,26 @@ test.describe("Overlay editor UI loop", () => {
         });
         return;
       }
+      if (url.includes("/resolve-structure")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            candidates: [
+              {
+                xpath: "//sheet",
+                tag: "sheet",
+                label: "sheet",
+                score: 35,
+                fragile: false,
+                match_count: 1,
+              },
+            ],
+            ambiguous: false,
+          }),
+        });
+        return;
+      }
       if (url.includes("/overlay/preview")) {
         await route.fulfill({
           status: 200,

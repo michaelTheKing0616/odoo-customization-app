@@ -29,6 +29,7 @@ from odoo_client.xpath_locator import (
     looks_like_xpath_inherit,
     semantic_field_candidates,
     semantic_inject_expr,
+    semantic_structure_candidates,
     suggested_expr_from_issues,
 )
 
@@ -476,12 +477,19 @@ class OverlayApplyBody(BaseModel):
     model: str
     view_type: str = Field(..., examples=["form", "list"])
     operation: Literal[
-        "hide", "move", "relabel", "add_field", "set_widget", "group_label"
+        "hide",
+        "move",
+        "relabel",
+        "add_field",
+        "set_widget",
+        "group_label",
+        "add_page",
+        "add_group",
     ]
-    expr: str
+    expr: str = ""
     field_name: str | None = None
     anchor_expr: str | None = None
-    move_position: Literal["before", "after"] | None = None
+    move_position: Literal["before", "after", "inside"] | None = None
     add_field_name: str | None = None
     add_position: Literal["before", "after", "inside"] = "after"
     string: str | None = None
@@ -680,6 +688,30 @@ def resolve_field_node(body: ResolveFieldBody) -> dict[str, object]:
     }
 
 
+class ResolveStructureBody(BaseModel):
+    arch: str
+    tags: list[str] | None = None
+
+
+@router.post("/resolve-structure")
+def resolve_structure_nodes(body: ResolveStructureBody) -> dict[str, object]:
+    """Map overlay containers (notebook/page/group/sheet) → ranked semantic locators."""
+    tags = tuple(body.tags) if body.tags else None
+    ranked = semantic_structure_candidates(body.arch, tags=tags)
+    candidates = [
+        {
+            "xpath": item.xpath,
+            "tag": item.tag,
+            "label": item.label,
+            "score": item.score,
+            "fragile": item.fragile,
+            "match_count": item.match_count,
+        }
+        for item in ranked
+    ]
+    return {"candidates": candidates, "ambiguous": len(candidates) > 1}
+
+
 def _overlay_child_name(model: str, view_type: str) -> str:
     vt = "list" if view_type == "tree" else view_type
     return f"{model}.overlay.{vt}"
@@ -700,6 +732,7 @@ def _build_overlay_fragment(body: OverlayApplyBody) -> str:
         help_text=body.help_text,
         widget=body.widget,
         label_target=body.label_target,
+        parent_arch=body.parent_arch,
     )
 
 

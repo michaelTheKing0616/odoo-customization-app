@@ -2998,6 +2998,24 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  resolveStructure: (
+    id: string,
+    body: { arch: string; tags?: string[] },
+  ) =>
+    request<{
+      candidates: Array<{
+        xpath: string;
+        tag: string;
+        label: string;
+        score?: number;
+        fragile?: boolean;
+        match_count?: number | null;
+      }>;
+      ambiguous: boolean;
+    }>(`/api/connections/${id}/views/resolve-structure`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   overlayPreview: (
     id: string,
     body: Record<string, unknown>,

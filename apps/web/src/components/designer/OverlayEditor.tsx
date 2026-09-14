@@ -10,6 +10,11 @@ import { Callout } from "@/components/ui/Callout";
 import { CodeBlock } from "@/components/ui/CodeBlock";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
+import { OverlayHud } from "@/components/designer/OverlayHud";
+import {
+  OverlayStructurePicker,
+  type StructureCandidate,
+} from "@/components/designer/OverlayStructurePicker";
 
 type OverlayMessage = {
   type: string;
@@ -32,7 +37,9 @@ export type OverlayOperation =
   | "relabel"
   | "add_field"
   | "set_widget"
-  | "group_label";
+  | "group_label"
+  | "add_page"
+  | "add_group";
 
 type Props = {
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
@@ -46,20 +53,35 @@ type Props = {
 };
 
 const NOT_V1 = [
-  "Add new model areas or notebook pages",
-  "Complex multi-group restructures",
-  "Kanban/card layout edits",
-  "Search view filter logic",
+  "Split, merge, or bulk-reorder groups across the form",
+  "Kanban card templates, colors, and progress bars",
+  "Search filter domains and group-by rows",
 ];
 
-const OPERATIONS: { id: OverlayOperation; label: string }[] = [
-  { id: "hide", label: "Hide field" },
-  { id: "move", label: "Move field" },
-  { id: "relabel", label: "Edit label" },
-  { id: "add_field", label: "Add field" },
-  { id: "set_widget", label: "Set widget" },
-  { id: "group_label", label: "Group / page label" },
+const ALL_OPERATIONS: { id: OverlayOperation; label: string; views: string[] }[] = [
+  { id: "hide", label: "Hide field", views: ["form", "list", "kanban", "search"] },
+  { id: "move", label: "Move field", views: ["form", "list", "kanban"] },
+  { id: "relabel", label: "Edit label", views: ["form"] },
+  { id: "add_field", label: "Add field", views: ["form", "list", "kanban", "search"] },
+  { id: "set_widget", label: "Set widget", views: ["form"] },
+  { id: "group_label", label: "Group / page label", views: ["form"] },
+  { id: "add_page", label: "Add notebook page", views: ["form"] },
+  { id: "add_group", label: "Add group", views: ["form"] },
 ];
+
+function normalizeViewType(viewType: string): string {
+  return viewType === "tree" ? "list" : viewType;
+}
+
+function operationsForView(viewType: string): { id: OverlayOperation; label: string }[] {
+  const vt = normalizeViewType(viewType);
+  return ALL_OPERATIONS.filter((op) => op.views.includes(vt)).map(({ id, label }) => ({
+    id,
+    label,
+  }));
+}
+
+type MoveAnchorKind = "field" | "structure";
 
 export function OverlayEditor({
   iframeRef,
@@ -70,24 +92,34 @@ export function OverlayEditor({
   onSaved,
   selectionOverride,
 }: Props) {
+  const vt = normalizeViewType(viewType);
+  const operations = useMemo(() => operationsForView(viewType), [viewType]);
+
   const [hover, setHover] = useState<string | null>(null);
   const [selectedField, setSelectedField] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [selectedXpath, setSelectedXpath] = useState<string>("");
   const [operation, setOperation] = useState<OverlayOperation>("hide");
   const [anchorField, setAnchorField] = useState("");
-  const [movePosition, setMovePosition] = useState<"before" | "after">("after");
+  const [moveAnchorKind, setMoveAnchorKind] = useState<MoveAnchorKind>("field");
+  const [movePosition, setMovePosition] = useState<"before" | "after" | "inside">("after");
   const [label, setLabel] = useState("");
+  const [structureLabel, setStructureLabel] = useState("New page");
   const [placeholder, setPlaceholder] = useState("");
   const [helpText, setHelpText] = useState("");
   const [labelTarget, setLabelTarget] = useState<"field" | "group" | "page">("field");
   const [addFieldName, setAddFieldName] = useState("");
   const [addPosition, setAddPosition] = useState<"before" | "after" | "inside">("after");
   const [widget, setWidget] = useState("");
+  const [structureExpr, setStructureExpr] = useState("");
+  const [structure, setStructure] = useState<StructureCandidate[]>([]);
   const [xpathArch, setXpathArch] = useState("");
   const [xpathIssues, setXpathIssues] = useState<LocatorIssue[]>([]);
   const [xpathSuggested, setXpathSuggested] = useState<string | null>(null);
   const [primaryArch, setPrimaryArch] = useState("");
+  const [primaryLoading, setPrimaryLoading] = useState(true);
+  const [primaryError, setPrimaryError] = useState<string | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -122,13 +154,46 @@ export function OverlayEditor({
         const meta = fields.find((f) => f.name === fieldName);
         setLabel(meta?.field_description ?? fieldName);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Resolve failed");
+        setError(err instanceof Error ? err.message : "Could not resolve that field");
         setCandidates([]);
         setSelectedXpath(`//field[@name='${fieldName}']`);
       }
     },
     [connectionId, model, viewType, fields],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    setPrimaryLoading(true);
+    setPrimaryError(null);
+    void api
+      .getPrimaryView(connectionId, model, viewType)
+      .then(async (primary) => {
+        const arch = primary.arch ?? "";
+        if (cancelled) return;
+        setPrimaryArch(arch);
+        const tags =
+          vt === "kanban"
+            ? ["kanban", "t"]
+            : vt === "search"
+              ? ["search"]
+              : ["notebook", "page", "group", "sheet"];
+        const resolved = await api.resolveStructure(connectionId, { arch, tags });
+        if (cancelled) return;
+        setStructure(preferSemanticCandidates(resolved.candidates));
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setPrimaryError(err instanceof Error ? err.message : "Could not load the parent view");
+        setStructure([]);
+      })
+      .finally(() => {
+        if (!cancelled) setPrimaryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionId, model, viewType, vt]);
 
   useEffect(() => {
     function onMessage(ev: MessageEvent<OverlayMessage>) {
@@ -146,25 +211,84 @@ export function OverlayEditor({
     return () => window.removeEventListener("message", onMessage);
   }, [iframeRef, resolveSelection]);
 
+  useEffect(() => {
+    if (!operations.some((op) => op.id === operation)) {
+      setOperation(operations[0]?.id ?? "hide");
+    }
+  }, [operations, operation]);
+
   const activeField = selectionOverride?.fieldName ?? selectedField;
   const activeXpath = selectionOverride?.xpath ?? selectedXpath;
+  const structureOp = operation === "add_page" || operation === "add_group";
+  const fieldlessAddField =
+    operation === "add_field" && (vt === "kanban" || vt === "search") && !activeField;
+
+  const notebookCandidates = useMemo(
+    () => structure.filter((c) => c.tag === "notebook"),
+    [structure],
+  );
+  const groupInjectCandidates = useMemo(
+    () => structure.filter((c) => ["group", "page", "sheet", "notebook"].includes(c.tag)),
+    [structure],
+  );
+  const moveStructureCandidates = useMemo(
+    () => structure.filter((c) => ["group", "page"].includes(c.tag)),
+    [structure],
+  );
+  const kanbanCandidates = useMemo(
+    () => structure.filter((c) => c.tag === "kanban" || c.tag === "t"),
+    [structure],
+  );
+
+  const applyExpr = useMemo(() => {
+    if (structureOp) return structureExpr;
+    if (fieldlessAddField) return structureExpr;
+    return activeXpath;
+  }, [structureOp, fieldlessAddField, structureExpr, activeXpath]);
+
+  const applyAnchorExpr = useMemo(() => {
+    if (operation === "move" && moveAnchorKind === "structure") {
+      return structureExpr || undefined;
+    }
+    if (operation === "move" || operation === "add_field") {
+      if (anchorField) return `//field[@name='${anchorField}']`;
+      if (fieldlessAddField) return structureExpr || undefined;
+      return activeXpath || undefined;
+    }
+    return undefined;
+  }, [
+    operation,
+    moveAnchorKind,
+    structureExpr,
+    anchorField,
+    fieldlessAddField,
+    activeXpath,
+  ]);
 
   const applyBody = useMemo(() => {
-    const anchorExpr = anchorField
-      ? `//field[@name='${anchorField}']`
-      : activeXpath;
+    const stringValue =
+      operation === "relabel" || operation === "group_label"
+        ? label
+        : structureOp
+          ? structureLabel
+          : undefined;
     return {
       model,
       view_type: viewType,
       operation,
-      expr: activeXpath,
+      expr: applyExpr,
       field_name: activeField ?? undefined,
-      anchor_expr: operation === "move" || operation === "add_field" ? anchorExpr : undefined,
+      anchor_expr: applyAnchorExpr,
       move_position: operation === "move" ? movePosition : undefined,
-      add_field_name: operation === "add_field" ? addFieldName : undefined,
-      add_position: operation === "add_field" ? addPosition : undefined,
-      string:
-        operation === "relabel" || operation === "group_label" ? label : undefined,
+      add_field_name:
+        operation === "add_field" || structureOp ? addFieldName || undefined : undefined,
+      add_position:
+        fieldlessAddField
+          ? "inside"
+          : operation === "add_field" || operation === "add_group"
+            ? addPosition
+            : undefined,
+      string: stringValue,
       placeholder: operation === "relabel" && labelTarget === "field" ? placeholder : undefined,
       help_text: operation === "relabel" && labelTarget === "field" ? helpText : undefined,
       widget: operation === "set_widget" ? widget : undefined,
@@ -174,7 +298,8 @@ export function OverlayEditor({
   }, [
     addFieldName,
     addPosition,
-    anchorField,
+    applyAnchorExpr,
+    applyExpr,
     helpText,
     label,
     labelTarget,
@@ -185,17 +310,43 @@ export function OverlayEditor({
     viewType,
     widget,
     activeField,
-    activeXpath,
     primaryArch,
+    structureLabel,
+    structureOp,
+    fieldlessAddField,
+  ]);
+
+  const canPreview = useMemo(() => {
+    if (operation === "add_page" || operation === "add_group") {
+      return Boolean(structureLabel.trim());
+    }
+    if (operation === "add_field") {
+      return Boolean(addFieldName) && (Boolean(activeField && activeXpath) || fieldlessAddField);
+    }
+    if (operation === "move" && moveAnchorKind === "structure") {
+      return Boolean(activeField && activeXpath && structureExpr);
+    }
+    return Boolean(activeField && activeXpath);
+  }, [
+    operation,
+    structureLabel,
+    addFieldName,
+    activeField,
+    activeXpath,
+    fieldlessAddField,
+    moveAnchorKind,
+    structureExpr,
   ]);
 
   useEffect(() => {
-    if (!activeField || !activeXpath) {
+    if (!canPreview) {
       setXpathArch("");
       setXpathIssues([]);
+      setPreviewBusy(false);
       return;
     }
     let cancelled = false;
+    setPreviewBusy(true);
     void api
       .overlayPreview(connectionId, applyBody)
       .then((res) => {
@@ -211,18 +362,39 @@ export function OverlayEditor({
           {
             severity: "error",
             code: "preview_failed",
-            message: err instanceof Error ? err.message : "Preview failed",
+            message: err instanceof Error ? err.message : "Could not preview this xpath",
           },
         ]);
+      })
+      .finally(() => {
+        if (!cancelled) setPreviewBusy(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [applyBody, connectionId, activeField, activeXpath]);
+  }, [applyBody, connectionId, canPreview]);
+
+  function onOperationChange(next: OverlayOperation) {
+    setOperation(next);
+    setNotice(null);
+    setError(null);
+    if (next === "add_page") setStructureLabel((cur) => (cur === "New group" || !cur ? "New page" : cur));
+    if (next === "add_group") setStructureLabel((cur) => (cur === "New page" || !cur ? "New group" : cur));
+    if (next === "move") {
+      setMoveAnchorKind("field");
+      setMovePosition("after");
+    }
+    if (next === "add_group") setAddPosition("inside");
+    if (next === "add_field" && (vt === "kanban" || vt === "search")) setAddPosition("inside");
+  }
 
   async function onSave() {
-    if (!activeField || !activeXpath) {
-      setError("Select a field in the preview frame first.");
+    if (!canPreview) {
+      setError(
+        structureOp
+          ? "Enter a page or group label first."
+          : "Select a field in the preview frame first.",
+      );
       return;
     }
     setBusy(true);
@@ -240,21 +412,28 @@ export function OverlayEditor({
       );
       onSaved({ snapshotId: res.snapshot_id, viewId: res.view_id ?? null });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      setError(err instanceof Error ? err.message : "Could not save inherit xpath");
     } finally {
       setBusy(false);
     }
   }
 
+  const blockingLocator = xpathIssues.some(
+    (i) => i.severity === "error" && i.code !== "preview_failed",
+  );
+  const saveDisabled = busy || !canPreview || blockingLocator || (!xpathArch && !previewBusy);
+  const selectedCandidate = candidates.find((c) => c.xpath === activeXpath);
+
   return (
     <div className="space-y-3 border-b border-border-subtle p-3" data-testid="overlay-editor">
-      <Callout variant="info" title="Live overlay — v1 operations">
-        Click a field in the preview frame, choose an operation, review xpath, then save as an
-        inherit view (snapshot-first). Reloads the frame after save.
+      <Callout variant="info" title="Live overlay">
+        Click a field in the preview, choose an operation, review xpath, then save as an inherit
+        view (snapshot-first). The frame reloads after save. Add page and add group work without a
+        field selection.
       </Callout>
 
       <div className="rounded-md border border-border-subtle bg-surface-muted p-3 text-sm">
-        <p className="font-medium text-ink">Not in v1 — use View Designer instead</p>
+        <p className="font-medium text-ink">Not in this overlay — use View Designer</p>
         <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
           {NOT_V1.map((item) => (
             <li key={item}>{item}</li>
@@ -268,15 +447,15 @@ export function OverlayEditor({
         </Link>
       </div>
 
-      <p className="text-sm text-muted" data-testid="overlay-selected">
-        {activeField ? (
-          <>
-            Selected: <code className="font-mono text-ink">{activeField}</code>
-          </>
-        ) : (
-          <>No selection{hover ? ` — hover: ${hover}` : ""}</>
-        )}
-      </p>
+      <OverlayHud
+        fieldName={activeField}
+        ttype={fieldMeta?.ttype}
+        xpath={activeXpath}
+        matchCount={selectedCandidate?.match_count}
+        hover={hover}
+        loading={primaryLoading && !selectionOverride}
+        loadError={selectionOverride ? null : primaryError}
+      />
 
       {candidates.length > 0 ? (
         <label className="block text-sm">
@@ -319,39 +498,173 @@ export function OverlayEditor({
 
       <Select
         label="Operation"
+        hint="Verb-first inherit edits. Locators are checked against the parent view before save."
         value={operation}
-        onChange={(e) => setOperation(e.target.value as OverlayOperation)}
-        options={OPERATIONS.map((op) => ({ value: op.id, label: op.label }))}
+        onChange={(e) => onOperationChange(e.target.value as OverlayOperation)}
+        options={operations.map((op) => ({ value: op.id, label: op.label }))}
       />
 
-      {operation === "move" || operation === "add_field" ? (
-        <Select
-          label={operation === "move" ? "Move relative to field" : "Anchor field"}
-          value={anchorField}
-          onChange={(e) => setAnchorField(e.target.value)}
-          options={[
-            { value: "", label: "Same as selected" },
-            ...fields
-              .filter((f) => f.name !== selectedField)
-              .map((f) => ({ value: f.name, label: f.name })),
-          ]}
-        />
+      {operation === "add_page" ? (
+        <>
+          <OverlayStructurePicker
+            label="Insert inside notebook"
+            hint="If this form has no notebook, the inherit creates one on the sheet."
+            candidates={notebookCandidates}
+            value={structureExpr}
+            onChange={setStructureExpr}
+            emptyHint="No named notebook on this form — save will create one on the sheet."
+            emptyLabel="Default notebook locator"
+          />
+          <Input
+            label="Page label"
+            value={structureLabel}
+            onChange={(e) => setStructureLabel(e.target.value)}
+          />
+          <Select
+            label="First field (optional)"
+            value={addFieldName}
+            onChange={(e) => setAddFieldName(e.target.value)}
+            options={[
+              { value: "", label: "Empty page" },
+              ...fields.map((f) => ({
+                value: f.name,
+                label: `${f.name} (${f.ttype})`,
+              })),
+            ]}
+          />
+        </>
+      ) : null}
+
+      {operation === "add_group" ? (
+        <>
+          <OverlayStructurePicker
+            label="Insert relative to"
+            candidates={groupInjectCandidates}
+            value={structureExpr}
+            onChange={setStructureExpr}
+            emptyLabel="Default named group or sheet"
+          />
+          <Select
+            label="Position"
+            value={addPosition}
+            onChange={(e) =>
+              setAddPosition(e.target.value as "before" | "after" | "inside")
+            }
+            options={[
+              { value: "inside", label: "Inside anchor" },
+              { value: "after", label: "After anchor" },
+              { value: "before", label: "Before anchor" },
+            ]}
+          />
+          <Input
+            label="Group label"
+            value={structureLabel}
+            onChange={(e) => setStructureLabel(e.target.value)}
+          />
+          <Select
+            label="First field (optional)"
+            value={addFieldName}
+            onChange={(e) => setAddFieldName(e.target.value)}
+            options={[
+              { value: "", label: "Empty group" },
+              ...fields.map((f) => ({
+                value: f.name,
+                label: `${f.name} (${f.ttype})`,
+              })),
+            ]}
+          />
+        </>
       ) : null}
 
       {operation === "move" ? (
-        <Select
-          label="Position"
-          value={movePosition}
-          onChange={(e) => setMovePosition(e.target.value as "before" | "after")}
-          options={[
-            { value: "before", label: "Before anchor" },
-            { value: "after", label: "After anchor" },
-          ]}
-        />
+        <>
+          <Select
+            label="Move into"
+            value={moveAnchorKind}
+            onChange={(e) => {
+              const kind = e.target.value as MoveAnchorKind;
+              setMoveAnchorKind(kind);
+              setMovePosition(kind === "structure" ? "inside" : "after");
+            }}
+            options={[
+              { value: "field", label: "Another field" },
+              { value: "structure", label: "A group or page" },
+            ]}
+          />
+          {moveAnchorKind === "field" ? (
+            <Select
+              label="Move relative to field"
+              value={anchorField}
+              onChange={(e) => setAnchorField(e.target.value)}
+              options={[
+                { value: "", label: "Same as selected" },
+                ...fields
+                  .filter((f) => f.name !== selectedField)
+                  .map((f) => ({ value: f.name, label: f.name })),
+              ]}
+            />
+          ) : (
+            <OverlayStructurePicker
+              label="Target group or page"
+              candidates={moveStructureCandidates}
+              value={structureExpr}
+              onChange={setStructureExpr}
+              allowEmpty={false}
+              emptyHint="No named group or page on this form — pick a field instead."
+            />
+          )}
+          <Select
+            label="Position"
+            value={movePosition}
+            onChange={(e) =>
+              setMovePosition(e.target.value as "before" | "after" | "inside")
+            }
+            options={
+              moveAnchorKind === "structure"
+                ? [
+                    { value: "inside", label: "Inside group or page" },
+                    { value: "before", label: "Before group or page" },
+                    { value: "after", label: "After group or page" },
+                  ]
+                : [
+                    { value: "before", label: "Before anchor" },
+                    { value: "after", label: "After anchor" },
+                  ]
+            }
+          />
+        </>
       ) : null}
 
       {operation === "add_field" ? (
         <>
+          {vt === "form" ? (
+            <Select
+              label="Anchor field"
+              value={anchorField}
+              onChange={(e) => setAnchorField(e.target.value)}
+              options={[
+                { value: "", label: "Same as selected" },
+                ...fields
+                  .filter((f) => f.name !== selectedField)
+                  .map((f) => ({ value: f.name, label: f.name })),
+              ]}
+            />
+          ) : null}
+          {vt === "kanban" ? (
+            <OverlayStructurePicker
+              label="Card template"
+              hint="Adds a field onto the card. Templates, colors, and progress bars stay in View Designer."
+              candidates={kanbanCandidates}
+              value={structureExpr}
+              onChange={setStructureExpr}
+              emptyLabel="Default card locator"
+            />
+          ) : null}
+          {vt === "search" ? (
+            <p className="text-xs text-muted">
+              Adds a search field inside the search view. Filter domains stay in View Designer.
+            </p>
+          ) : null}
           <Select
             label="Field to add"
             value={addFieldName}
@@ -361,18 +674,33 @@ export function OverlayEditor({
               label: `${f.name} (${f.ttype})`,
             }))}
           />
-          <Select
-            label="Insert position"
-            value={addPosition}
-            onChange={(e) =>
-              setAddPosition(e.target.value as "before" | "after" | "inside")
-            }
-            options={[
-              { value: "after", label: "After anchor" },
-              { value: "before", label: "Before anchor" },
-              { value: "inside", label: "Inside anchor group" },
-            ]}
-          />
+          {vt === "form" || vt === "list" ? (
+            <Select
+              label="Insert position"
+              value={addPosition}
+              onChange={(e) =>
+                setAddPosition(e.target.value as "before" | "after" | "inside")
+              }
+              options={[
+                { value: "after", label: "After anchor" },
+                { value: "before", label: "Before anchor" },
+                { value: "inside", label: "Inside anchor group" },
+              ]}
+            />
+          ) : (
+            <Select
+              label="Insert position"
+              value={addPosition}
+              onChange={(e) =>
+                setAddPosition(e.target.value as "before" | "after" | "inside")
+              }
+              options={[
+                { value: "inside", label: "Inside card or search" },
+                { value: "after", label: "After selected field" },
+                { value: "before", label: "Before selected field" },
+              ]}
+            />
+          )}
         </>
       ) : null}
 
@@ -422,6 +750,12 @@ export function OverlayEditor({
         />
       ) : null}
 
+      {previewBusy && !xpathArch ? (
+        <p className="text-xs text-muted" data-testid="overlay-preview-loading">
+          Checking locators against the parent view
+        </p>
+      ) : null}
+
       {xpathArch ? (
         <div data-testid="overlay-xpath-peek">
           <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">
@@ -447,23 +781,29 @@ export function OverlayEditor({
                 .map((i) => i.message)
                 .join(" ")}
             </p>
-          ) : null}
+          ) : (
+            <p className="mt-1 text-xs text-muted">Named locators ready to save.</p>
+          )}
         </div>
       ) : null}
 
-      {error ? <p className="text-sm text-danger">{error}</p> : null}
-      {notice ? <p className="text-sm text-success">{notice}</p> : null}
+      {error ? (
+        <Callout variant="danger" title="Could not apply overlay">
+          {error}
+        </Callout>
+      ) : null}
+      {notice ? (
+        <p className="text-sm text-success" data-testid="overlay-save-notice">
+          {notice}
+        </p>
+      ) : null}
 
       <Button
         variant="primary"
         size="md"
         type="button"
         data-testid="overlay-save"
-        disabled={
-          busy ||
-          !activeField ||
-          xpathIssues.some((i) => i.severity === "error" && i.code !== "preview_failed")
-        }
+        disabled={saveDisabled}
         loading={busy}
         onClick={() => void onSave()}
       >
