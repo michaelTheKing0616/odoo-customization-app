@@ -5,6 +5,10 @@ export const EMPTY_STATES = {
     "Create an x_ model with default list, form, and search views, then add fields. Stock models stay available by technical name.",
   automations:
     "Automations react to record changes — update fields, send emails, schedule activities. Create your first automation.",
+  menus:
+    "Menus are the app switcher and navbar. Create a root or child item, bind a window action, and restrict visibility by group when needed.",
+  access:
+    "Access rights grant CRUD on a model. Record rules filter which rows a group can see or change. Start with a group-scoped ACL line.",
   snapshots:
     "Snapshots are restore points taken before risky changes. They appear here automatically — or take one now.",
   draftStudio:

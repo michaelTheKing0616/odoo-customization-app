@@ -4,15 +4,16 @@
 
 ## Last run
 - Date: 2026-09-14
-- **Shipped:** Premium Models & Fields (Builder) on `cursor/builder-models-fields-premium-9e03` (off Automations premium). PR: https://github.com/michaelTheKing0616/odoo-customization-app/pull/5
-- List → model detail → field composer; session chrome; Designer/Automations links; stacked form+list teaser; currency/inject gates; view-vs-model remove.
-- **Proof:** Vitest 288 (builder helpers, list, session bar, field composer gates, preview, ModelDetail success path).
-- **Failed:** Radix tabs hid the list teaser in jsdom (`fireEvent.click` does not activate). Stacked both views instead.
+- **Shipped:** Premium Menus + Access (surface 2 of the premium sweep) on `cursor/menus-access-premium-9cb8` off Designer/Automations/Builder:
+  - Menus: tree → composer/detail (parent, sequence, action bind/create, visibility groups, snapshots, confirm-phrase delete)
+  - Access: ACL + record-rule list → composer/detail (DomainBuilder, group grants, matrix as disclosure)
+  - Shared: `GroupPicker`, `CrudPermitsControl`; Odoo 19 `group_ids` vs 17/18 `groups_id` on `ir.ui.menu`
+- **Tests:** web vitest 314 passed; `test_menus_builder_groups.py` 2 passed
+- **Not in this run:** App Studio / Draft Studio / Job Autopilot / ModuleSpec / Projects / Expert; live browser against Odoo
 
-## Next (operator)
-1. Open `/connections/{id}/builder`, create an `x_` model, follow Customize layout in View Designer.
-2. Add/edit a field; confirm Hide in View Designer vs Remove from model.
-3. Do not start Menus, Access, App Studio, Draft Studio, Job Autopilot, ModuleSpec, Projects, Expert in this PR.
+## Next
+- Verify Menus + Access on a probed connection: create menu, create ACL + record rule, delete with phrase
+- Continue premium sweep only if asked (do not start App Studio here)
 
-## Rule to keep
-- Builder layout teasers stay stacked (form + list). Do not hide them behind Radix tabs. Session chrome is dirty/save only — reuse field/model snapshots, do not copy Designer undo.
+## Rule
+- Premium chrome is list→detail/composer + draft/unsaved/saved only — do not copy Designer undo/redo onto Menus/Access
