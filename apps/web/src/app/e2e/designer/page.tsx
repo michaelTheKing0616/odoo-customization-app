@@ -15,8 +15,10 @@ import {
   type NicheWidgetEntry,
 } from "@/components/designer/NicheWidgetPalette";
 import { PreviewThemeScope } from "@/components/designer/PreviewThemeScope";
+import { DesignerSessionBar } from "@/components/designer/DesignerSessionBar";
 import { PropsInspector } from "@/components/designer/PropsInspector";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
+import { TooltipProvider } from "@/components/ui/Tooltip";
 import type { CapabilityMatrix, Connection } from "@/lib/api";
 
 type ViewMode =
@@ -218,6 +220,7 @@ function DesignerHarnessInner() {
   );
 
   return (
+    <TooltipProvider>
     <main className="min-h-screen bg-background text-ink" data-testid="designer-harness" data-mode={mode}>
       <DesignerStudioShell
         testId="designer-studio-harness"
@@ -225,10 +228,18 @@ function DesignerHarnessInner() {
         title="View designer"
         description={`${MOCK_CONNECTION.name} · drag fields onto the canvas · saves inherit views`}
         sessionBar={
-          <p className="text-xs text-muted" data-testid="harness-connection">
-            {MOCK_CONNECTION.name} · drag fields onto the canvas · saves real{" "}
-            <code className="text-accent">ir.ui.view</code> arch
-          </p>
+          <div data-testid="harness-connection">
+            <DesignerSessionBar
+              publishState="unpublished"
+              canUndo
+              canRedo={false}
+              canRollbackPublish={false}
+              undoLabel="move field"
+              onUndo={() => undefined}
+              onRedo={() => undefined}
+              onRollbackPublish={() => undefined}
+            />
+          </div>
         }
         toolbar={
           <div className="flex flex-wrap items-end gap-3">
@@ -442,6 +453,7 @@ function DesignerHarnessInner() {
         }
       />
     </main>
+    </TooltipProvider>
   );
 }
 
