@@ -409,7 +409,7 @@ function DesignerHarnessInner() {
                         className={`flex items-center justify-between border px-2 py-1.5 text-sm ${
                           selectedFieldId === f.id
                             ? "border-[var(--odoo-primary)] bg-[#f5eef3]"
-                            : "border-[var(--odoo-border)] bg-white"
+                            : "border-[var(--odoo-border)] bg-surface"
                         }`}
                       >
                         <button

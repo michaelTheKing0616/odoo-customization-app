@@ -360,7 +360,7 @@ export default function HousekeepingPage() {
               <input
                 type="number"
                 min={1}
-                className="mt-1 block border border-[var(--odoo-border)] bg-white px-2 py-1.5"
+                className="mt-1 block border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
                 value={minBytes}
                 onChange={(e) => setMinBytes(Number(e.target.value) || 1)}
               />
@@ -370,7 +370,7 @@ export default function HousekeepingPage() {
               <input
                 type="number"
                 min={1}
-                className="mt-1 block border border-[var(--odoo-border)] bg-white px-2 py-1.5"
+                className="mt-1 block border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
                 value={olderDays}
                 onChange={(e) => setOlderDays(Number(e.target.value) || 1)}
               />
@@ -414,7 +414,7 @@ export default function HousekeepingPage() {
           <label className="block text-sm">
             Model
             <input
-              className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5 font-mono text-sm"
+              className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-sm"
               value={recomputeModel}
               onChange={(e) => setRecomputeModel(e.target.value)}
               placeholder="x_blk_wf_item"
@@ -423,7 +423,7 @@ export default function HousekeepingPage() {
           <label className="block text-sm">
             Stored field
             <input
-              className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5 font-mono text-sm"
+              className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-sm"
               value={recomputeField}
               onChange={(e) => setRecomputeField(e.target.value)}
               placeholder="x_title_len"
@@ -432,7 +432,7 @@ export default function HousekeepingPage() {
           <label className="block text-sm">
             Record ids (optional)
             <input
-              className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5 font-mono text-sm"
+              className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-sm"
               value={recomputeIds}
               onChange={(e) => setRecomputeIds(e.target.value)}
               placeholder="1, 2, 3"

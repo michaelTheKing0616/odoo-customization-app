@@ -263,7 +263,7 @@ export function ReportDesigner({
           <iframe
             title="Report preview"
             src={previewUrl}
-            className="mt-4 h-96 w-full border border-border-subtle bg-white"
+            className="mt-4 h-96 w-full border border-border-subtle bg-surface"
           />
         )}
       </div>

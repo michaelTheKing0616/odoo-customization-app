@@ -42,7 +42,7 @@ export function OdooListView({ view }: OdooListViewProps) {
             ) : null}
           </div>
         ) : null}
-        <div className="overflow-x-auto border border-[var(--odoo-border)] bg-white">
+        <div className="overflow-x-auto border border-[var(--odoo-border)] bg-surface">
           <table className="odoo-list-table" data-testid="list-preview-table">
             <thead>
               <tr>

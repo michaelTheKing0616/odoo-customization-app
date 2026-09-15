@@ -164,7 +164,7 @@ export function FormCanvas({
             <div
               key={g.id}
               data-canvas-id={g.id}
-              className={`odoo-field-group border border-[var(--odoo-border)] bg-white p-2 transition ring-offset-2 ${
+              className={`odoo-field-group border border-[var(--odoo-border)] bg-surface p-2 transition ring-offset-2 ${
                 flashId === g.id ? "ring-2 ring-[var(--odoo-primary)]" : ""
               }`}
               onDragOver={(e) => e.preventDefault()}
@@ -231,7 +231,7 @@ export function FormCanvas({
             <div
               key={nb.id}
               data-canvas-id={nb.id}
-              className={`mt-4 border border-[var(--odoo-border)] bg-white transition ring-offset-2 ${
+              className={`mt-4 border border-[var(--odoo-border)] bg-surface transition ring-offset-2 ${
                 flashId === nb.id ? "ring-2 ring-[var(--odoo-primary)]" : ""
               }`}
             >
@@ -242,7 +242,7 @@ export function FormCanvas({
                     type="button"
                     className={`border-r border-[var(--odoo-border)] px-3 py-1.5 text-xs font-semibold ${
                       page.id === activePage?.id
-                        ? "bg-white text-[var(--odoo-primary)]"
+                        ? "bg-surface text-[var(--odoo-primary)]"
                         : "text-[var(--odoo-muted)]"
                     }`}
                     onClick={() =>

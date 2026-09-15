@@ -76,7 +76,7 @@ export function ReportCanvas({
   onMove,
 }: ReportCanvasProps) {
   return (
-    <div className="mx-auto max-w-[210mm] border border-[#3d2a38] bg-white text-[#1a1218] shadow-lg">
+    <div className="mx-auto max-w-[210mm] border border-[#3d2a38] bg-surface text-[#1a1218] shadow-lg">
       {useExternalLayout && (
         <div className="border-b border-dashed border-[#ccc] bg-[#f8f4f6] px-6 py-3 text-xs text-[#714B67]">
           web.external_layout — header / footer placeholder ({paperLabel})

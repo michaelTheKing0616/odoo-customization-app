@@ -38,7 +38,7 @@ export function NicheWidgetPalette({
           <li key={w.id}>
             <button
               type="button"
-              className="w-full border border-[var(--odoo-border)] bg-white px-2 py-1 text-left text-xs hover:bg-[#f5eef3]"
+              className="w-full border border-[var(--odoo-border)] bg-surface px-2 py-1 text-left text-xs hover:bg-[#f5eef3]"
               onClick={() => onPick(w)}
             >
               <span className="font-mono text-[var(--odoo-primary)]">{w.id}</span>

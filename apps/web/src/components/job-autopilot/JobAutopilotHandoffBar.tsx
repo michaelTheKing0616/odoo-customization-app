@@ -49,7 +49,7 @@ export function JobAutopilotHandoffBar({
       <label className="mt-4 block text-sm text-ink">
         Promote target
         <select
-          className="mt-1 block min-w-[16rem] rounded border border-line bg-white px-2 py-1 text-sm"
+          className="mt-1 block min-w-[16rem] rounded border border-line bg-surface px-2 py-1 text-sm"
           value={targetId}
           onChange={(e) => onTargetChange(e.target.value)}
           data-testid="job-promote-target"

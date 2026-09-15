@@ -30,7 +30,7 @@ export function OdooNotebook({
             type="button"
             className={`border-r border-[var(--odoo-border)] px-3 py-1.5 text-xs font-semibold ${
               page.id === activePage?.id
-                ? "bg-white text-[var(--odoo-primary)]"
+                ? "bg-surface text-[var(--odoo-primary)]"
                 : "text-[var(--odoo-muted)]"
             }`}
             onClick={() => setActivePageId(page.id)}

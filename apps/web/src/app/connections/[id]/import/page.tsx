@@ -299,7 +299,7 @@ export default function DataImportPage() {
           <label className="block text-sm">
             Target model
             <input
-              className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5 text-[#1f1f1f]"
+              className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 text-[#1f1f1f]"
               value={model}
               onChange={(e) => setModel(e.target.value)}
               placeholder="res.partner"
@@ -344,7 +344,7 @@ export default function DataImportPage() {
                   <select
                     value={mode}
                     onChange={(e) => setMode(e.target.value as "create" | "upsert")}
-                    className="border border-[var(--odoo-border)] bg-white px-2 py-1"
+                    className="border border-[var(--odoo-border)] bg-surface px-2 py-1"
                   >
                     <option value="create">create</option>
                     <option value="upsert">upsert</option>
@@ -356,7 +356,7 @@ export default function DataImportPage() {
                     <input
                       value={matchFields}
                       onChange={(e) => setMatchFields(e.target.value)}
-                      className="border border-[var(--odoo-border)] bg-white px-2 py-1"
+                      className="border border-[var(--odoo-border)] bg-surface px-2 py-1"
                     />
                   </label>
                 )}
@@ -375,7 +375,7 @@ export default function DataImportPage() {
                         <td className="py-1 font-mono text-xs">{h}</td>
                         <td className="py-1">
                           <input
-                            className="w-full border border-[var(--odoo-border)] bg-white px-2 py-1 font-mono text-xs"
+                            className="w-full border border-[var(--odoo-border)] bg-surface px-2 py-1 font-mono text-xs"
                             value={mapping[h] ?? ""}
                             onChange={(e) =>
                               setMapping((m) => ({ ...m, [h]: e.target.value }))
@@ -487,7 +487,7 @@ export default function DataImportPage() {
                   <input
                     value={imgMatchField}
                     onChange={(e) => setImgMatchField(e.target.value)}
-                    className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1 font-mono text-xs"
+                    className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1 font-mono text-xs"
                   />
                 </label>
                 <label>
@@ -496,7 +496,7 @@ export default function DataImportPage() {
                     value={imgField}
                     onChange={(e) => setImgField(e.target.value)}
                     placeholder={imgPreview.image_field}
-                    className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1 font-mono text-xs"
+                    className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1 font-mono text-xs"
                   />
                 </label>
               </div>

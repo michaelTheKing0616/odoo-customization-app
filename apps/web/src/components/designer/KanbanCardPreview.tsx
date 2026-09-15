@@ -57,7 +57,7 @@ export function KanbanCardPreview({
             Group by · {groupBy}
           </span>
         ) : (
-          <span className="rounded border border-[var(--odoo-border)] bg-white px-2 py-0.5 text-xs text-[var(--odoo-muted)]">
+          <span className="rounded border border-[var(--odoo-border)] bg-surface px-2 py-0.5 text-xs text-[var(--odoo-muted)]">
             No group-by
           </span>
         )}
@@ -81,7 +81,7 @@ export function KanbanCardPreview({
               {col.label}
             </div>
             <div className="space-y-2 p-2">
-              <div className="odoo-kanban-card border border-[var(--odoo-border)] bg-white p-2 shadow-sm">
+              <div className="odoo-kanban-card border border-[var(--odoo-border)] bg-surface p-2 shadow-sm">
                 {fields.length === 0 ? (
                   <p className="text-xs text-[var(--odoo-muted)]">
                     Drop fields here to build the card
@@ -152,7 +152,7 @@ export function KanbanCardPreview({
                 )}
               </div>
               {col.key === columns[0]?.key && fields.length > 0 && (
-                <div className="odoo-kanban-card border border-dashed border-[var(--odoo-border)] bg-white/70 p-2 opacity-60">
+                <div className="odoo-kanban-card border border-dashed border-[var(--odoo-border)] bg-surface/70 p-2 opacity-60">
                   <div className="text-xs text-[var(--odoo-muted)]">
                     + more cards…
                   </div>

@@ -29,7 +29,7 @@ export function FieldPalette({
               e.dataTransfer.setData("text/odoo-field", f.name);
               onDragStart?.(f.name);
             }}
-            className="cursor-grab border border-[var(--odoo-border)] bg-white px-2 py-1 text-xs active:cursor-grabbing"
+            className="cursor-grab border border-[var(--odoo-border)] bg-surface px-2 py-1 text-xs active:cursor-grabbing"
           >
             <span className="font-mono text-[var(--odoo-primary)]">{f.name}</span>
             <span className="ml-2 text-[var(--odoo-muted)]">{f.ttype}</span>

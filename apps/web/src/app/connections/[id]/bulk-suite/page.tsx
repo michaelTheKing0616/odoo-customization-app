@@ -587,7 +587,7 @@ export default function BulkSuitePage() {
           <label className="block text-sm">
             Model
             <input
-              className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5 font-mono text-sm"
+              className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-sm"
               value={model}
               onChange={(e) => setModel(e.target.value)}
               list="bulk-suite-models"
@@ -603,7 +603,7 @@ export default function BulkSuitePage() {
           <label className="block text-sm">
             Filter models
             <input
-              className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5 text-sm"
+              className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 text-sm"
               value={modelQuery}
               onChange={(e) => setModelQuery(e.target.value)}
               placeholder="Search technical or label name"
@@ -622,7 +622,7 @@ export default function BulkSuitePage() {
             <label className="block text-sm">
               Transition method
               <select
-                className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5"
+                className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
                 value={method}
                 onChange={(e) => setMethod(e.target.value)}
               >
@@ -667,7 +667,7 @@ export default function BulkSuitePage() {
             <label className="block text-sm">
               Domain (JSON list, cap 1000)
               <textarea
-                className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5 font-mono text-xs"
+                className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-xs"
                 rows={3}
                 value={domainText}
                 onChange={(e) => setDomainText(e.target.value)}
@@ -677,7 +677,7 @@ export default function BulkSuitePage() {
             <label className="block text-sm">
               Record ids (comma or space separated)
               <input
-                className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5 font-mono text-sm"
+                className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-sm"
                 value={idsText}
                 onChange={(e) => setIdsText(e.target.value)}
               />
@@ -712,7 +712,7 @@ export default function BulkSuitePage() {
           <label className="block text-sm">
             Values (JSON object)
             <textarea
-              className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5 font-mono text-xs"
+              className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-xs"
               rows={3}
               value={valuesText}
               onChange={(e) => setValuesText(e.target.value)}
@@ -751,7 +751,7 @@ export default function BulkSuitePage() {
           <label className="block text-sm">
             Match fields (comma separated)
             <input
-              className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5 font-mono text-sm"
+              className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-sm"
               value={matchFieldsText}
               onChange={(e) => setMatchFieldsText(e.target.value)}
             />
@@ -759,7 +759,7 @@ export default function BulkSuitePage() {
           <label className="block text-sm">
             Mode
             <select
-              className="mt-1 border border-[var(--odoo-border)] bg-white px-2 py-1.5"
+              className="mt-1 border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
               value={dedupeMode}
               onChange={(e) => setDedupeMode(e.target.value as "exact" | "fuzzy")}
             >
@@ -780,7 +780,7 @@ export default function BulkSuitePage() {
               <label className="block">
                 Duplicate group
                 <select
-                  className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5"
+                  className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
                   value={selectedGroupIdx}
                   onChange={(e) => {
                     const idx = Number(e.target.value);
@@ -849,7 +849,7 @@ export default function BulkSuitePage() {
             <label className="block text-sm">
               Activity type
               <select
-                className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5"
+                className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
                 value={activityTypeId}
                 onChange={(e) => setActivityTypeId(e.target.value)}
               >
@@ -863,7 +863,7 @@ export default function BulkSuitePage() {
             <label className="block text-sm">
               Deadline (YYYY-MM-DD)
               <input
-                className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5"
+                className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
                 value={activityDeadline}
                 onChange={(e) => setActivityDeadline(e.target.value)}
                 placeholder="2026-08-10"
@@ -872,7 +872,7 @@ export default function BulkSuitePage() {
             <label className="block text-sm md:col-span-2">
               Summary
               <input
-                className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5"
+                className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
                 value={activitySummary}
                 onChange={(e) => setActivitySummary(e.target.value)}
               />
@@ -900,7 +900,7 @@ export default function BulkSuitePage() {
             <label className="block text-sm">
               User ids
               <input
-                className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5 font-mono text-sm"
+                className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-sm"
                 value={securityUserIds}
                 onChange={(e) => setSecurityUserIds(e.target.value)}
                 placeholder="2, 5"
@@ -909,7 +909,7 @@ export default function BulkSuitePage() {
             <label className="block text-sm">
               Mode
               <select
-                className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5"
+                className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
                 value={securityMode}
                 onChange={(e) =>
                   setSecurityMode(e.target.value as "add" | "remove" | "offboard")
@@ -924,7 +924,7 @@ export default function BulkSuitePage() {
               <label className="block text-sm md:col-span-2">
                 Group ids
                 <input
-                  className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5 font-mono text-sm"
+                  className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-sm"
                   value={securityGroupIds}
                   onChange={(e) => setSecurityGroupIds(e.target.value)}
                   placeholder="8, 12"
@@ -988,7 +988,7 @@ export default function BulkSuitePage() {
           <label className="block text-sm">
             Partner ids
             <input
-              className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5 font-mono text-sm"
+              className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-sm"
               value={portalPartnerIds}
               onChange={(e) => setPortalPartnerIds(e.target.value)}
               placeholder="14, 18"
@@ -997,7 +997,7 @@ export default function BulkSuitePage() {
           <label className="block text-sm">
             Action
             <select
-              className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5"
+              className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
               value={portalAction}
               onChange={(e) => setPortalAction(e.target.value as "grant" | "revoke")}
             >
@@ -1024,7 +1024,7 @@ export default function BulkSuitePage() {
           <label className="block text-sm">
             Subject
             <input
-              className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5"
+              className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
               value={sendSubject}
               onChange={(e) => setSendSubject(e.target.value)}
             />
@@ -1032,7 +1032,7 @@ export default function BulkSuitePage() {
           <label className="block text-sm">
             Body (HTML)
             <textarea
-              className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5 font-mono text-sm"
+              className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-sm"
               rows={3}
               value={sendBody}
               onChange={(e) => setSendBody(e.target.value)}
@@ -1041,7 +1041,7 @@ export default function BulkSuitePage() {
           <label className="block text-sm">
             Mail template id (optional)
             <input
-              className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5 font-mono text-sm"
+              className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-sm"
               value={sendTemplateId}
               onChange={(e) => setSendTemplateId(e.target.value)}
               placeholder="12"

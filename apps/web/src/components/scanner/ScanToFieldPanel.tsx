@@ -88,7 +88,7 @@ export function ScanToFieldPanel({
   }
 
   return (
-    <section className="mt-8 border border-[#E5E5E5] bg-white p-6">
+    <section className="mt-8 border border-[#E5E5E5] bg-surface p-6">
       <h2 className="text-lg font-semibold text-[#212529]">Scan to field (§16)</h2>
       <p className="mt-1 text-sm text-[#6C757D]">
         In-app camera scanner (all tiers). Exported OWL widget module is available on Odoo.sh /

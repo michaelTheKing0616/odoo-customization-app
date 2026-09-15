@@ -177,7 +177,7 @@ export function PropertyFieldsPanel({
               <input
                 value={childModel}
                 onChange={(e) => setChildModel(e.target.value)}
-                className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1 font-mono text-xs"
+                className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1 font-mono text-xs"
               />
             </label>
             <label>
@@ -185,7 +185,7 @@ export function PropertyFieldsPanel({
               <input
                 value={parentM2o}
                 onChange={(e) => setParentM2o(e.target.value)}
-                className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1 font-mono text-xs"
+                className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1 font-mono text-xs"
               />
             </label>
             <label>
@@ -193,7 +193,7 @@ export function PropertyFieldsPanel({
               <input
                 value={propertiesField}
                 onChange={(e) => setPropertiesField(e.target.value)}
-                className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1 font-mono text-xs"
+                className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1 font-mono text-xs"
               />
             </label>
             <label>
@@ -201,7 +201,7 @@ export function PropertyFieldsPanel({
               <input
                 value={definitionField}
                 onChange={(e) => setDefinitionField(e.target.value)}
-                className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1 font-mono text-xs"
+                className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1 font-mono text-xs"
               />
             </label>
           </div>
@@ -227,7 +227,7 @@ export function PropertyFieldsPanel({
                 <input
                   value={parentModel}
                   onChange={(e) => setParentModel(e.target.value)}
-                  className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1 font-mono text-xs"
+                  className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1 font-mono text-xs"
                 />
               </label>
               <label className="text-sm">
@@ -235,7 +235,7 @@ export function PropertyFieldsPanel({
                 <input
                   value={parentRecordId}
                   onChange={(e) => setParentRecordId(e.target.value)}
-                  className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1 font-mono text-xs"
+                  className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1 font-mono text-xs"
                 />
               </label>
             </div>
@@ -250,7 +250,7 @@ export function PropertyFieldsPanel({
                         rows.map((r, i) => (i === idx ? { ...r, name: e.target.value } : r)),
                       )
                     }
-                    className="border border-[var(--odoo-border)] bg-white px-2 py-1 font-mono"
+                    className="border border-[var(--odoo-border)] bg-surface px-2 py-1 font-mono"
                   />
                   <input
                     placeholder="label"
@@ -260,7 +260,7 @@ export function PropertyFieldsPanel({
                         rows.map((r, i) => (i === idx ? { ...r, string: e.target.value } : r)),
                       )
                     }
-                    className="border border-[var(--odoo-border)] bg-white px-2 py-1"
+                    className="border border-[var(--odoo-border)] bg-surface px-2 py-1"
                   />
                   <select
                     value={entry.type}
@@ -269,7 +269,7 @@ export function PropertyFieldsPanel({
                         rows.map((r, i) => (i === idx ? { ...r, type: e.target.value } : r)),
                       )
                     }
-                    className="border border-[var(--odoo-border)] bg-white px-2 py-1"
+                    className="border border-[var(--odoo-border)] bg-surface px-2 py-1"
                   >
                     {PROPERTY_TYPES.map((t) => (
                       <option key={t} value={t}>
@@ -291,7 +291,7 @@ export function PropertyFieldsPanel({
                         ),
                       )
                     }
-                    className="border border-[var(--odoo-border)] bg-white px-2 py-1 font-mono"
+                    className="border border-[var(--odoo-border)] bg-surface px-2 py-1 font-mono"
                   />
                 </li>
               ))}

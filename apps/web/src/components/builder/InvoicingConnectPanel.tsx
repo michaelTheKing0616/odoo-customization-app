@@ -164,7 +164,7 @@ export function InvoicingConnectPanel({
   }
 
   return (
-    <section className="mt-8 border border-[#E5E5E5] bg-white p-6">
+    <section className="mt-8 border border-[#E5E5E5] bg-surface p-6">
       <h2 className="text-lg font-semibold text-[#212529]">Connect to Invoicing (§19)</h2>
       <p className="mt-1 text-sm text-[#6C757D]">
         Live path: many2many on your custom model only. Module export may add inverse m2o on{" "}

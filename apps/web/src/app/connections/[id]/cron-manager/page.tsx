@@ -268,7 +268,7 @@ export default function CronManagerPage() {
             <label className="block flex-1 text-sm">
               Search
               <input
-                className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5 text-sm"
+                className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 text-sm"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Name, model, or description"
@@ -277,7 +277,7 @@ export default function CronManagerPage() {
             <label className="block text-sm">
               Status
               <select
-                className="mt-1 border border-[var(--odoo-border)] bg-white px-2 py-1.5"
+                className="mt-1 border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
                 value={activeFilter}
                 onChange={(e) =>
                   setActiveFilter(e.target.value as "all" | "active" | "inactive")
@@ -379,7 +379,7 @@ export default function CronManagerPage() {
             <label className="block text-sm">
               Name
               <input
-                className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5"
+                className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
                 value={cronName}
                 onChange={(e) => setCronName(e.target.value)}
               />
@@ -387,7 +387,7 @@ export default function CronManagerPage() {
             <label className="block text-sm">
               Model
               <input
-                className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5 font-mono text-sm"
+                className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-sm"
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
                 list="cron-manager-models"
@@ -404,7 +404,7 @@ export default function CronManagerPage() {
               Method
               <div className="mt-1 flex flex-wrap gap-2">
                 <input
-                  className="min-w-[12rem] flex-1 border border-[var(--odoo-border)] bg-white px-2 py-1.5 font-mono text-sm"
+                  className="min-w-[12rem] flex-1 border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-sm"
                   value={method}
                   onChange={(e) => setMethod(e.target.value)}
                   placeholder="action_confirm"
@@ -420,7 +420,7 @@ export default function CronManagerPage() {
               </div>
               {buttons.length > 0 && (
                 <select
-                  className="mt-2 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5"
+                  className="mt-2 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
                   value={method}
                   onChange={(e) => setMethod(e.target.value)}
                 >
@@ -437,7 +437,7 @@ export default function CronManagerPage() {
               <input
                 type="number"
                 min={1}
-                className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5"
+                className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
                 value={intervalNumber}
                 onChange={(e) => setIntervalNumber(Number(e.target.value) || 1)}
               />
@@ -445,7 +445,7 @@ export default function CronManagerPage() {
             <label className="block text-sm">
               Interval
               <select
-                className="mt-1 w-full border border-[var(--odoo-border)] bg-white px-2 py-1.5"
+                className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
                 value={intervalType}
                 onChange={(e) =>
                   setIntervalType(

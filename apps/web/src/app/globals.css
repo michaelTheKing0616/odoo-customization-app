@@ -467,7 +467,7 @@ body {
 }
 
 .odoo-statusbar-stage.is-active {
-  background: color-mix(in srgb, var(--odoo-statusbar) 12%, white);
+  background: color-mix(in srgb, var(--odoo-statusbar) 12%, var(--surface));
   border-color: var(--odoo-statusbar);
   color: var(--odoo-primary);
   font-weight: 600;
@@ -542,7 +542,7 @@ body {
 }
 
 .odoo-list-table thead {
-  background: color-mix(in srgb, var(--odoo-canvas) 65%, white);
+  background: color-mix(in srgb, var(--odoo-canvas) 65%, var(--surface));
   color: var(--odoo-muted);
   font-size: var(--text-xs);
   text-transform: uppercase;
@@ -556,7 +556,7 @@ body {
 }
 
 .odoo-list-row-danger {
-  background: color-mix(in srgb, var(--odoo-danger) 8%, white);
+  background: color-mix(in srgb, var(--odoo-danger) 8%, var(--surface));
 }
 
 .odoo-list-row-muted {
@@ -564,7 +564,7 @@ body {
 }
 
 .odoo-preview-banner {
-  background: color-mix(in srgb, var(--odoo-primary) 8%, white);
+  background: color-mix(in srgb, var(--odoo-primary) 8%, var(--surface));
   border: 1px solid var(--odoo-border);
   border-radius: 4px;
   color: var(--odoo-muted);
@@ -574,7 +574,7 @@ body {
 }
 
 .odoo-chatter-stub {
-  background: color-mix(in srgb, var(--odoo-canvas) 50%, white);
+  background: color-mix(in srgb, var(--odoo-canvas) 50%, var(--surface));
   border-top: 1px solid var(--odoo-border);
   margin-top: 1rem;
   padding: 0.75rem;
@@ -612,7 +612,7 @@ body {
 
 .odoo-chatter-avatar {
   align-items: center;
-  background: color-mix(in srgb, var(--odoo-primary) 18%, white);
+  background: color-mix(in srgb, var(--odoo-primary) 18%, var(--surface));
   border-radius: 999px;
   color: var(--odoo-primary);
   display: inline-flex;
@@ -715,7 +715,7 @@ body {
 }
 
 .odoo-widget-m2o-chip {
-  background: color-mix(in srgb, var(--odoo-primary) 10%, white);
+  background: color-mix(in srgb, var(--odoo-primary) 10%, var(--surface));
   border: 1px solid color-mix(in srgb, var(--odoo-primary) 25%, var(--odoo-border));
   border-radius: 3px;
   color: var(--odoo-primary);
@@ -735,7 +735,7 @@ body {
 }
 
 .odoo-widget-tag {
-  background: color-mix(in srgb, var(--odoo-canvas) 70%, white);
+  background: color-mix(in srgb, var(--odoo-canvas) 70%, var(--surface));
   border: 1px solid var(--odoo-border);
   border-radius: 3px;
   font-size: 0.7rem;
@@ -787,7 +787,7 @@ body {
 }
 
 .odoo-kanban-column {
-  background: color-mix(in srgb, var(--odoo-canvas) 55%, white);
+  background: color-mix(in srgb, var(--odoo-canvas) 55%, var(--surface));
   border: 1px solid var(--odoo-border);
   border-radius: 4px;
   min-width: 14rem;

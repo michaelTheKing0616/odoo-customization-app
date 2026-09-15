@@ -2935,7 +2935,7 @@ export default function DesignerPage() {
 
         <Card className="mt-6 flex flex-wrap items-end gap-3 p-4">
           <label className="text-sm">
-            <span className="text-[#a8909e]">Model</span>
+            <span className="text-muted">Model</span>
             <input
               value={model}
               onChange={(e) => setModel(e.target.value)}
@@ -2962,7 +2962,7 @@ export default function DesignerPage() {
             Load existing view
           </button>
           <label className="text-sm">
-            <span className="text-[#a8909e]">View type</span>
+            <span className="text-muted">View type</span>
             <select
               value={viewType}
               onChange={(e) => {
@@ -3030,7 +3030,7 @@ export default function DesignerPage() {
               </option>
             </select>
             {!mutationAllowed(connection) && (
-              <p className="mt-1 text-xs text-[#c9a227]">
+              <p className="mt-1 text-xs text-warning">
                 {mutationBlockedReason(connection) ??
                   "Reporting views need a probed connection."}
               </p>
@@ -3038,7 +3038,7 @@ export default function DesignerPage() {
           </label>
           {viewType === "kanban" && (
             <label className="text-sm">
-              <span className="text-[#a8909e]">Column field</span>
+              <span className="text-muted">Column field</span>
               <select
                 value={kanbanGroupBy}
                 onChange={(e) => setKanbanGroupBy(e.target.value)}
@@ -3056,7 +3056,7 @@ export default function DesignerPage() {
           {viewType === "calendar" && (
             <>
               <label className="text-sm">
-                <span className="text-[#a8909e]">date_start</span>
+                <span className="text-muted">date_start</span>
                 <select
                   value={calendarDateStart}
                   onChange={(e) => setCalendarDateStart(e.target.value)}
@@ -3071,20 +3071,20 @@ export default function DesignerPage() {
                   ))}
                 </select>
                 {fieldsModel && fieldsModel !== model.trim() && (
-                  <p className="mt-1 text-xs text-[#c9a227]">
+                  <p className="mt-1 text-xs text-warning">
                     Fields loaded for {fieldsModel || "(none)"} — click Load fields for{" "}
                     {model || "this model"}.
                   </p>
                 )}
                 {!dateFieldsForSelect.length && (
-                  <p className="mt-1 text-xs text-[#c9a227]">
+                  <p className="mt-1 text-xs text-warning">
                     No date/datetime fields on loaded model. Set model to x_lib_loan and click
                     Load fields.
                   </p>
                 )}
               </label>
               <label className="text-sm">
-                <span className="text-[#a8909e]">date_stop</span>
+                <span className="text-muted">date_stop</span>
                 <select
                   value={calendarDateStop}
                   onChange={(e) => setCalendarDateStop(e.target.value)}
@@ -3100,7 +3100,7 @@ export default function DesignerPage() {
                 </select>
               </label>
               <label className="text-sm">
-                <span className="text-[#a8909e]">color</span>
+                <span className="text-muted">color</span>
                 <select
                   value={calendarColor}
                   onChange={(e) => setCalendarColor(e.target.value)}
@@ -3115,7 +3115,7 @@ export default function DesignerPage() {
                 </select>
               </label>
               <label className="text-sm">
-                <span className="text-[#a8909e]">mode</span>
+                <span className="text-muted">mode</span>
                 <select
                   value={calendarMode}
                   onChange={(e) => setCalendarMode(e.target.value)}
@@ -3132,7 +3132,7 @@ export default function DesignerPage() {
           {viewType === "graph" && (
             <>
             <label className="text-sm">
-              <span className="text-[#a8909e]">Graph type</span>
+              <span className="text-muted">Graph type</span>
               <select
                 value={graphType}
                 onChange={(e) =>
@@ -3170,7 +3170,7 @@ export default function DesignerPage() {
           {viewType === "map" && (
             <>
             <label className="text-sm">
-              <span className="text-[#a8909e]">res_partner</span>
+              <span className="text-muted">res_partner</span>
               <select
                 value={mapResPartner}
                 onChange={(e) => setMapResPartner(e.target.value)}
@@ -3203,7 +3203,7 @@ export default function DesignerPage() {
           {viewType === "gantt" && (
             <>
               <label className="text-sm">
-                <span className="text-[#a8909e]">date_start</span>
+                <span className="text-muted">date_start</span>
                 <select
                   value={ganttDateStart}
                   onChange={(e) => setGanttDateStart(e.target.value)}
@@ -3218,7 +3218,7 @@ export default function DesignerPage() {
                 </select>
               </label>
               <label className="text-sm">
-                <span className="text-[#a8909e]">date_stop</span>
+                <span className="text-muted">date_stop</span>
                 <select
                   value={ganttDateStop}
                   onChange={(e) => setGanttDateStop(e.target.value)}
@@ -3233,7 +3233,7 @@ export default function DesignerPage() {
                 </select>
               </label>
               <label className="text-sm">
-                <span className="text-[#a8909e]">default_group_by</span>
+                <span className="text-muted">default_group_by</span>
                 <select
                   value={ganttGroupBy}
                   onChange={(e) => setGanttGroupBy(e.target.value)}
@@ -3248,7 +3248,7 @@ export default function DesignerPage() {
                 </select>
               </label>
               <label className="text-sm">
-                <span className="text-[#a8909e]">color</span>
+                <span className="text-muted">color</span>
                 <select
                   value={ganttColor}
                   onChange={(e) => setGanttColor(e.target.value)}
@@ -3263,7 +3263,7 @@ export default function DesignerPage() {
                 </select>
               </label>
               <label className="text-sm">
-                <span className="text-[#a8909e]">progress</span>
+                <span className="text-muted">progress</span>
                 <select
                   value={ganttProgress}
                   onChange={(e) => setGanttProgress(e.target.value)}
@@ -3279,7 +3279,7 @@ export default function DesignerPage() {
                 </select>
               </label>
               <label className="text-sm">
-                <span className="text-[#a8909e]">default_scale</span>
+                <span className="text-muted">default_scale</span>
                 <select
                   value={ganttDefaultScale}
                   onChange={(e) => setGanttDefaultScale(e.target.value)}
@@ -3294,7 +3294,7 @@ export default function DesignerPage() {
                 </select>
               </label>
               <label className="text-sm">
-                <span className="text-[#a8909e]">dependency_field</span>
+                <span className="text-muted">dependency_field</span>
                 <select
                   value={ganttDependencyField}
                   onChange={(e) => setGanttDependencyField(e.target.value)}
@@ -3316,7 +3316,7 @@ export default function DesignerPage() {
           {viewType === "cohort" && (
             <>
               <label className="text-sm">
-                <span className="text-[#a8909e]">date_start</span>
+                <span className="text-muted">date_start</span>
                 <select
                   value={cohortDateStart}
                   onChange={(e) => setCohortDateStart(e.target.value)}
@@ -3331,7 +3331,7 @@ export default function DesignerPage() {
                 </select>
               </label>
               <label className="text-sm">
-                <span className="text-[#a8909e]">date_stop</span>
+                <span className="text-muted">date_stop</span>
                 <select
                   value={cohortDateStop}
                   onChange={(e) => setCohortDateStop(e.target.value)}
@@ -3346,7 +3346,7 @@ export default function DesignerPage() {
                 </select>
               </label>
               <label className="text-sm">
-                <span className="text-[#a8909e]">interval</span>
+                <span className="text-muted">interval</span>
                 <select
                   value={cohortInterval}
                   onChange={(e) =>
@@ -3363,7 +3363,7 @@ export default function DesignerPage() {
                 </select>
               </label>
               <label className="text-sm">
-                <span className="text-[#a8909e]">mode</span>
+                <span className="text-muted">mode</span>
                 <select
                   value={cohortMode}
                   onChange={(e) =>
@@ -3377,7 +3377,7 @@ export default function DesignerPage() {
                 </select>
               </label>
               <label className="text-sm">
-                <span className="text-[#a8909e]">timeline</span>
+                <span className="text-muted">timeline</span>
                 <select
                   value={cohortTimeline}
                   onChange={(e) =>
@@ -3391,7 +3391,7 @@ export default function DesignerPage() {
                 </select>
               </label>
               <label className="text-sm">
-                <span className="text-[#a8909e]">measure</span>
+                <span className="text-muted">measure</span>
                 <select
                   value={cohortMeasure}
                   onChange={(e) => setCohortMeasure(e.target.value)}
@@ -3410,7 +3410,7 @@ export default function DesignerPage() {
           {viewType === "grid" && (
             <>
               <label className="text-sm">
-                <span className="text-[#a8909e]">row_field</span>
+                <span className="text-muted">row_field</span>
                 <select
                   value={gridRowField}
                   onChange={(e) => setGridRowField(e.target.value)}
@@ -3426,7 +3426,7 @@ export default function DesignerPage() {
                 </select>
               </label>
               <label className="text-sm">
-                <span className="text-[#a8909e]">col_field</span>
+                <span className="text-muted">col_field</span>
                 <select
                   value={gridColField}
                   onChange={(e) => setGridColField(e.target.value)}
@@ -3442,7 +3442,7 @@ export default function DesignerPage() {
                 </select>
               </label>
               <label className="text-sm">
-                <span className="text-[#a8909e]">measure</span>
+                <span className="text-muted">measure</span>
                 <select
                   value={gridMeasure}
                   onChange={(e) => setGridMeasure(e.target.value)}
@@ -3465,7 +3465,7 @@ export default function DesignerPage() {
                 </select>
               </label>
               <label className="text-sm">
-                <span className="text-[#a8909e]">adjustment</span>
+                <span className="text-muted">adjustment</span>
                 <select
                   value={gridAdjustment}
                   onChange={(e) => setGridAdjustment(e.target.value)}
@@ -3478,7 +3478,7 @@ export default function DesignerPage() {
                 </select>
               </label>
               <label className="text-sm">
-                <span className="text-[#a8909e]">date_start</span>
+                <span className="text-muted">date_start</span>
                 <select
                   value={gridDateStart}
                   onChange={(e) => setGridDateStart(e.target.value)}
@@ -3493,7 +3493,7 @@ export default function DesignerPage() {
                 </select>
               </label>
               <label className="text-sm">
-                <span className="text-[#a8909e]">date_stop</span>
+                <span className="text-muted">date_stop</span>
                 <select
                   value={gridDateStop}
                   onChange={(e) => setGridDateStop(e.target.value)}
@@ -3510,7 +3510,7 @@ export default function DesignerPage() {
             </>
           )}
           <label className="text-sm">
-            <span className="text-[#a8909e]">Title</span>
+            <span className="text-muted">Title</span>
             <input
               value={title}
               onChange={(e) => {
@@ -3522,7 +3522,7 @@ export default function DesignerPage() {
             />
           </label>
           <label className="text-sm">
-            <span className="text-[#a8909e]">Save strategy</span>
+            <span className="text-muted">Save strategy</span>
             <select
               value={saveStrategy}
               onChange={(e) => setSaveStrategy(e.target.value as "inherit" | "overwrite")}
@@ -3811,7 +3811,7 @@ export default function DesignerPage() {
             </div>
             <PropsInspector title="Card field">
               {selectedField && selected?.scope === "kanban" ? (
-                <div className="space-y-3 text-sm text-[#1a1a1a]">
+                <div className="space-y-3 text-sm text-ink">
                   <p className="font-mono text-accent">
                     {selectedField.name}
                   </p>
@@ -4197,7 +4197,7 @@ export default function DesignerPage() {
               )}
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="text-xs text-[#a8909e]">
+              <label className="text-xs text-muted">
                 Button label
                 <input
                   value={bindLabel}
@@ -4207,7 +4207,7 @@ export default function DesignerPage() {
               </label>
               {bindMode === "create_update" && (
                 <>
-                  <label className="text-xs text-[#a8909e]">
+                  <label className="text-xs text-muted">
                     Field to update
                     <select
                       value={bindFieldName}
@@ -4234,7 +4234,7 @@ export default function DesignerPage() {
                         ))}
                     </select>
                   </label>
-                  <label className="text-xs text-[#a8909e]">
+                  <label className="text-xs text-muted">
                     New value
                     {(() => {
                       const opts = parseSelectionOptions(
@@ -4268,7 +4268,7 @@ export default function DesignerPage() {
               )}
               {(bindMode === "create_related" || bindMode === "create_smart") && (
                 <>
-                  <label className="text-xs text-[#a8909e]">
+                  <label className="text-xs text-muted">
                     Target model
                     <input
                       value={bindTargetModel}
@@ -4276,7 +4276,7 @@ export default function DesignerPage() {
                       className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm"
                     />
                   </label>
-                  <label className="text-xs text-[#a8909e]">
+                  <label className="text-xs text-muted">
                     Relation field on target
                     <input
                       value={bindRelationField}
@@ -4285,7 +4285,7 @@ export default function DesignerPage() {
                     />
                   </label>
                   {(bindPlacement === "button_box" || bindMode === "create_smart") && (
-                    <label className="text-xs text-[#a8909e]">
+                    <label className="text-xs text-muted">
                       Icon (Font Awesome)
                       <input
                         value={bindIcon}
@@ -4298,7 +4298,7 @@ export default function DesignerPage() {
               )}
               {bindMode === "create_smart" && (
                 <>
-                  <label className="flex items-center gap-2 text-xs text-[#a8909e] sm:col-span-2">
+                  <label className="flex items-center gap-2 text-xs text-muted sm:col-span-2">
                     <input
                       type="checkbox"
                       checked={bindCreateCountField}
@@ -4308,7 +4308,7 @@ export default function DesignerPage() {
                   </label>
                   {bindCreateCountField && (
                     <>
-                      <label className="text-xs text-[#a8909e]">
+                      <label className="text-xs text-muted">
                         One2many field on source
                         <input
                           value={bindOne2manyField}
@@ -4317,7 +4317,7 @@ export default function DesignerPage() {
                           className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm"
                         />
                       </label>
-                      <label className="text-xs text-[#a8909e]">
+                      <label className="text-xs text-muted">
                         Count field name (optional)
                         <input
                           value={bindCountFieldName}
@@ -4326,7 +4326,7 @@ export default function DesignerPage() {
                           className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm"
                         />
                       </label>
-                      <label className="text-xs text-[#a8909e] sm:col-span-2">
+                      <label className="text-xs text-muted sm:col-span-2">
                         Confirm phrase
                         <input
                           value={bindSmartConfirmPhrase}
@@ -4341,7 +4341,7 @@ export default function DesignerPage() {
               )}
               {bindMode === "create_activity" && (
                 <>
-                  <label className="text-xs text-[#a8909e]">
+                  <label className="text-xs text-muted">
                     Activity type
                     <select
                       value={bindActivityTypeId === "" ? "" : String(bindActivityTypeId)}
@@ -4358,7 +4358,7 @@ export default function DesignerPage() {
                       ))}
                     </select>
                   </label>
-                  <label className="text-xs text-[#a8909e]">
+                  <label className="text-xs text-muted">
                     Summary
                     <input
                       value={bindActivitySummary}
@@ -4366,7 +4366,7 @@ export default function DesignerPage() {
                       className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
                     />
                   </label>
-                  <label className="text-xs text-[#a8909e] sm:col-span-2">
+                  <label className="text-xs text-muted sm:col-span-2">
                     Note (optional)
                     <input
                       value={bindActivityNote}
@@ -4378,7 +4378,7 @@ export default function DesignerPage() {
               )}
               {bindMode === "create_mail" && (
                 <>
-                  <label className="text-xs text-[#a8909e]">
+                  <label className="text-xs text-muted">
                     Mail template (optional)
                     <select
                       value={bindMailTemplateId === "" ? "" : String(bindMailTemplateId)}
@@ -4395,7 +4395,7 @@ export default function DesignerPage() {
                       ))}
                     </select>
                   </label>
-                  <label className="text-xs text-[#a8909e]">
+                  <label className="text-xs text-muted">
                     Method
                     <select
                       value={bindMailMethod}
@@ -4409,7 +4409,7 @@ export default function DesignerPage() {
                       <option value="note">note</option>
                     </select>
                   </label>
-                  <label className="text-xs text-[#a8909e]">
+                  <label className="text-xs text-muted">
                     Subject
                     <input
                       value={bindMailSubject}
@@ -4417,7 +4417,7 @@ export default function DesignerPage() {
                       className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
                     />
                   </label>
-                  <label className="text-xs text-[#a8909e]">
+                  <label className="text-xs text-muted">
                     Email to
                     <input
                       value={bindMailEmailTo}
@@ -4425,7 +4425,7 @@ export default function DesignerPage() {
                       className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
                     />
                   </label>
-                  <label className="text-xs text-[#a8909e] sm:col-span-2">
+                  <label className="text-xs text-muted sm:col-span-2">
                     Body HTML
                     <textarea
                       value={bindMailBody}
@@ -4437,7 +4437,7 @@ export default function DesignerPage() {
                 </>
               )}
               {bindMode === "bind_existing" && (
-                <label className="text-xs text-[#a8909e] sm:col-span-2">
+                <label className="text-xs text-muted sm:col-span-2">
                   Action
                   <select
                     value={selectedActionId === "" ? "" : String(selectedActionId)}
@@ -4804,7 +4804,7 @@ export default function DesignerPage() {
                   </label>
                 </div>
                 <div className="grid gap-3 border border-dashed border-[#4a3550] p-3 sm:grid-cols-2">
-                  <label className="text-xs text-[#a8909e]">
+                  <label className="text-xs text-muted">
                     Statusbar field (selection)
                     <select
                       value={statusbarField}
@@ -4821,7 +4821,7 @@ export default function DesignerPage() {
                         ))}
                     </select>
                   </label>
-                  <label className="text-xs text-[#a8909e]">
+                  <label className="text-xs text-muted">
                     statusbar_visible (comma-separated)
                     <input
                       value={statusbarVisible}
