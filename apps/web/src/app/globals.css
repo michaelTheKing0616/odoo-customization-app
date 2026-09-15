@@ -625,7 +625,7 @@ body {
 }
 
 .odoo-chatter-composer-input {
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--odoo-border);
   border-radius: 3px;
   color: var(--odoo-muted);
@@ -681,7 +681,7 @@ body {
 }
 
 .odoo-widget-toggle::after {
-  background: white;
+  background: var(--surface-raised);
   border-radius: 999px;
   content: "";
   height: 0.7rem;
@@ -807,7 +807,7 @@ body {
 }
 
 .odoo-kanban-count {
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--odoo-border);
   border-radius: 999px;
   font-size: 0.65rem;
@@ -822,7 +822,7 @@ body {
 }
 
 .odoo-kanban-card {
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--odoo-border);
   border-left: 3px solid var(--odoo-primary);
   border-radius: 3px;
@@ -878,7 +878,7 @@ body {
 }
 
 .odoo-control-panel-search {
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--odoo-border);
   border-radius: 3px;
   color: var(--odoo-muted);
@@ -990,4 +990,71 @@ body {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* View Designer Studio shell + DnD affordances */
+.designer-studio-shell .designer-session-bar,
+.designer-studio-header [data-testid="designer-session-bar"] {
+  margin-top: 0;
+}
+
+.designer-drag-ghost {
+  position: absolute;
+  left: -1000px;
+  top: 0;
+  z-index: 50;
+  border: 1px solid var(--odoo-border);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0.35rem 0.65rem;
+  box-shadow: var(--shadow-raised);
+  pointer-events: none;
+}
+
+.designer-drop-list.is-over {
+  border-radius: 4px;
+  outline: 2px dashed color-mix(in srgb, var(--odoo-primary) 45%, var(--odoo-border));
+  outline-offset: 2px;
+  background: color-mix(in srgb, var(--odoo-primary) 8%, var(--surface));
+}
+
+.designer-drop-line {
+  display: block;
+  height: 2px;
+  margin: 2px 0;
+  background: var(--odoo-primary);
+  border-radius: 999px;
+}
+
+.designer-canvas-field {
+  border-radius: 3px;
+}
+
+.designer-canvas-field.is-selected .odoo-field-row,
+.designer-canvas-field.is-flash .odoo-field-row {
+  background: color-mix(in srgb, var(--odoo-primary) 8%, var(--surface));
+}
+
+.designer-canvas-field[draggable="true"] {
+  cursor: grab;
+}
+
+.designer-canvas-field[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.designer-tools-tabs [data-testid="tabs"] {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.designer-tools-tabs [role="tabpanel"] {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
 }

@@ -1,3 +1,8 @@
+### 2026-09-15 — View Designer Studio shell (live canvas + tools rail)
+**Decided:** Default Designer UX is a Studio mental model: top session bar, center live Odoo iframe (structural `odoo-preview` FormCanvas fallback), right modification rail (Fields / Properties / Structure / Overlay / Advanced). HTML5 DnD + existing `DragAutoScroll` — not `@dnd-kit`. Inherit-default save, confirm phrases, snapshots, and human Promote stay. Completeness ≠ Cert ≠ Autopilot.
+**Why:** Operators asked for Studio-quality canvas (see live Odoo, tools on the side) instead of the gray wireframe dump. Supersedes 2026-09-14 “do not extract Designer in the P0 UAT PR” for this dedicated Designer PR.
+**Rejected:** Bolting another panel onto the 5.7k orchestrator; copying Enterprise `web_studio`; introducing `@dnd-kit` this pass.
+
 ### 2026-09-14 — P0 UAT blockers: confirm live pack, honest Autopilot resume, one AI hero
 **Decided:** Access live pack HTTP route requires `I understand the risks` before `x_company_id` + global `ir.rule`. Job Autopilot reads the remembered job id (half-implemented write) so leave-and-return resumes or opens last result. Overview “Draft with AI” is App Studio; Draft Studio is secondary. Projects Apply waits for Review vs live. ModuleSpec chrome links Projects. Do not extract the 5.7k Designer page in this PR.
 **Why:** UAT `docs/UAT-PREMIUM-WORLD-CLASS.md` ranked these as founder-demo blockers / safety holds.

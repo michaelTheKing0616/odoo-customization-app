@@ -95,7 +95,7 @@ export function DesignerSessionBar({
 
   return (
     <div
-      className="mt-4 flex flex-wrap items-center gap-2 rounded-md border border-border-subtle bg-surface-raised px-3 py-2 shadow-subtle"
+      className="flex flex-wrap items-center gap-2 rounded-md border border-border-subtle bg-surface-raised px-3 py-2 shadow-subtle"
       data-testid="designer-session-bar"
     >
       <span data-testid="designer-publish-state">

@@ -9,19 +9,31 @@ import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import { FirstWriteInterstitial } from "@/components/shell/FirstWriteInterstitial";
 import { FormCanvas } from "@/components/designer/FormCanvas";
+import { DesignerStudioShell } from "@/components/designer/DesignerStudioShell";
+import {
+  DesignerLiveCanvas,
+  type DesignerCanvasMode,
+} from "@/components/designer/DesignerLiveCanvas";
+import {
+  DesignerToolsRail,
+  type DesignerRailTabId,
+} from "@/components/designer/DesignerToolsRail";
+import { FieldPalette } from "@/components/designer/FieldPalette";
+import { Disclosure } from "@/components/ui/Disclosure";
 import {
   OdooControlPanel,
+  OdooKanbanView,
   OdooListView,
   OdooPreviewScope,
 } from "@/components/odoo-preview";
 import { OverlayEditor } from "@/components/designer/OverlayEditor";
+import { insertAt } from "@/lib/designer-dnd";
 import { KanbanCardPreview } from "@/components/designer/KanbanCardPreview";
 import {
   NicheWidgetPalette,
   type NicheWidgetEntry,
 } from "@/components/designer/NicheWidgetPalette";
 import { PreviewThemeScope } from "@/components/designer/PreviewThemeScope";
-import { PropsInspector } from "@/components/designer/PropsInspector";
 import {
   ActivityTypeRow,
   api,
@@ -52,7 +64,7 @@ import { automationsHref } from "@/lib/automationForm";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Callout } from "@/components/ui/Callout";
-import { Card, PageHeader } from "@/components/ui/layout-primitives";
+import { Card } from "@/components/ui/layout-primitives";
 import {
   bindModeSupported,
   bindModeUnsupportedReason,
@@ -513,7 +525,9 @@ export default function DesignerPage() {
   const [loadedViewId, setLoadedViewId] = useState<number | null>(null);
   const [snapshots, setSnapshots] = useState<SnapshotRow[]>([]);
   const [selected, setSelected] = useState<SelectedField | null>(null);
-  const [showIframePreview, setShowIframePreview] = useState(false);
+  const [canvasMode, setCanvasMode] = useState<DesignerCanvasMode>("live");
+  const [liveFailed, setLiveFailed] = useState(false);
+  const [railTab, setRailTab] = useState<DesignerRailTabId>("fields");
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const [previewKey, setPreviewKey] = useState(0);
   const [saveStrategy, setSaveStrategy] = useState<"inherit" | "overwrite">("inherit");
@@ -890,6 +904,10 @@ export default function DesignerPage() {
   const proxyPreviewUrl = model
     ? sameOriginPreviewUrl(connectionId, model, viewType, getApiBase())
     : null;
+
+  useEffect(() => {
+    setLiveFailed(false);
+  }, [proxyPreviewUrl, previewKey, model, viewType]);
 
   function applyFieldNamesToCanvas(names: string[], rows: FieldRow[]) {
     historySkipRef.current = "reset";
@@ -2164,9 +2182,7 @@ export default function DesignerPage() {
     return dragField;
   }
 
-  function dropOnGroup(groupId: string, e?: DragEvent | null) {
-    const fieldName = resolveDragFieldName(e);
-    if (!fieldName) return;
+  function addFieldToGroup(groupId: string, fieldName: string, index?: number) {
     const meta = fields.find((f) => f.name === fieldName);
     const node: DesignerField = {
       kind: "field",
@@ -2180,7 +2196,9 @@ export default function DesignerPage() {
           if (child.children.some((n) => n.kind === "field" && n.name === fieldName)) {
             return child;
           }
-          return { ...child, children: [...child.children, node] };
+          const next =
+            index == null ? [...child.children, node] : insertAt(child.children, index, node);
+          return { ...child, children: next };
         }
         return child;
       }),
@@ -2190,6 +2208,12 @@ export default function DesignerPage() {
       groupId,
       "drop",
     );
+  }
+
+  function dropOnGroup(groupId: string, e?: DragEvent | null, index?: number) {
+    const fieldName = resolveDragFieldName(e);
+    if (!fieldName) return;
+    addFieldToGroup(groupId, fieldName, index);
     setDragField(null);
   }
 
@@ -2200,7 +2224,12 @@ export default function DesignerPage() {
     setDragField(null);
   }
 
-  function dropFieldOnPage(notebookId: string, pageId: string, fieldName: string) {
+  function dropFieldOnPage(
+    notebookId: string,
+    pageId: string,
+    fieldName: string,
+    index?: number,
+  ) {
     const meta = fields.find((f) => f.name === fieldName);
     const node: DesignerField = {
       kind: "field",
@@ -2218,7 +2247,8 @@ export default function DesignerPage() {
             if (p.children.some((n) => n.kind === "field" && n.name === fieldName)) {
               return p;
             }
-            return { ...p, children: [...p.children, node] };
+            const next = index == null ? [...p.children, node] : insertAt(p.children, index, node);
+            return { ...p, children: next };
           }),
         };
       }),
@@ -2228,6 +2258,79 @@ export default function DesignerPage() {
       pageId,
       "drop",
     );
+  }
+
+  function reorderFormNode(
+    fieldId: string,
+    dest:
+      | { kind: "group"; groupId: string }
+      | { kind: "page"; notebookId: string; pageId: string },
+    index: number,
+  ) {
+    setFormChildren((children) => {
+      let moved: DesignerField | DesignerButton | null = null;
+      const stripped = children.map((child) => {
+        if (child.kind === "group") {
+          const found = child.children.find((n) => n.id === fieldId);
+          if (found) moved = found;
+          return { ...child, children: child.children.filter((n) => n.id !== fieldId) };
+        }
+        return {
+          ...child,
+          pages: child.pages.map((p) => {
+            const found = p.children.find((n) => n.id === fieldId);
+            if (found) moved = found;
+            return { ...p, children: p.children.filter((n) => n.id !== fieldId) };
+          }),
+        };
+      });
+      if (!moved) return children;
+      return stripped.map((child) => {
+        if (dest.kind === "group" && child.kind === "group" && child.id === dest.groupId) {
+          return { ...child, children: insertAt(child.children, index, moved!) };
+        }
+        if (
+          dest.kind === "page" &&
+          child.kind === "notebook" &&
+          child.id === dest.notebookId
+        ) {
+          return {
+            ...child,
+            pages: child.pages.map((p) =>
+              p.id === dest.pageId
+                ? { ...p, children: insertAt(p.children, index, moved!) }
+                : p,
+            ),
+          };
+        }
+        return child;
+      });
+    });
+  }
+
+  function selectCanvasField(fieldId: string) {
+    for (const child of formChildren) {
+      if (child.kind === "group") {
+        if (child.children.some((n) => n.kind === "field" && n.id === fieldId)) {
+          setSelected({ scope: "form-group", groupId: child.id, fieldId });
+          setRailTab("properties");
+          return;
+        }
+      } else {
+        for (const page of child.pages) {
+          if (page.children.some((n) => n.kind === "field" && n.id === fieldId)) {
+            setSelected({
+              scope: "form-page",
+              notebookId: child.id,
+              pageId: page.id,
+              fieldId,
+            });
+            setRailTab("properties");
+            return;
+          }
+        }
+      }
+    }
   }
 
   function addListColumn(fieldName: string) {
@@ -2827,12 +2930,198 @@ export default function DesignerPage() {
     <DesignerFieldInspectorEmpty />
   );
 
+  const formStructuralCanvas = (
+    <OdooPreviewScope showBanner previewVars={previewTheme?.preview_vars}>
+      <div data-testid="designer-form-layout">
+        <OdooControlPanel
+          breadcrumb={`View Designer › ${title || model}`}
+          activeView="form"
+          availableViews={["form"]}
+          showSearchPlaceholder
+        />
+        <FormCanvas
+          title={title || model}
+          statusbar={statusbarField || null}
+          statusbarVisible={statusbarVisible || null}
+          groupLayout={
+            formChildren.filter((c) => c.kind === "group").length >= 2
+              ? "two-column"
+              : "stack"
+          }
+          headerButtons={headerButtons.map((b) => ({
+            id: b.id,
+            string: b.string || "Button",
+          }))}
+          smartButtons={buttonBox.map((b) => ({ id: b.id, string: b.string }))}
+          flashId={canvasFlashId}
+          groups={formChildren
+            .filter((c): c is DesignerGroup => c.kind === "group")
+            .map((g) => ({
+              id: g.id,
+              string: g.string,
+              fields: g.children
+                .filter((n): n is DesignerField => n.kind === "field")
+                .map((f) => {
+                  const meta = fields.find((row) => row.name === f.name);
+                  return {
+                    id: f.id,
+                    name: f.name,
+                    string: resolveFieldLabel(f.name, f.string, fields),
+                    ttype: meta?.ttype,
+                    widget: f.widget,
+                    required: f.required === true,
+                  };
+                }),
+            }))}
+          notebooks={formChildren
+            .filter((c): c is DesignerNotebook => c.kind === "notebook")
+            .map((nb) => ({
+              id: nb.id,
+              pages: nb.pages.map((p) => ({
+                id: p.id,
+                string: p.string,
+                fields: p.children
+                  .filter((n): n is DesignerField => n.kind === "field")
+                  .map((f) => {
+                    const meta = fields.find((row) => row.name === f.name);
+                    return {
+                      id: f.id,
+                      name: f.name,
+                      string: resolveFieldLabel(f.name, f.string, fields),
+                      ttype: meta?.ttype,
+                      widget: f.widget,
+                      required: f.required === true,
+                    };
+                  }),
+              })),
+            }))}
+          selectedFieldId={
+            selected?.scope === "form-group" || selected?.scope === "form-page"
+              ? selected.fieldId
+              : null
+          }
+          onSelectField={selectCanvasField}
+          onMoveField={(fieldId, dir) => {
+            setFormChildren((children) =>
+              children.map((child) => {
+                if (child.kind !== "group") return child;
+                const idx = child.children.findIndex(
+                  (n) => n.kind === "field" && n.id === fieldId,
+                );
+                if (idx < 0) return child;
+                const next = idx + dir;
+                if (next < 0 || next >= child.children.length) return child;
+                const copy = [...child.children];
+                const [item] = copy.splice(idx, 1);
+                copy.splice(next, 0, item);
+                return { ...child, children: copy };
+              }),
+            );
+          }}
+          onDropFieldName={(groupId, fieldName, index) => {
+            addFieldToGroup(groupId, fieldName, index);
+          }}
+          onDropFieldOnPage={(notebookId, pageId, fieldName, index) => {
+            dropFieldOnPage(notebookId, pageId, fieldName, index);
+          }}
+          onReorderField={(fieldId, groupId, index) =>
+            reorderFormNode(fieldId, { kind: "group", groupId }, index)
+          }
+          onReorderPageField={(fieldId, notebookId, pageId, index) =>
+            reorderFormNode(fieldId, { kind: "page", notebookId, pageId }, index)
+          }
+        />
+      </div>
+    </OdooPreviewScope>
+  );
+
+  const listStructuralCanvas = (
+    <div data-testid="designer-list-layout">
+      <OdooPreviewScope showBanner={false} previewVars={previewTheme?.preview_vars}>
+        <OdooListView
+          view={{
+            type: "list",
+            model: model || "model",
+            title: title || model,
+            columns: listColumns.map((f) => ({
+              id: f.id,
+              name: f.name,
+              string: resolveFieldLabel(f.name, f.string, fields) || f.name,
+            })),
+            decorations: {
+              danger: listDecorationDanger || null,
+              info: listDecorationInfo || null,
+              muted: listDecorationMuted || null,
+            },
+          }}
+        />
+      </OdooPreviewScope>
+    </div>
+  );
+
+  const kanbanStructuralCanvas = (
+    <div data-testid="designer-kanban-layout">
+      <PreviewThemeScope previewVars={previewTheme?.preview_vars}>
+        <OdooKanbanView
+          view={{
+            type: "kanban",
+            model: model || "model",
+            title: title || model,
+            groupBy: kanbanGroupBy || null,
+            cardFields: kanbanFields.map((f) => ({
+              id: f.id,
+              name: f.name,
+              string: f.string || f.name,
+            })),
+          }}
+        />
+        <div className="mt-4">
+          <KanbanCardPreview
+            title={title || model}
+            groupBy={kanbanGroupBy || null}
+            fields={kanbanFields.map((f) => ({
+              id: f.id,
+              name: f.name,
+              string: f.string,
+            }))}
+            selectedFieldId={selected?.scope === "kanban" ? selected.fieldId : null}
+            onSelectField={(fieldId) => {
+              setSelected({ scope: "kanban", fieldId });
+              setRailTab("properties");
+            }}
+            onMoveField={moveKanbanField}
+            onRemoveField={(fieldId) => {
+              setKanbanFields((cols) => cols.filter((c) => c.id !== fieldId));
+              setSelected((sel) =>
+                sel?.scope === "kanban" && sel.fieldId === fieldId ? null : sel,
+              );
+            }}
+            onDropFieldName={(fieldName) => addKanbanField(fieldName)}
+          />
+        </div>
+      </PreviewThemeScope>
+    </div>
+  );
+
+  const structuralCanvas =
+    viewType === "form"
+      ? formStructuralCanvas
+      : viewType === "list"
+        ? listStructuralCanvas
+        : viewType === "kanban"
+          ? kanbanStructuralCanvas
+          : (
+            <div className="rounded-md border border-border-subtle bg-surface p-4 text-sm text-muted">
+              Layout canvas for {viewType} uses the Structure tab. Live Odoo remains
+              the authoritative preview.
+            </div>
+          );
+
   return (
-    <div className="mx-auto max-w-7xl" data-testid="designer-page">
-      <PageHeader
-        title="View designer"
-        description={`${connection?.name ?? connectionId} · drag fields onto the canvas · Save to Odoo publishes an inherit view`}
-      />
+    <DesignerStudioShell
+      title="View designer"
+      description={`${connection?.name ?? connectionId} · drag onto the live or layout canvas · Save to Odoo publishes an inherit view`}
+      sessionBar={
       <DesignerSessionBar
         publishState={designerPublishState({
           dirty: history.dirty,
@@ -2855,6 +3144,9 @@ export default function DesignerPage() {
           )
         }
       />
+      }
+      notices={
+        <>
       {connection ? <FirstWriteInterstitial connection={connection} /> : null}
       <p className="mt-2 text-sm text-muted">
         Removing a field from the view does not delete the database column.{" "}
@@ -2896,44 +3188,16 @@ export default function DesignerPage() {
             })();
           }}
         />
-        <Callout variant="info" title="Production defaults" className="mt-4">
-          <details>
-            <summary className="cursor-pointer text-sm text-muted">
-              Show save / button / preview notes
-            </summary>
-            <ul className="mt-2 list-disc space-y-1 pl-4 text-sm">
-              <li>
-                Save strategy defaults to <strong>Inherit</strong> (extension view) — safe for
-                installed modules.
-              </li>
-              <li>
-                On stock models (e.g. <code>account.move</code>), Inherit saves only{" "}
-                <strong>new custom fields/groups</strong> — it does not re-emit Send/Print/Pay or
-                notebook tabs (that caused duplicates on Bills).
-              </li>
-              <li>
-                Vendor bills open as <strong>Bills</strong> in Odoo; customer invoices as{" "}
-                <strong>Invoices</strong> — same model <code>account.move</code>.
-              </li>
-              <li>
-                <strong>Overwrite</strong> requires confirm and snapshots the primary view first.
-              </li>
-              <li>
-                Buttons bind to real <code>ir.actions.server</code> /{" "}
-                <code>ir.actions.act_window</code> (type=action). Python object methods need Option A.
-              </li>
-              <li>
-                Prefer <strong>Open in Odoo</strong> for truth; iframe preview is best-effort via
-                authenticated proxy.
-              </li>
-              <li>
-                Create field requires the confirm phrase and injects via inherit xpath.
-              </li>
-            </ul>
-          </details>
-        </Callout>
-
-        <Card className="mt-6 flex flex-wrap items-end gap-3 p-4">
+        {error ? <ErrorNotice message={error} className="mt-2" /> : null}
+        {notice ? (
+          <Callout variant="info" title="Notice" className="mt-2">
+            {notice}
+          </Callout>
+        ) : null}
+        </>
+      }
+      toolbar={
+        <Card className="flex flex-wrap items-end gap-3 p-3" data-testid="designer-studio-toolbar">
           <label className="text-sm">
             <span className="text-muted">Model</span>
             <input
@@ -3053,6 +3317,23 @@ export default function DesignerPage() {
               </select>
             </label>
           )}
+          {(viewType === "calendar" ||
+            viewType === "graph" ||
+            viewType === "pivot" ||
+            viewType === "map" ||
+            viewType === "activity" ||
+            viewType === "gantt" ||
+            viewType === "cohort" ||
+            viewType === "grid") && (
+            <details
+              className="w-full rounded-md border border-border-subtle bg-surface px-3 py-2"
+              data-testid="designer-view-axes"
+              open
+            >
+              <summary className="cursor-pointer text-sm font-medium text-ink">
+                View axes
+              </summary>
+              <div className="mt-2 flex flex-wrap items-end gap-3">
           {viewType === "calendar" && (
             <>
               <label className="text-sm">
@@ -3509,6 +3790,9 @@ export default function DesignerPage() {
               </label>
             </>
           )}
+              </div>
+            </details>
+          )}
           <label className="text-sm">
             <span className="text-muted">Title</span>
             <input
@@ -3536,7 +3820,7 @@ export default function DesignerPage() {
             type="button"
             disabled={busy || !model}
             onClick={() => void onSave()}
-            className="h-10 bg-accent px-5 text-sm font-semibold text-white disabled:opacity-60"
+            className="h-10 bg-accent px-5 text-sm font-semibold text-on-accent disabled:opacity-60"
           >
             {busy ? "Saving…" : archOverride ? "Save arch override" : "Save to Odoo"}
           </button>
@@ -3581,272 +3865,223 @@ export default function DesignerPage() {
           >
             Polish form layout
           </button>
-          <a
-            href={liveOdooUrl ?? "#"}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-disabled={!liveOdooUrl}
-            onClick={(e) => {
-              if (!liveOdooUrl) e.preventDefault();
-            }}
-            className={`inline-flex h-10 items-center border border-border-subtle px-4 text-sm text-muted ${
-              !liveOdooUrl ? "pointer-events-none opacity-40" : ""
-            }`}
-          >
-            Open in Odoo
-          </a>
-          <button
-            type="button"
-            disabled={!liveOdooUrl}
-            onClick={() => setShowIframePreview((v) => !v)}
-            className="h-10 border border-border-subtle px-4 text-sm text-muted disabled:opacity-40"
-          >
-            {showIframePreview ? "Hide preview" : "Toggle preview"}
-          </button>
-          <button
-            type="button"
-            disabled={!proxyPreviewUrl}
-            onClick={() => {
-              setShowIframePreview(true);
-              setPreviewKey((k) => k + 1);
-              setNotice("Preview refreshed. Open in Odoo remains authoritative.");
-            }}
-            className="h-10 border border-border-subtle px-4 text-sm text-muted disabled:opacity-40"
-          >
-            Refresh preview
-          </button>
         </Card>
-        <p className="mt-2 text-xs text-muted">
-          Preview uses a same-origin proxy (strips X-Frame-Options).{" "}
-          <strong className="text-muted">Open in Odoo is authoritative</strong> — the iframe
-          is best-effort. Save defaults to <strong>inherit</strong> extension views.
-          Stock forms write additive x_* only (no full form replace). Duplicate
-          Send/Print/Pay or Other Info → <strong>Fix duplicate chrome</strong> (keeps
-          TEST GROUP when possible) or <strong>Unlink designer inherit</strong>.
-          {archOverride ? " Arch override active — Save will POST raw inherit arch." : ""}
-        </p>
-        {error ? <ErrorNotice message={error} className="mt-4" /> : null}
-        {notice ? (
-          <Callout variant="info" title="Notice" className="mt-4">
-            {notice}
-          </Callout>
-        ) : null}
-
-        {viewType === "form" && model && (
-          <details className="mt-6 rounded border border-border-subtle bg-surface-muted/30 p-3" data-testid="designer-form-preview">
-            <summary className="cursor-pointer text-sm font-semibold text-accent">
-              Optional Odoo-style preview
-            </summary>
-            <p className="mt-2 text-xs text-muted">
-              Edit groups and drop fields in <strong>Form layout</strong> below — that is the
-              primary editor. This preview mirrors the same structure and is optional.
-            </p>
-            <div
-              className="mt-4 grid gap-4 lg:grid-cols-[1fr_240px]"
-              data-testid="designer-form-layout"
-            >
-            <div>
-              <OdooPreviewScope showBanner previewVars={previewTheme?.preview_vars}>
-                <OdooControlPanel
-                  breadcrumb={`View Designer › ${title || model}`}
-                  activeView="form"
-                  availableViews={["form"]}
-                  showSearchPlaceholder
-                />
-                <FormCanvas
-              title={title || model}
-              statusbar={statusbarField || null}
-              statusbarVisible={statusbarVisible || null}
-              groupLayout={
-                formChildren.filter((c) => c.kind === "group").length >= 2
-                  ? "two-column"
-                  : "stack"
-              }
-              headerButtons={headerButtons.map((b) => ({
-                id: b.id,
-                string: b.string || "Button",
-              }))}
-              smartButtons={buttonBox.map((b) => ({ id: b.id, string: b.string }))}
-              flashId={canvasFlashId}
-              groups={formChildren
-                .filter((c): c is DesignerGroup => c.kind === "group")
-                .map((g) => ({
-                  id: g.id,
-                  string: g.string,
-                  fields: g.children
-                    .filter((n): n is DesignerField => n.kind === "field")
-                    .map((f) => ({
-                      id: f.id,
+      }
+      canvas={
+        <DesignerLiveCanvas
+          mode={canvasMode}
+          onModeChange={setCanvasMode}
+          liveUrl={proxyPreviewUrl}
+          iframeRef={previewIframeRef}
+          iframeKey={previewKey}
+          liveFailed={liveFailed}
+          onLiveError={() => setLiveFailed(true)}
+          onRefreshLive={() => {
+            setLiveFailed(false);
+            setCanvasMode("live");
+            setPreviewKey((k) => k + 1);
+            setNotice("Preview refreshed. Open in Odoo remains authoritative.");
+          }}
+          openInOdooUrl={liveOdooUrl}
+          structural={structuralCanvas}
+        />
+      }
+      rail={
+        <DesignerToolsRail
+          value={railTab}
+          onValueChange={setRailTab}
+          tabs={[
+            {
+              id: "fields",
+              label: "Fields",
+              content: (
+                <div className="space-y-3">
+                  <FieldPalette
+                    fields={fields.map((f) => ({
                       name: f.name,
-                      string: resolveFieldLabel(f.name, f.string, fields),
-                    })),
-                }))}
-              notebooks={formChildren
-                .filter((c): c is DesignerNotebook => c.kind === "notebook")
-                .map((nb) => ({
-                  id: nb.id,
-                  pages: nb.pages.map((p) => ({
-                    id: p.id,
-                    string: p.string,
-                    fields: p.children
-                      .filter((n): n is DesignerField => n.kind === "field")
-                      .map((f) => ({
-                        id: f.id,
-                        name: f.name,
-                        string: resolveFieldLabel(f.name, f.string, fields),
-                      })),
-                  })),
-                }))}
-              selectedFieldId={
-                selected?.scope === "form-group" ? selected.fieldId : null
-              }
-              onSelectField={(fieldId) => {
-                for (const child of formChildren) {
-                  if (child.kind !== "group") continue;
-                  if (child.children.some((n) => n.kind === "field" && n.id === fieldId)) {
-                    setSelected({
-                      scope: "form-group",
-                      groupId: child.id,
-                      fieldId,
-                    });
-                    break;
-                  }
-                }
-              }}
-              onMoveField={(fieldId, dir) => {
-                setFormChildren((children) =>
-                  children.map((child) => {
-                    if (child.kind !== "group") return child;
-                    const idx = child.children.findIndex(
-                      (n) => n.kind === "field" && n.id === fieldId,
-                    );
-                    if (idx < 0) return child;
-                    const next = idx + dir;
-                    if (next < 0 || next >= child.children.length) return child;
-                    const copy = [...child.children];
-                    const [item] = copy.splice(idx, 1);
-                    copy.splice(next, 0, item);
-                    return { ...child, children: copy };
-                  }),
-                );
-              }}
-              onDropFieldName={(groupId, fieldName) => {
-                const meta = fields.find((f) => f.name === fieldName);
-                const node: DesignerField = {
-                  kind: "field",
-                  id: uid("f"),
-                  name: fieldName,
-                  string: meta?.field_description,
-                };
-                setFormChildren((children) =>
-                  children.map((child) => {
-                    if (child.kind === "group" && child.id === groupId) {
-                      if (child.children.some((n) => n.kind === "field" && n.name === fieldName)) {
-                        return child;
-                      }
-                      return { ...child, children: [...child.children, node] };
-                    }
-                    return child;
-                  }),
-                );
-                announceAction(
-                  `Added ${meta?.field_description || fieldName} to group.`,
-                  groupId,
-                  "drop",
-                );
-              }}
-              onDropFieldOnPage={(notebookId, pageId, fieldName) => {
-                dropFieldOnPage(notebookId, pageId, fieldName);
-              }}
-            />
-              </OdooPreviewScope>
-            </div>
-            <aside className="rounded-md border border-border-subtle bg-surface-raised p-3 shadow-subtle">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-muted">
-                Field properties
-              </p>
-              <p className="mt-2 text-xs leading-relaxed text-muted">
-                Select a field here or in Form layout. The properties rail on the
-                right is the editor — label, help, modifiers, widget, and related path.
-              </p>
-            </aside>
-            </div>
-          </details>
-        )}
-
-        {viewType === "kanban" && model && (
-          <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_240px]">
-            <div>
-              <h2 className="mb-2 text-sm font-semibold text-accent">
-                Kanban card preview
-              </h2>
-              <PreviewThemeScope previewVars={previewTheme?.preview_vars}>
-              <KanbanCardPreview
-                title={title || model}
-                groupBy={kanbanGroupBy || null}
-                fields={kanbanFields.map((f) => ({
-                  id: f.id,
-                  name: f.name,
-                  string: f.string,
-                }))}
-                selectedFieldId={
-                  selected?.scope === "kanban" ? selected.fieldId : null
-                }
-                onSelectField={(fieldId) =>
-                  setSelected({ scope: "kanban", fieldId })
-                }
-                onMoveField={moveKanbanField}
-                onRemoveField={(fieldId) => {
-                  setKanbanFields((cols) => cols.filter((c) => c.id !== fieldId));
-                  setSelected((sel) =>
-                    sel?.scope === "kanban" && sel.fieldId === fieldId ? null : sel,
-                  );
-                }}
-                onDropFieldName={(fieldName) => addKanbanField(fieldName)}
-              />
-              </PreviewThemeScope>
-              <p className="mt-2 text-xs text-muted">
-                Drag fields from the field list below (or click a field to add).
-              </p>
-            </div>
-            <PropsInspector title="Card field">
-              {selectedField && selected?.scope === "kanban" ? (
-                <div className="space-y-3 text-sm text-ink">
-                  <p className="font-mono text-accent">
-                    {selectedField.name}
-                  </p>
-                  <p className="text-xs text-[var(--odoo-muted)]">
-                    {selectedField.string || "No label from field metadata"}
-                  </p>
-                  <p className="text-[11px] text-[var(--odoo-muted)]">
-                    Card label show/hide (nolabel) is not in our kanban arch helpers
-                    yet — values render in order only.
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      className="text-xs text-accent"
-                      onClick={() => moveKanbanField(selectedField.id, -1)}
-                    >
-                      Move up
-                    </button>
-                    <button
-                      type="button"
-                      className="text-xs text-accent"
-                      onClick={() => moveKanbanField(selectedField.id, 1)}
-                    >
-                      Move down
-                    </button>
-                  </div>
+                      ttype: f.ttype,
+                      label: f.field_description || undefined,
+                    }))}
+                    onDragStart={(name) => setDragField(name)}
+                  />
+                  {(viewType === "form" || viewType === "kanban") && (
+                    <NicheWidgetPalette
+                      widgets={nicheWidgets}
+                      colorPalette={colorPalette}
+                      onPick={(w) => void addNicheWidget(w)}
+                    />
+                  )}
                 </div>
+              ),
+            },
+            {
+              id: "properties",
+              label: "Properties",
+              content: (
+                <div data-testid="designer-props-rail">
+                  {fieldInspector}
+                </div>
+              ),
+            },
+            {
+              id: "structure",
+              label: "Structure",
+              content: (
+                <div className="space-y-3 text-sm">
+                  <p className="text-xs text-muted">
+                    Add groups and pages here. Drag fields onto the layout canvas — not gray
+                    boxes. Power layout controls stay in Advanced.
+                  </p>
+                  {viewType === "form" ? (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={addGroup}
+                        className="rounded-md border border-border-subtle px-3 py-1.5 text-xs text-ink"
+                      >
+                        + Group
+                      </button>
+                      <button
+                        type="button"
+                        onClick={addNotebook}
+                        className="rounded-md border border-border-subtle px-3 py-1.5 text-xs text-ink"
+                      >
+                        + Notebook
+                      </button>
+                    </div>
+                  ) : null}
+                  <ul className="space-y-1 text-xs text-muted">
+                    {formChildren.map((child) => (
+                      <li key={child.id} className="rounded border border-border-subtle px-2 py-1">
+                        {child.kind === "group"
+                          ? `Group · ${child.string || "untitled"}`
+                          : `Notebook · ${child.pages.length} pages`}
+                      </li>
+                    ))}
+                    {formChildren.length === 0 ? (
+                      <li>No groups yet. Add a group, then drop fields on the canvas.</li>
+                    ) : null}
+                  </ul>
+                </div>
+              ),
+            },
+            {
+              id: "overlay",
+              label: "Overlay",
+              content: proxyPreviewUrl ? (
+                <OverlayEditor
+                  iframeRef={previewIframeRef}
+                  connectionId={connectionId}
+                  model={model}
+                  viewType={viewType}
+                  fields={fields}
+                  embedded
+                  onSaved={({ snapshotId, viewId }) => {
+                    if (snapshotId) setLastSnapshotId(snapshotId);
+                    setPreviewKey((k) => k + 1);
+                    setNotice(
+                      viewId
+                        ? `Overlay saved inherit view #${viewId}. Preview reloaded.`
+                        : "Overlay saved — preview reloaded.",
+                    );
+                    void refreshSnapshots();
+                  }}
+                />
               ) : (
-                <p className="text-xs text-[var(--odoo-muted)]">
-                  Select a card field, or drop from the field list below. Set group-by above.
+                <p className="text-xs text-muted">
+                  Load a model to edit the live preview with overlay operations.
                 </p>
-              )}
-            </PropsInspector>
-          </div>
-        )}
+              ),
+            },
+            {
+              id: "advanced",
+              label: "Advanced",
+              content: (
+                <div className="space-y-3" data-testid="designer-advanced-rail">
+                  <p className="text-xs text-muted">
+                    XPath inherit and arch override. Default Save is inherit. Completeness ≠ Cert ≠
+                    Autopilot.
+                  </p>
+                  <XPathInheritPanel
+                    expr={xpathExpr}
+                    position={xpathPosition}
+                    bodyXml={xpathBody}
+                    previewArch={xpathArchPreview}
+                    issues={xpathIssues}
+                    suggestedExpr={xpathSuggested}
+                    defaultInjectExpr={xpathDefaultInject}
+                    matchCount={xpathMatchCount}
+                    blocking={xpathBlocking}
+                    busy={busy}
+                    model={model}
+                    hasOverride={Boolean(archOverride)}
+                    onExprChange={(value) => {
+                      setXpathExpr(value);
+                      setXpathBlocking(false);
+                    }}
+                    onPositionChange={setXpathPosition}
+                    onBodyChange={setXpathBody}
+                    onPreview={() => void runXpathPreview()}
+                    onUseNamedLocator={(value) => {
+                      setXpathExpr(value);
+                      setXpathBlocking(false);
+                      setNotice("Switched to a named locator. Preview again before save.");
+                    }}
+                    onUseAsOverride={() => {
+                      setArch(xpathArchPreview);
+                      setArchOverride(xpathArchPreview);
+                      setNotice("Arch override set from XPath preview. Save will use inherit arch.");
+                    }}
+                    onSave={() => void onSaveXpathInherit()}
+                    onClearOverride={() => {
+                      setArchOverride(null);
+                      setNotice("Cleared arch override — Save uses canvas spec again.");
+                    }}
+                  />
+                </div>
+              ),
+            },
+          ]}
+        />
+      }
+      extras={
+        <>
+        <Callout variant="info" title="Production defaults" className="mx-4 mt-4 md:mx-6">
+          <details>
+            <summary className="cursor-pointer text-sm text-muted">
+              Show save / button / preview notes
+            </summary>
+            <ul className="mt-2 list-disc space-y-1 pl-4 text-sm">
+              <li>
+                Save strategy defaults to <strong>Inherit</strong> (extension view) — safe for
+                installed modules.
+              </li>
+              <li>
+                On stock models (e.g. <code>account.move</code>), Inherit saves only{" "}
+                <strong>new custom fields/groups</strong> — it does not re-emit Send/Print/Pay or
+                notebook tabs (that caused duplicates on Bills).
+              </li>
+              <li>
+                Vendor bills open as <strong>Bills</strong> in Odoo; customer invoices as{" "}
+                <strong>Invoices</strong> — same model <code>account.move</code>.
+              </li>
+              <li>
+                <strong>Overwrite</strong> requires confirm and snapshots the primary view first.
+              </li>
+              <li>
+                Buttons bind to real <code>ir.actions.server</code> /{" "}
+                <code>ir.actions.act_window</code> (type=action). Python object methods need Option A.
+              </li>
+              <li>
+                Prefer <strong>Open in Odoo</strong> for truth; iframe preview is best-effort via
+                authenticated proxy.
+              </li>
+              <li>
+                Create field requires the confirm phrase and injects via inherit xpath.
+              </li>
+            </ul>
+          </details>
+        </Callout>
 
         {(viewType === "calendar" ||
           viewType === "graph" ||
@@ -3866,14 +4101,14 @@ export default function DesignerPage() {
               form/list is unchanged — use the buttons below for reporting axes.
             </p>
             {viewType === "map" && (
-              <p className="mb-3 border border-[#c9a227]/40 bg-[#1a1810] px-3 py-2 text-xs text-[#e8d09f]">
+              <p className="mb-3 border border-warning/40 bg-warning-subtle px-3 py-2 text-xs text-warning">
                 Map views need a <code className="text-muted">res.partner</code>{" "}
                 many2one (<code className="text-muted">res_partner</code> attr).
                 Without a partner field, Odoo will not render the map.
               </p>
             )}
             {viewType === "gantt" && (
-              <p className="mb-3 border border-[#c9a227]/40 bg-[#1a1810] px-3 py-2 text-xs text-[#e8d09f]">
+              <p className="mb-3 border border-warning/40 bg-warning-subtle px-3 py-2 text-xs text-warning">
                 Gantt arch is Community-safe metadata, but the client often needs{" "}
                 <code className="text-muted">web_gantt</code> /{" "}
                 <code className="text-muted">project</code> (Enterprise or installed
@@ -3882,14 +4117,14 @@ export default function DesignerPage() {
               </p>
             )}
             {viewType === "cohort" && (
-              <p className="mb-3 border border-[#c9a227]/40 bg-[#1a1810] px-3 py-2 text-xs text-[#e8d09f]">
+              <p className="mb-3 border border-warning/40 bg-warning-subtle px-3 py-2 text-xs text-warning">
                 Cohort views are module/version gated. Arch can be saved via public RPC;
                 the UI may be unavailable without the cohort client module. Not an EE
                 live claim.
               </p>
             )}
             {viewType === "grid" && (
-              <p className="mb-3 border border-[#c9a227]/40 bg-[#1a1810] px-3 py-2 text-xs text-[#e8d09f]">
+              <p className="mb-3 border border-warning/40 bg-warning-subtle px-3 py-2 text-xs text-warning">
                 Grid/planning views are Enterprise-gated. Arch emission is supported; live
                 Open in Odoo requires EE modules on the instance.
               </p>
@@ -4175,7 +4410,7 @@ export default function DesignerPage() {
                       title={reason ?? undefined}
                       className={
                         !allowed
-                          ? "cursor-not-allowed text-[#4a5c54] opacity-50"
+                          ? "cursor-not-allowed text-muted opacity-50"
                           : bindMode === mode
                             ? "text-muted"
                             : "text-muted"
@@ -4191,7 +4426,7 @@ export default function DesignerPage() {
                 })}
               </div>
               {!bindModeSupported(connection, bindMode) && (
-                <p className="mt-2 w-full text-[11px] text-[#e8d09f]">
+                <p className="mt-2 w-full text-[11px] text-warning">
                   {bindModeUnsupportedReason(connection, bindMode)}
                 </p>
               )}
@@ -4494,40 +4729,8 @@ export default function DesignerPage() {
           </div>
         )}
 
-        {showIframePreview && proxyPreviewUrl && (
-          <div className="mt-4 border border-border-subtle bg-surface">
-            <OverlayEditor
-              iframeRef={previewIframeRef}
-              connectionId={connectionId}
-              model={model}
-              viewType={viewType}
-              fields={fields}
-              onSaved={({ snapshotId, viewId }) => {
-                if (snapshotId) setLastSnapshotId(snapshotId);
-                setPreviewKey((k) => k + 1);
-                setNotice(
-                  viewId
-                    ? `Overlay saved inherit view #${viewId}. Preview reloaded.`
-                    : "Overlay saved — preview reloaded.",
-                );
-                void refreshSnapshots();
-              }}
-            />
-            <p className="border-b border-border-subtle px-3 py-2 text-xs text-muted">
-              Iframe preview is best-effort — use Open in Odoo for the authoritative client.
-            </p>
-            <iframe
-              ref={previewIframeRef}
-              key={previewKey}
-              title="Odoo live preview"
-              src={proxyPreviewUrl}
-              className="h-72 w-full"
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-            />
-          </div>
-        )}
-
-        <div className="mt-8 grid gap-6 lg:grid-cols-[220px_1fr_280px]">
+        <Disclosure title="Advanced layout & field inject" testId="designer-advanced-layout" className="mx-4 mb-4 md:mx-6">
+        <div className="grid gap-6 lg:grid-cols-[220px_1fr_280px]">
           <aside className="border border-border-subtle bg-surface-muted/70 p-4">
             <p className="text-xs uppercase tracking-wide text-muted">Fields</p>
             <div className="mt-3 space-y-2 border border-border-subtle p-2 text-xs">
@@ -4596,7 +4799,7 @@ export default function DesignerPage() {
                 connection,
                 injectStrategyCapabilityId(injectStrategy),
               ) && (
-                <p className="text-[11px] text-[#e8d09f]">
+                <p className="text-[11px] text-warning">
                   {connectionUnsupportedReason(
                     connection,
                     injectStrategyCapabilityId(injectStrategy),
@@ -4605,7 +4808,7 @@ export default function DesignerPage() {
               )}
               {injectStrategy === "mutate" &&
                 connectionSupports(connection, "view_inject_mutate") && (
-                  <p className="text-[11px] text-[#e8d09f]">
+                  <p className="text-[11px] text-warning">
                     Mutate overwrites parent view arch — requires advanced confirm.
                   </p>
                 )}
@@ -4638,7 +4841,7 @@ export default function DesignerPage() {
                 Create + inject
               </button>
             </div>
-            <ul className="mt-3 max-h-[28rem] space-y-1 overflow-auto text-sm" data-testid="designer-field-list">
+            <ul className="mt-3 max-h-[28rem] space-y-1 overflow-auto text-sm" data-testid="designer-field-list-advanced">
               {fields.map((f) => (
                 <li
                   key={f.id}
@@ -4769,7 +4972,7 @@ export default function DesignerPage() {
 
             {viewType === "form" && (
               <div className="mb-4 space-y-3">
-                <div className="flex flex-wrap gap-4 border border-dashed border-[#4a3550] p-3 text-sm text-muted">
+                <div className="flex flex-wrap gap-4 border border-dashed border-border-subtle p-3 text-sm text-muted">
                   <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -4803,7 +5006,7 @@ export default function DesignerPage() {
                     Can Duplicate
                   </label>
                 </div>
-                <div className="grid gap-3 border border-dashed border-[#4a3550] p-3 sm:grid-cols-2">
+                <div className="grid gap-3 border border-dashed border-border-subtle p-3 sm:grid-cols-2">
                   <label className="text-xs text-muted">
                     Statusbar field (selection)
                     <select
@@ -4832,7 +5035,7 @@ export default function DesignerPage() {
                     />
                   </label>
                 </div>
-                <div className="min-h-12 border border-dashed border-[#4a3550] p-3">
+                <div className="min-h-12 border border-dashed border-border-subtle p-3">
                   <p className="mb-2 text-xs uppercase text-muted">Header buttons</p>
                   <ul className="space-y-1">
                     {headerButtons.map((b) => (
@@ -4840,7 +5043,7 @@ export default function DesignerPage() {
                         key={b.id}
                         className="flex items-center justify-between bg-surface px-2 py-1.5 text-sm"
                       >
-                        <span className="text-[#c9b89f]">
+                        <span className="text-ink">
                           {b.string}{" "}
                           <span className="font-mono text-xs text-muted">
                             type={b.type || "action"} name={b.name || "?"}
@@ -4864,7 +5067,7 @@ export default function DesignerPage() {
                     )}
                   </ul>
                 </div>
-                <div className="min-h-12 border border-dashed border-[#4a3550] p-3">
+                <div className="min-h-12 border border-dashed border-border-subtle p-3">
                   <p className="mb-2 text-xs uppercase text-muted">Smart button box</p>
                   <ul className="space-y-1">
                     {buttonBox.map((b) => (
@@ -4872,7 +5075,7 @@ export default function DesignerPage() {
                         key={b.id}
                         className="flex items-center justify-between bg-surface px-2 py-1.5 text-sm"
                       >
-                        <span className="text-[#c9b89f]">
+                        <span className="text-ink">
                           {b.string}{" "}
                           <span className="font-mono text-xs text-muted">
                             {b.icon || "fa-list"} · action {b.name || "?"}
@@ -4911,7 +5114,7 @@ export default function DesignerPage() {
                         e.preventDefault();
                         dropOnGroup(child.id, e);
                       }}
-                      className={`mb-4 min-h-24 border border-dashed border-[#4a3550] p-3 ${
+                      className={`mb-4 min-h-24 border border-dashed border-border-subtle p-3 ${
                         canvasFlashId === child.id ? "ring-2 ring-accent" : ""
                       }`}
                     >
@@ -4953,7 +5156,7 @@ export default function DesignerPage() {
                               }
                             >
                               {f.kind === "button" ? (
-                                <span className="text-[#c9b89f]">
+                                <span className="text-ink">
                                   Btn · {f.string}{" "}
                                   <span className="font-mono text-xs text-muted">
                                     {f.type || "action"}:{f.name || "?"}
@@ -5020,7 +5223,7 @@ export default function DesignerPage() {
                           e.preventDefault();
                           dropOnPage(child.id, page.id, e);
                         }}
-                        className={`mb-3 min-h-20 border border-dashed border-[#4a3550] p-3 ${
+                        className={`mb-3 min-h-20 border border-dashed border-border-subtle p-3 ${
                           canvasFlashId === page.id ? "ring-2 ring-accent" : ""
                         }`}
                       >
@@ -5067,7 +5270,7 @@ export default function DesignerPage() {
                                 }
                               >
                                 {f.kind === "button" ? (
-                                  <span className="text-[#c9b89f]">Btn · {f.string}</span>
+                                  <span className="text-ink">Btn · {f.string}</span>
                                 ) : (
                                   <>
                                     <span className="text-muted">
@@ -5101,7 +5304,7 @@ export default function DesignerPage() {
               })}
 
             {viewType === "list" && (
-              <div className="min-h-40 border border-dashed border-[#4a3550] p-3">
+              <div className="min-h-40 border border-dashed border-border-subtle p-3">
                 <div className="mb-3 flex flex-wrap gap-4 text-sm text-muted">
                   <label className="flex items-center gap-2">
                     <input
@@ -5247,7 +5450,7 @@ export default function DesignerPage() {
             )}
 
             {viewType === "search" && (
-              <div className="min-h-40 border border-dashed border-[#4a3550] p-3">
+              <div className="min-h-40 border border-dashed border-border-subtle p-3">
                 <p className="mb-2 text-xs uppercase text-muted">
                   Search fields (click a field to add)
                 </p>
@@ -5271,7 +5474,7 @@ export default function DesignerPage() {
                 {searchFilters.length > 0 && (
                   <ul className="mb-3 space-y-3 text-xs text-muted">
                     {searchFilters.map((f) => (
-                      <li key={f.id} className="border border-[#1e2f29] p-2">
+                      <li key={f.id} className="border border-border-subtle p-2">
                         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                           <input
                             value={f.string}
@@ -5319,7 +5522,7 @@ export default function DesignerPage() {
                     ))}
                   </ul>
                 )}
-                <div className="mb-3 border border-[#1e2f29] p-2">
+                <div className="mb-3 border border-border-subtle p-2">
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <p className="text-xs uppercase text-muted">Group-by filters</p>
                     <button
@@ -5444,7 +5647,7 @@ export default function DesignerPage() {
 
             {viewType === "kanban" && (
               <div className="min-h-40 space-y-3">
-                <div className="flex flex-wrap gap-4 border border-dashed border-[#4a3550] p-3 text-sm text-muted">
+                <div className="flex flex-wrap gap-4 border border-dashed border-border-subtle p-3 text-sm text-muted">
                   <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -5500,7 +5703,7 @@ export default function DesignerPage() {
                     onDropFieldName={(fieldName) => addKanbanField(fieldName)}
                   />
                 )}
-                <div className="border border-[#4a3550] bg-surface/80 p-3">
+                <div className="border border-border-subtle bg-surface p-3">
                   <p className="mb-2 text-xs uppercase tracking-wide text-muted">
                     Card field order
                     {kanbanGroupBy ? (
@@ -5516,7 +5719,7 @@ export default function DesignerPage() {
                         className={`flex items-center justify-between gap-2 px-2 py-1.5 text-sm ${
                           selected?.scope === "kanban" && selected.fieldId === f.id
                             ? "bg-surface-muted ring-1 ring-accent"
-                            : "bg-[#0c1210]"
+                            : "bg-surface"
                         }`}
                       >
                         <button
@@ -5584,54 +5787,9 @@ export default function DesignerPage() {
           </section>
 
           <aside className="space-y-4">
-            <div
-              className="rounded-md border border-border-subtle bg-surface-raised shadow-subtle"
-              data-testid="designer-props-rail"
-            >
-              <div className="border-b border-border-subtle px-4 py-3">
-                <p className="text-[11px] font-medium uppercase tracking-wide text-muted">
-                  Field properties
-                </p>
-              </div>
-              <div className="p-4">{fieldInspector}</div>
-            </div>
-
-            <XPathInheritPanel
-              expr={xpathExpr}
-              position={xpathPosition}
-              bodyXml={xpathBody}
-              previewArch={xpathArchPreview}
-              issues={xpathIssues}
-              suggestedExpr={xpathSuggested}
-              defaultInjectExpr={xpathDefaultInject}
-              matchCount={xpathMatchCount}
-              blocking={xpathBlocking}
-              busy={busy}
-              model={model}
-              hasOverride={Boolean(archOverride)}
-              onExprChange={(value) => {
-                setXpathExpr(value);
-                setXpathBlocking(false);
-              }}
-              onPositionChange={setXpathPosition}
-              onBodyChange={setXpathBody}
-              onPreview={() => void runXpathPreview()}
-              onUseNamedLocator={(value) => {
-                setXpathExpr(value);
-                setXpathBlocking(false);
-                setNotice("Switched to a named locator. Preview again before save.");
-              }}
-              onUseAsOverride={() => {
-                setArch(xpathArchPreview);
-                setArchOverride(xpathArchPreview);
-                setNotice("Arch override set from XPath preview. Save will use inherit arch.");
-              }}
-              onSave={() => void onSaveXpathInherit()}
-              onClearOverride={() => {
-                setArchOverride(null);
-                setNotice("Cleared arch override — Save uses canvas spec again.");
-              }}
-            />
+            <p className="text-xs text-muted">
+              Field properties and XPath inherit live in the right-hand Properties and Advanced tabs.
+            </p>
 
             <div className="border border-border-subtle bg-surface p-4">
               <p className="text-xs uppercase tracking-wide text-muted">
@@ -5684,6 +5842,7 @@ export default function DesignerPage() {
             </div>
           </aside>
         </div>
+        </Disclosure>
       <ConfirmDialog
         open={confirmOverwriteOpen}
         title="Overwrite primary view"
@@ -5734,6 +5893,8 @@ export default function DesignerPage() {
           })
         }
       />
-    </div>
+        </>
+      }
+    />
   );
 }

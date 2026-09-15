@@ -144,7 +144,12 @@ export function OdooField({ field, highlighted, onClick }: OdooFieldProps) {
 
   if (onClick) {
     return (
-      <button type="button" className="odoo-field-row w-full text-left" onClick={onClick}>
+      <button
+        type="button"
+        className="odoo-field-row w-full text-left"
+        onClick={onClick}
+        aria-label={`${field.string || field.name} ${field.name}`}
+      >
         {body}
       </button>
     );

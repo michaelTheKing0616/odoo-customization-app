@@ -50,6 +50,8 @@ type Props = {
   onSaved: (detail: { snapshotId?: string | null; viewId?: number | null }) => void;
   /** E2E harness only — synchronous selection without waiting for primary fetch. */
   selectionOverride?: { fieldName: string; xpath: string } | null;
+  /** Hide the standalone “open Designer” callout when already on Designer. */
+  embedded?: boolean;
 };
 
 const NOT_V1 = [
@@ -91,6 +93,7 @@ export function OverlayEditor({
   fields,
   onSaved,
   selectionOverride,
+  embedded = false,
 }: Props) {
   const vt = normalizeViewType(viewType);
   const operations = useMemo(() => operationsForView(viewType), [viewType]);
@@ -425,27 +428,32 @@ export function OverlayEditor({
   const selectedCandidate = candidates.find((c) => c.xpath === activeXpath);
 
   return (
-    <div className="space-y-3 border-b border-border-subtle p-3" data-testid="overlay-editor">
+    <div
+      className={embedded ? "space-y-3" : "space-y-3 border-b border-border-subtle p-3"}
+      data-testid="overlay-editor"
+    >
       <Callout variant="info" title="Live overlay">
-        Click a field in the preview, choose an operation, review xpath, then save as an inherit
+        Click a field in the live preview, choose an operation, review xpath, then save as an inherit
         view (snapshot-first). The frame reloads after save. Add page and add group work without a
         field selection.
       </Callout>
 
-      <div className="rounded-md border border-border-subtle bg-surface-muted p-3 text-sm">
-        <p className="font-medium text-ink">Not in this overlay — use View Designer</p>
-        <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
-          {NOT_V1.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
-        <Link
-          href={`/connections/${connectionId}/designer?model=${encodeURIComponent(model)}`}
-          className="mt-2 inline-block text-accent hover:underline"
-        >
-          Open View Designer
-        </Link>
-      </div>
+      {embedded ? null : (
+        <div className="rounded-md border border-border-subtle bg-surface-muted p-3 text-sm">
+          <p className="font-medium text-ink">Not in this overlay — use View Designer</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
+            {NOT_V1.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+          <Link
+            href={`/connections/${connectionId}/designer?model=${encodeURIComponent(model)}`}
+            className="mt-2 inline-block text-accent hover:underline"
+          >
+            Open View Designer
+          </Link>
+        </div>
+      )}
 
       <OverlayHud
         fieldName={activeField}

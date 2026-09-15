@@ -1,6 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { DesignerStudioShell } from "@/components/designer/DesignerStudioShell";
+import { DesignerLiveCanvas } from "@/components/designer/DesignerLiveCanvas";
+import { DesignerToolsRail, type DesignerRailTabId } from "@/components/designer/DesignerToolsRail";
+import { createRef, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { FieldPalette } from "@/components/designer/FieldPalette";
@@ -163,6 +166,8 @@ function DesignerHarnessInner() {
   const [kanbanFields, setKanbanFields] = useState(SAMPLE_KANBAN_FIELDS);
   const [listColumns, setListColumns] = useState(SAMPLE_LIST_COLUMNS);
   const [formGroups, setFormGroups] = useState(SAMPLE_FORM_GROUPS);
+  const [railTab, setRailTab] = useState<DesignerRailTabId>("fields");
+  const iframeRef = createRef<HTMLIFrameElement>();
 
   const title = "Ticket";
   const model = "x_ticket";
@@ -197,354 +202,245 @@ function DesignerHarnessInner() {
     return <p>E2E harness disabled</p>;
   }
 
-  return (
-    <main
-      className="odoo-shell min-h-screen px-6 py-10 text-[#f4eef2]"
-      data-testid="designer-harness"
-      data-mode={mode}
-    >
-      <div className="mx-auto max-w-7xl">
-        <h1 className="font-[family-name:var(--font-display)] text-3xl text-[#faf6f9]">
-          View designer
-        </h1>
-        <p className="mt-1 text-sm text-[#8f7a88]" data-testid="harness-connection">
-          {MOCK_CONNECTION.name} · drag fields onto the canvas · saves real{" "}
-          <code className="text-[#c9a9c0]">ir.ui.view</code> arch
+  const propertiesPanel = (
+    <PropsInspector title="Field properties">
+      {selectedMeta ? (
+        <div className="space-y-3 text-sm text-ink">
+          <p className="font-mono text-accent">{selectedMeta.name}</p>
+          <p className="text-xs text-muted">{selectedMeta.string || "No label"}</p>
+        </div>
+      ) : (
+        <p className="text-xs text-muted">
+          Select a field on the canvas, or drag from the palette.
         </p>
-        <VersionAwarenessBanner capabilities={MOCK_CONNECTION.capabilities} />
+      )}
+    </PropsInspector>
+  );
 
-        <div className="mt-6 flex flex-wrap items-end gap-3">
-          <label className="text-sm">
-            <span className="text-[#a8909e]">Model</span>
-            <input
-              readOnly
-              value={model}
-              className="mt-1 block w-64 border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
-              data-testid="harness-model"
-            />
-          </label>
-          <label className="text-sm">
-            <span className="text-[#a8909e]">View type</span>
-            <select
-              value={mode}
-              onChange={() => undefined}
-              disabled
-              className="mt-1 block border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
-              data-testid="harness-view-type"
-            >
-              <option value="form">form</option>
-              <option value="list">list</option>
-              <option value="kanban">kanban</option>
-              <option value="search">search</option>
-              <option value="calendar">calendar</option>
-              <option value="graph">graph</option>
-              <option value="pivot">pivot</option>
-              <option value="map">map</option>
-              <option value="activity">activity</option>
-              <option value="gantt">gantt</option>
-              <option value="cohort">cohort</option>
-            </select>
-          </label>
-          {mode === "kanban" && (
+  return (
+    <main className="min-h-screen bg-background text-ink" data-testid="designer-harness" data-mode={mode}>
+      <DesignerStudioShell
+        testId="designer-studio-harness"
+        className="mx-0 mt-0 min-h-screen"
+        title="View designer"
+        description={`${MOCK_CONNECTION.name} · drag fields onto the canvas · saves inherit views`}
+        sessionBar={
+          <p className="text-xs text-muted" data-testid="harness-connection">
+            {MOCK_CONNECTION.name} · drag fields onto the canvas · saves real{" "}
+            <code className="text-accent">ir.ui.view</code> arch
+          </p>
+        }
+        toolbar={
+          <div className="flex flex-wrap items-end gap-3">
             <label className="text-sm">
-              <span className="text-[#a8909e]">Group by</span>
+              <span className="text-muted">Model</span>
+              <input
+                readOnly
+                value={model}
+                className="mt-1 block w-64 border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
+                data-testid="harness-model"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="text-muted">View type</span>
               <select
-                value="x_stage"
+                value={mode}
+                onChange={() => undefined}
                 disabled
-                className="mt-1 block border border-[#3d2a38] bg-[#0c090b] px-3 py-2 font-mono text-sm"
-                data-testid="harness-groupby"
+                className="mt-1 block border border-border-subtle bg-surface px-3 py-2"
+                data-testid="harness-view-type"
               >
-                <option value="x_stage">x_stage · selection</option>
+                <option value="form">form</option>
+                <option value="list">list</option>
+                <option value="kanban">kanban</option>
               </select>
             </label>
-          )}
-          <label className="text-sm">
-            <span className="text-[#a8909e]">Title</span>
-            <input
-              readOnly
-              value={title}
-              className="mt-1 block w-48 border border-[#3d2a38] bg-[#0c090b] px-3 py-2"
-            />
-          </label>
-          <button
-            type="button"
-            className="h-10 bg-[#714B67] px-5 text-sm font-semibold text-white"
-          >
-            Save to Odoo
-          </button>
-          <a
-            href="#"
-            className="inline-flex h-10 items-center border border-[#c9a9c0] px-4 text-sm text-[#c9a9c0]"
-          >
-            Open in Odoo
-          </a>
-        </div>
-
-        {mode === "form" && (
-          <div
-            className="mt-6 grid gap-4 lg:grid-cols-[200px_1fr_240px]"
-            data-testid="designer-form-layout"
-          >
-            <div>
-              <FieldPalette fields={SAMPLE_PALETTE} />
-              <NicheWidgetPalette
-                widgets={MOCK_NICHE_WIDGETS}
-                colorPalette={MOCK_COLOR_PALETTE}
-                onPick={() => undefined}
-              />
-            </div>
-            <div>
-              <h2 className="mb-2 text-sm font-semibold text-[var(--odoo-primary-light)]">
-                Odoo-style canvas
-              </h2>
-              <OdooPreviewScope showBanner previewVars={MOCK_PREVIEW_VARS}>
-              <FormCanvas
-                title={title}
-                statusbar="x_stage"
-                statusbarVisible="new,in_progress,done"
-                groupLayout="two-column"
-                headerButtons={[
-                  { id: "confirm", string: "Confirm", variant: "primary" },
-                  { id: "cancel", string: "Cancel", variant: "secondary" },
-                ]}
-                smartButtons={[
-                  { id: "sb1", string: "Orders", count: 3 },
-                  { id: "sb2", string: "Invoices", count: 1 },
-                ]}
-                groups={formGroups}
-                notebooks={[
-                  {
-                    id: "nb1",
-                    pages: [
-                      {
-                        id: "pg1",
-                        string: "Lines",
-                        fields: [{ id: "line1", name: "x_qty", string: "Qty" }],
-                      },
-                      {
-                        id: "pg2",
-                        string: "Notes",
-                        fields: [{ id: "note1", name: "x_notes", string: "Notes" }],
-                      },
-                    ],
-                  },
-                ]}
-                selectedFieldId={selectedFieldId}
-                onSelectField={setSelectedFieldId}
-                onMoveField={(fieldId, dir) => {
-                  setFormGroups((groups) =>
-                    groups.map((g) => ({
-                      ...g,
-                      fields: moveInList(g.fields, fieldId, dir),
-                    })),
-                  );
-                }}
-              />
-              </OdooPreviewScope>
-            </div>
-            <PropsInspector title="Field properties">
-              {selectedMeta ? (
-                <div className="space-y-3 text-sm text-[#1a1a1a]">
-                  <p className="font-mono text-[var(--odoo-primary)]">{selectedMeta.name}</p>
-                  <label className="flex items-center gap-2">
-                    <input type="checkbox" defaultChecked={false} readOnly />
-                    <span>Required</span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input type="checkbox" defaultChecked={false} readOnly />
-                    <span>Readonly</span>
-                  </label>
-                  <label className="block text-xs">
-                    Widget
-                    <input
-                      defaultValue=""
-                      readOnly
-                      className="mt-1 w-full border border-[var(--odoo-border)] px-2 py-1 font-mono text-xs"
+            {mode === "kanban" && (
+              <label className="text-sm">
+                <span className="text-muted">Group by</span>
+                <select
+                  value="x_stage"
+                  disabled
+                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
+                  data-testid="harness-groupby"
+                >
+                  <option value="x_stage">x_stage · selection</option>
+                </select>
+              </label>
+            )}
+            <button type="button" className="h-10 bg-accent px-5 text-sm font-semibold text-on-accent">
+              Save to Odoo
+            </button>
+          </div>
+        }
+        notices={<VersionAwarenessBanner capabilities={MOCK_CONNECTION.capabilities} />}
+        canvas={
+          mode === "form" ? (
+            <div data-testid="designer-form-layout">
+              <DesignerLiveCanvas
+                mode="structure"
+                onModeChange={() => undefined}
+                liveUrl={null}
+                iframeRef={iframeRef}
+                iframeKey={1}
+                structural={
+                  <OdooPreviewScope showBanner previewVars={MOCK_PREVIEW_VARS}>
+                    <FormCanvas
+                      title={title}
+                      statusbar="x_stage"
+                      statusbarVisible="new,in_progress,done"
+                      groupLayout="two-column"
+                      headerButtons={[
+                        { id: "confirm", string: "Confirm", variant: "primary" },
+                        { id: "cancel", string: "Cancel", variant: "secondary" },
+                      ]}
+                      smartButtons={[
+                        { id: "sb1", string: "Orders", count: 3 },
+                        { id: "sb2", string: "Invoices", count: 1 },
+                      ]}
+                      groups={formGroups}
+                      notebooks={[
+                        {
+                          id: "nb1",
+                          pages: [
+                            {
+                              id: "pg1",
+                              string: "Lines",
+                              fields: [{ id: "line1", name: "x_qty", string: "Qty" }],
+                            },
+                            {
+                              id: "pg2",
+                              string: "Notes",
+                              fields: [{ id: "note1", name: "x_notes", string: "Notes" }],
+                            },
+                          ],
+                        },
+                      ]}
+                      selectedFieldId={selectedFieldId}
+                      onSelectField={(id) => {
+                        setSelectedFieldId(id);
+                        setRailTab("properties");
+                      }}
+                      onMoveField={(fieldId, dir) => {
+                        setFormGroups((groups) =>
+                          groups.map((g) => ({
+                            ...g,
+                            fields: moveInList(g.fields, fieldId, dir),
+                          })),
+                        );
+                      }}
+                      onDropFieldName={(groupId, fieldName, index) => {
+                        setFormGroups((groups) =>
+                          groups.map((g) => {
+                            if (g.id !== groupId) return g;
+                            if (g.fields.some((f) => f.name === fieldName)) return g;
+                            const meta = SAMPLE_PALETTE.find((f) => f.name === fieldName);
+                            const next = [...g.fields];
+                            next.splice(index ?? next.length, 0, {
+                              id: `d-${fieldName}`,
+                              name: fieldName,
+                              string: meta?.label || fieldName,
+                            });
+                            return { ...g, fields: next };
+                          }),
+                        );
+                      }}
                     />
-                  </label>
-                </div>
-              ) : (
-                <p className="text-xs text-[var(--odoo-muted)]">
-                  Select a field on the canvas, or drag from the palette.
-                </p>
-              )}
-            </PropsInspector>
-          </div>
-        )}
-
-        {mode === "list" && (
-          <div
-            className="mt-6 grid gap-4 lg:grid-cols-[200px_1fr_240px]"
-            data-testid="designer-list-layout"
-          >
-            <FieldPalette fields={SAMPLE_PALETTE} />
-            <div>
-              <h2 className="mb-2 text-sm font-semibold text-[var(--odoo-primary-light)]">
-                List columns
-              </h2>
-              <OdooPreviewScope showBanner={false} previewVars={MOCK_PREVIEW_VARS}>
-                <OdooListView
-                  view={{
-                    type: "list",
-                    model: "x_ticket",
-                    title,
-                    columns: listColumns.map((c) => ({
-                      id: c.id,
-                      name: c.name,
-                      string: c.string || c.name,
-                    })),
-                    decorations: {
-                      danger: "x_priority == 'urgent'",
-                      info: "x_stage == 'new'",
-                      muted: "x_amount == 0",
-                    },
-                  }}
-                />
-              </OdooPreviewScope>
-              <div className="mt-3">
-                  <ul className="space-y-1">
-                    {listColumns.map((f, idx) => (
-                      <li
-                        key={f.id}
-                        className={`flex items-center justify-between border px-2 py-1.5 text-sm ${
-                          selectedFieldId === f.id
-                            ? "border-[var(--odoo-primary)] bg-[#f5eef3]"
-                            : "border-[var(--odoo-border)] bg-surface"
-                        }`}
-                      >
-                        <button
-                          type="button"
-                          className="flex-1 text-left font-mono text-xs"
-                          onClick={() => setSelectedFieldId(f.id)}
-                        >
-                          {idx + 1}. {f.string || f.name}{" "}
-                          <span className="text-[var(--odoo-muted)]">{f.name}</span>
-                        </button>
-                        <span className="flex gap-1">
-                          <button
-                            type="button"
-                            className="text-xs text-[var(--odoo-primary)] disabled:opacity-30"
-                            disabled={idx === 0}
-                            aria-label={`Move ${f.name} up`}
-                            onClick={() =>
-                              setListColumns((cols) => moveInList(cols, f.id, -1))
-                            }
-                          >
-                            ↑
-                          </button>
-                          <button
-                            type="button"
-                            className="text-xs text-[var(--odoo-primary)] disabled:opacity-30"
-                            disabled={idx >= listColumns.length - 1}
-                            aria-label={`Move ${f.name} down`}
-                            onClick={() =>
-                              setListColumns((cols) => moveInList(cols, f.id, 1))
-                            }
-                          >
-                            ↓
-                          </button>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-              </div>
-            </div>
-            <PropsInspector title="Column properties">
-              {selectedMeta ? (
-                <div className="space-y-3 text-sm text-[#1a1a1a]">
-                  <p className="font-mono text-[var(--odoo-primary)]">{selectedMeta.name}</p>
-                  <p className="text-xs text-[var(--odoo-muted)]">
-                    {selectedMeta.string || "No label"}
-                  </p>
-                </div>
-              ) : (
-                <p className="text-xs text-[var(--odoo-muted)]">
-                  Select a list column to inspect.
-                </p>
-              )}
-            </PropsInspector>
-          </div>
-        )}
-
-        {mode === "kanban" && (
-          <div
-            className="mt-6 grid gap-4 lg:grid-cols-[200px_1fr_240px]"
-            data-testid="designer-kanban-layout"
-          >
-            <div>
-              <FieldPalette fields={SAMPLE_PALETTE} />
-              <NicheWidgetPalette
-                widgets={MOCK_NICHE_WIDGETS}
-                colorPalette={MOCK_COLOR_PALETTE}
-                onPick={() => undefined}
+                  </OdooPreviewScope>
+                }
               />
             </div>
-            <div>
-              <h2 className="mb-2 text-sm font-semibold text-[var(--odoo-primary-light)]">
-                Kanban card preview
-              </h2>
-              <PreviewThemeScope previewVars={MOCK_PREVIEW_VARS}>
-              <KanbanCardPreview
-                title={title}
-                groupBy="x_stage"
-                fields={kanbanFields}
-                selectedFieldId={selectedFieldId}
-                onSelectField={setSelectedFieldId}
-                onMoveField={(fieldId, dir) => {
-                  setKanbanFields((fields) => moveInList(fields, fieldId, dir));
-                }}
-                onRemoveField={(fieldId) => {
-                  setKanbanFields((fields) => fields.filter((f) => f.id !== fieldId));
-                  setSelectedFieldId((sel) => (sel === fieldId ? null : sel));
-                }}
+          ) : mode === "list" ? (
+            <div data-testid="designer-list-layout">
+              <DesignerLiveCanvas
+                mode="structure"
+                onModeChange={() => undefined}
+                liveUrl={null}
+                iframeRef={iframeRef}
+                iframeKey={1}
+                structural={
+                  <OdooPreviewScope showBanner={false} previewVars={MOCK_PREVIEW_VARS}>
+                    <OdooListView
+                      view={{
+                        type: "list",
+                        model: "x_ticket",
+                        title,
+                        columns: listColumns.map((c) => ({
+                          id: c.id,
+                          name: c.name,
+                          string: c.string || c.name,
+                        })),
+                        decorations: {
+                          danger: "x_priority == 'urgent'",
+                          info: "x_stage == 'new'",
+                          muted: "x_amount == 0",
+                        },
+                      }}
+                    />
+                  </OdooPreviewScope>
+                }
               />
-              </PreviewThemeScope>
             </div>
-            <PropsInspector title="Card field">
-              {selectedMeta ? (
-                <div className="space-y-3 text-sm text-[#1a1a1a]">
-                  <p className="font-mono text-[var(--odoo-primary)]">{selectedMeta.name}</p>
-                  <p className="text-xs text-[var(--odoo-muted)]">
-                    {selectedMeta.string || "No label from field metadata"}
-                  </p>
-                  <p className="text-[11px] text-[var(--odoo-muted)]">
-                    Card label show/hide (nolabel) is not in our kanban arch helpers yet —
-                    values render in order only.
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      className="text-xs text-[var(--odoo-primary)]"
-                      onClick={() =>
-                        setKanbanFields((fields) =>
-                          moveInList(fields, selectedMeta.id, -1),
-                        )
-                      }
-                    >
-                      Move up
-                    </button>
-                    <button
-                      type="button"
-                      className="text-xs text-[var(--odoo-primary)]"
-                      onClick={() =>
-                        setKanbanFields((fields) =>
-                          moveInList(fields, selectedMeta.id, 1),
-                        )
-                      }
-                    >
-                      Move down
-                    </button>
+          ) : (
+            <div data-testid="designer-kanban-layout">
+              <DesignerLiveCanvas
+                mode="structure"
+                onModeChange={() => undefined}
+                liveUrl={null}
+                iframeRef={iframeRef}
+                iframeKey={1}
+                structural={
+                  <PreviewThemeScope previewVars={MOCK_PREVIEW_VARS}>
+                    <KanbanCardPreview
+                      title={title}
+                      groupBy="x_stage"
+                      fields={kanbanFields}
+                      selectedFieldId={selectedFieldId}
+                      onSelectField={setSelectedFieldId}
+                      onMoveField={(fieldId, dir) => {
+                        setKanbanFields((fields) => moveInList(fields, fieldId, dir));
+                      }}
+                      onRemoveField={(fieldId) => {
+                        setKanbanFields((fields) => fields.filter((f) => f.id !== fieldId));
+                        setSelectedFieldId((sel) => (sel === fieldId ? null : sel));
+                      }}
+                    />
+                  </PreviewThemeScope>
+                }
+              />
+            </div>
+          )
+        }
+        rail={
+          <DesignerToolsRail
+            value={railTab}
+            onValueChange={setRailTab}
+            tabs={[
+              {
+                id: "fields",
+                label: "Fields",
+                content: (
+                  <div>
+                    <FieldPalette fields={SAMPLE_PALETTE} />
+                    {(mode === "form" || mode === "kanban") && (
+                      <NicheWidgetPalette
+                        widgets={MOCK_NICHE_WIDGETS}
+                        colorPalette={MOCK_COLOR_PALETTE}
+                        onPick={() => undefined}
+                      />
+                    )}
                   </div>
-                </div>
-              ) : (
-                <p className="text-xs text-[var(--odoo-muted)]">
-                  Select a card field, or drop from the palette. Set group-by above.
-                </p>
-              )}
-            </PropsInspector>
-          </div>
-        )}
-      </div>
+                ),
+              },
+              {
+                id: "properties",
+                label: "Properties",
+                content: propertiesPanel,
+              },
+            ]}
+          />
+        }
+      />
     </main>
   );
 }

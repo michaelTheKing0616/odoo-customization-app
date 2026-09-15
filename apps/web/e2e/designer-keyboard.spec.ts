@@ -14,7 +14,7 @@ test.describe("Designer keyboard reorder", () => {
 
     await page.keyboard.press("ArrowDown");
 
-    const rows = page.locator('[data-testid="form-canvas"] ul li');
+    const rows = page.locator('[data-testid="form-canvas"] [data-canvas-field]');
     await expect(rows.nth(0)).toContainText("Customer");
     await expect(rows.nth(1)).toContainText("Name");
 

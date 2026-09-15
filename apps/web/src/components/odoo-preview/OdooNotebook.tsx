@@ -23,7 +23,7 @@ export function OdooNotebook({
 
   return (
     <div className="mt-4 border border-[var(--odoo-border)]" data-testid={`odoo-notebook-${notebook.id}`}>
-      <div className="flex flex-wrap border-b border-[var(--odoo-border)] bg-[color-mix(in_srgb,var(--odoo-canvas)_50%,white)]">
+      <div className="flex flex-wrap border-b border-[var(--odoo-border)] bg-[color-mix(in_srgb,var(--odoo-canvas)_50%,var(--surface))]">
         {notebook.pages.map((page) => (
           <button
             key={page.id}

@@ -1,21 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
 import type { PreviewHeaderButton, PreviewSmartButton, PreviewStatusBar } from "@/lib/draft-form-preview";
+import {
+  attachDragGhost,
+  insertIndexFromElements,
+  readCanvasFieldId,
+  readPaletteFieldName,
+  setCanvasFieldDragData,
+} from "@/lib/designer-dnd";
 import { OdooButtonBox } from "@/components/odoo-preview/OdooButtonBox";
 import { OdooChatterStub } from "@/components/odoo-preview/OdooChatterStub";
+import { OdooField } from "@/components/odoo-preview/OdooField";
 import { OdooFormHeader } from "@/components/odoo-preview/OdooFormHeader";
 import { OdooFormSheet } from "@/components/odoo-preview/OdooFormSheet";
+import { cn } from "@/lib/cn";
 
 /**
- * Odoo-familiar form canvas chrome for the View Designer.
- * Structural preview — Open-in-Odoo remains authoritative.
+ * Interactive Odoo-looking form canvas for View Designer.
+ * Structural preview — Open-in-Odoo / live iframe remains authoritative.
  */
 
 export type CanvasField = {
   id: string;
   name: string;
   string?: string;
+  ttype?: string;
+  widget?: string;
+  required?: boolean;
 };
 
 export type CanvasGroup = {
@@ -51,7 +63,6 @@ export type FormCanvasProps = {
   title: string;
   statusbar?: PreviewStatusBar | string | null;
   statusbarVisible?: string | null;
-  /** Prefer `{ id, string }[]`. Plain strings are accepted for tests/legacy. */
   headerButtons?: Array<string | CanvasHeaderButton>;
   smartButtons?: CanvasSmartButton[];
   groups: CanvasGroup[];
@@ -61,8 +72,15 @@ export type FormCanvasProps = {
   selectedFieldId?: string | null;
   onSelectField?: (fieldId: string) => void;
   onMoveField?: (fieldId: string, dir: -1 | 1) => void;
-  onDropFieldName?: (groupId: string, fieldName: string) => void;
-  onDropFieldOnPage?: (notebookId: string, pageId: string, fieldName: string) => void;
+  onDropFieldName?: (groupId: string, fieldName: string, index?: number) => void;
+  onDropFieldOnPage?: (notebookId: string, pageId: string, fieldName: string, index?: number) => void;
+  onReorderField?: (fieldId: string, groupId: string, index: number) => void;
+  onReorderPageField?: (
+    fieldId: string,
+    notebookId: string,
+    pageId: string,
+    index: number,
+  ) => void;
   showChatter?: boolean;
 };
 
@@ -96,6 +114,102 @@ function resolveStatusbar(
   return { field: statusbar, stages, activeStage: stages[0] };
 }
 
+function DroppableFieldList({
+  items,
+  selectedFieldId,
+  flashId,
+  onSelectField,
+  onPaletteDrop,
+  onCanvasReorder,
+}: {
+  items: CanvasField[];
+  selectedFieldId?: string | null;
+  flashId?: string | null;
+  onSelectField?: (fieldId: string) => void;
+  onPaletteDrop: (fieldName: string, index: number) => void;
+  onCanvasReorder?: (fieldId: string, index: number) => void;
+}) {
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
+
+  function itemEls(): HTMLElement[] {
+    if (!listRef.current) return [];
+    return Array.from(listRef.current.querySelectorAll<HTMLElement>("[data-canvas-field]"));
+  }
+
+  function onDragOver(e: DragEvent) {
+    e.preventDefault();
+    const els = itemEls();
+    const index = insertIndexFromElements(e.clientY, els);
+    setDropIndex(index);
+  }
+
+  function onDrop(e: DragEvent) {
+    e.preventDefault();
+    const els = itemEls();
+    const index = insertIndexFromElements(e.clientY, els);
+    const canvasId = readCanvasFieldId(e.dataTransfer);
+    if (canvasId && onCanvasReorder) {
+      onCanvasReorder(canvasId, index);
+    } else {
+      const name = readPaletteFieldName(e.dataTransfer);
+      if (name) onPaletteDrop(name, index);
+    }
+    setDropIndex(null);
+  }
+
+  return (
+    <div
+      ref={listRef}
+      className={cn("designer-drop-list relative min-h-[2.5rem]", dropIndex !== null && "is-over")}
+      data-testid="canvas-drop-list"
+      onDragOver={onDragOver}
+      onDragLeave={(e) => {
+        if (!listRef.current?.contains(e.relatedTarget as Node)) setDropIndex(null);
+      }}
+      onDrop={onDrop}
+    >
+      {items.map((f, idx) => (
+        <div
+          key={f.id}
+          data-canvas-field
+          data-field-id={f.id}
+          data-testid={`canvas-field-${f.name}`}
+          draggable={Boolean(onCanvasReorder)}
+          onDragStart={(e) => {
+            setCanvasFieldDragData(e.dataTransfer, f.id, f.name);
+            attachDragGhost(e.dataTransfer, f.string || f.name, e.currentTarget);
+          }}
+          className={cn(
+            "designer-canvas-field relative",
+            selectedFieldId === f.id && "is-selected",
+            flashId === f.id && "is-flash",
+            dropIndex === idx && "drop-before",
+          )}
+        >
+          {dropIndex === idx ? <span className="designer-drop-line" aria-hidden /> : null}
+          <OdooField
+            field={{
+              id: f.id,
+              name: f.name,
+              string: f.string || f.name,
+              ttype: f.ttype || "char",
+              widget: f.widget,
+              required: f.required,
+            }}
+            highlighted={selectedFieldId === f.id}
+            onClick={() => onSelectField?.(f.id)}
+          />
+        </div>
+      ))}
+      {dropIndex === items.length ? <span className="designer-drop-line" aria-hidden /> : null}
+      {items.length === 0 && dropIndex === null ? (
+        <p className="px-1 py-3 text-xs text-[var(--odoo-muted)]">Drop a field here</p>
+      ) : null}
+    </div>
+  );
+}
+
 export function FormCanvas({
   title,
   statusbar,
@@ -111,6 +225,8 @@ export function FormCanvas({
   onMoveField,
   onDropFieldName,
   onDropFieldOnPage,
+  onReorderField,
+  onReorderPageField,
   showChatter = true,
 }: FormCanvasProps) {
   useEffect(() => {
@@ -130,7 +246,7 @@ export function FormCanvas({
         return;
       }
       e.preventDefault();
-      move(fieldId, e.key === "ArrowUp" ? -1 : 1);
+      move(fieldId, e.key === "ArrowDown" ? 1 : -1);
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -164,61 +280,24 @@ export function FormCanvas({
             <div
               key={g.id}
               data-canvas-id={g.id}
-              className={`odoo-field-group border border-[var(--odoo-border)] bg-surface p-2 transition ring-offset-2 ${
-                flashId === g.id ? "ring-2 ring-[var(--odoo-primary)]" : ""
-              }`}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                const name = e.dataTransfer.getData("text/odoo-field");
-                if (name && onDropFieldName) onDropFieldName(g.id, name);
-              }}
+              className={cn(
+                "odoo-field-group rounded-sm border border-transparent p-1 transition",
+                flashId === g.id && "ring-2 ring-[var(--odoo-primary)]",
+              )}
             >
               <div className="odoo-field-group-title">{g.string || "Group"}</div>
-              <ul className="space-y-1">
-                {g.fields.map((f, idx) => (
-                  <li
-                    key={f.id}
-                    className={`flex items-center justify-between gap-2 border px-2 py-1 text-sm ${
-                      selectedFieldId === f.id
-                        ? "border-[var(--odoo-primary)] bg-[color-mix(in_srgb,var(--odoo-primary)_8%,white)]"
-                        : "border-[var(--odoo-border)]"
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      className="flex-1 text-left text-xs"
-                      onClick={() => onSelectField?.(f.id)}
-                    >
-                      <span className="font-sans font-medium text-[var(--odoo-sheet-fg)]">
-                        {f.string || f.name}
-                      </span>
-                      <span className="ml-2 font-mono text-[var(--odoo-muted)]">{f.name}</span>
-                    </button>
-                    <span className="flex gap-1">
-                      <button
-                        type="button"
-                        className="text-xs text-[var(--odoo-primary)]"
-                        disabled={idx === 0}
-                        onClick={() => onMoveField?.(f.id, -1)}
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        className="text-xs text-[var(--odoo-primary)]"
-                        disabled={idx >= g.fields.length - 1}
-                        onClick={() => onMoveField?.(f.id, 1)}
-                      >
-                        ↓
-                      </button>
-                    </span>
-                  </li>
-                ))}
-                {g.fields.length === 0 && (
-                  <li className="text-xs text-[var(--odoo-muted)]">Drop a field here</li>
-                )}
-              </ul>
+              <DroppableFieldList
+                items={g.fields}
+                selectedFieldId={selectedFieldId}
+                flashId={flashId}
+                onSelectField={onSelectField}
+                onPaletteDrop={(name, index) => onDropFieldName?.(g.id, name, index)}
+                onCanvasReorder={
+                  onReorderField
+                    ? (fieldId, index) => onReorderField(fieldId, g.id, index)
+                    : undefined
+                }
+              />
             </div>
           ))}
         </div>
@@ -231,20 +310,22 @@ export function FormCanvas({
             <div
               key={nb.id}
               data-canvas-id={nb.id}
-              className={`mt-4 border border-[var(--odoo-border)] bg-surface transition ring-offset-2 ${
-                flashId === nb.id ? "ring-2 ring-[var(--odoo-primary)]" : ""
-              }`}
+              className={cn(
+                "odoo-notebook mt-4 border border-[var(--odoo-border)] bg-surface transition",
+                flashId === nb.id && "ring-2 ring-[var(--odoo-primary)]",
+              )}
             >
-              <div className="flex flex-wrap border-b border-[var(--odoo-border)] bg-[color-mix(in_srgb,var(--odoo-canvas)_50%,white)]">
+              <div className="flex flex-wrap border-b border-[var(--odoo-border)] bg-[color-mix(in_srgb,var(--odoo-canvas)_50%,var(--surface))]">
                 {nb.pages.map((page) => (
                   <button
                     key={page.id}
                     type="button"
-                    className={`border-r border-[var(--odoo-border)] px-3 py-1.5 text-xs font-semibold ${
+                    className={cn(
+                      "border-r border-[var(--odoo-border)] px-3 py-1.5 text-xs font-semibold",
                       page.id === activePage?.id
                         ? "bg-surface text-[var(--odoo-primary)]"
-                        : "text-[var(--odoo-muted)]"
-                    }`}
+                        : "text-[var(--odoo-muted)]",
+                    )}
                     onClick={() =>
                       setActivePages((prev) => ({ ...prev, [nb.id]: page.id }))
                     }
@@ -256,38 +337,26 @@ export function FormCanvas({
               {activePage ? (
                 <div
                   data-canvas-id={activePage.id}
-                  className={`p-2 ${
-                    flashId === activePage.id
-                      ? "ring-2 ring-inset ring-[var(--odoo-primary)]"
-                      : ""
-                  }`}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const name = e.dataTransfer.getData("text/odoo-field");
-                    if (name && onDropFieldOnPage) {
-                      onDropFieldOnPage(nb.id, activePage.id, name);
-                    }
-                  }}
+                  className={cn(
+                    "p-2",
+                    flashId === activePage.id && "ring-2 ring-inset ring-[var(--odoo-primary)]",
+                  )}
                 >
-                  <ul className="space-y-1">
-                    {activePage.fields.map((f) => (
-                      <li
-                        key={f.id}
-                        className="border border-[var(--odoo-border)] px-2 py-1 text-xs"
-                      >
-                        <span className="font-medium">{f.string || f.name}</span>
-                        <span className="ml-2 font-mono text-[var(--odoo-muted)]">
-                          {f.name}
-                        </span>
-                      </li>
-                    ))}
-                    {activePage.fields.length === 0 && (
-                      <li className="text-xs text-[var(--odoo-muted)]">
-                        Drop a field on this tab
-                      </li>
-                    )}
-                  </ul>
+                  <DroppableFieldList
+                    items={activePage.fields}
+                    selectedFieldId={selectedFieldId}
+                    flashId={flashId}
+                    onSelectField={onSelectField}
+                    onPaletteDrop={(name, index) =>
+                      onDropFieldOnPage?.(nb.id, activePage.id, name, index)
+                    }
+                    onCanvasReorder={
+                      onReorderPageField
+                        ? (fieldId, index) =>
+                            onReorderPageField(fieldId, nb.id, activePage.id, index)
+                        : undefined
+                    }
+                  />
                 </div>
               ) : null}
             </div>

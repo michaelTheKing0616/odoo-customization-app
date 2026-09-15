@@ -125,6 +125,26 @@ describe("OverlayEditor", () => {
     });
   });
 
+  it("hides the standalone Designer callout when embedded", async () => {
+    render(
+      <OverlayEditor
+        iframeRef={{ current: null }}
+        connectionId="conn"
+        model="res.partner"
+        viewType="form"
+        fields={FIELDS}
+        selectionOverride={null}
+        onSaved={vi.fn()}
+        embedded
+      />,
+    );
+    expect(screen.queryByText("Open View Designer")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Operation"), { target: { value: "add_page" } });
+    await waitFor(() => {
+      expect(screen.getByTestId("overlay-xpath-peek")).toHaveTextContent("x_page_new_page");
+    });
+  });
+
   it("disables save when a locator error is blocking", async () => {
     const { api } = await import("@/lib/api");
     vi.mocked(api.overlayPreview).mockResolvedValueOnce({

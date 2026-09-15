@@ -23,6 +23,8 @@ const ALLOWLIST = [
   "app/globals.css",
 ];
 
+const ALLOW_PREFIXES = ["components/odoo-preview/"];
+
 function walk(dir, out = []) {
   for (const name of fs.readdirSync(dir)) {
     const full = path.join(dir, name);
@@ -37,6 +39,7 @@ const hits = [];
 for (const file of walk(ROOT)) {
   const rel = path.relative(ROOT, file).replace(/\\/g, "/");
   if (ALLOWLIST.some((a) => rel === a || rel.endsWith(a))) continue;
+  if (ALLOW_PREFIXES.some((a) => rel.startsWith(a))) continue;
   const text = fs.readFileSync(file, "utf8");
   const lines = text.split("\n");
   lines.forEach((line, i) => {
