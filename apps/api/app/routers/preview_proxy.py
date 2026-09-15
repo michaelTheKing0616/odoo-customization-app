@@ -13,7 +13,7 @@ import re
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlparse
-from urllib.request import Request, build_opener, HTTPCookieProcessor
+from urllib.request import Request as UrlRequest, build_opener, HTTPCookieProcessor
 from http.cookiejar import CookieJar
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -88,7 +88,7 @@ def _opener_for_connection(row: Any) -> tuple[Any, str]:
             },
         }
     ).encode()
-    req = Request(
+    req = UrlRequest(
         f"{base}/web/session/authenticate",
         data=payload,
         headers={"Content-Type": "application/json"},
@@ -210,7 +210,7 @@ async def odoo_proxy(
         if k.lower() not in {"host", "content-length", "connection"}
     }
     headers.pop("cookie", None)
-    req = Request(target, data=body if body else None, headers=headers, method=request.method)
+    req = UrlRequest(target, data=body if body else None, headers=headers, method=request.method)
     try:
         with opener.open(req, timeout=60) as resp:
             raw = resp.read()
