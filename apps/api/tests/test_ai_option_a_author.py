@@ -368,3 +368,46 @@ def test_rewrite_sale_order_amount_tax_xpath() -> None:
     }
     assert rewrite_draft_stock_xpaths(draft) == 1
     assert "tax_totals" in draft["custom_code_blocks"][0]["content"]
+
+
+def test_rewrite_sale_order_line_tax_id_depends() -> None:
+    from app.ai_static_odoo import rewrite_draft_stock_xpaths, rewrite_stock_python_field_deps
+
+    py = (
+        "from odoo import api, fields, models\n\n"
+        "class SaleOrderLine(models.Model):\n"
+        "    _inherit = 'sale.order.line'\n\n"
+        "    @api.depends('product_id', 'price_unit', 'tax_id')\n"
+        "    def _compute_amount(self):\n"
+        "        for line in self:\n"
+        "            taxes = line.tax_id\n"
+        "            line.price_subtotal = line.price_unit\n"
+    )
+    out = rewrite_stock_python_field_deps(py)
+    assert "'tax_id'" not in out
+    assert '"tax_id"' not in out
+    assert ".tax_id" not in out.replace(".tax_ids", "")
+    assert "tax_ids" in out
+    assert "line.tax_ids" in out
+    draft = {
+        "custom_code_blocks": [
+            {"source_file": "models/sale_line.py", "kind": "python", "content": py}
+        ]
+    }
+    assert rewrite_draft_stock_xpaths(draft) == 1
+    assert "tax_ids" in draft["custom_code_blocks"][0]["content"]
+
+
+def test_wrong_depends_tax_id_failure_ir() -> None:
+    from app.ai_failure_ir import failures_from_sandbox_log
+
+    msg = (
+        "ValueError: Wrong @depends on '_compute_amount' "
+        "(compute method of field sale.order.line.price_subtotal). "
+        "Dependency field 'tax_id' not found in model sale.order.line."
+    )
+    fails = failures_from_sandbox_log("", ok=False, message=msg)
+    assert fails
+    assert fails[0]["category"] == "python"
+    assert fails[0].get("missing_depends_field") == "tax_id"
+    assert "tax_ids" in (fails[0].get("repair_hint") or "")

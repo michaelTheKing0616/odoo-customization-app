@@ -1,6 +1,7 @@
 /** ModuleSpec journey — chrome only, not the apply/export engines. */
 
 import type { ValidateLiveItem, ValidateLiveResult } from "@/lib/api";
+import { actionErrorTitle } from "@/lib/action-error-title";
 import { SCORE_BARS } from "@/lib/copy-guide";
 import { isStockReuseDraft } from "@/lib/draft-form-preview";
 import {
@@ -175,18 +176,31 @@ export function moduleSpecHeaderDescription(
   return "Structured IR for models, views, menus, and access. Validate, then apply. Promote stays human.";
 }
 
-export function moduleSpecErrorTitle(message: string | null | undefined): string {
-  const text = (message || "").trim();
-  if (!text) return "ModuleSpec request failed";
-  if (/validat/i.test(text)) return "Validation failed";
-  if (/import/i.test(text)) return "Import failed";
-  if (/lint/i.test(text)) return "Lint found issues";
-  if (/zip|export/i.test(text)) return "Zip export failed";
-  if (/sandbox/i.test(text)) return "Sandbox failed";
-  if (/apply|generate ui/i.test(text)) return "Generate UI failed";
-  if (/walkthrough|seed/i.test(text)) return "Walkthrough seed failed";
-  if (/save|project/i.test(text)) return "Save failed";
-  return "ModuleSpec request failed";
+export const MODULESPEC_ERROR_STEPS = {
+  validate: "Validation failed",
+  import: "Import failed",
+  lint: "Lint found issues",
+  zip: "Zip export failed",
+  sandbox: "Sandbox failed",
+  apply: "Generate UI failed",
+  walkthrough: "Walkthrough seed failed",
+  save: "Save failed",
+  repair: "AI repair did not apply",
+  load: "Could not load ModuleSpec",
+} as const;
+
+export type ModuleSpecErrorStep = keyof typeof MODULESPEC_ERROR_STEPS;
+
+export function moduleSpecErrorTitle(
+  stepOrMessage?: string | null,
+  message?: string | null,
+): string {
+  return actionErrorTitle(
+    stepOrMessage,
+    MODULESPEC_ERROR_STEPS,
+    "ModuleSpec request failed",
+    message,
+  );
 }
 
 export function primaryDesignerModel(spec: ModuleSpecDoc): string | null {

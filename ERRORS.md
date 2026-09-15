@@ -11,6 +11,16 @@
 **Note for next time:** one line, generalized if possible
 ```
 
+### 2026-09-15 — sale.order.line tax_id @depends fails sandbox install
+**Didn't work:** LLM-authored markup modules redeclared `_compute_amount` with `@depends(..., 'tax_id')`.
+**Worked instead:** Deterministic rewrite `tax_id` → `tax_ids` on sale.order.line Python; Failure IR + author/repair prompts; prefer x_* computes over stock price_subtotal.
+**Note for next time:** CE sale.order.line taxes are `tax_ids` (M2M). Restart `:8001`. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+
+### 2026-09-15 — Zip export failed was keyword title on repair-budget copy
+**Didn't work:** `studioErrorTitle` matched `/zip|export/` on “Promote the last passing zip”; authoring `_repair_count` shared with sandbox Repair with AI.
+**Worked instead:** `actionErrorTitle` titles from action step only; separate `_sandbox_repair_count`; xpath rewrite free; honest “Download module zip still works” copy.
+**Note for next time:** Never keyword-scan Fault/budget text for titles. Completeness ≠ Cert ≠ Autopilot. Promote stays human. Restart `:8001`.
+
 ### 2026-09-14 — TRUST-6 LLM tests ignored AI_ASSIST
 **Didn't work:** Asserting `get_llm_provider().name` follows `AI_ASSIST=auto` while `settings.ai_llm_tier_fast` defaults to `"gemini"`.
 **Worked instead:** Autouse fixture sets `ai_llm_tier_fast`/`refine` to `"auto"`; mark the module `no_app_db`.

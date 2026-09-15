@@ -87,6 +87,7 @@ import {
   progressLabelFromJob,
   studioErrorTitle,
   studioJourneyFromPhase,
+  type StudioErrorStep,
 } from "@/lib/studio-journey";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
 import "@/styles/studio-refinement.css";
@@ -108,6 +109,7 @@ export default function AppStudioPage() {
   const [job, setJob] = useState<JobRow | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorStep, setErrorStep] = useState<StudioErrorStep | null>(null);
   const [refineInput, setRefineInput] = useState("");
   const [localRefineError, setLocalRefineError] = useState<string | null>(null);
   const [highlightIds, setHighlightIds] = useState<string[]>([]);
@@ -121,6 +123,7 @@ export default function AppStudioPage() {
   const [goldValidationId, setGoldValidationId] = useState<string | null>(null);
   const [goldZipBase64, setGoldZipBase64] = useState<string | null>(null);
   const [goldPromoted, setGoldPromoted] = useState(false);
+  const [lastSandboxFault, setLastSandboxFault] = useState<string | null>(null);
   const [goldHost, setGoldHost] = useState<{
     host_ready: boolean;
     missing_depends: string[];
@@ -273,6 +276,7 @@ export default function AppStudioPage() {
     setSession(null);
     setJob(null);
     setError(null);
+    setErrorStep(null);
     setBusy(null);
     setRefineInput("");
     setLocalRefineError(null);
@@ -284,15 +288,29 @@ export default function AppStudioPage() {
     setGoldValidationId(null);
     setGoldZipBase64(null);
     setGoldPromoted(false);
+    setLastSandboxFault(null);
     setGoldHost(null);
     setInstallOpen(false);
     setPromoteOpen(false);
     router.replace(`/connections/${connectionId}/studio`);
   }, [connectionId, router]);
 
+
+  function beginStudioAction() {
+    setError(null);
+    setErrorStep(null);
+    setApplyNote(null);
+  }
+
+  function failStudio(step: StudioErrorStep, message: string, keepNote = false) {
+    setErrorStep(step);
+    setError(message);
+    if (!keepNote) setApplyNote(null);
+  }
+
   const retryGeneration = useCallback(async () => {
     if (!session) return;
-    setError(null);
+    beginStudioAction();
     setBusy("generate");
     try {
       const gen = await api.generateStudioSession(session.id);
@@ -304,7 +322,7 @@ export default function AppStudioPage() {
         setSession(sessionWithClarification(session, err.clarification));
         return;
       }
-      setError(err instanceof Error ? err.message : "Generation failed");
+      failStudio("generate", err instanceof Error ? err.message : "Generation failed");
     } finally {
       setBusy(null);
     }
@@ -639,21 +657,23 @@ export default function AppStudioPage() {
   async function downloadGoldZip() {
     const spec = session?.artifact;
     if (!spec) return;
-    setError(null);
+    beginStudioAction();
     setBusy("zip");
     try {
       const res = await api.exportModuleSpecZip(connectionId, { spec });
       if (!res.zip_base64) {
-        setError("Zip export returned no file.");
+        failStudio("zip", "Zip export returned no file.");
         return;
       }
       downloadZipBase64(String(res.module || spec.technical_name || "currency_rate_cbn"), res.zip_base64);
       setCalloutTitle("Module zip downloaded");
       setApplyNote(
-        "Downloaded the Option A zip. Next: Sandbox install & smoke (proof only), then Promote onto this connection. Open Accounting Settings is this Odoo — not the ephemeral sandbox.",
+        authoredOptionA
+          ? "Downloaded the Option A zip. Next: Sandbox install & smoke (proof only), then Promote. Do not click Install this app."
+          : "Downloaded the Option A zip. Next: Sandbox install & smoke (proof only), then Promote onto this connection. Open Accounting Settings is this Odoo — not the ephemeral sandbox.",
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Zip export failed");
+      failStudio("zip", err instanceof Error ? err.message : "Zip export failed");
     } finally {
       setBusy(null);
     }
@@ -662,7 +682,7 @@ export default function AppStudioPage() {
   async function proveGoldSandbox() {
     const spec = session?.artifact;
     if (!spec) return;
-    setError(null);
+    beginStudioAction();
     setBusy("prove");
     try {
       const res = await api.proveOptionA(connectionId, { spec });
@@ -670,6 +690,7 @@ export default function AppStudioPage() {
         setSession((s) => (s ? { ...s, artifact: res.draft as Record<string, unknown> } : s));
       }
       if (res.ok) {
+        setLastSandboxFault(null);
         if (res.validation_id && res.zip_base64) {
           setGoldValidationId(res.validation_id);
           setGoldZipBase64(res.zip_base64);
@@ -685,22 +706,80 @@ export default function AppStudioPage() {
               : "Sandbox install passed. Promote stays human — this connection’s Odoo is where you inspect CBN, not :18069."),
         );
       } else {
+        const sandboxMsg = (res.sandbox as { message?: string } | undefined)?.message;
         const msg =
-          res.message ||
-          (res.sandbox as { message?: string } | undefined)?.message ||
+          sandboxMsg ||
           (res.smoke as { message?: string } | undefined)?.message ||
+          res.message ||
           "Sandbox prove failed";
-        setError(msg);
-        if (res.feedback_repair?.applied) {
-          setCalloutTitle("AI patched the module");
-          setApplyNote(
-            res.feedback_repair.message ||
-              "The model patched files from the sandbox Fault. Retry Sandbox install & smoke, or Repair with AI. Do not click Install this app.",
-          );
-        }
+        setLastSandboxFault(sandboxMsg || msg);
+        const step =
+          /repair budget|sandbox repair attempts|Repair with AI/i.test(res.message || "")
+            ? "repair"
+            : "sandbox";
+        failStudio(step, res.message || msg);
+        setCalloutTitle("Applied to Odoo");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sandbox prove failed");
+      const msg = err instanceof Error ? err.message : "Sandbox prove failed";
+      setLastSandboxFault(msg);
+      failStudio("sandbox", msg);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function repairGoldWithAi() {
+    const spec = session?.artifact;
+    if (!spec) return;
+    beginStudioAction();
+    setBusy("repair");
+    try {
+      const fault =
+        lastSandboxFault ||
+        String(
+          ((spec as Record<string, unknown>)._option_a_smoke as { message?: string } | undefined)
+            ?.message ||
+            ((spec as Record<string, unknown>)._sandbox_install as { message?: string } | undefined)
+              ?.message ||
+            "",
+        );
+      const res = await api.repairOptionAFeedback(connectionId, {
+        spec,
+        error_text: fault,
+        retry_sandbox: true,
+      });
+      if (res.draft) {
+        setSession((s) => (s ? { ...s, artifact: res.draft as Record<string, unknown> } : s));
+      }
+      if (res.ok && res.validation_id && res.zip_base64) {
+        setLastSandboxFault(null);
+        setGoldValidationId(res.validation_id);
+        setGoldZipBase64(res.zip_base64);
+        setGoldPromoted(false);
+        setCalloutTitle("Sandbox proved after AI repair");
+        setApplyNote(
+          res.message ||
+            "AI repair + sandbox passed. Promote stays human. Do not click Install this app.",
+        );
+        return;
+      }
+      const sandboxMsg = (res.sandbox as { message?: string } | undefined)?.message;
+      const msg =
+        res.feedback_repair?.message ||
+        res.message ||
+        sandboxMsg ||
+        "AI repair did not clear the sandbox Fault";
+      if (sandboxMsg) setLastSandboxFault(sandboxMsg);
+      failStudio("repair", msg);
+      if (res.feedback_repair?.applied) {
+        setCalloutTitle("AI patched the module");
+        setApplyNote(
+          "The model patched files from the sandbox Fault. Retry Sandbox install & smoke, or Repair with AI again if budget remains. Do not click Install this app.",
+        );
+      }
+    } catch (err) {
+      failStudio("repair", err instanceof Error ? err.message : "AI repair failed");
     } finally {
       setBusy(null);
     }
@@ -928,7 +1007,7 @@ export default function AppStudioPage() {
       {error && phase !== "failed" && phase !== "generating" ? (
         <Callout
           variant="danger"
-          title={studioErrorTitle(error)}
+          title={studioErrorTitle(errorStep, error)}
           className="mb-4"
           actions={
             <Button
@@ -1064,6 +1143,7 @@ export default function AppStudioPage() {
             onInstallInvoicing={() => setInstallOpen(true)}
             onDownloadZip={() => void downloadGoldZip()}
             onProveSandbox={() => void proveGoldSandbox()}
+            onRepairWithAi={() => void repairGoldWithAi()}
             onPromote={() => setPromoteOpen(true)}
             onRetryAuthoring={() => void retryGeneration()}
             onReverify={() => void reverifyAuthoringGate()}

@@ -1,3 +1,18 @@
+### 2026-09-15 — sale.order.line uses tax_ids, never tax_id
+**Decided:** Stock rewrite + author/repair prompts forbid `tax_id` on `sale.order.line`. Prefer x_* markup computes over redefining stock `_compute_amount` / `price_subtotal`. Completeness ≠ Cert ≠ Autopilot. Promote stays human. Restart `:8001`.
+**Why:** Sandbox install ValueError: Wrong @depends on `_compute_amount` — Dependency field `tax_id` not found.
+**Rejected:** Treating the Fault as xmlrpc noise; inventing `account.tax`.
+
+### 2026-09-15 — Error titles from action step; sandbox repair budget separate
+**Decided:** `actionErrorTitle` never regex-scans the body. Authoring `_repair_count` ≠ `_sandbox_repair_count`. Deterministic xpath rewrite does not consume sandbox budget. Budget copy says Download zip still works — not “Zip export failed”. Completeness ≠ Cert ≠ Autopilot. Promote stays human. Restart `:8001`.
+**Why:** Repair with AI showed “Zip export failed” because “passing zip” matched `/zip/`; authoring attempts had burned the shared counter.
+**Rejected:** Patching one string; leaving body-keyword titles.
+
+### 2026-09-15 — App Studio Repair with AI is a real CTA
+**Decided:** Authored Option A panel always exposes **Repair with AI** after authoring passes (calls `option-a-repair-feedback`, optional sandbox retry). Failed prove must not keep a success “AI patched” banner. Option A inherit is not a residual Apps tile. Completeness ≠ Cert ≠ Autopilot. Promote stays human. Restart `:8001`.
+**Why:** Copy said “click Repair with AI” but App Studio had no button; residual-app fallback lied for Sales markup.
+**Rejected:** Expecting operators to find Repair only in Draft Studio / Expert.
+
 ### 2026-09-15 — View Designer Studio shell (live canvas + tools rail)
 **Decided:** Default Designer UX is a Studio mental model: top session bar, center live Odoo iframe (structural `odoo-preview` FormCanvas fallback), right modification rail (Fields / Properties / Structure / Overlay / Advanced). HTML5 DnD + existing `DragAutoScroll` — not `@dnd-kit`. Inherit-default save, confirm phrases, snapshots, and human Promote stay. Completeness ≠ Cert ≠ Autopilot.
 **Why:** Operators asked for Studio-quality canvas (see live Odoo, tools on the side) instead of the gray wireframe dump. Supersedes 2026-09-14 “do not extract Designer in the P0 UAT PR” for this dedicated Designer PR.

@@ -164,9 +164,33 @@ def build_operator_surface(draft: dict[str, Any]) -> dict[str, Any]:
             "(Customer, Last Transaction, …) — not duplicate smart buttons."
         )
     if not parts:
-        parts.append(
-            f"«{display}» is a residual app — open it from the app menu after Apply."
-        )
+        engine = draft.get("_generation_engine")
+        host = ""
+        if isinstance(engine, dict):
+            host = str(engine.get("host_model") or engine.get("preferred_inherit_host") or "").strip()
+        if not host:
+            for model in draft.get("models") or []:
+                if not isinstance(model, dict):
+                    continue
+                if str(model.get("mode") or "").lower() == "inherit":
+                    host = str(model.get("model") or "").strip()
+                    if host:
+                        break
+        cap = ""
+        if isinstance(engine, dict):
+            cap = str(engine.get("capability") or "")
+        if (
+            draft.get("_capability_primary_option_a")
+            or cap in {"option_a_authored", "option_a_standalone"}
+        ) and host and not host.startswith("x_"):
+            parts.append(
+                f"«{display}» extends {_host_label(host)} ({host}) via an Option A module — "
+                "zip → sandbox → Promote. Not a new Apps tile. Do not click Install this app."
+            )
+        else:
+            parts.append(
+                f"«{display}» is a residual app — open it from the app menu after Apply."
+            )
 
     return {
         "app_menu": app_menu,

@@ -1,5 +1,7 @@
 /** Draft Studio journey stages — chrome only, not the generator. Distinct from App Studio. */
 
+import { actionErrorTitle } from "./action-error-title";
+
 export const DRAFT_STUDIO_STAGES = [
   { id: "prompt", label: "Prompt" },
   { id: "enrich", label: "Enrich" },
@@ -81,17 +83,29 @@ export function draftNeedsRegenerate(
   );
 }
 
-export function draftStudioErrorTitle(message: string | null | undefined): string {
-  const text = (message || "").trim();
-  if (!text) return "Draft Studio request failed";
-  if (/enrich/i.test(text)) return "Enrichment failed";
-  if (/draft|generat/i.test(text)) return "Draft failed";
-  if (/zip|export/i.test(text)) return "Zip export failed";
-  if (/sandbox|prove|validat/i.test(text)) return "Sandbox validate failed";
-  if (/promote/i.test(text)) return "Promote failed";
-  if (/apply/i.test(text)) return "Apply failed";
-  if (/scaffold/i.test(text)) return "Scaffold failed";
-  return "Draft Studio request failed";
+export const DRAFT_STUDIO_ERROR_STEPS = {
+  enrich: "Enrichment failed",
+  draft: "Draft failed",
+  zip: "Zip export failed",
+  sandbox: "Sandbox validate failed",
+  repair: "AI repair did not apply",
+  promote: "Promote failed",
+  apply: "Apply failed",
+  scaffold: "Scaffold failed",
+} as const;
+
+export type DraftStudioErrorStep = keyof typeof DRAFT_STUDIO_ERROR_STEPS;
+
+export function draftStudioErrorTitle(
+  stepOrMessage?: string | null,
+  message?: string | null,
+): string {
+  return actionErrorTitle(
+    stepOrMessage,
+    DRAFT_STUDIO_ERROR_STEPS,
+    "Draft Studio request failed",
+    message,
+  );
 }
 
 export function scorecardFromDraft(

@@ -1,6 +1,7 @@
 /** App Studio journey stages and busy-label helpers — chrome only, not the generator. */
 
 import type { JobRow } from "./api";
+import { actionErrorTitle } from "./action-error-title";
 import { busyLabelFromJobResult } from "./draft-form-preview";
 import type { StudioPhase } from "./studio-session";
 
@@ -100,17 +101,30 @@ export const STUDIO_STARTER_CHIP_LABELS: Record<string, string> = {
   "Retail inventory and stock moves": "Retail inventory",
 };
 
-export function studioErrorTitle(message: string | null | undefined): string {
-  const text = (message || "").trim();
-  if (!text) return "App Studio request failed";
-  if (/author/i.test(text)) return "Authoring failed";
-  if (/generat/i.test(text)) return "Generation failed";
-  if (/clarif/i.test(text)) return "Clarification failed";
-  if (/refine|map|apply that change/i.test(text)) return "Refine did not apply";
-  if (/zip|export/i.test(text)) return "Zip export failed";
-  if (/sandbox|prove/i.test(text)) return "Sandbox prove failed";
-  if (/promote/i.test(text)) return "Promote failed";
-  if (/install/i.test(text)) return "Install failed";
-  if (/session|load/i.test(text)) return "Could not load session";
-  return "App Studio request failed";
+export const STUDIO_ERROR_STEPS = {
+  generate: "Generation failed",
+  clarify: "Clarification failed",
+  refine: "Refine did not apply",
+  zip: "Zip export failed",
+  sandbox: "Sandbox prove failed",
+  repair: "AI repair did not apply",
+  promote: "Promote failed",
+  install: "Install failed",
+  session: "Could not load session",
+  apply: "Apply failed",
+  authoring: "Authoring failed",
+} as const;
+
+export type StudioErrorStep = keyof typeof STUDIO_ERROR_STEPS;
+
+export function studioErrorTitle(
+  stepOrMessage?: string | null,
+  message?: string | null,
+): string {
+  return actionErrorTitle(
+    stepOrMessage,
+    STUDIO_ERROR_STEPS,
+    "App Studio request failed",
+    message,
+  );
 }

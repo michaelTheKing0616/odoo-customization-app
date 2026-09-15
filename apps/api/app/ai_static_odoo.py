@@ -178,6 +178,9 @@ _SALE_FORM_GHOST_FIELDS = {
 _SALE_FORM_XPATH_FIELD_RE = re.compile(
     r"""(field\[@name=['\"])(amount_tax|amount_untaxed)(['\"])"""
 )
+# sale.order.line taxes are Many2many ``tax_ids`` — never singular ``tax_id``.
+_SALE_LINE_TAX_ID_STR_RE = re.compile(r"""(['"])tax_id\1""")
+_SALE_LINE_TAX_ID_ATTR_RE = re.compile(r"""\.tax_id\b""")
 
 
 def rewrite_stock_inherit_xpaths(content: str) -> str:
@@ -191,8 +194,19 @@ def rewrite_stock_inherit_xpaths(content: str) -> str:
     )
 
 
+def rewrite_stock_python_field_deps(content: str) -> str:
+    """Fix known wrong stock field names in Python inherits (CE 17–19)."""
+    blob = content or ""
+    if "sale.order.line" not in blob:
+        return blob
+    # Wrong @depends('…', 'tax_id') and line.tax_id on price_subtotal / _compute_amount.
+    blob = _SALE_LINE_TAX_ID_STR_RE.sub(r"\1tax_ids\1", blob)
+    blob = _SALE_LINE_TAX_ID_ATTR_RE.sub(".tax_ids", blob)
+    return blob
+
+
 def rewrite_draft_stock_xpaths(draft: dict[str, Any]) -> int:
-    """Rewrite ghost sale.order xpaths in custom_code_blocks. Returns files changed."""
+    """Rewrite ghost stock xpaths / field deps in custom_code_blocks. Returns files changed."""
     changed = 0
     blocks = draft.get("custom_code_blocks")
     if not isinstance(blocks, list):
@@ -202,9 +216,14 @@ def rewrite_draft_stock_xpaths(draft: dict[str, Any]) -> int:
             continue
         path = str(block.get("source_file") or block.get("path") or "")
         content = str(block.get("content") or "")
-        if not content or not (path.endswith(".xml") or str(block.get("kind") or "") in {"xml", "qweb"}):
+        if not content:
             continue
-        rewritten = rewrite_stock_inherit_xpaths(content)
+        kind = str(block.get("kind") or "")
+        rewritten = content
+        if path.endswith(".xml") or kind in {"xml", "qweb"}:
+            rewritten = rewrite_stock_inherit_xpaths(rewritten)
+        if path.endswith(".py") or kind == "python":
+            rewritten = rewrite_stock_python_field_deps(rewritten)
         if rewritten != content:
             block["content"] = rewritten
             changed += 1
@@ -324,5 +343,6 @@ __all__ = [
     "analyze_xpath_best_effort",
     "rewrite_draft_stock_xpaths",
     "rewrite_stock_inherit_xpaths",
+    "rewrite_stock_python_field_deps",
     "stamp_static_odoo",
 ]

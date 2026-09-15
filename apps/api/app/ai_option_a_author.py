@@ -29,6 +29,9 @@ _AUTHOR_SYSTEM = (
     "xmlid — never env['account.tax'].create. "
     "sale.order form inherit MUST xpath //field[@name='tax_totals'] "
     "(Community 17–19 has no amount_tax node on sale.view_order_form). "
+    "sale.order.line taxes field is tax_ids (Many2many) — never tax_id. "
+    "Do not re-declare stock _compute_amount / price_subtotal with wrong @depends; "
+    "add x_* markup fields and compute on those instead. "
     "JSON rules: escape every newline as \\n and every double-quote as \\\". "
     "Close every string. Prefer at most 6 short files."
 )

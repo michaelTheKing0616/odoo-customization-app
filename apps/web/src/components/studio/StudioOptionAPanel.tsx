@@ -42,6 +42,7 @@ type StudioOptionAPanelProps = {
   onInstallInvoicing: () => void;
   onDownloadZip: () => void;
   onProveSandbox: () => void;
+  onRepairWithAi?: () => void;
   onPromote: () => void;
   onRetryAuthoring: () => void;
   onReverify: () => void;
@@ -69,6 +70,7 @@ export function StudioOptionAPanel({
   onInstallInvoicing,
   onDownloadZip,
   onProveSandbox,
+  onRepairWithAi,
   onPromote,
   onRetryAuthoring,
   onReverify,
@@ -314,6 +316,26 @@ export function StudioOptionAPanel({
                 "Sandbox install & smoke"
               )}
             </button>
+            {authoringPassed && onRepairWithAi ? (
+              <button
+                type="button"
+                className="btn btn-brand btn-sm"
+                disabled={Boolean(busy) || isOdooOnline}
+                data-testid="studio-repair-with-ai"
+                title={
+                  isOdooOnline
+                    ? "Repair with AI is not available on Odoo Online"
+                    : "Patch the module from the last sandbox Fault, then re-prove. Do not Install this app."
+                }
+                onClick={onRepairWithAi}
+              >
+                {busy === "repair" ? (
+                  <StudioBusyLabel>Repairing…</StudioBusyLabel>
+                ) : (
+                  "Repair with AI"
+                )}
+              </button>
+            ) : null}
             <button
               type="button"
               className="btn btn-primary btn-sm"

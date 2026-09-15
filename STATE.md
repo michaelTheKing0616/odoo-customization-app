@@ -4,16 +4,15 @@
 
 ## Last run
 - Date: 2026-09-15
-- **Shipped:** Studio-like View Designer — PR #15 (`cursor/studio-view-designer-3f46` → `premium-local-tip`)
-  - Center live iframe / Odoo-widget FormCanvas; right Fields/Properties/Structure/Overlay/Advanced rail
-  - HTML5 DnD (`lib/designer-dnd.ts`); inherit save / confirms / snapshots / human Promote unchanged
-  - Proof: `docs/vision-verify/designer-studio-shell.png`, `designer-premium-studio.png`
-- **Tests:** Vitest designer 40 passed; Playwright designer-premium/keyboard/studio-preview/cmp3/vision 12 passed
-- **Failed:** none this pass (Playwright needed `playwright install chromium` once)
+- **Shipped:** Sales markup sandbox Fault root cause — authored `@depends(..., 'tax_id')` on `sale.order.line`.
+  - Deterministic rewrite `tax_id` → `tax_ids` (strings + `.tax_id` attrs)
+  - Failure IR parses Wrong @depends; author/repair prompts updated
+- **Proof:** `test_rewrite_sale_order_line_tax_id_depends`, `test_wrong_depends_tax_id_failure_ir`
 
-## Next
-- Live UAT: `http://127.0.0.1:3002/connections/{id}/designer` — load model, drag field, edit props, save inherit
-- Optional: extract remaining save/state hook out of the ~5.9k Designer page
+## Next (operator)
+1. Kill/restart `:8001` without `--reload`. Hard-refresh App Studio.
+2. **Repair with AI** (or Sandbox again) — free rewrite should fix tax_id before LLM budget.
+3. Do **not** Install this app. Gate pass → human Promote.
 
-## Rule
-- Designer hero canvas is live Odoo or `odoo-preview` widgets — never dashed wireframe boxes
+## Docket
+- Designer extract; live-demo branch merge hygiene

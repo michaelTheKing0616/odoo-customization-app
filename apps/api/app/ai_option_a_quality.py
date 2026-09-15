@@ -451,9 +451,11 @@ def prove_option_a_in_sandbox(
             )
             if feedback_repair.get("applied") and feedback_repair.get("gate_status") == "pass":
                 continue
-            repair_meta = feedback_repair.get("repair") or begin_repair_attempt(draft, fails)
+            repair_meta = feedback_repair.get("repair") or begin_repair_attempt(
+                draft, fails, bucket="sandbox"
+            )
         else:
-            repair_meta = begin_repair_attempt(draft, fails)
+            repair_meta = begin_repair_attempt(draft, fails, bucket="sandbox")
         smoke = {
             **structural,
             "ok": False,
@@ -476,6 +478,8 @@ def prove_option_a_in_sandbox(
                 "message": result.message,
                 "log_tail": result.log_tail,
             },
+            # Keep the Odoo Fault as the primary message — budget copy stays in feedback_repair.
+            "message": result.message,
         }
         if feedback_repair:
             payload["feedback_repair"] = feedback_repair
@@ -486,9 +490,18 @@ def prove_option_a_in_sandbox(
             ):
                 payload["message"] = (
                     "AI patched the module from the sandbox error, then retry still failed. "
-                    "Review the new Fault or click Repair with AI. Do not Install this app."
+                    "Click Repair with AI (or Sandbox install & smoke again). Do not Install this app."
                 )
-            elif feedback_repair.get("message"):
+            elif feedback_repair.get("reason") in {
+                "max_repair_exceeded",
+                "thrashing_detected",
+            } or str(feedback_repair.get("reason") or "").startswith("locked"):
+                budget = str(feedback_repair.get("message") or "")
+                fault = str(result.message or "").strip()
+                payload["message"] = (
+                    f"{fault}\n\n{budget}".strip() if fault and budget else (fault or budget)
+                )
+            elif feedback_repair.get("message") and not result.message:
                 payload["message"] = str(feedback_repair["message"])
         return payload
 
@@ -512,7 +525,7 @@ def prove_option_a_in_sandbox(
     else:
         fails = failures_from_smoke(smoke)
         stamp_failures(draft, fails)
-        repair_meta = begin_repair_attempt(draft, fails)
+        repair_meta = begin_repair_attempt(draft, fails, bucket="sandbox")
         out_fail: dict[str, Any] = {
             "ok": False,
             "draft": draft,

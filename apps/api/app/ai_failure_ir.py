@@ -60,6 +60,10 @@ _XPATH_ENTITY_RE = re.compile(
 _XMLID_RE = re.compile(r"""['"]xmlid['"]\s*:\s*['"]([^'"]+)['"]""")
 _XPATH_RE = re.compile(r"xpath|XPath|view validation|ParseError", re.I)
 _IMPORT_RE = re.compile(r"ModuleNotFoundError|ImportError|depends", re.I)
+_WRONG_DEPENDS_RE = re.compile(
+    r"Wrong @depends on '([^']+)'.*?Dependency field '([^']+)' not found in model ([a-zA-Z0-9_.]+)",
+    re.I | re.S,
+)
 _JUNK_TRACE_RE = re.compile(
     r"(?i)(xmlrpc\.py$|/rpc/controllers/|/dist-packages/odoo/addons/rpc|"
     r"/odoo/tools/convert|/odoo/addons/base/)"
@@ -109,11 +113,24 @@ def failures_from_sandbox_log(
     xpath = _xpath_from_log(text)
     xmlid_m = _XMLID_RE.search(text)
     xmlid = xmlid_m.group(1) if xmlid_m else None
+    depends_m = _WRONG_DEPENDS_RE.search(text)
     extra: dict[str, Any] = {}
     if xpath:
         extra["xpath"] = xpath
     if xmlid:
         extra["xmlid"] = xmlid
+    if depends_m:
+        missing = depends_m.group(2)
+        model = depends_m.group(3).rstrip(".")
+        extra["depends_method"] = depends_m.group(1)
+        extra["missing_depends_field"] = missing
+        extra["depends_model"] = model
+        if missing == "tax_id" and model == "sale.order.line":
+            extra["repair_hint"] = (
+                "sale.order.line uses tax_ids (Many2many), not tax_id. "
+                "Rewrite @depends and field refs; prefer x_* computes over redefining "
+                "stock _compute_amount / price_subtotal."
+            )
 
     hits: list[tuple[str, int]] = []
     seen: set[str] = set()
@@ -135,6 +152,24 @@ def failures_from_sandbox_log(
         _add_hit(m.group(1), 0)
 
     failures: list[dict[str, Any]] = []
+
+    # Wrong @depends wins over junk xmlrpc traceback paths.
+    if depends_m:
+        failures.append(
+            make_failure(
+                category="python",
+                message=(
+                    f"Wrong @depends on '{depends_m.group(1)}': "
+                    f"field '{depends_m.group(2)}' not on {depends_m.group(3).rstrip('.')}"
+                ),
+                severity="critical",
+                file=hits[0][0] if hits else "models/",
+                line=hits[0][1] if hits else None,
+                extra=extra or None,
+            )
+        )
+        return failures
+
     for path, line in hits:
         failures.append(
             make_failure(

@@ -67,14 +67,19 @@ export function StudioHonestyBanners({
 }: StudioHonestyBannersProps) {
   const hideGrammar =
     stockReuse || refuseClone || goldOptionA || authoredOptionA;
+  const optionAModule = goldOptionA || authoredOptionA;
   const showPreviewOnly =
-    !appIsLiveOnOdoo && !stockReuse && !refuseClone && !goldOptionA && !authoredOptionA;
+    !appIsLiveOnOdoo && !stockReuse && !refuseClone && !optionAModule;
   const showSlots =
     fieldPack &&
     placementRows.length > 0 &&
     slotCatalog.length > 0 &&
-    !goldOptionA &&
-    !authoredOptionA;
+    !optionAModule;
+  const operatorSurfaceCopy =
+    optionAModule &&
+    (!operatorSurface?.summary || /residual app/i.test(operatorSurface.summary))
+      ? `«${liveAppName}» extends ${hostFormName} via an Option A module — zip → sandbox → Promote. Not a new Apps tile. Do not click Install this app.`
+      : operatorSurface?.summary;
 
   return (
     <div className="studio-banner-stack">
@@ -144,9 +149,9 @@ export function StudioHonestyBanners({
         </Callout>
       ) : null}
 
-      {operatorSurface?.summary ? (
+      {operatorSurfaceCopy ? (
         <Callout variant="info" title="Where operators will find it" testId="studio-operator-surface">
-          {operatorSurface.summary}
+          {operatorSurfaceCopy}
         </Callout>
       ) : null}
 

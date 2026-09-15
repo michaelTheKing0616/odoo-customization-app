@@ -85,4 +85,27 @@ describe("StudioHonestyBanners", () => {
     });
     expect(onPlaceField).toHaveBeenCalledWith("Vendor TIN", "next to vendor");
   });
+
+  it("overrides residual-app copy for Option A inherit modules", () => {
+    render(
+      <StudioHonestyBanners
+        {...base}
+        authoredOptionA
+        liveAppName="Sales markup"
+        hostFormName="Sales order"
+        operatorSurface={{
+          host_buttons: [],
+          residual_buttons: [],
+          stock_links: [],
+          summary: "«Sales markup» is a residual app — open it from the app menu after Apply.",
+        }}
+      />,
+    );
+    expect(screen.getByTestId("studio-operator-surface").textContent).toMatch(
+      /extends Sales order via an Option A module/,
+    );
+    expect(screen.getByTestId("studio-operator-surface").textContent).not.toMatch(
+      /residual app/,
+    );
+  });
 });

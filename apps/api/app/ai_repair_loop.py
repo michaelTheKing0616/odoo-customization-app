@@ -1,11 +1,25 @@
-"""Constrained repair loop — patch implicated nodes only; lock after PASS."""
+"""Constrained repair loop — patch implicated nodes only; lock after PASS.
+
+Authoring-gate repairs and sandbox/feedback repairs use separate budgets so a
+draft that burned authoring attempts can still get sandbox auto-repair.
+"""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 
 DEFAULT_MAX_REPAIR = 3
+
+RepairBucket = Literal["authoring", "sandbox"]
+
+
+def _count_key(bucket: RepairBucket) -> str:
+    return "_repair_count" if bucket == "authoring" else "_sandbox_repair_count"
+
+
+def _history_key(bucket: RepairBucket) -> str:
+    return "_repair_history" if bucket == "authoring" else "_sandbox_repair_history"
 
 
 def _locked_paths(draft: dict[str, Any]) -> set[str]:
@@ -45,28 +59,37 @@ def repair_allowed(
     return True, "ok"
 
 
-def thrashing_detected(draft: dict[str, Any]) -> bool:
-    hist = draft.get("_repair_history") if isinstance(draft.get("_repair_history"), list) else []
+def thrashing_detected(draft: dict[str, Any], *, bucket: RepairBucket = "authoring") -> bool:
+    hist = draft.get(_history_key(bucket)) if isinstance(draft.get(_history_key(bucket)), list) else []
     if len(hist) < 2:
         return False
     last = [str(h.get("fingerprint") or "") for h in hist[-3:] if isinstance(h, dict)]
     return len(last) >= 2 and len(set(last)) == 1
 
 
-def begin_repair_attempt(draft: dict[str, Any], failures: list[dict[str, Any]]) -> dict[str, Any]:
+def begin_repair_attempt(
+    draft: dict[str, Any],
+    failures: list[dict[str, Any]],
+    *,
+    bucket: RepairBucket = "authoring",
+) -> dict[str, Any]:
     """Record repair attempt metadata; refuse if thrashing or over budget."""
-    count = int(draft.get("_repair_count") or 0)
+    count_key = _count_key(bucket)
+    hist_key = _history_key(bucket)
+    count = int(draft.get(count_key) or 0)
     if count >= DEFAULT_MAX_REPAIR:
         return {
             "ok": False,
             "reason": "max_repair_exceeded",
             "repair_count": count,
+            "bucket": bucket,
         }
-    if thrashing_detected(draft):
+    if thrashing_detected(draft, bucket=bucket):
         return {
             "ok": False,
             "reason": "thrashing_detected",
             "repair_count": count,
+            "bucket": bucket,
         }
     files = implicated_files(failures)
     allowed: list[str] = []
@@ -82,20 +105,26 @@ def begin_repair_attempt(draft: dict[str, Any], failures: list[dict[str, Any]]) 
         allowed = ["custom_code_blocks"]
         ok, why = repair_allowed(draft, target_file="custom_code_blocks")
         if not ok:
-            return {"ok": False, "reason": why, "repair_count": count}
+            return {
+                "ok": False,
+                "reason": why,
+                "repair_count": count,
+                "bucket": bucket,
+            }
 
     fingerprint = "|".join(
         sorted(str(f.get("failure_id") or "") for f in failures if isinstance(f, dict))
     )
-    hist = list(draft.get("_repair_history") or [])
+    hist = list(draft.get(hist_key) or [])
     hist.append({"fingerprint": fingerprint, "files": allowed})
-    draft["_repair_history"] = hist[-10:]
-    draft["_repair_count"] = count + 1
+    draft[hist_key] = hist[-10:]
+    draft[count_key] = count + 1
     return {
         "ok": True,
-        "repair_count": draft["_repair_count"],
+        "repair_count": draft[count_key],
         "allowed_files": allowed,
         "blocked": blocked,
+        "bucket": bucket,
         "constraints": [
             "max_files:2",
             "do_not_touch_locked",
@@ -160,10 +189,25 @@ def repair_guidance(failures: list[dict[str, Any]]) -> list[str]:
     return hints[:12]
 
 
+def budget_exhausted_message(reason: str) -> str:
+    """Honest operator copy — never imply zip export failed."""
+    if str(reason).startswith("locked artifact") or reason == "preserve_architecture_plan":
+        return (
+            "Artifacts are locked after a passing sandbox. "
+            "Promote the last passing zip, or start a new app. Do not Install this app."
+        )
+    return (
+        "AI already used its sandbox repair attempts on this draft. "
+        "Download module zip still works. Start a new app for a fresh repair budget. "
+        "Do not click Install this app."
+    )
+
+
 __all__ = [
     "DEFAULT_MAX_REPAIR",
     "apply_constrained_block_patch",
     "begin_repair_attempt",
+    "budget_exhausted_message",
     "implicated_files",
     "lock_certified_artifacts",
     "repair_allowed",

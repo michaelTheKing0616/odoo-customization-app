@@ -12,7 +12,12 @@ from app.ai_failure_ir import failures_from_sandbox_log, stamp_failures
 from app.ai_generation_engine import is_gold_option_a_draft, is_option_a_authored_draft
 from app.ai_option_a_author import FORMAT_SCHEMA_BLOCKS, coerce_author_payload
 from app.ai_option_a_gate import evaluate_authoring_gate
-from app.ai_repair_loop import apply_constrained_block_patch, begin_repair_attempt, implicated_files
+from app.ai_repair_loop import (
+    apply_constrained_block_patch,
+    begin_repair_attempt,
+    budget_exhausted_message,
+    implicated_files,
+)
 from app.ai_static_odoo import rewrite_draft_stock_xpaths
 
 GenerateBlocks = Callable[[str, dict[str, Any]], list[dict[str, Any]]]
@@ -25,6 +30,7 @@ _REPAIR_SYSTEM = (
     "Never ir.actions.server state=code. Never os/subprocess or private HTTP. "
     "Community 17–19 sale.order form inherit MUST xpath //field[@name='tax_totals'] "
     "(sale.view_order_form has no amount_tax / amount_untaxed node). "
+    "sale.order.line taxes field is tax_ids (Many2many) — never tax_id. "
     "Prefer the smallest fix that matches the Odoo Fault. "
     "Escape newlines as \\n and quotes as \\\"."
 )
@@ -125,10 +131,12 @@ def _repair_user_prompt(
             continue
         xpath = f.get("xpath") or ""
         xmlid = f.get("xmlid") or ""
+        hint = f.get("repair_hint") or ""
         lines.append(
             f"- {f.get('category')} {f.get('file') or ''}: {str(f.get('message') or '')[:400]}"
             + (f" xpath={xpath}" if xpath else "")
             + (f" xmlid={xmlid}" if xmlid else "")
+            + (f" hint={hint}" if hint else "")
         )
     if operator_notes.strip():
         lines.extend(["", "Operator notes:", operator_notes.strip()[:1500]])
@@ -243,28 +251,35 @@ def repair_option_a_from_feedback(
         fails = failures_from_sandbox_log(text, ok=False, message=text)
     stamp_failures(draft, fails)
 
-    begin = begin_repair_attempt(draft, fails)
-    if not begin.get("ok"):
-        return _stamp_feedback(
-            draft,
-            {
-                "ok": False,
-                "applied": False,
-                "reason": str(begin.get("reason") or "repair_blocked"),
-                "repair": begin,
-                "message": (
-                    "Repair budget exhausted or artifacts are locked after a passing sandbox. "
-                    "Start a new app or Promote the last passing zip. Do not Install this app."
-                ),
-            },
-        )
-
+    # Deterministic stock xpath rewrite is free — does not consume sandbox repair budget.
     xpath_changed = rewrite_draft_stock_xpaths(draft)
     files = _candidate_files(draft, fails)
+    needs_llm = bool(files) and (xpath_changed == 0 or bool(notes) or generate_blocks is not None)
+
+    begin: dict[str, Any] = {
+        "ok": True,
+        "repair_count": int(draft.get("_sandbox_repair_count") or 0),
+        "bucket": "sandbox",
+    }
+    if needs_llm:
+        begin = begin_repair_attempt(draft, fails, bucket="sandbox")
+        if not begin.get("ok"):
+            return _stamp_feedback(
+                draft,
+                {
+                    "ok": False,
+                    "applied": bool(xpath_changed),
+                    "reason": str(begin.get("reason") or "repair_blocked"),
+                    "repair": begin,
+                    "deterministic": bool(xpath_changed),
+                    "message": budget_exhausted_message(str(begin.get("reason") or "")),
+                },
+            )
+
     llm_files: list[str] = []
     gen = generate_blocks if generate_blocks is not None else _default_repair_blocks
 
-    if files and (xpath_changed == 0 or notes or generate_blocks is not None):
+    if needs_llm and begin.get("ok"):
         prompt = _repair_user_prompt(
             draft,
             error_text=text or notes,
@@ -294,10 +309,6 @@ def repair_option_a_from_feedback(
             rewrite_draft_stock_xpaths(draft)
 
     gate = evaluate_authoring_gate(draft, odoo_major=odoo_major)
-    applied_files = []
-    if xpath_changed:
-        applied_files.append("xpath_rewrite")
-    applied_files.extend(llm_files)
     applied = bool(xpath_changed or llm_files)
     gate_status = str(gate.get("status") or "")
     if applied and gate_status == "pass":

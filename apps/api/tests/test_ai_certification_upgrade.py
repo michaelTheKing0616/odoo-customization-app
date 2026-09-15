@@ -127,6 +127,29 @@ def test_repair_loop_locks_and_thrash_budget():
     assert meta["ok"] is True
     assert draft2["_repair_count"] == 1
 
+    sandbox = {"_sandbox_repair_count": 0, "_failures": []}
+    meta_s = begin_repair_attempt(sandbox, f, bucket="sandbox")
+    assert meta_s["ok"] is True
+    assert sandbox["_sandbox_repair_count"] == 1
+    assert sandbox.get("_repair_count") in (None, 0)
+
+    burned_authoring = {"_repair_count": 3, "_sandbox_repair_count": 0, "_failures": []}
+    meta_b = begin_repair_attempt(burned_authoring, f, bucket="sandbox")
+    assert meta_b["ok"] is True
+    assert burned_authoring["_sandbox_repair_count"] == 1
+    assert burned_authoring["_repair_count"] == 3
+
+    exhausted = {"_sandbox_repair_count": 3, "_failures": []}
+    meta_x = begin_repair_attempt(exhausted, f, bucket="sandbox")
+    assert meta_x["ok"] is False
+    assert meta_x["reason"] == "max_repair_exceeded"
+    from app.ai_repair_loop import budget_exhausted_message
+
+    msg = budget_exhausted_message("max_repair_exceeded")
+    assert "Download module zip still works" in msg
+    assert "Zip export failed" not in msg
+    assert "passing zip" not in msg
+
 
 def test_planner_patterns_and_grounding():
     from app.ai_planner_tools import find_views

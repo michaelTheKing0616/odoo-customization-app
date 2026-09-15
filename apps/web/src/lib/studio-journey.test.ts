@@ -66,9 +66,25 @@ describe("progressLabelFromJob", () => {
 });
 
 describe("studioErrorTitle", () => {
-  it("names the failed step instead of a generic went-wrong title", () => {
+  it("titles from the failed action, not from scanning the body", () => {
+    expect(studioErrorTitle("generate")).toBe("Generation failed");
+    expect(studioErrorTitle("sandbox")).toBe("Sandbox prove failed");
     expect(studioErrorTitle("Generation failed")).toBe("Generation failed");
-    expect(studioErrorTitle("Sandbox prove failed")).toBe("Sandbox prove failed");
     expect(studioErrorTitle("")).toBe("App Studio request failed");
+  });
+
+  it("never infers zip export from the word zip in repair-budget copy", () => {
+    expect(
+      studioErrorTitle(
+        "repair",
+        "AI already used its sandbox repair attempts on this draft. Download module zip still works. Start a new app for a fresh repair budget. Do not click Install this app.",
+      ),
+    ).toBe("AI repair did not apply");
+    expect(
+      studioErrorTitle(
+        "Repair budget exhausted or artifacts are locked after a passing sandbox. Start a new app or Promote the last passing zip. Do not Install this app.",
+      ),
+    ).toBe("App Studio request failed");
+    expect(studioErrorTitle("zip", "Zip export returned no file.")).toBe("Zip export failed");
   });
 });

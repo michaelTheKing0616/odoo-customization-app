@@ -109,3 +109,23 @@ def test_residual_custom_button_listed_separately() -> None:
     surface = build_operator_surface(draft)
     assert any(b["button_label"] == "Visits" for b in surface["residual_buttons"])
     assert all(b["host_model"] != "x_punch_card" for b in surface["host_buttons"])
+
+
+def test_option_a_inherit_is_not_residual_app_fallback() -> None:
+    surface = build_operator_surface(
+        {
+            "display_name": "Sales markup",
+            "technical_name": "sales_markup",
+            "_capability_primary_option_a": True,
+            "_generation_engine": {
+                "capability": "option_a_authored",
+                "host_model": "sale.order",
+            },
+            "models": [{"model": "sale.order", "mode": "inherit", "fields": []}],
+            "menus": [],
+            "smart_buttons": [],
+        }
+    )
+    assert "residual app" not in surface["summary"]
+    assert "sale.order" in surface["summary"]
+    assert "Option A module" in surface["summary"]
