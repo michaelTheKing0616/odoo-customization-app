@@ -204,6 +204,35 @@ def _ensure_schema_columns() -> None:
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE audit_logs ADD COLUMN detail_json TEXT"))
 
+    if "live_demo_copilot_sessions" in inspector.get_table_names():
+        cols = {c["name"] for c in inspector.get_columns("live_demo_copilot_sessions")}
+        with engine.begin() as conn:
+            if "leave_purge_status" not in cols:
+                conn.execute(
+                    text(
+                        "ALTER TABLE live_demo_copilot_sessions "
+                        "ADD COLUMN leave_purge_status VARCHAR(24) NOT NULL DEFAULT 'idle'"
+                    )
+                )
+            if "last_ops_error" not in cols:
+                conn.execute(
+                    text("ALTER TABLE live_demo_copilot_sessions ADD COLUMN last_ops_error TEXT")
+                )
+            if "leave_purge_job_id" not in cols:
+                conn.execute(
+                    text(
+                        "ALTER TABLE live_demo_copilot_sessions "
+                        "ADD COLUMN leave_purge_job_id VARCHAR(36)"
+                    )
+                )
+            if "presenter_speakers_json" not in cols:
+                conn.execute(
+                    text(
+                        "ALTER TABLE live_demo_copilot_sessions "
+                        "ADD COLUMN presenter_speakers_json TEXT NOT NULL DEFAULT '[]'"
+                    )
+                )
+
     # DEV-3 script runner tables — created by metadata.create_all if missing
 
 

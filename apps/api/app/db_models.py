@@ -588,3 +588,135 @@ class IngestLayoutCacheRow(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+
+class LiveDemoCopilotSession(Base):
+    """Durable Live Demo Co-Pilot meeting session (workspace-scoped)."""
+
+    __tablename__ = "live_demo_copilot_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    workspace_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    connection_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("odoo_connections.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_by_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    meeting_url: Mapped[str] = mapped_column(Text, nullable=False)
+    meeting_url_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    bot_name: Mapped[str] = mapped_column(String(120), nullable=False, default="Odoo Demo Co-Pilot")
+    disclosure_accepted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    disclosure_version: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    disclosure_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    attendees_notified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    retention_opt_in: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    declined: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    attendee_bot_id: Mapped[str | None] = mapped_column(String(80), nullable=True, unique=True, index=True)
+    bot_state: Mapped[str] = mapped_column(String(40), nullable=False, default="idle")
+    mock_mode: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    data_purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    leave_purge_status: Mapped[str] = mapped_column(String(24), nullable=False, default="idle")
+    # idle | pending | succeeded | failed
+    last_ops_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    leave_purge_job_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # JSON list of presenter display names whose questions are ignored (pilot / host rhetorical).
+    presenter_speakers_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class LiveDemoConsentAudit(Base):
+    """Immutable consent / decline events — never update rows."""
+
+    __tablename__ = "live_demo_consent_audit"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("live_demo_copilot_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    actor_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)  # accepted | declined
+    disclosure_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    attendees_notified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    retention_opt_in: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    meeting_url_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class LiveDemoTranscriptLine(Base):
+    """Speaker-tagged transcript lines for an active (or retention-opt-in) session."""
+
+    __tablename__ = "live_demo_transcript_lines"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("live_demo_copilot_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    speaker_name: Mapped[str] = mapped_column(String(200), nullable=False, default="Unknown")
+    speaker_uuid: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    timestamp_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class LiveDemoWebhookReceipt(Base):
+    """Idempotency / replay protection for Attendee webhooks."""
+
+    __tablename__ = "live_demo_webhook_receipts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    trigger: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    bot_id: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    session_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class LiveDemoAnswer(Base):
+    """Stage 1/2 live answer card for a detected client question."""
+
+    __tablename__ = "live_demo_answers"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("live_demo_copilot_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    transcript_line_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    speaker_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    stage1_reason: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    stage1_score: Mapped[str] = mapped_column(String(16), nullable=False, default="0")
+    bullets_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    confidence: Mapped[str] = mapped_column(String(16), nullable=False, default="low")
+    confidence_flag: Mapped[str | None] = mapped_column(Text, nullable=True)
+    grounded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    declined: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    citations_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    answer_markdown: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    model_used: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="ready")
+    # pending | ready | failed
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+

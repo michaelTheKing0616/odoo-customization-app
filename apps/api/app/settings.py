@@ -187,6 +187,18 @@ class Settings(BaseSettings):
     beta_ga_min_workspaces: int = 8
     beta_ga_min_weeks: int = 4
 
+    # Live Demo Co-Pilot — Attendee meeting capture (Phase 0–1)
+    # Self-host: http://127.0.0.1:8000  Hosted: https://app.attendee.dev
+    attendee_api_base: str = "http://127.0.0.1:8000"
+    attendee_api_key: str = ""
+    attendee_webhook_secret: str = ""  # base64 secret from Attendee Settings → Webhooks
+    # When true and keys empty: launch uses mock bot for UI/consent testing only
+    attendee_allow_mock: bool = False
+    # development | staging | production — mock launch forbidden in production
+    app_environment: str = "development"
+    # Reject webhook payloads older than this many seconds when X-Webhook-Timestamp present
+    attendee_webhook_max_skew_s: int = 300
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

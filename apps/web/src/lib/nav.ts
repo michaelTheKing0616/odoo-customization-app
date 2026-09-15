@@ -237,6 +237,14 @@ export const NAV_ITEMS: NavItem[] = [
     shipped: true,
   },
   {
+    id: "live-demo-copilot",
+    label: "Live Demo Co-Pilot",
+    href: (id) => `/connections/${id}/live-demo-copilot`,
+    group: "ai",
+    icon: IconOdooExpert,
+    shipped: true,
+  },
+  {
     id: "import",
     label: "Import",
     href: (id) => `/connections/${id}/import`,

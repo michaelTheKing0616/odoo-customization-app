@@ -61,6 +61,7 @@ from app.routers import (
     workspaces,
     code_studio,
     script_runner,
+    live_demo_copilot,
 )
 from app.settings import settings
 
@@ -144,6 +145,8 @@ app.include_router(ai.router, prefix="/api", dependencies=_protected + [Depends(
 app.include_router(ai_studio.router, prefix="/api", dependencies=_protected + [Depends(require_feature("ai_draft"))])
 app.include_router(job_autopilot.router, prefix="/api", dependencies=_protected + [Depends(require_feature("ai_draft"))])
 app.include_router(expert.router, prefix="/api", dependencies=_protected + [Depends(require_feature("expert"))])
+app.include_router(live_demo_copilot.router, prefix="/api", dependencies=_protected + [Depends(require_feature("expert"))])
+app.include_router(live_demo_copilot.webhook_router, prefix="/api")
 app.include_router(module_spec.router, prefix="/api", dependencies=_protected)
 app.include_router(module_spec.import_router, prefix="/api", dependencies=_protected + [Depends(require_feature("import"))])
 app.include_router(introspection.router, prefix="/api", dependencies=_protected)

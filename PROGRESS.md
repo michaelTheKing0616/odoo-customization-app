@@ -42,3 +42,7 @@ ollama list   # qwen3:8b + qwen3:14b expected locally
 - Token rule: reuse `data_import` + `bulk_suite/dedupe` + `invoicing_l10n`; net-new =
   classify, PDF extract, dependency graph, multi-file job, review UI.
 - Next agent action: **ING-0** only (license + inventory). Do not pull VL models until decision.
+
+## Live Demo Co-Pilot
+
+See `docs/live-demo-copilot/PROGRESS.md` (Attendee Phase 0–1).
