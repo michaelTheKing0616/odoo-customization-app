@@ -246,10 +246,10 @@ async def odoo_proxy(
                     )
                 else:
                     html = banner + html
-                if request.query_params.get("overlay") == "1":
-                    inject = (
-                        f'<script src="{proxy_prefix}/overlay.js"></script>'
-                    )
+                # Always inject overlay bridge so Designer click-to-select works
+                # without requiring ?overlay=1 on every proxied HTML navigation.
+                inject = f'<script src="{proxy_prefix}/overlay.js"></script>'
+                if "oc-overlay-select" not in html and "overlay.js" not in html:
                     if "</body>" in html.lower():
                         html = re.sub(
                             r"</body>",
