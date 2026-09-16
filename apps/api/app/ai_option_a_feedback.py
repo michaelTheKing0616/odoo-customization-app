@@ -31,10 +31,15 @@ _REPAIR_SYSTEM = (
     "Never ir.actions.server state=code. Never os/subprocess or private HTTP. "
     "Community 17–19 sale.order form inherit MUST xpath //field[@name='tax_totals'] "
     "(sale.view_order_form has no amount_tax / amount_untaxed node). "
+    "Never xpath note / Terms and Conditions for markup fields. "
     "sale.order.line taxes field is tax_ids (Many2many) — never tax_id. "
+    "If smoke says field_labeled: add string='Markup %' (human labels) on every x_*. "
+    "If smoke says price_effect: add @api.onchange('x_markup_percent') that sets "
+    "order_line.price_unit from product.standard_price * (1 + pct/100) and/or "
+    "x_markup_amount compute. "
     "If smoke/OWL says a field is undefined, make every view <field name> match "
     "an x_* fields.* on the same model — never leave markup_percentage without Python. "
-    "Prefer the smallest fix that matches the Odoo Fault. "
+    "Prefer the smallest fix that matches the Odoo Fault or acceptance check. "
     "If the Fault mentions _compute_amount or tax_id: DELETE the stock _compute_amount "
     "override entirely and keep only x_* markup/WHT computes; use tax_ids never tax_id. "
     "Escape newlines as \\n and quotes as \\\"."
@@ -44,7 +49,8 @@ _MAX_FILE_CHARS = 8000
 _MAX_ERROR_CHARS = 3500
 
 _KNOWN_CE_FAULT_RE = re.compile(
-    r"tax_id|amount_tax|amount_untaxed|_compute_amount|Wrong @depends|tax_totals",
+    r"tax_id|amount_tax|amount_untaxed|_compute_amount|Wrong @depends|tax_totals|"
+    r"field_labeled|xpath_anchor|price_effect|Acceptance smoke",
     re.I,
 )
 
