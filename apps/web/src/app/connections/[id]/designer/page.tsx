@@ -111,6 +111,8 @@ import {
 import { DesignerUiProvider } from "@/components/designer/DesignerUiContext";
 import { DesignerBindPanel } from "@/components/designer/DesignerBindPanel";
 import { DesignerDangerConfirms } from "@/components/designer/DesignerDangerConfirms";
+import { DesignerAdvancedFieldsAside } from "@/components/designer/DesignerAdvancedFieldsAside";
+import { DesignerAdvancedMetaAside } from "@/components/designer/DesignerAdvancedMetaAside";
 
 const CONFIRM_PHRASE = "I understand the risks";
 
@@ -4131,151 +4133,31 @@ export default function DesignerPage() {
 
         <Disclosure title="Advanced layout & field inject" testId="designer-advanced-layout" className="mx-4 mb-4 md:mx-6">
         <div className="grid gap-6 lg:grid-cols-[220px_1fr_280px]">
-          <aside className="border border-border-subtle bg-surface-muted/70 p-4">
-            <p className="text-xs uppercase tracking-wide text-muted">Fields</p>
-            <div className="mt-3 space-y-2 border border-border-subtle p-2 text-xs">
-              <p className="text-muted">Create field on model</p>
-              <input
-                value={newFieldName}
-                onChange={(e) => setNewFieldName(e.target.value)}
-                placeholder="x_my_field"
-                className="w-full border border-border-subtle bg-surface px-2 py-1 font-mono"
-              />
-              <input
-                value={newFieldLabel}
-                onChange={(e) => setNewFieldLabel(e.target.value)}
-                placeholder="Label"
-                className="w-full border border-border-subtle bg-surface px-2 py-1"
-              />
-              <select
-                value={newFieldType}
-                onChange={(e) => setNewFieldType(e.target.value)}
-                className="w-full border border-border-subtle bg-surface px-2 py-1"
-              >
-                <option value="char">char</option>
-                <option value="text">text</option>
-                <option value="integer">integer</option>
-                <option value="float">float</option>
-                <option value="boolean">boolean</option>
-                <option value="date">date</option>
-                <option value="selection">selection</option>
-                <option value="many2one">many2one</option>
-                <option value="json">json</option>
-              </select>
-              <label className="block text-[11px] text-muted">
-                Inject strategy
-                <select
-                  value={injectStrategy}
-                  onChange={(e) =>
-                    setInjectStrategy(e.target.value as "inherit" | "mutate")
-                  }
-                  className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 text-sm text-ink"
-                >
-                  <option
-                    value="inherit"
-                    disabled={!connectionSupports(connection, "view_inject_inherit")}
-                  >
-                    inherit (xpath child)
-                    {!connectionSupports(connection, "view_inject_inherit")
-                      ? " — unavailable"
-                      : ""}
-                  </option>
-                  <option
-                    value="mutate"
-                    disabled={!connectionSupports(connection, "view_inject_mutate")}
-                    title={
-                      connectionUnsupportedReason(connection, "view_inject_mutate") ??
-                      undefined
-                    }
-                  >
-                    mutate (overwrite parent)
-                    {!connectionSupports(connection, "view_inject_mutate")
-                      ? " — unavailable"
-                      : ""}
-                  </option>
-                </select>
-              </label>
-              {!connectionSupports(
-                connection,
-                injectStrategyCapabilityId(injectStrategy),
-              ) && (
-                <p className="text-[11px] text-warning">
-                  {connectionUnsupportedReason(
-                    connection,
-                    injectStrategyCapabilityId(injectStrategy),
-                  )}
-                </p>
-              )}
-              {injectStrategy === "mutate" &&
-                connectionSupports(connection, "view_inject_mutate") && (
-                  <p className="text-[11px] text-warning">
-                    Mutate overwrites parent view arch — requires advanced confirm.
-                  </p>
-                )}
-              <input
-                value={confirmPhrase}
-                onChange={(e) => setConfirmPhrase(e.target.value)}
-                placeholder="I understand the risks"
-                className="w-full border border-border-subtle bg-surface px-2 py-1"
-              />
-              <button
-                type="button"
-                disabled={
-                  busy ||
-                  !model ||
-                  !newFieldName.startsWith("x_") ||
-                  !connectionSupports(
-                    connection,
-                    injectStrategyCapabilityId(injectStrategy),
-                  )
-                }
-                title={
-                  connectionUnsupportedReason(
-                    connection,
-                    injectStrategyCapabilityId(injectStrategy),
-                  ) ?? undefined
-                }
-                className="w-full border border-border-subtle px-2 py-1 text-muted disabled:opacity-40"
-                onClick={() => void createNewFieldWithInject()}
-              >
-                Create + inject
-              </button>
-            </div>
-            <ul className="mt-3 max-h-[28rem] space-y-1 overflow-auto text-sm" data-testid="designer-field-list-advanced">
-              {fields.map((f) => (
-                <li
-                  key={f.id}
-                  draggable={viewType === "form" || viewType === "kanban"}
-                  onDragStart={(e) => {
-                    setDragField(f.name);
-                    e.dataTransfer.setData("text/odoo-field", f.name);
-                    e.dataTransfer.effectAllowed = "copy";
-                  }}
-                  onClick={() => {
-                    if (viewType === "list") addListColumn(f.name);
-                    if (viewType === "search") addSearchField(f.name);
-                    if (viewType === "kanban") addKanbanField(f.name);
-                  }}
-                  className="cursor-grab border border-transparent px-2 py-1.5 hover:border-border-subtle"
-                >
-                  <span className="font-mono text-muted">{f.name}</span>
-                  <span className="block text-xs text-muted">
-                    {f.field_description} · {f.ttype}
-                  </span>
-                </li>
-              ))}
-              {fields.length === 0 && (
-                <li className="text-muted">Load a model to populate.</li>
-              )}
-            </ul>
-            {(viewType === "form" || viewType === "kanban") && (
-              <NicheWidgetPalette
-                widgets={nicheWidgets}
-                colorPalette={colorPalette}
-                onPick={(w) => void addNicheWidget(w)}
-              />
-            )}
-          </aside>
+          <DesignerAdvancedFieldsAside
+            connection={connection}
+            viewType={viewType}
+            fields={fields}
+            newFieldName={newFieldName}
+            setNewFieldName={setNewFieldName}
+            newFieldLabel={newFieldLabel}
+            setNewFieldLabel={setNewFieldLabel}
+            newFieldType={newFieldType}
+            setNewFieldType={setNewFieldType}
+            injectStrategy={injectStrategy}
+            setInjectStrategy={setInjectStrategy}
+            confirmPhrase={confirmPhrase}
+            setConfirmPhrase={setConfirmPhrase}
+            busy={busy}
+            setDragField={setDragField}
+            addListColumn={addListColumn}
+            addSearchField={addSearchField}
+            addKanbanField={addKanbanField}
+            nicheWidgets={nicheWidgets}
+            colorPalette={colorPalette}
+            onCreateAndInject={(opts) => void createNewFieldWithInject(opts)}
+            onPickNicheWidget={(w) => void addNicheWidget(w)}
+          />
+
 
           <section className="border border-border-subtle bg-surface-muted/50 p-4" data-testid="designer-structure-editor">
             <div className="mb-3">
@@ -5186,61 +5068,13 @@ export default function DesignerPage() {
             )}
           </section>
 
-          <aside className="space-y-4">
-            <p className="text-xs text-muted">
-              Field properties and XPath inherit live in the right-hand Properties and Advanced tabs.
-            </p>
-
-            <div className="border border-border-subtle bg-surface p-4">
-              <p className="text-xs uppercase tracking-wide text-muted">
-                Generated arch
-              </p>
-              <pre className="mt-3 max-h-48 overflow-auto text-xs text-muted">
-                {arch || "—"}
-              </pre>
-            </div>
-
-            <div className="border border-border-subtle bg-surface-muted/70 p-4">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs uppercase tracking-wide text-muted">
-                  Published checkpoints
-                </p>
-                <button
-                  type="button"
-                  className="text-xs text-muted hover:underline"
-                  onClick={() => refreshSnapshots()}
-                >
-                  Refresh
-                </button>
-              </div>
-              <ul className="mt-3 max-h-48 space-y-2 overflow-auto text-xs">
-                {snapshots.length === 0 && (
-                  <li className="text-muted">No published checkpoints yet. Save to Odoo creates one.</li>
-                )}
-                {snapshots.map((s) => (
-                  <li
-                    key={s.id}
-                    className="flex items-start justify-between gap-2 border border-border-subtle px-2 py-1.5"
-                  >
-                    <div>
-                      <p className="text-ink">{s.label}</p>
-                      <p className="text-muted">
-                        {s.reversible} · {s.created_at}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={busy || s.reversible === "no"}
-                      onClick={() => onRollback(s.id)}
-                      className="shrink-0 border border-border-subtle px-2 py-0.5 text-muted disabled:opacity-40"
-                    >
-                      Restore
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </aside>
+          <DesignerAdvancedMetaAside
+            arch={arch}
+            snapshots={snapshots}
+            busy={busy}
+            onRefreshSnapshots={() => void refreshSnapshots()}
+            onRollback={(id) => void onRollback(id)}
+          />
         </div>
         </Disclosure>
       <DesignerDangerConfirms
