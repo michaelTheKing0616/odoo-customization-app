@@ -44,24 +44,18 @@ import {
   getApiBase,
   Connection,
   FieldRow,
-  GroupRow,
   MailTemplateRow,
   PreviewTheme,
-  RelatedPathOption,
   SnapshotRow,
 } from "@/lib/api";
-import {
-  DesignerFieldInspector,
-  DesignerFieldInspectorEmpty,
-  type DesignerFieldInspectorValues,
-} from "@/components/designer/DesignerFieldInspector";
+import { useDesignerFieldInspector } from "@/components/designer/useDesignerFieldInspector";
+import { DesignerReportingFieldsPanel } from "@/components/designer/DesignerReportingFieldsPanel";
 import { XPathInheritPanel, type LocatorIssue } from "@/components/designer/XPathInheritPanel";
 import {
   DesignerSessionBar,
   designerPublishState,
 } from "@/components/designer/DesignerSessionBar";
 import { useDesignerHistory } from "@/components/designer/useDesignerHistory";
-import { fallbackWidgetsForTtype, type WidgetOption } from "@/lib/widgetCatalog";
 import { automationsHref } from "@/lib/automationForm";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
@@ -168,16 +162,6 @@ export default function DesignerPage() {
   const [kanbanCanCreate, setKanbanCanCreate] = useState(true);
   const [kanbanQuickCreate, setKanbanQuickCreate] = useState(true);
   const [viewSample, setViewSample] = useState(false);
-  const [widgetAdvanced, setWidgetAdvanced] = useState(false);
-  const [inspectorWidgets, setInspectorWidgets] = useState<WidgetOption[]>([]);
-  const [inspectorGroups, setInspectorGroups] = useState<GroupRow[]>([]);
-  const [inspectorGroupsState, setInspectorGroupsState] = useState<
-    "idle" | "loading" | "ready" | "error"
-  >("idle");
-  const [relatedPaths, setRelatedPaths] = useState<RelatedPathOption[]>([]);
-  const [relatedPathsState, setRelatedPathsState] = useState<
-    "idle" | "loading" | "ready" | "error"
-  >("idle");
   const [nicheWidgets, setNicheWidgets] = useState<NicheWidgetEntry[]>([]);
   const [colorPalette, setColorPalette] = useState<Array<{ index: number; name: string }>>(
     [],
@@ -1025,123 +1009,22 @@ export default function DesignerPage() {
 
   const selectedField = findSelectedField();
 
-  const viewFieldNames = useMemo(() => {
-    const names = new Set<string>();
-    if (viewType === "form") {
-      for (const child of formChildren) {
-        if (child.kind === "group") {
-          for (const n of child.children) {
-            if (n.kind === "field") names.add(n.name);
-          }
-        } else {
-          for (const page of child.pages) {
-            for (const n of page.children) {
-              if (n.kind === "field") names.add(n.name);
-            }
-          }
-        }
-      }
-    } else if (viewType === "list") {
-      for (const c of listColumns) names.add(c.name);
-    } else if (viewType === "search") {
-      for (const c of searchFields) names.add(c.name);
-    } else if (viewType === "kanban") {
-      for (const c of kanbanFields) names.add(c.name);
-    }
-    return [...names];
-  }, [viewType, formChildren, listColumns, searchFields, kanbanFields]);
+  const { fieldInspector } = useDesignerFieldInspector({
+    connectionId,
+    model,
+    api,
+    fields,
+    viewType,
+    formChildren,
+    listColumns,
+    searchFields,
+    kanbanFields,
+    selectedField,
+    updateSelectedField,
+    removeSelectedField,
+    appendFieldToCurrentLayout,
+  });
 
-  const selectedFieldMeta = selectedField
-    ? fields.find((f) => f.name === selectedField.name) ?? null
-    : null;
-
-  useEffect(() => {
-    if (!connectionId) return;
-    let cancelled = false;
-    setInspectorGroupsState("loading");
-    api
-      .listGroups(connectionId)
-      .then((rows) => {
-        if (cancelled) return;
-        setInspectorGroups(rows);
-        setInspectorGroupsState("ready");
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setInspectorGroups([]);
-        setInspectorGroupsState("error");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [connectionId]);
-
-  useEffect(() => {
-    if (!connectionId || !model) {
-      setRelatedPaths([]);
-      setRelatedPathsState("idle");
-      return;
-    }
-    let cancelled = false;
-    setRelatedPathsState("loading");
-    api
-      .listRelatedPaths(connectionId, model, 2)
-      .then((rows) => {
-        if (cancelled) return;
-        setRelatedPaths(rows);
-        setRelatedPathsState("ready");
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setRelatedPaths([]);
-        setRelatedPathsState("error");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [connectionId, model]);
-
-  useEffect(() => {
-    if (!selectedField) {
-      setInspectorWidgets([]);
-      return;
-    }
-    const row = fields.find((f) => f.name === selectedField.name);
-    const ttype = row?.ttype ?? "char";
-    setInspectorWidgets(fallbackWidgetsForTtype(ttype));
-    api
-      .listBuilderWidgets(connectionId, ttype)
-      .then((rows) => {
-        if (rows.length > 0) setInspectorWidgets(rows);
-      })
-      .catch(() => {
-        /* fallback */
-      });
-  }, [connectionId, fields, selectedField?.name]);
-
-  const fieldInspector = selectedField ? (
-    <DesignerFieldInspector
-      field={{
-        ...selectedField,
-        ttype: selectedFieldMeta?.ttype,
-      }}
-      fieldMeta={selectedFieldMeta}
-      widgetOptions={inspectorWidgets}
-      widgetAdvanced={widgetAdvanced}
-      onWidgetAdvancedChange={setWidgetAdvanced}
-      onChange={updateSelectedField}
-      groups={inspectorGroups}
-      groupsState={inspectorGroupsState}
-      relatedPaths={relatedPaths}
-      relatedState={relatedPathsState}
-      fieldsOnModel={fields}
-      viewFieldNames={viewFieldNames}
-      onAddRelatedField={(name) => appendFieldToCurrentLayout(name, fields)}
-      onRemoveFromView={removeSelectedField}
-    />
-  ) : (
-    <DesignerFieldInspectorEmpty />
-  );
 
   const structuralCanvas = (
     <DesignerStructuralCanvas
@@ -1452,305 +1335,26 @@ export default function DesignerPage() {
           </details>
         </Callout>
 
-        {(viewType === "calendar" ||
-          viewType === "graph" ||
-          viewType === "pivot" ||
-          viewType === "map" ||
-          viewType === "activity" ||
-          viewType === "gantt" ||
-          viewType === "cohort" ||
-          viewType === "grid") &&
-          model && (
-          <div className="mt-6 border border-border-subtle bg-surface-muted p-4">
-            <h2 className="mb-2 text-sm font-semibold text-ink">
-              {viewType} view fields
-            </h2>
-            <p className="mb-3 text-xs text-muted">
-              Arch preview updates from these fields. Drag from the palette into
-              form/list is unchanged — use the buttons below for reporting axes.
-            </p>
-            {viewType === "map" && (
-              <p className="mb-3 border border-warning/40 bg-warning-subtle px-3 py-2 text-xs text-warning">
-                Map views need a <code className="text-muted">res.partner</code>{" "}
-                many2one (<code className="text-muted">res_partner</code> attr).
-                Without a partner field, Odoo will not render the map.
-              </p>
-            )}
-            {viewType === "gantt" && (
-              <p className="mb-3 border border-warning/40 bg-warning-subtle px-3 py-2 text-xs text-warning">
-                Gantt arch is Community-safe metadata, but the client often needs{" "}
-                <code className="text-muted">web_gantt</code> /{" "}
-                <code className="text-muted">project</code> (Enterprise or installed
-                modules). We do not claim EE live — save may succeed while Open in Odoo
-                shows nothing without the module.
-              </p>
-            )}
-            {viewType === "cohort" && (
-              <p className="mb-3 border border-warning/40 bg-warning-subtle px-3 py-2 text-xs text-warning">
-                Cohort views are module/version gated. Arch can be saved via public RPC;
-                the UI may be unavailable without the cohort client module. Not an EE
-                live claim.
-              </p>
-            )}
-            {viewType === "grid" && (
-              <p className="mb-3 border border-warning/40 bg-warning-subtle px-3 py-2 text-xs text-warning">
-                Grid/planning views are Enterprise-gated. Arch emission is supported; live
-                Open in Odoo requires EE modules on the instance.
-              </p>
-            )}
-            {viewType === "calendar" && (
-              <ul className="space-y-1 font-mono text-sm text-muted">
-                {calendarFields.map((f) => (
-                  <li key={f.id} className="flex items-center justify-between gap-2">
-                    <span>{f.name}</span>
-                    <button
-                      type="button"
-                      className="text-xs text-danger"
-                      onClick={() =>
-                        setCalendarFields((cols) => cols.filter((c) => c.id !== f.id))
-                      }
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-                {!calendarFields.length && (
-                  <li className="text-muted">No display fields yet</li>
-                )}
-              </ul>
-            )}
-            {(viewType === "map" ||
-              viewType === "activity" ||
-              viewType === "gantt" ||
-              viewType === "grid") && (
-              <ul className="space-y-1 font-mono text-sm text-muted">
-                {(viewType === "map"
-                  ? mapFields
-                  : viewType === "activity"
-                    ? activityFields
-                    : viewType === "gantt"
-                      ? ganttFields
-                      : gridFields
-                ).map((f) => (
-                  <li key={f.id} className="flex items-center justify-between gap-2">
-                    <span>{f.name}</span>
-                    <button
-                      type="button"
-                      className="text-xs text-danger"
-                      onClick={() => {
-                        if (viewType === "map") {
-                          setMapFields((cols) => cols.filter((c) => c.id !== f.id));
-                        } else if (viewType === "activity") {
-                          setActivityFields((cols) => cols.filter((c) => c.id !== f.id));
-                        } else if (viewType === "gantt") {
-                          setGanttFields((cols) => cols.filter((c) => c.id !== f.id));
-                        } else {
-                          setGridFields((cols) => cols.filter((c) => c.id !== f.id));
-                        }
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-                {(viewType === "map"
-                  ? mapFields
-                  : viewType === "activity"
-                    ? activityFields
-                    : viewType === "gantt"
-                      ? ganttFields
-                      : gridFields
-                ).length === 0 && (
-                  <li className="text-muted">No display fields yet</li>
-                )}
-              </ul>
-            )}
-            {viewType === "cohort" && (
-              <p className="text-xs text-muted">
-                Cohort uses date_start / measure from the toolbar — no field list required.
-              </p>
-            )}
-            {viewType === "graph" && (
-              <ul className="space-y-2 font-mono text-sm text-muted">
-                {graphFields.map((f) => (
-                  <li key={f.id} className="flex flex-wrap items-center gap-2">
-                    <span className="min-w-[8rem]">{f.name}</span>
-                    <select
-                      value={f.type ?? ""}
-                      onChange={(e) => {
-                        const next = e.target.value as "" | "row" | "measure";
-                        setGraphFields((cols) =>
-                          cols.map((c) =>
-                            c.id === f.id
-                              ? {
-                                  ...c,
-                                  type: next === "" ? undefined : next,
-                                }
-                              : c,
-                          ),
-                        );
-                      }}
-                      className="border border-border-subtle bg-surface px-2 py-1 text-xs"
-                    >
-                      <option value="">(role)</option>
-                      <option value="row">row</option>
-                      <option value="measure">measure</option>
-                    </select>
-                    <button
-                      type="button"
-                      className="text-xs text-danger"
-                      onClick={() =>
-                        setGraphFields((cols) => cols.filter((c) => c.id !== f.id))
-                      }
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {viewType === "pivot" && (
-              <ul className="space-y-2 font-mono text-sm text-muted">
-                {pivotFields.map((f) => (
-                  <li key={f.id} className="flex flex-wrap items-center gap-2">
-                    <span className="min-w-[8rem]">{f.name}</span>
-                    <select
-                      value={f.type ?? ""}
-                      onChange={(e) => {
-                        const next = e.target.value as "" | "row" | "col" | "measure";
-                        setPivotFields((cols) =>
-                          cols.map((c) =>
-                            c.id === f.id
-                              ? {
-                                  ...c,
-                                  type: next === "" ? undefined : next,
-                                }
-                              : c,
-                          ),
-                        );
-                      }}
-                      className="border border-border-subtle bg-surface px-2 py-1 text-xs"
-                    >
-                      <option value="">(role)</option>
-                      <option value="row">row</option>
-                      <option value="col">col</option>
-                      <option value="measure">measure</option>
-                    </select>
-                    {f.type === "col" && (
-                      <input
-                        value={f.interval ?? ""}
-                        placeholder="interval"
-                        onChange={(e) =>
-                          setPivotFields((cols) =>
-                            cols.map((c) =>
-                              c.id === f.id
-                                ? { ...c, interval: e.target.value || undefined }
-                                : c,
-                            ),
-                          )
-                        }
-                        className="w-24 border border-border-subtle bg-surface px-2 py-1 text-xs"
-                      />
-                    )}
-                    <button
-                      type="button"
-                      className="text-xs text-danger"
-                      onClick={() =>
-                        setPivotFields((cols) => cols.filter((c) => c.id !== f.id))
-                      }
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {viewType !== "cohort" && (
-            <div className="mt-3 space-y-2">
-              <p className="text-[11px] text-muted">
-                Click <span className="font-mono text-muted">+ field</span> to include an
-                existing model field. Custom <span className="font-mono">x_*</span> fields are
-                listed first (do not use Create field — that creates new columns).
-              </p>
-              <div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto">
-              {[...fields]
-                .sort((a, b) => {
-                  const rank = (n: string) =>
-                    n.startsWith("x_") ? 0 : n.startsWith("activity_") ? 2 : 1;
-                  const d = rank(a.name) - rank(b.name);
-                  return d !== 0 ? d : a.name.localeCompare(b.name);
-                })
-                .map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  className="border border-border-subtle px-2 py-0.5 font-mono text-[11px] text-muted"
-                  onClick={() => {
-                    const nextField: DesignerField = {
-                      kind: "field",
-                      id: uid("f"),
-                      name: f.name,
-                      string: f.field_description,
-                    };
-                    if (viewType === "calendar") {
-                      setCalendarFields((cols) =>
-                        cols.some((c) => c.name === f.name) ? cols : [...cols, nextField],
-                      );
-                    } else if (viewType === "map") {
-                      setMapFields((cols) =>
-                        cols.some((c) => c.name === f.name) ? cols : [...cols, nextField],
-                      );
-                    } else if (viewType === "activity") {
-                      setActivityFields((cols) =>
-                        cols.some((c) => c.name === f.name) ? cols : [...cols, nextField],
-                      );
-                    } else if (viewType === "gantt") {
-                      setGanttFields((cols) =>
-                        cols.some((c) => c.name === f.name) ? cols : [...cols, nextField],
-                      );
-                    } else if (viewType === "grid") {
-                      setGridFields((cols) =>
-                        cols.some((c) => c.name === f.name) ? cols : [...cols, nextField],
-                      );
-                    } else if (viewType === "graph") {
-                      setGraphFields((cols) =>
-                        cols.some((c) => c.name === f.name)
-                          ? cols
-                          : [
-                              ...cols,
-                              {
-                                id: uid("af"),
-                                name: f.name,
-                                type: "measure",
-                                string: f.field_description,
-                              },
-                            ],
-                      );
-                    } else {
-                      setPivotFields((cols) =>
-                        cols.some((c) => c.name === f.name)
-                          ? cols
-                          : [
-                              ...cols,
-                              {
-                                id: uid("af"),
-                                name: f.name,
-                                type: "row",
-                                string: f.field_description,
-                              },
-                            ],
-                      );
-                    }
-                  }}
-                >
-                  + {f.name}
-                </button>
-              ))}
-              </div>
-            </div>
-            )}
-          </div>
-        )}
+        <DesignerReportingFieldsPanel
+          viewType={viewType}
+          model={model}
+          fields={fields}
+          calendarFields={calendarFields}
+          setCalendarFields={setCalendarFields}
+          mapFields={mapFields}
+          setMapFields={setMapFields}
+          activityFields={activityFields}
+          setActivityFields={setActivityFields}
+          ganttFields={ganttFields}
+          setGanttFields={setGanttFields}
+          gridFields={gridFields}
+          setGridFields={setGridFields}
+          graphFields={graphFields}
+          setGraphFields={setGraphFields}
+          pivotFields={pivotFields}
+          setPivotFields={setPivotFields}
+        />
+
 
         {bindMode !== "closed" && (
           <DesignerBindPanel
