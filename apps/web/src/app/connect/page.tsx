@@ -223,20 +223,46 @@ export default function ConnectPage() {
         </ol>
 
         {step === 3 && lastSavedId ? (
-          <Card className="mb-8 space-y-4 p-6">
+          <Card className="mb-8 space-y-4 p-6" data-testid="connect-first-win">
             <Callout variant="info" title="You're connected">
-              Your instance was probed successfully. Open Overview to browse models or jump
-              straight into Build.
+              First win: describe an app in App Studio, review the draft, then promote only when
+              you mean it. Most teams finish this path in under eight minutes after connect.
             </Callout>
             {lastSavedCaps ? (
               <CapabilityProbePanel capabilities={lastSavedCaps} defaultOpen />
             ) : null}
+            <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
+              <li>
+                <span className="text-ink">App Studio</span> — describe what you need (no live write yet).
+              </li>
+              <li>
+                <span className="text-ink">Projects</span> — keep the draft on the board.
+              </li>
+              <li>
+                <span className="text-ink">Overview</span> — browse models when you want the full map.
+              </li>
+            </ol>
             <div className="flex flex-wrap gap-2">
               <Button variant="primary" asChild>
-                <Link href={`/connections/${lastSavedId}`}>Go to Overview</Link>
+                <Link
+                  href={`/connections/${lastSavedId}/studio`}
+                  data-testid="connect-first-win-app-studio"
+                >
+                  Open App Studio
+                </Link>
               </Button>
               <Button variant="secondary" asChild>
-                <Link href={`/connections/${lastSavedId}/builder`}>Build models</Link>
+                <Link
+                  href={`/connections/${lastSavedId}/projects`}
+                  data-testid="connect-first-win-projects"
+                >
+                  Projects
+                </Link>
+              </Button>
+              <Button variant="ghost" asChild>
+                <Link href={`/connections/${lastSavedId}`} data-testid="connect-first-win-overview">
+                  Overview
+                </Link>
               </Button>
               <Button variant="ghost" type="button" onClick={() => setStep(1)}>
                 Add another connection
@@ -331,9 +357,12 @@ export default function ConnectPage() {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button variant="primary" size="sm" asChild>
-                      <Link href={`/connections/${c.id}`}>Overview</Link>
+                      <Link href={`/connections/${c.id}/studio`}>App Studio</Link>
                     </Button>
                     <Button variant="secondary" size="sm" asChild>
+                      <Link href={`/connections/${c.id}`}>Overview</Link>
+                    </Button>
+                    <Button variant="ghost" size="sm" asChild>
                       <Link href={`/connections/${c.id}/builder`}>Build</Link>
                     </Button>
                     <Button variant="ghost" size="sm" type="button" onClick={() => startEdit(c)}>
