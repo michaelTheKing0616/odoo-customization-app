@@ -57,6 +57,9 @@ def test_parse_major() -> None:
     assert parse_major("19.0+e") == 19
     assert parse_major("18.4") == 18
     assert parse_major("16.0") == 16
+    assert parse_major("saas~19.4+e") == 19
+    assert parse_major("saas~19.4") == 19
+    assert parse_major("SaaS~18.4+e") == 18
 
 
 def test_related_write_update_path() -> None:

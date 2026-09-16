@@ -154,3 +154,4 @@ def test_parse_major_accepts_minor_and_enterprise_suffix() -> None:
     assert parse_major("19.4") == 19
     assert parse_major("19.4+e") == 19
     assert parse_major("18.0-20241201") == 18
+    assert parse_major("saas~19.4+e") == 19

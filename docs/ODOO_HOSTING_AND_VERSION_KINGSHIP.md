@@ -2,6 +2,10 @@
 
 How Ingenium stays ahead of Online / SaaS, Community, Enterprise, Odoo.sh, and on-prem as majors ship.
 
+## Version string parsing
+
+Online reports channel-prefixed versions such as `saas~19.4+e`. `parse_major` strips a leading `saas~` / `saas-` tag and takes the first integer major so connect treats these as supported 19.x (not an unsupported string).
+
 ## Hosting types (what operators mean)
 
 | Label people say | What it is | URL shape | Notes |

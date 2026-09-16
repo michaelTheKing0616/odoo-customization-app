@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from odoo_client.compat.capabilities import (
     ODOO_16_CAPABILITIES,
     ODOO_17_CAPABILITIES,
@@ -68,12 +70,19 @@ def for_major(major: int, *, edition: str = "community") -> VersionCapabilities:
 
 
 def parse_major(server_version: str) -> int:
-    """Normalize ``server_version`` like ``19.0+e`` / ``19.0`` → major int."""
+    """Normalize ``server_version`` like ``19.0+e`` / ``saas~19.4+e`` → major int.
+
+    Online/SaaS builds report channel-prefixed versions (``saas~19.4+e``). Strip
+    that prefix, then take the first integer major so connect does not fail-closed
+    on a supported 19.x tenant.
+    """
     text = (server_version or "").strip()
     if not text:
         raise UnsupportedOdooMajorError("Empty server_version")
+    # Online channel tags: saas~19.4+e, saas-19.0, SaaS~18.4+e
+    text = re.sub(r"(?i)^saas[~_-]*", "", text)
     core = text.split("+", 1)[0].split("-", 1)[0]
-    major_s = core.split(".", 1)[0]
-    if not major_s.isdigit():
+    match = re.search(r"(\d+)", core)
+    if not match:
         raise UnsupportedOdooMajorError(f"Cannot parse major from {server_version!r}")
-    return int(major_s)
+    return int(match.group(1))
