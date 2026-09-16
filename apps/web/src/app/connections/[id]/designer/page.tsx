@@ -13,10 +13,8 @@ import {
   DesignerLiveCanvas,
   type DesignerCanvasMode,
 } from "@/components/designer/DesignerLiveCanvas";
-import {
-  DesignerToolsRail,
-  type DesignerRailTabId,
-} from "@/components/designer/DesignerToolsRail";
+import { DesignerStudioRail } from "@/components/designer/DesignerStudioRail";
+import type { DesignerRailTabId } from "@/components/designer/DesignerToolsRail";
 import { FieldPalette } from "@/components/designer/FieldPalette";
 import { Disclosure } from "@/components/ui/Disclosure";
 import {
@@ -3335,161 +3333,46 @@ export default function DesignerPage() {
         />
       }
       rail={
-        <DesignerToolsRail
-          value={railTab}
-          onValueChange={setRailTab}
-          tabs={[
-            {
-              id: "fields",
-              label: "Fields",
-              content: (
-                <div className="space-y-3">
-                  <FieldPalette
-                    fields={fields.map((f) => ({
-                      name: f.name,
-                      ttype: f.ttype,
-                      label: f.field_description || undefined,
-                    }))}
-                    onDragStart={(name) => setDragField(name)}
-                  />
-                  {(viewType === "form" || viewType === "kanban") && (
-                    <NicheWidgetPalette
-                      widgets={nicheWidgets}
-                      colorPalette={colorPalette}
-                      onPick={(w) => void addNicheWidget(w)}
-                    />
-                  )}
-                </div>
-              ),
-            },
-            {
-              id: "properties",
-              label: "Properties",
-              content: (
-                <div data-testid="designer-props-rail">
-                  {fieldInspector}
-                </div>
-              ),
-            },
-            {
-              id: "structure",
-              label: "Structure",
-              content: (
-                <div className="space-y-3 text-sm">
-                  <p className="text-xs text-muted">
-                    Add groups and pages here. Drag fields onto the layout canvas — not gray
-                    boxes. Power layout controls stay in Advanced.
-                  </p>
-                  {viewType === "form" ? (
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={addGroup}
-                        className="rounded-md border border-border-subtle px-3 py-1.5 text-xs text-ink"
-                      >
-                        + Group
-                      </button>
-                      <button
-                        type="button"
-                        onClick={addNotebook}
-                        className="rounded-md border border-border-subtle px-3 py-1.5 text-xs text-ink"
-                      >
-                        + Notebook
-                      </button>
-                    </div>
-                  ) : null}
-                  <ul className="space-y-1 text-xs text-muted">
-                    {formChildren.map((child) => (
-                      <li key={child.id} className="rounded border border-border-subtle px-2 py-1">
-                        {child.kind === "group"
-                          ? `Group · ${child.string || "untitled"}`
-                          : `Notebook · ${child.pages.length} pages`}
-                      </li>
-                    ))}
-                    {formChildren.length === 0 ? (
-                      <li>No groups yet. Add a group, then drop fields on the canvas.</li>
-                    ) : null}
-                  </ul>
-                </div>
-              ),
-            },
-            {
-              id: "overlay",
-              label: "Overlay",
-              content: proxyPreviewUrl ? (
-                <OverlayEditor
-                  iframeRef={previewIframeRef}
-                  connectionId={connectionId}
-                  model={model}
-                  viewType={viewType}
-                  fields={fields}
-                  embedded
-                  onSaved={({ snapshotId, viewId }) => {
-                    if (snapshotId) setLastSnapshotId(snapshotId);
-                    setPreviewKey((k) => k + 1);
-                    setNotice(
-                      viewId
-                        ? `Overlay saved inherit view #${viewId}. Preview reloaded.`
-                        : "Overlay saved — preview reloaded.",
-                    );
-                    void refreshSnapshots();
-                  }}
-                />
-              ) : (
-                <p className="text-xs text-muted">
-                  Load a model to edit the live preview with overlay operations.
-                </p>
-              ),
-            },
-            {
-              id: "advanced",
-              label: "Advanced",
-              content: (
-                <div className="space-y-3" data-testid="designer-advanced-rail">
-                  <p className="text-xs text-muted">
-                    XPath inherit and arch override. Default Save is inherit. Completeness ≠ Cert ≠
-                    Autopilot.
-                  </p>
-                  <XPathInheritPanel
-                    expr={xpathExpr}
-                    position={xpathPosition}
-                    bodyXml={xpathBody}
-                    previewArch={xpathArchPreview}
-                    issues={xpathIssues}
-                    suggestedExpr={xpathSuggested}
-                    defaultInjectExpr={xpathDefaultInject}
-                    matchCount={xpathMatchCount}
-                    blocking={xpathBlocking}
-                    busy={busy}
-                    model={model}
-                    hasOverride={Boolean(archOverride)}
-                    onExprChange={(value) => {
-                      setXpathExpr(value);
-                      setXpathBlocking(false);
-                    }}
-                    onPositionChange={setXpathPosition}
-                    onBodyChange={setXpathBody}
-                    onPreview={() => void runXpathPreview()}
-                    onUseNamedLocator={(value) => {
-                      setXpathExpr(value);
-                      setXpathBlocking(false);
-                      setNotice("Switched to a named locator. Preview again before save.");
-                    }}
-                    onUseAsOverride={() => {
-                      setArch(xpathArchPreview);
-                      setArchOverride(xpathArchPreview);
-                      setNotice("Arch override set from XPath preview. Save will use inherit arch.");
-                    }}
-                    onSave={() => void onSaveXpathInherit()}
-                    onClearOverride={() => {
-                      setArchOverride(null);
-                      setNotice("Cleared arch override — Save uses canvas spec again.");
-                    }}
-                  />
-                </div>
-              ),
-            },
-          ]}
+        <DesignerStudioRail
+          railTab={railTab}
+          setRailTab={setRailTab}
+          viewType={viewType}
+          fields={fields}
+          setDragField={setDragField}
+          nicheWidgets={nicheWidgets}
+          colorPalette={colorPalette}
+          addNicheWidget={addNicheWidget}
+          fieldInspector={fieldInspector}
+          formChildren={formChildren}
+          addGroup={addGroup}
+          addNotebook={addNotebook}
+          proxyPreviewUrl={proxyPreviewUrl}
+          previewIframeRef={previewIframeRef}
+          connectionId={connectionId}
+          model={model}
+          setLastSnapshotId={setLastSnapshotId}
+          setPreviewKey={setPreviewKey}
+          setNotice={setNotice}
+          refreshSnapshots={refreshSnapshots}
+          xpathExpr={xpathExpr}
+          xpathPosition={xpathPosition}
+          xpathBody={xpathBody}
+          xpathArchPreview={xpathArchPreview}
+          xpathIssues={xpathIssues}
+          xpathSuggested={xpathSuggested}
+          xpathDefaultInject={xpathDefaultInject}
+          xpathMatchCount={xpathMatchCount}
+          xpathBlocking={xpathBlocking}
+          busy={busy}
+          archOverride={archOverride}
+          setXpathExpr={setXpathExpr}
+          setXpathBlocking={setXpathBlocking}
+          setXpathPosition={setXpathPosition}
+          setXpathBody={setXpathBody}
+          runXpathPreview={runXpathPreview}
+          setArch={setArch}
+          setArchOverride={setArchOverride}
+          onSaveXpathInherit={onSaveXpathInherit}
         />
       }
       extras={
