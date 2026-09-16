@@ -13,7 +13,12 @@ vi.mock("next/image", () => ({
 }));
 
 vi.mock("@/components/theme/ThemeProvider", () => ({
-  useTheme: () => ({ theme: "light", resolved: "light", setTheme: () => {}, toggle: () => {} }),
+  useThemeOptional: () => ({
+    theme: "light",
+    resolved: "light",
+    setTheme: () => {},
+    toggle: () => {},
+  }),
 }));
 
 describe("BrandMark", () => {

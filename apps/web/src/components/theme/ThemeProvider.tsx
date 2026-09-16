@@ -69,3 +69,8 @@ export function useTheme() {
   if (!ctx) throw new Error("useTheme must be used within ThemeProvider");
   return ctx;
 }
+
+/** Returns null outside ThemeProvider — for chrome that also mounts on marketing pages. */
+export function useThemeOptional() {
+  return useContext(ThemeContext);
+}

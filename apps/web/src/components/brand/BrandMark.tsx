@@ -2,18 +2,16 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
-import { useTheme } from "@/components/theme/ThemeProvider";
+import { useThemeOptional } from "@/components/theme/ThemeProvider";
 
 type Props = {
   href?: string;
-  /** Show wordmark next to the mark */
   withWordmark?: boolean;
   className?: string;
-  /** Pixel size of the square mark */
   size?: number;
   priority?: boolean;
-  /** Force a variant; default follows resolved theme */
   variant?: "color" | "mono" | "auto";
 };
 
@@ -22,7 +20,12 @@ const MARK = {
   mono: "/brand/ingenium-mark-mono.png",
 } as const;
 
-/** Ingenium product mark — theme-aware; mono on light chrome, color on dark. */
+function readDomTheme(): "light" | "dark" {
+  if (typeof document === "undefined") return "light";
+  return document.documentElement.classList.contains("dark") ? "dark" : "light";
+}
+
+/** Ingenium product mark — mono on light chrome, color on dark. */
 export function BrandMark({
   href = "/",
   withWordmark = true,
@@ -31,7 +34,13 @@ export function BrandMark({
   priority = false,
   variant = "auto",
 }: Props) {
-  const { resolved } = useTheme();
+  const themeCtx = useThemeOptional();
+  const [domTheme, setDomTheme] = useState<"light" | "dark">("light");
+  useEffect(() => {
+    setDomTheme(readDomTheme());
+  }, [themeCtx?.resolved]);
+
+  const resolved = themeCtx?.resolved ?? domTheme;
   const mode = variant === "auto" ? (resolved === "light" ? "mono" : "color") : variant;
   const src = MARK[mode];
 
