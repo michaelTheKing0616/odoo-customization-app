@@ -111,7 +111,7 @@ export function BarcodeScanner({ onScan, onError, className }: Props) {
           </button>
         )}
       </div>
-      <p className="text-xs text-[#6C757D]">
+      <p className="text-xs text-muted">
         Supports common 1D/2D formats via ZXing (Apache-2.0). Grant camera permission when prompted.
       </p>
     </div>

@@ -1,7 +1,8 @@
 # Design token freeze (UI DESIGN BOT PRIME)
 
 **Status:** tokens landed in `apps/web/src/app/globals.css` (`text-ui-*`, `--row-h`, `--inspector-w*`, `--sidebar-w*`, motion).  
-**Not done:** migrating every surface to these utilities (that is density work after A/C).
+**Progress:** chrome primitives (`PageHeader`/`EmptyState`/`Sidebar`/`TopBar`) + Menus/Automations session kit use `text-ui-*` / `h-row`. `hex_lint_product.sh --strict` clean as of tip after import/scanner/builder/approvals hex peel.
+**Still open:** denser migration of long config/builder pages (font-display utility → `text-ui-title` where headings are still `text-xl`).
 
 | Utility | Spec |
 |---|---|

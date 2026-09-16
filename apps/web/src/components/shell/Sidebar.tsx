@@ -98,7 +98,7 @@ export function Sidebar({ connection }: Props) {
                   <div className="flex items-center gap-1 px-2 py-1">
                     <button
                       type="button"
-                      className="flex flex-1 items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted"
+                      className="flex flex-1 items-center gap-1 text-ui-meta font-medium uppercase tracking-wide text-muted"
                       onClick={() => toggleGroup(group.id)}
                       aria-expanded={isOpen}
                     >
@@ -147,7 +147,7 @@ export function Sidebar({ connection }: Props) {
                           }
                         }}
                         className={cn(
-                          "flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors",
+                          "flex h-row items-center gap-2 rounded-md px-2 text-ui-body transition-colors",
                           active
                             ? "bg-accent-subtle text-accent font-medium"
                             : "text-ink hover:bg-surface-muted",
@@ -168,7 +168,7 @@ export function Sidebar({ connection }: Props) {
                     return (
                       <div key={item.id} className="mb-0.5">
                         {showDevCaption ? (
-                          <p className="px-2 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted">
+                          <p className="px-2 pb-0.5 pt-1 text-ui-meta font-medium uppercase tracking-wide text-muted">
                             Developer
                           </p>
                         ) : null}

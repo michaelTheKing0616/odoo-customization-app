@@ -164,9 +164,9 @@ export function InvoicingConnectPanel({
   }
 
   return (
-    <section className="mt-8 border border-[#E5E5E5] bg-surface p-6">
-      <h2 className="text-lg font-semibold text-[#212529]">Connect to Invoicing (§19)</h2>
-      <p className="mt-1 text-sm text-[#6C757D]">
+    <section className="mt-8 border border-border-subtle bg-surface p-6">
+      <h2 className="text-lg font-semibold text-ink">Connect to Invoicing (§19)</h2>
+      <p className="mt-1 text-sm text-muted">
         Live path: many2many on your custom model only. Module export may add inverse m2o on{" "}
         <code className="text-xs">account.move</code>. Draft invoices never post.
       </p>
@@ -263,7 +263,7 @@ export function InvoicingConnectPanel({
 
       <div className="mt-6 border-t pt-4">
         <h3 className="text-sm font-semibold">Create draft invoice</h3>
-        <p className="text-xs text-[#6C757D]">
+        <p className="text-xs text-muted">
           Maps partner / amount / description → draft out_invoice; requires l10n preflight OK.
         </p>
         <label className="mt-2 block text-sm">
@@ -278,20 +278,20 @@ export function InvoicingConnectPanel({
           type="button"
           disabled={busy || !l10nOk}
           onClick={() => void runDraft()}
-          className="mt-3 h-10 bg-[#212529] px-4 text-sm font-semibold text-white disabled:opacity-50"
+          className="mt-3 h-10 bg-ink px-4 text-sm font-semibold text-white disabled:opacity-50"
         >
           Create draft invoice
         </button>
       </div>
 
       {moduleSpec && (
-        <pre className="mt-4 max-h-64 overflow-auto bg-[#F8F9FA] p-3 text-xs">{moduleSpec}</pre>
+        <pre className="mt-4 max-h-64 overflow-auto bg-surface-muted p-3 text-xs">{moduleSpec}</pre>
       )}
 
       {notice && <p className="mt-3 text-sm text-green-700">{notice}</p>}
       {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
       {major != null && (
-        <p className="mt-2 text-xs text-[#6C757D]">Odoo major {major} — GA invoicing on 17–19.</p>
+        <p className="mt-2 text-xs text-muted">Odoo major {major} — GA invoicing on 17–19.</p>
       )}
 
       <ConfirmDialogV2

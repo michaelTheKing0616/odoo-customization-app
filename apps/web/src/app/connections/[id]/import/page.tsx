@@ -299,7 +299,7 @@ export default function DataImportPage() {
           <label className="block text-sm">
             Target model
             <input
-              className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 text-[#1f1f1f]"
+              className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-ink"
               value={model}
               onChange={(e) => setModel(e.target.value)}
               placeholder="res.partner"
@@ -344,7 +344,7 @@ export default function DataImportPage() {
                   <select
                     value={mode}
                     onChange={(e) => setMode(e.target.value as "create" | "upsert")}
-                    className="border border-[var(--odoo-border)] bg-surface px-2 py-1"
+                    className="border border-border-subtle bg-surface px-2 py-1"
                   >
                     <option value="create">create</option>
                     <option value="upsert">upsert</option>
@@ -356,7 +356,7 @@ export default function DataImportPage() {
                     <input
                       value={matchFields}
                       onChange={(e) => setMatchFields(e.target.value)}
-                      className="border border-[var(--odoo-border)] bg-surface px-2 py-1"
+                      className="border border-border-subtle bg-surface px-2 py-1"
                     />
                   </label>
                 )}
@@ -364,18 +364,18 @@ export default function DataImportPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
                   <thead>
-                    <tr className="border-b border-[var(--odoo-border)]">
+                    <tr className="border-b border-border-subtle">
                       <th className="py-1">CSV column</th>
                       <th className="py-1">Odoo field</th>
                     </tr>
                   </thead>
                   <tbody>
                     {headers.map((h) => (
-                      <tr key={h} className="border-b border-[var(--odoo-border)]/60">
+                      <tr key={h} className="border-b border-border-subtle/60">
                         <td className="py-1 font-mono text-xs">{h}</td>
                         <td className="py-1">
                           <input
-                            className="w-full border border-[var(--odoo-border)] bg-surface px-2 py-1 font-mono text-xs"
+                            className="w-full border border-border-subtle bg-surface px-2 py-1 font-mono text-xs"
                             value={mapping[h] ?? ""}
                             onChange={(e) =>
                               setMapping((m) => ({ ...m, [h]: e.target.value }))
@@ -390,7 +390,7 @@ export default function DataImportPage() {
               <p className="text-xs text-[var(--odoo-muted)]">
                 {rows.length} row(s) loaded. Sample:
               </p>
-              <pre className="max-h-40 overflow-auto bg-[#f8f9fa] p-2 text-xs text-[#1f1f1f]">
+              <pre className="max-h-40 overflow-auto bg-surface-muted p-2 text-xs text-ink">
                 {JSON.stringify(sample, null, 2)}
               </pre>
               <div className="flex flex-wrap gap-2">
@@ -487,7 +487,7 @@ export default function DataImportPage() {
                   <input
                     value={imgMatchField}
                     onChange={(e) => setImgMatchField(e.target.value)}
-                    className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1 font-mono text-xs"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono text-xs"
                   />
                 </label>
                 <label>
@@ -496,11 +496,11 @@ export default function DataImportPage() {
                     value={imgField}
                     onChange={(e) => setImgField(e.target.value)}
                     placeholder={imgPreview.image_field}
-                    className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1 font-mono text-xs"
+                    className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono text-xs"
                   />
                 </label>
               </div>
-              <pre className="max-h-32 overflow-auto bg-[#f8f9fa] p-2 text-xs text-[#1f1f1f]">
+              <pre className="max-h-32 overflow-auto bg-surface-muted p-2 text-xs text-ink">
                 {JSON.stringify(imgPreview.sample_rows, null, 2)}
               </pre>
               <div className="flex flex-wrap gap-2">
@@ -530,7 +530,7 @@ export default function DataImportPage() {
               </p>
               <table className="mt-2 w-full text-left text-xs">
                 <thead>
-                  <tr className="border-b border-[var(--odoo-border)]">
+                  <tr className="border-b border-border-subtle">
                     <th className="py-1">#</th>
                     <th className="py-1">match</th>
                     <th className="py-1">file</th>
@@ -540,7 +540,7 @@ export default function DataImportPage() {
                 </thead>
                 <tbody>
                   {imgResult.results.map((r) => (
-                    <tr key={r.row_index} className="border-b border-[var(--odoo-border)]/60">
+                    <tr key={r.row_index} className="border-b border-border-subtle/60">
                       <td className="py-1">{r.row_index}</td>
                       <td className="py-1 font-mono">{r.match_value}</td>
                       <td className="py-1 font-mono">{r.filename}</td>

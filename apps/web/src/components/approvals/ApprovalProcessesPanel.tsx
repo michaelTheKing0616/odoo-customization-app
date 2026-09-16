@@ -130,12 +130,12 @@ export function ApprovalProcessesPanel({
       {gate && (
         <p className="mt-3 text-sm text-muted">
           Process engine:{" "}
-          <span className="font-medium text-[#faf6f9]">
+          <span className="font-medium text-ink">
             {gate.engine === "enterprise" ? "Enterprise approvals" : "Community x_approval_*"}
           </span>
           {gate.community_models_ready ? " · models ready" : " · scaffold required"}
           {gate.enterprise_note ? (
-            <span className="mt-1 block text-xs text-[#e8d09f]">{gate.enterprise_note}</span>
+            <span className="mt-1 block text-xs text-warning">{gate.enterprise_note}</span>
           ) : null}
         </p>
       )}
@@ -151,21 +151,21 @@ export function ApprovalProcessesPanel({
         </button>
         <Link
           href={`/connections/${connectionId}/wizard`}
-          className="border border-[#5a3d4a] px-3 py-1.5 text-sm text-muted"
+          className="border border-border-subtle px-3 py-1.5 text-sm text-muted"
         >
           Wizard templates
         </Link>
       </div>
 
       <section className="mt-8 border border-border-subtle bg-surface-muted/70 p-4">
-        <h3 className="font-[family-name:var(--font-display)] text-lg text-[#faf6f9]">
+        <h3 className="font-[family-name:var(--font-display)] text-lg text-ink">
           New request
         </h3>
         <div className="mt-3 grid gap-3 md:grid-cols-2 text-sm">
           <label className="block">
             <span className="text-muted">Type</span>
             <select
-              className="mt-1 w-full border border-border-subtle bg-[#120e14] px-2 py-1.5 text-[#faf6f9]"
+              className="mt-1 w-full border border-border-subtle bg-surface-muted px-2 py-1.5 text-ink"
               value={typeId}
               onChange={(e) => setTypeId(e.target.value)}
             >
@@ -180,7 +180,7 @@ export function ApprovalProcessesPanel({
           <label className="block">
             <span className="text-muted">Subject</span>
             <input
-              className="mt-1 w-full border border-border-subtle bg-[#120e14] px-2 py-1.5 text-[#faf6f9]"
+              className="mt-1 w-full border border-border-subtle bg-surface-muted px-2 py-1.5 text-ink"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
             />
@@ -188,7 +188,7 @@ export function ApprovalProcessesPanel({
           <label className="block">
             <span className="text-muted">Amount</span>
             <input
-              className="mt-1 w-full border border-border-subtle bg-[#120e14] px-2 py-1.5 text-[#faf6f9]"
+              className="mt-1 w-full border border-border-subtle bg-surface-muted px-2 py-1.5 text-ink"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
             />
@@ -196,7 +196,7 @@ export function ApprovalProcessesPanel({
           <label className="block">
             <span className="text-muted">Actor user id</span>
             <input
-              className="mt-1 w-full border border-border-subtle bg-[#120e14] px-2 py-1.5 text-[#faf6f9]"
+              className="mt-1 w-full border border-border-subtle bg-surface-muted px-2 py-1.5 text-ink"
               value={actorUserId}
               onChange={(e) => setActorUserId(e.target.value)}
             />
@@ -213,13 +213,13 @@ export function ApprovalProcessesPanel({
       </section>
 
       <section className="mt-8">
-        <h3 className="font-[family-name:var(--font-display)] text-lg text-[#faf6f9]">
+        <h3 className="font-[family-name:var(--font-display)] text-lg text-ink">
           Approval types
         </h3>
         <ul className="mt-3 space-y-2 text-sm">
           {types.map((t) => (
             <li key={t.id} className="border border-border-subtle bg-surface-muted/70 p-3">
-              <span className="text-[#faf6f9]">{t.name}</span>
+              <span className="text-ink">{t.name}</span>
               <span className="text-xs text-muted">
                 {" "}
                 · {t.levels} level(s)
@@ -236,13 +236,13 @@ export function ApprovalProcessesPanel({
       </section>
 
       <section className="mt-8">
-        <h3 className="font-[family-name:var(--font-display)] text-lg text-[#faf6f9]">
+        <h3 className="font-[family-name:var(--font-display)] text-lg text-ink">
           Requests
         </h3>
         <ul className="mt-3 space-y-2 text-sm">
           {requests.map((r) => (
             <li key={r.id} className="border border-border-subtle bg-surface-muted/70 p-3">
-              <p className="text-[#faf6f9]">
+              <p className="text-ink">
                 #{r.id} {r.subject ?? r.name} · {r.state}
                 {r.current_level ? ` · level ${r.current_level}` : ""}
               </p>
@@ -271,7 +271,7 @@ export function ApprovalProcessesPanel({
                       type="button"
                       disabled={busy}
                       onClick={() => void runAction(r.id, "refuse")}
-                      className="border border-[#5a3d4a] px-2 py-1 text-xs text-muted"
+                      className="border border-border-subtle px-2 py-1 text-xs text-muted"
                     >
                       Refuse
                     </button>

@@ -44,8 +44,8 @@ export function EePlaybooksPanel({ connectionId, className = "" }: Props) {
 
   return (
     <div className={`text-sm ${className}`} data-testid="ee-playbooks-panel">
-      <p className="text-xs font-medium text-[#a8909e]">Enterprise playbooks (RPC)</p>
-      <p className="mt-0.5 text-[11px] text-[#6b5a66]">
+      <p className="text-xs font-medium text-muted">Enterprise playbooks (RPC)</p>
+      <p className="mt-0.5 text-ui-meta text-muted">
         Greyed out when the required module is not installed. Public ORM only — never
         Studio source.
       </p>
@@ -67,19 +67,19 @@ export function EePlaybooksPanel({ connectionId, className = "" }: Props) {
               data-available={pb.available ? "true" : "false"}
               className={
                 pb.available
-                  ? "border border-border-subtle bg-[#120e14] px-2 py-1.5 text-xs text-muted"
-                  : "border border-[#1a2a24] bg-surface px-2 py-1.5 text-xs text-[#6b5a66] opacity-60"
+                  ? "border border-border-subtle bg-surface-muted px-2 py-1.5 text-xs text-muted"
+                  : "border border-border-subtle bg-surface px-2 py-1.5 text-xs text-muted opacity-60"
               }
               aria-disabled={!pb.available}
             >
               <span className="font-medium">{pb.name}</span>
               {!pb.available && (
-                <span className="ml-2 text-[10px] uppercase tracking-wide">Unavailable</span>
+                <span className="ml-2 text-ui-meta uppercase tracking-wide">Unavailable</span>
               )}
               {pb.warn_only && pb.available && (
-                <span className="ml-2 text-[10px] text-[#e8d09f]">Warn only</span>
+                <span className="ml-2 text-ui-meta text-warning">Warn only</span>
               )}
-              <span className="mt-0.5 block text-[11px] text-muted">{pb.reason}</span>
+              <span className="mt-0.5 block text-ui-meta text-muted">{pb.reason}</span>
             </li>
           ))}
         </ul>

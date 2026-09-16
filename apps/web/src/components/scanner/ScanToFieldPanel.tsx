@@ -88,9 +88,9 @@ export function ScanToFieldPanel({
   }
 
   return (
-    <section className="mt-8 border border-[#E5E5E5] bg-surface p-6">
-      <h2 className="text-lg font-semibold text-[#212529]">Scan to field (§16)</h2>
-      <p className="mt-1 text-sm text-[#6C757D]">
+    <section className="mt-8 border border-border-subtle bg-surface p-6">
+      <h2 className="text-lg font-semibold text-ink">Scan to field (§16)</h2>
+      <p className="mt-1 text-sm text-muted">
         In-app camera scanner (all tiers). Exported OWL widget module is available on Odoo.sh /
         self-host only — not native Odoo.
       </p>
@@ -164,7 +164,7 @@ export function ScanToFieldPanel({
       )}
 
       {moduleWidgetAllowed && (
-        <p className="mt-4 text-xs text-[#6C757D]">
+        <p className="mt-4 text-xs text-muted">
           Module export: enable <code>include_barcode_scan_widget</code> in ModuleSpec to emit{" "}
           <code>widget=&quot;x_barcode_scan&quot;</code> assets (LGPL-3 + Apache-2 ZXing attribution in README).
         </p>
@@ -172,7 +172,7 @@ export function ScanToFieldPanel({
 
       {notice && <p className="mt-3 text-sm text-green-700">{notice}</p>}
       {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
-      {busy && <p className="mt-2 text-xs text-[#6C757D]">Working…</p>}
+      {busy && <p className="mt-2 text-xs text-muted">Working…</p>}
 
       <ConfirmDialogV2
         riskLevel="danger"
