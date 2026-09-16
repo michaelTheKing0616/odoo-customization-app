@@ -3890,6 +3890,7 @@ export default function DesignerPage() {
         <div className="grid gap-6 lg:grid-cols-[220px_1fr_280px]">
           <DesignerAdvancedFieldsAside
             connection={connection}
+            model={model}
             viewType={viewType}
             fields={fields}
             newFieldName={newFieldName}

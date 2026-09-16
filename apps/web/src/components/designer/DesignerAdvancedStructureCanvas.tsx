@@ -24,7 +24,7 @@ import type {
   SelectedField,
   ViewType,
 } from "@/components/designer/designer-model";
-import { resolveFieldLabel } from "@/components/designer/designer-model";
+import { resolveFieldLabel, uid } from "@/components/designer/designer-model";
 
 export type DesignerAdvancedStructureCanvasProps = {
   viewType: ViewType;
@@ -78,7 +78,7 @@ export type DesignerAdvancedStructureCanvasProps = {
   searchGroupByFilters: SearchGroupByFilter[];
   setSearchGroupByFilters: Dispatch<SetStateAction<SearchGroupByFilter[]>>;
   editingFilterId: string | null;
-  setEditingFilterId: (v: string | null) => void;
+  setEditingFilterId: Dispatch<SetStateAction<string | null>>;
   kanbanFields: DesignerField[];
   setKanbanFields: Dispatch<SetStateAction<DesignerField[]>>;
   kanbanGroupBy: string;

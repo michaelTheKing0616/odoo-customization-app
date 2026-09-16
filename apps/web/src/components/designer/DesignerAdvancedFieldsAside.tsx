@@ -13,6 +13,7 @@ import {
 
 export type DesignerAdvancedFieldsAsideProps = {
   connection: Connection | null;
+  model: string;
   viewType: string;
   fields: FieldRow[];
   newFieldName: string;
@@ -41,6 +42,7 @@ export type DesignerAdvancedFieldsAsideProps = {
 
 export function DesignerAdvancedFieldsAside({
   connection,
+  model,
   viewType,
   fields,
   newFieldName,
