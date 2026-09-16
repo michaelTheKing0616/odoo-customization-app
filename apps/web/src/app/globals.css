@@ -1168,3 +1168,34 @@ body {
   flex: 1;
   overflow: auto;
 }
+
+
+/* === list-composer shell (shared kit D) === */
+.list-composer-shell {
+  align-items: start;
+}
+
+.list-composer-pane {
+  animation: list-composer-enter 180ms ease-out both;
+}
+
+.list-composer-pane--static {
+  animation: none;
+}
+
+@keyframes list-composer-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .list-composer-pane {
+    animation: none;
+  }
+}

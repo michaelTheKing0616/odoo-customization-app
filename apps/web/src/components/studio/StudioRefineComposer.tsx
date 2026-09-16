@@ -23,7 +23,7 @@ export function StudioRefineComposer({
   onSubmit,
 }: StudioRefineComposerProps) {
   return (
-    <div className="chat-composer">
+    <div className="chat-composer chat-composer-sticky">
       {chips.length ? (
         <div className="studio-chip-row studio-refine-chips">
           {chips.map((chip) => (
@@ -37,9 +37,9 @@ export function StudioRefineComposer({
         </div>
       ) : null}
       <div className="chat-input-row">
-        <input
-          type="text"
-          className="input"
+        <textarea
+          className="input chat-composer-input"
+          rows={1}
           placeholder={
             fieldPack
               ? `Describe a change — e.g. make ${hostFormName.toLowerCase()} fields required`
@@ -48,22 +48,25 @@ export function StudioRefineComposer({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           disabled={busy}
+          aria-label="Refine instruction"
           onKeyDown={(e) => {
-            if (e.key === "Enter" && value.trim().length >= 3) {
+            if (e.key === "Enter" && !e.shiftKey && value.trim().length >= 3) {
+              e.preventDefault();
               onSubmit();
             }
           }}
         />
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            aria-label="Send refinement"
-            disabled={busy || value.trim().length < 3}
-            onClick={() => onSubmit()}
-          >
-            {busy ? <Spokes className="studio-loader-spokes" aria-hidden /> : "Send"}
-          </button>
+        <button
+          type="button"
+          className="btn btn-primary btn-sm"
+          aria-label="Send refinement"
+          disabled={busy || value.trim().length < 3}
+          onClick={() => onSubmit()}
+        >
+          {busy ? <Spokes className="studio-loader-spokes" aria-hidden /> : "Send"}
+        </button>
       </div>
+      <p className="chat-composer-hint">Enter to send · Shift+Enter for a new line</p>
     </div>
   );
 }
