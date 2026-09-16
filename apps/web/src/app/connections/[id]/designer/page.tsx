@@ -18,6 +18,8 @@ import { DesignerStructuralCanvas } from "@/components/designer/DesignerStructur
 import { useDesignerViewSpecs } from "@/components/designer/useDesignerViewSpecs";
 import { useDesignerCanvasMutations } from "@/components/designer/useDesignerCanvasMutations";
 import { useDesignerPersist } from "@/components/designer/useDesignerPersist";
+import { useDesignerModelLoad } from "@/components/designer/useDesignerModelLoad";
+import { useDesignerFieldOps } from "@/components/designer/useDesignerFieldOps";
 import { DesignerStudioToolbar } from "@/components/designer/DesignerStudioToolbar";
 import type { DesignerRailTabId } from "@/components/designer/DesignerToolsRail";
 import { FieldPalette } from "@/components/designer/FieldPalette";
@@ -40,7 +42,6 @@ import {
   ActivityTypeRow,
   api,
   getApiBase,
-  ConfirmationRequiredError,
   Connection,
   FieldRow,
   GroupRow,
@@ -66,17 +67,6 @@ import { useSyncShellContext } from "@/lib/use-sync-shell-context";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Callout } from "@/components/ui/Callout";
 import { Card } from "@/components/ui/layout-primitives";
-import {
-  bindModeSupported,
-  bindModeUnsupportedReason,
-  connectionSupports,
-  connectionUnsupportedReason,
-  injectStrategyCapabilityId,
-  mutationAllowed,
-  mutationBlockedReason,
-  gridViewAllowed,
-  isEnterpriseEdition,
-} from "@/lib/capabilities";
 import { odooViewUrl, pickStandaloneWindowAction, sameOriginPreviewUrl } from "@/lib/odoo-urls";
 
 import type {
@@ -98,7 +88,6 @@ import type {
 import {
   uid,
   INITIAL_FORM_CHILDREN,
-  pickTemporalDefaults,
 } from "@/components/designer/designer-model";
 import {
   applyFieldNamesToCanvas as runApplyFieldNamesToCanvas,
@@ -592,16 +581,9 @@ export default function DesignerPage() {
     setLiveFailed(false);
   }, [proxyPreviewUrl, previewKey, model, viewType]);
 
-  async function loadModelFields(target: string) {
-    setError(null);
-    setLoadedViewId(null);
-    setLastSnapshotId(null);
-    try {
-      const rows = await api.listFields(connectionId, target);
-      setFields(rows);
-      setFieldsModel(target);
-      runApplyFieldNamesToCanvas(
-        {
+  function applyFieldNamesToCanvas(names: string[], rows: FieldRow[]) {
+    runApplyFieldNamesToCanvas(
+      {
         historySkipRef,
         setFormChildren,
         setListColumns,
@@ -655,103 +637,41 @@ export default function DesignerPage() {
         setGridDateStop,
         setSelected,
       },
-        [], rows,
-      );
-      setTitle(target);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load fields");
-    }
+      names,
+      rows,
+    );
   }
 
-  /** Refresh field metadata without wiping a loaded / edited view layout. */
-  async function refreshModelFieldsOnly(target: string): Promise<FieldRow[]> {
-    const rows = await api.listFields(connectionId, target);
-    setFields(rows);
-    setFieldsModel(target);
-    return rows;
-  }
+  const {
+    loadModelFields,
+    refreshModelFieldsOnly,
+    appendFieldToCurrentLayout,
+    ensureFieldsForModel,
+  } = useDesignerModelLoad({
+    connectionId,
+    api,
+    setError,
+    setLoadedViewId,
+    setLastSnapshotId,
+    setFields,
+    setFieldsModel,
+    applyFieldNamesToCanvas,
+    setTitle,
+    viewType,
+    setFormChildren,
+    setListColumns,
+    setSearchFields,
+    setKanbanFields,
+    fieldsModel,
+    fields,
+    setCalendarDateStart,
+    setCalendarDateStop,
+    setGanttDateStart,
+    setGanttDateStop,
+    setCohortDateStart,
+    setCohortDateStop,
+  });
 
-  function appendFieldToCurrentLayout(name: string, rows: FieldRow[]) {
-    const meta = rows.find((f) => f.name === name);
-    const node: DesignerField = {
-      kind: "field",
-      id: uid("f"),
-      name,
-      string: meta?.field_description,
-    };
-    if (viewType === "form") {
-      setFormChildren((children) => {
-        const already = children.some(
-          (c) =>
-            (c.kind === "group" &&
-              c.children.some((n) => n.kind === "field" && n.name === name)) ||
-            (c.kind === "notebook" &&
-              c.pages.some((p) =>
-                p.children.some((n) => n.kind === "field" && n.name === name),
-              )),
-        );
-        if (already) return children;
-        const firstGroupIdx = children.findIndex((c) => c.kind === "group");
-        if (firstGroupIdx < 0) {
-          return [
-            ...children,
-            { kind: "group", id: uid("g"), string: "Main", children: [node] },
-          ];
-        }
-        return children.map((child, i) =>
-          i === firstGroupIdx && child.kind === "group"
-            ? { ...child, children: [...child.children, node] }
-            : child,
-        );
-      });
-      return;
-    }
-    if (viewType === "list") {
-      setListColumns((cols) =>
-        cols.some((c) => c.name === name) ? cols : [...cols, node],
-      );
-    } else if (viewType === "search") {
-      setSearchFields((cols) =>
-        cols.some((c) => c.name === name) ? cols : [...cols, node],
-      );
-    } else if (viewType === "kanban") {
-      setKanbanFields((cols) =>
-        cols.some((c) => c.name === name) ? cols : [...cols, node],
-      );
-    }
-  }
-
-  async function ensureFieldsForModel(target: string) {
-    const trimmed = target.trim();
-    if (!trimmed || !connectionId) return;
-    if (fieldsModel === trimmed && fields.length > 0) return;
-    try {
-      const rows = await api.listFields(connectionId, trimmed);
-      setFields(rows);
-      setFieldsModel(trimmed);
-      const { dateStart, dateStop } = pickTemporalDefaults(rows);
-      setCalendarDateStart((prev) =>
-        prev && rows.some((f) => f.name === prev) ? prev : dateStart,
-      );
-      setCalendarDateStop((prev) =>
-        prev && rows.some((f) => f.name === prev) ? prev : dateStop,
-      );
-      setGanttDateStart((prev) =>
-        prev && rows.some((f) => f.name === prev) ? prev : dateStart,
-      );
-      setGanttDateStop((prev) =>
-        prev && rows.some((f) => f.name === prev) ? prev : dateStop,
-      );
-      setCohortDateStart((prev) =>
-        prev && rows.some((f) => f.name === prev) ? prev : dateStart || "create_date",
-      );
-      setCohortDateStop((prev) =>
-        prev && rows.some((f) => f.name === prev) ? prev : dateStop,
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load fields");
-    }
-  }
 
   async function loadExistingView() {
     await runLoadExistingView({
@@ -1014,207 +934,42 @@ export default function DesignerPage() {
     announceAction,
   });
 
-  async function addNicheWidget(entry: NicheWidgetEntry) {
-    if (!model) {
-      setError("Select a model first");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      let fieldName: string | undefined;
-      const support = entry.supporting_field;
-      let fieldRows = fields;
+  const {
+    addNicheWidget,
+    removeFormField,
+    createNewFieldWithInject,
+  } = useDesignerFieldOps({
+    model,
+    connectionId,
+    connection,
+    viewType,
+    api,
+    fields,
+    setFields,
+    setFieldsModel,
+    setBusy,
+    setError,
+    setNotice,
+    confirmPhrase,
+    setConfirmPhrase,
+    injectStrategy,
+    newFieldName,
+    setNewFieldName,
+    newFieldLabel,
+    newFieldType,
+    formChildren,
+    setFormChildren,
+    listColumns,
+    setListColumns,
+    kanbanFields,
+    setKanbanFields,
+    setSelected,
+    announceAction,
+    appendFieldToCurrentLayout,
+    refreshModelFieldsOnly,
+    setConfirmMutateOpen,
+  });
 
-      const existing = fields.find(
-        (f) =>
-          entry.recommended_ttypes.includes(f.ttype) &&
-          (!support || f.name === support.name),
-      );
-      if (existing) {
-        fieldName = existing.name;
-      } else if (support) {
-        if (!fields.some((f) => f.name === support.name)) {
-          await api.createField(connectionId, {
-            model,
-            name: support.name,
-            field_description: support.string || support.name,
-            ttype: support.ttype,
-            inject_into_views: false,
-            inject_strategy: "inherit",
-            confirm_advanced: true,
-            confirm_phrase: CONFIRM_PHRASE,
-            ...(support.relation ? { relation: support.relation } : {}),
-            ...(support.ttype === "selection"
-              ? {
-                  selection: [
-                    { value: "normal", label: "Normal" },
-                    { value: "done", label: "Done" },
-                    { value: "blocked", label: "Blocked" },
-                  ],
-                }
-              : {}),
-          });
-          fieldRows = await api.listFields(connectionId, model);
-          setFields(fieldRows);
-          setFieldsModel(model);
-        }
-        fieldName = support.name;
-      } else {
-        const match = fields.find((f) => entry.recommended_ttypes.includes(f.ttype));
-        if (!match) {
-          setNotice(
-            `Add a ${entry.recommended_ttypes.join("/")} field first for ${entry.label}`,
-          );
-          return;
-        }
-        fieldName = match.name;
-      }
-
-      const meta = fieldRows.find((f) => f.name === fieldName);
-      const node: DesignerField = {
-        kind: "field",
-        id: uid("f"),
-        name: fieldName,
-        string: meta?.field_description,
-        widget: entry.id,
-      };
-
-      if (viewType === "kanban") {
-        if (kanbanFields.some((c) => c.name === fieldName && c.widget === entry.id)) return;
-        setKanbanFields((cols) => [...cols, node]);
-        setSelected({ scope: "kanban", fieldId: node.id });
-      } else if (viewType === "list") {
-        if (listColumns.some((c) => c.name === fieldName && c.widget === entry.id)) return;
-        setListColumns((cols) => [...cols, node]);
-        setSelected({ scope: "list", fieldId: node.id });
-      } else if (viewType === "form") {
-        const firstGroup = formChildren.find((c) => c.kind === "group");
-        if (!firstGroup) {
-          setNotice("Add a form group before niche widgets");
-          return;
-        }
-        setFormChildren((children) =>
-          children.map((child) =>
-            child.kind === "group" && child.id === firstGroup.id
-              ? { ...child, children: [...child.children, node] }
-              : child,
-          ),
-        );
-        setSelected({ scope: "form-group", groupId: firstGroup.id, fieldId: node.id });
-      } else {
-        setNotice(`${entry.label} is available on form, list, and kanban views`);
-        return;
-      }
-      announceAction(`Added ${entry.label} (${entry.id})`, node.id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add niche widget");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function removeFormField(
-    container: "group" | "page",
-    containerId: string,
-    fieldId: string,
-    notebookId?: string,
-  ) {
-    setFormChildren((children) =>
-      children.map((child) => {
-        if (container === "group" && child.kind === "group" && child.id === containerId) {
-          return { ...child, children: child.children.filter((f) => f.id !== fieldId) };
-        }
-        if (
-          container === "page" &&
-          child.kind === "notebook" &&
-          child.id === notebookId
-        ) {
-          return {
-            ...child,
-            pages: child.pages.map((p) =>
-              p.id === containerId
-                ? { ...p, children: p.children.filter((f) => f.id !== fieldId) }
-                : p,
-            ),
-          };
-        }
-        return child;
-      }),
-    );
-    setSelected((sel) => (sel?.fieldId === fieldId ? null : sel));
-  }
-
-  async function createNewFieldWithInject(opts?: {
-    confirm_advanced?: boolean;
-    confirm_phrase?: string;
-  }) {
-    if (!model || !newFieldName.startsWith("x_")) return;
-    const strategyCap = injectStrategyCapabilityId(injectStrategy);
-    if (!connectionSupports(connection, strategyCap)) {
-      setError(
-        connectionUnsupportedReason(connection, strategyCap) ??
-          "Inject strategy unavailable on this Odoo version",
-      );
-      return;
-    }
-    if (injectStrategy === "mutate" && !opts?.confirm_advanced) {
-      setConfirmMutateOpen(true);
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    const createdName = newFieldName;
-    try {
-      await api.createField(connectionId, {
-        model,
-        name: createdName,
-        field_description: newFieldLabel || createdName,
-        ttype: newFieldType,
-        inject_into_views: true,
-        inject_strategy: injectStrategy,
-        ...(injectStrategy === "mutate"
-          ? {
-              confirm_advanced: true,
-              confirm_phrase:
-                opts?.confirm_phrase || confirmPhrase || CONFIRM_PHRASE,
-            }
-          : {
-              confirm_advanced: true,
-              confirm_phrase: confirmPhrase || CONFIRM_PHRASE,
-            }),
-        ...(newFieldType === "many2one" ? { relation: "res.partner" } : {}),
-        ...(newFieldType === "selection"
-          ? {
-              selection: [
-                { value: "a", label: "A" },
-                { value: "b", label: "B" },
-              ],
-            }
-          : {}),
-      });
-      setNewFieldName("");
-      setConfirmMutateOpen(false);
-      // Soft refresh: keep loaded Form layout; do not call loadModelFields (that reseeds/wipes).
-      const rows = await refreshModelFieldsOnly(model);
-      appendFieldToCurrentLayout(createdName, rows);
-      setNotice(
-        `Created ${createdName}` +
-          (injectStrategy === "mutate" ? " (mutate inject)" : " (inherit inject)") +
-          ". Field list and layout kept — no need to reload the view.",
-      );
-    } catch (err) {
-      if (err instanceof ConfirmationRequiredError) {
-        setConfirmMutateOpen(true);
-        setError(`${err.warning} Type “${err.confirm_phrase}” and retry.`);
-        setConfirmPhrase(err.confirm_phrase || CONFIRM_PHRASE);
-      } else {
-        setError(err instanceof Error ? err.message : "Create field failed");
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
 
   const {
     onSave,
