@@ -76,15 +76,15 @@ export function ReportCanvas({
   onMove,
 }: ReportCanvasProps) {
   return (
-    <div className="mx-auto max-w-[210mm] border border-[#3d2a38] bg-surface text-[#1a1218] shadow-lg">
+    <div className="mx-auto max-w-[210mm] border border-border-subtle bg-surface text-ink shadow-lg">
       {useExternalLayout && (
-        <div className="border-b border-dashed border-[#ccc] bg-[#f8f4f6] px-6 py-3 text-xs text-[#714B67]">
+        <div className="border-b border-dashed border-border-subtle bg-surface-muted px-6 py-3 text-xs text-[var(--brand)]">
           web.external_layout — header / footer placeholder ({paperLabel})
         </div>
       )}
       <div className="min-h-[240mm] px-10 py-8">
         {blocks.length === 0 && (
-          <p className="text-center text-sm text-[#888]">
+          <p className="text-center text-sm text-muted">
             Add blocks from the palette — visual first, QWeb code in the Code tab.
           </p>
         )}
@@ -94,7 +94,7 @@ export function ReportCanvas({
             <div
               key={block.id}
               className={`group relative mb-3 rounded border px-3 py-2 ${
-                selected ? "border-[#714B67] bg-[#fdf8fb]" : "border-transparent hover:border-[#ddd]"
+                selected ? "border-[var(--brand)] bg-brand-subtle" : "border-transparent hover:border-border-subtle"
               }`}
               onClick={() => onSelect?.(block.id)}
               onKeyDown={(e) => {
@@ -105,20 +105,20 @@ export function ReportCanvas({
             >
               {block.type === "heading" && (
                 <div
-                  className="font-semibold text-[#714B67]"
+                  className="font-semibold text-[var(--brand)]"
                   style={{ fontSize: block.level === 1 ? "1.25rem" : "1rem" }}
                 >
                   {blockPreview(block)}
                 </div>
               )}
-              {block.type === "divider" && <hr className="border-[#ccc]" />}
+              {block.type === "divider" && <hr className="border-border-subtle" />}
               {block.type === "page_break" && (
-                <p className="text-center text-xs text-[#999]">{blockPreview(block)}</p>
+                <p className="text-center text-xs text-muted">{blockPreview(block)}</p>
               )}
               {block.type === "o2m_table" && (
                 <table className="w-full border-collapse text-xs">
                   <thead>
-                    <tr className="border-b bg-[#f5f5f5]">
+                    <tr className="border-b bg-surface-muted">
                       {(block.columns || [{ field: "name", label: "Line" }]).map((c) => (
                         <th key={c.field} className="px-2 py-1 text-left">
                           {c.label}
@@ -128,7 +128,7 @@ export function ReportCanvas({
                   </thead>
                   <tbody>
                     <tr>
-                      <td colSpan={(block.columns || []).length || 1} className="px-2 py-2 text-[#888]">
+                      <td colSpan={(block.columns || []).length || 1} className="px-2 py-2 text-muted">
                         … lines from {block.o2m_field || "line_ids"} …
                       </td>
                     </tr>
@@ -142,7 +142,7 @@ export function ReportCanvas({
                 <div className="absolute right-1 top-1 hidden gap-1 group-hover:flex">
                   <button
                     type="button"
-                    className="rounded bg-[#eee] px-1 text-xs"
+                    className="rounded bg-surface-muted px-1 text-xs"
                     onClick={(e) => {
                       e.stopPropagation();
                       onMove(block.id, -1);
@@ -152,7 +152,7 @@ export function ReportCanvas({
                   </button>
                   <button
                     type="button"
-                    className="rounded bg-[#eee] px-1 text-xs"
+                    className="rounded bg-surface-muted px-1 text-xs"
                     onClick={(e) => {
                       e.stopPropagation();
                       onMove(block.id, 1);

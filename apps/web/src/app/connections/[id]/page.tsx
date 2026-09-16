@@ -1085,7 +1085,7 @@ export default function BrowserPage() {
                     key={name}
                     type="button"
                     onClick={() => toggleDepend(name)}
-                    className="border border-[#4a3a48] bg-surface-raised px-2 py-1 font-mono text-xs text-muted"
+                    className="border border-border-subtle bg-surface-raised px-2 py-1 font-mono text-xs text-muted"
                     title="Click to remove"
                   >
                     {name} ×
@@ -1099,13 +1099,13 @@ export default function BrowserPage() {
               placeholder="Search installed modules…"
               className="mt-2 w-full border border-border-subtle bg-surface px-3 py-2 text-sm"
             />
-            <div className="mt-2 max-h-40 overflow-y-auto border border-[#1e2f29] bg-surface/80">
+            <div className="mt-2 max-h-40 overflow-y-auto border border-border-subtle bg-surface/80">
               {filteredInstalledModules.map((m) => {
                 const checked = selectedDepends.includes(m.name);
                 return (
                   <label
                     key={m.id}
-                    className="flex cursor-pointer items-start gap-2 border-b border-[#1e2f29] px-3 py-2 text-sm last:border-b-0 hover:bg-surface-raised/60"
+                    className="flex cursor-pointer items-start gap-2 border-b border-border-subtle px-3 py-2 text-sm last:border-b-0 hover:bg-surface-raised/60"
                   >
                     <input
                       type="checkbox"
@@ -1147,21 +1147,21 @@ export default function BrowserPage() {
             </p>
           )}
           {showPromoteConfirm && (
-            <div className="mt-4 border border-[#5a3a2a] bg-[#1a100c] p-4">
-              <p className="text-sm font-medium text-[#f0c090]">Promote risks</p>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[#d0b0a0]">
+            <div className="mt-4 border border-warning/40 bg-warning-subtle p-4">
+              <p className="text-sm font-medium text-warning-strong">Promote risks</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-warning">
                 <li>Live metadata changes on this Odoo connection</li>
                 <li>Uninstall may not fully reverse data</li>
                 <li>Only the sandbox-validated zip will be installed</li>
               </ul>
               <label className="mt-3 block text-sm">
                 <span className="text-muted">
-                  Type <code className="text-[#f0c090]">I understand the risks</code>
+                  Type <code className="text-warning-strong">I understand the risks</code>
                 </span>
                 <input
                   value={confirmPhrase}
                   onChange={(e) => setConfirmPhrase(e.target.value)}
-                  className="mt-1 w-full max-w-md border border-[#5a3a2a] bg-surface px-3 py-2 text-sm"
+                  className="mt-1 w-full max-w-md border border-warning/40 bg-surface px-3 py-2 text-sm"
                 />
               </label>
               <div className="mt-3 flex gap-2">
@@ -1169,14 +1169,14 @@ export default function BrowserPage() {
                   type="button"
                   disabled={exportBusy}
                   onClick={onPromote}
-                  className="h-9 bg-[#f0c090] px-4 text-sm font-semibold text-white disabled:opacity-60"
+                  className="h-9 bg-warning px-4 text-sm font-semibold text-ink disabled:opacity-60"
                 >
                   Proceed
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowPromoteConfirm(false)}
-                  className="h-9 border border-[#5a3a2a] px-4 text-sm text-[#d0b0a0]"
+                  className="h-9 border border-warning/40 px-4 text-sm text-warning"
                 >
                   Cancel
                 </button>
@@ -1194,7 +1194,7 @@ export default function BrowserPage() {
             {promoted.map((p) => (
               <li
                 key={p.id}
-                className="flex flex-wrap items-center justify-between gap-2 border border-[#1e2f29] px-3 py-2"
+                className="flex flex-wrap items-center justify-between gap-2 border border-border-subtle px-3 py-2"
               >
                 <span>
                   <span className="font-mono text-muted">{p.module_name}</span>{" "}
@@ -1222,18 +1222,18 @@ export default function BrowserPage() {
             )}
           </ul>
           {uninstallTarget && (
-            <div className="mt-4 border border-[#5a3a2a] bg-[#1a100c] p-4">
-              <p className="text-sm text-[#f0c090]">
+            <div className="mt-4 border border-warning/40 bg-warning-subtle p-4">
+              <p className="text-sm text-warning-strong">
                 Uninstall <code className="font-mono">{uninstallTarget}</code>?
               </p>
               <label className="mt-3 block text-sm">
                 <span className="text-muted">
-                  Type <code className="text-[#f0c090]">I understand the risks</code>
+                  Type <code className="text-warning-strong">I understand the risks</code>
                 </span>
                 <input
                   value={uninstallPhrase}
                   onChange={(e) => setUninstallPhrase(e.target.value)}
-                  className="mt-1 w-full max-w-md border border-[#5a3a2a] bg-surface px-3 py-2 text-sm"
+                  className="mt-1 w-full max-w-md border border-warning/40 bg-surface px-3 py-2 text-sm"
                 />
               </label>
               <div className="mt-3 flex gap-2">
@@ -1248,7 +1248,7 @@ export default function BrowserPage() {
                 <button
                   type="button"
                   onClick={() => setUninstallTarget(null)}
-                  className="h-9 border border-[#5a3a2a] px-4 text-sm text-[#d0b0a0]"
+                  className="h-9 border border-warning/40 px-4 text-sm text-warning"
                 >
                   Cancel
                 </button>

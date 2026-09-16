@@ -135,9 +135,9 @@ const MOCK_COLOR_PALETTE = [
 ];
 
 const MOCK_PREVIEW_VARS = {
-  "--odoo-primary": "#714B67",
-  "--odoo-primary-hover": "#714B67",
-  "--odoo-statusbar": "#714B67",
+  "--odoo-primary": "var(--brand)",
+  "--odoo-primary-hover": "var(--brand)",
+  "--odoo-statusbar": "var(--brand)",
 };
 
 function parseMode(raw: string | null): ViewMode {

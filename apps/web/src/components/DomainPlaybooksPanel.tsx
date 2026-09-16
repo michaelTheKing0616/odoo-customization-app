@@ -45,8 +45,8 @@ export function DomainPlaybooksPanel({ connectionId, className = "" }: Props) {
 
   return (
     <div className={`text-sm ${className}`} data-testid="domain-playbooks-panel">
-      <p className="text-xs font-medium text-[#a8909e]">Domain playbooks (CRM / Project / Sale)</p>
-      <p className="mt-0.5 text-[11px] text-[#6b5a66]">
+      <p className="text-xs font-medium text-muted">Domain playbooks (CRM / Project / Sale)</p>
+      <p className="mt-0.5 text-[11px] text-muted">
         Greyed out when the required module is not installed. List/read only via public ORM.
       </p>
       {loading && <InlineWait />}
@@ -67,8 +67,8 @@ export function DomainPlaybooksPanel({ connectionId, className = "" }: Props) {
               data-available={pb.available ? "true" : "false"}
               className={
                 pb.available
-                  ? "border border-border-subtle bg-[#120e14] px-2 py-1.5 text-xs text-muted"
-                  : "border border-[#1a2a24] bg-surface px-2 py-1.5 text-xs text-[#6b5a66] opacity-60"
+                  ? "border border-border-subtle bg-surface-muted px-2 py-1.5 text-xs text-muted"
+                  : "border border-border-subtle bg-surface px-2 py-1.5 text-xs text-muted opacity-60"
               }
               aria-disabled={!pb.available}
             >

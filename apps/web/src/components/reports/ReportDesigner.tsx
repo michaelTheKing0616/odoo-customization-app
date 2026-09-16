@@ -279,7 +279,7 @@ export function ReportDesigner({
           web.external_layout
         </label>
         <label className="block text-xs">
-          <span className="text-[#a8909e]">t-lang (optional)</span>
+          <span className="text-muted">t-lang (optional)</span>
           <input
             value={tLang}
             onChange={(e) => setTLang(e.target.value)}
@@ -288,7 +288,7 @@ export function ReportDesigner({
           />
         </label>
         <label className="block text-xs">
-          <span className="text-[#a8909e]">Mode</span>
+          <span className="text-muted">Mode</span>
           <select
             value={mode}
             onChange={(e) => setMode(e.target.value as "primary" | "inherit")}
@@ -301,7 +301,7 @@ export function ReportDesigner({
         {mode === "inherit" && (
           <>
             <label className="block text-xs">
-              <span className="text-[#a8909e]">Base report key</span>
+              <span className="text-muted">Base report key</span>
               <input
                 value={inheritBase}
                 onChange={(e) => setInheritBase(e.target.value)}
@@ -310,7 +310,7 @@ export function ReportDesigner({
               />
             </label>
             <label className="block text-xs">
-              <span className="text-[#a8909e]">XPath anchor</span>
+              <span className="text-muted">XPath anchor</span>
               <input
                 value={inheritXpath}
                 onChange={(e) => setInheritXpath(e.target.value)}
