@@ -10,10 +10,12 @@ from urllib.parse import urlparse, urlunparse
 
 
 def normalize_odoo_base_url(url: str) -> str:
-    """Strip web-UI suffixes so XML-RPC hits the site root.
+    """Strip web-UI suffixes so XML/JSON-RPC hits the site root.
 
-    Operators often paste ``https://db.odoo.com/odoo`` from the browser. RPC is
-    ``https://db.odoo.com/xmlrpc/2/common`` — a trailing ``/odoo`` yields HTTP 400.
+    Operators often paste ``https://db.odoo.com/odoo`` or deep links from the
+    browser. RPC lives at ``https://db.odoo.com/xmlrpc/2/common`` (and
+    ``/jsonrpc``) — trailing ``/odoo``, ``/web``, query strings, or fragments
+    yield HTTP 400/404 on Online/SaaS.
     """
     raw = (url or "").strip()
     if not raw:
@@ -21,28 +23,79 @@ def normalize_odoo_base_url(url: str) -> str:
     if "://" not in raw:
         raw = f"https://{raw}"
     parsed = urlparse(raw)
+    # Drop query/fragment from browser paste
     path = (parsed.path or "").rstrip("/")
+    # Peel UI / RPC junk from the right until stable
+    junk_exact = {
+        "/xmlrpc/2/common",
+        "/xmlrpc/2/object",
+        "/xmlrpc/2",
+        "/xmlrpc",
+        "/jsonrpc",
+        "/web/login",
+        "/web/session/authenticate",
+        "/web",
+        "/odoo",
+        "/discuss",
+        "/odoo/discuss",
+        "/odoo/action",
+    }
     while path:
         lower = path.lower()
         stripped = False
-        for junk in (
-            "/xmlrpc/2/common",
-            "/xmlrpc/2/object",
-            "/xmlrpc",
-            "/web/login",
-            "/web",
-            "/odoo",
-        ):
+        for junk in sorted(junk_exact, key=len, reverse=True):
             if lower == junk or lower.endswith(junk):
                 path = path[: -len(junk)].rstrip("/")
                 stripped = True
                 break
+        # Also peel /odoo/<anything> and /web/<anything>
+        if not stripped:
+            for prefix in ("/odoo/", "/web/"):
+                if lower.startswith(prefix) or f"/{prefix.strip('/')}/" in f"/{lower.strip('/')}/":
+                    # if path is /odoo/foo/bar → cut at /odoo
+                    idx = lower.find(prefix.rstrip("/"))
+                    if idx >= 0:
+                        path = path[:idx].rstrip("/")
+                        stripped = True
+                        break
         if not stripped:
             break
     cleaned = urlunparse(
         (parsed.scheme, parsed.netloc, path, "", "", "")
     ).rstrip("/")
     return cleaned
+
+
+def detect_hosting_kind(url: str) -> str:
+    """Heuristic: online | odoo_sh | self_hosted | unknown."""
+    parsed = urlparse(normalize_odoo_base_url(url) if url else "")
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return "unknown"
+    if host in {"127.0.0.1", "localhost", "0.0.0.0", "host.docker.internal"} or host.endswith(".local"):
+        return "self_hosted"
+    if host == "odoo.sh" or host.endswith(".odoo.sh") or "odoo.sh" in host:
+        return "odoo_sh"
+    if host == "odoo.com" or host.endswith(".odoo.com"):
+        return "online"
+    return "self_hosted"
+
+
+def suggest_db_name_from_url(url: str) -> str | None:
+    """For ``*.odoo.com`` Online, database name is usually the subdomain label."""
+    if detect_hosting_kind(url) != "online":
+        return None
+    host = (urlparse(normalize_odoo_base_url(url)).hostname or "").lower()
+    if not host.endswith(".odoo.com"):
+        return None
+    label = host[: -len(".odoo.com")]
+    if not label or "." in label:
+        # e.g. www.odoo.com — not a tenant DB
+        return None
+    return label
+
+
+
 
 
 class FieldType(str, Enum):

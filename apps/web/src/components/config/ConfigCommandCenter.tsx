@@ -96,7 +96,7 @@ function JobCard({ card, onOpen }: { card: RecipeCard; onOpen: () => void }) {
   );
 }
 
-export export function ConfigCommandCenter({ connectionId }: { connectionId: string }) {
+export function ConfigCommandCenter({ connectionId }: { connectionId: string }) {
   const [cards, setCards] = useState<RecipeCard[]>([]);
   const [panel, setPanel] = useState<PanelId>("home");
   const [error, setError] = useState<string | null>(null);

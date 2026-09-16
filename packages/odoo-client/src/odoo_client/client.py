@@ -48,12 +48,47 @@ class ObserverModeError(OdooClientError):
         )
 
 
+
+def _jsonrpc_call(base_url: str, service: str, method: str, args: list[Any], *, timeout: float = 30.0) -> Any:
+    """Fallback transport when XML-RPC is blocked (some Online / reverse proxies)."""
+    import json
+    import urllib.error
+    import urllib.request
+
+    payload = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "method": "call",
+            "params": {"service": service, "method": method, "args": args},
+            "id": 1,
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        urljoin(base_url.rstrip("/") + "/", "jsonrpc"),
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raise OdooClientError(f"JSON-RPC HTTP {exc.code} at {base_url}/jsonrpc: {exc.reason}") from exc
+    except Exception as exc:  # noqa: BLE001
+        raise OdooClientError(f"JSON-RPC failed at {base_url}/jsonrpc: {exc}") from exc
+    if body.get("error"):
+        err = body["error"]
+        raise OdooClientError(f"JSON-RPC error: {err.get('message') or err}")
+    return body.get("result")
+
+
 class OdooClient:
     """Synchronous XML-RPC client for Odoo Community 16–19 (17+18+19 GA)."""
 
     def __init__(self, config: ConnectionConfig) -> None:
         self.config = config
         self._uid: int | None = None
+        self._jsonrpc_mode = False
         # Default to 19 capabilities before connect; connect() refreshes from server.
         self.capabilities: VersionCapabilities = for_major(19)
         self._ir_fields_colnames: frozenset[str] | None = None
@@ -111,31 +146,55 @@ class OdooClient:
     def connect(self) -> int:
         """Authenticate and store uid. Returns the authenticated user id."""
         from odoo_client.compat.registry import supported_majors
+        from odoo_client.models import detect_hosting_kind, suggest_db_name_from_url
 
+        hosting = detect_hosting_kind(self.config.url)
+        suggested_db = suggest_db_name_from_url(self.config.url)
+
+        def _online_hint(text: str) -> str:
+            hints: list[str] = []
+            if "400" in text and "/odoo" in text.lower():
+                hints.append(
+                    "Use the site root (e.g. https://your-db.odoo.com) — do not include /odoo from the browser URL."
+                )
+            if hosting == "online":
+                hints.append(
+                    "Odoo Online: paste https://<db>.odoo.com (no /odoo path). "
+                    "Database name is usually the subdomain. Prefer an API key "
+                    "(Settings → Users → API Keys) over the login password."
+                )
+                if suggested_db and suggested_db != self.config.db:
+                    hints.append(
+                        f"Subdomain suggests database={suggested_db!r} (you entered {self.config.db!r})."
+                    )
+            if "401" in text or "Access Denied" in text or "authentication failed" in text.lower():
+                hints.append(
+                    "Auth failed — for Online/Enterprise SaaS, an API key is often required."
+                )
+            return (" " + " ".join(hints)) if hints else ""
+
+        version: dict[str, Any] | None = None
+        transport = "xmlrpc"
         try:
             version = self._common.version()
-        except Exception as exc:  # noqa: BLE001 — surface transport errors clearly
-            text = str(exc)
-            hint = ""
-            if "400" in text and "/odoo/" in text.lower():
-                hint = (
-                    " Tip: use the site root (e.g. https://your-db.odoo.com) — "
-                    "do not include /odoo from the browser URL."
-                )
-            elif "400" in text and "BAD REQUEST" in text.upper():
-                hint = (
-                    " Tip: connection URL must be the Odoo host root for XML-RPC "
-                    "(no /odoo or /web path)."
-                )
-            raise OdooClientError(
-                f"Failed to reach Odoo at {self.config.url}: {exc}.{hint}"
-            ) from exc
+        except Exception as xml_exc:  # noqa: BLE001
+            # Try JSON-RPC fallback (some Online / WAF setups block /xmlrpc)
+            try:
+                version = _jsonrpc_call(self.config.url, "common", "version", [])
+                transport = "jsonrpc"
+                self._jsonrpc_mode = True
+            except Exception as json_exc:  # noqa: BLE001
+                text = str(xml_exc)
+                raise OdooClientError(
+                    f"Failed to reach Odoo at {self.config.url}: {xml_exc}."
+                    f"{_online_hint(text)} JSON-RPC fallback also failed: {json_exc}"
+                ) from xml_exc
 
-        server_version = str(version.get("server_version", ""))
+        server_version = str((version or {}).get("server_version", ""))
         try:
             major = parse_major(server_version)
             self.capabilities = for_major(major)
-        except Exception as exc:  # noqa: BLE001 — UnsupportedOdooMajorError etc.
+        except Exception as exc:  # noqa: BLE001
             raise OdooClientError(
                 f"Unsupported Odoo server_version={server_version!r}. "
                 f"Supported majors: {sorted(supported_majors())}. ({exc})"
@@ -147,18 +206,36 @@ class OdooClient:
                 "(19+18+17=GA; 16=experimental)."
             )
 
-        uid = self._common.authenticate(
-            self.config.db,
-            self.config.username,
-            self.config.password,
-            {},
-        )
+        try:
+            if transport == "jsonrpc" or getattr(self, "_jsonrpc_mode", False):
+                uid = _jsonrpc_call(
+                    self.config.url,
+                    "common",
+                    "authenticate",
+                    [self.config.db, self.config.username, self.config.password, {}],
+                )
+            else:
+                uid = self._common.authenticate(
+                    self.config.db,
+                    self.config.username,
+                    self.config.password,
+                    {},
+                )
+        except OdooClientError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise OdooClientError(
+                f"Authentication RPC failed: {exc}.{_online_hint(str(exc))}"
+            ) from exc
+
         if not uid:
             raise OdooClientError(
-                f"Authentication failed for db={self.config.db!r} user={self.config.username!r}"
+                f"Authentication failed for db={self.config.db!r} user={self.config.username!r}."
+                f"{_online_hint('authentication failed')}"
             )
         self._uid = int(uid)
         return self._uid
+
 
     def execute_kw(
         self,
@@ -169,6 +246,21 @@ class OdooClient:
     ) -> Any:
         if is_rpc_blocked_in_observer(self.config.write_mode, method):
             raise ObserverModeError(model, method)
+        if getattr(self, "_jsonrpc_mode", False):
+            return _jsonrpc_call(
+                self.config.url,
+                "object",
+                "execute_kw",
+                [
+                    self.config.db,
+                    self.uid,
+                    self.config.password,
+                    model,
+                    method,
+                    args or [],
+                    kwargs or {},
+                ],
+            )
         return self._object.execute_kw(
             self.config.db,
             self.uid,

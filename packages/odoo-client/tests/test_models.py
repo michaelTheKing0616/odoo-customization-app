@@ -128,3 +128,29 @@ def test_related_and_monetary_attrs() -> None:
     )
     monetary.validate_type_requirements()
     assert monetary.currency_field == "x_currency_id"
+
+
+def test_normalize_odoo_online_deep_links_and_fragments() -> None:
+    from odoo_client.models import (
+        detect_hosting_kind,
+        normalize_odoo_base_url,
+        suggest_db_name_from_url,
+    )
+
+    assert (
+        normalize_odoo_base_url("https://acme.odoo.com/odoo/discuss?debug=1#action=mail")
+        == "https://acme.odoo.com"
+    )
+    assert normalize_odoo_base_url("https://acme.odoo.com/web/login") == "https://acme.odoo.com"
+    assert detect_hosting_kind("https://acme.odoo.com/odoo") == "online"
+    assert detect_hosting_kind("https://proj.odoo.sh") == "odoo_sh"
+    assert detect_hosting_kind("http://127.0.0.1:8069") == "self_hosted"
+    assert suggest_db_name_from_url("https://acme.odoo.com/odoo") == "acme"
+
+
+def test_parse_major_accepts_minor_and_enterprise_suffix() -> None:
+    from odoo_client.compat.registry import parse_major
+
+    assert parse_major("19.4") == 19
+    assert parse_major("19.4+e") == 19
+    assert parse_major("18.0-20241201") == 18

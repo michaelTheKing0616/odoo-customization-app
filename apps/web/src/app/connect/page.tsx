@@ -13,6 +13,12 @@ import { Card, PageHeader } from "@/components/ui/layout-primitives";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { reportApiError } from "@/lib/api-error";
 import { api, Connection } from "@/lib/api";
+import {
+  detectHostingKind,
+  hostingHint,
+  normalizeOdooBaseUrl,
+  suggestDbFromUrl,
+} from "@/lib/odoo-hosting";
 
 type EditForm = {
   name: string;
@@ -50,6 +56,9 @@ export default function ConnectPage() {
   const [probingId, setProbingId] = useState<string | null>(null);
   const [lastSavedCaps, setLastSavedCaps] = useState<Connection["capabilities"]>(null);
   const [lastSavedId, setLastSavedId] = useState<string | null>(null);
+  const hosting = detectHostingKind(form.url);
+  const hostingTip = hostingHint(hosting);
+  const suggestedDb = suggestDbFromUrl(form.url);
 
   async function refresh() {
     const rows = await api.listConnections();
@@ -67,7 +76,8 @@ export default function ConnectPage() {
     setNotice(null);
     setStep(2);
     try {
-      const created = await api.createConnection({ ...form, verify: true });
+      const payload = { ...form, url: normalizeOdooBaseUrl(form.url) || form.url };
+      const created = await api.createConnection({ ...payload, verify: true });
       setForm((f) => ({ ...f, password: "" }));
       setLastSavedCaps(created.capabilities ?? null);
       setLastSavedId(created.id);
@@ -284,10 +294,29 @@ export default function ConnectPage() {
               label="Odoo URL"
               type="url"
               required
-              hint="Example: http://127.0.0.1:8069"
+              hint="Root URL only — e.g. https://mycompany.odoo.com or http://127.0.0.1:8069 (no /odoo path)"
               value={form.url}
-              onChange={(e) => setForm({ ...form, url: e.target.value })}
+              onChange={(e) => {
+                const url = e.target.value;
+                const dbGuess = suggestDbFromUrl(url);
+                setForm((f) => ({
+                  ...f,
+                  url,
+                  db_name:
+                    dbGuess && (!f.db_name || f.db_name === "odoo_dev" || f.db_name === suggestedDb)
+                      ? dbGuess
+                      : f.db_name,
+                }));
+              }}
+              onBlur={() =>
+                setForm((f) => ({ ...f, url: normalizeOdooBaseUrl(f.url) || f.url }))
+              }
             />
+            {hostingTip ? (
+              <Callout variant="info" title="Hosting tip" testId="connect-hosting-tip">
+                {hostingTip}
+              </Callout>
+            ) : null}
             <Input
               label="Database"
               required

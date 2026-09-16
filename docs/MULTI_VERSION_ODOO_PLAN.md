@@ -55,3 +55,7 @@ capability probes — while keeping public ORM/RPC only (no Enterprise Studio so
 ---
 
 *Updated 2026-07-28 — point to HANDOVER_UNFINISHED_WORK.md.*
+
+## Hosting editions + Online SaaS
+
+See **`docs/ODOO_HOSTING_AND_VERSION_KINGSHIP.md`** for Online/SaaS · Community · Enterprise · Odoo.sh · on-prem matrix, SaaS 19.4 connect failure modes, and the probe-first forward-compat strategy.

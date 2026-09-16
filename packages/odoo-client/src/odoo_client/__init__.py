@@ -49,7 +49,7 @@ from odoo_client.models import (
     ModelInfo,
     ModuleInfo,
     ViewInfo,
-    normalize_odoo_base_url,
+    normalize_odoo_base_url, detect_hosting_kind, suggest_db_name_from_url,
 )
 from odoo_client.security import (
     AccessRightInfo,
