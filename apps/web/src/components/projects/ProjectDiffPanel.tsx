@@ -36,7 +36,7 @@ export function ProjectDiffPanel({ diff }: ProjectDiffPanelProps) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted">
-            Review vs live
+            Review vs live · PR-style
           </p>
           <h2 className="text-base font-semibold text-ink">Change review</h2>
           <p className="mt-1 text-sm text-muted" data-testid="project-diff-headline">
@@ -74,8 +74,8 @@ export function ProjectDiffPanel({ diff }: ProjectDiffPanelProps) {
       </dl>
 
       <p className="mt-3 text-xs text-muted">
-        This diff is models and fields only. Views, menus, and ACL stay in ModuleSpec Generate UI.
-        Promote stays human.
+        GitHub-PR-style review: summary stats, then side-by-side model/field diffs. Views, menus, and
+        ACL stay in ModuleSpec Generate UI. Apply/Promote stay human.
       </p>
 
       <Tabs

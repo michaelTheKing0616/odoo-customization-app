@@ -5,6 +5,7 @@ import type { CapabilityMatrix, Connection } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/layout-primitives";
 import { expertDestinationHref } from "@/lib/expert-journey";
+import { LockedExplainer } from "@/components/shell/LockedExplainer";
 
 type Props = {
   connection: Connection;
@@ -123,9 +124,23 @@ export function CapabilitiesPostcard({
       )}
 
       {capabilities?.unsupported && capabilities.unsupported.length > 0 ? (
-        <details className="mt-3">
+        <div className="mt-3 space-y-3">
+          <LockedExplainer
+            title={`${capabilities.unsupported[0].label} is locked`}
+            why={
+              capabilities.unsupported[0].reason ||
+              "This feature is unavailable on this Odoo version or edition."
+            }
+            options={[
+              "Upgrade / use a matching-major sandbox",
+              "Export a module and install elsewhere",
+              "Leave it out of this customization",
+            ]}
+            connectionId={connection.id}
+          />
+        <details>
           <summary className="cursor-pointer text-sm text-muted hover:text-ink">
-            Why some features are locked
+            All locked features
           </summary>
           <ul className="mt-2 space-y-1 text-sm text-muted">
             {capabilities.unsupported.slice(0, 8).map((row) => (
@@ -139,6 +154,7 @@ export function CapabilitiesPostcard({
             ) : null}
           </ul>
         </details>
+        </div>
       ) : null}
     </Card>
   );

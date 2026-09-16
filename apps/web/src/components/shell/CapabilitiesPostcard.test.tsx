@@ -29,10 +29,9 @@ describe("CapabilitiesPostcard", () => {
     );
     expect(screen.getByTestId("capabilities-postcard")).toBeInTheDocument();
     expect(screen.getByText(/Community · Odoo 17/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Ask Expert/i })).toHaveAttribute(
-      "href",
-      "/connections/c1/expert",
-    );
-    expect(screen.getByText(/Grid view/)).toBeInTheDocument();
+    const expertLinks = screen.getAllByRole("link", { name: /Ask Expert/i });
+    expect(expertLinks[0]).toHaveAttribute("href", "/connections/c1/expert");
+    expect(screen.getByTestId("locked-explainer")).toBeInTheDocument();
+    expect(screen.getByText(/Grid view is locked/i)).toBeInTheDocument();
   });
 });
