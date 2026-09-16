@@ -41,19 +41,19 @@ export function FirstRunCard({ connectionId, modelCount }: Props) {
             className="text-accent hover:underline"
             data-testid="overview-first-run-app-studio"
           >
-            Draft with AI
+            App Studio
           </Link>{" "}
-          — App Studio brief. Describe the work, then review a form before anything writes Odoo.
+          — describe the work, then review before anything writes Odoo.
         </li>
         <li>
           <Link
-            href={`/connections/${connectionId}/wizard`}
+            href={`/connections/${connectionId}/projects`}
             className="text-accent hover:underline"
-            data-testid="overview-first-run-draft-studio"
+            data-testid="overview-first-run-projects"
           >
-            Draft Studio
+            Projects
           </Link>{" "}
-          — ModuleSpec workshop if you already know the IR.
+          — track drafts and open ModuleSpec / Job Autopilot from the board when you need them.
         </li>
         <li>
           <Link href={`/connections/${connectionId}/builder`} className="text-accent hover:underline">

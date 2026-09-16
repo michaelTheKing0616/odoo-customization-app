@@ -3,8 +3,9 @@ import { NAV_ITEMS } from "@/lib/nav";
 import { isNavItemActive, DEFAULT_NAV_EXPANDED } from "@/lib/nav-storage";
 
 describe("nav IA (UIF-2)", () => {
-  it("uses unique icons across nav items", () => {
-    const icons = NAV_ITEMS.map((item) => item.icon);
+  it("uses unique icons across sidebar-visible nav items", () => {
+    const visible = NAV_ITEMS.filter((item) => item.shipped !== false && item.sidebar !== false);
+    const icons = visible.map((item) => item.icon);
     const unique = new Set(icons);
     expect(unique.size).toBe(icons.length);
   });
@@ -31,8 +32,26 @@ describe("nav IA (UIF-2)", () => {
     expect(isNavItemActive(`${href}/extra`, href, "bulk-suite", "")).toBe(true);
   });
 
-  it("lists App Studio before Draft Studio in the AI group", () => {
-    const ai = NAV_ITEMS.filter((item) => item.group === "ai");
-    expect(ai.map((item) => item.id).slice(0, 2)).toEqual(["app-studio", "wizard"]);
+  it("AI Studio sidebar heroes are App Studio + Projects only", () => {
+    const aiSidebar = NAV_ITEMS.filter(
+      (item) => item.group === "ai" && item.shipped !== false && item.sidebar !== false,
+    );
+    expect(aiSidebar.map((item) => item.id)).toEqual(["app-studio", "projects"]);
+  });
+
+  it("keeps Draft Studio / Job / ModuleSpec / Expert as deep-link routes outside the AI sidebar", () => {
+    const demoted = ["wizard", "job-autopilot", "modulespec", "expert"];
+    for (const id of demoted) {
+      const item = NAV_ITEMS.find((n) => n.id === id);
+      expect(item, id).toBeTruthy();
+      expect(item!.sidebar).toBe(false);
+      expect(item!.shipped).not.toBe(false);
+    }
+  });
+
+  it("places Live Demo Co-Pilot under Operations", () => {
+    const item = NAV_ITEMS.find((n) => n.id === "live-demo-copilot");
+    expect(item?.group).toBe("operate");
+    expect(item?.sidebar).not.toBe(false);
   });
 });

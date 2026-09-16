@@ -14,9 +14,9 @@ describe("FirstRunCard (UIF-3)", () => {
       "href",
       "/connections/conn-1/studio",
     );
-    expect(screen.getByTestId("overview-first-run-draft-studio")).toHaveAttribute(
+    expect(screen.getByTestId("overview-first-run-projects")).toHaveAttribute(
       "href",
-      "/connections/conn-1/wizard",
+      "/connections/conn-1/projects",
     );
     fireEvent.click(screen.getByTestId("overview-first-run-dismiss"));
     expect(screen.queryByTestId("overview-first-run")).not.toBeInTheDocument();

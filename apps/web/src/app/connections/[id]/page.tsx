@@ -662,12 +662,12 @@ export default function BrowserPage() {
         <div className="mt-6 flex flex-wrap gap-2">
           <Button variant="primary" size="sm" asChild>
             <Link href={`/connections/${connectionId}/studio`} data-testid="overview-draft-with-ai">
-              Draft with AI
+              App Studio
             </Link>
           </Button>
           <Button variant="secondary" size="sm" asChild>
-            <Link href={`/connections/${connectionId}/wizard`} data-testid="overview-draft-studio">
-              Draft Studio
+            <Link href={`/connections/${connectionId}/projects`} data-testid="overview-projects">
+              Projects
             </Link>
           </Button>
           <Button variant="ghost" size="sm" asChild>

@@ -45,8 +45,9 @@ export function StudioShell({
               <Link
                 href={`/connections/${connectionId}/wizard`}
                 className="text-sm text-muted hover:text-ink"
+                data-testid="studio-power-worksheet"
               >
-                Draft Studio
+                Worksheet
               </Link>
             </>
           }

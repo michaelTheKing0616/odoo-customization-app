@@ -76,7 +76,8 @@ export function Sidebar({ connection }: Props) {
         <nav className="flex-1 overflow-y-auto p-2">
           {NAV_GROUPS.map((group) => {
             const items = NAV_ITEMS.filter(
-              (item) => item.group === group.id && item.shipped !== false,
+              (item) =>
+                item.group === group.id && item.shipped !== false && item.sidebar !== false,
             );
             if (!items.length) return null;
             const isOpen = expanded[group.id] ?? true;
