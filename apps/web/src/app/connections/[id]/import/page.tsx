@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   api,
@@ -76,7 +76,9 @@ function SeedPackPicker({
 
 export default function DataImportPage() {
   const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
   const connectionId = params.id;
+  const showGallery = searchParams.get("gallery") === "1";
 
   const [connection, setConnection] = useState<Connection | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -281,7 +283,8 @@ export default function DataImportPage() {
 
         <Card className="mt-6 space-y-4 p-4">
           <h2 className="text-sm font-semibold text-ink">Industry seed packs</h2>
-          <SeedPackPicker
+          <div data-testid="import-seed-gallery" className={showGallery ? "rounded-md border border-accent/40 bg-accent/5 p-4" : undefined}>
+            <SeedPackPicker
             connectionId={connectionId}
             onPick={(m, csv) => {
               setModel(m);
@@ -293,6 +296,7 @@ export default function DataImportPage() {
               setNotice(`Loaded seed for ${m} — click Parse to preview`);
             }}
           />
+            </div>
         </Card>
 
         <Card className="mt-6 space-y-4 p-4">

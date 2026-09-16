@@ -4064,6 +4064,108 @@ export const api = {
     request<AccessMatrixOut>(
       `/api/connections/${id}/access/matrix?models=${encodeURIComponent(models.join(","))}`,
     ),
+
+listConfigRecipes: (id: string) =>
+    request<RecipeCard[]>(`/api/connections/${id}/config/recipes`),
+  runDay1Setup: (
+    id: string,
+    body: {
+      name: string;
+      currency_code?: string;
+      country_code?: string | null;
+      language_code?: string | null;
+      email?: string | null;
+      phone?: string | null;
+      company_id?: number | null;
+      dry_run?: boolean;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<RecipePlanOut>(`/api/connections/${id}/config/recipes/day1`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  numberingCatalog: (id: string) =>
+    request<NumberingCatalogItem[]>(
+      `/api/connections/${id}/config/recipes/numbering/catalog`,
+    ),
+  runNumberingPack: (
+    id: string,
+    body: {
+      keys?: string[];
+      prefix_year?: boolean;
+      dry_run?: boolean;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<RecipePlanOut>(`/api/connections/${id}/config/recipes/numbering`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  listAppsPacks: (id: string) =>
+    request<AppsPackItem[]>(`/api/connections/${id}/config/recipes/apps-packs`),
+  runAppsPack: (
+    id: string,
+    body: {
+      pack_id: string;
+      dry_run?: boolean;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<RecipePlanOut>(`/api/connections/${id}/config/recipes/apps-packs/run`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getSettingsBoard: (id: string) =>
+    request<SettingsBoardOut>(`/api/connections/${id}/config/recipes/settings`),
+  patchSettingsBoard: (
+    id: string,
+    body: {
+      values: Record<string, unknown>;
+      dry_run?: boolean;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<RecipePlanOut>(`/api/connections/${id}/config/recipes/settings`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  runMultiCompany: (
+    id: string,
+    body: {
+      name: string;
+      currency_code?: string;
+      country_code?: string | null;
+      dry_run?: boolean;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<RecipePlanOut>(`/api/connections/${id}/config/recipes/multi-company`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  listMasterPacks: (id: string) =>
+    request<MasterPackItem[]>(`/api/connections/${id}/config/recipes/master-packs`),
+  runMasterPack: (
+    id: string,
+    body: {
+      pack_id: string;
+      dry_run?: boolean;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<RecipePlanOut>(`/api/connections/${id}/config/recipes/master-packs/run`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+
   listCompanies: (id: string) =>
     request<CompanyRow[]>(`/api/connections/${id}/config/companies`),
   updateCompany: (
@@ -5565,6 +5667,61 @@ export type CronRowOut = {
   state?: string | null;
   code_preview?: string | null;
 };
+
+
+export type RecipeCard = {
+  id: string;
+  phase: string;
+  title: string;
+  blurb: string;
+  clicks: string;
+};
+
+export type RecipeStep = {
+  op: string;
+  target: string;
+  detail: string;
+  would_write?: boolean;
+};
+
+export type RecipePlanOut = {
+  ok: boolean;
+  dry_run: boolean;
+  steps: RecipeStep[];
+  applied?: string[];
+  warnings?: string[];
+  message?: string;
+};
+
+export type NumberingCatalogItem = {
+  key: string;
+  name: string;
+  code: string;
+  prefix: string;
+  padding: number;
+};
+
+export type AppsPackItem = {
+  id: string;
+  title: string;
+  modules: string[];
+  blurb: string;
+};
+
+export type MasterPackItem = {
+  id: string;
+  title: string;
+  categories?: string[];
+  positions?: string[];
+};
+
+export type SettingsBoardOut = {
+  allowlist: string[];
+  values: Record<string, unknown>;
+  message?: string;
+};
+
+
 
 export type CronListOut = {
   crons: CronRowOut[];

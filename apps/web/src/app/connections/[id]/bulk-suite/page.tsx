@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   api,
@@ -48,9 +48,58 @@ function bulkRunToTable(result: BulkRunOut): BulkRunResult {
   };
 }
 
+
+const BULK_RECIPES = [
+  {
+    id: "archive-inactive",
+    label: "Archive inactive partners",
+    model: "res.partner",
+    domain: '[["active","=",false]]',
+    op: "archive" as const,
+  },
+  {
+    id: "mass-tag",
+    label: "Mass edit partner comment",
+    model: "res.partner",
+    domain: "[]",
+    values: '{"comment": "Bulk update"}',
+    op: "mass_edit" as const,
+  },
+  {
+    id: "dedupe-email",
+    label: "Dedupe partners by email",
+    model: "res.partner",
+    domain: "[]",
+    op: "dedupe_merge" as const,
+  },
+] as const;
+
+function BulkRecipeChips({
+  onPick,
+}: {
+  onPick: (r: (typeof BULK_RECIPES)[number]) => void;
+}) {
+  return (
+    <div className="mb-4 flex flex-wrap gap-2" data-testid="bulk-recipe-chips">
+      {BULK_RECIPES.map((r) => (
+        <button
+          key={r.id}
+          type="button"
+          className="h-8 rounded-md border border-border-subtle bg-surface px-3 text-xs font-medium text-ink hover:border-accent/40"
+          onClick={() => onPick(r)}
+        >
+          {r.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function BulkSuitePage() {
   const params = useParams<{ id: string }>();
   const connectionId = params.id;
+  const searchParams = useSearchParams();
+  const showRecipes = searchParams.get("recipes") === "1";
 
   const [connection, setConnection] = useState<Connection | null>(null);
   const [models, setModels] = useState<ModelRow[]>([]);
@@ -565,6 +614,18 @@ export default function BulkSuitePage() {
         description="Discover form-view workflow buttons per model and run them in bulk with dry-run first. Runs as the connected Odoo user — partial failures are reported per record."
       />
       <VersionAwarenessBanner capabilities={connection?.capabilities} />
+
+      {(showRecipes || true) ? (
+        <BulkRecipeChips
+          onPick={(r) => {
+            setModel(r.model);
+            if ("domain" in r && r.domain) setDomainText(r.domain);
+            if (r.op === "mass_edit" && "values" in r) setValuesText(r.values);
+            setNotice(`Recipe loaded: ${r.label}`);
+          }}
+        />
+      ) : null}
+
       {connection ? <FirstWriteInterstitial connection={connection} /> : null}
 
       {error ? <ErrorNotice message={error} className="mt-4" /> : null}

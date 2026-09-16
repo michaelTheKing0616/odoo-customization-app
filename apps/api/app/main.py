@@ -30,6 +30,7 @@ from app.routers import (
     builder,
     bulk_suite,
     config_ops,
+    config_recipes,
     connections,
     data_import,
     domain_playbooks,
@@ -168,6 +169,7 @@ app.include_router(ee_playbooks.router, prefix="/api", dependencies=_protected)
 app.include_router(domain_playbooks.router, prefix="/api", dependencies=_protected)
 app.include_router(studio_feature_recipes.router, prefix="/api", dependencies=_protected)
 app.include_router(config_ops.router, prefix="/api", dependencies=_protected)
+app.include_router(config_recipes.router, prefix="/api", dependencies=_protected)
 app.include_router(menus_builder.router, prefix="/api", dependencies=_protected)
 app.include_router(reports.router, prefix="/api", dependencies=_protected + [Depends(require_feature("reports_designer"))])
 app.include_router(id_generator.router, prefix="/api", dependencies=_protected + [Depends(require_feature("id_generator"))])

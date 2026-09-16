@@ -8,6 +8,8 @@ import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { Callout } from "@/components/ui/Callout";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { PageHeader } from "@/components/ui/layout-primitives";
+import { Disclosure } from "@/components/ui/Disclosure";
+import { ConfigCommandCenter } from "@/components/config/ConfigCommandCenter";
 
 const CONFIRM_PHRASE = "I understand the risks";
 
@@ -175,10 +177,13 @@ export default function ConfigPage() {
   return (
     <div className="mx-auto max-w-5xl" data-testid="config-page">
       <PageHeader
-        title="Settings"
-        description="Company · sequences · mail · paperformat · defaults · cron · website"
+        title="Instance Config"
+        description="Recipe Command Center · Day-1 · numbering · apps · expert controls"
       />
       <VersionAwarenessBanner capabilities={connection?.capabilities} />
+
+      <ConfigCommandCenter connectionId={connectionId} />
+
 
       {error ? <ErrorNotice message={error} className="mt-4" /> : null}
       {notice ? (
@@ -201,6 +206,7 @@ export default function ConfigPage() {
         </Callout>
       ) : null}
 
+      <Disclosure title="Expert controls" testId="config-expert-controls" className="mt-8">
         <form
           onSubmit={saveCompany}
           className="mt-8 space-y-3 border border-border-subtle bg-surface p-5 rounded-md"
@@ -888,6 +894,8 @@ export default function ConfigPage() {
             </button>
           </div>
         </section>
+      </Disclosure>
+
       <ConfirmDialogV2
         open={deactivateCron != null}
         riskLevel="danger"

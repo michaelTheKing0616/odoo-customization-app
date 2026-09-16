@@ -92,7 +92,7 @@ export const NAV_GROUPS: {
   {
     id: "govern",
     label: "Safety & History",
-    tooltip: "Snapshots, journal, and instance configuration",
+    tooltip: "Snapshots, journal, and governance",
   },
 ];
 
@@ -328,7 +328,7 @@ export const NAV_ITEMS: NavItem[] = [
     id: "config",
     label: "Instance Config",
     href: (id) => `/connections/${id}/config`,
-    group: "govern",
+    group: "operate",
     icon: IconInstanceConfig,
     shipped: true,
   },
