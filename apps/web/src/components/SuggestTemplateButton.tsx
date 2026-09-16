@@ -89,7 +89,7 @@ export function SuggestTemplateButton({
           aria-modal="true"
         >
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto border border-border-subtle bg-surface-raised p-5">
-            <h2 className="font-[family-name:var(--font-display)] text-xl text-[#faf6f9]">
+            <h2 className="text-ui-title text-ink">
               Suggest as template
             </h2>
             {!result ? (
@@ -143,7 +143,7 @@ export function SuggestTemplateButton({
                   {result.filename} · domain_pack={result.domain_pack}
                 </p>
                 {result.warnings.length > 0 && (
-                  <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-[#e8d09f]">
+                  <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-warning">
                     {result.warnings.slice(0, 6).map((w) => (
                       <li key={w}>{w}</li>
                     ))}
@@ -159,7 +159,7 @@ export function SuggestTemplateButton({
                   <button
                     type="button"
                     onClick={onDownload}
-                    className="border border-[#c9a96e] px-3 py-1.5 text-sm text-[#c9a96e]"
+                    className="border border-warning px-3 py-1.5 text-sm text-warning"
                   >
                     Download .py
                   </button>

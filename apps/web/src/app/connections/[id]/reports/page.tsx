@@ -366,7 +366,7 @@ export default function ReportsPage() {
         </div>
 
         <section className="mt-8 rounded-md border border-border-subtle bg-surface p-4">
-          <h2 className="font-[family-name:var(--font-display)] text-xl text-ink">
+          <h2 className="text-ui-title text-ink">
             Combined print
           </h2>
           <p className="mt-1 text-sm text-muted">

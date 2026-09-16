@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import type { StudioTurn } from "@/lib/studio-session";
 import { undoInstructionForRefine } from "@/lib/studio-session";
 import { ChatBubble } from "./ChatBubble";
@@ -20,6 +21,7 @@ export function StudioChatThread({
   onReuse,
   onUndo,
 }: StudioChatThreadProps) {
+  const endRef = useRef<HTMLDivElement>(null);
   const reviewTurns = (conversation || []).filter(
     (t) => t.kind === "refine" || t.kind === "refine_result",
   );
@@ -27,6 +29,15 @@ export function StudioChatThread({
   reviewTurns.forEach((turn, idx) => {
     if (turn.kind === "refine" && turn.role === "user") latestUserRefineIdx = idx;
   });
+
+  useEffect(() => {
+    const el = endRef.current;
+    if (!el) return;
+    const reduce =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "end" });
+  }, [reviewTurns.length, localRefineError, refineBusy]);
 
   return (
     <>
@@ -83,6 +94,7 @@ export function StudioChatThread({
         );
       })}
       {localRefineError ? <ChatBubble role="assistant">{localRefineError}</ChatBubble> : null}
+      <div ref={endRef} aria-hidden className="studio-chat-scroll-anchor" />
     </>
   );
 }

@@ -146,9 +146,10 @@ def test_repair_loop_locks_and_thrash_budget():
     from app.ai_repair_loop import budget_exhausted_message
 
     msg = budget_exhausted_message("max_repair_exceeded")
-    assert "Download module zip still works" in msg
+    assert "Download module zip still works" in msg or "Sandbox install & smoke" in msg
     assert "Zip export failed" not in msg
     assert "passing zip" not in msg
+    assert "free Community" in msg or "tax_ids" in msg
 
 
 def test_planner_patterns_and_grounding():

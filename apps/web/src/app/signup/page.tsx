@@ -39,7 +39,7 @@ export default function SignupPage() {
 
   return (
     <div className="mx-auto max-w-md space-y-6 p-6">
-      <PageHeader title="Create account" description="Start your Odoo Custom workspace." />
+      <PageHeader title="Create account" description="Start your Ingenium workspace." />
       <Card>
         <form className="space-y-4" onSubmit={onSubmit}>
           {error ? <ErrorNotice message={error} /> : null}

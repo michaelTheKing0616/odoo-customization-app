@@ -395,7 +395,73 @@ def test_rewrite_sale_order_line_tax_id_depends() -> None:
         ]
     }
     assert rewrite_draft_stock_xpaths(draft) == 1
-    assert "tax_ids" in draft["custom_code_blocks"][0]["content"]
+    hardened = draft["custom_code_blocks"][0]["content"]
+    assert "tax_ids" in hardened or "def _compute_amount" not in hardened
+    assert "def _compute_amount" not in hardened
+
+
+def test_sanitize_strips_stock_compute_amount() -> None:
+    from app.ai_static_odoo import harden_authored_python
+    from app.ai_option_a_policy import policy_findings
+
+    py = (
+        "from odoo import api, fields, models\n\n"
+        "class SaleOrderLine(models.Model):\n"
+        "    _inherit = 'sale.order.line'\n\n"
+        "    x_markup = fields.Float()\n\n"
+        "    @api.depends('product_id', 'tax_id')\n"
+        "    def _compute_amount(self):\n"
+        "        for line in self:\n"
+        "            line.price_subtotal = 1\n"
+    )
+    out = harden_authored_python(py)
+    assert "def _compute_amount" not in out
+    assert "tax_id" not in out or "tax_ids" in out
+    draft = {
+        "custom_code_blocks": [
+            {"source_file": "models/sale_line.py", "kind": "python", "content": out}
+        ]
+    }
+    assert policy_findings(draft) == []
+
+
+def test_free_repair_does_not_burn_budget_on_known_ce_fault() -> None:
+    from app.ai_option_a_feedback import repair_option_a_from_feedback
+    from app.ai_generation_engine import classify_generation
+    from app.ai_option_a_author import seed_option_a_authored
+
+    draft = seed_option_a_authored(MARKUP, classify_generation(MARKUP))
+    draft["custom_code_blocks"] = [
+        {
+            "source_file": "models/sale_line.py",
+            "kind": "python",
+            "content": (
+                "from odoo import api, models\n\n"
+                "class SaleOrderLine(models.Model):\n"
+                "    _inherit = 'sale.order.line'\n\n"
+                "    @api.depends('tax_id')\n"
+                "    def _compute_amount(self):\n"
+                "        pass\n"
+            ),
+        },
+        {
+            "source_file": "models/__init__.py",
+            "kind": "python",
+            "content": "from . import sale_line\n",
+        },
+    ]
+    draft["_sandbox_repair_count"] = 3
+    msg = (
+        "ValueError: Wrong @depends on '_compute_amount' "
+        "(compute method of field sale.order.line.price_subtotal). "
+        "Dependency field 'tax_id' not found in model sale.order.line."
+    )
+    res = repair_option_a_from_feedback(draft, error_text=msg)
+    assert res.get("applied") is True
+    assert res.get("deterministic") is True
+    assert res.get("llm") is False
+    assert draft["_sandbox_repair_count"] == 3
+    assert "def _compute_amount" not in draft["custom_code_blocks"][0]["content"]
 
 
 def test_wrong_depends_tax_id_failure_ir() -> None:

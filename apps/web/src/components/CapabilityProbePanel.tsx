@@ -69,18 +69,18 @@ export function CapabilityProbePanel({
         )}
       </div>
       {capabilities.warnings && capabilities.warnings.length > 0 && (
-        <ul className="mt-2 space-y-1 border border-[#6b5a3d] bg-[#2a2414] px-3 py-2 text-xs text-[#e8d09f]">
+        <ul className="mt-2 space-y-1 border border-warning/40 bg-warning-subtle px-3 py-2 text-xs text-warning">
           {capabilities.warnings.map((w) => (
             <li key={w.slice(0, 48)}>{w}</li>
           ))}
         </ul>
       )}
       {open && (
-        <div className="mt-2 space-y-2 border border-border-subtle bg-[#120e14] px-3 py-2">
+        <div className="mt-2 space-y-2 border border-border-subtle bg-surface-muted px-3 py-2">
           <p className="text-xs text-muted">{capabilities.message}</p>
           {capabilities.installed_modules_sample &&
             capabilities.installed_modules_sample.length > 0 && (
-              <p className="text-[11px] text-[#6b5a66]">
+              <p className="text-[11px] text-[currentColor]">
                 Modules sample:{" "}
                 {capabilities.installed_modules_sample.slice(0, 12).join(", ")}
                 {capabilities.installed_modules_sample.length > 12 ? "…" : ""}
@@ -95,17 +95,17 @@ export function CapabilityProbePanel({
             ))}
             {capabilities.unsupported.map((u) => (
               <li key={u.id} className="flex gap-2 text-xs text-muted">
-                <span aria-hidden className="text-[#6b5a66]">
+                <span aria-hidden className="text-[currentColor]">
                   –
                 </span>
                 <span>
-                  <span className="text-[#a8909e]">{u.label}</span>
-                  <span className="block text-[#6b5a66]">{u.reason}</span>
+                  <span className="text-muted">{u.label}</span>
+                  <span className="block text-[currentColor]">{u.reason}</span>
                 </span>
               </li>
             ))}
           </ul>
-          <p className="text-[11px] text-[#6b5a66]">
+          <p className="text-[11px] text-[currentColor]">
             Community 19, 18, and 17 are GA; 16 is experimental (lacks related
             write / update_path). Enterprise editions are allowed for public-ORM
             metadata only — Studio source is never used. Unsupported majors are

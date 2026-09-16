@@ -113,3 +113,9 @@ export function splitUserTurnForDisplay(content: string): {
   if (match.length < 2) return { question: content, errorLog: null };
   return { question: match[0] ?? content, errorLog: match.slice(1).join("\n\nError log:\n") };
 }
+
+/** Dedicated Expert destination route (not the overview ?expert=1 shim). */
+export function expertDestinationHref(connectionId: string): string {
+  return `/connections/${connectionId}/expert`;
+}
+

@@ -75,7 +75,7 @@ export function KanbanCardPreview({
         {columns.map((col) => (
           <div
             key={col.key}
-            className="min-w-[14rem] flex-1 rounded border border-[var(--odoo-border)] bg-[#f0eeeb]/60"
+            className="min-w-[14rem] flex-1 rounded border border-[var(--odoo-border)] bg-surface-muted/60"
           >
             <div className="border-b border-[var(--odoo-border)] px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--odoo-muted)]">
               {col.label}
@@ -93,7 +93,7 @@ export function KanbanCardPreview({
                         key={f.id}
                         className={`rounded border px-2 py-1.5 ${
                           selectedFieldId === f.id
-                            ? "border-[var(--odoo-primary)] bg-[#f5eef3]"
+                            ? "border-[var(--odoo-primary)] bg-brand-subtle"
                             : "border-transparent hover:border-[var(--odoo-border)]"
                         }`}
                       >
@@ -163,7 +163,7 @@ export function KanbanCardPreview({
         ))}
       </div>
 
-      <div className="border-t border-[var(--odoo-border)] bg-[#faf9f8] px-3 py-2 text-[11px] text-[var(--odoo-muted)]">
+      <div className="border-t border-[var(--odoo-border)] bg-surface-muted px-3 py-2 text-[11px] text-[var(--odoo-muted)]">
         Card field order matches saved kanban arch. Open in Odoo is authoritative.
       </div>
     </div>

@@ -4,7 +4,6 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { DomainBuilder } from "@/components/DomainBuilder";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import { FirstWriteInterstitial } from "@/components/shell/FirstWriteInterstitial";
@@ -14,10 +13,15 @@ import {
   DesignerLiveCanvas,
   type DesignerCanvasMode,
 } from "@/components/designer/DesignerLiveCanvas";
-import {
-  DesignerToolsRail,
-  type DesignerRailTabId,
-} from "@/components/designer/DesignerToolsRail";
+import { DesignerStudioRail } from "@/components/designer/DesignerStudioRail";
+import { DesignerStructuralCanvas } from "@/components/designer/DesignerStructuralCanvas";
+import { useDesignerViewSpecs } from "@/components/designer/useDesignerViewSpecs";
+import { useDesignerCanvasMutations } from "@/components/designer/useDesignerCanvasMutations";
+import { useDesignerPersist } from "@/components/designer/useDesignerPersist";
+import { useDesignerModelLoad } from "@/components/designer/useDesignerModelLoad";
+import { useDesignerFieldOps } from "@/components/designer/useDesignerFieldOps";
+import { DesignerStudioToolbar } from "@/components/designer/DesignerStudioToolbar";
+import type { DesignerRailTabId } from "@/components/designer/DesignerToolsRail";
 import { FieldPalette } from "@/components/designer/FieldPalette";
 import { Disclosure } from "@/components/ui/Disclosure";
 import {
@@ -37,398 +41,60 @@ import { PreviewThemeScope } from "@/components/designer/PreviewThemeScope";
 import {
   ActivityTypeRow,
   api,
-  getApiBase,
-  ConfirmationRequiredError,
   Connection,
   FieldRow,
-  GroupRow,
   MailTemplateRow,
   PreviewTheme,
-  RelatedPathOption,
   SnapshotRow,
 } from "@/lib/api";
-import {
-  DesignerFieldInspector,
-  DesignerFieldInspectorEmpty,
-  type DesignerFieldInspectorValues,
-} from "@/components/designer/DesignerFieldInspector";
+import { useDesignerFieldInspector } from "@/components/designer/useDesignerFieldInspector";
+import { useDesignerCanvasSnapshot } from "@/components/designer/useDesignerCanvasSnapshot";
+import { useDesignerPageBootstrap } from "@/components/designer/useDesignerPageBootstrap";
+import { DesignerReportingFieldsPanel } from "@/components/designer/DesignerReportingFieldsPanel";
 import { XPathInheritPanel, type LocatorIssue } from "@/components/designer/XPathInheritPanel";
 import {
   DesignerSessionBar,
   designerPublishState,
 } from "@/components/designer/DesignerSessionBar";
 import { useDesignerHistory } from "@/components/designer/useDesignerHistory";
-import { fallbackWidgetsForTtype, type WidgetOption } from "@/lib/widgetCatalog";
-import { semanticInjectExpr } from "@/lib/xpathLocator";
 import { automationsHref } from "@/lib/automationForm";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Callout } from "@/components/ui/Callout";
 import { Card } from "@/components/ui/layout-primitives";
+
+import type {
+  ViewType,
+  AxisDesignerField,
+  DesignerField,
+  DesignerButton,
+  DesignerGroup,
+  DesignerPage,
+  DesignerNotebook,
+  FormChild,
+  ButtonPlacement,
+  BindDialogMode,
+  SearchFilter,
+  SearchGroupByFilter,
+  DesignerCanvasSnapshot,
+  SelectedField,
+} from "@/components/designer/designer-model";
 import {
-  bindModeSupported,
-  bindModeUnsupportedReason,
-  connectionSupports,
-  connectionUnsupportedReason,
-  injectStrategyCapabilityId,
-  mutationAllowed,
-  mutationBlockedReason,
-  gridViewAllowed,
-  isEnterpriseEdition,
-} from "@/lib/capabilities";
-import { odooViewUrl, pickStandaloneWindowAction, sameOriginPreviewUrl } from "@/lib/odoo-urls";
-
-type ViewType =
-  | "form"
-  | "list"
-  | "search"
-  | "kanban"
-  | "calendar"
-  | "graph"
-  | "pivot"
-  | "map"
-  | "activity"
-  | "gantt"
-  | "cohort"
-  | "grid";
-
-type AxisDesignerField = {
-  id: string;
-  name: string;
-  type?: "row" | "col" | "measure";
-  interval?: string;
-  string?: string;
-};
-
-type DesignerField = {
-  kind: "field";
-  id: string;
-  name: string;
-  string?: string;
-  required?: boolean | string;
-  readonly?: boolean | string;
-  invisible?: boolean | string;
-  widget?: string;
-  options?: string;
-  help?: string;
-  placeholder?: string;
-  class_name?: string;
-  groups?: string;
-};
-
-type DesignerButton = {
-  kind: "button";
-  id: string;
-  string: string;
-  name?: string;
-  type?: string;
-  class_name?: string;
-  icon?: string;
-  context?: string;
-  count_field?: string;
-};
-
-type DesignerGroup = {
-  kind: "group";
-  id: string;
-  string?: string;
-  children: Array<DesignerField | DesignerButton>;
-};
-
-type DesignerPage = {
-  id: string;
-  string: string;
-  children: Array<DesignerField | DesignerButton>;
-};
-
-type DesignerNotebook = {
-  kind: "notebook";
-  id: string;
-  pages: DesignerPage[];
-};
-
-type FormChild = DesignerGroup | DesignerNotebook;
-
-type ButtonPlacement = "header" | "button_box" | "inline";
-
-type BindDialogMode =
-  | "closed"
-  | "create_update"
-  | "create_related"
-  | "create_activity"
-  | "create_mail"
-  | "create_smart"
-  | "bind_existing";
-
-type SearchFilter = {
-  id: string;
-  name: string;
-  string: string;
-  domain?: string;
-};
-
-type SearchGroupByFilter = {
-  id: string;
-  name: string;
-  string: string;
-  context?: string;
-};
-
-/** Canvas bits session undo/redo snapshots. Keep JSON-small; cap is in designerHistory. */
-type DesignerCanvasSnapshot = {
-  title: string;
-  formChildren: FormChild[];
-  headerButtons: DesignerButton[];
-  buttonBox: DesignerButton[];
-  statusbarField: string;
-  statusbarVisible: string;
-  formCanCreate: boolean;
-  formCanEdit: boolean;
-  formCanDelete: boolean;
-  formCanDuplicate: boolean;
-  listColumns: DesignerField[];
-  listDecorationDanger: string;
-  listDecorationInfo: string;
-  listDecorationMuted: string;
-  listCanCreate: boolean;
-  listCanEdit: boolean;
-  listCanDelete: boolean;
-  listMultiEdit: boolean;
-  listDefaultOrder: string;
-  viewSample: boolean;
-  searchFields: DesignerField[];
-  searchFilters: SearchFilter[];
-  searchGroupByFilters: SearchGroupByFilter[];
-  kanbanFields: DesignerField[];
-  kanbanGroupBy: string;
-  kanbanCanCreate: boolean;
-  kanbanQuickCreate: boolean;
-  calendarDateStart: string;
-  calendarDateStop: string;
-  calendarColor: string;
-  calendarMode: string;
-  calendarFields: DesignerField[];
-  graphType: "bar" | "line" | "pie";
-  graphFields: AxisDesignerField[];
-  pivotFields: AxisDesignerField[];
-  mapResPartner: string;
-  mapRouting: boolean;
-  mapFields: DesignerField[];
-  activityFields: DesignerField[];
-  ganttDateStart: string;
-  ganttDateStop: string;
-  ganttGroupBy: string;
-  ganttColor: string;
-  ganttProgress: string;
-  ganttDefaultScale: string;
-  ganttDependencyField: string;
-  ganttFields: DesignerField[];
-  cohortDateStart: string;
-  cohortDateStop: string;
-  cohortInterval: "day" | "week" | "month" | "year" | "";
-  cohortMode: "retention" | "churn" | "";
-  cohortTimeline: "forward" | "backward" | "";
-  cohortMeasure: string;
-  gridRowField: string;
-  gridColField: string;
-  gridMeasure: string;
-  gridAdjustment: string;
-  gridDateStart: string;
-  gridDateStop: string;
-  gridFields: DesignerField[];
-  archOverride: string | null;
-};
-
-function asSpecBool(v: unknown): boolean | null {
-  if (typeof v === "boolean") return v;
-  return null;
-}
+  uid,
+  INITIAL_FORM_CHILDREN,
+} from "@/components/designer/designer-model";
+import {
+  applyFieldNamesToCanvas as runApplyFieldNamesToCanvas,
+  loadExistingView as runLoadExistingView,
+} from "@/components/designer/loadExistingView";
+import { DesignerUiProvider } from "@/components/designer/DesignerUiContext";
+import { DesignerBindPanel } from "@/components/designer/DesignerBindPanel";
+import { DesignerDangerConfirms } from "@/components/designer/DesignerDangerConfirms";
+import { DesignerAdvancedFieldsAside } from "@/components/designer/DesignerAdvancedFieldsAside";
+import { DesignerAdvancedMetaAside } from "@/components/designer/DesignerAdvancedMetaAside";
+import { DesignerAdvancedStructureCanvas } from "@/components/designer/DesignerAdvancedStructureCanvas";
 
 const CONFIRM_PHRASE = "I understand the risks";
-
-type SelectedField =
-  | { scope: "form-group"; groupId: string; fieldId: string }
-  | { scope: "form-page"; notebookId: string; pageId: string; fieldId: string }
-  | { scope: "list"; fieldId: string }
-  | { scope: "search"; fieldId: string }
-  | { scope: "kanban"; fieldId: string };
-
-let _uidSeq = 0;
-
-function uid(prefix: string) {
-  // Deterministic counter (same call count on SSR + hydrate). Do not use Math.random /
-  // crypto.randomUUID in render or useState initializers — they mismatch across the wire.
-  _uidSeq += 1;
-  return `${prefix}_${_uidSeq}`;
-}
-
-/** Stable seed for first paint (no uid() in the useState initializer). */
-const INITIAL_FORM_CHILDREN: FormChild[] = [
-  { kind: "group", id: "g_main", string: "Main", children: [] },
-];
-
-function fieldSpec(f: DesignerField) {
-  return {
-    kind: "field" as const,
-    name: f.name,
-    string: f.string,
-    required: f.required,
-    readonly: f.readonly,
-    invisible: f.invisible || undefined,
-    widget: f.widget || undefined,
-    options: f.options || undefined,
-    help: f.help || undefined,
-    placeholder: f.placeholder || undefined,
-    class_name: f.class_name || undefined,
-    groups: f.groups || undefined,
-  };
-}
-
-function mapParsedField(n: Record<string, unknown>): DesignerField {
-  return {
-    kind: "field",
-    id: uid("f"),
-    name: String(n.name || ""),
-    string: n.string ? String(n.string) : undefined,
-    required: n.required as boolean | string | undefined,
-    readonly: n.readonly as boolean | string | undefined,
-    invisible: n.invisible as boolean | string | undefined,
-    widget: n.widget ? String(n.widget) : undefined,
-    options: n.options ? String(n.options) : undefined,
-    help: n.help ? String(n.help) : undefined,
-    placeholder: n.placeholder ? String(n.placeholder) : undefined,
-    class_name: n.class
-      ? String(n.class)
-      : n.class_name
-        ? String(n.class_name)
-        : undefined,
-    groups: n.groups ? String(n.groups) : undefined,
-  };
-}
-
-/** Flatten nested groups from parse; drop empty-name fields (invalid Odoo arch). */
-function mapFormGroupChildren(
-  kids: Array<Record<string, unknown>>,
-): Array<DesignerField | DesignerButton> {
-  const out: Array<DesignerField | DesignerButton> = [];
-  for (const n of kids) {
-    const kind = String(n.kind || "");
-    if (kind === "group" && Array.isArray(n.children)) {
-      out.push(
-        ...mapFormGroupChildren(n.children as Array<Record<string, unknown>>),
-      );
-      continue;
-    }
-    if (kind === "notebook") {
-      // Nested notebooks inside a group are rare; skip rather than emit blank fields.
-      continue;
-    }
-    if (kind === "button") {
-      out.push(mapParsedButton(n));
-      continue;
-    }
-    const name = String(n.name || "").trim();
-    if (!name) continue;
-    out.push(mapParsedField({ ...n, name }));
-  }
-  return out;
-}
-
-function resolveFieldLabel(
-  name: string,
-  string: string | undefined,
-  rows: FieldRow[],
-): string | undefined {
-  return string || rows.find((f) => f.name === name)?.field_description || undefined;
-}
-
-function isDateLikeField(f: Pick<FieldRow, "ttype">): boolean {
-  return f.ttype === "date" || f.ttype === "datetime";
-}
-
-/** Prefer custom x_* dates over create_date/write_date for calendar/gantt/cohort. */
-function sortedDateFields(rows: FieldRow[]): FieldRow[] {
-  const rank = (name: string) => {
-    if (name === "create_date" || name === "write_date") return 2;
-    if (name.startsWith("x_")) return 0;
-    return 1;
-  };
-  return rows
-    .filter(isDateLikeField)
-    .slice()
-    .sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name));
-}
-
-function pickTemporalDefaults(rows: FieldRow[]): {
-  dateStart: string;
-  dateStop: string;
-} {
-  const dates = sortedDateFields(rows);
-  const byName = (n: string) => dates.find((f) => f.name === n)?.name;
-  const dateStart =
-    byName("x_loan_date") ||
-    byName("x_date_start") ||
-    byName("x_start") ||
-    dates.find((f) => f.name.startsWith("x_"))?.name ||
-    dates.find((f) => f.name !== "write_date")?.name ||
-    dates[0]?.name ||
-    "";
-  const dateStop =
-    byName("x_due_date") ||
-    byName("x_date_stop") ||
-    byName("x_date_end") ||
-    byName("x_end") ||
-    dates.find((f) => f.name !== dateStart && f.name.startsWith("x_"))?.name ||
-    "";
-  return { dateStart, dateStop };
-}
-
-function nodeSpec(n: DesignerField | DesignerButton) {
-  if (n.kind === "button") {
-    return {
-      kind: "button" as const,
-      string: n.string,
-      name: n.name,
-      type: n.type || "action",
-      class: n.class_name,
-      icon: n.icon,
-      context: n.context,
-      count_field: n.count_field,
-    };
-  }
-  return fieldSpec(n);
-}
-
-function parseSelectionOptions(raw: string | null | undefined): Array<{ value: string; label: string }> {
-  if (!raw) return [];
-  const out: Array<{ value: string; label: string }> = [];
-  const re = /\(\s*'((?:\\'|[^'])*)'\s*,\s*'((?:\\'|[^'])*)'\s*\)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(raw))) {
-    out.push({ value: m[1].replace(/\\'/g, "'"), label: m[2].replace(/\\'/g, "'") });
-  }
-  if (!out.length) {
-    const re2 = /\(\s*"((?:\\"|[^"])*)"\s*,\s*"((?:\\"|[^"])*)"\s*\)/g;
-    while ((m = re2.exec(raw))) {
-      out.push({ value: m[1].replace(/\\"/g, '"'), label: m[2].replace(/\\"/g, '"') });
-    }
-  }
-  return out;
-}
-
-function mapParsedButton(n: Record<string, unknown>): DesignerButton {
-  return {
-    kind: "button",
-    id: uid("b"),
-    string: String(n.string || "Button"),
-    name: n.name ? String(n.name) : undefined,
-    type: n.type ? String(n.type) : "action",
-    class_name: n.class ? String(n.class) : n.class_name ? String(n.class_name) : undefined,
-    icon: n.icon ? String(n.icon) : undefined,
-    context: n.context ? String(n.context) : undefined,
-    count_field: n.count_field ? String(n.count_field) : undefined,
-  };
-}
 
 export default function DesignerPage() {
   const params = useParams<{ id: string }>();
@@ -496,16 +162,6 @@ export default function DesignerPage() {
   const [kanbanCanCreate, setKanbanCanCreate] = useState(true);
   const [kanbanQuickCreate, setKanbanQuickCreate] = useState(true);
   const [viewSample, setViewSample] = useState(false);
-  const [widgetAdvanced, setWidgetAdvanced] = useState(false);
-  const [inspectorWidgets, setInspectorWidgets] = useState<WidgetOption[]>([]);
-  const [inspectorGroups, setInspectorGroups] = useState<GroupRow[]>([]);
-  const [inspectorGroupsState, setInspectorGroupsState] = useState<
-    "idle" | "loading" | "ready" | "error"
-  >("idle");
-  const [relatedPaths, setRelatedPaths] = useState<RelatedPathOption[]>([]);
-  const [relatedPathsState, setRelatedPathsState] = useState<
-    "idle" | "loading" | "ready" | "error"
-  >("idle");
   const [nicheWidgets, setNicheWidgets] = useState<NicheWidgetEntry[]>([]);
   const [colorPalette, setColorPalette] = useState<Array<{ index: number; name: string }>>(
     [],
@@ -600,198 +256,136 @@ export default function DesignerPage() {
   const pendingCoalesceRef = useRef<string | undefined>(undefined);
   const pendingHistoryLabelRef = useRef<string | undefined>(undefined);
 
-  const canvasSnapshot = useMemo<DesignerCanvasSnapshot>(
-    () => ({
-      title,
-      formChildren,
-      headerButtons,
-      buttonBox,
-      statusbarField,
-      statusbarVisible,
-      formCanCreate,
-      formCanEdit,
-      formCanDelete,
-      formCanDuplicate,
-      listColumns,
-      listDecorationDanger,
-      listDecorationInfo,
-      listDecorationMuted,
-      listCanCreate,
-      listCanEdit,
-      listCanDelete,
-      listMultiEdit,
-      listDefaultOrder,
-      viewSample,
-      searchFields,
-      searchFilters,
-      searchGroupByFilters,
-      kanbanFields,
-      kanbanGroupBy,
-      kanbanCanCreate,
-      kanbanQuickCreate,
-      calendarDateStart,
-      calendarDateStop,
-      calendarColor,
-      calendarMode,
-      calendarFields,
-      graphType,
-      graphFields,
-      pivotFields,
-      mapResPartner,
-      mapRouting,
-      mapFields,
-      activityFields,
-      ganttDateStart,
-      ganttDateStop,
-      ganttGroupBy,
-      ganttColor,
-      ganttProgress,
-      ganttDefaultScale,
-      ganttDependencyField,
-      ganttFields,
-      cohortDateStart,
-      cohortDateStop,
-      cohortInterval,
-      cohortMode,
-      cohortTimeline,
-      cohortMeasure,
-      gridRowField,
-      gridColField,
-      gridMeasure,
-      gridAdjustment,
-      gridDateStart,
-      gridDateStop,
-      gridFields,
-      archOverride,
-    }),
-    [
-      title,
-      formChildren,
-      headerButtons,
-      buttonBox,
-      statusbarField,
-      statusbarVisible,
-      formCanCreate,
-      formCanEdit,
-      formCanDelete,
-      formCanDuplicate,
-      listColumns,
-      listDecorationDanger,
-      listDecorationInfo,
-      listDecorationMuted,
-      listCanCreate,
-      listCanEdit,
-      listCanDelete,
-      listMultiEdit,
-      listDefaultOrder,
-      viewSample,
-      searchFields,
-      searchFilters,
-      searchGroupByFilters,
-      kanbanFields,
-      kanbanGroupBy,
-      kanbanCanCreate,
-      kanbanQuickCreate,
-      calendarDateStart,
-      calendarDateStop,
-      calendarColor,
-      calendarMode,
-      calendarFields,
-      graphType,
-      graphFields,
-      pivotFields,
-      mapResPartner,
-      mapRouting,
-      mapFields,
-      activityFields,
-      ganttDateStart,
-      ganttDateStop,
-      ganttGroupBy,
-      ganttColor,
-      ganttProgress,
-      ganttDefaultScale,
-      ganttDependencyField,
-      ganttFields,
-      cohortDateStart,
-      cohortDateStop,
-      cohortInterval,
-      cohortMode,
-      cohortTimeline,
-      cohortMeasure,
-      gridRowField,
-      gridColField,
-      gridMeasure,
-      gridAdjustment,
-      gridDateStart,
-      gridDateStop,
-      gridFields,
-      archOverride,
-    ],
+  const { canvasSnapshot, applyCanvasSnapshot } = useDesignerCanvasSnapshot(
+    {
+    title,
+    formChildren,
+    headerButtons,
+    buttonBox,
+    statusbarField,
+    statusbarVisible,
+    formCanCreate,
+    formCanEdit,
+    formCanDelete,
+    formCanDuplicate,
+    listColumns,
+    listDecorationDanger,
+    listDecorationInfo,
+    listDecorationMuted,
+    listCanCreate,
+    listCanEdit,
+    listCanDelete,
+    listMultiEdit,
+    listDefaultOrder,
+    viewSample,
+    searchFields,
+    searchFilters,
+    searchGroupByFilters,
+    kanbanFields,
+    kanbanGroupBy,
+    kanbanCanCreate,
+    kanbanQuickCreate,
+    calendarDateStart,
+    calendarDateStop,
+    calendarColor,
+    calendarMode,
+    calendarFields,
+    graphType,
+    graphFields,
+    pivotFields,
+    mapResPartner,
+    mapRouting,
+    mapFields,
+    activityFields,
+    ganttDateStart,
+    ganttDateStop,
+    ganttGroupBy,
+    ganttColor,
+    ganttProgress,
+    ganttDefaultScale,
+    ganttDependencyField,
+    ganttFields,
+    cohortDateStart,
+    cohortDateStop,
+    cohortInterval,
+    cohortMode,
+    cohortTimeline,
+    cohortMeasure,
+    gridRowField,
+    gridColField,
+    gridMeasure,
+    gridAdjustment,
+    gridDateStart,
+    gridDateStop,
+    gridFields,
+    archOverride
+    },
+    {
+    setTitle,
+    setFormChildren,
+    setHeaderButtons,
+    setButtonBox,
+    setStatusbarField,
+    setStatusbarVisible,
+    setFormCanCreate,
+    setFormCanEdit,
+    setFormCanDelete,
+    setFormCanDuplicate,
+    setListColumns,
+    setListDecorationDanger,
+    setListDecorationInfo,
+    setListDecorationMuted,
+    setListCanCreate,
+    setListCanEdit,
+    setListCanDelete,
+    setListMultiEdit,
+    setListDefaultOrder,
+    setViewSample,
+    setSearchFields,
+    setSearchFilters,
+    setSearchGroupByFilters,
+    setKanbanFields,
+    setKanbanGroupBy,
+    setKanbanCanCreate,
+    setKanbanQuickCreate,
+    setCalendarDateStart,
+    setCalendarDateStop,
+    setCalendarColor,
+    setCalendarMode,
+    setCalendarFields,
+    setGraphType,
+    setGraphFields,
+    setPivotFields,
+    setMapResPartner,
+    setMapRouting,
+    setMapFields,
+    setActivityFields,
+    setGanttDateStart,
+    setGanttDateStop,
+    setGanttGroupBy,
+    setGanttColor,
+    setGanttProgress,
+    setGanttDefaultScale,
+    setGanttDependencyField,
+    setGanttFields,
+    setCohortDateStart,
+    setCohortDateStop,
+    setCohortInterval,
+    setCohortMode,
+    setCohortTimeline,
+    setCohortMeasure,
+    setGridRowField,
+    setGridColField,
+    setGridMeasure,
+    setGridAdjustment,
+    setGridDateStart,
+    setGridDateStop,
+    setGridFields,
+    setArchOverride
+    },
   );
 
-  function applyCanvasSnapshot(snapshot: DesignerCanvasSnapshot) {
-    setTitle(snapshot.title);
-    setFormChildren(snapshot.formChildren);
-    setHeaderButtons(snapshot.headerButtons);
-    setButtonBox(snapshot.buttonBox);
-    setStatusbarField(snapshot.statusbarField);
-    setStatusbarVisible(snapshot.statusbarVisible);
-    setFormCanCreate(snapshot.formCanCreate);
-    setFormCanEdit(snapshot.formCanEdit);
-    setFormCanDelete(snapshot.formCanDelete);
-    setFormCanDuplicate(snapshot.formCanDuplicate);
-    setListColumns(snapshot.listColumns);
-    setListDecorationDanger(snapshot.listDecorationDanger);
-    setListDecorationInfo(snapshot.listDecorationInfo);
-    setListDecorationMuted(snapshot.listDecorationMuted);
-    setListCanCreate(snapshot.listCanCreate);
-    setListCanEdit(snapshot.listCanEdit);
-    setListCanDelete(snapshot.listCanDelete);
-    setListMultiEdit(snapshot.listMultiEdit);
-    setListDefaultOrder(snapshot.listDefaultOrder);
-    setViewSample(snapshot.viewSample);
-    setSearchFields(snapshot.searchFields);
-    setSearchFilters(snapshot.searchFilters);
-    setSearchGroupByFilters(snapshot.searchGroupByFilters);
-    setKanbanFields(snapshot.kanbanFields);
-    setKanbanGroupBy(snapshot.kanbanGroupBy);
-    setKanbanCanCreate(snapshot.kanbanCanCreate);
-    setKanbanQuickCreate(snapshot.kanbanQuickCreate);
-    setCalendarDateStart(snapshot.calendarDateStart);
-    setCalendarDateStop(snapshot.calendarDateStop);
-    setCalendarColor(snapshot.calendarColor);
-    setCalendarMode(snapshot.calendarMode);
-    setCalendarFields(snapshot.calendarFields);
-    setGraphType(snapshot.graphType);
-    setGraphFields(snapshot.graphFields);
-    setPivotFields(snapshot.pivotFields);
-    setMapResPartner(snapshot.mapResPartner);
-    setMapRouting(snapshot.mapRouting);
-    setMapFields(snapshot.mapFields);
-    setActivityFields(snapshot.activityFields);
-    setGanttDateStart(snapshot.ganttDateStart);
-    setGanttDateStop(snapshot.ganttDateStop);
-    setGanttGroupBy(snapshot.ganttGroupBy);
-    setGanttColor(snapshot.ganttColor);
-    setGanttProgress(snapshot.ganttProgress);
-    setGanttDefaultScale(snapshot.ganttDefaultScale);
-    setGanttDependencyField(snapshot.ganttDependencyField);
-    setGanttFields(snapshot.ganttFields);
-    setCohortDateStart(snapshot.cohortDateStart);
-    setCohortDateStop(snapshot.cohortDateStop);
-    setCohortInterval(snapshot.cohortInterval);
-    setCohortMode(snapshot.cohortMode);
-    setCohortTimeline(snapshot.cohortTimeline);
-    setCohortMeasure(snapshot.cohortMeasure);
-    setGridRowField(snapshot.gridRowField);
-    setGridColField(snapshot.gridColField);
-    setGridMeasure(snapshot.gridMeasure);
-    setGridAdjustment(snapshot.gridAdjustment);
-    setGridDateStart(snapshot.gridDateStart);
-    setGridDateStop(snapshot.gridDateStop);
-    setGridFields(snapshot.gridFields);
-    setArchOverride(snapshot.archOverride);
-  }
+
 
   useEffect(() => {
     const skip = historySkipRef.current;
@@ -812,872 +406,286 @@ export default function DesignerPage() {
     pendingCoalesceRef.current = undefined;
   }, [canvasSnapshot, history.record, history.reset]);
 
-  const refreshSnapshots = useCallback(async () => {
-    try {
-      const snaps = await api.listSnapshots(connectionId);
-      setSnapshots(snaps.filter((s) => s.resource_type === "view"));
-    } catch {
-      setSnapshots([]);
-    }
-  }, [connectionId]);
+  const {
+    refreshSnapshots,
+    announceAction,
+    liveOdooUrl,
+    proxyPreviewUrl,
+  } = useDesignerPageBootstrap({
+    connectionId,
+    api,
+    viewType,
+    model,
+    setModel,
+    connection,
+    setConnection,
+    setError,
+    setNotice,
+    setPreviewTheme,
+    setNicheWidgets,
+    setColorPalette,
+    setSnapshots,
+    canvasFlashId,
+    setCanvasFlashId,
+    toolbarFlash,
+    setToolbarFlash,
+    setWindowActionId,
+    windowActionId,
+    previewKey,
+    setLiveFailed,
+  });
 
-  useEffect(() => {
-    api
-      .getConnection(connectionId)
-      .then(setConnection)
-      .catch((err: Error) => setError(err.message));
-    refreshSnapshots().catch(() => undefined);
-    api
-      .getPreviewTheme(connectionId)
-      .then(setPreviewTheme)
-      .catch(() => setPreviewTheme(null));
-  }, [connectionId, refreshSnapshots]);
-
-  useEffect(() => {
-    if (!connectionId) return;
-    api
-      .listNicheWidgets(connectionId, viewType)
-      .then((res) => {
-        setNicheWidgets(res.widgets);
-        setColorPalette(res.color_palette);
-      })
-      .catch(() => {
-        setNicheWidgets([]);
-        setColorPalette([]);
-      });
-  }, [connectionId, viewType]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const fromQuery = new URLSearchParams(window.location.search).get("model");
-    if (fromQuery) setModel(fromQuery);
-  }, []);
-
-  useEffect(() => {
-    if (!canvasFlashId || typeof document === "undefined") return;
-    // Prefer the structural editor (editable drop target), not the Odoo-style preview —
-    // both used to share data-canvas-id so scrollIntoView stopped at the preview on top.
-    const el =
-      document.querySelector(`[data-structure-id="${canvasFlashId}"]`) ??
-      document.querySelector(`[data-canvas-id="${canvasFlashId}"]`);
-    el?.scrollIntoView({ behavior: "smooth", block: "center" });
-    const t = window.setTimeout(() => setCanvasFlashId(null), 2200);
-    return () => window.clearTimeout(t);
-  }, [canvasFlashId]);
-
-  useEffect(() => {
-    if (!toolbarFlash) return;
-    const t = window.setTimeout(() => setToolbarFlash(null), 1800);
-    return () => window.clearTimeout(t);
-  }, [toolbarFlash]);
-
-  function announceAction(message: string, flashId?: string | null, toolbarKey?: string) {
-    setNotice(message);
-    if (flashId) setCanvasFlashId(flashId);
-    if (toolbarKey) setToolbarFlash(toolbarKey);
-  }
-
-  useEffect(() => {
-    if (!connectionId || !model.trim()) {
-      setWindowActionId(null);
-      return;
-    }
-    let cancelled = false;
-    api
-      .listWindowActions(connectionId, { model: model.trim(), standaloneOnly: true })
-      .then((rows) => {
-        if (cancelled) return;
-        setWindowActionId(pickStandaloneWindowAction(rows, viewType));
-      })
-      .catch(() => {
-        if (!cancelled) setWindowActionId(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [connectionId, model, viewType]);
-
-  const liveOdooUrl =
-    connection?.url && model
-      ? odooViewUrl(connection.url, model, viewType, windowActionId)
-      : null;
-  const proxyPreviewUrl = model
-    ? sameOriginPreviewUrl(connectionId, model, viewType, getApiBase())
-    : null;
-
-  useEffect(() => {
-    setLiveFailed(false);
-  }, [proxyPreviewUrl, previewKey, model, viewType]);
 
   function applyFieldNamesToCanvas(names: string[], rows: FieldRow[]) {
-    historySkipRef.current = "reset";
-    const nodes: DesignerField[] = names.map((name) => {
-      const meta = rows.find((f) => f.name === name);
-      return {
-        kind: "field" as const,
-        id: uid("f"),
-        name,
-        string: meta?.field_description,
-      };
-    });
-    if (nodes.length === 0) {
-      const nameField = rows.find((f) => f.name === "x_name") ?? rows[0];
-      if (nameField) {
-        nodes.push({
-          kind: "field",
-          id: uid("f"),
-          name: nameField.name,
-          string: nameField.field_description,
-        });
-      }
-    }
-    setFormChildren([
-      { kind: "group", id: uid("g"), string: "Main", children: [...nodes] },
-    ]);
-    setListColumns(nodes.map((n) => ({ ...n, id: uid("f") })));
-    setSearchFields(nodes.map((n) => ({ ...n, id: uid("f") })));
-    setKanbanFields(nodes.map((n) => ({ ...n, id: uid("f") })));
-    setCalendarFields(nodes.map((n) => ({ ...n, id: uid("f") })));
-    setMapFields(nodes.map((n) => ({ ...n, id: uid("f") })));
-    setActivityFields(nodes.map((n) => ({ ...n, id: uid("f") })));
-    setGanttFields(nodes.map((n) => ({ ...n, id: uid("f") })));
-    setGridFields(nodes.map((n) => ({ ...n, id: uid("f") })));
-    const { dateStart, dateStop } = pickTemporalDefaults(rows);
-    setCalendarDateStart(dateStart);
-    setCalendarDateStop(dateStop);
-    setCalendarColor("");
-    setCalendarMode("");
-    setGanttDateStart(dateStart);
-    setGanttDateStop(dateStop);
-    setGanttGroupBy("");
-    setGanttColor("");
-    setGanttProgress("");
-    setGanttDefaultScale("week");
-    setGanttDependencyField("");
-    setCohortDateStart(dateStart || "create_date");
-    setCohortDateStop(dateStop);
-    setCohortInterval("week");
-    setCohortMode("retention");
-    setCohortTimeline("");
-    setCohortMeasure(
-      rows.find(
-        (f) =>
-          f.ttype === "integer" || f.ttype === "float" || f.ttype === "monetary",
-      )?.name ?? "",
+    runApplyFieldNamesToCanvas(
+      {
+        historySkipRef,
+        setFormChildren,
+        setListColumns,
+        setSearchFields,
+        setKanbanFields,
+        setCalendarFields,
+        setMapFields,
+        setActivityFields,
+        setGanttFields,
+        setGridFields,
+        setCalendarDateStart,
+        setCalendarDateStop,
+        setCalendarColor,
+        setCalendarMode,
+        setGanttDateStart,
+        setGanttDateStop,
+        setGanttGroupBy,
+        setGanttColor,
+        setGanttProgress,
+        setGanttDefaultScale,
+        setGanttDependencyField,
+        setCohortDateStart,
+        setCohortDateStop,
+        setCohortInterval,
+        setCohortMode,
+        setCohortTimeline,
+        setCohortMeasure,
+        setMapResPartner,
+        setMapRouting,
+        setFormCanCreate,
+        setFormCanEdit,
+        setFormCanDelete,
+        setFormCanDuplicate,
+        setListCanCreate,
+        setListCanEdit,
+        setListCanDelete,
+        setListMultiEdit,
+        setListDefaultOrder,
+        setKanbanCanCreate,
+        setKanbanQuickCreate,
+        setSearchFilters,
+        setSearchGroupByFilters,
+        setGraphFields,
+        setGraphType,
+        setPivotFields,
+        setGridRowField,
+        setGridColField,
+        setGridMeasure,
+        setGridAdjustment,
+        setGridDateStart,
+        setGridDateStop,
+        setSelected,
+      },
+      names,
+      rows,
     );
-    setMapResPartner(
-      rows.find((f) => f.ttype === "many2one" && f.relation === "res.partner")?.name ??
-        "",
-    );
-    setMapRouting(false);
-    setFormCanCreate(true);
-    setFormCanEdit(true);
-    setFormCanDelete(true);
-    setFormCanDuplicate(true);
-    setListCanCreate(true);
-    setListCanEdit(true);
-    setListCanDelete(true);
-    setListMultiEdit(false);
-    setListDefaultOrder("");
-    setKanbanCanCreate(true);
-    setKanbanQuickCreate(true);
-    setSearchFilters([]);
-    setSearchGroupByFilters([]);
-    const rowField =
-      rows.find((f) => f.ttype === "many2one" || f.ttype === "selection" || f.ttype === "char")
-        ?.name ?? nodes[0]?.name;
-    const measureField =
-      rows.find(
-        (f) =>
-          f.ttype === "integer" ||
-          f.ttype === "float" ||
-          f.ttype === "monetary",
-      )?.name ?? nodes[0]?.name;
-    const seededGraph: AxisDesignerField[] = [];
-    if (rowField) seededGraph.push({ id: uid("af"), name: rowField, type: "row" });
-    if (measureField)
-      seededGraph.push({ id: uid("af"), name: measureField, type: "measure" });
-    setGraphFields(seededGraph);
-    setGraphType("bar");
-    const seededPivot: AxisDesignerField[] = [];
-    if (rowField) seededPivot.push({ id: uid("af"), name: rowField, type: "row" });
-    if (measureField)
-      seededPivot.push({ id: uid("af"), name: measureField, type: "measure" });
-    setPivotFields(seededPivot);
-    setGridRowField(rowField ?? "");
-    setGridColField(dateStart ?? "");
-    setGridMeasure(measureField ?? "");
-    setGridAdjustment("");
-    setGridDateStart(dateStart);
-    setGridDateStop(dateStop);
-    setSelected(null);
   }
 
-  async function loadModelFields(target: string) {
-    setError(null);
-    setLoadedViewId(null);
-    setLastSnapshotId(null);
-    try {
-      const rows = await api.listFields(connectionId, target);
-      setFields(rows);
-      setFieldsModel(target);
-      applyFieldNamesToCanvas([], rows);
-      setTitle(target);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load fields");
-    }
-  }
+  const {
+    loadModelFields,
+    refreshModelFieldsOnly,
+    appendFieldToCurrentLayout,
+    ensureFieldsForModel,
+  } = useDesignerModelLoad({
+    connectionId,
+    api,
+    setError,
+    setLoadedViewId,
+    setLastSnapshotId,
+    setFields,
+    setFieldsModel,
+    applyFieldNamesToCanvas,
+    setTitle,
+    viewType,
+    setFormChildren,
+    setListColumns,
+    setSearchFields,
+    setKanbanFields,
+    fieldsModel,
+    fields,
+    setCalendarDateStart,
+    setCalendarDateStop,
+    setGanttDateStart,
+    setGanttDateStop,
+    setCohortDateStart,
+    setCohortDateStop,
+  });
 
-  /** Refresh field metadata without wiping a loaded / edited view layout. */
-  async function refreshModelFieldsOnly(target: string): Promise<FieldRow[]> {
-    const rows = await api.listFields(connectionId, target);
-    setFields(rows);
-    setFieldsModel(target);
-    return rows;
-  }
-
-  function appendFieldToCurrentLayout(name: string, rows: FieldRow[]) {
-    const meta = rows.find((f) => f.name === name);
-    const node: DesignerField = {
-      kind: "field",
-      id: uid("f"),
-      name,
-      string: meta?.field_description,
-    };
-    if (viewType === "form") {
-      setFormChildren((children) => {
-        const already = children.some(
-          (c) =>
-            (c.kind === "group" &&
-              c.children.some((n) => n.kind === "field" && n.name === name)) ||
-            (c.kind === "notebook" &&
-              c.pages.some((p) =>
-                p.children.some((n) => n.kind === "field" && n.name === name),
-              )),
-        );
-        if (already) return children;
-        const firstGroupIdx = children.findIndex((c) => c.kind === "group");
-        if (firstGroupIdx < 0) {
-          return [
-            ...children,
-            { kind: "group", id: uid("g"), string: "Main", children: [node] },
-          ];
-        }
-        return children.map((child, i) =>
-          i === firstGroupIdx && child.kind === "group"
-            ? { ...child, children: [...child.children, node] }
-            : child,
-        );
-      });
-      return;
-    }
-    if (viewType === "list") {
-      setListColumns((cols) =>
-        cols.some((c) => c.name === name) ? cols : [...cols, node],
-      );
-    } else if (viewType === "search") {
-      setSearchFields((cols) =>
-        cols.some((c) => c.name === name) ? cols : [...cols, node],
-      );
-    } else if (viewType === "kanban") {
-      setKanbanFields((cols) =>
-        cols.some((c) => c.name === name) ? cols : [...cols, node],
-      );
-    }
-  }
-
-  async function ensureFieldsForModel(target: string) {
-    const trimmed = target.trim();
-    if (!trimmed || !connectionId) return;
-    if (fieldsModel === trimmed && fields.length > 0) return;
-    try {
-      const rows = await api.listFields(connectionId, trimmed);
-      setFields(rows);
-      setFieldsModel(trimmed);
-      const { dateStart, dateStop } = pickTemporalDefaults(rows);
-      setCalendarDateStart((prev) =>
-        prev && rows.some((f) => f.name === prev) ? prev : dateStart,
-      );
-      setCalendarDateStop((prev) =>
-        prev && rows.some((f) => f.name === prev) ? prev : dateStop,
-      );
-      setGanttDateStart((prev) =>
-        prev && rows.some((f) => f.name === prev) ? prev : dateStart,
-      );
-      setGanttDateStop((prev) =>
-        prev && rows.some((f) => f.name === prev) ? prev : dateStop,
-      );
-      setCohortDateStart((prev) =>
-        prev && rows.some((f) => f.name === prev) ? prev : dateStart || "create_date",
-      );
-      setCohortDateStop((prev) =>
-        prev && rows.some((f) => f.name === prev) ? prev : dateStop,
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load fields");
-    }
-  }
 
   async function loadExistingView() {
-    if (!model) {
-      setError("Enter a model first");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    historySkipRef.current = "reset";
-    try {
-      const [rows, views] = await Promise.all([
-        api.listFields(connectionId, model),
-        api.listViews(connectionId, model),
-      ]);
-      setFields(rows);
-      setFieldsModel(model);
-      const match =
-        views.find((v) => v.type === viewType) ||
-        (viewType === "list" ? views.find((v) => v.type === "tree") : undefined);
-      if (!match) {
-        setNotice(`No existing ${viewType} view — canvas seeded from fields.`);
-        applyFieldNamesToCanvas([], rows);
-        setLoadedViewId(null);
-        return;
-      }
-      const full = match.arch ? match : await api.getView(connectionId, match.id);
-      setLoadedViewId(full.id);
-      setArch(full.arch ?? "");
-      setXpathExpr((prev) =>
-        prev === "//sheet" || prev === "//form" || prev === "//list"
-          ? semanticInjectExpr(full.arch ?? null, viewType)
-          : prev,
-      );
-      if (full.arch) {
-        try {
-          const parsed = await api.parseViewArch(connectionId, viewType, full.arch);
-          const spec = parsed.spec as Record<string, unknown>;
-          if (viewType === "form" && Array.isArray(spec.children)) {
-            const children = (spec.children as Array<Record<string, unknown>>).map((child) => {
-              if (child.kind === "notebook") {
-                const pages = (child.pages as Array<Record<string, unknown>> | undefined) ?? [];
-                return {
-                  kind: "notebook" as const,
-                  id: uid("n"),
-                  pages: pages.map((p) => ({
-                    id: uid("p"),
-                    string: String(p.string || "Page"),
-                    children: mapFormGroupChildren(
-                      ((p.children as Array<Record<string, unknown>> | undefined) ??
-                        []) as Array<Record<string, unknown>>,
-                    ),
-                  })),
-                };
-              }
-              const kids = (child.children as Array<Record<string, unknown>> | undefined) ?? [];
-              return {
-                kind: "group" as const,
-                id: uid("g"),
-                string: child.string ? String(child.string) : undefined,
-                children: mapFormGroupChildren(kids),
-              };
-            });
-            setFormChildren(children.length ? children : [{ kind: "group", id: uid("g"), string: "Main", children: [] }]);
-            setHeaderButtons(
-              ((spec.header_buttons as Array<Record<string, unknown>> | undefined) ?? []).map(mapParsedButton),
-            );
-            setButtonBox(
-              ((spec.button_box as Array<Record<string, unknown>> | undefined) ?? []).map(mapParsedButton),
-            );
-            setStatusbarField(
-              typeof spec.statusbar_field === "string" ? spec.statusbar_field : "",
-            );
-            setStatusbarVisible(
-              typeof spec.statusbar_visible === "string" ? spec.statusbar_visible : "",
-            );
-            const fc = asSpecBool(spec.create);
-            const fe = asSpecBool(spec.edit);
-            const fd = asSpecBool(spec.delete);
-            const fdu = asSpecBool(spec.duplicate);
-            setFormCanCreate(fc ?? true);
-            setFormCanEdit(fe ?? true);
-            setFormCanDelete(fd ?? true);
-            setFormCanDuplicate(fdu ?? true);
-            if (typeof spec.string === "string") setTitle(spec.string);
-          } else if (viewType === "list" && Array.isArray(spec.columns)) {
-            setListColumns((spec.columns as Array<Record<string, unknown>>).map((c) => ({
-              kind: "field" as const, id: uid("f"), name: String(c.name || ""), string: c.string ? String(c.string) : undefined,
-              required: c.required as boolean | undefined, readonly: c.readonly as boolean | undefined, widget: c.widget ? String(c.widget) : undefined,
-            })));
-            setListDecorationDanger(typeof spec.decoration_danger === "string" ? spec.decoration_danger : "");
-            setListDecorationInfo(typeof spec.decoration_info === "string" ? spec.decoration_info : "");
-            setListDecorationMuted(typeof spec.decoration_muted === "string" ? spec.decoration_muted : "");
-            const lc = asSpecBool(spec.create);
-            const le = asSpecBool(spec.edit);
-            const ld = asSpecBool(spec.delete);
-            const lm = asSpecBool(spec.multi_edit);
-            setListCanCreate(lc ?? true);
-            setListCanEdit(le ?? true);
-            setListCanDelete(ld ?? true);
-            setListMultiEdit(lm ?? false);
-            setListDefaultOrder(
-              typeof spec.default_order === "string" ? spec.default_order : "",
-            );
-            setViewSample(asSpecBool(spec.sample) ?? false);
-            if (typeof spec.string === "string") setTitle(spec.string);
-          } else if (viewType === "search") {
-            setSearchFields(((spec.fields as Array<Record<string, unknown>> | undefined) ?? []).map((c) => ({
-              kind: "field" as const, id: uid("f"), name: String(c.name || ""), string: c.string ? String(c.string) : undefined,
-            })));
-            setSearchFilters(((spec.filters as Array<Record<string, unknown>> | undefined) ?? []).map((f) => ({
-              id: uid("sf"), name: String(f.name || "filter"), string: String(f.string || f.name || "Filter"), domain: f.domain ? String(f.domain) : undefined,
-            })));
-            setSearchGroupByFilters(
-              ((spec.group_by_filters as Array<Record<string, unknown>> | undefined) ?? []).map(
-                (f) => ({
-                  id: uid("sg"),
-                  name: String(f.name || "groupby"),
-                  string: String(f.string || f.name || "Group By"),
-                  context: f.context
-                    ? String(f.context)
-                    : "{'group_by': 'field'}",
-                }),
-              ),
-            );
-            if (typeof spec.string === "string") setTitle(spec.string);
-          } else if (viewType === "kanban") {
-            const names = (spec.records_fields as string[] | undefined) ?? [];
-            setKanbanFields(names.map((name) => ({ kind: "field" as const, id: uid("f"), name, string: rows.find((r) => r.name === name)?.field_description })));
-            setKanbanGroupBy(typeof spec.default_group_by === "string" ? spec.default_group_by : "");
-            const kc = asSpecBool(spec.create);
-            const kq = asSpecBool(spec.quick_create);
-            setKanbanCanCreate(kc ?? true);
-            setKanbanQuickCreate(kq ?? true);
-            setViewSample(asSpecBool(spec.sample) ?? false);
-            if (typeof spec.string === "string") setTitle(spec.string);
-          } else if (viewType === "calendar") {
-            setCalendarDateStart(typeof spec.date_start === "string" ? spec.date_start : "");
-            setCalendarDateStop(typeof spec.date_stop === "string" ? spec.date_stop : "");
-            setCalendarColor(typeof spec.color === "string" ? spec.color : "");
-            setCalendarMode(typeof spec.mode === "string" ? spec.mode : "");
-            setCalendarFields(
-              ((spec.fields as Array<Record<string, unknown>> | undefined) ?? []).map((c) => ({
-                kind: "field" as const,
-                id: uid("f"),
-                name: String(c.name || ""),
-                string: c.string ? String(c.string) : undefined,
-              })),
-            );
-            if (typeof spec.string === "string") setTitle(spec.string);
-          } else if (viewType === "graph") {
-            const gt = spec.type;
-            setGraphType(gt === "line" || gt === "pie" ? gt : "bar");
-            setGraphFields(
-              ((spec.fields as Array<Record<string, unknown>> | undefined) ?? []).map((c) => ({
-                id: uid("af"),
-                name: String(c.name || ""),
-                type:
-                  c.type === "row" || c.type === "col" || c.type === "measure"
-                    ? c.type
-                    : undefined,
-                interval: c.interval ? String(c.interval) : undefined,
-                string: c.string ? String(c.string) : undefined,
-              })),
-            );
-            setViewSample(asSpecBool(spec.sample) ?? false);
-            if (typeof spec.string === "string") setTitle(spec.string);
-          } else if (viewType === "pivot") {
-            setPivotFields(
-              ((spec.fields as Array<Record<string, unknown>> | undefined) ?? []).map((c) => ({
-                id: uid("af"),
-                name: String(c.name || ""),
-                type:
-                  c.type === "row" || c.type === "col" || c.type === "measure"
-                    ? c.type
-                    : undefined,
-                interval: c.interval ? String(c.interval) : undefined,
-                string: c.string ? String(c.string) : undefined,
-              })),
-            );
-            setViewSample(asSpecBool(spec.sample) ?? false);
-            if (typeof spec.string === "string") setTitle(spec.string);
-          } else if (viewType === "map") {
-            setMapResPartner(
-              typeof spec.res_partner === "string" ? spec.res_partner : "",
-            );
-            setMapRouting(asSpecBool(spec.routing) ?? false);
-            setMapFields(
-              ((spec.fields as Array<Record<string, unknown>> | undefined) ?? []).map((c) => ({
-                kind: "field" as const,
-                id: uid("f"),
-                name: String(c.name || ""),
-                string: c.string ? String(c.string) : undefined,
-              })),
-            );
-            if (typeof spec.string === "string") setTitle(spec.string);
-          } else if (viewType === "activity") {
-            setActivityFields(
-              ((spec.fields as Array<Record<string, unknown>> | undefined) ?? []).map((c) => ({
-                kind: "field" as const,
-                id: uid("f"),
-                name: String(c.name || ""),
-                string: c.string ? String(c.string) : undefined,
-              })),
-            );
-            if (typeof spec.string === "string") setTitle(spec.string);
-          } else if (viewType === "gantt") {
-            setGanttDateStart(typeof spec.date_start === "string" ? spec.date_start : "");
-            setGanttDateStop(typeof spec.date_stop === "string" ? spec.date_stop : "");
-            setGanttGroupBy(
-              typeof spec.default_group_by === "string" ? spec.default_group_by : "",
-            );
-            setGanttColor(typeof spec.color === "string" ? spec.color : "");
-            setGanttProgress(typeof spec.progress === "string" ? spec.progress : "");
-            setGanttDefaultScale(
-              typeof spec.default_scale === "string" ? spec.default_scale : "",
-            );
-            setGanttDependencyField(
-              typeof spec.dependency_field === "string" ? spec.dependency_field : "",
-            );
-            setGanttFields(
-              ((spec.fields as Array<Record<string, unknown>> | undefined) ?? []).map((c) => ({
-                kind: "field" as const,
-                id: uid("f"),
-                name: String(c.name || ""),
-                string: c.string ? String(c.string) : undefined,
-              })),
-            );
-            if (typeof spec.string === "string") setTitle(spec.string);
-          } else if (viewType === "cohort") {
-            setCohortDateStart(typeof spec.date_start === "string" ? spec.date_start : "");
-            setCohortDateStop(typeof spec.date_stop === "string" ? spec.date_stop : "");
-            const iv = spec.interval;
-            setCohortInterval(
-              iv === "day" || iv === "week" || iv === "month" || iv === "year" ? iv : "week",
-            );
-            const cm = spec.mode;
-            setCohortMode(cm === "churn" || cm === "retention" ? cm : "retention");
-            const tl = spec.timeline;
-            setCohortTimeline(tl === "forward" || tl === "backward" ? tl : "");
-            setCohortMeasure(typeof spec.measure === "string" ? spec.measure : "");
-            if (typeof spec.string === "string") setTitle(spec.string);
-          } else if (viewType === "grid") {
-            setGridRowField(typeof spec.row_field === "string" ? spec.row_field : "");
-            setGridColField(typeof spec.col_field === "string" ? spec.col_field : "");
-            setGridMeasure(typeof spec.measure === "string" ? spec.measure : "");
-            setGridAdjustment(typeof spec.adjustment === "string" ? spec.adjustment : "");
-            setGridDateStart(typeof spec.date_start === "string" ? spec.date_start : "");
-            setGridDateStop(typeof spec.date_stop === "string" ? spec.date_stop : "");
-            setGridFields(
-              ((spec.fields as Array<Record<string, unknown>> | undefined) ?? []).map((c) => ({
-                kind: "field" as const,
-                id: uid("f"),
-                name: String(c.name || ""),
-                string: c.string ? String(c.string) : undefined,
-              })),
-            );
-            if (typeof spec.string === "string") setTitle(spec.string);
-          }
-          setNotice(`Loaded ${full.type} view #${full.id} with structure (round-trip parse).`);
-        } catch {
-          const names = (full.arch ?? "").match(/<field\b[^>]*\bname=["']([^"']+)["']/g)?.map((m) => m.replace(/.*name=["']([^"']+)["'].*/, "$1")).filter(Boolean) ?? [];
-          const unique: string[] = [];
-          for (const n of names) if (!unique.includes(n)) unique.push(n);
-          applyFieldNamesToCanvas(unique, rows);
-          setTitle(full.name || model);
-          setNotice(`Loaded ${full.type} view #${full.id} (flat fallback — ${unique.length} fields).`);
-        }
-      } else {
-        applyFieldNamesToCanvas([], rows);
-        setTitle(full.name || model);
-      }
-      setSelected(null);
-    } catch (err) {
-      historySkipRef.current = null;
-      setError(err instanceof Error ? err.message : "Load view failed");
-    } finally {
-      setBusy(false);
-    }
+    await runLoadExistingView({
+      model,
+      viewType,
+      connectionId,
+      api,
+      historySkipRef,
+      setBusy,
+      setError,
+      setNotice,
+      setFields,
+      setFieldsModel,
+      setLoadedViewId,
+      setArch,
+      setXpathExpr,
+      setTitle,
+      setSelected,
+      setFormChildren,
+      setHeaderButtons,
+      setButtonBox,
+      setStatusbarField,
+      setStatusbarVisible,
+      setFormCanCreate,
+      setFormCanEdit,
+      setFormCanDelete,
+      setFormCanDuplicate,
+      setListColumns,
+      setListDecorationDanger,
+      setListDecorationInfo,
+      setListDecorationMuted,
+      setListCanCreate,
+      setListCanEdit,
+      setListCanDelete,
+      setListMultiEdit,
+      setListDefaultOrder,
+      setViewSample,
+      setSearchFields,
+      setSearchFilters,
+      setSearchGroupByFilters,
+      setKanbanFields,
+      setKanbanGroupBy,
+      setKanbanCanCreate,
+      setKanbanQuickCreate,
+      setCalendarDateStart,
+      setCalendarDateStop,
+      setCalendarColor,
+      setCalendarMode,
+      setCalendarFields,
+      setGraphType,
+      setGraphFields,
+      setPivotFields,
+      setMapResPartner,
+      setMapRouting,
+      setMapFields,
+      setActivityFields,
+      setGanttDateStart,
+      setGanttDateStop,
+      setGanttGroupBy,
+      setGanttColor,
+      setGanttProgress,
+      setGanttDefaultScale,
+      setGanttDependencyField,
+      setGanttFields,
+      setCohortDateStart,
+      setCohortDateStop,
+      setCohortInterval,
+      setCohortMode,
+      setCohortTimeline,
+      setCohortMeasure,
+      setGridRowField,
+      setGridColField,
+      setGridMeasure,
+      setGridAdjustment,
+      setGridDateStart,
+      setGridDateStop,
+      setGridFields,
+    });
   }
 
-  const formSpec = useMemo(
-    () => ({
-      string: title,
-      create: formCanCreate,
-      edit: formCanEdit,
-      delete: formCanDelete,
-      duplicate: formCanDuplicate,
-      statusbar_field: statusbarField || null,
-      statusbar_visible: statusbarVisible || null,
-      header_buttons: headerButtons.map((b) => nodeSpec(b)),
-      button_box: buttonBox.map((b) => nodeSpec(b)),
-      children: formChildren.map((child) => {
-        if (child.kind === "group") {
-          return {
-            kind: "group",
-            string: child.string,
-            children: child.children
-              .filter((n) => n.kind === "button" || (n.kind === "field" && n.name.trim()))
-              .map((n) => {
-              if (n.kind === "button") return nodeSpec(n);
-              return fieldSpec({
-                ...n,
-                string: resolveFieldLabel(n.name, n.string, fields),
-              });
-            }),
-          };
-        }
-        return {
-          kind: "notebook",
-          pages: child.pages.map((p) => ({
-            string: p.string,
-            children: p.children
-              .filter((n) => n.kind === "button" || (n.kind === "field" && n.name.trim()))
-              .map((n) => {
-              if (n.kind === "button") return nodeSpec(n);
-              return fieldSpec({
-                ...n,
-                string: resolveFieldLabel(n.name, n.string, fields),
-              });
-            }),
-          })),
-        };
-      }),
-    }),
-    [
-      formChildren,
-      fields,
-      title,
-      headerButtons,
-      buttonBox,
-      statusbarField,
-      statusbarVisible,
-      formCanCreate,
-      formCanEdit,
-      formCanDelete,
-      formCanDuplicate,
-    ],
-  );
-
-  const listSpec = useMemo(
-    () => ({
-      string: title,
-      create: listCanCreate,
-      edit: listCanEdit,
-      delete: listCanDelete,
-      multi_edit: listMultiEdit,
-      default_order: listDefaultOrder || null,
-      sample: viewSample || null,
-      columns: listColumns.map(fieldSpec),
-      decoration_danger: listDecorationDanger || null,
-      decoration_info: listDecorationInfo || null,
-      decoration_muted: listDecorationMuted || null,
-    }),
-    [
-      listColumns,
-      listDecorationDanger,
-      listDecorationInfo,
-      listDecorationMuted,
-      listCanCreate,
-      listCanEdit,
-      listCanDelete,
-      listMultiEdit,
-      listDefaultOrder,
-      viewSample,
-      title,
-    ],
-  );
-
-  const searchSpec = useMemo(
-    () => ({
-      string: title,
-      fields: searchFields.map(fieldSpec),
-      filters: searchFilters.map((f) => ({
-        kind: "filter" as const,
-        name: f.name,
-        string: f.string,
-        domain: f.domain,
-      })),
-      group_by_filters: searchGroupByFilters.map((f) => ({
-        kind: "filter" as const,
-        name: f.name,
-        string: f.string,
-        context: f.context || undefined,
-      })),
-    }),
-    [searchFields, searchFilters, searchGroupByFilters, title],
-  );
-
-  const kanbanSpec = useMemo(
-    () => ({
-      string: title,
-      records_fields: kanbanFields.map((f) => f.name),
-      default_group_by: kanbanGroupBy || null,
-      create: kanbanCanCreate,
-      quick_create: kanbanQuickCreate,
-      sample: viewSample || null,
-    }),
-    [kanbanFields, kanbanGroupBy, kanbanCanCreate, kanbanQuickCreate, viewSample, title],
-  );
-
-  const calendarSpec = useMemo(
-    () => ({
-      string: title,
-      date_start: calendarDateStart || "date",
-      date_stop: calendarDateStop || null,
-      color: calendarColor || null,
-      mode: calendarMode || null,
-      fields: calendarFields.map((f) => fieldSpec(f)),
-    }),
-    [calendarColor, calendarDateStart, calendarDateStop, calendarFields, calendarMode, title],
-  );
-
-  const dateFieldsForSelect = useMemo(() => sortedDateFields(fields), [fields]);
-
-  const graphSpec = useMemo(
-    () => ({
-      string: title,
-      type: graphType,
-      sample: viewSample || null,
-      fields: graphFields.map((f) => ({
-        kind: "field" as const,
-        name: f.name,
-        type: f.type,
-        interval: f.interval || undefined,
-        string: f.string,
-      })),
-    }),
-    [graphFields, graphType, viewSample, title],
-  );
-
-  const pivotSpec = useMemo(
-    () => ({
-      string: title,
-      sample: viewSample || null,
-      fields: pivotFields.map((f) => ({
-        kind: "field" as const,
-        name: f.name,
-        type: f.type,
-        interval: f.interval || undefined,
-        string: f.string,
-      })),
-    }),
-    [pivotFields, viewSample, title],
-  );
-
-  const mapSpec = useMemo(
-    () => ({
-      string: title,
-      res_partner: mapResPartner || null,
-      routing: mapRouting ? true : null,
-      fields: mapFields.map((f) => fieldSpec(f)),
-    }),
-    [mapFields, mapResPartner, mapRouting, title],
-  );
-
-  const activitySpec = useMemo(
-    () => ({
-      string: title,
-      fields: activityFields.map((f) => fieldSpec(f)),
-    }),
-    [activityFields, title],
-  );
-
-  const ganttSpec = useMemo(
-    () => ({
-      string: title,
-      date_start: ganttDateStart || "date_start",
-      date_stop: ganttDateStop || null,
-      default_group_by: ganttGroupBy || null,
-      default_scale: ganttDefaultScale || null,
-      dependency_field: ganttDependencyField || null,
-      color: ganttColor || null,
-      progress: ganttProgress || null,
-      fields: ganttFields.map((f) => fieldSpec(f)),
-    }),
-    [
-      ganttColor,
-      ganttDateStart,
-      ganttDateStop,
-      ganttDefaultScale,
-      ganttDependencyField,
-      ganttFields,
-      ganttGroupBy,
-      ganttProgress,
-      title,
-    ],
-  );
-
-  const gridSpec = useMemo(
-    () => ({
-      string: title,
-      row_field: gridRowField || null,
-      col_field: gridColField || null,
-      measure: gridMeasure || null,
-      adjustment: gridAdjustment || null,
-      date_start: gridDateStart || null,
-      date_stop: gridDateStop || null,
-      fields: gridFields.map((f) => fieldSpec(f)),
-    }),
-    [
-      gridAdjustment,
-      gridColField,
-      gridDateStart,
-      gridDateStop,
-      gridFields,
-      gridMeasure,
-      gridRowField,
-      title,
-    ],
-  );
-
-  const cohortSpec = useMemo(
-    () => ({
-      string: title,
-      date_start: cohortDateStart || "create_date",
-      date_stop: cohortDateStop || null,
-      interval: cohortInterval || null,
-      mode: cohortMode || null,
-      timeline: cohortTimeline || null,
-      measure: cohortMeasure || null,
-    }),
-    [
-      cohortDateStart,
-      cohortDateStop,
-      cohortInterval,
-      cohortMeasure,
-      cohortMode,
-      cohortTimeline,
-      title,
-    ],
-  );
-
-  const activeViewSpec = useMemo(() => {
-    if (viewType === "form") return formSpec;
-    if (viewType === "list") return listSpec;
-    if (viewType === "kanban") return kanbanSpec;
-    if (viewType === "calendar") return calendarSpec;
-    if (viewType === "graph") return graphSpec;
-    if (viewType === "pivot") return pivotSpec;
-    if (viewType === "map") return mapSpec;
-    if (viewType === "activity") return activitySpec;
-    if (viewType === "gantt") return ganttSpec;
-    if (viewType === "cohort") return cohortSpec;
-    if (viewType === "grid") return gridSpec;
-    return searchSpec;
-  }, [
-    viewType,
+  const {
     formSpec,
     listSpec,
+    searchSpec,
     kanbanSpec,
     calendarSpec,
+    dateFieldsForSelect,
     graphSpec,
     pivotSpec,
     mapSpec,
     activitySpec,
     ganttSpec,
-    cohortSpec,
     gridSpec,
-    searchSpec,
-  ]);
+    cohortSpec,
+    activeViewSpec,
+  } = useDesignerViewSpecs({
+    viewType,
+    title,
+    fields,
+    formChildren,
+    headerButtons,
+    buttonBox,
+    statusbarField,
+    statusbarVisible,
+    formCanCreate,
+    formCanEdit,
+    formCanDelete,
+    formCanDuplicate,
+    listColumns,
+    listDecorationDanger,
+    listDecorationInfo,
+    listDecorationMuted,
+    listCanCreate,
+    listCanEdit,
+    listCanDelete,
+    listMultiEdit,
+    listDefaultOrder,
+    viewSample,
+    searchFields,
+    searchFilters,
+    searchGroupByFilters,
+    kanbanFields,
+    kanbanGroupBy,
+    kanbanCanCreate,
+    kanbanQuickCreate,
+    calendarDateStart,
+    calendarDateStop,
+    calendarColor,
+    calendarMode,
+    calendarFields,
+    graphType,
+    graphFields,
+    pivotFields,
+    mapResPartner,
+    mapRouting,
+    mapFields,
+    activityFields,
+    ganttDateStart,
+    ganttDateStop,
+    ganttGroupBy,
+    ganttColor,
+    ganttProgress,
+    ganttDefaultScale,
+    ganttDependencyField,
+    ganttFields,
+    gridRowField,
+    gridColField,
+    gridMeasure,
+    gridAdjustment,
+    gridDateStart,
+    gridDateStop,
+    gridFields,
+    cohortDateStart,
+    cohortDateStop,
+    cohortInterval,
+    cohortMode,
+    cohortTimeline,
+    cohortMeasure,
+  });
 
   const refreshPreview = useCallback(async () => {
     if (!model) return;
@@ -1693,1431 +701,243 @@ export default function DesignerPage() {
     refreshPreview();
   }, [refreshPreview]);
 
-  function moveKanbanField(fieldId: string, dir: -1 | 1) {
-    setKanbanFields((cols) => {
-      const idx = cols.findIndex((f) => f.id === fieldId);
-      if (idx < 0) return cols;
-      const next = idx + dir;
-      if (next < 0 || next >= cols.length) return cols;
-      const copy = [...cols];
-      const [item] = copy.splice(idx, 1);
-      copy.splice(next, 0, item);
-      return copy;
-    });
-  }
+  const {
+    moveKanbanField,
+    findSelectedField,
+    removeSelectedField,
+    updateSelectedField,
+    addGroup,
+    addNotebook,
+    addPageToNotebook,
+    removeFormChild,
+    removeNotebookPage,
+    renameNotebookPage,
+    renameGroup,
+    openBindDialog,
+    placeBoundButton,
+    submitBindDialog,
+    addButtonToFirstGroup,
+    resolveDragFieldName,
+    addFieldToGroup,
+    dropOnGroup,
+    dropOnPage,
+    dropFieldOnPage,
+    reorderFormNode,
+    selectCanvasField,
+    addListColumn,
+    addSearchField,
+    addKanbanField,
+  } = useDesignerCanvasMutations({
+    model,
+    connectionId,
+    connection,
+    selected,
+    setSelected,
+    setRailTab,
+    formChildren,
+    setFormChildren,
+    listColumns,
+    setListColumns,
+    searchFields,
+    setSearchFields,
+    kanbanFields,
+    setKanbanFields,
+    headerButtons,
+    setHeaderButtons,
+    buttonBox,
+    setButtonBox,
+    setBusy,
+    setError,
+    setNotice,
+    pendingCoalesceRef,
+    pendingHistoryLabelRef,
+    dragField,
+    setDragField,
+    bindMode,
+    setBindMode,
+    bindPlacement,
+    setBindPlacement,
+    bindLabel,
+    setBindLabel,
+    bindFieldName,
+    bindValue,
+    bindTargetModel,
+    bindRelationField,
+    bindIcon,
+    bindCreateCountField,
+    bindOne2manyField,
+    bindCountFieldName,
+    bindSmartConfirmPhrase,
+    setBindSmartConfirmPhrase,
+    selectedActionId,
+    bindActivityTypeId,
+    bindActivitySummary,
+    bindActivityNote,
+    bindMailTemplateId,
+    bindMailMethod,
+    bindMailSubject,
+    bindMailBody,
+    bindMailEmailTo,
+    fields,
+    setBindableActions,
+    setSelectedActionId,
+    setActivityTypes,
+    setBindActivityTypeId,
+    setMailTemplates,
+    setBindMailTemplateId,
+    api,
+    announceAction,
+  });
 
-  function findSelectedField(): DesignerField | null {
-    if (!selected) return null;
-    if (selected.scope === "list") {
-      return listColumns.find((f) => f.id === selected.fieldId) ?? null;
-    }
-    if (selected.scope === "search") {
-      return searchFields.find((f) => f.id === selected.fieldId) ?? null;
-    }
-    if (selected.scope === "kanban") {
-      return kanbanFields.find((f) => f.id === selected.fieldId) ?? null;
-    }
-    if (selected.scope === "form-group") {
-      for (const child of formChildren) {
-        if (child.kind === "group" && child.id === selected.groupId) {
-          const hit = child.children.find((f) => f.id === selected.fieldId);
-          return hit && hit.kind === "field" ? hit : null;
-        }
-      }
-      return null;
-    }
-    for (const child of formChildren) {
-      if (child.kind === "notebook" && child.id === selected.notebookId) {
-        const page = child.pages.find((p) => p.id === selected.pageId);
-        const hit = page?.children.find((f) => f.id === selected.fieldId);
-        return hit && hit.kind === "field" ? hit : null;
-      }
-    }
-    return null;
-  }
+  const {
+    addNicheWidget,
+    removeFormField,
+    createNewFieldWithInject,
+  } = useDesignerFieldOps({
+    model,
+    connectionId,
+    connection,
+    viewType,
+    api,
+    fields,
+    setFields,
+    setFieldsModel,
+    setBusy,
+    setError,
+    setNotice,
+    confirmPhrase,
+    setConfirmPhrase,
+    injectStrategy,
+    newFieldName,
+    setNewFieldName,
+    newFieldLabel,
+    newFieldType,
+    formChildren,
+    setFormChildren,
+    listColumns,
+    setListColumns,
+    kanbanFields,
+    setKanbanFields,
+    setSelected,
+    announceAction,
+    appendFieldToCurrentLayout,
+    refreshModelFieldsOnly,
+    setConfirmMutateOpen,
+  });
 
-  function removeSelectedField() {
-    if (!selected) return;
-    const fieldId = selected.fieldId;
-    if (selected.scope === "list") {
-      setListColumns((cols) => cols.filter((c) => c.id !== fieldId));
-    } else if (selected.scope === "search") {
-      setSearchFields((cols) => cols.filter((c) => c.id !== fieldId));
-    } else if (selected.scope === "kanban") {
-      setKanbanFields((cols) => cols.filter((c) => c.id !== fieldId));
-    } else if (selected.scope === "form-group") {
-      const groupId = selected.groupId;
-      setFormChildren((children) =>
-        children.map((child) => {
-          if (child.kind !== "group" || child.id !== groupId) return child;
-          return {
-            ...child,
-            children: child.children.filter((n) => n.id !== fieldId),
-          };
-        }),
-      );
-    } else {
-      const { notebookId, pageId } = selected;
-      setFormChildren((children) =>
-        children.map((child) => {
-          if (child.kind !== "notebook" || child.id !== notebookId) return child;
-          return {
-            ...child,
-            pages: child.pages.map((p) =>
-              p.id !== pageId
-                ? p
-                : {
-                    ...p,
-                    children: p.children.filter((n) => n.id !== fieldId),
-                  },
-            ),
-          };
-        }),
-      );
-    }
-    setSelected(null);
-  }
 
-  function updateSelectedField(patch: Partial<DesignerFieldInspectorValues>) {
-    if (!selected) return;
-    pendingCoalesceRef.current = `inspector:${selected.fieldId}`;
-    pendingHistoryLabelRef.current = "Edit field properties";
-    const { ttype: _ttype, name: _name, ...fieldPatch } = patch;
-    if (selected.scope === "list") {
-      setListColumns((cols) =>
-        cols.map((f) => (f.id === selected.fieldId ? { ...f, ...fieldPatch } : f)),
-      );
-      return;
-    }
-    if (selected.scope === "search") {
-      setSearchFields((cols) =>
-        cols.map((f) => (f.id === selected.fieldId ? { ...f, ...fieldPatch } : f)),
-      );
-      return;
-    }
-    if (selected.scope === "kanban") {
-      setKanbanFields((cols) =>
-        cols.map((f) => (f.id === selected.fieldId ? { ...f, ...fieldPatch } : f)),
-      );
-      return;
-    }
-    if (selected.scope === "form-group") {
-      setFormChildren((children) =>
-        children.map((child) => {
-          if (child.kind !== "group" || child.id !== selected.groupId) return child;
-          return {
-            ...child,
-            children: child.children.map((node) => {
-              if (node.id !== selected.fieldId || node.kind !== "field") return node;
-              return { ...node, ...fieldPatch };
-            }),
-          };
-        }),
-      );
-      return;
-    }
-    setFormChildren((children) =>
-      children.map((child) => {
-        if (child.kind !== "notebook" || child.id !== selected.notebookId) return child;
-        return {
-          ...child,
-          pages: child.pages.map((p) => {
-            if (p.id !== selected.pageId) return p;
-            return {
-              ...p,
-              children: p.children.map((node) => {
-                if (node.id !== selected.fieldId || node.kind !== "field") return node;
-                return { ...node, ...fieldPatch };
-              }),
-            };
-          }),
-        };
-      }),
-    );
-  }
-
-  function addGroup() {
-    const id = uid("g");
-    setFormChildren((c) => [
-      ...c,
-      { kind: "group", id, string: `Group ${c.length + 1}`, children: [] },
-    ]);
-    announceAction(`Added group “Group ${formChildren.length + 1}” on the canvas.`, id, "group");
-  }
-
-  function addNotebook() {
-    const id = uid("n");
-    const pageLabel = "Page 1";
-    setFormChildren((c) => [
-      ...c,
-      {
-        kind: "notebook",
-        id,
-        pages: [{ id: uid("p"), string: pageLabel, children: [] }],
-      },
-    ]);
-    announceAction(
-      "Added notebook (tab strip) on the canvas below. Prefer “+ Page” on this notebook for another tab — not another notebook.",
-      id,
-      "notebook",
-    );
-  }
-
-  function addPageToNotebook(notebookId: string) {
-    const pageId = uid("p");
-    let pageName = "Page";
-    setFormChildren((children) =>
-      children.map((child) => {
-        if (child.kind !== "notebook" || child.id !== notebookId) return child;
-        const n = child.pages.length + 1;
-        pageName = `Page ${n}`;
-        return {
-          ...child,
-          pages: [
-            ...child.pages,
-            { id: pageId, string: pageName, children: [] },
-          ],
-        };
-      }),
-    );
-    announceAction(`Added tab “${pageName}” to the notebook.`, pageId, "page");
-  }
-
-  function removeFormChild(childId: string) {
-    const target = formChildren.find((c) => c.id === childId);
-    setFormChildren((children) => children.filter((c) => c.id !== childId));
-    setSelected((sel) => {
-      if (!sel) return null;
-      if (sel.scope === "form-group" && sel.groupId === childId) return null;
-      if (sel.scope === "form-page" && sel.notebookId === childId) return null;
-      return sel;
-    });
-    announceAction(
-      target?.kind === "notebook" ? "Removed notebook from canvas." : "Removed group from canvas.",
-      null,
-      "remove",
-    );
-  }
-
-  function removeNotebookPage(notebookId: string, pageId: string) {
-    setFormChildren((children) =>
-      children
-        .map((child) => {
-          if (child.kind !== "notebook" || child.id !== notebookId) return child;
-          const pages = child.pages.filter((p) => p.id !== pageId);
-          if (pages.length === 0) return null;
-          return { ...child, pages };
-        })
-        .filter((c): c is FormChild => c != null),
-    );
-    setSelected((sel) =>
-      sel?.scope === "form-page" && sel.pageId === pageId ? null : sel,
-    );
-    announceAction("Removed notebook page (tab).", null, "remove");
-  }
-
-  function renameNotebookPage(notebookId: string, pageId: string, string: string) {
-    setFormChildren((children) =>
-      children.map((child) => {
-        if (child.kind !== "notebook" || child.id !== notebookId) return child;
-        return {
-          ...child,
-          pages: child.pages.map((p) =>
-            p.id === pageId ? { ...p, string: string || p.string } : p,
-          ),
-        };
-      }),
-    );
-  }
-
-  function renameGroup(groupId: string, string: string) {
-    setFormChildren((children) =>
-      children.map((child) =>
-        child.kind === "group" && child.id === groupId
-          ? { ...child, string: string || child.string }
-          : child,
-      ),
-    );
-  }
-
-  function openBindDialog(placement: ButtonPlacement, mode: BindDialogMode = "create_update") {
-    setBindPlacement(placement);
-    setBindMode(mode);
-    setError(null);
-    if (mode === "bind_existing" && model) {
-      void api
-        .listBindableActions(connectionId, model)
-        .then((rows) => {
-          setBindableActions(rows);
-          setSelectedActionId(rows[0]?.id ?? "");
-        })
-        .catch((err) => setError(err instanceof Error ? err.message : "Failed to list actions"));
-    }
-    if (mode === "create_activity") {
-      void api
-        .listActivityTypes(connectionId)
-        .then((rows) => {
-          setActivityTypes(rows);
-          setBindActivityTypeId(rows[0]?.id ?? "");
-        })
-        .catch((err) => setError(err instanceof Error ? err.message : "Failed to list activity types"));
-    }
-    if (mode === "create_mail" && model) {
-      void api
-        .listMailTemplates(connectionId, model)
-        .then((rows) => {
-          setMailTemplates(rows);
-          setBindMailTemplateId(rows[0]?.id ?? "");
-        })
-        .catch(() => setMailTemplates([]));
-    }
-  }
-
-  function placeBoundButton(btn: DesignerButton) {
-    if (bindPlacement === "header") {
-      setHeaderButtons((all) => [...all, btn]);
-    } else if (bindPlacement === "button_box") {
-      setButtonBox((all) => [
-        ...all,
-        {
-          ...btn,
-          class_name: btn.class_name || "oe_stat_button",
-          icon: btn.icon || bindIcon || "fa-list",
-        },
-      ]);
-    } else {
-      setFormChildren((children) => {
-        if (!children.length) {
-          return [{ kind: "group", id: uid("g"), string: "Main", children: [btn] }];
-        }
-        return children.map((child, idx) => {
-          if (idx !== 0 || child.kind !== "group") return child;
-          return { ...child, children: [...child.children, btn] };
-        });
-      });
-    }
-  }
-
-  async function submitBindDialog(opts?: {
-    confirm_advanced?: boolean;
-    confirm_phrase?: string;
-  }) {
-    if (!model) {
-      setError("Enter a model first");
-      return;
-    }
-    if (bindMode !== "closed" && !bindModeSupported(connection, bindMode)) {
-      setError(
-        bindModeUnsupportedReason(connection, bindMode) ??
-          "Bind mode unavailable on this Odoo version",
-      );
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      if (bindMode === "create_update") {
-        const created = await api.createUpdateFieldAction(connectionId, {
-          name: bindLabel,
-          model,
-          field_name: bindFieldName,
-          value: bindValue,
-          bind_to_model: true,
-        });
-        placeBoundButton({
-          kind: "button",
-          id: uid("b"),
-          string: bindLabel,
-          name: String(created.id),
-          type: "action",
-          class_name: bindPlacement === "header" ? "btn-primary" : undefined,
-        });
-        setNotice(`Created server action #${created.id} and bound button (${bindPlacement}). Save the view to apply.`);
-      } else if (bindMode === "create_related") {
-        const created = await api.createRelatedWindowAction(connectionId, {
-          name: bindLabel,
-          source_model: model,
-          target_model: bindTargetModel,
-          relation_field: bindRelationField,
-        });
-        placeBoundButton({
-          kind: "button",
-          id: uid("b"),
-          string: bindLabel,
-          name: String(created.id),
-          type: "action",
-          class_name: bindPlacement === "button_box" ? "oe_stat_button" : "btn-secondary",
-          icon: bindPlacement === "button_box" ? bindIcon : undefined,
-        });
-        setNotice(`Created window action #${created.id} and bound button (${bindPlacement}). Save the view to apply.`);
-      } else if (bindMode === "create_activity") {
-        if (bindActivityTypeId === "") {
-          setError("Pick an activity type");
-          return;
-        }
-        const created = await api.createNextActivityAction(connectionId, {
-          name: bindLabel,
-          model,
-          activity_type_id: bindActivityTypeId,
-          summary: bindActivitySummary || "Follow up",
-          note: bindActivityNote || null,
-          user_type: "generic",
-          user_field_name: undefined,
-          bind_to_model: true,
-        });
-        placeBoundButton({
-          kind: "button",
-          id: uid("b"),
-          string: bindLabel,
-          name: String(created.id),
-          type: "action",
-          class_name: bindPlacement === "header" ? "btn-primary" : undefined,
-        });
-        setNotice(`Created next-activity action #${created.id} (${bindPlacement}). Save the view to apply.`);
-      } else if (bindMode === "create_mail") {
-        const created = await api.createMailPostAction(connectionId, {
-          name: bindLabel,
-          model,
-          template_id: bindMailTemplateId === "" ? null : bindMailTemplateId,
-          mail_post_method: bindMailMethod,
-          subject: bindMailSubject || null,
-          body_html: bindMailBody || null,
-          email_to: bindMailEmailTo || null,
-          bind_to_model: true,
-        });
-        placeBoundButton({
-          kind: "button",
-          id: uid("b"),
-          string: bindLabel,
-          name: String(created.id),
-          type: "action",
-          class_name: bindPlacement === "header" ? "btn-primary" : undefined,
-        });
-        setNotice(`Created mail-post action #${created.id} (${bindPlacement}). Save the view to apply.`);
-      } else if (bindMode === "create_smart") {
-        if (bindCreateCountField) {
-          const phrase = (opts?.confirm_phrase || bindSmartConfirmPhrase).trim();
-          if (phrase !== CONFIRM_PHRASE) {
-            setError(`Create count field requires confirm phrase: ${CONFIRM_PHRASE}`);
-            return;
-          }
-          if (!bindOne2manyField.trim()) {
-            setError("one2many field on source model is required for count field");
-            return;
-          }
-        }
-        const bundle = await api.createSmartButtonBundle(connectionId, {
-          name: bindLabel,
-          source_model: model,
-          target_model: bindTargetModel,
-          relation_field: bindRelationField,
-          one2many_field: bindOne2manyField.trim() || null,
-          count_field_name: bindCountFieldName.trim() || null,
-          create_count_field: bindCreateCountField,
-          icon: bindIcon || "fa-list",
-          confirm_advanced: bindCreateCountField
-            ? opts?.confirm_advanced ?? true
-            : false,
-          confirm_phrase: bindCreateCountField
-            ? opts?.confirm_phrase || bindSmartConfirmPhrase || CONFIRM_PHRASE
-            : null,
-        });
-        const spec = bundle.button_spec;
-        placeBoundButton({
-          kind: "button",
-          id: uid("b"),
-          string: String(spec.string || bindLabel),
-          name: String(spec.name || bundle.window_action.id),
-          type: "action",
-          class_name: String(spec.class || "oe_stat_button"),
-          icon: String(spec.icon || bindIcon || "fa-list"),
-          count_field: bundle.count_field || undefined,
-        });
-        setNotice(
-          `Smart button bundle: window #${bundle.window_action.id}` +
-            (bundle.count_field ? ` · count ${bundle.count_field}` : "") +
-            `. Save the view to apply.`,
-        );
-      } else if (bindMode === "bind_existing") {
-        if (selectedActionId === "") {
-          setError("Pick an existing action");
-          return;
-        }
-        placeBoundButton({
-          kind: "button",
-          id: uid("b"),
-          string: bindLabel,
-          name: String(selectedActionId),
-          type: "action",
-          class_name:
-            bindPlacement === "button_box"
-              ? "oe_stat_button"
-              : bindPlacement === "header"
-                ? "btn-primary"
-                : undefined,
-          icon: bindPlacement === "button_box" ? bindIcon : undefined,
-        });
-        setNotice(`Bound button to action #${selectedActionId}. Save the view to apply.`);
-      }
-      setBindMode("closed");
-    } catch (err) {
-      if (err instanceof ConfirmationRequiredError) {
-        setError(`${err.warning} Type “${err.confirm_phrase}” and retry.`);
-        setBindSmartConfirmPhrase(err.confirm_phrase || CONFIRM_PHRASE);
-      } else {
-        setError(err instanceof Error ? err.message : "Failed to bind action");
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function addButtonToFirstGroup() {
-    openBindDialog("inline", "create_update");
-  }
-
-  function resolveDragFieldName(e?: DragEvent | null): string | null {
-    const fromTransfer = e?.dataTransfer?.getData("text/odoo-field")?.trim();
-    if (fromTransfer) return fromTransfer;
-    return dragField;
-  }
-
-  function addFieldToGroup(groupId: string, fieldName: string, index?: number) {
-    const meta = fields.find((f) => f.name === fieldName);
-    const node: DesignerField = {
-      kind: "field",
-      id: uid("f"),
-      name: fieldName,
-      string: meta?.field_description,
-    };
-    setFormChildren((children) =>
-      children.map((child) => {
-        if (child.kind === "group" && child.id === groupId) {
-          if (child.children.some((n) => n.kind === "field" && n.name === fieldName)) {
-            return child;
-          }
-          const next =
-            index == null ? [...child.children, node] : insertAt(child.children, index, node);
-          return { ...child, children: next };
-        }
-        return child;
-      }),
-    );
-    announceAction(
-      `Added ${meta?.field_description || fieldName} to group.`,
-      groupId,
-      "drop",
-    );
-  }
-
-  function dropOnGroup(groupId: string, e?: DragEvent | null, index?: number) {
-    const fieldName = resolveDragFieldName(e);
-    if (!fieldName) return;
-    addFieldToGroup(groupId, fieldName, index);
-    setDragField(null);
-  }
-
-  function dropOnPage(notebookId: string, pageId: string, e?: DragEvent | null) {
-    const fieldName = resolveDragFieldName(e);
-    if (!fieldName) return;
-    dropFieldOnPage(notebookId, pageId, fieldName);
-    setDragField(null);
-  }
-
-  function dropFieldOnPage(
-    notebookId: string,
-    pageId: string,
-    fieldName: string,
-    index?: number,
-  ) {
-    const meta = fields.find((f) => f.name === fieldName);
-    const node: DesignerField = {
-      kind: "field",
-      id: uid("f"),
-      name: fieldName,
-      string: meta?.field_description,
-    };
-    setFormChildren((children) =>
-      children.map((child) => {
-        if (child.kind !== "notebook" || child.id !== notebookId) return child;
-        return {
-          ...child,
-          pages: child.pages.map((p) => {
-            if (p.id !== pageId) return p;
-            if (p.children.some((n) => n.kind === "field" && n.name === fieldName)) {
-              return p;
-            }
-            const next = index == null ? [...p.children, node] : insertAt(p.children, index, node);
-            return { ...p, children: next };
-          }),
-        };
-      }),
-    );
-    announceAction(
-      `Added ${meta?.field_description || fieldName} to notebook tab.`,
-      pageId,
-      "drop",
-    );
-  }
-
-  function reorderFormNode(
-    fieldId: string,
-    dest:
-      | { kind: "group"; groupId: string }
-      | { kind: "page"; notebookId: string; pageId: string },
-    index: number,
-  ) {
-    setFormChildren((children) => {
-      let moved: DesignerField | DesignerButton | null = null;
-      const stripped = children.map((child) => {
-        if (child.kind === "group") {
-          const found = child.children.find((n) => n.id === fieldId);
-          if (found) moved = found;
-          return { ...child, children: child.children.filter((n) => n.id !== fieldId) };
-        }
-        return {
-          ...child,
-          pages: child.pages.map((p) => {
-            const found = p.children.find((n) => n.id === fieldId);
-            if (found) moved = found;
-            return { ...p, children: p.children.filter((n) => n.id !== fieldId) };
-          }),
-        };
-      });
-      if (!moved) return children;
-      return stripped.map((child) => {
-        if (dest.kind === "group" && child.kind === "group" && child.id === dest.groupId) {
-          return { ...child, children: insertAt(child.children, index, moved!) };
-        }
-        if (
-          dest.kind === "page" &&
-          child.kind === "notebook" &&
-          child.id === dest.notebookId
-        ) {
-          return {
-            ...child,
-            pages: child.pages.map((p) =>
-              p.id === dest.pageId
-                ? { ...p, children: insertAt(p.children, index, moved!) }
-                : p,
-            ),
-          };
-        }
-        return child;
-      });
-    });
-  }
-
-  function selectCanvasField(fieldId: string) {
-    for (const child of formChildren) {
-      if (child.kind === "group") {
-        if (child.children.some((n) => n.kind === "field" && n.id === fieldId)) {
-          setSelected({ scope: "form-group", groupId: child.id, fieldId });
-          setRailTab("properties");
-          return;
-        }
-      } else {
-        for (const page of child.pages) {
-          if (page.children.some((n) => n.kind === "field" && n.id === fieldId)) {
-            setSelected({
-              scope: "form-page",
-              notebookId: child.id,
-              pageId: page.id,
-              fieldId,
-            });
-            setRailTab("properties");
-            return;
-          }
-        }
-      }
-    }
-  }
-
-  function addListColumn(fieldName: string) {
-    if (listColumns.some((c) => c.name === fieldName)) return;
-    const meta = fields.find((f) => f.name === fieldName);
-    setListColumns((cols) => [
-      ...cols,
-      {
-        kind: "field",
-        id: uid("f"),
-        name: fieldName,
-        string: meta?.field_description,
-      },
-    ]);
-  }
-
-  function addSearchField(fieldName: string) {
-    if (searchFields.some((c) => c.name === fieldName)) return;
-    const meta = fields.find((f) => f.name === fieldName);
-    setSearchFields((cols) => [
-      ...cols,
-      {
-        kind: "field",
-        id: uid("f"),
-        name: fieldName,
-        string: meta?.field_description,
-      },
-    ]);
-  }
-
-  function addKanbanField(fieldName: string) {
-    if (kanbanFields.some((c) => c.name === fieldName)) return;
-    const meta = fields.find((f) => f.name === fieldName);
-    setKanbanFields((cols) => [
-      ...cols,
-      {
-        kind: "field",
-        id: uid("f"),
-        name: fieldName,
-        string: meta?.field_description,
-      },
-    ]);
-  }
-
-  async function addNicheWidget(entry: NicheWidgetEntry) {
-    if (!model) {
-      setError("Select a model first");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      let fieldName: string | undefined;
-      const support = entry.supporting_field;
-      let fieldRows = fields;
-
-      const existing = fields.find(
-        (f) =>
-          entry.recommended_ttypes.includes(f.ttype) &&
-          (!support || f.name === support.name),
-      );
-      if (existing) {
-        fieldName = existing.name;
-      } else if (support) {
-        if (!fields.some((f) => f.name === support.name)) {
-          await api.createField(connectionId, {
-            model,
-            name: support.name,
-            field_description: support.string || support.name,
-            ttype: support.ttype,
-            inject_into_views: false,
-            inject_strategy: "inherit",
-            confirm_advanced: true,
-            confirm_phrase: CONFIRM_PHRASE,
-            ...(support.relation ? { relation: support.relation } : {}),
-            ...(support.ttype === "selection"
-              ? {
-                  selection: [
-                    { value: "normal", label: "Normal" },
-                    { value: "done", label: "Done" },
-                    { value: "blocked", label: "Blocked" },
-                  ],
-                }
-              : {}),
-          });
-          fieldRows = await api.listFields(connectionId, model);
-          setFields(fieldRows);
-          setFieldsModel(model);
-        }
-        fieldName = support.name;
-      } else {
-        const match = fields.find((f) => entry.recommended_ttypes.includes(f.ttype));
-        if (!match) {
-          setNotice(
-            `Add a ${entry.recommended_ttypes.join("/")} field first for ${entry.label}`,
-          );
-          return;
-        }
-        fieldName = match.name;
-      }
-
-      const meta = fieldRows.find((f) => f.name === fieldName);
-      const node: DesignerField = {
-        kind: "field",
-        id: uid("f"),
-        name: fieldName,
-        string: meta?.field_description,
-        widget: entry.id,
-      };
-
-      if (viewType === "kanban") {
-        if (kanbanFields.some((c) => c.name === fieldName && c.widget === entry.id)) return;
-        setKanbanFields((cols) => [...cols, node]);
-        setSelected({ scope: "kanban", fieldId: node.id });
-      } else if (viewType === "list") {
-        if (listColumns.some((c) => c.name === fieldName && c.widget === entry.id)) return;
-        setListColumns((cols) => [...cols, node]);
-        setSelected({ scope: "list", fieldId: node.id });
-      } else if (viewType === "form") {
-        const firstGroup = formChildren.find((c) => c.kind === "group");
-        if (!firstGroup) {
-          setNotice("Add a form group before niche widgets");
-          return;
-        }
-        setFormChildren((children) =>
-          children.map((child) =>
-            child.kind === "group" && child.id === firstGroup.id
-              ? { ...child, children: [...child.children, node] }
-              : child,
-          ),
-        );
-        setSelected({ scope: "form-group", groupId: firstGroup.id, fieldId: node.id });
-      } else {
-        setNotice(`${entry.label} is available on form, list, and kanban views`);
-        return;
-      }
-      announceAction(`Added ${entry.label} (${entry.id})`, node.id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add niche widget");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function removeFormField(
-    container: "group" | "page",
-    containerId: string,
-    fieldId: string,
-    notebookId?: string,
-  ) {
-    setFormChildren((children) =>
-      children.map((child) => {
-        if (container === "group" && child.kind === "group" && child.id === containerId) {
-          return { ...child, children: child.children.filter((f) => f.id !== fieldId) };
-        }
-        if (
-          container === "page" &&
-          child.kind === "notebook" &&
-          child.id === notebookId
-        ) {
-          return {
-            ...child,
-            pages: child.pages.map((p) =>
-              p.id === containerId
-                ? { ...p, children: p.children.filter((f) => f.id !== fieldId) }
-                : p,
-            ),
-          };
-        }
-        return child;
-      }),
-    );
-    setSelected((sel) => (sel?.fieldId === fieldId ? null : sel));
-  }
-
-  async function createNewFieldWithInject(opts?: {
-    confirm_advanced?: boolean;
-    confirm_phrase?: string;
-  }) {
-    if (!model || !newFieldName.startsWith("x_")) return;
-    const strategyCap = injectStrategyCapabilityId(injectStrategy);
-    if (!connectionSupports(connection, strategyCap)) {
-      setError(
-        connectionUnsupportedReason(connection, strategyCap) ??
-          "Inject strategy unavailable on this Odoo version",
-      );
-      return;
-    }
-    if (injectStrategy === "mutate" && !opts?.confirm_advanced) {
-      setConfirmMutateOpen(true);
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    const createdName = newFieldName;
-    try {
-      await api.createField(connectionId, {
-        model,
-        name: createdName,
-        field_description: newFieldLabel || createdName,
-        ttype: newFieldType,
-        inject_into_views: true,
-        inject_strategy: injectStrategy,
-        ...(injectStrategy === "mutate"
-          ? {
-              confirm_advanced: true,
-              confirm_phrase:
-                opts?.confirm_phrase || confirmPhrase || CONFIRM_PHRASE,
-            }
-          : {
-              confirm_advanced: true,
-              confirm_phrase: confirmPhrase || CONFIRM_PHRASE,
-            }),
-        ...(newFieldType === "many2one" ? { relation: "res.partner" } : {}),
-        ...(newFieldType === "selection"
-          ? {
-              selection: [
-                { value: "a", label: "A" },
-                { value: "b", label: "B" },
-              ],
-            }
-          : {}),
-      });
-      setNewFieldName("");
-      setConfirmMutateOpen(false);
-      // Soft refresh: keep loaded Form layout; do not call loadModelFields (that reseeds/wipes).
-      const rows = await refreshModelFieldsOnly(model);
-      appendFieldToCurrentLayout(createdName, rows);
-      setNotice(
-        `Created ${createdName}` +
-          (injectStrategy === "mutate" ? " (mutate inject)" : " (inherit inject)") +
-          ". Field list and layout kept — no need to reload the view.",
-      );
-    } catch (err) {
-      if (err instanceof ConfirmationRequiredError) {
-        setConfirmMutateOpen(true);
-        setError(`${err.warning} Type “${err.confirm_phrase}” and retry.`);
-        setConfirmPhrase(err.confirm_phrase || CONFIRM_PHRASE);
-      } else {
-        setError(err instanceof Error ? err.message : "Create field failed");
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function onSave(opts?: {
-    arch?: string;
-    strategy?: "inherit" | "overwrite";
-    confirm_phrase?: string;
-  }) {
-    if (!model) {
-      setError("Load a model first");
-      return;
-    }
-    const strategy = opts?.strategy ?? saveStrategy;
-    // Stock models default to inherit — overwrite only via confirmed Power path
-    if (!model.startsWith("x_") && strategy === "overwrite" && !opts?.confirm_phrase) {
-      setConfirmOverwriteOpen(true);
-      return;
-    }
-    if (strategy === "overwrite" && !opts?.confirm_phrase && model.startsWith("x_")) {
-      setConfirmOverwriteOpen(true);
-      return;
-    }
-    const useArch = opts?.arch ?? archOverride;
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const saved = await api.saveView(connectionId, {
-        model,
-        view_type: viewType,
-        name:
-          strategy === "inherit"
-            ? `${model}.designer.${viewType}`
-            : `${model}.${viewType}`,
-        view_id: strategy === "overwrite" ? (loadedViewId ?? undefined) : undefined,
-        ...(useArch ? { arch: useArch } : { spec: activeViewSpec }),
-        create_if_missing: true,
-        strategy,
-        ...(strategy === "overwrite"
-          ? {
-              confirm_advanced: true,
-              confirm_phrase: opts?.confirm_phrase || CONFIRM_PHRASE,
-            }
-          : {}),
-      });
-      setLoadedViewId(saved.id);
-      setConfirmOverwriteOpen(false);
-      if (saved.snapshot_id) {
-        setLastSnapshotId(saved.snapshot_id);
-        setNotice(
-          `Published ${viewType} view #${saved.id}. Checkpoint ${saved.snapshot_id.slice(0, 8)}… is in published history.`,
-        );
-      } else {
-        setNotice(`Saved new ${viewType} view #${saved.id} for ${model}`);
-      }
-      setArch(saved.arch ?? arch);
-      setArchOverride(null);
-      setPreviewKey((k) => k + 1);
-      if (archOverride !== null) {
-        historySkipRef.current = "apply";
-      }
-      history.reset({ ...canvasSnapshot, archOverride: null });
-      await refreshSnapshots();
-    } catch (err) {
-      if (err instanceof ConfirmationRequiredError) {
-        setConfirmOverwriteOpen(true);
-        setError(err.warning);
-      } else {
-        setError(err instanceof Error ? err.message : "Save failed");
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function onRepairDuplicateChrome() {
-    if (!model) {
-      setError("Load a model first");
-      return;
-    }
-    if (model.startsWith("x_") || viewType !== "form") {
-      setError("Fix duplicate chrome applies to stock form views (e.g. account.move).");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const out = await api.repairDesignerInherit(connectionId, {
-        model,
-        view_type: "form",
-      });
-      if (out.snapshot_id) setLastSnapshotId(out.snapshot_id);
-      setNotice(out.detail || `Repair: ${out.action}`);
-      await refreshSnapshots();
-      await loadExistingView();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Repair failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function onUnlinkDesignerInherit(phrase: string) {
-    if (!model) {
-      setError("Load a model first");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const out = await api.unlinkDesignerInherit(connectionId, {
-        model,
-        view_type: viewType,
-        confirm_advanced: true,
-        confirm_phrase: phrase,
-      });
-      setConfirmUnlinkInheritOpen(false);
-      if (out.snapshot_id) setLastSnapshotId(out.snapshot_id);
-      setNotice(out.detail || `Unlink: ${out.action}`);
-      await refreshSnapshots();
-      await loadExistingView();
-    } catch (err) {
-      if (err instanceof ConfirmationRequiredError) {
-        setConfirmUnlinkInheritOpen(true);
-        setError(err.warning);
-      } else {
-        setError(err instanceof Error ? err.message : "Unlink failed");
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function runXpathPreview() {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await api.xpathPreview(connectionId, {
-        expr: xpathExpr,
-        position: xpathPosition,
-        body_xml: xpathBody,
-        parent_arch: arch || null,
-        view_type: viewType,
-      });
-      setXpathArchPreview(res.arch);
-      const located = res.locator_issues ?? [];
-      setXpathIssues(located);
-      setXpathSuggested(res.suggested_expr ?? null);
-      setXpathDefaultInject(res.default_inject_expr ?? null);
-      setXpathMatchCount(res.match_count ?? null);
-      setXpathBlocking(Boolean(res.blocking));
-      if (res.blocking) {
-        setNotice("XPath preview found a blocking locator issue.");
-      } else if (located.some((i) => i.severity === "warning") || (res.issues?.length ?? 0) > 0) {
-        setNotice("XPath preview built with upgrade-safety warnings.");
-      } else {
-        setNotice("XPath preview OK — named locator matches the parent view.");
-      }
-      return res;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "XPath preview failed");
-      setXpathArchPreview("");
-      setXpathIssues([]);
-      setXpathBlocking(false);
-      return null;
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function onSaveXpathInherit() {
-    const res = await runXpathPreview();
-    if (!res || res.blocking) {
-      return;
-    }
-    await onSave({ arch: res.arch, strategy: "inherit" });
-  }
-
-  function onSessionUndo() {
-    const snapshot = history.undo();
-    if (!snapshot) {
-      setNotice(
-        lastSnapshotId
-          ? "Nothing to undo in this session. Use roll back last publish to restore a snapshot."
-          : "Nothing to undo in this session. Save to Odoo first creates a published checkpoint.",
-      );
-      return;
-    }
-    historySkipRef.current = "apply";
-    applyCanvasSnapshot(snapshot);
-    setNotice("Reverted the last unpublished canvas edit.");
-  }
-
-  function onSessionRedo() {
-    const snapshot = history.redo();
-    if (!snapshot) return;
-    historySkipRef.current = "apply";
-    applyCanvasSnapshot(snapshot);
-    setNotice("Restored the unpublished canvas edit.");
-  }
-
-  async function onRollbackLastPublish() {
-    if (!lastSnapshotId) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await api.rollbackSnapshot(connectionId, lastSnapshotId);
-      setNotice(`Rolled back to snapshot — restored view #${res.id}`);
-      setLastSnapshotId(null);
-      await loadExistingView();
-      await refreshSnapshots();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Rollback failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function onRollback(snapshotId: string) {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await api.rollbackSnapshot(connectionId, snapshotId);
-      setNotice(`Restored ${res.restored} #${res.id}`);
-      if (snapshotId === lastSnapshotId) setLastSnapshotId(null);
-      await loadExistingView();
-      await refreshSnapshots();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Rollback failed");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const {
+    onSave,
+    onRepairDuplicateChrome,
+    onUnlinkDesignerInherit,
+    runXpathPreview,
+    onSaveXpathInherit,
+    onSessionUndo,
+    onSessionRedo,
+    onRollbackLastPublish,
+    onRollback,
+  } = useDesignerPersist({
+    model,
+    connectionId,
+    connection,
+    viewType,
+    title,
+    saveStrategy,
+    setSaveStrategy,
+    archOverride,
+    setArchOverride,
+    activeViewSpec,
+    canvasSnapshot,
+    history,
+    historySkipRef,
+    loadedViewId,
+    setLoadedViewId,
+    lastSnapshotId,
+    setLastSnapshotId,
+    setBusy,
+    setError,
+    setNotice,
+    setConfirmOverwriteOpen,
+    setArch,
+    arch,
+    xpathExpr,
+    xpathPosition,
+    xpathBody,
+    setXpathIssues,
+    setXpathDefaultInject,
+    setXpathArchPreview,
+    setXpathSuggested,
+    setXpathMatchCount,
+    setXpathBlocking,
+    setConfirmUnlinkInheritOpen,
+    applyCanvasSnapshot,
+    setPreviewKey,
+    refreshSnapshots,
+    loadExistingView,
+    announceAction,
+    api,
+  });
 
   const selectedField = findSelectedField();
 
-  const viewFieldNames = useMemo(() => {
-    const names = new Set<string>();
-    if (viewType === "form") {
-      for (const child of formChildren) {
-        if (child.kind === "group") {
-          for (const n of child.children) {
-            if (n.kind === "field") names.add(n.name);
-          }
-        } else {
-          for (const page of child.pages) {
-            for (const n of page.children) {
-              if (n.kind === "field") names.add(n.name);
-            }
-          }
-        }
-      }
-    } else if (viewType === "list") {
-      for (const c of listColumns) names.add(c.name);
-    } else if (viewType === "search") {
-      for (const c of searchFields) names.add(c.name);
-    } else if (viewType === "kanban") {
-      for (const c of kanbanFields) names.add(c.name);
-    }
-    return [...names];
-  }, [viewType, formChildren, listColumns, searchFields, kanbanFields]);
+  const { fieldInspector } = useDesignerFieldInspector({
+    connectionId,
+    model,
+    api,
+    fields,
+    viewType,
+    formChildren,
+    listColumns,
+    searchFields,
+    kanbanFields,
+    selectedField,
+    updateSelectedField,
+    removeSelectedField,
+    appendFieldToCurrentLayout,
+  });
 
-  const selectedFieldMeta = selectedField
-    ? fields.find((f) => f.name === selectedField.name) ?? null
-    : null;
 
-  useEffect(() => {
-    if (!connectionId) return;
-    let cancelled = false;
-    setInspectorGroupsState("loading");
-    api
-      .listGroups(connectionId)
-      .then((rows) => {
-        if (cancelled) return;
-        setInspectorGroups(rows);
-        setInspectorGroupsState("ready");
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setInspectorGroups([]);
-        setInspectorGroupsState("error");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [connectionId]);
-
-  useEffect(() => {
-    if (!connectionId || !model) {
-      setRelatedPaths([]);
-      setRelatedPathsState("idle");
-      return;
-    }
-    let cancelled = false;
-    setRelatedPathsState("loading");
-    api
-      .listRelatedPaths(connectionId, model, 2)
-      .then((rows) => {
-        if (cancelled) return;
-        setRelatedPaths(rows);
-        setRelatedPathsState("ready");
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setRelatedPaths([]);
-        setRelatedPathsState("error");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [connectionId, model]);
-
-  useEffect(() => {
-    if (!selectedField) {
-      setInspectorWidgets([]);
-      return;
-    }
-    const row = fields.find((f) => f.name === selectedField.name);
-    const ttype = row?.ttype ?? "char";
-    setInspectorWidgets(fallbackWidgetsForTtype(ttype));
-    api
-      .listBuilderWidgets(connectionId, ttype)
-      .then((rows) => {
-        if (rows.length > 0) setInspectorWidgets(rows);
-      })
-      .catch(() => {
-        /* fallback */
-      });
-  }, [connectionId, fields, selectedField?.name]);
-
-  const fieldInspector = selectedField ? (
-    <DesignerFieldInspector
-      field={{
-        ...selectedField,
-        ttype: selectedFieldMeta?.ttype,
-      }}
-      fieldMeta={selectedFieldMeta}
-      widgetOptions={inspectorWidgets}
-      widgetAdvanced={widgetAdvanced}
-      onWidgetAdvancedChange={setWidgetAdvanced}
-      onChange={updateSelectedField}
-      groups={inspectorGroups}
-      groupsState={inspectorGroupsState}
-      relatedPaths={relatedPaths}
-      relatedState={relatedPathsState}
-      fieldsOnModel={fields}
-      viewFieldNames={viewFieldNames}
-      onAddRelatedField={(name) => appendFieldToCurrentLayout(name, fields)}
-      onRemoveFromView={removeSelectedField}
+  const structuralCanvas = (
+    <DesignerStructuralCanvas
+      viewType={viewType}
+      model={model}
+      title={title}
+      fields={fields}
+      previewTheme={previewTheme}
+      formChildren={formChildren}
+      headerButtons={headerButtons}
+      buttonBox={buttonBox}
+      statusbarField={statusbarField}
+      statusbarVisible={statusbarVisible}
+      canvasFlashId={canvasFlashId}
+      selected={selected}
+      setSelected={setSelected}
+      setRailTab={setRailTab}
+      listColumns={listColumns}
+      listDecorationDanger={listDecorationDanger}
+      listDecorationInfo={listDecorationInfo}
+      listDecorationMuted={listDecorationMuted}
+      kanbanFields={kanbanFields}
+      kanbanGroupBy={kanbanGroupBy}
+      setKanbanFields={setKanbanFields}
+      selectCanvasField={selectCanvasField}
+      addFieldToGroup={addFieldToGroup}
+      dropFieldOnPage={dropFieldOnPage}
+      reorderFormNode={reorderFormNode}
+      setFormChildren={setFormChildren}
+      moveKanbanField={moveKanbanField}
+      addKanbanField={addKanbanField}
     />
-  ) : (
-    <DesignerFieldInspectorEmpty />
   );
-
-  const formStructuralCanvas = (
-    <OdooPreviewScope showBanner previewVars={previewTheme?.preview_vars}>
-      <div data-testid="designer-form-layout">
-        <OdooControlPanel
-          breadcrumb={`View Designer › ${title || model}`}
-          activeView="form"
-          availableViews={["form"]}
-          showSearchPlaceholder
-        />
-        <FormCanvas
-          title={title || model}
-          statusbar={statusbarField || null}
-          statusbarVisible={statusbarVisible || null}
-          groupLayout={
-            formChildren.filter((c) => c.kind === "group").length >= 2
-              ? "two-column"
-              : "stack"
-          }
-          headerButtons={headerButtons.map((b) => ({
-            id: b.id,
-            string: b.string || "Button",
-          }))}
-          smartButtons={buttonBox.map((b) => ({ id: b.id, string: b.string }))}
-          flashId={canvasFlashId}
-          groups={formChildren
-            .filter((c): c is DesignerGroup => c.kind === "group")
-            .map((g) => ({
-              id: g.id,
-              string: g.string,
-              fields: g.children
-                .filter((n): n is DesignerField => n.kind === "field")
-                .map((f) => {
-                  const meta = fields.find((row) => row.name === f.name);
-                  return {
-                    id: f.id,
-                    name: f.name,
-                    string: resolveFieldLabel(f.name, f.string, fields),
-                    ttype: meta?.ttype,
-                    widget: f.widget,
-                    required: f.required === true,
-                  };
-                }),
-            }))}
-          notebooks={formChildren
-            .filter((c): c is DesignerNotebook => c.kind === "notebook")
-            .map((nb) => ({
-              id: nb.id,
-              pages: nb.pages.map((p) => ({
-                id: p.id,
-                string: p.string,
-                fields: p.children
-                  .filter((n): n is DesignerField => n.kind === "field")
-                  .map((f) => {
-                    const meta = fields.find((row) => row.name === f.name);
-                    return {
-                      id: f.id,
-                      name: f.name,
-                      string: resolveFieldLabel(f.name, f.string, fields),
-                      ttype: meta?.ttype,
-                      widget: f.widget,
-                      required: f.required === true,
-                    };
-                  }),
-              })),
-            }))}
-          selectedFieldId={
-            selected?.scope === "form-group" || selected?.scope === "form-page"
-              ? selected.fieldId
-              : null
-          }
-          onSelectField={selectCanvasField}
-          onMoveField={(fieldId, dir) => {
-            setFormChildren((children) =>
-              children.map((child) => {
-                if (child.kind !== "group") return child;
-                const idx = child.children.findIndex(
-                  (n) => n.kind === "field" && n.id === fieldId,
-                );
-                if (idx < 0) return child;
-                const next = idx + dir;
-                if (next < 0 || next >= child.children.length) return child;
-                const copy = [...child.children];
-                const [item] = copy.splice(idx, 1);
-                copy.splice(next, 0, item);
-                return { ...child, children: copy };
-              }),
-            );
-          }}
-          onDropFieldName={(groupId, fieldName, index) => {
-            addFieldToGroup(groupId, fieldName, index);
-          }}
-          onDropFieldOnPage={(notebookId, pageId, fieldName, index) => {
-            dropFieldOnPage(notebookId, pageId, fieldName, index);
-          }}
-          onReorderField={(fieldId, groupId, index) =>
-            reorderFormNode(fieldId, { kind: "group", groupId }, index)
-          }
-          onReorderPageField={(fieldId, notebookId, pageId, index) =>
-            reorderFormNode(fieldId, { kind: "page", notebookId, pageId }, index)
-          }
-        />
-      </div>
-    </OdooPreviewScope>
-  );
-
-  const listStructuralCanvas = (
-    <div data-testid="designer-list-layout">
-      <OdooPreviewScope showBanner={false} previewVars={previewTheme?.preview_vars}>
-        <OdooListView
-          view={{
-            type: "list",
-            model: model || "model",
-            title: title || model,
-            columns: listColumns.map((f) => ({
-              id: f.id,
-              name: f.name,
-              string: resolveFieldLabel(f.name, f.string, fields) || f.name,
-            })),
-            decorations: {
-              danger: listDecorationDanger || null,
-              info: listDecorationInfo || null,
-              muted: listDecorationMuted || null,
-            },
-          }}
-        />
-      </OdooPreviewScope>
-    </div>
-  );
-
-  const kanbanStructuralCanvas = (
-    <div data-testid="designer-kanban-layout">
-      <PreviewThemeScope previewVars={previewTheme?.preview_vars}>
-        <OdooKanbanView
-          view={{
-            type: "kanban",
-            model: model || "model",
-            title: title || model,
-            groupBy: kanbanGroupBy || null,
-            cardFields: kanbanFields.map((f) => ({
-              id: f.id,
-              name: f.name,
-              string: f.string || f.name,
-            })),
-          }}
-        />
-        <div className="mt-4">
-          <KanbanCardPreview
-            title={title || model}
-            groupBy={kanbanGroupBy || null}
-            fields={kanbanFields.map((f) => ({
-              id: f.id,
-              name: f.name,
-              string: f.string,
-            }))}
-            selectedFieldId={selected?.scope === "kanban" ? selected.fieldId : null}
-            onSelectField={(fieldId) => {
-              setSelected({ scope: "kanban", fieldId });
-              setRailTab("properties");
-            }}
-            onMoveField={moveKanbanField}
-            onRemoveField={(fieldId) => {
-              setKanbanFields((cols) => cols.filter((c) => c.id !== fieldId));
-              setSelected((sel) =>
-                sel?.scope === "kanban" && sel.fieldId === fieldId ? null : sel,
-              );
-            }}
-            onDropFieldName={(fieldName) => addKanbanField(fieldName)}
-          />
-        </div>
-      </PreviewThemeScope>
-    </div>
-  );
-
-  const structuralCanvas =
-    viewType === "form"
-      ? formStructuralCanvas
-      : viewType === "list"
-        ? listStructuralCanvas
-        : viewType === "kanban"
-          ? kanbanStructuralCanvas
-          : (
-            <div className="rounded-md border border-border-subtle bg-surface p-4 text-sm text-muted">
-              Layout canvas for {viewType} uses the Structure tab. Live Odoo remains
-              the authoritative preview.
-            </div>
-          );
 
   return (
+    <DesignerUiProvider
+      selected={selected}
+      setSelected={setSelected}
+      railTab={railTab}
+      setRailTab={setRailTab}
+      designerV2Shell
+    >
     <DesignerStudioShell
       title="View designer"
       description={`${connection?.name ?? connectionId} · drag onto the live or layout canvas · Save to Odoo publishes an inherit view`}
@@ -3197,675 +1017,93 @@ export default function DesignerPage() {
         </>
       }
       toolbar={
-        <Card className="flex flex-wrap items-end gap-3 p-3" data-testid="designer-studio-toolbar">
-          <label className="text-sm">
-            <span className="text-muted">Model</span>
-            <input
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              onBlur={() => {
-                if (model.trim()) void ensureFieldsForModel(model);
-              }}
-              className="mt-1 block w-64 border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
-              placeholder="x_ticket"
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() => model && loadModelFields(model)}
-            className="h-10 border border-border-subtle px-4 text-sm text-muted"
-          >
-            Load fields
-          </button>
-          <button
-            type="button"
-            disabled={busy || !model}
-            onClick={loadExistingView}
-            className="h-10 border border-border-subtle px-4 text-sm text-muted disabled:opacity-60"
-          >
-            Load existing view
-          </button>
-          <label className="text-sm">
-            <span className="text-muted">View type</span>
-            <select
-              value={viewType}
-              onChange={(e) => {
-                const next = e.target.value as ViewType;
-                setViewType(next);
-                setSelected(null);
-                if (
-                  model.trim() &&
-                  (next === "calendar" ||
-                    next === "gantt" ||
-                    next === "cohort" ||
-                    next === "grid" ||
-                    next === "activity" ||
-                    next === "map")
-                ) {
-                  void ensureFieldsForModel(model);
-                }
-              }}
-              className="mt-1 block border border-border-subtle bg-surface px-3 py-2"
-            >
-              <option value="form">form</option>
-              <option value="list">
-                list
-                {!connectionSupports(connection, "list_as_list_type")
-                  ? " (stored as tree on this Odoo)"
-                  : ""}
-              </option>
-              <option value="search">search</option>
-              <option value="kanban">kanban</option>
-              <option value="calendar" disabled={!mutationAllowed(connection)}>
-                calendar
-                {!mutationAllowed(connection) ? " (probe connection)" : ""}
-              </option>
-              <option value="graph" disabled={!mutationAllowed(connection)}>
-                graph
-                {!mutationAllowed(connection) ? " (probe connection)" : ""}
-              </option>
-              <option value="pivot" disabled={!mutationAllowed(connection)}>
-                pivot
-                {!mutationAllowed(connection) ? " (probe connection)" : ""}
-              </option>
-              <option value="map" disabled={!mutationAllowed(connection)}>
-                map
-                {!mutationAllowed(connection) ? " (probe connection)" : ""}
-              </option>
-              <option value="activity" disabled={!mutationAllowed(connection)}>
-                activity
-                {!mutationAllowed(connection) ? " (probe connection)" : ""}
-              </option>
-              <option value="gantt" disabled={!mutationAllowed(connection)}>
-                gantt
-                {!mutationAllowed(connection) ? " (probe connection)" : ""}
-              </option>
-              <option value="cohort" disabled={!mutationAllowed(connection)}>
-                cohort
-                {!mutationAllowed(connection) ? " (probe connection)" : ""}
-              </option>
-              <option value="grid" disabled={!gridViewAllowed(connection)}>
-                grid
-                {!gridViewAllowed(connection)
-                  ? !isEnterpriseEdition(connection?.capabilities)
-                    ? " (Enterprise edition)"
-                    : " (probe connection)"
-                  : ""}
-              </option>
-            </select>
-            {!mutationAllowed(connection) && (
-              <p className="mt-1 text-xs text-warning">
-                {mutationBlockedReason(connection) ??
-                  "Reporting views need a probed connection."}
-              </p>
-            )}
-          </label>
-          {viewType === "kanban" && (
-            <label className="text-sm">
-              <span className="text-muted">Column field</span>
-              <select
-                value={kanbanGroupBy}
-                onChange={(e) => setKanbanGroupBy(e.target.value)}
-                className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
-              >
-                <option value="">(none)</option>
-                {fields.map((f) => (
-                  <option key={f.id} value={f.name}>
-                    {f.name} · {f.ttype}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {(viewType === "calendar" ||
-            viewType === "graph" ||
-            viewType === "pivot" ||
-            viewType === "map" ||
-            viewType === "activity" ||
-            viewType === "gantt" ||
-            viewType === "cohort" ||
-            viewType === "grid") && (
-            <details
-              className="w-full rounded-md border border-border-subtle bg-surface px-3 py-2"
-              data-testid="designer-view-axes"
-              open
-            >
-              <summary className="cursor-pointer text-sm font-medium text-ink">
-                View axes
-              </summary>
-              <div className="mt-2 flex flex-wrap items-end gap-3">
-          {viewType === "calendar" && (
-            <>
-              <label className="text-sm">
-                <span className="text-muted">date_start</span>
-                <select
-                  value={calendarDateStart}
-                  onChange={(e) => setCalendarDateStart(e.target.value)}
-                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
-                >
-                  <option value="">(required)</option>
-                  {dateFieldsForSelect.map((f) => (
-                    <option key={f.id} value={f.name}>
-                      {f.name} · {f.ttype}
-                      {f.field_description ? ` — ${f.field_description}` : ""}
-                    </option>
-                  ))}
-                </select>
-                {fieldsModel && fieldsModel !== model.trim() && (
-                  <p className="mt-1 text-xs text-warning">
-                    Fields loaded for {fieldsModel || "(none)"} — click Load fields for{" "}
-                    {model || "this model"}.
-                  </p>
-                )}
-                {!dateFieldsForSelect.length && (
-                  <p className="mt-1 text-xs text-warning">
-                    No date/datetime fields on loaded model. Set model to x_lib_loan and click
-                    Load fields.
-                  </p>
-                )}
-              </label>
-              <label className="text-sm">
-                <span className="text-muted">date_stop</span>
-                <select
-                  value={calendarDateStop}
-                  onChange={(e) => setCalendarDateStop(e.target.value)}
-                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
-                >
-                  <option value="">(optional)</option>
-                  {dateFieldsForSelect.map((f) => (
-                    <option key={f.id} value={f.name}>
-                      {f.name} · {f.ttype}
-                      {f.field_description ? ` — ${f.field_description}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-sm">
-                <span className="text-muted">color</span>
-                <select
-                  value={calendarColor}
-                  onChange={(e) => setCalendarColor(e.target.value)}
-                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
-                >
-                  <option value="">(optional)</option>
-                  {fields.map((f) => (
-                    <option key={f.id} value={f.name}>
-                      {f.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-sm">
-                <span className="text-muted">mode</span>
-                <select
-                  value={calendarMode}
-                  onChange={(e) => setCalendarMode(e.target.value)}
-                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 text-sm"
-                >
-                  <option value="">(default)</option>
-                  <option value="day">day</option>
-                  <option value="week">week</option>
-                  <option value="month">month</option>
-                </select>
-              </label>
-            </>
-          )}
-          {viewType === "graph" && (
-            <>
-            <label className="text-sm">
-              <span className="text-muted">Graph type</span>
-              <select
-                value={graphType}
-                onChange={(e) =>
-                  setGraphType(e.target.value as "bar" | "line" | "pie")
-                }
-                className="mt-1 block border border-border-subtle bg-surface px-3 py-2 text-sm"
-              >
-                <option value="bar">bar</option>
-                <option value="line">line</option>
-                <option value="pie">pie</option>
-              </select>
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={viewSample}
-                onChange={(e) => setViewSample(e.target.checked)}
-                data-testid="designer-view-sample"
-              />
-              sample data
-            </label>
-            </>
-          )}
-          {viewType === "pivot" && (
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={viewSample}
-                onChange={(e) => setViewSample(e.target.checked)}
-                data-testid="designer-view-sample"
-              />
-              sample data
-            </label>
-          )}
-          {viewType === "map" && (
-            <>
-            <label className="text-sm">
-              <span className="text-muted">res_partner</span>
-              <select
-                value={mapResPartner}
-                onChange={(e) => setMapResPartner(e.target.value)}
-                className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
-                data-testid="designer-map-res-partner"
-              >
-                <option value="">(required — partner m2o)</option>
-                {fields
-                  .filter((f) => f.ttype === "many2one")
-                  .map((f) => (
-                    <option key={f.id} value={f.name}>
-                      {f.name}
-                      {f.relation ? ` · ${f.relation}` : " · many2one"}
-                      {f.relation === "res.partner" ? " ✓" : ""}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={mapRouting}
-                onChange={(e) => setMapRouting(e.target.checked)}
-                data-testid="designer-map-routing"
-              />
-              routing (directions)
-            </label>
-            </>
-          )}
-          {viewType === "gantt" && (
-            <>
-              <label className="text-sm">
-                <span className="text-muted">date_start</span>
-                <select
-                  value={ganttDateStart}
-                  onChange={(e) => setGanttDateStart(e.target.value)}
-                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
-                >
-                  <option value="">(required)</option>
-                  {dateFieldsForSelect.map((f) => (
-                    <option key={f.id} value={f.name}>
-                      {f.name} · {f.ttype}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-sm">
-                <span className="text-muted">date_stop</span>
-                <select
-                  value={ganttDateStop}
-                  onChange={(e) => setGanttDateStop(e.target.value)}
-                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
-                >
-                  <option value="">(optional)</option>
-                  {dateFieldsForSelect.map((f) => (
-                    <option key={f.id} value={f.name}>
-                      {f.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-sm">
-                <span className="text-muted">default_group_by</span>
-                <select
-                  value={ganttGroupBy}
-                  onChange={(e) => setGanttGroupBy(e.target.value)}
-                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
-                >
-                  <option value="">(optional)</option>
-                  {fields.map((f) => (
-                    <option key={f.id} value={f.name}>
-                      {f.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-sm">
-                <span className="text-muted">color</span>
-                <select
-                  value={ganttColor}
-                  onChange={(e) => setGanttColor(e.target.value)}
-                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
-                >
-                  <option value="">(optional)</option>
-                  {fields.map((f) => (
-                    <option key={f.id} value={f.name}>
-                      {f.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-sm">
-                <span className="text-muted">progress</span>
-                <select
-                  value={ganttProgress}
-                  onChange={(e) => setGanttProgress(e.target.value)}
-                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
-                  data-testid="designer-gantt-progress"
-                >
-                  <option value="">(optional)</option>
-                  {fields.map((f) => (
-                    <option key={f.id} value={f.name}>
-                      {f.name} · {f.ttype}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-sm">
-                <span className="text-muted">default_scale</span>
-                <select
-                  value={ganttDefaultScale}
-                  onChange={(e) => setGanttDefaultScale(e.target.value)}
-                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 text-sm"
-                  data-testid="designer-gantt-default-scale"
-                >
-                  <option value="">(optional)</option>
-                  <option value="day">day</option>
-                  <option value="week">week</option>
-                  <option value="month">month</option>
-                  <option value="year">year</option>
-                </select>
-              </label>
-              <label className="text-sm">
-                <span className="text-muted">dependency_field</span>
-                <select
-                  value={ganttDependencyField}
-                  onChange={(e) => setGanttDependencyField(e.target.value)}
-                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
-                  data-testid="designer-gantt-dependency"
-                >
-                  <option value="">(optional)</option>
-                  {fields
-                    .filter((f) => f.ttype === "many2many" || f.ttype === "one2many")
-                    .map((f) => (
-                      <option key={f.id} value={f.name}>
-                        {f.name} · {f.ttype}
-                      </option>
-                    ))}
-                </select>
-              </label>
-            </>
-          )}
-          {viewType === "cohort" && (
-            <>
-              <label className="text-sm">
-                <span className="text-muted">date_start</span>
-                <select
-                  value={cohortDateStart}
-                  onChange={(e) => setCohortDateStart(e.target.value)}
-                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
-                >
-                  <option value="">(required)</option>
-                  {dateFieldsForSelect.map((f) => (
-                    <option key={f.id} value={f.name}>
-                      {f.name} · {f.ttype}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-sm">
-                <span className="text-muted">date_stop</span>
-                <select
-                  value={cohortDateStop}
-                  onChange={(e) => setCohortDateStop(e.target.value)}
-                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
-                >
-                  <option value="">(optional)</option>
-                  {dateFieldsForSelect.map((f) => (
-                    <option key={f.id} value={f.name}>
-                      {f.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-sm">
-                <span className="text-muted">interval</span>
-                <select
-                  value={cohortInterval}
-                  onChange={(e) =>
-                    setCohortInterval(
-                      e.target.value as "day" | "week" | "month" | "year" | "",
-                    )
-                  }
-                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 text-sm"
-                >
-                  <option value="day">day</option>
-                  <option value="week">week</option>
-                  <option value="month">month</option>
-                  <option value="year">year</option>
-                </select>
-              </label>
-              <label className="text-sm">
-                <span className="text-muted">mode</span>
-                <select
-                  value={cohortMode}
-                  onChange={(e) =>
-                    setCohortMode(e.target.value as "retention" | "churn" | "")
-                  }
-                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 text-sm"
-                  data-testid="designer-cohort-mode"
-                >
-                  <option value="retention">retention</option>
-                  <option value="churn">churn</option>
-                </select>
-              </label>
-              <label className="text-sm">
-                <span className="text-muted">timeline</span>
-                <select
-                  value={cohortTimeline}
-                  onChange={(e) =>
-                    setCohortTimeline(e.target.value as "forward" | "backward" | "")
-                  }
-                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 text-sm"
-                >
-                  <option value="">(default)</option>
-                  <option value="forward">forward</option>
-                  <option value="backward">backward</option>
-                </select>
-              </label>
-              <label className="text-sm">
-                <span className="text-muted">measure</span>
-                <select
-                  value={cohortMeasure}
-                  onChange={(e) => setCohortMeasure(e.target.value)}
-                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
-                >
-                  <option value="">(optional)</option>
-                  {fields.map((f) => (
-                    <option key={f.id} value={f.name}>
-                      {f.name} · {f.ttype}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </>
-          )}
-          {viewType === "grid" && (
-            <>
-              <label className="text-sm">
-                <span className="text-muted">row_field</span>
-                <select
-                  value={gridRowField}
-                  onChange={(e) => setGridRowField(e.target.value)}
-                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
-                  data-testid="designer-grid-row-field"
-                >
-                  <option value="">(optional)</option>
-                  {fields.map((f) => (
-                    <option key={f.id} value={f.name}>
-                      {f.name} · {f.ttype}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-sm">
-                <span className="text-muted">col_field</span>
-                <select
-                  value={gridColField}
-                  onChange={(e) => setGridColField(e.target.value)}
-                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
-                  data-testid="designer-grid-col-field"
-                >
-                  <option value="">(optional)</option>
-                  {dateFieldsForSelect.map((f) => (
-                    <option key={f.id} value={f.name}>
-                      {f.name} · {f.ttype}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-sm">
-                <span className="text-muted">measure</span>
-                <select
-                  value={gridMeasure}
-                  onChange={(e) => setGridMeasure(e.target.value)}
-                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
-                  data-testid="designer-grid-measure"
-                >
-                  <option value="">(optional)</option>
-                  {fields
-                    .filter(
-                      (f) =>
-                        f.ttype === "integer" ||
-                        f.ttype === "float" ||
-                        f.ttype === "monetary",
-                    )
-                    .map((f) => (
-                      <option key={f.id} value={f.name}>
-                        {f.name} · {f.ttype}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <label className="text-sm">
-                <span className="text-muted">adjustment</span>
-                <select
-                  value={gridAdjustment}
-                  onChange={(e) => setGridAdjustment(e.target.value)}
-                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 text-sm"
-                  data-testid="designer-grid-adjustment"
-                >
-                  <option value="">(optional)</option>
-                  <option value="increment">increment</option>
-                  <option value="value">value</option>
-                </select>
-              </label>
-              <label className="text-sm">
-                <span className="text-muted">date_start</span>
-                <select
-                  value={gridDateStart}
-                  onChange={(e) => setGridDateStart(e.target.value)}
-                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
-                >
-                  <option value="">(optional)</option>
-                  {dateFieldsForSelect.map((f) => (
-                    <option key={f.id} value={f.name}>
-                      {f.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-sm">
-                <span className="text-muted">date_stop</span>
-                <select
-                  value={gridDateStop}
-                  onChange={(e) => setGridDateStop(e.target.value)}
-                  className="mt-1 block border border-border-subtle bg-surface px-3 py-2 font-mono text-sm"
-                >
-                  <option value="">(optional)</option>
-                  {dateFieldsForSelect.map((f) => (
-                    <option key={f.id} value={f.name}>
-                      {f.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </>
-          )}
-              </div>
-            </details>
-          )}
-          <label className="text-sm">
-            <span className="text-muted">Title</span>
-            <input
-              value={title}
-              onChange={(e) => {
-                pendingCoalesceRef.current = "title";
-                pendingHistoryLabelRef.current = "Edit title";
-                setTitle(e.target.value);
-              }}
-              className="mt-1 block w-48 border border-border-subtle bg-surface px-3 py-2"
-            />
-          </label>
-          <label className="text-sm">
-            <span className="text-muted">Save strategy</span>
-            <select
-              value={saveStrategy}
-              onChange={(e) => setSaveStrategy(e.target.value as "inherit" | "overwrite")}
-              className="mt-1 block w-40 border border-border-subtle bg-surface px-2 py-2 text-sm"
-            >
-              <option value="inherit">Inherit (safe)</option>
-              <option value="overwrite">Overwrite primary</option>
-            </select>
-          </label>
-          <button
-            type="button"
-            disabled={busy || !model}
-            onClick={() => void onSave()}
-            className="h-10 bg-accent px-5 text-sm font-semibold text-on-accent disabled:opacity-60"
-          >
-            {busy ? "Saving…" : archOverride ? "Save arch override" : "Save to Odoo"}
-          </button>
-          {!model.startsWith("x_") && viewType === "form" ? (
-            <>
-              <button
-                type="button"
-                disabled={busy || !model}
-                onClick={() => void onRepairDuplicateChrome()}
-                className="h-10 border border-border-subtle px-4 text-sm text-muted disabled:opacity-40"
-                data-testid="designer-fix-duplicate-chrome"
-                title="Rewrites account.move.designer.form (etc.) from full form replace to additive x_* only"
-              >
-                Fix duplicate chrome
-              </button>
-              <button
-                type="button"
-                disabled={busy || !model}
-                onClick={() => setConfirmUnlinkInheritOpen(true)}
-                className="h-10 border border-danger/50 px-4 text-sm text-danger disabled:opacity-40"
-                data-testid="designer-unlink-inherit"
-                title="Deletes {model}.designer.form inherit — restores stock toolbar/tabs"
-              >
-                Unlink designer inherit
-              </button>
-            </>
-          ) : null}
-          <button
-            type="button"
-            disabled={busy || !model}
-            onClick={async () => {
-              setBusy(true); setError(null);
-              try {
-                const out = await api.polishForm(connectionId, model, title);
-                setNotice(out.applied ? `Polished form for ${model}` : `Polish skipped: ${JSON.stringify(out.detail)}`);
-                await loadExistingView();
-              } catch (err) {
-                setError(err instanceof Error ? err.message : "Polish failed");
-              } finally { setBusy(false); }
-            }}
-            className="h-10 border border-border-subtle px-4 text-sm text-muted disabled:opacity-40"
-          >
-            Polish form layout
-          </button>
-        </Card>
+        <DesignerStudioToolbar
+          model={model}
+          setModel={setModel}
+          ensureFieldsForModel={ensureFieldsForModel}
+          loadModelFields={loadModelFields}
+          loadExistingView={loadExistingView}
+          viewType={viewType}
+          setViewType={setViewType}
+          title={title}
+          setTitle={setTitle}
+          busy={busy}
+          onSave={() => void onSave()}
+          saveStrategy={saveStrategy}
+          setSaveStrategy={setSaveStrategy}
+          setConfirmUnlinkInheritOpen={setConfirmUnlinkInheritOpen}
+          loadedViewId={loadedViewId}
+          connection={connection}
+          connectionId={connectionId}
+          api={api}
+          setNotice={setNotice}
+          setError={setError}
+          setBusy={setBusy}
+          setSelected={setSelected}
+          kanbanGroupBy={kanbanGroupBy}
+          setKanbanGroupBy={setKanbanGroupBy}
+          fields={fields}
+          dateFieldsForSelect={dateFieldsForSelect}
+          calendarDateStart={calendarDateStart}
+          setCalendarDateStart={setCalendarDateStart}
+          calendarDateStop={calendarDateStop}
+          setCalendarDateStop={setCalendarDateStop}
+          calendarColor={calendarColor}
+          setCalendarColor={setCalendarColor}
+          calendarMode={calendarMode}
+          setCalendarMode={setCalendarMode}
+          viewSample={viewSample}
+          setViewSample={setViewSample}
+          graphType={graphType}
+          setGraphType={setGraphType}
+          mapResPartner={mapResPartner}
+          setMapResPartner={setMapResPartner}
+          mapRouting={mapRouting}
+          setMapRouting={setMapRouting}
+          ganttDateStart={ganttDateStart}
+          setGanttDateStart={setGanttDateStart}
+          ganttDateStop={ganttDateStop}
+          setGanttDateStop={setGanttDateStop}
+          ganttGroupBy={ganttGroupBy}
+          setGanttGroupBy={setGanttGroupBy}
+          ganttColor={ganttColor}
+          setGanttColor={setGanttColor}
+          ganttProgress={ganttProgress}
+          setGanttProgress={setGanttProgress}
+          ganttDefaultScale={ganttDefaultScale}
+          setGanttDefaultScale={setGanttDefaultScale}
+          ganttDependencyField={ganttDependencyField}
+          setGanttDependencyField={setGanttDependencyField}
+          cohortDateStart={cohortDateStart}
+          setCohortDateStart={setCohortDateStart}
+          cohortDateStop={cohortDateStop}
+          setCohortDateStop={setCohortDateStop}
+          cohortInterval={cohortInterval}
+          setCohortInterval={setCohortInterval}
+          cohortMode={cohortMode}
+          setCohortMode={setCohortMode}
+          cohortTimeline={cohortTimeline}
+          setCohortTimeline={setCohortTimeline}
+          cohortMeasure={cohortMeasure}
+          setCohortMeasure={setCohortMeasure}
+          gridRowField={gridRowField}
+          setGridRowField={setGridRowField}
+          gridColField={gridColField}
+          setGridColField={setGridColField}
+          gridMeasure={gridMeasure}
+          setGridMeasure={setGridMeasure}
+          gridAdjustment={gridAdjustment}
+          setGridAdjustment={setGridAdjustment}
+          gridDateStart={gridDateStart}
+          setGridDateStart={setGridDateStart}
+          gridDateStop={gridDateStop}
+          setGridDateStop={setGridDateStop}
+          fieldsModel={fieldsModel}
+          archOverride={archOverride}
+          pendingCoalesceRef={pendingCoalesceRef}
+          pendingHistoryLabelRef={pendingHistoryLabelRef}
+          onRepairDuplicateChrome={onRepairDuplicateChrome}
+        />
       }
       canvas={
         <DesignerLiveCanvas
@@ -3887,161 +1125,46 @@ export default function DesignerPage() {
         />
       }
       rail={
-        <DesignerToolsRail
-          value={railTab}
-          onValueChange={setRailTab}
-          tabs={[
-            {
-              id: "fields",
-              label: "Fields",
-              content: (
-                <div className="space-y-3">
-                  <FieldPalette
-                    fields={fields.map((f) => ({
-                      name: f.name,
-                      ttype: f.ttype,
-                      label: f.field_description || undefined,
-                    }))}
-                    onDragStart={(name) => setDragField(name)}
-                  />
-                  {(viewType === "form" || viewType === "kanban") && (
-                    <NicheWidgetPalette
-                      widgets={nicheWidgets}
-                      colorPalette={colorPalette}
-                      onPick={(w) => void addNicheWidget(w)}
-                    />
-                  )}
-                </div>
-              ),
-            },
-            {
-              id: "properties",
-              label: "Properties",
-              content: (
-                <div data-testid="designer-props-rail">
-                  {fieldInspector}
-                </div>
-              ),
-            },
-            {
-              id: "structure",
-              label: "Structure",
-              content: (
-                <div className="space-y-3 text-sm">
-                  <p className="text-xs text-muted">
-                    Add groups and pages here. Drag fields onto the layout canvas — not gray
-                    boxes. Power layout controls stay in Advanced.
-                  </p>
-                  {viewType === "form" ? (
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={addGroup}
-                        className="rounded-md border border-border-subtle px-3 py-1.5 text-xs text-ink"
-                      >
-                        + Group
-                      </button>
-                      <button
-                        type="button"
-                        onClick={addNotebook}
-                        className="rounded-md border border-border-subtle px-3 py-1.5 text-xs text-ink"
-                      >
-                        + Notebook
-                      </button>
-                    </div>
-                  ) : null}
-                  <ul className="space-y-1 text-xs text-muted">
-                    {formChildren.map((child) => (
-                      <li key={child.id} className="rounded border border-border-subtle px-2 py-1">
-                        {child.kind === "group"
-                          ? `Group · ${child.string || "untitled"}`
-                          : `Notebook · ${child.pages.length} pages`}
-                      </li>
-                    ))}
-                    {formChildren.length === 0 ? (
-                      <li>No groups yet. Add a group, then drop fields on the canvas.</li>
-                    ) : null}
-                  </ul>
-                </div>
-              ),
-            },
-            {
-              id: "overlay",
-              label: "Overlay",
-              content: proxyPreviewUrl ? (
-                <OverlayEditor
-                  iframeRef={previewIframeRef}
-                  connectionId={connectionId}
-                  model={model}
-                  viewType={viewType}
-                  fields={fields}
-                  embedded
-                  onSaved={({ snapshotId, viewId }) => {
-                    if (snapshotId) setLastSnapshotId(snapshotId);
-                    setPreviewKey((k) => k + 1);
-                    setNotice(
-                      viewId
-                        ? `Overlay saved inherit view #${viewId}. Preview reloaded.`
-                        : "Overlay saved — preview reloaded.",
-                    );
-                    void refreshSnapshots();
-                  }}
-                />
-              ) : (
-                <p className="text-xs text-muted">
-                  Load a model to edit the live preview with overlay operations.
-                </p>
-              ),
-            },
-            {
-              id: "advanced",
-              label: "Advanced",
-              content: (
-                <div className="space-y-3" data-testid="designer-advanced-rail">
-                  <p className="text-xs text-muted">
-                    XPath inherit and arch override. Default Save is inherit. Completeness ≠ Cert ≠
-                    Autopilot.
-                  </p>
-                  <XPathInheritPanel
-                    expr={xpathExpr}
-                    position={xpathPosition}
-                    bodyXml={xpathBody}
-                    previewArch={xpathArchPreview}
-                    issues={xpathIssues}
-                    suggestedExpr={xpathSuggested}
-                    defaultInjectExpr={xpathDefaultInject}
-                    matchCount={xpathMatchCount}
-                    blocking={xpathBlocking}
-                    busy={busy}
-                    model={model}
-                    hasOverride={Boolean(archOverride)}
-                    onExprChange={(value) => {
-                      setXpathExpr(value);
-                      setXpathBlocking(false);
-                    }}
-                    onPositionChange={setXpathPosition}
-                    onBodyChange={setXpathBody}
-                    onPreview={() => void runXpathPreview()}
-                    onUseNamedLocator={(value) => {
-                      setXpathExpr(value);
-                      setXpathBlocking(false);
-                      setNotice("Switched to a named locator. Preview again before save.");
-                    }}
-                    onUseAsOverride={() => {
-                      setArch(xpathArchPreview);
-                      setArchOverride(xpathArchPreview);
-                      setNotice("Arch override set from XPath preview. Save will use inherit arch.");
-                    }}
-                    onSave={() => void onSaveXpathInherit()}
-                    onClearOverride={() => {
-                      setArchOverride(null);
-                      setNotice("Cleared arch override — Save uses canvas spec again.");
-                    }}
-                  />
-                </div>
-              ),
-            },
-          ]}
+        <DesignerStudioRail
+          railTab={railTab}
+          setRailTab={setRailTab}
+          viewType={viewType}
+          fields={fields}
+          setDragField={setDragField}
+          nicheWidgets={nicheWidgets}
+          colorPalette={colorPalette}
+          addNicheWidget={addNicheWidget}
+          fieldInspector={fieldInspector}
+          formChildren={formChildren}
+          addGroup={addGroup}
+          addNotebook={addNotebook}
+          proxyPreviewUrl={proxyPreviewUrl}
+          previewIframeRef={previewIframeRef}
+          connectionId={connectionId}
+          model={model}
+          setLastSnapshotId={setLastSnapshotId}
+          setPreviewKey={setPreviewKey}
+          setNotice={setNotice}
+          refreshSnapshots={refreshSnapshots}
+          xpathExpr={xpathExpr}
+          xpathPosition={xpathPosition}
+          xpathBody={xpathBody}
+          xpathArchPreview={xpathArchPreview}
+          xpathIssues={xpathIssues}
+          xpathSuggested={xpathSuggested}
+          xpathDefaultInject={xpathDefaultInject}
+          xpathMatchCount={xpathMatchCount}
+          xpathBlocking={xpathBlocking}
+          busy={busy}
+          archOverride={archOverride}
+          setXpathExpr={setXpathExpr}
+          setXpathBlocking={setXpathBlocking}
+          setXpathPosition={setXpathPosition}
+          setXpathBody={setXpathBody}
+          runXpathPreview={runXpathPreview}
+          setArch={setArch}
+          setArchOverride={setArchOverride}
+          onSaveXpathInherit={onSaveXpathInherit}
         />
       }
       extras={
@@ -4083,1810 +1206,215 @@ export default function DesignerPage() {
           </details>
         </Callout>
 
-        {(viewType === "calendar" ||
-          viewType === "graph" ||
-          viewType === "pivot" ||
-          viewType === "map" ||
-          viewType === "activity" ||
-          viewType === "gantt" ||
-          viewType === "cohort" ||
-          viewType === "grid") &&
-          model && (
-          <div className="mt-6 border border-border-subtle bg-surface-muted p-4">
-            <h2 className="mb-2 text-sm font-semibold text-ink">
-              {viewType} view fields
-            </h2>
-            <p className="mb-3 text-xs text-muted">
-              Arch preview updates from these fields. Drag from the palette into
-              form/list is unchanged — use the buttons below for reporting axes.
-            </p>
-            {viewType === "map" && (
-              <p className="mb-3 border border-warning/40 bg-warning-subtle px-3 py-2 text-xs text-warning">
-                Map views need a <code className="text-muted">res.partner</code>{" "}
-                many2one (<code className="text-muted">res_partner</code> attr).
-                Without a partner field, Odoo will not render the map.
-              </p>
-            )}
-            {viewType === "gantt" && (
-              <p className="mb-3 border border-warning/40 bg-warning-subtle px-3 py-2 text-xs text-warning">
-                Gantt arch is Community-safe metadata, but the client often needs{" "}
-                <code className="text-muted">web_gantt</code> /{" "}
-                <code className="text-muted">project</code> (Enterprise or installed
-                modules). We do not claim EE live — save may succeed while Open in Odoo
-                shows nothing without the module.
-              </p>
-            )}
-            {viewType === "cohort" && (
-              <p className="mb-3 border border-warning/40 bg-warning-subtle px-3 py-2 text-xs text-warning">
-                Cohort views are module/version gated. Arch can be saved via public RPC;
-                the UI may be unavailable without the cohort client module. Not an EE
-                live claim.
-              </p>
-            )}
-            {viewType === "grid" && (
-              <p className="mb-3 border border-warning/40 bg-warning-subtle px-3 py-2 text-xs text-warning">
-                Grid/planning views are Enterprise-gated. Arch emission is supported; live
-                Open in Odoo requires EE modules on the instance.
-              </p>
-            )}
-            {viewType === "calendar" && (
-              <ul className="space-y-1 font-mono text-sm text-muted">
-                {calendarFields.map((f) => (
-                  <li key={f.id} className="flex items-center justify-between gap-2">
-                    <span>{f.name}</span>
-                    <button
-                      type="button"
-                      className="text-xs text-danger"
-                      onClick={() =>
-                        setCalendarFields((cols) => cols.filter((c) => c.id !== f.id))
-                      }
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-                {!calendarFields.length && (
-                  <li className="text-muted">No display fields yet</li>
-                )}
-              </ul>
-            )}
-            {(viewType === "map" ||
-              viewType === "activity" ||
-              viewType === "gantt" ||
-              viewType === "grid") && (
-              <ul className="space-y-1 font-mono text-sm text-muted">
-                {(viewType === "map"
-                  ? mapFields
-                  : viewType === "activity"
-                    ? activityFields
-                    : viewType === "gantt"
-                      ? ganttFields
-                      : gridFields
-                ).map((f) => (
-                  <li key={f.id} className="flex items-center justify-between gap-2">
-                    <span>{f.name}</span>
-                    <button
-                      type="button"
-                      className="text-xs text-danger"
-                      onClick={() => {
-                        if (viewType === "map") {
-                          setMapFields((cols) => cols.filter((c) => c.id !== f.id));
-                        } else if (viewType === "activity") {
-                          setActivityFields((cols) => cols.filter((c) => c.id !== f.id));
-                        } else if (viewType === "gantt") {
-                          setGanttFields((cols) => cols.filter((c) => c.id !== f.id));
-                        } else {
-                          setGridFields((cols) => cols.filter((c) => c.id !== f.id));
-                        }
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-                {(viewType === "map"
-                  ? mapFields
-                  : viewType === "activity"
-                    ? activityFields
-                    : viewType === "gantt"
-                      ? ganttFields
-                      : gridFields
-                ).length === 0 && (
-                  <li className="text-muted">No display fields yet</li>
-                )}
-              </ul>
-            )}
-            {viewType === "cohort" && (
-              <p className="text-xs text-muted">
-                Cohort uses date_start / measure from the toolbar — no field list required.
-              </p>
-            )}
-            {viewType === "graph" && (
-              <ul className="space-y-2 font-mono text-sm text-muted">
-                {graphFields.map((f) => (
-                  <li key={f.id} className="flex flex-wrap items-center gap-2">
-                    <span className="min-w-[8rem]">{f.name}</span>
-                    <select
-                      value={f.type ?? ""}
-                      onChange={(e) => {
-                        const next = e.target.value as "" | "row" | "measure";
-                        setGraphFields((cols) =>
-                          cols.map((c) =>
-                            c.id === f.id
-                              ? {
-                                  ...c,
-                                  type: next === "" ? undefined : next,
-                                }
-                              : c,
-                          ),
-                        );
-                      }}
-                      className="border border-border-subtle bg-surface px-2 py-1 text-xs"
-                    >
-                      <option value="">(role)</option>
-                      <option value="row">row</option>
-                      <option value="measure">measure</option>
-                    </select>
-                    <button
-                      type="button"
-                      className="text-xs text-danger"
-                      onClick={() =>
-                        setGraphFields((cols) => cols.filter((c) => c.id !== f.id))
-                      }
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {viewType === "pivot" && (
-              <ul className="space-y-2 font-mono text-sm text-muted">
-                {pivotFields.map((f) => (
-                  <li key={f.id} className="flex flex-wrap items-center gap-2">
-                    <span className="min-w-[8rem]">{f.name}</span>
-                    <select
-                      value={f.type ?? ""}
-                      onChange={(e) => {
-                        const next = e.target.value as "" | "row" | "col" | "measure";
-                        setPivotFields((cols) =>
-                          cols.map((c) =>
-                            c.id === f.id
-                              ? {
-                                  ...c,
-                                  type: next === "" ? undefined : next,
-                                }
-                              : c,
-                          ),
-                        );
-                      }}
-                      className="border border-border-subtle bg-surface px-2 py-1 text-xs"
-                    >
-                      <option value="">(role)</option>
-                      <option value="row">row</option>
-                      <option value="col">col</option>
-                      <option value="measure">measure</option>
-                    </select>
-                    {f.type === "col" && (
-                      <input
-                        value={f.interval ?? ""}
-                        placeholder="interval"
-                        onChange={(e) =>
-                          setPivotFields((cols) =>
-                            cols.map((c) =>
-                              c.id === f.id
-                                ? { ...c, interval: e.target.value || undefined }
-                                : c,
-                            ),
-                          )
-                        }
-                        className="w-24 border border-border-subtle bg-surface px-2 py-1 text-xs"
-                      />
-                    )}
-                    <button
-                      type="button"
-                      className="text-xs text-danger"
-                      onClick={() =>
-                        setPivotFields((cols) => cols.filter((c) => c.id !== f.id))
-                      }
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {viewType !== "cohort" && (
-            <div className="mt-3 space-y-2">
-              <p className="text-[11px] text-muted">
-                Click <span className="font-mono text-muted">+ field</span> to include an
-                existing model field. Custom <span className="font-mono">x_*</span> fields are
-                listed first (do not use Create field — that creates new columns).
-              </p>
-              <div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto">
-              {[...fields]
-                .sort((a, b) => {
-                  const rank = (n: string) =>
-                    n.startsWith("x_") ? 0 : n.startsWith("activity_") ? 2 : 1;
-                  const d = rank(a.name) - rank(b.name);
-                  return d !== 0 ? d : a.name.localeCompare(b.name);
-                })
-                .map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  className="border border-border-subtle px-2 py-0.5 font-mono text-[11px] text-muted"
-                  onClick={() => {
-                    const nextField: DesignerField = {
-                      kind: "field",
-                      id: uid("f"),
-                      name: f.name,
-                      string: f.field_description,
-                    };
-                    if (viewType === "calendar") {
-                      setCalendarFields((cols) =>
-                        cols.some((c) => c.name === f.name) ? cols : [...cols, nextField],
-                      );
-                    } else if (viewType === "map") {
-                      setMapFields((cols) =>
-                        cols.some((c) => c.name === f.name) ? cols : [...cols, nextField],
-                      );
-                    } else if (viewType === "activity") {
-                      setActivityFields((cols) =>
-                        cols.some((c) => c.name === f.name) ? cols : [...cols, nextField],
-                      );
-                    } else if (viewType === "gantt") {
-                      setGanttFields((cols) =>
-                        cols.some((c) => c.name === f.name) ? cols : [...cols, nextField],
-                      );
-                    } else if (viewType === "grid") {
-                      setGridFields((cols) =>
-                        cols.some((c) => c.name === f.name) ? cols : [...cols, nextField],
-                      );
-                    } else if (viewType === "graph") {
-                      setGraphFields((cols) =>
-                        cols.some((c) => c.name === f.name)
-                          ? cols
-                          : [
-                              ...cols,
-                              {
-                                id: uid("af"),
-                                name: f.name,
-                                type: "measure",
-                                string: f.field_description,
-                              },
-                            ],
-                      );
-                    } else {
-                      setPivotFields((cols) =>
-                        cols.some((c) => c.name === f.name)
-                          ? cols
-                          : [
-                              ...cols,
-                              {
-                                id: uid("af"),
-                                name: f.name,
-                                type: "row",
-                                string: f.field_description,
-                              },
-                            ],
-                      );
-                    }
-                  }}
-                >
-                  + {f.name}
-                </button>
-              ))}
-              </div>
-            </div>
-            )}
-          </div>
-        )}
+        <DesignerReportingFieldsPanel
+          viewType={viewType}
+          model={model}
+          fields={fields}
+          calendarFields={calendarFields}
+          setCalendarFields={setCalendarFields}
+          mapFields={mapFields}
+          setMapFields={setMapFields}
+          activityFields={activityFields}
+          setActivityFields={setActivityFields}
+          ganttFields={ganttFields}
+          setGanttFields={setGanttFields}
+          gridFields={gridFields}
+          setGridFields={setGridFields}
+          graphFields={graphFields}
+          setGraphFields={setGraphFields}
+          pivotFields={pivotFields}
+          setPivotFields={setPivotFields}
+        />
+
 
         {bindMode !== "closed" && (
-          <div className="mt-4 border border-border-subtle/40 bg-surface-muted p-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-muted">
-                Bind {bindPlacement} button to a real Odoo action
-              </p>
-              <div className="flex flex-wrap gap-2 text-xs">
-                {(
-                  [
-                    ["create_update", "Update field"],
-                    ["create_related", "Open related"],
-                    ["create_activity", "Next activity"],
-                    ["create_mail", "Send mail"],
-                    ["create_smart", "Smart button"],
-                    ["bind_existing", "Existing action"],
-                  ] as const
-                ).map(([mode, label]) => {
-                  const allowed = bindModeSupported(connection, mode);
-                  const reason = bindModeUnsupportedReason(connection, mode);
-                  return (
-                    <button
-                      key={mode}
-                      type="button"
-                      disabled={!allowed}
-                      title={reason ?? undefined}
-                      className={
-                        !allowed
-                          ? "cursor-not-allowed text-muted opacity-50"
-                          : bindMode === mode
-                            ? "text-muted"
-                            : "text-muted"
-                      }
-                      onClick={() => {
-                        if (!allowed) return;
-                        openBindDialog(bindPlacement, mode);
-                      }}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-              {!bindModeSupported(connection, bindMode) && (
-                <p className="mt-2 w-full text-[11px] text-warning">
-                  {bindModeUnsupportedReason(connection, bindMode)}
-                </p>
-              )}
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="text-xs text-muted">
-                Button label
-                <input
-                  value={bindLabel}
-                  onChange={(e) => setBindLabel(e.target.value)}
-                  className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
-                />
-              </label>
-              {bindMode === "create_update" && (
-                <>
-                  <label className="text-xs text-muted">
-                    Field to update
-                    <select
-                      value={bindFieldName}
-                      onChange={(e) => {
-                        const name = e.target.value;
-                        setBindFieldName(name);
-                        const meta = fields.find((f) => f.name === name);
-                        const opts = parseSelectionOptions(meta?.selection);
-                        if (opts[0]) setBindValue(opts[0].value);
-                      }}
-                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm"
-                    >
-                      <option value="">Select field…</option>
-                      {fields
-                        .filter((f) =>
-                          ["char", "text", "selection", "boolean", "integer", "float"].includes(
-                            f.ttype,
-                          ),
-                        )
-                        .map((f) => (
-                          <option key={f.id} value={f.name}>
-                            {f.name} · {f.ttype}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                  <label className="text-xs text-muted">
-                    New value
-                    {(() => {
-                      const opts = parseSelectionOptions(
-                        fields.find((f) => f.name === bindFieldName)?.selection,
-                      );
-                      if (opts.length) {
-                        return (
-                          <select
-                            value={bindValue}
-                            onChange={(e) => setBindValue(e.target.value)}
-                            className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
-                          >
-                            {opts.map((o) => (
-                              <option key={o.value} value={o.value}>
-                                {o.label} ({o.value})
-                              </option>
-                            ))}
-                          </select>
-                        );
-                      }
-                      return (
-                        <input
-                          value={bindValue}
-                          onChange={(e) => setBindValue(e.target.value)}
-                          className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
-                        />
-                      );
-                    })()}
-                  </label>
-                </>
-              )}
-              {(bindMode === "create_related" || bindMode === "create_smart") && (
-                <>
-                  <label className="text-xs text-muted">
-                    Target model
-                    <input
-                      value={bindTargetModel}
-                      onChange={(e) => setBindTargetModel(e.target.value)}
-                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm"
-                    />
-                  </label>
-                  <label className="text-xs text-muted">
-                    Relation field on target
-                    <input
-                      value={bindRelationField}
-                      onChange={(e) => setBindRelationField(e.target.value)}
-                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm"
-                    />
-                  </label>
-                  {(bindPlacement === "button_box" || bindMode === "create_smart") && (
-                    <label className="text-xs text-muted">
-                      Icon (Font Awesome)
-                      <input
-                        value={bindIcon}
-                        onChange={(e) => setBindIcon(e.target.value)}
-                        className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm"
-                      />
-                    </label>
-                  )}
-                </>
-              )}
-              {bindMode === "create_smart" && (
-                <>
-                  <label className="flex items-center gap-2 text-xs text-muted sm:col-span-2">
-                    <input
-                      type="checkbox"
-                      checked={bindCreateCountField}
-                      onChange={(e) => setBindCreateCountField(e.target.checked)}
-                    />
-                    Create computed count field (advanced — confirm required)
-                  </label>
-                  {bindCreateCountField && (
-                    <>
-                      <label className="text-xs text-muted">
-                        One2many field on source
-                        <input
-                          value={bindOne2manyField}
-                          onChange={(e) => setBindOne2manyField(e.target.value)}
-                          placeholder="x_loan_ids"
-                          className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm"
-                        />
-                      </label>
-                      <label className="text-xs text-muted">
-                        Count field name (optional)
-                        <input
-                          value={bindCountFieldName}
-                          onChange={(e) => setBindCountFieldName(e.target.value)}
-                          placeholder="x_loan_count"
-                          className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm"
-                        />
-                      </label>
-                      <label className="text-xs text-muted sm:col-span-2">
-                        Confirm phrase
-                        <input
-                          value={bindSmartConfirmPhrase}
-                          onChange={(e) => setBindSmartConfirmPhrase(e.target.value)}
-                          placeholder={CONFIRM_PHRASE}
-                          className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
-                        />
-                      </label>
-                    </>
-                  )}
-                </>
-              )}
-              {bindMode === "create_activity" && (
-                <>
-                  <label className="text-xs text-muted">
-                    Activity type
-                    <select
-                      value={bindActivityTypeId === "" ? "" : String(bindActivityTypeId)}
-                      onChange={(e) =>
-                        setBindActivityTypeId(e.target.value ? Number(e.target.value) : "")
-                      }
-                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
-                    >
-                      <option value="">Select…</option>
-                      {activityTypes.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="text-xs text-muted">
-                    Summary
-                    <input
-                      value={bindActivitySummary}
-                      onChange={(e) => setBindActivitySummary(e.target.value)}
-                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
-                    />
-                  </label>
-                  <label className="text-xs text-muted sm:col-span-2">
-                    Note (optional)
-                    <input
-                      value={bindActivityNote}
-                      onChange={(e) => setBindActivityNote(e.target.value)}
-                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
-                    />
-                  </label>
-                </>
-              )}
-              {bindMode === "create_mail" && (
-                <>
-                  <label className="text-xs text-muted">
-                    Mail template (optional)
-                    <select
-                      value={bindMailTemplateId === "" ? "" : String(bindMailTemplateId)}
-                      onChange={(e) =>
-                        setBindMailTemplateId(e.target.value ? Number(e.target.value) : "")
-                      }
-                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
-                    >
-                      <option value="">None</option>
-                      {mailTemplates.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          #{t.id} · {t.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="text-xs text-muted">
-                    Method
-                    <select
-                      value={bindMailMethod}
-                      onChange={(e) =>
-                        setBindMailMethod(e.target.value as "email" | "comment" | "note")
-                      }
-                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
-                    >
-                      <option value="email">email</option>
-                      <option value="comment">comment</option>
-                      <option value="note">note</option>
-                    </select>
-                  </label>
-                  <label className="text-xs text-muted">
-                    Subject
-                    <input
-                      value={bindMailSubject}
-                      onChange={(e) => setBindMailSubject(e.target.value)}
-                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
-                    />
-                  </label>
-                  <label className="text-xs text-muted">
-                    Email to
-                    <input
-                      value={bindMailEmailTo}
-                      onChange={(e) => setBindMailEmailTo(e.target.value)}
-                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
-                    />
-                  </label>
-                  <label className="text-xs text-muted sm:col-span-2">
-                    Body HTML
-                    <textarea
-                      value={bindMailBody}
-                      onChange={(e) => setBindMailBody(e.target.value)}
-                      rows={3}
-                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-xs"
-                    />
-                  </label>
-                </>
-              )}
-              {bindMode === "bind_existing" && (
-                <label className="text-xs text-muted sm:col-span-2">
-                  Action
-                  <select
-                    value={selectedActionId === "" ? "" : String(selectedActionId)}
-                    onChange={(e) =>
-                      setSelectedActionId(e.target.value ? Number(e.target.value) : "")
-                    }
-                    className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-sm"
-                  >
-                    <option value="">Select…</option>
-                    {bindableActions.map((a) => (
-                      <option key={`${a.action_type}-${a.id}`} value={a.id}>
-                        #{a.id} · {a.action_type} · {a.name}
-                        {a.detail ? ` (${a.detail})` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-            </div>
-            <p className="mt-2 text-xs text-muted">
-              Uses type=&quot;action&quot; + action id. Python methods (type=object) need Option A
-              modules. Code/webhook server actions stay blocked here. Form-bound mail/activity
-              live here; model automations live under Automations.
-            </p>
-            <div className="mt-3 flex gap-2">
-              <button
-                type="button"
-                disabled={busy || !bindModeSupported(connection, bindMode)}
-                title={
-                  bindModeUnsupportedReason(connection, bindMode) ?? undefined
-                }
-                onClick={() =>
-                  void submitBindDialog(
-                    bindMode === "create_smart" && bindCreateCountField
-                      ? {
-                          confirm_advanced: true,
-                          confirm_phrase: bindSmartConfirmPhrase || CONFIRM_PHRASE,
-                        }
-                      : undefined,
-                  )
-                }
-                className="border border-border-subtle px-3 py-1.5 text-sm text-muted disabled:opacity-50"
-              >
-                Create &amp; bind
-              </button>
-              <button
-                type="button"
-                onClick={() => setBindMode("closed")}
-                className="border border-border-subtle px-3 py-1.5 text-sm text-muted"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
+          <DesignerBindPanel
+            connection={connection}
+            fields={fields}
+            bindMode={bindMode}
+            bindPlacement={bindPlacement}
+            bindLabel={bindLabel}
+            setBindLabel={setBindLabel}
+            bindFieldName={bindFieldName}
+            setBindFieldName={setBindFieldName}
+            bindValue={bindValue}
+            setBindValue={setBindValue}
+            bindTargetModel={bindTargetModel}
+            setBindTargetModel={setBindTargetModel}
+            bindRelationField={bindRelationField}
+            setBindRelationField={setBindRelationField}
+            bindIcon={bindIcon}
+            setBindIcon={setBindIcon}
+            bindCreateCountField={bindCreateCountField}
+            setBindCreateCountField={setBindCreateCountField}
+            bindOne2manyField={bindOne2manyField}
+            setBindOne2manyField={setBindOne2manyField}
+            bindCountFieldName={bindCountFieldName}
+            setBindCountFieldName={setBindCountFieldName}
+            bindSmartConfirmPhrase={bindSmartConfirmPhrase}
+            setBindSmartConfirmPhrase={setBindSmartConfirmPhrase}
+            selectedActionId={selectedActionId}
+            setSelectedActionId={setSelectedActionId}
+            bindableActions={bindableActions}
+            activityTypes={activityTypes}
+            mailTemplates={mailTemplates}
+            bindActivityTypeId={bindActivityTypeId}
+            setBindActivityTypeId={setBindActivityTypeId}
+            bindActivitySummary={bindActivitySummary}
+            setBindActivitySummary={setBindActivitySummary}
+            bindActivityNote={bindActivityNote}
+            setBindActivityNote={setBindActivityNote}
+            bindMailTemplateId={bindMailTemplateId}
+            setBindMailTemplateId={setBindMailTemplateId}
+            bindMailMethod={bindMailMethod}
+            setBindMailMethod={setBindMailMethod}
+            bindMailSubject={bindMailSubject}
+            setBindMailSubject={setBindMailSubject}
+            bindMailBody={bindMailBody}
+            setBindMailBody={setBindMailBody}
+            bindMailEmailTo={bindMailEmailTo}
+            setBindMailEmailTo={setBindMailEmailTo}
+            busy={busy}
+            confirmPhrase={CONFIRM_PHRASE}
+            openBindDialog={openBindDialog}
+            onSubmitBind={(opts) => void submitBindDialog(opts)}
+            onClose={() => setBindMode("closed")}
+          />
         )}
 
         <Disclosure title="Advanced layout & field inject" testId="designer-advanced-layout" className="mx-4 mb-4 md:mx-6">
         <div className="grid gap-6 lg:grid-cols-[220px_1fr_280px]">
-          <aside className="border border-border-subtle bg-surface-muted/70 p-4">
-            <p className="text-xs uppercase tracking-wide text-muted">Fields</p>
-            <div className="mt-3 space-y-2 border border-border-subtle p-2 text-xs">
-              <p className="text-muted">Create field on model</p>
-              <input
-                value={newFieldName}
-                onChange={(e) => setNewFieldName(e.target.value)}
-                placeholder="x_my_field"
-                className="w-full border border-border-subtle bg-surface px-2 py-1 font-mono"
-              />
-              <input
-                value={newFieldLabel}
-                onChange={(e) => setNewFieldLabel(e.target.value)}
-                placeholder="Label"
-                className="w-full border border-border-subtle bg-surface px-2 py-1"
-              />
-              <select
-                value={newFieldType}
-                onChange={(e) => setNewFieldType(e.target.value)}
-                className="w-full border border-border-subtle bg-surface px-2 py-1"
-              >
-                <option value="char">char</option>
-                <option value="text">text</option>
-                <option value="integer">integer</option>
-                <option value="float">float</option>
-                <option value="boolean">boolean</option>
-                <option value="date">date</option>
-                <option value="selection">selection</option>
-                <option value="many2one">many2one</option>
-                <option value="json">json</option>
-              </select>
-              <label className="block text-[11px] text-muted">
-                Inject strategy
-                <select
-                  value={injectStrategy}
-                  onChange={(e) =>
-                    setInjectStrategy(e.target.value as "inherit" | "mutate")
-                  }
-                  className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 text-sm text-ink"
-                >
-                  <option
-                    value="inherit"
-                    disabled={!connectionSupports(connection, "view_inject_inherit")}
-                  >
-                    inherit (xpath child)
-                    {!connectionSupports(connection, "view_inject_inherit")
-                      ? " — unavailable"
-                      : ""}
-                  </option>
-                  <option
-                    value="mutate"
-                    disabled={!connectionSupports(connection, "view_inject_mutate")}
-                    title={
-                      connectionUnsupportedReason(connection, "view_inject_mutate") ??
-                      undefined
-                    }
-                  >
-                    mutate (overwrite parent)
-                    {!connectionSupports(connection, "view_inject_mutate")
-                      ? " — unavailable"
-                      : ""}
-                  </option>
-                </select>
-              </label>
-              {!connectionSupports(
-                connection,
-                injectStrategyCapabilityId(injectStrategy),
-              ) && (
-                <p className="text-[11px] text-warning">
-                  {connectionUnsupportedReason(
-                    connection,
-                    injectStrategyCapabilityId(injectStrategy),
-                  )}
-                </p>
-              )}
-              {injectStrategy === "mutate" &&
-                connectionSupports(connection, "view_inject_mutate") && (
-                  <p className="text-[11px] text-warning">
-                    Mutate overwrites parent view arch — requires advanced confirm.
-                  </p>
-                )}
-              <input
-                value={confirmPhrase}
-                onChange={(e) => setConfirmPhrase(e.target.value)}
-                placeholder="I understand the risks"
-                className="w-full border border-border-subtle bg-surface px-2 py-1"
-              />
-              <button
-                type="button"
-                disabled={
-                  busy ||
-                  !model ||
-                  !newFieldName.startsWith("x_") ||
-                  !connectionSupports(
-                    connection,
-                    injectStrategyCapabilityId(injectStrategy),
-                  )
-                }
-                title={
-                  connectionUnsupportedReason(
-                    connection,
-                    injectStrategyCapabilityId(injectStrategy),
-                  ) ?? undefined
-                }
-                className="w-full border border-border-subtle px-2 py-1 text-muted disabled:opacity-40"
-                onClick={() => void createNewFieldWithInject()}
-              >
-                Create + inject
-              </button>
-            </div>
-            <ul className="mt-3 max-h-[28rem] space-y-1 overflow-auto text-sm" data-testid="designer-field-list-advanced">
-              {fields.map((f) => (
-                <li
-                  key={f.id}
-                  draggable={viewType === "form" || viewType === "kanban"}
-                  onDragStart={(e) => {
-                    setDragField(f.name);
-                    e.dataTransfer.setData("text/odoo-field", f.name);
-                    e.dataTransfer.effectAllowed = "copy";
-                  }}
-                  onClick={() => {
-                    if (viewType === "list") addListColumn(f.name);
-                    if (viewType === "search") addSearchField(f.name);
-                    if (viewType === "kanban") addKanbanField(f.name);
-                  }}
-                  className="cursor-grab border border-transparent px-2 py-1.5 hover:border-border-subtle"
-                >
-                  <span className="font-mono text-muted">{f.name}</span>
-                  <span className="block text-xs text-muted">
-                    {f.field_description} · {f.ttype}
-                  </span>
-                </li>
-              ))}
-              {fields.length === 0 && (
-                <li className="text-muted">Load a model to populate.</li>
-              )}
-            </ul>
-            {(viewType === "form" || viewType === "kanban") && (
-              <NicheWidgetPalette
-                widgets={nicheWidgets}
-                colorPalette={colorPalette}
-                onPick={(w) => void addNicheWidget(w)}
-              />
-            )}
-          </aside>
+          <DesignerAdvancedFieldsAside
+            connection={connection}
+            model={model}
+            viewType={viewType}
+            fields={fields}
+            newFieldName={newFieldName}
+            setNewFieldName={setNewFieldName}
+            newFieldLabel={newFieldLabel}
+            setNewFieldLabel={setNewFieldLabel}
+            newFieldType={newFieldType}
+            setNewFieldType={setNewFieldType}
+            injectStrategy={injectStrategy}
+            setInjectStrategy={setInjectStrategy}
+            confirmPhrase={confirmPhrase}
+            setConfirmPhrase={setConfirmPhrase}
+            busy={busy}
+            setDragField={setDragField}
+            addListColumn={addListColumn}
+            addSearchField={addSearchField}
+            addKanbanField={addKanbanField}
+            nicheWidgets={nicheWidgets}
+            colorPalette={colorPalette}
+            onCreateAndInject={(opts) => void createNewFieldWithInject(opts)}
+            onPickNicheWidget={(w) => void addNicheWidget(w)}
+          />
 
-          <section className="border border-border-subtle bg-surface-muted/50 p-4" data-testid="designer-structure-editor">
-            <div className="mb-3">
-              <h2 className="text-sm font-semibold text-accent">
-                {viewType === "form" ? "Form layout (primary)" : "Layout editor"}
-              </h2>
-              {viewType === "form" && (
-                <p className="mt-1 text-xs text-muted">
-                  Add a group, then drag a field from the list on the left onto that group. The
-                  page auto-scrolls when you drag near the edge.
-                </p>
-              )}
-            </div>
-            <div className="mb-4 flex flex-wrap gap-2">
-              {viewType === "form" && (
-                <>
-                  <button
-                    type="button"
-                    onClick={addGroup}
-                    className={`border px-3 py-1 text-xs ${
-                      toolbarFlash === "group"
-                        ? "border-border-subtle bg-surface-muted text-ink"
-                        : "border-border-subtle text-muted"
-                    }`}
-                  >
-                    {toolbarFlash === "group" ? "✓ Group added" : "+ Group"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={addNotebook}
-                    className={`border px-3 py-1 text-xs ${
-                      toolbarFlash === "notebook"
-                        ? "border-border-subtle bg-surface-muted text-ink"
-                        : "border-border-subtle text-muted"
-                    }`}
-                  >
-                    {toolbarFlash === "notebook" ? "✓ Notebook added" : "+ Notebook"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!connectionSupports(connection, "object_write_update_path")}
-                    title={
-                      connectionUnsupportedReason(connection, "object_write_update_path") ??
-                      undefined
-                    }
-                    onClick={() => {
-                      openBindDialog("header", "create_update");
-                      announceAction("Opening header button binder…", null, "header");
-                    }}
-                    className={`border px-3 py-1 text-xs disabled:opacity-40 ${
-                      toolbarFlash === "header"
-                        ? "border-border-subtle bg-surface-muted text-ink"
-                        : "border-border-subtle text-muted"
-                    }`}
-                  >
-                    {toolbarFlash === "header" ? "✓ Header binder" : "+ Header button"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!connectionSupports(connection, "smart_button_inherit_box")}
-                    title={
-                      connectionUnsupportedReason(connection, "smart_button_inherit_box") ??
-                      undefined
-                    }
-                    onClick={() => {
-                      openBindDialog("button_box", "create_smart");
-                      announceAction("Opening smart button binder…", null, "smart");
-                    }}
-                    className={`border px-3 py-1 text-xs disabled:opacity-40 ${
-                      toolbarFlash === "smart"
-                        ? "border-border-subtle bg-surface-muted text-ink"
-                        : "border-border-subtle text-muted"
-                    }`}
-                  >
-                    {toolbarFlash === "smart" ? "✓ Smart binder" : "+ Smart button"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      addButtonToFirstGroup();
-                      announceAction("Opening inline button binder…", null, "inline");
-                    }}
-                    className={`border px-3 py-1 text-xs ${
-                      toolbarFlash === "inline"
-                        ? "border-border-subtle bg-surface-muted text-ink"
-                        : "border-border-subtle text-muted"
-                    }`}
-                  >
-                    {toolbarFlash === "inline" ? "✓ Inline binder" : "+ Inline button"}
-                  </button>
-                </>
-              )}
-            </div>
 
-            {viewType === "form" && (
-              <div className="mb-4 space-y-3">
-                <div className="flex flex-wrap gap-4 border border-dashed border-border-subtle p-3 text-sm text-muted">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={formCanCreate}
-                      onChange={(e) => setFormCanCreate(e.target.checked)}
-                    />
-                    Can Create
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={formCanEdit}
-                      onChange={(e) => setFormCanEdit(e.target.checked)}
-                    />
-                    Can Edit
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={formCanDelete}
-                      onChange={(e) => setFormCanDelete(e.target.checked)}
-                    />
-                    Can Delete
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={formCanDuplicate}
-                      onChange={(e) => setFormCanDuplicate(e.target.checked)}
-                    />
-                    Can Duplicate
-                  </label>
-                </div>
-                <div className="grid gap-3 border border-dashed border-border-subtle p-3 sm:grid-cols-2">
-                  <label className="text-xs text-muted">
-                    Statusbar field (selection)
-                    <select
-                      value={statusbarField}
-                      onChange={(e) => setStatusbarField(e.target.value)}
-                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm"
-                    >
-                      <option value="">(none)</option>
-                      {fields
-                        .filter((f) => f.ttype === "selection" || f.ttype === "many2one")
-                        .map((f) => (
-                          <option key={f.id} value={f.name}>
-                            {f.name} · {f.ttype}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                  <label className="text-xs text-muted">
-                    statusbar_visible (comma-separated)
-                    <input
-                      value={statusbarVisible}
-                      onChange={(e) => setStatusbarVisible(e.target.value)}
-                      placeholder="draft,confirmed,done"
-                      disabled={!statusbarField}
-                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm disabled:opacity-40"
-                    />
-                  </label>
-                </div>
-                <div className="min-h-12 border border-dashed border-border-subtle p-3">
-                  <p className="mb-2 text-xs uppercase text-muted">Header buttons</p>
-                  <ul className="space-y-1">
-                    {headerButtons.map((b) => (
-                      <li
-                        key={b.id}
-                        className="flex items-center justify-between bg-surface px-2 py-1.5 text-sm"
-                      >
-                        <span className="text-ink">
-                          {b.string}{" "}
-                          <span className="font-mono text-xs text-muted">
-                            type={b.type || "action"} name={b.name || "?"}
-                          </span>
-                        </span>
-                        <button
-                          type="button"
-                          className="text-xs text-danger"
-                          onClick={() =>
-                            setHeaderButtons((all) => all.filter((x) => x.id !== b.id))
-                          }
-                        >
-                          remove
-                        </button>
-                      </li>
-                    ))}
-                    {headerButtons.length === 0 && (
-                      <li className="text-xs text-muted">
-                        Bound to real ir.actions.* via type=&quot;action&quot;.
-                      </li>
-                    )}
-                  </ul>
-                </div>
-                <div className="min-h-12 border border-dashed border-border-subtle p-3">
-                  <p className="mb-2 text-xs uppercase text-muted">Smart button box</p>
-                  <ul className="space-y-1">
-                    {buttonBox.map((b) => (
-                      <li
-                        key={b.id}
-                        className="flex items-center justify-between bg-surface px-2 py-1.5 text-sm"
-                      >
-                        <span className="text-ink">
-                          {b.string}{" "}
-                          <span className="font-mono text-xs text-muted">
-                            {b.icon || "fa-list"} · action {b.name || "?"}
-                            {b.count_field ? ` · count ${b.count_field}` : ""}
-                          </span>
-                        </span>
-                        <button
-                          type="button"
-                          className="text-xs text-danger"
-                          onClick={() => setButtonBox((all) => all.filter((x) => x.id !== b.id))}
-                        >
-                          remove
-                        </button>
-                      </li>
-                    ))}
-                    {buttonBox.length === 0 && (
-                      <li className="text-xs text-muted">
-                        Opens related records (window action + active_id domain).
-                      </li>
-                    )}
-                  </ul>
-                </div>
-              </div>
-            )}
+          <DesignerAdvancedStructureCanvas
+            viewType={viewType}
+            connection={connection}
+            model={model}
+            title={title}
+            toolbarFlash={toolbarFlash}
+            canvasFlashId={canvasFlashId}
+            previewTheme={previewTheme}
+            viewSample={viewSample}
+            setViewSample={setViewSample}
+            formChildren={formChildren}
+            headerButtons={headerButtons}
+            buttonBox={buttonBox}
+            setHeaderButtons={setHeaderButtons}
+            setButtonBox={setButtonBox}
+            statusbarField={statusbarField}
+            setStatusbarField={setStatusbarField}
+            statusbarVisible={statusbarVisible}
+            setStatusbarVisible={setStatusbarVisible}
+            formCanCreate={formCanCreate}
+            formCanEdit={formCanEdit}
+            formCanDelete={formCanDelete}
+            formCanDuplicate={formCanDuplicate}
+            setFormCanCreate={setFormCanCreate}
+            setFormCanEdit={setFormCanEdit}
+            setFormCanDelete={setFormCanDelete}
+            setFormCanDuplicate={setFormCanDuplicate}
+            listColumns={listColumns}
+            setListColumns={setListColumns}
+            listDecorationDanger={listDecorationDanger}
+            listDecorationInfo={listDecorationInfo}
+            listDecorationMuted={listDecorationMuted}
+            setListDecorationDanger={setListDecorationDanger}
+            setListDecorationInfo={setListDecorationInfo}
+            setListDecorationMuted={setListDecorationMuted}
+            listCanCreate={listCanCreate}
+            listCanEdit={listCanEdit}
+            listCanDelete={listCanDelete}
+            listMultiEdit={listMultiEdit}
+            listDefaultOrder={listDefaultOrder}
+            setListCanCreate={setListCanCreate}
+            setListCanEdit={setListCanEdit}
+            setListCanDelete={setListCanDelete}
+            setListMultiEdit={setListMultiEdit}
+            setListDefaultOrder={setListDefaultOrder}
+            searchFields={searchFields}
+            setSearchFields={setSearchFields}
+            searchFilters={searchFilters}
+            setSearchFilters={setSearchFilters}
+            searchGroupByFilters={searchGroupByFilters}
+            setSearchGroupByFilters={setSearchGroupByFilters}
+            editingFilterId={editingFilterId}
+            setEditingFilterId={setEditingFilterId}
+            kanbanFields={kanbanFields}
+            setKanbanFields={setKanbanFields}
+            kanbanGroupBy={kanbanGroupBy}
+            kanbanCanCreate={kanbanCanCreate}
+            kanbanQuickCreate={kanbanQuickCreate}
+            setKanbanCanCreate={setKanbanCanCreate}
+            setKanbanQuickCreate={setKanbanQuickCreate}
+            moveKanbanField={moveKanbanField}
+            addKanbanField={addKanbanField}
+            fields={fields}
+            selected={selected}
+            setSelected={setSelected}
+            addGroup={addGroup}
+            addNotebook={addNotebook}
+            addButtonToFirstGroup={addButtonToFirstGroup}
+            openBindDialog={openBindDialog}
+            dropOnGroup={dropOnGroup}
+            dropOnPage={dropOnPage}
+            removeFormChild={removeFormChild}
+            removeNotebookPage={removeNotebookPage}
+            renameNotebookPage={renameNotebookPage}
+            renameGroup={renameGroup}
+            addPageToNotebook={addPageToNotebook}
+            removeFormField={removeFormField}
+            announceAction={announceAction}
+          />
 
-            {viewType === "form" &&
-              formChildren.map((child) => {
-                if (child.kind === "group") {
-                  return (
-                    <div
-                      key={child.id}
-                      data-structure-id={child.id}
-                      data-canvas-id={child.id}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        dropOnGroup(child.id, e);
-                      }}
-                      className={`mb-4 min-h-24 border border-dashed border-border-subtle p-3 ${
-                        canvasFlashId === child.id ? "ring-2 ring-accent" : ""
-                      }`}
-                    >
-                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                        <label className="flex min-w-0 flex-1 items-center gap-2 text-xs uppercase text-muted">
-                          Group
-                          <input
-                            value={child.string || ""}
-                            onChange={(e) => renameGroup(child.id, e.target.value)}
-                            className="min-w-0 flex-1 border border-border-subtle bg-surface px-2 py-1 font-sans text-sm normal-case text-muted"
-                            placeholder="untitled"
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          className="shrink-0 text-xs text-danger"
-                          onClick={() => removeFormChild(child.id)}
-                        >
-                          remove group
-                        </button>
-                      </div>
-                      <ul className="space-y-1">
-                        {child.children.map((f) => (
-                          <li
-                            key={f.id}
-                            className={`flex items-center justify-between bg-surface px-2 py-1.5 text-sm ${
-                              selected?.fieldId === f.id ? "ring-1 ring-accent" : ""
-                            }`}
-                          >
-                            <button
-                              type="button"
-                              className="text-left"
-                              onClick={() =>
-                                setSelected({
-                                  scope: "form-group",
-                                  groupId: child.id,
-                                  fieldId: f.id,
-                                })
-                              }
-                            >
-                              {f.kind === "button" ? (
-                                <span className="text-ink">
-                                  Btn · {f.string}{" "}
-                                  <span className="font-mono text-xs text-muted">
-                                    {f.type || "action"}:{f.name || "?"}
-                                  </span>
-                                </span>
-                              ) : (
-                                <>
-                                  <span className="font-mono text-muted">{f.name}</span>
-                                  {f.string ? ` — ${f.string}` : ""}
-                                </>
-                              )}
-                            </button>
-                            <button
-                              type="button"
-                              className="text-xs text-danger"
-                              onClick={() => removeFormField("group", child.id, f.id)}
-                            >
-                              remove
-                            </button>
-                          </li>
-                        ))}
-                        {child.children.length === 0 && (
-                          <li className="text-xs text-muted">Drop fields here</li>
-                        )}
-                      </ul>
-                    </div>
-                  );
-                }
-                return (
-                  <div
-                    key={child.id}
-                    data-structure-id={child.id}
-                    data-canvas-id={child.id}
-                    className={`mb-4 border border-border-subtle p-3 ${
-                      canvasFlashId === child.id ? "ring-2 ring-accent" : ""
-                    }`}
-                  >
-                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs uppercase text-muted">Notebook</p>
-                      <div className="flex gap-3">
-                        <button
-                          type="button"
-                          className="text-xs text-muted"
-                          onClick={() => addPageToNotebook(child.id)}
-                        >
-                          + Page
-                        </button>
-                        <button
-                          type="button"
-                          className="text-xs text-danger"
-                          onClick={() => removeFormChild(child.id)}
-                        >
-                          remove notebook
-                        </button>
-                      </div>
-                    </div>
-                    {child.pages.map((page) => (
-                      <div
-                        key={page.id}
-                        data-structure-id={page.id}
-                        data-canvas-id={page.id}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          dropOnPage(child.id, page.id, e);
-                        }}
-                        className={`mb-3 min-h-20 border border-dashed border-border-subtle p-3 ${
-                          canvasFlashId === page.id ? "ring-2 ring-accent" : ""
-                        }`}
-                      >
-                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                          <label className="flex min-w-0 flex-1 items-center gap-2 text-sm text-muted">
-                            Page
-                            <input
-                              value={page.string}
-                              onChange={(e) =>
-                                renameNotebookPage(child.id, page.id, e.target.value)
-                              }
-                              className="min-w-0 flex-1 border border-border-subtle bg-surface px-2 py-1 font-mono text-sm"
-                              placeholder="Tab title"
-                            />
-                          </label>
-                          <button
-                            type="button"
-                            className="shrink-0 text-xs text-danger"
-                            onClick={() => removeNotebookPage(child.id, page.id)}
-                          >
-                            remove page
-                          </button>
-                        </div>
-                        <ul className="space-y-1">
-                          {page.children.map((f) => (
-                            <li
-                              key={f.id}
-                              className={`flex items-center justify-between bg-surface px-2 py-1.5 text-sm ${
-                                selected?.fieldId === f.id ? "ring-1 ring-accent" : ""
-                              }`}
-                            >
-                              <button
-                                type="button"
-                                className="text-left"
-                                onClick={() =>
-                                  f.kind === "field"
-                                    ? setSelected({
-                                        scope: "form-page",
-                                        notebookId: child.id,
-                                        pageId: page.id,
-                                        fieldId: f.id,
-                                      })
-                                    : undefined
-                                }
-                              >
-                                {f.kind === "button" ? (
-                                  <span className="text-ink">Btn · {f.string}</span>
-                                ) : (
-                                  <>
-                                    <span className="text-muted">
-                                      {resolveFieldLabel(f.name, f.string, fields) || f.name}
-                                    </span>
-                                    <span className="ml-2 font-mono text-xs text-muted">
-                                      {f.name}
-                                    </span>
-                                  </>
-                                )}
-                              </button>
-                              <button
-                                type="button"
-                                className="text-xs text-danger"
-                                onClick={() =>
-                                  removeFormField("page", page.id, f.id, child.id)
-                                }
-                              >
-                                remove
-                              </button>
-                            </li>
-                          ))}
-                          {page.children.length === 0 && (
-                            <li className="text-xs text-muted">Drop fields here</li>
-                          )}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })}
 
-            {viewType === "list" && (
-              <div className="min-h-40 border border-dashed border-border-subtle p-3">
-                <div className="mb-3 flex flex-wrap gap-4 text-sm text-muted">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={listCanCreate}
-                      onChange={(e) => setListCanCreate(e.target.checked)}
-                    />
-                    Can Create
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={listCanEdit}
-                      onChange={(e) => setListCanEdit(e.target.checked)}
-                    />
-                    Can Edit
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={listCanDelete}
-                      onChange={(e) => setListCanDelete(e.target.checked)}
-                    />
-                    Can Delete
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={listMultiEdit}
-                      onChange={(e) => setListMultiEdit(e.target.checked)}
-                    />
-                    multi_edit
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={viewSample}
-                      onChange={(e) => setViewSample(e.target.checked)}
-                      data-testid="designer-view-sample"
-                    />
-                    sample data
-                  </label>
-                </div>
-                <label className="mb-3 block text-xs text-muted">
-                  default_order (Sort By)
-                  <input
-                    value={listDefaultOrder}
-                    onChange={(e) => setListDefaultOrder(e.target.value)}
-                    placeholder="name asc, id desc"
-                    className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono"
-                  />
-                </label>
-                <div className="mb-3 grid gap-2 sm:grid-cols-3">
-                  <label className="block text-xs text-muted">
-                    decoration-danger
-                    <input
-                      value={listDecorationDanger}
-                      onChange={(e) => setListDecorationDanger(e.target.value)}
-                      placeholder="not x_returned"
-                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono"
-                    />
-                  </label>
-                  <label className="block text-xs text-muted">
-                    decoration-info
-                    <input
-                      value={listDecorationInfo}
-                      onChange={(e) => setListDecorationInfo(e.target.value)}
-                      placeholder="x_priority == 'high'"
-                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono"
-                    />
-                  </label>
-                  <label className="block text-xs text-muted">
-                    decoration-muted
-                    <input
-                      value={listDecorationMuted}
-                      onChange={(e) => setListDecorationMuted(e.target.value)}
-                      placeholder="x_active == False"
-                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono"
-                    />
-                  </label>
-                </div>
-                <p className="mb-2 text-xs uppercase text-muted">
-                  List columns (click a field to add)
-                </p>
-                <ul className="space-y-1">
-                  {listColumns.map((f, idx) => (
-                    <li
-                      key={f.id}
-                      className={`flex items-center justify-between bg-surface px-2 py-1.5 text-sm ${
-                        selected?.fieldId === f.id ? "ring-1 ring-accent" : ""
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        className="text-left"
-                        onClick={() => setSelected({ scope: "list", fieldId: f.id })}
-                      >
-                        {idx + 1}.{" "}
-                        <span className="font-mono text-muted">{f.name}</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="text-xs text-danger"
-                        onClick={() => {
-                          setListColumns((cols) => cols.filter((c) => c.id !== f.id));
-                          setSelected((sel) => (sel?.fieldId === f.id ? null : sel));
-                        }}
-                      >
-                        remove
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                {listColumns.length > 0 ? (
-                  <details className="mt-4 rounded border border-border-subtle bg-surface-muted/30 p-3" data-testid="designer-list-preview">
-                    <summary className="cursor-pointer text-sm font-semibold text-accent">
-                      Odoo-style list preview
-                    </summary>
-                    <div className="mt-3">
-                      <OdooPreviewScope showBanner={false} previewVars={previewTheme?.preview_vars}>
-                          <OdooListView
-                            view={{
-                              type: "list",
-                              model: model,
-                              title: title || model,
-                              columns: listColumns.map((f) => ({
-                                id: f.id,
-                                name: f.name,
-                                string: resolveFieldLabel(f.name, f.string, fields) || f.name,
-                              })),
-                              decorations: {
-                                danger: listDecorationDanger || null,
-                                info: listDecorationInfo || null,
-                                muted: listDecorationMuted || null,
-                              },
-                            }}
-                          />
-                        </OdooPreviewScope>
-                    </div>
-                  </details>
-                ) : null}
-              </div>
-            )}
-
-            {viewType === "search" && (
-              <div className="min-h-40 border border-dashed border-border-subtle p-3">
-                <p className="mb-2 text-xs uppercase text-muted">
-                  Search fields (click a field to add)
-                </p>
-                <button
-                  type="button"
-                  className="mb-2 text-xs text-muted"
-                  onClick={() =>
-                    setSearchFilters((f) => [
-                      ...f,
-                      {
-                        id: uid("sf"),
-                        name: `filter_${f.length + 1}`,
-                        string: `Filter ${f.length + 1}`,
-                        domain: "[]",
-                      },
-                    ])
-                  }
-                >
-                  + Add search filter
-                </button>
-                {searchFilters.length > 0 && (
-                  <ul className="mb-3 space-y-3 text-xs text-muted">
-                    {searchFilters.map((f) => (
-                      <li key={f.id} className="border border-border-subtle p-2">
-                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                          <input
-                            value={f.string}
-                            onChange={(e) =>
-                              setSearchFilters((all) =>
-                                all.map((x) =>
-                                  x.id === f.id ? { ...x, string: e.target.value } : x,
-                                ),
-                              )
-                            }
-                            className="min-w-[8rem] flex-1 border border-border-subtle bg-surface px-2 py-1"
-                          />
-                          <button
-                            type="button"
-                            className="text-muted"
-                            onClick={() =>
-                              setEditingFilterId((id) => (id === f.id ? null : f.id))
-                            }
-                          >
-                            {editingFilterId === f.id ? "Hide domain" : "Edit domain"}
-                          </button>
-                          <button
-                            type="button"
-                            className="text-danger"
-                            onClick={() =>
-                              setSearchFilters((all) => all.filter((x) => x.id !== f.id))
-                            }
-                          >
-                            remove
-                          </button>
-                        </div>
-                        {editingFilterId === f.id ? (
-                          <DomainBuilder
-                            value={f.domain || "[]"}
-                            onChange={(domain) =>
-                              setSearchFilters((all) =>
-                                all.map((x) => (x.id === f.id ? { ...x, domain } : x)),
-                              )
-                            }
-                          />
-                        ) : (
-                          <span className="font-mono text-muted">{f.domain || "[]"}</span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <div className="mb-3 border border-border-subtle p-2">
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs uppercase text-muted">Group-by filters</p>
-                    <button
-                      type="button"
-                      className="text-xs text-muted"
-                      onClick={() =>
-                        setSearchGroupByFilters((f) => [
-                          ...f,
-                          {
-                            id: uid("sg"),
-                            name: `groupby_${f.length + 1}`,
-                            string: `Group By ${f.length + 1}`,
-                            context: "{'group_by': 'field'}",
-                          },
-                        ])
-                      }
-                    >
-                      + Add group-by filter
-                    </button>
-                  </div>
-                  {searchGroupByFilters.length === 0 ? (
-                    <p className="text-xs text-muted">
-                      No group-by filters. Context example:{" "}
-                      <code className="text-muted">{"{'group_by': 'x_stage'}"}</code>
-                    </p>
-                  ) : (
-                    <ul className="space-y-2 text-xs text-muted">
-                      {searchGroupByFilters.map((f) => (
-                        <li key={f.id} className="grid gap-2 border border-border-subtle p-2 sm:grid-cols-3">
-                          <label className="block">
-                            name
-                            <input
-                              value={f.name}
-                              onChange={(e) =>
-                                setSearchGroupByFilters((all) =>
-                                  all.map((x) =>
-                                    x.id === f.id ? { ...x, name: e.target.value } : x,
-                                  ),
-                                )
-                              }
-                              className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono"
-                            />
-                          </label>
-                          <label className="block">
-                            string
-                            <input
-                              value={f.string}
-                              onChange={(e) =>
-                                setSearchGroupByFilters((all) =>
-                                  all.map((x) =>
-                                    x.id === f.id ? { ...x, string: e.target.value } : x,
-                                  ),
-                                )
-                              }
-                              className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1"
-                            />
-                          </label>
-                          <label className="block">
-                            context
-                            <input
-                              value={f.context ?? ""}
-                              onChange={(e) =>
-                                setSearchGroupByFilters((all) =>
-                                  all.map((x) =>
-                                    x.id === f.id
-                                      ? { ...x, context: e.target.value }
-                                      : x,
-                                  ),
-                                )
-                              }
-                              placeholder="{'group_by': 'field'}"
-                              className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono"
-                            />
-                          </label>
-                          <button
-                            type="button"
-                            className="justify-self-start text-danger sm:col-span-3"
-                            onClick={() =>
-                              setSearchGroupByFilters((all) =>
-                                all.filter((x) => x.id !== f.id),
-                              )
-                            }
-                          >
-                            remove
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-                <ul className="space-y-1">
-                  {searchFields.map((f, idx) => (
-                    <li
-                      key={f.id}
-                      className={`flex items-center justify-between bg-surface px-2 py-1.5 text-sm ${
-                        selected?.fieldId === f.id ? "ring-1 ring-accent" : ""
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        className="text-left"
-                        onClick={() => setSelected({ scope: "search", fieldId: f.id })}
-                      >
-                        {idx + 1}.{" "}
-                        <span className="font-mono text-muted">{f.name}</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="text-xs text-danger"
-                        onClick={() => {
-                          setSearchFields((cols) => cols.filter((c) => c.id !== f.id));
-                          setSelected((sel) => (sel?.fieldId === f.id ? null : sel));
-                        }}
-                      >
-                        remove
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {viewType === "kanban" && (
-              <div className="min-h-40 space-y-3">
-                <div className="flex flex-wrap gap-4 border border-dashed border-border-subtle p-3 text-sm text-muted">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={kanbanCanCreate}
-                      onChange={(e) => setKanbanCanCreate(e.target.checked)}
-                    />
-                    Can Create
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={kanbanQuickCreate}
-                      onChange={(e) => setKanbanQuickCreate(e.target.checked)}
-                    />
-                    quick_create
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={viewSample}
-                      onChange={(e) => setViewSample(e.target.checked)}
-                      data-testid="designer-view-sample"
-                    />
-                    sample data
-                  </label>
-                </div>
-                {!model && (
-                  <KanbanCardPreview
-                    title={title || "Kanban"}
-                    groupBy={kanbanGroupBy || null}
-                    fields={kanbanFields.map((f) => ({
-                      id: f.id,
-                      name: f.name,
-                      string: f.string,
-                    }))}
-                    selectedFieldId={
-                      selected?.scope === "kanban" ? selected.fieldId : null
-                    }
-                    onSelectField={(fieldId) =>
-                      setSelected({ scope: "kanban", fieldId })
-                    }
-                    onMoveField={moveKanbanField}
-                    onRemoveField={(fieldId) => {
-                      setKanbanFields((cols) =>
-                        cols.filter((c) => c.id !== fieldId),
-                      );
-                      setSelected((sel) =>
-                        sel?.scope === "kanban" && sel.fieldId === fieldId
-                          ? null
-                          : sel,
-                      );
-                    }}
-                    onDropFieldName={(fieldName) => addKanbanField(fieldName)}
-                  />
-                )}
-                <div className="border border-border-subtle bg-surface p-3">
-                  <p className="mb-2 text-xs uppercase tracking-wide text-muted">
-                    Card field order
-                    {kanbanGroupBy ? (
-                      <span className="ml-2 rounded bg-accent px-1.5 py-0.5 text-[10px] normal-case text-white">
-                        group by {kanbanGroupBy}
-                      </span>
-                    ) : null}
-                  </p>
-                  <ul className="space-y-1">
-                    {kanbanFields.map((f, idx) => (
-                      <li
-                        key={f.id}
-                        className={`flex items-center justify-between gap-2 px-2 py-1.5 text-sm ${
-                          selected?.scope === "kanban" && selected.fieldId === f.id
-                            ? "bg-surface-muted ring-1 ring-accent"
-                            : "bg-surface"
-                        }`}
-                      >
-                        <button
-                          type="button"
-                          className="min-w-0 flex-1 text-left"
-                          onClick={() =>
-                            setSelected({ scope: "kanban", fieldId: f.id })
-                          }
-                        >
-                          <span className="text-muted">{idx + 1}.</span>{" "}
-                          <span className="font-mono text-muted">{f.name}</span>
-                          {f.string ? (
-                            <span className="ml-2 text-xs text-muted">
-                              {f.string}
-                            </span>
-                          ) : null}
-                        </button>
-                        <span className="flex shrink-0 items-center gap-2">
-                          <button
-                            type="button"
-                            className="text-xs text-muted disabled:opacity-30"
-                            disabled={idx === 0}
-                            aria-label={`Move ${f.name} up`}
-                            onClick={() => moveKanbanField(f.id, -1)}
-                          >
-                            ↑
-                          </button>
-                          <button
-                            type="button"
-                            className="text-xs text-muted disabled:opacity-30"
-                            disabled={idx >= kanbanFields.length - 1}
-                            aria-label={`Move ${f.name} down`}
-                            onClick={() => moveKanbanField(f.id, 1)}
-                          >
-                            ↓
-                          </button>
-                          <button
-                            type="button"
-                            className="text-xs text-danger"
-                            onClick={() => {
-                              setKanbanFields((cols) =>
-                                cols.filter((c) => c.id !== f.id),
-                              );
-                              setSelected((sel) =>
-                                sel?.scope === "kanban" && sel.fieldId === f.id
-                                  ? null
-                                  : sel,
-                              );
-                            }}
-                          >
-                            remove
-                          </button>
-                        </span>
-                      </li>
-                    ))}
-                    {kanbanFields.length === 0 && (
-                      <li className="text-xs text-muted">
-                        Click or drop fields from the palette to build the card.
-                      </li>
-                    )}
-                  </ul>
-                </div>
-              </div>
-            )}
-          </section>
-
-          <aside className="space-y-4">
-            <p className="text-xs text-muted">
-              Field properties and XPath inherit live in the right-hand Properties and Advanced tabs.
-            </p>
-
-            <div className="border border-border-subtle bg-surface p-4">
-              <p className="text-xs uppercase tracking-wide text-muted">
-                Generated arch
-              </p>
-              <pre className="mt-3 max-h-48 overflow-auto text-xs text-muted">
-                {arch || "—"}
-              </pre>
-            </div>
-
-            <div className="border border-border-subtle bg-surface-muted/70 p-4">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs uppercase tracking-wide text-muted">
-                  Published checkpoints
-                </p>
-                <button
-                  type="button"
-                  className="text-xs text-muted hover:underline"
-                  onClick={() => refreshSnapshots()}
-                >
-                  Refresh
-                </button>
-              </div>
-              <ul className="mt-3 max-h-48 space-y-2 overflow-auto text-xs">
-                {snapshots.length === 0 && (
-                  <li className="text-muted">No published checkpoints yet. Save to Odoo creates one.</li>
-                )}
-                {snapshots.map((s) => (
-                  <li
-                    key={s.id}
-                    className="flex items-start justify-between gap-2 border border-border-subtle px-2 py-1.5"
-                  >
-                    <div>
-                      <p className="text-ink">{s.label}</p>
-                      <p className="text-muted">
-                        {s.reversible} · {s.created_at}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={busy || s.reversible === "no"}
-                      onClick={() => onRollback(s.id)}
-                      className="shrink-0 border border-border-subtle px-2 py-0.5 text-muted disabled:opacity-40"
-                    >
-                      Restore
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </aside>
+          <DesignerAdvancedMetaAside
+            arch={arch}
+            snapshots={snapshots}
+            busy={busy}
+            onRefreshSnapshots={() => void refreshSnapshots()}
+            onRollback={(id) => void onRollback(id)}
+          />
         </div>
         </Disclosure>
-      <ConfirmDialog
-        open={confirmOverwriteOpen}
-        title="Overwrite primary view"
-        warning={`Mutate the live primary arch for ${model || "this model"} (not an inherit child). Prefer Inherit for stock models.`}
-        risks={[
-          "Can break stock xpath inherits (e.g. Contacts)",
-          "Module upgrades may conflict",
-          "Snapshot is taken — restore from published checkpoints when reversible",
-        ]}
-        phrase={CONFIRM_PHRASE}
+      <DesignerDangerConfirms
+        model={model}
+        viewType={viewType}
+        confirmPhrase={CONFIRM_PHRASE}
         busy={busy}
-        onCancel={() => setConfirmOverwriteOpen(false)}
-        onConfirm={(phrase) =>
-          void onSave({ strategy: "overwrite", confirm_phrase: phrase })
-        }
-      />
-      <ConfirmDialog
-        open={confirmUnlinkInheritOpen}
-        title="Unlink designer inherit"
-        warning={`Delete ${model || "model"}.designer.${viewType} — the Designer extension that can duplicate Send/Print/Pay and Other Info. Prefer Fix duplicate chrome if you want to keep TEST GROUP / x_* layout.`}
-        risks={[
-          "Removes the inherit child only (stock primary form stays)",
-          "Custom groups that lived only in that inherit disappear",
-          "Field inject views ({model}.custom.x_*.form) are not deleted",
-          "A published checkpoint cannot recreate a deleted inherit view",
-        ]}
-        phrase={CONFIRM_PHRASE}
-        busy={busy}
-        onCancel={() => setConfirmUnlinkInheritOpen(false)}
-        onConfirm={(phrase) => void onUnlinkDesignerInherit(phrase)}
-      />
-      <ConfirmDialog
-        open={confirmMutateOpen}
-        title="Mutate parent view arch"
-        warning="Mutating parent view arch overwrites existing module XML. Prefer inherit (default) for interop with installed modules."
-        risks={[
-          "Parent ir.ui.view arch is rewritten in place",
-          "Module upgrades may conflict or overwrite your change",
-          "Harder to uninstall cleanly than an extension view",
-        ]}
-        phrase={CONFIRM_PHRASE}
-        busy={busy}
-        onCancel={() => setConfirmMutateOpen(false)}
-        onConfirm={(phrase) =>
+        confirmOverwriteOpen={confirmOverwriteOpen}
+        setConfirmOverwriteOpen={setConfirmOverwriteOpen}
+        confirmUnlinkInheritOpen={confirmUnlinkInheritOpen}
+        setConfirmUnlinkInheritOpen={setConfirmUnlinkInheritOpen}
+        confirmMutateOpen={confirmMutateOpen}
+        setConfirmMutateOpen={setConfirmMutateOpen}
+        onOverwrite={(phrase) => void onSave({ strategy: "overwrite", confirm_phrase: phrase })}
+        onUnlinkInherit={(phrase) => void onUnlinkDesignerInherit(phrase)}
+        onMutateParent={(phrase) =>
           void createNewFieldWithInject({
             confirm_advanced: true,
             confirm_phrase: phrase,
@@ -5896,5 +1424,6 @@ export default function DesignerPage() {
         </>
       }
     />
+    </DesignerUiProvider>
   );
 }

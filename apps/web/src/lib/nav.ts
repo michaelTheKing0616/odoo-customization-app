@@ -50,6 +50,8 @@ export type NavItem = {
   capabilityKey?: string;
   /** When false, hide until feature ships */
   shipped?: boolean;
+  /** When false, omit from sidebar (routes + deep links remain) */
+  sidebar?: boolean;
   gatingTitle?: string;
   gatingWhy?: string;
   gatingOptions?: string[];
@@ -74,7 +76,7 @@ export const NAV_GROUPS: {
   {
     id: "ai",
     label: "AI Studio",
-    tooltip: "App Studio, Draft Studio, Job Autopilot, ModuleSpec, projects, and Odoo Expert",
+    tooltip: "App Studio, Draft Studio, Job Autopilot, and Projects",
   },
   {
     id: "data",
@@ -203,6 +205,7 @@ export const NAV_ITEMS: NavItem[] = [
     group: "ai",
     icon: IconDraftStudio,
     shipped: true,
+    // Restored to AI sidebar (Tope 2026-09-16) — still soft-linked from App Studio
   },
   {
     id: "job-autopilot",
@@ -211,6 +214,7 @@ export const NAV_ITEMS: NavItem[] = [
     group: "ai",
     icon: IconSandbox,
     shipped: true,
+    // Restored to AI sidebar (Tope 2026-09-16)
   },
   {
     id: "modulespec",
@@ -219,6 +223,7 @@ export const NAV_ITEMS: NavItem[] = [
     group: "ai",
     icon: IconModels,
     shipped: true,
+    sidebar: false, // IR workshop via handoff only
   },
   {
     id: "projects",
@@ -231,18 +236,20 @@ export const NAV_ITEMS: NavItem[] = [
   {
     id: "expert",
     label: "Odoo Expert",
-    href: (id) => `/connections/${id}?expert=1`,
+    href: (id) => `/connections/${id}/expert`,
     group: "ai",
     icon: IconOdooExpert,
     shipped: true,
+    sidebar: false, // contextual drawer — not a competing Start AI door
   },
   {
     id: "live-demo-copilot",
     label: "Live Demo Co-Pilot",
     href: (id) => `/connections/${id}/live-demo-copilot`,
-    group: "ai",
+    group: "operate",
     icon: IconOdooExpert,
     shipped: true,
+    // First among Operations items below; hub card + expanded ops group for discoverability
   },
   {
     id: "import",

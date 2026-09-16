@@ -1,5 +1,7 @@
 # Live Demo Co-Pilot — Internal pilot checklist
 
+Related: founder live RPC UAT is `docs/WEEK6-LIVE-RPC-UAT.md` (separate from this meeting pilot).
+
 Use this for the first internal demos (consultant/SE/trainer as presenter). Clients only see the Attendee bot + disclosure; answers stay in the private overlay.
 
 ## Pre-flight
@@ -12,7 +14,7 @@ Use this for the first internal demos (consultant/SE/trainer as presenter). Clie
 
 ## Session flow
 
-1. Open **AI Studio → Live Demo Co-Pilot** for a connection.
+1. Open **Operations → Live Demo Co-Pilot** for a connection (first item in Operations; also on the ops hub).
 2. Paste meeting URL; set bot name; enter **your display name(s)** (comma-separated) so Stage 1/2 ignores your rhetorical questions.
 3. Create session → accept disclosure → confirm attendees notified → Launch bot.
 4. Admit the bot / grant recording if the host-action callout appears.

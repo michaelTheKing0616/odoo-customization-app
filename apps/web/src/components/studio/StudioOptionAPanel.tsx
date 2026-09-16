@@ -47,6 +47,9 @@ type StudioOptionAPanelProps = {
   onRetryAuthoring: () => void;
   onReverify: () => void;
   onInstallHost: (offer: HostInstallOffer, phrase: string) => void;
+  /** After authored Promote — deep-link to the inherit host (sale.order), not a new Apps tile. */
+  openInOdooHref?: string | null;
+  openInOdooLabel?: string;
 };
 
 export function StudioOptionAPanel({
@@ -75,6 +78,8 @@ export function StudioOptionAPanel({
   onRetryAuthoring,
   onReverify,
   onInstallHost,
+  openInOdooHref = null,
+  openInOdooLabel = "Open in Odoo",
 }: StudioOptionAPanelProps) {
   if (!goldOptionA && !authoredOptionA) return null;
 
@@ -221,7 +226,11 @@ export function StudioOptionAPanel({
             {authoringRetryable ? (
               busy === "generate"
                 ? "Repairing incomplete JSON automatically — diagnosis stays locked."
-                : "Authoring did not finish, so zip stayed locked. Retry authoring if this is still here after a moment. Do not click Install this app."
+                : leftoverAuthoringFindings.some((row) =>
+                      /quota|timed out|rate limit|ollama/i.test(String(row.message || "")),
+                    )
+                  ? "Authoring could not finish (often Gemini free-tier quota, then a slow local fallback). Zip stays locked — use Retry authoring after quota resets or when Ollama is warm. Do not click Install this app."
+                  : "Authoring did not finish, so zip stayed locked. Retry authoring if this is still here after a moment. Do not click Install this app."
             ) : (
               <>
                 Download the zip after the authoring gate passes, sandbox-prove, then{" "}
@@ -357,6 +366,28 @@ export function StudioOptionAPanel({
                 "Promote to this connection"
               )}
             </button>
+            {goldPromoted && openInOdooHref ? (
+              <a
+                href={openInOdooHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-secondary btn-sm"
+                data-testid="studio-authored-open-odoo"
+                title="Opens the stock host form on this connection — not a new Apps tile."
+              >
+                {openInOdooLabel}
+              </a>
+            ) : goldPromoted ? (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled
+                data-testid="studio-authored-open-odoo"
+                title="Promote stamped no host model — hard-refresh or open Sales → Quotations in Odoo."
+              >
+                Open in Odoo
+              </button>
+            ) : null}
           </div>
         </div>
       ) : null}

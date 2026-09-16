@@ -30,6 +30,7 @@ import { PropertyFieldsPanel } from "@/components/builder/PropertyFieldsPanel";
 import { InvoicingConnectPanel } from "@/components/builder/InvoicingConnectPanel";
 import { BuilderModelsList } from "@/components/builder/BuilderModelsList";
 import { BuilderSessionBar } from "@/components/builder/BuilderSessionBar";
+import { ListComposerShell } from "@/components/ui/ListComposerShell";
 import { BuilderSnapshots } from "@/components/builder/BuilderSnapshots";
 import { FieldComposer } from "@/components/builder/FieldComposer";
 import { ModelComposer } from "@/components/builder/ModelComposer";
@@ -583,7 +584,7 @@ export default function BuilderPage() {
           className="mt-6 rounded-md border border-danger/40 bg-danger-subtle p-5"
           data-testid="builder-delete-confirm"
         >
-          <h2 className="font-[family-name:var(--font-display)] text-xl text-danger">Warning</h2>
+          <h2 className="text-ui-title text-danger">Warning</h2>
           <p className="mt-2 text-sm text-muted">
             {pendingDelete.kind === "model"
               ? `Delete model ${pendingDelete.model}? This often cannot be fully undone.`
@@ -638,8 +639,9 @@ export default function BuilderPage() {
         </div>
       ) : null}
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(240px,320px)_minmax(0,1fr)]">
-        <div>
+      <ListComposerShell
+        list={
+          <>
           <BuilderModelsList
             rows={customModels}
             loading={listLoading}
@@ -664,9 +666,10 @@ export default function BuilderPage() {
             busy={busy}
             onRollback={onRollback}
           />
-        </div>
-
-        <div className="space-y-4">
+          </>
+        }
+        detail={
+          <>
           <BuilderSessionBar
             sessionState={sessionState}
             busy={busy}
@@ -753,8 +756,9 @@ export default function BuilderPage() {
               </Disclosure>
             </>
           )}
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <ConfirmDialogV2
         open={confirmMutateOpen}

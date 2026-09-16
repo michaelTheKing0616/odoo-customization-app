@@ -23,6 +23,7 @@ import {
   saveNavExpanded,
 } from "@/lib/nav-storage";
 import { cn } from "@/lib/cn";
+import { BrandMark } from "@/components/brand/BrandMark";
 import type { Connection } from "@/lib/api";
 
 type Props = {
@@ -60,10 +61,17 @@ export function Sidebar({ connection }: Props) {
           sidebarCollapsed ? "w-14" : "w-60",
         )}
       >
-        <div className="flex items-center justify-between border-b border-border-subtle px-3 py-3">
+        <div className="flex items-center justify-between gap-1 border-b border-border-subtle px-3 py-3">
           {!sidebarCollapsed ? (
-            <span className="text-sm font-semibold text-ink truncate">{connection.name}</span>
-          ) : null}
+            <div className="min-w-0 flex-1">
+              <BrandMark href={`/connections/${connection.id}`} size={22} />
+              <p className="mt-1 truncate text-[11px] text-muted" title={connection.name}>
+                {connection.name}
+              </p>
+            </div>
+          ) : (
+            <BrandMark href={`/connections/${connection.id}`} size={22} withWordmark={false} />
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -76,7 +84,8 @@ export function Sidebar({ connection }: Props) {
         <nav className="flex-1 overflow-y-auto p-2">
           {NAV_GROUPS.map((group) => {
             const items = NAV_ITEMS.filter(
-              (item) => item.group === group.id && item.shipped !== false,
+              (item) =>
+                item.group === group.id && item.shipped !== false && item.sidebar !== false,
             );
             if (!items.length) return null;
             const isOpen = expanded[group.id] ?? true;
@@ -89,7 +98,7 @@ export function Sidebar({ connection }: Props) {
                   <div className="flex items-center gap-1 px-2 py-1">
                     <button
                       type="button"
-                      className="flex flex-1 items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted"
+                      className="flex flex-1 items-center gap-1 text-ui-meta font-medium uppercase tracking-wide text-muted"
                       onClick={() => toggleGroup(group.id)}
                       aria-expanded={isOpen}
                     >
@@ -138,7 +147,7 @@ export function Sidebar({ connection }: Props) {
                           }
                         }}
                         className={cn(
-                          "flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors",
+                          "flex h-row items-center gap-2 rounded-md px-2 text-ui-body transition-colors",
                           active
                             ? "bg-accent-subtle text-accent font-medium"
                             : "text-ink hover:bg-surface-muted",
@@ -159,7 +168,7 @@ export function Sidebar({ connection }: Props) {
                     return (
                       <div key={item.id} className="mb-0.5">
                         {showDevCaption ? (
-                          <p className="px-2 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted">
+                          <p className="px-2 pb-0.5 pt-1 text-ui-meta font-medium uppercase tracking-wide text-muted">
                             Developer
                           </p>
                         ) : null}

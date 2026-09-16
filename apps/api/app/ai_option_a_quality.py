@@ -451,11 +451,20 @@ def prove_option_a_in_sandbox(
             )
             if feedback_repair.get("applied") and feedback_repair.get("gate_status") == "pass":
                 continue
-            repair_meta = feedback_repair.get("repair") or begin_repair_attempt(
-                draft, fails, bucket="sandbox"
-            )
+            repair_meta = feedback_repair.get("repair") or {
+                "ok": False,
+                "reason": str(feedback_repair.get("reason") or "repair_not_applied"),
+                "bucket": "sandbox",
+                "repair_count": int(draft.get("_sandbox_repair_count") or 0),
+            }
         else:
-            repair_meta = begin_repair_attempt(draft, fails, bucket="sandbox")
+            # Do NOT burn sandbox repair budget just to stamp metadata on a failed prove.
+            repair_meta = {
+                "ok": False,
+                "reason": "prove_failed_no_auto_repair",
+                "bucket": "sandbox",
+                "repair_count": int(draft.get("_sandbox_repair_count") or 0),
+            }
         smoke = {
             **structural,
             "ok": False,
@@ -525,7 +534,13 @@ def prove_option_a_in_sandbox(
     else:
         fails = failures_from_smoke(smoke)
         stamp_failures(draft, fails)
-        repair_meta = begin_repair_attempt(draft, fails, bucket="sandbox")
+        # Smoke fail after install — do not burn Repair budget; operator can Repair with AI.
+        repair_meta = {
+            "ok": False,
+            "reason": "smoke_failed",
+            "bucket": "sandbox",
+            "repair_count": int(draft.get("_sandbox_repair_count") or 0),
+        }
         out_fail: dict[str, Any] = {
             "ok": False,
             "draft": draft,

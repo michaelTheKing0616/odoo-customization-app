@@ -53,6 +53,7 @@ import { AccessMatrixPanel } from "@/components/access/AccessMatrixPanel";
 import { AccessModelPicker } from "@/components/access/AccessModelPicker";
 import { AccessRightsList } from "@/components/access/AccessRightsList";
 import { AccessSessionBar } from "@/components/access/AccessSessionBar";
+import { ListComposerShell } from "@/components/ui/ListComposerShell";
 import { AccessSnapshots } from "@/components/access/AccessSnapshots";
 import { RecordRuleComposer } from "@/components/access/RecordRuleComposer";
 import { RecordRuleDetail } from "@/components/access/RecordRuleDetail";
@@ -409,8 +410,9 @@ export default function AccessPage() {
         </Callout>
       ) : null}
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(240px,320px)_minmax(0,1fr)]">
-        <div className="space-y-6">
+      <ListComposerShell
+        list={
+          <div className="space-y-6">
           <AccessModelPicker
             model={model}
             onModelChange={setModel}
@@ -461,10 +463,10 @@ export default function AccessPage() {
             busy={busy}
             onRollback={onRollback}
           />
-        </div>
-
-        <div className="space-y-4">
-          {pane === "access" && selectedAccess ? (
+          </div>
+        }
+        detail={
+          pane === "access" && selectedAccess ? (
             <AccessDetail
               key={selectedAccess.id}
               connectionId={connectionId}
@@ -574,9 +576,9 @@ export default function AccessPage() {
                 submitBlockedReason={mutateBlocked}
               />
             </>
-          )}
-        </div>
-      </div>
+          )
+        }
+      />
 
       <Disclosure title="Access matrix" className="mt-8" testId="access-matrix-disclosure">
         <AccessMatrixPanel
@@ -646,6 +648,15 @@ export default function AccessPage() {
             : ""
         }
         risks={pendingDelete?.kind === "rule" ? RULE_DELETE_RISKS : ACCESS_DELETE_RISKS}
+        blastRadius={
+          pendingDelete
+            ? [
+                `${pendingDelete.kind === "access" ? "Access right" : "Record rule"}: ${pendingDelete.name}`,
+                `Model ${model}`,
+                "Live Odoo metadata delete",
+              ]
+            : []
+        }
         phrase={CONFIRM_PHRASE}
         snapshotNote="A snapshot is taken so the definition can be restored when Odoo allows it."
         busy={busy}
@@ -695,6 +706,11 @@ export default function AccessPage() {
         title="Apply live pack"
         warning={`Creates x_company_id and a global ir.rule on ${model}. This writes live Odoo metadata.`}
         risks={LIVE_PACK_RISKS}
+        blastRadius={[
+          `Model ${model}`,
+          "Creates x_company_id when missing",
+          "Creates a global ir.rule for multi-company",
+        ]}
         phrase={CONFIRM_PHRASE}
         snapshotNote="Field and record-rule creates are only partially recoverable."
         busy={busy}

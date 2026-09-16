@@ -985,7 +985,18 @@ export class FeatureGatedError extends Error {
 }
 
 function formatDetailMessage(detail: unknown): string {
-  if (typeof detail === "string") return detail;
+  if (typeof detail === "string") {
+    const trimmed = detail.trim();
+    // Bare FastAPI/proxy statusText — never useful as an App Studio banner body.
+    if (/^internal server error$/i.test(trimmed)) {
+      return (
+        "The API returned an unexpected error. Confirm uvicorn is running on :8001 " +
+        "without a stale process, hard-refresh App Studio, then try again. " +
+        "If this is Option A authoring, check Gemini quota or set AI_ASSIST=ollama."
+      );
+    }
+    return trimmed;
+  }
   if (detail == null) return "";
   if (typeof detail === "object") {
     const obj = detail as Record<string, unknown>;

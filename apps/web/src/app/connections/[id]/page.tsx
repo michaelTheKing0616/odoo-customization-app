@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { ExpertOverviewCard } from "@/components/expert/ExpertOverviewCard";
-import { expertHeaderDescription } from "@/lib/expert-journey";
 import "@/styles/studio-refinement.css";
 import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
+import { CapabilitiesPostcard } from "@/components/shell/CapabilitiesPostcard";
+import {
+  SandboxDeployStages,
+  sandboxDeployCurrentIndex,
+} from "@/components/shell/SandboxDeployStages";
 import { HealthCheckBanner } from "@/components/HealthCheckBanner";
 import { EePlaybooksPanel } from "@/components/EePlaybooksPanel";
 import { DomainPlaybooksPanel } from "@/components/DomainPlaybooksPanel";
@@ -59,7 +62,14 @@ export default function BrowserPage() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const connectionId = params.id;
+  const router = useRouter();
   const expertMode = searchParams.get("expert") === "1";
+
+  // Week 6: dedicated /expert destination — keep ?expert=1 as a soft redirect.
+  useEffect(() => {
+    if (!expertMode) return;
+    router.replace(`/connections/${connectionId}/expert`);
+  }, [expertMode, connectionId, router]);
 
   const [connection, setConnection] = useState<Connection | null>(null);
   const [tab, setTab] = useState<Tab>("models");
@@ -569,29 +579,20 @@ export default function BrowserPage() {
     },
   ];
 
+  if (expertMode) {
+    return (
+      <div className="mx-auto max-w-3xl p-6 text-sm text-muted" data-testid="expert-destination-redirect">
+        Opening Odoo Expert…
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-6xl" data-testid="connection-overview">
       <PageHeader
-        title={expertMode ? "Odoo Expert" : "Overview"}
-        description={
-          expertMode
-            ? expertHeaderDescription(connection?.name)
-            : "Your connection at a glance — health, models, and export paths."
-        }
-        actions={
-          expertMode ? (
-            <Link href={`/connections/${connectionId}`} className="text-sm text-muted hover:text-ink">
-              Overview
-            </Link>
-          ) : undefined
-        }
+        title="Overview"
+        description="Your connection at a glance — health, models, and export paths."
       />
-      {expertMode ? (
-        <div className="studio-refinement">
-          <ExpertOverviewCard connectionId={connectionId} connectionName={connection?.name} />
-        </div>
-      ) : null}
-
       {connection ? (
         <WriteModeUnlockPanel
           connection={connection}
@@ -611,6 +612,29 @@ export default function BrowserPage() {
       ) : null}
 
       <FirstWriteInterstitial connection={connection} />
+
+      {connection ? (
+        <CapabilitiesPostcard
+          connection={connection}
+          capabilities={connection.capabilities}
+          probing={probing}
+          onReprobe={() => {
+            void (async () => {
+              setProbing(true);
+              setError(null);
+              try {
+                await api.probeConnection(connectionId);
+                const refreshed = await api.getConnection(connectionId);
+                setConnection(refreshed);
+              } catch (err) {
+                setError(err instanceof Error ? err.message : "Probe failed");
+              } finally {
+                setProbing(false);
+              }
+            })();
+          }}
+        />
+      ) : null}
 
         {connection && (
           <CapabilityProbePanel
@@ -662,12 +686,12 @@ export default function BrowserPage() {
         <div className="mt-6 flex flex-wrap gap-2">
           <Button variant="primary" size="sm" asChild>
             <Link href={`/connections/${connectionId}/studio`} data-testid="overview-draft-with-ai">
-              Draft with AI
+              App Studio
             </Link>
           </Button>
           <Button variant="secondary" size="sm" asChild>
-            <Link href={`/connections/${connectionId}/wizard`} data-testid="overview-draft-studio">
-              Draft Studio
+            <Link href={`/connections/${connectionId}/projects`} data-testid="overview-projects">
+              Projects
             </Link>
           </Button>
           <Button variant="ghost" size="sm" asChild>
@@ -848,17 +872,7 @@ export default function BrowserPage() {
               )}
           </div>
         )}
-        {sandboxLogTail && (
-          <details className="mt-4 border border-border-subtle bg-surface/80 p-3">
-            <summary className="cursor-pointer text-sm text-danger">
-              Sandbox log
-            </summary>
-            <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-xs text-muted">
-              {sandboxLogTail}
-            </pre>
-          </details>
-        )}
-        {section === "develop" ? (
+{section === "develop" ? (
         <>
         <Card className="mt-8 p-5">
           <h2 className="text-xl font-semibold text-ink">Export, sandbox &amp; promote</h2>
@@ -866,41 +880,31 @@ export default function BrowserPage() {
             Package new <code className="font-mono text-accent">x_*</code> models and/or extensions to
             stock models (inherit) → sandbox → promote after validation + confirm.
           </p>
-          {deploymentPanel ? (
-            <div
-              className="mt-4 rounded border border-border-subtle bg-surface/80 p-4 text-sm"
-              data-testid="deployment-panel"
-            >
-              <p className="font-medium text-[#faf6f9]">{deploymentPanel.title}</p>
-              <p className="mt-2 text-[#a8909e]">{deploymentPanel.body}</p>
-              <ul className="mt-2 list-disc pl-5 text-muted">
-                {deploymentPanel.options.map((opt) => (
-                  <li key={opt}>{opt}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-          {sandboxApproximation ? (
-            <p
-              className="mt-3 rounded border border-amber-900/50 bg-amber-950/30 p-3 text-sm text-amber-100"
-              data-testid="sandbox-approximation"
-            >
-              {sandboxApproximation}
-              {shStagingSuggestion ? (
-                <span className="mt-2 block text-amber-200/90">{shStagingSuggestion}</span>
-              ) : null}
-            </p>
-          ) : null}
+          <SandboxDeployStages
+            currentIndex={sandboxDeployCurrentIndex({
+              hasValidationId: Boolean(validationId),
+              promotedCount: promoted.length,
+              sandboxBusy: exportBusy,
+            })}
+            deploymentPanel={deploymentPanel}
+            logTail={sandboxLogTail}
+            approximation={
+              sandboxApproximation
+                ? sandboxApproximation +
+                  (shStagingSuggestion ? ` ${shStagingSuggestion}` : "")
+                : null
+            }
+          />
           {storeReadiness ? (
             <div
               className="mt-4 rounded border border-border-subtle bg-surface/80 p-4 text-sm"
               data-testid="store-readiness-report"
             >
-              <p className="font-medium text-[#faf6f9]">
+              <p className="font-medium text-ink">
                 Store readiness — {storeReadiness.message}
               </p>
               <p className="mt-1 text-xs text-muted">{storeReadiness.disclaimer}</p>
-              <ul className="mt-2 space-y-1 text-[#a8909e]">
+              <ul className="mt-2 space-y-1 text-muted">
                 {storeReadiness.items.map((item) => (
                   <li key={item.key}>
                     [{item.status}] {item.label}: {item.message}
@@ -914,8 +918,8 @@ export default function BrowserPage() {
               className="mt-4 rounded border border-border-subtle bg-surface/80 p-4 text-sm"
               data-testid="migration-assist-panel"
             >
-              <p className="font-medium text-[#faf6f9]">{migrationAssist.title}</p>
-              <p className="mt-2 text-[#a8909e]">{migrationAssist.body}</p>
+              <p className="font-medium text-ink">{migrationAssist.title}</p>
+              <p className="mt-2 text-muted">{migrationAssist.body}</p>
               {migrationAssist.unlocks.length > 0 ? (
                 <ul className="mt-3 list-disc pl-5 text-muted">
                   {migrationAssist.unlocks.map((u) => (
@@ -946,11 +950,11 @@ export default function BrowserPage() {
               className="mt-4 rounded border border-border-subtle bg-surface/80 p-4 text-sm"
               data-testid="store-readiness-report"
             >
-              <p className="font-medium text-[#faf6f9]">
+              <p className="font-medium text-ink">
                 Store readiness — {storeReadiness.message}
               </p>
               <p className="mt-1 text-xs text-muted">{storeReadiness.disclaimer}</p>
-              <ul className="mt-2 space-y-1 text-[#a8909e]">
+              <ul className="mt-2 space-y-1 text-muted">
                 {storeReadiness.items.map((item) => (
                   <li key={item.key}>
                     [{item.status}] {item.label}: {item.message}
@@ -964,8 +968,8 @@ export default function BrowserPage() {
               className="mt-4 rounded border border-border-subtle bg-surface/80 p-4 text-sm"
               data-testid="migration-assist-panel"
             >
-              <p className="font-medium text-[#faf6f9]">{migrationAssist.title}</p>
-              <p className="mt-2 text-[#a8909e]">{migrationAssist.body}</p>
+              <p className="font-medium text-ink">{migrationAssist.title}</p>
+              <p className="mt-2 text-muted">{migrationAssist.body}</p>
               {migrationAssist.unlocks.length > 0 ? (
                 <ul className="mt-3 list-disc pl-5 text-muted">
                   {migrationAssist.unlocks.map((u) => (
@@ -1064,7 +1068,7 @@ export default function BrowserPage() {
           </div>
           <div className="mt-4 w-full max-w-2xl">
             <div className="flex flex-wrap items-center gap-3">
-              <p className="text-sm text-[#a8909e]">Extra depends (peer / stock modules)</p>
+              <p className="text-sm text-muted">Extra depends (peer / stock modules)</p>
               <button
                 type="button"
                 disabled={exportBusy}
@@ -1081,7 +1085,7 @@ export default function BrowserPage() {
                     key={name}
                     type="button"
                     onClick={() => toggleDepend(name)}
-                    className="border border-[#4a3a48] bg-surface-raised px-2 py-1 font-mono text-xs text-muted"
+                    className="border border-border-subtle bg-surface-raised px-2 py-1 font-mono text-xs text-muted"
                     title="Click to remove"
                   >
                     {name} ×
@@ -1095,13 +1099,13 @@ export default function BrowserPage() {
               placeholder="Search installed modules…"
               className="mt-2 w-full border border-border-subtle bg-surface px-3 py-2 text-sm"
             />
-            <div className="mt-2 max-h-40 overflow-y-auto border border-[#1e2f29] bg-surface/80">
+            <div className="mt-2 max-h-40 overflow-y-auto border border-border-subtle bg-surface/80">
               {filteredInstalledModules.map((m) => {
                 const checked = selectedDepends.includes(m.name);
                 return (
                   <label
                     key={m.id}
-                    className="flex cursor-pointer items-start gap-2 border-b border-[#1e2f29] px-3 py-2 text-sm last:border-b-0 hover:bg-surface-raised/60"
+                    className="flex cursor-pointer items-start gap-2 border-b border-border-subtle px-3 py-2 text-sm last:border-b-0 hover:bg-surface-raised/60"
                   >
                     <input
                       type="checkbox"
@@ -1125,7 +1129,7 @@ export default function BrowserPage() {
               )}
             </div>
             <label className="mt-2 block text-sm">
-              <span className="text-[#a8909e]">
+              <span className="text-muted">
                 Free-form depends (not in list)
               </span>
               <input
@@ -1143,21 +1147,21 @@ export default function BrowserPage() {
             </p>
           )}
           {showPromoteConfirm && (
-            <div className="mt-4 border border-[#5a3a2a] bg-[#1a100c] p-4">
-              <p className="text-sm font-medium text-[#f0c090]">Promote risks</p>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[#d0b0a0]">
+            <div className="mt-4 border border-warning/40 bg-warning-subtle p-4">
+              <p className="text-sm font-medium text-warning-strong">Promote risks</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-warning">
                 <li>Live metadata changes on this Odoo connection</li>
                 <li>Uninstall may not fully reverse data</li>
                 <li>Only the sandbox-validated zip will be installed</li>
               </ul>
               <label className="mt-3 block text-sm">
-                <span className="text-[#a8909e]">
-                  Type <code className="text-[#f0c090]">I understand the risks</code>
+                <span className="text-muted">
+                  Type <code className="text-warning-strong">I understand the risks</code>
                 </span>
                 <input
                   value={confirmPhrase}
                   onChange={(e) => setConfirmPhrase(e.target.value)}
-                  className="mt-1 w-full max-w-md border border-[#5a3a2a] bg-surface px-3 py-2 text-sm"
+                  className="mt-1 w-full max-w-md border border-warning/40 bg-surface px-3 py-2 text-sm"
                 />
               </label>
               <div className="mt-3 flex gap-2">
@@ -1165,14 +1169,14 @@ export default function BrowserPage() {
                   type="button"
                   disabled={exportBusy}
                   onClick={onPromote}
-                  className="h-9 bg-[#f0c090] px-4 text-sm font-semibold text-white disabled:opacity-60"
+                  className="h-9 bg-warning px-4 text-sm font-semibold text-ink disabled:opacity-60"
                 >
                   Proceed
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowPromoteConfirm(false)}
-                  className="h-9 border border-[#5a3a2a] px-4 text-sm text-[#d0b0a0]"
+                  className="h-9 border border-warning/40 px-4 text-sm text-warning"
                 >
                   Cancel
                 </button>
@@ -1190,7 +1194,7 @@ export default function BrowserPage() {
             {promoted.map((p) => (
               <li
                 key={p.id}
-                className="flex flex-wrap items-center justify-between gap-2 border border-[#1e2f29] px-3 py-2"
+                className="flex flex-wrap items-center justify-between gap-2 border border-border-subtle px-3 py-2"
               >
                 <span>
                   <span className="font-mono text-muted">{p.module_name}</span>{" "}
@@ -1218,18 +1222,18 @@ export default function BrowserPage() {
             )}
           </ul>
           {uninstallTarget && (
-            <div className="mt-4 border border-[#5a3a2a] bg-[#1a100c] p-4">
-              <p className="text-sm text-[#f0c090]">
+            <div className="mt-4 border border-warning/40 bg-warning-subtle p-4">
+              <p className="text-sm text-warning-strong">
                 Uninstall <code className="font-mono">{uninstallTarget}</code>?
               </p>
               <label className="mt-3 block text-sm">
-                <span className="text-[#a8909e]">
-                  Type <code className="text-[#f0c090]">I understand the risks</code>
+                <span className="text-muted">
+                  Type <code className="text-warning-strong">I understand the risks</code>
                 </span>
                 <input
                   value={uninstallPhrase}
                   onChange={(e) => setUninstallPhrase(e.target.value)}
-                  className="mt-1 w-full max-w-md border border-[#5a3a2a] bg-surface px-3 py-2 text-sm"
+                  className="mt-1 w-full max-w-md border border-warning/40 bg-surface px-3 py-2 text-sm"
                 />
               </label>
               <div className="mt-3 flex gap-2">
@@ -1244,7 +1248,7 @@ export default function BrowserPage() {
                 <button
                   type="button"
                   onClick={() => setUninstallTarget(null)}
-                  className="h-9 border border-[#5a3a2a] px-4 text-sm text-[#d0b0a0]"
+                  className="h-9 border border-warning/40 px-4 text-sm text-warning"
                 >
                   Cancel
                 </button>

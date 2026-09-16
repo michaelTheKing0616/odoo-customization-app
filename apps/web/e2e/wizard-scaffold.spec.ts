@@ -107,10 +107,10 @@ test.describe("Wizard scaffold", () => {
     const libraryCard = page.getByTestId("template-card-library");
     await expect(libraryCard).toBeVisible();
     await libraryCard.click();
-    await expect(page.getByTestId("confirm-dialog")).toBeVisible();
+    await expect(page.getByTestId("confirm-dialog-v2")).toBeVisible();
 
-    await page.getByTestId("confirm-dialog-input").fill(PHRASE);
-    await page.getByTestId("confirm-dialog-confirm").click();
+    await page.getByTestId("confirm-dialog-v2-input").fill(PHRASE);
+    await page.getByTestId("confirm-dialog-v2-confirm").click();
 
     await expect(page.getByTestId("scaffold-result")).toBeVisible();
     await expect(page.getByTestId("scaffold-checklist")).toBeVisible();

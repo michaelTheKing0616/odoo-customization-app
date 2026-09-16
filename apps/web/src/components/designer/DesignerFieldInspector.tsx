@@ -482,28 +482,30 @@ export function DesignerFieldInspector({
     !field.widget || widgetInCatalog || widgetAdvanced ? (field.widget ?? "") : field.widget;
 
   return (
-    <div className="space-y-5 text-sm text-ink" data-testid="designer-field-inspector">
-      <header className="space-y-1.5">
+    <div
+      className="w-inspector max-w-full space-y-2 text-ui-body text-ink"
+      data-testid="designer-field-inspector"
+    >
+      <header className="space-y-1 px-0.5 pb-1">
         <div className="flex flex-wrap items-center gap-1.5">
-          <p className="font-mono text-xs text-muted" data-testid="inspector-field-name">
+          <p className="text-ui-mono text-muted" data-testid="inspector-field-name">
             {field.name ?? fieldMeta?.name ?? "field"}
           </p>
           {ttype ? <Badge variant="default">{ttype}</Badge> : null}
           {fieldMeta?.related ? <Badge variant="info">Related</Badge> : null}
           {fieldMeta?.required ? <Badge variant="warning">ORM required</Badge> : null}
         </div>
-        <p className="text-sm font-medium text-ink">
+        <p className="text-ui-title text-ink">
           {field.string || fieldMeta?.field_description || "Untitled field"}
         </p>
       </header>
 
-      <section className="space-y-3" aria-labelledby="inspector-display-heading">
-        <h3
-          id="inspector-display-heading"
-          className="text-[11px] font-medium uppercase tracking-wide text-muted"
-        >
-          Display
-        </h3>
+      <Disclosure
+        title="Selection"
+        defaultOpen
+        sticky
+        testId="inspector-section-selection"
+      >
         <Input
           label="Label"
           data-testid="inspector-label"
@@ -514,6 +516,18 @@ export function DesignerFieldInspector({
           placeholder={fieldMeta?.field_description || "Display label"}
           hint="Writes string= on this view. Does not rename the column."
         />
+        <RelatedFieldPicker
+          currentName={field.name ?? ""}
+          relatedPath={fieldMeta?.related}
+          relatedPaths={relatedPaths}
+          relatedState={relatedState}
+          fieldsOnModel={fieldsOnModel}
+          viewFieldNames={viewFieldNames}
+          onAddToView={onAddRelatedField}
+        />
+      </Disclosure>
+
+      <Disclosure title="Layout" sticky testId="inspector-section-layout">
         <Textarea
           label="Help tooltip"
           data-testid="inspector-help"
@@ -551,33 +565,9 @@ export function DesignerFieldInspector({
           options={[{ value: "", label: "None" }, ...classOptions]}
           hint="Written as class= on the field tag (Odoo uses class, not className)."
         />
-      </section>
+      </Disclosure>
 
-      <section className="space-y-3" aria-labelledby="inspector-related-heading">
-        <h3
-          id="inspector-related-heading"
-          className="text-[11px] font-medium uppercase tracking-wide text-muted"
-        >
-          Related field
-        </h3>
-        <RelatedFieldPicker
-          currentName={field.name ?? ""}
-          relatedPath={fieldMeta?.related}
-          relatedPaths={relatedPaths}
-          relatedState={relatedState}
-          fieldsOnModel={fieldsOnModel}
-          viewFieldNames={viewFieldNames}
-          onAddToView={onAddRelatedField}
-        />
-      </section>
-
-      <section className="space-y-3" aria-labelledby="inspector-visibility-heading">
-        <h3
-          id="inspector-visibility-heading"
-          className="text-[11px] font-medium uppercase tracking-wide text-muted"
-        >
-          Visibility
-        </h3>
+      <Disclosure title="Attributes" sticky testId="inspector-section-attributes">
         <FieldModifierEditor
           label="Required"
           hint="View-layer required. ORM required on the field definition still applies."
@@ -596,7 +586,11 @@ export function DesignerFieldInspector({
           value={field.invisible}
           onChange={(invisible) => onChange({ invisible })}
         />
-        <Disclosure title="Group visibility" defaultOpen={Boolean(field.groups)} testId="inspector-groups-disclosure">
+        <Disclosure
+          title="Group visibility"
+          defaultOpen={Boolean(field.groups)}
+          testId="inspector-groups-disclosure"
+        >
           <GroupVisibilityEditor
             value={field.groups}
             onChange={(groupsValue) => onChange({ groups: groupsValue })}
@@ -604,15 +598,6 @@ export function DesignerFieldInspector({
             groupsState={groupsState}
           />
         </Disclosure>
-      </section>
-
-      <section className="space-y-3" aria-labelledby="inspector-widget-heading">
-        <h3
-          id="inspector-widget-heading"
-          className="text-[11px] font-medium uppercase tracking-wide text-muted"
-        >
-          Widget
-        </h3>
         {widgetAdvanced ? (
           <Input
             label="Widget"
@@ -640,7 +625,7 @@ export function DesignerFieldInspector({
         )}
         <button
           type="button"
-          className="text-xs font-medium text-accent hover:underline"
+          className="text-ui-label text-accent hover:underline"
           onClick={() => onWidgetAdvancedChange(!widgetAdvanced)}
         >
           {widgetAdvanced ? "Use curated list" : "Enter widget name"}
@@ -650,29 +635,35 @@ export function DesignerFieldInspector({
           options={field.options}
           onChange={(options) => onChange({ options })}
         />
-      </section>
+      </Disclosure>
 
-      <section
-        className="rounded-md border border-border-subtle bg-surface-muted/60 px-3 py-3"
-        data-testid="inspector-remove-copy"
-      >
-        <p className="text-xs font-medium text-ink">Remove from view</p>
-        <p className="mt-1 text-[11px] leading-snug text-muted">
-          Removing a field from this view does not delete the database column. Type,
-          selection keys, and relation stay under Models &amp; Fields.
+      <Disclosure title="Inherit" sticky testId="inspector-section-inherit">
+        <p className="text-ui-meta text-muted">
+          View-layer only. Advanced XPath inherit lives on the Tools rail — progressive
+          disclosure, not a second canvas.
         </p>
-        {onRemoveFromView ? (
-          <Button
-            type="button"
-            size="sm"
-            className="mt-3"
-            data-testid="inspector-remove"
-            onClick={onRemoveFromView}
-          >
-            Remove from view
-          </Button>
-        ) : null}
-      </section>
+        <div
+          className="rounded-md border border-border-subtle bg-surface-muted/60 px-3 py-3"
+          data-testid="inspector-remove-copy"
+        >
+          <p className="text-ui-label text-ink">Remove from view</p>
+          <p className="mt-1 text-ui-meta leading-snug text-muted">
+            Removing a field from this view does not delete the database column. Type,
+            selection keys, and relation stay under Models &amp; Fields.
+          </p>
+          {onRemoveFromView ? (
+            <Button
+              type="button"
+              size="sm"
+              className="mt-3"
+              data-testid="inspector-remove"
+              onClick={onRemoveFromView}
+            >
+              Remove from view
+            </Button>
+          ) : null}
+        </div>
+      </Disclosure>
     </div>
   );
 }

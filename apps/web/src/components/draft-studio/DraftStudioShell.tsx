@@ -28,6 +28,20 @@ export function DraftStudioShell({
   return (
     <div className="studio-refinement" data-testid="draft-studio">
       <div className={`studio-page${canvas ? " is-canvas" : ""}`}>
+        <div
+          className="mb-3 rounded-md border border-border-subtle bg-surface px-3 py-2 text-sm text-muted"
+          data-testid="draft-studio-ia-banner"
+        >
+          Draft Studio is now a power worksheet of{" "}
+          <Link href={`/connections/${connectionId}/studio`} className="text-accent hover:underline">
+            App Studio
+          </Link>
+          . Existing drafts stay safe — prefer App Studio for new work, or{" "}
+          <Link href={`/connections/${connectionId}/projects`} className="text-accent hover:underline">
+            Projects
+          </Link>{" "}
+          to track them.
+        </div>
         <PageHeader
           title="Draft Studio"
           description={

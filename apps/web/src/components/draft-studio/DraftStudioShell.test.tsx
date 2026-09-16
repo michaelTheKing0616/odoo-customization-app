@@ -19,10 +19,10 @@ describe("DraftStudioShell", () => {
     expect(screen.getByTestId("draft-studio")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Draft Studio" })).toBeTruthy();
     expect(screen.getByText(/Lab 19/)).toBeTruthy();
-    expect(screen.getByRole("link", { name: "App Studio" })).toHaveAttribute(
-      "href",
-      "/connections/c1/studio",
-    );
+    expect(screen.getByTestId("draft-studio-ia-banner")).toBeTruthy();
+    const studioLinks = screen.getAllByRole("link", { name: "App Studio" });
+    expect(studioLinks.length).toBeGreaterThanOrEqual(1);
+    expect(studioLinks[0]).toHaveAttribute("href", "/connections/c1/studio");
     expect(screen.getByTestId("draft-studio-steps")).toBeTruthy();
   });
 });

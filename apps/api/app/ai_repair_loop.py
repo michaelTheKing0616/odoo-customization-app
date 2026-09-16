@@ -197,8 +197,10 @@ def budget_exhausted_message(reason: str) -> str:
             "Promote the last passing zip, or start a new app. Do not Install this app."
         )
     return (
-        "AI already used its sandbox repair attempts on this draft. "
-        "Download module zip still works. Start a new app for a fresh repair budget. "
+        "LLM Repair budget for this draft is used up. "
+        "Try Sandbox install & smoke once more — free Community fixes (tax_ids, xpaths, "
+        "stock _compute_amount strip) still run without Repair. "
+        "Or Download module zip / Start a new app for a fresh LLM repair budget. "
         "Do not click Install this app."
     )
 

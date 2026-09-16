@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 
 const PHRASE = "I understand the risks";
 
@@ -33,7 +33,8 @@ export default function E2EConfirmHarnessPage() {
           {result}
         </p>
       )}
-      <ConfirmDialog
+      <ConfirmDialogV2
+        riskLevel="danger"
         open={open}
         title="Destructive action"
         warning="This action cannot be undone."

@@ -37,7 +37,7 @@ export function TopBar({ connection, connections, pathname }: Props) {
           </label>
           <select
             id="connection-switcher"
-            className="max-w-xs rounded-md border border-border-subtle bg-surface px-2 py-1.5 text-sm"
+            className="max-w-xs h-row rounded-md border border-border-subtle bg-surface px-2 text-ui-body"
             value={connection.id}
             onChange={(e) => router.push(`/connections/${e.target.value}`)}
             data-testid="connection-switcher"
@@ -88,7 +88,7 @@ export function TopBar({ connection, connections, pathname }: Props) {
           >
             {resolved === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
-          <Link href="/settings" className="text-sm text-muted hover:text-ink">
+          <Link href="/settings" className="text-ui-body text-muted hover:text-ink">
             Settings
           </Link>
         </div>

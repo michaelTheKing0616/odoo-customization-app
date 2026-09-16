@@ -31,6 +31,13 @@ const RELATED_PATHS: RelatedPathOption[] = [
   { path: "partner_id.phone", label: "Customer → Phone", ttype: "char" },
 ];
 
+function openInspectorSection(title: string) {
+  const btn = screen.getByRole("button", { name: title });
+  if (btn.getAttribute("aria-expanded") !== "true") {
+    fireEvent.click(btn);
+  }
+}
+
 function renderInspector(
   overrides: Partial<React.ComponentProps<typeof DesignerFieldInspector>> = {},
 ) {
@@ -78,27 +85,31 @@ describe("DesignerFieldInspector", () => {
     expect(screen.getByTestId("designer-field-inspector")).toBeInTheDocument();
     expect(screen.getByTestId("inspector-field-name")).toHaveTextContent("x_email");
     expect(screen.getByText("Related")).toBeInTheDocument();
-    expect(screen.getByTestId("inspector-help")).toHaveValue("Shown on hover");
-    expect(screen.getByTestId("inspector-placeholder")).toHaveValue("name@company.com");
-    expect(screen.getByTestId("inspector-class")).toHaveValue("oe_inline");
     expect(screen.getByTestId("inspector-related-path")).toHaveTextContent(
       "partner_id.email",
     );
-    expect(screen.getByTestId("inspector-remove-copy")).toHaveTextContent(
-      "does not delete the database column",
-    );
+
+    openInspectorSection("Layout");
+    expect(screen.getByTestId("inspector-help")).toHaveValue("Shown on hover");
+    expect(screen.getByTestId("inspector-placeholder")).toHaveValue("name@company.com");
+    expect(screen.getByTestId("inspector-class")).toHaveValue("oe_inline");
 
     fireEvent.change(screen.getByTestId("inspector-label"), {
       target: { value: "Office email" },
     });
     expect(onChange).toHaveBeenCalledWith({ string: "Office email" });
 
+    openInspectorSection("Inherit");
+    expect(screen.getByTestId("inspector-remove-copy")).toHaveTextContent(
+      "does not delete the database column",
+    );
     fireEvent.click(screen.getByTestId("inspector-remove"));
     expect(onRemove).toHaveBeenCalled();
   });
 
   it("uses Off | Always | When for required, readonly, and invisible", () => {
     const { onChange } = renderInspector();
+    openInspectorSection("Attributes");
     fireEvent.click(screen.getByTestId("inspector-modifier-required-always"));
     expect(onChange).toHaveBeenCalledWith({ required: true });
     fireEvent.click(screen.getByTestId("inspector-modifier-readonly-off"));
@@ -111,6 +122,7 @@ describe("DesignerFieldInspector", () => {
     const { onChange } = renderInspector({
       field: { name: "x_email", groups: undefined },
     });
+    openInspectorSection("Attributes");
     fireEvent.click(screen.getByRole("button", { name: "Group visibility" }));
     const select = screen.getByLabelText("Add a common group");
     fireEvent.change(select, { target: { value: "base.group_system" } });
@@ -123,6 +135,7 @@ describe("DesignerFieldInspector", () => {
       fieldMeta: { ...META, name: "x_photo", ttype: "binary", related: null },
       widgetOptions: [{ id: "image", label: "Image" }],
     });
+    openInspectorSection("Attributes");
     expect(screen.getByTestId("inspector-widget-options")).toHaveValue(
       '{"size": [128, 128]}',
     );
@@ -133,5 +146,16 @@ describe("DesignerFieldInspector", () => {
     expect(screen.getByTestId("designer-field-inspector-empty")).toHaveTextContent(
       "does not delete the column",
     );
+  });
+});
+
+describe("DesignerFieldInspector accordion", () => {
+  it("opens Selection by default; Layout Attributes Inherit collapsed", () => {
+    renderInspector();
+    expect(screen.getByTestId("inspector-section-selection").querySelector("[aria-expanded=\"true\"]")).toBeTruthy();
+    expect(screen.getByTestId("inspector-section-layout").querySelector("[aria-expanded=\"true\"]")).toBeNull();
+    expect(screen.getByTestId("inspector-section-attributes").querySelector("[aria-expanded=\"true\"]")).toBeNull();
+    expect(screen.getByTestId("inspector-section-inherit").querySelector("[aria-expanded=\"true\"]")).toBeNull();
+    expect(screen.getByTestId("inspector-label")).toBeInTheDocument();
   });
 });

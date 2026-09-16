@@ -199,25 +199,40 @@ export default function AppStudioPage() {
   const inheritHost = inheritHostModelFromDraft(session?.artifact ?? null);
   const hostForOpen = applyTarget.hostModel || inheritHost;
   const fieldPackApplied = Boolean(applyTarget.applied && hostForOpen);
+  const optionAHostLive =
+    Boolean(goldPromoted && !goldOptionA && hostForOpen) ||
+    (Boolean(applyTarget.applied && hostForOpen) && authoredOptionA);
   const appIsLiveOnOdoo =
-    studioAppIsLiveOnOdoo(session) || Boolean(odooAppUrl) || fieldPackApplied || goldPromoted;
+    studioAppIsLiveOnOdoo(session) ||
+    Boolean(odooAppUrl) ||
+    fieldPackApplied ||
+    goldPromoted ||
+    optionAHostLive;
   const liveAppName = String(
     (session?.artifact?.display_name as string | undefined) ||
       preview?.title ||
       "this app",
   );
-  const hostFormName = preview?.title || (fieldPack ? "this form" : liveAppName);
+  const hostFormName = preview?.title || (fieldPack || authoredOptionA ? "this form" : liveAppName);
   const openInOdooUrl = useMemo(() => {
     const base = connection?.url?.replace(/\/$/, "") || "";
     if (!base) return odooAppUrl;
     if (applyTarget.rootMenuId) {
       return odooMenuUrl(base, applyTarget.rootMenuId, applyTarget.openActionId);
     }
-    if (applyTarget.applied && hostForOpen) {
+    // Field pack Apply, or Option A Promote onto an inherit host (no new Apps tile).
+    if ((applyTarget.applied || (goldPromoted && !goldOptionA)) && hostForOpen) {
       return odooViewUrl(base, hostForOpen, "list", applyTarget.openActionId);
     }
     return odooAppUrl;
-  }, [applyTarget, connection?.url, odooAppUrl, hostForOpen]);
+  }, [
+    applyTarget,
+    connection?.url,
+    odooAppUrl,
+    hostForOpen,
+    goldPromoted,
+    goldOptionA,
+  ]);
   const refineChips = useMemo(
     () => refineSuggestionsFromDraft(session?.artifact ?? null),
     [session?.artifact],
@@ -526,11 +541,15 @@ export default function AppStudioPage() {
   }, [session?.id, session?.job_id, phase, connectionId, router]);
 
   async function startSession() {
+    if (!connectionId?.trim()) {
+      setError("Open App Studio from a connection page, then try again.");
+      return;
+    }
     setError(null);
     setBusy("create");
     try {
       const created = await api.createStudioSession({
-        connection_id: connectionId,
+        connection_id: connectionId.trim(),
         prompt: prompt.trim(),
       });
       setSession(created);
@@ -804,15 +823,51 @@ export default function AppStudioPage() {
       setPromoteOpen(false);
       setGoldPromoted(true);
       setCalloutTitle("Promoted to this connection");
+      const host =
+        inheritHostModelFromDraft(spec) ||
+        inheritHostModelFromDraft(session?.artifact ?? null) ||
+        inheritHost;
+      const base = connection?.url?.replace(/\/$/, "") || "";
+      if (!goldOptionA && host && base) {
+        const href = odooViewUrl(base, host, "list");
+        setOdooAppUrl(href);
+        setSession((s) => {
+          if (!s?.artifact) return s;
+          const prev = s.artifact._studio_apply;
+          const prior =
+            prev && typeof prev === "object" && !Array.isArray(prev)
+              ? (prev as Record<string, unknown>)
+              : {};
+          return {
+            ...s,
+            artifact: {
+              ...s.artifact,
+              _studio_apply: {
+                ...prior,
+                root_menu_id: prior.root_menu_id ?? null,
+                open_action_id: prior.open_action_id ?? null,
+                host_model: host,
+                applied: true,
+                via: "option_a_promote",
+              },
+            },
+          };
+        });
+      }
       try {
-        const row = await api.goldInspect(connectionId, goldId);
-        setGoldHost(row);
+        if (goldOptionA && goldId) {
+          const row = await api.goldInspect(connectionId, goldId);
+          setGoldHost(row);
+        }
       } catch {
         /* inspect is best-effort after promote */
       }
+      const hostLabel = hostFormName || host || "the stock form";
       setApplyNote(
-        res.message ||
-          `Promoted ${tech} onto this connection. Open Invoicing → Configuration → Settings (not Settings → Currency). Service = Central Bank of Nigeria → Update now → Currencies → USD → Rates.`,
+        goldOptionA
+          ? res.message ||
+              `Promoted ${tech} onto this connection. Open Invoicing → Configuration → Settings (not Settings → Currency). Service = Central Bank of Nigeria → Update now → Currencies → USD → Rates.`
+          : `${res.message || `Promoted ${tech} onto this connection.`} Open ${hostLabel} in Odoo (Sales → Quotations if this was markup) — not a new Apps tile. Do not click Install this app.`,
       );
     } catch (err) {
       reportApiError(err, setError, { fallback: "Promote failed", toast: true });
@@ -984,7 +1039,7 @@ export default function AppStudioPage() {
     goldHostMessage: goldHost?.message,
     appIsLiveOnOdoo,
     openInOdooUrl,
-    fieldPack,
+    fieldPack: fieldPack || optionAHostLive,
     hostFormName,
     liveAppName,
   };
@@ -1148,6 +1203,10 @@ export default function AppStudioPage() {
             onRetryAuthoring={() => void retryGeneration()}
             onReverify={() => void reverifyAuthoringGate()}
             onInstallHost={(offer, phrase) => void installAuthoredHostModule(offer, phrase)}
+            openInOdooHref={!goldOptionA && goldPromoted ? openInOdooUrl : null}
+            openInOdooLabel={
+              hostForOpen ? `Open ${hostFormName}` : "Open in Odoo"
+            }
           />
 
           <div className="studio-chip-row studio-mobile-tabs">

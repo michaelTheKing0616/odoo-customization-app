@@ -73,7 +73,7 @@ function LoginPageContent() {
         description={
           oauthTotp
             ? "Enter your two-factor code to finish OAuth sign-in."
-            : "Access your Odoo Custom workspace."
+            : "Access your Ingenium workspace."
         }
       />
       <Card>

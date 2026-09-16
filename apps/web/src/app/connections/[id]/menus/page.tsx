@@ -38,6 +38,7 @@ import { MenuDetail } from "@/components/menus/MenuDetail";
 import { MenuSessionBar } from "@/components/menus/MenuSessionBar";
 import { MenuSnapshots } from "@/components/menus/MenuSnapshots";
 import { MenusTree } from "@/components/menus/MenusTree";
+import { ListComposerShell } from "@/components/ui/ListComposerShell";
 
 export default function MenusBuilderPage() {
   const params = useParams<{ id: string }>();
@@ -265,8 +266,9 @@ export default function MenusBuilderPage() {
         </Callout>
       ) : null}
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(240px,320px)_minmax(0,1fr)]">
-        <div>
+      <ListComposerShell
+        list={
+          <>
           <MenusTree
             menus={menus}
             loading={listLoading}
@@ -285,10 +287,10 @@ export default function MenusBuilderPage() {
             busy={busy}
             onRollback={onRollback}
           />
-        </div>
-
-        <div className="space-y-4">
-          {selected ? (
+          </>
+        }
+        detail={
+          selected ? (
             <MenuDetail
               key={selected.id}
               connectionId={connectionId}
@@ -366,9 +368,9 @@ export default function MenusBuilderPage() {
                 submitBlockedReason={mutateBlocked}
               />
             </>
-          )}
-        </div>
-      </div>
+          )
+        }
+      />
 
       <ConfirmDialogV2
         open={confirmDelete}

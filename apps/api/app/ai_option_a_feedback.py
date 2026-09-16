@@ -6,6 +6,7 @@ Never live ir.actions.server state=code. Gold templates are locked.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Callable
 
 from app.ai_failure_ir import failures_from_sandbox_log, stamp_failures
@@ -32,11 +33,33 @@ _REPAIR_SYSTEM = (
     "(sale.view_order_form has no amount_tax / amount_untaxed node). "
     "sale.order.line taxes field is tax_ids (Many2many) — never tax_id. "
     "Prefer the smallest fix that matches the Odoo Fault. "
+    "If the Fault mentions _compute_amount or tax_id: DELETE the stock _compute_amount "
+    "override entirely and keep only x_* markup/WHT computes; use tax_ids never tax_id. "
     "Escape newlines as \\n and quotes as \\\"."
 )
 
 _MAX_FILE_CHARS = 8000
 _MAX_ERROR_CHARS = 3500
+
+_KNOWN_CE_FAULT_RE = re.compile(
+    r"tax_id|amount_tax|amount_untaxed|_compute_amount|Wrong @depends|tax_totals",
+    re.I,
+)
+
+
+def _fault_looks_like_known_ce(error_text: str, failures: list[dict[str, Any]]) -> bool:
+    if _KNOWN_CE_FAULT_RE.search(error_text or ""):
+        return True
+    for f in failures:
+        if not isinstance(f, dict):
+            continue
+        blob = " ".join(
+            str(f.get(k) or "")
+            for k in ("message", "repair_hint", "missing_depends_field", "category")
+        )
+        if _KNOWN_CE_FAULT_RE.search(blob):
+            return True
+    return False
 
 
 def _block_path(block: dict[str, Any]) -> str:
@@ -251,27 +274,55 @@ def repair_option_a_from_feedback(
         fails = failures_from_sandbox_log(text, ok=False, message=text)
     stamp_failures(draft, fails)
 
-    # Deterministic stock xpath rewrite is free — does not consume sandbox repair budget.
+    # Deterministic CE harden is free — never consumes sandbox repair budget.
     xpath_changed = rewrite_draft_stock_xpaths(draft)
     files = _candidate_files(draft, fails)
-    needs_llm = bool(files) and (xpath_changed == 0 or bool(notes) or generate_blocks is not None)
+    # Prefer free harden alone when it changed files and the Fault matches known CE patterns.
+    free_enough = xpath_changed > 0 and _fault_looks_like_known_ce(text, fails)
+    needs_llm = (
+        bool(files)
+        and not free_enough
+        and (xpath_changed == 0 or bool(notes) or generate_blocks is not None)
+    )
 
     begin: dict[str, Any] = {
         "ok": True,
         "repair_count": int(draft.get("_sandbox_repair_count") or 0),
         "bucket": "sandbox",
+        "deterministic_only": bool(xpath_changed and not needs_llm),
     }
     if needs_llm:
         begin = begin_repair_attempt(draft, fails, bucket="sandbox")
         if not begin.get("ok"):
+            # Budget exhausted — still keep free harden if it applied.
+            if xpath_changed:
+                gate = evaluate_authoring_gate(draft, odoo_major=odoo_major)
+                return _stamp_feedback(
+                    draft,
+                    {
+                        "ok": gate.get("status") == "pass",
+                        "applied": True,
+                        "reason": "deterministic_after_budget",
+                        "deterministic": True,
+                        "llm": False,
+                        "gate_status": gate.get("status"),
+                        "gate_findings": gate.get("findings") or [],
+                        "repair": begin,
+                        "message": (
+                            "Applied free Community fixes (tax_ids / xpaths / removed stock "
+                            "_compute_amount override) without using more Repair budget. "
+                            "Click Sandbox install & smoke again. Do not Install this app."
+                        ),
+                    },
+                )
             return _stamp_feedback(
                 draft,
                 {
                     "ok": False,
-                    "applied": bool(xpath_changed),
+                    "applied": False,
                     "reason": str(begin.get("reason") or "repair_blocked"),
                     "repair": begin,
-                    "deterministic": bool(xpath_changed),
+                    "deterministic": False,
                     "message": budget_exhausted_message(str(begin.get("reason") or "")),
                 },
             )
@@ -312,10 +363,17 @@ def repair_option_a_from_feedback(
     applied = bool(xpath_changed or llm_files)
     gate_status = str(gate.get("status") or "")
     if applied and gate_status == "pass":
-        message = (
-            "AI patched the module from the sandbox error. "
-            "Retry Sandbox install & smoke. Do not click Install this app. Promote stays human."
-        )
+        if llm_files:
+            message = (
+                "AI patched the module from the sandbox error. "
+                "Retry Sandbox install & smoke. Do not click Install this app. Promote stays human."
+            )
+        else:
+            message = (
+                "Applied free Community fixes (tax_ids / xpaths / stock _compute_amount strip). "
+                "Retry Sandbox install & smoke — this did not use Repair budget. "
+                "Do not Install this app. Promote stays human."
+            )
     elif applied:
         message = (
             "A patch was applied but the authoring gate failed — zip stays locked. "

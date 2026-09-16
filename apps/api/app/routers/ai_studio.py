@@ -6,7 +6,8 @@ import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.ai_conversation.clarify import apply_clarification_answer, build_clarification
@@ -43,6 +44,16 @@ class CreateSessionIn(BaseModel):
     connection_id: str | None = None
     prompt: str = Field(min_length=10)
     feature: str = "studio"
+
+    @field_validator("connection_id", mode="before")
+    @classmethod
+    def _blank_connection_id(cls, value: object) -> object:
+        # "" / whitespace must not hit the FK — that was a bare Internal Server Error.
+        if value is None:
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 class ClarifyIn(BaseModel):
@@ -141,6 +152,18 @@ def _attach_diagnosis(
 @router.post("")
 def create_session_route(body: CreateSessionIn, db: Session = Depends(get_db)) -> dict[str, Any]:
     prompt = body.prompt.strip()
+    connection_id = body.connection_id
+    if connection_id:
+        from app.odoo_service import get_connection_or_404
+
+        try:
+            get_connection_or_404(db, connection_id)
+        except LookupError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail="Connection not found — open App Studio from a connection page, then Start new app.",
+            ) from exc
+
     resolved: dict[str, str] = {}
     assessment = assess_intent(prompt, resolved_answers=resolved)
     provider, fallback = _provider_meta()
@@ -152,52 +175,62 @@ def create_session_route(body: CreateSessionIn, db: Session = Depends(get_db)) -
     if clarification is None:
         clarification = _attach_diagnosis(prompt, resolved, assessment)
 
-    if clarification:
+    try:
+        if clarification:
+            row = create_session(
+                db,
+                connection_id=connection_id,
+                feature=body.feature or "studio",
+                prompt=prompt,
+                status="clarifying",
+                resolved_answers=resolved,
+                provider_used=provider,
+                fallback_used=fallback,
+            )
+            update_session(
+                db,
+                row,
+                pending_clarification=clarification,
+                prompt_resolved=prompt,
+            )
+            append_turn(
+                db,
+                row,
+                role="assistant",
+                kind="clarify",
+                content=str((clarification or {}).get("question") or ""),
+                metadata={"clarification": clarification},
+            )
+            log_session_metrics(db, row.id, clarify_count=1)
+            out = session_to_dict(row)
+            out["assessment"] = _assessment_payload(assessment)
+            out["clarification"] = clarification
+            out["understanding"] = (clarification or {}).get("understanding")
+            return out
+
         row = create_session(
             db,
-            connection_id=body.connection_id,
+            connection_id=connection_id,
             feature=body.feature or "studio",
             prompt=prompt,
-            status="clarifying",
+            status="ready",
             resolved_answers=resolved,
             provider_used=provider,
             fallback_used=fallback,
         )
-        update_session(
-            db,
-            row,
-            pending_clarification=clarification,
-            prompt_resolved=prompt,
-        )
-        append_turn(
-            db,
-            row,
-            role="assistant",
-            kind="clarify",
-            content=str((clarification or {}).get("question") or ""),
-            metadata={"clarification": clarification},
-        )
-        log_session_metrics(db, row.id, clarify_count=1)
+        update_session(db, row, prompt_resolved=_prompt_with_llm(prompt, assessment))
         out = session_to_dict(row)
-        out["assessment"] = _assessment_payload(assessment)
-        out["clarification"] = clarification
-        out["understanding"] = (clarification or {}).get("understanding")
+        out["assessment"] = _assessment_payload(assessment, extra={"clear": True, "triggers": []})
         return out
-
-    row = create_session(
-        db,
-        connection_id=body.connection_id,
-        feature=body.feature or "studio",
-        prompt=prompt,
-        status="ready",
-        resolved_answers=resolved,
-        provider_used=provider,
-        fallback_used=fallback,
-    )
-    update_session(db, row, prompt_resolved=_prompt_with_llm(prompt, assessment))
-    out = session_to_dict(row)
-    out["assessment"] = _assessment_payload(assessment, extra={"clear": True, "triggers": []})
-    return out
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Could not create the App Studio session for this connection. "
+                "Refresh the connection page and try Start new app again."
+            ),
+        ) from exc
 
 
 @router.get("/{session_id}")
@@ -377,47 +410,59 @@ def generate_session_route(
     from app.routers.ai import _load_reuse_catalog
     from app.schemas import AiDraftModuleBody
 
-    connection_id = row.connection_id
-    draft_body = AiDraftModuleBody(prompt=prompt, connection_id=connection_id)
-    available, installed, reuse_views, reuse_actions, stock_catalog = _load_reuse_catalog(
-        db, draft_body
-    )
-    protected_manifest = None
-    odoo_version = None
-    if connection_id:
-        try:
-            conn = get_connection_or_404(db, connection_id)
-            protected_manifest = manifest_from_json(
-                getattr(conn, "protected_manifest_json", None)
-            )
-            odoo_version = getattr(conn, "server_version", None) or getattr(
-                conn, "protected_manifest_version", None
-            )
-        except LookupError:
-            pass
+    try:
+        connection_id = row.connection_id
+        draft_body = AiDraftModuleBody(prompt=prompt, connection_id=connection_id)
+        available, installed, reuse_views, reuse_actions, stock_catalog = _load_reuse_catalog(
+            db, draft_body
+        )
+        protected_manifest = None
+        odoo_version = None
+        if connection_id:
+            try:
+                conn = get_connection_or_404(db, connection_id)
+                protected_manifest = manifest_from_json(
+                    getattr(conn, "protected_manifest_json", None)
+                )
+                odoo_version = getattr(conn, "server_version", None) or getattr(
+                    conn, "protected_manifest_version", None
+                )
+            except LookupError:
+                pass
 
-    job_id = enqueue_draft_job(
-        db,
-        connection_id=connection_id,
-        body_kwargs=build_draft_job_kwargs(
-            prompt=prompt,
+        job_id = enqueue_draft_job(
+            db,
             connection_id=connection_id,
-            available_models=available,
-            installed_modules=installed,
-            stock_catalog=stock_catalog,
-            reuse_views=reuse_views or None,
-            reuse_actions=reuse_actions or None,
-            protected_manifest=protected_manifest,
-            odoo_version=odoo_version,
-            expand=draft_body.expand,
-            pipeline=draft_body.pipeline,
-            grain_override=draft_body.grain,
-            gallery_id=draft_body.gallery_id,
-            host_model_override=host_override or draft_body.host_model,
-            connect_points_override=draft_body.connect_points,
-            ai_session_id=session_id,
-        ),
-    )
+            body_kwargs=build_draft_job_kwargs(
+                prompt=prompt,
+                connection_id=connection_id,
+                available_models=available,
+                installed_modules=installed,
+                stock_catalog=stock_catalog,
+                reuse_views=reuse_views or None,
+                reuse_actions=reuse_actions or None,
+                protected_manifest=protected_manifest,
+                odoo_version=odoo_version,
+                expand=draft_body.expand,
+                pipeline=draft_body.pipeline,
+                grain_override=draft_body.grain,
+                gallery_id=draft_body.gallery_id,
+                host_model_override=host_override or draft_body.host_model,
+                connect_points_override=draft_body.connect_points,
+                ai_session_id=session_id,
+            ),
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Could not start the draft job. "
+                f"{type(exc).__name__}: {str(exc).strip()[:240] or 'unknown error'}"
+            ),
+        ) from exc
+
     update_session(
         db,
         row,

@@ -147,7 +147,9 @@ html.dark {
   /* Local stacks — next/font/google 500s the app when fonts.gstatic.com is blocked. */
   --font-sans-stack: "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-display-stack: "Iowan Old Style", Palatino, "Palatino Linotype", Georgia, serif;
+  /* Product chrome is Inter/system sans only (UI DESIGN BOT freeze). */
+  --font-display-stack: var(--font-sans-stack);
+  --font-marketing-serif-stack: "Iowan Old Style", Palatino, "Palatino Linotype", Georgia, serif;
   --font-mono-stack: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   --font-sans: var(--font-sans-stack);
   --font-display: var(--font-display-stack);
@@ -259,6 +261,114 @@ html.dark {
   --odoo-canvas: var(--n2);
   --odoo-button-box: var(--n2);
 }
+
+
+/* -------------------------------------------------------------------------- */
+/* UI DESIGN BOT / Build Spec — type & density freeze (product chrome)        */
+/* text-ui-* utilities; list rows 36/32; inspector 280–320; sidebar 220/56   */
+/* -------------------------------------------------------------------------- */
+:root {
+  --text-ui-display-size: 1.25rem; /* 20 */
+  --text-ui-display-leading: 1.75rem; /* 28 */
+  --text-ui-title-size: 1rem; /* 16 */
+  --text-ui-title-leading: 1.5rem; /* 24 */
+  --text-ui-body-size: 0.8125rem; /* 13 */
+  --text-ui-body-leading: 1.25rem; /* 20 */
+  --text-ui-label-size: 0.75rem; /* 12 */
+  --text-ui-label-leading: 1rem; /* 16 */
+  --text-ui-meta-size: 0.6875rem; /* 11 */
+  --text-ui-meta-leading: 1rem; /* 16 */
+  --text-ui-mono-size: 0.75rem; /* 12 */
+  --text-ui-mono-leading: 1rem; /* 16 */
+
+  --space-1: 0.25rem; /* 4 */
+  --space-2: 0.5rem; /* 8 */
+  --space-3: 0.75rem; /* 12 */
+  --space-4: 1rem; /* 16 */
+  --space-5: 1.25rem; /* 20 */
+  --space-6: 1.5rem; /* 24 */
+
+  --row-h: 2.25rem; /* 36 */
+  --row-h-compact: 2rem; /* 32 */
+  --inspector-w-min: 17.5rem; /* 280 */
+  --inspector-w: 18.75rem; /* 300 */
+  --inspector-w-max: 20rem; /* 320 */
+  --sidebar-w: 13.75rem; /* 220 */
+  --sidebar-w-collapsed: 3.5rem; /* 56 */
+  --motion-fast: 160ms;
+  --motion-panel: 180ms;
+  --motion-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@utility text-ui-display {
+  font-size: var(--text-ui-display-size);
+  line-height: var(--text-ui-display-leading);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+@utility text-ui-title {
+  font-size: var(--text-ui-title-size);
+  line-height: var(--text-ui-title-leading);
+  font-weight: 600;
+}
+
+@utility text-ui-body {
+  font-size: var(--text-ui-body-size);
+  line-height: var(--text-ui-body-leading);
+  font-weight: 400;
+}
+
+@utility text-ui-body-em {
+  font-size: var(--text-ui-body-size);
+  line-height: var(--text-ui-body-leading);
+  font-weight: 500;
+}
+
+@utility text-ui-label {
+  font-size: var(--text-ui-label-size);
+  line-height: var(--text-ui-label-leading);
+  font-weight: 500;
+}
+
+@utility text-ui-meta {
+  font-size: var(--text-ui-meta-size);
+  line-height: var(--text-ui-meta-leading);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+@utility text-ui-mono {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: var(--text-ui-mono-size);
+  line-height: var(--text-ui-mono-leading);
+  font-weight: 400;
+}
+
+@utility h-row {
+  height: var(--row-h);
+  min-height: var(--row-h);
+}
+
+@utility h-row-compact {
+  height: var(--row-h-compact);
+  min-height: var(--row-h-compact);
+}
+
+@utility w-inspector {
+  width: var(--inspector-w);
+  min-width: var(--inspector-w-min);
+  max-width: var(--inspector-w-max);
+}
+
+@utility w-sidebar {
+  width: var(--sidebar-w);
+}
+
+@utility w-sidebar-collapsed {
+  width: var(--sidebar-w-collapsed);
+}
+
 
 @theme inline {
   --color-background: var(--background);
@@ -1057,4 +1167,35 @@ body {
   min-height: 0;
   flex: 1;
   overflow: auto;
+}
+
+
+/* === list-composer shell (shared kit D) === */
+.list-composer-shell {
+  align-items: start;
+}
+
+.list-composer-pane {
+  animation: list-composer-enter 180ms ease-out both;
+}
+
+.list-composer-pane--static {
+  animation: none;
+}
+
+@keyframes list-composer-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .list-composer-pane {
+    animation: none;
+  }
 }

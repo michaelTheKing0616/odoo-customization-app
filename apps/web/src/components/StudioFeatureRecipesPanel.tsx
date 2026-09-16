@@ -44,8 +44,8 @@ export function StudioFeatureRecipesPanel({ className = "" }: Props) {
 
   return (
     <div className={`text-sm ${className}`} data-testid="studio-feature-recipes-panel">
-      <p className="text-xs font-medium text-[#a8909e]">Studio feature recipes (public ORM)</p>
-      <p className="mt-0.5 text-[11px] text-[#6b5a66]">
+      <p className="text-xs font-medium text-muted">Studio feature recipes (public ORM)</p>
+      <p className="mt-0.5 text-ui-meta text-muted">
         How each Studio-doc suggested feature maps to Builder / Designer / Option A — honesty
         statuses, not a Studio clone.
       </p>
@@ -65,13 +65,13 @@ export function StudioFeatureRecipesPanel({ className = "" }: Props) {
               key={r.id}
               data-testid={`feature-recipe-${r.id}`}
               data-status={r.status}
-              className="border border-border-subtle bg-[#120e14] px-2 py-1.5 text-xs text-muted"
+              className="border border-border-subtle bg-surface-muted px-2 py-1.5 text-xs text-muted"
             >
               <span className="font-medium">{r.name}</span>
-              <span className="ml-2 text-[10px] uppercase tracking-wide text-muted">
+              <span className="ml-2 text-ui-meta uppercase tracking-wide text-muted">
                 {r.status}
               </span>
-              <span className="mt-0.5 block text-[11px] text-muted">{r.how}</span>
+              <span className="mt-0.5 block text-ui-meta text-muted">{r.how}</span>
             </li>
           ))}
         </ul>

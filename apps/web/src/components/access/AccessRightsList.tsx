@@ -33,7 +33,7 @@ export function AccessRightsList({
   return (
     <div className="space-y-3" data-testid="access-rights-list">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-ink">Access rights</h2>
+        <h2 className="text-ui-title font-semibold text-ink">Access rights</h2>
         <Button type="button" variant="secondary" size="sm" onClick={onCreate} data-testid="access-new-right">
           New access
         </Button>
@@ -44,7 +44,7 @@ export function AccessRightsList({
         placeholder="Filter by name or group"
         aria-label="Filter access rights"
         data-testid="access-rights-filter"
-        className="h-9 w-full rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink outline-none placeholder:text-muted focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+        className="h-row w-full rounded-md border border-border-subtle bg-surface px-3 text-ui-body text-ink outline-none placeholder:text-muted focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
       />
       {loading ? (
         <div className="space-y-2" data-testid="access-rights-loading">

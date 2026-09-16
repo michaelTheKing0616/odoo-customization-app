@@ -6,35 +6,35 @@ test.describe("ConfirmDialog", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/e2e/confirm");
     await page.getByTestId("open-confirm").click();
-    await expect(page.getByTestId("confirm-dialog")).toBeVisible();
+    await expect(page.getByTestId("confirm-dialog-v2")).toBeVisible();
   });
 
   test("Confirm button disabled until exact phrase typed", async ({ page }) => {
-    const confirm = page.getByTestId("confirm-dialog-confirm");
+    const confirm = page.getByTestId("confirm-dialog-v2-confirm");
     await expect(confirm).toBeDisabled();
 
-    await page.getByTestId("confirm-dialog-input").fill(PHRASE);
+    await page.getByTestId("confirm-dialog-v2-input").fill(PHRASE);
     await expect(confirm).toBeEnabled();
   });
 
   test("Wrong phrase keeps Confirm disabled", async ({ page }) => {
-    const confirm = page.getByTestId("confirm-dialog-confirm");
-    await page.getByTestId("confirm-dialog-input").fill("I understand the risk");
+    const confirm = page.getByTestId("confirm-dialog-v2-confirm");
+    await page.getByTestId("confirm-dialog-v2-input").fill("I understand the risk");
     await expect(confirm).toBeDisabled();
   });
 
   test("Correct phrase + Confirm shows confirmed:ok", async ({ page }) => {
-    await page.getByTestId("confirm-dialog-input").fill(PHRASE);
-    await page.getByTestId("confirm-dialog-confirm").click();
+    await page.getByTestId("confirm-dialog-v2-input").fill(PHRASE);
+    await page.getByTestId("confirm-dialog-v2-confirm").click();
     await expect(page.getByTestId("confirm-result")).toHaveText("confirmed:ok");
-    await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
+    await expect(page.getByTestId("confirm-dialog-v2")).toHaveCount(0);
   });
 
   test("Cancel shows confirmed:cancelled", async ({ page }) => {
-    await page.getByTestId("confirm-dialog-cancel").click();
+    await page.getByTestId("confirm-dialog-v2-cancel").click();
     await expect(page.getByTestId("confirm-result")).toHaveText(
       "confirmed:cancelled",
     );
-    await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
+    await expect(page.getByTestId("confirm-dialog-v2")).toHaveCount(0);
   });
 });

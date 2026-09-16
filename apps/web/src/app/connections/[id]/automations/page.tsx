@@ -46,6 +46,7 @@ import { AutomationComposer } from "@/components/automations/AutomationComposer"
 import { AutomationDetail } from "@/components/automations/AutomationDetail";
 import { AutomationsList } from "@/components/automations/AutomationsList";
 import { AutomationSessionBar } from "@/components/automations/AutomationSessionBar";
+import { ListComposerShell } from "@/components/ui/ListComposerShell";
 import { AutomationSnapshots } from "@/components/automations/AutomationSnapshots";
 
 function isModuleExport(v: AutomationRow | ModuleExport): v is ModuleExport {
@@ -548,8 +549,9 @@ export default function AutomationsPage() {
         </Callout>
       ) : null}
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(240px,320px)_minmax(0,1fr)]">
-        <div>
+      <ListComposerShell
+        list={
+          <>
           {listError ? (
             <ErrorNotice
               message={listError}
@@ -576,10 +578,10 @@ export default function AutomationsPage() {
             busy={busy}
             onRollback={onRollback}
           />
-        </div>
-
-        <div className="space-y-4">
-          {selected ? (
+          </>
+        }
+        detail={
+          selected ? (
             <AutomationDetail
               key={selected.id}
               connectionId={connectionId}
@@ -670,9 +672,9 @@ export default function AutomationsPage() {
                 models={models}
               />
             </>
-          )}
-        </div>
-      </div>
+          )
+        }
+      />
 
       <ConfirmDialogV2
         open={confirmMode != null}

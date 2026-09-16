@@ -11,6 +11,7 @@ import {
   formatExpertContextLabel,
   linkifyCitationMarkers,
   splitUserTurnForDisplay,
+  expertDestinationHref,
 } from "./expert-journey";
 
 describe("expert-journey", () => {
@@ -80,3 +81,10 @@ describe("expert-journey", () => {
     expect(joined.toLowerCase()).not.toMatch(/auto-promote|generate ui|apply now/);
   });
 });
+
+describe("expertDestinationHref", () => {
+  it("points at the dedicated /expert route", () => {
+    expect(expertDestinationHref("conn-1")).toBe("/connections/conn-1/expert");
+  });
+});
+

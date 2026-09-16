@@ -378,13 +378,19 @@ def draft_dict_to_module_spec(draft: dict[str, Any]) -> ModuleSpec:
 
     blocks = merge_custom_code_blocks(draft)
     try:
-        from app.ai_static_odoo import rewrite_stock_inherit_xpaths
+        from app.ai_static_odoo import harden_authored_python, rewrite_stock_inherit_xpaths
 
         for block in blocks:
             if not isinstance(block, dict):
                 continue
             content = str(block.get("content") or "")
-            rewritten = rewrite_stock_inherit_xpaths(content)
+            path = str(block.get("source_file") or block.get("path") or "")
+            kind = str(block.get("kind") or "")
+            rewritten = content
+            if path.endswith(".xml") or kind in {"xml", "qweb"}:
+                rewritten = rewrite_stock_inherit_xpaths(rewritten)
+            if path.endswith(".py") or kind == "python":
+                rewritten = harden_authored_python(rewritten)
             if rewritten != content:
                 block["content"] = rewritten
     except Exception:  # noqa: BLE001

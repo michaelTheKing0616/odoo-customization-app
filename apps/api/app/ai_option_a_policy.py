@@ -24,6 +24,21 @@ _SECRET_RE = re.compile(
     r"|password\s*=\s*['\"][^'\"]{8,})"
 )
 _STATE_CODE_RE = re.compile(r"""['\"]state['\"]\s*:\s*['\"]code['\"]|state\s*=\s*['\"]code['\"]""")
+_STOCK_COMPUTE_AMOUNT_RE = re.compile(r"""\bdef\s+_compute_amount\s*\(""")
+_PRICE_SUBTOTAL_FIELD_RE = re.compile(r"""\bprice_subtotal\s*=\s*fields\.""")
+
+
+def _py_blocks(draft: dict[str, Any]) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    for block in draft.get("custom_code_blocks") or []:
+        if not isinstance(block, dict):
+            continue
+        path = str(block.get("source_file") or block.get("path") or "block")
+        content = str(block.get("content") or "")
+        kind = str(block.get("kind") or "")
+        if path.endswith(".py") or kind == "python":
+            out.append((path, content))
+    return out
 
 
 def _host_is_blocked(host: str) -> bool:
@@ -152,6 +167,43 @@ def policy_findings(draft: dict[str, Any]) -> list[dict[str, str]]:
                         "file": path,
                     }
                 )
+
+    # CE sale inherit killers — should already be stripped by harden_authored_python;
+    # fail closed if anything remains so zip never ships a known sandbox Fault.
+    for path, content in _py_blocks(draft):
+        if "sale.order" not in content or "_inherit" not in content:
+            continue
+        if _STOCK_COMPUTE_AMOUNT_RE.search(content):
+            findings.append(
+                {
+                    "code": "stock_compute_amount_override",
+                    "message": (
+                        "Do not redefine stock _compute_amount on sale.order / sale.order.line. "
+                        "Add x_* markup/WHT computes instead (CE uses tax_ids, not tax_id)."
+                    ),
+                    "file": path,
+                }
+            )
+        if _PRICE_SUBTOTAL_FIELD_RE.search(content):
+            findings.append(
+                {
+                    "code": "stock_price_subtotal_redeclare",
+                    "message": (
+                        "Do not redeclare stock price_subtotal. Use x_* monetary computes for markup."
+                    ),
+                    "file": path,
+                }
+            )
+        if re.search(r"""(['"])tax_id\1|\.tax_id\b""", content):
+            findings.append(
+                {
+                    "code": "sale_line_tax_id",
+                    "message": (
+                        "sale.order.line taxes field is tax_ids (Many2many) — never tax_id."
+                    ),
+                    "file": path,
+                }
+            )
     return findings
 
 
