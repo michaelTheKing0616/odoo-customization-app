@@ -5,6 +5,11 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import "@/styles/studio-refinement.css";
 import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
+import { CapabilitiesPostcard } from "@/components/shell/CapabilitiesPostcard";
+import {
+  SandboxDeployStages,
+  sandboxDeployCurrentIndex,
+} from "@/components/shell/SandboxDeployStages";
 import { HealthCheckBanner } from "@/components/HealthCheckBanner";
 import { EePlaybooksPanel } from "@/components/EePlaybooksPanel";
 import { DomainPlaybooksPanel } from "@/components/DomainPlaybooksPanel";
@@ -608,6 +613,29 @@ export default function BrowserPage() {
 
       <FirstWriteInterstitial connection={connection} />
 
+      {connection ? (
+        <CapabilitiesPostcard
+          connection={connection}
+          capabilities={connection.capabilities}
+          probing={probing}
+          onReprobe={() => {
+            void (async () => {
+              setProbing(true);
+              setError(null);
+              try {
+                await api.probeConnection(connectionId);
+                const refreshed = await api.getConnection(connectionId);
+                setConnection(refreshed);
+              } catch (err) {
+                setError(err instanceof Error ? err.message : "Probe failed");
+              } finally {
+                setProbing(false);
+              }
+            })();
+          }}
+        />
+      ) : null}
+
         {connection && (
           <CapabilityProbePanel
             capabilities={connection.capabilities}
@@ -844,17 +872,7 @@ export default function BrowserPage() {
               )}
           </div>
         )}
-        {sandboxLogTail && (
-          <details className="mt-4 border border-border-subtle bg-surface/80 p-3">
-            <summary className="cursor-pointer text-sm text-danger">
-              Sandbox log
-            </summary>
-            <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-xs text-muted">
-              {sandboxLogTail}
-            </pre>
-          </details>
-        )}
-        {section === "develop" ? (
+{section === "develop" ? (
         <>
         <Card className="mt-8 p-5">
           <h2 className="text-xl font-semibold text-ink">Export, sandbox &amp; promote</h2>
@@ -862,41 +880,31 @@ export default function BrowserPage() {
             Package new <code className="font-mono text-accent">x_*</code> models and/or extensions to
             stock models (inherit) → sandbox → promote after validation + confirm.
           </p>
-          {deploymentPanel ? (
-            <div
-              className="mt-4 rounded border border-border-subtle bg-surface/80 p-4 text-sm"
-              data-testid="deployment-panel"
-            >
-              <p className="font-medium text-[#faf6f9]">{deploymentPanel.title}</p>
-              <p className="mt-2 text-[#a8909e]">{deploymentPanel.body}</p>
-              <ul className="mt-2 list-disc pl-5 text-muted">
-                {deploymentPanel.options.map((opt) => (
-                  <li key={opt}>{opt}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-          {sandboxApproximation ? (
-            <p
-              className="mt-3 rounded border border-amber-900/50 bg-amber-950/30 p-3 text-sm text-amber-100"
-              data-testid="sandbox-approximation"
-            >
-              {sandboxApproximation}
-              {shStagingSuggestion ? (
-                <span className="mt-2 block text-amber-200/90">{shStagingSuggestion}</span>
-              ) : null}
-            </p>
-          ) : null}
+          <SandboxDeployStages
+            currentIndex={sandboxDeployCurrentIndex({
+              hasValidationId: Boolean(validationId),
+              promotedCount: promoted.length,
+              sandboxBusy: exportBusy,
+            })}
+            deploymentPanel={deploymentPanel}
+            logTail={sandboxLogTail}
+            approximation={
+              sandboxApproximation
+                ? sandboxApproximation +
+                  (shStagingSuggestion ? ` ${shStagingSuggestion}` : "")
+                : null
+            }
+          />
           {storeReadiness ? (
             <div
               className="mt-4 rounded border border-border-subtle bg-surface/80 p-4 text-sm"
               data-testid="store-readiness-report"
             >
-              <p className="font-medium text-[#faf6f9]">
+              <p className="font-medium text-ink">
                 Store readiness — {storeReadiness.message}
               </p>
               <p className="mt-1 text-xs text-muted">{storeReadiness.disclaimer}</p>
-              <ul className="mt-2 space-y-1 text-[#a8909e]">
+              <ul className="mt-2 space-y-1 text-muted">
                 {storeReadiness.items.map((item) => (
                   <li key={item.key}>
                     [{item.status}] {item.label}: {item.message}
@@ -910,8 +918,8 @@ export default function BrowserPage() {
               className="mt-4 rounded border border-border-subtle bg-surface/80 p-4 text-sm"
               data-testid="migration-assist-panel"
             >
-              <p className="font-medium text-[#faf6f9]">{migrationAssist.title}</p>
-              <p className="mt-2 text-[#a8909e]">{migrationAssist.body}</p>
+              <p className="font-medium text-ink">{migrationAssist.title}</p>
+              <p className="mt-2 text-muted">{migrationAssist.body}</p>
               {migrationAssist.unlocks.length > 0 ? (
                 <ul className="mt-3 list-disc pl-5 text-muted">
                   {migrationAssist.unlocks.map((u) => (
@@ -942,11 +950,11 @@ export default function BrowserPage() {
               className="mt-4 rounded border border-border-subtle bg-surface/80 p-4 text-sm"
               data-testid="store-readiness-report"
             >
-              <p className="font-medium text-[#faf6f9]">
+              <p className="font-medium text-ink">
                 Store readiness — {storeReadiness.message}
               </p>
               <p className="mt-1 text-xs text-muted">{storeReadiness.disclaimer}</p>
-              <ul className="mt-2 space-y-1 text-[#a8909e]">
+              <ul className="mt-2 space-y-1 text-muted">
                 {storeReadiness.items.map((item) => (
                   <li key={item.key}>
                     [{item.status}] {item.label}: {item.message}
@@ -960,8 +968,8 @@ export default function BrowserPage() {
               className="mt-4 rounded border border-border-subtle bg-surface/80 p-4 text-sm"
               data-testid="migration-assist-panel"
             >
-              <p className="font-medium text-[#faf6f9]">{migrationAssist.title}</p>
-              <p className="mt-2 text-[#a8909e]">{migrationAssist.body}</p>
+              <p className="font-medium text-ink">{migrationAssist.title}</p>
+              <p className="mt-2 text-muted">{migrationAssist.body}</p>
               {migrationAssist.unlocks.length > 0 ? (
                 <ul className="mt-3 list-disc pl-5 text-muted">
                   {migrationAssist.unlocks.map((u) => (
@@ -1060,7 +1068,7 @@ export default function BrowserPage() {
           </div>
           <div className="mt-4 w-full max-w-2xl">
             <div className="flex flex-wrap items-center gap-3">
-              <p className="text-sm text-[#a8909e]">Extra depends (peer / stock modules)</p>
+              <p className="text-sm text-muted">Extra depends (peer / stock modules)</p>
               <button
                 type="button"
                 disabled={exportBusy}
@@ -1121,7 +1129,7 @@ export default function BrowserPage() {
               )}
             </div>
             <label className="mt-2 block text-sm">
-              <span className="text-[#a8909e]">
+              <span className="text-muted">
                 Free-form depends (not in list)
               </span>
               <input
@@ -1147,7 +1155,7 @@ export default function BrowserPage() {
                 <li>Only the sandbox-validated zip will be installed</li>
               </ul>
               <label className="mt-3 block text-sm">
-                <span className="text-[#a8909e]">
+                <span className="text-muted">
                   Type <code className="text-[#f0c090]">I understand the risks</code>
                 </span>
                 <input
@@ -1219,7 +1227,7 @@ export default function BrowserPage() {
                 Uninstall <code className="font-mono">{uninstallTarget}</code>?
               </p>
               <label className="mt-3 block text-sm">
-                <span className="text-[#a8909e]">
+                <span className="text-muted">
                   Type <code className="text-[#f0c090]">I understand the risks</code>
                 </span>
                 <input
