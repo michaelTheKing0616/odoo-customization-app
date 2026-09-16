@@ -23,17 +23,32 @@ _AUTHOR_SYSTEM = (
     "urllib is allowed for public HTTPS APIs. Live ir.actions.server state=code is forbidden. "
     "QWeb report changes must inherit a stock xmlid (inherit_id). "
     "Do not invent a parallel invoice, partner, or employee model. "
-    "Sales markup briefs: inherit sale.order; operator chooses markup % at sale entry "
-    "(selection 10 through 25); selling price = cost + markup; withholding tax applies "
-    "only to the markup amount and only on sales, never purchases. Use an existing tax "
-    "xmlid — never env['account.tax'].create. "
+    "Sales markup briefs: inherit sale.order ONLY (not sale.order.line unless you add a "
+    "harmless related display). Operator chooses markup % at sale entry "
+    "(selection 10 through 25); selling price = cost + markup via onchange or x_* computes; "
+    "withholding tax applies only to the markup amount and only on sales, never purchases. "
+    "Use an existing tax xmlid or a Float x_wht_rate — never env['account.tax'].create. "
     "sale.order form inherit MUST xpath //field[@name='tax_totals'] "
     "(Community 17–19 has no amount_tax node on sale.view_order_form). "
+    "NEVER define def _compute_amount and NEVER redeclare price_subtotal = fields.* — "
+    "those stock methods/fields must stay untouched. Prefer x_markup_percent, "
+    "x_markup_amount, x_wht_on_markup computes with @api.depends on order_line and x_*. "
     "sale.order.line taxes field is tax_ids (Many2many) — never tax_id. "
-    "Do not re-declare stock _compute_amount / price_subtotal with wrong @depends; "
-    "add x_* markup fields and compute on those instead. "
     "JSON rules: escape every newline as \\n and every double-quote as \\\". "
     "Close every string. Prefer at most 6 short files."
+)
+
+_MARKUP_SHAPE_HINT = (
+    "\n\nCE-safe shape for sales markup (follow this pattern, still author full files):\n"
+    "- models/sale_order_markup.py: class SaleOrder(_inherit='sale.order') with "
+    "x_markup_percent Selection 10..25, x_markup_amount / x_wht_on_markup Monetary "
+    "compute methods named _compute_markup_* (NOT _compute_amount).\n"
+    "- Optional @api.onchange('x_markup_percent') to set line.price_unit from "
+    "product standard_price * (1 + pct/100).\n"
+    "- views/*.xml: inherit sale.view_order_form, xpath //field[@name='tax_totals'], "
+    "position='before', insert the x_* fields.\n"
+    "- models/__init__.py imports the markup module.\n"
+    "- depends: ['sale']. No account.tax.create.\n"
 )
 
 FORMAT_SCHEMA_BLOCKS: dict[str, Any] = {
@@ -234,6 +249,21 @@ def _author_fail_message(exc: BaseException) -> str:
             "module this pass. Click Retry authoring. "
             f"Detail: {detail}"
         )
+    low = detail.lower()
+    if "quota" in low or "free_tier" in low or "plan and billing" in low:
+        return (
+            "Gemini free-tier quota is exhausted, so Option A authoring could not finish. "
+            "Wait for reset, enable Gemini billing, or switch the API to a warm local "
+            "Ollama model (AI_ASSIST=ollama). Then click Retry authoring. "
+            f"Detail: {detail}"
+        )
+    if "timed out" in low or "timeout" in low:
+        return (
+            "The language model timed out while authoring the module (often Gemini quota "
+            "falling back to a slow local Ollama). Click Retry authoring when the provider "
+            "is ready. "
+            f"Detail: {detail}"
+        )
     if _author_exc_retryable(exc):
         return (
             "The language model was busy (high demand or rate limit). "
@@ -288,13 +318,16 @@ def _author_user_prompt(prompt: str, draft: dict[str, Any]) -> str:
         for m in (draft.get("models") or [])
         if isinstance(m, dict) and m.get("model")
     ]
-    return (
+    body = (
         f"Operator brief:\n{prompt}\n\n"
         f"Draft technical_name: {draft.get('technical_name')}\n"
         f"Inherit hosts: {hosts or ['(none yet)']}\n"
         f"Depends so far: {draft.get('depends')}\n"
         "Author the module files. Inherit the named host when present."
     )
+    if re.search(r"(?i)mark-?up", prompt or ""):
+        body += _MARKUP_SHAPE_HINT
+    return body
 
 
 _COMPACT_JSON_HINT = (
@@ -400,6 +433,13 @@ def author_option_a_module(
 
     if blocks:
         draft["custom_code_blocks"] = blocks
+    # Free CE harden before the gate — keeps known sandbox killers out of zip.
+    from app.ai_static_odoo import rewrite_draft_stock_xpaths
+
+    try:
+        rewrite_draft_stock_xpaths(draft)
+    except Exception:  # noqa: BLE001
+        pass
     payload = evaluate_authoring_gate(draft, client=client, odoo_major=odoo_major)
     attempts = 0
     while payload.get("status") != "pass" and attempts < 3:
@@ -408,6 +448,7 @@ def author_option_a_module(
             break
         try:
             _repair_generate(text, draft, list(payload.get("findings") or []), gen)
+            rewrite_draft_stock_xpaths(draft)
         except Exception:  # noqa: BLE001
             break
         payload = evaluate_authoring_gate(draft, client=client, odoo_major=odoo_major)

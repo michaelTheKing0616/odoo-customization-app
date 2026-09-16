@@ -17,6 +17,8 @@ export type ConfirmDialogV2Props = {
   busy?: boolean;
   riskLevel?: "standard" | "danger";
   snapshotNote?: string;
+  /** Concrete impact lines shown above risks (models, rules, records). */
+  blastRadius?: string[];
 };
 
 /**
@@ -34,6 +36,7 @@ export function ConfirmDialogV2({
   busy = false,
   riskLevel = "standard",
   snapshotNote,
+  blastRadius,
 }: ConfirmDialogV2Props) {
   const [typed, setTyped] = useState("");
   const danger = riskLevel === "danger";
@@ -81,6 +84,21 @@ export function ConfirmDialogV2({
 
         <div className="space-y-3 px-5 py-4">
           <p className="text-sm text-muted">{warning}</p>
+
+
+          {blastRadius && blastRadius.length > 0 ? (
+            <div
+              className="rounded-md border border-border-subtle bg-surface px-3 py-2"
+              data-testid="confirm-dialog-v2-blast-radius"
+            >
+              <p className="text-xs font-medium uppercase tracking-wide text-muted">Blast radius</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4 text-sm text-ink">
+                {blastRadius.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
 
           {risks.length > 0 && (
             <ul

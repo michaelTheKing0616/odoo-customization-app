@@ -1167,6 +1167,19 @@ def _is_rate_limit_error(exc: LLMError) -> bool:
     )
 
 
+def _is_hard_quota_error(exc: LLMError) -> bool:
+    """Daily/plan quota — sleep-retrying the same key will not help."""
+    if not _is_rate_limit_error(exc):
+        return False
+    msg = str(exc).lower()
+    return (
+        "exceeded your current quota" in msg
+        or "free_tier" in msg
+        or "check your plan and billing" in msg
+        or "quota exceeded for metric" in msg
+    )
+
+
 def _is_unavailable_error(exc: LLMError) -> bool:
     msg = str(exc).lower()
     if _is_timeout_error(exc) or _is_rate_limit_error(exc):
@@ -1179,6 +1192,7 @@ def _is_unavailable_error(exc: LLMError) -> bool:
 _RATE_LIMIT_BACKOFF_S = (2.0, 8.0, 20.0)
 _RATE_LIMIT_SLEEP_CAP_S = 25.0
 _RATE_LIMIT_EXTRA_ATTEMPTS = 3
+_OLLAMA_FALLBACK_TIMEOUT_S = 45.0
 
 
 def _sleep_for_rate_limit(exc: LLMError, attempt_idx: int) -> None:
@@ -1191,10 +1205,35 @@ def _sleep_for_rate_limit(exc: LLMError, attempt_idx: int) -> None:
 def _kwargs_for_fallback(prov: LLMProvider, kwargs: dict[str, Any]) -> dict[str, Any]:
     out = dict(kwargs)
     out["model"] = None
-    if isinstance(prov, OllamaProvider):
-        out["model"] = _ollama_local_model(prov.model)
+    name = getattr(prov, "name", "") or ""
+    if name == "ollama" or isinstance(prov, OllamaProvider):
+        out["model"] = _ollama_local_model(getattr(prov, "model", None))
+        # Cloud → local fallback must not burn the draft job on a hung Ollama generate.
+        prior = float(out.get("timeout_s") or _OLLAMA_FALLBACK_TIMEOUT_S)
+        out["timeout_s"] = min(prior, _OLLAMA_FALLBACK_TIMEOUT_S)
     return out
 
+
+def _compose_fallback_failure(primary_exc: LLMError, last_exc: LLMError) -> LLMError:
+    """Keep the cloud quota reason visible when Ollama/other fallbacks also fail."""
+    primary = str(primary_exc).strip()
+    last = str(last_exc).strip()
+    if _is_hard_quota_error(primary_exc) or (
+        _is_rate_limit_error(primary_exc) and "quota" in primary.lower()
+    ):
+        msg = (
+            "Gemini quota/rate limit blocked authoring. "
+            "Fallback model also failed. Wait for quota reset, enable billing on the "
+            "Gemini key, or set AI_ASSIST=ollama when a local model is warm. "
+            f"Primary: {primary[:160]} Fallback: {last[:120]}"
+        )
+        return LLMError(msg, status_code=429, retry_after_s=getattr(primary_exc, "retry_after_s", None))
+    if primary and last and primary != last:
+        return LLMError(
+            f"{last} (after: {primary[:160]})",
+            status_code=getattr(last_exc, "status_code", None) or getattr(primary_exc, "status_code", None),
+        )
+    return last_exc
 
 def list_configured_fallback_providers(primary: LLMProvider) -> list[LLMProvider]:
     """Other configured backends after Gemini/cloud quota (429) or 503."""
@@ -1266,6 +1305,9 @@ def generate_json_with_timeout_retry(
         try:
             return _call(prov, kwargs)
         except LLMError as exc:
+            if _is_hard_quota_error(exc):
+                # Same API key will keep failing — fall through to other providers.
+                raise
             if _is_rate_limit_error(exc):
                 last: LLMError = exc
                 for i in range(_RATE_LIMIT_EXTRA_ATTEMPTS):
@@ -1274,6 +1316,8 @@ def generate_json_with_timeout_retry(
                         return _call(prov, kwargs)
                     except LLMError as retry_exc:
                         last = retry_exc
+                        if _is_hard_quota_error(retry_exc):
+                            raise retry_exc
                         if not _is_rate_limit_error(retry_exc):
                             raise
                 raise last
@@ -1322,6 +1366,7 @@ def generate_json_with_timeout_retry(
                 kwargs["num_predict"] = 2048
             return _call(provider, kwargs)
         if _is_rate_limit_error(exc) or _is_unavailable_error(exc):
+            primary_exc = exc
             last = exc
             for alt in list_configured_fallback_providers(provider):
                 try:
@@ -1329,13 +1374,14 @@ def generate_json_with_timeout_retry(
                 except LLMError as alt_exc:
                     last = alt_exc
                     if not (
-                        _is_rate_limit_error(alt_exc) or _is_unavailable_error(alt_exc)
+                        _is_rate_limit_error(alt_exc)
+                        or _is_unavailable_error(alt_exc)
+                        or _is_timeout_error(alt_exc)
                     ):
-                        raise
+                        raise _compose_fallback_failure(primary_exc, alt_exc) from alt_exc
                     continue
-            raise last
+            raise _compose_fallback_failure(primary_exc, last) from last
         raise
-
 
 class MockLLMProvider(LLMProvider):
     """Test double — canned JSON/text without network."""

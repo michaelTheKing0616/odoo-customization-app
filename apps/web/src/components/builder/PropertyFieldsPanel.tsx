@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, ConfirmationRequiredError, type Connection, type PropertyFieldsProbeOut } from "@/lib/api";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 
 const CONFIRM_PHRASE = "I understand the risks";
 
@@ -322,7 +322,8 @@ export function PropertyFieldsPanel({
       {notice && <p className="text-sm text-[var(--odoo-success)]">{notice}</p>}
       {error && <p className="text-sm text-[var(--odoo-danger)]">{error}</p>}
 
-      <ConfirmDialog
+      <ConfirmDialogV2
+        riskLevel="danger"
         open={confirmOpen}
         title={confirmMode === "setup" ? "Create properties fields" : "Write property definition"}
         warning={

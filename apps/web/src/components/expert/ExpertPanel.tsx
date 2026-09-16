@@ -16,6 +16,7 @@ import {
 import { ExpertComposer } from "./ExpertComposer";
 import { ExpertContextBar } from "./ExpertContextBar";
 import { ExpertHeader } from "./ExpertHeader";
+import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { ExpertThread } from "./ExpertThread";
 import "@/styles/studio-refinement.css";
 
@@ -38,6 +39,7 @@ export function ExpertPanel() {
   const [turns, setTurns] = useState<ExpertTurn[]>([]);
   const [input, setInput] = useState("");
   const [errorPaste, setErrorPaste] = useState("");
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [autoSubmitNonce, setAutoSubmitNonce] = useState(0);
@@ -124,13 +126,17 @@ export function ExpertPanel() {
 
   const clearHistory = useCallback(() => {
     if (turns.length === 0 || busy) return;
-    if (!window.confirm("Start a new Expert thread? This clears the current conversation.")) return;
+    setClearConfirmOpen(true);
+  }, [busy, turns.length]);
+
+  const confirmClearHistory = useCallback(() => {
     setTurns([]);
     setError(null);
     setInput("");
     setErrorPaste("");
     clearExpertThread(connectionId);
-  }, [busy, connectionId, turns.length]);
+    setClearConfirmOpen(false);
+  }, [connectionId]);
 
   useEffect(() => {
     if (!expertPrefill?.question && !expertPrefill?.seedResponse) return;
@@ -190,46 +196,62 @@ export function ExpertPanel() {
   const errorInMainInput = /\nError log:\n/i.test(input);
 
   return (
-    <Sheet
-      open={expertOpen}
-      onOpenChange={setExpertOpen}
-      title="Odoo Expert"
-      description={EXPERT_HONESTY_LINE}
-      testId="expert-panel"
-      className="studio-refinement expert-drawer max-w-xl"
-      header={<ExpertHeader />}
-    >
-      <div className="flex min-h-0 flex-1 flex-col">
-        <ExpertContextBar
-          contextLabel={contextLabel}
-          contextEnabled={contextEnabled}
-          onToggleContext={() => setContextEnabled(!contextEnabled)}
-          canClear={turns.length > 0}
-          busy={busy}
-          onClear={clearHistory}
-        />
-        <ExpertThread
-          turns={turns}
-          busy={busy}
-          error={error}
-          prompts={promptsQuery.data}
-          loadingPrompts={promptsQuery.isLoading}
-          onSelectPrompt={(question) => void sendQuestion(question, { freshThread: true })}
-          connectionId={connectionId}
-          chatterModel={uiContext.model}
-          chatterResId={uiContext.resId}
-          bottomRef={bottomRef}
-        />
-        <ExpertComposer
-          value={input}
-          onChange={setInput}
-          errorPaste={errorPaste}
-          onErrorPasteChange={setErrorPaste}
-          errorInMainInput={errorInMainInput}
-          busy={busy}
-          onSubmit={() => void sendQuestion(input)}
-        />
-      </div>
-    </Sheet>
+    <>
+      <Sheet
+        open={expertOpen}
+        onOpenChange={setExpertOpen}
+        title="Odoo Expert"
+        description={EXPERT_HONESTY_LINE}
+        testId="expert-panel"
+        className="studio-refinement expert-drawer max-w-xl"
+        header={<ExpertHeader />}
+      >
+        <div className="flex min-h-0 flex-1 flex-col">
+          <ExpertContextBar
+            contextLabel={contextLabel}
+            contextEnabled={contextEnabled}
+            onToggleContext={() => setContextEnabled(!contextEnabled)}
+            canClear={turns.length > 0}
+            busy={busy}
+            onClear={clearHistory}
+          />
+          <ExpertThread
+            turns={turns}
+            busy={busy}
+            error={error}
+            prompts={promptsQuery.data}
+            loadingPrompts={promptsQuery.isLoading}
+            onSelectPrompt={(question) => void sendQuestion(question, { freshThread: true })}
+            connectionId={connectionId}
+            chatterModel={uiContext.model}
+            chatterResId={uiContext.resId}
+            bottomRef={bottomRef}
+          />
+          <ExpertComposer
+            value={input}
+            onChange={setInput}
+            errorPaste={errorPaste}
+            onErrorPasteChange={setErrorPaste}
+            errorInMainInput={errorInMainInput}
+            busy={busy}
+            onSubmit={() => void sendQuestion(input)}
+          />
+        </div>
+      </Sheet>
+      <ConfirmDialogV2
+        open={clearConfirmOpen}
+        riskLevel="standard"
+        title="Start a new Expert thread?"
+        warning="This clears the current conversation in this browser."
+        risks={[
+          "Prior turns are removed from local thread storage",
+          "You can still ask a new question afterward",
+        ]}
+        phrase="I understand the risks"
+        busy={busy}
+        onCancel={() => setClearConfirmOpen(false)}
+        onConfirm={() => confirmClearHistory()}
+      />
+    </>
   );
 }

@@ -209,6 +209,24 @@ describe("ConfirmDialogV2", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
     expect(onConfirm).toHaveBeenCalled();
   });
+
+  it("shows blast radius when provided", () => {
+    render(
+      <ConfirmDialogV2
+        open
+        title="Apply"
+        warning="Writes live metadata"
+        risks={["Creates a rule"]}
+        blastRadius={["Model res.partner", "1 new ir.rule"]}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("confirm-dialog-v2-blast-radius")).toHaveTextContent(
+      "Model res.partner",
+    );
+    expect(screen.getByTestId("confirm-dialog-v2-blast-radius")).toHaveTextContent("1 new ir.rule");
+  });
 });
 
 describe("Toast", () => {

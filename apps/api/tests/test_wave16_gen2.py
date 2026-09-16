@@ -223,12 +223,55 @@ def test_rate_limit_429_falls_back_to_other_provider(
     assert raw == '{"from":"fallback"}'
 
 
+def test_hard_quota_skips_same_provider_retries_and_names_fallback_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sleeps: list[float] = []
+    monkeypatch.setattr("app.llm_provider.time.sleep", lambda s: sleeps.append(s))
+
+    class QuotaGemini:
+        name = "gemini"
+        calls = 0
+
+        def generate_json(self, **_kwargs: object) -> str:
+            self.calls += 1
+            raise LLMError(
+                "Gemini HTTP 429: You exceeded your current quota, free_tier_requests",
+                status_code=429,
+            )
+
+    class SlowOllama:
+        name = "ollama"
+
+        def generate_json(self, **kwargs: object) -> str:
+            assert float(kwargs.get("timeout_s") or 99) <= 45.0
+            raise LLMError("Ollama request timed out")
+
+    primary = QuotaGemini()
+    monkeypatch.setattr(
+        "app.llm_provider.list_configured_fallback_providers",
+        lambda _p: [SlowOllama()],
+    )
+    with pytest.raises(LLMError) as caught:
+        generate_json_with_timeout_retry(primary, "test prompt", timeout_s=180.0)  # type: ignore[arg-type]
+    assert primary.calls == 1
+    assert sleeps == []
+    msg = str(caught.value).lower()
+    assert "quota" in msg
+    assert "ollama" in msg or "fallback" in msg
+
+
 def test_resource_exhausted_json_is_rate_limit() -> None:
-    from app.llm_provider import _is_rate_limit_error, _is_unavailable_error
+    from app.llm_provider import _is_hard_quota_error, _is_rate_limit_error, _is_unavailable_error
 
     exc = LLMError("Gemini error: RESOURCE_EXHAUSTED", status_code=429)
     assert _is_rate_limit_error(exc)
     assert not _is_unavailable_error(exc)
+    hard = LLMError(
+        "You exceeded your current quota, please check your plan and billing details",
+        status_code=429,
+    )
+    assert _is_hard_quota_error(hard)
 
 
 def test_llm_status_never_error_in_success_response() -> None:

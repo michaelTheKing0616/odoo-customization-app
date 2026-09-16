@@ -181,6 +181,17 @@ _SALE_FORM_XPATH_FIELD_RE = re.compile(
 # sale.order.line taxes are Many2many ``tax_ids`` — never singular ``tax_id``.
 _SALE_LINE_TAX_ID_STR_RE = re.compile(r"""(['"])tax_id\1""")
 _SALE_LINE_TAX_ID_ATTR_RE = re.compile(r"""\.tax_id\b""")
+# Stock pricing compute — LLM often redeclares this with Enterprise tax_id and kills install.
+_COMPUTE_AMOUNT_BLOCK_RE = re.compile(
+    r"(?:^[ \t]*@api\.depends\([^)]*\)\s*\n)?"
+    r"^[ \t]*def _compute_amount\s*\([^)]*\):\n"
+    r"(?:^[ \t]+.*\n?)*",
+    re.MULTILINE,
+)
+_PRICE_SUBTOTAL_FIELD_RE = re.compile(
+    r"^[ \t]*price_subtotal\s*=\s*fields\.[^\n]+\n",
+    re.MULTILINE,
+)
 
 
 def rewrite_stock_inherit_xpaths(content: str) -> str:
@@ -197,7 +208,12 @@ def rewrite_stock_inherit_xpaths(content: str) -> str:
 def rewrite_stock_python_field_deps(content: str) -> str:
     """Fix known wrong stock field names in Python inherits (CE 17–19)."""
     blob = content or ""
-    if "sale.order.line" not in blob:
+    sale_lineish = (
+        "sale.order.line" in blob
+        or ("_compute_amount" in blob and "tax_id" in blob)
+        or ("price_subtotal" in blob and "tax_id" in blob)
+    )
+    if not sale_lineish:
         return blob
     # Wrong @depends('…', 'tax_id') and line.tax_id on price_subtotal / _compute_amount.
     blob = _SALE_LINE_TAX_ID_STR_RE.sub(r"\1tax_ids\1", blob)
@@ -205,8 +221,33 @@ def rewrite_stock_python_field_deps(content: str) -> str:
     return blob
 
 
+def sanitize_sale_stock_compute_overrides(content: str) -> str:
+    """Drop stock ``_compute_amount`` / ``price_subtotal`` field redefs on sale inherits.
+
+    Prefer x_* markup computes. Redeclaring stock pricing is the #1 CE sandbox killer.
+    """
+    blob = content or ""
+    if "sale.order" not in blob:
+        return blob
+    if "_inherit" not in blob:
+        return blob
+    if "def _compute_amount" not in blob and "price_subtotal = fields." not in blob:
+        return blob
+    cleaned = _COMPUTE_AMOUNT_BLOCK_RE.sub("", blob)
+    cleaned = _PRICE_SUBTOTAL_FIELD_RE.sub("", cleaned)
+    # Collapse leftover blank runs from removed methods.
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned
+
+
+def harden_authored_python(content: str) -> str:
+    """Deterministic CE fixes for LLM Python — free, no repair budget."""
+    blob = rewrite_stock_python_field_deps(content or "")
+    return sanitize_sale_stock_compute_overrides(blob)
+
+
 def rewrite_draft_stock_xpaths(draft: dict[str, Any]) -> int:
-    """Rewrite ghost stock xpaths / field deps in custom_code_blocks. Returns files changed."""
+    """Rewrite ghost stock xpaths / field deps / compute overrides. Returns files changed."""
     changed = 0
     blocks = draft.get("custom_code_blocks")
     if not isinstance(blocks, list):
@@ -223,7 +264,7 @@ def rewrite_draft_stock_xpaths(draft: dict[str, Any]) -> int:
         if path.endswith(".xml") or kind in {"xml", "qweb"}:
             rewritten = rewrite_stock_inherit_xpaths(rewritten)
         if path.endswith(".py") or kind == "python":
-            rewritten = rewrite_stock_python_field_deps(rewritten)
+            rewritten = harden_authored_python(rewritten)
         if rewritten != content:
             block["content"] = rewritten
             changed += 1
@@ -341,8 +382,10 @@ __all__ = [
     "analyze_manifest_deps",
     "analyze_python_ast",
     "analyze_xpath_best_effort",
+    "harden_authored_python",
     "rewrite_draft_stock_xpaths",
     "rewrite_stock_inherit_xpaths",
     "rewrite_stock_python_field_deps",
+    "sanitize_sale_stock_compute_overrides",
     "stamp_static_odoo",
 ]

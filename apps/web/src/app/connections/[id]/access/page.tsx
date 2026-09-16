@@ -646,6 +646,15 @@ export default function AccessPage() {
             : ""
         }
         risks={pendingDelete?.kind === "rule" ? RULE_DELETE_RISKS : ACCESS_DELETE_RISKS}
+        blastRadius={
+          pendingDelete
+            ? [
+                `${pendingDelete.kind === "access" ? "Access right" : "Record rule"}: ${pendingDelete.name}`,
+                `Model ${model}`,
+                "Live Odoo metadata delete",
+              ]
+            : []
+        }
         phrase={CONFIRM_PHRASE}
         snapshotNote="A snapshot is taken so the definition can be restored when Odoo allows it."
         busy={busy}
@@ -695,6 +704,11 @@ export default function AccessPage() {
         title="Apply live pack"
         warning={`Creates x_company_id and a global ir.rule on ${model}. This writes live Odoo metadata.`}
         risks={LIVE_PACK_RISKS}
+        blastRadius={[
+          `Model ${model}`,
+          "Creates x_company_id when missing",
+          "Creates a global ir.rule for multi-company",
+        ]}
         phrase={CONFIRM_PHRASE}
         snapshotNote="Field and record-rule creates are only partially recoverable."
         busy={busy}

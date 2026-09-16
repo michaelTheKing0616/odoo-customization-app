@@ -125,6 +125,37 @@ describe("studioAppIsLiveOnOdoo", () => {
       }),
     ).toBe(true);
   });
+
+  it("treats Option A promote stamp as live on the inherit host", () => {
+    expect(
+      studioAppIsLiveOnOdoo({
+        ...base,
+        artifact: {
+          models: [{ model: "sale.order", mode: "inherit" }],
+          _studio_apply: {
+            root_menu_id: null,
+            open_action_id: null,
+            host_model: "sale.order",
+            applied: true,
+            via: "option_a_promote",
+          },
+        },
+      }),
+    ).toBe(true);
+    expect(
+      studioApplyMenuTarget({
+        ...base,
+        artifact: {
+          models: [{ model: "sale.order", mode: "inherit" }],
+          _studio_apply: {
+            host_model: "sale.order",
+            applied: true,
+            via: "option_a_promote",
+          },
+        },
+      }).hostModel,
+    ).toBe("sale.order");
+  });
 });
 
 describe("studioPhaseFromSession", () => {

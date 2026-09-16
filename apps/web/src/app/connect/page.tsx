@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
@@ -408,7 +408,8 @@ export default function ConnectPage() {
         </section>
       </div>
 
-      <ConfirmDialog
+      <ConfirmDialogV2
+        riskLevel="danger"
         open={deleteTargetId != null}
         title="Delete connection?"
         warning="This removes the connection and related app metadata. Odoo-side customizations (fields, views, automations) remain on the database."

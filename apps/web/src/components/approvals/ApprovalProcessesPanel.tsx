@@ -10,7 +10,7 @@ import {
   type ProcessRequestRow,
   type ProcessTypeRow,
 } from "@/lib/api";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 
 const CONFIRM_PHRASE = "I understand the risks";
 
@@ -289,7 +289,8 @@ export function ApprovalProcessesPanel({
       {notice && <p className="mt-4 text-sm text-muted">{notice}</p>}
       {error && <p className="mt-4 text-sm text-danger">{error}</p>}
 
-      <ConfirmDialog
+      <ConfirmDialogV2
+        riskLevel="danger"
         open={confirmOpen}
         title="Scaffold Approval Requests"
         warning={error ?? "Creates x_approval_type + x_approval_request on live Odoo."}

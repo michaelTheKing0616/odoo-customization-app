@@ -9,7 +9,7 @@ import {
   type ScanFindOut,
 } from "@/lib/api";
 import { BarcodeScanner } from "@/components/scanner/BarcodeScanner";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { connectionSupports } from "@/lib/capabilities";
 
 const CONFIRM_PHRASE = "I understand the risks";
@@ -174,7 +174,8 @@ export function ScanToFieldPanel({
       {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
       {busy && <p className="mt-2 text-xs text-[#6C757D]">Working…</p>}
 
-      <ConfirmDialog
+      <ConfirmDialogV2
+        riskLevel="danger"
         open={confirmOpen}
         title="Scan write to field"
         warning={error ?? `Write scanned value to ${model}/${recordId}.${field}`}

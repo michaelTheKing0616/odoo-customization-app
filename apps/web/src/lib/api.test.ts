@@ -69,4 +69,13 @@ describe("ConfirmationRequiredError parsing", () => {
 
     await expect(api.listModels("conn-1")).rejects.toThrow("Invalid model name");
   });
+
+  it("rewrites bare Internal Server Error statusText into actionable copy", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("boom", { status: 500, statusText: "Internal Server Error" })),
+    );
+
+    await expect(api.listConnections()).rejects.toThrow(/uvicorn is running on :8001/i);
+  });
 });

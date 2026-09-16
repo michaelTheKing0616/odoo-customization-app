@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { ExternalLink } from "@/components/ui/icons";
 import { api, type ExpertAskResponse } from "@/lib/api";
 import { expertGroundingLabel, linkifyCitationMarkers } from "@/lib/expert-journey";
+import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { ExpertCautionFlags } from "./ExpertCautionFlags";
 import { CitationChip, ExpertSources } from "./ExpertSources";
 
@@ -45,9 +46,9 @@ function LogToChatterButton({
 }) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
-  async function post() {
-    if (!window.confirm("Log this Expert answer as an internal note on the Odoo record?")) return;
+  async function post(phrase: string) {
     setBusy(true);
     setNote(null);
     try {
@@ -59,6 +60,7 @@ function LogToChatterButton({
         confirmed: true,
       });
       setNote(res.message);
+      setConfirmOpen(false);
     } catch (err) {
       setNote(err instanceof Error ? err.message : "Failed to post note");
     } finally {
@@ -74,11 +76,26 @@ function LogToChatterButton({
         size="sm"
         loading={busy}
         data-testid="expert-log-chatter"
-        onClick={() => void post()}
+        onClick={() => setConfirmOpen(true)}
       >
         Log as Odoo note
       </Button>
       {note ? <span className="text-xs text-muted">{note}</span> : null}
+      <ConfirmDialogV2
+        open={confirmOpen}
+        riskLevel="danger"
+        title="Log Expert answer to Odoo?"
+        warning={`Posts an internal note on ${model} #${resId}.`}
+        risks={[
+          "Creates a chatter message on the live Odoo record",
+          "Visible to users who can read that record",
+        ]}
+        blastRadius={[`Model ${model}`, `Record id ${resId}`, "Internal note (not email)"]}
+        phrase="I understand the risks"
+        busy={busy}
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={(phrase) => void post(phrase)}
+      />
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import {
   api,
@@ -1800,7 +1800,8 @@ export default function AppWizardPage() {
         </div>
       ) : null}
 
-      <ConfirmDialog
+      <ConfirmDialogV2
+        riskLevel="danger"
         open={confirmOpen}
         title={`Scaffold ${selected?.name ?? "app"}`}
         warning="This creates models, fields, and views on the live Odoo connection."
@@ -1817,7 +1818,7 @@ export default function AppWizardPage() {
         onCancel={() => setConfirmOpen(false)}
         onConfirm={onConfirmScaffold}
       />
-      <ConfirmDialog
+      <ConfirmDialogV2 riskLevel="danger"
         open={genUiConfirmOpen}
         title="Apply draft to Odoo"
         warning="Applies the ModuleSpec draft: models, fields, views, menus, and smart buttons on this live Odoo connection."
@@ -1844,7 +1845,7 @@ export default function AppWizardPage() {
           void onGenerateUiFromDraft(phrase, forceSkip);
         }}
       />
-      <ConfirmDialog
+      <ConfirmDialogV2 riskLevel="danger"
         open={elitePromoteConfirmOpen}
         title="Promote validated module"
         warning="Installs the sandbox-validated Python module on this live Odoo connection."
@@ -1858,7 +1859,7 @@ export default function AppWizardPage() {
         onCancel={() => setElitePromoteConfirmOpen(false)}
         onConfirm={(phrase) => void onElitePromoteModule(phrase)}
       />
-      <ConfirmDialog
+      <ConfirmDialogV2 riskLevel="danger"
         open={walkthroughConfirmOpen}
         title="Load demo walkthrough"
         warning="Creates sample records on this live Odoo so Operations / smart buttons are not empty."

@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { DomainBuilder } from "@/components/DomainBuilder";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import { FirstWriteInterstitial } from "@/components/shell/FirstWriteInterstitial";
@@ -5843,7 +5843,8 @@ export default function DesignerPage() {
           </aside>
         </div>
         </Disclosure>
-      <ConfirmDialog
+      <ConfirmDialogV2
+        riskLevel="danger"
         open={confirmOverwriteOpen}
         title="Overwrite primary view"
         warning={`Mutate the live primary arch for ${model || "this model"} (not an inherit child). Prefer Inherit for stock models.`}
@@ -5859,7 +5860,7 @@ export default function DesignerPage() {
           void onSave({ strategy: "overwrite", confirm_phrase: phrase })
         }
       />
-      <ConfirmDialog
+      <ConfirmDialogV2 riskLevel="danger"
         open={confirmUnlinkInheritOpen}
         title="Unlink designer inherit"
         warning={`Delete ${model || "model"}.designer.${viewType} — the Designer extension that can duplicate Send/Print/Pay and Other Info. Prefer Fix duplicate chrome if you want to keep TEST GROUP / x_* layout.`}
@@ -5874,7 +5875,7 @@ export default function DesignerPage() {
         onCancel={() => setConfirmUnlinkInheritOpen(false)}
         onConfirm={(phrase) => void onUnlinkDesignerInherit(phrase)}
       />
-      <ConfirmDialog
+      <ConfirmDialogV2 riskLevel="danger"
         open={confirmMutateOpen}
         title="Mutate parent view arch"
         warning="Mutating parent view arch overwrites existing module XML. Prefer inherit (default) for interop with installed modules."
