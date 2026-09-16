@@ -201,14 +201,46 @@ def failures_from_sandbox_log(
 def failures_from_smoke(smoke: dict[str, Any]) -> list[dict[str, Any]]:
     if smoke.get("ok"):
         return []
+    failures: list[dict[str, Any]] = []
+    checks = smoke.get("checks") or smoke.get("assertions") or []
+    for row in checks:
+        if not isinstance(row, dict) or row.get("ok"):
+            continue
+        cid = str(row.get("id") or "smoke")
+        hint = str(row.get("repair_hint") or "")
+        extra: dict[str, Any] = {"check_id": cid, "assertions": [row]}
+        if hint:
+            extra["repair_hint"] = hint
+        failures.append(
+            make_failure(
+                category="smoke",
+                message=f"{cid}: {row.get('detail') or smoke.get('message') or 'failed'}",
+                severity="critical",
+                file=_file_hint_for_smoke_check(cid),
+                extra=extra,
+            )
+        )
+    if failures:
+        return failures
     return [
         make_failure(
             category="smoke",
             message=str(smoke.get("message") or "option A smoke failed"),
             severity="critical",
-            extra={"assertions": smoke.get("assertions") or smoke.get("checks")},
+            extra={"assertions": checks},
         )
     ]
+
+
+def _file_hint_for_smoke_check(check_id: str) -> str | None:
+    cid = (check_id or "").lower()
+    if cid in {"xpath_anchor"} or "view" in cid:
+        return "views/"
+    if cid in {"field_labeled", "price_effect", "fields_present", "form_loads"}:
+        return "models/"
+    if cid.startswith("registry_field") or cid.startswith("view_fields"):
+        return "models/"
+    return None
 
 
 def failures_from_static(static: dict[str, Any]) -> list[dict[str, Any]]:
