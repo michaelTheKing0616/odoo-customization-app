@@ -4,17 +4,17 @@
 
 ## Last run
 - Date: 2026-09-16
-- **Shipped:** OWL guard — view↔Python field consistency
-  (`ai_option_a_view_fields.py`): authoring + structural zip fail on
-  undefined/non-`x_*` arch fields; free align; sandbox `fields_get` smoke.
-- **Root cause of Quotation crash:** installed arch refs `markup_percentage`
-  etc. while registry has no markup fields (`fields_get` empty).
+- **Shipped:** Option A acceptance smoke + self-heal
+  (`ai_option_a_acceptance.py`): contracts stamped at author;
+  labels / tax_totals placement / price_effect checked in sandbox RPC;
+  smoke fail → Failure IR → one auto-repair → re-install.
+  Free harden: `string=` on x_*, note→tax_totals xpath.
 
 ## Next (operator)
-1. Restart `:8001` without `--reload` so gates load.
-2. On `odoo_ngn`: **uninstall** the broken markup module (Apps → uninstall),
-   then App Studio → Repair / re-author → Sandbox smoke → **Promote** again.
-3. Open Quotation via `/odoo/action-…` — form must load without OwlError.
+1. Restart `:8001` without `--reload`.
+2. New Sales markup app → Sandbox install & smoke must pass acceptance
+   (labels + price change) before Promote unlocks.
+3. Uninstall any prior broken markup module on `odoo_ngn` first.
 4. Promote stays human.
 
 ## Docket

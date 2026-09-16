@@ -6,6 +6,43 @@ from enum import Enum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
+from urllib.parse import urlparse, urlunparse
+
+
+def normalize_odoo_base_url(url: str) -> str:
+    """Strip web-UI suffixes so XML-RPC hits the site root.
+
+    Operators often paste ``https://db.odoo.com/odoo`` from the browser. RPC is
+    ``https://db.odoo.com/xmlrpc/2/common`` — a trailing ``/odoo`` yields HTTP 400.
+    """
+    raw = (url or "").strip()
+    if not raw:
+        return raw
+    if "://" not in raw:
+        raw = f"https://{raw}"
+    parsed = urlparse(raw)
+    path = (parsed.path or "").rstrip("/")
+    while path:
+        lower = path.lower()
+        stripped = False
+        for junk in (
+            "/xmlrpc/2/common",
+            "/xmlrpc/2/object",
+            "/xmlrpc",
+            "/web/login",
+            "/web",
+            "/odoo",
+        ):
+            if lower == junk or lower.endswith(junk):
+                path = path[: -len(junk)].rstrip("/")
+                stripped = True
+                break
+        if not stripped:
+            break
+    cleaned = urlunparse(
+        (parsed.scheme, parsed.netloc, path, "", "", "")
+    ).rstrip("/")
+    return cleaned
 
 
 class FieldType(str, Enum):
@@ -43,7 +80,7 @@ class ConnectionConfig(BaseModel):
     @field_validator("url")
     @classmethod
     def strip_trailing_slash(cls, value: str) -> str:
-        return value.rstrip("/")
+        return normalize_odoo_base_url(value)
 
 
 class ModelInfo(BaseModel):

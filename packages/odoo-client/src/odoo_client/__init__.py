@@ -49,6 +49,7 @@ from odoo_client.models import (
     ModelInfo,
     ModuleInfo,
     ViewInfo,
+    normalize_odoo_base_url,
 )
 from odoo_client.security import (
     AccessRightInfo,
@@ -115,6 +116,7 @@ __all__ = [
     "parse_major",
     "supported_majors",
     "ConnectionConfig",
+    "normalize_odoo_base_url",
     "CreateFieldRequest",
     "CreateModelRequest",
     "CreateViewRequest",

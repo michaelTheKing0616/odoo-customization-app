@@ -1,3 +1,8 @@
+### 2026-09-16 — Option A acceptance smoke (self-heal)
+**Decided:** Stamp `_option_a_acceptance` contracts (markup pack: labels, tax_totals xpath, price_effect). Sandbox RPC smoke executes them; fail → Failure IR + one auto-repair then re-prove. Free harden adds `string=` and retargets note→tax_totals. Completeness ≠ Cert ≠ Autopilot. Promote stays human. Restart `:8001`.
+**Why:** Install-only gates let unlabeled fields, Terms placement, and no price change ship to operators.
+**Rejected:** Vision/screenshot scoring this pass; gold-templating markup.
+
 ### 2026-09-16 — Option A view fields must match Python (OWL gate)
 **Decided:** Authoring/structural gates fail when xpath-inserted `<field name>` is missing from authored `fields.*` or is a non-`x_*` invent on a stock inherit. Free harden fuzzy-aligns (`markup_percentage`→`x_markup_percent`). Sandbox RPC smoke fails if `fields_get` lacks those names after install. Completeness ≠ Cert ≠ Autopilot. Promote stays human. Restart `:8001`.
 **Why:** Live Quotation OWL: `"sale.order"."markup_percentage" field is undefined` after a mismatched promote; score/smoke previously could pass without opening the form.

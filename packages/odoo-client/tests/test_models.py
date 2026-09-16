@@ -6,6 +6,28 @@ from pydantic import ValidationError
 from odoo_client.models import CreateFieldRequest, CreateModelRequest, FieldType
 
 
+def test_normalize_odoo_base_url_strips_web_ui_path() -> None:
+    from odoo_client.models import ConnectionConfig, normalize_odoo_base_url
+
+    assert (
+        normalize_odoo_base_url("https://experiment-company.odoo.com/odoo")
+        == "https://experiment-company.odoo.com"
+    )
+    assert (
+        normalize_odoo_base_url("https://experiment-company.odoo.com/odoo/")
+        == "https://experiment-company.odoo.com"
+    )
+    assert normalize_odoo_base_url("http://127.0.0.1:8069/web") == "http://127.0.0.1:8069"
+    assert normalize_odoo_base_url("http://127.0.0.1:8069") == "http://127.0.0.1:8069"
+    cfg = ConnectionConfig(
+        url="https://experiment-company.odoo.com/odoo",
+        db="experiment-company",
+        username="admin",
+        password="x",
+    )
+    assert cfg.url == "https://experiment-company.odoo.com"
+
+
 def test_create_model_requires_x_prefix() -> None:
     with pytest.raises(ValidationError):
         CreateModelRequest(name="Thing", model="thing")

@@ -14,6 +14,7 @@ from app.db import get_db
 from app.db_models import OdooConnection
 from app.entitlements import assert_connection_limit
 from app.odoo_service import OdooClientError, client_from_connection, probe_credentials
+from odoo_client import normalize_odoo_base_url
 from app.workspace_auth import WorkspaceAuth, get_scoped_connection_or_404, get_workspace_auth, require_admin, require_builder, scoped_connection_query
 from app.schemas import (
     ConnectionCreate,
@@ -90,8 +91,8 @@ def resolve_connection_by_instance(
     db: Session = Depends(get_db),
 ) -> ConnectionResolveOut:
     """Resolve customization-app connection id from Odoo URL + database (Expert Bridge)."""
-    target = url.rstrip("/")
-    candidates = [target, f"{target}/"]
+    target = normalize_odoo_base_url(url)
+    candidates = [target, f"{target}/", url.rstrip("/")]
     row = (
         db.query(OdooConnection)
         .filter(OdooConnection.db_name == db_name)
@@ -130,7 +131,7 @@ def create_connection(
 
     row = OdooConnection(
         name=body.name,
-        url=body.url.rstrip("/"),
+        url=normalize_odoo_base_url(body.url),
         db_name=body.db_name,
         username=body.username,
         secret_encrypted=encrypt_secret(body.password),
@@ -195,7 +196,7 @@ def update_connection(
     if body.name is not None:
         row.name = body.name
     if body.url is not None:
-        row.url = body.url.rstrip("/")
+        row.url = normalize_odoo_base_url(body.url)
     if body.db_name is not None:
         row.db_name = body.db_name
     if body.username is not None:

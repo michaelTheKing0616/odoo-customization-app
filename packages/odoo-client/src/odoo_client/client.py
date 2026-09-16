@@ -115,7 +115,21 @@ class OdooClient:
         try:
             version = self._common.version()
         except Exception as exc:  # noqa: BLE001 — surface transport errors clearly
-            raise OdooClientError(f"Failed to reach Odoo at {self.config.url}: {exc}") from exc
+            text = str(exc)
+            hint = ""
+            if "400" in text and "/odoo/" in text.lower():
+                hint = (
+                    " Tip: use the site root (e.g. https://your-db.odoo.com) — "
+                    "do not include /odoo from the browser URL."
+                )
+            elif "400" in text and "BAD REQUEST" in text.upper():
+                hint = (
+                    " Tip: connection URL must be the Odoo host root for XML-RPC "
+                    "(no /odoo or /web path)."
+                )
+            raise OdooClientError(
+                f"Failed to reach Odoo at {self.config.url}: {exc}.{hint}"
+            ) from exc
 
         server_version = str(version.get("server_version", ""))
         try:
