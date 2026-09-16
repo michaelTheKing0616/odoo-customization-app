@@ -236,7 +236,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     id: "expert",
     label: "Odoo Expert",
-    href: (id) => `/connections/${id}?expert=1`,
+    href: (id) => `/connections/${id}/expert`,
     group: "ai",
     icon: IconOdooExpert,
     shipped: true,

@@ -1,10 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { ExpertOverviewCard } from "@/components/expert/ExpertOverviewCard";
-import { expertHeaderDescription } from "@/lib/expert-journey";
 import "@/styles/studio-refinement.css";
 import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
 import { HealthCheckBanner } from "@/components/HealthCheckBanner";
@@ -59,7 +57,14 @@ export default function BrowserPage() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const connectionId = params.id;
+  const router = useRouter();
   const expertMode = searchParams.get("expert") === "1";
+
+  // Week 6: dedicated /expert destination — keep ?expert=1 as a soft redirect.
+  useEffect(() => {
+    if (!expertMode) return;
+    router.replace(`/connections/${connectionId}/expert`);
+  }, [expertMode, connectionId, router]);
 
   const [connection, setConnection] = useState<Connection | null>(null);
   const [tab, setTab] = useState<Tab>("models");
@@ -569,29 +574,20 @@ export default function BrowserPage() {
     },
   ];
 
+  if (expertMode) {
+    return (
+      <div className="mx-auto max-w-3xl p-6 text-sm text-muted" data-testid="expert-destination-redirect">
+        Opening Odoo Expert…
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-6xl" data-testid="connection-overview">
       <PageHeader
-        title={expertMode ? "Odoo Expert" : "Overview"}
-        description={
-          expertMode
-            ? expertHeaderDescription(connection?.name)
-            : "Your connection at a glance — health, models, and export paths."
-        }
-        actions={
-          expertMode ? (
-            <Link href={`/connections/${connectionId}`} className="text-sm text-muted hover:text-ink">
-              Overview
-            </Link>
-          ) : undefined
-        }
+        title="Overview"
+        description="Your connection at a glance — health, models, and export paths."
       />
-      {expertMode ? (
-        <div className="studio-refinement">
-          <ExpertOverviewCard connectionId={connectionId} connectionName={connection?.name} />
-        </div>
-      ) : null}
-
       {connection ? (
         <WriteModeUnlockPanel
           connection={connection}
