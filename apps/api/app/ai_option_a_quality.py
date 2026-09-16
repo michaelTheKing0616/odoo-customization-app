@@ -655,33 +655,118 @@ def prove_option_a_in_sandbox(
                 payload["message"] = str(feedback_repair["message"])
         return payload
 
-    smoke = {
-        **smoke_holder,
-        "structural_ok": True,
-        "message": result.message,
-        "module": result.module,
-        "log_tail": result.log_tail,
-    }
-    if "ok" not in smoke:
-        smoke["ok"] = True
-    draft["_sandbox_install"] = {
-        "ok": True,
-        "message": result.message,
-        "module": result.module,
-    }
-    stamp_option_a_smoke(draft, smoke)
-    if smoke.get("ok"):
-        lock_certified_artifacts(draft, run_id=str(result.module or tech))
-    else:
+    # Install succeeded — evaluate acceptance smoke; auto-repair once on fail.
+    smoke_attempt = 0
+    while True:
+        smoke = {
+            **smoke_holder,
+            "structural_ok": True,
+            "message": result.message,
+            "module": result.module,
+            "log_tail": result.log_tail,
+        }
+        if "ok" not in smoke:
+            smoke["ok"] = True
+        draft["_sandbox_install"] = {
+            "ok": True,
+            "message": result.message,
+            "module": result.module,
+        }
+        stamp_option_a_smoke(draft, smoke)
+        if smoke.get("ok"):
+            lock_certified_artifacts(draft, run_id=str(result.module or tech))
+            break
+
         fails = failures_from_smoke(smoke)
         stamp_failures(draft, fails)
-        # Smoke fail after install — do not burn Repair budget; operator can Repair with AI.
-        repair_meta = {
-            "ok": False,
-            "reason": "smoke_failed",
-            "bucket": "sandbox",
-            "repair_count": int(draft.get("_sandbox_repair_count") or 0),
-        }
+        should_repair_smoke = (
+            auto_repair
+            and not attempted_repair
+            and is_option_a_authored_draft(draft)
+            and not is_gold_option_a_draft(draft)
+            and smoke_attempt == 0
+        )
+        smoke_attempt += 1
+        if should_repair_smoke:
+            attempted_repair = True
+            from app.ai_option_a_feedback import repair_option_a_from_feedback
+
+            error_text = "\n".join(
+                part
+                for part in (
+                    str(smoke.get("message") or ""),
+                    *(
+                        f"{c.get('id')}: {c.get('detail')} — {c.get('repair_hint') or ''}"
+                        for c in (smoke.get("checks") or [])
+                        if isinstance(c, dict) and not c.get("ok")
+                    ),
+                )
+                if part
+            )
+            feedback_repair = repair_option_a_from_feedback(
+                draft,
+                error_text=error_text,
+                failures=fails,
+                odoo_major=int(odoo_major or 19),
+            )
+            if feedback_repair.get("applied") and feedback_repair.get("gate_status") == "pass":
+                smoke_holder.clear()
+                zip_bytes = export_draft_module_zip(draft, odoo_major=odoo_major)
+                result = run_sandbox_install(
+                    zip_bytes,
+                    module_name=tech,
+                    odoo_major=odoo_major,
+                    extra_modules=list(draft.get("depends") or []),
+                    after_install=_after,
+                )
+                if not result.ok:
+                    fails_i = failures_from_sandbox_log(
+                        result.log_tail or "",
+                        ok=False,
+                        message=result.message or "",
+                    )
+                    stamp_failures(draft, fails_i)
+                    smoke = {
+                        **structural,
+                        "ok": False,
+                        "level": "sandbox_install",
+                        "message": result.message,
+                        "log_tail": result.log_tail,
+                        "checks": structural.get("checks") or [],
+                    }
+                    stamp_option_a_smoke(draft, smoke)
+                    return {
+                        "ok": False,
+                        "draft": draft,
+                        "smoke": smoke,
+                        "failures": draft.get("_failures"),
+                        "repair": feedback_repair.get("repair"),
+                        "feedback_repair": feedback_repair,
+                        "certification": draft.get("_certification"),
+                        "sandbox": {
+                            "ok": False,
+                            "message": result.message,
+                            "log_tail": result.log_tail,
+                        },
+                        "message": (
+                            "Acceptance repair applied, but re-install failed: "
+                            f"{result.message}"
+                        ),
+                    }
+                continue
+            repair_meta = feedback_repair.get("repair") or {
+                "ok": False,
+                "reason": str(feedback_repair.get("reason") or "repair_not_applied"),
+                "bucket": "sandbox",
+                "repair_count": int(draft.get("_sandbox_repair_count") or 0),
+            }
+        else:
+            repair_meta = {
+                "ok": False,
+                "reason": "smoke_failed",
+                "bucket": "sandbox",
+                "repair_count": int(draft.get("_sandbox_repair_count") or 0),
+            }
         out_fail: dict[str, Any] = {
             "ok": False,
             "draft": draft,
@@ -698,10 +783,12 @@ def prove_option_a_in_sandbox(
             },
             "score_0_10": (draft.get("_scorecard") or {}).get("score_0_10"),
             "go_live_ready": draft.get("_go_live_ready"),
+            "message": str(smoke.get("message") or "Acceptance / Option A smoke failed"),
         }
         if feedback_repair:
             out_fail["feedback_repair"] = feedback_repair
         return out_fail
+
     payload = {
         "ok": bool(smoke.get("ok")),
         "draft": draft,
@@ -721,7 +808,7 @@ def prove_option_a_in_sandbox(
     if feedback_repair and feedback_repair.get("applied"):
         payload["feedback_repair"] = feedback_repair
         payload["message"] = (
-            "Sandbox proved after AI repaired the previous install error. "
+            "Sandbox proved after AI repaired the previous error. "
             "Promote stays human. Do not click Install this app."
         )
     if payload["ok"]:
