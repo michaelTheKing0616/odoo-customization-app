@@ -10,12 +10,12 @@ describe("nav IA (UIF-2)", () => {
     expect(unique.size).toBe(icons.length);
   });
 
-  it("defaults Overview + Build + AI expanded; Data, Operate, Govern collapsed", () => {
+  it("defaults Overview + Build + AI + Operations expanded; Data + Govern collapsed", () => {
     expect(DEFAULT_NAV_EXPANDED.overview).toBe(true);
     expect(DEFAULT_NAV_EXPANDED.build).toBe(true);
     expect(DEFAULT_NAV_EXPANDED.ai).toBe(true);
     expect(DEFAULT_NAV_EXPANDED.data).toBe(false);
-    expect(DEFAULT_NAV_EXPANDED.operate).toBe(false);
+    expect(DEFAULT_NAV_EXPANDED.operate).toBe(true);
     expect(DEFAULT_NAV_EXPANDED.govern).toBe(false);
   });
 
@@ -32,15 +32,20 @@ describe("nav IA (UIF-2)", () => {
     expect(isNavItemActive(`${href}/extra`, href, "bulk-suite", "")).toBe(true);
   });
 
-  it("AI Studio sidebar heroes are App Studio + Projects only", () => {
+  it("AI Studio sidebar includes App Studio, Draft Studio, Job Autopilot, and Projects", () => {
     const aiSidebar = NAV_ITEMS.filter(
       (item) => item.group === "ai" && item.shipped !== false && item.sidebar !== false,
     );
-    expect(aiSidebar.map((item) => item.id)).toEqual(["app-studio", "projects"]);
+    expect(aiSidebar.map((item) => item.id)).toEqual([
+      "app-studio",
+      "wizard",
+      "job-autopilot",
+      "projects",
+    ]);
   });
 
-  it("keeps Draft Studio / Job / ModuleSpec / Expert as deep-link routes outside the AI sidebar", () => {
-    const demoted = ["wizard", "job-autopilot", "modulespec", "expert"];
+  it("keeps ModuleSpec / Expert as deep-link routes outside the AI sidebar", () => {
+    const demoted = ["modulespec", "expert"];
     for (const id of demoted) {
       const item = NAV_ITEMS.find((n) => n.id === id);
       expect(item, id).toBeTruthy();
@@ -49,9 +54,13 @@ describe("nav IA (UIF-2)", () => {
     }
   });
 
-  it("places Live Demo Co-Pilot under Operations", () => {
+  it("places Live Demo Co-Pilot first under Operations and keeps it sidebar-visible", () => {
     const item = NAV_ITEMS.find((n) => n.id === "live-demo-copilot");
     expect(item?.group).toBe("operate");
     expect(item?.sidebar).not.toBe(false);
+    const operateSidebar = NAV_ITEMS.filter(
+      (n) => n.group === "operate" && n.shipped !== false && n.sidebar !== false,
+    );
+    expect(operateSidebar[0]?.id).toBe("live-demo-copilot");
   });
 });

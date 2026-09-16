@@ -76,7 +76,7 @@ export const NAV_GROUPS: {
   {
     id: "ai",
     label: "AI Studio",
-    tooltip: "App Studio and Projects — describe, build, and track drafts",
+    tooltip: "App Studio, Draft Studio, Job Autopilot, and Projects",
   },
   {
     id: "data",
@@ -205,7 +205,7 @@ export const NAV_ITEMS: NavItem[] = [
     group: "ai",
     icon: IconDraftStudio,
     shipped: true,
-    sidebar: false, // merged into App Studio power mode — deep links + Studio handoff remain
+    // Restored to AI sidebar (Tope 2026-09-16) — still soft-linked from App Studio
   },
   {
     id: "job-autopilot",
@@ -214,7 +214,7 @@ export const NAV_ITEMS: NavItem[] = [
     group: "ai",
     icon: IconSandbox,
     shipped: true,
-    sidebar: false, // open via App Studio / Projects handoff only
+    // Restored to AI sidebar (Tope 2026-09-16)
   },
   {
     id: "modulespec",
@@ -249,6 +249,7 @@ export const NAV_ITEMS: NavItem[] = [
     group: "operate",
     icon: IconOdooExpert,
     shipped: true,
+    // First among Operations items below; hub card + expanded ops group for discoverability
   },
   {
     id: "import",

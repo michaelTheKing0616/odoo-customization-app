@@ -7,12 +7,21 @@ import {
   IconBulk,
   IconCron,
   IconHousekeeping,
+  IconOdooExpert,
   IconPowerOps,
   IconReminders,
   IconScriptRunner,
 } from "@/components/ui/icons";
 
 const TOOLS = [
+  {
+    id: "live-demo-copilot",
+    label: "Live Demo Co-Pilot",
+    href: "live-demo-copilot",
+    icon: IconOdooExpert,
+    description:
+      "Consent-first presenter overlay for live demos — join, capture, and coach without leaving the meeting.",
+  },
   {
     id: "bulk-suite",
     label: "Bulk Suite",
@@ -66,7 +75,7 @@ export default function OperationsHubPage() {
     <div className="mx-auto max-w-5xl" data-testid="operations-hub">
       <PageHeader
         title="Operations"
-        description="Bulk tools, cron, housekeeping, and scripts — all routes stay the same."
+        description="Live Demo Co-Pilot, bulk tools, cron, housekeeping, and scripts — all routes stay the same."
       />
       <div className="grid gap-4 sm:grid-cols-2">
         {TOOLS.map((tool) => {

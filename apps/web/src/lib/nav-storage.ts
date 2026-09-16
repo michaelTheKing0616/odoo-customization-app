@@ -1,13 +1,13 @@
 import type { NavGroupId } from "@/lib/nav";
 
-export const NAV_EXPANDED_STORAGE_KEY = "nav-groups-expanded";
+export const NAV_EXPANDED_STORAGE_KEY = "nav-groups-expanded-v2"; // bump: Operations expanded by default for Co-Pilot
 
 export const DEFAULT_NAV_EXPANDED: Record<NavGroupId, boolean> = {
   overview: true,
   build: true,
   ai: true,
   data: false,
-  operate: false,
+  operate: true, // Co-Pilot + ops tools visible without an extra click
   govern: false,
 };
 
