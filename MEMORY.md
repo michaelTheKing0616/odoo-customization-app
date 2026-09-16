@@ -1,3 +1,33 @@
+### 2026-09-16 — Option A view fields must match Python (OWL gate)
+**Decided:** Authoring/structural gates fail when xpath-inserted `<field name>` is missing from authored `fields.*` or is a non-`x_*` invent on a stock inherit. Free harden fuzzy-aligns (`markup_percentage`→`x_markup_percent`). Sandbox RPC smoke fails if `fields_get` lacks those names after install. Completeness ≠ Cert ≠ Autopilot. Promote stays human. Restart `:8001`.
+**Why:** Live Quotation OWL: `"sale.order"."markup_percentage" field is undefined` after a mismatched promote; score/smoke previously could pass without opening the form.
+**Rejected:** Screenshot denylists; trusting install exit code alone; allowing bare custom field names on stock hosts.
+
+### 2026-09-16 — HOST_APPS covers CE hosts + prefix fallback
+**Decided:** Expand `HOST_APPS` / `MODULE_LABELS` for common Community models; unknown `module.model` prefixes get an Install CTA when the prefix looks like a module tech name. Always-present `base`/`mail`/`ir`/`res` never offered. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+**Why:** Sparse map missed Inventory/Fleet/etc.; operators need Install {App} whenever Option A inherits a missing stock model.
+**Rejected:** Claiming an exhaustive forever-complete Odoo catalog; inventing EE-only installs as CE defaults.
+
+### 2026-09-16 — Open Quotation must use Quotations action, not bare model=
+**Decided:** After Option A Promote, resolve stock window action (`sale.action_quotations*`) and open `/odoo/action-<id>`. Never prefer leftover `menu_id` (Discuss) when `via=option_a_promote`. Persist stamp on the session. Install Sales CTA only when `sale.order` is truly missing on the connection. Completeness ≠ Cert ≠ Autopilot. Promote stays human. Restart `:8001`.
+**Why:** Bare `model=sale.order&view_type=list` lands on Discuss in Odoo 19; operator thought Sales was not installed even though Markup % was on the DB.
+**Rejected:** New Apps tile for markup; opening Invoicing for a Sales inherit.
+
+### 2026-09-15 — Gemini hard quota must not mask as Ollama timeout
+**Decided:** Detect free-tier/plan **hard quota** 429s — do not sleep-retry the same Gemini key; fall back once with **≤45s** Ollama timeout; surface “Gemini quota… fallback failed” in Option A author findings. Completeness ≠ Cert ≠ Autopilot. Promote stays human. Restart `:8001`.
+**Why:** Status showed Gemini; authoring failed with “Ollama request timed out” after ~2min; App Studio read like Generation failed / Internal Server Error.
+**Rejected:** Leaving unlimited Ollama fallback after quota; treating the Next `:3002` proxy as the root cause.
+
+### 2026-09-15 — LLM Option A path: free CE harden, no budget burn on prove fail
+**Decided:** Keep sales markup **LLM-first** (not gold). After author + on zip export: rewrite tax_id→tax_ids, amount_tax→tax_totals, **strip stock `_compute_amount` / `price_subtotal` redefs**. Known CE Faults auto-fix without LLM Repair budget. Prove failure must not call `begin_repair_attempt` just to log. Exhausted copy: try Sandbox again (free fixes still run). Completeness ≠ Cert ≠ Autopilot. Promote stays human. Restart `:8001`.
+**Why:** Operators burned Repair budget on the same CE antipatterns; prove also incremented `_sandbox_repair_count` without patching.
+**Rejected:** Turning markup into a gold template; raising `DEFAULT_MAX_REPAIR` as the fix.
+
+### 2026-09-15 — Option A Promote enables Open in Odoo on inherit host
+**Decided:** After authored Option A Promote, App Studio deep-links Open in Odoo to the inherit host (`sale.order` list) — same class as field-pack Apply. Stamp `_studio_apply.host_model` + `via=option_a_promote`. Authored panel gets an Open CTA; Promote again stays for re-install. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+**Why:** Promote succeeded but Open stayed disabled — `goldPromoted` set live without a URL; honesty banner had no `odooAppUrl`.
+**Rejected:** Requiring Install this app; gating on a new Apps tile; CBN Accounting Settings copy for Sales markup.
+
 ### 2026-09-15 — sale.order.line uses tax_ids, never tax_id
 **Decided:** Stock rewrite + author/repair prompts forbid `tax_id` on `sale.order.line`. Prefer x_* markup computes over redefining stock `_compute_amount` / `price_subtotal`. Completeness ≠ Cert ≠ Autopilot. Promote stays human. Restart `:8001`.
 **Why:** Sandbox install ValueError: Wrong @depends on `_compute_amount` — Dependency field `tax_id` not found.

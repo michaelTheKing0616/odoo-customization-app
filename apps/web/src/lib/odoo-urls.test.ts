@@ -8,6 +8,7 @@ import {
   odooRecordUrl,
   odooViewUrl,
   pickStandaloneWindowAction,
+  preferHostListActionId,
 } from "./odoo-urls";
 
 describe("actionRequiresActiveId", () => {
@@ -99,9 +100,21 @@ describe("odooViewUrl", () => {
   });
 
   it("includes standalone action id", () => {
-    expect(odooViewUrl("http://127.0.0.1:8069/", "x_lib_loan", "calendar", 185)).toContain(
-      "action=185",
+    expect(odooViewUrl("http://127.0.0.1:8069/", "x_lib_loan", "calendar", 185)).toBe(
+      "http://127.0.0.1:8069/odoo/action-185",
     );
+  });
+
+  it("prefers quotation window actions for sale.order", () => {
+    expect(
+      preferHostListActionId(
+        [
+          { id: 332, name: "Sales Orders", view_mode: "list,form" },
+          { id: 334, name: "Quotations", view_mode: "list,form" },
+        ],
+        "sale.order",
+      ),
+    ).toBe(334);
   });
 
   it("includes record id for a form deep-link", () => {
@@ -161,7 +174,7 @@ describe("goldOptionAInspectLink", () => {
       hostReady: true,
       actionId: 314,
     });
-    expect(viaId?.href).toContain("action=314");
+    expect(viaId?.href).toMatch(/action[=-]314/);
     expect(viaId?.href).not.toBe(
       "http://127.0.0.1:8069/web#model=res.config.settings&view_type=form",
     );
@@ -175,7 +188,7 @@ describe("checklistOpenHref", () => {
         { action_id: 42, odoo_model: "payment.provider" },
         "http://127.0.0.1:8069",
       ),
-    ).toContain("action=42");
+    ).toBe("http://127.0.0.1:8069/odoo/action-42");
     expect(
       checklistOpenHref({ odoo_model: "ir.mail_server" }, "http://127.0.0.1:8069"),
     ).toContain("model=ir.mail_server");

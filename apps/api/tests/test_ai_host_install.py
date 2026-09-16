@@ -41,6 +41,25 @@ def test_sale_line_maps_to_sales_app() -> None:
     assert community_app_for_model("res.partner") is None
 
 
+def test_pos_and_prefix_fallback_map_to_installable_apps() -> None:
+    assert community_app_for_model("pos.config") == {
+        "module": "point_of_sale",
+        "label": "Point of Sale",
+    }
+    assert community_app_for_model("fleet.vehicle") == {"module": "fleet", "label": "Fleet"}
+    assert community_app_for_model("maintenance.request") == {
+        "module": "maintenance",
+        "label": "Maintenance",
+    }
+    # Unknown snake_case prefix still gets an Install CTA.
+    assert community_app_for_model("awesome_kit.thing") == {
+        "module": "awesome_kit",
+        "label": "Awesome Kit",
+    }
+    assert community_app_for_model("ir.ui.view") is None
+    assert community_app_for_model("mail.message") is None
+
+
 def test_model_missing_findings_group_into_one_sales_offer() -> None:
     offers = host_install_offers(
         [

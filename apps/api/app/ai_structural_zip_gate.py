@@ -100,4 +100,16 @@ def structural_zip_gate(
                 "tests/__init__.py does not import: " + ", ".join(sorted(missing))
             )
 
+    try:
+        from app.ai_option_a_view_fields import files_view_field_findings
+
+        text_files = {
+            p: blob[p].decode("utf-8", errors="replace")
+            for p in blob
+            if p.endswith((".py", ".xml"))
+        }
+        findings.extend(files_view_field_findings(text_files))
+    except Exception:  # noqa: BLE001
+        pass
+
     return {"ok": not findings, "findings": findings, "new_x_models": sorted(set(new_x_models))}

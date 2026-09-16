@@ -243,7 +243,14 @@ def sanitize_sale_stock_compute_overrides(content: str) -> str:
 def harden_authored_python(content: str) -> str:
     """Deterministic CE fixes for LLM Python — free, no repair budget."""
     blob = rewrite_stock_python_field_deps(content or "")
-    return sanitize_sale_stock_compute_overrides(blob)
+    blob = sanitize_sale_stock_compute_overrides(blob)
+    try:
+        from app.ai_option_a_acceptance import ensure_python_field_strings
+
+        blob = ensure_python_field_strings(blob)
+    except Exception:  # noqa: BLE001
+        pass
+    return blob
 
 
 def rewrite_draft_stock_xpaths(draft: dict[str, Any]) -> int:
@@ -263,11 +270,23 @@ def rewrite_draft_stock_xpaths(draft: dict[str, Any]) -> int:
         rewritten = content
         if path.endswith(".xml") or kind in {"xml", "qweb"}:
             rewritten = rewrite_stock_inherit_xpaths(rewritten)
+            try:
+                from app.ai_option_a_acceptance import rewrite_note_xpath_to_tax_totals
+
+                rewritten = rewrite_note_xpath_to_tax_totals(rewritten)
+            except Exception:  # noqa: BLE001
+                pass
         if path.endswith(".py") or kind == "python":
             rewritten = harden_authored_python(rewritten)
         if rewritten != content:
             block["content"] = rewritten
             changed += 1
+    try:
+        from app.ai_option_a_view_fields import align_draft_view_fields_to_python
+
+        changed += align_draft_view_fields_to_python(draft)
+    except Exception:  # noqa: BLE001
+        pass
     return changed
 
 

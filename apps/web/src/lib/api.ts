@@ -1553,6 +1553,18 @@ export const api = {
       `/api/ai/sessions/${sessionId}/sync-job`,
       { method: "POST" },
     ),
+  stampOptionAPromote: (sessionId: string) =>
+    request<{
+      session?: import("@/lib/studio-session").StudioSession;
+      host_model?: string | null;
+      open_action_id?: number | null;
+      host_install?: Array<{ module: string; label: string; models: string[]; message?: string }>;
+      message?: string;
+      authoring_status?: string;
+    } & import("@/lib/studio-session").StudioSession>(
+      `/api/ai/sessions/${sessionId}/stamp-option-a-promote`,
+      { method: "POST", timeoutMs: 60_000 },
+    ),
   reverifyOptionAAuthoring: async (body: {
     connection_id?: string;
     session_id?: string;

@@ -11,6 +11,41 @@
 **Note for next time:** one line, generalized if possible
 ```
 
+### 2026-09-16 — implied_ids false-positive blocked Option A zip
+**Didn't work:** View↔Python gate scanned all XML `<field name>` including `res.groups` `implied_ids` in security data → structural_zip fail, zip/sandbox/Promote disabled.
+**Worked instead:** Only scan `ir.ui.view` arch/xpath widgets; skip `/security/` unless it embeds a view.
+**Note for next time:** Data-record field names are not OWL form fields. Restart `:8001` after gate fixes.
+
+### 2026-09-16 — OWL crash: sale.order.markup_percentage undefined
+**Didn't work:** Promoting an Option A zip whose form arch used `markup_percentage` while Python defined `x_markup_*` (or fields never registered) — `fields_get` empty, OWL Field.parseFieldNode crashes.
+**Worked instead:** Fail-closed view↔Python consistency gate + free align of invented names onto authored `x_*`; sandbox RPC smoke re-checks arch names against `fields_get`. Uninstall the broken module before re-Promote.
+**Note for next time:** Install success ≠ form openable. Every inserted `<field name>` must exist on the registry.
+
+
+**Didn't work:** `odooViewUrl(..., sale.order, list)` without act_window id after Promote.
+**Worked instead:** Resolve Quotations action → `/odoo/action-<id>`; stamp `_studio_apply` with `via=option_a_promote` and clear menu_id; Install Sales only when RPC `model_missing`.
+**Note for next time:** On Odoo 19, bare model= deep-links often fall back to Discuss/home. Check RPC for `sale` installed before blaming host-install UX.
+
+### 2026-09-15 — Generation failed looked like Internal Server Error (Gemini quota)
+**Didn't work:** Treating HTTP poll/proxy as the bug; jobs returned 200 with `author_failed: Ollama request timed out` while `/api/ai/status` said Gemini.
+**Worked instead:** Gemini free-tier **hard quota 429** → skip same-key sleep retries → short Ollama fallback → compose quota+fallback error into author findings; generate enqueue → 502 with detail. Restart `:8001`.
+**Note for next time:** “Ollama timed out” with Gemini primary usually means cloud quota + local fallback. Check Gemini billing/quota before debugging the Next proxy.
+
+### 2026-09-15 — Start new app showed bare Internal Server Error
+**Didn't work:** `POST /api/ai/sessions` with `connection_id=""` / unknown id → uncaught FK IntegrityError → FastAPI "Internal Server Error".
+**Worked instead:** Blank connection_id → null; unknown id → 404 with honest copy; IntegrityError → 422. Restart `:8001` without `--reload`.
+**Note for next time:** Open App Studio from a real connection URL (`/connections/{uuid}/studio`).
+
+### 2026-09-15 — Repair budget burned while LLM path still shipped CE killers
+**Didn't work:** Relying on Repair with AI after sandbox install of `_compute_amount` + `tax_id`; prove path calling `begin_repair_attempt` on every fail.
+**Worked instead:** Free harden (strip stock compute / tax_ids / tax_totals xpath) before gate, on zip, and on feedback; only LLM when free fix is not enough; honest exhausted copy points at Sandbox again.
+**Note for next time:** LLM-first ≠ unprotected first pass. Restart `:8001`. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+
+### 2026-09-15 — Open in Odoo disabled after Option A Promote
+**Didn't work:** Setting `goldPromoted` alone — Open needs `openInOdooUrl` / `odooAppUrl` (Apply stamp or host deep-link).
+**Worked instead:** On authored Promote, stamp `_studio_apply` with inherit `host_model` and set `odooViewUrl(sale.order)`. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+**Note for next time:** Gold CBN still uses Open Accounting Settings via `goldInspect`, not host list.
+
 ### 2026-09-15 — sale.order.line tax_id @depends fails sandbox install
 **Didn't work:** LLM-authored markup modules redeclared `_compute_amount` with `@depends(..., 'tax_id')`.
 **Worked instead:** Deterministic rewrite `tax_id` → `tax_ids` on sale.order.line Python; Failure IR + author/repair prompts; prefer x_* computes over stock price_subtotal.

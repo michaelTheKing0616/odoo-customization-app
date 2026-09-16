@@ -343,11 +343,152 @@ def rpc_option_a_smoke(
             }
         )
 
+    # Runtime OWL guard: every authored arch field must exist in fields_get.
+    try:
+        from app.ai_option_a_view_fields import (
+            arch_fields_missing_from_registry,
+            collect_draft_arch_fields,
+            collect_draft_python_fields,
+        )
+
+        py_by_model = collect_draft_python_fields(draft)
+        arch_rows = collect_draft_arch_fields(draft)
+        hosts = sorted(
+            {
+                *(py_by_model.keys()),
+                *(h for _p, h, _f in arch_rows if h),
+            }
+        )
+        for host in hosts:
+            if not host or host.startswith("x_"):
+                continue
+            try:
+                fields_get = execute_kw(host, "fields_get", [], {"attributes": ["string"]})
+            except Exception as exc:  # noqa: BLE001
+                ok = False
+                checks.append(
+                    {
+                        "id": f"fields_get:{host}",
+                        "ok": False,
+                        "detail": str(exc)[:200],
+                    }
+                )
+                continue
+            fg = fields_get or {}
+            for fname in sorted(py_by_model.get(host) or []):
+                present = fname in fg
+                if not present:
+                    ok = False
+                checks.append(
+                    {
+                        "id": f"registry_field:{host}.{fname}",
+                        "ok": present,
+                        "detail": "present" if present else "absent after install",
+                    }
+                )
+            # Module inherit views on this host — catch orphan arch names.
+            views = execute_kw(
+                "ir.ui.view",
+                "search_read",
+                [[("model", "=", host), ("mode", "=", "extension")]],
+                {"fields": ["id", "name", "arch_db"], "limit": 40},
+            ) or []
+            missing_all: list[str] = []
+            for view in views:
+                arch = str(view.get("arch_db") or view.get("arch") or "")
+                if not arch:
+                    continue
+                # Only views that look like ours (x_* or known inserted names).
+                ours = any(
+                    f"name=\"{f}\"" in arch or f"name='{f}'" in arch
+                    for f in (py_by_model.get(host) or set())
+                ) or any(
+                    f"name=\"{fname}\"" in arch or f"name='{fname}'" in arch
+                    for _p, hint, fname in arch_rows
+                    if hint == host or hint is None
+                )
+                if not ours and "x_" not in arch:
+                    continue
+                missing = arch_fields_missing_from_registry(arch, fg, model=host)
+                missing_all.extend(missing)
+            missing_all = sorted(set(missing_all))
+            passed = not missing_all
+            if not passed:
+                ok = False
+            checks.append(
+                {
+                    "id": f"view_fields_registry:{host}",
+                    "ok": passed,
+                    "detail": (
+                        "ok"
+                        if passed
+                        else f"undefined in fields_get (OWL crash): {', '.join(missing_all)}"
+                    ),
+                }
+            )
+    except Exception as exc:  # noqa: BLE001
+        ok = False
+        checks.append(
+            {
+                "id": "view_fields_registry",
+                "ok": False,
+                "detail": str(exc)[:240],
+            }
+        )
+
+    # Acceptance contracts — labels, placement, behavioral price effect.
+    accept_msg = ""
+    try:
+        from app.ai_option_a_acceptance import run_acceptance_smoke, stamp_option_a_acceptance
+
+        if not isinstance(draft.get("_option_a_acceptance"), dict):
+            stamp_option_a_acceptance(
+                draft, prompt=str(draft.get("_user_prompt") or "")
+            )
+        acceptance = run_acceptance_smoke(draft, execute_kw=execute_kw)
+        for row in acceptance.get("checks") or []:
+            if isinstance(row, dict):
+                checks.append(row)
+        if not acceptance.get("ok"):
+            ok = False
+            accept_msg = str(acceptance.get("message") or "")
+    except Exception as exc:  # noqa: BLE001
+        ok = False
+        accept_msg = f"Acceptance smoke error: {str(exc)[:240]}"
+        checks.append(
+            {
+                "id": "acceptance",
+                "ok": False,
+                "detail": str(exc)[:240],
+            }
+        )
+
+    message = accept_msg
+    if not ok and not message:
+        failed = [c for c in checks if isinstance(c, dict) and not c.get("ok")]
+        message = "; ".join(
+            f"{c.get('id')}: {c.get('detail')}" for c in failed[:6]
+        ) or "option A smoke failed"
+
+    accept_ids = {
+        "field_labeled",
+        "xpath_anchor",
+        "price_effect",
+        "fields_present",
+        "form_loads",
+    }
+    accept_rows = [
+        c for c in checks if isinstance(c, dict) and c.get("id") in accept_ids
+    ]
+    acceptance_ok = (not accept_rows) or all(c.get("ok") for c in accept_rows)
+
     return {
         "ok": ok,
         "structural_ok": True,
         "level": "sandbox_rpc",
         "checks": checks,
+        "message": message if not ok else "",
+        "acceptance_ok": acceptance_ok,
     }
 
 

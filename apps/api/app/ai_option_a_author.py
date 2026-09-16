@@ -34,6 +34,11 @@ _AUTHOR_SYSTEM = (
     "those stock methods/fields must stay untouched. Prefer x_markup_percent, "
     "x_markup_amount, x_wht_on_markup computes with @api.depends on order_line and x_*. "
     "sale.order.line taxes field is tax_ids (Many2many) — never tax_id. "
+    "Every <field name> inserted in views MUST match a fields.* defined in Python "
+    "for that model; custom fields MUST be x_* (never markup_percentage — use "
+    "x_markup_percent). Mismatched names crash OWL: field is undefined. "
+    "Acceptance bar: every x_* needs string='Human Label'; xpath tax_totals not note; "
+    "markup % must change line price_unit (onchange) or set x_markup_amount. "
     "JSON rules: escape every newline as \\n and every double-quote as \\\". "
     "Close every string. Prefer at most 6 short files."
 )
@@ -41,12 +46,13 @@ _AUTHOR_SYSTEM = (
 _MARKUP_SHAPE_HINT = (
     "\n\nCE-safe shape for sales markup (follow this pattern, still author full files):\n"
     "- models/sale_order_markup.py: class SaleOrder(_inherit='sale.order') with "
-    "x_markup_percent Selection 10..25, x_markup_amount / x_wht_on_markup Monetary "
-    "compute methods named _compute_markup_* (NOT _compute_amount).\n"
-    "- Optional @api.onchange('x_markup_percent') to set line.price_unit from "
+    "x_markup_percent Selection 10..25 string='Markup %', x_markup_amount / "
+    "x_wht_on_markup Monetary with string= labels; compute methods named "
+    "_compute_markup_* (NOT _compute_amount).\n"
+    "- Required @api.onchange('x_markup_percent') to set line.price_unit from "
     "product standard_price * (1 + pct/100).\n"
     "- views/*.xml: inherit sale.view_order_form, xpath //field[@name='tax_totals'], "
-    "position='before', insert the x_* fields.\n"
+    "position='before', insert the x_* fields (never next to note/Terms).\n"
     "- models/__init__.py imports the markup module.\n"
     "- depends: ['sale']. No account.tax.create.\n"
 )
@@ -167,6 +173,9 @@ def seed_option_a_authored(prompt: str, plan: Any) -> dict[str, Any]:
         "disclosure": {},
         "http_hosts": [],
     }
+    from app.ai_option_a_acceptance import stamp_option_a_acceptance
+
+    stamp_option_a_acceptance(draft, prompt=prompt)
     return draft
 
 
@@ -440,6 +449,9 @@ def author_option_a_module(
         rewrite_draft_stock_xpaths(draft)
     except Exception:  # noqa: BLE001
         pass
+    from app.ai_option_a_acceptance import stamp_option_a_acceptance
+
+    stamp_option_a_acceptance(draft, prompt=text)
     payload = evaluate_authoring_gate(draft, client=client, odoo_major=odoo_major)
     attempts = 0
     while payload.get("status") != "pass" and attempts < 3:
@@ -451,6 +463,7 @@ def author_option_a_module(
             rewrite_draft_stock_xpaths(draft)
         except Exception:  # noqa: BLE001
             break
+        stamp_option_a_acceptance(draft, prompt=text)
         payload = evaluate_authoring_gate(draft, client=client, odoo_major=odoo_major)
         attempts += 1
     return _stamp_retryable(payload)

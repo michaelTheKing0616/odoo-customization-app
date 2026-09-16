@@ -139,6 +139,17 @@ export function studioApplyMenuTarget(session: StudioSession | null): {
     hostModelFromUnknown(session.host_model) ||
     inheritHost;
   let applied = Boolean(stamp) || session.status === "delivered";
+  const via = typeof stamp?.via === "string" ? stamp.via : "";
+  // Option A Promote inherits a stock form — never prefer a leftover Apps menu_id
+  // (often Discuss) over the host model deep-link.
+  if (via === "option_a_promote") {
+    return {
+      rootMenuId: null,
+      openActionId,
+      hostModel,
+      applied: true,
+    };
+  }
   if (rootMenuId) {
     return { rootMenuId, openActionId, hostModel, applied: true };
   }

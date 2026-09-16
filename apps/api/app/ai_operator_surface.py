@@ -8,6 +8,7 @@ Completeness ≠ Cert ≠ Autopilot. Promote stays human.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 # Friendly host names when app_bar commercial table has no entry.
@@ -42,6 +43,33 @@ def _host_label(model: str) -> str:
     except Exception:  # noqa: BLE001
         leaf = mid.split(".")[-1].replace("_", " ").strip()
         return leaf.title() if leaf else mid
+
+
+def _option_a_is_qweb_report_only(draft: dict[str, Any]) -> bool:
+    """True when authored blocks are report/QWeb inherit without new form fields."""
+    blocks = [b for b in (draft.get("custom_code_blocks") or []) if isinstance(b, dict)]
+    if not blocks:
+        return False
+    has_report = False
+    has_form_fields = False
+    for block in blocks:
+        path = str(block.get("source_file") or block.get("path") or "").lower()
+        content = str(block.get("content") or "")
+        kind = str(block.get("kind") or "").lower()
+        if (
+            "report" in path
+            or kind in {"qweb", "xml"}
+            and ("inherit_id=" in content and "report_" in content)
+        ):
+            has_report = True
+        if (path.endswith(".py") or kind == "python") and re.search(
+            r"fields\.(Char|Integer|Float|Boolean|Selection|Many2one|One2many|Many2many)",
+            content,
+        ):
+            has_form_fields = True
+        if "views/" in path and "<field " in content and "report_" not in content:
+            has_form_fields = True
+    return has_report and not has_form_fields
 
 
 def _root_menu(draft: dict[str, Any]) -> dict[str, str] | None:
@@ -183,10 +211,26 @@ def build_operator_surface(draft: dict[str, Any]) -> dict[str, Any]:
             draft.get("_capability_primary_option_a")
             or cap in {"option_a_authored", "option_a_standalone"}
         ) and host and not host.startswith("x_"):
-            parts.append(
-                f"«{display}» extends {_host_label(host)} ({host}) via an Option A module — "
-                "zip → sandbox → Promote. Not a new Apps tile. Do not click Install this app."
-            )
+            qweb_only = _option_a_is_qweb_report_only(draft)
+            if qweb_only and host == "stock.picking":
+                parts.append(
+                    f"«{display}» changes the printed Delivery slip / Delivery note "
+                    f"(QWeb on {host}) via an Option A module — not new form fields on "
+                    "Transfers. Zip → sandbox → Promote. Install Inventory if stock.picking "
+                    "is missing. Not a new Apps tile. Do not click Install this app."
+                )
+            elif qweb_only:
+                parts.append(
+                    f"«{display}» changes a printed document (QWeb inherit on "
+                    f"{_host_label(host)} / {host}) via an Option A module — the form "
+                    "canvas may show no new fields. Zip → sandbox → Promote. Not a new "
+                    "Apps tile. Do not click Install this app."
+                )
+            else:
+                parts.append(
+                    f"«{display}» extends {_host_label(host)} ({host}) via an Option A module — "
+                    "zip → sandbox → Promote. Not a new Apps tile. Do not click Install this app."
+                )
         else:
             parts.append(
                 f"«{display}» is a residual app — open it from the app menu after Apply."

@@ -69,7 +69,7 @@ import {
   viewDesignerHref,
 } from "@/lib/draft-models";
 import { operatorSurfaceFromDraft } from "@/lib/operator-surface";
-import { odooMenuUrl, odooViewUrl, goldOptionAInspectLink } from "@/lib/odoo-urls";
+import { odooMenuUrl, odooViewUrl, goldOptionAInspectLink, preferHostListActionId } from "@/lib/odoo-urls";
 import { JobPollError, pollJob } from "@/lib/jobs";
 import {
   forgetStudioSession,
@@ -217,11 +217,17 @@ export default function AppStudioPage() {
   const openInOdooUrl = useMemo(() => {
     const base = connection?.url?.replace(/\/$/, "") || "";
     if (!base) return odooAppUrl;
+    // Option A / inherit host: never open a leftover menu_id (Discuss).
+    const optionAHost =
+      Boolean(goldPromoted && !goldOptionA && hostForOpen) ||
+      (applyTarget.applied && Boolean(hostForOpen) && !applyTarget.rootMenuId);
+    if (optionAHost && hostForOpen) {
+      return odooViewUrl(base, hostForOpen, "list", applyTarget.openActionId);
+    }
     if (applyTarget.rootMenuId) {
       return odooMenuUrl(base, applyTarget.rootMenuId, applyTarget.openActionId);
     }
-    // Field pack Apply, or Option A Promote onto an inherit host (no new Apps tile).
-    if ((applyTarget.applied || (goldPromoted && !goldOptionA)) && hostForOpen) {
+    if (applyTarget.applied && hostForOpen) {
       return odooViewUrl(base, hostForOpen, "list", applyTarget.openActionId);
     }
     return odooAppUrl;
@@ -385,6 +391,66 @@ export default function AppStudioPage() {
       cancelled = true;
     };
   }, [connectionId, goldOptionA, goldId, goldPromoted]);
+
+  // After Option A Promote, resolve Quotations (etc.) act_window — bare model= lands on Discuss.
+  useEffect(() => {
+    if (!connectionId || goldOptionA) return;
+    if (!(goldPromoted || optionAHostLive)) return;
+    const host = hostForOpen;
+    if (!host || applyTarget.openActionId) return;
+    const base = connection?.url?.replace(/\/$/, "") || "";
+    if (!base) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const actions = await api.listWindowActions(connectionId, {
+          model: host,
+          standaloneOnly: true,
+        });
+        if (cancelled) return;
+        const actionId = preferHostListActionId(actions, host);
+        if (!actionId) return;
+        const href = odooViewUrl(base, host, "list", actionId);
+        setOdooAppUrl(href);
+        setSession((s) => {
+          if (!s?.artifact) return s;
+          const prev = s.artifact._studio_apply;
+          const prior =
+            prev && typeof prev === "object" && !Array.isArray(prev)
+              ? (prev as Record<string, unknown>)
+              : {};
+          if (Number(prior.open_action_id) === actionId) return s;
+          return {
+            ...s,
+            artifact: {
+              ...s.artifact,
+              _studio_apply: {
+                ...prior,
+                root_menu_id: null,
+                open_action_id: actionId,
+                host_model: host,
+                applied: true,
+                via: prior.via || "option_a_promote",
+              },
+            },
+          };
+        });
+      } catch {
+        /* best-effort */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    connectionId,
+    connection?.url,
+    goldOptionA,
+    goldPromoted,
+    optionAHostLive,
+    hostForOpen,
+    applyTarget.openActionId,
+  ]);
 
   useEffect(() => {
     const stashed = loadStashedStudioPrompt(connectionId);
@@ -828,24 +894,49 @@ export default function AppStudioPage() {
         inheritHostModelFromDraft(session?.artifact ?? null) ||
         inheritHost;
       const base = connection?.url?.replace(/\/$/, "") || "";
-      if (!goldOptionA && host && base) {
-        const href = odooViewUrl(base, host, "list");
+      let openActionId: number | null = null;
+      let stampMsg = "";
+      if (!goldOptionA && session?.id) {
+        try {
+          const stamped = await api.stampOptionAPromote(session.id);
+          if (stamped.id) setSession(stamped);
+          else if (stamped.session) setSession(stamped.session);
+          openActionId =
+            typeof stamped.open_action_id === "number" ? stamped.open_action_id : null;
+          const stampHost =
+            (typeof stamped.host_model === "string" && stamped.host_model) || host;
+          stampMsg = String(stamped.message || "");
+          if (Array.isArray(stamped.host_install) && stamped.host_install.length) {
+            setApplyNote(stampMsg);
+          }
+          if (stampHost && base) {
+            setOdooAppUrl(odooViewUrl(base, stampHost, "list", openActionId));
+          }
+        } catch {
+          /* fall through to client-side resolve */
+        }
+      }
+      if (!goldOptionA && host && base && !openActionId) {
+        try {
+          const actions = await api.listWindowActions(connectionId, {
+            model: host,
+            standaloneOnly: true,
+          });
+          openActionId = preferHostListActionId(actions, host);
+        } catch {
+          /* action resolve is best-effort */
+        }
+        const href = odooViewUrl(base, host, "list", openActionId);
         setOdooAppUrl(href);
         setSession((s) => {
           if (!s?.artifact) return s;
-          const prev = s.artifact._studio_apply;
-          const prior =
-            prev && typeof prev === "object" && !Array.isArray(prev)
-              ? (prev as Record<string, unknown>)
-              : {};
           return {
             ...s,
             artifact: {
               ...s.artifact,
               _studio_apply: {
-                ...prior,
-                root_menu_id: prior.root_menu_id ?? null,
-                open_action_id: prior.open_action_id ?? null,
+                root_menu_id: null,
+                open_action_id: openActionId,
                 host_model: host,
                 applied: true,
                 via: "option_a_promote",
@@ -863,12 +954,17 @@ export default function AppStudioPage() {
         /* inspect is best-effort after promote */
       }
       const hostLabel = hostFormName || host || "the stock form";
-      setApplyNote(
-        goldOptionA
-          ? res.message ||
-              `Promoted ${tech} onto this connection. Open Invoicing → Configuration → Settings (not Settings → Currency). Service = Central Bank of Nigeria → Update now → Currencies → USD → Rates.`
-          : `${res.message || `Promoted ${tech} onto this connection.`} Open ${hostLabel} in Odoo (Sales → Quotations if this was markup) — not a new Apps tile. Do not click Install this app.`,
-      );
+      if (!stampMsg || !/missing/i.test(stampMsg)) {
+        setApplyNote(
+          goldOptionA
+            ? res.message ||
+                `Promoted ${tech} onto this connection. Open Invoicing → Configuration → Settings (not Settings → Currency). Service = Central Bank of Nigeria → Update now → Currencies → USD → Rates.`
+            : `${res.message || `Promoted ${tech} onto this connection.`} ${
+                stampMsg ||
+                `Open ${hostLabel} via Sales → Quotations (not Discuss, not a new Apps tile). Markup % is on the quotation form.`
+              } Do not click Install this app.`,
+        );
+      }
     } catch (err) {
       reportApiError(err, setError, { fallback: "Promote failed", toast: true });
     } finally {

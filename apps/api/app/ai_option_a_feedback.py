@@ -32,6 +32,8 @@ _REPAIR_SYSTEM = (
     "Community 17–19 sale.order form inherit MUST xpath //field[@name='tax_totals'] "
     "(sale.view_order_form has no amount_tax / amount_untaxed node). "
     "sale.order.line taxes field is tax_ids (Many2many) — never tax_id. "
+    "If smoke/OWL says a field is undefined, make every view <field name> match "
+    "an x_* fields.* on the same model — never leave markup_percentage without Python. "
     "Prefer the smallest fix that matches the Odoo Fault. "
     "If the Fault mentions _compute_amount or tax_id: DELETE the stock _compute_amount "
     "override entirely and keep only x_* markup/WHT computes; use tax_ids never tax_id. "

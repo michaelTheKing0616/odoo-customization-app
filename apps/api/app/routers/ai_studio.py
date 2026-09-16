@@ -596,6 +596,98 @@ def reverify_authoring_route(session_id: str, db: Session = Depends(get_db)) -> 
     return run_option_a_reverify(db, session_id=session_id)
 
 
+@router.post("/{session_id}/stamp-option-a-promote")
+def stamp_option_a_promote_route(
+    session_id: str, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """After Promote: stamp Open-in-Odoo onto the inherit host (Quotations, not Discuss).
+
+    Resolves the stock window action. If the host model is missing, returns
+    ``host_install`` so App Studio can offer Install Sales (etc.). Persist so
+    refresh keeps Open Quotation working. Promote stays human.
+    """
+    from app.ai_generation_engine import is_option_a_authored_draft
+    from app.ai_option_a_gate import evaluate_authoring_gate
+    from app.ai_option_a_policy import extract_disclosure_ir
+    from app.odoo_service import OdooClientError, client_from_connection, get_connection_or_404
+    from app.spec_apply_ui import inherit_host_model_from_spec, resolve_inherit_open_target
+
+    row = get_session(db, session_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if not row.connection_id:
+        raise HTTPException(status_code=422, detail="Session has no connection")
+
+    try:
+        artifact = json.loads(row.artifact_json or "{}")
+    except json.JSONDecodeError:
+        artifact = {}
+    if not isinstance(artifact, dict) or not is_option_a_authored_draft(artifact):
+        raise HTTPException(
+            status_code=409,
+            detail="Stamp is only for LLM-authored Option A sessions after Promote.",
+        )
+
+    try:
+        conn = get_connection_or_404(db, row.connection_id)
+        client = client_from_connection(conn)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except OdooClientError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    major = 19
+    try:
+        ver = str(getattr(conn, "server_version", None) or "19")
+        major = int(ver.split(".", 1)[0]) if ver[0].isdigit() else 19
+    except Exception:  # noqa: BLE001
+        major = 19
+
+    gate = evaluate_authoring_gate(artifact, client=client, odoo_major=int(major))
+    host, action_id = resolve_inherit_open_target(client, artifact)
+    if not host:
+        host = inherit_host_model_from_spec(artifact)
+    inherit_models = list((extract_disclosure_ir(artifact) or {}).get("inherit_models") or [])
+    host_install = list(gate.get("host_install") or [])
+
+    apply_meta = {
+        "root_menu_id": None,
+        "open_action_id": int(action_id) if action_id else None,
+        "host_model": host,
+        "applied": True,
+        "via": "option_a_promote",
+    }
+    artifact["_studio_apply"] = apply_meta
+    ahash = artifact_hash(artifact)
+    update_session(db, row, artifact=artifact, artifact_hash=ahash, status="review")
+    out = session_to_dict(row)
+    out["host_model"] = host
+    out["open_action_id"] = apply_meta["open_action_id"]
+    out["host_install"] = host_install
+    out["inherit_models"] = inherit_models
+    out["authoring_status"] = gate.get("status")
+    if host_install:
+        labels = ", ".join(str(o.get("label") or o.get("module")) for o in host_install)
+        out["message"] = (
+            f"Promoted module is on this connection, but {labels} is still missing. "
+            f"Install {labels} so Open Quotation / the host form works — that is not "
+            "Live Install of this zip. Completeness ≠ Cert. Promote stays human."
+        )
+    elif host and action_id:
+        out["message"] = (
+            f"Open in Odoo uses the stock {host} action (Sales → Quotations for "
+            "sale.order) — not Discuss, not a new Apps tile."
+        )
+    elif host:
+        out["message"] = (
+            f"Host {host} is on this connection but no window action was resolved. "
+            "Open Sales → Quotations manually; Markup % is on the form."
+        )
+    else:
+        out["message"] = "Promote stamp saved; no inherit host on the draft."
+    return out
+
+
 @router.post("/{session_id}/sync-job")
 def sync_job_route(session_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     """Pull completed draft job result into session artifact."""

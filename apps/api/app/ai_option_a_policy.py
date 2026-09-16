@@ -12,6 +12,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from app.ai_host_install import enrich_model_missing_finding
+from app.ai_option_a_view_fields import view_field_consistency_findings
 
 _URL_RE = re.compile(r"https?://[^\s'\"<>]+", re.I)
 _TAX_CREATE_RE = re.compile(
@@ -92,9 +93,17 @@ def extract_disclosure_ir(draft: dict[str, Any]) -> dict[str, Any]:
         elif path.endswith(".xml") or kind in {"xml", "qweb"}:
             xml_blobs.append(content)
     blob = "\n".join(py_blobs + xml_blobs)
-    inherits = sorted(
-        set(re.findall(r"""_inherit\s*=\s*['\"]([^'\"]+)['\"]""", "\n".join(py_blobs)))
-    )
+    inherits = set(re.findall(r"""_inherit\s*=\s*['\"]([^'\"]+)['\"]""", "\n".join(py_blobs)))
+    # Draft models with mode=inherit are hosts even when Python uses models.Model + _inherit
+    # only on a thin extension, or when XML-only inherits land first.
+    for row in draft.get("models") or []:
+        if not isinstance(row, dict):
+            continue
+        mid = str(row.get("model") or "").strip()
+        mode = str(row.get("mode") or "").strip().lower()
+        if mid and mode == "inherit" and not mid.startswith("x_"):
+            inherits.add(mid)
+    inherits_sorted = sorted(inherits)
     names = sorted(
         set(re.findall(r"""_name\s*=\s*['\"]([^'\"]+)['\"]""", "\n".join(py_blobs)))
     )
@@ -117,7 +126,7 @@ def extract_disclosure_ir(draft: dict[str, Any]) -> dict[str, Any]:
     )
     return {
         "http_hosts": extract_http_hosts(blob),
-        "inherit_models": inherits,
+        "inherit_models": inherits_sorted,
         "new_models": names,
         "report_xmlids": report_xmlids,
         "tax_xmlids_used": tax_xmlids,
@@ -204,6 +213,9 @@ def policy_findings(draft: dict[str, Any]) -> list[dict[str, str]]:
                     "file": path,
                 }
             )
+
+    # OWL killer: arch field name missing from authored Python / non-x_* invent.
+    findings.extend(view_field_consistency_findings(draft))
     return findings
 
 

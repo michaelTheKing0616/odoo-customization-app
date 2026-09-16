@@ -156,6 +156,25 @@ describe("studioAppIsLiveOnOdoo", () => {
       }).hostModel,
     ).toBe("sale.order");
   });
+
+  it("ignores leftover menu_id after Option A promote (Discuss trap)", () => {
+    const target = studioApplyMenuTarget({
+      ...base,
+      artifact: {
+        models: [{ model: "sale.order", mode: "inherit" }],
+        _studio_apply: {
+          root_menu_id: 79,
+          open_action_id: 334,
+          host_model: "sale.order",
+          applied: true,
+          via: "option_a_promote",
+        },
+      },
+    });
+    expect(target.rootMenuId).toBeNull();
+    expect(target.openActionId).toBe(334);
+    expect(target.hostModel).toBe("sale.order");
+  });
 });
 
 describe("studioPhaseFromSession", () => {

@@ -101,6 +101,13 @@ export function odooViewUrl(
 ): string {
   const root = baseUrl.replace(/\/$/, "");
   const vt = viewType === "tree" ? "list" : viewType;
+  // Odoo 19 SPA: action path is reliable; bare model= often lands on Discuss.
+  if (actionId && actionId > 0 && !(recordId && recordId > 0)) {
+    return `${root}/odoo/action-${actionId}`;
+  }
+  if (recordId && recordId > 0 && actionId && actionId > 0) {
+    return `${root}/odoo/action-${actionId}/${recordId}`;
+  }
   const params = new URLSearchParams();
   if (actionId && actionId > 0) {
     params.set("action", String(actionId));
@@ -112,6 +119,31 @@ export function odooViewUrl(
   }
   // Legacy hash form — Odoo 19 still accepts and converts to /odoo/…
   return `${root}/web#${params.toString()}`;
+}
+
+/**
+ * Prefer Quotations / stock list actions over related smart-button windows.
+ */
+export function preferHostListActionId(
+  rows: WindowActionCandidate[],
+  hostModel: string,
+): number | null {
+  const standalone = rows.filter((r) => !actionRequiresActiveId(r));
+  const pool = standalone.length ? standalone : rows;
+  if (!pool.length) return null;
+  const prefer =
+    hostModel === "sale.order"
+      ? /quotation/i
+      : hostModel === "account.move"
+        ? /invoice|bill/i
+        : hostModel === "purchase.order"
+          ? /request\s+for\s+quotation|rfq|purchase\s+order/i
+          : null;
+  if (prefer) {
+    const hit = pool.find((r) => prefer.test(String(r.name || "")));
+    if (hit?.id) return hit.id;
+  }
+  return pickStandaloneWindowAction(pool, "list");
 }
 
 /**
