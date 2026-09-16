@@ -23,6 +23,7 @@ import {
   saveNavExpanded,
 } from "@/lib/nav-storage";
 import { cn } from "@/lib/cn";
+import { BrandMark } from "@/components/brand/BrandMark";
 import type { Connection } from "@/lib/api";
 
 type Props = {
@@ -60,10 +61,17 @@ export function Sidebar({ connection }: Props) {
           sidebarCollapsed ? "w-14" : "w-60",
         )}
       >
-        <div className="flex items-center justify-between border-b border-border-subtle px-3 py-3">
+        <div className="flex items-center justify-between gap-1 border-b border-border-subtle px-3 py-3">
           {!sidebarCollapsed ? (
-            <span className="text-sm font-semibold text-ink truncate">{connection.name}</span>
-          ) : null}
+            <div className="min-w-0 flex-1">
+              <BrandMark href={`/connections/${connection.id}`} size={22} />
+              <p className="mt-1 truncate text-[11px] text-muted" title={connection.name}>
+                {connection.name}
+              </p>
+            </div>
+          ) : (
+            <BrandMark href={`/connections/${connection.id}`} size={22} withWordmark={false} />
+          )}
           <Button
             variant="ghost"
             size="sm"

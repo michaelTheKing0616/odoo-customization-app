@@ -5,9 +5,9 @@ import { DragAutoScroll } from "@/components/DragAutoScroll";
 import { ThemeScript } from "@/components/theme/ThemeScript";
 
 export const metadata: Metadata = {
-  title: "Odoo Custom — No-code customization for Community",
+  title: "Ingenium — No-code Odoo customization for Community",
   description:
-    "Studio-class customization for Odoo Community. Connect any instance, customize safely, export real modules.",
+    "Ingenium: Studio-class customization for Odoo Community. Connect any instance, customize safely, export real modules.",
 };
 
 export default function RootLayout({

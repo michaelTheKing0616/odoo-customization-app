@@ -3,6 +3,7 @@ import Image from "next/image";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/layout-primitives";
 import { StatusPill } from "@/components/ui/StatusPill";
+import { BrandMark } from "@/components/brand/BrandMark";
 
 const features = [
   {
@@ -41,9 +42,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-background">
       <div className="mx-auto flex min-h-screen max-w-5xl flex-col justify-center px-6 py-16 sm:px-10">
-        <p className="font-[family-name:var(--font-display)] text-sm uppercase tracking-widest text-accent">
-          Odoo Custom
-        </p>
+        <BrandMark size={40} priority className="mb-2" />
         <h1 className="mt-4 max-w-2xl font-[family-name:var(--font-display)] text-4xl leading-tight text-ink sm:text-5xl">
           No-code Odoo customization for Community — without Enterprise Studio.
         </h1>

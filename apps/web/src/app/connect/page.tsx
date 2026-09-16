@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
+import { BrandMark } from "@/components/brand/BrandMark";
 import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
 import { Button } from "@/components/ui/Button";
@@ -181,7 +182,7 @@ export default function ConnectPage() {
       <div className="mx-auto max-w-3xl">
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <Link href="/" className="text-accent hover:underline">
-            ← Odoo Custom
+            ← ingenium
           </Link>
           <Link href="/settings" className="text-muted hover:text-ink">
             API settings
