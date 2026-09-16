@@ -107,7 +107,10 @@ import {
   parseSelectionOptions,
   mapParsedButton,
 } from "@/components/designer/designer-model";
-import { loadExistingView as runLoadExistingView } from "@/components/designer/loadExistingView";
+import {
+  applyFieldNamesToCanvas as runApplyFieldNamesToCanvas,
+  loadExistingView as runLoadExistingView,
+} from "@/components/designer/loadExistingView";
 import { DesignerUiProvider } from "@/components/designer/DesignerUiContext";
 import { DesignerBindPanel } from "@/components/designer/DesignerBindPanel";
 import { DesignerDangerConfirms } from "@/components/designer/DesignerDangerConfirms";
@@ -596,110 +599,6 @@ export default function DesignerPage() {
     setLiveFailed(false);
   }, [proxyPreviewUrl, previewKey, model, viewType]);
 
-  function applyFieldNamesToCanvas(names: string[], rows: FieldRow[]) {
-    historySkipRef.current = "reset";
-    const nodes: DesignerField[] = names.map((name) => {
-      const meta = rows.find((f) => f.name === name);
-      return {
-        kind: "field" as const,
-        id: uid("f"),
-        name,
-        string: meta?.field_description,
-      };
-    });
-    if (nodes.length === 0) {
-      const nameField = rows.find((f) => f.name === "x_name") ?? rows[0];
-      if (nameField) {
-        nodes.push({
-          kind: "field",
-          id: uid("f"),
-          name: nameField.name,
-          string: nameField.field_description,
-        });
-      }
-    }
-    setFormChildren([
-      { kind: "group", id: uid("g"), string: "Main", children: [...nodes] },
-    ]);
-    setListColumns(nodes.map((n) => ({ ...n, id: uid("f") })));
-    setSearchFields(nodes.map((n) => ({ ...n, id: uid("f") })));
-    setKanbanFields(nodes.map((n) => ({ ...n, id: uid("f") })));
-    setCalendarFields(nodes.map((n) => ({ ...n, id: uid("f") })));
-    setMapFields(nodes.map((n) => ({ ...n, id: uid("f") })));
-    setActivityFields(nodes.map((n) => ({ ...n, id: uid("f") })));
-    setGanttFields(nodes.map((n) => ({ ...n, id: uid("f") })));
-    setGridFields(nodes.map((n) => ({ ...n, id: uid("f") })));
-    const { dateStart, dateStop } = pickTemporalDefaults(rows);
-    setCalendarDateStart(dateStart);
-    setCalendarDateStop(dateStop);
-    setCalendarColor("");
-    setCalendarMode("");
-    setGanttDateStart(dateStart);
-    setGanttDateStop(dateStop);
-    setGanttGroupBy("");
-    setGanttColor("");
-    setGanttProgress("");
-    setGanttDefaultScale("week");
-    setGanttDependencyField("");
-    setCohortDateStart(dateStart || "create_date");
-    setCohortDateStop(dateStop);
-    setCohortInterval("week");
-    setCohortMode("retention");
-    setCohortTimeline("");
-    setCohortMeasure(
-      rows.find(
-        (f) =>
-          f.ttype === "integer" || f.ttype === "float" || f.ttype === "monetary",
-      )?.name ?? "",
-    );
-    setMapResPartner(
-      rows.find((f) => f.ttype === "many2one" && f.relation === "res.partner")?.name ??
-        "",
-    );
-    setMapRouting(false);
-    setFormCanCreate(true);
-    setFormCanEdit(true);
-    setFormCanDelete(true);
-    setFormCanDuplicate(true);
-    setListCanCreate(true);
-    setListCanEdit(true);
-    setListCanDelete(true);
-    setListMultiEdit(false);
-    setListDefaultOrder("");
-    setKanbanCanCreate(true);
-    setKanbanQuickCreate(true);
-    setSearchFilters([]);
-    setSearchGroupByFilters([]);
-    const rowField =
-      rows.find((f) => f.ttype === "many2one" || f.ttype === "selection" || f.ttype === "char")
-        ?.name ?? nodes[0]?.name;
-    const measureField =
-      rows.find(
-        (f) =>
-          f.ttype === "integer" ||
-          f.ttype === "float" ||
-          f.ttype === "monetary",
-      )?.name ?? nodes[0]?.name;
-    const seededGraph: AxisDesignerField[] = [];
-    if (rowField) seededGraph.push({ id: uid("af"), name: rowField, type: "row" });
-    if (measureField)
-      seededGraph.push({ id: uid("af"), name: measureField, type: "measure" });
-    setGraphFields(seededGraph);
-    setGraphType("bar");
-    const seededPivot: AxisDesignerField[] = [];
-    if (rowField) seededPivot.push({ id: uid("af"), name: rowField, type: "row" });
-    if (measureField)
-      seededPivot.push({ id: uid("af"), name: measureField, type: "measure" });
-    setPivotFields(seededPivot);
-    setGridRowField(rowField ?? "");
-    setGridColField(dateStart ?? "");
-    setGridMeasure(measureField ?? "");
-    setGridAdjustment("");
-    setGridDateStart(dateStart);
-    setGridDateStop(dateStop);
-    setSelected(null);
-  }
-
   async function loadModelFields(target: string) {
     setError(null);
     setLoadedViewId(null);
@@ -708,7 +607,63 @@ export default function DesignerPage() {
       const rows = await api.listFields(connectionId, target);
       setFields(rows);
       setFieldsModel(target);
-      applyFieldNamesToCanvas([], rows);
+      runApplyFieldNamesToCanvas(
+        {
+        historySkipRef,
+        setFormChildren,
+        setListColumns,
+        setSearchFields,
+        setKanbanFields,
+        setCalendarFields,
+        setMapFields,
+        setActivityFields,
+        setGanttFields,
+        setGridFields,
+        setCalendarDateStart,
+        setCalendarDateStop,
+        setCalendarColor,
+        setCalendarMode,
+        setGanttDateStart,
+        setGanttDateStop,
+        setGanttGroupBy,
+        setGanttColor,
+        setGanttProgress,
+        setGanttDefaultScale,
+        setGanttDependencyField,
+        setCohortDateStart,
+        setCohortDateStop,
+        setCohortInterval,
+        setCohortMode,
+        setCohortTimeline,
+        setCohortMeasure,
+        setMapResPartner,
+        setMapRouting,
+        setFormCanCreate,
+        setFormCanEdit,
+        setFormCanDelete,
+        setFormCanDuplicate,
+        setListCanCreate,
+        setListCanEdit,
+        setListCanDelete,
+        setListMultiEdit,
+        setListDefaultOrder,
+        setKanbanCanCreate,
+        setKanbanQuickCreate,
+        setSearchFilters,
+        setSearchGroupByFilters,
+        setGraphFields,
+        setGraphType,
+        setPivotFields,
+        setGridRowField,
+        setGridColField,
+        setGridMeasure,
+        setGridAdjustment,
+        setGridDateStart,
+        setGridDateStop,
+        setSelected,
+      },
+        [], rows,
+      );
       setTitle(target);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load fields");
@@ -812,7 +767,6 @@ export default function DesignerPage() {
       connectionId,
       api,
       historySkipRef,
-      applyFieldNamesToCanvas,
       setBusy,
       setError,
       setNotice,

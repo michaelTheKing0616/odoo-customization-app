@@ -8,6 +8,7 @@ import {
   asSpecBool,
   mapFormGroupChildren,
   mapParsedButton,
+  pickTemporalDefaults,
   uid,
   type AxisDesignerField,
   type DesignerButton,
@@ -36,7 +37,6 @@ export type LoadExistingViewDeps = {
   connectionId: string;
   api: LoadExistingViewApi;
   historySkipRef: { current: "reset" | "apply" | null };
-  applyFieldNamesToCanvas: (names: string[], rows: FieldRow[]) => void;
   setBusy: (v: boolean) => void;
   setError: (v: string | null) => void;
   setNotice: (v: string | null) => void;
@@ -108,6 +108,226 @@ export type LoadExistingViewDeps = {
   setGridFields: (v: DesignerField[]) => void;
 };
 
+
+export type ApplyFieldNamesDeps = Pick<
+  LoadExistingViewDeps,
+  | "historySkipRef"
+  | "setFormChildren"
+  | "setListColumns"
+  | "setSearchFields"
+  | "setKanbanFields"
+  | "setCalendarFields"
+  | "setMapFields"
+  | "setActivityFields"
+  | "setGanttFields"
+  | "setGridFields"
+  | "setCalendarDateStart"
+  | "setCalendarDateStop"
+  | "setCalendarColor"
+  | "setCalendarMode"
+  | "setGanttDateStart"
+  | "setGanttDateStop"
+  | "setGanttGroupBy"
+  | "setGanttColor"
+  | "setGanttProgress"
+  | "setGanttDefaultScale"
+  | "setGanttDependencyField"
+  | "setCohortDateStart"
+  | "setCohortDateStop"
+  | "setCohortInterval"
+  | "setCohortMode"
+  | "setCohortTimeline"
+  | "setCohortMeasure"
+  | "setMapResPartner"
+  | "setMapRouting"
+  | "setFormCanCreate"
+  | "setFormCanEdit"
+  | "setFormCanDelete"
+  | "setFormCanDuplicate"
+  | "setListCanCreate"
+  | "setListCanEdit"
+  | "setListCanDelete"
+  | "setListMultiEdit"
+  | "setListDefaultOrder"
+  | "setKanbanCanCreate"
+  | "setKanbanQuickCreate"
+  | "setSearchFilters"
+  | "setSearchGroupByFilters"
+  | "setGraphFields"
+  | "setGraphType"
+  | "setPivotFields"
+  | "setGridRowField"
+  | "setGridColField"
+  | "setGridMeasure"
+  | "setGridAdjustment"
+  | "setGridDateStart"
+  | "setGridDateStop"
+  | "setSelected"
+>;
+
+export function applyFieldNamesToCanvas(
+  deps: ApplyFieldNamesDeps,
+  names: string[],
+  rows: FieldRow[],
+): void {
+  const {
+    historySkipRef,
+    setFormChildren,
+    setListColumns,
+    setSearchFields,
+    setKanbanFields,
+    setCalendarFields,
+    setMapFields,
+    setActivityFields,
+    setGanttFields,
+    setGridFields,
+    setCalendarDateStart,
+    setCalendarDateStop,
+    setCalendarColor,
+    setCalendarMode,
+    setGanttDateStart,
+    setGanttDateStop,
+    setGanttGroupBy,
+    setGanttColor,
+    setGanttProgress,
+    setGanttDefaultScale,
+    setGanttDependencyField,
+    setCohortDateStart,
+    setCohortDateStop,
+    setCohortInterval,
+    setCohortMode,
+    setCohortTimeline,
+    setCohortMeasure,
+    setMapResPartner,
+    setMapRouting,
+    setFormCanCreate,
+    setFormCanEdit,
+    setFormCanDelete,
+    setFormCanDuplicate,
+    setListCanCreate,
+    setListCanEdit,
+    setListCanDelete,
+    setListMultiEdit,
+    setListDefaultOrder,
+    setKanbanCanCreate,
+    setKanbanQuickCreate,
+    setSearchFilters,
+    setSearchGroupByFilters,
+    setGraphFields,
+    setGraphType,
+    setPivotFields,
+    setGridRowField,
+    setGridColField,
+    setGridMeasure,
+    setGridAdjustment,
+    setGridDateStart,
+    setGridDateStop,
+    setSelected,
+  } = deps;
+
+  historySkipRef.current = "reset";
+  const nodes: DesignerField[] = names.map((name) => {
+    const meta = rows.find((f) => f.name === name);
+    return {
+      kind: "field" as const,
+      id: uid("f"),
+      name,
+      string: meta?.field_description,
+    };
+  });
+  if (nodes.length === 0) {
+    const nameField = rows.find((f) => f.name === "x_name") ?? rows[0];
+    if (nameField) {
+      nodes.push({
+        kind: "field",
+        id: uid("f"),
+        name: nameField.name,
+        string: nameField.field_description,
+      });
+    }
+  }
+  setFormChildren([
+    { kind: "group", id: uid("g"), string: "Main", children: [...nodes] },
+  ]);
+  setListColumns(nodes.map((n) => ({ ...n, id: uid("f") })));
+  setSearchFields(nodes.map((n) => ({ ...n, id: uid("f") })));
+  setKanbanFields(nodes.map((n) => ({ ...n, id: uid("f") })));
+  setCalendarFields(nodes.map((n) => ({ ...n, id: uid("f") })));
+  setMapFields(nodes.map((n) => ({ ...n, id: uid("f") })));
+  setActivityFields(nodes.map((n) => ({ ...n, id: uid("f") })));
+  setGanttFields(nodes.map((n) => ({ ...n, id: uid("f") })));
+  setGridFields(nodes.map((n) => ({ ...n, id: uid("f") })));
+  const { dateStart, dateStop } = pickTemporalDefaults(rows);
+  setCalendarDateStart(dateStart);
+  setCalendarDateStop(dateStop);
+  setCalendarColor("");
+  setCalendarMode("");
+  setGanttDateStart(dateStart);
+  setGanttDateStop(dateStop);
+  setGanttGroupBy("");
+  setGanttColor("");
+  setGanttProgress("");
+  setGanttDefaultScale("week");
+  setGanttDependencyField("");
+  setCohortDateStart(dateStart || "create_date");
+  setCohortDateStop(dateStop);
+  setCohortInterval("week");
+  setCohortMode("retention");
+  setCohortTimeline("");
+  setCohortMeasure(
+    rows.find(
+      (f) =>
+        f.ttype === "integer" || f.ttype === "float" || f.ttype === "monetary",
+    )?.name ?? "",
+  );
+  setMapResPartner(
+    rows.find((f) => f.ttype === "many2one" && f.relation === "res.partner")?.name ??
+      "",
+  );
+  setMapRouting(false);
+  setFormCanCreate(true);
+  setFormCanEdit(true);
+  setFormCanDelete(true);
+  setFormCanDuplicate(true);
+  setListCanCreate(true);
+  setListCanEdit(true);
+  setListCanDelete(true);
+  setListMultiEdit(false);
+  setListDefaultOrder("");
+  setKanbanCanCreate(true);
+  setKanbanQuickCreate(true);
+  setSearchFilters([]);
+  setSearchGroupByFilters([]);
+  const rowField =
+    rows.find((f) => f.ttype === "many2one" || f.ttype === "selection" || f.ttype === "char")
+      ?.name ?? nodes[0]?.name;
+  const measureField =
+    rows.find(
+      (f) =>
+        f.ttype === "integer" ||
+        f.ttype === "float" ||
+        f.ttype === "monetary",
+    )?.name ?? nodes[0]?.name;
+  const seededGraph: AxisDesignerField[] = [];
+  if (rowField) seededGraph.push({ id: uid("af"), name: rowField, type: "row" });
+  if (measureField)
+    seededGraph.push({ id: uid("af"), name: measureField, type: "measure" });
+  setGraphFields(seededGraph);
+  setGraphType("bar");
+  const seededPivot: AxisDesignerField[] = [];
+  if (rowField) seededPivot.push({ id: uid("af"), name: rowField, type: "row" });
+  if (measureField)
+    seededPivot.push({ id: uid("af"), name: measureField, type: "measure" });
+  setPivotFields(seededPivot);
+  setGridRowField(rowField ?? "");
+  setGridColField(dateStart ?? "");
+  setGridMeasure(measureField ?? "");
+  setGridAdjustment("");
+  setGridDateStart(dateStart);
+  setGridDateStop(dateStop);
+  setSelected(null);
+}
+
 export async function loadExistingView(deps: LoadExistingViewDeps): Promise<void> {
   const {
     model,
@@ -115,7 +335,6 @@ export async function loadExistingView(deps: LoadExistingViewDeps): Promise<void
     connectionId,
     api,
     historySkipRef,
-    applyFieldNamesToCanvas,
     setBusy,
     setError,
     setNotice,
@@ -207,7 +426,7 @@ export async function loadExistingView(deps: LoadExistingViewDeps): Promise<void
       (viewType === "list" ? views.find((v) => v.type === "tree") : undefined);
     if (!match) {
       setNotice(`No existing ${viewType} view — canvas seeded from fields.`);
-      applyFieldNamesToCanvas([], rows);
+      applyFieldNamesToCanvas(deps, [], rows);
       setLoadedViewId(null);
       return;
     }
@@ -449,12 +668,12 @@ export async function loadExistingView(deps: LoadExistingViewDeps): Promise<void
         const names = (full.arch ?? "").match(/<field\b[^>]*\bname=["']([^"']+)["']/g)?.map((m) => m.replace(/.*name=["']([^"']+)["'].*/, "$1")).filter(Boolean) ?? [];
         const unique: string[] = [];
         for (const n of names) if (!unique.includes(n)) unique.push(n);
-        applyFieldNamesToCanvas(unique, rows);
+        applyFieldNamesToCanvas(deps, unique, rows);
         setTitle(full.name || model);
         setNotice(`Loaded ${full.type} view #${full.id} (flat fallback — ${unique.length} fields).`);
       }
     } else {
-      applyFieldNamesToCanvas([], rows);
+      applyFieldNamesToCanvas(deps, [], rows);
       setTitle(full.name || model);
     }
     setSelected(null);
