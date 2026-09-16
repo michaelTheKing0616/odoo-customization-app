@@ -2,7 +2,8 @@
 
 **Status:** tokens landed in `apps/web/src/app/globals.css` (`text-ui-*`, `--row-h`, `--inspector-w*`, `--sidebar-w*`, motion).  
 **Progress:** chrome primitives (`PageHeader`/`EmptyState`/`Sidebar`/`TopBar`) + Menus/Automations session kit use `text-ui-*` / `h-row`. `hex_lint_product.sh --strict` clean as of tip after import/scanner/builder/approvals hex peel.
-**Still open:** denser migration of long config/builder pages (font-display utility → `text-ui-title` where headings are still `text-xl`).
+**Done also:** config/approvals/reports/builder headings → `text-ui-title`; Access + Models Builder on `ListComposerShell`; ConfirmDialogV2 title uses `text-ui-display`.
+**Still soft:** marketing landing `text-4xl` display stack; BrandMark wordmark.
 
 | Utility | Spec |
 |---|---|

@@ -158,7 +158,7 @@ export function ApprovalProcessesPanel({
       </div>
 
       <section className="mt-8 border border-border-subtle bg-surface-muted/70 p-4">
-        <h3 className="font-[family-name:var(--font-display)] text-lg text-ink">
+        <h3 className="text-ui-title text-ink">
           New request
         </h3>
         <div className="mt-3 grid gap-3 md:grid-cols-2 text-sm">
@@ -213,7 +213,7 @@ export function ApprovalProcessesPanel({
       </section>
 
       <section className="mt-8">
-        <h3 className="font-[family-name:var(--font-display)] text-lg text-ink">
+        <h3 className="text-ui-title text-ink">
           Approval types
         </h3>
         <ul className="mt-3 space-y-2 text-sm">
@@ -236,7 +236,7 @@ export function ApprovalProcessesPanel({
       </section>
 
       <section className="mt-8">
-        <h3 className="font-[family-name:var(--font-display)] text-lg text-ink">
+        <h3 className="text-ui-title text-ink">
           Requests
         </h3>
         <ul className="mt-3 space-y-2 text-sm">

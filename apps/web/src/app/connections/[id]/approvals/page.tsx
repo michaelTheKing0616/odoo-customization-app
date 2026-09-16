@@ -241,7 +241,7 @@ export default function ApprovalsPage() {
         </Card>
 
         <section className="mt-8">
-          <h2 className="font-[family-name:var(--font-display)] text-xl text-ink">Rules</h2>
+          <h2 className="text-ui-title text-ink">Rules</h2>
           <ul className="mt-4 space-y-3">
             {rules.map((r) => (
               <li key={r.id} className="rounded-md border border-border-subtle bg-surface p-4 text-sm">
@@ -276,7 +276,7 @@ export default function ApprovalsPage() {
         </section>
 
         <section className="mt-10">
-          <h2 className="font-[family-name:var(--font-display)] text-xl text-ink">
+          <h2 className="text-ui-title text-ink">
             Entries / audit
           </h2>
           <ul className="mt-4 space-y-2 text-sm">

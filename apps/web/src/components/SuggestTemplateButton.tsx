@@ -89,7 +89,7 @@ export function SuggestTemplateButton({
           aria-modal="true"
         >
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto border border-border-subtle bg-surface-raised p-5">
-            <h2 className="font-[family-name:var(--font-display)] text-xl text-ink">
+            <h2 className="text-ui-title text-ink">
               Suggest as template
             </h2>
             {!result ? (

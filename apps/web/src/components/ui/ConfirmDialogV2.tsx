@@ -74,7 +74,7 @@ export function ConfirmDialogV2({
           <h2
             id="confirm-dialog-v2-title"
             className={cn(
-              "font-[family-name:var(--font-display)] text-xl",
+              "text-ui-display font-semibold",
               danger ? "text-danger" : "text-ink",
             )}
           >

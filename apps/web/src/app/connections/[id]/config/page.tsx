@@ -205,7 +205,7 @@ export default function ConfigPage() {
           onSubmit={saveCompany}
           className="mt-8 space-y-3 border border-border-subtle bg-surface p-5 rounded-md"
         >
-          <h2 className="font-[family-name:var(--font-display)] text-xl">Company</h2>
+          <h2 className="text-ui-title">Company</h2>
           {companies.length > 1 && (
             <select
               value={company?.id ?? ""}
@@ -260,7 +260,7 @@ export default function ConfigPage() {
         </form>
 
         <section className="mt-8 rounded-md border border-border-subtle bg-surface p-5">
-          <h2 className="font-[family-name:var(--font-display)] text-xl">Sequences</h2>
+          <h2 className="text-ui-title">Sequences</h2>
           <form
             className="mt-3 flex flex-wrap gap-2"
             onSubmit={async (e) => {
@@ -387,7 +387,7 @@ export default function ConfigPage() {
 
         <section className="mt-8 grid gap-6 lg:grid-cols-2">
           <div className="rounded-md border border-border-subtle bg-surface p-5">
-            <h2 className="font-[family-name:var(--font-display)] text-xl">Mail templates</h2>
+            <h2 className="text-ui-title">Mail templates</h2>
             <form
               className="mt-3 space-y-2"
               onSubmit={async (e) => {
@@ -453,7 +453,7 @@ export default function ConfigPage() {
           </div>
 
           <div className="rounded-md border border-border-subtle bg-surface p-5">
-            <h2 className="font-[family-name:var(--font-display)] text-xl">Activity types</h2>
+            <h2 className="text-ui-title">Activity types</h2>
             <form
               className="mt-3 flex gap-2"
               onSubmit={async (e) => {
@@ -501,7 +501,7 @@ export default function ConfigPage() {
 
         <section className="mt-8 grid gap-6 lg:grid-cols-2">
           <div className="rounded-md border border-border-subtle bg-surface p-5">
-            <h2 className="font-[family-name:var(--font-display)] text-xl">Paperformats</h2>
+            <h2 className="text-ui-title">Paperformats</h2>
             <form
               className="mt-3 flex flex-wrap gap-2"
               onSubmit={async (e) => {
@@ -554,7 +554,7 @@ export default function ConfigPage() {
           </div>
 
           <div className="rounded-md border border-border-subtle bg-surface p-5">
-            <h2 className="font-[family-name:var(--font-display)] text-xl">Field defaults</h2>
+            <h2 className="text-ui-title">Field defaults</h2>
             <p className="mt-1 text-xs text-muted">ir.default for a model</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <input
@@ -624,7 +624,7 @@ export default function ConfigPage() {
         </section>
 
         <section className="mt-8 rounded-md border border-border-subtle bg-surface p-5">
-          <h2 className="font-[family-name:var(--font-display)] text-xl">Scheduled actions</h2>
+          <h2 className="text-ui-title">Scheduled actions</h2>
           <p className="mt-1 text-xs text-muted">
             Deactivate requires confirm phrase <code>{CONFIRM_PHRASE}</code>
           </p>
@@ -676,7 +676,7 @@ export default function ConfigPage() {
         </section>
 
         <section className="mt-8 rounded-md border border-border-subtle bg-surface p-5">
-          <h2 className="font-[family-name:var(--font-display)] text-xl">
+          <h2 className="text-ui-title">
             Website &amp; properties
           </h2>
           <p className="mt-2 text-sm text-muted">
@@ -688,7 +688,7 @@ export default function ConfigPage() {
         </section>
 
         <section className="mt-8 rounded-md border border-border-subtle bg-surface p-5">
-          <h2 className="font-[family-name:var(--font-display)] text-xl">
+          <h2 className="text-ui-title">
             Translations CSV
           </h2>
           <p className="mt-1 text-xs text-muted">
@@ -827,7 +827,7 @@ export default function ConfigPage() {
         </section>
 
         <section className="mt-8 rounded-md border border-border-subtle bg-surface p-5">
-          <h2 className="font-[family-name:var(--font-display)] text-xl">
+          <h2 className="text-ui-title">
             ModuleSpec translations (CMP-11)
           </h2>
           <p className="mt-1 text-xs text-muted">

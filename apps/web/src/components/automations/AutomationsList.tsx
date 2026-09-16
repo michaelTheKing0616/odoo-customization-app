@@ -39,7 +39,7 @@ export function AutomationsList({
   return (
     <div className="space-y-3" data-testid="automations-list">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-ink">Rules</h2>
+        <h2 className="text-ui-title font-semibold text-ink">Rules</h2>
         <Button type="button" variant="secondary" size="sm" onClick={onCreate}>
           New automation
         </Button>
@@ -50,7 +50,7 @@ export function AutomationsList({
         placeholder="Filter by name or model"
         aria-label="Filter automations"
         data-testid="automations-list-filter"
-        className="h-9 w-full rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink outline-none placeholder:text-muted focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+        className="h-row w-full rounded-md border border-border-subtle bg-surface px-3 text-ui-body text-ink outline-none placeholder:text-muted focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
       />
       {modelFilter ? (
         <p className="text-xs text-muted" data-testid="automations-model-filter">
