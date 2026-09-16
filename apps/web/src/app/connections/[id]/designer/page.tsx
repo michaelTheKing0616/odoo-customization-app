@@ -14,6 +14,7 @@ import {
   type DesignerCanvasMode,
 } from "@/components/designer/DesignerLiveCanvas";
 import { DesignerStudioRail } from "@/components/designer/DesignerStudioRail";
+import { DesignerStructuralCanvas } from "@/components/designer/DesignerStructuralCanvas";
 import type { DesignerRailTabId } from "@/components/designer/DesignerToolsRail";
 import { FieldPalette } from "@/components/designer/FieldPalette";
 import { Disclosure } from "@/components/ui/Disclosure";
@@ -2369,192 +2370,38 @@ export default function DesignerPage() {
     <DesignerFieldInspectorEmpty />
   );
 
-  const formStructuralCanvas = (
-    <OdooPreviewScope showBanner previewVars={previewTheme?.preview_vars}>
-      <div data-testid="designer-form-layout">
-        <OdooControlPanel
-          breadcrumb={`View Designer › ${title || model}`}
-          activeView="form"
-          availableViews={["form"]}
-          showSearchPlaceholder
-        />
-        <FormCanvas
-          title={title || model}
-          statusbar={statusbarField || null}
-          statusbarVisible={statusbarVisible || null}
-          groupLayout={
-            formChildren.filter((c) => c.kind === "group").length >= 2
-              ? "two-column"
-              : "stack"
-          }
-          headerButtons={headerButtons.map((b) => ({
-            id: b.id,
-            string: b.string || "Button",
-          }))}
-          smartButtons={buttonBox.map((b) => ({ id: b.id, string: b.string }))}
-          flashId={canvasFlashId}
-          groups={formChildren
-            .filter((c): c is DesignerGroup => c.kind === "group")
-            .map((g) => ({
-              id: g.id,
-              string: g.string,
-              fields: g.children
-                .filter((n): n is DesignerField => n.kind === "field")
-                .map((f) => {
-                  const meta = fields.find((row) => row.name === f.name);
-                  return {
-                    id: f.id,
-                    name: f.name,
-                    string: resolveFieldLabel(f.name, f.string, fields),
-                    ttype: meta?.ttype,
-                    widget: f.widget,
-                    required: f.required === true,
-                  };
-                }),
-            }))}
-          notebooks={formChildren
-            .filter((c): c is DesignerNotebook => c.kind === "notebook")
-            .map((nb) => ({
-              id: nb.id,
-              pages: nb.pages.map((p) => ({
-                id: p.id,
-                string: p.string,
-                fields: p.children
-                  .filter((n): n is DesignerField => n.kind === "field")
-                  .map((f) => {
-                    const meta = fields.find((row) => row.name === f.name);
-                    return {
-                      id: f.id,
-                      name: f.name,
-                      string: resolveFieldLabel(f.name, f.string, fields),
-                      ttype: meta?.ttype,
-                      widget: f.widget,
-                      required: f.required === true,
-                    };
-                  }),
-              })),
-            }))}
-          selectedFieldId={
-            selected?.scope === "form-group" || selected?.scope === "form-page"
-              ? selected.fieldId
-              : null
-          }
-          onSelectField={selectCanvasField}
-          onMoveField={(fieldId, dir) => {
-            setFormChildren((children) =>
-              children.map((child) => {
-                if (child.kind !== "group") return child;
-                const idx = child.children.findIndex(
-                  (n) => n.kind === "field" && n.id === fieldId,
-                );
-                if (idx < 0) return child;
-                const next = idx + dir;
-                if (next < 0 || next >= child.children.length) return child;
-                const copy = [...child.children];
-                const [item] = copy.splice(idx, 1);
-                copy.splice(next, 0, item);
-                return { ...child, children: copy };
-              }),
-            );
-          }}
-          onDropFieldName={(groupId, fieldName, index) => {
-            addFieldToGroup(groupId, fieldName, index);
-          }}
-          onDropFieldOnPage={(notebookId, pageId, fieldName, index) => {
-            dropFieldOnPage(notebookId, pageId, fieldName, index);
-          }}
-          onReorderField={(fieldId, groupId, index) =>
-            reorderFormNode(fieldId, { kind: "group", groupId }, index)
-          }
-          onReorderPageField={(fieldId, notebookId, pageId, index) =>
-            reorderFormNode(fieldId, { kind: "page", notebookId, pageId }, index)
-          }
-        />
-      </div>
-    </OdooPreviewScope>
+  const structuralCanvas = (
+    <DesignerStructuralCanvas
+      viewType={viewType}
+      model={model}
+      title={title}
+      fields={fields}
+      previewTheme={previewTheme}
+      formChildren={formChildren}
+      headerButtons={headerButtons}
+      buttonBox={buttonBox}
+      statusbarField={statusbarField}
+      statusbarVisible={statusbarVisible}
+      canvasFlashId={canvasFlashId}
+      selected={selected}
+      setSelected={setSelected}
+      setRailTab={setRailTab}
+      listColumns={listColumns}
+      listDecorationDanger={listDecorationDanger}
+      listDecorationInfo={listDecorationInfo}
+      listDecorationMuted={listDecorationMuted}
+      kanbanFields={kanbanFields}
+      kanbanGroupBy={kanbanGroupBy}
+      setKanbanFields={setKanbanFields}
+      selectCanvasField={selectCanvasField}
+      addFieldToGroup={addFieldToGroup}
+      dropFieldOnPage={dropFieldOnPage}
+      reorderFormNode={reorderFormNode}
+      setFormChildren={setFormChildren}
+      moveKanbanField={moveKanbanField}
+      addKanbanField={addKanbanField}
+    />
   );
-
-  const listStructuralCanvas = (
-    <div data-testid="designer-list-layout">
-      <OdooPreviewScope showBanner={false} previewVars={previewTheme?.preview_vars}>
-        <OdooListView
-          view={{
-            type: "list",
-            model: model || "model",
-            title: title || model,
-            columns: listColumns.map((f) => ({
-              id: f.id,
-              name: f.name,
-              string: resolveFieldLabel(f.name, f.string, fields) || f.name,
-            })),
-            decorations: {
-              danger: listDecorationDanger || null,
-              info: listDecorationInfo || null,
-              muted: listDecorationMuted || null,
-            },
-          }}
-        />
-      </OdooPreviewScope>
-    </div>
-  );
-
-  const kanbanStructuralCanvas = (
-    <div data-testid="designer-kanban-layout">
-      <PreviewThemeScope previewVars={previewTheme?.preview_vars}>
-        <OdooKanbanView
-          view={{
-            type: "kanban",
-            model: model || "model",
-            title: title || model,
-            groupBy: kanbanGroupBy || null,
-            cardFields: kanbanFields.map((f) => ({
-              id: f.id,
-              name: f.name,
-              string: f.string || f.name,
-            })),
-          }}
-        />
-        <div className="mt-4">
-          <KanbanCardPreview
-            title={title || model}
-            groupBy={kanbanGroupBy || null}
-            fields={kanbanFields.map((f) => ({
-              id: f.id,
-              name: f.name,
-              string: f.string,
-            }))}
-            selectedFieldId={selected?.scope === "kanban" ? selected.fieldId : null}
-            onSelectField={(fieldId) => {
-              setSelected({ scope: "kanban", fieldId });
-              setRailTab("properties");
-            }}
-            onMoveField={moveKanbanField}
-            onRemoveField={(fieldId) => {
-              setKanbanFields((cols) => cols.filter((c) => c.id !== fieldId));
-              setSelected((sel) =>
-                sel?.scope === "kanban" && sel.fieldId === fieldId ? null : sel,
-              );
-            }}
-            onDropFieldName={(fieldName) => addKanbanField(fieldName)}
-          />
-        </div>
-      </PreviewThemeScope>
-    </div>
-  );
-
-  const structuralCanvas =
-    viewType === "form"
-      ? formStructuralCanvas
-      : viewType === "list"
-        ? listStructuralCanvas
-        : viewType === "kanban"
-          ? kanbanStructuralCanvas
-          : (
-            <div className="rounded-md border border-border-subtle bg-surface p-4 text-sm text-muted">
-              Layout canvas for {viewType} uses the Structure tab. Live Odoo remains
-              the authoritative preview.
-            </div>
-          );
 
   return (
     <DesignerUiProvider
