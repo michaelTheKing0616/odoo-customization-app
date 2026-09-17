@@ -111,13 +111,42 @@ describe("DataTable", () => {
         rows={manyRows}
         rowKey={(r) => r.id}
         virtualizeThreshold={200}
-        viewportHeight={200}
       />,
     );
     const table = screen.getByTestId("data-table");
     const renderedRows = table.querySelectorAll("tbody tr:not([aria-hidden])");
     expect(renderedRows.length).toBeLessThan(manyRows.length);
     expect(renderedRows.length).toBeGreaterThan(0);
+  });
+
+  it("keeps all column headers visible when virtualized", () => {
+    const fieldColumns: DataTableColumn<Row>[] = [
+      { id: "label", header: "Label", accessor: (r) => r.name },
+      { id: "name", header: "Name", accessor: (r) => r.id },
+      { id: "type", header: "Type", accessor: () => "char" },
+      { id: "flags", header: "Flags", accessor: () => "—" },
+    ];
+    const manyRows: Row[] = Array.from({ length: 250 }, (_, i) => ({
+      id: `row-${i}`,
+      name: `Row ${i}`,
+      score: i,
+    }));
+    render(
+      <DataTable
+        columns={fieldColumns}
+        rows={manyRows}
+        rowKey={(r) => r.id}
+        virtualizeThreshold={200}
+      />,
+    );
+    const table = screen.getByTestId("data-table");
+    for (const header of ["Label", "Name", "Type", "Flags"]) {
+      expect(within(table).getByText(header)).toBeInTheDocument();
+    }
+    const tbody = table.querySelector("tbody");
+    expect(tbody).toBeTruthy();
+    expect(getComputedStyle(tbody!).display).not.toBe("block");
+    expect(screen.getByTestId("data-table-scroll")).toBeInTheDocument();
   });
 });
 

@@ -122,8 +122,17 @@ export function DataTable<T>({
           </button>
         ) : null}
       </div>
-      <div className="overflow-auto rounded-md border border-border-subtle">
-        <table className="min-w-full text-sm">
+      <div
+        className="overflow-auto rounded-md border border-border-subtle"
+        style={useVirtual ? { maxHeight: viewportHeight } : undefined}
+        onScroll={
+          useVirtual
+            ? (e) => setScrollTop((e.currentTarget as HTMLDivElement).scrollTop)
+            : undefined
+        }
+        data-testid={useVirtual ? "data-table-scroll" : undefined}
+      >
+        <table className="min-w-full table-fixed text-sm">
           <thead className="sticky top-0 z-10 bg-surface-muted">
             <tr>
               {selectable ? (
@@ -163,14 +172,7 @@ export function DataTable<T>({
               ))}
             </tr>
           </thead>
-          <tbody
-            onScroll={
-              useVirtual
-                ? (e) => setScrollTop((e.target as HTMLDivElement).scrollTop)
-                : undefined
-            }
-            style={useVirtual ? { display: "block", maxHeight: viewportHeight, overflow: "auto" } : undefined}
-          >
+          <tbody>
             {loading
               ? Array.from({ length: 5 }).map((_, i) => (
                   <tr key={`sk-${i}`}>

@@ -80,6 +80,7 @@ export default function BrowserPage() {
   const [fields, setFields] = useState<FieldRow[]>([]);
   const [views, setViews] = useState<ViewRow[]>([]);
   const [modelQuery, setModelQuery] = useState("");
+  const [modelPickerQuery, setModelPickerQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [exportBusy, setExportBusy] = useState(false);
@@ -147,9 +148,6 @@ export default function BrowserPage() {
         ]);
         if (cancelled) return;
         setConnection(conn);
-        if (conn) {
-          api.getMigrationAssist(connectionId).then(setMigrationAssist).catch(() => null);
-        }
         if (conn) {
           api.getMigrationAssist(connectionId).then(setMigrationAssist).catch(() => null);
         }
@@ -767,20 +765,44 @@ export default function BrowserPage() {
                     ))}
                   </div>
                   {(tab === "fields" || tab === "views") && (
-                    <div className="mt-4 max-w-md">
-                      <Input
+                    <div className="mt-4 max-w-xl space-y-2">
+                      <p className="text-xs text-muted" data-testid="model-picker-count">
+                        {models.length} models on this connection
+                      </p>
+                      {models.length > 40 ? (
+                        <Input
+                          placeholder="Filter models…"
+                          value={modelPickerQuery}
+                          onChange={(e) => setModelPickerQuery(e.target.value)}
+                          aria-label="Filter model list"
+                        />
+                      ) : null}
+                      <Select
                         label="Model"
-                        list="model-options"
                         value={selectedModel}
                         onChange={(e) => setSelectedModel(e.target.value)}
+                        options={(() => {
+                          const q = modelPickerQuery.trim().toLowerCase();
+                          let list = q
+                            ? models.filter(
+                                (m) =>
+                                  m.model.toLowerCase().includes(q) ||
+                                  (m.name ?? "").toLowerCase().includes(q),
+                              )
+                            : models;
+                          if (
+                            selectedModel &&
+                            !list.some((m) => m.model === selectedModel)
+                          ) {
+                            const selected = models.find((m) => m.model === selectedModel);
+                            if (selected) list = [selected, ...list];
+                          }
+                          return list.map((m) => ({
+                            value: m.model,
+                            label: `${m.name || m.model} (${m.model})`,
+                          }));
+                        })()}
                       />
-                      <datalist id="model-options">
-                        {models.slice(0, 500).map((m) => (
-                          <option key={m.id} value={m.model}>
-                            {m.name}
-                          </option>
-                        ))}
-                      </datalist>
                     </div>
                   )}
                   {loading ? (
@@ -945,57 +967,7 @@ export default function BrowserPage() {
               </div>
             </div>
           ) : null}
-          {storeReadiness ? (
-            <div
-              className="mt-4 rounded border border-border-subtle bg-surface/80 p-4 text-sm"
-              data-testid="store-readiness-report"
-            >
-              <p className="font-medium text-ink">
-                Store readiness — {storeReadiness.message}
-              </p>
-              <p className="mt-1 text-xs text-muted">{storeReadiness.disclaimer}</p>
-              <ul className="mt-2 space-y-1 text-muted">
-                {storeReadiness.items.map((item) => (
-                  <li key={item.key}>
-                    [{item.status}] {item.label}: {item.message}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-          {migrationAssist?.eligible ? (
-            <div
-              className="mt-4 rounded border border-border-subtle bg-surface/80 p-4 text-sm"
-              data-testid="migration-assist-panel"
-            >
-              <p className="font-medium text-ink">{migrationAssist.title}</p>
-              <p className="mt-2 text-muted">{migrationAssist.body}</p>
-              {migrationAssist.unlocks.length > 0 ? (
-                <ul className="mt-3 list-disc pl-5 text-muted">
-                  {migrationAssist.unlocks.map((u) => (
-                    <li key={u.key}>
-                      {u.label}: {u.online_status} → {u.sh_status} — {u.reason}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-              <p className="mt-2 text-xs text-muted">{migrationAssist.disclaimer}</p>
-              <div className="mt-2 flex flex-wrap gap-3">
-                {migrationAssist.docs_links.map((link) => (
-                  <a
-                    key={link.url}
-                    href={link.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-muted hover:underline"
-                  >
-                    {link.label}
-                  </a>
-                ))}
-              </div>
-            </div>
-          ) : null}
-          <div className="mt-4 flex flex-wrap items-end gap-3">
+                    <div className="mt-4 flex flex-wrap items-end gap-3">
             <Input
               label="Technical name"
               value={techName}
