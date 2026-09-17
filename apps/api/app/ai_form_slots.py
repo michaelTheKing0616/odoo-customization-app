@@ -197,15 +197,30 @@ def _normalize_group_title(raw: str) -> str | None:
     return " ".join(w[:1].upper() + w[1:] if w else w for w in title.split(" "))
 
 
+_DELIVERY_PREF_OPS_RE = re.compile(
+    r"(?i)\b(?:"
+    r"prefer(?:red)?\s+for\s+delivery|"
+    r"preferred[- ]delivery|"
+    r"prefer\s+for\s+delivery|"
+    r"delivery\s+notes"
+    r")\b"
+)
+
+
 def named_group_title(prompt: str) -> str | None:
     """Operator-named sheet group (e.g. Delivery) — never a selection field.
 
     «under a Delivery group» → Delivery (never «A Delivery» / «A DELIVERY»).
+    Prefer/delivery Contacts fields (incl. inherit-only ops reuse) land under
+    Delivery even when the brief omits the explicit «under … group» phrase.
     """
     match = _UNDER_GROUP_RE.search(prompt or "")
-    if not match:
-        return None
-    return _normalize_group_title(match.group(1))
+    if match:
+        return _normalize_group_title(match.group(1))
+    # Ops extension / reuse briefs name the fields but not the group.
+    if _DELIVERY_PREF_OPS_RE.search(prompt or ""):
+        return "Delivery"
+    return None
 
 
 def tab_title(prompt: str) -> str:

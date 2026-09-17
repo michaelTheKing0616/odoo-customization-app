@@ -497,6 +497,164 @@ def _head_noun(low: str) -> str:
     return _slug(meaningful[0])
 
 
+
+_OPS_PICKING_RE = re.compile(
+    r"(?i)\b(?:pickings?|transfers?|delivery\s*/\s*inventory|inventory\s+lists?)\b"
+)
+_OPS_FILTER_RE = re.compile(r"(?i)\b(?:filter|domain)\b")
+_OPS_AUTO_RE = re.compile(
+    r"(?i)\b(?:automation|automat(?:e|ed|ion)|when\s+the\s+box\s+is\s+checked)\b"
+)
+_PREFER_FIELD_RE = re.compile(r"(?i)prefer|preferred")
+
+
+def _prefer_boolean_field(inherit: dict[str, Any]) -> dict[str, Any] | None:
+    for field in inherit.get("fields") or []:
+        if not isinstance(field, dict):
+            continue
+        if str(field.get("ttype") or field.get("type") or "") != "boolean":
+            continue
+        blob = f"{field.get('name') or ''} {field.get('string') or ''}"
+        if _PREFER_FIELD_RE.search(blob) and re.search(r"(?i)deliver", blob):
+            return field
+    return None
+
+
+def _ensure_inherit_ops_wiring(draft: dict[str, Any], prompt: str) -> list[str]:
+    """Author pickings filter + light automation for inherit-only ops field_packs.
+
+    field_pack skips feature_slice smart-button/companion wiring; ops briefs still
+    need Delivery/Inventory list filters and a safe on_write activity when Prefer
+    for delivery is checked. Search filter inherits stock.picking; automation stays
+    on res.partner (public ORM only).
+    """
+    notes: list[str] = []
+    from app.ai_grain import is_inherit_only_ops
+
+    if not is_inherit_only_ops(prompt or ""):
+        return notes
+    # S1-style "add fields, no new app" is inherit-only but not ops — require
+    # pickings/filter/automation themes before authoring workflow surfaces.
+    if not (
+        _OPS_PICKING_RE.search(prompt or "")
+        or _OPS_FILTER_RE.search(prompt or "")
+        or _OPS_AUTO_RE.search(prompt or "")
+    ):
+        return notes
+    inherit = _inherit_row(draft)
+    if inherit is None:
+        return notes
+    host = str(inherit.get("model") or "")
+    if host != "res.partner":
+        return notes
+    prefer = _prefer_boolean_field(inherit)
+    if prefer is None:
+        return notes
+    fname = str(prefer.get("name") or "")
+    if not fname:
+        return notes
+
+    want_filter = bool(
+        _OPS_PICKING_RE.search(prompt or "") or _OPS_FILTER_RE.search(prompt or "")
+    )
+    want_auto = bool(
+        _OPS_AUTO_RE.search(prompt or "") or _OPS_PICKING_RE.search(prompt or "")
+    )
+    # At least one theme matched; author every surface the brief named, and
+    # always include the light automation when pickings/filter are in play.
+    if want_filter and not want_auto:
+        want_auto = True
+
+    if want_filter:
+        views = [v for v in (draft.get("views") or []) if isinstance(v, dict)]
+        already = any(
+            str(v.get("model") or "") == "stock.picking"
+            and str(v.get("type") or "") == "search"
+            and "preferred" in str(v.get("arch") or "").lower()
+            for v in views
+        )
+        if not already:
+            arch = (
+                "<data>\n"
+                '  <xpath expr="//search" position="inside">\n'
+                f'    <filter string="Preferred delivery contact" '
+                f'name="ingenium_preferred_delivery_partner" '
+                f"domain=\"[('partner_id.{fname}', '=', True)]\"/>\n"
+                "  </xpath>\n"
+                "</data>"
+            )
+            draft.setdefault("views", []).append(
+                {
+                    "name": "stock.picking.search.preferred_delivery",
+                    "model": "stock.picking",
+                    "type": "search",
+                    "mode": "extension",
+                    "inherit_xml_id": "stock.view_picking_internal_search",
+                    "arch": arch,
+                    "source": "senior_ops",
+                }
+            )
+            deps = list(draft.get("depends") or [])
+            if "stock" not in deps:
+                deps.append("stock")
+                draft["depends"] = deps
+            notes.append(
+                "senior: stock.picking search filter for preferred delivery contacts"
+            )
+
+    if want_auto:
+        autos = [a for a in (draft.get("automations") or []) if isinstance(a, dict)]
+        already_auto = any(
+            str(a.get("model") or "") == "res.partner"
+            and fname in str(a.get("filter_domain") or "")
+            for a in autos
+        )
+        if not already_auto:
+            label = str(prefer.get("string") or "Preferred for delivery")
+            draft.setdefault("automations", []).append(
+                {
+                    "name": f"{label} — follow up",
+                    "model": "res.partner",
+                    "trigger": "on_write",
+                    "trigger_field_names": [fname],
+                    "filter_domain": f"[('{fname}', '=', True)]",
+                    "description": "Light ops automation when Prefer for delivery is checked",
+                    "safe_actions": [
+                        {
+                            "kind": "next_activity",
+                            "summary": f"{label}: confirm delivery notes for logistics",
+                            "activity_type_xml_id": "mail.mail_activity_data_todo",
+                        }
+                    ],
+                    "source": "senior_ops",
+                }
+            )
+            notes.append(f"senior: on_write activity when {fname} is set")
+
+    if _OPS_PICKING_RE.search(prompt or ""):
+        existing = {
+            (str(b.get("on_model")), str(b.get("related_model")))
+            for b in (draft.get("smart_buttons") or [])
+            if isinstance(b, dict)
+        }
+        key = ("res.partner", "stock.picking")
+        if key not in existing:
+            draft.setdefault("smart_buttons", []).append(
+                {
+                    "on_model": "res.partner",
+                    "related_model": "stock.picking",
+                    "relation_field": "partner_id",
+                    "label": "Transfers",
+                    "icon": "fa-truck",
+                    "requires_inherit_view": True,
+                    "source": "senior_ops",
+                }
+            )
+            notes.append("senior: smart button Contacts → Transfers (stock.picking)")
+
+    return notes
+
+
 def finish_senior_component(
     draft: dict[str, Any],
     *,
@@ -513,6 +671,8 @@ def finish_senior_component(
         notes.extend(_ensure_slice_companion(draft, prompt))
         notes.extend(_ensure_host_smart_button(draft))
         notes.extend(_ensure_slice_access(draft))
+    # Inherit-only ops field_packs still need pickings filter / light automation.
+    notes.extend(_ensure_inherit_ops_wiring(draft, prompt))
     notes.extend(_drop_clone_companions(draft))
     from app.ai_capability_gaps import stamp_capability_gaps
 
