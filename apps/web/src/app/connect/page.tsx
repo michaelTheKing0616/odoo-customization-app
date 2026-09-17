@@ -13,6 +13,11 @@ import { Card, PageHeader } from "@/components/ui/layout-primitives";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { reportApiError } from "@/lib/api-error";
 import { api, Connection } from "@/lib/api";
+import { ConnectChecklist } from "@/components/connect/ConnectChecklist";
+import {
+  credentialFieldCopy,
+  formatAuthFailureHint,
+} from "@/lib/connect-checklist";
 import {
   detectHostingKind,
   hostingHint,
@@ -59,6 +64,14 @@ export default function ConnectPage() {
   const hosting = detectHostingKind(form.url);
   const hostingTip = hostingHint(hosting);
   const suggestedDb = suggestDbFromUrl(form.url);
+  const credentialCopy = credentialFieldCopy(hosting);
+  const checklistInput = {
+    url: form.url,
+    dbName: form.db_name,
+    username: form.username,
+    password: form.password,
+    verified: step === 3,
+  };
 
   async function refresh() {
     const rows = await api.listConnections();
@@ -91,7 +104,11 @@ export default function ConnectPage() {
       await refresh();
       setStep(3);
     } catch (err) {
-      reportApiError(err, setError, { fallback: "Failed to save connection", toast: false });
+      reportApiError(
+        err,
+        (msg) => setError(formatAuthFailureHint(hosting, msg || "Failed to save connection")),
+        { fallback: "Failed to save connection", toast: false },
+      );
       setStep(1);
     } finally {
       setSaving(false);
@@ -284,6 +301,10 @@ export default function ConnectPage() {
 
         <Card className="p-6">
           <form onSubmit={onSubmit} className="space-y-4">
+            <ConnectChecklist
+              input={checklistInput}
+              showCapabilities={step === 3}
+            />
             <Input
               label="Label"
               required
@@ -330,12 +351,14 @@ export default function ConnectPage() {
               onChange={(e) => setForm({ ...form, username: e.target.value })}
             />
             <Input
-              label="Password / API key"
+              label={credentialCopy.label}
               type="password"
               required
-              hint="Use an Odoo API key when available — Settings → Users → API keys."
+              hint={credentialCopy.hint}
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
+              autoComplete="current-password"
+              data-testid="connect-secret"
             />
 
             {step === 2 && saving ? (

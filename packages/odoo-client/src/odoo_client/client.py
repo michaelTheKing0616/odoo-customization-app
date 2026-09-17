@@ -161,7 +161,9 @@ class OdooClient:
                 hints.append(
                     "Odoo Online: paste https://<db>.odoo.com (no /odoo path). "
                     "Database name is usually the subdomain. Prefer an API key "
-                    "(Settings → Users → API Keys) over the login password."
+                    "(Settings → Users → API Keys). Website login passwords often "
+                    "fail for Online RPC (especially with 2FA); on-prem and many "
+                    "Odoo.sh databases still accept the login password."
                 )
                 if suggested_db and suggested_db != self.config.db:
                     hints.append(
