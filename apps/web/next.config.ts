@@ -8,6 +8,16 @@ const nextConfig: NextConfig = {
     ? { distDir: ".next-e2e" }
     : { output: "standalone" }),
   // API proxy: apps/web/src/app/api/[...path]/route.ts (runtime API_PROXY_TARGET).
+  async redirects() {
+    return [
+      // List hub currently lives on /connect (form + saved connections).
+      {
+        source: "/connections",
+        destination: "/connect",
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;
