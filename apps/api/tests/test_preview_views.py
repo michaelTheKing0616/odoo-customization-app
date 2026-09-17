@@ -253,3 +253,80 @@ def test_field_pack_inherit_preview_uses_host_form() -> None:
     assert built is not None
     assert built["model"] == "account.move"
 
+
+
+def test_s1_contacts_inherit_preview_fidelity() -> None:
+    """Contacts S1: Contact title, Delivery group, boolean checkbox field, host skeleton."""
+    from app.ai_component_builder import draft_component_from_prompt
+    from app.ai_generation_engine import attach_generation_engine
+
+    prompt = (
+        "On Contacts (res.partner), add checkbox Preferred for delivery and "
+        "Delivery notes text under Delivery group. Do not create a new app."
+    )
+    draft, _, _ = draft_component_from_prompt(
+        prompt,
+        available_models=["res.partner", "sale.order", "account.move"],
+    )
+    draft["_user_prompt"] = prompt
+    ir = attach_generation_engine(draft, prompt)
+    form = ir.get("form_preview")
+    assert form is not None
+    assert form["model"] == "res.partner"
+    assert form["title"] == "Contact"
+    assert form.get("appLabel") == "Contacts"
+    assert form["title"] != "Res"
+    group_titles = [g.get("string") for g in form.get("groups") or []]
+    assert "Delivery" in group_titles
+    assert "Res" not in group_titles
+    # Host skeleton chrome present
+    group_ids = {g.get("id") for g in form.get("groups") or []}
+    assert "host_identity" in group_ids
+    assert "slot_named_group" in group_ids
+    fields = {f["name"]: f for g in form["groups"] for f in g["fields"]}
+    assert "x_preferred_for_delivery" in fields
+    assert fields["x_preferred_for_delivery"]["ttype"] == "boolean"
+    assert fields["x_preferred_for_delivery"]["string"] == "Preferred for delivery"
+    assert "x_delivery_notes" in fields
+    assert fields["x_delivery_notes"]["ttype"] == "text"
+    # No x_studio_* / x_res leftovers
+    assert not any(n.startswith("x_studio_") for n in fields)
+    assert "x_res" not in fields
+    # Delivery is a group title, not a selection field
+    assert "Delivery" not in fields
+    assert all(f.get("ttype") != "selection" or f.get("string") != "Delivery" for f in fields.values())
+
+
+def test_preview_rewrites_x_studio_field_names() -> None:
+    from app.preview_views import build_form_preview
+
+    draft = {
+        "_user_prompt": "On Contacts add a note",
+        "models": [
+            {
+                "model": "res.partner",
+                "mode": "inherit",
+                "fields": [
+                    {
+                        "name": "x_studio_preferred_delivery",
+                        "ttype": "boolean",
+                        "string": "Preferred for delivery",
+                    }
+                ],
+            }
+        ],
+        "_form_slots": {
+            "host": "res.partner",
+            "fields": {"x_studio_preferred_delivery": "new_tab"},
+            "catalog": [],
+            "tab_title": "Delivery",
+            "group_title": "Delivery",
+        },
+    }
+    form = build_form_preview(draft)
+    assert form is not None
+    names = {f["name"] for g in form["groups"] for f in g["fields"]}
+    assert "x_preferred_delivery" in names or "x_studio_preferred_delivery" not in {
+        n for n in names if n.startswith("x_")
+    }
+    assert all(not n.startswith("x_studio_") for n in names if n.startswith("x_"))

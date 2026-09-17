@@ -147,12 +147,33 @@ def slot_from_location(text: str) -> str | None:
         return "next_to_dates"
     if re.search(r"\bother\b", loc):
         return "other_info"
+    if re.search(r"\bgroup\b", loc) or named_group_title(text):
+        return "new_tab"
     if re.search(r"\b(tab|compliance|inspection|warranty|details)\b", loc):
         return "new_tab"
     return None
 
 
+_UNDER_GROUP_RE = re.compile(
+    r"(?i)\bunder\s+(?:the\s+)?([A-Za-z][\w /&-]{0,40}?)\s+group\b"
+)
+
+
+def named_group_title(prompt: str) -> str | None:
+    """Operator-named sheet group (e.g. Delivery) — never a selection field."""
+    match = _UNDER_GROUP_RE.search(prompt or "")
+    if not match:
+        return None
+    title = re.sub(r"\s+", " ", match.group(1)).strip(" .")
+    if not title or title.lower() in {"the", "a", "an", "new", "other"}:
+        return None
+    return title[:1].upper() + title[1:] if title else None
+
+
 def tab_title(prompt: str) -> str:
+    named = named_group_title(prompt)
+    if named:
+        return named
     low = (prompt or "").lower()
     if "compliance" in low:
         return "Compliance"
@@ -218,6 +239,10 @@ def infer_slot(
     host: str,
     prompt: str,
 ) -> str:
+    # Explicit "under Delivery group" (etc.) → named sheet group / new_tab, not Other Info.
+    prompt_slot = slot_from_location(prompt or "")
+    if prompt_slot == "new_tab" or named_group_title(prompt or ""):
+        return "new_tab"
     blob = f"{field.get('name') or ''} {field.get('string') or ''} {prompt or ''}"
     ttype = str(field.get("ttype") or field.get("type") or "char")
     if _TIN_RE.search(str(field.get("name") or "") + " " + str(field.get("string") or "")):
@@ -310,19 +335,47 @@ def render_slotted_arch(
             continue
         buckets.setdefault(slot, []).append(field)
     page = tab_title(prompt)
+    group_title = named_group_title(prompt)
     xpaths: list[str] = []
     for slot in SLOT_IDS:
         fields = buckets.get(slot) or []
         if not fields:
             continue
-        expr, position, wrap = _slot_spec(host, slot)
-        inner = _wrap_inner(fields, wrap, page_title=page)
+        # Named sheet group (Contacts Delivery): group title, never a selection field.
+        if slot == "new_tab" and group_title:
+            expr, position, wrap = ("//sheet", "inside", "group")
+            tags = "\n".join(f"      {_field_tag(f)}" for f in fields)
+            inner = (
+                f'      <group string={quoteattr(group_title)}>\n{tags}\n      </group>'
+            )
+        else:
+            expr, position, wrap = _slot_spec(host, slot)
+            inner = _wrap_inner(fields, wrap, page_title=page)
         xpaths.append(
             f'  <xpath expr="{expr}" position="{position}">\n{inner}\n  </xpath>'
         )
     if not xpaths:
         return ""
     return "<data>\n" + "\n".join(xpaths) + "\n</data>"
+
+
+def _rewrite_studio_field_names(inherit: dict[str, Any]) -> list[str]:
+    """Forbid x_studio_* — rewrite to Ingenium x_* with human labels kept."""
+    notes: list[str] = []
+    for field in inherit.get("fields") or []:
+        if not isinstance(field, dict):
+            continue
+        name = str(field.get("name") or "")
+        if not name.lower().startswith("x_studio_"):
+            continue
+        new_name = "x_" + name[len("x_studio_") :]
+        field["name"] = new_name[:40]
+        label = str(field.get("string") or "").strip()
+        if not label or label.lower().startswith("x_studio"):
+            leaf = new_name[2:].replace("_", " ").strip()
+            field["string"] = leaf[:1].upper() + leaf[1:] if leaf else new_name
+        notes.append(f"slots: renamed {name} → {field['name']}")
+    return notes
 
 
 def apply_form_slots(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
@@ -333,7 +386,8 @@ def apply_form_slots(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
     if inherit is None:
         return []
     user_prompt = prompt or str(draft.get("_user_prompt") or "")
-    notes = strip_inherit_filler(inherit, user_prompt)
+    notes = _rewrite_studio_field_names(inherit)
+    notes.extend(strip_inherit_filler(inherit, user_prompt))
     host = str(inherit.get("model") or "")
     mapping = assign_slots(draft, prompt=user_prompt)
     catalog = slot_catalog(host)
@@ -342,6 +396,7 @@ def apply_form_slots(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
         "fields": mapping,
         "catalog": catalog,
         "tab_title": tab_title(user_prompt),
+        "group_title": named_group_title(user_prompt),
     }
     views = [v for v in (draft.get("views") or []) if isinstance(v, dict)]
     draft["views"] = [
@@ -377,6 +432,7 @@ __all__ = [
     "apply_form_slots",
     "assign_slots",
     "infer_slot",
+    "named_group_title",
     "partner_place_phrase",
     "slot_catalog",
     "slot_from_location",

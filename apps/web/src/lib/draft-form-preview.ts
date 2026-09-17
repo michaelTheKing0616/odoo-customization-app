@@ -50,6 +50,8 @@ export type PreviewFormView = {
   type: "form";
   model: string;
   title: string;
+  /** Stock app tile label for breadcrumb (e.g. Contacts) — never technical model. */
+  appLabel?: string | null;
   recordTitleField?: string | null;
   statusbar?: PreviewStatusBar | null;
   headerButtons?: PreviewHeaderButton[];
@@ -136,12 +138,29 @@ function normalizeGroup(raw: unknown, index: number): PreviewGroup | null {
     if (!f || typeof f !== "object") return;
     const fr = f as Record<string, unknown>;
     const name = String(fr.name || fr.id || `field_${i}`);
+    const tech = name.replace(/^x_studio_/i, "x_");
+    let ttype = fr.ttype ? String(fr.ttype).toLowerCase() : "char";
+    const widgetRaw = fr.widget != null ? String(fr.widget) : null;
+    const labelRaw = String(fr.string || "").trim();
+    const label =
+      labelRaw && !/^x_studio_/i.test(labelRaw)
+        ? labelRaw
+        : tech.replace(/^x_/, "").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+    if (
+      ttype === "boolean" ||
+      ttype === "bool" ||
+      widgetRaw === "boolean" ||
+      widgetRaw === "boolean_toggle" ||
+      (/checkbox|preferred for delivery/i.test(`${label} ${tech}`) && ttype === "char")
+    ) {
+      ttype = "boolean";
+    }
     fields.push({
-      id: String(fr.id || name),
-      name,
-      string: String(fr.string || name),
-      ttype: fr.ttype ? String(fr.ttype) : "char",
-      widget: fr.widget != null ? String(fr.widget) : null,
+      id: String(fr.id || tech),
+      name: tech,
+      string: label,
+      ttype,
+      widget: widgetRaw,
       required: Boolean(fr.required),
       selection: Array.isArray(fr.selection)
         ? (fr.selection as Array<{ value: string; label: string }>)
@@ -250,10 +269,19 @@ export function normalizeFormPreview(raw: unknown): PreviewFormView | null {
     });
   }
 
+  const rawTitle = String(rec.title || "").trim();
+  const humanTitle =
+    rawTitle && rawTitle !== model && !/^res\./i.test(rawTitle) && rawTitle.toLowerCase() !== "res"
+      ? rawTitle
+      : model === "res.partner"
+        ? "Contact"
+        : rawTitle || model;
+
   return {
     type: "form",
     model,
-    title: String(rec.title || model),
+    title: humanTitle,
+    appLabel: rec.appLabel != null ? String(rec.appLabel) : model === "res.partner" ? "Contacts" : null,
     recordTitleField: rec.recordTitleField != null ? String(rec.recordTitleField) : "x_name",
     statusbar: normalizeStatusbar(rec.statusbar),
     headerButtons,

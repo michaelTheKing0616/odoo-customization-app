@@ -6,7 +6,7 @@ import { OdooChatterStub } from "./OdooChatterStub";
 import type { PreviewField, PreviewKanbanView } from "@/lib/draft-form-preview";
 
 describe("OdooField widgets", () => {
-  it("renders boolean toggle", () => {
+  it("renders boolean as square checkbox by default", () => {
     const field: PreviewField = {
       id: "x_active",
       name: "x_active",
@@ -14,7 +14,26 @@ describe("OdooField widgets", () => {
       ttype: "boolean",
     };
     render(<OdooField field={field} />);
-    expect(screen.getByTestId("odoo-widget-boolean-x_active")).toBeTruthy();
+    const el = screen.getByTestId("odoo-widget-boolean-x_active");
+    expect(el).toBeTruthy();
+    expect(el.getAttribute("data-widget")).toBe("checkbox");
+    expect(el.querySelector(".odoo-widget-checkbox")).toBeTruthy();
+    expect(el.querySelector(".odoo-widget-toggle")).toBeNull();
+    expect(el.textContent || "").not.toMatch(/False|True|checkbox/i);
+  });
+
+  it("renders boolean_toggle as pill toggle", () => {
+    const field: PreviewField = {
+      id: "x_flag",
+      name: "x_flag",
+      string: "Flag",
+      ttype: "boolean",
+      widget: "boolean_toggle",
+    };
+    render(<OdooField field={field} />);
+    const el = screen.getByTestId("odoo-widget-boolean-x_flag");
+    expect(el.getAttribute("data-widget")).toBe("boolean_toggle");
+    expect(el.querySelector(".odoo-widget-toggle")).toBeTruthy();
   });
 
   it("renders selection dropdown chrome", () => {

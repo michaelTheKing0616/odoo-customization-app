@@ -15,6 +15,20 @@ type OdooFormViewProps = {
   showChatter?: boolean;
 };
 
+function ContactTitleArea() {
+  return (
+    <div className="odoo-contact-title" data-testid="odoo-contact-title">
+      <div className="odoo-contact-avatar" aria-hidden>
+        <span>👤</span>
+      </div>
+      <div className="odoo-contact-title-text">
+        <div className="odoo-contact-name">Sample contact</div>
+        <div className="odoo-contact-subtitle">Contact</div>
+      </div>
+    </div>
+  );
+}
+
 export function OdooFormView({
   view,
   flashFieldId,
@@ -24,6 +38,9 @@ export function OdooFormView({
   const chatter =
     showChatter ?? (view.chatter !== "hidden" ? view.chatter === "stub" : false);
   const twoColumn = view.groupLayout === "two-column";
+  const showContactChrome =
+    view.model === "res.partner" ||
+    (view.groups || []).some((g) => g.id === "host_identity");
 
   return (
     <div className="odoo-form-canvas overflow-hidden shadow-sm" data-testid="odoo-form-view">
@@ -33,6 +50,7 @@ export function OdooFormView({
         headerButtons={view.headerButtons}
       />
       <OdooFormSheet>
+        {showContactChrome ? <ContactTitleArea /> : null}
         <OdooButtonBox buttons={view.smartButtons || []} />
         <div
           className={`odoo-form-grid-2col ${twoColumn ? "is-two-column" : ""}`}

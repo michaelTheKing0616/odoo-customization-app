@@ -27,6 +27,39 @@ type DraftOdooPreviewProps = {
   formPreview?: PreviewFormView | null;
 };
 
+function extensionFieldIds(form: PreviewFormView | null): string[] {
+  if (!form) return [];
+  const ids: string[] = [];
+  for (const group of form.groups || []) {
+    for (const field of group.fields || []) {
+      if (field.name.startsWith("x_")) ids.push(field.id || field.name);
+    }
+  }
+  for (const nb of form.notebooks || []) {
+    for (const page of nb.pages || []) {
+      for (const field of page.fields || []) {
+        if (field.name.startsWith("x_")) ids.push(field.id || field.name);
+      }
+    }
+  }
+  return ids;
+}
+
+function controlBreadcrumb(
+  breadcrumb: string,
+  form: PreviewFormView | null,
+): string {
+  const app = (form as PreviewFormView & { appLabel?: string | null })?.appLabel;
+  const doc = form?.title;
+  if (app && doc && app !== doc) return `${app} / ${doc}`;
+  if (doc) return doc;
+  // Strip technical leftovers like "res.partner" / bare "Res" from caller chrome.
+  const cleaned = breadcrumb
+    .replace(/\bres\.partner\b/gi, "Contact")
+    .replace(/\bRes\b/g, "Contact");
+  return cleaned || "Preview";
+}
+
 export function DraftOdooPreview({
   draft,
   breadcrumb = "App Studio",
@@ -62,6 +95,12 @@ export function DraftOdooPreview({
         ? views.kanban
         : form;
 
+  const autoHighlight = useMemo(() => extensionFieldIds(form), [form]);
+  const mergedHighlights = useMemo(() => {
+    const set = new Set([...highlightedFieldIds, ...autoHighlight]);
+    return [...set];
+  }, [highlightedFieldIds, autoHighlight]);
+
   if (!schema) {
     const emptyReason = isStockReuseDraft(draft)
       ? "No custom form — this draft uses stock Community apps only. Job Autopilot is the next step, not a new x_* sheet."
@@ -87,7 +126,7 @@ export function DraftOdooPreview({
   return (
     <OdooPreviewScope>
       <OdooControlPanel
-        breadcrumb={`${breadcrumb} › ${form?.title || "Preview"}`}
+        breadcrumb={controlBreadcrumb(breadcrumb, form)}
         activeView={activeView}
         availableViews={availableViews}
         onViewChange={setActiveView}
@@ -96,7 +135,7 @@ export function DraftOdooPreview({
         <OdooViewRenderer
           schema={schema}
           flashFieldId={flashFieldId}
-          highlightedFieldIds={highlightedFieldIds}
+          highlightedFieldIds={mergedHighlights}
         />
       </div>
     </OdooPreviewScope>

@@ -8,15 +8,35 @@ type OdooFieldProps = {
   onClick?: () => void;
 };
 
+function isStockPlaceholder(field: PreviewField): boolean {
+  return field.name.startsWith("_host_");
+}
+
 function WidgetBody({ field }: { field: PreviewField }) {
   const ttype = (field.ttype || "char").toLowerCase();
   const widget = (field.widget || "").toLowerCase();
 
-  if (ttype === "boolean" || widget === "boolean") {
+  if (ttype === "boolean" || widget === "boolean" || widget === "boolean_toggle") {
+    const useToggle = widget === "boolean_toggle";
+    if (useToggle) {
+      return (
+        <span
+          className="odoo-widget-boolean"
+          data-testid={`odoo-widget-boolean-${field.name}`}
+          data-widget="boolean_toggle"
+        >
+          <span className="odoo-widget-toggle" aria-hidden />
+          <span className="odoo-widget-toggle-label">No</span>
+        </span>
+      );
+    }
     return (
-      <span className="odoo-widget-boolean" data-testid={`odoo-widget-boolean-${field.name}`}>
-        <span className="odoo-widget-toggle" aria-hidden />
-        <span className="odoo-widget-toggle-label">No</span>
+      <span
+        className="odoo-widget-boolean"
+        data-testid={`odoo-widget-boolean-${field.name}`}
+        data-widget="checkbox"
+      >
+        <span className="odoo-widget-checkbox" aria-hidden data-checked="false" />
       </span>
     );
   }
@@ -39,7 +59,9 @@ function WidgetBody({ field }: { field: PreviewField }) {
   if (ttype === "many2one" || widget === "many2one") {
     return (
       <span className="odoo-widget-m2o" data-testid={`odoo-widget-m2o-${field.name}`}>
-        <span className="odoo-widget-m2o-chip">Related record</span>
+        <span className="odoo-widget-m2o-chip">
+          {isStockPlaceholder(field) ? "—" : "Related record"}
+        </span>
         <span className="odoo-widget-m2o-open" aria-hidden>
           ↗
         </span>
@@ -102,24 +124,35 @@ function WidgetBody({ field }: { field: PreviewField }) {
   if (ttype === "text") {
     return (
       <span className="odoo-widget-text" data-testid={`odoo-widget-text-${field.name}`}>
-        Multiline notes…
+        {isStockPlaceholder(field) ? "" : "Multiline notes…"}
       </span>
     );
   }
 
-  const sample =
-    field.name === "x_name" || field.name.endsWith("_name")
+  const sample = isStockPlaceholder(field)
+    ? field.name === "_host_name"
+      ? "Sample contact"
+      : ""
+    : field.name === "x_name" || field.name.endsWith("_name")
       ? "Sample record"
       : field.string || field.name;
 
+  // Never render literal False/True/checkbox as the visible value.
+  const safe =
+    typeof sample === "string" &&
+    ["false", "true", "checkbox", "boolean"].includes(sample.toLowerCase())
+      ? ""
+      : sample;
+
   return (
     <span className="odoo-widget-char" data-testid={`odoo-widget-char-${field.name}`}>
-      {sample}
+      {safe}
     </span>
   );
 }
 
 export function OdooField({ field, highlighted, onClick }: OdooFieldProps) {
+  const stock = isStockPlaceholder(field);
   const requiredMark = field.required ? (
     <span className="odoo-field-required" aria-hidden>
       *
@@ -133,7 +166,7 @@ export function OdooField({ field, highlighted, onClick }: OdooFieldProps) {
         {requiredMark}
       </div>
       <div
-        className={`odoo-field-value ${highlighted ? "field-highlight" : ""}`}
+        className={`odoo-field-value ${highlighted ? "field-highlight" : ""} ${stock ? "is-stock" : ""}`}
         data-testid={`odoo-field-${field.name}`}
         data-ttype={field.ttype || "char"}
       >
@@ -142,11 +175,13 @@ export function OdooField({ field, highlighted, onClick }: OdooFieldProps) {
     </>
   );
 
+  const rowClass = `odoo-field-row ${stock ? "is-stock" : ""} ${highlighted ? "is-extension" : ""}`;
+
   if (onClick) {
     return (
       <button
         type="button"
-        className="odoo-field-row w-full text-left"
+        className={`${rowClass} w-full text-left`}
         onClick={onClick}
         aria-label={`${field.string || field.name} ${field.name}`}
       >
@@ -155,5 +190,5 @@ export function OdooField({ field, highlighted, onClick }: OdooFieldProps) {
     );
   }
 
-  return <div className="odoo-field-row">{body}</div>;
+  return <div className={rowClass}>{body}</div>;
 }

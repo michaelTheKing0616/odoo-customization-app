@@ -106,6 +106,25 @@ _STOP = frozenset(
         "customer",
         "bills",
         "bill",
+        "checkbox",
+        "boolean",
+        "text",
+        "group",
+        "under",
+        "create",
+        "new",
+        "home",
+        "screen",
+        "res",  # never invent x_res from (res.partner)
+        "account",
+        "move",
+        "stock",
+        "picking",
+        "purchase",
+        "hr",
+        "crm",
+        "product",
+        "template",
     }
 )
 
@@ -134,6 +153,69 @@ def _slug(text: str) -> str:
     return raw[:40] or "custom"
 
 
+_CHECKBOX_BRIEF_RE = re.compile(
+    r"(?i)\bcheckbox\s+[\"']?([^\"',.;]+?)[\"']?"
+    r"(?=\s+and\b|\s+under\b|\s+on\b|,|\.|$)"
+)
+_TYPED_TEXT_BRIEF_RE = re.compile(
+    r"(?i)(?:\badd\b|\band\b|,)\s+([A-Z][\w /&-]{1,40}?)\s+text(?:\s+field)?\b"
+)
+_TECH_MODEL_PAREN_RE = re.compile(r"\(\s*[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+\s*\)", re.I)
+_STUDIO_PREFIX_RE = re.compile(r"^x_studio_", re.I)
+
+
+def _human_field_label(label: str) -> str:
+    cleaned = re.sub(r"\s+", " ", (label or "").strip(" .'\"")).strip()
+    if not cleaned:
+        return ""
+    if cleaned.lower() in {"checkbox", "boolean", "text", "field", "a field"}:
+        return ""
+    return cleaned
+
+
+def _ingenium_field_name(label: str, *, ttype: str) -> str:
+    """Prefer x_* Ingenium names — never x_studio_*."""
+    slug = _slug(label)
+    if slug.startswith("studio_"):
+        slug = slug[len("studio_") :]
+    if not slug or slug in {"custom", "it", "res", "checkbox"}:
+        slug = "flag" if ttype == "boolean" else "notes" if ttype == "text" else "value"
+    name = f"x_{slug}"[:40]
+    return _STUDIO_PREFIX_RE.sub("x_", name)
+
+
+def _typed_fields_from_brief(prompt: str) -> list[dict[str, Any]]:
+    """Parse checkbox / text asks from a clear brief (Contacts S1 shape)."""
+    text = _TECH_MODEL_PAREN_RE.sub(" ", prompt or "")
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for match in _CHECKBOX_BRIEF_RE.finditer(text):
+        label = _human_field_label(match.group(1))
+        if not label:
+            continue
+        name = _ingenium_field_name(label, ttype="boolean")
+        if name in seen:
+            continue
+        seen.add(name)
+        out.append({"name": name, "ttype": "boolean", "string": label})
+
+    for match in _TYPED_TEXT_BRIEF_RE.finditer(text):
+        label = _human_field_label(match.group(1))
+        if not label:
+            continue
+        low = label.lower()
+        if low.startswith("checkbox"):
+            continue
+        name = _ingenium_field_name(label, ttype="text")
+        if name in seen:
+            continue
+        seen.add(name)
+        out.append({"name": name, "ttype": "text", "string": label})
+
+    return out
+
+
 def infer_extension_fields(prompt: str, *, pad: bool = True) -> list[dict[str, Any]]:
     """Deterministic inherit fields from NL — never a lone x_extension_note stub.
 
@@ -158,6 +240,11 @@ def infer_extension_fields(prompt: str, *, pad: bool = True) -> list[dict[str, A
     # Primary PDF/QR/pay asks: honest stubs only — never x_dynamic / notes padding.
     if assessment.primary_option_a:
         return stub_fields_for_gaps(assessment)[:12]
+
+    # Clear typed briefs (checkbox + text under a group) win over head-noun heuristics.
+    typed = _typed_fields_from_brief(text)
+    if typed:
+        return typed[:12]
 
     fields: list[dict[str, Any]] = []
 
@@ -353,11 +440,24 @@ def _named_field_from_add(text: str) -> dict[str, Any] | None:
     if not tokens:
         return None
     label = " ".join(tokens)
+    low_label = label.lower()
+    if low_label.startswith("checkbox"):
+        label = _human_field_label(re.sub(r"(?i)^checkbox\s+", "", label))
+        if not label:
+            return None
+        return {
+            "name": _ingenium_field_name(label, ttype="boolean"),
+            "ttype": "boolean",
+            "string": label,
+        }
+    # Drop technical host leftovers (Res from res.partner) and studio prefixes.
+    if low_label in {"res", "partner", "checkbox"} or low_label.startswith("studio"):
+        return None
     slug = _slug(label)
-    if not slug or slug in {"custom", "it"}:
+    if not slug or slug in {"custom", "it", "res"}:
         return None
     return {
-        "name": f"x_{slug}"[:40],
+        "name": _ingenium_field_name(label, ttype="char"),
         "ttype": "char",
         "string": label if any(ch.isupper() for ch in label) else label.title(),
     }
@@ -366,11 +466,13 @@ def _named_field_from_add(text: str) -> dict[str, Any] | None:
 def _head_noun(low: str) -> str:
     from app.ai_capability_gaps import CAPABILITY_NOISE_NOUNS
 
+    cleaned = _TECH_MODEL_PAREN_RE.sub(" ", low or "")
+    cleaned = re.sub(r"\b[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]+)+\b", " ", cleaned)
     cleaned = re.sub(
         r"\b(sale orders?|sales orders?|invoices?|vendor bills?|project tasks?|"
         r"contacts?|partners?|employees?|calendar|leads?)\b",
         " ",
-        low,
+        cleaned,
     )
     tokens = [t for t in re.findall(r"[a-z][a-z0-9]+", cleaned) if t not in _STOP]
     skip_tail = {

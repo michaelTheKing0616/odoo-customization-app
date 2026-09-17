@@ -9,6 +9,7 @@ type StudioPreviewPaneProps = {
   breadcrumb: string;
   flashFieldId?: string | null;
   highlightedFieldIds?: string[];
+  /** @deprecated Technical model chrome removed from operator Review. */
   modelLabel?: string | null;
 };
 
@@ -18,7 +19,6 @@ export function StudioPreviewPane({
   breadcrumb,
   flashFieldId,
   highlightedFieldIds,
-  modelLabel,
 }: StudioPreviewPaneProps) {
   if (!preview && !draft) {
     return (
@@ -30,12 +30,6 @@ export function StudioPreviewPane({
 
   return (
     <div className="studio-preview-frame" data-testid="draft-odoo-preview">
-      {modelLabel ? (
-        <p className="studio-preview-model">
-          <span>Form</span>
-          <code>{modelLabel}</code>
-        </p>
-      ) : null}
       <DraftOdooPreview
         draft={draft ?? null}
         breadcrumb={breadcrumb}

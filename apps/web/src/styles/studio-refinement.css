@@ -336,23 +336,9 @@
   gap: 10px;
 }
 
+/* Technical model chrome removed from operator Review (human labels only). */
 .studio-refinement .studio-preview-model {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-}
-
-.studio-refinement .studio-preview-model code {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 6px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
+  display: none;
 }
 
 .studio-refinement .studio-preview-empty {

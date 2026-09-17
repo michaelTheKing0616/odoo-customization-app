@@ -16,9 +16,10 @@ export function OdooFieldGroup({
   highlightedFieldIds = [],
   onFieldClick,
 }: OdooFieldGroupProps) {
+  const title = (group.string || "").trim();
   return (
     <section className="odoo-field-group" data-testid={`odoo-group-${group.id}`}>
-      <div className="odoo-field-group-title">{group.string || "Group"}</div>
+      {title ? <div className="odoo-field-group-title">{title}</div> : null}
       <div className="space-y-0">
         {group.fields.map((field) => (
           <OdooField

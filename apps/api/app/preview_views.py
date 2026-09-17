@@ -89,6 +89,7 @@ PreviewFormView = TypedDict(
         "type": Literal["form"],
         "model": str,
         "title": str,
+        "appLabel": str | None,
         "recordTitleField": str | None,
         "statusbar": PreviewStatusBar | None,
         "headerButtons": list[PreviewHeaderButton],
@@ -186,8 +187,46 @@ def _workflow_score(row: dict[str, Any]) -> int:
     return len(transitions) * 10 + len(visible)
 
 
+_STUDIO_NAME_RE = re.compile(r"^x_studio_", re.I)
+_FALSE_TRUE_STRINGS = frozenset({"false", "true", "checkbox", "boolean"})
+
+
+def _rewrite_ingenium_name(name: str) -> str:
+    raw = str(name or "").strip()
+    if not raw:
+        return raw
+    return _STUDIO_NAME_RE.sub("x_", raw)
+
+
+def _human_preview_string(name: str, raw_string: str) -> str:
+    label = str(raw_string or "").strip()
+    tech = _rewrite_ingenium_name(name)
+    if not label or label == name or label.lower() in _FALSE_TRUE_STRINGS:
+        leaf = re.sub(r"^x_", "", tech)
+        leaf = leaf.replace("_", " ").strip()
+        return leaf[:1].upper() + leaf[1:] if leaf else tech
+    if label.lower().startswith("x_studio_"):
+        leaf = _STUDIO_NAME_RE.sub("", label).replace("_", " ").strip()
+        return leaf[:1].upper() + leaf[1:] if leaf else label
+    return label
+
+
+def _coerce_preview_ttype(name: str, spec: dict[str, Any]) -> str:
+    ttype = str(spec.get("ttype") or spec.get("type") or "char").lower()
+    widget = str(spec.get("widget") or "").lower()
+    blob = f"{name} {spec.get('string') or ''}".lower()
+    if ttype in {"boolean", "bool"} or widget in {"boolean", "boolean_toggle"}:
+        return "boolean"
+    if "checkbox" in blob or re.search(r"\bpreferred\b", blob):
+        # Must-do checkbox briefs sometimes land as char — stamp boolean for preview.
+        if ttype in {"char", "text", ""} and "note" not in blob:
+            return "boolean"
+    return ttype or "char"
+
+
 def _preview_field(name: str, field_map: dict[str, dict[str, Any]]) -> PreviewField:
-    spec = field_map.get(name) or {}
+    tech = _rewrite_ingenium_name(name)
+    spec = field_map.get(name) or field_map.get(tech) or {}
     selection_raw = spec.get("selection")
     selection: list[dict[str, str]] | None = None
     if isinstance(selection_raw, list):
@@ -202,12 +241,16 @@ def _preview_field(name: str, field_map: dict[str, dict[str, Any]]) -> PreviewFi
                         "label": str(item.get("label") or item.get("value") or ""),
                     }
                 )
+    ttype = _coerce_preview_ttype(tech, spec)
+    widget = str(spec.get("widget")) if spec.get("widget") else None
+    if ttype == "boolean" and widget and widget.lower() not in {"boolean", "boolean_toggle"}:
+        widget = None
     return {
-        "id": name,
-        "name": name,
-        "string": str(spec.get("string") or spec.get("name") or name),
-        "ttype": str(spec.get("ttype") or spec.get("type") or "char"),
-        "widget": str(spec.get("widget")) if spec.get("widget") else None,
+        "id": tech,
+        "name": tech,
+        "string": _human_preview_string(tech, str(spec.get("string") or "")),
+        "ttype": ttype,
+        "widget": widget,
         "required": bool(spec.get("required")),
         "selection": selection,
     }
@@ -507,6 +550,60 @@ def _view_arch(draft: dict[str, Any], model: str, view_type: str) -> str | None:
     return None
 
 
+def _stock_placeholder_field(fid: str, label: str, ttype: str = "char") -> PreviewField:
+    return {
+        "id": fid,
+        "name": fid,
+        "string": label,
+        "ttype": ttype,
+        "widget": None,
+        "required": False,
+        "selection": None,
+    }
+
+
+def _partner_host_skeleton(
+    extension_groups: list[PreviewGroup],
+    extension_notebooks: list[PreviewNotebook],
+) -> tuple[list[PreviewGroup], list[PreviewNotebook]]:
+    """Stock Contact form chrome + highlighted extension groups (never island-only)."""
+    identity: PreviewGroup = {
+        "id": "host_identity",
+        "string": "",
+        "columns": 2,
+        "fields": [
+            _stock_placeholder_field("_host_name", "Name"),
+            _stock_placeholder_field("_host_email", "Email"),
+            _stock_placeholder_field("_host_phone", "Phone"),
+            _stock_placeholder_field("_host_mobile", "Mobile"),
+        ],
+    }
+    address: PreviewGroup = {
+        "id": "host_address",
+        "string": "Address",
+        "columns": 1,
+        "fields": [
+            _stock_placeholder_field("_host_street", "Street"),
+            _stock_placeholder_field("_host_city", "City"),
+            _stock_placeholder_field("_host_country", "Country", "many2one"),
+        ],
+    }
+    groups: list[PreviewGroup] = [identity, address]
+    groups.extend(extension_groups)
+    pages: list[PreviewNotebookPage] = [
+        {"id": "host_contacts", "string": "Contacts", "fields": []},
+        {"id": "host_sales", "string": "Sales & Purchase", "fields": []},
+        {"id": "host_notes", "string": "Internal Notes", "fields": []},
+    ]
+    # Merge extension notebook pages after stock chrome (keep Delivery as group, not page).
+    for nb in extension_notebooks:
+        for page in nb.get("pages") or []:
+            if page.get("fields"):
+                pages.append(page)
+    notebooks: list[PreviewNotebook] = [{"id": "host_notebook", "pages": pages}]
+    return groups, notebooks
+
+
 def _inherit_slot_preview(
     draft: dict[str, Any],
     row: dict[str, Any],
@@ -524,6 +621,8 @@ def _inherit_slot_preview(
         if isinstance(item, dict) and item.get("id")
     }
     tab = str(stamp.get("tab_title") or "Details")
+    group_title = stamp.get("group_title")
+    group_title = str(group_title).strip() if group_title else ""
     buckets: dict[str, list[PreviewField]] = {
         "next_to_partner": [],
         "next_to_dates": [],
@@ -536,7 +635,11 @@ def _inherit_slot_preview(
         name = str(field.get("name") or "")
         if not name or field.get("ttype") == "one2many":
             continue
-        slot = str(mapping.get(name) or "")
+        # Keep field_map in sync when names were rewritten x_studio_* → x_*.
+        rewritten = _rewrite_ingenium_name(name)
+        if rewritten != name and name in field_map and rewritten not in field_map:
+            field_map[rewritten] = field_map[name]
+        slot = str(mapping.get(name) or mapping.get(rewritten) or "")
         if slot not in buckets:
             slot = "next_to_dates"
         buckets[slot].append(_preview_field(name, field_map))
@@ -552,6 +655,17 @@ def _inherit_slot_preview(
                 "fields": buckets[sid],
             }
         )
+    # Named sheet group (Delivery): group title — never a selection / fake field.
+    if buckets["new_tab"] and group_title:
+        groups.append(
+            {
+                "id": "slot_named_group",
+                "string": group_title,
+                "columns": 1,
+                "fields": buckets["new_tab"],
+            }
+        )
+        buckets["new_tab"] = []
     pages: list[PreviewNotebookPage] = []
     if buckets["other_info"]:
         pages.append(
@@ -674,17 +788,33 @@ def build_form_preview(
                 field_map=field_map,
             )
 
+    # Inherit host skeleton: show stock Contact chrome around new fields (S1).
+    if is_inherit and mid == "res.partner" and (groups or notebooks):
+        # Avoid double-wrapping if we somehow already have host_identity.
+        if not any(g.get("id") == "host_identity" for g in groups):
+            groups, notebooks = _partner_host_skeleton(groups, notebooks)
+            group_layout = "two-column"
+
     chatter: Literal["stub", "hidden"] = "hidden"
     if not is_line and not is_inherit and (
         _has_mail_thread(row)
         or any(str(d).strip() == "mail" for d in (draft.get("depends") or []))
     ):
         chatter = "stub"
+    # Contact forms always show chatter stub in the structural preview.
+    if is_inherit and mid == "res.partner":
+        chatter = "stub"
+
+    # App tile label for breadcrumb (Contacts / Contact) — not technical model.
+    from app.ai_grain import HOST_LABELS
+
+    app_label = HOST_LABELS.get(mid) if is_inherit else None
 
     return {
         "type": "form",
         "model": mid,
         "title": title,
+        "appLabel": app_label,
         "recordTitleField": record_title,
         "statusbar": statusbar if not is_line else None,
         "headerButtons": header_buttons if not is_line else [],

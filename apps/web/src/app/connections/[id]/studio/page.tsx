@@ -1345,10 +1345,9 @@ export default function AppStudioPage() {
               <StudioPreviewPane
                 draft={session?.artifact}
                 preview={preview}
-                breadcrumb={appTitle}
-                flashFieldId={flashId}
-                highlightedFieldIds={highlightIds}
-                modelLabel={designerModel}
+                breadcrumb={preview?.title || appTitle}
+                flashFieldId={flashFieldId}
+                highlightedFieldIds={highlightedFieldIds}
               />
             }
             chat={
