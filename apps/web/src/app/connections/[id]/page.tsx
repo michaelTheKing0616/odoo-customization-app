@@ -36,8 +36,8 @@ import { Card, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
 import { Tabs } from "@/components/ui/Tabs";
 import { FirstRunCard } from "@/components/overview/FirstRunCard";
 import { InstanceFingerprintCard } from "@/components/overview/InstanceFingerprintCard";
+import { OverviewViewsPanel } from "@/components/overview/OverviewViewsPanel";
 import { Disclosure } from "@/components/ui/Disclosure";
-import { CodeBlock } from "@/components/ui/CodeBlock";
 import { WriteModeUnlockPanel } from "@/components/shell/WriteModeUnlockPanel";
 import { ProductionReadinessPanel } from "@/components/shell/ProductionReadinessPanel";
 import { FirstWriteInterstitial } from "@/components/shell/FirstWriteInterstitial";
@@ -833,22 +833,7 @@ export default function BrowserPage() {
                     </div>
                   ) : null}
                   {!loading && tab === "views" ? (
-                    <ul className="mt-6 space-y-4">
-                      {views.map((v) => (
-                        <Card key={v.id} className="p-4">
-                          <p className="font-medium text-ink">
-                            {v.name}{" "}
-                            <span className="text-muted">
-                              · {v.type} · #{v.id}
-                            </span>
-                          </p>
-                          <CodeBlock className="mt-3" language="xml" code={v.arch ?? "(no arch)"} />
-                        </Card>
-                      ))}
-                      {views.length === 0 ? (
-                        <p className="text-sm text-muted">No views for this model.</p>
-                      ) : null}
-                    </ul>
+                    <OverviewViewsPanel model={selectedModel} views={views} />
                   ) : null}
                 </>
               ),

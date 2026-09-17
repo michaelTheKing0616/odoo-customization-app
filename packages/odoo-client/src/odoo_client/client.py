@@ -356,7 +356,7 @@ class OdooClient:
             "search_read",
             [[("model", "=", model), ("type", "in", ["form", "list", "kanban", "search", "tree"])]],
             {
-                "fields": ["id", "name", "model", "type", "arch"],
+                "fields": ["id", "name", "model", "type", "arch", "priority"],
                 "limit": limit,
                 "order": "priority, id",
             },

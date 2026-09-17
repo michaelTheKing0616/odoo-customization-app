@@ -204,6 +204,7 @@ class ViewInfo(BaseModel):
     model: str
     type: str
     arch: str | None = None
+    priority: int | None = None
 
     @field_validator("arch", mode="before")
     @classmethod

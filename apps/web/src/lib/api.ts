@@ -412,6 +412,7 @@ export type ViewRow = {
   model: string;
   type: string;
   arch: string | null;
+  priority?: number | null;
   snapshot_id?: string | null;
 };
 

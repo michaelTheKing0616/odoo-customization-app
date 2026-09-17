@@ -435,6 +435,7 @@ class ViewOut(BaseModel):
     model: str
     type: str
     arch: str | None = None
+    priority: int | None = None
     snapshot_id: str | None = None
 
 
