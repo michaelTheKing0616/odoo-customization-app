@@ -224,11 +224,15 @@ export function apiKeyGuideSteps(kind: HostingKind): ApiKeyGuideStep[] {
     },
     {
       title: "Account Security → New API Key",
-      body: "Open the Account Security tab → New API Key. Name it e.g. “Ingenium”, confirm your password if asked.",
+      body: "Open the Account Security tab → New API Key. Name it e.g. “Ingenium”. If Odoo asks you to confirm your login password or 2FA, do that — those extra steps are normal.",
+    },
+    {
+      title: "If Odoo asks RPC vs MCP (or similar)",
+      body: "Choose the option for external API / RPC (XML-RPC or JSON-RPC) so Ingenium can call your database. Do not pick MCP, Model Context Protocol, AI, or Cursor — those are a different kind of connector and will not work here.",
     },
     {
       title: "Copy once → paste here",
-      body: "Odoo shows the key only once. Copy it, return to Ingenium, and paste it into the secret field. This Odoo external-RPC key lets Ingenium call XML-RPC/JSON-RPC — it is not a Cursor MCP server key or Model Context Protocol connector.",
+      body: "Odoo shows the key only once. Copy it, return to Ingenium, and paste it into the secret field on this same connection. This Odoo external-RPC key (XML-RPC/JSON-RPC) is not a Cursor MCP key. Rotating an expired key and saving again keeps your App Studio drafts, projects, and history — only the secret changes.",
     },
   ];
 }

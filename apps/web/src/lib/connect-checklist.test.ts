@@ -68,6 +68,10 @@ describe("connect-checklist", () => {
     const last = steps[steps.length - 1]?.body || "";
     expect(last).toMatch(/XML-RPC|JSON-RPC|external.?RPC/i);
     expect(last).toMatch(/not a Cursor MCP/i);
+    const rpcStep = steps.find((s) => /RPC vs MCP/i.test(s.title));
+    expect(rpcStep?.body).toMatch(/RPC|external API/i);
+    expect(rpcStep?.body).toMatch(/Do not pick MCP|not.*MCP/i);
+    expect(last).toMatch(/drafts|projects|history/i);
     expect(hostCapabilityBullets("online").some((b) => /not Cursor MCP/i.test(b))).toBe(true);
   });
 

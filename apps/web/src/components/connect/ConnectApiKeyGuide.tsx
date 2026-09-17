@@ -63,10 +63,11 @@ export function ConnectApiKeyGuide({ url, hosting, errorMessage, className }: Pr
           <p className="mt-1 text-xs text-muted">
             This is an <span className="font-medium text-ink">Odoo external RPC</span> API key
             (XML-RPC / JSON-RPC) so Ingenium can talk to your database —{" "}
-            <span className="font-medium text-ink">not</span> a Cursor MCP server key or Model
-            Context Protocol connector. The key is created{" "}
-            <span className="font-medium text-ink">inside Odoo</span>; Ingenium cannot mint it.
-            We open Odoo for you; you paste the key back here.
+            <span className="font-medium text-ink">not</span> a Cursor MCP / Model Context Protocol
+            key. If Odoo offers RPC vs MCP (or similar), pick <span className="font-medium text-ink">RPC / external API</span>.
+            The key is created <span className="font-medium text-ink">inside Odoo</span>; we open
+            Odoo for you and you paste it back. Replacing an expired key on this same connection
+            keeps your drafts and Studio work.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
