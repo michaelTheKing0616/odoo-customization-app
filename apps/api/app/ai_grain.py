@@ -307,13 +307,15 @@ _DELIVERY_HOST_RE = re.compile(
 def preferred_inherit_host(prompt: str) -> str | None:
     """Host for Option A inherit seeds — prefer the document, not incidental 'customer'."""
     text = prompt or ""
-    if _DELIVERY_HOST_RE.search(text):
+    named = named_host_from_prompt(text)
+    # Explicit host (e.g. Contacts / res.partner) beats delivery-slip heuristic —
+    # "Delivery notes" on a partner form is not stock.picking.
+    if _DELIVERY_HOST_RE.search(text) and named in {None, "stock.picking"}:
         return "stock.picking"
     if _MARKUP_HOST_RE.search(text) or _SALE_DOC_RE.search(text):
         if re.search(r"(?i)purchase\s+order", text) and not re.search(r"(?i)\bsales?\b", text):
             return named_host_from_prompt(text)
         return "sale.order"
-    named = named_host_from_prompt(text)
     if named == "res.partner" and re.search(r"(?i)\b(sales?|quotation|invoices?)\b", text):
         if re.search(r"(?i)\binvoices?\b", text) and not re.search(r"(?i)\bsales?\b", text):
             return "account.move"

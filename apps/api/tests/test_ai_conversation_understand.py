@@ -14,6 +14,8 @@ from app.ai_conversation.understand import (
 )
 from app.settings import settings
 
+pytestmark = pytest.mark.no_app_db
+
 CLIENT_MARKUP = (
     'The Client wants a "Mark-up" line added to every Sale they make. They purchase '
     "products on requests from their customers and the selling price is the additive "
@@ -116,3 +118,34 @@ def test_vendor_tin_diagnosis_is_field_pack_on_bills() -> None:
     assert u.inherit_existing is True
     assert u.needs_module is False
     assert u.capability != "option_a_authored"
+
+def test_s1_contacts_diagnosis_prefills_must_do() -> None:
+    """Clear field-pack brief must prefill Must do (constraints) without LLM."""
+    prompt = (
+        "On Contacts (res.partner), add checkbox Preferred for delivery and "
+        "Delivery notes text under Delivery group. Do not create a new app."
+    )
+    u = build_understanding(prompt)
+    assert u.host_model == "res.partner"
+    assert u.inherit_existing is True
+    assert u.needs_module is False
+    assert u.grain == "field_pack"
+    joined = " | ".join(u.constraints).lower()
+    assert "preferred for delivery" in joined
+    assert "delivery notes" in joined
+    assert "delivery group" in joined
+    assert "new home-screen app" in joined or "do not create" in joined
+    card = diagnosis_clarification(u)
+    assert card["kind"] == "diagnosis"
+    assert card["understanding"]["constraints"]
+    assert any("Preferred for delivery" in row for row in card["understanding"]["constraints"])
+
+
+def test_diagnosis_confirm_lock_still_requires_yes_build_this() -> None:
+    from app.ai_conversation.understand import diagnosis_confirmed
+
+    assert diagnosis_confirmed({"diagnosis": "confirm"}) is True
+    assert diagnosis_confirmed({"diagnosis": "Yes — build this"}) is True
+    assert diagnosis_confirmed({"diagnosis": "reject"}) is False
+    assert diagnosis_confirmed({}) is False
+

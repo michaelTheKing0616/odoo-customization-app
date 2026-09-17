@@ -243,6 +243,83 @@ def _dedupe(rows: list[str]) -> list[str]:
     return out
 
 
+_NO_NEW_APP_RE = re.compile(
+    r"(?i)\b(?:do\s+not\s+create\s+a\s+new\s+app|no\s+new\s+(?:home[- ]?screen\s+)?app|"
+    r"not\s+a\s+new\s+(?:home[- ]?screen\s+)?app)\b"
+)
+_UNDER_GROUP_RE = re.compile(
+    r"(?i)\bunder\s+(?:the\s+)?([A-Za-z][\w /&-]{0,40}?)\s+group\b"
+)
+_CHECKBOX_FIELD_RE = re.compile(
+    r"(?i)\bcheckbox\s+[\"']?([^\"',.;]+?)[\"']?"
+    r"(?=\s+and\b|\s+under\b|\s+on\b|,|\.|$)"
+)
+_TYPED_TEXT_FIELD_RE = re.compile(
+    r"(?i)(?:\badd\b|\band\b|,)\s+([A-Z][\w /&-]{1,40}?)\s+text(?:\s+field)?\b"
+)
+_ADD_NAMED_FIELD_RE = re.compile(
+    r"(?i)\badd\s+(?:a\s+|an\s+)?(?:checkbox\s+|boolean\s+|text\s+(?:field\s+)?)?[\"']?"
+    r"((?-i:[A-Z])[^\"',.;]{1,60}?)[\"']?"
+    r"(?=\s+(?:on|under|required|show|to|only)\b|,|\.|$)"
+)
+_PRONOUN_LABELS = frozenset(
+    {"it", "this", "that", "them", "one", "field", "a field", "the field"}
+)
+
+
+def _brief_must_do_constraints(
+    prompt: str,
+    *,
+    host: str | None,
+    inherit: bool,
+) -> list[str]:
+    """Deterministic Must-do rows from a clear brief (fields, host, placement, no new app)."""
+    text = (prompt or "").strip()
+    if not text:
+        return []
+    rows: list[str] = []
+    from app.ai_grain import HOST_LABELS
+
+    if host and inherit:
+        label = HOST_LABELS.get(host, host)
+        rows.append(f"On {label} ({host})")
+
+    for m in _CHECKBOX_FIELD_RE.finditer(text):
+        label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
+        if label:
+            rows.append(f"Checkbox: {label}")
+
+    for m in _TYPED_TEXT_FIELD_RE.finditer(text):
+        label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
+        low = label.lower()
+        if not label or low in {"add", "a", "an", "the", "new", "and", "or"}:
+            continue
+        if low.startswith("checkbox"):
+            continue
+        rows.append(f"Text field: {label}")
+
+    if not any(r.lower().startswith(("checkbox:", "text field:")) for r in rows):
+        for m in _ADD_NAMED_FIELD_RE.finditer(text):
+            label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
+            low = label.lower()
+            if not label or low in {"checkbox", "boolean", "text", "field", "a field"}:
+                continue
+            if low in _PRONOUN_LABELS or len(label) < 3:
+                continue
+            rows.append(f"Field: {label}")
+
+    gm = _UNDER_GROUP_RE.search(text)
+    if gm:
+        rows.append(f"Place under {gm.group(1).strip()} group")
+
+    if _NO_NEW_APP_RE.search(text) or inherit:
+        # Inherit already implies no new app; only add explicit phrasing when said or inherit.
+        if _NO_NEW_APP_RE.search(text):
+            rows.append("Do not create a new home-screen app")
+
+    return _dedupe(rows)[:12]
+
+
 def _deterministic_understanding(prompt: str) -> Understanding:
     from app.ai_generation_engine import classify_generation
     from app.ai_grain import HOST_LABELS, classify_grain, preferred_inherit_host
@@ -309,6 +386,9 @@ def _deterministic_understanding(prompt: str) -> Understanding:
             "Not a new home-screen app."
         )
         inherit = True
+        constraints.extend(
+            _brief_must_do_constraints(text, host=host, inherit=True)
+        )
     else:
         title = title or (text.split(".")[0].strip()[:48] or "Custom draft")
         if len(title) > 48 or title.lower().startswith("the client"):
@@ -325,6 +405,11 @@ def _deterministic_understanding(prompt: str) -> Understanding:
         confidence = "high"
     elif grain == "field_pack" and host:
         confidence = "high"
+
+    if not constraints and inherit:
+        constraints.extend(
+            _brief_must_do_constraints(text, host=host, inherit=inherit)
+        )
 
     return Understanding(
         capability=plan.capability,
@@ -353,6 +438,8 @@ def _should_llm_enrich(prompt: str, det: Understanding) -> bool:
     if det.confidence == "low":
         return True
     if det.inherit_existing and not det.host_model:
+        return True
+    if det.inherit_existing and not det.constraints:
         return True
     return False
 
