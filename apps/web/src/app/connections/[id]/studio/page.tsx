@@ -1271,7 +1271,19 @@ export default function AppStudioPage() {
             onPlaceField={(fieldLabel, phrase) =>
               void submitRefine(`put ${fieldLabel} ${phrase}`)
             }
-            onRepairExpert={() =>
+            contractScorecard={
+              (
+                session?.artifact as {
+                  _contract_scorecard?: {
+                    pass?: boolean;
+                    blocking?: boolean;
+                    summary?: string | null;
+                    repairs?: string[];
+                  };
+                } | null | undefined
+              )?._contract_scorecard ?? null
+            }
+          onRepairExpert={() =>
               void submitRefine(
                 "Fix surface findings that block Install. Ground the app title in the operator brief " +
                   "(never a placeholder like Contact extras). Keep inherit-only on the named stock host — " +

@@ -689,6 +689,10 @@ def finish_senior_component(
 
     notes.extend(sanitize_inherit_extension_fields(draft, prompt=prompt))
     notes.extend(apply_form_slots(draft, prompt=prompt))
+    # Studio Contract Compiler — model-agnostic finish + scorecard (Flash or Pro).
+    from app.ai_studio_contract import stamp_studio_contract_pipeline
+
+    notes.extend(stamp_studio_contract_pipeline(draft, prompt))
     draft["_senior_shape"] = {"grain": grain, "applied": True, "notes": len(notes)}
     return notes
 

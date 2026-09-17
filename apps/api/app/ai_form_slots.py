@@ -374,6 +374,7 @@ def render_slotted_arch(
     mapping: dict[str, str],
     *,
     prompt: str = "",
+    group_title: str | None = None,
 ) -> str:
     host = str(inherit.get("model") or "")
     by_name = {
@@ -388,7 +389,7 @@ def render_slotted_arch(
             continue
         buckets.setdefault(slot, []).append(field)
     page = tab_title(prompt)
-    group_title = named_group_title(prompt)
+    group_title = (group_title or "").strip() or named_group_title(prompt)
     xpaths: list[str] = []
     for slot in SLOT_IDS:
         fields = buckets.get(slot) or []
@@ -442,14 +443,17 @@ def apply_form_slots(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
     notes = _rewrite_studio_field_names(inherit)
     notes.extend(strip_inherit_filler(inherit, user_prompt))
     host = str(inherit.get("model") or "")
+    prior = draft.get("_form_slots") if isinstance(draft.get("_form_slots"), dict) else {}
+    # Contract / operator overrides win over prompt heuristics (model-agnostic).
+    prior_group = str(prior.get("group_title") or "").strip() or None
     mapping = assign_slots(draft, prompt=user_prompt)
-    group_title = named_group_title(user_prompt)
+    group_title = prior_group or named_group_title(user_prompt)
     catalog = slot_catalog(host, group_title=group_title)
     draft["_form_slots"] = {
         "host": host,
         "fields": mapping,
         "catalog": catalog,
-        "tab_title": tab_title(user_prompt),
+        "tab_title": prior.get("tab_title") or tab_title(user_prompt),
         "group_title": group_title,
     }
     views = [v for v in (draft.get("views") or []) if isinstance(v, dict)]
@@ -462,7 +466,7 @@ def apply_form_slots(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
             and str(v.get("type") or "form") == "form"
         )
     ]
-    arch = render_slotted_arch(inherit, mapping, prompt=user_prompt)
+    arch = render_slotted_arch(inherit, mapping, prompt=user_prompt, group_title=group_title)
     if not arch:
         notes.append("slots: no form chrome")
         return notes

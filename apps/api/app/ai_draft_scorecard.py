@@ -1892,6 +1892,38 @@ def attach_scorecard(
         stamp_static_odoo(draft)
 
     draft["_scorecard"] = draft_scorecard(draft, user_prompt=prompt)
+    # Studio Contract scorecard — deterministic gate, independent of LLM tier.
+    try:
+        from app.ai_studio_contract import evaluate_studio_contract, attach_studio_contract
+
+        if not isinstance(draft.get("_studio_contract"), dict):
+            attach_studio_contract(draft, prompt)
+        contract_score = evaluate_studio_contract(draft)
+        draft["_contract_scorecard"] = contract_score
+        sc = draft["_scorecard"]
+        if isinstance(sc, dict):
+            sc["studio_contract"] = {
+                "pass": contract_score.get("pass"),
+                "blocking": contract_score.get("blocking"),
+                "repairs": contract_score.get("repairs") or [],
+                "summary": contract_score.get("summary"),
+            }
+            if contract_score.get("blocking"):
+                findings = list(sc.get("findings") or [])
+                for f in contract_score.get("findings") or []:
+                    if isinstance(f, dict) and f.get("severity") == "error":
+                        findings.append(
+                            {
+                                "dimension": "studio_contract",
+                                "element": f.get("code") or "contract",
+                                "detail": f.get("detail") or "",
+                                "severity": "error",
+                            }
+                        )
+                sc["findings"] = findings
+                sc["studio_contract_blocks_apply"] = True
+    except Exception:  # noqa: BLE001
+        pass
     try:
         from app.ai_rules import completeness_checklist
 

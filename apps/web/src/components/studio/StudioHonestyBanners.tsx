@@ -36,6 +36,13 @@ type StudioHonestyBannersProps = {
   refineBusy: boolean;
   onPlaceField: (fieldLabel: string, phrase: string) => void;
   onRepairExpert?: () => void;
+  /** Studio Contract scorecard — model-agnostic Apply gate */
+  contractScorecard?: {
+    pass?: boolean;
+    blocking?: boolean;
+    summary?: string | null;
+    repairs?: string[];
+  } | null;
 };
 
 export function StudioHonestyBanners({
@@ -66,6 +73,7 @@ export function StudioHonestyBanners({
   refineBusy,
   onPlaceField,
   onRepairExpert,
+  contractScorecard,
 }: StudioHonestyBannersProps) {
   const hideGrammar =
     stockReuse || refuseClone || goldOptionA || authoredOptionA;
@@ -85,6 +93,40 @@ export function StudioHonestyBanners({
 
   return (
     <div className="studio-banner-stack">
+      {contractScorecard?.blocking ? (
+        <Callout
+          variant="warning"
+          title="Studio contract not met"
+          testId="studio-contract-blocker"
+          actions={
+            onRepairExpert ? (
+              <button
+                type="button"
+                className="text-sm font-medium text-accent"
+                onClick={onRepairExpert}
+                disabled={refineBusy}
+              >
+                {refineBusy ? <StudioBusyLabel /> : "Repair with Expert"}
+              </button>
+            ) : null
+          }
+        >
+          {contractScorecard.summary
+            ? `Expected: ${contractScorecard.summary}. `
+            : ""}
+          {(contractScorecard.repairs || []).slice(0, 3).join(" · ") ||
+            "Fix placement or missing workflow surfaces before Apply."}
+        </Callout>
+      ) : contractScorecard?.pass && contractScorecard.summary ? (
+        <Callout
+          variant="info"
+          title="Studio contract"
+          testId="studio-contract-summary"
+          className="studio-callout-success-tone"
+        >
+          {contractScorecard.summary}
+        </Callout>
+      ) : null}
       {applyNote ? (
         <Callout
           variant="info"

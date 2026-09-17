@@ -1471,9 +1471,18 @@ def get_llm_provider_for_tier(tier: str = "fast") -> LLMProvider | None:
     if mode == "gemini":
         if not settings.resolved_gemini_api_key():
             return None
-        refine_model = (settings.ai_refine_model or "").strip()
+        # Model-agnostic Studio: Flash is enough for correctness. Optional env
+        # upgrades (gemini_refine_model / gemini_contract_model / ai_refine_model)
+        # only swap the chat/refine weight when the operator pays for them.
+        refine_model = (
+            (settings.gemini_refine_model or "").strip()
+            or (settings.ai_refine_model or "").strip()
+        )
+        contract_model = (settings.gemini_contract_model or "").strip()
         if tier == "refine" and refine_model:
             return GeminiProvider(model=refine_model)
+        if tier in {"contract", "refine"} and contract_model and tier == "contract":
+            return GeminiProvider(model=contract_model)
         return GeminiProvider()
     if mode == "openai-compatible":
         return OpenAICompatibleProvider()

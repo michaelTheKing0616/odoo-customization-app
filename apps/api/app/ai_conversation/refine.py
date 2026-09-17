@@ -1308,6 +1308,12 @@ def apply_structural_repair(
         apply_form_slots(working, prompt=user_prompt)
     except Exception:  # noqa: BLE001
         pass
+    try:
+        from app.ai_studio_contract import stamp_studio_contract_pipeline
+
+        stamp_studio_contract_pipeline(working, user_prompt)
+    except Exception:  # noqa: BLE001
+        pass
     _restamp_preview(working, user_prompt)
     validators = (working.get("_scorecard") or {}).get("validators") or {}
     return {

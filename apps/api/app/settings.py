@@ -86,10 +86,14 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     google_api_key: str | None = None
     gemini_model: str = "gemini-2.5-flash"
+    # Optional upgrades — empty = use gemini_model. Studio correctness is
+    # model-agnostic (Contract Compiler); premium models only help chat/ambiguity.
+    gemini_contract_model: str = ""  # e.g. gemini-2.5-pro when funded
+    gemini_refine_model: str = ""  # Expert chat; falls back to gemini_model
     # Conversational refinement tiers — fast (generate/clarify) vs refine (chat patches)
     ai_llm_tier_fast: str = "gemini"
     ai_llm_tier_refine: str = "gemini"
-    ai_refine_model: str = ""
+    ai_refine_model: str = ""  # legacy alias; prefer gemini_refine_model
     # Optional LLM tie-break when deterministic intent gate is ambiguous (pack/material/low IR).
     # auto = on when fast LLM provider available; never overrides pack_conflict or rental chips.
     ai_intent_llm: str = "auto"
