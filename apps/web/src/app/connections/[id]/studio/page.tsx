@@ -1346,8 +1346,8 @@ export default function AppStudioPage() {
                 draft={session?.artifact}
                 preview={preview}
                 breadcrumb={preview?.title || appTitle}
-                flashFieldId={flashFieldId}
-                highlightedFieldIds={highlightedFieldIds}
+                flashFieldId={flashId}
+                highlightedFieldIds={highlightIds}
               />
             }
             chat={
