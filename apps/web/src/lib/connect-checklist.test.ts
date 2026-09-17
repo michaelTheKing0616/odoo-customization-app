@@ -6,6 +6,9 @@ import {
   hostCapabilityBullets,
   apiKeyGuideSteps,
   shouldEmphasizeApiKeyGuide,
+  DEFAULT_CONNECTION_LABEL,
+  connectionLabelFollowsDb,
+  nextConnectionLabel,
 } from "./connect-checklist";
 
 describe("connect-checklist", () => {
@@ -68,5 +71,16 @@ describe("connect-checklist", () => {
     expect(shouldEmphasizeApiKeyGuide("self_hosted")).toBe(false);
     expect(shouldEmphasizeApiKeyGuide("self_hosted", "Authentication failed")).toBe(true);
     expect(apiKeyGuideSteps("online").length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("auto-syncs Label from Database until the user edits Label", () => {
+    expect(connectionLabelFollowsDb(DEFAULT_CONNECTION_LABEL, "odoo_dev")).toBe(true);
+    expect(connectionLabelFollowsDb("odoo_dev", "odoo_dev")).toBe(true);
+    expect(connectionLabelFollowsDb("Prod", "odoo_dev")).toBe(false);
+    expect(
+      nextConnectionLabel(DEFAULT_CONNECTION_LABEL, "odoo_dev", "experiment-company"),
+    ).toBe("experiment-company");
+    expect(nextConnectionLabel("Prod", "odoo_dev", "experiment-company")).toBe("Prod");
+    expect(nextConnectionLabel("odoo_dev", "odoo_dev", "acme")).toBe("acme");
   });
 

@@ -17,7 +17,9 @@ import { ConnectApiKeyGuide } from "@/components/connect/ConnectApiKeyGuide";
 import { ConnectChecklist } from "@/components/connect/ConnectChecklist";
 import {
   credentialFieldCopy,
+  DEFAULT_CONNECTION_LABEL,
   formatAuthFailureHint,
+  nextConnectionLabel,
 } from "@/lib/connect-checklist";
 import {
   detectHostingKind,
@@ -43,7 +45,7 @@ export default function ConnectPage() {
   const [saving, setSaving] = useState(false);
   const [step, setStep] = useState<Step>(1);
   const [form, setForm] = useState({
-    name: "Local Odoo 19",
+    name: DEFAULT_CONNECTION_LABEL,
     url: "http://127.0.0.1:8069",
     db_name: "odoo_dev",
     username: "admin",
@@ -309,6 +311,7 @@ export default function ConnectPage() {
             <Input
               label="Label"
               required
+              hint="Tracks the database name until you edit it."
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
             />
@@ -321,14 +324,19 @@ export default function ConnectPage() {
               onChange={(e) => {
                 const url = e.target.value;
                 const dbGuess = suggestDbFromUrl(url);
-                setForm((f) => ({
-                  ...f,
-                  url,
-                  db_name:
-                    dbGuess && (!f.db_name || f.db_name === "odoo_dev" || f.db_name === suggestedDb)
+                setForm((f) => {
+                  const nextDb =
+                    dbGuess &&
+                    (!f.db_name || f.db_name === "odoo_dev" || f.db_name === suggestedDb)
                       ? dbGuess
-                      : f.db_name,
-                }));
+                      : f.db_name;
+                  return {
+                    ...f,
+                    url,
+                    db_name: nextDb,
+                    name: nextConnectionLabel(f.name, f.db_name, nextDb),
+                  };
+                });
               }}
               onBlur={() =>
                 setForm((f) => ({ ...f, url: normalizeOdooBaseUrl(f.url) || f.url }))
@@ -343,7 +351,14 @@ export default function ConnectPage() {
               label="Database"
               required
               value={form.db_name}
-              onChange={(e) => setForm({ ...form, db_name: e.target.value })}
+              onChange={(e) => {
+                const nextDb = e.target.value;
+                setForm((f) => ({
+                  ...f,
+                  db_name: nextDb,
+                  name: nextConnectionLabel(f.name, f.db_name, nextDb),
+                }));
+              }}
             />
             <Input
               label="Username"

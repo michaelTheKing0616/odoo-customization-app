@@ -245,3 +245,23 @@ export function shouldEmphasizeApiKeyGuide(kind: HostingKind, errorMessage?: str
   );
 }
 
+/** Default Label on the Connect form (local-dev preset). */
+export const DEFAULT_CONNECTION_LABEL = "Local Odoo 19";
+
+/** True when Label still looks auto-managed (untouched default or mirrors current DB). */
+export function connectionLabelFollowsDb(label: string, currentDb: string): boolean {
+  const t = (label || "").trim();
+  return t === "" || t === DEFAULT_CONNECTION_LABEL || t === (currentDb || "").trim();
+}
+
+/** If Label is still auto, mirror nextDb; otherwise keep the user's Label. */
+export function nextConnectionLabel(
+  label: string,
+  currentDb: string,
+  nextDb: string,
+): string {
+  if (!connectionLabelFollowsDb(label, currentDb)) return label;
+  const db = (nextDb || "").trim();
+  return db || DEFAULT_CONNECTION_LABEL;
+}
+
