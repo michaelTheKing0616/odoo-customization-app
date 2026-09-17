@@ -253,8 +253,9 @@ _NO_NEW_APP_RE = re.compile(
     r"not\s+a\s+new\s+(?:home[- ]?screen\s+)?app)\b"
 )
 _UNDER_GROUP_RE = re.compile(
-    r"(?i)\bunder\s+(?:the\s+)?([A-Za-z][\w /&-]{0,40}?)\s+group\b"
+    r"(?i)\bunder\s+(?:(?:the|a|an)\s+)?([A-Za-z][\w /&-]{0,40}?)\s+group\b"
 )
+_LEADING_ARTICLE_RE = re.compile(r"(?i)^(a|an|the)\s+")
 _CHECKBOX_FIELD_RE = re.compile(
     r"(?i)\bcheckbox\s+[\"']?([^\"',.;]+?)[\"']?"
     r"(?=\s+and\b|\s+under\b|\s+on\b|,|\.|$)"
@@ -296,6 +297,7 @@ def _brief_must_do_constraints(
 
     for m in _TYPED_TEXT_FIELD_RE.finditer(text):
         label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
+        label = _LEADING_ARTICLE_RE.sub("", label).strip()
         low = label.lower()
         if not label or low in {"add", "a", "an", "the", "new", "and", "or"}:
             continue
@@ -315,7 +317,9 @@ def _brief_must_do_constraints(
 
     gm = _UNDER_GROUP_RE.search(text)
     if gm:
-        rows.append(f"Place under {gm.group(1).strip()} group")
+        gtitle = _LEADING_ARTICLE_RE.sub("", gm.group(1).strip()).strip()
+        if gtitle:
+            rows.append(f"Place under {gtitle} group")
 
     if _NO_NEW_APP_RE.search(text) or inherit:
         # Inherit already implies no new app; only add explicit phrasing when said or inherit.
@@ -353,6 +357,7 @@ def _brief_named_entities(prompt: str) -> list[str]:
             entities.append(label)
     for m in _TYPED_TEXT_FIELD_RE.finditer(text):
         label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
+        label = _LEADING_ARTICLE_RE.sub("", label).strip()
         low = label.lower()
         if label and low not in {"add", "a", "an", "the", "new", "and", "or"}:
             if not low.startswith("checkbox"):
@@ -369,7 +374,9 @@ def _brief_named_entities(prompt: str) -> list[str]:
             entities.append(label)
     gm = _UNDER_GROUP_RE.search(text)
     if gm:
-        entities.append(gm.group(1).strip())
+        gtitle = _LEADING_ARTICLE_RE.sub("", gm.group(1).strip()).strip()
+        if gtitle:
+            entities.append(gtitle)
     from app.ai_grain import HOST_ALIASES, HOST_LABELS
 
     low = text.lower()

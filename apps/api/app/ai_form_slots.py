@@ -155,19 +155,30 @@ def slot_from_location(text: str) -> str | None:
 
 
 _UNDER_GROUP_RE = re.compile(
-    r"(?i)\bunder\s+(?:the\s+)?([A-Za-z][\w /&-]{0,40}?)\s+group\b"
+    r"(?i)\bunder\s+(?:(?:the|a|an)\s+)?([A-Za-z][\w /&-]{0,40}?)\s+group\b"
 )
+_LEADING_ARTICLE_RE = re.compile(r"(?i)^(a|an|the)\s+")
+
+
+def _normalize_group_title(raw: str) -> str | None:
+    title = re.sub(r"\s+", " ", (raw or "")).strip(" .")
+    title = _LEADING_ARTICLE_RE.sub("", title).strip()
+    if not title or title.lower() in {"the", "a", "an", "new", "other", "group", "tab"}:
+        return None
+    if " " not in title:
+        return title[:1].upper() + title[1:].lower()
+    return " ".join(w[:1].upper() + w[1:] if w else w for w in title.split(" "))
 
 
 def named_group_title(prompt: str) -> str | None:
-    """Operator-named sheet group (e.g. Delivery) — never a selection field."""
+    """Operator-named sheet group (e.g. Delivery) — never a selection field.
+
+    «under a Delivery group» → Delivery (never «A Delivery» / «A DELIVERY»).
+    """
     match = _UNDER_GROUP_RE.search(prompt or "")
     if not match:
         return None
-    title = re.sub(r"\s+", " ", match.group(1)).strip(" .")
-    if not title or title.lower() in {"the", "a", "an", "new", "other"}:
-        return None
-    return title[:1].upper() + title[1:] if title else None
+    return _normalize_group_title(match.group(1))
 
 
 def tab_title(prompt: str) -> str:

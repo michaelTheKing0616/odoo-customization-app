@@ -158,19 +158,17 @@ _CHECKBOX_BRIEF_RE = re.compile(
     r"(?=\s+and\b|\s+under\b|\s+on\b|,|\.|$)"
 )
 _TYPED_TEXT_BRIEF_RE = re.compile(
-    r"(?i)(?:\badd\b|\band\b|,)\s+([A-Z][\w /&-]{1,40}?)\s+text(?:\s+field)?\b"
+    r"(?i)(?:\badd\b|\band\b|,)\s+(?:(?:a|an|the)\s+)?"
+    r"([A-Za-z][\w /&-]{1,40}?)\s+text(?:\s+field)?\b"
 )
 _TECH_MODEL_PAREN_RE = re.compile(r"\(\s*[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+\s*\)", re.I)
 _STUDIO_PREFIX_RE = re.compile(r"^x_studio_", re.I)
 
 
 def _human_field_label(label: str) -> str:
-    cleaned = re.sub(r"\s+", " ", (label or "").strip(" .'\"")).strip()
-    if not cleaned:
-        return ""
-    if cleaned.lower() in {"checkbox", "boolean", "text", "field", "a field"}:
-        return ""
-    return cleaned
+    from app.ai_field_ir import human_field_label
+
+    return human_field_label(label)
 
 
 def _ingenium_field_name(label: str, *, ttype: str) -> str:
@@ -241,8 +239,10 @@ def infer_extension_fields(prompt: str, *, pad: bool = True) -> list[dict[str, A
     if assessment.primary_option_a:
         return stub_fields_for_gaps(assessment)[:12]
 
-    # Clear typed briefs (checkbox + text under a group) win over head-noun heuristics.
-    typed = _typed_fields_from_brief(text)
+    # Clear typed briefs / Must-do constraints win over head-noun heuristics.
+    from app.ai_field_ir import extract_field_ir
+
+    typed = extract_field_ir(text)
     if typed:
         return typed[:12]
 
@@ -321,7 +321,9 @@ def infer_extension_fields(prompt: str, *, pad: bool = True) -> list[dict[str, A
             names.add(str(named["name"]))
         else:
             head = _head_noun(low)
-            if head and head not in CAPABILITY_NOISE_NOUNS:
+            from app.ai_field_ir import is_banned_slug
+
+            if head and not is_banned_slug(head) and head not in CAPABILITY_NOISE_NOUNS:
                 fields.append(
                     {
                         "name": f"x_{head}",
@@ -377,12 +379,16 @@ def infer_extension_fields(prompt: str, *, pad: bool = True) -> list[dict[str, A
         names.add("x_employee_id")
 
     head = _head_noun(low)
+    from app.ai_field_ir import is_banned_slug, typed_fields_from_brief
+
     if (
         not single_field
         and head
+        and not is_banned_slug(head)
         and head not in CAPABILITY_NOISE_NOUNS
         and f"x_{head}" not in names
         and not any(head in str(f.get("name") or "") for f in fields)
+        and not typed_fields_from_brief(text)
     ):
         fields.insert(
             0,
@@ -518,8 +524,10 @@ def finish_senior_component(
     apply_option_a_grain_label(draft)
     stamp_done_bar(draft, prompt=prompt)
     draft["_user_prompt"] = prompt or str(draft.get("_user_prompt") or "")
+    from app.ai_field_ir import sanitize_inherit_extension_fields
     from app.ai_form_slots import apply_form_slots
 
+    notes.extend(sanitize_inherit_extension_fields(draft, prompt=prompt))
     notes.extend(apply_form_slots(draft, prompt=prompt))
     draft["_senior_shape"] = {"grain": grain, "applied": True, "notes": len(notes)}
     return notes
@@ -536,7 +544,16 @@ def _ensure_inherit_field_floor(
     if inherit is None:
         return notes
     existing = _field_names(inherit)
-    inferred = infer_extension_fields(prompt, pad=grain != "field_pack")
+    from app.ai_field_ir import extract_field_ir
+
+    constraints: list[str] = []
+    understanding = draft.get("_understanding")
+    if isinstance(understanding, dict) and isinstance(understanding.get("constraints"), list):
+        constraints = [str(x) for x in understanding["constraints"]]
+    explicit = extract_field_ir(prompt, constraints=constraints or None)
+    inferred = explicit if explicit else infer_extension_fields(
+        prompt, pad=grain != "field_pack"
+    )
     added = 0
     for field in inferred:
         name = str(field.get("name") or "")
@@ -558,6 +575,7 @@ def _ensure_inherit_field_floor(
     )
     if (
         grain != "field_pack"
+        and not explicit
         and not single_field
         and not assess_capability_gaps(prompt).primary_option_a
         and len(_field_names(inherit)) < 3
@@ -804,4 +822,4 @@ def _drop_clone_companions(draft: dict[str, Any]) -> list[str]:
     return notes
 
 
-__all__ = ["finish_senior_component", "infer_extension_fields"]
+__all__ = ["finish_senior_component", "infer_extension_fields"]  # field IR: app.ai_field_ir

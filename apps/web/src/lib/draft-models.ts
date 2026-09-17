@@ -136,6 +136,50 @@ export function formSlotCatalog(
     .filter((row) => row.id);
 }
 
+/** Technical / mangled labels that must never appear in Where-on / refine chips. */
+const BAN_ALONE_SLUGS = new Set([
+  "new",
+  "app",
+  "group",
+  "tab",
+  "under",
+  "on",
+  "form",
+  "field",
+  "fields",
+  "res",
+  "partner",
+  "contact",
+  "contacts",
+  "delivery",
+]);
+
+function isJunkPlacementLabel(name: string, label: string): boolean {
+  const n = (name || "").trim().toLowerCase();
+  const s = (label || "").trim().toLowerCase();
+  if (!n) return true;
+  if (n === "x_res" || n === "x_partner" || /^x_studio_res/.test(n)) return true;
+  const slug = n.replace(/^x_studio_/, "x_").replace(/^x_/, "");
+  if (BAN_ALONE_SLUGS.has(slug) || /^a_/.test(slug)) return true;
+  if (s === "res" || s === "partner" || s === "checkbox") return true;
+  if (/^(a|an|the)\s+(new|app|group|tab|res|partner|delivery)$/.test(s)) return true;
+  if (/^a\s+new$/.test(s) || BAN_ALONE_SLUGS.has(s)) return true;
+  if (/^checkbox\b/.test(s) && /delivery/.test(s) && /notes/.test(s)) return true;
+  return false;
+}
+
+function stripLeadingArticles(label: string): string {
+  return (label || "").replace(/^(a|an|the)\s+/i, "").trim();
+}
+
+function humanPlacementLabel(name: string, raw: string): string {
+  let label = stripLeadingArticles((raw || "").trim());
+  if (label && !isJunkPlacementLabel(name, label) && !/^x_/i.test(label)) return label;
+  const leaf = name.replace(/^x_studio_/i, "x_").replace(/^x_/, "").replace(/_/g, " ").trim();
+  if (!leaf || BAN_ALONE_SLUGS.has(leaf) || leaf === "res") return "";
+  return leaf.charAt(0).toUpperCase() + leaf.slice(1);
+}
+
 export function inheritPlacementRows(
   draft: Record<string, unknown> | null | undefined,
 ): InheritPlacementRow[] {
@@ -154,13 +198,16 @@ export function inheritPlacementRows(
       model && typeof model === "object" ? String((model as { mode?: string }).mode || "") : "";
     if (mode !== "inherit" && mid.startsWith("x_")) continue;
     for (const field of fieldRows(model)) {
-      const name = String(field.name || "");
+      const name = String(field.name || "").replace(/^x_studio_/i, "x_");
       if (!name || name.endsWith("_ids")) continue;
-      const label = String(field.string || name).replace(/^x_/, "");
+      const rawLabel = String(field.string || "");
+      if (isJunkPlacementLabel(name, rawLabel)) continue;
+      const label = humanPlacementLabel(name, rawLabel);
+      if (!label) continue;
       rows.push({
         name,
         string: label,
-        slot: String(mapping[name] || "next_to_dates"),
+        slot: String(mapping[name] || mapping[String(field.name || "")] || "next_to_dates"),
       });
     }
     if (rows.length) break;
