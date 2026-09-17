@@ -4,6 +4,8 @@ import {
   credentialFieldCopy,
   formatAuthFailureHint,
   hostCapabilityBullets,
+  apiKeyGuideSteps,
+  shouldEmphasizeApiKeyGuide,
 } from "./connect-checklist";
 
 describe("connect-checklist", () => {
@@ -60,3 +62,11 @@ describe("connect-checklist", () => {
     expect(formatAuthFailureHint("self_hosted", "timeout")).toBe("timeout");
   });
 });
+
+  it("API key guide is emphasized for Online and auth errors", () => {
+    expect(shouldEmphasizeApiKeyGuide("online")).toBe(true);
+    expect(shouldEmphasizeApiKeyGuide("self_hosted")).toBe(false);
+    expect(shouldEmphasizeApiKeyGuide("self_hosted", "Authentication failed")).toBe(true);
+    expect(apiKeyGuideSteps("online").length).toBeGreaterThanOrEqual(4);
+  });
+

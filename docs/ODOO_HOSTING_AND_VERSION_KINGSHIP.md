@@ -44,3 +44,10 @@ Typical failure modes we now harden against:
 3. Username = login email.
 4. Password field = **API key**.
 5. Save → capability probe should show major 19 + hosting Online.
+
+## API key creation UX
+
+Ingenium **never mints** Odoo API keys. Creation always happens in Odoo (Preferences → Account Security → New API Key).
+
+Connect shows an **API key guide** panel with numbered steps and an **Open Odoo to create key** button that opens the instance web client (`/odoo` on Online, `/web` elsewhere). The user copies the one-time key and pastes it into Ingenium.
+

@@ -103,3 +103,26 @@ export function hostingHint(kind: HostingKind): string | null {
   }
   return null;
 }
+
+/** Best-effort URL to open Odoo so the user can create an API key.
+ *
+ * Keys are always created *inside Odoo* (we cannot mint them in Ingenium).
+ * Deep links vary by major/edition, so we open the authenticated web client
+ * root; the in-app guide walks Preferences → Account Security → New API Key.
+ */
+export function odooApiKeyGuideUrl(rawUrl: string): string | null {
+  const base = normalizeOdooBaseUrl(rawUrl);
+  if (!base || !/^https?:\/\//i.test(base)) return null;
+  const kind = detectHostingKind(base);
+  // Online 17+ shell is often /odoo; classic /web still works as entry.
+  if (kind === "online") {
+    return `${base}/odoo`;
+  }
+  return `${base}/web`;
+}
+
+export function odooApiKeyDocsUrl(majorHint?: number | null): string {
+  const major = majorHint && majorHint >= 16 && majorHint <= 19 ? majorHint : 19;
+  return `https://www.odoo.com/documentation/${major}.0/developer/reference/external_api.html#api-keys`;
+}
+

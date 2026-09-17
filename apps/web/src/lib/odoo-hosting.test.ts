@@ -4,6 +4,8 @@ import {
   hostingHint,
   normalizeOdooBaseUrl,
   suggestDbFromUrl,
+  odooApiKeyDocsUrl,
+  odooApiKeyGuideUrl,
 } from "./odoo-hosting";
 
 describe("odoo-hosting", () => {
@@ -25,3 +27,14 @@ describe("odoo-hosting", () => {
     expect(hostingHint("online")).toMatch(/API key/i);
   });
 });
+
+  it("builds Open-in-Odoo API key entry URLs", () => {
+    expect(odooApiKeyGuideUrl("https://acme.odoo.com/odoo")).toBe(
+      "https://acme.odoo.com/odoo",
+    );
+    expect(odooApiKeyGuideUrl("http://127.0.0.1:8069")).toBe(
+      "http://127.0.0.1:8069/web",
+    );
+    expect(odooApiKeyDocsUrl(19)).toContain("19.0");
+  });
+

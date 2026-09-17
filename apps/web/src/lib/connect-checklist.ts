@@ -199,3 +199,49 @@ export function formatAuthFailureHint(kind: HostingKind, message: string): strin
   }
   return `${message} — Confirm database, user, and password (or API key).`;
 }
+
+export type ApiKeyGuideStep = {
+  title: string;
+  body: string;
+};
+
+/** Numbered walkthrough — key is created on Odoo; Ingenium only receives it. */
+export function apiKeyGuideSteps(kind: HostingKind): ApiKeyGuideStep[] {
+  const where =
+    kind === "online"
+      ? "In the Odoo Online tab that opens"
+      : kind === "odoo_sh"
+        ? "In the Odoo.sh database tab that opens"
+        : "In your Odoo web client tab that opens";
+  return [
+    {
+      title: "Open Odoo (signed in)",
+      body: `${where}, sign in with the same user you will use in Ingenium if prompted.`,
+    },
+    {
+      title: "Open Preferences",
+      body: "Click your avatar / user menu (top-right) → Preferences (or My Profile).",
+    },
+    {
+      title: "Account Security → New API Key",
+      body: "Open the Account Security tab → New API Key. Name it e.g. “Ingenium”, confirm your password if asked.",
+    },
+    {
+      title: "Copy once → paste here",
+      body: "Odoo shows the key only once. Copy it, return to Ingenium, and paste it into the secret field (not the website password).",
+    },
+  ];
+}
+
+export function shouldEmphasizeApiKeyGuide(kind: HostingKind, errorMessage?: string | null): boolean {
+  if (kind === "online") return true;
+  const lower = (errorMessage || "").toLowerCase();
+  return (
+    lower.includes("auth") ||
+    lower.includes("access denied") ||
+    lower.includes("api key") ||
+    lower.includes("password") ||
+    lower.includes("401")
+  );
+}
+

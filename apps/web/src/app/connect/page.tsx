@@ -13,6 +13,7 @@ import { Card, PageHeader } from "@/components/ui/layout-primitives";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { reportApiError } from "@/lib/api-error";
 import { api, Connection } from "@/lib/api";
+import { ConnectApiKeyGuide } from "@/components/connect/ConnectApiKeyGuide";
 import { ConnectChecklist } from "@/components/connect/ConnectChecklist";
 import {
   credentialFieldCopy,
@@ -359,6 +360,12 @@ export default function ConnectPage() {
               onChange={(e) => setForm({ ...form, password: e.target.value })}
               autoComplete="current-password"
               data-testid="connect-secret"
+            />
+
+            <ConnectApiKeyGuide
+              url={form.url}
+              hosting={hosting}
+              errorMessage={error}
             />
 
             {step === 2 && saving ? (
