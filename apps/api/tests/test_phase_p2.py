@@ -77,3 +77,43 @@ def test_project_create_from_library_template(client: TestClient) -> None:
         assert any(p["id"] == body["id"] for p in listed.json())
     finally:
         client.delete(f"/api/connections/{cid}")
+
+def test_project_draft_survives_api_key_rotate(client: TestClient) -> None:
+    """Credential rotate updates secret only — connection-scoped projects persist."""
+    create = client.post(
+        "/api/connections",
+        json={
+            "name": "P2 Key Rotate",
+            "url": "http://127.0.0.1:8069",
+            "db_name": "odoo_dev",
+            "username": "admin",
+            "password": "old-secret",
+            "verify": False,
+        },
+    )
+    if create.status_code >= 400:
+        pytest.skip(f"app-db not ready: {create.text}")
+    cid = create.json()["id"]
+    try:
+        proj = client.post(
+            f"/api/connections/{cid}/projects",
+            json={"name": "WIP draft", "template_id": "library", "spec_json": {}},
+        )
+        assert proj.status_code == 201, proj.text
+        pid = proj.json()["id"]
+
+        updated = client.patch(
+            f"/api/connections/{cid}",
+            json={"password": "new-api-key-rotated", "verify": False},
+        )
+        assert updated.status_code == 200, updated.text
+        assert updated.json()["id"] == cid
+
+        listed = client.get(f"/api/connections/{cid}/projects")
+        assert listed.status_code == 200
+        rows = listed.json()
+        assert any(p["id"] == pid for p in rows), "project wiped after API key rotate"
+        assert any(p["name"] == "WIP draft" for p in rows)
+    finally:
+        client.delete(f"/api/connections/{cid}")
+
