@@ -227,7 +227,7 @@ export type Connection = {
 export type ProductionReadinessItem = {
   key: string;
   label: string;
-  status: "pass" | "fail" | "warn";
+  status: "pass" | "fail" | "warn" | "todo";
   detail: string;
 };
 

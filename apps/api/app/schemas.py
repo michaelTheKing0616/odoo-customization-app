@@ -317,7 +317,7 @@ class WritesPausedUpdate(BaseModel):
 class ProductionReadinessItemOut(BaseModel):
     key: str
     label: str
-    status: Literal["pass", "fail", "warn"]
+    status: Literal["pass", "fail", "warn", "todo"]
     detail: str
 
 

@@ -16,9 +16,10 @@ type Props = {
   onRefreshConnection?: () => Promise<void>;
 };
 
-function statusBadge(status: "pass" | "fail" | "warn") {
+function statusBadge(status: "pass" | "fail" | "warn" | "todo") {
   if (status === "pass") return <Badge variant="success">pass</Badge>;
   if (status === "warn") return <Badge variant="warning">warn</Badge>;
+  if (status === "todo") return <Badge variant="default">todo</Badge>;
   return <Badge variant="danger">fail</Badge>;
 }
 
@@ -174,18 +175,20 @@ export function ProductionReadinessPanel({ connection, onRefreshConnection }: Pr
     </>
   );
 
-  if (!required && sandbox) {
+  if (!required) {
     return (
       <Callout
         variant="info"
-        title="Production readiness — not required for sandbox Autopilot"
+        title="Production readiness — optional until production write mode"
         testId="production-readiness-panel"
         className="mt-4"
       >
         <p className="text-sm">
-          Job Autopilot on this local sandbox does not use this checklist. Health-check,
-          admin-user, and backup-artifact fails here do <strong>not</strong> block a sandbox
-          run. Complete the list only before unlocking <strong>production</strong> write mode.{" "}
+          Unfinished <strong>todo</strong> items here do not mean Connect or RPC is broken.
+          This checklist only gates unlocking <strong>production</strong> write mode
+          {sandbox ? " (and is not required for local sandbox Autopilot)" : ""}. The snapshot
+          drill downloads a real CSV from this connection (tracked customization if you have
+          one, otherwise a live company export).{" "}
           <Link href="/settings/trust-safety" className="text-accent hover:underline">
             Safety contract
           </Link>
@@ -211,7 +214,9 @@ export function ProductionReadinessPanel({ connection, onRefreshConnection }: Pr
       className="mt-4"
     >
       <p className="text-sm">
-        Required before enabling <strong>production</strong> write mode.{" "}
+        Required before enabling <strong>production</strong> write mode. Incomplete steps show
+        as <strong>todo</strong>; <strong>fail</strong> means something is actually broken.
+        The drill CSV is a real export from this connection.{" "}
         <Link href="/settings/trust-safety" className="text-accent hover:underline">
           Read the safety contract
         </Link>
