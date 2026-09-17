@@ -432,3 +432,74 @@ def test_operator_edits_still_override_must_do() -> None:
     )
     assert edited.constraints == ["On Contacts only", "Checkbox: VIP delivery"]
     assert edited.source == "operator"
+
+
+OPS_S1_EXTENSION = (
+    "Prefer for delivery + Delivery notes on res.partner already persist. "
+    "Extend so they matter in workflows: surface preferred-delivery Contacts on "
+    "pickings/transfers (domain or smart button), optional filter on Delivery/Inventory "
+    "lists, and/or a light automation when the box is checked. Still inherit-only — "
+    "no new app tile."
+)
+
+
+def test_ops_s1_extension_must_do_includes_wiring() -> None:
+    """Reuse→ops brief must not collapse to host + no-new-app only."""
+    from app.ai_conversation.understand import (
+        _brief_must_do_constraints,
+        score_must_do_constraints,
+        build_understanding,
+    )
+
+    rows = _brief_must_do_constraints(
+        OPS_S1_EXTENSION, host="res.partner", inherit=True
+    )
+    joined = " | ".join(rows).lower()
+    assert "on contacts (res.partner)" in joined
+    assert "reuse" in joined and "do not recreate" in joined
+    assert "pickings" in joined or "transfers" in joined
+    assert "filter" in joined
+    assert "automation" in joined
+    assert "do not create a new home-screen app" in joined
+    assert "stock.picking" not in joined  # surface language, not host steal
+    assert not any(r.lower().startswith("on inventory") for r in rows)
+
+    thin = [
+        "On Contacts (res.partner)",
+        "Do not create a new home-screen app",
+    ]
+    thin_score = score_must_do_constraints(
+        OPS_S1_EXTENSION, thin, host="res.partner", inherit=True
+    )
+    assert thin_score["pass"] is False
+    assert any("missing Must-do" in r for r in thin_score["reasons"])
+
+    full_score = score_must_do_constraints(
+        OPS_S1_EXTENSION, rows, host="res.partner", inherit=True
+    )
+    assert full_score["pass"] is True
+
+    u = build_understanding(OPS_S1_EXTENSION)
+    assert u.host_model == "res.partner"
+    assert u.inherit_existing is True
+    u_joined = " | ".join(u.constraints).lower()
+    assert "pickings" in u_joined or "transfers" in u_joined
+    assert "filter" in u_joined
+    assert "automation" in u_joined
+    assert "stock.picking" not in u_joined
+
+
+def test_ops_must_do_host_line_steal_even_when_brief_names_pickings() -> None:
+    """Brief may name pickings for surface; Must-do must not claim them as host."""
+    from app.ai_conversation.understand import score_must_do_constraints
+
+    stolen = [
+        "On Inventory (stock.picking)",
+        "Reuse existing Prefer for delivery — do not recreate",
+        "Do not create a new home-screen app",
+    ]
+    scored = score_must_do_constraints(
+        OPS_S1_EXTENSION, stolen, host="res.partner", inherit=True
+    )
+    assert scored["pass"] is False
+    assert any("host-steal" in r.lower() for r in scored["reasons"])

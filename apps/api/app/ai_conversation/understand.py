@@ -283,6 +283,79 @@ _PRONOUN_LABELS = frozenset(
     {"it", "this", "that", "them", "one", "field", "a field", "the field"}
 )
 
+# Ops-extension briefs (reuse existing fields → wire into workflows).
+_REUSE_EXISTING_RE = re.compile(
+    r"(?i)\b(?:"
+    r"already\s+persist|already\s+exist|already\s+on\s+res\.partner|"
+    r"reuse|do\s+not\s+recreate|don'?t\s+recreate|"
+    r"extend\s+so\s+they|matter\s+in\s+workflows?|"
+    r"functional\s+extension|still\s+inherit[- ]only"
+    r")\b"
+)
+_PICKING_SURFACE_RE = re.compile(
+    r"(?i)\b(?:"
+    r"pickings?|transfers?|smart\s+buttons?|"
+    r"surface\s+preferred|preferred[- ]delivery\s+contacts?"
+    r")\b"
+)
+_LIST_FILTER_RE = re.compile(
+    r"(?i)\b(?:optional\s+)?filter\b.{0,48}\b(?:delivery|inventory)\b|"
+    r"\b(?:delivery|inventory)\b.{0,48}\b(?:lists?|filter)\b|"
+    r"\bfilter\s+on\s+(?:delivery|inventory)\b"
+)
+_LIGHT_AUTOMATION_RE = re.compile(
+    r"(?i)\b(?:light\s+)?automation\b|"
+    r"\bwhen\s+(?:the\s+)?(?:box|checkbox)\s+is\s+checked\b|"
+    r"\bwhen\s+prefer(?:red)?(?:\s+for\s+delivery)?\s+is\s+checked\b"
+)
+_PREFER_DELIVERY_RE = re.compile(r"(?i)\bprefer(?:red)?\s+for\s+delivery\b")
+_DELIVERY_NOTES_RE = re.compile(r"(?i)\bdelivery\s+notes?\b")
+
+
+def _brief_ops_extension_themes(prompt: str) -> list[tuple[str, re.Pattern[str]]]:
+    """Required Must-do themes for reuse→ops briefs (not plain field packs)."""
+    text = (prompt or "").strip()
+    if not text:
+        return []
+    themes: list[tuple[str, re.Pattern[str]]] = []
+    # Only treat as ops-extension when wiring verbs appear (not S1 field-create).
+    wiring = bool(
+        _PICKING_SURFACE_RE.search(text)
+        or _LIST_FILTER_RE.search(text)
+        or _LIGHT_AUTOMATION_RE.search(text)
+    )
+    if not wiring:
+        return []
+    if _REUSE_EXISTING_RE.search(text) or _PREFER_DELIVERY_RE.search(text):
+        themes.append(
+            (
+                "reuse existing fields",
+                re.compile(r"(?i)\breuse|do\s+not\s+recreate|already\s+(?:persist|exist)"),
+            )
+        )
+    if _PICKING_SURFACE_RE.search(text):
+        themes.append(
+            (
+                "pickings/transfers surface",
+                re.compile(r"(?i)\bpickings?|transfers?|smart\s+button|domain"),
+            )
+        )
+    if _LIST_FILTER_RE.search(text):
+        themes.append(
+            (
+                "Delivery/Inventory filter",
+                re.compile(r"(?i)\bfilter\b"),
+            )
+        )
+    if _LIGHT_AUTOMATION_RE.search(text):
+        themes.append(
+            (
+                "light automation",
+                re.compile(r"(?i)\bautomation\b|when\s+prefer"),
+            )
+        )
+    return themes
+
 
 def _brief_must_do_constraints(
     prompt: str,
@@ -332,6 +405,34 @@ def _brief_must_do_constraints(
         gtitle = _GROUP_TITLE_NOISE_RE.sub("", gtitle).strip()
         if gtitle:
             rows.append(f"Place under {gtitle} group")
+
+    # Ops-extension: reuse existing Contact fields and wire into workflows.
+    # Keep host on res.partner — never claim stock.picking as the form host.
+    themes = _brief_ops_extension_themes(text)
+    if themes:
+        if any(label == "reuse existing fields" for label, _ in themes):
+            names: list[str] = []
+            if _PREFER_DELIVERY_RE.search(text):
+                names.append("Prefer for delivery")
+            if _DELIVERY_NOTES_RE.search(text):
+                names.append("Delivery notes")
+            if names:
+                rows.append(
+                    f"Reuse existing {' + '.join(names)} — do not recreate"
+                )
+            else:
+                rows.append("Reuse existing Contact fields — do not recreate")
+        if any(label == "pickings/transfers surface" for label, _ in themes):
+            rows.append(
+                "Surface preferred-delivery Contacts on pickings/transfers "
+                "(domain or smart button)"
+            )
+        if any(label == "Delivery/Inventory filter" for label, _ in themes):
+            rows.append(
+                "Optional filter on Delivery/Inventory lists for preferred contacts"
+            )
+        if any(label == "light automation" for label, _ in themes):
+            rows.append("Light automation when Prefer for delivery is checked")
 
     if _NO_NEW_APP_RE.search(text) or inherit:
         # Inherit already implies no new app; only add explicit phrasing when said or inherit.
@@ -475,6 +576,20 @@ def score_must_do_constraints(
         score -= 0.25
         reasons.append("thin Must do for a clear brief")
 
+    # Ops-extension theme coverage (pickings / filter / automation / reuse)
+    ops_themes = _brief_ops_extension_themes(prompt)
+    if ops_themes:
+        missing = 0
+        for label, pat in ops_themes:
+            if not pat.search(joined):
+                missing += 1
+                reasons.append(f"missing Must-do for {label}")
+        if missing:
+            score -= min(0.55, 0.2 * missing)
+        if clear and len(rows) < 4:
+            score -= 0.2
+            reasons.append("thin Must do for ops-extension brief")
+
     # Host consistency / host-steal
     if host:
         from app.ai_grain import HOST_LABELS
@@ -495,8 +610,19 @@ def score_must_do_constraints(
                 rf"(?i)\b(?:on|host|inherit(?:s|ing)?)\s+{re.escape(rival_label)}\b|"
                 rf"\b{re.escape(rival)}\b"
             )
+            # Host-line claim always steals, even if the brief mentions the rival
+            # for surface/filter wiring (ops-extension on Contacts).
+            host_line_steal = re.compile(
+                rf"(?i)(?:^|[|])\s*on\s+{re.escape(rival_label)}"
+                rf"(?:\s*\(\s*{re.escape(rival)}\s*\))?\b|"
+                rf"\bhost(?:ed)?\s+(?:on\s+)?{re.escape(rival)}\b"
+            )
+            if host_line_steal.search(joined):
+                score -= 0.45
+                reasons.append(f"host-steal: claimed {rival} while host is {host}")
+                break
             if steal_pat.search(joined) and rival not in (prompt or "").lower():
-                # Allow rival only if brief also named it
+                # Soft steal for rival tokens when the brief never named them
                 score -= 0.45
                 reasons.append(f"host-steal: claimed {rival} while host is {host}")
                 break
