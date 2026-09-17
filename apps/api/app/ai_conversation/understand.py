@@ -1,8 +1,11 @@
 """Locked diagnosis IR — parse the brief before App Studio generates.
 
-Deterministic classify/host/gaps win. An optional fast LLM may fill summary,
-constraints, and a missing host. It cannot override gold, refuse-clone, or
-an allowlisted host the regex already named.
+Deterministic classify/host/gaps win for routing. Must-do (constraints) is
+LLM-first when intent LLM is enabled: the deterministic extractor is only a
+seed/backstop. A scorer validates coverage, host consistency, and forbidden
+invents; weak LLM output gets one repair retry, then a merge of the best of
+det + LLM. Gold, refuse-clone, and an allowlisted host the regex already named
+are never overridden.
 """
 
 from __future__ import annotations
@@ -20,7 +23,6 @@ logger = logging.getLogger(__name__)
 UNDERSTANDING_KEY = "understanding_json"
 DIAGNOSIS_KEY = "diagnosis"
 
-_CLIENT_SOW_RE = re.compile(r"(?i)\b(the\s+client\s+wants|statement\s+of\s+work|sow)\b")
 _MARKUP_RE = re.compile(r"(?i)mark-?up")
 _WHT_RE = re.compile(r"(?i)withh?olding|\bwht\b")
 _PCT_RANGE_RE = re.compile(r"(?i)10\s*%?\s*[-–to]+\s*25\s*%")
@@ -62,6 +64,9 @@ class Understanding:
         from app.ai_grain import HOST_LABELS
 
         data["host_label"] = HOST_LABELS.get(self.host_model or "", self.host_model)
+        score = getattr(self, "_must_do_score", None)
+        if isinstance(score, dict):
+            data["_must_do_score"] = score
         return data
 
     @classmethod
@@ -320,6 +325,265 @@ def _brief_must_do_constraints(
     return _dedupe(rows)[:12]
 
 
+_MUST_DO_PASS = 0.65
+_FORBIDDEN_MUST_DO_RE = re.compile(
+    r"(?i)\b(?:create(?:s|d)?\s+(?:an?\s+)?account\.tax|"
+    r"new\s+account\.tax|"
+    r"invent(?:ed)?\s+account\.tax|"
+    r"env\[\s*['\"]account\.tax['\"]\s*\]\s*\.create|"
+    r"clone\s+(?:the\s+)?(?:apps?\s+store|odoo\s+apps))\b"
+)
+_NEW_APP_CLAIM_RE = re.compile(
+    r"(?i)\b(?:create|build|add)\s+(?:a\s+)?new\s+(?:home[- ]?screen\s+)?app\b"
+)
+_NO_NEW_APP_CLAIM_RE = re.compile(
+    r"(?i)\b(?:do\s+not|don't|no)\s+(?:create\s+)?(?:a\s+)?new\s+(?:home[- ]?screen\s+)?app\b"
+)
+
+
+def _brief_named_entities(prompt: str) -> list[str]:
+    """Field labels, groups, and explicit host phrases the brief names."""
+    text = (prompt or "").strip()
+    if not text:
+        return []
+    entities: list[str] = []
+    for m in _CHECKBOX_FIELD_RE.finditer(text):
+        label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
+        if label:
+            entities.append(label)
+    for m in _TYPED_TEXT_FIELD_RE.finditer(text):
+        label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
+        low = label.lower()
+        if label and low not in {"add", "a", "an", "the", "new", "and", "or"}:
+            if not low.startswith("checkbox"):
+                entities.append(label)
+    for m in _ADD_NAMED_FIELD_RE.finditer(text):
+        label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
+        low = label.lower()
+        if (
+            label
+            and low not in {"checkbox", "boolean", "text", "field", "a field"}
+            and low not in _PRONOUN_LABELS
+            and len(label) >= 3
+        ):
+            entities.append(label)
+    gm = _UNDER_GROUP_RE.search(text)
+    if gm:
+        entities.append(gm.group(1).strip())
+    from app.ai_grain import HOST_ALIASES, HOST_LABELS
+
+    low = text.lower()
+    for phrase, model in sorted(HOST_ALIASES.items(), key=lambda kv: -len(kv[0])):
+        if phrase in low and len(phrase) >= 4:
+            entities.append(HOST_LABELS.get(model, phrase))
+            entities.append(model)
+            break
+    # Workflow / state words when present
+    for token in ("draft", "confirm", "approved", "done", "cancel", "workflow", "stage"):
+        if re.search(rf"(?i)\b{re.escape(token)}\b", text):
+            entities.append(token)
+    return _dedupe(entities)
+
+
+def _brief_is_clear_for_must_do(
+    prompt: str,
+    *,
+    host: str | None,
+    inherit: bool,
+) -> bool:
+    """True when an empty Must-do list is a product failure (operator had enough detail)."""
+    text = (prompt or "").strip()
+    if len(text) < 24:
+        return False
+    entities = _brief_named_entities(text)
+    if host and inherit and len(entities) >= 2:
+        return True
+    if len(entities) >= 3:
+        return True
+    if _NO_NEW_APP_RE.search(text) and (host or entities):
+        return True
+    return False
+
+
+def score_must_do_constraints(
+    prompt: str,
+    constraints: list[str],
+    *,
+    host: str | None = None,
+    inherit: bool = False,
+    needs_module: bool = False,
+) -> dict[str, Any]:
+    """Score Must-do bullets vs the brief. Returns score 0..1, reasons, pass."""
+    rows = [str(r).strip() for r in (constraints or []) if str(r).strip()]
+    reasons: list[str] = []
+    score = 1.0
+    entities = _brief_named_entities(prompt)
+    joined = " | ".join(rows).lower()
+    clear = _brief_is_clear_for_must_do(prompt, host=host, inherit=inherit)
+
+    if not rows:
+        if clear:
+            return {
+                "score": 0.0,
+                "reasons": ["empty Must do on a clear brief"],
+                "pass": False,
+            }
+        return {"score": 0.35, "reasons": ["empty constraints"], "pass": False}
+
+    # Entity coverage
+    if entities:
+        hits = 0
+        for ent in entities:
+            key = ent.lower()
+            if len(key) < 3:
+                continue
+            if key in joined:
+                hits += 1
+            else:
+                # soft match on significant tokens
+                toks = [t for t in re.split(r"\W+", key) if len(t) >= 4]
+                if toks and all(t in joined for t in toks[:2]):
+                    hits += 1
+        coverage = hits / max(len(entities), 1)
+        if coverage < 0.4:
+            score -= 0.4
+            reasons.append(f"low entity coverage ({hits}/{len(entities)})")
+        elif coverage < 0.7:
+            score -= 0.2
+            reasons.append(f"partial entity coverage ({hits}/{len(entities)})")
+    elif clear and len(rows) < 2:
+        score -= 0.25
+        reasons.append("thin Must do for a clear brief")
+
+    # Host consistency / host-steal
+    if host:
+        from app.ai_grain import HOST_LABELS
+
+        label = HOST_LABELS.get(host, host).lower()
+        host_l = host.lower()
+        rivals = {
+            "res.partner": ("stock.picking", "sale.order", "purchase.order"),
+            "sale.order": ("purchase.order", "stock.picking"),
+            "account.move": ("sale.order", "purchase.order"),
+            "stock.picking": ("res.partner", "sale.order"),
+            "purchase.order": ("sale.order",),
+        }.get(host, ())
+        for rival in rivals:
+            rival_label = HOST_LABELS.get(rival, rival).lower()
+            # Claim that Must-do lives on the rival host (not merely mentioning a field word).
+            steal_pat = re.compile(
+                rf"(?i)\b(?:on|host|inherit(?:s|ing)?)\s+{re.escape(rival_label)}\b|"
+                rf"\b{re.escape(rival)}\b"
+            )
+            if steal_pat.search(joined) and rival not in (prompt or "").lower():
+                # Allow rival only if brief also named it
+                score -= 0.45
+                reasons.append(f"host-steal: claimed {rival} while host is {host}")
+                break
+        # Prefer seeing the locked host somewhere when inherit
+        if inherit and host_l not in joined and label not in joined:
+            score -= 0.15
+            reasons.append(f"host {host} not reflected in Must do")
+
+    # Forbidden invents
+    for row in rows:
+        if _FORBIDDEN_MUST_DO_RE.search(row):
+            score -= 0.5
+            reasons.append("forbidden invent (account.tax / Apps Store clone)")
+            break
+        if inherit and _NEW_APP_CLAIM_RE.search(row) and not _NO_NEW_APP_CLAIM_RE.search(row):
+            score -= 0.35
+            reasons.append("contradicts inherit: claims new home-screen app")
+            break
+
+    # Online honesty when Python / Option A
+    if needs_module:
+        honesty_bits = ("option a", "module", "sandbox", "promote", "not install this app", "zip")
+        if not any(bit in joined for bit in honesty_bits):
+            score -= 0.1
+            reasons.append("Option A honesty missing (module/sandbox/Promote)")
+
+    # Min length / quality
+    short = [r for r in rows if len(r) < 8]
+    if short and len(short) >= max(2, len(rows) // 2):
+        score -= 0.2
+        reasons.append("too many short / low-quality Must-do rows")
+    if entities and len(entities) >= 3 and len(rows) < 2:
+        score -= 0.25
+        reasons.append("too few Must-do bullets for multi-req brief")
+    if any(len(r) > 220 for r in rows):
+        score -= 0.05
+        reasons.append("overlong Must-do row")
+
+    score = max(0.0, min(1.0, round(score, 3)))
+    return {"score": score, "reasons": reasons, "pass": score >= _MUST_DO_PASS}
+
+
+def _merge_must_do(
+    det_rows: list[str],
+    llm_rows: list[str],
+    *,
+    prompt: str,
+    host: str | None,
+    inherit: bool,
+    needs_module: bool,
+) -> list[str]:
+    """Prefer LLM Must-do; backfill missing det seed bullets the LLM dropped."""
+    llm = _dedupe([str(x).strip() for x in llm_rows if str(x).strip()])[:12]
+    det = _dedupe([str(x).strip() for x in det_rows if str(x).strip()])[:12]
+    if not llm:
+        return det
+    if not det:
+        return llm
+    merged = list(llm)
+    joined = " | ".join(merged).lower()
+    for row in det:
+        key = row.lower()
+        # Skip host-only det lines if LLM already named host/label
+        if key.startswith("on ") and any(
+            bit in joined for bit in ("on contacts", "res.partner", host or "\0")
+        ):
+            continue
+        # Significant tokens from det row must appear somewhere
+        toks = [t for t in re.split(r"\W+", key) if len(t) >= 4]
+        if toks and all(t in joined for t in toks[:3]):
+            continue
+        if key not in joined:
+            merged.append(row)
+    merged = _dedupe(merged)[:12]
+    # Pick the better of llm-only vs merged vs det-only by score
+    candidates = [llm, merged, det]
+    best = max(
+        candidates,
+        key=lambda rows: score_must_do_constraints(
+            prompt, rows, host=host, inherit=inherit, needs_module=needs_module
+        )["score"],
+    )
+    return best
+
+
+def _parse_enrich_payload(raw: Any) -> dict[str, Any] | None:
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            blob = json.loads(raw)
+            return blob if isinstance(blob, dict) else None
+        except json.JSONDecodeError:
+            return None
+    return None
+
+
+def _stamp_must_do_score(understanding: Understanding, score: dict[str, Any]) -> Understanding:
+    object.__setattr__(understanding, "_must_do_score", {
+        "score": float(score.get("score") or 0.0),
+        "reasons": list(score.get("reasons") or []),
+        "pass": bool(score.get("pass")),
+    })
+    return understanding
+
+
+
 def _deterministic_understanding(prompt: str) -> Understanding:
     from app.ai_generation_engine import classify_generation
     from app.ai_grain import HOST_LABELS, classify_grain, preferred_inherit_host
@@ -428,20 +692,62 @@ def _deterministic_understanding(prompt: str) -> Understanding:
 
 
 def _should_llm_enrich(prompt: str, det: Understanding) -> bool:
+    """LLM-first Must-do whenever intent LLM is on (except refuse_clone).
+
+    Deterministic constraints remain a seed/backstop; high confidence + host
+    present must not skip enrich.
+    """
+    _ = prompt
     if not intent_llm_enabled():
         return False
     if det.capability == "refuse_clone":
         return False
-    text = prompt or ""
-    if len(text) >= 280 or _CLIENT_SOW_RE.search(text):
-        return True
-    if det.confidence == "low":
-        return True
-    if det.inherit_existing and not det.host_model:
-        return True
-    if det.inherit_existing and not det.constraints:
-        return True
-    return False
+    return True
+
+
+def _must_do_system_prompt() -> str:
+    return (
+        "You diagnose an Odoo Community customization brief for App Studio. "
+        "Reply JSON only. constraints are operator-facing Must-do bullets — "
+        "as careful as a human reading the brief. Cover: (1) host/placement "
+        "(model + form/group when named), (2) fields with types when stated, "
+        "(3) workflows/states if implied, (4) live Install vs Option A module "
+        "delivery when Python/QWeb/HTTP is needed, (5) non-goals, (6) Online "
+        "honesty when Python cannot Install live (module zip → sandbox → human "
+        "Promote). Infer beyond literal copy when the brief implies it, but "
+        "never invent account.tax, never invent a fake x_* app when inheriting, "
+        "never contradict inherit vs new home-screen tile. "
+        "host_model must be an Odoo model like sale.order / res.partner when "
+        "inheriting. Do not override gold or refuse_clone."
+    )
+
+
+def _must_do_user_prompt(
+    prompt: str,
+    det: Understanding,
+    *,
+    repair_reasons: list[str] | None = None,
+) -> str:
+    seed = det.constraints[:8]
+    base = (
+        f"Operator brief:\n{prompt}\n\n"
+        f"Deterministic draft (seed/backstop only): capability={det.capability} "
+        f"host={det.host_model} inherit={det.inherit_existing} "
+        f"needs_module={det.needs_module} gold={det.gold_artifact_id} "
+        f"grain={det.grain}\n"
+        f"Deterministic Must-do seed: {json.dumps(seed)}\n"
+        "Fill title, summary, constraints (Must-do), out_of_scope. "
+        "constraints must be concrete Must-do bullets for this brief's complexity. "
+        "You may set host_model only if missing. Do not change gold or refuse."
+    )
+    if repair_reasons:
+        base += (
+            "\n\nREPAIR PASS — previous Must-do scored low for: "
+            + "; ".join(repair_reasons[:6])
+            + ". Rewrite constraints to fix those gaps. Keep host consistent "
+            "with the deterministic host when set. Stay compact (≤10 bullets)."
+        )
+    return base
 
 
 def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
@@ -449,50 +755,113 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
 
     provider = get_llm_provider_for_tier("fast")
     if provider is None:
-        return det
-    system = (
-        "You diagnose an Odoo Community customization brief. Reply JSON only. "
-        "Never invent a new home-screen app when the brief extends Sales, invoices, "
-        "or a delivery slip. Never create account.tax. "
-        "host_model must be an Odoo model like sale.order when inheriting a stock form."
-    )
-    user = (
-        f"Operator brief:\n{prompt}\n\n"
-        f"Deterministic draft: capability={det.capability} host={det.host_model} "
-        f"inherit={det.inherit_existing} needs_module={det.needs_module} "
-        f"gold={det.gold_artifact_id}\n"
-        "Fill title, summary, constraints, out_of_scope. "
-        "You may set host_model if missing. Do not change gold or refuse."
-    )
-    try:
-        raw = provider.generate_json(
-            user,
-            system=system,
-            timeout_s=20.0,
-            temperature=0.0,
-            format_schema=_UNDERSTAND_SCHEMA,
+        scored = score_must_do_constraints(
+            prompt,
+            det.constraints,
+            host=det.host_model,
+            inherit=det.inherit_existing,
+            needs_module=det.needs_module,
         )
-    except LLMError as exc:
-        logger.info("Understanding LLM skipped: %s", exc)
-        return det
-    parsed = raw if isinstance(raw, dict) else None
-    if parsed is None and isinstance(raw, str):
+        return _stamp_must_do_score(det, scored)
+
+    def _call(*, repair_reasons: list[str] | None = None) -> dict[str, Any] | None:
         try:
-            blob = json.loads(raw)
-            parsed = blob if isinstance(blob, dict) else None
-        except json.JSONDecodeError:
-            parsed = None
+            raw = provider.generate_json(
+                _must_do_user_prompt(prompt, det, repair_reasons=repair_reasons),
+                system=_must_do_system_prompt(),
+                timeout_s=20.0,
+                temperature=0.0,
+                format_schema=_UNDERSTAND_SCHEMA,
+            )
+        except LLMError as exc:
+            logger.info("Understanding LLM skipped: %s", exc)
+            return None
+        return _parse_enrich_payload(raw)
+
+    parsed = _call()
     if not parsed:
-        return det
+        scored = score_must_do_constraints(
+            prompt,
+            det.constraints,
+            host=det.host_model,
+            inherit=det.inherit_existing,
+            needs_module=det.needs_module,
+        )
+        return _stamp_must_do_score(det, scored)
 
     host = det.host_model
     coerced = _coerce_host_model(str(parsed.get("host_model") or ""))
     if coerced and not host:
         host = coerced
-    constraints = list(det.constraints)
+
+    llm_constraints: list[str] = []
     extra = parsed.get("constraints")
     if isinstance(extra, list):
-        constraints.extend(str(x) for x in extra if str(x).strip())
+        llm_constraints = [str(x).strip() for x in extra if str(x).strip()]
+
+    constraints = _merge_must_do(
+        det.constraints,
+        llm_constraints,
+        prompt=prompt,
+        host=host,
+        inherit=det.inherit_existing,
+        needs_module=det.needs_module,
+    )
+    score = score_must_do_constraints(
+        prompt,
+        constraints,
+        host=host,
+        inherit=det.inherit_existing,
+        needs_module=det.needs_module,
+    )
+
+    # One compact repair retry when weak
+    if not score["pass"]:
+        repaired = _call(repair_reasons=list(score.get("reasons") or []))
+        if repaired:
+            repair_extra = repaired.get("constraints")
+            repair_rows = (
+                [str(x).strip() for x in repair_extra if str(x).strip()]
+                if isinstance(repair_extra, list)
+                else []
+            )
+            if repair_rows:
+                candidate = _merge_must_do(
+                    det.constraints,
+                    repair_rows,
+                    prompt=prompt,
+                    host=host,
+                    inherit=det.inherit_existing,
+                    needs_module=det.needs_module,
+                )
+                repair_score = score_must_do_constraints(
+                    prompt,
+                    candidate,
+                    host=host,
+                    inherit=det.inherit_existing,
+                    needs_module=det.needs_module,
+                )
+                if repair_score["score"] >= score["score"]:
+                    constraints = candidate
+                    score = repair_score
+                    # Prefer repaired title/summary when present
+                    parsed = {**parsed, **{
+                        k: repaired[k] for k in ("title", "summary", "out_of_scope", "confidence")
+                        if k in repaired
+                    }}
+
+    # Final downgrade path: if still weak, prefer stronger of det vs current
+    det_score = score_must_do_constraints(
+        prompt,
+        det.constraints,
+        host=host or det.host_model,
+        inherit=det.inherit_existing,
+        needs_module=det.needs_module,
+    )
+    if det_score["score"] > score["score"]:
+        constraints = list(det.constraints)
+        score = det_score
+
     out = list(det.out_of_scope)
     extra_out = parsed.get("out_of_scope")
     if isinstance(extra_out, list):
@@ -506,7 +875,13 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
     confidence = det.confidence
     if parsed.get("confidence") == "low" and det.confidence != "high":
         confidence = "low"
-    return Understanding(
+    # Soft-downgrade confidence when Must-do still fails after repair+merge
+    if not score["pass"] and _brief_is_clear_for_must_do(
+        prompt, host=host, inherit=inherit
+    ):
+        confidence = "low"
+
+    result = Understanding(
         capability=det.capability,
         grain=det.grain,
         host_model=host,
@@ -515,18 +890,26 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
         gold_artifact_id=det.gold_artifact_id,
         title=title,
         summary=summary,
-        constraints=_dedupe(constraints),
-        out_of_scope=_dedupe(out),
-        source="mixed" if coerced or extra else "deterministic",
+        constraints=_dedupe(constraints)[:12],
+        out_of_scope=_dedupe(out)[:8],
+        source="mixed" if (coerced or llm_constraints) else "deterministic",
         confidence=confidence,
     )
+    return _stamp_must_do_score(result, score)
 
 
 def build_understanding(prompt: str) -> Understanding:
     det = _deterministic_understanding(prompt)
     if _should_llm_enrich(prompt, det):
         return _llm_enrich(prompt, det)
-    return det
+    scored = score_must_do_constraints(
+        prompt,
+        det.constraints,
+        host=det.host_model,
+        inherit=det.inherit_existing,
+        needs_module=det.needs_module,
+    )
+    return _stamp_must_do_score(det, scored)
 
 
 def diagnosis_clarification(understanding: Understanding) -> dict[str, Any]:
@@ -667,5 +1050,6 @@ __all__ = [
     "load_understanding",
     "apply_understanding_edits",
     "parse_locked_diagnosis",
+    "score_must_do_constraints",
     "understanding_contradictions",
 ]
