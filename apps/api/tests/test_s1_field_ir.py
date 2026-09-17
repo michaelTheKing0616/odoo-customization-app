@@ -126,3 +126,28 @@ def test_sanitize_drops_a_new_and_article_labels() -> None:
     assert "x_new" not in by
     assert by["x_delivery_notes"]["string"] == "Delivery notes"
     assert draft["_form_slots"]["group_title"] == "Delivery"
+
+
+def test_where_on_catalog_shows_delivery_group_not_new_tab() -> None:
+    """Where-on picker must show Delivery group, not New tab, for S1 briefs."""
+    from app.ai_form_slots import apply_form_slots, named_group_title, slot_catalog
+
+    assert named_group_title(
+        'under a small "Delivery" group'
+    ) == "Delivery"
+    catalog = slot_catalog("res.partner", group_title="Delivery")
+    named = next(row for row in catalog if row["id"] == "new_tab")
+    assert named["label"] == "Delivery group"
+    assert "New tab" not in named["label"]
+    assert named["phrase"] == "under Delivery group"
+
+    draft, _, _ = draft_component_from_prompt(
+        S1_ARTICLES, available_models=["res.partner", "stock.picking"]
+    )
+    apply_form_slots(draft, prompt=S1_ARTICLES)
+    stamp = draft["_form_slots"]
+    assert stamp["group_title"] == "Delivery"
+    labeled = next(row for row in stamp["catalog"] if row["id"] == "new_tab")
+    assert labeled["label"] == "Delivery group"
+    fields = stamp["fields"]
+    assert set(fields.values()) == {"new_tab"}

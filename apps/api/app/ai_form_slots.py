@@ -116,7 +116,22 @@ def partner_place_phrase(host: str) -> str:
     return "next to vendor"
 
 
-def slot_catalog(host: str) -> list[dict[str, str]]:
+def slot_catalog(host: str, *, group_title: str | None = None) -> list[dict[str, str]]:
+    """Picker options for Where-on.
+
+    When the brief names a sheet group (e.g. Delivery), the ``new_tab`` slot is
+    still the storage id (preview + xpath already treat it as a named group),
+    but the operator-facing label must read "Delivery group" — never "New tab".
+    """
+    title = (group_title or "").strip()
+    if title:
+        named = {
+            "id": "new_tab",
+            "label": f"{title} group",
+            "phrase": f"under {title} group",
+        }
+    else:
+        named = {"id": "new_tab", "label": "New tab", "phrase": "on a new tab"}
     return [
         {
             "id": "next_to_partner",
@@ -125,7 +140,7 @@ def slot_catalog(host: str) -> list[dict[str, str]]:
         },
         {"id": "next_to_dates", "label": "Next to dates", "phrase": "next to dates"},
         {"id": "other_info", "label": "Other Info tab", "phrase": "in other info"},
-        {"id": "new_tab", "label": "New tab", "phrase": "on a new tab"},
+        named,
     ]
 
 
@@ -155,14 +170,26 @@ def slot_from_location(text: str) -> str | None:
 
 
 _UNDER_GROUP_RE = re.compile(
-    r"(?i)\bunder\s+(?:(?:the|a|an)\s+)?([A-Za-z][\w /&-]{0,40}?)\s+group\b"
+    # under Delivery group | under the Delivery group |
+    # under a small "Delivery" group | under a small Delivery group
+    r"(?i)\bunder\s+"
+    r"(?:(?:the|a|an)\s+)?"
+    r"(?:(?:small|tiny|new|compact|simple|short)\s+)?"
+    r"[\"']?"
+    r"([A-Za-z][\w /&-]{0,40}?)"
+    r"[\"']?"
+    r"\s+group\b"
 )
 _LEADING_ARTICLE_RE = re.compile(r"(?i)^(a|an|the)\s+")
+_GROUP_TITLE_NOISE_RE = re.compile(
+    r"(?i)^(small|tiny|new|compact|simple|short)\s+"
+)
 
 
 def _normalize_group_title(raw: str) -> str | None:
     title = re.sub(r"\s+", " ", (raw or "")).strip(" .")
     title = _LEADING_ARTICLE_RE.sub("", title).strip()
+    title = _GROUP_TITLE_NOISE_RE.sub("", title).strip()
     if not title or title.lower() in {"the", "a", "an", "new", "other", "group", "tab"}:
         return None
     if " " not in title:
@@ -401,13 +428,14 @@ def apply_form_slots(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
     notes.extend(strip_inherit_filler(inherit, user_prompt))
     host = str(inherit.get("model") or "")
     mapping = assign_slots(draft, prompt=user_prompt)
-    catalog = slot_catalog(host)
+    group_title = named_group_title(user_prompt)
+    catalog = slot_catalog(host, group_title=group_title)
     draft["_form_slots"] = {
         "host": host,
         "fields": mapping,
         "catalog": catalog,
         "tab_title": tab_title(user_prompt),
-        "group_title": named_group_title(user_prompt),
+        "group_title": group_title,
     }
     views = [v for v in (draft.get("views") or []) if isinstance(v, dict)]
     draft["views"] = [

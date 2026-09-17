@@ -146,6 +146,23 @@ describe("inheritPlacementRows", () => {
       }),
     ).toEqual([{ id: "next_to_partner", label: "Next to vendor", phrase: "next to vendor" }]);
   });
+
+  it("rewrites New tab to Delivery group when group_title is stamped", () => {
+    expect(
+      formSlotCatalog({
+        _form_slots: {
+          group_title: "Delivery",
+          catalog: [
+            { id: "next_to_partner", label: "Next to name", phrase: "next to name" },
+            { id: "new_tab", label: "New tab", phrase: "on a new tab" },
+          ],
+        },
+      }),
+    ).toEqual([
+      { id: "next_to_partner", label: "Next to name", phrase: "next to name" },
+      { id: "new_tab", label: "Delivery group", phrase: "under Delivery group" },
+    ]);
+  });
 });
 
 describe("viewDesignerHref", () => {

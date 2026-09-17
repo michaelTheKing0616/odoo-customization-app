@@ -126,13 +126,23 @@ export function formSlotCatalog(
   const stamp = formSlotsStamp(draft);
   const catalog = stamp?.catalog;
   if (!Array.isArray(catalog)) return [];
+  const groupTitle = String(stamp?.group_title || "").trim();
   return catalog
     .filter((row): row is Record<string, unknown> => Boolean(row && typeof row === "object"))
-    .map((row) => ({
-      id: String(row.id || ""),
-      label: String(row.label || row.id || ""),
-      phrase: String(row.phrase || ""),
-    }))
+    .map((row) => {
+      const id = String(row.id || "");
+      let label = String(row.label || row.id || "");
+      let phrase = String(row.phrase || "");
+      // Named sheet group: never show bare "New tab" when Must-do placed under X group.
+      if (id === "new_tab" && groupTitle) {
+        const bare = !label || /^new tab$/i.test(label);
+        if (bare) {
+          label = `${groupTitle} group`;
+          phrase = phrase && !/^on a new tab$/i.test(phrase) ? phrase : `under ${groupTitle} group`;
+        }
+      }
+      return { id, label, phrase };
+    })
     .filter((row) => row.id);
 }
 
