@@ -222,7 +222,7 @@ export default function ConnectPage() {
         <div className="mt-4">
           <PageHeader
             title="Connect your Odoo"
-            description="URL, database, and API key (or password). Credentials are encrypted at rest and verified before save."
+            description="URL, database, and Odoo API key or password for external RPC (XML-RPC / JSON-RPC) — not a Cursor MCP connector. Credentials are encrypted at rest and verified before save."
           />
           <Callout variant="info" title="Least-privilege + observer default" className="mt-4">
             New connections start in <strong>Observer</strong> mode (read-only). Use a dedicated
@@ -457,7 +457,10 @@ export default function ConnectPage() {
                 {editingId === c.id ? (
                   <form onSubmit={onUpdate} className="mt-4 space-y-3 border-t border-border-subtle pt-4">
                     <p className="text-sm text-muted">
-                      Update connection (password optional — leave blank to keep current)
+                      Update connection (password / API key optional — leave blank to keep
+                      current). Rotating only the Odoo RPC secret keeps this connection id —
+                      App Studio drafts, projects, and ModuleSpec WIP stay attached. Deleting
+                      the connection removes that WIP.
                     </p>
                     <Input
                       label="Label"
@@ -485,11 +488,12 @@ export default function ConnectPage() {
                       onChange={(e) => setEditForm({ ...editForm, username: e.target.value })}
                     />
                     <Input
-                      label="New password / API key"
+                      label="New Odoo password / RPC API key"
                       type="password"
                       value={editForm.password}
                       onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
                       autoComplete="new-password"
+                      hint="Odoo XML-RPC/JSON-RPC secret only — not a Cursor MCP key. Updating it does not wipe drafts or projects."
                     />
                     <div className="flex gap-2">
                       <Button type="submit" variant="primary" size="sm" loading={saving}>

@@ -59,6 +59,18 @@ describe("connect-checklist", () => {
     expect(hostCapabilityBullets("online").some((b) => /Python/i.test(b))).toBe(true);
   });
 
+  it("API key copy distinguishes Odoo RPC from Cursor MCP", () => {
+    const online = credentialFieldCopy("online").hint;
+    expect(online).toMatch(/XML-RPC|JSON-RPC|external RPC/i);
+    expect(online).toMatch(/not a Cursor MCP|not.*Cursor MCP/i);
+    expect(online).toMatch(/Model Context Protocol/i);
+    const steps = apiKeyGuideSteps("online");
+    const last = steps[steps.length - 1]?.body || "";
+    expect(last).toMatch(/XML-RPC|JSON-RPC|external.?RPC/i);
+    expect(last).toMatch(/not a Cursor MCP/i);
+    expect(hostCapabilityBullets("online").some((b) => /not Cursor MCP/i.test(b))).toBe(true);
+  });
+
   it("augments Online auth failures", () => {
     const msg = formatAuthFailureHint("online", "Authentication failed");
     expect(msg).toMatch(/API key/i);

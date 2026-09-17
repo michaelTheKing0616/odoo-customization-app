@@ -61,8 +61,12 @@ export function ConnectApiKeyGuide({ url, hosting, errorMessage, className }: Pr
               : "Create an Odoo API key (optional but safer)"}
           </h3>
           <p className="mt-1 text-xs text-muted">
-            The key is created <span className="font-medium text-ink">inside Odoo</span>
-            — Ingenium cannot mint it. We open Odoo for you; you paste the key back here.
+            This is an <span className="font-medium text-ink">Odoo external RPC</span> API key
+            (XML-RPC / JSON-RPC) so Ingenium can talk to your database —{" "}
+            <span className="font-medium text-ink">not</span> a Cursor MCP server key or Model
+            Context Protocol connector. The key is created{" "}
+            <span className="font-medium text-ink">inside Odoo</span>; Ingenium cannot mint it.
+            We open Odoo for you; you paste the key back here.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -124,7 +128,7 @@ export function ConnectApiKeyGuide({ url, hosting, errorMessage, className }: Pr
           className="mt-3"
           testId="connect-api-key-auth-nudge"
         >
-          Paste the new key into the secret field above (leave the website password out), then save again.
+          Paste the new Odoo RPC API key into the secret field above (not a Cursor MCP key; leave the website password out), then save again.
         </Callout>
       ) : null}
 
