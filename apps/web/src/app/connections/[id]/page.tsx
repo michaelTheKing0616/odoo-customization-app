@@ -701,7 +701,7 @@ export default function BrowserPage() {
         </div>
 
         <FirstRunCard connectionId={connectionId} modelCount={models.length} />
-        <InstanceFingerprintCard connectionId={connectionId} />
+        <InstanceFingerprintCard connectionId={connectionId} context="overview" />
 
         <Tabs
           className="mt-8"
@@ -896,6 +896,7 @@ export default function BrowserPage() {
         )}
 {section === "develop" ? (
         <>
+        <InstanceFingerprintCard connectionId={connectionId} context="develop" />
         <Card className="mt-8 p-5">
           <h2 className="text-xl font-semibold text-ink">Export, sandbox &amp; promote</h2>
           <p className="mt-1 text-sm text-muted">

@@ -10,6 +10,7 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { PageHeader } from "@/components/ui/layout-primitives";
 import { Disclosure } from "@/components/ui/Disclosure";
 import { ConfigCommandCenter } from "@/components/config/ConfigCommandCenter";
+import { InstanceFingerprintCard } from "@/components/overview/InstanceFingerprintCard";
 
 const CONFIRM_PHRASE = "I understand the risks";
 
@@ -181,6 +182,8 @@ export default function ConfigPage() {
         description="Recipe Command Center · Day-1 · numbering · apps · expert controls"
       />
       <VersionAwarenessBanner capabilities={connection?.capabilities} />
+
+      <InstanceFingerprintCard connectionId={connectionId} context="config" />
 
       <ConfigCommandCenter connectionId={connectionId} />
 

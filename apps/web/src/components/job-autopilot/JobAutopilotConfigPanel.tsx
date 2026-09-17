@@ -37,9 +37,9 @@ export function JobAutopilotConfigPanel({
     <Card className="p-5" data-testid="job-config-packet">
       <h2 className="text-lg font-semibold text-ink">Config Packet — client replay</h2>
       <p className="mt-1 text-sm text-muted">
-        Autopilot never writes production. After sandbox smoke, fingerprint the client,
-        dry-run the delta, then apply with the confirm phrase. SMTP and payment keys stay
-        a paste-in-Odoo checklist.
+        Autopilot never writes production. After sandbox smoke, fingerprint the client —
+        a receipt of that DB — then dry-run and apply with the confirm phrase. SMTP and
+        payment keys stay a paste-in-Odoo checklist.
       </p>
       {configPacket ? (
         <>
