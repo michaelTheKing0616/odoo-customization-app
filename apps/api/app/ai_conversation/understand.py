@@ -253,7 +253,18 @@ _NO_NEW_APP_RE = re.compile(
     r"not\s+a\s+new\s+(?:home[- ]?screen\s+)?app)\b"
 )
 _UNDER_GROUP_RE = re.compile(
-    r"(?i)\bunder\s+(?:(?:the|a|an)\s+)?([A-Za-z][\w /&-]{0,40}?)\s+group\b"
+    # "under Delivery group" | "under the Delivery group" |
+    # "under a small \"Delivery\" group" | "under a small Delivery group"
+    r"(?i)\bunder\s+"
+    r"(?:(?:the|a|an)\s+)?"
+    r"(?:(?:small|tiny|new|compact|simple|short)\s+)?"
+    r"[\"']?"
+    r"([A-Za-z][\w /&-]{0,40}?)"
+    r"[\"']?"
+    r"\s+group\b"
+)
+_GROUP_TITLE_NOISE_RE = re.compile(
+    r"(?i)^(small|tiny|new|compact|simple|short)\s+"
 )
 _LEADING_ARTICLE_RE = re.compile(r"(?i)^(a|an|the)\s+")
 _CHECKBOX_FIELD_RE = re.compile(
@@ -318,6 +329,7 @@ def _brief_must_do_constraints(
     gm = _UNDER_GROUP_RE.search(text)
     if gm:
         gtitle = _LEADING_ARTICLE_RE.sub("", gm.group(1).strip()).strip()
+        gtitle = _GROUP_TITLE_NOISE_RE.sub("", gtitle).strip()
         if gtitle:
             rows.append(f"Place under {gtitle} group")
 
@@ -375,6 +387,7 @@ def _brief_named_entities(prompt: str) -> list[str]:
     gm = _UNDER_GROUP_RE.search(text)
     if gm:
         gtitle = _LEADING_ARTICLE_RE.sub("", gm.group(1).strip()).strip()
+        gtitle = _GROUP_TITLE_NOISE_RE.sub("", gtitle).strip()
         if gtitle:
             entities.append(gtitle)
     from app.ai_grain import HOST_ALIASES, HOST_LABELS
@@ -798,8 +811,18 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
 
     host = det.host_model
     coerced = _coerce_host_model(str(parsed.get("host_model") or ""))
+    # Deterministic host wins. Never let LLM steal Contacts → stock.picking
+    # when the brief named Contacts / res.partner.
     if coerced and not host:
         host = coerced
+    elif (
+        coerced
+        and host
+        and coerced != host
+        and host == "res.partner"
+        and coerced in {"stock.picking", "stock.picking.type"}
+    ):
+        coerced = None  # keep Contacts host
 
     llm_constraints: list[str] = []
     extra = parsed.get("constraints")
@@ -869,6 +892,22 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
         constraints = list(det.constraints)
         score = det_score
 
+
+    # Never ship empty Must-do when the brief is clear / field-pack+host.
+    if not constraints and _brief_is_clear_for_must_do(
+        prompt, host=host or det.host_model, inherit=det.inherit_existing
+    ):
+        constraints = list(det.constraints) or _brief_must_do_constraints(
+            prompt, host=host or det.host_model, inherit=det.inherit_existing
+        )
+        score = score_must_do_constraints(
+            prompt,
+            constraints,
+            host=host or det.host_model,
+            inherit=det.inherit_existing,
+            needs_module=det.needs_module,
+        )
+
     out = list(det.out_of_scope)
     extra_out = parsed.get("out_of_scope")
     if isinstance(extra_out, list):
@@ -909,6 +948,27 @@ def build_understanding(prompt: str) -> Understanding:
     det = _deterministic_understanding(prompt)
     if _should_llm_enrich(prompt, det):
         return _llm_enrich(prompt, det)
+    constraints = list(det.constraints)
+    if not constraints and _brief_is_clear_for_must_do(
+        prompt, host=det.host_model, inherit=det.inherit_existing
+    ):
+        constraints = _brief_must_do_constraints(
+            prompt, host=det.host_model, inherit=det.inherit_existing
+        )
+        det = Understanding(
+            capability=det.capability,
+            grain=det.grain,
+            host_model=det.host_model,
+            inherit_existing=det.inherit_existing,
+            needs_module=det.needs_module,
+            gold_artifact_id=det.gold_artifact_id,
+            title=det.title,
+            summary=det.summary,
+            constraints=constraints,
+            out_of_scope=det.out_of_scope,
+            source=det.source,
+            confidence=det.confidence,
+        )
     scored = score_must_do_constraints(
         prompt,
         det.constraints,
