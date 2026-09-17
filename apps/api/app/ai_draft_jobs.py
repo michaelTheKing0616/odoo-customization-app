@@ -600,7 +600,14 @@ def run_draft_job_body(
         )
 
     grain = grain_override or classify_grain(intent_corpus(prompt) or prompt)
-    if stated_residual_kind(prompt)[0] == "named":
+    from app.ai_grain import is_inherit_only_ops
+
+    # Inherit-only ops (reuse fields / wire into stock workflows / no new app)
+    # must never be forced into full_app by a false "named residual" read of
+    # field labels like "Prefer for delivery".
+    if is_inherit_only_ops(prompt):
+        grain = "field_pack"
+    elif stated_residual_kind(prompt)[0] == "named":
         grain = "full_app"
     if grain != "full_app":
         return _complete_component_draft(

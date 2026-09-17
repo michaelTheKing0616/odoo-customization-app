@@ -59,6 +59,14 @@ def _infer_sub_menu(prompt: str, host_model: str, grain: Grain | None = None) ->
         return "Document extras"
     if grain == "field_pack":
         return None
+    # Inherit-only ops briefs must not invent an ungrounded "Contact extras" tile name.
+    try:
+        from app.ai_grain import is_inherit_only_ops
+
+        if is_inherit_only_ops(prompt or ""):
+            return None
+    except Exception:  # noqa: BLE001
+        pass
     defaults = {
         "sale.order": "Extensions",
         "project.task": "Task extras",

@@ -1094,6 +1094,232 @@ def _restamp_preview(working: dict[str, Any], prompt: str) -> None:
         pass
 
 
+
+_STRUCTURAL_REPAIR_RE = re.compile(
+    r"(?i)\b("
+    r"surface\s+findings?|ground(?:\s+the)?\s+(?:app\s+)?title|"
+    r"inherit[- ]only|no\s+new\s+(?:home[- ]?screen\s+)?app|"
+    r"reshape|structural\s+repair|placeholder\s+like|"
+    r"contact\s+extras|contacts?\s+extension|never\s+a\s+placeholder|"
+    r"fix\s+surface|block(?:s|ing)?\s+install"
+    r")\b"
+)
+
+
+def wants_structural_repair(instruction: str) -> bool:
+    """True when Expert must reshape title/grain — not field chrome."""
+    return bool(_STRUCTURAL_REPAIR_RE.search(instruction or ""))
+
+
+def _infer_host_from_draft_or_prompt(
+    draft: dict[str, Any], prompt: str
+) -> tuple[str, str]:
+    """Return (model, label) for inherit-only reshape."""
+    try:
+        from app.ai_grain import HOST_LABELS, preferred_inherit_host
+
+        host = preferred_inherit_host(prompt) or ""
+        if host:
+            return host, HOST_LABELS.get(host, host)
+    except Exception:  # noqa: BLE001
+        pass
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        mid = str(model.get("model") or "")
+        mode = str(model.get("mode") or "new")
+        if mode == "inherit" and mid and not mid.startswith("x_"):
+            try:
+                from app.ai_grain import HOST_LABELS
+
+                return mid, HOST_LABELS.get(mid, mid)
+            except Exception:  # noqa: BLE001
+                return mid, mid
+        for field in model.get("fields") or []:
+            if not isinstance(field, dict):
+                continue
+            if str(field.get("ttype") or field.get("type") or "") == "many2one":
+                rel = str(field.get("relation") or "")
+                if rel in {"res.partner", "sale.order", "stock.picking", "account.move"}:
+                    try:
+                        from app.ai_grain import HOST_LABELS
+
+                        return rel, HOST_LABELS.get(rel, rel)
+                    except Exception:  # noqa: BLE001
+                        return rel, rel
+    return "res.partner", "Contacts"
+
+
+def _reuse_fields_from_prompt(prompt: str) -> list[dict[str, Any]]:
+    """Fields the operator said already exist — Prefer for delivery + Delivery notes."""
+    text = prompt or ""
+    fields: list[dict[str, Any]] = []
+    if re.search(r"(?i)\bprefer(?:red)?\s+for\s+delivery\b", text):
+        fields.append(
+            {
+                "name": "x_prefer_for_delivery",
+                "ttype": "boolean",
+                "string": "Prefer for delivery",
+            }
+        )
+    if re.search(r"(?i)\bdelivery\s+notes?\b", text):
+        fields.append(
+            {
+                "name": "x_delivery_notes",
+                "ttype": "text",
+                "string": "Delivery notes",
+            }
+        )
+    return fields
+
+
+def apply_structural_repair(
+    draft: dict[str, Any],
+    instruction: str,
+    *,
+    prompt: str = "",
+) -> dict[str, Any] | None:
+    """Reshape residual chrome into inherit-only + grounded title when asked.
+
+    Returns a result dict on success, or None when this instruction is not
+    structural (caller should fall through to field chrome).
+    """
+    if not wants_structural_repair(instruction):
+        return None
+
+    working = copy.deepcopy(draft)
+    user_prompt = (
+        prompt
+        or str(working.get("_user_prompt") or working.get("prompt") or "")
+    ).strip()
+    summaries: list[str] = []
+
+    host_model, host_label = _infer_host_from_draft_or_prompt(working, user_prompt)
+
+    # Ground title — never keep Contact extras / Contacts extension chrome.
+    display = str(working.get("display_name") or "").strip()
+    try:
+        from app.ai_component_builder import inherit_only_display_name
+        from app.ai_grain import is_inherit_only_ops
+        from app.ai_surface_invariants import title_is_grounded
+
+        inherit_only = is_inherit_only_ops(user_prompt) or wants_structural_repair(
+            instruction
+        )
+        target_title = (
+            inherit_only_display_name(user_prompt, host_label)
+            if inherit_only
+            else display
+        )
+        if (
+            not display
+            or not title_is_grounded(display, user_prompt)
+            or re.search(r"(?i)^\w+\s+(?:extras|extension)$", display)
+        ):
+            if target_title and (
+                title_is_grounded(target_title, user_prompt) or inherit_only
+            ):
+                working["display_name"] = target_title
+                summaries.append(f"Grounded app title to {target_title!r}.")
+    except Exception:  # noqa: BLE001
+        if re.search(r"(?i)^\w+\s+(?:extras|extension)$", display):
+            working["display_name"] = f"{host_label} delivery preferences"
+            summaries.append(
+                f"Grounded app title to {working['display_name']!r}."
+            )
+
+    # Reshape residual new models → inherit host when inherit-only.
+    models = [m for m in (working.get("models") or []) if isinstance(m, dict)]
+    residual_new = [
+        m
+        for m in models
+        if str(m.get("mode") or "new") != "inherit"
+        and str(m.get("model") or "").startswith("x_")
+    ]
+    try:
+        from app.ai_grain import is_inherit_only_ops
+
+        must_reshape = is_inherit_only_ops(user_prompt) or bool(residual_new)
+    except Exception:  # noqa: BLE001
+        must_reshape = bool(residual_new)
+
+    if must_reshape and (
+        residual_new
+        or any(str(m.get("mode") or "") != "inherit" for m in models)
+        or not any(
+            str(m.get("model") or "") == host_model
+            and str(m.get("mode") or "") == "inherit"
+            for m in models
+        )
+    ):
+        reuse = _reuse_fields_from_prompt(user_prompt)
+        # Keep any non-chrome fields already on residual that look like delivery prefs.
+        for m in residual_new:
+            for f in m.get("fields") or []:
+                if not isinstance(f, dict):
+                    continue
+                label = str(f.get("string") or f.get("name") or "").lower()
+                # Only keep fields that are clearly the delivery prefs — not bare Notes/Name.
+                keep = bool(
+                    re.search(r"prefer(?:red)?\s+for\s+delivery", label)
+                    or re.search(r"delivery\s+notes?", label)
+                )
+                if keep and not any(
+                    str(x.get("name")) == str(f.get("name")) for x in reuse
+                ):
+                    reuse.append(copy.deepcopy(f))
+        if not reuse:
+            reuse = [
+                {
+                    "name": "x_prefer_for_delivery",
+                    "ttype": "boolean",
+                    "string": "Prefer for delivery",
+                },
+                {
+                    "name": "x_delivery_notes",
+                    "ttype": "text",
+                    "string": "Delivery notes",
+                },
+            ]
+        working["models"] = [
+            {
+                "model": host_model,
+                "mode": "inherit",
+                "inherit": host_model,
+                "description": f"Extend {host_label}",
+                "fields": reuse,
+            }
+        ]
+        working["menus"] = []
+        working["actions"] = []
+        working["grain"] = "field_pack"
+        summaries.append(
+            f"Reshaped residual into inherit-only on {host_label} ({host_model})."
+        )
+
+    if not summaries:
+        return None
+
+    working["grain"] = working.get("grain") or "field_pack"
+    working["_user_prompt"] = user_prompt or working.get("_user_prompt")
+    try:
+        from app.ai_form_slots import apply_form_slots
+
+        apply_form_slots(working, prompt=user_prompt)
+    except Exception:  # noqa: BLE001
+        pass
+    _restamp_preview(working, user_prompt)
+    validators = (working.get("_scorecard") or {}).get("validators") or {}
+    return {
+        "ok": True,
+        "draft": working,
+        "patch_summary": " ".join(summaries),
+        "highlighted_field_ids": [],
+        "validators": validators,
+        "structural": True,
+    }
+
+
 def apply_refinement(
     draft: dict[str, Any],
     instruction: str,
@@ -1132,6 +1358,10 @@ def apply_refinement(
             "patch_summary": "",
             "highlighted_field_ids": [],
         }
+
+    structural = apply_structural_repair(draft, text, prompt=prompt)
+    if structural is not None:
+        return structural
 
     working = copy.deepcopy(draft)
     summaries: list[str] = []
@@ -1199,6 +1429,8 @@ def artifact_hash(draft: dict[str, Any]) -> str:
 __all__ = [
     "apply_ops",
     "apply_refinement",
+    "apply_structural_repair",
+    "wants_structural_repair",
     "artifact_hash",
     "catalog_fields",
     "classify_intent",

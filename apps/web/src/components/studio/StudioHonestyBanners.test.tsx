@@ -62,7 +62,28 @@ describe("StudioHonestyBanners", () => {
     );
     expect(screen.getByTestId("studio-grammar-card").textContent).toMatch(/Helpdesk document/);
     expect(screen.getByTestId("studio-surface-gate").textContent).toMatch(/Not ready to install/);
+    expect(screen.queryByTestId("studio-surface-repair-expert")).toBeNull();
     expect(screen.getByTestId("studio-operator-surface").textContent).toMatch(/home grid/);
+  });
+
+  it("offers Repair with Expert when surface gate blocks Install", () => {
+    const onRepairExpert = vi.fn();
+    render(
+      <StudioHonestyBanners
+        {...base}
+        surfaceFindings={[
+          {
+            detail:
+              "surface: App title is not grounded in the operator brief (got 'Contact extras').",
+          },
+        ]}
+        onRepairExpert={onRepairExpert}
+      />,
+    );
+    const btn = screen.getByTestId("studio-surface-repair-expert");
+    expect(btn.textContent).toMatch(/Repair with Expert/);
+    fireEvent.click(btn);
+    expect(onRepairExpert).toHaveBeenCalled();
   });
 
   it("places inherit fields via refine phrases", () => {

@@ -1271,6 +1271,14 @@ export default function AppStudioPage() {
             onPlaceField={(fieldLabel, phrase) =>
               void submitRefine(`put ${fieldLabel} ${phrase}`)
             }
+            onRepairExpert={() =>
+              void submitRefine(
+                "Fix surface findings that block Install. Ground the app title in the operator brief " +
+                  "(never a placeholder like Contact extras). Keep inherit-only on the named stock host — " +
+                  "no new home-screen app. Preserve Must-do wiring (reuse existing fields, pickings/transfers " +
+                  "surface, filters, light automation).",
+              )
+            }
           />
 
           <StudioOptionAPanel

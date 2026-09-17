@@ -35,6 +35,7 @@ type StudioHonestyBannersProps = {
   applyBlocked: string | null;
   refineBusy: boolean;
   onPlaceField: (fieldLabel: string, phrase: string) => void;
+  onRepairExpert?: () => void;
 };
 
 export function StudioHonestyBanners({
@@ -64,6 +65,7 @@ export function StudioHonestyBanners({
   applyBlocked,
   refineBusy,
   onPlaceField,
+  onRepairExpert,
 }: StudioHonestyBannersProps) {
   const hideGrammar =
     stockReuse || refuseClone || goldOptionA || authoredOptionA;
@@ -204,6 +206,19 @@ export function StudioHonestyBanners({
               <li key={`${row.element || "f"}-${i}`}>{row.detail}</li>
             ))}
           </ul>
+          {onRepairExpert ? (
+            <div className="mt-2">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                data-testid="studio-surface-repair-expert"
+                disabled={refineBusy}
+                onClick={onRepairExpert}
+              >
+                {refineBusy ? <StudioBusyLabel>Repairing…</StudioBusyLabel> : "Repair with Expert"}
+              </button>
+            </div>
+          ) : null}
         </Callout>
       ) : null}
 

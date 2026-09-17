@@ -123,6 +123,12 @@ def title_is_grounded(display: str, prompt: str, *, pack_display_name: str = "")
         return False
     if pack_display_name and _norm(text) == _norm(pack_display_name):
         return True
+    # Generic host "X extras/extension" chrome is not an operator title unless the brief said so.
+    if re.search(r"(?i)^\w+\s+(?:extras|extension)$", text):
+        blob = (prompt or "").lower()
+        chrome = "extras" if "extras" in text.lower() else "extension"
+        if chrome not in blob and _norm(text) not in _norm(prompt or ""):
+            return False
     if is_ir_jargon_title(text):
         return False
     try:

@@ -23,6 +23,31 @@ from app.ai_senior_shape import finish_senior_component, infer_extension_fields
 from app.component_gallery import get_gallery_seed, list_gallery
 
 
+def inherit_only_display_name(prompt: str, host_label: str) -> str:
+    """Grounded title for inherit-only ops — never residual slug or 'X extension'."""
+    text = prompt or ""
+    host = (host_label or "Host").strip() or "Host"
+    prefer = bool(re.search(r"(?i)\bprefer(?:red)?\s+for\s+delivery\b", text))
+    notes = bool(re.search(r"(?i)\bdelivery\s+notes?\b", text))
+    if prefer or notes:
+        return f"{host} delivery preferences"
+    # Fall back to host + a brief noun that appears in the prompt.
+    try:
+        from app.ai_document_shape import naming_from_residual
+        from app.ai_surface_invariants import title_is_grounded
+
+        named, _slug = naming_from_residual(text)
+        if named and title_is_grounded(named, text) and not re.search(
+            r"(?i)\b(extras|extension)\b$", named.strip()
+        ):
+            return named
+    except Exception:  # noqa: BLE001
+        pass
+    return f"{host} fields"
+
+
+
+
 def _match_gallery(prompt: str) -> dict[str, Any] | None:
     text = (prompt or "").lower()
     if "warranty" in text:
@@ -119,16 +144,43 @@ def build_component_draft(
 
     depends = [mod] if mod and mod != "base" else ["base"]
 
-    display = connect_points.get("sub_menu_name") or f"{host.label} extension"
-    if grain == "field_pack":
-        display = connect_points.get("sub_menu_name") or f"{host.label} fields"
+    def _generic_host_chrome_title(name: str | None) -> bool:
+        return bool(
+            re.search(r"(?i)^\w+\s+(?:extras|extension)$", (name or "").strip())
+        )
+
+    raw_sub = connect_points.get("sub_menu_name")
+    if _generic_host_chrome_title(str(raw_sub or "")):
+        raw_sub = None
+    display = raw_sub or f"{host.label} extension"
+    try:
+        from app.ai_grain import is_inherit_only_ops
+
+        inherit_only = is_inherit_only_ops(prompt or "")
+    except Exception:  # noqa: BLE001
+        inherit_only = False
+    if grain == "field_pack" or inherit_only:
         low = (prompt or "").lower()
         if (
-            not connect_points.get("sub_menu_name")
+            not raw_sub
             and host.model == "account.move"
             and re.search(r"\b(vendor\s+bills?|supplier\s+bills?)\b", low)
         ):
             display = "Vendor bill fields"
+        else:
+            display = inherit_only_display_name(prompt or "", host.label)
+        # Never keep a residual companion model on inherit-only / field_pack.
+        models[:] = [
+            row
+            for row in models
+            if isinstance(row, dict)
+            and (
+                str(row.get("mode") or "") == "inherit"
+                or str(row.get("model") or "") == host.model
+            )
+        ]
+        menus.clear()
+        actions.clear()
 
     draft: dict[str, Any] = {
         "technical_name": technical,

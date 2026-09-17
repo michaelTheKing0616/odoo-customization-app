@@ -262,11 +262,43 @@ _SLICE_RE = re.compile(
     re.I,
 )
 
+# Inherit-only ops extension: reuse stock/existing fields and wire into workflows —
+# never a new app tile or companion model, even when "smart button" appears.
+_INHERIT_ONLY_OPS_RE = re.compile(
+    r"(?i)\b(?:"
+    r"no\s+new\s+(?:home[- ]?screen\s+)?app(?:\s+tile)?|"
+    r"still\s+inherit[- ]only|inherit[- ]only|"
+    r"do\s+not\s+create\s+a\s+new\s+(?:home[- ]?screen\s+)?app|"
+    r"already\s+(?:persist|exist)|reuse\s+existing|"
+    r"do\s+not\s+recreate|don'?t\s+recreate"
+    r")\b"
+)
+_WIRING_VERBS_RE = re.compile(
+    r"(?i)\b(?:"
+    r"surface|smart\s+button|domain|filter|automation|"
+    r"pickings?|transfers?|wire|extend\s+so"
+    r")\b"
+)
+
+
+def is_inherit_only_ops(prompt: str) -> bool:
+    """True when the brief reuses/extends a stock host without a new app tile."""
+    text = (prompt or "").strip()
+    if not text:
+        return False
+    if not _INHERIT_ONLY_OPS_RE.search(text):
+        return False
+    # Prefer an explicit host or wiring verbs so we do not swallow unrelated "no new app" notes.
+    return bool(named_host_from_prompt(text) or _WIRING_VERBS_RE.search(text))
+
 
 def classify_grain(prompt: str) -> Grain:
     """Classify prompt grain: field_pack | feature_slice | full_app."""
     text = (prompt or "").strip().lower()
     named = named_host_from_prompt(text)
+    # Ops-extension / reuse briefs stay field_pack even when "smart button" matches _SLICE_RE.
+    if is_inherit_only_ops(text) and not _FULL_APP_RE.search(text):
+        return "field_pack"
     if named and re.search(r"\badd\b", text) and not _FULL_APP_RE.search(text):
         if not _SLICE_RE.search(text):
             return "field_pack"
@@ -279,7 +311,13 @@ def classify_grain(prompt: str) -> Grain:
         if not _SLICE_RE.search(text):
             return "field_pack"
         return "feature_slice"
-    if re.search(r"\bmanage|management|system|platform|workflow|inventory\b", text):
+    # "workflow(s)" / "inventory" as list labels must not force a full app.
+    if re.search(
+        r"\b(?:manage|management|system|platform)\b|"
+        r"\b(?:full\s+)?workflows?\s+(?:app|system|platform)\b|"
+        r"\binventory\s+(?:app|system|management)\b",
+        text,
+    ):
         return "full_app"
     return "full_app"
 
