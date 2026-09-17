@@ -12,7 +12,13 @@ type Props = {
   className?: string;
   size?: number;
   priority?: boolean;
-  variant?: "color" | "mono" | "auto";
+  /**
+   * auto — white on dark chrome, dark mono on light (default).
+   * white — always white (known-dark surfaces).
+   * mono — always dark ink (known-light surfaces).
+   * color — legacy color mark (avoid for chrome; washes out on dark).
+   */
+  variant?: "auto" | "white" | "mono" | "color";
 };
 
 const MARK = {
@@ -25,7 +31,10 @@ function readDomTheme(): "light" | "dark" {
   return document.documentElement.classList.contains("dark") ? "dark" : "light";
 }
 
-/** Ingenium product mark — mono on light chrome, color on dark. */
+/**
+ * Ingenium product mark.
+ * Dark backgrounds need a white mark — the color PNG washes out on navy/dark chrome.
+ */
 export function BrandMark({
   href = "/",
   withWordmark = true,
@@ -41,23 +50,36 @@ export function BrandMark({
   }, [themeCtx?.resolved]);
 
   const resolved = themeCtx?.resolved ?? domTheme;
-  const mode = variant === "auto" ? (resolved === "light" ? "mono" : "color") : variant;
-  const src = MARK[mode];
+  const wantWhite =
+    variant === "white" || (variant === "auto" && resolved === "dark");
+  const useColor = variant === "color";
+  const src = useColor ? MARK.color : MARK.mono;
+  const mode = useColor ? "color" : wantWhite ? "white" : "mono";
 
   const inner = (
-    <span className={cn("inline-flex items-center gap-2", className)} data-brand-variant={mode}>
+    <span
+      className={cn("inline-flex items-center gap-2", className)}
+      data-brand-variant={mode}
+    >
       <Image
         src={src}
         alt="Ingenium"
         width={size}
         height={size}
         priority={priority}
-        className="rounded-sm object-contain"
+        className={cn(
+          "rounded-sm object-contain",
+          // Mono asset is dark ink; invert to white for dark chrome.
+          wantWhite && "brightness-0 invert",
+        )}
         data-testid="brand-mark-image"
       />
       {withWordmark ? (
         <span
-          className="font-[family-name:var(--font-display)] text-sm font-semibold tracking-wide text-ink lowercase"
+          className={cn(
+            "font-[family-name:var(--font-display)] text-sm font-semibold tracking-wide lowercase",
+            wantWhite ? "text-white" : "text-ink",
+          )}
           data-testid="brand-wordmark"
         >
           ingenium

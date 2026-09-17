@@ -13,11 +13,13 @@
 | `ingenium-mark-mono.png` | Square dark mono mark — **light-mode chrome** |
 
 ## Chrome rule
-`<BrandMark />` follows `useTheme().resolved`:
-- **light** → `ingenium-mark-mono.png` + CSS wordmark (`text-ink`)
-- **dark** → `ingenium-mark.png` + CSS wordmark
+`<BrandMark />` follows `useTheme().resolved` (**auto**):
+- **light** → dark mono mark + `text-ink` wordmark
+- **dark** → **white** mark (mono + `brightness-0 invert`) + white wordmark
 
-Override with `variant="color" | "mono"` when needed.
+Founder note: the color PNG washes out on dark navy chrome — dark mode must use white, not the color asset.
+Force with `variant="white" | "mono" | "color"` when a surface is known.
+
 
 ## Product strings
 `apps/web/src/lib/brand.ts` — `PRODUCT_NAME` / `PRODUCT_NAME_WORDMARK`.
