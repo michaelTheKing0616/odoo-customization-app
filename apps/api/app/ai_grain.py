@@ -87,6 +87,16 @@ _FIELD_PACK_RE = re.compile(
 )
 
 HOST_ALIASES: dict[str, str] = {
+    # Technical names first (also matched explicitly below).
+    "res.partner": "res.partner",
+    "stock.picking": "stock.picking",
+    "sale.order": "sale.order",
+    "purchase.order": "purchase.order",
+    "account.move": "account.move",
+    "hr.employee": "hr.employee",
+    "calendar.event": "calendar.event",
+    "crm.lead": "crm.lead",
+    "project.task": "project.task",
     "sale order": "sale.order",
     "sale orders": "sale.order",
     "sales order": "sale.order",
@@ -322,13 +332,56 @@ def classify_grain(prompt: str) -> Grain:
     return "full_app"
 
 
+_FIELD_DELIVERY_NOISE_RE = re.compile(
+    r"(?i)\b(?:prefer(?:red)?\s+for\s+delivery|delivery\s+notes?|delivery\s+group|"
+    r"delivery\s+preferences?)\b"
+)
+_BARE_DELIVERY_HOST_RE = re.compile(r"(?i)\bdelivery\b")
+
+
 def named_host_from_prompt(prompt: str) -> str | None:
     """Stock host the operator named — wins over a stale connect-points approval."""
     text = (prompt or "").lower()
     if not text:
         return None
+    # Technical models always win when spelled (res.partner, stock.picking, …).
+    for model in (
+        "res.partner",
+        "stock.picking",
+        "sale.order",
+        "purchase.order",
+        "account.move",
+        "hr.employee",
+        "calendar.event",
+        "crm.lead",
+        "project.task",
+    ):
+        if model in text:
+            return model
+    # Correction clauses ("wait — actually … on Contacts") — last strong host wins.
+    for m in re.finditer(
+        r"(?i)(?:wait\s*[—\-–,.]?\s*)?(?:actually|instead)\b(.{0,120})",
+        text,
+    ):
+        tail = m.group(1)
+        for phrase, model in sorted(HOST_ALIASES.items(), key=lambda kv: -len(kv[0])):
+            if phrase in ("delivery", "picking"):
+                continue
+            if phrase in tail:
+                return model
+    scrubbed = _FIELD_DELIVERY_NOISE_RE.sub(" ", text)
     for phrase, model in sorted(HOST_ALIASES.items(), key=lambda kv: -len(kv[0])):
-        if phrase in text:
+        if phrase == "delivery":
+            # Bare "delivery" → picking only when not field-label noise and not
+            # already about Contacts/partners.
+            if not _BARE_DELIVERY_HOST_RE.search(scrubbed):
+                continue
+            if re.search(r"(?i)\b(?:contacts?|res\.partner|partners?)\b", text):
+                continue
+        if phrase == "picking" and "stock.picking" in text:
+            return "stock.picking"
+        # Word-ish match: avoid 'order' inside 'border'
+        if re.search(rf"(?<![a-z0-9_.]){re.escape(phrase)}(?![a-z0-9_])", scrubbed if phrase == "delivery" else text):
             return model
     return None
 
@@ -346,9 +399,27 @@ def preferred_inherit_host(prompt: str) -> str | None:
     """Host for Option A inherit seeds — prefer the document, not incidental 'customer'."""
     text = prompt or ""
     named = named_host_from_prompt(text)
+    # Explicit partner/Contacts host always wins over delivery-slip / picking noise.
+    if named == "res.partner":
+        # Markup/sales docs may still redirect below; field-pack partner stays.
+        if not (_MARKUP_HOST_RE.search(text) or _SALE_DOC_RE.search(text)):
+            return "res.partner"
+    # Prefer-for-delivery / Contacts field packs that also mention stock.picking
+    # filters still live on Contacts — picking is the list surface, not the form host.
+    if re.search(r"(?i)\b(?:contacts?|res\.partner)\b", text) and re.search(
+        r"(?i)\bprefer(?:red)?\s+for\s+delivery\b", text
+    ):
+        if named in {None, "stock.picking", "res.partner"}:
+            if not (_MARKUP_HOST_RE.search(text) or _SALE_DOC_RE.search(text)):
+                return "res.partner"
     # Explicit host (e.g. Contacts / res.partner) beats delivery-slip heuristic —
     # "Delivery notes" on a partner form is not stock.picking.
-    if _DELIVERY_HOST_RE.search(text) and named in {None, "stock.picking"}:
+    if (
+        _DELIVERY_HOST_RE.search(text)
+        and named in {None, "stock.picking"}
+        and not re.search(r"(?i)\b(?:contacts?|res\.partner|partners?)\b", text)
+        and not _FIELD_DELIVERY_NOISE_RE.search(text)
+    ):
         return "stock.picking"
     if _MARKUP_HOST_RE.search(text) or _SALE_DOC_RE.search(text):
         if re.search(r"(?i)purchase\s+order", text) and not re.search(r"(?i)\bsales?\b", text):

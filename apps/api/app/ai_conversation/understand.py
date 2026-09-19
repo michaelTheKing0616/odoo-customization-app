@@ -271,6 +271,10 @@ _CHECKBOX_FIELD_RE = re.compile(
     r"(?i)\bcheckbox\s+[\"']?([^\"',.;]+?)[\"']?"
     r"(?=\s+and\b|\s+under\b|\s+on\b|,|\.|$)"
 )
+# Label-before-type: "Prefer for delivery checkbox and Delivery notes"
+_CHECKBOX_LABEL_FIRST_RE = re.compile(
+    r"(?i)\b([A-Za-z][\w /&-]{2,40}?)\s+checkbox\b"
+)
 _TYPED_TEXT_FIELD_RE = re.compile(
     r"(?i)(?:\badd\b|\band\b|,)\s+([A-Z][\w /&-]{1,40}?)\s+text(?:\s+field)?\b"
 )
@@ -286,17 +290,21 @@ _PRONOUN_LABELS = frozenset(
 # Ops-extension briefs (reuse existing fields → wire into workflows).
 _REUSE_EXISTING_RE = re.compile(
     r"(?i)\b(?:"
-    r"already\s+persist|already\s+exist|already\s+on\s+res\.partner|"
-    r"reuse|do\s+not\s+recreate|don'?t\s+recreate|"
-    r"extend\s+so\s+they|matter\s+in\s+workflows?|"
-    r"functional\s+extension|still\s+inherit[- ]only"
+    r"already\s+exists?|already\s+persist(?:s|ed)?|already\s+on\s+res\.partner|"
+    r"fields?\s+already\s+exist|"
+    r"reuse|do\s+not\s+recreate|don'?t\s+recreate|do\s+not\s+recreate"
     r")\b"
 )
 _PICKING_SURFACE_RE = re.compile(
-    r"(?i)\b(?:"
-    r"pickings?|transfers?|smart\s+buttons?|"
-    r"surface\s+preferred|preferred[- ]delivery\s+contacts?"
-    r")\b"
+    r"(?i)(?:"
+    r"\bsmart\s+buttons?\b|"
+    r"\bsurface\s+preferred\b|"
+    r"\bpreferred[- ]delivery\s+contacts?\b|"
+    r"\b(?:domain|smart\s+button).{0,40}\b(?:pickings?|transfers?)\b|"
+    r"\b(?:pickings?|transfers?).{0,40}\b(?:domain|smart\s+button)\b|"
+    # pickings/transfers as a surface, but not "transfers filter"
+    r"\b(?:pickings|transfers)\b(?!\s+filter)"
+    r")"
 )
 _LIST_FILTER_RE = re.compile(
     r"(?i)\b(?:optional\s+)?filter\b.{0,48}\b(?:delivery|inventory)\b|"
@@ -326,7 +334,7 @@ def _brief_ops_extension_themes(prompt: str) -> list[tuple[str, re.Pattern[str]]
     )
     if not wiring:
         return []
-    if _REUSE_EXISTING_RE.search(text) or _PREFER_DELIVERY_RE.search(text):
+    if _REUSE_EXISTING_RE.search(text):  # Prefer-for-delivery alone ≠ reuse
         themes.append(
             (
                 "reuse existing fields",
@@ -376,8 +384,28 @@ def _brief_must_do_constraints(
 
     for m in _CHECKBOX_FIELD_RE.finditer(text):
         label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
-        if label:
+        low = label.lower()
+        if label and not low.startswith("and ") and low not in {"and", "a", "an", "the"}:
             rows.append(f"Checkbox: {label}")
+    for m in _CHECKBOX_LABEL_FIRST_RE.finditer(text):
+        label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
+        low = label.lower()
+        if not label or low.startswith("and ") or low in {"a", "an", "the", "add", "new"}:
+            continue
+        if any(r.lower() == f"checkbox: {low}" for r in rows):
+            continue
+        rows.append(f"Checkbox: {label}")
+
+    # Prefer + Delivery notes as field-create (no "checkbox" keyword required).
+    if (
+        _PREFER_DELIVERY_RE.search(text)
+        and _DELIVERY_NOTES_RE.search(text)
+        and not _REUSE_EXISTING_RE.search(text)
+    ):
+        if not any("prefer" in r.lower() and "checkbox" in r.lower() for r in rows):
+            rows.append("Checkbox: Prefer for delivery")
+        if not any("delivery notes" in r.lower() for r in rows):
+            rows.append("Text field: Delivery notes")
 
     for m in _TYPED_TEXT_FIELD_RE.finditer(text):
         label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
@@ -405,6 +433,12 @@ def _brief_must_do_constraints(
         gtitle = _GROUP_TITLE_NOISE_RE.sub("", gtitle).strip()
         if gtitle:
             rows.append(f"Place under {gtitle} group")
+
+    elif re.search(r"(?i)\bunder\s+delivery\b", text) and not any(
+        "place under" in r.lower() for r in rows
+    ):
+        # "under Delivery" without the word "group" (placement stress / corrections)
+        rows.append("Place under Delivery group")
 
     # Ops-extension: reuse existing Contact fields and wire into workflows.
     # Keep host on res.partner — never claim stock.picking as the form host.
