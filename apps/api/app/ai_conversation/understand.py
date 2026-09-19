@@ -307,9 +307,17 @@ _PICKING_SURFACE_RE = re.compile(
     r")"
 )
 _LIST_FILTER_RE = re.compile(
-    r"(?i)\b(?:optional\s+)?filter\b.{0,48}\b(?:delivery|inventory)\b|"
-    r"\b(?:delivery|inventory)\b.{0,48}\b(?:lists?|filter)\b|"
-    r"\bfilter\s+on\s+(?:delivery|inventory)\b"
+    r"(?i)(?:"
+    # explicit filter phrasing
+    r"\b(?:optional\s+)?filter\b.{0,48}\b(?:delivery|inventory)\b|"
+    r"\bfilter\s+on\s+(?:delivery|inventory)\b|"
+    # transfers/pickings filter (Prefer ops) — not Purpose "Delivery" + "list"
+    r"\b(?:transfers?|pickings?)\s+filter\b|"
+    r"\bfilter\b.{0,24}\b(?:transfers?|pickings?)\b|"
+    # Delivery/Inventory lists only when preferred-contacts context is present
+    r"\bpreferred\b.{0,40}\b(?:delivery|inventory)\b.{0,40}\b(?:lists?|filter)\b|"
+    r"\b(?:delivery|inventory)\b.{0,40}\b(?:lists?|filter)\b.{0,40}\bpreferred\b"
+    r")"
 )
 _LIGHT_AUTOMATION_RE = re.compile(
     r"(?i)\b(?:light\s+)?automation\b|"
@@ -363,6 +371,43 @@ def _brief_ops_extension_themes(prompt: str) -> list[tuple[str, re.Pattern[str]]
             )
         )
     return themes
+
+
+
+def _brief_full_app_must_do(prompt: str) -> list[str]:
+    """Deterministic Must-do for tiny new-app briefs (Visitor Log style)."""
+    text = (prompt or "").strip()
+    if not text:
+        return []
+    rows: list[str] = []
+    # Model name hint: "Visitor Log app" / "visitor log model"
+    m = re.search(
+        r"(?i)\b(?:build|create)\s+(?:an?\s+)?(?:tiny\s+|small\s+)?([A-Za-z][\w ]{1,40}?)\s+app\b",
+        text,
+    )
+    if m:
+        label = re.sub(r"\s+", " ", m.group(1)).strip()
+        if label and label.lower() not in {"new", "full", "standalone"}:
+            tech = "x_" + re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
+            rows.append(f"New model {tech} ({label})")
+    if re.search(r"(?i)\bname\b", text):
+        rows.append("Char field: Name")
+    if re.search(r"(?i)\bcompany\b.*\b(?:contact|partner|res\.partner)\b|\blink\s+to\s+contact", text):
+        rows.append("Many2one Company → Contact (res.partner)")
+    if re.search(r"(?i)\bvisit\s+date\b|\bdate\b", text) and re.search(r"(?i)\bvisit", text):
+        rows.append("Date field: Visit date")
+    if re.search(r"(?i)\bpurpose\b", text):
+        rows.append("Selection Purpose: Meeting / Delivery / Other")
+    if re.search(r"(?i)\bhost\b.*\bemployee|\bemployee\b.*\bhost", text):
+        rows.append("Many2one Host → Employee (hr.employee)")
+    if re.search(r"(?i)\bmenu\s+under\s+(\w+)", text):
+        parent = re.search(r"(?i)\bmenu\s+under\s+(\w+)", text).group(1)
+        rows.append(f"Menu under {parent}")
+    if re.search(r"(?i)\b(list|tree)\b", text) and re.search(r"(?i)\bform\b", text):
+        rows.append("Simple list + form views")
+    if re.search(r"(?i)\bcreate\s*/\s*read\b|no\s+workflow|create/read", text):
+        rows.append("Create/read only — no workflow states")
+    return _dedupe(rows)[:12]
 
 
 def _brief_must_do_constraints(
@@ -775,6 +820,11 @@ def _deterministic_understanding(prompt: str) -> Understanding:
     host = preferred_inherit_host(text)
     inherit = grain in {"field_pack", "feature_slice"}
     needs = plan.capability in {"option_a_authored", "option_a_standalone"}
+    # Residual new-app briefs only: do not pin inherit host from field relations /
+    # option labels. Option A authored modules keep their document host.
+    if grain == "full_app" and not needs:
+        host = None
+        inherit = False
     if needs:
         inherit = True
     constraints: list[str] = []
@@ -854,6 +904,21 @@ def _deterministic_understanding(prompt: str) -> Understanding:
         constraints.extend(
             _brief_must_do_constraints(text, host=host, inherit=inherit)
         )
+    if not constraints and grain == "full_app":
+        constraints.extend(_brief_full_app_must_do(text))
+
+    # Short residual title: "Visitor Log", not the whole brief.
+    if grain == "full_app" and not inherit and not needs:
+        app_m = re.search(
+            r"(?i)\b(?:build|create)\s+(?:an?\s+)?(?:tiny\s+|small\s+)?"
+            r"([A-Za-z][\w ]{1,40}?)\s+app\b",
+            text,
+        )
+        if app_m:
+            nice = re.sub(r"\s+", " ", app_m.group(1)).strip(" .:,-")
+            nice = re.sub(r"(?i)^(a|an|the)\s+", "", nice).strip()
+            if nice and len(nice) <= 48 and nice.lower() not in {"new", "full", "standalone"}:
+                title = nice.title() if nice.islower() or nice == nice.lower() else nice
 
     return Understanding(
         capability=plan.capability,

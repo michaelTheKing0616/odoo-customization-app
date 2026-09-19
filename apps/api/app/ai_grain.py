@@ -69,8 +69,12 @@ _COMPONENT_RE = re.compile(
 
 _FULL_APP_RE = re.compile(
     r"\b("
-    r"build\s+(?:an?\s+)?app|create\s+(?:an?\s+)?app|full\s+app|standalone|"
-    r"new\s+application|from\s+scratch|entire\s+system|complete\s+platform|"
+    r"build\s+(?:an?\s+)?(?:\w+\s+){0,5}app|"
+    r"create\s+(?:an?\s+)?(?:\w+\s+){0,5}app|"
+    r"tiny\s+(?:\w+\s+){0,3}app|small\s+(?:\w+\s+){0,3}app|"
+    r"full\s+app|standalone\s+app|new\s+application|from\s+scratch|"
+    r"entire\s+system|complete\s+platform|"
+    r"menu\s+under\s+\w+|"
     r"library\s+management|car\s+rental|law\s+firm|hospital|clinic"
     r")\b",
     re.I,
@@ -266,7 +270,7 @@ class HostCandidate:
 
 _SLICE_RE = re.compile(
     r"\b("
-    r"tracker|checklist|register|log|warranty|inspection|compliance|expiry|"
+    r"tracker|checklist|register|warranty|inspection|compliance|expiry|"
     r"component|smart\s+button|plug"
     r")\b",
     re.I,
@@ -305,6 +309,9 @@ def is_inherit_only_ops(prompt: str) -> bool:
 def classify_grain(prompt: str) -> Grain:
     """Classify prompt grain: field_pack | feature_slice | full_app."""
     text = (prompt or "").strip().lower()
+    # New app / menu-under-X briefs win before inherit-slice heuristics.
+    if _FULL_APP_RE.search(text) and not is_inherit_only_ops(text):
+        return "full_app"
     named = named_host_from_prompt(text)
     # Ops-extension / reuse briefs stay field_pack even when "smart button" matches _SLICE_RE.
     if is_inherit_only_ops(text) and not _FULL_APP_RE.search(text):
@@ -332,6 +339,19 @@ def classify_grain(prompt: str) -> Grain:
     return "full_app"
 
 
+_SELECTION_OPTIONS_NOISE_RE = re.compile(
+    # "selection: Meeting / Delivery / Other" — option labels are not hosts
+    r"(?i)selection\s*:\s*[^.;\n]{0,80}"
+)
+_FIELD_RELATION_NOISE_RE = re.compile(
+    r"(?i)(?:"
+    r"\bhost\s*\(\s*employees?\s*\)|"
+    r"\bcompany\s*\(\s*link\s+to\s+contacts?\s*\)|"
+    r"\blink\s+to\s+(?:contacts?|employees?|partners?)\b|"
+    r"\(\s*(?:link\s+to\s+)?(?:contacts?|employees?|partners?)\s*\)|"
+    r"\b(?:many2one|m2o)\s+to\s+(?:res\.partner|hr\.employee)\b"
+    r")"
+)
 _FIELD_DELIVERY_NOISE_RE = re.compile(
     r"(?i)\b(?:prefer(?:red)?\s+for\s+delivery|delivery\s+notes?|delivery\s+group|"
     r"delivery\s+preferences?)\b"
@@ -358,6 +378,10 @@ def named_host_from_prompt(prompt: str) -> str | None:
     ):
         if model in text:
             return model
+    # Field targets are not the form host: "Host (Employee)", "link to Contact".
+    text = _FIELD_RELATION_NOISE_RE.sub(" ", text)
+    text = _SELECTION_OPTIONS_NOISE_RE.sub(" ", text)
+
     # Correction clauses ("wait — actually … on Contacts") — last strong host wins.
     for m in re.finditer(
         r"(?i)(?:wait\s*[—\-–,.]?\s*)?(?:actually|instead)\b(.{0,120})",

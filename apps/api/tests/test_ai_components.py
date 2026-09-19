@@ -6,6 +6,8 @@ from typing import Any
 
 import pytest
 
+pytestmark = pytest.mark.no_app_db
+
 from app.ai_component_builder import draft_component_from_prompt
 from app.ai_connect_points import detect_field_collisions, propose_connect_points
 from app.ai_grain import HostCandidate, classify_grain, discover_hosts

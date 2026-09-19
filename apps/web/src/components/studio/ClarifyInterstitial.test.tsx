@@ -45,4 +45,33 @@ describe("ClarifyInterstitial diagnosis", () => {
     expect(screen.queryByTestId("studio-clarify")).toBeNull();
     cleanup();
   });
+
+  it("full_app residual seeds New app tile + Live fields only", () => {
+    const onAnswer = vi.fn();
+    render(
+      <ClarifyInterstitial
+        busy={false}
+        onAnswer={onAnswer}
+        clarification={{
+          kind: "diagnosis",
+          merge_key: "diagnosis",
+          question: "Does this match?",
+          help: "Visitor Log residual.",
+          options: [],
+          understanding: {
+            title: "Visitor Log",
+            grain: "full_app",
+            host_model: null,
+            inherit_existing: false,
+            needs_module: false,
+            constraints: ["New model x_visitor_log"],
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText("New app tile")).toBeTruthy();
+    expect(screen.getByText("Live fields only")).toBeTruthy();
+    expect(screen.queryByLabelText("Stock form")).toBeNull();
+    cleanup();
+  });
 });

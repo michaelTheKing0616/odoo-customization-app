@@ -168,9 +168,13 @@ function DiagnosisCard({
           <p className="clarify-help" style={{ marginTop: 8 }}>
             Python/QWeb — not Install this app.
           </p>
-        ) : (
+        ) : inheritExisting ? (
           <p className="clarify-help" style={{ marginTop: 8 }}>
             Metadata on the form people already use.
+          </p>
+        ) : (
+          <p className="clarify-help" style={{ marginTop: 8 }}>
+            Live metadata for a new home-screen app tile — not an inherit on Employees.
           </p>
         )}
       </div>
