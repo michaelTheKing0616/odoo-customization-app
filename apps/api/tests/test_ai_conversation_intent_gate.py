@@ -167,6 +167,34 @@ def test_vendor_tin_field_pack_skips_pack_choice() -> None:
     assert clarify is None
 
 
+
+def test_full_app_brief_skips_pack_ambiguity_noise() -> None:
+    """Clear residual apps must not ask Where-should-this-live over tiny pack scores."""
+    from app.ai_conversation.clarify import build_clarification
+    from app.ai_conversation.intent_gate import assess_intent, should_block_generation
+    from app.ai_grain import classify_grain
+
+    briefs = [
+        (
+            "Build a tiny Visitor Log app: model with Name, Company (link to Contact), "
+            "Visit date, Purpose (selection: Meeting / Delivery / Other), and Host (Employee). "
+            "Simple list + form, menu under Services. No workflow beyond create/read."
+        ),
+        (
+            "Build a tiny Asset Checkout app: model with Asset name, Asset (link to Product), "
+            "Checkout date, Status (selection: Out / In / Maintenance), and Custodian (Employee). "
+            "Simple list + form, menu under Inventory. No workflow beyond create/read."
+        ),
+    ]
+    for prompt in briefs:
+        assert classify_grain(prompt) == "full_app"
+        assessment = assess_intent(prompt, resolved_answers={})
+        assert assessment.clear is True
+        assert "pack_ambiguity" not in assessment.triggers
+        assert should_block_generation(assessment) is False
+        assert build_clarification(assessment, prompt=prompt) is None
+
+
 def test_pack_ambiguity_copy_is_plain_language() -> None:
     from app.ai_conversation.intent_gate import IntentAssessment
 

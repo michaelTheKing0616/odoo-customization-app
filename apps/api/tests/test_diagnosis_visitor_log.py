@@ -149,3 +149,16 @@ def test_prefer_briefs_still_host_res_partner(prompt: str) -> None:
     joined = " | ".join(u.constraints).lower()
     assert "contacts" in joined or "res.partner" in joined
     assert not any(row.lower().startswith("on inventory") for row in u.constraints)
+
+
+def test_visitor_log_skips_pack_placement_clarify() -> None:
+    """full_app must reach Diagnosis — not Where-should-this-live pack chips."""
+    from app.ai_conversation.clarify import build_clarification
+    from app.ai_conversation.intent_gate import assess_intent, should_block_generation
+
+    a = assess_intent(VISITOR_LOG, resolved_answers={})
+    assert a.clear is True
+    assert "pack_ambiguity" not in a.triggers
+    assert should_block_generation(a) is False
+    assert build_clarification(a, prompt=VISITOR_LOG) is None
+

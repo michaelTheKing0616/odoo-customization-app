@@ -134,9 +134,16 @@ def assess_intent(prompt: str, *, resolved_answers: dict[str, str] | None = None
         from app.ai_grain import classify_grain
 
         grain = classify_grain(text)
-        if grain in {"field_pack", "feature_slice"}:
+        # Inherit packs and clear residual apps both skip pack/stock chips.
+        # Otherwise tiny pack noise (restaurant@0.04) asks "Where should this live?"
+        # for briefs that already classify as full_app (Visitor Log, Asset Checkout).
+        if grain in {"field_pack", "feature_slice", "full_app"}:
             pack_clear = True
-            notes.append(f"{grain} inherit-on-stock — skip pack/stock clarification")
+            notes.append(
+                f"{grain} — skip pack/stock clarification"
+                if grain == "full_app"
+                else f"{grain} inherit-on-stock — skip pack/stock clarification"
+            )
     except Exception:  # noqa: BLE001
         pass
 
