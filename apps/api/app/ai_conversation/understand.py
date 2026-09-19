@@ -374,40 +374,167 @@ def _brief_ops_extension_themes(prompt: str) -> list[tuple[str, re.Pattern[str]]
 
 
 
+
+_APP_NOUN_RE = re.compile(
+    r"(?i)\b(?:build|create|make)\s+(?:an?\s+)?(?:(?:tiny|simple|small|new|mini)\s+)*"
+    r"(.+?)\s+app\b"
+)
+_MODEL_WITH_FIELDS_RE = re.compile(
+    r"(?i)\bmodel\s+with\s+(.+?)(?:\.\s*(?:Simple|No\s+workflow|Menu)|;|\.|$)"
+)
+_MENU_UNDER_RE = re.compile(r"(?i)\bmenu\s+under\s+([A-Za-z][\w\s]{0,40})")
+_CREATE_READ_ONLY_RE = re.compile(
+    r"(?i)\b(?:no\s+workflow\s+beyond\s+)?create\s*/\s*read\b|"
+    r"create\s+and\s+read\s+only|create/read|no\s+workflow"
+)
+_LIST_FORM_RE = re.compile(r"(?i)\blist\s*(?:\+|and|&)\s*forms?\b")
+
+# ORM type hints inside parentheticals — not Many2one targets.
+_FIELD_TYPE_HINTS = frozenset(
+    {
+        "char",
+        "text",
+        "html",
+        "boolean",
+        "checkbox",
+        "integer",
+        "int",
+        "float",
+        "monetary",
+        "binary",
+        "image",
+        "date",
+        "datetime",
+        "many2one",
+        "many2many",
+        "one2many",
+        "selection",
+    }
+)
+
+
+def _relation_target_display(target: str) -> str:
+    """Display form for a stated Many2one target — no Contact/Employee special cases."""
+    raw = (target or "").strip()
+    if not raw:
+        return raw
+    if "." in raw:
+        return raw  # technical model id
+    parts: list[str] = []
+    for w in raw.split():
+        if not w:
+            continue
+        if w.isupper() or (len(w) > 1 and any(c.islower() for c in w[1:])):
+            parts.append(w[0].upper() + w[1:] if w[0].islower() else w)
+        else:
+            parts.append(w.title())
+    return " ".join(parts) or raw
+
+
 def _brief_full_app_must_do(prompt: str) -> list[str]:
-    """Deterministic Must-do for tiny new-app briefs (Visitor Log style)."""
+    """Structural Must-do for residual full_app from declared brief fields.
+
+    Parses model name + field list shape (char / Many2one / selection / date) —
+    never Visitor-Log keyword one-offs. Works for any similarly shaped brief.
+    """
     text = (prompt or "").strip()
     if not text:
         return []
     rows: list[str] = []
-    # Model name hint: "Visitor Log app" / "visitor log model"
-    m = re.search(
-        r"(?i)\b(?:build|create)\s+(?:an?\s+)?(?:tiny\s+|small\s+)?([A-Za-z][\w ]{1,40}?)\s+app\b",
-        text,
-    )
-    if m:
-        label = re.sub(r"\s+", " ", m.group(1)).strip()
-        if label and label.lower() not in {"new", "full", "standalone"}:
-            tech = "x_" + re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
-            rows.append(f"New model {tech} ({label})")
-    if re.search(r"(?i)\bname\b", text):
-        rows.append("Char field: Name")
-    if re.search(r"(?i)\bcompany\b.*\b(?:contact|partner|res\.partner)\b|\blink\s+to\s+contact", text):
-        rows.append("Many2one Company → Contact (res.partner)")
-    if re.search(r"(?i)\bvisit\s+date\b|\bdate\b", text) and re.search(r"(?i)\bvisit", text):
-        rows.append("Date field: Visit date")
-    if re.search(r"(?i)\bpurpose\b", text):
-        rows.append("Selection Purpose: Meeting / Delivery / Other")
-    if re.search(r"(?i)\bhost\b.*\bemployee|\bemployee\b.*\bhost", text):
-        rows.append("Many2one Host → Employee (hr.employee)")
-    if re.search(r"(?i)\bmenu\s+under\s+(\w+)", text):
-        parent = re.search(r"(?i)\bmenu\s+under\s+(\w+)", text).group(1)
-        rows.append(f"Menu under {parent}")
-    if re.search(r"(?i)\b(list|tree)\b", text) and re.search(r"(?i)\bform\b", text):
-        rows.append("Simple list + form views")
-    if re.search(r"(?i)\bcreate\s*/\s*read\b|no\s+workflow|create/read", text):
-        rows.append("Create/read only — no workflow states")
+
+    app_m = _APP_NOUN_RE.search(text)
+    title = ""
+    if app_m:
+        title = re.sub(r"\s+", " ", app_m.group(1)).strip(" .:,-")
+        title = re.sub(r"(?i)^(a|an|the)\s+", "", title).strip()
+    slug = re.sub(r"[^a-z0-9]+", "_", (title or "custom").lower()).strip("_")[:40] or "custom"
+    if slug.endswith("_app"):
+        slug = slug[: -len("_app")].rstrip("_") or slug
+    mid = f"x_{slug}" if not slug.startswith("x_") else slug
+    label = title.title() if title else mid
+    rows.append(f"New model {mid} ({label})")
+
+    body = text
+    fm = _MODEL_WITH_FIELDS_RE.search(text)
+    if fm:
+        body = fm.group(1)
+    chunks: list[str] = []
+    buf = ""
+    depth = 0
+    for ch in body:
+        if ch == "(":
+            depth += 1
+            buf += ch
+        elif ch == ")":
+            depth = max(0, depth - 1)
+            buf += ch
+        elif ch == "," and depth == 0:
+            if buf.strip():
+                chunks.append(buf.strip())
+            buf = ""
+        else:
+            buf += ch
+    if buf.strip():
+        chunks.append(buf.strip())
+    normalized: list[str] = []
+    for chunk in chunks:
+        if re.search(r"(?i)\band\b", chunk) and "(" not in chunk:
+            parts = re.split(r"(?i)\s+and\s+", chunk)
+            normalized.extend(p.strip(" .") for p in parts if p.strip())
+        else:
+            if re.match(r"(?i)^and\s+", chunk):
+                chunk = re.sub(r"(?i)^and\s+", "", chunk).strip()
+            normalized.append(chunk.strip(" ."))
+
+    for chunk in normalized:
+        if not chunk or len(chunk) < 2:
+            continue
+        sel = re.search(r"(?i)^(.+?)\s*\(\s*selection\s*:\s*(.+)\)\s*$", chunk)
+        if sel:
+            fname = sel.group(1).strip()
+            opts = re.sub(r"\s+", " ", sel.group(2)).strip(" .")
+            rows.append(f"{fname} selection ({opts})")
+            continue
+        rel = re.search(
+            r"(?i)^(.+?)\s*\(\s*(?:link\s+to\s+)?(.+?)\s*\)\s*$",
+            chunk,
+        )
+        if rel:
+            fname = rel.group(1).strip()
+            target = rel.group(2).strip()
+            target = re.sub(r"(?i)^link\s+to\s+", "", target).strip()
+            tlow = target.lower()
+            if tlow.startswith("selection"):
+                continue
+            if tlow in _FIELD_TYPE_HINTS:
+                if tlow in {"date", "datetime"}:
+                    rows.append(fname)
+                elif tlow in {"boolean", "checkbox"}:
+                    rows.append(f"Checkbox: {fname}")
+                else:
+                    rows.append(fname)
+                continue
+            rows.append(f"{fname}→{_relation_target_display(target)}")
+            continue
+        label_f = re.sub(r"\s+", " ", chunk).strip(" .")
+        if label_f.lower() in {"model", "with", "and", "a", "an", "the"}:
+            continue
+        # Skip chrome already handled below
+        if re.search(r"(?i)^(simple\s+)?list\b|menu\s+under|no\s+workflow", label_f):
+            continue
+        rows.append(label_f)
+
+    mm = _MENU_UNDER_RE.search(text)
+    if mm:
+        rows.append(f"Menu under {mm.group(1).strip()}")
+    if _LIST_FORM_RE.search(text):
+        rows.append("List + form")
+    if _CREATE_READ_ONLY_RE.search(text):
+        rows.append("Create/read only")
+
     return _dedupe(rows)[:12]
+
+
 
 
 def _brief_must_do_constraints(
@@ -907,13 +1034,9 @@ def _deterministic_understanding(prompt: str) -> Understanding:
     if not constraints and grain == "full_app":
         constraints.extend(_brief_full_app_must_do(text))
 
-    # Short residual title: "Visitor Log", not the whole brief.
+    # Short residual title from Build…app — any new-app brief, not Visitor-only.
     if grain == "full_app" and not inherit and not needs:
-        app_m = re.search(
-            r"(?i)\b(?:build|create)\s+(?:an?\s+)?(?:tiny\s+|small\s+)?"
-            r"([A-Za-z][\w ]{1,40}?)\s+app\b",
-            text,
-        )
+        app_m = _APP_NOUN_RE.search(text)
         if app_m:
             nice = re.sub(r"\s+", " ", app_m.group(1)).strip(" .:,-")
             nice = re.sub(r"(?i)^(a|an|the)\s+", "", nice).strip()

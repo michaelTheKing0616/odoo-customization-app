@@ -344,13 +344,12 @@ _SELECTION_OPTIONS_NOISE_RE = re.compile(
     r"(?i)selection\s*:\s*[^.;\n]{0,80}"
 )
 _FIELD_RELATION_NOISE_RE = re.compile(
-    r"(?i)(?:"
-    r"\bhost\s*\(\s*employees?\s*\)|"
-    r"\bcompany\s*\(\s*link\s+to\s+contacts?\s*\)|"
-    r"\blink\s+to\s+(?:contacts?|employees?|partners?)\b|"
-    r"\(\s*(?:link\s+to\s+)?(?:contacts?|employees?|partners?)\s*\)|"
-    r"\b(?:many2one|m2o)\s+to\s+(?:res\.partner|hr\.employee)\b"
-    r")"
+    # Any field-relation aside is not the inherit host — not only Host/Company.
+    # Keep dotted technical models (res.partner / sale.order) for Prefer / Option A.
+    r"(?i)"
+    r"\([^)]*\blink\s+to\b[^)]*\)"
+    r"|\blink\s+to\s+(?:the\s+)?[\w][\w.\s]{0,40}"
+    r"|\b[A-Za-z][\w\s]{0,40}?\s*\(\s*(?![a-z][a-z0-9_]*\.[a-z0-9_.]+)[A-Za-z][\w\s./-]{0,40}\s*\)"
 )
 _FIELD_DELIVERY_NOISE_RE = re.compile(
     r"(?i)\b(?:prefer(?:red)?\s+for\s+delivery|delivery\s+notes?|delivery\s+group|"
@@ -378,7 +377,7 @@ def named_host_from_prompt(prompt: str) -> str | None:
     ):
         if model in text:
             return model
-    # Field targets are not the form host: "Host (Employee)", "link to Contact".
+    # Field targets are not the form host: any Label (Target) / link to X.
     text = _FIELD_RELATION_NOISE_RE.sub(" ", text)
     text = _SELECTION_OPTIONS_NOISE_RE.sub(" ", text)
 
