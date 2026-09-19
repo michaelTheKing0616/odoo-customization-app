@@ -162,3 +162,68 @@ def test_visitor_log_skips_pack_placement_clarify() -> None:
     assert should_block_generation(a) is False
     assert build_clarification(a, prompt=VISITOR_LOG) is None
 
+
+RESTAURANT_DINING = (
+    "Dining Tables for our restaurant. Name, Capacity, Status (selection: Free / Seated / Reserved). "
+    "Reservations with guest and party size on the calendar. List + form, new menu."
+)
+
+RESTAURANT_APP = (
+    "Build a Restaurant Management app with Dining Tables. Tables have Name, Capacity, "
+    "Status (selection: Free / Seated / Reserved / Dirty), and Section. Reservations link to "
+    "tables with Guest name, Party size, Reservation time, and Status "
+    "(selection: Booked / Seated / Cancelled / No-show). Simple list + form, menu under Restaurant. "
+    "Create/read only."
+)
+
+VISITOR_LOG_SHORT = (
+    "Visitor Log: Name, Company (link to Contact), Visit date, "
+    "Purpose (selection: Meeting / Delivery / Other), Host (link to Employee). "
+    "List + form under Services."
+)
+
+CALENDAR_FIELD_PACK = (
+    "Add reservation notes and seated count on calendar events for the restaurant."
+)
+
+
+def test_restaurant_dining_full_app_no_calendar_host() -> None:
+    """Residual Dining Tables must not Contract-host calendar.event from view chrome."""
+    assert classify_grain(RESTAURANT_DINING) == "full_app"
+    assert preferred_inherit_host(RESTAURANT_DINING) is None
+    assert named_host_from_prompt(RESTAURANT_DINING) is None
+    u = build_understanding(RESTAURANT_DINING)
+    assert u.grain == "full_app"
+    assert u.host_model is None
+    assert u.inherit_existing is False
+    assert "calendar.event" not in (u.title or "").lower()
+    assert "field pack" not in (u.title or "").lower()
+    assert "dining" in u.title.lower() or "restaurant" in u.title.lower()
+
+
+def test_restaurant_management_app_full_app() -> None:
+    assert classify_grain(RESTAURANT_APP) == "full_app"
+    u = build_understanding(RESTAURANT_APP)
+    assert u.grain == "full_app"
+    assert u.host_model is None
+    assert u.inherit_existing is False
+    assert "restaurant" in u.title.lower() or "dining" in u.title.lower()
+    assert "field pack" not in u.title.lower()
+
+
+def test_visitor_log_short_still_full_app() -> None:
+    assert classify_grain(VISITOR_LOG_SHORT) == "full_app"
+    assert named_host_from_prompt(VISITOR_LOG_SHORT) is None
+    u = build_understanding(VISITOR_LOG_SHORT)
+    assert u.grain == "full_app"
+    assert u.host_model is None
+    assert "visitor" in u.title.lower()
+
+
+def test_calendar_events_field_pack_still_hosts_calendar() -> None:
+    assert classify_grain(CALENDAR_FIELD_PACK) == "field_pack"
+    assert preferred_inherit_host(CALENDAR_FIELD_PACK) == "calendar.event"
+    u = build_understanding(CALENDAR_FIELD_PACK)
+    assert u.grain == "field_pack"
+    assert u.host_model == "calendar.event"
+    assert u.inherit_existing is True

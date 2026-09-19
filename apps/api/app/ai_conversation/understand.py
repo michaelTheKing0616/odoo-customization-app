@@ -378,6 +378,8 @@ def _brief_ops_extension_themes(prompt: str) -> list[tuple[str, re.Pattern[str]]
 _APP_NOUN_RE = re.compile(
     r"(?i)\b(?:build|create|make)\s+(?:an?\s+)?(?:(?:tiny|simple|small|new|mini)\s+)*"
     r"(.+?)\s+app\b"
+    # "Dining Tables for our restaurant" / "Visitor Log: Name, …"
+    r"|^([A-Z][\w][\w\s/-]{1,48}?)(?:\s+for\s+(?:our|the|a)\b|\s*[:—-])"
 )
 _MODEL_WITH_FIELDS_RE = re.compile(
     r"(?i)\bmodel\s+with\s+(.+?)(?:\.\s*(?:Simple|No\s+workflow|Menu)|;|\.|$)"
@@ -445,7 +447,7 @@ def _brief_full_app_must_do(prompt: str) -> list[str]:
     app_m = _APP_NOUN_RE.search(text)
     title = ""
     if app_m:
-        title = re.sub(r"\s+", " ", app_m.group(1)).strip(" .:,-")
+        title = re.sub(r"\s+", " ", (app_m.group(1) or app_m.group(2) or "")).strip(" .:,-")
         title = re.sub(r"(?i)^(a|an|the)\s+", "", title).strip()
     slug = re.sub(r"[^a-z0-9]+", "_", (title or "custom").lower()).strip("_")[:40] or "custom"
     if slug.endswith("_app"):
@@ -1038,7 +1040,7 @@ def _deterministic_understanding(prompt: str) -> Understanding:
     if grain == "full_app" and not inherit and not needs:
         app_m = _APP_NOUN_RE.search(text)
         if app_m:
-            nice = re.sub(r"\s+", " ", app_m.group(1)).strip(" .:,-")
+            nice = re.sub(r"\s+", " ", (app_m.group(1) or app_m.group(2) or "")).strip(" .:,-")
             nice = re.sub(r"(?i)^(a|an|the)\s+", "", nice).strip()
             if nice and len(nice) <= 48 and nice.lower() not in {"new", "full", "standalone"}:
                 title = nice.title() if nice.islower() or nice == nice.lower() else nice
@@ -1159,9 +1161,18 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
 
     host = det.host_model
     coerced = _coerce_host_model(str(parsed.get("host_model") or ""))
+    # Residual full_app already cleared stock hosts (calendar.event / hr.employee…).
+    # LLM must not re-inject alias noise into Contract host_model.
+    residual_full = (
+        det.grain == "full_app"
+        and not det.inherit_existing
+        and not det.needs_module
+        and det.capability
+        not in {"option_a_authored", "option_a_standalone", "refuse_clone"}
+    )
     # Deterministic host wins. Never let LLM steal Contacts → stock.picking
     # when the brief named Contacts / res.partner.
-    if coerced and not host:
+    if coerced and not host and not residual_full:
         host = coerced
     elif (
         coerced
@@ -1171,6 +1182,8 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
         and coerced in {"stock.picking", "stock.picking.type"}
     ):
         coerced = None  # keep Contacts host
+    if residual_full:
+        host = None
 
     llm_constraints: list[str] = []
     extra = parsed.get("constraints")
@@ -1266,6 +1279,11 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
     summary = str(parsed.get("summary") or "").strip()[:400] or det.summary
     inherit = det.inherit_existing or bool(parsed.get("inherit_existing"))
     needs = det.needs_module or bool(parsed.get("needs_module"))
+    if residual_full:
+        host = None
+        inherit = False
+        if re.search(r"(?i)\bfield\s*pack\b", title) or title.lower().endswith(" field"):
+            title = det.title
     confidence = det.confidence
     if parsed.get("confidence") == "low" and det.confidence != "high":
         confidence = "low"

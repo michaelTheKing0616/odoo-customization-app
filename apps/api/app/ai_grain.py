@@ -308,15 +308,18 @@ def is_inherit_only_ops(prompt: str) -> bool:
 
 def classify_grain(prompt: str) -> Grain:
     """Classify prompt grain: field_pack | feature_slice | full_app."""
-    text = (prompt or "").strip().lower()
+    raw = (prompt or "").strip().lower()
+    # Scrub relation/selection/view chrome before component cues — "link to Employee"
+    # and "on the calendar" must not force field_pack on residual full apps.
+    text = _scrub_host_noise(raw).lower() or raw
     # New app / menu-under-X briefs win before inherit-slice heuristics.
-    if _FULL_APP_RE.search(text) and not is_inherit_only_ops(text):
+    if _FULL_APP_RE.search(raw) and not is_inherit_only_ops(raw):
         return "full_app"
-    named = named_host_from_prompt(text)
+    named = named_host_from_prompt(raw)
     # Ops-extension / reuse briefs stay field_pack even when "smart button" matches _SLICE_RE.
-    if is_inherit_only_ops(text) and not _FULL_APP_RE.search(text):
+    if is_inherit_only_ops(raw) and not _FULL_APP_RE.search(raw):
         return "field_pack"
-    if named and re.search(r"\badd\b", text) and not _FULL_APP_RE.search(text):
+    if named and re.search(r"\badd\b", text) and not _FULL_APP_RE.search(raw):
         if not _SLICE_RE.search(text):
             return "field_pack"
     if _FIELD_PACK_RE.search(text) and not _COMPONENT_RE.search(text):
@@ -351,6 +354,24 @@ _FIELD_RELATION_NOISE_RE = re.compile(
     r"|\blink\s+to\s+(?:the\s+)?[\w][\w.\s]{0,40}"
     r"|\b[A-Za-z][\w\s]{0,40}?\s*\(\s*(?![a-z][a-z0-9_]*\.[a-z0-9_.]+)[A-Za-z][\w\s./-]{0,40}\s*\)"
 )
+# Calendar as *view chrome* ("on the calendar") is not an inherit host.
+# Keep "calendar event(s)" so Add-on-Calendar field packs still host correctly.
+_VIEW_CHROME_NOISE_RE = re.compile(
+    r"(?i)"
+    r"\b(?:on|in)\s+(?:the\s+|a\s+)?calendar\b(?!\s+events?\b)"
+    r"|\bcalendar(?:\s*-?\s*style)?\s+(?:view|schedule|board|layout)\b"
+    r"|\bcalendar-style\b"
+)
+
+
+def _scrub_host_noise(prompt: str) -> str:
+    """Strip selection / field-relation / view-chrome before host+grain scans."""
+    text = prompt or ""
+    text = _SELECTION_OPTIONS_NOISE_RE.sub(" ", text)
+    text = _FIELD_RELATION_NOISE_RE.sub(" ", text)
+    text = _VIEW_CHROME_NOISE_RE.sub(" ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
 _FIELD_DELIVERY_NOISE_RE = re.compile(
     r"(?i)\b(?:prefer(?:red)?\s+for\s+delivery|delivery\s+notes?|delivery\s+group|"
     r"delivery\s+preferences?)\b"
@@ -377,9 +398,8 @@ def named_host_from_prompt(prompt: str) -> str | None:
     ):
         if model in text:
             return model
-    # Field targets are not the form host: any Label (Target) / link to X.
-    text = _FIELD_RELATION_NOISE_RE.sub(" ", text)
-    text = _SELECTION_OPTIONS_NOISE_RE.sub(" ", text)
+    # Field targets / view chrome are not the form host.
+    text = _scrub_host_noise(text)
 
     # Correction clauses ("wait — actually … on Contacts") — last strong host wins.
     for m in re.finditer(
@@ -471,7 +491,7 @@ def discover_hosts(
     saved_specs: list[dict[str, Any]] | None = None,
 ) -> list[HostCandidate]:
     """Rank candidate host models from prompt + introspection."""
-    text = (prompt or "").lower()
+    text = _scrub_host_noise(prompt or "").lower()
     catalog = set(available_models or [])
     for spec in saved_specs or []:
         for m in spec.get("models") or []:
@@ -572,7 +592,9 @@ def seed_architecture_plan_stub(
     plan["strategy"] = architecture_strategy_for_grain(
         g, option_a=option_a  # type: ignore[arg-type]
     )
-    if host and host.model:
+    # Residual full_app: never stamp alias-noise hosts (calendar.event, hr.employee…)
+    # into Contract IR — only inherit grains carry a stock host.
+    if host and host.model and g in {"field_pack", "feature_slice"}:
         hosts = list(plan.get("stock_hosts") or [])
         if host.model not in hosts:
             hosts.insert(0, host.model)
