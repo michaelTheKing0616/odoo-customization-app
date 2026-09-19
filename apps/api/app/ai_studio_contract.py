@@ -181,7 +181,9 @@ def build_studio_contract(
     if inherit_only:
         resolved_grain = "field_pack"
     # Residual full_app: never invent a stock host or «field pack» title.
-    if resolved_grain == "full_app" and not inherit_only and not host_override:
+    # Ignore host_override too — attach_studio_contract used to re-inject a stolen
+    # inherit row (calendar.event) from the draft and bypass this clear.
+    if resolved_grain == "full_app" and not inherit_only:
         host, host_label = "", ""
     else:
         host, host_label = _host_from_prompt(blob, override=host_override)
@@ -282,12 +284,22 @@ def attach_studio_contract(
     constraints: list[str] | None = None,
 ) -> dict[str, Any]:
     """Stamp ``_studio_contract`` on the draft (idempotent rebuild from prompt)."""
-    host = None
-    for m in draft.get("models") or []:
-        if isinstance(m, dict) and str(m.get("mode") or "") == "inherit":
-            host = str(m.get("model") or "") or None
-            break
+    from app.ai_grain import classify_grain
+
     grain = draft.get("grain")
+    if not isinstance(grain, str) or grain not in {"field_pack", "feature_slice", "full_app"}:
+        grain = classify_grain(prompt)
+        draft["grain"] = grain
+
+    host = None
+    # Only feed draft inherit rows as host override for inherit grains.
+    # Residual full_app drafts often carry a stolen calendar.event / hr.employee
+    # inherit from alias noise — that must not become Contract host.
+    if grain in {"field_pack", "feature_slice"}:
+        for m in draft.get("models") or []:
+            if isinstance(m, dict) and str(m.get("mode") or "") == "inherit":
+                host = str(m.get("model") or "") or None
+                break
     contract = build_studio_contract(
         prompt,
         constraints=constraints,

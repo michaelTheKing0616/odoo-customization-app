@@ -110,3 +110,30 @@ def test_prefer_contract_still_contacts_field_pack() -> None:
     assert c["grain"] == "field_pack"
     assert c["host_model"] == "res.partner"
     assert c.get("inherit_only") is True
+
+
+def test_attach_ignores_stolen_calendar_inherit_on_full_app() -> None:
+    """Draft may still carry calendar.event inherit from alias noise — Contract must not."""
+    from app.ai_studio_contract import attach_studio_contract
+
+    prompt = (
+        "Build a Restaurant Management app with Dining Tables. "
+        "Reservations with guest and party size on the calendar. Create/read only."
+    )
+    draft = {
+        "grain": "full_app",
+        "display_name": "Restaurant Management",
+        "models": [
+            {"model": "x_dining_table", "mode": "new", "fields": []},
+            {"model": "calendar.event", "mode": "inherit", "fields": []},
+        ],
+    }
+    contract = attach_studio_contract(draft, prompt)
+    assert contract.get("grain") == "full_app"
+    assert contract.get("host_model") in (None, "")
+    assert "field pack" not in (contract.get("title") or "").lower()
+    assert "calendar" not in (contract.get("title") or "").lower()
+    assert "restaurant" in (contract.get("title") or "").lower() or "dining" in (
+        contract.get("title") or ""
+    ).lower()
+    assert draft["_studio_contract"].get("host_model") in (None, "")
