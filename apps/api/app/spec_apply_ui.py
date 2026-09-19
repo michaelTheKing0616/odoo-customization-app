@@ -35,6 +35,7 @@ class UiApplyResult(ApplyResult):
     smart_buttons: int = 0
     automations_noted: int = 0
     automations_created: int = 0
+    automations_reused: int = 0
     access_rights_created: int = 0
     record_rules_created: int = 0
     sequences_created: int = 0
@@ -1458,6 +1459,62 @@ def _relax_leftover_required_fields(
         )
 
 
+
+def _live_automation_ids_by_name(
+    client: OdooClient, *, name: str, model: str
+) -> list[int]:
+    """Return live base.automation ids matching name + model (oldest first)."""
+    exists = getattr(client, "model_exists", None)
+    if callable(exists) and not exists("base.automation"):
+        return []
+    execute = getattr(client, "execute_kw", None)
+    if not callable(execute):
+        return []
+    try:
+        ids = execute(
+            "base.automation",
+            "search",
+            [[("name", "=", name), ("model_id.model", "=", model)]],
+            {"order": "id asc"},
+        )
+        return [int(i) for i in (ids or [])]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _reuse_or_collapse_live_automation(
+    client: OdooClient,
+    *,
+    name: str,
+    model: str,
+    result: UiApplyResult,
+) -> bool:
+    """If a matching automation already exists, reuse it (collapse extras).
+
+    Returns True when create should be skipped.
+    """
+    ids = _live_automation_ids_by_name(client, name=name, model=model)
+    if not ids:
+        return False
+    keep, *dupes = ids
+    if dupes:
+        execute = getattr(client, "execute_kw", None)
+        if callable(execute):
+            try:
+                execute("base.automation", "unlink", [dupes])
+                result.automations_scrubbed += len(dupes)
+                result.warnings.append(
+                    f"Collapsed {len(dupes)} duplicate automation(s) named {name!r} "
+                    f"on {model} (kept id={keep})"
+                )
+            except Exception as exc:  # noqa: BLE001
+                result.warnings.append(
+                    f"Could not unlink duplicate automations {dupes} for {name!r}: {exc}"
+                )
+    result.automations_reused += 1
+    return True
+
+
 def _apply_safe_automations(
     client: OdooClient, spec: dict[str, Any], result: UiApplyResult
 ) -> None:
@@ -1576,6 +1633,11 @@ def _apply_safe_automations(
                         kwargs["trg_date_range_type"] = str(auto["trg_date_range_type"])
                     if auto.get("trg_date_range_mode"):
                         kwargs["trg_date_range_mode"] = str(auto["trg_date_range_mode"])
+                if _reuse_or_collapse_live_automation(
+                    client, name=auto_name, model=str(model), result=result
+                ):
+                    created_any = True
+                    continue
                 client.create_automation(CreateAutomationRequest(**kwargs))
                 result.automations_created += 1
                 created_any = True
@@ -2019,7 +2081,8 @@ def apply_module_spec_ui(
         f"UI apply: {len(result.models_created)} model(s), {result.fields_created} field(s), "
         f"{result.views_created} view(s) created, {result.views_updated} updated, "
         f"{result.menus_created} menu(s), {result.smart_buttons} smart button(s), "
-        f"{result.automations_created} automation(s), "
+        f"{result.automations_created} automation(s)"
+        f"{(f', {result.automations_reused} reused' if result.automations_reused else '')}, "
         f"{result.access_rights_created} access + {result.record_rules_created} record rule(s), "
         f"{result.sequences_created} sequence(s)"
     )

@@ -72,16 +72,18 @@ def test_unsupported_code_action_returns_none() -> None:
 
 class _AutoFakeClient:
     def __init__(self) -> None:
-        self.models = {"x_appointment"}
+        self.models = {"x_appointment", "base.automation"}
         self.created: list[Any] = []
         self.activity_types: list[dict[str, Any]] = []
+        self.live_automations: dict[str, list[int]] = {}
+        self.unlinked: list[int] = []
 
     def model_exists(self, model: str) -> bool:
         return model in self.models
 
     def create_automation(self, request: Any) -> Any:
         self.created.append(request)
-        return SimpleNamespace(id=1)
+        return SimpleNamespace(id=100 + len(self.created))
 
     def resolve_xml_id(self, xml_id: str) -> int:
         raise ValueError(f"Invalid xml_id {xml_id!r}")
@@ -89,6 +91,32 @@ class _AutoFakeClient:
     def list_activity_types(self, *, limit: int = 50) -> list[dict[str, Any]]:
         _ = limit
         return list(self.activity_types)
+
+    def execute_kw(
+        self, model: str, method: str, args: list[Any], kwargs: dict[str, Any] | None = None
+    ) -> Any:
+        _ = kwargs
+        if model != "base.automation":
+            raise AssertionError(f"unexpected model {model}")
+        if method == "search":
+            domain = args[0] if args else []
+            name = model_name = None
+            for term in domain:
+                if not isinstance(term, (list, tuple)) or len(term) < 3:
+                    continue
+                if term[0] == "name" and term[1] == "=":
+                    name = term[2]
+                if term[0] == "model_id.model" and term[1] == "=":
+                    model_name = term[2]
+            key = f"{model_name}::{name}"
+            return list(self.live_automations.get(key, []))
+        if method == "unlink":
+            ids = list(args[0]) if args else []
+            self.unlinked.extend(ids)
+            for key, vals in list(self.live_automations.items()):
+                self.live_automations[key] = [i for i in vals if i not in ids]
+            return True
+        raise AssertionError(f"unexpected method {method}")
 
 
 def test_apply_safe_automations_accepts_create_trigger_alias() -> None:
@@ -342,3 +370,55 @@ def test_relax_leftover_required_fields_not_in_spec() -> None:
     assert result.fields_relaxed == 2
     assert client.writes == [([2, 3], {"required": False})]
     assert any("x_rate_hour" in w for w in result.warnings)
+
+def test_apply_reuses_existing_automation_by_name_model() -> None:
+    client = _AutoFakeClient()
+    client.live_automations["x_appointment::On appointment create"] = [42]
+    result = UiApplyResult()
+    _apply_safe_automations(
+        client,
+        {
+            "automations": [
+                {
+                    "name": "On appointment create",
+                    "model": "x_appointment",
+                    "trigger": "create",
+                    "safe_actions": [
+                        {"kind": "update_field", "field": "x_status", "value": "scheduled"}
+                    ],
+                }
+            ]
+        },
+        result,
+    )
+    assert result.automations_created == 0
+    assert result.automations_reused == 1
+    assert client.created == []
+
+
+def test_apply_collapses_duplicate_live_automations() -> None:
+    client = _AutoFakeClient()
+    client.live_automations["x_appointment::Preferred for delivery — follow up"] = [10, 11, 12]
+    result = UiApplyResult()
+    _apply_safe_automations(
+        client,
+        {
+            "automations": [
+                {
+                    "name": "Preferred for delivery — follow up",
+                    "model": "x_appointment",
+                    "trigger": "on_write",
+                    "safe_actions": [
+                        {"kind": "update_field", "field": "x_status", "value": "preferred"}
+                    ],
+                }
+            ]
+        },
+        result,
+    )
+    assert result.automations_created == 0
+    assert result.automations_reused == 1
+    assert client.unlinked == [11, 12]
+    assert result.automations_scrubbed == 2
+    assert any("Collapsed 2 duplicate" in w for w in result.warnings)
+
