@@ -202,3 +202,40 @@ def test_scrub_keeps_stock_host_smart_buttons_to_custom_residual() -> None:
     assert "pos.order" in hosts
     assert "x_punch_card" not in hosts
     assert any("account.move" in s for s in skips)
+
+
+def test_scrub_keeps_stock_link_only_smart_button_contacts_to_pickings() -> None:
+    """Contacts → Transfers via existing stock.picking.partner_id must survive scrub.
+
+    Apply injects button_box inherit and skips inventing O2M on tier-1 hosts.
+    Scrub used to drop this as "mutates tier-1" even though no protected FK is created.
+    """
+    m = _manifest()
+    spec = {
+        "smart_buttons": [
+            {
+                "on_model": "res.partner",
+                "related_model": "stock.picking",
+                "relation_field": "partner_id",
+                "label": "Transfers",
+                "icon": "fa-truck",
+                "requires_inherit_view": True,
+                "source": "senior_ops",
+            },
+            {
+                # Still blocked: inventing custom FK onto tier-1 related
+                "on_model": "res.partner",
+                "related_model": "account.move",
+                "relation_field": "x_partner_id",
+                "label": "Invoices",
+            },
+        ]
+    }
+    cleaned, skips = scrub_spec_for_protected_apply(spec, m)
+    kept = cleaned["smart_buttons"]
+    assert len(kept) == 1
+    assert kept[0]["label"] == "Transfers"
+    assert kept[0]["relation_field"] == "partner_id"
+    # Invent-FK button stripped (host is tier-1; skip names res.partner, not related).
+    assert not any(b.get("label") == "Invoices" for b in kept)
+    assert any("smart button mutates tier-1" in s for s in skips)

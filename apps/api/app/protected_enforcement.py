@@ -386,9 +386,11 @@ def scrub_spec_for_protected_apply(
             kept.append(auto)
         out[key] = kept
 
-    # Smart buttons: allow stock-host → custom residual navigation (Contacts / PoS
-    # button_box inherit). Block only when the related *target* is tier-1 (would
-    # create inverse FKs on protected models) or both sides are stock.
+    # Smart buttons: allow (1) stock-host → custom residual (Punch Cards on Contacts)
+    # and (2) link-only stock↔stock via an *existing* non-custom M2O on related
+    # (Contacts → Transfers via stock.picking.partner_id). Apply injects button_box
+    # inherit and skips inventing O2M on tier-1 hosts. Block inventing FKs on
+    # protected targets (custom relation_field onto tier-1 related).
     buttons = out.get("smart_buttons")
     if isinstance(buttons, list):
         kept_btns: list[Any] = []
@@ -410,6 +412,18 @@ def scrub_spec_for_protected_apply(
             if stock_host_to_custom:
                 kept_btns.append(btn)
                 continue
+            # Link-only: existing stock M2O on related (partner_id, etc.) — no new
+            # protected FK. Host may be tier-1; related may be tier-1.
+            stock_link_only = (
+                bool(on_model)
+                and bool(related)
+                and bool(rel_field)
+                and not is_custom_field(rel_field)
+                and not is_custom_model(related)
+            )
+            if stock_link_only:
+                kept_btns.append(btn)
+                continue
             if on_model and on_tier == "tier_1":
                 skips.append(
                     f"smart_button:{btn.get('name') or on_model}: "
@@ -417,7 +431,7 @@ def scrub_spec_for_protected_apply(
                 )
                 continue
             if related and related_tier == "tier_1":
-                # M2O created ON related (target) — blocked if related is tier-1
+                # Would invent M2O ON related (target) — blocked if related is tier-1
                 skips.append(
                     f"smart_button:{btn.get('name') or related}: "
                     f"{_violation(related, 'tier_1', 'smart button field on tier-1').skip_reason()}"
