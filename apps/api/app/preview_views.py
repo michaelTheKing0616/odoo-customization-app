@@ -372,6 +372,30 @@ def _header_buttons(spec_buttons: list[Any]) -> list[PreviewHeaderButton]:
     return out
 
 
+def _selection_chrome_labels(draft: dict[str, Any], model: str) -> set[str]:
+    """Labels of selection/status values — must never render as button_box smart buttons."""
+    labels: set[str] = set()
+    for m in draft.get("models") or []:
+        if not isinstance(m, dict) or str(m.get("model") or "") != model:
+            continue
+        for field in m.get("fields") or []:
+            if not isinstance(field, dict):
+                continue
+            if str(field.get("ttype") or "") != "selection":
+                continue
+            raw = field.get("selection")
+            if isinstance(raw, str):
+                for lab in re.findall(r"\(\s*'[^']*'\s*,\s*'([^']+)'\s*\)", raw):
+                    labels.add(lab.strip().lower())
+            elif isinstance(raw, (list, tuple)):
+                for item in raw:
+                    if isinstance(item, (list, tuple)) and len(item) >= 2:
+                        labels.add(str(item[1]).strip().lower())
+                    elif isinstance(item, dict):
+                        labels.add(str(item.get("label") or item.get("name") or "").strip().lower())
+    return {x for x in labels if x}
+
+
 def _smart_buttons_for_model(
     draft: dict[str, Any],
     model: str,
@@ -385,6 +409,7 @@ def _smart_buttons_for_model(
         if label and count_field:
             counts[label] = 0
 
+    chrome = _selection_chrome_labels(draft, model)
     out: list[PreviewSmartButton] = []
     seen: set[tuple[str, str]] = set()
     for idx, btn in enumerate(draft.get("smart_buttons") or []):
@@ -395,6 +420,9 @@ def _smart_buttons_for_model(
             continue
         related = str(btn.get("related_model") or "")
         label = str(btn.get("string") or btn.get("label") or related or "Open")
+        # Selection/state chrome (Reserved/Seated/Dirty/Blocked) ≠ smart buttons.
+        if label.strip().lower() in chrome:
+            continue
         key = (related, label)
         if key in seen:
             continue
@@ -413,6 +441,8 @@ def _smart_buttons_for_model(
     if not out:
         for idx, btn in enumerate(arch_buttons):
             label = str(getattr(btn, "string", None) or "Open")
+            if label.strip().lower() in chrome:
+                continue
             key = ("", label)
             if key in seen:
                 continue

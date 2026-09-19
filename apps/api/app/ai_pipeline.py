@@ -793,14 +793,20 @@ def run_staged_pipeline(
                         warnings.append(f"step4 skipped: {exc}")
 
                     tech = re.sub(r"[^a-z0-9_]+", "_", prompt.lower())[:24].strip("_") or "custom_app"
+                    tech = re.sub(r"[^a-z0-9_]+", "_", prompt.lower())[:24].strip("_") or "custom_app"
+                    # LLM residual title wins over pack stamp (Restaurant Management bleed).
+                    residual_name, residual_slug = naming_from_residual(prompt)
+                    tech = residual_slug or (scaffold or {}).get("technical_name") or tech
+                    display = residual_name or tech.replace("_", " ").title()
                     draft = {
-                        "technical_name": (scaffold or {}).get("technical_name") or tech,
-                        "display_name": (scaffold or {}).get("display_name")
-                        or tech.replace("_", " ").title(),
+                        "technical_name": tech,
+                        "display_name": display,
                         "depends": list((scaffold or {}).get("depends") or ["base"]),
                         "models": models,
-                        "smart_buttons": list((scaffold or {}).get("smart_buttons") or []),
+                        # Pack smart_buttons / Contacts invent come via gated merge — not wholesale copy.
+                        "smart_buttons": [],
                         "automations": [],
+                        "grain": "full_app",
                         "_ambition": ambition,
                         "_user_prompt": prompt,
                         "_domain_briefing": briefing.to_dict(),
@@ -808,7 +814,18 @@ def run_staged_pipeline(
                     if scaffold and shape not in {"register", "catalog"}:
                         draft, seed_notes = seed_missing_core_scaffold_models(draft, scaffold)
                         warnings.extend(seed_notes)
-                        draft, pack_w = merge_domain_pack(draft, scaffold)
+                        # Residual full_app: packs may fill models; never override title or inject
+                        # Contacts host smart buttons (merge_domain_pack enforces).
+                        hints_only = shape in {"register", "catalog"} or (
+                            shape != "workspace" and bool(models)
+                        )
+                        draft, pack_w = merge_domain_pack(
+                            draft, scaffold, hints_only=hints_only
+                        )
+                        if residual_name:
+                            draft["display_name"] = residual_name
+                        if residual_slug:
+                            draft["technical_name"] = residual_slug
                         warnings.extend(pack_w)
 
                     try:

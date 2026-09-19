@@ -287,6 +287,9 @@ def clarify_session_route(
 
     assessment = assess_intent(prompt_resolved, resolved_answers=resolved)
     if body.merge_key == "diagnosis" and body.answer_id == "reject":
+        # Clear previous draft + locked Contract IR when diagnosis changes.
+        resolved.pop("understanding_json", None)
+        resolved.pop("diagnosis", None)
         update_session(
             db,
             row,
@@ -294,6 +297,8 @@ def clarify_session_route(
             resolved_answers=resolved,
             pending_clarification=None,
             status="rejected",
+            artifact={},
+            artifact_hash=None,
         )
         out = session_to_dict(row)
         out["assessment"] = _assessment_payload(assessment)

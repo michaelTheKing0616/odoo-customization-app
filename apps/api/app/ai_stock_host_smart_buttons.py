@@ -184,12 +184,58 @@ def _existing_keys(draft: dict[str, Any]) -> set[tuple[str, str, str]]:
     }
 
 
+def partner_tie_allows_contacts_button(prompt: str) -> bool:
+    """True when the brief explicitly ties the residual to Contacts (punch / loyalty)."""
+    text = prompt or ""
+    if _PARTNER_SKIP_RE.search(text) and not _PARTNER_TIE_RE.search(text):
+        return False
+    return bool(_PARTNER_TIE_RE.search(text))
+
+
+def _is_residual_full_app(draft: dict[str, Any]) -> bool:
+    """True for residual new-app drafts — not Prefer/inherit field packs."""
+    grain = str(draft.get("grain") or "").strip()
+    if grain in {"field_pack", "feature_slice"}:
+        return False
+    if draft.get("_component"):
+        return False
+    engine = draft.get("_generation_engine")
+    if isinstance(engine, dict):
+        eg = str(engine.get("grain") or "")
+        if eg in {"field_pack", "feature_slice"}:
+            return False
+        if engine.get("capability") in {"option_a_authored", "option_a_standalone", "stock_reuse"}:
+            return False
+    # Inherit-only drafts are field packs even when grain unset.
+    models = [m for m in (draft.get("models") or []) if isinstance(m, dict)]
+    x_new = [
+        m
+        for m in models
+        if str(m.get("model") or "").startswith("x_")
+        and str(m.get("mode") or "new") != "inherit"
+    ]
+    inherit_only = models and not x_new and any(
+        str(m.get("mode") or "") == "inherit" or not str(m.get("model") or "").startswith("x_")
+        for m in models
+    )
+    if inherit_only:
+        return False
+    return bool(x_new) or grain in {"", "full_app"}
+
+
 def _drop_disallowed_partner_buttons(draft: dict[str, Any], *, prompt: str) -> list[str]:
-    """Visitor-style registers must not grow a Contacts button_box entry."""
+    """Drop invented Contacts host buttons for visitor registers and residual full_app.
+
+    Prefer Contacts inherit (field_pack) and explicit punch/loyalty partner_tie keep them.
+    Residual M2Os to res.partner stay form fields — not «{app}» smart buttons on Contacts.
+    """
     notes: list[str] = []
-    if not _PARTNER_SKIP_RE.search(prompt or ""):
+    text = prompt or ""
+    if partner_tie_allows_contacts_button(text):
         return notes
-    if _PARTNER_TIE_RE.search(prompt or ""):
+    # Visitor-style OR residual full_app without partner_tie: no Contacts host invent.
+    drop = bool(_PARTNER_SKIP_RE.search(text)) or _is_residual_full_app(draft)
+    if not drop:
         return notes
     btns = list(draft.get("smart_buttons") or [])
     filtered = [
@@ -199,7 +245,12 @@ def _drop_disallowed_partner_buttons(draft: dict[str, Any], *, prompt: str) -> l
     ]
     if len(filtered) != len(btns):
         draft["smart_buttons"] = filtered
-        notes.append("stock_host_btn: dropped Contacts smart button (visitor-style register)")
+        reason = (
+            "visitor-style register"
+            if _PARTNER_SKIP_RE.search(text)
+            else "residual full_app (M2O≠smart button)"
+        )
+        notes.append(f"stock_host_btn: dropped Contacts smart button ({reason})")
     return notes
 
 
@@ -313,8 +364,18 @@ def draft_missing_stock_host_smart_buttons(
     return False
 
 
+
+
+def scrub_residual_contacts_host_buttons(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
+    """Drop invented Contacts host buttons; do not stamp new stock-host buttons."""
+    text = prompt or str(draft.get("_user_prompt") or "")
+    return _drop_disallowed_partner_buttons(draft, prompt=text)
+
+
 __all__ = [
     "STOCK_HOST_BUTTON_BY_MODEL",
     "apply_stock_host_smart_buttons",
     "draft_missing_stock_host_smart_buttons",
+    "partner_tie_allows_contacts_button",
+    "scrub_residual_contacts_host_buttons",
 ]

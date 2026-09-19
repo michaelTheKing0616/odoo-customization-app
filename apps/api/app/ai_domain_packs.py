@@ -1235,13 +1235,31 @@ def prune_extraneous_models(
 
 
 def merge_domain_pack(
-    draft: dict[str, Any], pack: dict[str, Any]
+    draft: dict[str, Any],
+    pack: dict[str, Any],
+    *,
+    hints_only: bool = False,
 ) -> tuple[dict[str, Any], list[str]]:
-    """Fill missing models/fields/smart_buttons/automations from pack; keep AI extras."""
+    """Fill missing models/fields/smart_buttons/automations from pack; keep AI extras.
+
+    ``hints_only=True`` (residual full_app LLM drafts): seed reuse_hints / tags only —
+    do not override display_name, grain, or inject Contacts host smart buttons.
+    """
     warnings: list[str] = []
     out = copy.deepcopy(draft)
+    if hints_only:
+        out.setdefault("domain_pack", pack.get("domain_pack"))
+        if pack.get("reuse_hints") and not out.get("reuse_hints"):
+            out["reuse_hints"] = copy.deepcopy(pack["reuse_hints"])
+            warnings.append("domain pack seeded reuse_hints only (residual full_app)")
+        if pack.get("tags"):
+            out.setdefault("tags", pack["tags"])
+        # Never inject Contacts host smart buttons from packs into residual full_app.
+        return out, warnings
     out.setdefault("technical_name", pack.get("technical_name"))
-    out.setdefault("display_name", pack.get("display_name"))
+    # Prefer LLM / brief title when already stamped — packs must not rename residual apps.
+    if not out.get("display_name"):
+        out["display_name"] = pack.get("display_name")
     out["domain_pack"] = pack.get("domain_pack")
     declared_shape = pack_document_shape(pack)
     if declared_shape:
@@ -1409,9 +1427,22 @@ def merge_domain_pack(
 
     out["models"] = merged_models
 
+    def _pack_btn_ok(btn: dict[str, Any]) -> bool:
+        # Residual full_app / non-field_pack: packs must not inject Contacts host buttons.
+        grain = str(out.get("grain") or "full_app")
+        if grain in {"field_pack", "feature_slice"}:
+            return True
+        return str(btn.get("on_model") or "") != "res.partner"
+
     if not out.get("smart_buttons") and pack.get("smart_buttons"):
-        out["smart_buttons"] = copy.deepcopy(pack["smart_buttons"])
+        kept = [copy.deepcopy(b) for b in pack["smart_buttons"] if isinstance(b, dict) and _pack_btn_ok(b)]
+        dropped = len(pack["smart_buttons"]) - len(kept)
+        out["smart_buttons"] = kept
         warnings.append("domain pack added smart_buttons")
+        if dropped:
+            warnings.append(
+                f"domain pack skipped {dropped} Contacts host smart button(s) (residual full_app)"
+            )
     elif pack.get("smart_buttons"):
         existing = {
             (b.get("on_model"), b.get("related_model"), b.get("relation_field"))
@@ -1419,6 +1450,8 @@ def merge_domain_pack(
             if isinstance(b, dict)
         }
         for btn in pack["smart_buttons"]:
+            if not isinstance(btn, dict) or not _pack_btn_ok(btn):
+                continue
             key = (btn.get("on_model"), btn.get("related_model"), btn.get("relation_field"))
             if key not in existing:
                 out.setdefault("smart_buttons", []).append(copy.deepcopy(btn))

@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+
+import pytest
+
+pytestmark = pytest.mark.no_app_db
+
 from app.ai_document_shape import honor_operator_brief
 from app.ai_stock_host_smart_buttons import (
     apply_stock_host_smart_buttons,

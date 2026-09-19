@@ -91,14 +91,50 @@ def _root_menu(draft: dict[str, Any]) -> dict[str, str] | None:
     return {"label": name or tech, "technical_name": tech}
 
 
+def _residual_full_app_find_it(draft: dict[str, Any]) -> bool:
+    """Find-it for residual full_app = app menu + residual buttons only (no invented host)."""
+    grain = str(draft.get("grain") or "full_app")
+    if grain in {"field_pack", "feature_slice"} or draft.get("_component"):
+        return False
+    engine = draft.get("_generation_engine")
+    if isinstance(engine, dict) and engine.get("grain") in {"field_pack", "feature_slice"}:
+        return False
+    if isinstance(engine, dict) and engine.get("capability") in {
+        "option_a_authored",
+        "option_a_standalone",
+        "stock_reuse",
+    }:
+        return False
+    try:
+        from app.ai_stock_host_smart_buttons import partner_tie_allows_contacts_button
+
+        prompt = str(draft.get("_user_prompt") or "")
+        if partner_tie_allows_contacts_button(prompt):
+            return False  # punch/loyalty — keep intentional Contacts host button
+    except Exception:  # noqa: BLE001
+        pass
+    x_new = any(
+        isinstance(m, dict)
+        and str(m.get("model") or "").startswith("x_")
+        and str(m.get("mode") or "new") != "inherit"
+        for m in (draft.get("models") or [])
+    )
+    return x_new or grain == "full_app"
+
+
 def build_operator_surface(draft: dict[str, Any]) -> dict[str, Any]:
-    """Build a placement map from menus, smart_buttons, and residual stock M2Os."""
+    """Build a placement map from menus, smart_buttons, and residual stock M2Os.
+
+    Residual full_app find-it: app menu + residual smart buttons only. Stock M2Os to
+    Contacts/Employees stay ``stock_links`` (fields), never invented «{app}» host buttons.
+    """
     display = str(draft.get("display_name") or draft.get("technical_name") or "App").strip()
     app_menu = _root_menu(draft)
     host_buttons: list[dict[str, str]] = []
     residual_buttons: list[dict[str, str]] = []
     seen_host: set[tuple[str, str, str]] = set()
     seen_res: set[tuple[str, str, str]] = set()
+    suppress_host_invent = _residual_full_app_find_it(draft)
 
     for btn in draft.get("smart_buttons") or []:
         if not isinstance(btn, dict):
@@ -120,6 +156,9 @@ def build_operator_surface(draft: dict[str, Any]) -> dict[str, Any]:
                     "button_label": label,
                 }
             )
+            continue
+        # Residual full_app: never surface stock-host invent from M2O / reuse_hints noise.
+        if suppress_host_invent:
             continue
         key = (on_model, related, label)
         if key in seen_host:
@@ -171,11 +210,17 @@ def build_operator_surface(draft: dict[str, Any]) -> dict[str, Any]:
     if app_menu and app_menu.get("label"):
         parts.append(f"Open «{app_menu['label']}» from the Odoo home / app switcher.")
     if host_buttons:
-        bits = [
-            f"«{b['button_label']}» on {b['host_label']}"
-            for b in host_buttons[:6]
-        ]
-        parts.append("Also on stock forms: " + "; ".join(bits) + ".")
+        bits: list[str] = []
+        seen_bit: set[str] = set()
+        for b in host_buttons[:6]:
+            bit = f"«{b['button_label']}» on {b['host_label']}"
+            key = bit.lower()
+            if key in seen_bit:
+                continue
+            seen_bit.add(key)
+            bits.append(bit)
+        if bits:
+            parts.append("Also on stock forms: " + "; ".join(bits) + ".")
     if residual_buttons:
         parts.append(
             f"{len(residual_buttons)} smart button(s) on your custom form(s) "
@@ -250,6 +295,15 @@ def attach_operator_surface(draft: dict[str, Any]) -> list[str]:
     """Stamp ``_operator_surface`` for Wizard discoverability."""
     if not isinstance(draft, dict):
         return []
+    # Scrub invented Contacts host buttons before find-it (do not stamp new ones here).
+    try:
+        from app.ai_stock_host_smart_buttons import scrub_residual_contacts_host_buttons
+
+        scrub_residual_contacts_host_buttons(
+            draft, prompt=str(draft.get("_user_prompt") or "")
+        )
+    except Exception:  # noqa: BLE001
+        pass
     engine = draft.get("_generation_engine")
     if isinstance(engine, dict) and engine.get("capability") == "stock_reuse":
         draft["_operator_surface"] = {

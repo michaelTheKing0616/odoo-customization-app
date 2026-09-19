@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+
+import pytest
+
+pytestmark = pytest.mark.no_app_db
+
 from app.ai_operator_surface import attach_operator_surface, build_operator_surface
 
 
@@ -57,6 +62,10 @@ def _punch_draft() -> dict:
                 "parent_xml_id": "menu_root_punch_card",
             },
         ],
+        "_user_prompt": (
+            "loyalty punch card tied to the customer (Contacts), "
+            "cashier sees punches on the POS-adjacent back office"
+        ),
     }
 
 
@@ -129,3 +138,94 @@ def test_option_a_inherit_is_not_residual_app_fallback() -> None:
     assert "residual app" not in surface["summary"]
     assert "sale.order" in surface["summary"]
     assert "Option A module" in surface["summary"]
+
+
+def test_residual_full_app_find_it_no_contacts_invent() -> None:
+    """Restaurant / Visitor residual: app menu only — no «App» ×N on Contacts."""
+    from app.ai_rules import apply_pattern_rules
+    from app.ai_operator_surface import build_operator_surface, attach_operator_surface
+    import copy
+    from app.ai_domain_pack_restaurant import restaurant_pack
+
+    draft = copy.deepcopy(restaurant_pack())
+    draft["grain"] = "full_app"
+    draft["_user_prompt"] = (
+        "Build Restaurant Management app with tables, reservations, guests as Contacts"
+    )
+    apply_pattern_rules(draft)
+    # Even if rules / pack left partner buttons, find-it must not invent host Contacts.
+    draft.setdefault("smart_buttons", []).append(
+        {
+            "on_model": "res.partner",
+            "label": "Restaurant Management",
+            "related_model": "x_reservation",
+            "relation_field": "x_partner_id",
+        }
+    )
+    draft.setdefault("smart_buttons", []).append(
+        {
+            "on_model": "res.partner",
+            "label": "Restaurant Management",
+            "related_model": "x_order",
+            "relation_field": "x_partner_id",
+        }
+    )
+    attach_operator_surface(draft)
+    surface = draft["_operator_surface"]
+    assert not any(b["host_model"] == "res.partner" for b in surface["host_buttons"])
+    summary = surface["summary"]
+    assert summary.count("Restaurant Management") <= 1 or "Contacts" not in summary
+    assert "on Contacts" not in summary
+
+
+def test_prefer_contacts_inherit_still_hosts() -> None:
+    surface = build_operator_surface(
+        {
+            "display_name": "Contacts field",
+            "technical_name": "contacts_field",
+            "grain": "field_pack",
+            "_generation_engine": {"grain": "field_pack", "host_model": "res.partner"},
+            "models": [{"model": "res.partner", "mode": "inherit", "fields": []}],
+            "menus": [],
+            "smart_buttons": [],
+            "_user_prompt": "Prefer Contacts — add loyalty note on the contact form",
+        }
+    )
+    assert "residual app" not in surface["summary"].lower() or "Contacts" in surface["summary"]
+
+
+def test_visitor_log_residual_clean_find_it() -> None:
+    draft = {
+        "display_name": "Visitor Log",
+        "technical_name": "visitor_log",
+        "grain": "full_app",
+        "_user_prompt": "Visitor Log: Name, Company, Host (Employee). Simple list + form.",
+        "models": [
+            {
+                "model": "x_visitor_log",
+                "mode": "new",
+                "fields": [
+                    {"name": "x_name", "ttype": "char"},
+                    {
+                        "name": "x_partner_id",
+                        "ttype": "many2one",
+                        "relation": "res.partner",
+                    },
+                ],
+            }
+        ],
+        "smart_buttons": [
+            {
+                "on_model": "res.partner",
+                "label": "Visitor Log",
+                "related_model": "x_visitor_log",
+                "relation_field": "x_partner_id",
+            }
+        ],
+        "menus": [
+            {"name": "Visitor Log", "xml_id": "menu_root_visitor_log"},
+        ],
+    }
+    surface = build_operator_surface(draft)
+    assert all(b["host_model"] != "res.partner" for b in surface["host_buttons"])
+    assert surface["app_menu"] and surface["app_menu"]["label"] == "Visitor Log"

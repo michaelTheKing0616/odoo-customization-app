@@ -127,7 +127,11 @@ def _ensure_sequence_field(model: dict[str, Any]) -> bool:
 def _ensure_partner_backref_smart_button(
     draft: dict[str, Any], model: dict[str, Any]
 ) -> bool:
-    """If model M2Os to res.partner, suggest smart button metadata on partner reuse."""
+    """If model M2Os to res.partner, suggest smart button metadata on partner reuse.
+
+    Residual full_app: do NOT invent Contacts host buttons from M2Os / reuse_hints.
+    Prefer Contacts inherit (field_pack) and explicit punch/loyalty partner_tie still ok.
+    """
     mid = model.get("model")
     leaf = str(mid or "").replace("x_", "")
     # Skip seed noise / pure child lines — Contacts stays focused
@@ -139,8 +143,16 @@ def _ensure_partner_backref_smart_button(
         return False
     from app.ai_odoo_app_bar import looks_like_register
     from app.ai_document_shape import document_shape_of
+    from app.ai_stock_host_smart_buttons import partner_tie_allows_contacts_button
 
     if looks_like_register(str(mid or "")) or document_shape_of(draft) == "register":
+        return False
+    # Residual full_app / workspace packs: stock M2Os stay fields, not Contacts smart buttons.
+    grain = str(draft.get("grain") or "full_app")
+    prompt = str(draft.get("_user_prompt") or "")
+    if grain not in {"field_pack", "feature_slice"} and not partner_tie_allows_contacts_button(
+        prompt
+    ):
         return False
     # Notebook children already live on the residual form — Contacts shows the header.
     for header in draft.get("models") or []:

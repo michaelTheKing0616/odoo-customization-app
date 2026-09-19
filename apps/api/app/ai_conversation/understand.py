@@ -1434,12 +1434,102 @@ def understanding_contradictions(
                     findings.append(
                         f"Locked inherit {understanding.host_model}; draft invented {invented}."
                     )
+    # Contract ↔ draft identity: title/grain must match residual display_name.
+    draft_title = str(draft.get("display_name") or "").strip()
+    locked_title = str(understanding.title or "").strip()
+    draft_grain = str(draft.get("grain") or understanding.grain or "full_app")
+    if (
+        draft_title
+        and locked_title
+        and draft_title.lower() != locked_title.lower()
+        and not understanding.inherit_existing
+        and draft_grain == "full_app"
+    ):
+        findings.append(
+            f"Contract title «{locked_title}» does not match draft «{draft_title}»."
+        )
+    # Only flag residual↔inherit grain flips (Visitor full_app vs Prefer field_pack), not
+    # benign defaults where one side still says full_app while the other is field_pack mid-stamp.
+    if (
+        understanding.grain
+        and draft.get("grain")
+        and str(understanding.grain) != str(draft.get("grain"))
+        and {"full_app", "field_pack"} <= {str(understanding.grain), str(draft.get("grain"))}
+        and (
+            understanding.inherit_existing
+            != any(
+                isinstance(m, dict) and str(m.get("mode") or "") == "inherit"
+                for m in (draft.get("models") or [])
+            )
+        )
+    ):
+        findings.append(
+            f"Contract grain {understanding.grain} does not match draft grain {draft.get('grain')}."
+        )
     return findings
 
 
+def reconcile_contract_with_draft(
+    draft: dict[str, Any], understanding: Understanding, *, prompt: str = ""
+) -> Understanding:
+    """When Contract IR disagrees with residual draft identity, rebuild from draft.
+
+    Visitor Log contract on a Restaurant Management draft (or any mismatched brief)
+    must not survive — title/host/grain follow draft.display_name + grain.
+    """
+    draft_title = str(draft.get("display_name") or "").strip()
+    draft_grain = str(draft.get("grain") or "full_app")
+    locked_title = str(understanding.title or "").strip()
+    if not draft_title:
+        return understanding
+    title_mismatch = bool(
+        locked_title and draft_title.lower() != locked_title.lower()
+    )
+    grain_mismatch = bool(
+        understanding.grain and draft_grain and understanding.grain != draft_grain
+    )
+    # Residual full_app with pack stamp / stale session IR.
+    if (
+        draft_grain == "full_app"
+        and not understanding.inherit_existing
+        and (title_mismatch or grain_mismatch)
+    ):
+        rebuilt = Understanding(
+            capability="residual_app",
+            grain="full_app",
+            host_model=None,
+            inherit_existing=False,
+            needs_module=False,
+            gold_artifact_id=understanding.gold_artifact_id,
+            title=draft_title[:80],
+            summary=f"New app tile «{draft_title}» — rebuilt to match draft identity.",
+            constraints=list(understanding.constraints or []),
+            out_of_scope=list(understanding.out_of_scope or []),
+            source="reconciled_draft",
+            confidence="high",
+        )
+        return rebuilt
+    # Prefer inherit field_pack: keep host, sync title from draft when empty.
+    if understanding.inherit_existing and not locked_title and draft_title:
+        understanding.title = draft_title[:80]
+    return understanding
+
+
 def attach_understanding(draft: dict[str, Any], prompt: str) -> dict[str, Any]:
-    """Stamp `_understanding` and surface contradictions so Install stays off."""
+    """Stamp `_understanding` and surface contradictions so Install stays off.
+
+    Reconcile Contract ↔ draft identity before findings so stale Visitor Log IR
+    cannot sit on a Restaurant (or other) residual draft.
+    """
     u = parse_locked_diagnosis(prompt) or _deterministic_understanding(prompt)
+    u = reconcile_contract_with_draft(draft, u, prompt=prompt)
+    # Keep draft grain aligned with Contract for residual full_app.
+    if u.grain == "full_app" and not u.inherit_existing:
+        draft["grain"] = "full_app"
+        if u.title and not draft.get("display_name"):
+            draft["display_name"] = u.title
+        elif draft.get("display_name") and u.source == "reconciled_draft":
+            u.title = str(draft.get("display_name"))[:80]
     payload = u.to_dict()
     findings = understanding_contradictions(draft, u)
     payload["contradictions"] = findings
@@ -1476,6 +1566,7 @@ __all__ = [
     "Understanding",
     "append_locked_diagnosis",
     "attach_understanding",
+    "reconcile_contract_with_draft",
     "build_understanding",
     "diagnosis_clarification",
     "diagnosis_confirmed",

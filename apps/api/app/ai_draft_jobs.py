@@ -766,6 +766,23 @@ def _sync_ai_session_artifact(
         if not isinstance(draft, dict):
             draft = {}
         ahash = artifact_hash(draft) if draft else None
+        # Keep session Contract IR aligned with draft (clear stale Visitor Log on Restaurant).
+        resolved = {}
+        try:
+            import json as _json
+
+            resolved = _json.loads(row.resolved_answers_json or "{}")
+        except Exception:  # noqa: BLE001
+            resolved = {}
+        if not isinstance(resolved, dict):
+            resolved = {}
+        understanding = draft.get("_understanding") if isinstance(draft.get("_understanding"), dict) else None
+        if understanding:
+            from app.ai_conversation.understand import Understanding, dump_understanding
+
+            locked = Understanding.from_dict(understanding)
+            if locked:
+                dump_understanding(resolved, locked)
         update_session(
             db,
             row,
@@ -773,6 +790,7 @@ def _sync_ai_session_artifact(
             artifact_hash=ahash,
             status="review" if draft else "failed",
             job_id=job_id,
+            resolved_answers=resolved,
         )
     finally:
         db.close()
