@@ -76,3 +76,37 @@ def test_contract_diff_reports_surface_changes() -> None:
     b = build_studio_contract(OPS)
     lines = contract_diff(a, b)
     assert any("Surface" in line or "surface" in line.lower() or "→" in line for line in lines)
+
+
+def test_residual_full_app_contract_no_stock_host() -> None:
+    """Dining Tables / Restaurant must not stamp calendar.event «field pack»."""
+    from app.ai_grain import classify_grain
+    from app.ai_studio_contract import build_studio_contract
+
+    dining = (
+        "Dining Tables for our restaurant. Name, Capacity, Status (selection: Free / Seated / Reserved). "
+        "Reservations with guest and party size on the calendar. List + form, new menu."
+    )
+    g = classify_grain(dining)
+    assert g == "full_app"
+    c = build_studio_contract(dining, grain=g)
+    assert c["grain"] == "full_app"
+    assert c.get("host_model") in (None, "")
+    assert c.get("inherit_only") is False
+    assert "field pack" not in (c.get("title") or "").lower()
+    assert "calendar" not in (c.get("title") or "").lower()
+    assert "dining" in (c.get("title") or "").lower()
+
+
+def test_prefer_contract_still_contacts_field_pack() -> None:
+    from app.ai_grain import classify_grain
+    from app.ai_studio_contract import build_studio_contract
+
+    pref = (
+        "On Contacts, add checkbox Preferred for delivery and Delivery notes "
+        "under Delivery group. Do not create a new app."
+    )
+    c = build_studio_contract(pref, grain=classify_grain(pref))
+    assert c["grain"] == "field_pack"
+    assert c["host_model"] == "res.partner"
+    assert c.get("inherit_only") is True

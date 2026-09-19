@@ -48,6 +48,7 @@ def _constraints_blob(constraints: list[str] | None) -> str:
 
 
 def _host_from_prompt(prompt: str, *, override: str | None = None) -> tuple[str, str]:
+    """Resolve an inherit host. Empty string = no stock host (residual full_app)."""
     if override:
         return override, "Contacts" if override == "res.partner" else override
     text = prompt or ""
@@ -62,9 +63,12 @@ def _host_from_prompt(prompt: str, *, override: str | None = None) -> tuple[str,
             "stock.picking": "Transfers",
             "sale.order": "Sales",
             "project.task": "Tasks",
+            "calendar.event": "Calendar",
+            "hr.employee": "Employees",
         }
         return named, labels.get(named, named)
-    return "res.partner", "Contacts"
+    # Do NOT invent Contacts — residual full_app briefs have no stock host.
+    return "", ""
 
 
 def _infer_surfaces(prompt: str, *, inherit_only: bool) -> list[str]:
@@ -121,12 +125,46 @@ def _infer_fields(prompt: str, host: str) -> list[dict[str, Any]]:
     return fields
 
 
-def _grounded_title(prompt: str, host_label: str, surfaces: list[str]) -> str:
+def _app_title_from_prompt(prompt: str) -> str:
+    """Residual app display name from Build…app / Title: / Title for our…"""
+    text = prompt or ""
+    m = re.search(
+        r"(?i)\b(?:build|create|make)\s+(?:an?\s+)?(?:(?:tiny|simple|small|new|mini)\s+)*"
+        r"(.+?)\s+app\b",
+        text,
+    )
+    if m:
+        nice = re.sub(r"\s+", " ", m.group(1)).strip(" .:,-")
+        nice = re.sub(r"(?i)^(a|an|the)\s+", "", nice).strip()
+        if nice:
+            return nice.title() if nice.islower() else nice
+    m = re.search(
+        r"(?i)^([A-Z][\w][\w\s/-]{1,48}?)(?:\s+for\s+(?:our|the|a)\b|\s*[:—-])",
+        text.strip(),
+    )
+    if m:
+        nice = re.sub(r"\s+", " ", m.group(1)).strip(" .:,-")
+        if nice:
+            return nice.title() if nice.islower() else nice
+    return "Custom app"
+
+
+def _grounded_title(
+    prompt: str,
+    host_label: str,
+    surfaces: list[str],
+    *,
+    grain: Grain | str = "field_pack",
+) -> str:
+    if grain == "full_app" and not host_label:
+        return _app_title_from_prompt(prompt)
     if surfaces:
-        return f"{host_label} delivery preferences"
+        return f"{host_label or 'Contacts'} delivery preferences"
     if _DELIVERY_PREF_RE.search(prompt or ""):
-        return f"{host_label} delivery preferences"
-    return f"{host_label} field pack"
+        return f"{host_label or 'Contacts'} delivery preferences"
+    if host_label:
+        return f"{host_label} field pack"
+    return _app_title_from_prompt(prompt)
 
 
 def build_studio_contract(
@@ -139,27 +177,32 @@ def build_studio_contract(
     """Compile a typed Studio Contract from the operator brief (+ Must-do lines)."""
     blob = f"{prompt or ''}\n{_constraints_blob(constraints)}"
     inherit_only = is_inherit_only_ops(blob) or bool(_NO_APP_RE.search(blob))
-    host, host_label = _host_from_prompt(blob, override=host_override)
-    surfaces = _infer_surfaces(blob, inherit_only=inherit_only)
-    fields = _infer_fields(blob, host)
     resolved_grain: Grain = grain or classify_grain(blob)
-    if inherit_only and surfaces:
+    if inherit_only:
         resolved_grain = "field_pack"
-    elif inherit_only:
-        resolved_grain = "field_pack"
+    # Residual full_app: never invent a stock host or «field pack» title.
+    if resolved_grain == "full_app" and not inherit_only and not host_override:
+        host, host_label = "", ""
+    else:
+        host, host_label = _host_from_prompt(blob, override=host_override)
+        # Prefer/inherit briefs with no named host still default Contacts.
+        if inherit_only and not host:
+            host, host_label = "res.partner", "Contacts"
+    surfaces = _infer_surfaces(blob, inherit_only=inherit_only)
+    fields = _infer_fields(blob, host) if host else []
     placement = None
     if any(str(f.get("placement") or "") == "Delivery" for f in fields):
         placement = "Delivery"
-    elif _DELIVERY_PREF_RE.search(blob):
+    elif host == "res.partner" and _DELIVERY_PREF_RE.search(blob):
         placement = "Delivery"
     reuse = bool(
         re.search(r"(?i)\balready\s+(?:persist|exist)|reuse\s+existing|do\s+not\s+recreate", blob)
     )
-    title = _grounded_title(blob, host_label, surfaces)
+    title = _grounded_title(blob, host_label, surfaces, grain=resolved_grain)
     return {
         "version": CONTRACT_VERSION,
-        "host_model": host,
-        "host_label": host_label,
+        "host_model": host or None,
+        "host_label": host_label or None,
         "inherit_only": inherit_only,
         "no_new_app": inherit_only or bool(_NO_APP_RE.search(blob)),
         "reuse_fields": reuse,
@@ -187,8 +230,10 @@ def contract_human_summary(contract: dict[str, Any]) -> str:
     bits: list[str] = []
     if contract.get("inherit_only"):
         bits.append(f"Inherit-only on {host} (no new app tile)")
-    else:
+    elif host and host not in {"host", "None"}:
         bits.append(f"Host {host}")
+    else:
+        bits.append(f"New app: {contract.get('title') or 'custom'}")
     place = contract.get("placement_group")
     if place:
         bits.append(f"fields under {place} group")
@@ -294,6 +339,15 @@ def fulfill_studio_contract(draft: dict[str, Any], prompt: str) -> list[str]:
         ):
             draft["display_name"] = title
             notes.append(f"contract: grounded title → {title}")
+
+    # Residual full_app: keep canvas residual — never reshape into stock inherit.
+    if str(contract.get("grain") or draft.get("grain") or "") == "full_app" and not contract.get(
+        "inherit_only"
+    ):
+        draft["grain"] = "full_app"
+        if contract.get("title") and not str(draft.get("display_name") or "").strip():
+            draft["display_name"] = str(contract["title"])
+            notes.append(f"contract: residual title → {contract['title']}")
 
     # Grain lock for inherit-only
     if contract.get("inherit_only"):
