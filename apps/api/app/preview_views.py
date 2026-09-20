@@ -784,6 +784,13 @@ def build_form_preview(
         except Exception:  # noqa: BLE001
             pass
 
+    # Empty Identity group from a shell form arch must not hide model fields
+    # (IR/preview desync: Refine chips show Visit date while canvas says No fields).
+    if groups and not notebooks:
+        total = sum(len(g.get("fields") or []) for g in groups if isinstance(g, dict))
+        if total == 0:
+            groups = []
+
     if not groups and not notebooks:
         fields = [
             _preview_field(str(f.get("name") or ""), field_map)

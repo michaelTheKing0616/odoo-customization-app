@@ -104,7 +104,6 @@ STOCK_HOST_BUTTON_BY_MODEL: dict[str, dict[str, Any]] = {
 _PARTNER_TIE_RE = re.compile(
     r"(?i)\b(?:loyalty\s+)?punch\s*cards?|loyalty\s+cards?|"
     r"\btied to the customer|\bcustomer\s*\(\s*contacts\s*\)|"
-    r"\blink(?:ed)?\s+to\s+(?:the\s+)?(?:customer|contact|partner)|"
     r"\b(?:on|from)\s+contacts\b|\bcontacts?\s+form\b"
 )
 _PARTNER_SKIP_RE = re.compile(
@@ -223,42 +222,64 @@ def _is_residual_full_app(draft: dict[str, Any]) -> bool:
     return bool(x_new) or grain in {"", "full_app"}
 
 
-def _drop_disallowed_partner_buttons(draft: dict[str, Any], *, prompt: str) -> list[str]:
-    """Drop invented Contacts host buttons for visitor registers and residual full_app.
+def _drop_disallowed_stock_host_buttons(draft: dict[str, Any], *, prompt: str) -> list[str]:
+    """Drop invented stock-host smart buttons for residual full_app / visitor registers.
 
-    Prefer Contacts inherit (field_pack) and explicit punch/loyalty partner_tie keep them.
-    Residual M2Os to res.partner stay form fields — not «{app}» smart buttons on Contacts.
+    Prefer field_pack inherit and explicit punch/loyalty partner_tie keep Contacts.
+    Residual M2Os to res.partner / hr.employee / calendar.event / … stay form fields —
+    never «{app}» smart buttons on those stock forms.
     """
     notes: list[str] = []
     text = prompt or ""
-    if partner_tie_allows_contacts_button(text):
-        return notes
-    # Visitor-style OR residual full_app without partner_tie: no Contacts host invent.
-    drop = bool(_PARTNER_SKIP_RE.search(text)) or _is_residual_full_app(draft)
-    if not drop:
+    allow_partner = partner_tie_allows_contacts_button(text)
+    residual = _is_residual_full_app(draft)
+    visitorish = bool(_PARTNER_SKIP_RE.search(text))
+    if not residual and not visitorish:
         return notes
     btns = list(draft.get("smart_buttons") or [])
-    filtered = [
-        b
-        for b in btns
-        if not (isinstance(b, dict) and str(b.get("on_model") or "") == "res.partner")
-    ]
-    if len(filtered) != len(btns):
+    stock_hosts = set(STOCK_HOST_BUTTON_BY_MODEL)
+    filtered: list[Any] = []
+    dropped: list[str] = []
+    for b in btns:
+        if not isinstance(b, dict):
+            filtered.append(b)
+            continue
+        on_model = str(b.get("on_model") or "")
+        if on_model not in stock_hosts:
+            filtered.append(b)
+            continue
+        # Punch / loyalty: keep Contacts + PoS companion host buttons.
+        if allow_partner and on_model in {"res.partner", "pos.order", "pos.session"}:
+            filtered.append(b)
+            continue
+        dropped.append(on_model)
+    if dropped:
         draft["smart_buttons"] = filtered
         reason = (
             "visitor-style register"
-            if _PARTNER_SKIP_RE.search(text)
+            if visitorish and not residual
             else "residual full_app (M2O≠smart button)"
         )
-        notes.append(f"stock_host_btn: dropped Contacts smart button ({reason})")
+        uniq = ", ".join(sorted(set(dropped)))
+        notes.append(f"stock_host_btn: dropped {uniq} smart button(s) ({reason})")
     return notes
 
 
 def apply_stock_host_smart_buttons(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
-    """Stamp missing stock-host smart buttons; drop visitor Contacts noise."""
+    """Stamp missing stock-host smart buttons; never invent them for residual full_app.
+
+    Residual full_app / visitor registers: scrub stock-host invent; Prefer field_pack
+    and punch/loyalty partner_tie still get Contacts (and loyalty PoS companions).
+    """
     notes: list[str] = []
     text = prompt or str(draft.get("_user_prompt") or "")
-    notes.extend(_drop_disallowed_partner_buttons(draft, prompt=text))
+    notes.extend(_drop_disallowed_stock_host_buttons(draft, prompt=text))
+
+    residual = _is_residual_full_app(draft)
+    allow_partner = partner_tie_allows_contacts_button(text)
+    # Residual: no stock-host invent unless explicit partner_tie (Contacts + PoS companions).
+    if residual and not allow_partner:
+        return notes
 
     forbidden = _forbidden_hosts(draft)
     existing = _existing_keys(draft)
@@ -283,9 +304,19 @@ def apply_stock_host_smart_buttons(draft: dict[str, Any], *, prompt: str = "") -
                 continue
             if rel in forbidden:
                 continue
+            if residual:
+                # partner_tie residual: Contacts + PoS companions only — never Employees/Calendar.
+                if rel == "res.partner":
+                    if not allow_partner:
+                        continue
+                elif rel in {"pos.order", "pos.session"} and allow_partner:
+                    pass
+                else:
+                    continue
             policy = STOCK_HOST_BUTTON_BY_MODEL[rel]
             if not _prompt_allows_host(rel, prompt=text, policy=policy):
-                # Employee: field presence on residual is enough when name signals staff.
+                # Employee: field presence on residual is enough when name signals staff
+                # (Prefer / field_pack only — residual already gated above).
                 if not (
                     str(policy.get("require")) == "employee_tie"
                     and ("employee" in fname or "staff" in fname)
@@ -332,6 +363,14 @@ def draft_missing_stock_host_smart_buttons(
 ) -> bool:
     """True when a justified stock-host button is absent (Retry/Expert hygiene)."""
     text = prompt or str(draft.get("_user_prompt") or "")
+    residual = _is_residual_full_app(draft)
+    allow_partner = partner_tie_allows_contacts_button(text)
+    if residual and not allow_partner:
+        # Residual without partner_tie: nothing to invent — but flag illicit stock hosts.
+        for b in draft.get("smart_buttons") or []:
+            if isinstance(b, dict) and str(b.get("on_model") or "") in STOCK_HOST_BUTTON_BY_MODEL:
+                return True
+        return False
     forbidden = _forbidden_hosts(draft)
     existing = _existing_keys(draft)
     for model in _header_models(draft):
@@ -347,6 +386,14 @@ def draft_missing_stock_host_smart_buttons(
                 continue
             if rel in forbidden:
                 continue
+            if residual:
+                if rel == "res.partner":
+                    if not allow_partner:
+                        continue
+                elif rel in {"pos.order", "pos.session"} and allow_partner:
+                    pass
+                else:
+                    continue
             policy = STOCK_HOST_BUTTON_BY_MODEL[rel]
             if not _prompt_allows_host(rel, prompt=text, policy=policy):
                 if not (
@@ -357,19 +404,21 @@ def draft_missing_stock_host_smart_buttons(
             if any(k[0] == rel and k[1] == mid for k in existing):
                 continue
             return True
-    if _PARTNER_SKIP_RE.search(text) and not _PARTNER_TIE_RE.search(text):
+    if _PARTNER_SKIP_RE.search(text) and not partner_tie_allows_contacts_button(text):
         for b in draft.get("smart_buttons") or []:
             if isinstance(b, dict) and str(b.get("on_model") or "") == "res.partner":
                 return True
     return False
 
 
-
-
 def scrub_residual_contacts_host_buttons(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
-    """Drop invented Contacts host buttons; do not stamp new stock-host buttons."""
+    """Drop invented stock-host buttons on residual full_app; do not stamp new ones."""
     text = prompt or str(draft.get("_user_prompt") or "")
-    return _drop_disallowed_partner_buttons(draft, prompt=text)
+    return _drop_disallowed_stock_host_buttons(draft, prompt=text)
+
+
+# Back-compat alias
+_drop_disallowed_partner_buttons = _drop_disallowed_stock_host_buttons
 
 
 __all__ = [

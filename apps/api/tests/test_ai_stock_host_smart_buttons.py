@@ -68,10 +68,12 @@ def test_punch_card_gets_contacts_and_pos_buttons() -> None:
     assert draft_missing_stock_host_smart_buttons(draft, prompt=LAGOS) is False
 
 
-def test_visitor_log_drops_contacts_keeps_employee() -> None:
+def test_visitor_log_drops_contacts_and_employee_stock_hosts() -> None:
+    """Residual full_app: Host→Employee is a form M2O, never an Employees smart button."""
     draft = {
         "technical_name": "visitor_log",
         "display_name": "Visitor Log",
+        "grain": "full_app",
         "depends": ["base", "mail", "hr"],
         "models": [
             {
@@ -98,7 +100,13 @@ def test_visitor_log_drops_contacts_keeps_employee() -> None:
                 "label": "Visitor Log",
                 "related_model": "x_visitor_log",
                 "relation_field": "x_partner_id",
-            }
+            },
+            {
+                "on_model": "hr.employee",
+                "label": "Visitor Log",
+                "related_model": "x_visitor_log",
+                "relation_field": "x_employee_id",
+            },
         ],
         "_user_prompt": VISITOR,
         "_document_shape": "register",
@@ -106,12 +114,14 @@ def test_visitor_log_drops_contacts_keeps_employee() -> None:
     honor_operator_brief(draft, user_prompt=VISITOR)
     hosts = {b["on_model"] for b in (draft.get("smart_buttons") or []) if isinstance(b, dict)}
     assert "res.partner" not in hosts
-    assert "hr.employee" in hosts
+    assert "hr.employee" not in hosts
 
 
-def test_sale_order_m2o_gets_button() -> None:
-    draft = {
+def test_sale_order_m2o_gets_button_on_field_pack_not_residual() -> None:
+    """Residual full_app keeps Sale Order as a form M2O — Prefer/field_pack may still invent."""
+    residual = {
         "display_name": "Delivery Notes",
+        "grain": "full_app",
         "models": [
             {
                 "model": "x_delivery_note",
@@ -128,5 +138,36 @@ def test_sale_order_m2o_gets_button() -> None:
         "smart_buttons": [],
         "_user_prompt": "Delivery notes linked to sales orders",
     }
-    apply_stock_host_smart_buttons(draft, prompt=draft["_user_prompt"])
-    assert any(b.get("on_model") == "sale.order" for b in draft["smart_buttons"])
+    apply_stock_host_smart_buttons(residual, prompt=residual["_user_prompt"])
+    assert not any(b.get("on_model") == "sale.order" for b in residual["smart_buttons"])
+
+    field_pack = {
+        "display_name": "Delivery Notes on Sales",
+        "grain": "field_pack",
+        "models": [
+            {
+                "model": "sale.order",
+                "mode": "inherit",
+                "fields": [
+                    {"name": "x_delivery_note_count", "ttype": "integer"},
+                ],
+            },
+            {
+                "model": "x_delivery_note",
+                "mode": "new",
+                "fields": [
+                    {
+                        "name": "x_sale_order_id",
+                        "ttype": "many2one",
+                        "relation": "sale.order",
+                    }
+                ],
+            },
+        ],
+        "smart_buttons": [],
+        "_user_prompt": "Add delivery notes related to sales orders on the Sales form",
+    }
+    # Inherit-only primary is field_pack — not residual invent suppression.
+    # With a companion x_ model, grain field_pack still allows stock-host stamp.
+    apply_stock_host_smart_buttons(field_pack, prompt=field_pack["_user_prompt"])
+    assert any(b.get("on_model") == "sale.order" for b in field_pack["smart_buttons"])

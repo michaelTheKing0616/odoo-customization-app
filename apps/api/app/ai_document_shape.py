@@ -381,21 +381,81 @@ def may_add_party_satellite(draft: dict[str, Any], *, prompt: str = "") -> bool:
     return True
 
 
+
+_APP_NOUN_RE = re.compile(
+    r"(?i)\b(?:build|create|make)\s+(?:an?\s+)?(?:(?:tiny|simple|small|new|mini|light(?:weight)?)\s+)*"
+    r"(.+?)\s+apps?\b"
+    r"|^\s*([A-Z][\w][\w\s/-]{1,48}?)(?=\s*:)"
+)
+_SIZE_ADJ_RE = re.compile(
+    r"(?i)^(?:a|an|the|tiny|simple|small|new|mini|light(?:weight)?|basic|minimal)\s+"
+)
+_APP_CHROME_RE = re.compile(
+    r"(?i)\s+apps?(?:\s*:\s*models?)?$|\s*:\s*models?$|\s+models?$"
+)
+
+
+def _scrub_residual_title(label: str) -> str:
+    """Visitor Log — never «Tiny X App: Model» / «… Models»."""
+    text = (label or "").strip()
+    if not text:
+        return ""
+    # Prefer "Build a tiny Visitor Log app" noun over the whole clause.
+    m = _APP_NOUN_RE.search(text)
+    if m:
+        text = (m.group(1) or m.group(2) or "").strip()
+    # Strip leading size/articles repeatedly.
+    while True:
+        nxt = _SIZE_ADJ_RE.sub("", text).strip()
+        if nxt == text:
+            break
+        text = nxt
+    text = _APP_CHROME_RE.sub("", text).strip(" -:.,")
+    # "Visitor Log: Name, Company" → noun before colon when short.
+    if ":" in text:
+        left, right = text.split(":", 1)
+        if len(left.strip()) <= 40 and not re.search(r"(?i)\bmodel", left):
+            text = left.strip()
+    text = re.sub(r"\s+", " ", text).strip(" -:.,")
+    return text
+
+
 def naming_from_residual(prompt: str) -> tuple[str, str]:
-    """(display_name, technical_name) from the residual noun — not the first sentence."""
+    """(display_name, technical_name) from the residual noun — not the first sentence.
+
+    Contract title, display_name, menu, and find-it share one residual app noun
+    (Visitor Log) — never «Tiny X App: Model» / «… Models».
+    """
     _kind, residual = _named_residual(prompt)
-    label = (residual or "").strip()
-    if not label or label.lower() in {"none", "app", "module", "system", "named in brief"}:
-        label = _title_from_operator_prompt(prompt)
+    label = _scrub_residual_title(residual or "")
+    if not label:
+        label = _scrub_residual_title(_title_from_operator_prompt(prompt))
+    if not label:
+        label = _scrub_residual_title(prompt or "")
     if not label:
         return "", ""
     label = re.split(r"[.(]", label, maxsplit=1)[0].strip()
     label = re.sub(r"(?i)^(a|an|the)\s+", "", label).strip()
-    if not label or label.lower() in {"none", "app", "module", "system", "named in brief"}:
+    label = _scrub_residual_title(label)
+    if not label or label.lower() in {"none", "app", "module", "system", "named in brief", "model", "models"}:
         return "", ""
     words = [w for w in re.split(r"[\s_]+", label) if w]
-    display = " ".join(w.capitalize() for w in words)
-    slug = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")[:40]
+    # Preserve intentional internal caps (Visitor Log); otherwise title-case.
+    if label != label.lower() and label != label.upper():
+        display = " ".join(words)
+        # Normalize size-adj leftovers that survived with odd caps.
+        display = re.sub(
+            r"(?i)^(tiny|simple|small|mini|new)\s+",
+            "",
+            display,
+        ).strip()
+        display = " ".join(
+            w if (w[:1].isupper() and any(c.islower() for c in w[1:])) else w.capitalize()
+            for w in display.split()
+        )
+    else:
+        display = " ".join(w.capitalize() for w in words)
+    slug = re.sub(r"[^a-z0-9]+", "_", display.lower()).strip("_")[:40]
     return display, slug or "custom_app"
 
 
