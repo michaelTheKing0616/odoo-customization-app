@@ -28,6 +28,7 @@ from app.routers import (
     automations,
     billing,
     batch_os,
+    intent_route,
     builder,
     bulk_suite,
     config_ops,
@@ -172,6 +173,7 @@ app.include_router(studio_feature_recipes.router, prefix="/api", dependencies=_p
 app.include_router(config_ops.router, prefix="/api", dependencies=_protected)
 app.include_router(config_recipes.router, prefix="/api", dependencies=_protected)
 app.include_router(batch_os.router, prefix="/api", dependencies=_protected)
+app.include_router(intent_route.router, prefix="/api", dependencies=_protected)
 app.include_router(menus_builder.router, prefix="/api", dependencies=_protected)
 app.include_router(reports.router, prefix="/api", dependencies=_protected + [Depends(require_feature("reports_designer"))])
 app.include_router(id_generator.router, prefix="/api", dependencies=_protected + [Depends(require_feature("id_generator"))])

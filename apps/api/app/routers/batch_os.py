@@ -878,3 +878,19 @@ def lock_dates_execute(
         job_id=state.job_id,
     )
     return _state_out(state)
+
+
+# ── Intent → feature router ───────────────────────────────────────────
+
+
+class IntentRouteBody(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=2000)
+    limit: int = Field(5, ge=1, le=10)
+
+
+@router.post("/intent-route")
+def intent_route(connection_id: str, body: IntentRouteBody) -> dict[str, Any]:
+    """Plain-language goal → shipped feature deep links (deterministic catalog)."""
+    from app.intent_router import route_intent
+
+    return route_intent(body.prompt, connection_id=connection_id, limit=body.limit)

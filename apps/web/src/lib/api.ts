@@ -4187,6 +4187,23 @@ listConfigRecipes: (id: string) =>
   },
   batchOsRecipes: (id: string) =>
     request<BatchOsRecipeCard[]>(`/api/connections/${id}/batch-os/recipes`),
+  /** Intent → feature router (Expert home + Batch OS alias). */
+  expertIntentRoute: (
+    id: string,
+    body: { prompt: string; limit?: number },
+  ) =>
+    request<IntentRouteResult>(`/api/connections/${id}/expert/route`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  batchOsIntentRoute: (
+    id: string,
+    body: { prompt: string; limit?: number },
+  ) =>
+    request<IntentRouteResult>(`/api/connections/${id}/batch-os/intent-route`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   batchOsJournalIntake: async (id: string, file: File, recipeId = "accounting.journal_batch") => {
     const fd = new FormData();
     fd.append("file", file);
@@ -5870,6 +5887,37 @@ export type AtlasHit = {
   recipe: string | null;
   status: string;
   blurb: string;
+};
+
+
+export type IntentRouteCanHandle = "true" | "false" | "partial";
+
+export type IntentRouteMatch = {
+  feature_id: string;
+  title: string;
+  confidence: number;
+  why: string;
+  route: string;
+  deep_link: string;
+  can_handle: IntentRouteCanHandle;
+  recipe?: string | null;
+  source?: string;
+  status?: string;
+  atlas_class?: string | null;
+  risk?: string | null;
+  matched_keywords?: string[];
+};
+
+export type IntentRouteResult = {
+  prompt: string;
+  can_handle: IntentRouteCanHandle;
+  message: string;
+  matches: IntentRouteMatch[];
+  alternatives: IntentRouteMatch[];
+  ambiguous: boolean;
+  honesty: string;
+  source: string;
+  llm_used: boolean;
 };
 
 export type BatchOsRecipeCard = {

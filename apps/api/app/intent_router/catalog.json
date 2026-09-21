@@ -1,0 +1,389 @@
+{
+  "version": 1,
+  "honesty": "Preview \u2260 posted. Completeness \u2260 Cert \u2260 Autopilot. ingenium only routes to shipped features.",
+  "recipe_routes": {
+    "accounting.journal_batch": "journal?tab=batch",
+    "accounting.opening_balances": "journal?tab=batch",
+    "accounting.lock_dates": "config",
+    "accounting.tax_pack": "config",
+    "accounting.fiscal_year": "config",
+    "document_batch.invoices": "journal?tab=invoices",
+    "document_batch.payments": "journal?tab=invoices",
+    "master_data.partners_batch": "journal?tab=master",
+    "master_data.products_batch": "journal?tab=master",
+    "settings.board_apply": "config",
+    "settings.payment_terms": "config",
+    "settings.pricelists": "config",
+    "settings.currency": "config",
+    "settings.sequences": "config",
+    "access_company.users": "access",
+    "access_company.multi_company": "config",
+    "automation.cron_pack": "cron-manager",
+    "automation.base": "automations",
+    "ui_studio.view_pack": "designer",
+    "ui_studio.menus": "menus",
+    "housekeeping.attachments": "housekeeping",
+    "housekeeping.partner_dedupe": "housekeeping"
+  },
+  "features": [
+    {
+      "id": "journal.batch",
+      "title": "Journal batch",
+      "blurb": "Upload CSV/XLSX journal entries into balanced draft account.move rows. Preview \u2260 posted.",
+      "route": "journal?tab=batch",
+      "source": "batch_os",
+      "status": "complete",
+      "can_handle": true,
+      "recipe": "accounting.journal_batch",
+      "keywords": [
+        "journal entr",
+        "journal batch",
+        "upload journal",
+        "bulk journal",
+        "general ledger",
+        "gl entries",
+        "gl batch",
+        "accounting entries",
+        "draft moves",
+        "account.move",
+        "opening balance",
+        "trial balance"
+      ],
+      "weight": 1.2
+    },
+    {
+      "id": "journal.invoices",
+      "title": "Invoice & bill batch",
+      "blurb": "CSV \u2192 draft customer invoices / vendor bills (account.move). Preview \u2260 posted.",
+      "route": "journal?tab=invoices",
+      "source": "batch_os",
+      "status": "complete",
+      "can_handle": true,
+      "recipe": "document_batch.invoices",
+      "keywords": [
+        "invoice",
+        "invoices",
+        "vendor bill",
+        "bills",
+        "customer invoice",
+        "document batch",
+        "upload invoices",
+        "bulk invoices",
+        "payment matching",
+        "payments batch"
+      ],
+      "weight": 1.15
+    },
+    {
+      "id": "journal.master",
+      "title": "Master data batch",
+      "blurb": "Bulk create/update partners or products via CSV/XLSX. Preview \u2260 written.",
+      "route": "journal?tab=master",
+      "source": "batch_os",
+      "status": "complete",
+      "can_handle": true,
+      "recipe": "master_data.partners_batch",
+      "keywords": [
+        "partners",
+        "customers",
+        "vendors",
+        "contacts",
+        "products",
+        "product",
+        "product catalog",
+        "bulk create customers",
+        "bulk partners",
+        "master data",
+        "res.partner",
+        "product.template"
+      ],
+      "weight": 1.15
+    },
+    {
+      "id": "atlas.lock_dates",
+      "title": "Lock dates",
+      "blurb": "Period / FY / tax lock dates on res.company (L3 \u2014 confirm required).",
+      "route": "config",
+      "source": "atlas",
+      "status": "complete",
+      "can_handle": true,
+      "recipe": "accounting.lock_dates",
+      "keywords": [
+        "lock dates",
+        "lock accounting",
+        "lock period",
+        "close period",
+        "period lock",
+        "fiscalyear lock",
+        "tax lock",
+        "freeze books"
+      ],
+      "weight": 1.3
+    },
+    {
+      "id": "config.atlas",
+      "title": "Config Atlas",
+      "blurb": "Intent \u2192 class \u2192 models \u2192 risk \u2192 recipe browser for all eight Atlas classes.",
+      "route": "config",
+      "source": "atlas",
+      "status": "complete",
+      "can_handle": true,
+      "keywords": [
+        "config atlas",
+        "instance config",
+        "atlas",
+        "settings board",
+        "payment terms",
+        "pricelist",
+        "fiscal year",
+        "tax pack",
+        "chart of accounts",
+        "coa"
+      ],
+      "weight": 0.9
+    },
+    {
+      "id": "studio.app",
+      "title": "App Studio",
+      "blurb": "Build a custom Odoo app from a plain-language brief (Visitor Log, etc.). Human promote.",
+      "route": "studio",
+      "source": "app",
+      "status": "complete",
+      "can_handle": true,
+      "keywords": [
+        "build an app",
+        "build a visitor",
+        "visitor log",
+        "custom app",
+        "create an app",
+        "app studio",
+        "new module",
+        "invent a model"
+      ],
+      "weight": 1.2
+    },
+    {
+      "id": "designer",
+      "title": "View Designer",
+      "blurb": "Visual form/list view editing for a technical model.",
+      "route": "designer",
+      "source": "app",
+      "status": "complete",
+      "can_handle": true,
+      "keywords": [
+        "view designer",
+        "form designer",
+        "visual designer",
+        "edit form view",
+        "canvas"
+      ],
+      "weight": 1.0
+    },
+    {
+      "id": "draft.studio",
+      "title": "Draft Studio",
+      "blurb": "Natural language \u2192 ModuleSpec draft. Completeness \u2260 Cert \u2260 Autopilot.",
+      "route": "wizard",
+      "source": "app",
+      "status": "complete",
+      "can_handle": true,
+      "keywords": [
+        "draft studio",
+        "wizard",
+        "modulespec draft",
+        "natural language draft"
+      ],
+      "weight": 0.95
+    },
+    {
+      "id": "bulk.suite",
+      "title": "Bulk Suite",
+      "blurb": "Mass edit, transitions, dedupe, recompute across a domain.",
+      "route": "bulk-suite",
+      "source": "app",
+      "status": "complete",
+      "can_handle": true,
+      "keywords": [
+        "bulk suite",
+        "mass edit",
+        "bulk edit",
+        "bulk transition",
+        "recompute",
+        "dedupe partners",
+        "many records"
+      ],
+      "weight": 1.05
+    },
+    {
+      "id": "power.ops",
+      "title": "Power Ops",
+      "blurb": "Guarded multi-step ops recipes (confirm required for advanced).",
+      "route": "power-ops",
+      "source": "app",
+      "status": "complete",
+      "can_handle": true,
+      "keywords": [
+        "power ops",
+        "powerops",
+        "advanced ops"
+      ],
+      "weight": 1.0
+    },
+    {
+      "id": "import.ingest",
+      "title": "Import / Ingest",
+      "blurb": "Seed packs and file import into Odoo via public RPC.",
+      "route": "import",
+      "source": "app",
+      "status": "complete",
+      "can_handle": true,
+      "keywords": [
+        "import csv",
+        "ingest",
+        "seed pack",
+        "data import",
+        "upload seed"
+      ],
+      "weight": 0.95
+    },
+    {
+      "id": "cron.manager",
+      "title": "Cron Manager",
+      "blurb": "Inspect and manage ir.cron jobs.",
+      "route": "cron-manager",
+      "source": "app",
+      "status": "complete",
+      "can_handle": true,
+      "keywords": [
+        "cron",
+        "cron jobs",
+        "cron job",
+        "scheduled action",
+        "ir.cron",
+        "scheduled jobs",
+        "schedule jobs"
+      ],
+      "weight": 1.05
+    },
+    {
+      "id": "housekeeping",
+      "title": "Housekeeping",
+      "blurb": "Attachments cleanup and partner dedupe housekeeping recipes.",
+      "route": "housekeeping",
+      "source": "app",
+      "status": "complete",
+      "can_handle": true,
+      "keywords": [
+        "housekeeping",
+        "cleanup attachments",
+        "attachment cleanup",
+        "orphan attachments",
+        "cleanup old attachments",
+        "delete attachments"
+      ],
+      "weight": 1.0
+    },
+    {
+      "id": "access",
+      "title": "Access",
+      "blurb": "Users, groups, and access rights.",
+      "route": "access",
+      "source": "app",
+      "status": "complete",
+      "can_handle": true,
+      "keywords": [
+        "access rights",
+        "users and groups",
+        "security groups",
+        "res.users",
+        "res.groups"
+      ],
+      "weight": 1.0
+    },
+    {
+      "id": "automations",
+      "title": "Automations",
+      "blurb": "Safe base.automation triggers (Python stays Option A).",
+      "route": "automations",
+      "source": "app",
+      "status": "complete",
+      "can_handle": true,
+      "keywords": [
+        "automation",
+        "base.automation",
+        "automated action"
+      ],
+      "weight": 0.95
+    },
+    {
+      "id": "menus",
+      "title": "Menus",
+      "blurb": "Menu pack / ir.ui.menu customization.",
+      "route": "menus",
+      "source": "app",
+      "status": "complete",
+      "can_handle": true,
+      "keywords": [
+        "menu pack",
+        "menus",
+        "ir.ui.menu"
+      ],
+      "weight": 0.9
+    },
+    {
+      "id": "job.autopilot",
+      "title": "Job Autopilot",
+      "blurb": "Sandbox-only stock-first delivery; promote stays human.",
+      "route": "job",
+      "source": "app",
+      "status": "complete",
+      "can_handle": true,
+      "keywords": [
+        "job autopilot",
+        "autopilot"
+      ],
+      "weight": 0.9
+    }
+  ],
+  "unsupported": [
+    {
+      "id": "sms.blast",
+      "keywords": [
+        "sms blast",
+        "send sms",
+        "text blast",
+        "twilio",
+        "whatsapp blast"
+      ],
+      "message": "ingenium does not send SMS/WhatsApp blasts. Use an external messaging provider; we can help with partner lists via Master data batch or Bulk Suite."
+    },
+    {
+      "id": "email.marketing",
+      "keywords": [
+        "email blast",
+        "mailchimp",
+        "marketing campaign",
+        "newsletter blast"
+      ],
+      "message": "ingenium does not run email marketing campaigns. Partner lists can be prepared via Master data batch; outbound marketing stays outside this app."
+    },
+    {
+      "id": "payroll",
+      "keywords": [
+        "run payroll",
+        "payslip",
+        "salary process"
+      ],
+      "message": "Payroll processing is not a shipped ingenium surface. Configure HR apps on Odoo separately; Atlas/recipes do not cover payslips."
+    },
+    {
+      "id": "pos.hardware",
+      "keywords": [
+        "configure pos printer",
+        "barcode scanner driver",
+        "cash drawer"
+      ],
+      "message": "POS hardware drivers are outside ingenium. We route app/config work only \u2014 not device firmware."
+    }
+  ]
+}

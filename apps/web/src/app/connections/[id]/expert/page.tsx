@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ExpertOverviewCard } from "@/components/expert/ExpertOverviewCard";
+import { IntentRouterPanel } from "@/components/expert/IntentRouterPanel";
 import { PageHeader } from "@/components/ui/layout-primitives";
 import { api, type Connection } from "@/lib/api";
 import { expertHeaderDescription } from "@/lib/expert-journey";
@@ -48,6 +49,7 @@ export default function ExpertDestinationPage() {
         }
       />
       <div className="studio-refinement">
+        <IntentRouterPanel connectionId={connectionId} />
         <ExpertOverviewCard
           connectionId={connectionId}
           connectionName={connection?.name}
