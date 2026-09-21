@@ -90,6 +90,9 @@ _DROP_DETECTION_SECTIONS = (
     "notes",
     "done bar",
     "capability path",
+    # Locked Contract IR — grain/host/craft already on understanding_json; chrome
+    # like "Craft smart button" / "Inherit existing form" must not flip classify_grain.
+    "diagnosis",
 )
 _KNOWN_STOCK_APPS = frozenset(
     {

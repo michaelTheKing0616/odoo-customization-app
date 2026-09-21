@@ -715,6 +715,15 @@ def run_draft_job_body(
     grain = grain_override or classify_grain(intent_corpus(prompt) or prompt)
     if stated_residual_kind(prompt)[0] == "named":
         grain = "full_app"
+    # Locked Diagnosis residual full_app must not fork into feature_slice because
+    # Diagnosis chrome ("Craft smart button", "Inherit existing form: no") matches
+    # component/slice cues in classify_grain.
+    if (
+        isinstance(locked_understanding, dict)
+        and str(locked_understanding.get("grain") or "") == "full_app"
+        and not locked_understanding.get("inherit_existing")
+    ):
+        grain = "full_app"
     if grain != "full_app":
         return _complete_component_draft(
             prompt=prompt,

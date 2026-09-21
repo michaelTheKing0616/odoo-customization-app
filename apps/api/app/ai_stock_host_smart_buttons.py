@@ -192,20 +192,11 @@ def partner_tie_allows_contacts_button(prompt: str) -> bool:
 
 
 def _is_residual_full_app(draft: dict[str, Any]) -> bool:
-    """True for residual new-app drafts — not Prefer/inherit field packs."""
-    grain = str(draft.get("grain") or "").strip()
-    if grain in {"field_pack", "feature_slice"}:
-        return False
-    if draft.get("_component"):
-        return False
-    engine = draft.get("_generation_engine")
-    if isinstance(engine, dict):
-        eg = str(engine.get("grain") or "")
-        if eg in {"field_pack", "feature_slice"}:
-            return False
-        if engine.get("capability") in {"option_a_authored", "option_a_standalone", "stock_reuse"}:
-            return False
-    # Inherit-only drafts are field packs even when grain unset.
+    """True for residual new-app drafts — not Prefer/inherit field packs.
+
+    Locked Diagnosis ``_understanding.grain == full_app`` + residual x_new wins
+    over draft/LLM feature_slice/field_pack so craft scrub/apply still run.
+    """
     models = [m for m in (draft.get("models") or []) if isinstance(m, dict)]
     x_new = [
         m
@@ -219,6 +210,26 @@ def _is_residual_full_app(draft: dict[str, Any]) -> bool:
     )
     if inherit_only:
         return False
+
+    engine = draft.get("_generation_engine")
+    if isinstance(engine, dict):
+        if engine.get("capability") in {"option_a_authored", "option_a_standalone", "stock_reuse"}:
+            return False
+
+    u = draft.get("_understanding") if isinstance(draft.get("_understanding"), dict) else {}
+    locked_grain = str(u.get("grain") or "")
+    if locked_grain == "full_app" and not u.get("inherit_existing") and x_new:
+        return True
+
+    grain = str(draft.get("grain") or "").strip()
+    if grain in {"field_pack", "feature_slice"}:
+        return False
+    if draft.get("_component"):
+        return False
+    if isinstance(engine, dict):
+        eg = str(engine.get("grain") or "")
+        if eg in {"field_pack", "feature_slice"}:
+            return False
     return bool(x_new) or grain in {"", "full_app"}
 
 

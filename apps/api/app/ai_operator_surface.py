@@ -91,20 +91,22 @@ def _root_menu(draft: dict[str, Any]) -> dict[str, str] | None:
     return {"label": name or tech, "technical_name": tech}
 
 
+def _has_residual_x_new(draft: dict[str, Any]) -> bool:
+    """True when the draft carries a new residual x_* model (not inherit-only)."""
+    return any(
+        isinstance(m, dict)
+        and str(m.get("model") or "").startswith("x_")
+        and str(m.get("mode") or "new") != "inherit"
+        for m in (draft.get("models") or [])
+    )
+
+
 def _residual_full_app_find_it(draft: dict[str, Any]) -> bool:
-    """Find-it for residual full_app = app menu + residual buttons only (no invented host)."""
-    grain = str(draft.get("grain") or "full_app")
-    if grain in {"field_pack", "feature_slice"} or draft.get("_component"):
-        return False
-    engine = draft.get("_generation_engine")
-    if isinstance(engine, dict) and engine.get("grain") in {"field_pack", "feature_slice"}:
-        return False
-    if isinstance(engine, dict) and engine.get("capability") in {
-        "option_a_authored",
-        "option_a_standalone",
-        "stock_reuse",
-    }:
-        return False
+    """Find-it for residual full_app = app menu + residual buttons only (no invented host).
+
+    Diagnosis-locked ``_understanding.grain == full_app`` + residual x_new keeps
+    craft-only host gating even when draft/LLM later stamped feature_slice/field_pack.
+    """
     try:
         from app.ai_stock_host_smart_buttons import partner_tie_allows_contacts_button
 
@@ -113,12 +115,29 @@ def _residual_full_app_find_it(draft: dict[str, Any]) -> bool:
             return False  # punch/loyalty — keep intentional Contacts host button
     except Exception:  # noqa: BLE001
         pass
-    x_new = any(
-        isinstance(m, dict)
-        and str(m.get("model") or "").startswith("x_")
-        and str(m.get("mode") or "new") != "inherit"
-        for m in (draft.get("models") or [])
-    )
+
+    engine = draft.get("_generation_engine")
+    if isinstance(engine, dict) and engine.get("capability") in {
+        "option_a_authored",
+        "option_a_standalone",
+        "stock_reuse",
+    }:
+        return False
+
+    x_new = _has_residual_x_new(draft)
+    u = draft.get("_understanding") if isinstance(draft.get("_understanding"), dict) else {}
+    locked_grain = str(u.get("grain") or "")
+    locked_inherit = bool(u.get("inherit_existing"))
+
+    # Locked Diagnosis residual full_app wins over draft/engine grain flips.
+    if locked_grain == "full_app" and not locked_inherit and x_new:
+        return True
+
+    grain = str(draft.get("grain") or "full_app")
+    if grain in {"field_pack", "feature_slice"} or draft.get("_component"):
+        return False
+    if isinstance(engine, dict) and engine.get("grain") in {"field_pack", "feature_slice"}:
+        return False
     return x_new or grain == "full_app"
 
 
@@ -135,6 +154,23 @@ def build_operator_surface(draft: dict[str, Any]) -> dict[str, Any]:
     seen_host: set[tuple[str, str, str]] = set()
     seen_res: set[tuple[str, str, str]] = set()
     suppress_host_invent = _residual_full_app_find_it(draft)
+    # When Contract IR carries craft_smart_buttons (incl. empty), residual stock-host
+    # find-it lines are ⊆ that list only — never invent Contacts/Employees from M2O.
+    u_pre = draft.get("_understanding") if isinstance(draft.get("_understanding"), dict) else None
+    if (
+        not suppress_host_invent
+        and isinstance(u_pre, dict)
+        and "craft_smart_buttons" in u_pre
+        and not u_pre.get("inherit_existing")
+        and _has_residual_x_new(draft)
+    ):
+        try:
+            from app.ai_stock_host_smart_buttons import partner_tie_allows_contacts_button
+
+            if not partner_tie_allows_contacts_button(str(draft.get("_user_prompt") or "")):
+                suppress_host_invent = True
+        except Exception:  # noqa: BLE001
+            suppress_host_invent = True
 
     for btn in draft.get("smart_buttons") or []:
         if not isinstance(btn, dict):

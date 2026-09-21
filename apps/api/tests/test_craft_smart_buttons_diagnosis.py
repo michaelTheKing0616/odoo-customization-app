@@ -19,6 +19,8 @@ from app.ai_conversation.understand import (  # noqa: E402
 )
 from app.ai_operator_surface import attach_operator_surface, build_operator_surface  # noqa: E402
 from app.ai_stock_host_smart_buttons import apply_stock_host_smart_buttons  # noqa: E402
+from app.ai_grain import classify_grain  # noqa: E402
+from app.ai_operator_brief import intent_corpus  # noqa: E402
 
 VISITOR = (
     "Build a tiny Visitor Log app: model with Name, Company (link to Contact), "
@@ -309,3 +311,150 @@ def test_empty_craft_find_it_has_no_stock_host_line() -> None:
     summary = surface.get("summary") or ""
     assert "Also on stock forms" not in summary
     assert "Contacts" not in summary or "form fields" in summary.lower()
+
+
+def test_feature_slice_grain_flip_still_craft_gates_find_it() -> None:
+    """Locked full_app + invent Contacts «Visitor Logs» + draft grain feature_slice.
+
+    Live bug: Gemini/locked-chrome flipped grain → residual find-it gate skipped →
+    banner «Also on stock forms: «Visitor Logs» on Contacts». Craft Employees only
+    must win («Visits»), never invent Contacts / pluralized app name.
+    """
+    u = build_understanding(VISITOR)
+    kept = [p for p in u.craft_proposals if p.get("default_on")]
+    assert kept and kept[0]["on_model"] == "hr.employee"
+    locked = apply_understanding_edits(
+        u,
+        {
+            "title": u.title,
+            "constraints": u.constraints,
+            "inherit_existing": False,
+            "needs_module": False,
+            "craft_smart_buttons": kept,
+            "grain": "full_app",
+        },
+    )
+    draft = _visitor_draft()
+    draft["grain"] = "feature_slice"
+    draft["_generation_engine"] = {"grain": "feature_slice", "capability": "residual_app"}
+    draft["smart_buttons"] = [
+        {
+            "on_model": "res.partner",
+            "label": "Visitor Logs",
+            "related_model": "x_visitor_log",
+            "relation_field": "x_company_id",
+            "source": "odoo_app_bar",
+        }
+    ]
+    # Stamp locked understanding without relying on attach flipping grain first —
+    # surface must still craft-gate when understanding carries locked full_app.
+    draft["_understanding"] = locked.to_dict()
+    apply_stock_host_smart_buttons(draft, prompt=VISITOR)
+    attach_operator_surface(draft)
+    surface = draft["_operator_surface"]
+    summary = surface.get("summary") or ""
+    hosts = {b.get("host_model") for b in surface.get("host_buttons") or []}
+    labels = {b.get("button_label") for b in surface.get("host_buttons") or []}
+    assert hosts == {"hr.employee"}, hosts
+    assert labels == {"Visits"}, labels
+    assert "Visitor Logs" not in summary
+    assert "on Contacts" not in summary
+    assert "Visits" in summary and "Employees" in summary
+
+
+def test_feature_slice_empty_craft_no_stock_host_line() -> None:
+    """Empty craft_smart_buttons + feature_slice draft grain → no Also-on-stock-forms."""
+    locked = apply_understanding_edits(
+        build_understanding(VISITOR),
+        {
+            "craft_smart_buttons": [],
+            "inherit_existing": False,
+            "needs_module": False,
+            "grain": "full_app",
+        },
+    )
+    draft = _visitor_draft()
+    draft["grain"] = "feature_slice"
+    draft["_generation_engine"] = {"grain": "feature_slice"}
+    draft["_understanding"] = locked.to_dict()
+    draft["smart_buttons"] = [
+        {
+            "on_model": "res.partner",
+            "label": "Visitor Logs",
+            "related_model": "x_visitor_log",
+            "relation_field": "x_company_id",
+        },
+        {
+            "on_model": "hr.employee",
+            "label": "Visits",
+            "related_model": "x_visitor_log",
+            "relation_field": "x_host_id",
+        },
+    ]
+    apply_stock_host_smart_buttons(draft, prompt=VISITOR)
+    attach_operator_surface(draft)
+    surface = draft["_operator_surface"]
+    assert surface["host_buttons"] == []
+    summary = surface.get("summary") or ""
+    assert "Also on stock forms" not in summary
+    assert "Visitor Logs" not in summary
+
+
+def test_locked_diagnosis_chrome_does_not_flip_grain_via_intent_corpus() -> None:
+    """## Diagnosis (locked) craft lines must not make classify_grain → feature_slice."""
+    u = build_understanding(VISITOR)
+    kept = [p for p in u.craft_proposals if p.get("default_on")]
+    locked = apply_understanding_edits(
+        u,
+        {
+            "craft_smart_buttons": kept,
+            "inherit_existing": False,
+            "needs_module": False,
+            "grain": "full_app",
+        },
+    )
+    prompt = append_locked_diagnosis(VISITOR, locked)
+    # Raw classify may still see "Inherit"/"smart button" if corpus kept Diagnosis;
+    # intent_corpus must drop Diagnosis so Generate grain stays full_app.
+    corpus = intent_corpus(prompt)
+    assert "Craft smart button" not in corpus
+    assert classify_grain(corpus or prompt) == "full_app"
+    # attach restores draft grain even if someone stamped feature_slice.
+    draft = _visitor_draft()
+    draft["grain"] = "feature_slice"
+    draft["_generation_engine"] = {"grain": "feature_slice"}
+    attach_understanding(draft, prompt, locked=locked.to_dict())
+    assert draft["grain"] == "full_app"
+    assert draft["_generation_engine"]["grain"] == "full_app"
+
+
+def test_prefer_contacts_inherit_unchanged_with_feature_slice_path() -> None:
+    """Prefer Contacts inherit is not residual craft-gated."""
+    surface = build_operator_surface(
+        {
+            "display_name": "Contacts field",
+            "technical_name": "contacts_field",
+            "grain": "field_pack",
+            "_generation_engine": {"grain": "field_pack", "host_model": "res.partner"},
+            "models": [{"model": "res.partner", "mode": "inherit", "fields": []}],
+            "menus": [],
+            "smart_buttons": [
+                {
+                    "on_model": "res.partner",
+                    "label": "Notes",
+                    "related_model": "x_note",
+                    "relation_field": "x_partner_id",
+                }
+            ],
+            "_understanding": {
+                "grain": "field_pack",
+                "inherit_existing": True,
+                "host_model": "res.partner",
+            },
+            "_user_prompt": PREFER,
+        }
+    )
+    # Inherit Preferred Contacts still may list host buttons — not craft-scrubbed away.
+    assert "residual app" not in (surface.get("summary") or "").lower() or "Contacts" in (
+        surface.get("summary") or ""
+    )

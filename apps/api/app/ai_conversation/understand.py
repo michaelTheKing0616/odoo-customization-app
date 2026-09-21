@@ -1519,8 +1519,24 @@ def attach_understanding(
 
     u = reconcile_contract_with_draft(draft, u, prompt=prompt)
     # Keep draft grain aligned with Contract for residual full_app.
+    # Do not let LLM/pack overwrite locked full_app → feature_slice/field_pack.
     if u.grain == "full_app" and not u.inherit_existing:
         draft["grain"] = "full_app"
+        engine = draft.get("_generation_engine")
+        if isinstance(engine, dict) and str(engine.get("grain") or "") in {
+            "field_pack",
+            "feature_slice",
+        }:
+            engine = dict(engine)
+            engine["grain"] = "full_app"
+            draft["_generation_engine"] = engine
+        if draft.get("_component") and any(
+            isinstance(m, dict)
+            and str(m.get("model") or "").startswith("x_")
+            and str(m.get("mode") or "new") != "inherit"
+            for m in (draft.get("models") or [])
+        ):
+            draft.pop("_component", None)
         if u.title and not draft.get("display_name"):
             draft["display_name"] = u.title
         elif draft.get("display_name") and u.source == "reconciled_draft":
