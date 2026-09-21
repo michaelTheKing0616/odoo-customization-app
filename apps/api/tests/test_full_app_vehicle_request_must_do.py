@@ -6,7 +6,7 @@ Root mandate (all residual / full_app briefs, not Vehicle-only):
 3. Date range → Start Date + End Date.
 4. «Menu under A or B — pick natural» → one domain-natural parent (Fleet for vehicle).
 5. Workflow approve/refuse → structured selection + buttons.
-6. Optional assignment note → optional relation row, not prose blob.
+6. Optional assignment note → one Text field on primary (not M2O+text dual).
 """
 
 from __future__ import annotations
@@ -94,7 +94,9 @@ def test_vehicle_request_expected_clean_must_do_shape() -> None:
     assert "vehicle→fleet vehicle" in blob
     assert "start date" in blob and "end date" in blob
     assert "state selection" in blob
-    assert "assignment note→fleet vehicle assignment" in blob
+    # One materialization: free-text Assignment Note (not M2O arrow + text).
+    assert "text field: assignment note" in blob
+    assert "assignment note→" not in blob
     assert "menu under fleet" in blob
     assert all("{" not in r and "host_model" not in r.lower() for r in rows)
 

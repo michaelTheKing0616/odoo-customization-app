@@ -19,6 +19,7 @@ from app.ai_brief_cues import (  # noqa: E402
     brief_asks_description,
     brief_asks_generic_notes,
     brief_has_named_notes_cue,
+    brief_has_priority_cue,
     dedupe_notes_surfaces,
     honor_stated_brief_cues,
     is_bare_generic_notes_field,
@@ -216,3 +217,125 @@ def test_prefer_sales_unchanged_grain() -> None:
         "feature_slice",
     }
     assert u.host_model == "sale.order"
+
+
+def test_cross_ttype_assignment_note_keeps_one() -> None:
+    """Same named cue must not materialize as both M2O and Multiline."""
+    draft = {
+        "technical_name": "vehicle_request",
+        "display_name": "Vehicle Request",
+        "_user_prompt": VEHICLE,
+        "models": [
+            {
+                "model": "x_vehicle_request",
+                "description": "Vehicle Request",
+                "mode": "new",
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "string": "Name", "required": True},
+                    {
+                        "name": "x_assignment_note_id",
+                        "ttype": "many2one",
+                        "string": "Assignment Note",
+                        "relation": "fleet.vehicle.assign",
+                        "source": "stock_link",
+                    },
+                    {
+                        "name": "x_assignment_note",
+                        "ttype": "text",
+                        "string": "Assignment Note",
+                        "source": "notes_cue",
+                    },
+                ],
+            }
+        ],
+    }
+    notes = dedupe_notes_surfaces(draft, prompt=VEHICLE)
+    assert any("cross-ttype" in n for n in notes)
+    fields = draft["models"][0]["fields"]
+    note_fields = [
+        f
+        for f in fields
+        if "assignment note" in f"{f.get('name')} {f.get('string')}".lower()
+    ]
+    assert len(note_fields) == 1
+    assert note_fields[0]["ttype"] == "text"
+    assert note_fields[0]["name"] == "x_assignment_note"
+
+
+def test_vehicle_no_priority_without_cue() -> None:
+    out = _finish(VEHICLE)
+    header = _primary(out)
+    pri = [
+        f
+        for f in (header.get("fields") or [])
+        if isinstance(f, dict)
+        and (
+            str(f.get("name") or "") in {"x_priority", "x_urgency", "x_importance"}
+            or str(f.get("string") or "").strip().lower()
+            in {"priority", "urgency", "importance"}
+        )
+    ]
+    assert pri == []
+
+
+def test_priority_cue_keeps_priority() -> None:
+    """Sibling residual that names Priority must keep the Selection."""
+    prompt = (
+        "Build Support Ticket: Name, Subject, Priority (Low / Normal / High), "
+        "and Description. Simple list + form, menu under Services."
+    )
+    assert brief_has_priority_cue(prompt)
+    draft = {
+        "technical_name": "support_ticket",
+        "display_name": "Support Ticket",
+        "_user_prompt": prompt,
+        "models": [
+            {
+                "model": "x_support_ticket",
+                "mode": "new",
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "string": "Name"},
+                    {"name": "x_subject", "ttype": "char", "string": "Subject"},
+                    {
+                        "name": "x_priority",
+                        "ttype": "selection",
+                        "string": "Priority",
+                        "selection": "[('low','Low'),('normal','Normal'),('high','High')]",
+                    },
+                    {"name": "x_description", "ttype": "text", "string": "Description"},
+                ],
+            }
+        ],
+    }
+    honor_stated_brief_cues(draft, prompt=prompt)
+    names = {str(f.get("name")) for f in draft["models"][0]["fields"]}
+    assert "x_priority" in names
+
+
+def test_uncued_priority_dropped_by_honor() -> None:
+    draft = {
+        "technical_name": "vehicle_request",
+        "display_name": "Vehicle Request",
+        "_user_prompt": VEHICLE,
+        "models": [
+            {
+                "model": "x_vehicle_request",
+                "mode": "new",
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "string": "Name"},
+                    {
+                        "name": "x_priority",
+                        "ttype": "selection",
+                        "string": "Priority",
+                        "selection": "[('low','Low'),('high','High')]",
+                        "source": "density",
+                    },
+                ],
+            }
+        ],
+    }
+    notes = honor_stated_brief_cues(draft, prompt=VEHICLE)
+    assert any("Priority" in n for n in notes)
+    names = {str(f.get("name")) for f in draft["models"][0]["fields"]}
+    assert "x_priority" not in names
+

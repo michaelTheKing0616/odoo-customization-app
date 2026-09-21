@@ -5,9 +5,14 @@ when the brief enumerates workflow states, names a stock menu parent, or omits
 Type/category cues, Contract + Generate must honor those cues end-to-end.
 Not Vehicle-only — any residual with the same cue shape.
 
-Also: one free-text notes surface per cue. When the brief names Assignment Note /
-Remarks / … (or implies a single notes field), do not also keep a generic
-Notes/Description sibling from packs or padding.
+Also: one materialization per named notes cue. When the brief names Assignment
+Note / Remarks / … (or implies a single notes field), emit exactly one field —
+prefer Multiline text on the primary for optional note text, or a single M2O
+when clearly a link-to-record — never both with the same label/stem. Drop generic
+Notes/Description siblings from packs or padding.
+
+Same invent family as Type: never invent Priority/Urgency/Importance Selection
+without a clear brief cue.
 """
 
 from __future__ import annotations
@@ -66,6 +71,18 @@ _TYPE_CUE_RE = re.compile(
     r"|kind\s+of\b"
     r")\b"
 )
+
+# Brief Priority/Urgency/Importance cue — invent only when clearly asked (Type family).
+_PRIORITY_CUE_RE = re.compile(
+    r"(?i)\b("
+    r"priority\s*(?:selection|field|dropdown|column|level)?"
+    r"|urgency\s*(?:selection|field|dropdown|column)?"
+    r"|importance\s*(?:selection|field|dropdown|column)?"
+    r"|priority\s+level"
+    r"|set\s+(?:a\s+)?priority"
+    r")\b"
+)
+
 
 # Stock app label → (module, preferred parent menu xml id).
 _STOCK_MENU_PARENTS: dict[str, tuple[str, str]] = {
@@ -212,6 +229,11 @@ def stated_workflow_states(prompt: str) -> list[str]:
 def brief_has_type_cue(prompt: str) -> bool:
     """True when the brief clearly asks for a Type/category selection."""
     return bool(_TYPE_CUE_RE.search(prompt or ""))
+
+
+def brief_has_priority_cue(prompt: str) -> bool:
+    """True when the brief clearly asks for Priority/Urgency/Importance."""
+    return bool(_PRIORITY_CUE_RE.search(prompt or ""))
 
 
 def model_is_equipment_roster(mid: str) -> bool:
@@ -407,7 +429,7 @@ def should_skip_generic_notes_pad(
 
 
 def honor_stated_brief_cues(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
-    """Materialize stated states, stock menu parent, no-invent Type, one notes surface."""
+    """Materialize stated states, stock menu parent, no-invent Type/Priority, one notes surface."""
     notes: list[str] = []
     text = prompt or str(draft.get("_user_prompt") or "")
     if not text or not isinstance(draft, dict):
@@ -415,9 +437,100 @@ def honor_stated_brief_cues(draft: dict[str, Any], *, prompt: str = "") -> list[
     notes.extend(_honor_stated_states(draft, text))
     notes.extend(_honor_menu_parent(draft, text))
     notes.extend(_drop_uncued_type_fields(draft, text))
+    notes.extend(_drop_uncued_priority_fields(draft, text))
     notes.extend(dedupe_notes_surfaces(draft, prompt=text))
     return notes
 
+
+
+def _notes_cue_stem(field: dict[str, Any]) -> str | None:
+    """Stem for same-cue notes materializations (text or M2O link).
+
+    «Assignment Note» text and «Assignment Note» M2O share stem ``assignment note``.
+    """
+    if not isinstance(field, dict):
+        return None
+    ttype = str(field.get("ttype") or "").lower()
+    if ttype and ttype not in {"text", "html", "char", "many2one", ""}:
+        return None
+    name = str(field.get("name") or "").strip().lower()
+    label = str(field.get("string") or "").strip().lower()
+    stem = name
+    if stem.startswith("x_"):
+        stem = stem[2:]
+    if stem.endswith("_id"):
+        stem = stem[:-3]
+    stem = stem.replace("_", " ").strip()
+    blob = f"{name} {label} {stem}"
+    if not _NOTES_SURFACE_TOKEN_RE.search(blob):
+        return None
+    key = label if label and label not in {"notes", "note", "description"} else stem
+    if not key:
+        key = label or stem
+    key = re.sub(r"\s+", " ", key).strip()
+    key = re.sub(r"\bnotes\b", "note", key)
+    key = re.sub(r"\bcomments\b", "comment", key)
+    key = re.sub(r"\bremarks\b", "remark", key)
+    return key or None
+
+
+def _collapse_cross_ttype_notes(
+    fields: list[dict[str, Any]], mid: str
+) -> tuple[set[str], list[str]]:
+    """One materialization per named notes cue across ttypes (text vs M2O).
+
+    Prefer free-text Multiline when both a note-text and a same-stem M2O exist.
+    """
+    drop_names: set[str] = set()
+    notes: list[str] = []
+    by_stem: dict[str, list[dict[str, Any]]] = {}
+    for field in fields:
+        stem = _notes_cue_stem(field)
+        if not stem:
+            continue
+        by_stem.setdefault(stem, []).append(field)
+    for stem, group in by_stem.items():
+        if len(group) < 2:
+            continue
+        texts = [
+            f
+            for f in group
+            if str(f.get("ttype") or "").lower() in {"text", "html", "char", ""}
+        ]
+        m2os = [f for f in group if str(f.get("ttype") or "").lower() == "many2one"]
+        if texts and m2os:
+            for m in m2os:
+                n = str(m.get("name") or "")
+                if n:
+                    drop_names.add(n)
+            keep = str(texts[0].get("name") or texts[0].get("string") or "")
+            notes.append(
+                f"brief_cues: collapsed cross-ttype notes cue «{stem}» on {mid} "
+                f"— kept text {keep}, dropped M2O"
+            )
+        elif len(texts) > 1:
+            keep_name = str(texts[0].get("name") or "")
+            for t in texts[1:]:
+                n = str(t.get("name") or "")
+                if n and n != keep_name:
+                    drop_names.add(n)
+            if drop_names:
+                notes.append(
+                    f"brief_cues: collapsed duplicate notes text «{stem}» on {mid} "
+                    f"(kept {keep_name})"
+                )
+        elif len(m2os) > 1:
+            keep_name = str(m2os[0].get("name") or "")
+            for m in m2os[1:]:
+                n = str(m.get("name") or "")
+                if n and n != keep_name:
+                    drop_names.add(n)
+            if any(str(m.get("name") or "") != keep_name for m in m2os[1:]):
+                notes.append(
+                    f"brief_cues: collapsed duplicate notes M2O «{stem}» on {mid} "
+                    f"(kept {keep_name})"
+                )
+    return drop_names, notes
 
 def dedupe_notes_surfaces(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
     """One notes surface per cue — prefer brief-named; drop generic Notes/Description siblings.
@@ -426,6 +539,8 @@ def dedupe_notes_surfaces(draft: dict[str, Any], *, prompt: str = "") -> list[st
     - Named note (Assignment Note, Remarks, …) → drop bare Notes/Description on same model
     - Single bare «notes» cue → keep one Notes; drop uncued Description sibling
     - No two free-text note siblings without two distinct cues
+    - Cross-ttype same-label / same-stem (text + M2O «Assignment Note») → keep one
+      (prefer Multiline text for optional note cues)
     """
     notes: list[str] = []
     text = prompt or str(draft.get("_user_prompt") or "")
@@ -447,6 +562,10 @@ def dedupe_notes_surfaces(draft: dict[str, Any], *, prompt: str = "") -> list[st
         named = [f for f in fields if is_named_notes_field(f)]
         generics = [f for f in fields if is_bare_generic_notes_field(f)]
         drop_names: set[str] = set()
+        cross_drop, cross_notes = _collapse_cross_ttype_notes(fields, mid)
+        if cross_drop:
+            drop_names |= cross_drop
+            notes.extend(cross_notes)
 
         if named and generics:
             for g in generics:
@@ -729,11 +848,52 @@ def _drop_uncued_type_fields(draft: dict[str, Any], text: str) -> list[str]:
     return notes
 
 
+def _drop_uncued_priority_fields(draft: dict[str, Any], text: str) -> list[str]:
+    """Drop Priority/Urgency/Importance Selection when the brief has no such cue.
+
+    Same invent family as Type — packs/density/pads must not invent without a cue.
+    """
+    notes: list[str] = []
+    if brief_has_priority_cue(text):
+        return notes
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        mid = str(model.get("model") or "")
+        fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
+        keep: list[dict[str, Any]] = []
+        dropped: list[str] = []
+        for field in fields:
+            name = str(field.get("name") or "")
+            string = str(field.get("string") or "").strip().lower()
+            source = str(field.get("source") or "")
+            is_priority = (
+                name in {"x_priority", "x_urgency", "x_importance"}
+                or string in {"priority", "urgency", "importance"}
+            )
+            if is_priority and (
+                source in {"domain_briefing", "density", "pack_default", ""}
+                or str(field.get("ttype") or "") == "selection"
+            ):
+                dropped.append(name or string)
+                continue
+            keep.append(field)
+        if dropped:
+            model["fields"] = keep
+            notes.append(
+                f"brief_cues: dropped unsolicited Priority on {mid} "
+                f"({', '.join(dropped)}) — no Priority cue in brief"
+            )
+    return notes
+
+
+
 __all__ = [
     "brief_asks_description",
     "brief_asks_generic_notes",
     "brief_has_named_notes_cue",
     "brief_has_type_cue",
+    "brief_has_priority_cue",
     "dedupe_notes_surfaces",
     "honor_stated_brief_cues",
     "is_bare_generic_notes_field",

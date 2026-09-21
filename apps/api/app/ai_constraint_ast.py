@@ -349,11 +349,12 @@ def _prose_full_app_fields(text: str) -> list[ConstraintField]:
     if _ASSIGNMENT_NOTE_RE.search(text or "") or (
         "optionally" in low and "assignment" in low
     ):
+        # Optional note cue → one free-text surface on the primary.
+        # Never emit M2O+text for the same named cue (stock-link vs notes pad).
         fields.append(
             ConstraintField(
                 label="Assignment Note",
-                ttype="many2one",
-                relation="Fleet Vehicle Assignment",
+                ttype="text",
                 bare=True,
             )
         )
