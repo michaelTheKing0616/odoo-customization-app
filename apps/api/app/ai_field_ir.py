@@ -237,6 +237,8 @@ def typed_fields_from_brief(prompt: str) -> list[dict[str, Any]]:
 
 _CONSTRAINT_META_RE = re.compile(
     r"(?i)^(?:new\s+model\b|menu\s+under\b|list\s*\+\s*form\b|"
+    r"list\s*\+\s*kanban\b|buttons?\s*:|"
+    r"optional\s*:\s*(?:link|create)\b|optional\s+(?:link|create)\b|"
     r"create\s*/\s*read\b|create\s+and\s+read\b|on\s+\w|"
     r"do\s+not\b|don't\b|never\s+create\b|place\s+under\b|"
     r"status\s+hint\b|banner\s+when\b|alert\s+when\b|decoration\b|"
@@ -285,6 +287,11 @@ def _resolve_relation_model(target: str) -> str | None:
     # product.product is common but not always in HOST_ALIASES
     if low in {"product", "products", "product.product"}:
         return "product.product"
+    if low in {"fleet vehicle", "fleet.vehicle", "vehicle", "vehicles"}:
+        return "fleet.vehicle"
+    # «Assignment note» / «Fleet vehicle assignment» are optional secondary craft —
+    # never invent an x_vehicle_assignment* app model. Leave unresolved so the
+    # arrow handler emits a Char/Text note on the primary (not a peer model).
     if low in {"user", "users", "res.users"}:
         return "res.users"
     return None
@@ -405,11 +412,26 @@ def _constraint_field_spec(line: str) -> dict[str, Any] | None:
 
     m = _CONSTRAINT_ARROW_RE.match(text)
     if m:
-        relation = _resolve_relation_model(m.group(2))
+        label_raw = (m.group(1) or "").strip()
+        target_raw = (m.group(2) or "").strip()
+        low_label = label_raw.lower()
+        low_target = target_raw.lower()
+        # Optional secondary «assignment note» craft stays a note on the primary —
+        # never a peer model / satellite app.
+        if (
+            "assignment note" in low_label
+            or "assignment note" in low_target
+            or (
+                "assignment" in low_target
+                and "note" in low_target
+            )
+        ):
+            return field_spec(label_raw or "Assignment Note", ttype="text")
+        relation = _resolve_relation_model(target_raw)
         if relation:
-            return _m2o_field(m.group(1), relation)
+            return _m2o_field(label_raw, relation)
         # Unknown target — still emit char so Must-do is not silently dropped
-        return field_spec(m.group(1), ttype="char")
+        return field_spec(label_raw, ttype="char")
 
     # Bare label: date / name / char
     label = human_field_label(_short_ast_field_label(text))

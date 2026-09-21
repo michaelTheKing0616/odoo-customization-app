@@ -253,8 +253,12 @@ def classify_document_shape(
         return "catalog"
     if has_positive_match(_WORKSPACE_RE, text):
         return "workspace"
+    # Ambition alone must not promote a named residual (Vehicle Request) into a
+    # multi-app workspace — that unlocks density satellites + optional-noun apps.
     if str(draft.get("_ambition") or "") == "comprehensive":
-        return "workspace"
+        kind_amb, residual_amb = _named_residual(text)
+        if not (kind_amb == "named" and residual_amb):
+            return "workspace"
     # Named residual plus two+ stock apps is a workspace (policy+quotes+invoices),
     # not a one-header register. Register regex already returned above.
     try:

@@ -44,6 +44,14 @@ AMBITION_TARGETS: dict[Ambition, dict[str, float]] = {
     },
 }
 
+_SINGLE_DOC_RESIDUAL_RE = re.compile(
+    r"(?i)\b("
+    r"(?:vehicle|leave|purchase|expense|time[\s-]?off|overtime|access|asset\s+checkout)"
+    r"\s+requests?"
+    r"|visitor\s+log|guest\s+log|key\s+log|call\s+log"
+    r"|attendance\s+request|remote\s+work\s+request"
+    r")\b"
+)
 _COMPREHENSIVE_RE = re.compile(
     r"\b("
     r"comprehensive|world[\s-]?class|enterprise[\s-]?grade|production[\s-]?grade|"
@@ -111,6 +119,14 @@ def classify_ambition_with_notes(prompt: str) -> tuple[Ambition, list[str]]:
     if _THIN_HINT_RE.search(text) and len(text.split()) < 16:
         return "thin", notes
     if len(text.split()) <= 5:
+        return "thin", notes
+    # Single-document residual request/log (Vehicle Request, Leave Request, Visitor Log)
+    # must NOT floor to comprehensive — that promotes workspace + density satellites and
+    # lets optional «link/create X» nouns explode into extra apps.
+    if _SINGLE_DOC_RESIDUAL_RE.search(text) and not _SCALE_RE.search(text):
+        notes.append(
+            "ambition: single-document residual request/log → thin (no satellite floor)"
+        )
         return "thin", notes
     # Full-scale Odoo apps are the default. Bare "multiple" is still not a scale
     # keyword (_SCALE_RE); a real business prompt of 6+ words is comprehensive.

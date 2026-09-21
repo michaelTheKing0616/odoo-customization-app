@@ -567,6 +567,25 @@ def _pick_primary_model(draft: dict[str, Any]) -> tuple[str, dict[str, Any]] | N
             fallback = (mid, row)
 
     if workflows:
+        # Locked residual noun wins over optional satellite workflows
+        # (Vehicle Request over Vehicle Assignment Notes).
+        want_mid = ""
+        try:
+            from app.ai_document_shape import naming_from_residual
+
+            prompt = str(draft.get("_user_prompt") or draft.get("_prompt") or "")
+            _display, slug = naming_from_residual(prompt)
+            if slug:
+                want_mid = f"x_{slug}" if not slug.startswith("x_") else slug
+        except Exception:  # noqa: BLE001
+            want_mid = ""
+        tech = str(draft.get("technical_name") or "")
+        if not want_mid and tech:
+            want_mid = f"x_{tech}" if not tech.startswith("x_") else tech
+        if want_mid:
+            for mid, row in workflows:
+                if mid == want_mid:
+                    return mid, row
         workflows.sort(key=lambda item: _workflow_score(item[1]), reverse=True)
         return workflows[0]
 

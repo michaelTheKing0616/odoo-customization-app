@@ -130,20 +130,16 @@ def draft_mismatches_residual_identity(
         # header) — Vehicle brief must not render as only x_purchase_request.
         if want not in customs:
             return True
-        # Residual primary present but a foreign pack header remains
-        # (Vehicle Request + x_purchase_request bleed is the dual-header class).
-        # Same-stem satellites (x_vehicle_request + x_vehicle_assignment) stay.
-        if want in customs:
-            stem = want.replace("x_", "", 1).split("_")[0]
-            foreign = [
-                m
-                for m in customs
-                if m != want
-                and m.replace("x_", "", 1).split("_")[0] != stem
-            ]
-            if foreign:
-                return True
-    if title and display and _titles_diverge(title, display) and pack_title:
+        # Residual full_app keeps ONE header (+ _line/_party already excluded).
+        # Optional «link/create X» / «also Y» same-stem satellites (e.g.
+        # x_vehicle_assignment_note next to x_vehicle_request) are peers that
+        # steal canvas primary + explode extra apps — treat them as foreign.
+        peers = [m for m in customs if m != want]
+        if peers:
+            return True
+    # Canvas/title must match the locked residual noun even without a pack.
+    # «Vehicle Assignment Notes» under a Vehicle Request brief is the class.
+    if title and display and _titles_diverge(title, display):
         return True
     return False
 
