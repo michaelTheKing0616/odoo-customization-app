@@ -117,6 +117,17 @@ def seed_unpacked_draft(
         seed_register_from_brief(draft, prompt=prompt)
         return draft
 
+    # Residual full_app with declared Must-do columns (Asset Checkout, etc.) even when
+    # shape is transactional_header / workspace — do not ship an empty model list.
+    try:
+        from app.ai_document_shape import ensure_residual_must_do_fields
+
+        ensure_residual_must_do_fields(draft, prompt=prompt)
+        if draft.get("models"):
+            return draft
+    except Exception:  # noqa: BLE001
+        pass
+
     from app.ai_domain_density import ensure_domain_density
     from app.ai_odoo_app_bar import ensure_residual_satellites, ensure_stock_inherit_bridges
     from app.ai_stock_first import attach_reuse_plan_to_draft
@@ -187,6 +198,23 @@ def seed_studio_draft(prompt: str) -> dict[str, Any]:
         return draft
 
     matched = match_domain_pack(prompt)
+    # Thin residual with declared Must-do columns whose noun ≠ pack title
+    # (Dining Tables ≠ Restaurant Management) — honesty seed, not full pack IR.
+    if matched:
+        try:
+            from app.ai_document_shape import naming_from_residual
+            from app.ai_field_ir import fields_from_residual_brief
+
+            residual_name, _slug = naming_from_residual(prompt)
+            pack_title = str(matched[1].get("display_name") or matched[0] or "")
+            must = fields_from_residual_brief(prompt)
+            rn = (residual_name or "").strip().lower()
+            pt = pack_title.strip().lower()
+            divergent = bool(rn and pt and rn not in pt and pt not in rn)
+            if divergent and len(must) > 1:
+                matched = None
+        except Exception:  # noqa: BLE001
+            pass
     if matched:
         pack_id, pack = matched
         draft: dict[str, Any] = {
@@ -222,6 +250,12 @@ def seed_studio_draft(prompt: str) -> dict[str, Any]:
                 if isinstance(m, dict) and m.get("model")
             ]
         if draft.get("models"):
+            try:
+                from app.ai_document_shape import ensure_residual_must_do_fields, naming_from_residual
+
+                ensure_residual_must_do_fields(draft, prompt=prompt)
+            except Exception:  # noqa: BLE001
+                pass
             return draft
     ambition = classify_ambition(prompt)
     draft = seed_unpacked_draft(

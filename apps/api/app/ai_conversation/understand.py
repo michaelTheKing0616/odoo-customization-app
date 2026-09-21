@@ -507,6 +507,12 @@ def _brief_full_app_must_do(prompt: str) -> list[str]:
     text = (prompt or "").strip()
     if not text:
         return []
+    # Bare "Do not create a new app" is inherit chrome — not residual Must-do.
+    if re.search(r"(?i)\b(?:do\s+not|don't|never)\s+create\b", text) and not (
+        _MODEL_WITH_FIELDS_RE.search(text)
+        or re.search(r"(?i)\bname\s*,", text)
+    ):
+        return []
     rows: list[str] = []
 
     app_m = _APP_NOUN_RE.search(text)
@@ -534,6 +540,14 @@ def _brief_full_app_must_do(prompt: str) -> list[str]:
     fm = _MODEL_WITH_FIELDS_RE.search(text)
     if fm:
         body = fm.group(1)
+    else:
+        # "Dining Tables…. Name, Capacity, Status (selection: …)." — field enum without "model with"
+        enum = re.search(
+            r"(?i)\b(Name\s*,\s*.+?)(?:\.\s*(?:Simple|No\s+workflow|Menu)|;|$)",
+            text,
+        )
+        if enum:
+            body = enum.group(1)
     # Split on commas / "and" while keeping parentheticals roughly intact
     chunks: list[str] = []
     buf = ""
@@ -569,7 +583,10 @@ def _brief_full_app_must_do(prompt: str) -> list[str]:
         if not chunk or len(chunk) < 2:
             continue
         # Label (selection: A / B / C) — options from the brief, not hardcoded
-        sel = re.search(r"(?i)^(.+?)\s*\(\s*selection\s*:\s*(.+)\)\s*$", chunk)
+        sel = re.search(
+            r"(?i)^(.+?)\s*\(\s*selection\s*:\s*(.+?)\)\s*(?:\.|$)",
+            chunk,
+        )
         if sel:
             fname = sel.group(1).strip()
             opts = re.sub(r"\s+", " ", sel.group(2)).strip(" .")

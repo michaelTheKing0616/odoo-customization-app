@@ -169,30 +169,186 @@ def typed_fields_from_brief(prompt: str) -> list[dict[str, Any]]:
     return out
 
 
+_CONSTRAINT_META_RE = re.compile(
+    r"(?i)^(?:new\s+model\b|menu\s+under\b|list\s*\+\s*form\b|"
+    r"create\s*/\s*read\b|create\s+and\s+read\b|on\s+\w|"
+    r"do\s+not\b|don't\b|never\s+create\b|place\s+under\b)"
+)
+_CONSTRAINT_SELECTION_RE = re.compile(
+    r"(?i)^(.+?)\s+(?:selection\s*)?\(\s*selection\s*:\s*(.+?)\)\s*(?:\.|$)"
+)
+_CONSTRAINT_SELECTION_BARE_RE = re.compile(
+    r"(?i)^(.+?)\s+selection\s*\((.+)\)\s*$"
+)
+_CONSTRAINT_ARROW_RE = re.compile(r"^(.+?)\s*(?:→|->)\s*(.+)$")
+_CONSTRAINT_DATE_RE = re.compile(r"(?i)\bdate(?:\s*time)?\b|\bdatetime\b")
+
+
+def _resolve_relation_model(target: str) -> str | None:
+    """Map Must-do display targets (Contact, Employee, Product) to ORM models."""
+    raw = (target or "").strip()
+    if not raw:
+        return None
+    if "." in raw and re.match(r"^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$", raw):
+        return raw
+    try:
+        from app.ai_grain import HOST_ALIASES
+    except Exception:  # noqa: BLE001
+        HOST_ALIASES = {}
+    low = raw.lower().strip()
+    if low in HOST_ALIASES:
+        return HOST_ALIASES[low]
+    # singular/plural soft match
+    for phrase, model in sorted(HOST_ALIASES.items(), key=lambda kv: -len(kv[0])):
+        if phrase == low or phrase.rstrip("s") == low.rstrip("s"):
+            return model
+    # product.product is common but not always in HOST_ALIASES
+    if low in {"product", "products", "product.product"}:
+        return "product.product"
+    if low in {"user", "users", "res.users"}:
+        return "res.users"
+    return None
+
+
+def _selection_literal(opts: str) -> str:
+    parts = [p.strip(" .") for p in re.split(r"[/,|;]", opts or "") if p.strip(" .")]
+    pairs: list[str] = []
+    for part in parts[:12]:
+        label = re.sub(r"\s+", " ", part).strip()
+        if not label:
+            continue
+        key = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")[:40] or "value"
+        safe_label = label.replace("'", "\'")
+        pairs.append(f"('{key}','{safe_label}')")
+    return "[" + ",".join(pairs) + "]" if pairs else "[('other','Other')]"
+
+
+def _m2o_field(label: str, relation: str) -> dict[str, Any] | None:
+    label = human_field_label(label)
+    if not label or not relation:
+        return None
+    base = ingenium_field_name(label, ttype="many2one")
+    name = base if base.endswith("_id") else (base[:37] + "_id")
+    return {
+        "name": name[:40],
+        "ttype": "many2one",
+        "relation": relation,
+        "string": label,
+    }
+
+
+def _constraint_field_spec(line: str) -> dict[str, Any] | None:
+    """One Must-do / constraint row → field dict (inherit + residual full_app)."""
+    text = str(line or "").strip().lstrip("- ").strip()
+    if not text or _CONSTRAINT_META_RE.match(text):
+        return None
+
+    m = _CONSTRAINT_CHECKBOX_RE.match(text)
+    if m:
+        return field_spec(m.group(1), ttype="boolean")
+    m = _CONSTRAINT_TEXT_RE.match(text)
+    if m:
+        return field_spec(m.group(1), ttype="text")
+    m = _CONSTRAINT_FIELD_RE.match(text)
+    if m:
+        return field_spec(m.group(1), ttype="char")
+
+    # Purpose selection (A / B)  OR  Status (selection: A / B)
+    m = _CONSTRAINT_SELECTION_BARE_RE.match(text) or _CONSTRAINT_SELECTION_RE.match(text)
+    if m:
+        label = human_field_label(m.group(1))
+        if not label:
+            return None
+        name = ingenium_field_name(label, ttype="selection")
+        return {
+            "name": name,
+            "ttype": "selection",
+            "string": label,
+            "selection": _selection_literal(m.group(2)),
+        }
+
+    m = _CONSTRAINT_ARROW_RE.match(text)
+    if m:
+        relation = _resolve_relation_model(m.group(2))
+        if relation:
+            return _m2o_field(m.group(1), relation)
+        # Unknown target — still emit char so Must-do is not silently dropped
+        return field_spec(m.group(1), ttype="char")
+
+    # Bare label: date / name / char
+    label = human_field_label(text)
+    if not label:
+        return None
+    # Sentence leftovers ("Dining Tables for our restaurant. Name") → last Name token
+    if "." in label and re.search(r"(?i)\bname\b", label):
+        label = "Name"
+    low = label.lower()
+    if _CONSTRAINT_DATE_RE.search(low):
+        ttype = "datetime" if "time" in low and "date" in low else "date"
+        return field_spec(label, ttype=ttype)
+    if low == "name" or low.endswith(" name"):
+        return {
+            "name": "x_name",
+            "ttype": "char",
+            "string": label if low != "name" else "Name",
+            "required": True,
+        }
+    if low in {"capacity", "qty", "quantity", "seats", "covers"}:
+        return field_spec(label, ttype="integer")
+    return field_spec(label, ttype="char")
+
+
 def typed_fields_from_constraints(constraints: list[str] | None) -> list[dict[str, Any]]:
+    """Parse inherit Checkbox:/Text field: rows AND residual full_app Must-do rows.
+
+    Residual shapes (structural, not Visitor-only):
+      Name | Company→Contact | Visit date | Purpose selection (A / B) | Host→Employee
+    """
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
     for row in constraints or []:
-        line = str(row or "").strip()
-        if not line:
+        spec = _constraint_field_spec(str(row or ""))
+        if not spec:
             continue
-        spec: dict[str, Any] | None = None
-        m = _CONSTRAINT_CHECKBOX_RE.match(line)
-        if m:
-            spec = field_spec(m.group(1), ttype="boolean")
-        else:
-            m = _CONSTRAINT_TEXT_RE.match(line)
-            if m:
-                spec = field_spec(m.group(1), ttype="text")
-            else:
-                m = _CONSTRAINT_FIELD_RE.match(line)
-                if m:
-                    spec = field_spec(m.group(1), ttype="char")
-        if not spec or spec["name"] in seen:
+        name = str(spec.get("name") or "")
+        if not name or name in seen:
             continue
-        seen.add(spec["name"])
+        seen.add(name)
         out.append(spec)
     return out
+
+
+def fields_from_residual_brief(
+    prompt: str = "",
+    *,
+    constraints: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Materialize primary residual model fields from Must-do / brief.
+
+    Used by register honesty seed so Live Generate is not Name-only when Diagnosis
+    already listed Company / Visit date / Purpose / Host (or any similar residual).
+    """
+    rows = [str(c) for c in (constraints or []) if str(c or "").strip()]
+    if not rows and prompt:
+        try:
+            from app.ai_conversation.understand import _brief_full_app_must_do
+
+            rows = [str(c) for c in _brief_full_app_must_do(prompt) if str(c or "").strip()]
+        except Exception:  # noqa: BLE001
+            rows = []
+    fields = typed_fields_from_constraints(rows)
+    if not fields and prompt:
+        # Inherit-style typed briefs still win when Must-do is empty.
+        fields = typed_fields_from_brief(prompt)
+    if not fields:
+        return []
+    names = {str(f.get("name") or "") for f in fields}
+    if "x_name" not in names:
+        fields.insert(
+            0,
+            {"name": "x_name", "ttype": "char", "string": "Name", "required": True},
+        )
+    return fields[:16]
 
 
 def extract_field_ir(
@@ -209,10 +365,15 @@ def extract_field_ir(
     from_constraints = typed_fields_from_constraints(constraints)
     if from_constraints:
         return from_constraints[:12]
+    # Residual full_app: Diagnosis Must-do rows are the field source of truth.
+    residual = fields_from_residual_brief(text, constraints=constraints)
+    if residual and len(residual) > 1:
+        return residual[:12]
     typed = typed_fields_from_brief(text)
     if typed:
         return typed[:12]
-    return []
+    # Single x_name honesty stub is not inherit field IR.
+    return residual[:12] if residual and len(residual) > 1 else []
 
 
 def is_junk_extension_field(field: dict[str, Any]) -> bool:
@@ -357,6 +518,7 @@ def sanitize_inherit_extension_fields(
 __all__ = [
     "contacts_s1_field_pack",
     "extract_field_ir",
+    "fields_from_residual_brief",
     "human_field_label",
     "is_banned_slug",
     "is_junk_extension_field",
@@ -364,4 +526,5 @@ __all__ = [
     "sanitize_inherit_extension_fields",
     "strip_leading_articles",
     "typed_fields_from_brief",
+    "typed_fields_from_constraints",
 ]

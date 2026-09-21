@@ -16,7 +16,8 @@ from app.preview_views import build_form_preview, residual_form_preview
 
 VISITOR_PROMPT = (
     "Build a tiny Visitor Log app: model with Name, Company (link to Contact), "
-    "Visit date, Purpose, Host (Employee). Simple list + form, menu under Services."
+    "Visit date, Purpose (selection: Meeting / Delivery / Other), and Host (Employee). "
+    "Simple list + form, menu under Services. No workflow beyond create/read."
 )
 
 RESTAURANT_PROMPT = (
@@ -45,7 +46,12 @@ def _visitor_draft() -> dict:
                         "string": "Company",
                     },
                     {"name": "x_visit_date", "ttype": "date", "string": "Visit date"},
-                    {"name": "x_purpose", "ttype": "char", "string": "Purpose"},
+                    {
+                        "name": "x_purpose",
+                        "ttype": "selection",
+                        "string": "Purpose",
+                        "selection": "[('meeting','Meeting'),('delivery','Delivery'),('other','Other')]",
+                    },
                     {
                         "name": "x_host_id",
                         "ttype": "many2one",
@@ -127,6 +133,34 @@ def test_visitor_form_preview_binds_must_do_fields() -> None:
         for f in (g.get("fields") or [])
     }
     assert "x_visit_date" in rnames
+
+
+def test_visitor_name_only_identity_arch_falls_back_to_model_fields() -> None:
+    """Non-empty Name-only Identity must still surface Company/Visit/Purpose/Host."""
+    draft = _visitor_draft()
+    draft["display_name"] = "Visitor Log"
+    draft["views"] = [
+        {
+            "model": "x_visitor_log",
+            "type": "form",
+            "arch": (
+                '<form string="Visitor Log"><sheet>'
+                '<group name="identity" string="IDENTITY">'
+                '<field name="x_name"/>'
+                "</group></sheet></form>"
+            ),
+        }
+    ]
+    form = build_form_preview(draft)
+    labels = {
+        f.get("string")
+        for g in (form.get("groups") or [])
+        for f in (g.get("fields") or [])
+    }
+    assert "Company" in labels
+    assert "Visit date" in labels
+    assert "Purpose" in labels
+    assert "Host" in labels
 
 
 def test_visitor_find_it_has_no_employees_host_chip() -> None:
@@ -222,3 +256,129 @@ def test_prefer_contacts_inherit_keeps_host_path() -> None:
     apply_stock_host_smart_buttons(draft, prompt=draft["_user_prompt"])
     assert draft["models"][0]["mode"] == "inherit"
     assert draft["models"][0]["model"] == "res.partner"
+
+
+# --- Must-do → draft fields → form preview (honesty Generate) -----------------
+
+from app.ai_pipeline import seed_studio_draft
+from app.ai_document_shape import honor_operator_brief
+
+
+ASSET_CHECKOUT_PROMPT = (
+    "Build a tiny Asset Checkout app: model with Asset name, Asset (link to Product), "
+    "Checkout date, Status (selection: Out / In / Maintenance), and Custodian (Employee). "
+    "Simple list + form, menu under Inventory. No workflow beyond create/read."
+)
+
+DINING_TABLES_PROMPT = (
+    "Dining Tables for our restaurant. Name, Capacity, "
+    "Status (selection: Free / Seated / Reserved). Simple list + form."
+)
+
+
+def _labels(form: dict | None) -> list[str]:
+    if not form:
+        return []
+    return [
+        str(f.get("string") or "")
+        for g in (form.get("groups") or [])
+        for f in (g.get("fields") or [])
+        if isinstance(f, dict)
+    ]
+
+
+def _field_names(draft: dict) -> set[str]:
+    primary = next(
+        (
+            m
+            for m in (draft.get("models") or [])
+            if isinstance(m, dict) and str(m.get("model") or "").startswith("x_")
+        ),
+        None,
+    )
+    assert primary is not None
+    return {
+        str(f.get("name") or "")
+        for f in (primary.get("fields") or [])
+        if isinstance(f, dict) and f.get("name")
+    }
+
+
+def test_visitor_log_generate_ir_has_all_must_do_fields() -> None:
+    """Honesty Generate materializes Must-do onto residual IR — not Name-only."""
+    draft = seed_studio_draft(VISITOR_PROMPT)
+    honor_operator_brief(draft, user_prompt=VISITOR_PROMPT)
+    names = _field_names(draft)
+    assert "x_name" in names
+    assert "x_company_id" in names
+    assert "x_visit_date" in names
+    assert "x_purpose" in names
+    assert "x_host_id" in names
+    company = next(
+        f
+        for m in draft["models"]
+        for f in (m.get("fields") or [])
+        if isinstance(f, dict) and f.get("name") == "x_company_id"
+    )
+    assert company.get("relation") == "res.partner"
+    host = next(
+        f
+        for m in draft["models"]
+        for f in (m.get("fields") or [])
+        if isinstance(f, dict) and f.get("name") == "x_host_id"
+    )
+    assert host.get("relation") == "hr.employee"
+    purpose = next(
+        f
+        for m in draft["models"]
+        for f in (m.get("fields") or [])
+        if isinstance(f, dict) and f.get("name") == "x_purpose"
+    )
+    assert purpose.get("ttype") == "selection"
+    form = build_form_preview(draft)
+    labels = _labels(form)
+    for want in ("Name", "Company", "Visit date", "Purpose", "Host"):
+        assert want in labels, labels
+    assert labels != ["Name"]
+
+
+def test_asset_checkout_generate_ir_and_preview() -> None:
+    """Second residual — Product / date / selection / Employee Must-do materializes."""
+    draft = seed_studio_draft(ASSET_CHECKOUT_PROMPT)
+    honor_operator_brief(draft, user_prompt=ASSET_CHECKOUT_PROMPT)
+    names = _field_names(draft)
+    assert "x_name" in names
+    assert "x_asset_id" in names
+    assert "x_checkout_date" in names
+    assert "x_status" in names
+    assert "x_custodian_id" in names
+    asset = next(
+        f
+        for m in draft["models"]
+        for f in (m.get("fields") or [])
+        if isinstance(f, dict) and f.get("name") == "x_asset_id"
+    )
+    assert asset.get("relation") == "product.product"
+    form = build_form_preview(draft)
+    labels = _labels(form)
+    for want in ("Asset", "Checkout date", "Status", "Custodian"):
+        assert want in labels, labels
+
+
+def test_dining_tables_generate_ir_not_name_only() -> None:
+    """Dining Tables residual — Capacity + Status selection, not pack Name-only."""
+    draft = seed_studio_draft(DINING_TABLES_PROMPT)
+    honor_operator_brief(draft, user_prompt=DINING_TABLES_PROMPT)
+    assert draft.get("display_name") == "Dining Tables" or "dining" in str(
+        draft.get("technical_name") or ""
+    ).lower()
+    names = _field_names(draft)
+    assert "x_name" in names
+    assert "x_capacity" in names
+    assert "x_status" in names
+    # Must not be the full restaurant pack as the sole IR.
+    assert len(draft.get("models") or []) <= 2
+    form = build_form_preview(draft)
+    labels = _labels(form)
+    assert "Capacity" in labels
+    assert "Status" in labels

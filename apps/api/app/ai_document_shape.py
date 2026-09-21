@@ -411,6 +411,12 @@ def _scrub_residual_title(label: str) -> str:
             break
         text = nxt
     text = _APP_CHROME_RE.sub("", text).strip(" -:.,")
+    # "Dining Tables for our restaurant" → Dining Tables
+    text = re.sub(
+        r"(?i)\s+for\s+(?:our|the|a|my|this)\s+[\w][\w\s-]{0,40}$",
+        "",
+        text,
+    ).strip()
     # "Visitor Log: Name, Company" → noun before colon when short.
     if ":" in text:
         left, right = text.split(":", 1)
@@ -511,6 +517,84 @@ def stamp_document_shape(
     return shape
 
 
+
+def ensure_residual_must_do_fields(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
+    """Stamp Diagnosis Must-do fields onto the primary residual x_* model.
+
+    Structural: any residual full_app with declared columns (char / M2O / date /
+    selection) — not Visitor-only. Covers honesty seed when shape ≠ register
+    (Asset Checkout → transactional_header) and pack-seed overlays (Dining Tables).
+    """
+    notes: list[str] = []
+    text = prompt or str(draft.get("_user_prompt") or "")
+    if not text:
+        return notes
+    try:
+        from app.ai_field_ir import fields_from_residual_brief
+    except Exception:  # noqa: BLE001
+        return notes
+    must = fields_from_residual_brief(text)
+    if len(must) <= 1:
+        return notes
+    display, slug = naming_from_residual(text)
+    want_mid = f"x_{slug}" if slug and not slug.startswith("x_") else (slug or "")
+    models = [m for m in (draft.get("models") or []) if isinstance(m, dict) and m.get("model")]
+    header = next((m for m in models if want_mid and str(m.get("model")) == want_mid), None)
+    freshly_seeded = False
+    if header is None:
+        mid = want_mid or "x_custom"
+        header = {
+            "model": mid,
+            "description": display or mid,
+            "mode": "new",
+            "source": "must_do_fields",
+            "fields": list(must),
+        }
+        draft.setdefault("models", []).insert(0, header)
+        notes.append(f"must_do: seeded primary {mid} with {len(must)} fields")
+        freshly_seeded = True
+    if not freshly_seeded:
+        fields = [f for f in (header.get("fields") or []) if isinstance(f, dict)]
+        have = {str(f.get("name") or "") for f in fields}
+        added = 0
+        for row in must:
+            name = str(row.get("name") or "")
+            if not name:
+                continue
+            if name in have:
+                for existing in fields:
+                    if str(existing.get("name") or "") != name:
+                        continue
+                    if str(existing.get("ttype") or "char") == "char" and row.get("ttype") not in {
+                        None,
+                        "char",
+                    }:
+                        existing.update({k: v for k, v in row.items() if k != "name"})
+                        notes.append(f"must_do: upgraded {name} to {row.get('ttype')}")
+                    break
+                continue
+            fields.append(dict(row))
+            have.add(name)
+            added += 1
+        header["fields"] = fields
+        if added:
+            notes.append(f"must_do: +{added} fields on {header.get('model')}")
+    depends = [str(x) for x in (draft.get("depends") or []) if x]
+    for field in header.get("fields") or []:
+        if not isinstance(field, dict):
+            continue
+        rel = str(field.get("relation") or "")
+        if rel == "res.partner" and "contacts" not in depends:
+            depends.append("contacts")
+        if rel == "hr.employee" and "hr" not in depends:
+            depends.append("hr")
+        if rel.startswith("product.") and "product" not in depends:
+            depends.append("product")
+    draft["depends"] = list(dict.fromkeys(depends))
+    return notes
+
+
+
 def seed_register_from_brief(
     draft: dict[str, Any],
     *,
@@ -531,6 +615,16 @@ def seed_register_from_brief(
     draft["_ambition"] = "thin"
     depends = ["base", "mail"]
     fields = _fields_from_column_list(text)
+    # Hollow column-list (Name-only) — stamp Must-do residual fields (char/M2O/date/selection).
+    if len(fields) <= 1:
+        try:
+            from app.ai_field_ir import fields_from_residual_brief
+
+            must = fields_from_residual_brief(text)
+            if len(must) > len(fields):
+                fields = must
+        except Exception:  # noqa: BLE001
+            pass
     if any(f.get("relation") == "hr.employee" for f in fields):
         depends.append("hr")
     if any(f.get("relation") == "res.partner" for f in fields):
@@ -1050,6 +1144,7 @@ def honor_operator_brief(draft: dict[str, Any], *, user_prompt: str = "") -> lis
         notes.extend(scrub_purchase_request_prompt_fit(draft, prompt=prompt))
     except Exception:  # noqa: BLE001
         pass
+    notes.extend(ensure_residual_must_do_fields(draft, prompt=prompt))
     notes.extend(polish_register_surface(draft, prompt=prompt))
     notes.extend(strip_backend_unsafe_relations(draft))
     notes.extend(normalize_punch_card_fields(draft, prompt=prompt))
@@ -1319,8 +1414,11 @@ def polish_register_surface(draft: dict[str, Any], *, prompt: str = "") -> list[
                 dropped.append(name)
                 continue
             if name in {"x_company_id", "company_id"} and not keep_company:
-                dropped.append(name)
-                continue
+                # Multi-company only — never drop Contact/Company M2Os (relation res.partner).
+                rel = str(field.get("relation") or "")
+                if rel in {"", "res.company"}:
+                    dropped.append(name)
+                    continue
             if name == "x_name" and _REF_NAME_RE.search(str(field.get("string") or "")):
                 field["string"] = _register_identity_label(text)
                 notes.append(f"register: x_name is identity, not a sequence on {mid}")
@@ -1344,9 +1442,21 @@ def polish_register_surface(draft: dict[str, Any], *, prompt: str = "") -> list[
                 field.pop("selection", None)
                 notes.append(f"register: {name} is free text (prompt did not enumerate values)")
             kept.append(field)
-        # Hollow honesty seeds (x_name only) — stamp punch-card columns from the brief.
+        # Hollow honesty seeds (x_name only) — stamp Must-do / punch-card columns from the brief.
+        have = {str(f.get("name") or "") for f in kept}
+        if len(have) <= 1:
+            try:
+                from app.ai_field_ir import fields_from_residual_brief
+
+                for row in fields_from_residual_brief(text):
+                    name = str(row.get("name") or "")
+                    if name and name not in have:
+                        kept.append(row)
+                        have.add(name)
+                        notes.append(f"register: stamped must-do field {name}")
+            except Exception:  # noqa: BLE001
+                pass
         if _PUNCH_CARD_RESIDUAL_RE.search(text):
-            have = {str(f.get("name") or "") for f in kept}
             for row in _fields_from_punch_card_brief(text):
                 name = str(row.get("name") or "")
                 if name and name not in have:
@@ -1477,9 +1587,19 @@ def _align_register_residual_labels(
     """ACL/description follow the residual. Brief columns keep their required flags."""
     notes: list[str] = []
     display = str(draft.get("display_name") or "").strip()
+    brief_rows = _fields_from_column_list(prompt)
+    if len(brief_rows) <= 1:
+        try:
+            from app.ai_field_ir import fields_from_residual_brief
+
+            must = fields_from_residual_brief(prompt)
+            if len(must) > len(brief_rows):
+                brief_rows = must
+        except Exception:  # noqa: BLE001
+            pass
     brief_by_name = {
         str(row.get("name") or ""): row
-        for row in _fields_from_column_list(prompt)
+        for row in brief_rows
         if isinstance(row, dict) and row.get("name")
     }
     for model in draft.get("models") or []:
@@ -2116,6 +2236,7 @@ __all__ = [
     "normalize_punch_card_fields",
     "strip_backend_unsafe_relations",
     "ensure_operator_field_help",
+    "ensure_residual_must_do_fields",
     "recover_residual_draft",
     "draft_needs_residual_recovery",
     "draft_needs_hygiene_repair",
