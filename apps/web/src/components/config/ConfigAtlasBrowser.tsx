@@ -79,8 +79,8 @@ export function ConfigAtlasBrowser({ connectionId }: Props) {
   return (
     <div className="space-y-4" data-testid="config-atlas-browser">
       <Callout variant="info" title="Config Atlas">
-        Intent → class → models → risk → recipe. Accounting is complete; the other seven
-        classes are stubs that point at Bulk Suite / Import / App Studio.
+        Intent → class → models → risk → recipe. All eight atlas classes are complete —
+        master data, settings, access, automation, UI Studio, and housekeeping included.
       </Callout>
       {error ? <ErrorNotice message={error} /> : null}
 

@@ -202,6 +202,9 @@ DOCUMENT_COLUMN_TARGETS: tuple[str, ...] = (
     "journal",
     "ref",
     "invoice_group",
+    "tax_inclusive",
+    "currency",
+    "amount_currency",
 )
 
 DOCUMENT_HEADER_ALIASES: dict[str, str] = {
@@ -244,6 +247,13 @@ DOCUMENT_HEADER_ALIASES: dict[str, str] = {
     "group": "invoice_group",
     "invoice": "invoice_group",
     "invoice_number": "invoice_group",
+    "tax_inclusive": "tax_inclusive",
+    "price_includes_tax": "tax_inclusive",
+    "tax_included": "tax_inclusive",
+    "currency": "currency",
+    "currency_code": "currency",
+    "amount_currency": "amount_currency",
+    "amount_in_currency": "amount_currency",
 }
 
 # Payment / matching helpers

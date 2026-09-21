@@ -13,9 +13,10 @@ import { Card, EmptyState, PageHeader } from "@/components/ui/layout-primitives"
 import { EMPTY_STATES, REVERSIBILITY } from "@/lib/copy-guide";
 import { JournalBatchPanel } from "@/components/batch-os/JournalBatchPanel";
 import { DocumentBatchPanel } from "@/components/batch-os/DocumentBatchPanel";
+import { MasterDataBatchPanel } from "@/components/batch-os/MasterDataBatchPanel";
 
 type TimelineFilter = "all" | "snapshot" | "audit" | "health";
-type PageTab = "timeline" | "batch" | "invoices";
+type PageTab = "timeline" | "batch" | "invoices" | "master";
 
 type TimelineEntry =
   | { kind: "snapshot"; at: string; snapshot: SnapshotRow }
@@ -50,7 +51,7 @@ export default function ChangeJournalPage() {
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get("tab") as PageTab | null) || "timeline";
   const [tab, setTab] = useState<PageTab>(
-    initialTab === "batch" || initialTab === "invoices" ? initialTab : "timeline",
+    initialTab === "batch" || initialTab === "invoices" || initialTab === "master" ? initialTab : "timeline",
   );
 
   const refresh = useCallback(async () => {
@@ -168,6 +169,15 @@ export default function ChangeJournalPage() {
         >
           Invoices & bills
         </Button>
+        <Button
+          type="button"
+          variant={tab === "master" ? "secondary" : "ghost"}
+          size="sm"
+          onClick={() => setTab("master")}
+          data-testid="journal-tab-master"
+        >
+          Master data
+        </Button>
       </div>
 
       {tab === "batch" ? (
@@ -177,6 +187,10 @@ export default function ChangeJournalPage() {
       ) : tab === "invoices" ? (
         <div className="mt-6">
           <DocumentBatchPanel connectionId={connectionId} />
+        </div>
+      ) : tab === "master" ? (
+        <div className="mt-6">
+          <MasterDataBatchPanel connectionId={connectionId} />
         </div>
       ) : (
       <>

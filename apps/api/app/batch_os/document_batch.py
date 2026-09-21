@@ -11,6 +11,7 @@ import uuid
 from collections import defaultdict
 from typing import Any
 
+from app.batch_os.partner_match import resolve_partner_id
 from app.batch_os.types import (
     DOCUMENT_COLUMN_TARGETS,
     DOCUMENT_HEADER_ALIASES,
@@ -68,7 +69,7 @@ def _normalize_move_type(raw: str) -> str:
     return "out_invoice"
 
 
-def _encode_ref(*, ref: str, due: str, move_type: str, product: str, tax: str) -> str:
+def _encode_ref(*, ref: str, due: str, move_type: str, product: str, tax: str, tax_incl: str = "", currency: str = "", amount_currency: str = "") -> str:
     parts: list[str] = []
     if ref:
         parts.append(ref)
@@ -79,6 +80,12 @@ def _encode_ref(*, ref: str, due: str, move_type: str, product: str, tax: str) -
         parts.append(f"product:{product}")
     if tax:
         parts.append(f"taxkey:{tax}")
+    if tax_incl:
+        parts.append(f"taxincl:{tax_incl}")
+    if currency:
+        parts.append(f"currency:{currency}")
+    if amount_currency:
+        parts.append(f"amtcurr:{amount_currency}")
     return "||".join(parts)
 
 
@@ -93,6 +100,12 @@ def _parse_ref(ref: str) -> dict[str, str]:
             out["product"] = part[8:]
         elif part.startswith("taxkey:"):
             out["taxkey"] = part[7:]
+        elif part.startswith("taxincl:"):
+            out["tax_inclusive"] = part[8:]
+        elif part.startswith("currency:"):
+            out["currency"] = part[9:]
+        elif part.startswith("amtcurr:"):
+            out["amount_currency"] = part[8:]
         elif part.startswith("taxids:"):
             out["taxids"] = part[7:]
         elif part and i == 0:
@@ -164,6 +177,9 @@ def build_document_lines(
             or f"{partner}-{date_s or 'nodate'}-{idx}"
         )
         tax = _pick(row, column_map, "tax")
+        tax_incl = _pick(row, column_map, "tax_inclusive")
+        currency = _pick(row, column_map, "currency")
+        amount_currency = _pick(row, column_map, "amount_currency")
         lines.append(
             MappedLine(
                 row_index=idx,
@@ -175,6 +191,9 @@ def build_document_lines(
                     move_type=move_type,
                     product=product,
                     tax=tax,
+                    tax_incl=tax_incl,
+                    currency=currency,
+                    amount_currency=amount_currency,
                 ),
                 label=label,
                 account_key=account or product,
@@ -188,28 +207,10 @@ def build_document_lines(
     return lines, errors
 
 
-def _resolve_partner_id(client: Any, key: str) -> int | None:
-    key = (key or "").strip()
-    if not key or not client.model_exists("res.partner"):
-        return None
-    if key.isdigit():
-        return int(key)
-    for domain in (
-        [("name", "=", key)],
-        [("display_name", "=", key)],
-        [("name", "ilike", key)],
-    ):
-        rows = client.execute_kw(
-            "res.partner",
-            "search_read",
-            [domain],
-            {"fields": ["id"], "limit": 2},
-        )
-        if len(rows) == 1:
-            return int(rows[0]["id"])
-        if len(rows) > 1 and domain[0][1] == "=":
-            return int(rows[0]["id"])
-    return None
+def _resolve_partner_id(client: Any, key: str, *, vat: str = "", email: str = "", ref: str = "") -> int | None:
+    return resolve_partner_id(client, key=key, vat=vat, email=email, ref=ref, name=key)
+
+
 
 
 def _resolve_journal_id(client: Any, key: str, move_type: str) -> tuple[int | None, str | None]:
@@ -495,6 +496,23 @@ def create_draft_documents(
         }
         if due:
             move_vals["invoice_date_due"] = due
+        # Multi-currency (graceful skip if currency missing / field unavailable)
+        cur = meta.get("currency") or ""
+        if cur and client.model_exists("res.currency"):
+            try:
+                crows = client.execute_kw(
+                    "res.currency",
+                    "search_read",
+                    [[("|", ("name", "=", cur.upper()), ("name", "ilike", cur))]],
+                    {"fields": ["id"], "limit": 1},
+                )
+                if crows:
+                    move_vals["currency_id"] = int(crows[0]["id"])
+            except Exception:
+                pass
+        if meta.get("tax_inclusive"):
+            # Honesty: price_include is a tax-flag in Odoo; we record intent in ref only.
+            move_vals["narration"] = (move_vals.get("narration") or "") + f" [tax_inclusive={meta.get('tax_inclusive')}]"
 
         if dry_run:
             updated.append(

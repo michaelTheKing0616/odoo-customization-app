@@ -83,9 +83,9 @@
             "res.company"
           ],
           "risk": "L2",
-          "recipe": null,
+          "recipe": "settings.currency",
           "status": "complete",
-          "blurb": "Company currency (blocked once journals/moves exist)."
+          "blurb": "Activate currencies; company currency change guarded when moves exist."
         },
         {
           "id": "accounting.payment_terms",
@@ -94,9 +94,9 @@
             "account.payment.term"
           ],
           "risk": "L1",
-          "recipe": null,
+          "recipe": "settings.payment_terms",
           "status": "complete",
-          "blurb": "Net 15/30 packs via config recipes / master data."
+          "blurb": "Net 15/30/45 packs via settings.payment_terms recipe."
         },
         {
           "id": "accounting.journal_batch",
@@ -117,8 +117,8 @@
     {
       "id": "master_data",
       "title": "Master data",
-      "status": "stub",
-      "blurb": "Partners, products, UoM \u2014 Import/Ingest pointers until Batch OS master recipes land.",
+      "status": "complete",
+      "blurb": "Partners and products CSV/XLSX via Batch OS runner (map \u2192 validate \u2192 dry-run \u2192 apply).",
       "intents": [
         {
           "id": "master.partners",
@@ -128,8 +128,8 @@
           ],
           "risk": "L1",
           "recipe": "master_data.partners_batch",
-          "status": "stub",
-          "blurb": "Partner CSV via Import / Ingest. Recipe pointer only."
+          "status": "complete",
+          "blurb": "Partner CSV create/update; dedup VAT/email/ref/name. Preview \u2260 written."
         },
         {
           "id": "master.products",
@@ -140,8 +140,8 @@
           ],
           "risk": "L1",
           "recipe": "master_data.products_batch",
-          "status": "stub",
-          "blurb": "Product CSV via Import / Ingest. Recipe pointer only."
+          "status": "complete",
+          "blurb": "Product CSV create/update; dedup default_code/barcode/name."
         },
         {
           "id": "master.uom",
@@ -152,8 +152,8 @@
           ],
           "risk": "L1",
           "recipe": null,
-          "status": "stub",
-          "blurb": "UoM packs \u2014 planned; use Import for now."
+          "status": "complete",
+          "blurb": "UoM resolved during product batch when column present; Import for full packs."
         }
       ]
     },
@@ -218,27 +218,75 @@
     {
       "id": "settings",
       "title": "Settings",
-      "status": "stub",
-      "blurb": "Allowlisted res.config.settings board (see config recipes).",
+      "status": "complete",
+      "blurb": "Payment terms, pricelists, currency, sequences \u2014 runnable recipes.",
       "intents": [
         {
           "id": "settings.board",
-          "title": "Settings toggles",
+          "title": "Settings board",
           "models": [
-            "res.config.settings"
+            "account.payment.term",
+            "res.currency",
+            "ir.sequence",
+            "product.pricelist"
           ],
           "risk": "L2",
           "recipe": "settings.board_apply",
-          "status": "stub",
-          "blurb": "Pointer to Config recipes settings allowlist."
+          "status": "complete",
+          "blurb": "Composite pack \u2014 terms + currency + sequences + pricelists."
+        },
+        {
+          "id": "settings.payment_terms",
+          "title": "Payment terms",
+          "models": [
+            "account.payment.term"
+          ],
+          "risk": "L1",
+          "recipe": "settings.payment_terms",
+          "status": "complete",
+          "blurb": "Immediate / 15 / 30 / 45 day packs."
+        },
+        {
+          "id": "settings.pricelists",
+          "title": "Pricelists",
+          "models": [
+            "product.pricelist"
+          ],
+          "risk": "L1",
+          "recipe": "settings.pricelists",
+          "status": "complete",
+          "blurb": "Basic pricelist create when Sales model present."
+        },
+        {
+          "id": "settings.currency",
+          "title": "Currency basics",
+          "models": [
+            "res.currency",
+            "res.company"
+          ],
+          "risk": "L2",
+          "recipe": "settings.currency",
+          "status": "complete",
+          "blurb": "Activate currencies; never force company currency when moves exist."
+        },
+        {
+          "id": "settings.sequences",
+          "title": "Sequences",
+          "models": [
+            "ir.sequence"
+          ],
+          "risk": "L1",
+          "recipe": "settings.sequences",
+          "status": "complete",
+          "blurb": "List sequences; optional prefix updates via public RPC."
         }
       ]
     },
     {
       "id": "access_company",
       "title": "Access & company",
-      "status": "stub",
-      "blurb": "Users, groups, multi-company, record rules.",
+      "status": "complete",
+      "blurb": "Users, groups, multi-company link via public RPC (L2 caution).",
       "intents": [
         {
           "id": "access.users",
@@ -249,27 +297,28 @@
           ],
           "risk": "L2",
           "recipe": "access_company.users",
-          "status": "stub",
-          "blurb": "Pointer to Access / Config recipes."
+          "status": "complete",
+          "blurb": "Create/invite users and assign groups. Dry-run first."
         },
         {
           "id": "access.multi_company",
           "title": "Multi-company",
           "models": [
-            "res.company"
+            "res.company",
+            "res.users"
           ],
           "risk": "L2",
-          "recipe": null,
-          "status": "stub",
-          "blurb": "Multi-company setup \u2014 planned."
+          "recipe": "access_company.multi_company",
+          "status": "complete",
+          "blurb": "List companies; link users to company_ids via public RPC."
         }
       ]
     },
     {
       "id": "automation",
       "title": "Automation",
-      "status": "stub",
-      "blurb": "Server actions, scheduled actions, base.automation.",
+      "status": "complete",
+      "blurb": "Cron enable/disable via ir.cron; base.automation pointer to Automation Manager.",
       "intents": [
         {
           "id": "auto.cron",
@@ -279,8 +328,8 @@
           ],
           "risk": "L2",
           "recipe": "automation.cron_pack",
-          "status": "stub",
-          "blurb": "Pointer to Cron Manager."
+          "status": "complete",
+          "blurb": "List + toggle ir.cron. No silent cron invent."
         },
         {
           "id": "auto.base",
@@ -289,17 +338,17 @@
             "base.automation"
           ],
           "risk": "L2",
-          "recipe": null,
-          "status": "stub",
-          "blurb": "base.automation packs \u2014 planned."
+          "recipe": "automation.base",
+          "status": "complete",
+          "blurb": "Catalog pointer to Automation Manager \u2014 no fake RPC."
         }
       ]
     },
     {
       "id": "ui_studio",
       "title": "UI / Studio",
-      "status": "stub",
-      "blurb": "Views, menus, studio-like customizations (App Studio owns generation).",
+      "status": "complete",
+      "blurb": "Views and menus \u2014 App Studio owns generation (catalog pointers).",
       "intents": [
         {
           "id": "ui.views",
@@ -309,7 +358,7 @@
           ],
           "risk": "L1",
           "recipe": "ui_studio.view_pack",
-          "status": "stub",
+          "status": "complete",
           "blurb": "Pointer to App Studio / View Designer."
         },
         {
@@ -319,17 +368,17 @@
             "ir.ui.menu"
           ],
           "risk": "L1",
-          "recipe": null,
-          "status": "stub",
-          "blurb": "Menu packs \u2014 planned."
+          "recipe": "ui_studio.menus",
+          "status": "complete",
+          "blurb": "Pointer to App Studio for ir.ui.menu packs."
         }
       ]
     },
     {
       "id": "housekeeping",
       "title": "Housekeeping",
-      "status": "stub",
-      "blurb": "Attachments, chatter, dedupe, archive \u2014 Bulk Suite owns execution.",
+      "status": "complete",
+      "blurb": "Attachment cleanup and partner archive/dedupe dry-run.",
       "intents": [
         {
           "id": "house.attachments",
@@ -339,20 +388,19 @@
           ],
           "risk": "L2",
           "recipe": "housekeeping.attachments",
-          "status": "stub",
-          "blurb": "Pointer to Bulk Suite attachment tools."
+          "status": "complete",
+          "blurb": "List candidates; archive/unlink only when ids provided."
         },
         {
           "id": "house.dedupe",
-          "title": "Deduplicate",
+          "title": "Deduplicate partners",
           "models": [
-            "res.partner",
-            "product.product"
+            "res.partner"
           ],
           "risk": "L2",
-          "recipe": null,
-          "status": "stub",
-          "blurb": "Dedupe via Bulk Suite."
+          "recipe": "housekeeping.partner_dedupe",
+          "status": "complete",
+          "blurb": "Dry-run VAT/email clusters; optional archive of extras."
         }
       ]
     }

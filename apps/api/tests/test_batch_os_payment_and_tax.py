@@ -151,9 +151,9 @@ def test_atlas_document_batch_complete_and_recipes():
     assert any(h["intent_id"] == "docs.invoices" for h in hits)
 
 
-def test_master_data_stub_has_recipe_pointers():
+def test_master_data_complete_has_recipe_pointers():
     reload_atlas()
     classes = {c["id"]: c for c in list_atlas()}
     partners = next(i for i in classes["master_data"]["intents"] if i["id"] == "master.partners")
     assert partners["recipe"] == "master_data.partners_batch"
-    assert partners["status"] == "stub"
+    assert partners["status"] == "complete"

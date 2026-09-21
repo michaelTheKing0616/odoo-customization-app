@@ -4288,7 +4288,54 @@ listConfigRecipes: (id: string) =>
       body: JSON.stringify(body),
     }),
 
-  batchOsJob: (id: string, jobId: string) =>
+  
+  batchOsMasterIntake: async (id: string, file: File, kind: "partners" | "products" = "partners") => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("kind", kind);
+    return requestForm<BatchOsJob>(`/api/connections/${id}/batch-os/master/intake`, fd);
+  },
+  batchOsMasterMap: (
+    id: string,
+    body: { job_id: string; column_map: Record<string, string>; kind?: "partners" | "products" },
+  ) => {
+    const kind = body.kind || "partners";
+    return request<BatchOsJob>(`/api/connections/${id}/batch-os/master/map?kind=${encodeURIComponent(kind)}`, {
+      method: "POST",
+      body: JSON.stringify({ job_id: body.job_id, column_map: body.column_map }),
+    });
+  },
+  batchOsMasterDryRun: (
+    id: string,
+    body: { job_id: string; kind?: "partners" | "products" },
+  ) => {
+    const kind = body.kind || "partners";
+    return request<BatchOsJob>(`/api/connections/${id}/batch-os/master/dry-run?kind=${encodeURIComponent(kind)}`, {
+      method: "POST",
+      body: JSON.stringify({ job_id: body.job_id }),
+    });
+  },
+  batchOsMasterApply: (
+    id: string,
+    body: {
+      job_id: string;
+      kind?: "partners" | "products";
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) => {
+    const kind = body.kind || "partners";
+    return request<BatchOsJob>(`/api/connections/${id}/batch-os/master/apply?kind=${encodeURIComponent(kind)}`, {
+      method: "POST",
+      body: JSON.stringify({
+        job_id: body.job_id,
+        confirm_advanced: body.confirm_advanced,
+        confirm_phrase: body.confirm_phrase,
+      }),
+    });
+  },
+
+batchOsJob: (id: string, jobId: string) =>
     request<BatchOsJob>(`/api/connections/${id}/batch-os/jobs/${jobId}`),
 
   listCompanies: (id: string) =>

@@ -50,7 +50,7 @@ def test_recipe_registry_p0():
     assert cards["accounting.lock_dates"].risk == "L3"
     assert get_recipe("accounting.opening_balances") is not None
     stubs = [c for c in list_recipes() if c.status == "stub"]
-    assert len(stubs) >= 5  # pointer stubs remain; document_batch recipes are complete
+    assert len(stubs) == 0  # Batch OS series complete — zero stub recipes
     assert HONESTY_PREVIEW_NE_POSTED
 
 
@@ -60,3 +60,17 @@ def test_document_and_tax_recipes_registered():
     assert cards["document_batch.payments"].risk == "L2"
     assert cards["accounting.tax_pack"].status == "complete"
     assert get_recipe("accounting.fiscal_year") is not None
+
+
+def test_all_atlas_classes_complete_and_intents_wired():
+    reload_atlas()
+    classes = list_atlas()
+    assert len(classes) == 8
+    for c in classes:
+        assert c["status"] == "complete", c
+        for intent in c["intents"]:
+            assert intent.get("models"), intent
+            assert intent.get("risk"), intent
+            assert intent.get("status") in {"complete", "stub"}, intent
+            # every intent either has a recipe id or is an explicit catalog pointer (recipe null)
+            assert "recipe" in intent

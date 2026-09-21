@@ -9,6 +9,7 @@ import re
 import uuid
 from typing import Any
 
+from app.batch_os.partner_match import resolve_partner_id
 from app.batch_os.types import (
     HONESTY_PREVIEW_NE_POSTED,
     PAYMENT_COLUMN_TARGETS,
@@ -166,26 +167,8 @@ def _resolve_open_move(client: Any, ref: str, partner_id: int | None) -> dict[st
 
 
 def _resolve_partner_id(client: Any, key: str) -> int | None:
-    key = (key or "").strip()
-    if not key or not client.model_exists("res.partner"):
-        return None
-    if key.isdigit():
-        return int(key)
-    rows = client.execute_kw(
-        "res.partner",
-        "search_read",
-        [[("name", "=", key)]],
-        {"fields": ["id"], "limit": 1},
-    )
-    if rows:
-        return int(rows[0]["id"])
-    rows = client.execute_kw(
-        "res.partner",
-        "search_read",
-        [[("name", "ilike", key)]],
-        {"fields": ["id"], "limit": 2},
-    )
-    return int(rows[0]["id"]) if len(rows) == 1 else None
+    return resolve_partner_id(client, key=key, name=key)
+
 
 
 def _resolve_payment_journal(client: Any, key: str) -> int | None:

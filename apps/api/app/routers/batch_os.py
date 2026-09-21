@@ -561,6 +561,165 @@ def payment_apply(
 
 
 
+
+
+@router.get("/master/columns")
+def master_columns(connection_id: str, kind: str = Query("partners")) -> dict[str, Any]:
+    del connection_id
+    from app.batch_os.master_data_batch import PARTNER_TARGETS, PRODUCT_TARGETS
+    from app.batch_os.types import HONESTY_PREVIEW_NE_POSTED
+
+    if kind == "products":
+        return {
+            "kind": "products",
+            "targets": list(PRODUCT_TARGETS),
+            "required": ["name"],
+            "optional": [t for t in PRODUCT_TARGETS if t != "name"],
+            "honesty": HONESTY_PREVIEW_NE_POSTED,
+            "recipe_id": "master_data.products_batch",
+        }
+    return {
+        "kind": "partners",
+        "targets": list(PARTNER_TARGETS),
+        "required": ["name"],
+        "optional": [t for t in PARTNER_TARGETS if t != "name"],
+        "honesty": HONESTY_PREVIEW_NE_POSTED,
+        "recipe_id": "master_data.partners_batch",
+    }
+
+
+def _master_recipe_id(kind: str) -> str:
+    return "master_data.products_batch" if kind == "products" else "master_data.partners_batch"
+
+
+@router.post("/master/intake")
+async def master_intake(
+    connection_id: str,
+    db: Session = Depends(get_db),
+    file: UploadFile = File(...),
+    kind: str = Form("partners"),
+    recipe_id: str | None = Form(None),
+) -> dict[str, Any]:
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty upload")
+    try:
+        headers, rows = parse_upload(raw, file.filename or "upload.csv")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    rid = recipe_id or _master_recipe_id(kind)
+    try:
+        recipe = require_recipe(rid)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    state = run_phase(
+        db,
+        recipe,
+        phase="intake",
+        connection_id=connection_id,
+        filename=file.filename or "upload.csv",
+        headers=headers,
+        rows=rows,
+        extras={"kind": kind},
+    )
+    return _state_out(state)
+
+
+@router.post("/master/map")
+def master_map(
+    connection_id: str,
+    body: MapBody,
+    db: Session = Depends(get_db),
+    kind: str = Query("partners"),
+) -> dict[str, Any]:
+    try:
+        state = _batch_flow(
+            connection_id=connection_id,
+            db=db,
+            recipe_id=_master_recipe_id(kind),
+            phase="map",
+            job_id=body.job_id,
+            column_map=body.column_map or None,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _state_out(state)
+
+
+@router.post("/master/validate")
+def master_validate(
+    connection_id: str,
+    body: PhaseBody,
+    db: Session = Depends(get_db),
+    kind: str = Query("partners"),
+) -> dict[str, Any]:
+    try:
+        state = _batch_flow(
+            connection_id=connection_id,
+            db=db,
+            recipe_id=_master_recipe_id(kind),
+            phase="validate",
+            job_id=body.job_id,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _state_out(state)
+
+
+@router.post("/master/dry-run")
+def master_dry_run(
+    connection_id: str,
+    body: PhaseBody,
+    db: Session = Depends(get_db),
+    kind: str = Query("partners"),
+) -> dict[str, Any]:
+    try:
+        state = _batch_flow(
+            connection_id=connection_id,
+            db=db,
+            recipe_id=_master_recipe_id(kind),
+            phase="dry_run",
+            job_id=body.job_id,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _state_out(state)
+
+
+@router.post("/master/apply")
+def master_apply(
+    connection_id: str,
+    body: ApplyBody,
+    db: Session = Depends(get_db),
+    kind: str = Query("partners"),
+) -> dict[str, Any]:
+    risks = [
+        "Writes res.partner or product.template on the live database",
+        "Dry-run ≠ written — confirm you reviewed the preview",
+    ]
+    try:
+        require_advanced_confirmation(
+            confirm_advanced=body.confirm_advanced,
+            confirm_phrase=body.confirm_phrase,
+            warning="Master data batch apply writes to live Odoo",
+            risks=risks,
+        )
+    except ConfirmationRequired as exc:
+        raise _confirm_http(exc) from exc
+    try:
+        state = _batch_flow(
+            connection_id=connection_id,
+            db=db,
+            recipe_id=_master_recipe_id(kind),
+            phase="apply",
+            job_id=body.job_id,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _state_out(state)
+
+
+
 @router.get("/jobs/{job_id}")
 def get_job(connection_id: str, job_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     payload = job_public(db, job_id)
@@ -599,7 +758,9 @@ def recipe_execute(
             raise _confirm_http(exc) from exc
 
     client = None
-    if not body.dry_run or recipe_id.startswith("accounting."):
+    if (not body.dry_run) or recipe_id.startswith(
+        ("accounting.", "master_data.", "document_batch.", "settings.", "access_company.", "automation.", "housekeeping.")
+    ):
         # validate/dry_run/apply need client for accounting recipes
         try:
             client = _client(connection_id, db)
@@ -653,7 +814,9 @@ def recipe_execute(
             job_id=state.job_id,
             column_map=body.column_map,
         )
-    if client is None and recipe_id.startswith("accounting."):
+    if client is None and recipe_id.startswith(
+        ("accounting.", "master_data.", "document_batch.", "settings.", "access_company.", "automation.", "housekeeping.")
+    ):
         client = _client(connection_id, db)
     if client is not None:
         phase = "dry_run" if body.dry_run else "apply"

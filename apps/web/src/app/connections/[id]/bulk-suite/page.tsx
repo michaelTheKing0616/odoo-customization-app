@@ -626,6 +626,17 @@ export default function BulkSuitePage() {
         . Same Batch OS runner as Journal batch — dry-run first; preview ≠ posted.
       </Callout>
 
+      <Callout variant="info" title="Master data batch" className="mt-4" testId="bulk-suite-master-data-link">
+        Partners & products CSV →{" "}
+        <a
+          className="font-medium text-accent underline"
+          href={`/connections/${connectionId}/journal?tab=master`}
+        >
+          Snapshots & Journal → Master data
+        </a>
+        . Same Batch OS runner — map → dry-run → apply; preview ≠ written.
+      </Callout>
+
 
       {(showRecipes || true) ? (
         <BulkRecipeChips
