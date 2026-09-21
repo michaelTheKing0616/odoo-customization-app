@@ -237,7 +237,9 @@ def typed_fields_from_brief(prompt: str) -> list[dict[str, Any]]:
 _CONSTRAINT_META_RE = re.compile(
     r"(?i)^(?:new\s+model\b|menu\s+under\b|list\s*\+\s*form\b|"
     r"create\s*/\s*read\b|create\s+and\s+read\b|on\s+\w|"
-    r"do\s+not\b|don't\b|never\s+create\b|place\s+under\b)"
+    r"do\s+not\b|don't\b|never\s+create\b|place\s+under\b|"
+    r"status\s+hint\b|banner\s+when\b|alert\s+when\b|decoration\b|"
+    r"ui\s+hint\b)"
 )
 _CONSTRAINT_SELECTION_RE = re.compile(
     r"(?i)^(.+?)\s+(?:selection\s*)?\(\s*selection\s*:\s*(.+?)\)\s*(?:\.|$)"
@@ -316,7 +318,15 @@ def _constraint_field_spec(line: str) -> dict[str, Any] | None:
         return field_spec(m.group(1), ttype="text")
     m = _CONSTRAINT_FIELD_RE.match(text)
     if m:
-        return field_spec(m.group(1), ttype="char")
+        label = m.group(1)
+        temporal = infer_date_or_datetime(label)
+        if temporal is None and _CONSTRAINT_DATE_RE.search(label.lower()):
+            temporal = (
+                "datetime"
+                if re.search(r"(?i)\b(?:date\s*time|datetime|timestamp)\b", label)
+                else "date"
+            )
+        return field_spec(label, ttype=temporal or "char")
 
     # Purpose selection (A / B)  OR  Status (selection: A / B)
     m = _CONSTRAINT_SELECTION_BARE_RE.match(text) or _CONSTRAINT_SELECTION_RE.match(text)

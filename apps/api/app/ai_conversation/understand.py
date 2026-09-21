@@ -371,8 +371,12 @@ def _dedupe(rows: list[str]) -> list[str]:
 
 
 _NO_NEW_APP_RE = re.compile(
-    r"(?i)\b(?:do\s+not\s+create\s+a\s+new\s+app|no\s+new\s+(?:home[- ]?screen\s+)?app|"
-    r"not\s+a\s+new\s+(?:home[- ]?screen\s+)?app)\b"
+    r"(?i)\b(?:do\s+not|don't|never)\s+(?:create|invent|build)\s+(?:a\s+)?"
+    r"(?:new\s+|parallel\s+)?(?:home[- ]?screen\s+)?(?:[A-Za-z][\w-]*\s+)?app\b|"
+    r"\bno\s+new\s+(?:home[- ]?screen\s+)?app\b|"
+    r"\bnot\s+a\s+new\s+(?:home[- ]?screen\s+)?app\b|"
+    r"\bdo\s+not\s+invent\b|"
+    r"\bprefer\s+(?:inherit|extend)\b"
 )
 _UNDER_GROUP_RE = re.compile(
     r"(?i)\bunder\s+(?:(?:the|a|an)\s+)?([A-Za-z][\w /&-]{0,40}?)\s+group\b"
@@ -385,14 +389,168 @@ _CHECKBOX_FIELD_RE = re.compile(
 _TYPED_TEXT_FIELD_RE = re.compile(
     r"(?i)(?:\badd\b|\band\b|,)\s+([A-Z][\w /&-]{1,40}?)\s+text(?:\s+field)?\b"
 )
+# Legacy single-capture kept for scoring entity fallback; Prefer briefs use
+# `_iter_add_field_labels` (conjunction + date-range aware) instead.
+# `required` is ONLY a stop when NOT starting a Title-Case field name.
 _ADD_NAMED_FIELD_RE = re.compile(
     r"(?i)\badd\s+(?:a\s+|an\s+)?(?:checkbox\s+|boolean\s+|text\s+(?:field\s+)?)?[\"']?"
-    r"((?-i:[A-Z])[^\"',.;]{1,60}?)[\"']?"
-    r"(?=\s+(?:on|under|required|show|to|only)\b|,|\.|$)"
+    r"((?-i:[A-Z])[^\"',.;]{1,80}?)[\"']?"
+    r"(?=\s+(?:on|under|show|to|only)\b|,|\.|$|"
+    r"\s+required\b(?!\s+(?-i:[A-Z])))"
 )
 _PRONOUN_LABELS = frozenset(
     {"it", "this", "that", "them", "one", "field", "a field", "the field"}
 )
+
+# Add-clause body: stop before form/Prefer/Do-not/Show-hint sentences.
+_ADD_CLAUSE_RE = re.compile(
+    r"(?i)\badd\s+(?:a\s+|an\s+)?(?!checkbox\b|boolean\b)"
+    r"(.+?)(?="
+    r"\.\s*(?:On\s+the\s+form|Prefer|Do\s+not|Don't|Show\s+a\s+|When\b)|"
+    r"\.\s*$|;\s*|\n|$)"
+)
+_DATE_RANGE_PAREN_RE = re.compile(
+    r"(?i)\(\s*(?:a\s+)?"
+    r"(?:date\s*range(?:\s+or\s+start\s*/\s*end(?:\s+dates?)?)?|"
+    r"start\s*/\s*end(?:\s+dates?)?|"
+    r"start\s+and\s+end(?:\s+dates?)?|"
+    r"start\s+or\s+end(?:\s+dates?)?)"
+    r"[^)]*\)\s*$"
+)
+_STATUS_HINT_RE = re.compile(
+    r"(?i)\b(?:show|display)\s+(?:a\s+)?(?:status\s+hint|banner|alert|decoration|ribbon)"
+    r"\s+when\s+(.+?)(?:\.|$)"
+)
+_FIELD_CHUNK_NOISE_RE = re.compile(
+    r"(?i)^(a|an|the|add|checkbox|boolean|text(?:\s+field)?)\s+"
+)
+_TRAILING_AND_RE = re.compile(r"(?i)\s+\band\b\s*$")
+
+
+def _split_conjunction_chunks(body: str) -> list[str]:
+    """Split field lists on commas / 'and' while keeping parentheticals intact."""
+    chunks: list[str] = []
+    buf = ""
+    depth = 0
+    for ch in body or "":
+        if ch == "(":
+            depth += 1
+            buf += ch
+        elif ch == ")":
+            depth = max(0, depth - 1)
+            buf += ch
+        elif ch == "," and depth == 0:
+            if buf.strip():
+                chunks.append(buf.strip())
+            buf = ""
+        else:
+            buf += ch
+    if buf.strip():
+        chunks.append(buf.strip())
+    normalized: list[str] = []
+    for chunk in chunks:
+        if re.search(r"(?i)\band\b", chunk) and "(" not in chunk:
+            parts = re.split(r"(?i)\s+and\s+", chunk)
+            normalized.extend(p.strip(" .") for p in parts if p.strip())
+        else:
+            if re.match(r"(?i)^and\s+", chunk):
+                chunk = re.sub(r"(?i)^and\s+", "", chunk).strip()
+            # Still split "A and B (…)" when and is outside parens
+            if re.search(r"(?i)\band\b", chunk):
+                parts: list[str] = []
+                part = ""
+                d = 0
+                i = 0
+                low = chunk
+                while i < len(low):
+                    c = low[i]
+                    if c == "(":
+                        d += 1
+                        part += c
+                        i += 1
+                    elif c == ")":
+                        d = max(0, d - 1)
+                        part += c
+                        i += 1
+                    elif (
+                        d == 0
+                        and low[i : i + 5].lower() == " and "
+                    ):
+                        if part.strip():
+                            parts.append(part.strip())
+                        part = ""
+                        i += 5
+                    else:
+                        part += c
+                        i += 1
+                if part.strip():
+                    parts.append(part.strip())
+                if len(parts) > 1:
+                    normalized.extend(parts)
+                    continue
+            normalized.append(chunk.strip(" ."))
+    return [c for c in normalized if c]
+
+
+def _expand_field_chunk(chunk: str) -> list[str]:
+    """One add-list chunk → one or more field labels (date-range → start/end)."""
+    raw = re.sub(r"\s+", " ", (chunk or "")).strip(" .")
+    raw = _FIELD_CHUNK_NOISE_RE.sub("", raw).strip()
+    raw = _TRAILING_AND_RE.sub("", raw).strip(" .")
+    if not raw or len(raw) < 3:
+        return []
+    low = raw.lower()
+    if low in _PRONOUN_LABELS or low in {
+        "checkbox", "boolean", "text", "field", "a field", "the field"
+    }:
+        return []
+    # Placement leftovers: "X under Delivery group" → X
+    raw = re.split(r"(?i)\s+under\s+", raw, maxsplit=1)[0].strip()
+    m = _DATE_RANGE_PAREN_RE.search(raw)
+    if m:
+        base = raw[: m.start()].strip(" .")
+        base = re.sub(r"(?i)\s*\([^)]*\)\s*$", "", base).strip()
+        base = _TRAILING_AND_RE.sub("", base).strip(" .")
+        if not base or len(base) < 3:
+            return []
+        return [f"{base} start date", f"{base} end date"]
+    # Drop non-range type parentheticals: Label (char) / Label (text)
+    raw = re.sub(
+        r"(?i)\s*\(\s*(?:char|text|html|boolean|checkbox|integer|int|float|"
+        r"monetary|binary|image|date|datetime|many2one|selection)\s*\)\s*$",
+        "",
+        raw,
+    ).strip(" .")
+    if not raw or len(raw) < 3:
+        return []
+    return [raw]
+
+
+def _iter_add_field_labels(text: str) -> list[str]:
+    """All Prefer/field_pack labels after add — conjunction + date-range aware."""
+    labels: list[str] = []
+    for m in _ADD_CLAUSE_RE.finditer(text or ""):
+        body = m.group(1).strip()
+        # Cut placement / required-before tails still inside the clause
+        body = re.split(
+            r"(?i)\s+(?:under\s+(?:the\s+)?[\w /&-]+?\s+group|"
+            r"required\s+before\b|on\s+the\s+\w+\s+form)\b",
+            body,
+            maxsplit=1,
+        )[0].strip()
+        for chunk in _split_conjunction_chunks(body):
+            labels.extend(_expand_field_chunk(chunk))
+    return _dedupe(labels)
+
+
+def _brief_ui_hint_constraints(text: str) -> list[str]:
+    """Status hint / banner / alert prose → Must-do rows (not fields)."""
+    rows: list[str] = []
+    for m in _STATUS_HINT_RE.finditer(text or ""):
+        cond = re.sub(r"\s+", " ", m.group(1)).strip(" .")
+        if cond and len(cond) >= 8:
+            rows.append(f"Status hint when {cond}")
+    return rows
 
 
 def _brief_must_do_constraints(
@@ -427,15 +585,18 @@ def _brief_must_do_constraints(
             continue
         rows.append(f"Text field: {label}")
 
-    if not any(r.lower().startswith(("checkbox:", "text field:")) for r in rows):
-        for m in _ADD_NAMED_FIELD_RE.finditer(text):
-            label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
+    typed_or_check = any(
+        r.lower().startswith(("checkbox:", "text field:")) for r in rows
+    )
+    if not typed_or_check:
+        for label in _iter_add_field_labels(text):
             low = label.lower()
-            if not label or low in {"checkbox", "boolean", "text", "field", "a field"}:
-                continue
-            if low in _PRONOUN_LABELS or len(label) < 3:
-                continue
-            rows.append(f"Field: {label}")
+            # Date-range expansions already carry "start/end date" — bare rows
+            # so IR types them as date (Field: prefix forces char).
+            if re.search(r"(?i)\b(?:start|end)\s+date\b", label):
+                rows.append(label)
+            else:
+                rows.append(f"Field: {label}")
 
     gm = _UNDER_GROUP_RE.search(text)
     if gm:
@@ -443,10 +604,18 @@ def _brief_must_do_constraints(
         if gtitle:
             rows.append(f"Place under {gtitle} group")
 
+    rows.extend(_brief_ui_hint_constraints(text))
+
     if _NO_NEW_APP_RE.search(text) or inherit:
-        # Inherit already implies no new app; only add explicit phrasing when said or inherit.
         if _NO_NEW_APP_RE.search(text):
-            rows.append("Do not create a new home-screen app")
+            # Prefer explicit invent/parallel phrasing when the brief said it.
+            if re.search(r"(?i)\binvent\b|\bparallel\b", text):
+                host_bit = ""
+                if host:
+                    host_bit = f" {HOST_LABELS.get(host, host)}"
+                rows.append(f"Do not invent a parallel{host_bit} app")
+            else:
+                rows.append("Do not create a new home-screen app")
 
     return _dedupe(rows)[:12]
 
@@ -683,8 +852,8 @@ def _brief_named_entities(prompt: str) -> list[str]:
         if label and low not in {"add", "a", "an", "the", "new", "and", "or"}:
             if not low.startswith("checkbox"):
                 entities.append(label)
-    for m in _ADD_NAMED_FIELD_RE.finditer(text):
-        label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
+    # Prefer conjunction + date-range aware labels (same as Must-do seed).
+    for label in _iter_add_field_labels(text):
         low = label.lower()
         if (
             label
@@ -693,6 +862,13 @@ def _brief_named_entities(prompt: str) -> list[str]:
             and len(label) >= 3
         ):
             entities.append(label)
+    # Status-hint / Documents conditions — score coverage for Prefer briefs.
+    for row in _brief_ui_hint_constraints(text):
+        entities.append(row)
+        if re.search(r"(?i)\bdocuments?\b", row):
+            entities.append("Documents")
+        if re.search(r"(?i)\bconfirm", row):
+            entities.append("confirm")
     gm = _UNDER_GROUP_RE.search(text)
     if gm:
         gtitle = _LEADING_ARTICLE_RE.sub("", gm.group(1).strip()).strip()
@@ -856,7 +1032,7 @@ def _merge_must_do(
     inherit: bool,
     needs_module: bool,
 ) -> list[str]:
-    """Prefer LLM Must-do; backfill missing det seed bullets the LLM dropped."""
+    """Union LLM Must-do with deterministic floor — never drop det seed bullets."""
     llm = _dedupe([str(x).strip() for x in llm_rows if str(x).strip()])[:12]
     det = _dedupe([str(x).strip() for x in det_rows if str(x).strip()])[:12]
     if not llm:
@@ -879,15 +1055,9 @@ def _merge_must_do(
         if key not in joined:
             merged.append(row)
     merged = _dedupe(merged)[:12]
-    # Pick the better of llm-only vs merged vs det-only by score
-    candidates = [llm, merged, det]
-    best = max(
-        candidates,
-        key=lambda rows: score_must_do_constraints(
-            prompt, rows, host=host, inherit=inherit, needs_module=needs_module
-        )["score"],
-    )
-    return best
+    # NEVER shrink below the deterministic floor. Score may prefer a short LLM
+    # list that drops delivery-window / status-hint rows — always keep the union.
+    return merged
 
 
 def _parse_enrich_payload(raw: Any) -> dict[str, Any] | None:

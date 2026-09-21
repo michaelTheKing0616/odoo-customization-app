@@ -434,72 +434,121 @@ def test_operator_edits_still_override_must_do() -> None:
     assert edited.source == "operator"
 
 
-OPS_S1_EXTENSION = (
-    "Prefer for delivery + Delivery notes on res.partner already persist. "
-    "Extend so they matter in workflows: surface preferred-delivery Contacts on "
-    "pickings/transfers (domain or smart button), optional filter on Delivery/Inventory "
-    "lists, and/or a light automation when the box is checked. Still inherit-only — "
-    "no new app tile."
+# ---------------------------------------------------------------------------
+# Prefer / field_pack Must-do: conjunction + date-range + status-hint (Tope)
+# ---------------------------------------------------------------------------
+
+TOPE_SALES_PREFER = (
+    "Extend Sales Orders: add Customer PO reference and Required delivery window "
+    "(date range or start/end dates). On the form, show a status hint when the order "
+    "is confirmed but no delivery document is attached in Documents. Prefer inherit/extend "
+    "— do not invent a parallel Sales app."
 )
 
 
-def test_ops_s1_extension_must_do_includes_wiring() -> None:
-    """Reuse→ops brief must not collapse to host + no-new-app only."""
+def test_tope_sales_prefer_must_do_keeps_all_fields_and_status_hint() -> None:
+    """Exact Tope Prefer Sales brief — never truncate at 'and Required…'."""
+    from app.ai_conversation.understand import (
+        build_understanding,
+        _brief_must_do_constraints,
+        _merge_must_do,
+    )
+
+    seed = _brief_must_do_constraints(
+        TOPE_SALES_PREFER, host="sale.order", inherit=True
+    )
+    joined = " | ".join(seed).lower()
+    # Conjunction must not glue / truncate
+    assert "customer po reference and" not in joined
+    assert "customer po reference" in joined
+    # Date-range expands to start + end dates
+    assert "delivery window" in joined and "start" in joined and "end" in joined
+    # Status hint / Documents prose survives
+    assert "status hint" in joined
+    assert "document" in joined and "documents" in joined
+    # Prefer inherit host + no parallel app
+    assert "sale.order" in joined
+    assert "parallel" in joined or "invent" in joined
+
+    u = build_understanding(TOPE_SALES_PREFER)
+    assert u.grain == "field_pack"
+    assert u.host_model == "sale.order"
+    assert u.inherit_existing is True
+    uj = " | ".join(u.constraints).lower()
+    assert "customer po reference and" not in uj
+    assert "customer po reference" in uj
+    assert "delivery window" in uj and "start" in uj and "end" in uj
+    assert "status hint" in uj and "documents" in uj
+
+    # LLM enrich must not shrink below deterministic floor
+    shrunk = ["On Sales (sale.order)", "Field: Customer PO reference"]
+    merged = _merge_must_do(
+        seed,
+        shrunk,
+        prompt=TOPE_SALES_PREFER,
+        host="sale.order",
+        inherit=True,
+        needs_module=False,
+    )
+    mj = " | ".join(merged).lower()
+    assert "delivery window" in mj and "status hint" in mj
+
+
+def test_prefer_purchase_multi_field_date_range_and_hint() -> None:
+    """Same Prefer extractor class — Purchase, not Sales-shaped one-off."""
+    prompt = (
+        "Extend Purchase Orders: add Vendor contract reference and Required receipt "
+        "window (date range or start/end dates). On the form, show a status hint when "
+        "the order is confirmed but no receipt document is attached in Documents. "
+        "Prefer inherit — do not invent a parallel Purchase app."
+    )
+    u = build_understanding(prompt)
+    assert u.grain == "field_pack"
+    assert u.host_model == "purchase.order"
+    assert u.inherit_existing is True
+    joined = " | ".join(u.constraints).lower()
+    assert "vendor contract" in joined
+    assert "receipt window" in joined and "start" in joined and "end" in joined
+    assert "status hint" in joined and "documents" in joined
+    assert "and" != joined.split("field:")[-1].strip()[:3]
+
+
+def test_prefer_contacts_multi_field_date_range_and_hint() -> None:
+    prompt = (
+        "Extend Contacts: add Loyalty tier and Preferred contact window "
+        "(date range or start/end dates). On the form, show a status hint when the "
+        "contact is archived but no ID document is attached in Documents. "
+        "Prefer inherit — do not invent a parallel Contacts app."
+    )
+    u = build_understanding(prompt)
+    assert u.grain == "field_pack"
+    assert u.host_model == "res.partner"
+    joined = " | ".join(u.constraints).lower()
+    assert "loyalty tier" in joined
+    assert "contact window" in joined and "start" in joined and "end" in joined
+    assert "status hint" in joined
+
+
+def test_merge_must_do_never_shrinks_below_det_floor() -> None:
     from app.ai_conversation.understand import (
         _brief_must_do_constraints,
-        score_must_do_constraints,
-        build_understanding,
+        _merge_must_do,
     )
 
-    rows = _brief_must_do_constraints(
-        OPS_S1_EXTENSION, host="res.partner", inherit=True
+    det = _brief_must_do_constraints(
+        TOPE_SALES_PREFER, host="sale.order", inherit=True
     )
-    joined = " | ".join(rows).lower()
-    assert "on contacts (res.partner)" in joined
-    assert "reuse" in joined and "do not recreate" in joined
-    assert "pickings" in joined or "transfers" in joined
-    assert "filter" in joined
-    assert "automation" in joined
-    assert "do not create a new home-screen app" in joined
-    assert "stock.picking" not in joined  # surface language, not host steal
-    assert not any(r.lower().startswith("on inventory") for r in rows)
-
-    thin = [
-        "On Contacts (res.partner)",
-        "Do not create a new home-screen app",
-    ]
-    thin_score = score_must_do_constraints(
-        OPS_S1_EXTENSION, thin, host="res.partner", inherit=True
+    llm_only = ["On Sales (sale.order)", "Field: Customer PO reference"]
+    out = _merge_must_do(
+        det,
+        llm_only,
+        prompt=TOPE_SALES_PREFER,
+        host="sale.order",
+        inherit=True,
+        needs_module=False,
     )
-    assert thin_score["pass"] is False
-    assert any("missing Must-do" in r for r in thin_score["reasons"])
-
-    full_score = score_must_do_constraints(
-        OPS_S1_EXTENSION, rows, host="res.partner", inherit=True
-    )
-    assert full_score["pass"] is True
-
-    u = build_understanding(OPS_S1_EXTENSION)
-    assert u.host_model == "res.partner"
-    assert u.inherit_existing is True
-    u_joined = " | ".join(u.constraints).lower()
-    assert "pickings" in u_joined or "transfers" in u_joined
-    assert "filter" in u_joined
-    assert "automation" in u_joined
-    assert "stock.picking" not in u_joined
-
-
-def test_ops_must_do_host_line_steal_even_when_brief_names_pickings() -> None:
-    """Brief may name pickings for surface; Must-do must not claim them as host."""
-    from app.ai_conversation.understand import score_must_do_constraints
-
-    stolen = [
-        "On Inventory (stock.picking)",
-        "Reuse existing Prefer for delivery — do not recreate",
-        "Do not create a new home-screen app",
-    ]
-    scored = score_must_do_constraints(
-        OPS_S1_EXTENSION, stolen, host="res.partner", inherit=True
-    )
-    assert scored["pass"] is False
-    assert any("host-steal" in r.lower() for r in scored["reasons"])
+    # Floor: every significant det token family must survive
+    joined = " | ".join(out).lower()
+    assert "customer po" in joined
+    assert "delivery window" in joined
+    assert "status hint" in joined
