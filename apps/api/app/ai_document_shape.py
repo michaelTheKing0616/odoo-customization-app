@@ -1188,6 +1188,12 @@ def honor_operator_brief(draft: dict[str, Any], *, user_prompt: str = "") -> lis
     except Exception:  # noqa: BLE001
         pass
     notes.extend(ensure_residual_must_do_fields(draft, prompt=prompt))
+    try:
+        from app.ai_brief_cues import honor_stated_brief_cues
+
+        notes.extend(honor_stated_brief_cues(draft, prompt=prompt))
+    except Exception:  # noqa: BLE001
+        pass
     notes.extend(polish_register_surface(draft, prompt=prompt))
     notes.extend(strip_backend_unsafe_relations(draft))
     notes.extend(normalize_punch_card_fields(draft, prompt=prompt))

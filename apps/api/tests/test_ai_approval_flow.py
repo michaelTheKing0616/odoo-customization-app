@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.no_app_db
+
 from app.ai_approval_flow import apply_approval_flow, brief_wants_approval
 from app.ai_conversation.refine import apply_refinement
 from app.ai_odoo_app_bar import rebuild_form_transition_headers

@@ -88,7 +88,17 @@ def _root_menu(draft: dict[str, Any]) -> dict[str, str] | None:
     ).strip()
     if not name and not tech:
         return None
-    return {"label": name or tech, "technical_name": tech}
+    out: dict[str, str] = {"label": name or tech, "technical_name": tech}
+    parent = str(pick.get("parent_xml_id") or pick.get("parent_id") or "").strip()
+    if parent:
+        out["parent_xml_id"] = parent
+    stamp = draft.get("_stated_menu_parent") if isinstance(draft.get("_stated_menu_parent"), dict) else {}
+    if stamp.get("label"):
+        out["stock_parent_label"] = str(stamp["label"])
+    if stamp.get("xml_id"):
+        out["parent_xml_id"] = out.get("parent_xml_id") or str(stamp["xml_id"])
+        out["stock_parent_label"] = out.get("stock_parent_label") or str(stamp.get("label") or "")
+    return out
 
 
 def _has_residual_x_new(draft: dict[str, Any]) -> bool:
@@ -316,7 +326,18 @@ def build_operator_surface(draft: dict[str, Any]) -> dict[str, Any]:
 
     parts: list[str] = []
     if app_menu and app_menu.get("label"):
-        parts.append(f"Open «{app_menu['label']}» from the Odoo home / app switcher.")
+        stock_parent = str(app_menu.get("stock_parent_label") or "").strip()
+        parent_xml = str(app_menu.get("parent_xml_id") or "").strip()
+        if stock_parent or (parent_xml and "." in parent_xml):
+            host = stock_parent or parent_xml.split(".", 1)[0].replace("_", " ").title()
+            parts.append(
+                f"Open «{app_menu['label']}» under {host} "
+                f"(not a standalone home / app-switcher tile)."
+            )
+        else:
+            parts.append(
+                f"Open «{app_menu['label']}» from the Odoo home / app switcher."
+            )
     if host_buttons:
         bits: list[str] = []
         seen_bit: set[str] = set()

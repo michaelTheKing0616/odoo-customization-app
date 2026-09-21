@@ -670,7 +670,12 @@ def apply_briefing_to_draft(
             for f in fields
             if isinstance(f, dict)
         }
-        is_equipment = _model_matches(mid, _EQUIPMENT_MODEL_TOKENS)
+        try:
+            from app.ai_brief_cues import model_is_equipment_roster
+
+            is_equipment = model_is_equipment_roster(mid)
+        except Exception:  # noqa: BLE001
+            is_equipment = _model_matches(mid, _EQUIPMENT_MODEL_TOKENS)
         is_rate = _model_matches(mid, _RATE_MODEL_TOKENS)
         is_site = any(
             tok in mid for tok in ("studio", "facility", "branch", "clinic", "hotel")
@@ -724,6 +729,8 @@ def apply_briefing_to_draft(
             ):
                 if _rewrite_selection(field, brief.specialty_types):
                     notes.append(f"briefing: specialties on {mid}.{fname}")
+            # Rewrite only existing Type fields with placeholder keys.
+            # Do NOT invent x_type here — invent stays behind is_equipment / roster gate.
             if (
                 brief.equipment_types
                 and _field_matches(fname, _TYPE_FIELD_TOKENS)

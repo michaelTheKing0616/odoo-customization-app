@@ -163,6 +163,7 @@ MODEL_MODULE: dict[str, str] = {
 
 # Odoo 17–19 root app menus (public xml ids; sale/crm/project differ from menu_{mod}_root).
 MODULE_PARENT_MENU: dict[str, str] = {
+    "fleet": "fleet.menu_root",
     "sale": "sale.sale_menu_root",
     "crm": "crm.crm_menu_root",
     "project": "project.menu_main_pm",

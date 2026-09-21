@@ -4640,6 +4640,12 @@ def close_odoo_architecture(draft: dict[str, Any], *, user_prompt: str = "") -> 
     from app.ai_approval_flow import apply_approval_flow
 
     notes.extend(apply_approval_flow(draft, prompt=prompt))
+    try:
+        from app.ai_brief_cues import honor_stated_brief_cues
+
+        notes.extend(honor_stated_brief_cues(draft, prompt=prompt))
+    except Exception:  # noqa: BLE001
+        pass
     notes.extend(rebuild_form_transition_headers(draft))
     notes.extend(strip_register_form_headers(draft))
     notes.extend(inject_chatter_on_forms(draft))

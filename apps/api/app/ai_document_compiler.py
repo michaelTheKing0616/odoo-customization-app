@@ -636,17 +636,23 @@ def build_grammar_card(draft: dict[str, Any], *, prompt: str = "") -> dict[str, 
             slots.append("Requester = Employee")
         if "x_manager_id" in names:
             slots.append("Manager = User")
-        state_f = next(
-            (
-                f
-                for f in _field_list(header)
-                if str(f.get("name") or "") in {"x_state", "x_status"}
-            ),
-            None,
-        )
-        if state_f:
-            keys = re.findall(r"\(\s*'([^']+)'\s*,", str(state_f.get("selection") or ""))
-            states = keys
+        # Prefer state_field.states (honors stated Done) over whichever selection
+        # field happens to appear first.
+        sf = header.get("state_field") if isinstance(header.get("state_field"), dict) else {}
+        if sf.get("states"):
+            states = [str(s) for s in (sf.get("states") or []) if s]
+        else:
+            state_f = next(
+                (
+                    f
+                    for f in _field_list(header)
+                    if str(f.get("name") or "") in {"x_state", "x_status"}
+                ),
+                None,
+            )
+            if state_f:
+                keys = re.findall(r"\(\s*'([^']+)'\s*,", str(state_f.get("selection") or ""))
+                states = keys
         extra = max(
             0,
             len(

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.no_app_db
+
 from app.ai_domain_briefing import apply_briefing_to_draft, build_domain_briefing
 from app.ai_draft_scorecard import draft_scorecard
 from app.ai_selection import parse_selection_literal

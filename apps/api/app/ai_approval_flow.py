@@ -82,30 +82,39 @@ def _manager_group_id(draft: dict[str, Any]) -> str:
     return f"group_{tech}_manager"
 
 
-def _ensure_status_field(model: dict[str, Any], field_name: str) -> dict[str, Any]:
+def _ensure_status_field(
+    model: dict[str, Any],
+    field_name: str,
+    *,
+    selection: str | None = None,
+    states: list[str] | None = None,
+) -> dict[str, Any]:
     fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
     row = next((f for f in fields if str(f.get("name") or "") == field_name), None)
+    sel = selection or _SELECTION
+    default = (states[0] if states else "draft")
+    string = "State" if field_name.endswith("_state") or field_name == "x_state" else "Status"
     if row is None:
         row = {
             "name": field_name,
             "ttype": "selection",
-            "string": "Status",
-            "selection": _SELECTION,
+            "string": string,
+            "selection": sel,
             "required": True,
             "readonly": True,
             "tracking": True,
-            "default": "draft",
+            "default": default,
         }
         fields.append(row)
         model["fields"] = fields
         return row
     row["ttype"] = "selection"
-    row["selection"] = _SELECTION
+    row["selection"] = sel
     row["readonly"] = True
     row["tracking"] = True
-    row.setdefault("string", "Status")
+    row.setdefault("string", string)
     row.setdefault("required", True)
-    row.setdefault("default", "draft")
+    row["default"] = default
     return row
 
 
@@ -191,7 +200,7 @@ def apply_approval_flow(
     prompt: str = "",
     force: bool = False,
 ) -> list[str]:
-    """Stamp Submit → Approve/Refuse on the residual header when the brief asks."""
+    """Stamp Submit → Approve/Refuse (+ stated terminals) on the residual header."""
     text = prompt or str(draft.get("_user_prompt") or "")
     if not force and not brief_wants_approval(text):
         return []
@@ -201,18 +210,61 @@ def apply_approval_flow(
     if not model:
         return []
     mid = str(model.get("model") or "")
+
+    # Prefer stated brief states (Draft→…→Done) over the 4-state default.
+    states = list(_STATES)
+    transitions = [list(edge) for edge in _TRANSITIONS]
+    selection = _SELECTION
+    try:
+        from app.ai_brief_cues import (
+            selection_literal_from_keys,
+            stated_workflow_states,
+            transitions_for_states,
+        )
+
+        stated = stated_workflow_states(text)
+        if stated:
+            states = stated
+            transitions = transitions_for_states(stated)
+            selection = selection_literal_from_keys(stated)
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Prefer existing x_state (Must-do) over inventing a parallel x_status.
     field_name = "x_status"
+    fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
+    names = {str(f.get("name") or "") for f in fields}
     sf = model.get("state_field") if isinstance(model.get("state_field"), dict) else {}
     if str(sf.get("field") or "").startswith("x_"):
         field_name = str(sf["field"])
-    _ensure_status_field(model, field_name)
+    elif "x_state" in names:
+        field_name = "x_state"
+    elif "x_status" in names:
+        field_name = "x_status"
+
+    _ensure_status_field(model, field_name, selection=selection, states=states)
+    # Drop the sibling so canvas/Contract do not fight (4 vs 5 states).
+    if field_name == "x_state" and "x_status" in names:
+        model["fields"] = [
+            f for f in fields if str(f.get("name") or "") != "x_status"
+        ]
+    elif field_name == "x_status" and "x_state" in names and states:
+        # Stated Must-do lived on x_state — promote it and drop truncated status.
+        field_name = "x_state"
+        _ensure_status_field(model, field_name, selection=selection, states=states)
+        model["fields"] = [
+            f
+            for f in (model.get("fields") or [])
+            if not (isinstance(f, dict) and str(f.get("name") or "") == "x_status")
+        ]
+
     _ensure_mail_mixins(model)
     model["is_workflow"] = True
     model["state_field"] = {
         "field": field_name,
-        "states": list(_STATES),
-        "transitions": [list(edge) for edge in _TRANSITIONS],
-        "statusbar_visible": list(_STATES),
+        "states": list(states),
+        "transitions": transitions,
+        "statusbar_visible": list(states),
         "approval": True,
     }
     _ensure_activity_automation(
@@ -231,8 +283,8 @@ def apply_approval_flow(
         "kind": "community_button_gate",
         "model": mid,
         "field": field_name,
-        "states": list(_STATES),
-        "transitions": [list(edge) for edge in _TRANSITIONS],
+        "states": list(states),
+        "transitions": [list(edge) for edge in transitions],
         "manager_dests": sorted(_MANAGER_DESTS),
         "manager_group": _manager_group_id(draft),
         "activity_on_submit": True,
@@ -249,7 +301,7 @@ def apply_approval_flow(
         rebuild_form_transition_headers(draft)
     except Exception:  # noqa: BLE001
         pass
-    return [f"approval: {mid} draft→submitted→approved/refused (manager-gated)"]
+    return [f"approval: {mid} {'→'.join(states)} (manager-gated)"]
 
 
 def approval_manager_dests(draft: dict[str, Any]) -> set[str]:
