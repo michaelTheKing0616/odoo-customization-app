@@ -105,15 +105,29 @@ def _pick_header_model(draft: dict[str, Any], prompt: str) -> dict[str, Any] | N
     models = _custom_models(draft)
     if not models:
         return None
-    pack_header = _pack_header_id(draft)
-    if pack_header:
-        hit = next((m for m in models if str(m.get("model")) == pack_header), None)
-        if hit:
-            return hit
+    # Residual noun wins over pack header (x_visitor_log over x_restaurant).
     _display, slug = naming_from_residual(prompt)
     want = f"x_{slug}" if slug and not slug.startswith("x_") else slug
     if want:
         hit = next((m for m in models if str(m.get("model")) == want), None)
+        if hit:
+            return hit
+    pack_header = _pack_header_id(draft)
+    pack_id = str(draft.get("domain_pack") or "")
+    pack_display = ""
+    if pack_id:
+        try:
+            from app.ai_domain_packs import load_domain_pack
+
+            pack_display = str(load_domain_pack(pack_id).get("display_name") or "")
+        except Exception:  # noqa: BLE001
+            pack_display = ""
+    residual_diverges = bool(
+        _display and pack_display and _display.lower() not in pack_display.lower()
+        and pack_display.lower() not in _display.lower()
+    )
+    if pack_header and not residual_diverges:
+        hit = next((m for m in models if str(m.get("model")) == pack_header), None)
         if hit:
             return hit
     headers = [m for m in models if not _is_line_model(str(m.get("model") or ""))]
@@ -224,13 +238,31 @@ def _restore_naming(draft: dict[str, Any], prompt: str) -> list[str]:
             pack_display = str(load_domain_pack(pack_id).get("display_name") or "")
         except Exception:  # noqa: BLE001
             pack_display = ""
+    field_type_title = False
+    try:
+        from app.ai_residual_identity import is_field_type_display_name
+
+        field_type_title = is_field_type_display_name(current)
+    except Exception:  # noqa: BLE001
+        field_type_title = False
     ungrounded = bool(current) and (
         is_ir_jargon_title(current)
+        or field_type_title
         or not title_is_grounded(current, prompt, pack_display_name=pack_display)
+    )
+    # Pack title stamped under a divergent residual noun is not grounded.
+    pack_diverges = bool(
+        display
+        and pack_display
+        and display.lower() not in pack_display.lower()
+        and pack_display.lower() not in display.lower()
+        and current
+        and current.lower() == pack_display.lower()
     )
     if display and (
         not current
         or ungrounded
+        or pack_diverges
         or _PLACEHOLDER_TITLE_RE.match(current)
         or current.lower() in {"named briefs", "named brief"}
     ):

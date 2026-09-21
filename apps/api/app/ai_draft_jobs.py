@@ -393,6 +393,20 @@ def _finish_seed_draft(
     from app.ai_operator_brief import attach_operator_brief
 
     # Session Contract IR before closer — craft must reach apply_stock_host_smart_buttons.
+    # Purge foreign pack IR when locked residual Contract noun diverges (Restaurant→Visitor).
+    try:
+        from app.ai_residual_identity import enforce_residual_draft_identity
+
+        warnings.extend(
+            enforce_residual_draft_identity(
+                draft,
+                prompt=prompt,
+                locked=locked_understanding,
+                prefer_locked=bool(locked_understanding),
+            )
+        )
+    except Exception:  # noqa: BLE001
+        pass
     _stamp_locked_understanding(draft, prompt, locked_understanding=locked_understanding)
     attach_operator_brief(draft, user_prompt=prompt)
     if is_refuse_draft(draft):
@@ -740,6 +754,17 @@ def run_draft_job_body(
 
     progress(0, "Seeding domain pack")
     seed = seed_studio_draft(prompt)
+    try:
+        from app.ai_residual_identity import enforce_residual_draft_identity
+
+        enforce_residual_draft_identity(
+            seed,
+            prompt=prompt,
+            locked=locked_understanding,
+            prefer_locked=bool(locked_understanding),
+        )
+    except Exception:  # noqa: BLE001
+        pass
     from app.ai_architecture_plan import stamp_architecture_plan
 
     stamp_architecture_plan(seed, prompt=prompt, rebuild=True)
@@ -922,9 +947,26 @@ def _sync_ai_session_artifact(
             resolved = {}
         understanding = draft.get("_understanding") if isinstance(draft.get("_understanding"), dict) else None
         if understanding:
-            from app.ai_conversation.understand import Understanding, dump_understanding
+            from app.ai_conversation.understand import (
+                Understanding,
+                dump_understanding,
+                load_understanding,
+            )
 
             locked = Understanding.from_dict(understanding)
+            prior = load_understanding(resolved)
+            # Keep Diagnosis-confirmed residual title when draft stamped reconciled_draft.
+            if (
+                locked
+                and prior
+                and prior.grain == "full_app"
+                and not prior.inherit_existing
+                and locked.source == "reconciled_draft"
+                and prior.title
+                and locked.title
+                and prior.title.lower() != locked.title.lower()
+            ):
+                locked = prior
             if locked:
                 dump_understanding(resolved, locked)
         update_session(

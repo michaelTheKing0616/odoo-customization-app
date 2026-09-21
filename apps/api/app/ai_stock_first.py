@@ -308,11 +308,25 @@ def restore_pack_identity(
 
     Does not infer a pack from the prompt — tests and unpacked drafts may stamp
     ``domain_pack`` as a closer flag without meaning "replace models".
+    Clears pack authority when residual brief noun diverges (Visitor Log ≠ Restaurant).
     """
     notes: list[str] = []
     pack_id = str(draft.get("domain_pack") or "")
     if not pack_id:
         return notes
+    try:
+        from app.ai_residual_identity import draft_mismatches_residual_identity
+
+        if draft_mismatches_residual_identity(draft, prompt=user_prompt):
+            draft.pop("domain_pack", None)
+            draft.pop("_pack_model_ids", None)
+            draft.pop("_pack_reuse_stock", None)
+            notes.append(
+                f"stock_first: cleared divergent pack {pack_id} for residual identity"
+            )
+            return notes
+    except Exception:  # noqa: BLE001
+        pass
     from app.ai_domain_packs import load_domain_pack
 
     pack = load_domain_pack(pack_id)

@@ -16,6 +16,7 @@ from app.ai_conversation.understand import (
 
 
 def test_reconcile_visitor_contract_on_restaurant_draft() -> None:
+    """Stale locked *chrome* without prefer_locked follows draft (Dining/Restaurant brief)."""
     draft = {
         "display_name": "Restaurant Management",
         "grain": "full_app",
@@ -30,11 +31,31 @@ def test_reconcile_visitor_contract_on_restaurant_draft() -> None:
         summary="Old session IR",
         source="locked",
     )
-    rebuilt = reconcile_contract_with_draft(draft, locked)
+    rebuilt = reconcile_contract_with_draft(draft, locked, prefer_locked=False)
     assert rebuilt.title == "Restaurant Management"
     assert rebuilt.host_model is None
     assert rebuilt.grain == "full_app"
     assert rebuilt.source == "reconciled_draft"
+
+
+def test_prefer_locked_keeps_visitor_contract() -> None:
+    draft = {
+        "display_name": "Restaurant Management",
+        "grain": "full_app",
+        "models": [{"model": "x_dining_table", "mode": "new", "fields": []}],
+    }
+    locked = Understanding(
+        capability="residual_app",
+        grain="full_app",
+        host_model=None,
+        inherit_existing=False,
+        title="Visitor Log",
+        summary="Diagnosis confirmed",
+        source="locked",
+    )
+    kept = reconcile_contract_with_draft(draft, locked, prefer_locked=True)
+    assert kept.title == "Visitor Log"
+    assert kept.source == "locked"
 
 
 def test_attach_understanding_rebuilds_mismatched_contract() -> None:

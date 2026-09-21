@@ -346,10 +346,13 @@ def append_locked_diagnosis(prompt: str, understanding: Understanding) -> str:
     for row in understanding.craft_smart_buttons or []:
         if not isinstance(row, dict):
             continue
+        on_model = row.get("on_model") or row.get("host_model") or ""
+        related = row.get("related_model") or row.get("residual_model") or ""
+        rel_field = row.get("relation_field") or ""
         lines.append(
             "- Craft smart button: "
-            f"{row.get('label') or 'Records'} | {row.get('on_model')} | "
-            f"{row.get('related_model')} | {row.get('relation_field')}"
+            f"{row.get('label') or 'Records'} | {on_model} | "
+            f"{related} | {rel_field}"
         )
     return "\n".join(lines).strip()
 
@@ -1422,29 +1425,43 @@ def understanding_contradictions(
 
 
 def reconcile_contract_with_draft(
-    draft: dict[str, Any], understanding: Understanding, *, prompt: str = ""
+    draft: dict[str, Any],
+    understanding: Understanding,
+    *,
+    prompt: str = "",
+    prefer_locked: bool = False,
 ) -> Understanding:
-    """When Contract IR disagrees with residual draft identity, rebuild from draft.
+    """Align Contract ↔ draft identity without letting pack bleed wipe Diagnosis.
 
-    Visitor Log contract on a Restaurant Management draft (or any mismatched brief)
-    must not survive — title/host/grain follow draft.display_name + grain.
+    When ``prefer_locked`` (Diagnosis-confirmed session IR), keep Contract and let
+    ``enforce_residual_draft_identity`` rebuild the draft. Otherwise a stale locked
+    block left in the prompt under a new residual brief may follow draft.display_name.
     """
     draft_title = str(draft.get("display_name") or "").strip()
     draft_grain = str(draft.get("grain") or "full_app")
     locked_title = str(understanding.title or "").strip()
-    if not draft_title:
+    if not draft_title and not locked_title:
         return understanding
     title_mismatch = bool(
-        locked_title and draft_title.lower() != locked_title.lower()
+        locked_title and draft_title and draft_title.lower() != locked_title.lower()
     )
     grain_mismatch = bool(
         understanding.grain and draft_grain and understanding.grain != draft_grain
     )
-    # Residual full_app with pack stamp / stale session IR.
+    residual_locked = (
+        not understanding.inherit_existing
+        and understanding.grain == "full_app"
+        and not understanding.needs_module
+    )
+    # Diagnosis-confirmed residual Contract wins — do not stamp pack title onto Contract.
+    if prefer_locked and residual_locked and locked_title:
+        return understanding
+    # Residual full_app with pack stamp / stale session IR in the prompt chrome.
     if (
         draft_grain == "full_app"
-        and not understanding.inherit_existing
+        and residual_locked
         and (title_mismatch or grain_mismatch)
+        and draft_title
     ):
         rebuilt = Understanding(
             capability="residual_app",
@@ -1517,7 +1534,33 @@ def attach_understanding(
                 u.craft_smart_buttons = list(donor.craft_smart_buttons or [])
                 break
 
-    u = reconcile_contract_with_draft(draft, u, prompt=prompt)
+    prefer_locked = session_u is not None
+    try:
+        from app.ai_residual_identity import (
+            enforce_residual_draft_identity,
+            locked_contract_should_win,
+        )
+
+        if prefer_locked and locked_contract_should_win(u.to_dict()):
+            enforce_residual_draft_identity(
+                draft,
+                prompt=prompt,
+                locked=u.to_dict(),
+                prefer_locked=True,
+            )
+        else:
+            # Prompt residual noun wins over stale locked chrome in the prompt text.
+            enforce_residual_draft_identity(
+                draft,
+                prompt=prompt,
+                locked=u.to_dict(),
+                prefer_locked=False,
+            )
+    except Exception:  # noqa: BLE001
+        pass
+    u = reconcile_contract_with_draft(
+        draft, u, prompt=prompt, prefer_locked=prefer_locked
+    )
     # Keep draft grain aligned with Contract for residual full_app.
     # Do not let LLM/pack overwrite locked full_app → feature_slice/field_pack.
     if u.grain == "full_app" and not u.inherit_existing:
@@ -1537,7 +1580,9 @@ def attach_understanding(
             for m in (draft.get("models") or [])
         ):
             draft.pop("_component", None)
-        if u.title and not draft.get("display_name"):
+        if prefer_locked and u.title:
+            draft["display_name"] = u.title
+        elif u.title and not draft.get("display_name"):
             draft["display_name"] = u.title
         elif draft.get("display_name") and u.source == "reconciled_draft":
             u.title = str(draft.get("display_name"))[:80]
