@@ -7,6 +7,18 @@ export type StudioClarificationOption = {
   label: string;
 };
 
+export type StudioCraftSmartButton = {
+  id?: string;
+  on_model: string;
+  label: string;
+  related_model: string;
+  relation_field: string;
+  rationale?: string;
+  default_on?: boolean;
+  chip_label?: string;
+  source?: string;
+};
+
 export type StudioUnderstanding = {
   title?: string;
   summary?: string;
@@ -18,6 +30,8 @@ export type StudioUnderstanding = {
   gold_artifact_id?: string | null;
   constraints?: string[];
   out_of_scope?: string[];
+  craft_proposals?: StudioCraftSmartButton[];
+  craft_smart_buttons?: StudioCraftSmartButton[];
   source?: string;
   confidence?: string;
   operator_note?: string;
@@ -33,6 +47,8 @@ export type StudioClarification = {
   default_id?: string;
   understanding?: StudioUnderstanding;
   host_choices?: StudioClarificationOption[];
+  nice_to_have?: string[];
+  craft_proposals?: StudioCraftSmartButton[];
 };
 
 export type StudioTurn = {

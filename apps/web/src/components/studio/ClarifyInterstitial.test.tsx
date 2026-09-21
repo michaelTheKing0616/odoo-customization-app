@@ -74,4 +74,55 @@ describe("ClarifyInterstitial diagnosis", () => {
     expect(screen.queryByLabelText("Stock form")).toBeNull();
     cleanup();
   });
+
+  it("shows Nice-to-have craft chips and omits removed ones from confirm payload", () => {
+    const onAnswer = vi.fn();
+    render(
+      <ClarifyInterstitial
+        onAnswer={onAnswer}
+        clarification={{
+          kind: "diagnosis",
+          merge_key: "diagnosis",
+          question: "We'll build: Visitor Log",
+          help: "Residual full_app.",
+          craft_proposals: [
+            {
+              id: "craft:hr.employee:x_host_id",
+              on_model: "hr.employee",
+              label: "Visits",
+              related_model: "x_visitor_log",
+              relation_field: "x_host_id",
+              default_on: true,
+              chip_label: "«Visits» on Employees",
+            },
+            {
+              id: "craft:res.partner:x_company_id",
+              on_model: "res.partner",
+              label: "Visits",
+              related_model: "x_visitor_log",
+              relation_field: "x_company_id",
+              default_on: false,
+              chip_label: "«Visits» on Contacts",
+            },
+          ],
+          understanding: {
+            title: "Visitor Log",
+            inherit_existing: false,
+            needs_module: false,
+            constraints: ["New model x_visitor_log", "Host→Employee"],
+          },
+        }}
+      />,
+    );
+    expect(screen.getByTestId("studio-diagnosis-nice-to-have").textContent).toMatch(/Nice to have/i);
+    expect(screen.getByText("«Visits» on Employees")).toBeTruthy();
+    expect(screen.queryByText("«Visits» on Contacts")).toBeNull();
+    fireEvent.click(screen.getByTestId("studio-craft-remove-hr.employee"));
+    fireEvent.click(screen.getByTestId("studio-diagnosis-confirm"));
+    const payload = onAnswer.mock.calls[0][3] as {
+      craft_smart_buttons?: { on_model?: string }[];
+    };
+    expect(payload.craft_smart_buttons || []).toEqual([]);
+    cleanup();
+  });
 });

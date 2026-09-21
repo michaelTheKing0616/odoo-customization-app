@@ -240,12 +240,25 @@ def _drop_disallowed_stock_host_buttons(draft: dict[str, Any], *, prompt: str) -
     stock_hosts = set(STOCK_HOST_BUTTON_BY_MODEL)
     filtered: list[Any] = []
     dropped: list[str] = []
+    try:
+        from app.ai_craft_smart_buttons import _confirmed_craft_list, is_craft_confirmed_button
+
+        confirmed_craft = _confirmed_craft_list(draft)
+    except Exception:  # noqa: BLE001
+        confirmed_craft = []
     for b in btns:
         if not isinstance(b, dict):
             filtered.append(b)
             continue
         on_model = str(b.get("on_model") or "")
         if on_model not in stock_hosts:
+            filtered.append(b)
+            continue
+        # Diagnosis-confirmed craft chips — keep.
+        if confirmed_craft and is_craft_confirmed_button(b, confirmed_craft):
+            filtered.append(b)
+            continue
+        if str(b.get("source") or "") in {"craft_confirmed", "craft_smart_button"}:
             filtered.append(b)
             continue
         # Punch / loyalty: keep Contacts + PoS companion host buttons.
@@ -277,8 +290,14 @@ def apply_stock_host_smart_buttons(draft: dict[str, Any], *, prompt: str = "") -
 
     residual = _is_residual_full_app(draft)
     allow_partner = partner_tie_allows_contacts_button(text)
-    # Residual: no stock-host invent unless explicit partner_tie (Contacts + PoS companions).
+    # Residual: no silent stock-host invent unless partner_tie; craft chips are opt-in.
     if residual and not allow_partner:
+        try:
+            from app.ai_craft_smart_buttons import apply_confirmed_craft_smart_buttons
+
+            notes.extend(apply_confirmed_craft_smart_buttons(draft, prompt=text))
+        except Exception:  # noqa: BLE001
+            pass
         return notes
 
     forbidden = _forbidden_hosts(draft)
@@ -412,7 +431,7 @@ def draft_missing_stock_host_smart_buttons(
 
 
 def scrub_residual_contacts_host_buttons(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
-    """Drop invented stock-host buttons on residual full_app; do not stamp new ones."""
+    """Drop invented stock-host buttons on residual full_app; keep Diagnosis-confirmed craft."""
     text = prompt or str(draft.get("_user_prompt") or "")
     return _drop_disallowed_stock_host_buttons(draft, prompt=text)
 

@@ -157,9 +157,21 @@ def build_operator_surface(draft: dict[str, Any]) -> dict[str, Any]:
                 }
             )
             continue
-        # Residual full_app: never surface stock-host invent from M2O / reuse_hints noise.
+        # Residual full_app: never surface silent invent — confirmed craft chips OK.
         if suppress_host_invent:
-            continue
+            src = str(btn.get("source") or "")
+            if src not in {"craft_confirmed", "craft_smart_button"}:
+                # Also allow when draft understanding lists this host as confirmed craft.
+                u = draft.get("_understanding") if isinstance(draft.get("_understanding"), dict) else {}
+                craft = u.get("craft_smart_buttons") or []
+                keys = {
+                    (str(c.get("on_model") or ""), str(c.get("related_model") or ""))
+                    for c in craft
+                    if isinstance(c, dict)
+                }
+                if (on_model, related) not in keys:
+                    continue
+        
         key = (on_model, related, label)
         if key in seen_host:
             continue

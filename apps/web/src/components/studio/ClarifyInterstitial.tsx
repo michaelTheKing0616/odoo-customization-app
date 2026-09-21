@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { StudioClarification, StudioUnderstanding } from "@/lib/studio-session";
+import type {
+  StudioClarification,
+  StudioCraftSmartButton,
+  StudioUnderstanding,
+} from "@/lib/studio-session";
 import { SuggestionChip } from "./SuggestionChip";
 import { StudioBusyLabel } from "./StudioBusyLabel";
 
@@ -52,6 +56,14 @@ function DiagnosisCard({
   );
   const [newConstraint, setNewConstraint] = useState("");
   const [operatorNote, setOperatorNote] = useState("");
+  const seedCraft: StudioCraftSmartButton[] = Array.isArray(clarification.craft_proposals)
+    ? clarification.craft_proposals
+    : Array.isArray(seed.craft_proposals)
+      ? seed.craft_proposals
+      : [];
+  const [craftKept, setCraftKept] = useState<StudioCraftSmartButton[]>(() =>
+    seedCraft.filter((row) => row.default_on !== false),
+  );
 
   useEffect(() => {
     const next = clarification.understanding || {};
@@ -62,7 +74,13 @@ function DiagnosisCard({
     setConstraints(Array.isArray(next.constraints) ? next.constraints : []);
     setOperatorNote("");
     setNewConstraint("");
-  }, [clarification.understanding]);
+    const proposals: StudioCraftSmartButton[] = Array.isArray(clarification.craft_proposals)
+      ? clarification.craft_proposals
+      : Array.isArray(next.craft_proposals)
+        ? next.craft_proposals
+        : [];
+    setCraftKept(proposals.filter((row) => row.default_on !== false));
+  }, [clarification.understanding, clarification.craft_proposals]);
 
   const payload: DiagnosisPayload = useMemo(
     () => ({
@@ -72,16 +90,20 @@ function DiagnosisCard({
       needs_module: goldLocked ? true : needsModule,
       constraints,
       gold_artifact_id: seed.gold_artifact_id,
+      craft_smart_buttons: craftKept,
+      craft_proposals: seedCraft,
       operator_note: operatorNote.trim() || undefined,
     }),
     [
       constraints,
+      craftKept,
       goldLocked,
       hostModel,
       inheritExisting,
       needsModule,
       operatorNote,
       seed.gold_artifact_id,
+      seedCraft,
       title,
     ],
   );
@@ -221,6 +243,45 @@ function DiagnosisCard({
           </button>
         </div>
       </div>
+      {seedCraft.length > 0 ? (
+        <div className="diagnosis-field" data-testid="studio-diagnosis-nice-to-have">
+          <span>Nice to have</span>
+          <p className="clarify-help" style={{ marginTop: 4 }}>
+            Optional smart buttons on stock forms — remove before confirm if you do not want them.
+          </p>
+          <ul className="diagnosis-facts">
+            {craftKept.map((row) => {
+              const chip = row.chip_label || `«${row.label}» on ${row.on_model}`;
+              return (
+                <li key={row.id || `${row.on_model}:${row.relation_field}`} className="diagnosis-constraint-row">
+                  <span>{chip}</span>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={busy}
+                    aria-label={`Remove ${chip}`}
+                    data-testid={`studio-craft-remove-${row.on_model}`}
+                    onClick={() =>
+                      setCraftKept((prev) =>
+                        prev.filter(
+                          (item) =>
+                            (item.id || `${item.on_model}:${item.relation_field}`) !==
+                            (row.id || `${row.on_model}:${row.relation_field}`),
+                        ),
+                      )
+                    }
+                  >
+                    Remove
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          {craftKept.length === 0 ? (
+            <p className="clarify-help">All optional craft buttons removed.</p>
+          ) : null}
+        </div>
+      ) : null}
       <label className="diagnosis-field">
         <span>Anything to correct</span>
         <textarea

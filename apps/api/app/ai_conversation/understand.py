@@ -23,6 +23,32 @@ logger = logging.getLogger(__name__)
 UNDERSTANDING_KEY = "understanding_json"
 DIAGNOSIS_KEY = "diagnosis"
 
+
+def _coerce_craft_list(raw) -> list[dict]:
+    try:
+        from app.ai_craft_smart_buttons import normalize_craft_rows
+
+        return normalize_craft_rows(raw)
+    except Exception:  # noqa: BLE001
+        if not isinstance(raw, list):
+            return []
+        return [x for x in raw if isinstance(x, dict)][:2]
+
+
+def _attach_craft_proposals(prompt: str, understanding: "Understanding") -> "Understanding":
+    """Fill craft_proposals for residual full_app (Nice-to-have Diagnosis chips)."""
+    if understanding.inherit_existing or understanding.grain in {"field_pack", "feature_slice"}:
+        understanding.craft_proposals = []
+        return understanding
+    try:
+        from app.ai_craft_smart_buttons import propose_craft_smart_buttons
+
+        understanding.craft_proposals = propose_craft_smart_buttons(prompt, understanding)
+    except Exception:  # noqa: BLE001
+        understanding.craft_proposals = []
+    return understanding
+
+
 _MARKUP_RE = re.compile(r"(?i)mark-?up")
 _WHT_RE = re.compile(r"(?i)withh?olding|\bwht\b")
 _PCT_RANGE_RE = re.compile(r"(?i)10\s*%?\s*[-–to]+\s*25\s*%")
@@ -56,6 +82,8 @@ class Understanding:
     summary: str = ""
     constraints: list[str] = field(default_factory=list)
     out_of_scope: list[str] = field(default_factory=list)
+    craft_proposals: list[dict] = field(default_factory=list)
+    craft_smart_buttons: list[dict] = field(default_factory=list)
     source: str = "deterministic"
     confidence: str = "high"
 
@@ -86,6 +114,8 @@ class Understanding:
             summary=str(raw.get("summary") or "")[:400],
             constraints=[str(x) for x in constraints] if isinstance(constraints, list) else [],
             out_of_scope=[str(x) for x in out] if isinstance(out, list) else [],
+            craft_proposals=_coerce_craft_list(raw.get("craft_proposals")),
+            craft_smart_buttons=_coerce_craft_list(raw.get("craft_smart_buttons")),
             source=str(raw.get("source") or "deterministic"),
             confidence="low" if raw.get("confidence") == "low" else "high",
         )
@@ -161,6 +191,23 @@ def apply_understanding_edits(
         else:
             capability = "residual_app"
             grain = "full_app"
+    craft_proposals = list(base.craft_proposals or [])
+    if isinstance(edits.get("craft_proposals"), list):
+        craft_proposals = _coerce_craft_list(edits.get("craft_proposals"))
+    craft_buttons = list(base.craft_smart_buttons or [])
+    if "craft_smart_buttons" in edits:
+        craft_buttons = _coerce_craft_list(edits.get("craft_smart_buttons"))
+    elif isinstance(edits.get("nice_to_have"), list):
+        wanted = {str(x).strip().lower() for x in edits["nice_to_have"] if str(x).strip()}
+        pool = craft_proposals or base.craft_proposals or []
+        craft_buttons = [
+            row
+            for row in pool
+            if str(row.get("chip_label") or row.get("label") or "").strip().lower() in wanted
+            or str(row.get("id") or "").strip().lower() in wanted
+        ]
+        craft_buttons = _coerce_craft_list(craft_buttons)
+
     return Understanding(
         capability=capability,
         grain=grain,
@@ -172,6 +219,8 @@ def apply_understanding_edits(
         summary=summary,
         constraints=constraints,
         out_of_scope=out,
+        craft_proposals=craft_proposals,
+        craft_smart_buttons=craft_buttons,
         source="operator",
         confidence="high",
     )
@@ -197,6 +246,23 @@ def parse_locked_diagnosis(prompt: str) -> Understanding | None:
     gold_m = re.search(r"(?im)^-\s*Gold:\s*(\S+)", block)
     constraints = re.findall(r"(?im)^-\s*Constraint:\s*(.+)$", block)
     out = re.findall(r"(?im)^-\s*Out of scope:\s*(.+)$", block)
+    craft_raw = re.findall(
+        r"(?im)^-\s*Craft smart button:\s*(.+?)\s*\|\s*(\S+)\s*\|\s*(\S+)\s*\|\s*(\S+)\s*$",
+        block,
+    )
+    craft_buttons = _coerce_craft_list(
+        [
+            {
+                "label": lab.strip(),
+                "on_model": on.strip(),
+                "related_model": rel.strip(),
+                "relation_field": fld.strip(),
+                "chip_label": f"«{lab.strip()}»",
+                "default_on": True,
+            }
+            for lab, on, rel, fld in craft_raw
+        ]
+    )
     inherit = bool(re.search(r"(?im)^-\s*Inherit existing form:\s*yes", block))
     needs = bool(re.search(r"(?im)^-\s*Needs module:\s*yes", block))
     return Understanding(
@@ -212,6 +278,8 @@ def parse_locked_diagnosis(prompt: str) -> Understanding | None:
         title=(title_m.group(1).strip()[:80] if title_m else "Custom draft"),
         constraints=[c.strip() for c in constraints],
         out_of_scope=[o.strip() for o in out],
+        craft_proposals=[],
+        craft_smart_buttons=craft_buttons,
         source="locked",
         confidence="high",
     )
@@ -233,6 +301,14 @@ def append_locked_diagnosis(prompt: str, understanding: Understanding) -> str:
         lines.append(f"- Constraint: {row}")
     for row in understanding.out_of_scope:
         lines.append(f"- Out of scope: {row}")
+    for row in understanding.craft_smart_buttons or []:
+        if not isinstance(row, dict):
+            continue
+        lines.append(
+            "- Craft smart button: "
+            f"{row.get('label') or 'Records'} | {row.get('on_model')} | "
+            f"{row.get('related_model')} | {row.get('relation_field')}"
+        )
     return "\n".join(lines).strip()
 
 
@@ -253,27 +329,12 @@ _NO_NEW_APP_RE = re.compile(
     r"not\s+a\s+new\s+(?:home[- ]?screen\s+)?app)\b"
 )
 _UNDER_GROUP_RE = re.compile(
-    # "under Delivery group" | "under the Delivery group" |
-    # "under a small \"Delivery\" group" | "under a small Delivery group"
-    r"(?i)\bunder\s+"
-    r"(?:(?:the|a|an)\s+)?"
-    r"(?:(?:small|tiny|new|compact|simple|short)\s+)?"
-    r"[\"']?"
-    r"([A-Za-z][\w /&-]{0,40}?)"
-    r"[\"']?"
-    r"\s+group\b"
-)
-_GROUP_TITLE_NOISE_RE = re.compile(
-    r"(?i)^(small|tiny|new|compact|simple|short)\s+"
+    r"(?i)\bunder\s+(?:(?:the|a|an)\s+)?([A-Za-z][\w /&-]{0,40}?)\s+group\b"
 )
 _LEADING_ARTICLE_RE = re.compile(r"(?i)^(a|an|the)\s+")
 _CHECKBOX_FIELD_RE = re.compile(
     r"(?i)\bcheckbox\s+[\"']?([^\"',.;]+?)[\"']?"
     r"(?=\s+and\b|\s+under\b|\s+on\b|,|\.|$)"
-)
-# Label-before-type: "Prefer for delivery checkbox and Delivery notes"
-_CHECKBOX_LABEL_FIRST_RE = re.compile(
-    r"(?i)\b([A-Za-z][\w /&-]{2,40}?)\s+checkbox\b"
 )
 _TYPED_TEXT_FIELD_RE = re.compile(
     r"(?i)(?:\badd\b|\band\b|,)\s+([A-Z][\w /&-]{1,40}?)\s+text(?:\s+field)?\b"
@@ -287,92 +348,61 @@ _PRONOUN_LABELS = frozenset(
     {"it", "this", "that", "them", "one", "field", "a field", "the field"}
 )
 
-# Ops-extension briefs (reuse existing fields → wire into workflows).
-_REUSE_EXISTING_RE = re.compile(
-    r"(?i)\b(?:"
-    r"already\s+exists?|already\s+persist(?:s|ed)?|already\s+on\s+res\.partner|"
-    r"fields?\s+already\s+exist|"
-    r"reuse|do\s+not\s+recreate|don'?t\s+recreate|do\s+not\s+recreate"
-    r")\b"
-)
-_PICKING_SURFACE_RE = re.compile(
-    r"(?i)(?:"
-    r"\bsmart\s+buttons?\b|"
-    r"\bsurface\s+preferred\b|"
-    r"\bpreferred[- ]delivery\s+contacts?\b|"
-    r"\b(?:domain|smart\s+button).{0,40}\b(?:pickings?|transfers?)\b|"
-    r"\b(?:pickings?|transfers?).{0,40}\b(?:domain|smart\s+button)\b|"
-    # pickings/transfers as a surface, but not "transfers filter"
-    r"\b(?:pickings|transfers)\b(?!\s+filter)"
-    r")"
-)
-_LIST_FILTER_RE = re.compile(
-    r"(?i)(?:"
-    # explicit filter phrasing
-    r"\b(?:optional\s+)?filter\b.{0,48}\b(?:delivery|inventory)\b|"
-    r"\bfilter\s+on\s+(?:delivery|inventory)\b|"
-    # transfers/pickings filter (Prefer ops) — not Purpose "Delivery" + "list"
-    r"\b(?:transfers?|pickings?)\s+filter\b|"
-    r"\bfilter\b.{0,24}\b(?:transfers?|pickings?)\b|"
-    # Delivery/Inventory lists only when preferred-contacts context is present
-    r"\bpreferred\b.{0,40}\b(?:delivery|inventory)\b.{0,40}\b(?:lists?|filter)\b|"
-    r"\b(?:delivery|inventory)\b.{0,40}\b(?:lists?|filter)\b.{0,40}\bpreferred\b"
-    r")"
-)
-_LIGHT_AUTOMATION_RE = re.compile(
-    r"(?i)\b(?:light\s+)?automation\b|"
-    r"\bwhen\s+(?:the\s+)?(?:box|checkbox)\s+is\s+checked\b|"
-    r"\bwhen\s+prefer(?:red)?(?:\s+for\s+delivery)?\s+is\s+checked\b"
-)
-_PREFER_DELIVERY_RE = re.compile(r"(?i)\bprefer(?:red)?\s+for\s+delivery\b")
-_DELIVERY_NOTES_RE = re.compile(r"(?i)\bdelivery\s+notes?\b")
 
-
-def _brief_ops_extension_themes(prompt: str) -> list[tuple[str, re.Pattern[str]]]:
-    """Required Must-do themes for reuse→ops briefs (not plain field packs)."""
+def _brief_must_do_constraints(
+    prompt: str,
+    *,
+    host: str | None,
+    inherit: bool,
+) -> list[str]:
+    """Deterministic Must-do rows from a clear brief (fields, host, placement, no new app)."""
     text = (prompt or "").strip()
     if not text:
         return []
-    themes: list[tuple[str, re.Pattern[str]]] = []
-    # Only treat as ops-extension when wiring verbs appear (not S1 field-create).
-    wiring = bool(
-        _PICKING_SURFACE_RE.search(text)
-        or _LIST_FILTER_RE.search(text)
-        or _LIGHT_AUTOMATION_RE.search(text)
-    )
-    if not wiring:
-        return []
-    if _REUSE_EXISTING_RE.search(text):  # Prefer-for-delivery alone ≠ reuse
-        themes.append(
-            (
-                "reuse existing fields",
-                re.compile(r"(?i)\breuse|do\s+not\s+recreate|already\s+(?:persist|exist)"),
-            )
-        )
-    if _PICKING_SURFACE_RE.search(text):
-        themes.append(
-            (
-                "pickings/transfers surface",
-                re.compile(r"(?i)\bpickings?|transfers?|smart\s+button|domain"),
-            )
-        )
-    if _LIST_FILTER_RE.search(text):
-        themes.append(
-            (
-                "Delivery/Inventory filter",
-                re.compile(r"(?i)\bfilter\b"),
-            )
-        )
-    if _LIGHT_AUTOMATION_RE.search(text):
-        themes.append(
-            (
-                "light automation",
-                re.compile(r"(?i)\bautomation\b|when\s+prefer"),
-            )
-        )
-    return themes
+    rows: list[str] = []
+    from app.ai_grain import HOST_LABELS
 
+    if host and inherit:
+        label = HOST_LABELS.get(host, host)
+        rows.append(f"On {label} ({host})")
 
+    for m in _CHECKBOX_FIELD_RE.finditer(text):
+        label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
+        if label:
+            rows.append(f"Checkbox: {label}")
+
+    for m in _TYPED_TEXT_FIELD_RE.finditer(text):
+        label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
+        label = _LEADING_ARTICLE_RE.sub("", label).strip()
+        low = label.lower()
+        if not label or low in {"add", "a", "an", "the", "new", "and", "or"}:
+            continue
+        if low.startswith("checkbox"):
+            continue
+        rows.append(f"Text field: {label}")
+
+    if not any(r.lower().startswith(("checkbox:", "text field:")) for r in rows):
+        for m in _ADD_NAMED_FIELD_RE.finditer(text):
+            label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
+            low = label.lower()
+            if not label or low in {"checkbox", "boolean", "text", "field", "a field"}:
+                continue
+            if low in _PRONOUN_LABELS or len(label) < 3:
+                continue
+            rows.append(f"Field: {label}")
+
+    gm = _UNDER_GROUP_RE.search(text)
+    if gm:
+        gtitle = _LEADING_ARTICLE_RE.sub("", gm.group(1).strip()).strip()
+        if gtitle:
+            rows.append(f"Place under {gtitle} group")
+
+    if _NO_NEW_APP_RE.search(text) or inherit:
+        # Inherit already implies no new app; only add explicit phrasing when said or inherit.
+        if _NO_NEW_APP_RE.search(text):
+            rows.append("Do not create a new home-screen app")
+
+    return _dedupe(rows)[:12]
 
 
 _APP_NOUN_RE = re.compile(
@@ -386,12 +416,12 @@ _MODEL_WITH_FIELDS_RE = re.compile(
 )
 _MENU_UNDER_RE = re.compile(r"(?i)\bmenu\s+under\s+([A-Za-z][\w\s]{0,40})")
 _CREATE_READ_ONLY_RE = re.compile(
-    r"(?i)\b(?:no\s+workflow\s+beyond\s+)?create\s*/\s*read\b|"
-    r"create\s+and\s+read\s+only|create/read|no\s+workflow"
+    r"(?i)\b(?:no\s+workflow\s+beyond\s+)?create\s*/\s*read\b|create\s+and\s+read\s+only"
 )
 _LIST_FORM_RE = re.compile(r"(?i)\blist\s*(?:\+|and|&)\s*forms?\b")
 
-# ORM type hints inside parentheticals — not Many2one targets.
+
+# ORM field-type hints inside parentheticals — not Many2one targets.
 _FIELD_TYPE_HINTS = frozenset(
     {
         "char",
@@ -421,7 +451,8 @@ def _relation_target_display(target: str) -> str:
     if not raw:
         return raw
     if "." in raw:
-        return raw  # technical model id
+        return raw  # technical model id (res.users, product.product)
+    # Title-case words as declared; preserve existing internal caps (Employee).
     parts: list[str] = []
     for w in raw.split():
         if not w:
@@ -447,9 +478,18 @@ def _brief_full_app_must_do(prompt: str) -> list[str]:
     app_m = _APP_NOUN_RE.search(text)
     title = ""
     if app_m:
-        title = re.sub(r"\s+", " ", (app_m.group(1) or app_m.group(2) or "")).strip(" .:,-")
+        title = re.sub(r"\s+", " ", (app_m.group(1) or app_m.group(2) or '')).strip(" .:,-")
         title = re.sub(r"(?i)^(a|an|the)\s+", "", title).strip()
+    if not title:
+        try:
+            from app.ai_document_shape import naming_from_residual
+
+            display, _slug = naming_from_residual(text)
+            title = (display or "").strip()
+        except Exception:  # noqa: BLE001
+            title = ""
     slug = re.sub(r"[^a-z0-9]+", "_", (title or "custom").lower()).strip("_")[:40] or "custom"
+    # Prefer compact register slug: drop trailing _app
     if slug.endswith("_app"):
         slug = slug[: -len("_app")].rstrip("_") or slug
     mid = f"x_{slug}" if not slug.startswith("x_") else slug
@@ -460,6 +500,7 @@ def _brief_full_app_must_do(prompt: str) -> list[str]:
     fm = _MODEL_WITH_FIELDS_RE.search(text)
     if fm:
         body = fm.group(1)
+    # Split on commas / "and" while keeping parentheticals roughly intact
     chunks: list[str] = []
     buf = ""
     depth = 0
@@ -478,12 +519,14 @@ def _brief_full_app_must_do(prompt: str) -> list[str]:
             buf += ch
     if buf.strip():
         chunks.append(buf.strip())
+    # Also split trailing "and X"
     normalized: list[str] = []
     for chunk in chunks:
         if re.search(r"(?i)\band\b", chunk) and "(" not in chunk:
             parts = re.split(r"(?i)\s+and\s+", chunk)
             normalized.extend(p.strip(" .") for p in parts if p.strip())
         else:
+            # "Label (selection: …), and Label (Target)" already split by comma
             if re.match(r"(?i)^and\s+", chunk):
                 chunk = re.sub(r"(?i)^and\s+", "", chunk).strip()
             normalized.append(chunk.strip(" ."))
@@ -491,12 +534,15 @@ def _brief_full_app_must_do(prompt: str) -> list[str]:
     for chunk in normalized:
         if not chunk or len(chunk) < 2:
             continue
+        # Label (selection: A / B / C) — options from the brief, not hardcoded
         sel = re.search(r"(?i)^(.+?)\s*\(\s*selection\s*:\s*(.+)\)\s*$", chunk)
         if sel:
             fname = sel.group(1).strip()
             opts = re.sub(r"\s+", " ", sel.group(2)).strip(" .")
             rows.append(f"{fname} selection ({opts})")
             continue
+        # Label (link to Target) / Label (Target) → Many2one
+        # Label (date|char|…) → typed field, not Many2one
         rel = re.search(
             r"(?i)^(.+?)\s*\(\s*(?:link\s+to\s+)?(.+?)\s*\)\s*$",
             chunk,
@@ -507,6 +553,7 @@ def _brief_full_app_must_do(prompt: str) -> list[str]:
             target = re.sub(r"(?i)^link\s+to\s+", "", target).strip()
             tlow = target.lower()
             if tlow.startswith("selection"):
+                # Malformed selection paren — skip rather than emit junk Many2one
                 continue
             if tlow in _FIELD_TYPE_HINTS:
                 if tlow in {"date", "datetime"}:
@@ -518,11 +565,9 @@ def _brief_full_app_must_do(prompt: str) -> list[str]:
                 continue
             rows.append(f"{fname}→{_relation_target_display(target)}")
             continue
+        # Bare char / name-like field; date when the label says date
         label_f = re.sub(r"\s+", " ", chunk).strip(" .")
         if label_f.lower() in {"model", "with", "and", "a", "an", "the"}:
-            continue
-        # Skip chrome already handled below
-        if re.search(r"(?i)^(simple\s+)?list\b|menu\s+under|no\s+workflow", label_f):
             continue
         rows.append(label_f)
 
@@ -537,117 +582,6 @@ def _brief_full_app_must_do(prompt: str) -> list[str]:
     return _dedupe(rows)[:12]
 
 
-
-
-def _brief_must_do_constraints(
-    prompt: str,
-    *,
-    host: str | None,
-    inherit: bool,
-) -> list[str]:
-    """Deterministic Must-do rows from a clear brief (fields, host, placement, no new app)."""
-    text = (prompt or "").strip()
-    if not text:
-        return []
-    rows: list[str] = []
-    from app.ai_grain import HOST_LABELS
-
-    if host and inherit:
-        label = HOST_LABELS.get(host, host)
-        rows.append(f"On {label} ({host})")
-
-    for m in _CHECKBOX_FIELD_RE.finditer(text):
-        label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
-        low = label.lower()
-        if label and not low.startswith("and ") and low not in {"and", "a", "an", "the"}:
-            rows.append(f"Checkbox: {label}")
-    for m in _CHECKBOX_LABEL_FIRST_RE.finditer(text):
-        label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
-        low = label.lower()
-        if not label or low.startswith("and ") or low in {"a", "an", "the", "add", "new"}:
-            continue
-        if any(r.lower() == f"checkbox: {low}" for r in rows):
-            continue
-        rows.append(f"Checkbox: {label}")
-
-    # Prefer + Delivery notes as field-create (no "checkbox" keyword required).
-    if (
-        _PREFER_DELIVERY_RE.search(text)
-        and _DELIVERY_NOTES_RE.search(text)
-        and not _REUSE_EXISTING_RE.search(text)
-    ):
-        if not any("prefer" in r.lower() and "checkbox" in r.lower() for r in rows):
-            rows.append("Checkbox: Prefer for delivery")
-        if not any("delivery notes" in r.lower() for r in rows):
-            rows.append("Text field: Delivery notes")
-
-    for m in _TYPED_TEXT_FIELD_RE.finditer(text):
-        label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
-        label = _LEADING_ARTICLE_RE.sub("", label).strip()
-        low = label.lower()
-        if not label or low in {"add", "a", "an", "the", "new", "and", "or"}:
-            continue
-        if low.startswith("checkbox"):
-            continue
-        rows.append(f"Text field: {label}")
-
-    if not any(r.lower().startswith(("checkbox:", "text field:")) for r in rows):
-        for m in _ADD_NAMED_FIELD_RE.finditer(text):
-            label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
-            low = label.lower()
-            if not label or low in {"checkbox", "boolean", "text", "field", "a field"}:
-                continue
-            if low in _PRONOUN_LABELS or len(label) < 3:
-                continue
-            rows.append(f"Field: {label}")
-
-    gm = _UNDER_GROUP_RE.search(text)
-    if gm:
-        gtitle = _LEADING_ARTICLE_RE.sub("", gm.group(1).strip()).strip()
-        gtitle = _GROUP_TITLE_NOISE_RE.sub("", gtitle).strip()
-        if gtitle:
-            rows.append(f"Place under {gtitle} group")
-
-    elif re.search(r"(?i)\bunder\s+delivery\b", text) and not any(
-        "place under" in r.lower() for r in rows
-    ):
-        # "under Delivery" without the word "group" (placement stress / corrections)
-        rows.append("Place under Delivery group")
-
-    # Ops-extension: reuse existing Contact fields and wire into workflows.
-    # Keep host on res.partner — never claim stock.picking as the form host.
-    themes = _brief_ops_extension_themes(text)
-    if themes:
-        if any(label == "reuse existing fields" for label, _ in themes):
-            names: list[str] = []
-            if _PREFER_DELIVERY_RE.search(text):
-                names.append("Prefer for delivery")
-            if _DELIVERY_NOTES_RE.search(text):
-                names.append("Delivery notes")
-            if names:
-                rows.append(
-                    f"Reuse existing {' + '.join(names)} — do not recreate"
-                )
-            else:
-                rows.append("Reuse existing Contact fields — do not recreate")
-        if any(label == "pickings/transfers surface" for label, _ in themes):
-            rows.append(
-                "Surface preferred-delivery Contacts on pickings/transfers "
-                "(domain or smart button)"
-            )
-        if any(label == "Delivery/Inventory filter" for label, _ in themes):
-            rows.append(
-                "Optional filter on Delivery/Inventory lists for preferred contacts"
-            )
-        if any(label == "light automation" for label, _ in themes):
-            rows.append("Light automation when Prefer for delivery is checked")
-
-    if _NO_NEW_APP_RE.search(text) or inherit:
-        # Inherit already implies no new app; only add explicit phrasing when said or inherit.
-        if _NO_NEW_APP_RE.search(text):
-            rows.append("Do not create a new home-screen app")
-
-    return _dedupe(rows)[:12]
 
 
 _MUST_DO_PASS = 0.65
@@ -696,7 +630,6 @@ def _brief_named_entities(prompt: str) -> list[str]:
     gm = _UNDER_GROUP_RE.search(text)
     if gm:
         gtitle = _LEADING_ARTICLE_RE.sub("", gm.group(1).strip()).strip()
-        gtitle = _GROUP_TITLE_NOISE_RE.sub("", gtitle).strip()
         if gtitle:
             entities.append(gtitle)
     from app.ai_grain import HOST_ALIASES, HOST_LABELS
@@ -784,20 +717,6 @@ def score_must_do_constraints(
         score -= 0.25
         reasons.append("thin Must do for a clear brief")
 
-    # Ops-extension theme coverage (pickings / filter / automation / reuse)
-    ops_themes = _brief_ops_extension_themes(prompt)
-    if ops_themes:
-        missing = 0
-        for label, pat in ops_themes:
-            if not pat.search(joined):
-                missing += 1
-                reasons.append(f"missing Must-do for {label}")
-        if missing:
-            score -= min(0.55, 0.2 * missing)
-        if clear and len(rows) < 4:
-            score -= 0.2
-            reasons.append("thin Must do for ops-extension brief")
-
     # Host consistency / host-steal
     if host:
         from app.ai_grain import HOST_LABELS
@@ -818,19 +737,8 @@ def score_must_do_constraints(
                 rf"(?i)\b(?:on|host|inherit(?:s|ing)?)\s+{re.escape(rival_label)}\b|"
                 rf"\b{re.escape(rival)}\b"
             )
-            # Host-line claim always steals, even if the brief mentions the rival
-            # for surface/filter wiring (ops-extension on Contacts).
-            host_line_steal = re.compile(
-                rf"(?i)(?:^|[|])\s*on\s+{re.escape(rival_label)}"
-                rf"(?:\s*\(\s*{re.escape(rival)}\s*\))?\b|"
-                rf"\bhost(?:ed)?\s+(?:on\s+)?{re.escape(rival)}\b"
-            )
-            if host_line_steal.search(joined):
-                score -= 0.45
-                reasons.append(f"host-steal: claimed {rival} while host is {host}")
-                break
             if steal_pat.search(joined) and rival not in (prompt or "").lower():
-                # Soft steal for rival tokens when the brief never named them
+                # Allow rival only if brief also named it
                 score -= 0.45
                 reasons.append(f"host-steal: claimed {rival} while host is {host}")
                 break
@@ -949,13 +857,16 @@ def _deterministic_understanding(prompt: str) -> Understanding:
     host = preferred_inherit_host(text)
     inherit = grain in {"field_pack", "feature_slice"}
     needs = plan.capability in {"option_a_authored", "option_a_standalone"}
-    # Residual new-app briefs only: do not pin inherit host from field relations /
-    # option labels. Option A authored modules keep their document host.
-    if grain == "full_app" and not needs:
-        host = None
-        inherit = False
     if needs:
         inherit = True
+    # Residual full_app: never inherit a stock form stolen from Purpose/Host fields.
+    if (
+        grain == "full_app"
+        and plan.capability not in {"option_a_authored", "option_a_standalone", "refuse_clone"}
+        and not needs
+    ):
+        host = None
+        inherit = False
     constraints: list[str] = []
     out_of_scope: list[str] = ["new home-screen app"] if inherit or needs else []
     title = _authored_display_name(text, host) if needs else ""
@@ -1033,17 +944,22 @@ def _deterministic_understanding(prompt: str) -> Understanding:
         constraints.extend(
             _brief_must_do_constraints(text, host=host, inherit=inherit)
         )
-    if not constraints and grain == "full_app":
+    if (
+        not constraints
+        and grain == "full_app"
+        and not inherit
+        and plan.capability == "residual_app"
+    ):
         constraints.extend(_brief_full_app_must_do(text))
 
-    # Short residual title from Build…app — any new-app brief, not Visitor-only.
+    # Prefer a short residual title for full_app (Visitor Log, not the whole brief).
     if grain == "full_app" and not inherit and not needs:
         app_m = _APP_NOUN_RE.search(text)
         if app_m:
-            nice = re.sub(r"\s+", " ", (app_m.group(1) or app_m.group(2) or "")).strip(" .:,-")
+            nice = re.sub(r"\s+", " ", (app_m.group(1) or app_m.group(2) or '')).strip(" .:,-")
             nice = re.sub(r"(?i)^(a|an|the)\s+", "", nice).strip()
-            if nice and len(nice) <= 48 and nice.lower() not in {"new", "full", "standalone"}:
-                title = nice.title() if nice.islower() or nice == nice.lower() else nice
+            if nice and len(nice) <= 48:
+                title = nice.title() if nice.islower() or nice.lower() == nice else nice
 
     return Understanding(
         capability=plan.capability,
@@ -1170,18 +1086,8 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
         and det.capability
         not in {"option_a_authored", "option_a_standalone", "refuse_clone"}
     )
-    # Deterministic host wins. Never let LLM steal Contacts → stock.picking
-    # when the brief named Contacts / res.partner.
     if coerced and not host and not residual_full:
         host = coerced
-    elif (
-        coerced
-        and host
-        and coerced != host
-        and host == "res.partner"
-        and coerced in {"stock.picking", "stock.picking.type"}
-    ):
-        coerced = None  # keep Contacts host
     if residual_full:
         host = None
 
@@ -1253,22 +1159,6 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
         constraints = list(det.constraints)
         score = det_score
 
-
-    # Never ship empty Must-do when the brief is clear / field-pack+host.
-    if not constraints and _brief_is_clear_for_must_do(
-        prompt, host=host or det.host_model, inherit=det.inherit_existing
-    ):
-        constraints = list(det.constraints) or _brief_must_do_constraints(
-            prompt, host=host or det.host_model, inherit=det.inherit_existing
-        )
-        score = score_must_do_constraints(
-            prompt,
-            constraints,
-            host=host or det.host_model,
-            inherit=det.inherit_existing,
-            needs_module=det.needs_module,
-        )
-
     out = list(det.out_of_scope)
     extra_out = parsed.get("out_of_scope")
     if isinstance(extra_out, list):
@@ -1279,10 +1169,16 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
     summary = str(parsed.get("summary") or "").strip()[:400] or det.summary
     inherit = det.inherit_existing or bool(parsed.get("inherit_existing"))
     needs = det.needs_module or bool(parsed.get("needs_module"))
+    # Residual full_app Contract: app name title, no stock host, no inherit.
     if residual_full:
         host = None
         inherit = False
-        if re.search(r"(?i)\bfield\s*pack\b", title) or title.lower().endswith(" field"):
+        # Keep deterministic app title — reject "{model} field pack" LLM titles.
+        if (
+            re.search(r"(?i)\bfield\s*pack\b", title)
+            or (coerced and coerced in title)
+            or title.lower().endswith(" field")
+        ):
             title = det.title
     confidence = det.confidence
     if parsed.get("confidence") == "low" and det.confidence != "high":
@@ -1313,39 +1209,22 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
 def build_understanding(prompt: str) -> Understanding:
     det = _deterministic_understanding(prompt)
     if _should_llm_enrich(prompt, det):
-        return _llm_enrich(prompt, det)
-    constraints = list(det.constraints)
-    if not constraints and _brief_is_clear_for_must_do(
-        prompt, host=det.host_model, inherit=det.inherit_existing
-    ):
-        constraints = _brief_must_do_constraints(
-            prompt, host=det.host_model, inherit=det.inherit_existing
-        )
-        det = Understanding(
-            capability=det.capability,
-            grain=det.grain,
-            host_model=det.host_model,
-            inherit_existing=det.inherit_existing,
+        understanding = _llm_enrich(prompt, det)
+    else:
+        scored = score_must_do_constraints(
+            prompt,
+            det.constraints,
+            host=det.host_model,
+            inherit=det.inherit_existing,
             needs_module=det.needs_module,
-            gold_artifact_id=det.gold_artifact_id,
-            title=det.title,
-            summary=det.summary,
-            constraints=constraints,
-            out_of_scope=det.out_of_scope,
-            source=det.source,
-            confidence=det.confidence,
         )
-    scored = score_must_do_constraints(
-        prompt,
-        det.constraints,
-        host=det.host_model,
-        inherit=det.inherit_existing,
-        needs_module=det.needs_module,
-    )
-    return _stamp_must_do_score(det, scored)
+        understanding = _stamp_must_do_score(det, scored)
+    return _attach_craft_proposals(prompt, understanding)
 
 
 def diagnosis_clarification(understanding: Understanding) -> dict[str, Any]:
+    if not understanding.craft_proposals and not understanding.inherit_existing:
+        _attach_craft_proposals("", understanding)
     from app.ai_grain import HOST_LABELS
 
     help_bits = [understanding.summary]
@@ -1371,6 +1250,12 @@ def diagnosis_clarification(understanding: Understanding) -> dict[str, Any]:
             {"id": "reject", "label": "That's not what I meant"},
         ],
         "default_id": "confirm",
+        "nice_to_have": [
+            str(p.get("chip_label") or p.get("label") or "")
+            for p in (understanding.craft_proposals or [])
+            if isinstance(p, dict) and p.get("default_on", True)
+        ],
+        "craft_proposals": list(understanding.craft_proposals or []),
     }
 
 
@@ -1505,6 +1390,8 @@ def reconcile_contract_with_draft(
             summary=f"New app tile «{draft_title}» — rebuilt to match draft identity.",
             constraints=list(understanding.constraints or []),
             out_of_scope=list(understanding.out_of_scope or []),
+            craft_proposals=list(understanding.craft_proposals or []),
+            craft_smart_buttons=list(understanding.craft_smart_buttons or []),
             source="reconciled_draft",
             confidence="high",
         )
