@@ -404,6 +404,12 @@ def _scrub_residual_title(label: str) -> str:
     m = _APP_NOUN_RE.search(text)
     if m:
         text = (m.group(1) or m.group(2) or "").strip()
+    # Strip leading imperatives (Build/Create/Make) glued onto the noun.
+    text = re.sub(
+        r"(?i)^(build|create|make|add|implement|develop|generate)\s+",
+        "",
+        text,
+    ).strip()
     # Strip leading size/articles repeatedly.
     while True:
         nxt = _SIZE_ADJ_RE.sub("", text).strip()

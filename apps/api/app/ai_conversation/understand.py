@@ -1052,14 +1052,29 @@ def _deterministic_understanding(prompt: str) -> Understanding:
     ):
         constraints.extend(_brief_full_app_must_do(text))
 
-    # Prefer a short residual title for full_app (Visitor Log, not the whole brief).
+    # Prefer a short residual title for full_app (Visitor Log / Vehicle Request —
+    # never leading Build/Create/Make imperatives glued into the noun).
     if grain == "full_app" and not inherit and not needs:
-        app_m = _APP_NOUN_RE.search(text)
-        if app_m:
-            nice = re.sub(r"\s+", " ", (app_m.group(1) or app_m.group(2) or '')).strip(" .:,-")
-            nice = re.sub(r"(?i)^(a|an|the)\s+", "", nice).strip()
-            if nice and len(nice) <= 48:
-                title = nice.title() if nice.islower() or nice.lower() == nice else nice
+        try:
+            from app.ai_document_shape import naming_from_residual
+
+            nice, _slug = naming_from_residual(text)
+        except Exception:  # noqa: BLE001
+            nice = ""
+        if not nice:
+            app_m = _APP_NOUN_RE.search(text)
+            if app_m:
+                nice = re.sub(
+                    r"\s+", " ", (app_m.group(1) or app_m.group(2) or "")
+                ).strip(" .:,-")
+                nice = re.sub(r"(?i)^(a|an|the)\s+", "", nice).strip()
+                nice = re.sub(
+                    r"(?i)^(build|create|make|add|implement|develop|generate)\s+",
+                    "",
+                    nice,
+                ).strip()
+        if nice and len(nice) <= 48:
+            title = nice.title() if nice.islower() or nice.lower() == nice else nice
 
     return Understanding(
         capability=plan.capability,

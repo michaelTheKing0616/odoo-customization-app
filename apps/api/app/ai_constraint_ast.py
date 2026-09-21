@@ -157,6 +157,259 @@ def _norm_label(label: str) -> str:
     return re.sub(r"\s+", " ", (label or "").strip().lower())
 
 
+
+_LEADING_IMPERATIVE_RE = re.compile(
+    r"(?i)^(build|create|make|add|implement|develop|generate)\s+"
+)
+_MENU_OR_PICK_RE = re.compile(
+    r"(?i)\bmenu\s+under\s+(.+?)(?:\.|$)"
+)
+_STATE_MACHINE_RE = re.compile(
+    r"(?i)\(\s*(Draft\b[^)]{3,80})\)"
+)
+_DATE_RANGE_PROSE_RE = re.compile(
+    r"(?i)\b(?:for\s+a\s+)?date\s+range\b|\bstart\s*/\s*end(?:\s+dates?)?\b|"
+    r"\bstart\s+and\s+end(?:\s+dates?)?\b"
+)
+_APPROVE_REFUSE_RE = re.compile(
+    r"(?i)\bapprove\s*/\s*refuse\b|\bapprove\s+or\s+refuse\b|\bapprove\s+and\s+refuse\b|"
+    r"\bmanager\s+approve"
+)
+_ASSIGNMENT_NOTE_RE = re.compile(
+    r"(?i)\b(?:assignment\s+note|vehicle\s+assignment)\b|"
+    r"\b(?:link|create)\s*/\s*(?:create|link)\b.*\b(?:fleet\s+)?vehicle\b|"
+    r"\boptionally\s+(?:link|create)\b"
+)
+_LIST_KANBAN_RE = re.compile(r"(?i)\blist\s*/\s*kanban\b|\bkanban\b.*\b(?:by\s+)?state\b|\blist\s*,?\s*kanban\b")
+_MUST_DO_LEAK_RE = re.compile(
+    r"(?i)(\{['\"]?host_model|host_view_type\s*:|\bOn\s*\{)"
+    r"|\b(dict|list|tuple)\s*\[|^[\{\[]|['\"]host_model['\"]"
+)
+
+
+def _strip_leading_imperative(title: str) -> str:
+    """Drop Build/Create/Make/… glued onto an app noun."""
+    text = (title or "").strip()
+    while True:
+        nxt = _LEADING_IMPERATIVE_RE.sub("", text).strip()
+        if nxt == text:
+            break
+        text = nxt
+    return text.strip(" -:.,")
+
+
+def _full_app_naming(text: str) -> tuple[str, str]:
+    """Display + slug for residual full_app — never leading imperatives."""
+    display = ""
+    slug = ""
+    try:
+        from app.ai_document_shape import naming_from_residual
+
+        display, slug = naming_from_residual(text)
+    except Exception:  # noqa: BLE001
+        display, slug = "", ""
+    display = _strip_leading_imperative(display or "")
+    if not display:
+        app_m = _APP_NOUN_RE.search(text or "")
+        if app_m:
+            display = re.sub(
+                r"\s+", " ", (app_m.group(1) or app_m.group(2) or "")
+            ).strip(" .:,-")
+            display = re.sub(r"(?i)^(a|an|the)\s+", "", display).strip()
+            display = _strip_leading_imperative(display)
+    if not display:
+        return "", ""
+    # Title-case when the brief left us lowercase crumbs
+    words = [w for w in re.split(r"[\s_]+", display) if w]
+    if display == display.lower():
+        display = " ".join(w.capitalize() for w in words)
+    else:
+        display = " ".join(
+            w if (w[:1].isupper() and any(c.islower() for c in w[1:])) else w.capitalize()
+            for w in words
+        )
+    slug = slug or re.sub(r"[^a-z0-9]+", "_", display.lower()).strip("_")[:40]
+    slug = _strip_leading_imperative(slug.replace("_", " ")).lower().replace(" ", "_")
+    slug = re.sub(r"[^a-z0-9]+", "_", slug).strip("_")[:40] or "custom"
+    return display, slug
+
+
+def _pick_natural_menu_parent(a: str, b: str, text: str) -> str:
+    """Domain-natural parent when the brief says «A or B — pick»."""
+    a_s, b_s = (a or "").strip(" .,—–-"), (b or "").strip(" .,—–-")
+    low = (text or "").lower()
+    a_l, b_l = a_s.lower(), b_s.lower()
+    fleetish = any(k in low for k in ("fleet", "vehicle", "car", "truck", "van"))
+    leaveish = any(k in low for k in ("leave", "time off", "pto", "attendance")) and not fleetish
+    def _prefer(keys: tuple[str, ...]) -> str | None:
+        for key in keys:
+            if key in a_l:
+                return a_s
+            if key in b_l:
+                return b_s
+        return None
+    if fleetish:
+        hit = _prefer(("fleet", "vehicles", "vehicle"))
+        if hit:
+            return hit
+    if leaveish:
+        hit = _prefer(("hr", "human resources", "employees", "employee"))
+        if hit:
+            return hit
+    # Fallback: prefer Fleet when either side is Fleet; else first option
+    hit = _prefer(("fleet", "vehicles"))
+    if hit:
+        return hit
+    return a_s or b_s
+
+
+def _resolve_menu_parent(text: str) -> str | None:
+    """One menu parent — resolve «Fleet or HR — pick natural» to Fleet when vehicle-ish."""
+    m = _MENU_OR_PICK_RE.search(text or "")
+    if not m:
+        mm = _MENU_UNDER_RE.search(text or "")
+        if not mm:
+            return None
+        raw = mm.group(1).strip()
+    else:
+        raw = m.group(1).strip()
+    # Strip trailing pick/choose clause
+    raw = re.split(
+        r"(?i)\s*[—–\-]\s*|\s+(?:pick|choose|select|use)\b",
+        raw,
+        maxsplit=1,
+    )[0].strip(" .,—–-")
+    or_m = re.match(r"(?i)^(.+?)\s+or\s+(.+)$", raw)
+    if or_m:
+        return _pick_natural_menu_parent(or_m.group(1), or_m.group(2), text)
+    return raw.strip() or None
+
+
+def _normalize_state_options(raw: str) -> str:
+    text = re.sub(r"\s+", " ", (raw or "")).strip(" .")
+    text = re.sub(r"\s*[→\-–]+\s*", " / ", text)
+    # Approved/Refused → Approved / Refused
+    text = re.sub(r"(?i)\b([A-Za-z]+)/([A-Za-z]+)\b", r"\1 / \2", text)
+    text = re.sub(r"\s*/\s*", " / ", text)
+    text = re.sub(r"(?:\s*/\s*){2,}", " / ", text)
+    return text.strip(" /")
+
+
+def _has_enumerated_fields(text: str) -> bool:
+    if _MODEL_WITH_FIELDS_RE.search(text or ""):
+        return True
+    if re.search(r"(?i)\bname\s*,\s*\w", text or ""):
+        return True
+    return False
+
+
+def _prose_full_app_fields(text: str) -> list[ConstraintField]:
+    """Structural fields from residual prose (Vehicle Request-shaped briefs)."""
+    fields: list[ConstraintField] = []
+    low = (text or "").lower()
+
+    if re.search(r"(?i)\bemployees?\b", text) and re.search(
+        r"(?i)\brequest", text
+    ):
+        fields.append(
+            ConstraintField(label="Employee", ttype="many2one", relation="Employee", bare=True)
+        )
+    if re.search(r"(?i)\bfleet\s+vehicle\b|\bvehicle\b", text):
+        fields.append(
+            ConstraintField(
+                label="Vehicle", ttype="many2one", relation="Fleet Vehicle", bare=True
+            )
+        )
+    if _DATE_RANGE_PROSE_RE.search(text or ""):
+        fields.append(ConstraintField(label="Start Date", ttype="date", bare=True))
+        fields.append(ConstraintField(label="End Date", ttype="date", bare=True))
+
+    sm = _STATE_MACHINE_RE.search(text or "")
+    if sm:
+        opts = _normalize_state_options(sm.group(1))
+        if opts:
+            fields.append(
+                ConstraintField(
+                    label="State",
+                    ttype="selection",
+                    selection_options=opts,
+                    bare=True,
+                )
+            )
+    elif re.search(r"(?i)\bby\s+state\b|\bworkflow\b|\bapprove\s*/\s*refuse\b", text or ""):
+        fields.append(
+            ConstraintField(
+                label="State",
+                ttype="selection",
+                selection_options="Draft / Submitted / Approved / Refused / Done",
+                bare=True,
+            )
+        )
+
+    if _ASSIGNMENT_NOTE_RE.search(text or "") or (
+        "optionally" in low and "assignment" in low
+    ):
+        fields.append(
+            ConstraintField(
+                label="Assignment Note",
+                ttype="many2one",
+                relation="Fleet Vehicle Assignment",
+                bare=True,
+            )
+        )
+    return fields
+
+
+def _prose_full_app_structural(text: str) -> list[str]:
+    rows: list[str] = []
+    parent = _resolve_menu_parent(text)
+    if parent:
+        rows.append(f"Menu under {parent}")
+    if _APPROVE_REFUSE_RE.search(text or ""):
+        rows.append("Buttons: Submit, Approve, Refuse, Mark Done")
+    if _LIST_KANBAN_RE.search(text or ""):
+        rows.append("List + kanban by State")
+    elif _LIST_FORM_RE.search(text or ""):
+        rows.append("List + form")
+    if _CREATE_READ_ONLY_RE.search(text or ""):
+        rows.append("Create/read only")
+    if _ASSIGNMENT_NOTE_RE.search(text or "") or (
+        "optionally" in (text or "").lower() and "assignment" in (text or "").lower()
+    ):
+        rows.append("Optional: link or create Assignment Note on Approve")
+    return rows
+
+
+def _is_prose_dump_label(label: str) -> bool:
+    """True when a chunk is residual prose, not a field label."""
+    raw = (label or "").strip()
+    if not raw:
+        return True
+    if len(raw) > 48:
+        return True
+    if re.search(r"(?i)\b(employees?|manager|optionally|approve|refuse|menu under)\b", raw):
+        return True
+    if raw.count(" ") >= 8:
+        return True
+    if _MUST_DO_LEAK_RE.search(raw):
+        return True
+    return False
+
+
+def _scrub_must_do_row(row: str) -> str | None:
+    """Drop dict/JSON/Python repr leaks and empty chrome from Must-do."""
+    text = (row or "").strip()
+    if not text:
+        return None
+    if _MUST_DO_LEAK_RE.search(text):
+        return None
+    if re.search(r"(?i)\bhost_model\b.*\bhost_view", text):
+        return None
+    if text.startswith("{") or text.startswith("["):
+        return None
+    return text
+
+
 # ---------------------------------------------------------------------------
 # Prefer / field_pack anchors
 # ---------------------------------------------------------------------------
@@ -397,6 +650,7 @@ def _parse_det_inherit(text: str, *, host: str | None) -> ConstraintAST:
 
 
 def _parse_det_full_app(text: str) -> ConstraintAST:
+    """Residual full_app floor — clean noun, structured fields, one menu parent."""
     ast = ConstraintAST(grain="full_app", source="det")
     # Bare "Do not create a new app" is inherit chrome — not residual Must-do.
     if re.search(r"(?i)\b(?:do\s+not|don't|never)\s+create\b", text) and not (
@@ -404,119 +658,132 @@ def _parse_det_full_app(text: str) -> ConstraintAST:
     ):
         return ast
 
-    app_m = _APP_NOUN_RE.search(text)
-    title = ""
-    if app_m:
-        title = re.sub(r"\s+", " ", (app_m.group(1) or app_m.group(2) or "")).strip(" .:,-")
-        title = re.sub(r"(?i)^(a|an|the)\s+", "", title).strip()
-    if not title:
-        try:
-            from app.ai_document_shape import naming_from_residual
-
-            display, _slug = naming_from_residual(text)
-            title = (display or "").strip()
-        except Exception:  # noqa: BLE001
-            title = ""
-    slug = re.sub(r"[^a-z0-9]+", "_", (title or "custom").lower()).strip("_")[:40] or "custom"
-    if slug.endswith("_app"):
-        slug = slug[: -len("_app")].rstrip("_") or slug
+    display, slug = _full_app_naming(text)
+    if not display:
+        display, slug = "Custom", "custom"
     mid = f"x_{slug}" if not slug.startswith("x_") else slug
-    label = title.title() if title else mid
     ast.model_id = mid
-    ast.model_label = label
+    ast.model_label = display
 
-    body = text
-    fm = _MODEL_WITH_FIELDS_RE.search(text)
-    if fm:
-        body = fm.group(1)
+    if _has_enumerated_fields(text):
+        body = text
+        fm = _MODEL_WITH_FIELDS_RE.search(text)
+        if fm:
+            body = fm.group(1)
+        else:
+            enum = re.search(
+                r"(?i)\b(Name\s*,\s*.+?)(?:\.\s*(?:Simple|No\s+workflow|Menu)|;|$)",
+                text,
+            )
+            if enum:
+                body = enum.group(1)
+
+        chunks = split_conjunction_chunks(body)
+        for chunk in chunks:
+            if not chunk or len(chunk) < 2:
+                continue
+            sel = re.search(
+                r"(?i)^(.+?)\s*\(\s*selection\s*:\s*(.+?)\)\s*(?:\.|$)",
+                chunk,
+            )
+            if sel:
+                fname = sel.group(1).strip()
+                opts = re.sub(r"\s+", " ", sel.group(2)).strip(" .")
+                if _is_prose_dump_label(fname):
+                    continue
+                ast.fields.append(
+                    ConstraintField(
+                        label=fname,
+                        ttype="selection",
+                        selection_options=opts,
+                        bare=True,
+                    )
+                )
+                continue
+            rel = re.search(
+                r"(?i)^(.+?)\s*\(\s*(?:link\s+to\s+)?(.+?)\s*\)\s*$",
+                chunk,
+            )
+            if rel:
+                fname = rel.group(1).strip()
+                target = rel.group(2).strip()
+                target = re.sub(r"(?i)^link\s+to\s+", "", target).strip()
+                if _is_prose_dump_label(fname):
+                    continue
+                tlow = target.lower()
+                if tlow.startswith("selection"):
+                    continue
+                if tlow in _FIELD_TYPE_HINTS:
+                    if tlow == "datetime":
+                        lab = fname if "datetime" in fname.lower() else f"{fname} datetime"
+                        ast.fields.append(
+                            ConstraintField(label=lab, ttype="datetime", bare=True)
+                        )
+                    elif tlow == "date":
+                        lab = (
+                            fname
+                            if re.search(r"(?i)\bdate\b", fname)
+                            else f"{fname} date"
+                        )
+                        ast.fields.append(
+                            ConstraintField(label=lab, ttype="date", bare=True)
+                        )
+                    elif tlow in {"boolean", "checkbox"}:
+                        ast.fields.append(ConstraintField(label=fname, ttype="boolean"))
+                    else:
+                        ast.fields.append(
+                            ConstraintField(
+                                label=fname,
+                                ttype=_infer_ttype(fname, stated=tlow),
+                                bare=True,
+                            )
+                        )
+                    continue
+                ast.fields.append(
+                    ConstraintField(
+                        label=fname,
+                        ttype="many2one",
+                        relation=_relation_target_display(target),
+                        bare=True,
+                    )
+                )
+                continue
+            label_f = re.sub(r"\s+", " ", chunk).strip(" .")
+            if label_f.lower() in {"model", "with", "and", "a", "an", "the"}:
+                continue
+            if _is_prose_dump_label(label_f):
+                continue
+            expanded = expand_field_chunk(label_f)
+            if len(expanded) > 1:
+                for lab in expanded:
+                    ast.fields.append(
+                        ConstraintField(label=lab, ttype=_infer_ttype(lab), bare=True)
+                    )
+                continue
+            ast.fields.append(
+                ConstraintField(
+                    label=label_f,
+                    ttype=_infer_ttype(label_f),
+                    bare=True,
+                )
+            )
+
+        parent = _resolve_menu_parent(text)
+        if parent:
+            ast.structural.append(f"Menu under {parent}")
+        if _LIST_FORM_RE.search(text):
+            ast.structural.append("List + form")
+        if _CREATE_READ_ONLY_RE.search(text):
+            ast.structural.append("Create/read only")
     else:
-        enum = re.search(
-            r"(?i)\b(Name\s*,\s*.+?)(?:\.\s*(?:Simple|No\s+workflow|Menu)|;|$)",
-            text,
-        )
-        if enum:
-            body = enum.group(1)
-
-    chunks = split_conjunction_chunks(body)
-    # split_conjunction_chunks already handles and/comma; full_app also had
-    # simpler and-split — reuse expand path carefully for typed parens.
-    for chunk in chunks:
-        if not chunk or len(chunk) < 2:
-            continue
-        sel = re.search(
-            r"(?i)^(.+?)\s*\(\s*selection\s*:\s*(.+?)\)\s*(?:\.|$)",
-            chunk,
-        )
-        if sel:
-            fname = sel.group(1).strip()
-            opts = re.sub(r"\s+", " ", sel.group(2)).strip(" .")
-            ast.fields.append(
-                ConstraintField(
-                    label=fname,
-                    ttype="selection",
-                    selection_options=opts,
-                    bare=True,
-                )
-            )
-            continue
-        rel = re.search(
-            r"(?i)^(.+?)\s*\(\s*(?:link\s+to\s+)?(.+?)\s*\)\s*$",
-            chunk,
-        )
-        if rel:
-            fname = rel.group(1).strip()
-            target = rel.group(2).strip()
-            target = re.sub(r"(?i)^link\s+to\s+", "", target).strip()
-            tlow = target.lower()
-            if tlow.startswith("selection"):
-                continue
-            if tlow in _FIELD_TYPE_HINTS:
-                if tlow == "datetime":
-                    lab = fname if "datetime" in fname.lower() else f"{fname} datetime"
-                    ast.fields.append(
-                        ConstraintField(label=lab, ttype="datetime", bare=True)
-                    )
-                elif tlow == "date":
-                    lab = fname if re.search(r"(?i)\bdate\b", fname) else f"{fname} date"
-                    ast.fields.append(ConstraintField(label=lab, ttype="date", bare=True))
-                elif tlow in {"boolean", "checkbox"}:
-                    ast.fields.append(ConstraintField(label=fname, ttype="boolean"))
-                else:
-                    ast.fields.append(
-                        ConstraintField(label=fname, ttype=_infer_ttype(fname, stated=tlow), bare=True)
-                    )
-                continue
-            ast.fields.append(
-                ConstraintField(
-                    label=fname,
-                    ttype="many2one",
-                    relation=_relation_target_display(target),
-                    bare=True,
-                )
-            )
-            continue
-        label_f = re.sub(r"\s+", " ", chunk).strip(" .")
-        if label_f.lower() in {"model", "with", "and", "a", "an", "the"}:
-            continue
-        ast.fields.append(
-            ConstraintField(
-                label=label_f,
-                ttype=_infer_ttype(label_f),
-                bare=True,
-            )
-        )
-
-    mm = _MENU_UNDER_RE.search(text)
-    if mm:
-        ast.structural.append(f"Menu under {mm.group(1).strip()}")
-    if _LIST_FORM_RE.search(text):
-        ast.structural.append("List + form")
-    if _CREATE_READ_ONLY_RE.search(text):
-        ast.structural.append("Create/read only")
+        # Residual prose brief (Vehicle Request-shaped) — structured extraction
+        ast.fields.extend(_prose_full_app_fields(text))
+        ast.structural.extend(_prose_full_app_structural(text))
 
     if not ast.fields:
         ast.uncertain = True
     return ast
+
 
 
 def parse_det(
@@ -726,7 +993,12 @@ def ast_to_must_do(ast: ConstraintAST, *, cap: int = _MUST_DO_CAP) -> list[str]:
     if ast.uncertain and not out and ast.host:
         label = ast.host_label or _host_label(ast.host) or ast.host
         out = [f"On {label} ({ast.host})"]
-    return out[:cap]
+    scrubbed: list[str] = []
+    for row in out:
+        clean = _scrub_must_do_row(row)
+        if clean:
+            scrubbed.append(clean)
+    return scrubbed[:cap]
 
 
 # ---------------------------------------------------------------------------
