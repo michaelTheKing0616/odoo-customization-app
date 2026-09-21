@@ -53,6 +53,40 @@ _MARKUP_RE = re.compile(r"(?i)mark-?up")
 _WHT_RE = re.compile(r"(?i)withh?olding|\bwht\b")
 _PCT_RANGE_RE = re.compile(r"(?i)10\s*%?\s*[-–to]+\s*25\s*%")
 
+
+_OPTION_A_BRIEF_RE = re.compile(
+    r"(?is)\b("
+    r"python\b|qweb\b|owl\b|controller\b|http\s+route|cron\s+python|"
+    r"pdf\s+report|report\s+template|module\s+zip|installable\s+module|"
+    r"@override|api\.depends|models\.Model|website\s+controller|"
+    r"webhook\b|compute\s*=\s*|constraint\s*=\s*"
+    r")\b"
+)
+
+
+def brief_implies_option_a(prompt: str) -> bool:
+    """True only when the brief itself asks for Python/QWeb/controllers/OWL/zip modules."""
+    return bool(_OPTION_A_BRIEF_RE.search(prompt or ""))
+
+
+def _force_live_fields_for_residual(understanding: "Understanding", prompt: str) -> "Understanding":
+    """Residual full_app create/read/list/form → Live fields; never Option A from pack/LLM noise."""
+    if understanding.grain != "full_app":
+        return understanding
+    if understanding.inherit_existing:
+        return understanding
+    if understanding.capability in {"option_a_authored", "option_a_standalone", "refuse_clone", "stock_reuse"}:
+        return understanding
+    if understanding.gold_artifact_id:
+        return understanding
+    if brief_implies_option_a(prompt):
+        return understanding
+    understanding.needs_module = False
+    if understanding.capability not in {"residual_app", "stock_reuse", "refuse_clone"}:
+        understanding.capability = "residual_app"
+    return understanding
+
+
 _UNDERSTAND_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -1168,11 +1202,17 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
         title = det.title
     summary = str(parsed.get("summary") or "").strip()[:400] or det.summary
     inherit = det.inherit_existing or bool(parsed.get("inherit_existing"))
-    needs = det.needs_module or bool(parsed.get("needs_module"))
-    # Residual full_app Contract: app name title, no stock host, no inherit.
+    # Option A only from det (capability/gold) or an explicit Option A brief — never
+    # from LLM boolean noise or pack depends keywords.
+    needs = det.needs_module
+    if brief_implies_option_a(prompt) and bool(parsed.get("needs_module")):
+        needs = True
+    # Residual full_app Contract: app name title, no stock host, no inherit, Live fields.
     if residual_full:
         host = None
         inherit = False
+        if not brief_implies_option_a(prompt):
+            needs = False
         # Keep deterministic app title — reject "{model} field pack" LLM titles.
         if (
             re.search(r"(?i)\bfield\s*pack\b", title)
@@ -1219,10 +1259,12 @@ def build_understanding(prompt: str) -> Understanding:
             needs_module=det.needs_module,
         )
         understanding = _stamp_must_do_score(det, scored)
+    understanding = _force_live_fields_for_residual(understanding, prompt)
     return _attach_craft_proposals(prompt, understanding)
 
 
 def diagnosis_clarification(understanding: Understanding) -> dict[str, Any]:
+    understanding = _force_live_fields_for_residual(understanding, "")
     if not understanding.craft_proposals and not understanding.inherit_existing:
         _attach_craft_proposals("", understanding)
     from app.ai_grain import HOST_LABELS
@@ -1460,6 +1502,7 @@ __all__ = [
     "dump_understanding",
     "load_understanding",
     "apply_understanding_edits",
+    "brief_implies_option_a",
     "parse_locked_diagnosis",
     "score_must_do_constraints",
     "understanding_contradictions",

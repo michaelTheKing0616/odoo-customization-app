@@ -381,18 +381,31 @@ def _selection_chrome_labels(draft: dict[str, Any], model: str) -> set[str]:
         for field in m.get("fields") or []:
             if not isinstance(field, dict):
                 continue
-            if str(field.get("ttype") or "") != "selection":
+            ftype = str(field.get("ttype") or field.get("type") or "").lower()
+            if ftype != "selection":
                 continue
             raw = field.get("selection")
             if isinstance(raw, str):
+                for key, lab in re.findall(
+                    r"\(\s*'([^']*)'\s*,\s*'([^']+)'\s*\)", raw
+                ):
+                    labels.add(lab.strip().lower())
+                    if key.strip():
+                        labels.add(key.strip().lower().replace("_", " "))
+                # also bare labels if key-only form slipped through
                 for lab in re.findall(r"\(\s*'[^']*'\s*,\s*'([^']+)'\s*\)", raw):
                     labels.add(lab.strip().lower())
             elif isinstance(raw, (list, tuple)):
                 for item in raw:
                     if isinstance(item, (list, tuple)) and len(item) >= 2:
+                        labels.add(str(item[0]).strip().lower().replace("_", " "))
                         labels.add(str(item[1]).strip().lower())
                     elif isinstance(item, dict):
+                        labels.add(str(item.get("value") or item.get("key") or "").strip().lower().replace("_", " "))
                         labels.add(str(item.get("label") or item.get("name") or "").strip().lower())
+    # Synonyms operators still call "Dirty" when IR says "Needs cleaning"
+    if "needs cleaning" in labels or "dirty" in labels:
+        labels.update({"dirty", "needs cleaning", "needs cleaning".replace(" ", "")})
     return {x for x in labels if x}
 
 

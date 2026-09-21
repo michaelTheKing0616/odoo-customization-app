@@ -42,7 +42,24 @@ _REGISTER_TOKENS = (
     "specialty",
 )
 _REGISTER_LEAF_TOKENS = frozenset(
-    {"rate", "roster", "catalog", "log", "ledger", "checklist", "guestbook", "book"}
+    {
+        "rate",
+        "roster",
+        "catalog",
+        "log",
+        "ledger",
+        "checklist",
+        "guestbook",
+        "book",
+        # Resource registers (status = statusbar chrome, never workflow/smart buttons)
+        "table",
+        "room",
+        "bed",
+        "desk",
+        "seat",
+        "stall",
+        "bay",
+    }
 )
 _NEEDS_SITE_TOKENS = (
     "booking",
@@ -400,6 +417,64 @@ def _has_line_child(draft: dict[str, Any], parent_id: str) -> bool:
         if field.get("ttype") == "one2many" and str(field.get("relation") or "").endswith("_line"):
             return True
     return False
+
+
+
+def scrub_selection_chrome_smart_buttons(draft: dict[str, Any]) -> list[str]:
+    """Drop smart_buttons whose label is a selection/status value on the same model.
+
+    Reserved / Seated / Dirty / Blocked are statusbar chrome — never button_box.
+    """
+    notes: list[str] = []
+    buttons = draft.get("smart_buttons")
+    if not isinstance(buttons, list) or not buttons:
+        return notes
+    # Local chrome extractor (mirrors preview_views; keep IR source-of-truth scrubbed).
+    import re as _re
+
+    def _chrome(model: str) -> set[str]:
+        labels: set[str] = set()
+        for m in draft.get("models") or []:
+            if not isinstance(m, dict) or str(m.get("model") or "") != model:
+                continue
+            for field in m.get("fields") or []:
+                if not isinstance(field, dict):
+                    continue
+                ftype = str(field.get("ttype") or field.get("type") or "").lower()
+                if ftype != "selection":
+                    continue
+                raw = field.get("selection")
+                if isinstance(raw, str):
+                    for key, lab in _re.findall(
+                        r"\(\s*'([^']*)'\s*,\s*'([^']+)'\s*\)", raw
+                    ):
+                        labels.add(lab.strip().lower())
+                        if key.strip():
+                            labels.add(key.strip().lower().replace("_", " "))
+                elif isinstance(raw, (list, tuple)):
+                    for item in raw:
+                        if isinstance(item, (list, tuple)) and len(item) >= 2:
+                            labels.add(str(item[0]).strip().lower().replace("_", " "))
+                            labels.add(str(item[1]).strip().lower())
+        if "needs cleaning" in labels or "dirty" in labels:
+            labels.update({"dirty", "needs cleaning"})
+        return {x for x in labels if x}
+
+    kept: list[Any] = []
+    for btn in buttons:
+        if not isinstance(btn, dict):
+            continue
+        on_model = str(btn.get("on_model") or btn.get("model") or "")
+        label = str(btn.get("label") or btn.get("string") or "").strip()
+        chrome = _chrome(on_model) if on_model else set()
+        if label and label.lower() in chrome:
+            notes.append(
+                f"app_bar: scrubbed selection-chrome smart_button {label!r} on {on_model}"
+            )
+            continue
+        kept.append(btn)
+    draft["smart_buttons"] = kept
+    return notes
 
 
 def demote_register_status_workflows(draft: dict[str, Any]) -> list[str]:
@@ -4436,6 +4511,7 @@ def close_odoo_architecture(draft: dict[str, Any], *, user_prompt: str = "") -> 
     notes.extend(promote_booking_headers(draft))
     notes.extend(demote_line_model_workflows(draft))
     notes.extend(demote_register_status_workflows(draft))
+    notes.extend(scrub_selection_chrome_smart_buttons(draft))
     notes.extend(drop_leftover_state_fields(draft))
     notes.extend(repair_partner_smart_button_targets(draft))
     from app.ai_apply_readiness import (
@@ -4968,6 +5044,7 @@ def run_odoo_app_bar_pass(draft: dict[str, Any], *, user_prompt: str = "") -> li
     notes.extend(reconcile_stale_o2ms(draft))
     notes.extend(promote_booking_headers(draft))
     notes.extend(demote_register_status_workflows(draft))
+    notes.extend(scrub_selection_chrome_smart_buttons(draft))
     notes.extend(drop_leftover_state_fields(draft))
     notes.extend(ensure_mail_mixins(draft))
     notes.extend(ensure_header_line_models(draft))

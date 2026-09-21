@@ -338,3 +338,25 @@ export const STUDIO_STARTER_CHIPS = [
   "Helpdesk tickets with requester and status workflow",
   "Retail inventory and stock moves",
 ];
+
+
+/** True when residual canvas display_name matches locked Contract title (grain-aware). */
+export function artifactMatchesLockedContract(
+  artifact: Record<string, unknown> | null | undefined,
+  understanding: StudioUnderstanding | null | undefined,
+): boolean {
+  if (!artifact || !understanding) return true;
+  const grain = String(understanding.grain || "");
+  const inherit = Boolean(understanding.inherit_existing);
+  if (grain && grain !== "full_app") return true;
+  if (inherit) return true;
+  const locked = String(understanding.title || "").trim().toLowerCase();
+  const shown = String(artifact.display_name || "").trim().toLowerCase();
+  if (!locked || !shown) return true;
+  if (locked === shown) return true;
+  // Allow short contained titles (Visitor Log ⊂ Visitor Log App) but not cross-app.
+  if (locked.length >= 4 && shown.includes(locked)) return true;
+  if (shown.length >= 4 && locked.includes(shown)) return true;
+  return false;
+}
+

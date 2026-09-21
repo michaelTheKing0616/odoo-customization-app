@@ -80,6 +80,7 @@ import {
   studioApplyMenuTarget,
   sessionWithClarification,
   studioPhaseFromSession,
+  artifactMatchesLockedContract,
   type StudioSession,
 } from "@/lib/studio-session";
 import {
@@ -146,10 +147,14 @@ export default function AppStudioPage() {
   const isOdooOnline = connection?.hosting === "online";
 
   const phase = useMemo(() => studioPhaseFromSession(session), [session]);
-  const preview = useMemo(
-    () => residualFormPreviewFromDraft(session?.artifact ?? null),
-    [session?.artifact],
+  const contractMatchesCanvas = artifactMatchesLockedContract(
+    session?.artifact ?? null,
+    session?.understanding ?? null,
   );
+  const preview = useMemo(() => {
+    if (!contractMatchesCanvas) return null;
+    return residualFormPreviewFromDraft(session?.artifact ?? null);
+  }, [session?.artifact, contractMatchesCanvas]);
   const stockReuse = isStockReuseDraft(session?.artifact ?? null);
   const refuseClone = isRefuseCloneDraft(session?.artifact ?? null);
   const goldOptionA = isGoldOptionADraft(session?.artifact ?? null);
@@ -1362,13 +1367,20 @@ export default function AppStudioPage() {
               </div>
             }
             preview={
-              <StudioPreviewPane
-                draft={session?.artifact}
-                preview={preview}
-                breadcrumb={preview?.title || appTitle}
-                flashFieldId={flashId}
-                highlightedFieldIds={highlightIds}
-              />
+              contractMatchesCanvas ? (
+                <StudioPreviewPane
+                  draft={session?.artifact}
+                  preview={preview}
+                  breadcrumb={preview?.title || appTitle}
+                  flashFieldId={flashId}
+                  highlightedFieldIds={highlightIds}
+                />
+              ) : (
+                <p className="studio-preview-empty" data-testid="studio-canvas-identity-gate">
+                  Canvas hidden — draft title does not match the locked Contract. Confirm
+                  Diagnosis again or Generate so one IR drives both.
+                </p>
+              )
             }
             chat={
               <StudioChatThread

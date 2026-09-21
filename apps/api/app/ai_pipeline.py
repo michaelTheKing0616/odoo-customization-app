@@ -199,6 +199,18 @@ def seed_studio_draft(prompt: str) -> dict[str, Any]:
         draft["domain_pack"] = pack_id
         draft["grain"] = "full_app"
         draft["_user_prompt"] = prompt
+        # Residual full_app title/slug come from the brief — packs are hints only.
+        # "Dining Tables for our restaurant" must not keep pack "Restaurant Management".
+        try:
+            from app.ai_document_shape import naming_from_residual
+
+            residual_name, residual_slug = naming_from_residual(prompt)
+            if residual_name:
+                draft["display_name"] = residual_name
+            if residual_slug:
+                draft["technical_name"] = residual_slug[:64]
+        except Exception:  # noqa: BLE001
+            pass
         attach_operator_brief(draft, user_prompt=prompt)
         draft["_pipeline"] = "pack_seed"
         attach_llm_status(draft, mode="pack_fallback")

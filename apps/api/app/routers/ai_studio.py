@@ -306,6 +306,16 @@ def clarify_session_route(
         out["clarification"] = None
         return out
 
+    if body.merge_key == "diagnosis" and body.answer_id == "confirm":
+        # One session IR: wipe stale canvas (Restaurant under Visitor Log Contract)
+        # before Generate so Contract title and artifact cannot diverge.
+        update_session(
+            db,
+            row,
+            artifact={},
+            artifact_hash=None,
+        )
+
     clarification = (
         build_clarification(assessment, prompt=prompt_resolved)
         if should_block_generation(assessment)
