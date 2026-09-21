@@ -249,7 +249,13 @@ _PURCHASE_REQUEST_INTENT_RE = None
 
 
 def purchase_request_intent(prompt: str) -> bool:
-    """True when the brief is a staff purchase / manager-approval document."""
+    """True when the brief is a staff purchase / spend / budget requisition.
+
+    Bare «manager approve» is NOT enough — that phrase appears on Vehicle Request
+    and any residual approval workflow. Align with match_domain_pack regex: require
+    purchase/spend/budget/requisition/approval-request cues. Fleet/vehicle/visitor
+    residuals without those cues never adopt the purchase pack surface.
+    """
     global _PURCHASE_REQUEST_INTENT_RE
     if _PURCHASE_REQUEST_INTENT_RE is None:
         import re
@@ -260,23 +266,75 @@ def purchase_request_intent(prompt: str) -> bool:
             r"approval\s+requests?|"
             r"spend(?:ing)?\s+(?:request|approval)|"
             r"budget\s+(?:request|approval)|"
-            r"requisitions?|"
-            r"manager\s+approv(?:e|al|ed)?"
+            r"requisitions?"
+            # Never bare «manager approve» — steals fleet/vehicle residuals.
             r")"
         )
-    return bool(_PURCHASE_REQUEST_INTENT_RE.search(prompt or ""))
+    text = prompt or ""
+    if not _PURCHASE_REQUEST_INTENT_RE.search(text):
+        return False
+    # Residual fleet/vehicle/visitor nouns without purchase cues → not purchase.
+    import re
+
+    residual_foreign = re.search(
+        r"(?i)\b(?:fleet|vehicle|visitor|reservation|dining\s+table|punch\s*card)\b",
+        text,
+    )
+    purchase_cue = re.search(
+        r"(?i)\b(?:purchase|spend(?:ing)?|budget|requisition|procurement)\b",
+        text,
+    )
+    if residual_foreign and not purchase_cue:
+        return False
+    return True
 
 
 def _is_purchase_request_draft(draft: dict[str, Any], prompt: str) -> bool:
-    if str(draft.get("domain_pack") or "") == "purchase_request":
+    text = prompt or str(draft.get("_user_prompt") or "")
+    if purchase_request_intent(text):
         return True
-    return purchase_request_intent(prompt or str(draft.get("_user_prompt") or ""))
+    # Stamped domain_pack alone is not enough — weak Jaccard can label a Vehicle
+    # residual as purchase_request. Only trust the stamp when the residual noun
+    # itself reads as purchase/spend/budget.
+    if str(draft.get("domain_pack") or "") != "purchase_request":
+        return False
+    try:
+        from app.ai_document_shape import naming_from_residual
+
+        residual_name, _slug = naming_from_residual(text)
+    except Exception:  # noqa: BLE001
+        residual_name = ""
+    rn = (residual_name or "").strip().lower()
+    return bool(rn) and any(k in rn for k in ("purchase", "requisition", "spend", "budget"))
 
 
 def scrub_purchase_request_prompt_fit(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
     """One purchase-request document — no invented Agreements/Expenses/Requester apps."""
     text = prompt or str(draft.get("_user_prompt") or "")
+
+    def _residual_is_foreign_to_purchase() -> bool:
+        try:
+            from app.ai_document_shape import naming_from_residual
+
+            residual_name, _residual_slug = naming_from_residual(text)
+        except Exception:  # noqa: BLE001
+            residual_name = ""
+        rn = (residual_name or "").strip().lower()
+        return bool(rn) and not any(
+            k in rn for k in ("purchase", "requisition", "spend", "budget")
+        )
+
+    # Always peel a wrongly stamped purchase pack when residual noun diverges
+    # (Vehicle / Visitor / …), even when intent is already false.
+    if _residual_is_foreign_to_purchase() and str(draft.get("domain_pack") or "") == "purchase_request":
+        draft.pop("domain_pack", None)
+        draft.pop("_pack_model_ids", None)
+        if not _is_purchase_request_draft(draft, text):
+            return ["purchase_request: cleared foreign domain_pack stamp"]
+
     if not _is_purchase_request_draft(draft, text):
+        return []
+    if _residual_is_foreign_to_purchase():
         return []
 
     notes: list[str] = []

@@ -288,6 +288,24 @@ def pack_conflicts_with_brief(
             notes.append(f"brief conflicts: not ITSM / not PM vs {pack_id!r}")
             return True, notes
 
+    # Fleet / vehicle / visitor residuals must not adopt purchase_request surface
+    # IR from weak «manager approve» / request/amount Jaccard overlap.
+    if pack_id == "purchase_request":
+        text = prompt or ""
+        residual_foreign = re.search(
+            r"(?i)\b(?:fleet|vehicle|visitor|reservation|dining\s+table)\b",
+            text,
+        )
+        purchase_cue = re.search(
+            r"(?i)\b(?:purchase|spend(?:ing)?|budget|requisition|procurement)\b",
+            text,
+        )
+        if residual_foreign and not purchase_cue:
+            notes.append(
+                "brief conflicts: fleet/vehicle/visitor residual vs purchase_request pack"
+            )
+            return True, notes
+
     return False, notes
 
 

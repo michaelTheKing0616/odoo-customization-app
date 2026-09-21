@@ -126,7 +126,16 @@ def _infer_fields(prompt: str, host: str) -> list[dict[str, Any]]:
 
 
 def _app_title_from_prompt(prompt: str) -> str:
-    """Residual app display name from Build…app / Title: / Title for our…"""
+    """Residual app display name — never keep Build/Create/Make in Contract chrome."""
+    # Prefer shared residual naming (strips imperatives + size adjectives).
+    try:
+        from app.ai_document_shape import naming_from_residual
+
+        display, _slug = naming_from_residual(prompt or "")
+        if display:
+            return display
+    except Exception:  # noqa: BLE001
+        pass
     text = prompt or ""
     m = re.search(
         r"(?i)\b(?:build|create|make)\s+(?:an?\s+)?(?:(?:tiny|simple|small|new|mini)\s+)*"
@@ -139,11 +148,12 @@ def _app_title_from_prompt(prompt: str) -> str:
         if nice:
             return nice.title() if nice.islower() else nice
     m = re.search(
-        r"(?i)^([A-Z][\w][\w\s/-]{1,48}?)(?:\s+for\s+(?:our|the|a)\b|\s*[:—-])",
+        r"(?i)^(?:(?:build|create|make|add)\s+)?([A-Z][\w][\w\s/-]{1,48}?)(?:\s+for\s+(?:our|the|a)\b|\s*[:—-])",
         text.strip(),
     )
     if m:
         nice = re.sub(r"\s+", " ", m.group(1)).strip(" .:,-")
+        nice = re.sub(r"(?i)^(build|create|make|add)\s+", "", nice).strip()
         if nice:
             return nice.title() if nice.islower() else nice
     return "Custom app"

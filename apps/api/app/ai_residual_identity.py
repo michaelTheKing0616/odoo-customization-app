@@ -126,7 +126,9 @@ def draft_mismatches_residual_identity(
     want = f"x_{slug}" if slug and not slug.startswith("x_") else slug
     customs = _custom_x_models(draft)
     if want and customs:
-        if want not in customs and len(customs) >= 2:
+        # Class: foreign pack surface replaced residual primary (even a single
+        # header) — Vehicle brief must not render as only x_purchase_request.
+        if want not in customs:
             return True
         # Residual primary present but a foreign pack header remains
         # (Vehicle Request + x_purchase_request bleed is the dual-header class).
