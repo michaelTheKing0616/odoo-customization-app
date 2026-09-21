@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.no_app_db
+
 from app.ai_component_builder import draft_component_from_prompt
 from app.ai_draft_scorecard import attach_scorecard
 from app.ai_studio_contract import (

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+pytestmark = pytest.mark.no_app_db
+
 from app.ai_domain_pack_purchase_request import purchase_request_pack
 from app.ai_domain_packs import retrieve_domain_pack_lexical
 
@@ -13,7 +15,7 @@ class TestPurchaseRequestPackRetrieval:
         "prompt",
         [
             "Purchase requests with amount, requester, and a manager approval flow",
-            "Staff submit a request; a manager must approve or refuse it",
+            "Staff submit a purchase request; a manager must approve or refuse it",
             "I need an approval workflow for purchase requisitions",
             "Budget request with manager approval",
             "Spending approval flow",

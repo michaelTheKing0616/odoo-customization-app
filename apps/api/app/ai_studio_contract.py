@@ -202,6 +202,10 @@ def build_studio_contract(
     blob = f"{prompt or ''}\n{_constraints_blob(constraints)}"
     inherit_only = is_inherit_only_ops(blob) or bool(_NO_APP_RE.search(blob))
     resolved_grain: Grain = grain or classify_grain(blob)
+    # Locked / passed full_app wins — craft chips and «manager approve» must not
+    # Prefer-flip the Contract into inherit-only on a stock host.
+    if resolved_grain == "full_app":
+        inherit_only = False
     if inherit_only:
         resolved_grain = "field_pack"
     # Residual full_app: never invent a stock host or «field pack» title.
@@ -385,8 +389,24 @@ def fulfill_studio_contract(draft: dict[str, Any], prompt: str) -> list[str]:
             draft["display_name"] = str(contract["title"])
             notes.append(f"contract: residual title → {contract['title']}")
 
-    # Grain lock for inherit-only
-    if contract.get("inherit_only"):
+    # Grain lock for inherit-only — never Prefer-reshape a locked residual full_app
+    # (craft on Employees is a smart button, not a host flip).
+    draft_grain = str(draft.get("grain") or "")
+    u = draft.get("_understanding") if isinstance(draft.get("_understanding"), dict) else {}
+    locked_full_app = (
+        draft_grain == "full_app"
+        or (str(u.get("grain") or "") == "full_app" and not u.get("inherit_existing"))
+        or (str(contract.get("grain") or "") == "full_app" and not contract.get("inherit_only"))
+    )
+    if contract.get("inherit_only") and locked_full_app:
+        contract["inherit_only"] = False
+        contract["grain"] = "full_app"
+        contract["host_model"] = None
+        contract["host_label"] = None
+        draft["_studio_contract"] = contract
+        draft["grain"] = "full_app"
+        notes.append("contract: kept residual full_app — skipped Prefer inherit reshape")
+    elif contract.get("inherit_only"):
         draft["grain"] = "field_pack"
         draft["menus"] = []
         # Drop residual x_* new models
@@ -584,7 +604,15 @@ def evaluate_studio_contract(draft: dict[str, Any]) -> dict[str, Any]:
             "blocking": True,
         }
 
-    if contract.get("inherit_only"):
+    locked_full_app = (
+        str(contract.get("grain") or draft.get("grain") or "") == "full_app"
+        and not contract.get("inherit_only")
+    )
+    u = draft.get("_understanding") if isinstance(draft.get("_understanding"), dict) else {}
+    if str(u.get("grain") or "") == "full_app" and not u.get("inherit_existing"):
+        locked_full_app = True
+
+    if contract.get("inherit_only") and not locked_full_app:
         for m in draft.get("models") or []:
             if not isinstance(m, dict):
                 continue

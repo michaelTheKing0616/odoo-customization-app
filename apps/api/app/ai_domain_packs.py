@@ -803,8 +803,9 @@ _PACK_FACTORIES: list[tuple[str, Any, re.Pattern[str]]] = [
             r"approval\s+requests?|"
             r"spend(?:ing)?\s+(?:request|approval)|"
             r"budget\s+(?:request|approval)|"
-            r"requisitions?|"
-            r"manager\s+approv(?:e|al|ed)?"
+            r"requisitions?"
+            # Bare «manager approve» matches Vehicle Request / any residual workflow —
+            # require purchase/spend/budget context, never steal fleet/vehicle residuals.
             r")",
         ),
     ),

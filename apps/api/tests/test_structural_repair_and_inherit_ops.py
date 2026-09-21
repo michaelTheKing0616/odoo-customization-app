@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.no_app_db
+
 from app.ai_component_builder import draft_component_from_prompt, inherit_only_display_name
 from app.ai_conversation.refine import apply_refinement, wants_structural_repair
 from app.ai_grain import classify_grain, is_inherit_only_ops

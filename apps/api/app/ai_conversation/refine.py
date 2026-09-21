@@ -1119,6 +1119,219 @@ def wants_structural_repair(instruction: str) -> bool:
     return bool(_STRUCTURAL_REPAIR_RE.search(instruction or ""))
 
 
+def _locked_full_app_residual(
+    draft: dict[str, Any], prompt: str = ""
+) -> bool:
+    """True when Diagnosis / draft grain is residual full_app — never Prefer-reshape.
+
+    Craft smart buttons on stock hosts (Employees) do not flip this. Prefer inherit
+    briefs (is_inherit_only_ops) always return False so Expert can still reshape.
+    """
+    text = prompt or str(draft.get("_user_prompt") or "")
+    try:
+        from app.ai_grain import is_inherit_only_ops
+
+        if is_inherit_only_ops(text):
+            return False
+    except Exception:  # noqa: BLE001
+        pass
+
+    u = draft.get("_understanding") if isinstance(draft.get("_understanding"), dict) else {}
+    contract = (
+        draft.get("_studio_contract")
+        if isinstance(draft.get("_studio_contract"), dict)
+        else {}
+    )
+    if u.get("inherit_existing") or contract.get("inherit_only"):
+        return False
+    if str(u.get("grain") or "") in {"field_pack", "feature_slice"}:
+        return False
+    if str(contract.get("grain") or "") in {"field_pack", "feature_slice"} and contract.get(
+        "inherit_only"
+    ):
+        return False
+
+    grain = str(
+        u.get("grain") or contract.get("grain") or draft.get("grain") or ""
+    ).strip()
+    if grain == "full_app":
+        return True
+
+    # Residual primary from Diagnosis naming even if grain stamp drifted.
+    try:
+        from app.ai_document_shape import naming_from_residual
+
+        _display, slug = naming_from_residual(text)
+        want = f"x_{slug}" if slug and not str(slug).startswith("x_") else (slug or "")
+        if want and str(draft.get("grain") or "") != "field_pack":
+            for m in draft.get("models") or []:
+                if not isinstance(m, dict):
+                    continue
+                mid = str(m.get("model") or "")
+                if mid == want and str(m.get("mode") or "new") != "inherit":
+                    return True
+    except Exception:  # noqa: BLE001
+        pass
+    return False
+
+
+def _repair_full_app_residual(
+    draft: dict[str, Any],
+    *,
+    prompt: str,
+) -> dict[str, Any] | None:
+    """Expert/surface repair for residual full_app — keep grain; scrub foreign; fix manager."""
+    working = copy.deepcopy(draft)
+    user_prompt = (
+        prompt
+        or str(working.get("_user_prompt") or working.get("prompt") or "")
+    ).strip()
+    summaries: list[str] = []
+
+    working["grain"] = "full_app"
+    working.pop("_component", None)
+
+    # Ground title to residual noun — never «hr.employee fields» / Prefer chrome.
+    try:
+        from app.ai_document_shape import naming_from_residual
+        from app.ai_surface_invariants import title_is_grounded
+
+        display, slug = naming_from_residual(user_prompt)
+        cur = str(working.get("display_name") or "").strip()
+        bad_title = bool(
+            not cur
+            or re.search(r"(?i)^\w+\s+(?:extras|extension|fields)$", cur)
+            or re.search(r"(?i)delivery\s+preferences", cur)
+            or (user_prompt and not title_is_grounded(cur, user_prompt))
+        )
+        if display and bad_title:
+            working["display_name"] = display
+            summaries.append(f"Grounded residual title to {display!r}.")
+        if slug and (
+            not str(working.get("technical_name") or "").strip()
+            or str(working.get("technical_name") or "").startswith("x_prefer")
+        ):
+            working["technical_name"] = slug
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Scrub foreign residual models (e.g. purchase_request bleed into Vehicle Request).
+    try:
+        from app.ai_residual_identity import enforce_residual_draft_identity
+
+        locked = (
+            working.get("_understanding")
+            if isinstance(working.get("_understanding"), dict)
+            else {"grain": "full_app", "title": working.get("display_name")}
+        )
+        notes = enforce_residual_draft_identity(
+            working, prompt=user_prompt, locked=locked, prefer_locked=True
+        )
+        if notes:
+            summaries.append("Scrubbed foreign residual IR; kept primary full_app model.")
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Ensure approval assignee on the residual header — not convert to Employees field_pack.
+    try:
+        from app.ai_surface_invariants import extract_brief_slots
+
+        slots = extract_brief_slots(user_prompt)
+        if slots.wants_approval:
+            header = None
+            for m in working.get("models") or []:
+                if not isinstance(m, dict):
+                    continue
+                mid = str(m.get("model") or "")
+                if mid.startswith("x_") and str(m.get("mode") or "new") != "inherit":
+                    if not mid.endswith("_line") and not mid.endswith("_party"):
+                        header = m
+                        break
+            if header is not None:
+                fields = [f for f in (header.get("fields") or []) if isinstance(f, dict)]
+                has_mgr = any(
+                    str(f.get("ttype")) == "many2one"
+                    and str(f.get("relation")) == "res.users"
+                    for f in fields
+                )
+                if not has_mgr:
+                    fields.append(
+                        {
+                            "name": "x_manager_id",
+                            "ttype": "many2one",
+                            "string": "Manager",
+                            "relation": "res.users",
+                            "required": True,
+                        }
+                    )
+                    header["fields"] = fields
+                    summaries.append(
+                        "Slotted approval assignee (res.users) on residual header."
+                    )
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Never keep Prefer-for-delivery junk on residual full_app repair.
+    for m in working.get("models") or []:
+        if not isinstance(m, dict):
+            continue
+        mid = str(m.get("model") or "")
+        if not mid.startswith("x_"):
+            continue
+        cleaned = []
+        dropped = False
+        for f in m.get("fields") or []:
+            if not isinstance(f, dict):
+                continue
+            label = str(f.get("string") or f.get("name") or "").lower()
+            name = str(f.get("name") or "").lower()
+            if "prefer_for_delivery" in name or "prefer for delivery" in label:
+                dropped = True
+                continue
+            if name == "x_delivery_notes" or re.search(r"(?i)^delivery\s+notes?$", label):
+                dropped = True
+                continue
+            cleaned.append(f)
+        if dropped:
+            m["fields"] = cleaned
+            summaries.append("Dropped Prefer-for-delivery junk fields from residual.")
+
+    if not summaries:
+        # Still report a no-op structural keep so Expert does not fall through to Prefer reshape.
+        summaries.append("Kept residual full_app — skipped Prefer inherit reshape.")
+
+    working["_user_prompt"] = user_prompt or working.get("_user_prompt")
+    try:
+        from app.ai_form_slots import apply_form_slots
+
+        apply_form_slots(working, prompt=user_prompt)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from app.ai_studio_contract import stamp_studio_contract_pipeline
+
+        stamp_studio_contract_pipeline(working, user_prompt)
+    except Exception:  # noqa: BLE001
+        pass
+    # Re-assert grain after contract stamp (Prefer path must not flip it).
+    working["grain"] = "full_app"
+    if isinstance(working.get("_studio_contract"), dict):
+        working["_studio_contract"]["inherit_only"] = False
+        working["_studio_contract"]["grain"] = "full_app"
+        working["_studio_contract"]["host_model"] = None
+        working["_studio_contract"]["host_label"] = None
+    _restamp_preview(working, user_prompt)
+    validators = (working.get("_scorecard") or {}).get("validators") or {}
+    return {
+        "ok": True,
+        "draft": working,
+        "patch_summary": " ".join(summaries),
+        "highlighted_field_ids": [],
+        "validators": validators,
+        "structural": True,
+    }
+
+
 def _infer_host_from_draft_or_prompt(
     draft: dict[str, Any], prompt: str
 ) -> tuple[str, str]:
@@ -1187,7 +1400,10 @@ def apply_structural_repair(
     *,
     prompt: str = "",
 ) -> dict[str, Any] | None:
-    """Reshape residual chrome into inherit-only + grounded title when asked.
+    """Reshape Prefer residual chrome into inherit-only + grounded title when asked.
+
+    Locked Diagnosis ``full_app`` / residual primary x_* must NEVER Prefer-reshape
+    (craft on Employees is a smart button, not a field_pack host flip).
 
     Returns a result dict on success, or None when this instruction is not
     structural (caller should fall through to field chrome).
@@ -1195,11 +1411,15 @@ def apply_structural_repair(
     if not wants_structural_repair(instruction):
         return None
 
-    working = copy.deepcopy(draft)
-    user_prompt = (
+    user_prompt_peek = (
         prompt
-        or str(working.get("_user_prompt") or working.get("prompt") or "")
+        or str(draft.get("_user_prompt") or draft.get("prompt") or "")
     ).strip()
+    if _locked_full_app_residual(draft, user_prompt_peek):
+        return _repair_full_app_residual(draft, prompt=user_prompt_peek)
+
+    working = copy.deepcopy(draft)
+    user_prompt = user_prompt_peek
     summaries: list[str] = []
 
     host_model, host_label = _infer_host_from_draft_or_prompt(working, user_prompt)
@@ -1211,9 +1431,9 @@ def apply_structural_repair(
         from app.ai_grain import is_inherit_only_ops
         from app.ai_surface_invariants import title_is_grounded
 
-        inherit_only = is_inherit_only_ops(user_prompt) or wants_structural_repair(
-            instruction
-        )
+        # Prefer inherit-only only when the brief is Prefer/ops — never merely
+        # because the Expert repair instruction mentions «inherit-only».
+        inherit_only = is_inherit_only_ops(user_prompt)
         target_title = (
             inherit_only_display_name(user_prompt, host_label)
             if inherit_only
@@ -1247,9 +1467,10 @@ def apply_structural_repair(
     try:
         from app.ai_grain import is_inherit_only_ops
 
-        must_reshape = is_inherit_only_ops(user_prompt) or bool(residual_new)
+        # Prefer reshape only for inherit-only briefs — never «any residual x_*».
+        must_reshape = is_inherit_only_ops(user_prompt)
     except Exception:  # noqa: BLE001
-        must_reshape = bool(residual_new)
+        must_reshape = False
 
     if must_reshape and (
         residual_new
