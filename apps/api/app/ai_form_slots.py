@@ -269,13 +269,22 @@ def strip_inherit_filler(inherit: dict[str, Any], prompt: str) -> list[str]:
     """Drop Active/Notes/Reference padding unless the brief asked for them."""
     notes: list[str] = []
     fields = [f for f in (inherit.get("fields") or []) if isinstance(f, dict)]
+    try:
+        from app.ai_brief_cues import brief_asks_generic_notes, is_named_notes_field
+
+        keep_notes = brief_asks_generic_notes(prompt or "")
+        named_present = any(is_named_notes_field(f) for f in fields)
+    except Exception:  # noqa: BLE001
+        keep_notes = bool(_FILLER_NOTES.search(prompt or ""))
+        named_present = False
     kept: list[dict[str, Any]] = []
     for field in fields:
         name = str(field.get("name") or "")
         if name == "x_active" and not _FILLER_ACTIVE.search(prompt or ""):
             notes.append("slots: dropped padding x_active")
             continue
-        if name == "x_notes" and not _FILLER_NOTES.search(prompt or ""):
+        if name == "x_notes" and (not keep_notes or named_present):
+            # Named Assignment Note / Remarks wins over generic Notes padding.
             notes.append("slots: dropped padding x_notes")
             continue
         if name == "x_ref" and not _FILLER_REF.search(prompt or ""):

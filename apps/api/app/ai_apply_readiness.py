@@ -1845,10 +1845,20 @@ def ensure_retail_comprehensive_floor(draft: dict[str, Any]) -> list[str]:
         if len(fields) >= 6:
             continue
         names = {str(f.get("name")) for f in fields}
+        try:
+            from app.ai_brief_cues import should_skip_generic_notes_pad
+
+            skip_notes = should_skip_generic_notes_pad(
+                fields, prompt=str(draft.get("_user_prompt") or "")
+            )
+        except Exception:  # noqa: BLE001
+            skip_notes = "x_notes" in names
         for fname, ttype, label in (
             ("x_notes", "text", "Notes"),
             ("x_sequence", "integer", "Sequence"),
         ):
+            if fname == "x_notes" and skip_notes:
+                continue
             if fname not in names:
                 model.setdefault("fields", []).append(
                     {

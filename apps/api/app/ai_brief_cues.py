@@ -4,6 +4,10 @@ Prompt understanding floor for residual full_app (Flash-off deterministic):
 when the brief enumerates workflow states, names a stock menu parent, or omits
 Type/category cues, Contract + Generate must honor those cues end-to-end.
 Not Vehicle-only — any residual with the same cue shape.
+
+Also: one free-text notes surface per cue. When the brief names Assignment Note /
+Remarks / … (or implies a single notes field), do not also keep a generic
+Notes/Description sibling from packs or padding.
 """
 
 from __future__ import annotations
@@ -103,6 +107,54 @@ _STATE_SELECTION_RE = re.compile(
     r"(?i)\bstate\s+selection\s*\(\s*([^)]+?)\s*\)"
 )
 _ARROW_SPLIT_RE = re.compile(r"\s*(?:→|->|—|–|/)\s*")
+
+# Named note phrases — stripping these leaves only bare «notes» cues.
+_NAMED_NOTE_PHRASE_RE = re.compile(
+    r"(?i)\b(?:"
+    r"assignment\s+notes?"
+    r"|delivery\s+notes?"
+    r"|clinical\s+notes?"
+    r"|pharmacy\s+notes?"
+    r"|operative\s+notes?"
+    r"|internal\s+notes?"
+    r"|manager\s+(?:notes?|comments?|remarks?)"
+    r"|doctor\s+notes?"
+    r"|patient\s+notes?"
+    r"|visit\s+notes?"
+    r"|special\s+instructions?"
+    r"|block\s+notes?"
+    r"|remarks?"
+    r"|comments?"
+    r")\b"
+)
+_BARE_NOTES_CUE_RE = re.compile(r"(?i)\bnotes?\b")
+_BARE_DESCRIPTION_CUE_RE = re.compile(r"(?i)\bdescriptions?\b")
+
+_GENERIC_NOTE_NAMES = frozenset(
+    {
+        "x_notes",
+        "x_note",
+        "x_description",
+        "x_comment",
+        "x_comments",
+        "x_remark",
+        "x_remarks",
+    }
+)
+_GENERIC_NOTE_LABELS = frozenset(
+    {
+        "notes",
+        "note",
+        "description",
+        "comment",
+        "comments",
+        "remark",
+        "remarks",
+    }
+)
+_NOTES_SURFACE_TOKEN_RE = re.compile(
+    r"(?i)\b(notes?|remarks?|comments?|description|instructions?)\b"
+)
 
 
 def _snake_state(label: str) -> str:
@@ -251,8 +303,111 @@ def transitions_for_states(keys: list[str]) -> list[list[str]]:
     return edges
 
 
+def brief_asks_generic_notes(prompt: str) -> bool:
+    """True when the brief asks for a bare Notes field (not Assignment Note / Remarks)."""
+    stripped = _NAMED_NOTE_PHRASE_RE.sub(" ", prompt or "")
+    return bool(_BARE_NOTES_CUE_RE.search(stripped))
+
+
+def brief_asks_description(prompt: str) -> bool:
+    """True when the brief explicitly cues a Description free-text field."""
+    return bool(_BARE_DESCRIPTION_CUE_RE.search(prompt or ""))
+
+
+def brief_has_named_notes_cue(prompt: str) -> bool:
+    """True when the brief names a specific notes/comments/remarks surface."""
+    return bool(_NAMED_NOTE_PHRASE_RE.search(prompt or ""))
+
+
+def is_bare_generic_notes_field(field: dict[str, Any]) -> bool:
+    """Pack/pad Notes|Description chrome — not «Assignment Note» / «Remarks»."""
+    if not isinstance(field, dict):
+        return False
+    ttype = str(field.get("ttype") or "").lower()
+    if ttype and ttype not in {"text", "html", "char"}:
+        return False
+    name = str(field.get("name") or "").strip().lower()
+    label = str(field.get("string") or "").strip().lower()
+    # Only bare Notes / Description are generic siblings worth dropping.
+    if name in {"x_notes", "x_note"} and (not label or label in {"notes", "note"}):
+        return True
+    if name == "x_description" and (not label or label == "description"):
+        return True
+    if label in {"notes", "note", "description"} and name.startswith("x_") and ttype in {
+        "text",
+        "html",
+        "",
+    }:
+        return True
+    return False
+
+
+def is_named_notes_field(field: dict[str, Any]) -> bool:
+    """Brief-named free-text note surface (Assignment Note, Remarks, Clinical Notes, …)."""
+    if not isinstance(field, dict):
+        return False
+    ttype = str(field.get("ttype") or "").lower()
+    if ttype not in {"text", "html", "char", ""}:
+        return False
+    if is_bare_generic_notes_field(field):
+        return False
+    name = str(field.get("name") or "")
+    label = str(field.get("string") or "").strip()
+    low_label = label.lower()
+    low_name = name.lower()
+    # Remarks / Comments as the field label are the named surface (not generic Notes).
+    if low_label in {"remarks", "remark", "comments", "comment"}:
+        return True
+    if low_name in {"x_remarks", "x_remark", "x_comments", "x_comment"}:
+        return True
+    blob = f"{name} {label}".lower()
+    if not _NOTES_SURFACE_TOKEN_RE.search(blob):
+        return False
+    if label and low_label not in {"notes", "note", "description"}:
+        return True
+    if low_name not in _GENERIC_NOTE_NAMES and _NOTES_SURFACE_TOKEN_RE.search(low_name):
+        return True
+    return False
+
+
+def model_has_notes_surface(fields: list[dict[str, Any]] | None) -> bool:
+    """True when the model already carries any notes-like free-text field."""
+    for field in fields or []:
+        if not isinstance(field, dict):
+            continue
+        if is_named_notes_field(field) or is_bare_generic_notes_field(field):
+            return True
+        ttype = str(field.get("ttype") or "").lower()
+        if ttype in {"text", "html"} and _NOTES_SURFACE_TOKEN_RE.search(
+            f"{field.get('name') or ''} {field.get('string') or ''}"
+        ):
+            return True
+    return False
+
+
+def should_skip_generic_notes_pad(
+    fields: list[dict[str, Any]] | None,
+    *,
+    prompt: str = "",
+) -> bool:
+    """Pads must not invent Notes when a named note exists or the brief named one."""
+    named_present = any(
+        isinstance(f, dict) and is_named_notes_field(f) for f in (fields or [])
+    )
+    if named_present:
+        return True
+    if brief_has_named_notes_cue(prompt):
+        return True
+    generics = [
+        f for f in (fields or []) if isinstance(f, dict) and is_bare_generic_notes_field(f)
+    ]
+    if generics:
+        return True
+    return False
+
+
 def honor_stated_brief_cues(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
-    """Materialize stated states, stock menu parent, and no-invent Type — class-wide."""
+    """Materialize stated states, stock menu parent, no-invent Type, one notes surface."""
     notes: list[str] = []
     text = prompt or str(draft.get("_user_prompt") or "")
     if not text or not isinstance(draft, dict):
@@ -260,6 +415,145 @@ def honor_stated_brief_cues(draft: dict[str, Any], *, prompt: str = "") -> list[
     notes.extend(_honor_stated_states(draft, text))
     notes.extend(_honor_menu_parent(draft, text))
     notes.extend(_drop_uncued_type_fields(draft, text))
+    notes.extend(dedupe_notes_surfaces(draft, prompt=text))
+    return notes
+
+
+def dedupe_notes_surfaces(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
+    """One notes surface per cue — prefer brief-named; drop generic Notes/Description siblings.
+
+    Class-wide (not Vehicle-only):
+    - Named note (Assignment Note, Remarks, …) → drop bare Notes/Description on same model
+    - Single bare «notes» cue → keep one Notes; drop uncued Description sibling
+    - No two free-text note siblings without two distinct cues
+    """
+    notes: list[str] = []
+    text = prompt or str(draft.get("_user_prompt") or "")
+    if not isinstance(draft, dict):
+        return notes
+    wants_generic_notes = brief_asks_generic_notes(text)
+    wants_description = brief_asks_description(text)
+    has_named_cue = brief_has_named_notes_cue(text)
+    dropped_any = False
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        mid = str(model.get("model") or "")
+        if not mid.startswith("x_"):
+            continue
+        fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
+        if not fields:
+            continue
+        named = [f for f in fields if is_named_notes_field(f)]
+        generics = [f for f in fields if is_bare_generic_notes_field(f)]
+        drop_names: set[str] = set()
+
+        if named and generics:
+            for g in generics:
+                n = str(g.get("name") or "")
+                if n:
+                    drop_names.add(n)
+            if drop_names:
+                prefer = str(named[0].get("string") or named[0].get("name") or "")
+                notes.append(
+                    f"brief_cues: dropped generic notes on {mid} "
+                    f"({', '.join(sorted(drop_names))}) — prefer named {prefer}"
+                )
+        elif len(generics) > 1 and wants_generic_notes and wants_description:
+            pass  # two cues → keep Notes + Description
+        elif len(generics) > 1:
+            keep_name: str | None = None
+            if wants_generic_notes and not wants_description:
+                keep_name = next(
+                    (
+                        str(g.get("name"))
+                        for g in generics
+                        if str(g.get("name") or "") in {"x_notes", "x_note"}
+                        or str(g.get("string") or "").lower() in {"notes", "note"}
+                    ),
+                    None,
+                )
+            elif wants_description and not wants_generic_notes:
+                keep_name = next(
+                    (
+                        str(g.get("name"))
+                        for g in generics
+                        if str(g.get("name") or "") == "x_description"
+                        or str(g.get("string") or "").lower() == "description"
+                    ),
+                    None,
+                )
+            else:
+                keep_name = next(
+                    (
+                        str(g.get("name"))
+                        for g in generics
+                        if str(g.get("name") or "") in {"x_notes", "x_note"}
+                        or str(g.get("string") or "").lower() in {"notes", "note"}
+                    ),
+                    str(generics[0].get("name") or "") or None,
+                )
+            if keep_name is None and generics:
+                keep_name = str(generics[0].get("name") or "")
+            for g in generics:
+                n = str(g.get("name") or "")
+                if n and n != keep_name:
+                    drop_names.add(n)
+            if drop_names:
+                notes.append(
+                    f"brief_cues: collapsed notes surfaces on {mid} "
+                    f"(kept {keep_name}, dropped {', '.join(sorted(drop_names))})"
+                )
+        elif generics and has_named_cue and not wants_generic_notes and not named:
+            # Named cue but only generic chrome — drop Description siblings of Notes.
+            notes_only = [
+                g
+                for g in generics
+                if str(g.get("name") or "") in {"x_notes", "x_note"}
+                or str(g.get("string") or "").lower() in {"notes", "note"}
+            ]
+            desc = [
+                g
+                for g in generics
+                if str(g.get("name") or "") == "x_description"
+                or str(g.get("string") or "").lower() == "description"
+            ]
+            if notes_only and desc:
+                for g in desc:
+                    n = str(g.get("name") or "")
+                    if n:
+                        drop_names.add(n)
+                if drop_names:
+                    notes.append(
+                        f"brief_cues: dropped Description sibling on {mid} "
+                        f"(named notes cue; kept Notes)"
+                    )
+        elif generics and not wants_generic_notes and not wants_description and not has_named_cue:
+            for g in generics:
+                src = str(g.get("source") or "")
+                if src in {"apply_readiness", "senior_shape", "domain_density", "pad"}:
+                    n = str(g.get("name") or "")
+                    if n:
+                        drop_names.add(n)
+            if drop_names:
+                notes.append(
+                    f"brief_cues: dropped unsolicited notes pad on {mid} "
+                    f"({', '.join(sorted(drop_names))})"
+                )
+
+        if drop_names:
+            dropped_any = True
+            model["fields"] = [
+                f for f in fields if str(f.get("name") or "") not in drop_names
+            ]
+
+    if dropped_any:
+        try:
+            from app.ai_apply_readiness import scrub_unknown_arch_field_refs
+
+            notes.extend(scrub_unknown_arch_field_refs(draft))
+        except Exception:  # noqa: BLE001
+            pass
     return notes
 
 
@@ -436,10 +730,18 @@ def _drop_uncued_type_fields(draft: dict[str, Any], text: str) -> list[str]:
 
 
 __all__ = [
+    "brief_asks_description",
+    "brief_asks_generic_notes",
+    "brief_has_named_notes_cue",
     "brief_has_type_cue",
+    "dedupe_notes_surfaces",
     "honor_stated_brief_cues",
+    "is_bare_generic_notes_field",
+    "is_named_notes_field",
+    "model_has_notes_surface",
     "model_is_equipment_roster",
     "selection_literal_from_keys",
+    "should_skip_generic_notes_pad",
     "stated_menu_parent",
     "stated_workflow_states",
     "transitions_for_states",

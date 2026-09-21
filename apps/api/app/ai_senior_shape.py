@@ -404,7 +404,14 @@ def infer_extension_fields(prompt: str, *, pad: bool = True) -> list[dict[str, A
     # A "single extra field" ask must stay one column — do not invent notes/active.
     # Field packs pass pad=False so Vendor TIN is not dumped next to Active.
     if pad and fields and not assessment.gaps and not single_field:
-        if "x_notes" not in names and len(fields) < 3:
+        skip_notes = False
+        try:
+            from app.ai_brief_cues import should_skip_generic_notes_pad
+
+            skip_notes = should_skip_generic_notes_pad(fields, prompt=text)
+        except Exception:  # noqa: BLE001
+            skip_notes = "x_notes" in names
+        if "x_notes" not in names and len(fields) < 3 and not skip_notes:
             fields.append({"name": "x_notes", "ttype": "text", "string": "Notes"})
             names.add("x_notes")
         if len(fields) < 3 and "x_active" not in names:

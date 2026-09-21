@@ -1430,7 +1430,12 @@ def polish_register_surface(draft: dict[str, Any], *, prompt: str = "") -> list[
         return notes
     keep_status = bool(_STATUS_PROMPT_RE.search(text))
     keep_code = bool(_CODE_PROMPT_RE.search(text))
-    keep_notes = bool(_NOTES_PROMPT_RE.search(text))
+    try:
+        from app.ai_brief_cues import brief_asks_generic_notes
+
+        keep_notes = brief_asks_generic_notes(text)
+    except Exception:  # noqa: BLE001
+        keep_notes = bool(_NOTES_PROMPT_RE.search(text))
     keep_checkin_vocab = bool(_CHECKIN_PROMPT_RE.search(text))
     from app.multi_company_pack import prompt_asks_multi_company, strip_multi_company_record_rules
 
