@@ -11,9 +11,11 @@ pytestmark = pytest.mark.no_app_db
 os.environ["AI_INTENT_LLM"] = "off"
 
 from app.ai_constraint_ast import (  # noqa: E402
+    CONSTRAINT_AST_SCHEMA,
     ConstraintAST,
     ConstraintField,
     ast_to_must_do,
+    expert_gate_llm_ast,
     merge_asts,
     merge_must_do,
     parse_det,
@@ -210,3 +212,85 @@ def test_visitor_log_full_app_title_unchanged() -> None:
     assert u.grain == "full_app"
     assert "visitor" in u.title.lower()
     assert "field" not in u.title.lower()
+
+
+def test_constraint_ast_schema_is_strict() -> None:
+    """Flash fill schema — additionalProperties false + grain/ttype enums."""
+    assert CONSTRAINT_AST_SCHEMA.get("additionalProperties") is False
+    props = CONSTRAINT_AST_SCHEMA["properties"]
+    assert props["grain"]["enum"] == ['field_pack', 'feature_slice', 'full_app']
+    field_item = props["fields"]["items"]
+    assert field_item.get("additionalProperties") is False
+    assert "char" in field_item["properties"]["ttype"]["enum"]
+    assert "label" in field_item["required"]
+
+
+def test_expert_gate_rejects_soft_echo_keeps_novel() -> None:
+    det = parse_det(TOPE_SALES, host="sale.order", inherit=True, grain="field_pack")
+    echo = ConstraintAST(
+        grain="field_pack",
+        host="sale.order",
+        fields=[ConstraintField(label="Customer PO reference", ttype="char")],
+        source="llm",
+    )
+    assert expert_gate_llm_ast(det, echo) is None
+    assert expert_gate_llm_ast(det, None) is None
+    soft = ConstraintAST(grain="field_pack", uncertain=True, source="llm")
+    assert expert_gate_llm_ast(det, soft) is None
+    novel = ConstraintAST(
+        grain="field_pack",
+        host="sale.order",
+        fields=[ConstraintField(label="Carrier tracking URL", ttype="char")],
+        hints=["Show badge when carrier set"],
+        source="llm",
+    )
+    gated = expert_gate_llm_ast(det, novel)
+    assert gated is not None
+    assert any("tracking" in f.label.lower() for f in gated.fields)
+    # Merge still never shrinks det floor
+    merged = merge_asts(det, gated)
+    labels = " | ".join(f.label.lower() for f in merged.fields)
+    assert "customer po" in labels
+    assert "delivery window" in labels
+    assert "tracking" in labels
+
+
+def test_enrich_cache_roundtrip(monkeypatch) -> None:
+    """Process cache returns same Flash payload without a second provider call."""
+    from app.ai_conversation import understand as u_mod
+
+    u_mod.clear_enrich_cache()
+    calls = {"n": 0}
+    payload = {
+        "title": "Customer PO + delivery window",
+        "summary": "Inherit sale.order with PO + window.",
+        "confidence": "high",
+        "constraints": ["Field: Carrier tracking URL"],
+        "constraint_ast": {
+            "grain": "field_pack",
+            "host": "sale.order",
+            "fields": [{"label": "Carrier tracking URL", "ttype": "char"}],
+            "hints": [],
+            "non_goals": [],
+        },
+    }
+
+    class _Prov:
+        def generate_json(self, *a, **k):
+            calls["n"] += 1
+            return payload
+
+    monkeypatch.setenv("AI_INTENT_LLM", "on")
+    # Force enrich path: provider present + intent on (patch where used).
+    monkeypatch.setattr(u_mod, "intent_llm_enabled", lambda: True)
+    monkeypatch.setattr(
+        "app.llm_provider.get_llm_provider_for_tier",
+        lambda tier="fast": _Prov(),
+    )
+    u1 = u_mod.build_understanding(TOPE_SALES)
+    u2 = u_mod.build_understanding(TOPE_SALES)
+    assert calls["n"] == 1, calls
+    joined = " | ".join(u1.constraints + u2.constraints).lower()
+    # Det floor survived
+    assert "customer po" in joined or "delivery window" in joined
+    u_mod.clear_enrich_cache()

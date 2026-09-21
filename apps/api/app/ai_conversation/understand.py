@@ -6,7 +6,8 @@ through a hybrid constraint AST (``app.ai_constraint_ast``):
 1. Deterministic floor — structural anchors always produce a complete baseline
    (``AI_INTENT_LLM=off`` tests must pass).
 2. Structured fill — optional Flash/constrained JSON maps free prose → AST
-   (behind ``AI_INTENT_LLM`` / enrich flags; never required for correctness).
+   (strict ``CONSTRAINT_AST_SCHEMA``, expert-gated acceptance, process cache;
+   behind ``AI_INTENT_LLM``; never required for correctness).
 3. Merge — AST → Must-do bullets; enrich/merge never shrinks below the det floor.
 
 Regex is an anchor inside det parse, not the only brain. Gold, refuse-clone,
@@ -27,6 +28,55 @@ logger = logging.getLogger(__name__)
 
 UNDERSTANDING_KEY = "understanding_json"
 DIAGNOSIS_KEY = "diagnosis"
+
+# Process-local Flash enrich cache (prompt+seed → parsed JSON). Never required
+# for correctness; AI_INTENT_LLM=off never hits this path.
+_ENRICH_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_ENRICH_CACHE_TTL_S = 300.0
+_ENRICH_CACHE_MAX = 64
+
+
+def _enrich_cache_key(prompt: str, det: "Understanding") -> str:
+    import hashlib
+
+    seed = "|".join(
+        [
+            (prompt or "").strip().lower(),
+            str(det.grain or ""),
+            str(det.host_model or ""),
+            str(bool(det.inherit_existing)),
+            "|".join(det.constraints[:8]),
+        ]
+    )
+    return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:40]
+
+
+def _enrich_cache_get(key: str) -> dict[str, Any] | None:
+    import time
+
+    row = _ENRICH_CACHE.get(key)
+    if not row:
+        return None
+    ts, payload = row
+    if time.monotonic() - ts > _ENRICH_CACHE_TTL_S:
+        _ENRICH_CACHE.pop(key, None)
+        return None
+    return dict(payload)
+
+
+def _enrich_cache_put(key: str, payload: dict[str, Any]) -> None:
+    import time
+
+    if len(_ENRICH_CACHE) >= _ENRICH_CACHE_MAX:
+        # Drop oldest
+        oldest = min(_ENRICH_CACHE.items(), key=lambda kv: kv[1][0])[0]
+        _ENRICH_CACHE.pop(oldest, None)
+    _ENRICH_CACHE[key] = (time.monotonic(), dict(payload))
+
+
+def clear_enrich_cache() -> None:
+    """Test helper — wipe Flash enrich cache."""
+    _ENRICH_CACHE.clear()
 
 
 def _coerce_craft_list(raw) -> list[dict]:
@@ -93,43 +143,34 @@ def _force_live_fields_for_residual(understanding: "Understanding", prompt: str)
     return understanding
 
 
-_UNDERSTAND_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "title": {"type": "string"},
-        "summary": {"type": "string"},
-        "host_model": {"type": "string"},
-        "inherit_existing": {"type": "boolean"},
-        "needs_module": {"type": "boolean"},
-        "capability": {"type": "string"},
-        "constraints": {"type": "array", "items": {"type": "string"}},
-        "out_of_scope": {"type": "array", "items": {"type": "string"}},
-        "confidence": {"type": "string", "enum": ["high", "low"]},
-        # Optional structured fill — same shape as ai_constraint_ast.ConstraintAST
-        "constraint_ast": {
-            "type": "object",
-            "properties": {
-                "fields": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "label": {"type": "string"},
-                            "ttype": {"type": "string"},
-                            "relation": {"type": "string"},
-                        },
-                    },
-                },
-                "host": {"type": "string"},
-                "hints": {"type": "array", "items": {"type": "string"}},
-                "non_goals": {"type": "array", "items": {"type": "string"}},
-                "grain": {"type": "string"},
-                "structural": {"type": "array", "items": {"type": "string"}},
-            },
+def _build_understand_schema() -> dict[str, Any]:
+    """Flash enrich schema — embeds strict CONSTRAINT_AST_SCHEMA for any prompt."""
+    schema: dict[str, Any] = {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "summary": {"type": "string"},
+            "host_model": {"type": "string"},
+            "inherit_existing": {"type": "boolean"},
+            "needs_module": {"type": "boolean"},
+            "capability": {"type": "string"},
+            "constraints": {"type": "array", "items": {"type": "string"}},
+            "out_of_scope": {"type": "array", "items": {"type": "string"}},
+            "confidence": {"type": "string", "enum": ["high", "low"]},
         },
-    },
-    "required": ["summary", "confidence"],
-}
+        "required": ["summary", "confidence"],
+    }
+    try:
+        from app.ai_constraint_ast import CONSTRAINT_AST_SCHEMA
+
+        schema["properties"]["constraint_ast"] = CONSTRAINT_AST_SCHEMA
+    except Exception:  # noqa: BLE001
+        schema["properties"]["constraint_ast"] = {"type": "object"}
+    return schema
+
+
+_UNDERSTAND_SCHEMA: dict[str, Any] = _build_understand_schema()
+
 
 
 @dataclass
@@ -1113,7 +1154,14 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
         )
         return _stamp_must_do_score(det, scored)
 
+    cache_key = _enrich_cache_key(prompt, det)
+
     def _call(*, repair_reasons: list[str] | None = None) -> dict[str, Any] | None:
+        # Cache only the primary (non-repair) fill — repairs are one-shot.
+        if not repair_reasons:
+            hit = _enrich_cache_get(cache_key)
+            if hit is not None:
+                return hit
         try:
             raw = provider.generate_json(
                 _must_do_user_prompt(prompt, det, repair_reasons=repair_reasons),
@@ -1125,7 +1173,10 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
         except LLMError as exc:
             logger.info("Understanding LLM skipped: %s", exc)
             return None
-        return _parse_enrich_payload(raw)
+        parsed_local = _parse_enrich_payload(raw)
+        if parsed_local and not repair_reasons:
+            _enrich_cache_put(cache_key, parsed_local)
+        return parsed_local
 
     parsed = _call()
     if not parsed:
@@ -1160,12 +1211,24 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
         llm_constraints = [str(x).strip() for x in extra if str(x).strip()]
 
     # Structured fill: optional constraint_ast → bullets on the LLM side only.
-    # Det floor stays ``det.constraints`` (never re-derived here — keeps
-    # backstop/monkeypatch semantics). Merge never shrinks that floor.
+    # Expert gate rejects soft/empty fills; det floor stays ``det.constraints``.
+    # Merge never shrinks that floor.
     try:
-        from app.ai_constraint_ast import ast_to_must_do, parse_llm
+        from app.ai_constraint_ast import (
+            ast_to_must_do,
+            expert_gate_llm_ast,
+            parse_det,
+            parse_llm,
+        )
 
         llm_ast = parse_llm(parsed)
+        det_ast = parse_det(
+            prompt,
+            host=det.host_model,
+            inherit=det.inherit_existing,
+            grain=det.grain,
+        )
+        llm_ast = expert_gate_llm_ast(det_ast, llm_ast)
         if llm_ast is not None:
             llm_constraints = _dedupe(ast_to_must_do(llm_ast) + llm_constraints)
     except Exception:  # noqa: BLE001
@@ -1197,6 +1260,28 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
                 if isinstance(repair_extra, list)
                 else []
             )
+            # Repair Flash may also emit constraint_ast — expert-gate + floor.
+            try:
+                from app.ai_constraint_ast import (
+                    ast_to_must_do,
+                    expert_gate_llm_ast,
+                    parse_det,
+                    parse_llm,
+                )
+
+                repair_ast = expert_gate_llm_ast(
+                    parse_det(
+                        prompt,
+                        host=det.host_model,
+                        inherit=det.inherit_existing,
+                        grain=det.grain,
+                    ),
+                    parse_llm(repaired),
+                )
+                if repair_ast is not None:
+                    repair_rows = _dedupe(ast_to_must_do(repair_ast) + repair_rows)
+            except Exception:  # noqa: BLE001
+                pass
             if repair_rows:
                 candidate = _merge_must_do(
                     det.constraints,
@@ -1650,6 +1735,7 @@ __all__ = [
     "attach_understanding",
     "reconcile_contract_with_draft",
     "build_understanding",
+    "clear_enrich_cache",
     "diagnosis_clarification",
     "diagnosis_confirmed",
     "dump_understanding",

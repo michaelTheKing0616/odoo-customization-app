@@ -912,17 +912,30 @@ def prefer_pack_title(
 
 
 
+# Strict schema for Flash enrich — additionalProperties false; ttype/grain enums.
+# Expert gate (expert_gate_llm_ast) rejects soft/empty fills before merge.
 CONSTRAINT_AST_SCHEMA: dict[str, Any] = {
     "type": "object",
+    "additionalProperties": False,
     "properties": {
         "fields": {
             "type": "array",
             "items": {
                 "type": "object",
+                "additionalProperties": False,
                 "properties": {
-                    "label": {"type": "string"},
-                    "ttype": {"type": "string"},
+                    "label": {"type": "string", "minLength": 1},
+                    "ttype": {
+                        "type": "string",
+                        "enum": [
+                            "binary", "boolean", "char", "date", "datetime",
+                            "float", "html", "image", "integer", "many2many",
+                            "many2one", "monetary", "one2many", "selection", "text",
+                        ],
+                    },
                     "relation": {"type": "string"},
+                    "selection_options": {"type": "string"},
+                    "bare": {"type": "boolean"},
                 },
                 "required": ["label"],
             },
@@ -930,12 +943,53 @@ CONSTRAINT_AST_SCHEMA: dict[str, Any] = {
         "host": {"type": "string"},
         "hints": {"type": "array", "items": {"type": "string"}},
         "non_goals": {"type": "array", "items": {"type": "string"}},
-        "grain": {"type": "string"},
+        "grain": {
+            "type": "string",
+            "enum": ["field_pack", "feature_slice", "full_app"],
+        },
         "model_id": {"type": "string"},
         "model_label": {"type": "string"},
         "structural": {"type": "array", "items": {"type": "string"}},
     },
 }
+
+
+def expert_gate_llm_ast(
+    det: ConstraintAST,
+    llm: ConstraintAST | None,
+) -> ConstraintAST | None:
+    """Expert quality gate for Flash AST fill — reject soft / useless fills.
+
+    Det floor always stands alone when LLM is empty, uncertain-only, or adds
+    no novel fields/hints/non_goals/structural. Never required for correctness
+    tests (AI_INTENT_LLM=off never reaches here).
+    """
+    if llm is None:
+        return None
+    # Soft uncertain with no concrete content → drop
+    if llm.uncertain and not llm.fields and not llm.hints and not llm.structural:
+        return None
+    # No useful payload at all
+    if not llm.fields and not llm.hints and not llm.non_goals and not llm.structural:
+        return None
+    # If det already has a strong field floor and LLM adds nothing novel, drop
+    det_labels = {_norm_label(f.label) for f in det.fields}
+    novel = [
+        f
+        for f in llm.fields
+        if _norm_label(f.label) and _norm_label(f.label) not in det_labels
+    ]
+    novel_hints = [h for h in llm.hints if h and h.lower() not in {x.lower() for x in det.hints}]
+    novel_ng = [
+        n for n in llm.non_goals if n and n.lower() not in {x.lower() for x in det.non_goals}
+    ]
+    novel_struct = [
+        s for s in llm.structural if s and s.lower() not in {x.lower() for x in det.structural}
+    ]
+    if det.fields and not novel and not novel_hints and not novel_ng and not novel_struct:
+        # Host/grain-only echo — not a useful fill
+        return None
+    return llm
 
 
 __all__ = [
@@ -944,6 +998,7 @@ __all__ = [
     "ConstraintField",
     "ast_to_must_do",
     "expand_field_chunk",
+    "expert_gate_llm_ast",
     "iter_add_field_labels",
     "merge_asts",
     "merge_must_do",
