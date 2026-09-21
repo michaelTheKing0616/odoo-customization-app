@@ -5,7 +5,7 @@ classes:
   - id: accounting
     title: Accounting
     status: complete
-    blurb: Journals, CoA, taxes, FY, lock dates, opening balances, currency, payment terms.
+    blurb: Journals, CoA, taxes, FY, lock dates, opening balances, currency, payment terms, journal batch.
     intents:
       - id: accounting.journals
         title: Journals
@@ -25,16 +25,16 @@ classes:
         title: Taxes
         models: [account.tax]
         risk: L2
-        recipe: null
+        recipe: accounting.tax_pack
         status: complete
-        blurb: Align to l10n taxes — never invent account.tax from scratch.
+        blurb: Tax pack via RPC (NG/generic starter). Prefer l10n localization.
       - id: accounting.fy
         title: Fiscal year / periods
         models: [account.fiscal.year, res.company]
         risk: L2
-        recipe: null
+        recipe: accounting.fiscal_year
         status: complete
-        blurb: Fiscal calendar awareness via company + lock fields.
+        blurb: Fiscal year create/report via account.fiscal.year when present.
       - id: accounting.lock_dates
         title: Lock dates
         models: [res.company]
@@ -74,44 +74,63 @@ classes:
   - id: master_data
     title: Master data
     status: stub
-    blurb: Partners, products, UoM, pricelists, fiscal positions.
+    blurb: Partners, products, UoM — Import/Ingest pointers until Batch OS master recipes land.
     intents:
       - id: master.partners
         title: Partners
         models: [res.partner]
         risk: L1
-        recipe: null
+        recipe: master_data.partners_batch
         status: stub
+        blurb: Partner CSV via Import / Ingest. Recipe pointer only.
       - id: master.products
         title: Products
         models: [product.template, product.product]
         risk: L1
-        recipe: null
+        recipe: master_data.products_batch
         status: stub
+        blurb: Product CSV via Import / Ingest. Recipe pointer only.
       - id: master.uom
         title: Units of measure
         models: [uom.uom, uom.category]
         risk: L1
         recipe: null
         status: stub
+        blurb: UoM packs — planned; use Import for now.
 
   - id: document_batch
     title: Document batch
-    status: stub
-    blurb: Mass create / transition sales, purchases, invoices, pickings.
+    status: complete
+    blurb: Invoices, bills, payment matching via Batch OS runner.
     intents:
       - id: docs.invoices
-        title: Invoice batch
-        models: [account.move]
+        title: Invoices & bills
+        models: [account.move, res.partner, product.product, account.tax]
+        risk: L1
+        recipe: document_batch.invoices
+        status: complete
+        blurb: CSV/XLSX → draft out_invoice / in_invoice. Optional L2 post.
+      - id: docs.payments
+        title: Payment matching
+        models: [account.payment, account.payment.register, account.move]
         risk: L2
-        recipe: null
-        status: stub
+        recipe: document_batch.payments
+        status: complete
+        blurb: Register payments against open moves. Dry-run first. Preview ≠ posted.
       - id: docs.orders
         title: Order batch
         models: [sale.order, purchase.order]
         risk: L1
         recipe: null
         status: stub
+        blurb: Sales/purchase order batch — planned after invoice layer.
+      - id: docs.journal
+        title: Journal entries
+        models: [account.move]
+        risk: L1
+        recipe: accounting.journal_batch
+        status: complete
+        blurb: Cross-link to accounting.journal_batch on the same runner.
 
   - id: settings
     title: Settings
@@ -122,8 +141,9 @@ classes:
         title: Settings toggles
         models: [res.config.settings]
         risk: L2
-        recipe: null
+        recipe: settings.board_apply
         status: stub
+        blurb: Pointer to Config recipes settings allowlist.
 
   - id: access_company
     title: Access & company
@@ -134,14 +154,16 @@ classes:
         title: Users & groups
         models: [res.users, res.groups]
         risk: L2
-        recipe: null
+        recipe: access_company.users
         status: stub
+        blurb: Pointer to Access / Config recipes.
       - id: access.multi_company
         title: Multi-company
         models: [res.company]
         risk: L2
         recipe: null
         status: stub
+        blurb: Multi-company setup — planned.
 
   - id: automation
     title: Automation
@@ -152,14 +174,16 @@ classes:
         title: Cron / scheduled actions
         models: [ir.cron]
         risk: L2
-        recipe: null
+        recipe: automation.cron_pack
         status: stub
+        blurb: Pointer to Cron Manager.
       - id: auto.base
         title: Base automations
         models: [base.automation]
         risk: L2
         recipe: null
         status: stub
+        blurb: base.automation packs — planned.
 
   - id: ui_studio
     title: UI / Studio
@@ -170,14 +194,16 @@ classes:
         title: Views
         models: [ir.ui.view]
         risk: L1
-        recipe: null
+        recipe: ui_studio.view_pack
         status: stub
+        blurb: Pointer to App Studio / View Designer.
       - id: ui.menus
         title: Menus
         models: [ir.ui.menu]
         risk: L1
         recipe: null
         status: stub
+        blurb: Menu packs — planned.
 
   - id: housekeeping
     title: Housekeeping
@@ -188,11 +214,13 @@ classes:
         title: Attachment cleanup
         models: [ir.attachment]
         risk: L2
-        recipe: null
+        recipe: housekeeping.attachments
         status: stub
+        blurb: Pointer to Bulk Suite attachment tools.
       - id: house.dedupe
         title: Deduplicate
         models: [res.partner, product.product]
         risk: L2
         recipe: null
         status: stub
+        blurb: Dedupe via Bulk Suite.

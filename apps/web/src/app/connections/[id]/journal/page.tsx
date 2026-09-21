@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, AuditLogRow, Connection, HealthCheckRun, SnapshotRow } from "@/lib/api";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
@@ -12,9 +12,10 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Card, EmptyState, PageHeader } from "@/components/ui/layout-primitives";
 import { EMPTY_STATES, REVERSIBILITY } from "@/lib/copy-guide";
 import { JournalBatchPanel } from "@/components/batch-os/JournalBatchPanel";
+import { DocumentBatchPanel } from "@/components/batch-os/DocumentBatchPanel";
 
 type TimelineFilter = "all" | "snapshot" | "audit" | "health";
-type PageTab = "timeline" | "batch";
+type PageTab = "timeline" | "batch" | "invoices";
 
 type TimelineEntry =
   | { kind: "snapshot"; at: string; snapshot: SnapshotRow }
@@ -46,7 +47,11 @@ export default function ChangeJournalPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [tab, setTab] = useState<PageTab>("timeline");
+  const searchParams = useSearchParams();
+  const initialTab = (searchParams.get("tab") as PageTab | null) || "timeline";
+  const [tab, setTab] = useState<PageTab>(
+    initialTab === "batch" || initialTab === "invoices" ? initialTab : "timeline",
+  );
 
   const refresh = useCallback(async () => {
     const [conn, snaps, logs, runs] = await Promise.all([
@@ -133,7 +138,7 @@ export default function ChangeJournalPage() {
     <div className="mx-auto max-w-5xl" data-testid="journal-page">
       <PageHeader
         title="Change journal"
-        description="Change timeline · Accounting journal batch (CSV → draft account.move)"
+        description="Change timeline · Journal batch · Invoices & bills (CSV → draft account.move)"
       />
       <VersionAwarenessBanner capabilities={connection?.capabilities} />
 
@@ -154,11 +159,24 @@ export default function ChangeJournalPage() {
         >
           Batch flow
         </Button>
+        <Button
+          type="button"
+          variant={tab === "invoices" ? "secondary" : "ghost"}
+          size="sm"
+          onClick={() => setTab("invoices")}
+          data-testid="journal-tab-invoices"
+        >
+          Invoices & bills
+        </Button>
       </div>
 
       {tab === "batch" ? (
         <div className="mt-6">
           <JournalBatchPanel connectionId={connectionId} />
+        </div>
+      ) : tab === "invoices" ? (
+        <div className="mt-6">
+          <DocumentBatchPanel connectionId={connectionId} />
         </div>
       ) : (
       <>

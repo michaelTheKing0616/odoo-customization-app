@@ -4224,6 +4224,70 @@ listConfigRecipes: (id: string) =>
       method: "POST",
       body: JSON.stringify(body),
     }),
+  batchOsDocumentIntake: async (id: string, file: File, recipeId = "document_batch.invoices") => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("recipe_id", recipeId);
+    return requestForm<BatchOsJob>(`/api/connections/${id}/batch-os/document/intake`, fd);
+  },
+  batchOsDocumentMap: (
+    id: string,
+    body: { job_id: string; column_map: Record<string, string> },
+  ) =>
+    request<BatchOsJob>(`/api/connections/${id}/batch-os/document/map`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  batchOsDocumentDryRun: (id: string, body: { job_id: string }) =>
+    request<BatchOsJob>(`/api/connections/${id}/batch-os/document/dry-run`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  batchOsDocumentApply: (
+    id: string,
+    body: {
+      job_id: string;
+      post_after_create?: boolean;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<BatchOsJob>(`/api/connections/${id}/batch-os/document/apply`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  batchOsPaymentIntake: async (id: string, file: File, recipeId = "document_batch.payments") => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("recipe_id", recipeId);
+    return requestForm<BatchOsJob>(`/api/connections/${id}/batch-os/payment/intake`, fd);
+  },
+  batchOsPaymentMap: (
+    id: string,
+    body: { job_id: string; column_map: Record<string, string> },
+  ) =>
+    request<BatchOsJob>(`/api/connections/${id}/batch-os/payment/map`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  batchOsPaymentDryRun: (id: string, body: { job_id: string }) =>
+    request<BatchOsJob>(`/api/connections/${id}/batch-os/payment/dry-run`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  batchOsPaymentApply: (
+    id: string,
+    body: {
+      job_id: string;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<BatchOsJob>(`/api/connections/${id}/batch-os/payment/apply`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   batchOsJob: (id: string, jobId: string) =>
     request<BatchOsJob>(`/api/connections/${id}/batch-os/jobs/${jobId}`),
 

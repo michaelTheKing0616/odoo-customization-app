@@ -50,5 +50,13 @@ def test_recipe_registry_p0():
     assert cards["accounting.lock_dates"].risk == "L3"
     assert get_recipe("accounting.opening_balances") is not None
     stubs = [c for c in list_recipes() if c.status == "stub"]
-    assert len(stubs) >= 7
+    assert len(stubs) >= 5  # pointer stubs remain; document_batch recipes are complete
     assert HONESTY_PREVIEW_NE_POSTED
+
+
+def test_document_and_tax_recipes_registered():
+    cards = {c.id: c for c in list_recipes()}
+    assert cards["document_batch.invoices"].status == "complete"
+    assert cards["document_batch.payments"].risk == "L2"
+    assert cards["accounting.tax_pack"].status == "complete"
+    assert get_recipe("accounting.fiscal_year") is not None

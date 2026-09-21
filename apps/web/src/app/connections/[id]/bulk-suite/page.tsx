@@ -615,6 +615,18 @@ export default function BulkSuitePage() {
       />
       <VersionAwarenessBanner capabilities={connection?.capabilities} />
 
+      <Callout variant="info" title="Invoices & bills" className="mt-4" testId="bulk-suite-document-batch-link">
+        CSV/XLSX invoice & bill intake lives on{" "}
+        <a
+          className="font-medium text-accent underline"
+          href={`/connections/${connectionId}/journal?tab=invoices`}
+        >
+          Snapshots & Journal → Invoices & bills
+        </a>
+        . Same Batch OS runner as Journal batch — dry-run first; preview ≠ posted.
+      </Callout>
+
+
       {(showRecipes || true) ? (
         <BulkRecipeChips
           onPick={(r) => {

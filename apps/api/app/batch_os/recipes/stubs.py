@@ -78,13 +78,48 @@ class StubRecipe:
 
 
 STUB_SPECS = [
-    ("master_data.partners_batch", "Partner batch", "Stub — use Import / Ingest", "master_data"),
-    ("document_batch.invoices", "Invoice batch", "Stub — use Bulk Suite transitions", "document_batch"),
-    ("settings.board_apply", "Settings board", "Stub — use Config recipes settings", "settings"),
-    ("access_company.users", "Users pack", "Stub — use Access / Config recipes", "access_company"),
-    ("automation.cron_pack", "Cron pack", "Stub — use Cron Manager", "automation"),
-    ("ui_studio.view_pack", "View pack", "Stub — use App Studio / View Designer", "ui_studio"),
-    ("housekeeping.attachments", "Attachment cleanup", "Stub — use Bulk Suite", "housekeeping"),
+    (
+        "master_data.partners_batch",
+        "Partner batch",
+        "Pointer — use Import / Ingest for res.partner CSV; Batch OS intake planned.",
+        "master_data",
+    ),
+    (
+        "master_data.products_batch",
+        "Product batch",
+        "Pointer — use Import / Ingest for product.template; Batch OS intake planned.",
+        "master_data",
+    ),
+    (
+        "settings.board_apply",
+        "Settings board",
+        "Pointer — use Config recipes / settings allowlist board (res.config.settings).",
+        "settings",
+    ),
+    (
+        "access_company.users",
+        "Users pack",
+        "Pointer — use Access / Config recipes for res.users + groups.",
+        "access_company",
+    ),
+    (
+        "automation.cron_pack",
+        "Cron pack",
+        "Pointer — use Cron Manager for ir.cron; no silent cron invent.",
+        "automation",
+    ),
+    (
+        "ui_studio.view_pack",
+        "View pack",
+        "Pointer — use App Studio / View Designer for ir.ui.view.",
+        "ui_studio",
+    ),
+    (
+        "housekeeping.attachments",
+        "Attachment cleanup",
+        "Pointer — use Bulk Suite archive/dedupe for ir.attachment.",
+        "housekeeping",
+    ),
 ]
 
 
