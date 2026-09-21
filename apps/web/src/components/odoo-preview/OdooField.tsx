@@ -129,20 +129,31 @@ function WidgetBody({ field }: { field: PreviewField }) {
     );
   }
 
+  // Honest sample — never reuse the field string as the value (that looked
+  // like two fields both named "Customer PO reference" / etc.).
   const sample = isStockPlaceholder(field)
     ? field.name === "_host_name"
       ? "Sample contact"
       : ""
     : field.name === "x_name" || field.name.endsWith("_name")
       ? "Sample record"
-      : field.string || field.name;
+      : "Sample";
 
   // Never render literal False/True/checkbox as the visible value.
-  const safe =
+  // Also never let a typed sample equal the label (duplicate-label chrome).
+  const label = (field.string || field.name || "").trim().toLowerCase();
+  let safe =
     typeof sample === "string" &&
     ["false", "true", "checkbox", "boolean"].includes(sample.toLowerCase())
       ? ""
       : sample;
+  if (
+    typeof safe === "string" &&
+    safe.trim() &&
+    safe.trim().toLowerCase() === label
+  ) {
+    safe = "Sample";
+  }
 
   return (
     <span className="odoo-widget-char" data-testid={`odoo-widget-char-${field.name}`}>

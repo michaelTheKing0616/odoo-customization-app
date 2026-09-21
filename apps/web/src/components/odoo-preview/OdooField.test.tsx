@@ -84,6 +84,20 @@ describe("OdooField widgets", () => {
     render(<OdooField field={field} />);
     expect(screen.getByTestId("odoo-widget-date-x_date")).toBeTruthy();
   });
+  it("never uses the field label as the char sample value", () => {
+    const field: PreviewField = {
+      id: "x_customer_po_reference",
+      name: "x_customer_po_reference",
+      string: "Customer PO reference",
+      ttype: "char",
+    };
+    render(<OdooField field={field} />);
+    const label = screen.getByText("Customer PO reference");
+    expect(label).toBeTruthy();
+    const value = screen.getByTestId("odoo-widget-char-x_customer_po_reference");
+    expect(value.textContent || "").toBe("Sample");
+    expect(value.textContent || "").not.toBe("Customer PO reference");
+  });
 });
 
 describe("OdooKanbanView", () => {

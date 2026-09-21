@@ -76,6 +76,38 @@ def test_preview_canvas_shows_alert_chrome() -> None:
     alerts = form.get("alerts") or []
     assert alerts
     assert alerts[0].get("message")
+    # Single banner line — no redundant When: echo of the same condition.
+    assert not alerts[0].get("when")
+    msg = str(alerts[0]["message"]).lower()
+    assert "when:" not in msg
+
+
+def test_prefer_sales_field_preview_no_double_label() -> None:
+    """Structural preview: one Customer PO field; sample must not equal label."""
+    draft, _hosts, _warns = draft_component_from_prompt(PREFER_SALES, grain="field_pack")
+    apply_hint_chrome(draft, prompt=PREFER_SALES)
+    inherit = next(m for m in draft["models"] if m.get("mode") == "inherit")
+    strings = [
+        str(f.get("string") or "").strip().lower()
+        for f in (inherit.get("fields") or [])
+        if isinstance(f, dict)
+    ]
+    assert strings.count("customer po reference") == 1
+    form = build_form_preview(draft)
+    assert form is not None
+    po_rows = []
+    for group in form.get("groups") or []:
+        for field in group.get("fields") or []:
+            if "po" in str(field.get("string") or "").lower():
+                po_rows.append(field)
+    for notebook in form.get("notebooks") or []:
+        for page in notebook.get("pages") or []:
+            for field in page.get("fields") or []:
+                if "po" in str(field.get("string") or "").lower():
+                    po_rows.append(field)
+    assert len(po_rows) == 1
+    # PreviewField has no sample stamped as the label (frontend owns sample).
+    assert po_rows[0].get("string") == "Customer PO reference"
 
 
 def test_residual_hint_chrome_any_grain() -> None:

@@ -47,4 +47,25 @@ describe("OdooFormView", () => {
     expect(screen.getByTestId("odoo-widget-char-x_name")).toBeTruthy();
     expect(screen.getByTestId("odoo-widget-m2o-x_partner_id")).toBeTruthy();
   });
+
+  it("renders a single hint banner without When echo", () => {
+    const withAlert: PreviewFormView = {
+      ...SAMPLE,
+      alerts: [
+        {
+          id: "hint_0",
+          level: "warning",
+          message: "Customer PO is set but the delivery window is incomplete",
+          when: "PO is set but delivery window is incomplete",
+          kind: "alert",
+        },
+      ],
+    };
+    render(<OdooFormView view={withAlert} />);
+    expect(screen.getByTestId("odoo-form-alert-hint_0")).toBeTruthy();
+    expect(
+      screen.getByText("Customer PO is set but the delivery window is incomplete"),
+    ).toBeTruthy();
+    expect(screen.queryByText(/When:/i)).toBeNull();
+  });
 });

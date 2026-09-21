@@ -408,16 +408,15 @@ def attach_preview_alerts(
         return form_preview
     alerts: list[dict[str, Any]] = []
     for row in chrome_rows:
-        source = str(row.get("source") or "")
-        when = None
-        if " when " in source.lower():
-            when = _clean_cond(source.split(" when ", 1)[-1])
+        # Single banner line: condition lives in ``message`` only.
+        # Never stamp a redundant ``when`` echo (UI used to render
+        # title + "When: …" with the same condition twice).
         alerts.append(
             {
                 "id": f"hint_{len(alerts)}",
                 "level": str(row.get("level") or "warning"),
                 "message": str(row.get("message") or ""),
-                "when": when,
+                "when": None,
                 "kind": str(row.get("kind") or "alert"),
             }
         )

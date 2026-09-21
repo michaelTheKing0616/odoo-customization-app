@@ -59,10 +59,8 @@ export function OdooFormView({
             data-testid={`odoo-form-alert-${alert.id}`}
             data-hint-kind={alert.kind || "alert"}
           >
+            {/* One banner line — never title + redundant When: echo */}
             <div className="odoo-form-alert-message">{alert.message}</div>
-            {alert.when ? (
-              <div className="odoo-form-alert-when">When: {alert.when}</div>
-            ) : null}
           </div>
         ))}
         <OdooButtonBox buttons={view.smartButtons || []} />
