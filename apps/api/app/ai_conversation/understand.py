@@ -36,10 +36,11 @@ def _coerce_craft_list(raw) -> list[dict]:
 
 
 def _attach_craft_proposals(prompt: str, understanding: "Understanding") -> "Understanding":
-    """Fill craft_proposals for residual full_app (Nice-to-have Diagnosis chips)."""
-    if understanding.inherit_existing or understanding.grain in {"field_pack", "feature_slice"}:
-        understanding.craft_proposals = []
-        return understanding
+    """Fill craft_proposals for Diagnosis Nice-to-have chips (all grains).
+
+    ``propose_craft_smart_buttons`` itself skips Prefer/inherit-without-residual
+    and empty-relation briefs — do not grain-gate here.
+    """
     try:
         from app.ai_craft_smart_buttons import propose_craft_smart_buttons
 
@@ -1293,7 +1294,7 @@ def build_understanding(prompt: str) -> Understanding:
 
 def diagnosis_clarification(understanding: Understanding) -> dict[str, Any]:
     understanding = _force_live_fields_for_residual(understanding, "")
-    if not understanding.craft_proposals and not understanding.inherit_existing:
+    if not understanding.craft_proposals:
         _attach_craft_proposals("", understanding)
     from app.ai_grain import HOST_LABELS
 

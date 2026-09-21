@@ -305,23 +305,39 @@ def _drop_disallowed_stock_host_buttons(draft: dict[str, Any], *, prompt: str) -
 def apply_stock_host_smart_buttons(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
     """Stamp missing stock-host smart buttons; never invent them for residual full_app.
 
-    Residual full_app / visitor registers: scrub stock-host invent; Prefer field_pack
-    and punch/loyalty partner_tie still get Contacts (and loyalty PoS companions).
+    Confirmed craft stamps onto draft for ALL grains that can host stock smart
+    buttons (full_app / field_pack / feature_slice). Residual invent gates stay
+    when craft is empty. Prefer field_pack and punch/loyalty partner_tie still
+    get Contacts (and loyalty PoS companions) via the invent path below.
     """
     notes: list[str] = []
     text = prompt or str(draft.get("_user_prompt") or "")
     notes.extend(_drop_disallowed_stock_host_buttons(draft, prompt=text))
 
+    # Always stamp Diagnosis-confirmed craft first (any grain).
+    try:
+        from app.ai_craft_smart_buttons import apply_confirmed_craft_smart_buttons
+
+        notes.extend(apply_confirmed_craft_smart_buttons(draft, prompt=text))
+    except Exception:  # noqa: BLE001
+        pass
+
     residual = _is_residual_full_app(draft)
     allow_partner = partner_tie_allows_contacts_button(text)
-    # Residual: no silent stock-host invent unless partner_tie; craft chips are opt-in.
+    # Residual: no silent stock-host invent unless partner_tie; craft already applied.
     if residual and not allow_partner:
-        try:
-            from app.ai_craft_smart_buttons import apply_confirmed_craft_smart_buttons
+        return notes
 
-            notes.extend(apply_confirmed_craft_smart_buttons(draft, prompt=text))
-        except Exception:  # noqa: BLE001
-            pass
+    # Diagnosis carried craft_smart_buttons (incl. empty) on a non-Prefer brief:
+    # craft is the only door for stock-host buttons across all grains — do not
+    # invent Contacts/Employees after a field_pack / feature_slice grain stamp.
+    u_craft = draft.get("_understanding") if isinstance(draft.get("_understanding"), dict) else {}
+    if (
+        isinstance(u_craft, dict)
+        and "craft_smart_buttons" in u_craft
+        and not u_craft.get("inherit_existing")
+        and not allow_partner
+    ):
         return notes
 
     forbidden = _forbidden_hosts(draft)

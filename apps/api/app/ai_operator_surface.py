@@ -244,34 +244,42 @@ def build_operator_surface(draft: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    # Defence: craft rows missing from smart_buttons still appear on find-it.
-    if suppress_host_invent:
-        u_craft = draft.get("_understanding") if isinstance(draft.get("_understanding"), dict) else {}
-        for c in u_craft.get("craft_smart_buttons") or []:
-            if not isinstance(c, dict):
-                continue
-            on_model = str(c.get("on_model") or c.get("host_model") or "").strip()
-            related = str(c.get("related_model") or c.get("residual_model") or "").strip()
-            label = str(c.get("label") or related or "Open").strip()
-            if not on_model or not related or on_model.startswith("x_"):
-                continue
-            key = (on_model, related, label)
-            if any(
-                h.get("host_model") == on_model and h.get("residual_model") == related
-                for h in host_buttons
-            ):
-                continue
-            if key in seen_host:
-                continue
-            seen_host.add(key)
-            host_buttons.append(
-                {
-                    "host_model": on_model,
-                    "host_label": _host_label(on_model),
-                    "button_label": label,
-                    "residual_model": related,
-                }
-            )
+    # Defence: confirmed craft_smart_buttons ALWAYS appear as stock smart-button
+    # lines on find-it (label + host), even when smart_buttons missed the stamp
+    # or suppress_host_invent is False (grain flip / field_pack / feature_slice).
+    # Empty craft list ⇒ no emit (invent gates stay).
+    u_craft = draft.get("_understanding") if isinstance(draft.get("_understanding"), dict) else {}
+    for c in u_craft.get("craft_smart_buttons") or []:
+        if not isinstance(c, dict):
+            continue
+        on_model = str(c.get("on_model") or c.get("host_model") or "").strip()
+        related = str(c.get("related_model") or c.get("residual_model") or "").strip()
+        label = str(c.get("label") or related or "Open").strip()
+        if not on_model or not related or on_model.startswith("x_"):
+            continue
+        key = (on_model, related, label)
+        if any(
+            h.get("host_model") == on_model and h.get("residual_model") == related
+            for h in host_buttons
+        ):
+            # Prefer craft label on an existing host line (Visits not Visitor Logs).
+            for h in host_buttons:
+                if h.get("host_model") == on_model and h.get("residual_model") == related:
+                    if label and h.get("button_label") != label:
+                        h["button_label"] = label
+                    break
+            continue
+        if key in seen_host:
+            continue
+        seen_host.add(key)
+        host_buttons.append(
+            {
+                "host_model": on_model,
+                "host_label": _host_label(on_model),
+                "button_label": label,
+                "residual_model": related,
+            }
+        )
 
     stock_links: list[dict[str, str]] = []
     seen_link: set[tuple[str, str]] = set()

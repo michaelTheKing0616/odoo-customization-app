@@ -623,3 +623,124 @@ def test_prefer_contacts_field_pack_still_allows_legitimate_contacts() -> None:
     hosts = {b.get("host_model") for b in surface.get("host_buttons") or []}
     assert "res.partner" in hosts or "Contacts" in (surface.get("summary") or "")
 
+
+def test_field_pack_grain_still_proposes_when_residual_host_arrows() -> None:
+    """Grain gate removed: field_pack + Host→Employee still gets «Visits» chip."""
+    u = build_understanding(VISITOR)
+    # Force field_pack while keeping residual constraints / relations.
+    u.grain = "field_pack"
+    u.inherit_existing = False
+    props = propose_craft_smart_buttons(VISITOR, u)
+    assert props, "field_pack with Host→Employee must propose craft"
+    assert props[0]["on_model"] == "hr.employee"
+    assert props[0]["label"] == "Visits"
+    assert props[0]["default_on"] is True
+    assert len(props) <= 2
+
+
+def test_feature_slice_grain_still_proposes_when_residual_host_arrows() -> None:
+    """Grain gate removed: feature_slice + Host→Employee still gets «Visits» chip."""
+    u = build_understanding(VISITOR)
+    u.grain = "feature_slice"
+    u.inherit_existing = False
+    props = propose_craft_smart_buttons(VISITOR, u)
+    assert props, "feature_slice with Host→Employee must propose craft"
+    assert props[0]["on_model"] == "hr.employee"
+    assert props[0]["label"] == "Visits"
+    # build_understanding attach path must also fill craft_proposals for non-full_app
+    u2 = build_understanding(VISITOR)
+    u2.grain = "feature_slice"
+    from app.ai_conversation.understand import _attach_craft_proposals
+
+    _attach_craft_proposals(VISITOR, u2)
+    assert u2.craft_proposals and u2.craft_proposals[0]["label"] == "Visits"
+
+
+def test_kept_craft_emits_find_it_even_when_smart_buttons_unstamped() -> None:
+    """Defence: confirmed craft always appears as «Visits» on Employees in find-it.
+
+    Live bug: craft kept on Diagnosis but find-it only showed form-field links
+    (Host→Employees; Company→Contacts) because smart_buttons missed the stamp
+    and defence was gated on suppress_host_invent alone.
+    """
+    u = build_understanding(VISITOR)
+    kept = [p for p in u.craft_proposals if p.get("default_on")]
+    locked = apply_understanding_edits(
+        u,
+        {
+            "title": u.title,
+            "constraints": u.constraints,
+            "inherit_existing": False,
+            "needs_module": False,
+            "craft_smart_buttons": kept,
+            "grain": "full_app",
+        },
+    )
+    draft = _visitor_draft()
+    draft["grain"] = "feature_slice"  # flip that historically skipped defence
+    draft["_generation_engine"] = {"grain": "feature_slice"}
+    draft["smart_buttons"] = []  # stamp missing — defence must still emit
+    draft["_understanding"] = locked.to_dict()
+    surface = build_operator_surface(draft)
+    hosts = {b.get("host_model") for b in surface.get("host_buttons") or []}
+    labels = {b.get("button_label") for b in surface.get("host_buttons") or []}
+    summary = surface.get("summary") or ""
+    assert hosts == {"hr.employee"}, hosts
+    assert labels == {"Visits"}, labels
+    assert "Also on stock forms" in summary
+    assert "«Visits» on Employees" in summary
+    # Must not fall through to form-field-only copy as the sole stock signal.
+    assert "Host → Employees" not in summary or "Visits" in summary
+
+
+def test_field_pack_kept_craft_stamps_and_find_it() -> None:
+    """apply_confirmed stamps craft for field_pack grain; find-it emits host line."""
+    u = build_understanding(VISITOR)
+    kept = [p for p in u.craft_proposals if p.get("default_on")]
+    locked = apply_understanding_edits(
+        u,
+        {
+            "craft_smart_buttons": kept,
+            "inherit_existing": False,
+            "needs_module": False,
+            "grain": "field_pack",
+        },
+    )
+    draft = _visitor_draft()
+    draft["grain"] = "field_pack"
+    draft["_generation_engine"] = {"grain": "field_pack"}
+    draft["_understanding"] = locked.to_dict()
+    draft["smart_buttons"] = []
+    notes = apply_stock_host_smart_buttons(draft, prompt=VISITOR)
+    assert any("craft_smart_btn" in n for n in notes), notes
+    btns = [b for b in draft["smart_buttons"] if isinstance(b, dict)]
+    assert any(b.get("on_model") == "hr.employee" and b.get("source") == "craft_confirmed" for b in btns)
+    attach_operator_surface(draft)
+    summary = draft["_operator_surface"].get("summary") or ""
+    assert "«Visits» on Employees" in summary or (
+        "Visits" in summary and "Employees" in summary
+    )
+
+
+def test_empty_craft_residual_invent_gate_all_grains() -> None:
+    """Empty craft + residual ⇒ no Contacts/Employees invent (full_app + feature_slice)."""
+    for grain in ("full_app", "feature_slice", "field_pack"):
+        draft = _visitor_draft()
+        draft["grain"] = grain
+        draft["_generation_engine"] = {"grain": grain}
+        draft["_understanding"] = {
+            "grain": "full_app" if grain != "field_pack" else grain,
+            "inherit_existing": False,
+            "craft_smart_buttons": [],
+        }
+        draft["smart_buttons"] = []
+        apply_stock_host_smart_buttons(draft, prompt=VISITOR)
+        hosts = {
+            str(b.get("on_model"))
+            for b in (draft.get("smart_buttons") or [])
+            if isinstance(b, dict)
+        }
+        # field_pack without Prefer inherit may still be residual-shaped (x_new);
+        # invent must stay off when craft empty.
+        assert "hr.employee" not in hosts, grain
+        assert "res.partner" not in hosts, grain
