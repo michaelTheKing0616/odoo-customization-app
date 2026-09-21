@@ -31,8 +31,22 @@ _TARGET_ALIASES: dict[str, str] = {
 }
 
 _ARROW_RE = re.compile(r"(?i)^(.+?)\s*(?:→|->|⟶)\s*(.+)$")
+# Structural: "New model x_visitor_log (Visitor Log)"
+# LLM enrich: "Create new model `x_visitor_log` (Visitor Log)."
 _NEW_MODEL_RE = re.compile(
-    r"(?i)^New model\s+(x_[\w]+)\s*(?:\(([^)]+)\))?\s*$"
+    r"""(?is)(?:^|\b)(?:create\s+)?(?:a\s+)?new\s+model\s+[`'"]?(x_[\w]+)[`'"]?"""
+    r"""\s*(?:\(([^)]+)\))?"""
+)
+# LLM enrich: Add `host_id` field (Many2one to `hr.employee`) for Host.
+_M2O_CONSTRAINT_RE = re.compile(
+    r"""(?is)\bmany2one\s+to\s+[`'"]?([\w.]+)[`'"]?"""
+    r"""(?:[^\n]*?\bfor\s+([A-Za-z][\w\s/-]{0,40}))?"""
+)
+# Prompt aside: Host (Employee) / Company (link to Contact)
+_PROMPT_M2O_RE = re.compile(
+    r"(?i)\b([A-Za-z][\w\s/-]{0,40}?)\s*"
+    r"(?:\(\s*(?:link\s+to\s+)?([A-Za-z][\w.\s]{0,40}?)\s*\)"
+    r"|\blink\s+to\s+([A-Za-z][\w.\s]{0,40}?))"
 )
 _HOST_LABELS = {
     "hr.employee": "Employees",
@@ -51,7 +65,7 @@ def _slug_field(label: str) -> str:
 
 def _residual_from_constraints(constraints: list[str]) -> tuple[str, str]:
     for row in constraints or []:
-        m = _NEW_MODEL_RE.match(str(row).strip())
+        m = _NEW_MODEL_RE.search(str(row).strip())
         if m:
             mid = m.group(1)
             title = (m.group(2) or mid.replace("x_", "").replace("_", " ")).strip()
@@ -78,30 +92,73 @@ def _chip_label(button_label: str, on_model: str) -> str:
     return f"«{button_label}» on {host}"
 
 
+def _resolve_target(raw: str) -> str | None:
+    target_raw = (raw or "").strip().lower()
+    if not target_raw or "selection" in target_raw:
+        return None
+    # Technical model first
+    if target_raw in _TARGET_ALIASES:
+        return _TARGET_ALIASES[target_raw]
+    for part in re.split(r"[/\s,]+", target_raw):
+        part = part.strip("`'\"")
+        if part in _TARGET_ALIASES:
+            return _TARGET_ALIASES[part]
+    return None
+
+
 def _relations_from_constraints(constraints: list[str]) -> list[tuple[str, str, str]]:
-    """Return (field_label, on_model, priority_key) from Must-do arrows."""
+    """Return (field_label, on_model, priority_key) from Must-do arrows or LLM M2O lines."""
     out: list[tuple[str, str, str]] = []
     seen: set[str] = set()
+
+    def _add(fname: str, on_model: str) -> None:
+        if not on_model or on_model not in _CRAFT_HOST_PRIORITY:
+            return
+        if on_model in seen:
+            return
+        seen.add(on_model)
+        out.append((fname, on_model, on_model))
+
     for row in constraints or []:
         text = str(row).strip()
         m = _ARROW_RE.match(text)
-        if not m:
+        if m:
+            fname = m.group(1).strip()
+            on_model = _resolve_target(m.group(2))
+            if on_model:
+                _add(fname, on_model)
             continue
-        fname = m.group(1).strip()
-        target_raw = m.group(2).strip().lower()
-        # Skip selection chrome ("Purpose selection (…)") — already not arrow-shaped.
-        if "selection" in target_raw:
+        m2 = _M2O_CONSTRAINT_RE.search(text)
+        if m2:
+            on_model = _resolve_target(m2.group(1))
+            fname = (m2.group(2) or "").strip() or m2.group(1)
+            # Prefer human label before technical field name in backticks
+            if not m2.group(2):
+                m_for = re.search(r"(?i)\bfor\s+([A-Za-z][\w\s/-]{0,40})", text)
+                if m_for:
+                    fname = m_for.group(1).strip()
+                else:
+                    m_tick = re.search(r"""[`'"]([\w]+)[`'"]""", text)
+                    if m_tick:
+                        fname = m_tick.group(1)
+            if on_model:
+                _add(fname, on_model)
+    return out
+
+
+def _relations_from_prompt(prompt: str) -> list[tuple[str, str, str]]:
+    """Fallback when Must-do lines are free-form — parse Label (Target) asides."""
+    out: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
+    for m in _PROMPT_M2O_RE.finditer(prompt or ""):
+        fname = (m.group(1) or "").strip()
+        fname = re.sub(r"(?i)^(and|or|with|plus)\s+", "", fname).strip()
+        target = (m.group(2) or m.group(3) or "").strip()
+        # Drop view/chrome noise
+        if not fname or re.search(r"(?i)\b(selection|menu|list|form|status)\b", fname):
             continue
-        # Take last token / known alias
-        target = target_raw
-        for part in re.split(r"[/\s,]+", target_raw):
-            if part in _TARGET_ALIASES:
-                target = part
-                break
-        on_model = _TARGET_ALIASES.get(target)
-        if not on_model or on_model not in _CRAFT_HOST_PRIORITY:
-            continue
-        if on_model in seen:
+        on_model = _resolve_target(target)
+        if not on_model or on_model in seen:
             continue
         seen.add(on_model)
         out.append((fname, on_model, on_model))
@@ -142,6 +199,8 @@ def propose_craft_smart_buttons(
         residual_model = f"x_{slug}" if not slug.startswith("x_") else slug
 
     rels = _relations_from_constraints(constraints)
+    if not rels:
+        rels = _relations_from_prompt(prompt or "")
     if not rels:
         return []
 

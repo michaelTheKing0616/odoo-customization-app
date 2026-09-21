@@ -185,3 +185,24 @@ def test_punch_partner_tie_still_gets_contacts_without_craft() -> None:
     apply_stock_host_smart_buttons(draft, prompt=PUNCH)
     hosts = {b["on_model"] for b in draft["smart_buttons"]}
     assert "res.partner" in hosts
+
+def test_llm_shaped_must_do_still_proposes_craft() -> None:
+    """LLM enrich rewrites Must-do lines — craft must still parse Host/Company M2O."""
+    from app.ai_craft_smart_buttons import propose_craft_smart_buttons
+
+    class _U:
+        grain = "full_app"
+        inherit_existing = False
+        title = "Visitor Log"
+        constraints = [
+            "Create new model `x_visitor_log` (Visitor Log).",
+            "Add `company_id` field (Many2one to `res.partner`) for Company.",
+            "Add `host_id` field (Many2one to `hr.employee`) for Host.",
+        ]
+
+    props = propose_craft_smart_buttons(VISITOR, _U())
+    assert props, "LLM-shaped Must-do must still yield craft chips"
+    assert props[0]["on_model"] == "hr.employee"
+    assert props[0]["default_on"] is True
+    assert any(p.get("on_model") == "res.partner" for p in props)
+
