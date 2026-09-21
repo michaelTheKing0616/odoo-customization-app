@@ -27,6 +27,7 @@ from app.routers import (
     auth,
     automations,
     billing,
+    batch_os,
     builder,
     bulk_suite,
     config_ops,
@@ -170,6 +171,7 @@ app.include_router(domain_playbooks.router, prefix="/api", dependencies=_protect
 app.include_router(studio_feature_recipes.router, prefix="/api", dependencies=_protected)
 app.include_router(config_ops.router, prefix="/api", dependencies=_protected)
 app.include_router(config_recipes.router, prefix="/api", dependencies=_protected)
+app.include_router(batch_os.router, prefix="/api", dependencies=_protected)
 app.include_router(menus_builder.router, prefix="/api", dependencies=_protected)
 app.include_router(reports.router, prefix="/api", dependencies=_protected + [Depends(require_feature("reports_designer"))])
 app.include_router(id_generator.router, prefix="/api", dependencies=_protected + [Depends(require_feature("id_generator"))])

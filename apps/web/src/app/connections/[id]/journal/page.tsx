@@ -11,8 +11,10 @@ import { Callout } from "@/components/ui/Callout";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Card, EmptyState, PageHeader } from "@/components/ui/layout-primitives";
 import { EMPTY_STATES, REVERSIBILITY } from "@/lib/copy-guide";
+import { JournalBatchPanel } from "@/components/batch-os/JournalBatchPanel";
 
 type TimelineFilter = "all" | "snapshot" | "audit" | "health";
+type PageTab = "timeline" | "batch";
 
 type TimelineEntry =
   | { kind: "snapshot"; at: string; snapshot: SnapshotRow }
@@ -44,6 +46,7 @@ export default function ChangeJournalPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<PageTab>("timeline");
 
   const refresh = useCallback(async () => {
     const [conn, snaps, logs, runs] = await Promise.all([
@@ -130,9 +133,35 @@ export default function ChangeJournalPage() {
     <div className="mx-auto max-w-5xl" data-testid="journal-page">
       <PageHeader
         title="Change journal"
-        description="Metadata snapshots with rollback · API audit · post-upgrade health checks"
+        description="Change timeline · Accounting journal batch (CSV → draft account.move)"
       />
       <VersionAwarenessBanner capabilities={connection?.capabilities} />
+
+      <div className="mt-4 flex flex-wrap gap-2" data-testid="journal-tabs">
+        <Button
+          type="button"
+          variant={tab === "timeline" ? "secondary" : "ghost"}
+          size="sm"
+          onClick={() => setTab("timeline")}
+        >
+          Timeline
+        </Button>
+        <Button
+          type="button"
+          variant={tab === "batch" ? "secondary" : "ghost"}
+          size="sm"
+          onClick={() => setTab("batch")}
+        >
+          Batch flow
+        </Button>
+      </div>
+
+      {tab === "batch" ? (
+        <div className="mt-6">
+          <JournalBatchPanel connectionId={connectionId} />
+        </div>
+      ) : (
+      <>
 
       {error ? <ErrorNotice message={error} className="mt-4" /> : null}
       {notice ? (
@@ -274,6 +303,8 @@ export default function ChangeJournalPage() {
           </li>
         ) : null}
       </ul>
+      </>
+      )}
     </div>
   );
 }

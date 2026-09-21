@@ -1,0 +1,319 @@
+{
+  "version": 1,
+  "classes": [
+    {
+      "id": "accounting",
+      "title": "Accounting",
+      "status": "complete",
+      "blurb": "Journals, CoA, taxes, FY, lock dates, opening balances, currency, payment terms.",
+      "intents": [
+        {
+          "id": "accounting.journals",
+          "title": "Journals",
+          "models": [
+            "account.journal"
+          ],
+          "risk": "L1",
+          "recipe": null,
+          "status": "complete",
+          "blurb": "Chart of journals (sale, purchase, bank, cash, general, opening)."
+        },
+        {
+          "id": "accounting.coa",
+          "title": "Chart of accounts",
+          "models": [
+            "account.account"
+          ],
+          "risk": "L1",
+          "recipe": null,
+          "status": "complete",
+          "blurb": "Account codes and types via public RPC / ingest CoA path."
+        },
+        {
+          "id": "accounting.taxes",
+          "title": "Taxes",
+          "models": [
+            "account.tax"
+          ],
+          "risk": "L2",
+          "recipe": null,
+          "status": "complete",
+          "blurb": "Align to l10n taxes \u2014 never invent account.tax from scratch."
+        },
+        {
+          "id": "accounting.fy",
+          "title": "Fiscal year / periods",
+          "models": [
+            "account.fiscal.year",
+            "res.company"
+          ],
+          "risk": "L2",
+          "recipe": null,
+          "status": "complete",
+          "blurb": "Fiscal calendar awareness via company + lock fields."
+        },
+        {
+          "id": "accounting.lock_dates",
+          "title": "Lock dates",
+          "models": [
+            "res.company"
+          ],
+          "risk": "L3",
+          "recipe": "accounting.lock_dates",
+          "status": "complete",
+          "blurb": "Period / FY / tax lock dates \u2014 confirm required."
+        },
+        {
+          "id": "accounting.opening_balances",
+          "title": "Opening balances",
+          "models": [
+            "account.move",
+            "account.journal"
+          ],
+          "risk": "L1",
+          "recipe": "accounting.opening_balances",
+          "status": "complete",
+          "blurb": "Opening TB \u2192 draft move on Opening journal (never raw AML invent)."
+        },
+        {
+          "id": "accounting.currency",
+          "title": "Currency",
+          "models": [
+            "res.currency",
+            "res.company"
+          ],
+          "risk": "L2",
+          "recipe": null,
+          "status": "complete",
+          "blurb": "Company currency (blocked once journals/moves exist)."
+        },
+        {
+          "id": "accounting.payment_terms",
+          "title": "Payment terms",
+          "models": [
+            "account.payment.term"
+          ],
+          "risk": "L1",
+          "recipe": null,
+          "status": "complete",
+          "blurb": "Net 15/30 packs via config recipes / master data."
+        },
+        {
+          "id": "accounting.journal_batch",
+          "title": "Journal batch",
+          "models": [
+            "account.move",
+            "account.move.line",
+            "account.journal",
+            "account.account"
+          ],
+          "risk": "L1",
+          "recipe": "accounting.journal_batch",
+          "status": "complete",
+          "blurb": "CSV/XLSX batch into balanced draft journal entries."
+        }
+      ]
+    },
+    {
+      "id": "master_data",
+      "title": "Master data",
+      "status": "stub",
+      "blurb": "Partners, products, UoM, pricelists, fiscal positions.",
+      "intents": [
+        {
+          "id": "master.partners",
+          "title": "Partners",
+          "models": [
+            "res.partner"
+          ],
+          "risk": "L1",
+          "recipe": null,
+          "status": "stub"
+        },
+        {
+          "id": "master.products",
+          "title": "Products",
+          "models": [
+            "product.template",
+            "product.product"
+          ],
+          "risk": "L1",
+          "recipe": null,
+          "status": "stub"
+        },
+        {
+          "id": "master.uom",
+          "title": "Units of measure",
+          "models": [
+            "uom.uom",
+            "uom.category"
+          ],
+          "risk": "L1",
+          "recipe": null,
+          "status": "stub"
+        }
+      ]
+    },
+    {
+      "id": "document_batch",
+      "title": "Document batch",
+      "status": "stub",
+      "blurb": "Mass create / transition sales, purchases, invoices, pickings.",
+      "intents": [
+        {
+          "id": "docs.invoices",
+          "title": "Invoice batch",
+          "models": [
+            "account.move"
+          ],
+          "risk": "L2",
+          "recipe": null,
+          "status": "stub"
+        },
+        {
+          "id": "docs.orders",
+          "title": "Order batch",
+          "models": [
+            "sale.order",
+            "purchase.order"
+          ],
+          "risk": "L1",
+          "recipe": null,
+          "status": "stub"
+        }
+      ]
+    },
+    {
+      "id": "settings",
+      "title": "Settings",
+      "status": "stub",
+      "blurb": "Allowlisted res.config.settings board (see config recipes).",
+      "intents": [
+        {
+          "id": "settings.board",
+          "title": "Settings toggles",
+          "models": [
+            "res.config.settings"
+          ],
+          "risk": "L2",
+          "recipe": null,
+          "status": "stub"
+        }
+      ]
+    },
+    {
+      "id": "access_company",
+      "title": "Access & company",
+      "status": "stub",
+      "blurb": "Users, groups, multi-company, record rules.",
+      "intents": [
+        {
+          "id": "access.users",
+          "title": "Users & groups",
+          "models": [
+            "res.users",
+            "res.groups"
+          ],
+          "risk": "L2",
+          "recipe": null,
+          "status": "stub"
+        },
+        {
+          "id": "access.multi_company",
+          "title": "Multi-company",
+          "models": [
+            "res.company"
+          ],
+          "risk": "L2",
+          "recipe": null,
+          "status": "stub"
+        }
+      ]
+    },
+    {
+      "id": "automation",
+      "title": "Automation",
+      "status": "stub",
+      "blurb": "Server actions, scheduled actions, base.automation.",
+      "intents": [
+        {
+          "id": "auto.cron",
+          "title": "Cron / scheduled actions",
+          "models": [
+            "ir.cron"
+          ],
+          "risk": "L2",
+          "recipe": null,
+          "status": "stub"
+        },
+        {
+          "id": "auto.base",
+          "title": "Base automations",
+          "models": [
+            "base.automation"
+          ],
+          "risk": "L2",
+          "recipe": null,
+          "status": "stub"
+        }
+      ]
+    },
+    {
+      "id": "ui_studio",
+      "title": "UI / Studio",
+      "status": "stub",
+      "blurb": "Views, menus, studio-like customizations (App Studio owns generation).",
+      "intents": [
+        {
+          "id": "ui.views",
+          "title": "Views",
+          "models": [
+            "ir.ui.view"
+          ],
+          "risk": "L1",
+          "recipe": null,
+          "status": "stub"
+        },
+        {
+          "id": "ui.menus",
+          "title": "Menus",
+          "models": [
+            "ir.ui.menu"
+          ],
+          "risk": "L1",
+          "recipe": null,
+          "status": "stub"
+        }
+      ]
+    },
+    {
+      "id": "housekeeping",
+      "title": "Housekeeping",
+      "status": "stub",
+      "blurb": "Attachments, chatter, dedupe, archive \u2014 Bulk Suite owns execution.",
+      "intents": [
+        {
+          "id": "house.attachments",
+          "title": "Attachment cleanup",
+          "models": [
+            "ir.attachment"
+          ],
+          "risk": "L2",
+          "recipe": null,
+          "status": "stub"
+        },
+        {
+          "id": "house.dedupe",
+          "title": "Deduplicate",
+          "models": [
+            "res.partner",
+            "product.product"
+          ],
+          "risk": "L2",
+          "recipe": null,
+          "status": "stub"
+        }
+      ]
+    }
+  ]
+}

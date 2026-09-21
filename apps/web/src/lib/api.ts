@@ -4167,6 +4167,66 @@ listConfigRecipes: (id: string) =>
     }),
 
 
+
+  batchOsAtlas: (id: string, classId?: string) =>
+    request<{ classes: AtlasClass[]; honesty: string }>(
+      `/api/connections/${id}/batch-os/atlas${classId ? `?class_id=${encodeURIComponent(classId)}` : ""}`,
+    ),
+  batchOsAtlasSearch: (
+    id: string,
+    opts?: { q?: string; class_id?: string; risk?: string },
+  ) => {
+    const qs = new URLSearchParams();
+    if (opts?.q) qs.set("q", opts.q);
+    if (opts?.class_id) qs.set("class_id", opts.class_id);
+    if (opts?.risk) qs.set("risk", opts.risk);
+    const q = qs.toString();
+    return request<{ hits: AtlasHit[] }>(
+      `/api/connections/${id}/batch-os/atlas/search${q ? `?${q}` : ""}`,
+    );
+  },
+  batchOsRecipes: (id: string) =>
+    request<BatchOsRecipeCard[]>(`/api/connections/${id}/batch-os/recipes`),
+  batchOsJournalIntake: async (id: string, file: File, recipeId = "accounting.journal_batch") => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("recipe_id", recipeId);
+    return requestForm<BatchOsJob>(`/api/connections/${id}/batch-os/journal/intake`, fd);
+  },
+  batchOsJournalMap: (
+    id: string,
+    body: { job_id: string; column_map: Record<string, string> },
+  ) =>
+    request<BatchOsJob>(`/api/connections/${id}/batch-os/journal/map`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  batchOsJournalValidate: (id: string, body: { job_id: string }) =>
+    request<BatchOsJob>(`/api/connections/${id}/batch-os/journal/validate`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  batchOsJournalDryRun: (id: string, body: { job_id: string }) =>
+    request<BatchOsJob>(`/api/connections/${id}/batch-os/journal/dry-run`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  batchOsJournalApply: (
+    id: string,
+    body: {
+      job_id: string;
+      post_after_create?: boolean;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<BatchOsJob>(`/api/connections/${id}/batch-os/journal/apply`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  batchOsJob: (id: string, jobId: string) =>
+    request<BatchOsJob>(`/api/connections/${id}/batch-os/jobs/${jobId}`),
+
   listCompanies: (id: string) =>
     request<CompanyRow[]>(`/api/connections/${id}/config/companies`),
   updateCompany: (
@@ -5669,6 +5729,95 @@ export type CronRowOut = {
   code_preview?: string | null;
 };
 
+
+
+export type AtlasIntent = {
+  id: string;
+  title: string;
+  models: string[];
+  risk: string;
+  recipe: string | null;
+  status: string;
+  blurb: string;
+};
+
+export type AtlasClass = {
+  id: string;
+  title: string;
+  status: string;
+  blurb: string;
+  intents: AtlasIntent[];
+};
+
+export type AtlasHit = {
+  class_id: string;
+  class_title: string;
+  intent_id: string;
+  title: string;
+  models: string[];
+  risk: string;
+  recipe: string | null;
+  status: string;
+  blurb: string;
+};
+
+export type BatchOsRecipeCard = {
+  id: string;
+  title: string;
+  blurb: string;
+  risk: string;
+  status: string;
+  atlas_class: string;
+  models: string[];
+  phases: string[];
+};
+
+export type BatchOsRowError = {
+  row_index: number;
+  field?: string | null;
+  code: string;
+  message: string;
+};
+
+export type BatchOsMove = {
+  group_key: string;
+  journal_id: number | null;
+  journal_name: string | null;
+  date: string;
+  ref: string;
+  line_count: number;
+  total_debit: number;
+  total_credit: number;
+  balanced: boolean;
+  line_indexes: number[];
+  errors: string[];
+  move_id?: number | null;
+  posted?: boolean;
+};
+
+export type BatchOsJob = {
+  job_id: string;
+  connection_id: string;
+  recipe_id: string;
+  risk: string;
+  phase: string;
+  filename: string;
+  headers: string[];
+  raw_row_count: number;
+  sample_rows: Record<string, string>[];
+  column_map: Record<string, string>;
+  mapped_lines: Record<string, unknown>[];
+  moves: BatchOsMove[];
+  errors: BatchOsRowError[];
+  warnings: string[];
+  message: string;
+  honesty: string;
+  dry_run: boolean;
+  post_after_create: boolean;
+  created_move_ids: number[];
+  posted_move_ids: number[];
+  ok?: boolean;
+};
 
 export type RecipeCard = {
   id: string;

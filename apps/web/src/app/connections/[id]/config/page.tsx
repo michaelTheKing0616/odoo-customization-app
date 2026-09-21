@@ -10,6 +10,7 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { PageHeader } from "@/components/ui/layout-primitives";
 import { Disclosure } from "@/components/ui/Disclosure";
 import { ConfigCommandCenter } from "@/components/config/ConfigCommandCenter";
+import { ConfigAtlasBrowser } from "@/components/config/ConfigAtlasBrowser";
 import { InstanceFingerprintCard } from "@/components/overview/InstanceFingerprintCard";
 
 const CONFIRM_PHRASE = "I understand the risks";
@@ -186,6 +187,10 @@ export default function ConfigPage() {
       <InstanceFingerprintCard connectionId={connectionId} context="config" />
 
       <ConfigCommandCenter connectionId={connectionId} />
+      <div className="mt-10" data-testid="config-atlas-section">
+        <h2 className="mb-3 text-ui-display font-semibold text-ink">Config Atlas</h2>
+        <ConfigAtlasBrowser connectionId={connectionId} />
+      </div>
 
 
       {error ? <ErrorNotice message={error} className="mt-4" /> : null}
