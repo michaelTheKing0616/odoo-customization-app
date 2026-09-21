@@ -708,24 +708,58 @@ def _ensure_inherit_field_floor(
     if inherit is None:
         return notes
     existing = _field_names(inherit)
-    from app.ai_field_ir import extract_field_ir
+    from app.ai_field_ir import extract_field_ir, is_junk_extension_field
 
     constraints: list[str] = []
     understanding = draft.get("_understanding")
     if isinstance(understanding, dict) and isinstance(understanding.get("constraints"), list):
         constraints = [str(x) for x in understanding["constraints"]]
+    # Prefer corpus without clarifications / locked chrome for heuristic fallback.
+    clean_prompt = prompt
+    try:
+        from app.ai_operator_brief import intent_corpus
+
+        clean_prompt = intent_corpus(prompt) or prompt
+    except Exception:  # noqa: BLE001
+        pass
+    # Locked Diagnosis block lives on the raw prompt — intent_corpus drops it.
+    # Always pass the original prompt so parse_locked_diagnosis can recover Must-do.
     explicit = extract_field_ir(prompt, constraints=constraints or None)
     inferred = explicit if explicit else infer_extension_fields(
-        prompt, pad=grain != "field_pack"
+        clean_prompt or prompt, pad=grain != "field_pack"
     )
-    added = 0
-    for field in inferred:
-        name = str(field.get("name") or "")
-        if not name or name in existing:
-            continue
-        inherit.setdefault("fields", []).append(field)
-        existing.add(name)
-        added += 1
+    # Must-do / locked Diagnosis is the floor: replace heuristic junk (x_po / Status /
+    # understanding_json Char rows) rather than appending beside it.
+    if explicit:
+        kept = [
+            f
+            for f in (inherit.get("fields") or [])
+            if isinstance(f, dict)
+            and str(f.get("name") or "") in {str(x.get("name") or "") for x in explicit}
+            and not is_junk_extension_field(f)
+        ]
+        have = {str(f.get("name") or "") for f in kept}
+        for field in explicit:
+            name = str(field.get("name") or "")
+            if not name or name in have:
+                continue
+            kept.append(field)
+            have.add(name)
+        dropped = len(existing) - len(have & existing)
+        inherit["fields"] = kept
+        if dropped > 0:
+            notes.append(f"senior: replaced {dropped} heuristic field(s) with Must-do IR")
+        existing = have
+        added = len(kept)
+    else:
+        added = 0
+        for field in inferred:
+            name = str(field.get("name") or "")
+            if not name or name in existing or is_junk_extension_field(field):
+                continue
+            inherit.setdefault("fields", []).append(field)
+            existing.add(name)
+            added += 1
     # Do not force a 3-field floor for Option A–primary prompts (no junk padding)
     # or an explicit single-field inherit.
     from app.ai_capability_gaps import assess_capability_gaps

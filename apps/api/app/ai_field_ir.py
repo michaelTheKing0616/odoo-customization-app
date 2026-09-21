@@ -26,9 +26,10 @@ _CONSTRAINT_CHECKBOX_RE = re.compile(r"(?i)^(?:-\s*)?checkbox\s*:\s*(.+)$")
 _CONSTRAINT_TEXT_RE = re.compile(r"(?i)^(?:-\s*)?text\s*field\s*:\s*(.+)$")
 _CONSTRAINT_FIELD_RE = re.compile(r"(?i)^(?:-\s*)?field\s*:\s*(.+)$")
 _JUNK_FIELD_NAME_RE = re.compile(
+    # Exact alone-slug bans only — never x_delivery_window_start_date etc.
     r"(?i)^x_(?:res|partner|sale_order|account_move|stock_picking|studio_res|"
     r"new|app|group|tab|under|on|form|field|fields|contact|contacts|delivery|"
-    r"a_new|a_app|a_group|a_delivery)(?:_|$)"
+    r"a_new|a_app|a_group|a_delivery)$"
 )
 _JUNK_FIELD_LABEL_RE = re.compile(
     r"(?i)^(?:(?:a|an|the)\s+)?(?:res|partner|checkbox(?:\s+preferred)?(?:\s+delivery)?"
@@ -239,8 +240,20 @@ _CONSTRAINT_META_RE = re.compile(
     r"create\s*/\s*read\b|create\s+and\s+read\b|on\s+\w|"
     r"do\s+not\b|don't\b|never\s+create\b|place\s+under\b|"
     r"status\s+hint\b|banner\s+when\b|alert\s+when\b|decoration\b|"
-    r"ui\s+hint\b)"
+    r"ui\s+hint\b|"
+    # Clarification / locked-diagnosis chrome — never Char fields
+    r"understanding_json\b|clarifications?\b|diagnosis\b|"
+    r"capability\b|grain\b|host_model\b|inherit_existing\b|"
+    r"needs_module\b|gold_artifact_id\b|craft_smart_buttons?\b|"
+    r"out_of_scope\b|operator\b)"
 )
+
+_CONSTRAINT_PREFIX_RE = re.compile(r"(?i)^(?:constraint|must[- ]?do|field)\s*:\s*")
+_JSONISH_RE = re.compile(r"[{}\[\]]")
+_PROMPT_PROSE_RE = re.compile(
+    r"(?i)^(?:extend|add|show|create|build|make|prefer|inherit)\b"
+)
+_REQUIRED_MODIFIER_RE = re.compile(r"(?i)^(required|preferred|optional)\s+")
 _CONSTRAINT_SELECTION_RE = re.compile(
     r"(?i)^(.+?)\s+(?:selection\s*)?\(\s*selection\s*:\s*(.+?)\)\s*(?:\.|$)"
 )
@@ -304,10 +317,56 @@ def _m2o_field(label: str, relation: str) -> dict[str, Any] | None:
     }
 
 
+def _is_polluted_field_label(label: str) -> bool:
+    """True for clarification dumps, JSON, or full-prompt prose — not field names."""
+    s = re.sub(r"\s+", " ", (label or "").strip())
+    if not s:
+        return True
+    low = s.lower()
+    if _JSONISH_RE.search(s) or "understanding_json" in low:
+        return True
+    if any(
+        tok in low
+        for tok in (
+            '"grain"',
+            '"host_model"',
+            "field_pack",
+            "## clarifications",
+            "## diagnosis",
+            "clarifications (resolved)",
+        )
+    ):
+        return True
+    # Full brief sentences / locked Constraint prefixes treated as labels
+    if len(s) > 72:
+        return True
+    if _PROMPT_PROSE_RE.match(s) and (" and " in low or len(s) > 40):
+        return True
+    return False
+
+
+def _short_ast_field_label(label: str) -> str:
+    """Prefer short AST names — strip Required/Optional modifiers."""
+    s = re.sub(r"\s+", " ", (label or "").strip(" .:,-"))
+    s = _REQUIRED_MODIFIER_RE.sub("", s).strip()
+    if s and s[0].islower():
+        s = s[0].upper() + s[1:]
+    return s
+
+
 def _constraint_field_spec(line: str) -> dict[str, Any] | None:
     """One Must-do / constraint row → field dict (inherit + residual full_app)."""
-    text = str(line or "").strip().lstrip("- ").strip()
+    text = str(line or "").strip().lstrip("-•* ").strip()
+    # Locked-block rows may still carry «Constraint: » / «Field: » chrome.
+    text = _CONSTRAINT_PREFIX_RE.sub("", text).strip() if not re.match(
+        r"(?i)^(?:checkbox|text\s*field)\s*:", text
+    ) else text
+    # After stripping a lone «Field:» prefix, re-check; keep typed prefixes.
+    if re.match(r"(?i)^field\s*:", text):
+        text = re.sub(r"(?i)^field\s*:", "", text).strip()
     if not text or _CONSTRAINT_META_RE.match(text):
+        return None
+    if _is_polluted_field_label(text):
         return None
 
     m = _CONSTRAINT_CHECKBOX_RE.match(text)
@@ -318,7 +377,9 @@ def _constraint_field_spec(line: str) -> dict[str, Any] | None:
         return field_spec(m.group(1), ttype="text")
     m = _CONSTRAINT_FIELD_RE.match(text)
     if m:
-        label = m.group(1)
+        label = _short_ast_field_label(m.group(1))
+        if not label or _is_polluted_field_label(label):
+            return None
         temporal = infer_date_or_datetime(label)
         if temporal is None and _CONSTRAINT_DATE_RE.search(label.lower()):
             temporal = (
@@ -351,8 +412,8 @@ def _constraint_field_spec(line: str) -> dict[str, Any] | None:
         return field_spec(m.group(1), ttype="char")
 
     # Bare label: date / name / char
-    label = human_field_label(text)
-    if not label:
+    label = human_field_label(_short_ast_field_label(text))
+    if not label or _is_polluted_field_label(label):
         return None
     # Sentence leftovers ("Dining Tables for our restaurant. Name") → last Name token
     if "." in label and re.search(r"(?i)\bname\b", label):
@@ -436,11 +497,45 @@ def extract_field_ir(
 ) -> list[dict[str, Any]]:
     """Source-of-truth multi-field IR from Must-do constraints and/or the brief."""
     text = prompt or ""
+    try:
+        from app.ai_operator_brief import intent_corpus
+
+        text = intent_corpus(text) or text
+    except Exception:  # noqa: BLE001
+        pass
+    # Drop locked-diagnosis / clarifications chrome even when intent_corpus missed them.
+    text = re.split(r"(?im)^##\s*(?:Clarifications|Diagnosis)\b", text, maxsplit=1)[0].strip() or text
+    rows = [str(c) for c in (constraints or []) if str(c or "").strip()]
+    if not rows and prompt:
+        # Prefer locked Diagnosis Constraint lines over polluted clarifications.
+        try:
+            from app.ai_conversation.understand import parse_locked_diagnosis
+
+            locked = parse_locked_diagnosis(prompt)
+            if locked and locked.constraints:
+                rows = [str(c) for c in locked.constraints if str(c or "").strip()]
+        except Exception:  # noqa: BLE001
+            rows = rows
+    if not rows and text:
+        # Prefer/inherit brief with no locked block yet — AST Must-do floor.
+        try:
+            from app.ai_conversation.understand import _brief_must_do_constraints
+            from app.ai_grain import preferred_inherit_host
+
+            host = preferred_inherit_host(text)
+            if host:
+                rows = [
+                    str(c)
+                    for c in _brief_must_do_constraints(text, host=host, inherit=True)
+                    if str(c or "").strip()
+                ]
+        except Exception:  # noqa: BLE001
+            pass
     if looks_like_contacts_delivery_brief(text) or constraints_look_like_contacts_s1(
-        constraints
+        rows or constraints
     ):
         return contacts_s1_field_pack()
-    from_constraints = typed_fields_from_constraints(constraints)
+    from_constraints = typed_fields_from_constraints(rows or constraints)
     if from_constraints:
         return from_constraints[:12]
     # Residual full_app: Diagnosis Must-do rows are the field source of truth.
@@ -458,6 +553,10 @@ def is_junk_extension_field(field: dict[str, Any]) -> bool:
     name = str(field.get("name") or "").strip()
     label = str(field.get("string") or "").strip()
     if not name:
+        return True
+    if _is_polluted_field_label(label) or _is_polluted_field_label(name):
+        return True
+    if name.lower().startswith("x_understanding") or "understanding_json" in name.lower():
         return True
     if _JUNK_FIELD_NAME_RE.match(name):
         return True

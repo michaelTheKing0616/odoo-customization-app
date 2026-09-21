@@ -604,6 +604,7 @@ def _complete_component_draft(
     db_factory: Callable[[], Session],
     connection_id: str | None,
     progress: ProgressFn | None = None,
+    locked_understanding: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Senior inherit-and-wire path — no pack seed, no LLM, no residual satellites."""
     from app.ai_component_builder import draft_component_from_prompt
@@ -623,6 +624,17 @@ def _complete_component_draft(
         client=client,
     )
     warnings.extend(comp_warnings)
+    # Stamp Diagnosis Contract BEFORE senior finishers re-run via cache — Prefer
+    # field_pack Must-do must win over heuristic x_po / Status / JSON leakage.
+    if locked_understanding is not None:
+        _stamp_locked_understanding(
+            draft, prompt, locked_understanding=locked_understanding
+        )
+        from app.ai_senior_shape import finish_senior_component
+
+        warnings.extend(
+            finish_senior_component(draft, prompt=prompt, grain=grain)  # type: ignore[arg-type]
+        )
     from app.ai_architecture_plan import stamp_architecture_plan
     from app.ai_planner_tools import stamp_planner_grounding
 
@@ -750,6 +762,7 @@ def run_draft_job_body(
             db_factory=db_factory,
             connection_id=connection_id,
             progress=progress,
+            locked_understanding=locked_understanding,
         )
 
     progress(0, "Seeding domain pack")

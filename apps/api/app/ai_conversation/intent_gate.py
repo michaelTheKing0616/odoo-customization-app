@@ -220,13 +220,44 @@ def session_already_admitted(status: str) -> bool:
     return str(status or "") in {"ready", "generating", "review", "delivered"}
 
 
+# Keys that seed field IR / notebooks when dumped — never append as clarifications.
+_CLARIFICATION_META_KEYS = frozenset(
+    {
+        "understanding_json",
+        "diagnosis",
+        "diagnosis_note",
+        "craft_smart_buttons",
+    }
+)
+
+
 def merge_resolved_prompt(prompt: str, answers: dict[str, str]) -> str:
-    """Append structured clarification answers so downstream brief/pack sees them."""
+    """Append structured clarification answers so downstream brief/pack sees them.
+
+    Never dump ``understanding_json`` / Diagnosis meta — those leak into Prefer
+    field IR and Other Info as fake Char labels (JSON keys, grain, host_model).
+    Locked Contract stays session-side via ``dump_understanding`` + locked block.
+    """
     if not answers:
         return prompt
+    usable = {
+        k: v
+        for k, v in answers.items()
+        if k not in _CLARIFICATION_META_KEYS
+        and not str(k).startswith("_")
+        and str(v or "").strip()
+        and not str(v).lstrip().startswith("{")
+        and not str(v).lstrip().startswith("[")
+    }
+    if not usable:
+        return prompt
     lines = [prompt.rstrip(), "", "## Clarifications (resolved)"]
-    for key, value in answers.items():
-        lines.append(f"- {key}: {value}")
+    for key, value in usable.items():
+        # Cap runaway values — never paste multi-KB dumps into the brief.
+        val = str(value)
+        if len(val) > 240:
+            val = val[:240].rstrip() + "…"
+        lines.append(f"- {key}: {val}")
     return "\n".join(lines).strip()
 
 

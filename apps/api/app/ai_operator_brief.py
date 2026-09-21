@@ -93,6 +93,10 @@ _DROP_DETECTION_SECTIONS = (
     # Locked Contract IR — grain/host/craft already on understanding_json; chrome
     # like "Craft smart button" / "Inherit existing form" must not flip classify_grain.
     "diagnosis",
+    # Clarifications dump (incl. understanding_json) must never seed field IR /
+    # Other Info labels. Locked Contract stays on session understanding_json.
+    "clarifications",
+    "clarifications (resolved)",
 )
 _KNOWN_STOCK_APPS = frozenset(
     {

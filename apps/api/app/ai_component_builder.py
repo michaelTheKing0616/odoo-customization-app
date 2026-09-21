@@ -289,7 +289,15 @@ def draft_component_from_prompt(
     if gallery_seed:
         fields = list(gallery_seed.get("fields") or [])
     else:
-        fields = infer_extension_fields(prompt, pad=resolved_grain != "field_pack")
+        # Prefer Must-do / locked Diagnosis IR over polluted-prompt heuristics
+        # (understanding_json / clarifications / status-hint prose as Char fields).
+        from app.ai_field_ir import extract_field_ir
+
+        fields = extract_field_ir(prompt)
+        if not fields:
+            fields = infer_extension_fields(
+                prompt, pad=resolved_grain != "field_pack"
+            )
 
     cp = connect_points_override or propose_connect_points(
         prompt, grain=resolved_grain, host=host, gallery_seed=gallery_seed
