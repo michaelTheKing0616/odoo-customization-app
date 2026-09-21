@@ -27,15 +27,11 @@ def purchase_request_pack() -> dict[str, Any]:
         "document_shape": "transactional_header",
         "tags": [
             "purchase request",
-            "approval",
-            "approve",
-            "refuse",
-            "manager approval",
-            "approval flow",
+            "purchase requisition",
             "requisition",
-            "staff request",
             "spending",
             "budget request",
+            "procurement",
         ],
         "anti_patterns": [
             "Do NOT reuse stock purchase.order — this is a lightweight staff approval form",
@@ -263,11 +259,11 @@ def purchase_request_intent(prompt: str) -> bool:
         _PURCHASE_REQUEST_INTENT_RE = re.compile(
             r"(?i)\b(?:"
             r"purchase\s+requests?|purchase\s+requisitions?|"
-            r"approval\s+requests?|"
             r"spend(?:ing)?\s+(?:request|approval)|"
             r"budget\s+(?:request|approval)|"
-            r"requisitions?"
-            # Never bare «manager approve» — steals fleet/vehicle residuals.
+            r"requisitions?|procurement"
+            # Never bare «manager approve» / «approval request» — those steal
+            # Vehicle / Visitor / Approval Workflow residuals.
             r")"
         )
     text = prompt or ""

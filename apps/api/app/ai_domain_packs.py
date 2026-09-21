@@ -800,12 +800,10 @@ _PACK_FACTORIES: list[tuple[str, Any, re.Pattern[str]]] = [
         re.compile(
             r"(?i)\b(?:"
             r"purchase\s+requests?|purchase\s+requisitions?|"
-            r"approval\s+requests?|"
             r"spend(?:ing)?\s+(?:request|approval)|"
             r"budget\s+(?:request|approval)|"
-            r"requisitions?"
-            # Bare «manager approve» matches Vehicle Request / any residual workflow —
-            # require purchase/spend/budget context, never steal fleet/vehicle residuals.
+            r"requisitions?|procurement"
+            # Never bare «manager approve» / «approval request» — residual steal.
             r")",
         ),
     ),
@@ -853,8 +851,14 @@ def _tokenize(text: str) -> set[str]:
 
 
 def score_domain_pack(prompt: str, pack: dict[str, Any]) -> float:
-    """Cheap local retrieval: Jaccard over prompt tokens vs pack tags + model labels."""
-    pt = _tokenize(prompt)
+    """Cheap local retrieval: Jaccard over prompt tokens vs pack tags + model labels.
+
+    Shared workflow words (manager/approve/request/amount/…) are stripped from both
+    sides so they cannot inflate foreign-pack adoption onto residual full_apps.
+    """
+    from app.ai_domain_coherence import SHARED_WORKFLOW_TOKENS
+
+    pt = _tokenize(prompt) - SHARED_WORKFLOW_TOKENS
     if not pt:
         return 0.0
     bag: set[str] = set()
@@ -869,6 +873,7 @@ def score_domain_pack(prompt: str, pack: dict[str, Any]) -> float:
                 continue
             bag |= _tokenize(str(m.get("description") or ""))
             bag |= _tokenize(mid.replace("_", " ").replace("x ", ""))
+    bag -= SHARED_WORKFLOW_TOKENS
     if not bag:
         return 0.0
     inter = len(pt & bag)
@@ -898,7 +903,13 @@ def retrieve_domain_pack_lexical(
             pack = copy.deepcopy(factory())
             # Regex match is high-confidence; Jaccard is only for the fallback path.
             pack["_retrieval"] = {"method": "regex", "score": 1.0}
-            return pack_id, pack, 1.0
+            resolved, _notes = resolve_domain_pack_candidate(
+                text, (pack_id, pack, 1.0)
+            )
+            if resolved:
+                return pack_id, pack, 1.0
+            # Pattern hit but residual/cues refuse — try next packs / Jaccard.
+            continue
     best: tuple[str, dict[str, Any], float] | None = None
     for pack_id, factory, _pattern in _PACK_FACTORIES:
         pack = factory()
@@ -908,6 +919,9 @@ def retrieve_domain_pack_lexical(
     if best:
         pid, pack, score = best
         pack["_retrieval"] = {"method": "jaccard", "score": score}
+        resolved, _notes = resolve_domain_pack_candidate(text, (pid, pack, score))
+        if not resolved:
+            return None
         return pid, pack, score
     return None
 

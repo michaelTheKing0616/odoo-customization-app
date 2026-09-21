@@ -13,7 +13,7 @@ from app.text_negation import has_positive_match
 _TOKEN_RE = re.compile(r"[a-z0-9]+", re.I)
 
 # Regex-suggested packs may have lower token overlap; Jaccard-only retrieval uses the stricter floor.
-PACK_MERGE_MIN_JACCARD = 0.10
+PACK_MERGE_MIN_JACCARD = 0.18
 PACK_MERGE_MIN_JACCARD_REGEX = 0.04
 # Top pack must beat the runner-up by at least this margin when scores are low.
 PACK_MERGE_MIN_MARGIN = 0.03
@@ -22,6 +22,151 @@ PACK_AMBIGUOUS_TOP_SCORE = 0.15
 # Drop a custom model when prompt alignment is below this and industry clusters disagree.
 MODEL_ALIGN_MIN = 0.08
 MODEL_ALIGN_MIN_WITH_CLUSTER_CONFLICT = 0.18
+
+# Shared workflow / chrome words — never alone adopt a foreign domain pack.
+# Overlap on these must not seed purchase/restaurant/hotel/… IR onto a residual.
+SHARED_WORKFLOW_TOKENS = frozenset(
+    {
+        "manager",
+        "approve",
+        "approval",
+        "approvals",
+        "refuse",
+        "refused",
+        "request",
+        "requests",
+        "requester",
+        "amount",
+        "date",
+        "dates",
+        "employee",
+        "employees",
+        "staff",
+        "status",
+        "state",
+        "draft",
+        "submitted",
+        "approved",
+        "done",
+        "cancelled",
+        "canceled",
+        "list",
+        "kanban",
+        "workflow",
+        "flow",
+        "note",
+        "notes",
+        "host",
+        "user",
+        "users",
+        "menu",
+        "parent",
+        "build",
+        "create",
+        "make",
+        "submit",
+        "submits",
+        "submitted",
+        "currency",
+        "range",
+        "link",
+        "create",
+        "optionally",
+        "pick",
+        "natural",
+        "under",
+        "party",
+        "large",
+        "vip",
+        "visit",
+        "visits",
+        "travel",
+        "trip",
+        "passengers",
+        "assignment",
+    }
+)
+
+# Distinctive product cues required to adopt each pack (positive evidence).
+# Shared verbs above never appear here. Regex packs still need these for Jaccard
+# and for residual-noun conflict checks after a broad pattern hit.
+_PACK_ADOPTION_CUE_RES: dict[str, re.Pattern[str]] = {
+    "purchase_request": re.compile(
+        r"(?i)\b(?:purchase|spend(?:ing)?|budget|requisition|procurement)\b"
+    ),
+    "restaurant": re.compile(
+        r"(?i)\b(?:restaurant|dining|kitchen|bistro|cafe|waiter|"
+        r"food\s+service|menu\s+item|table\s+reservation)\b"
+    ),
+    "hotel": re.compile(
+        r"(?i)\b(?:hotel|pms|lodging|housekeeping|guest\s+folio|"
+        r"room\s+booking|property\s+management\s+system)\b"
+    ),
+    "car_rental": re.compile(
+        r"(?i)\b(?:car[\s-]?rental|vehicle[\s-]?rental|fleet[\s-]?rental|"
+        r"rent[\s-]?a[\s-]?car|auto[\s-]?hire|car[\s-]?hire)\b"
+    ),
+    "hospital": re.compile(
+        r"(?i)\b(?:hospital|inpatient|ward|icu|triage|admission|"
+        r"operating\s+theatre|radiology|pharmacy)\b"
+    ),
+    "law_firm": re.compile(
+        r"(?i)\b(?:law\s*firm|attorney|lawyer|litigation|counsel|"
+        r"matter\s+management|billable\s+hour|retainer|trust\s+account)\b"
+    ),
+    "oil_gas_operations": re.compile(
+        r"(?i)\b(?:oil\s*(?:and|&|/)?\s*gas|oilfield|petroleum|upstream|"
+        r"midstream|downstream|drilling|refinery|wellhead|pipeline)\b"
+    ),
+    "retail_supermarket": re.compile(
+        r"(?i)\b(?:super[\s-]?market|grocery|hypermarket|retail\s+chain|"
+        r"store\s+chain)\b"
+    ),
+    "real_estate": re.compile(
+        r"(?i)\b(?:real\s*estate|rental\s+property|lease\s+management|"
+        r"tenant\s+portal|property\s+listing|landlord|apartment\s+rental)\b"
+    ),
+    "subscription": re.compile(
+        r"(?i)\b(?:subscription|membership\s+plan|renewal\s+workflow|"
+        r"saas\s+plan|usage[\s-]?based|member\s+portal)\b"
+    ),
+    "helpdesk_tickets": re.compile(
+        r"(?i)\b(?:helpdesk|support\s+(?:desk|ticket)|IT\s+support|"
+        r"slack\s+screenshots?|IT\s+ticket)\b"
+    ),
+    "project_tracker": re.compile(
+        r"(?i)\b(?:project\s+tracker|project\s+management|task\s+tracker|"
+        r"milestone|timesheet|time\s+entry|pm\s+tool)\b"
+    ),
+    "clinic": re.compile(
+        r"(?i)\b(?:clinic|outpatient\s+clinic|medical\s+practice|"
+        r"healthcare\s+booking|appointment\s+booking)\b"
+    ),
+    "field_service": re.compile(
+        r"(?i)\b(?:field\s+service|job\s+dispatch|work\s*order|"
+        r"technician\s+dispatch)\b"
+    ),
+    "library_management": re.compile(
+        r"(?i)\b(?:library|libraries|book\s+loan|book\s+catalog|isbn|"
+        r"overdue\s+loan|library\s+member)\b"
+    ),
+}
+
+# Residual product nouns that mark a brief as NOT the pack's product (class-wide).
+_RESIDUAL_FOREIGN_NOUN_RE = re.compile(
+    r"(?i)\b(?:"
+    r"fleet|vehicle|vehicles|car|cars|"
+    r"visitor|visitors|visitor\s+log|"
+    r"dining\s+tables?|restaurant|kitchen|waiter|"
+    r"punch\s*card|loyalty|"
+    r"hotel|housekeeping|guest\s+folio|"
+    r"library|isbn|book\s+loan|"
+    r"helpdesk|support\s+ticket|"
+    r"clinic|outpatient|"
+    r"wellhead|oilfield|petroleum|"
+    r"subscription|membership\s+plan"
+    r")\b"
+)
 
 # Tokens too generic to infer an industry cluster from alone.
 _GENERIC_CLUSTER_TOKENS = frozenset(
@@ -201,6 +346,89 @@ def score_model_prompt_alignment(model: dict[str, Any], prompt: str) -> float:
     return inter / union if union else 0.0
 
 
+
+def shared_workflow_tokens() -> frozenset[str]:
+    """Tokens that describe any approval/request workflow — never pack identity."""
+    return SHARED_WORKFLOW_TOKENS
+
+
+def pack_adoption_cues_present(prompt: str, pack_id: str) -> bool:
+    """True when the brief clearly asks for this pack's product (strong cues)."""
+    cue = _PACK_ADOPTION_CUE_RES.get(pack_id)
+    if cue is None:
+        # Unknown pack: require residual title overlap handled elsewhere; allow.
+        return True
+    return bool(cue.search(prompt or ""))
+
+
+def residual_noun_conflicts_pack(
+    prompt: str,
+    pack_id: str,
+    pack: dict[str, Any] | None = None,
+) -> tuple[bool, str]:
+    """True when residual product noun is foreign to this pack.
+
+    Residual Contract identity wins: Vehicle / Visitor / Dining Tables / …
+    must never adopt purchase (or any other) pack surface from shared verbs.
+    """
+    text = prompt or ""
+    if pack_adoption_cues_present(text, pack_id):
+        # Clear pack product cues — allow even if other nouns appear (Purchase
+        # Request that mentions employee/manager is still purchase).
+        return False, ""
+
+    # No positive pack cues. If residual naming names a different product, refuse.
+    residual_name = ""
+    residual_slug = ""
+    try:
+        from app.ai_document_shape import naming_from_residual
+
+        residual_name, residual_slug = naming_from_residual(text)
+    except Exception:  # noqa: BLE001
+        pass
+    blob = f"{residual_name} {residual_slug} {text}".lower()
+
+    # Pack title / id identity tokens (minus shared workflow).
+    pack = pack or {}
+    identity = _tokenize(str(pack.get("display_name") or "")) | _tokenize(
+        pack_id.replace("_", " ")
+    )
+    identity -= SHARED_WORKFLOW_TOKENS
+    identity -= _GENERIC_CLUSTER_TOKENS
+    residual_tokens = _tokenize(f"{residual_name} {residual_slug}")
+    residual_tokens -= SHARED_WORKFLOW_TOKENS
+    residual_tokens -= _GENERIC_CLUSTER_TOKENS
+
+    if residual_tokens and identity and residual_tokens & identity:
+        return False, ""
+
+    if _RESIDUAL_FOREIGN_NOUN_RE.search(blob) and not pack_adoption_cues_present(
+        text, pack_id
+    ):
+        return (
+            True,
+            f"residual product noun conflicts with pack {pack_id!r} "
+            f"(no positive {pack_id} cues)",
+        )
+
+    # Generic residual with only shared workflow words — still refuse Jaccard steal.
+    if residual_tokens and not (residual_tokens & identity):
+        # Approval Workflow / Company Car / … without pack cues
+        return (
+            True,
+            f"residual «{residual_name or residual_slug}» lacks {pack_id} product cues",
+        )
+
+    if not pack_adoption_cues_present(text, pack_id):
+        # Bare shared-verb brief with no residual noun still must not adopt.
+        return (
+            True,
+            f"pack {pack_id!r} adoption refused — shared workflow words only, "
+            f"no positive product cues",
+        )
+    return False, ""
+
+
 _HELPDESK_INTENT_RE = re.compile(
     r"(?i)\b("
     r"helpdesk|support\s+(?:desk|ticket)|IT\s+support|"
@@ -288,23 +516,13 @@ def pack_conflicts_with_brief(
             notes.append(f"brief conflicts: not ITSM / not PM vs {pack_id!r}")
             return True, notes
 
-    # Fleet / vehicle / visitor residuals must not adopt purchase_request surface
-    # IR from weak «manager approve» / request/amount Jaccard overlap.
-    if pack_id == "purchase_request":
-        text = prompt or ""
-        residual_foreign = re.search(
-            r"(?i)\b(?:fleet|vehicle|visitor|reservation|dining\s+table)\b",
-            text,
-        )
-        purchase_cue = re.search(
-            r"(?i)\b(?:purchase|spend(?:ing)?|budget|requisition|procurement)\b",
-            text,
-        )
-        if residual_foreign and not purchase_cue:
-            notes.append(
-                "brief conflicts: fleet/vehicle/visitor residual vs purchase_request pack"
-            )
-            return True, notes
+    # Class-wide: residual product noun / missing positive cues vs ANY pack.
+    conflicts_residual, residual_note = residual_noun_conflicts_pack(
+        prompt or "", pack_id, pack
+    )
+    if conflicts_residual:
+        notes.append(f"brief conflicts: {residual_note}")
+        return True, notes
 
     return False, notes
 
@@ -346,9 +564,18 @@ def should_apply_domain_pack(
         else PACK_MERGE_MIN_JACCARD
     )
 
-    # Regex is the high-precision signal (auto-hire, hospital management).
-    # Short prompts score ~0.03–0.05 Jaccard against large pack vocabs, and
-    # shared words ("booking") inflate the wrong vertical. Trust the pattern.
+    # Pack adoption policy (class-wide):
+    # - Positive pack-specific cues required (shared workflow words never suffice)
+    # - Residual product noun must not conflict (Vehicle ↛ purchase, …)
+    # Regex remains high-precision only when cues + residual gate already passed
+    # via pack_conflicts_with_brief above.
+    if not pack_adoption_cues_present(prompt, pack_id):
+        notes.append(
+            f"domain coherence: refused pack {pack_id!r} — "
+            "no positive pack product cues (shared workflow words alone never adopt)"
+        )
+        return False, notes
+
     if retrieval_method == "regex":
         return True, notes
 
@@ -542,4 +769,11 @@ __all__ = [
     "model_is_incoherent_with_prompt",
     "list_incoherent_models",
     "prune_incoherent_models",
+    "shared_workflow_tokens",
+    "pack_adoption_cues_present",
+    "residual_noun_conflicts_pack",
+    "pack_conflicts_with_brief",
+    "helpdesk_ticket_intent",
+    "SHARED_WORKFLOW_TOKENS",
+    "PACK_MERGE_MIN_JACCARD",
 ]

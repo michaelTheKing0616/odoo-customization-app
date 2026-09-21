@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.no_app_db
+
 from app.ai_domain_packs import retrieve_domain_pack_lexical
 
 
