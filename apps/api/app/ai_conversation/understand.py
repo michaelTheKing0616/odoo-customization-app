@@ -1,11 +1,16 @@
 """Locked diagnosis IR — parse the brief before App Studio generates.
 
-Deterministic classify/host/gaps win for routing. Must-do (constraints) is
-LLM-first when intent LLM is enabled: the deterministic extractor is only a
-seed/backstop. A scorer validates coverage, host consistency, and forbidden
-invents; weak LLM output gets one repair retry, then a merge of the best of
-det + LLM. Gold, refuse-clone, and an allowlisted host the regex already named
-are never overridden.
+Deterministic classify/host/gaps win for routing. Must-do (constraints) flows
+through a hybrid constraint AST (``app.ai_constraint_ast``):
+
+1. Deterministic floor — structural anchors always produce a complete baseline
+   (``AI_INTENT_LLM=off`` tests must pass).
+2. Structured fill — optional Flash/constrained JSON maps free prose → AST
+   (behind ``AI_INTENT_LLM`` / enrich flags; never required for correctness).
+3. Merge — AST → Must-do bullets; enrich/merge never shrinks below the det floor.
+
+Regex is an anchor inside det parse, not the only brain. Gold, refuse-clone,
+and an allowlisted host the det path already named are never overridden.
 """
 
 from __future__ import annotations
@@ -100,6 +105,28 @@ _UNDERSTAND_SCHEMA: dict[str, Any] = {
         "constraints": {"type": "array", "items": {"type": "string"}},
         "out_of_scope": {"type": "array", "items": {"type": "string"}},
         "confidence": {"type": "string", "enum": ["high", "low"]},
+        # Optional structured fill — same shape as ai_constraint_ast.ConstraintAST
+        "constraint_ast": {
+            "type": "object",
+            "properties": {
+                "fields": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "label": {"type": "string"},
+                            "ttype": {"type": "string"},
+                            "relation": {"type": "string"},
+                        },
+                    },
+                },
+                "host": {"type": "string"},
+                "hints": {"type": "array", "items": {"type": "string"}},
+                "non_goals": {"type": "array", "items": {"type": "string"}},
+                "grain": {"type": "string"},
+                "structural": {"type": "array", "items": {"type": "string"}},
+            },
+        },
     },
     "required": ["summary", "confidence"],
 }
@@ -528,19 +555,9 @@ def _expand_field_chunk(chunk: str) -> list[str]:
 
 def _iter_add_field_labels(text: str) -> list[str]:
     """All Prefer/field_pack labels after add — conjunction + date-range aware."""
-    labels: list[str] = []
-    for m in _ADD_CLAUSE_RE.finditer(text or ""):
-        body = m.group(1).strip()
-        # Cut placement / required-before tails still inside the clause
-        body = re.split(
-            r"(?i)\s+(?:under\s+(?:the\s+)?[\w /&-]+?\s+group|"
-            r"required\s+before\b|on\s+the\s+\w+\s+form)\b",
-            body,
-            maxsplit=1,
-        )[0].strip()
-        for chunk in _split_conjunction_chunks(body):
-            labels.extend(_expand_field_chunk(chunk))
-    return _dedupe(labels)
+    from app.ai_constraint_ast import iter_add_field_labels
+
+    return iter_add_field_labels(text)
 
 
 def _brief_ui_hint_constraints(text: str) -> list[str]:
@@ -559,65 +576,11 @@ def _brief_must_do_constraints(
     host: str | None,
     inherit: bool,
 ) -> list[str]:
-    """Deterministic Must-do rows from a clear brief (fields, host, placement, no new app)."""
-    text = (prompt or "").strip()
-    if not text:
-        return []
-    rows: list[str] = []
-    from app.ai_grain import HOST_LABELS
+    """Deterministic Must-do rows — AST floor (fields, host, placement, no new app)."""
+    from app.ai_constraint_ast import ast_to_must_do, parse_det
 
-    if host and inherit:
-        label = HOST_LABELS.get(host, host)
-        rows.append(f"On {label} ({host})")
-
-    for m in _CHECKBOX_FIELD_RE.finditer(text):
-        label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
-        if label:
-            rows.append(f"Checkbox: {label}")
-
-    for m in _TYPED_TEXT_FIELD_RE.finditer(text):
-        label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
-        label = _LEADING_ARTICLE_RE.sub("", label).strip()
-        low = label.lower()
-        if not label or low in {"add", "a", "an", "the", "new", "and", "or"}:
-            continue
-        if low.startswith("checkbox"):
-            continue
-        rows.append(f"Text field: {label}")
-
-    typed_or_check = any(
-        r.lower().startswith(("checkbox:", "text field:")) for r in rows
-    )
-    if not typed_or_check:
-        for label in _iter_add_field_labels(text):
-            low = label.lower()
-            # Date-range expansions already carry "start/end date" — bare rows
-            # so IR types them as date (Field: prefix forces char).
-            if re.search(r"(?i)\b(?:start|end)\s+date\b", label):
-                rows.append(label)
-            else:
-                rows.append(f"Field: {label}")
-
-    gm = _UNDER_GROUP_RE.search(text)
-    if gm:
-        gtitle = _LEADING_ARTICLE_RE.sub("", gm.group(1).strip()).strip()
-        if gtitle:
-            rows.append(f"Place under {gtitle} group")
-
-    rows.extend(_brief_ui_hint_constraints(text))
-
-    if _NO_NEW_APP_RE.search(text) or inherit:
-        if _NO_NEW_APP_RE.search(text):
-            # Prefer explicit invent/parallel phrasing when the brief said it.
-            if re.search(r"(?i)\binvent\b|\bparallel\b", text):
-                host_bit = ""
-                if host:
-                    host_bit = f" {HOST_LABELS.get(host, host)}"
-                rows.append(f"Do not invent a parallel{host_bit} app")
-            else:
-                rows.append("Do not create a new home-screen app")
-
-    return _dedupe(rows)[:12]
+    grain = "field_pack" if inherit else "full_app"
+    return ast_to_must_do(parse_det(prompt, host=host, inherit=inherit, grain=grain))
 
 
 _APP_NOUN_RE = re.compile(
@@ -680,141 +643,10 @@ def _relation_target_display(target: str) -> str:
 
 
 def _brief_full_app_must_do(prompt: str) -> list[str]:
-    """Structural Must-do for residual full_app from declared brief fields.
+    """Structural Must-do for residual full_app — AST floor (any similarly shaped brief)."""
+    from app.ai_constraint_ast import ast_to_must_do, parse_det
 
-    Parses model name + field list shape (char / Many2one / selection / date) —
-    never Visitor-Log keyword one-offs. Works for any similarly shaped brief.
-    """
-    text = (prompt or "").strip()
-    if not text:
-        return []
-    # Bare "Do not create a new app" is inherit chrome — not residual Must-do.
-    if re.search(r"(?i)\b(?:do\s+not|don't|never)\s+create\b", text) and not (
-        _MODEL_WITH_FIELDS_RE.search(text)
-        or re.search(r"(?i)\bname\s*,", text)
-    ):
-        return []
-    rows: list[str] = []
-
-    app_m = _APP_NOUN_RE.search(text)
-    title = ""
-    if app_m:
-        title = re.sub(r"\s+", " ", (app_m.group(1) or app_m.group(2) or '')).strip(" .:,-")
-        title = re.sub(r"(?i)^(a|an|the)\s+", "", title).strip()
-    if not title:
-        try:
-            from app.ai_document_shape import naming_from_residual
-
-            display, _slug = naming_from_residual(text)
-            title = (display or "").strip()
-        except Exception:  # noqa: BLE001
-            title = ""
-    slug = re.sub(r"[^a-z0-9]+", "_", (title or "custom").lower()).strip("_")[:40] or "custom"
-    # Prefer compact register slug: drop trailing _app
-    if slug.endswith("_app"):
-        slug = slug[: -len("_app")].rstrip("_") or slug
-    mid = f"x_{slug}" if not slug.startswith("x_") else slug
-    label = title.title() if title else mid
-    rows.append(f"New model {mid} ({label})")
-
-    body = text
-    fm = _MODEL_WITH_FIELDS_RE.search(text)
-    if fm:
-        body = fm.group(1)
-    else:
-        # "Dining Tables…. Name, Capacity, Status (selection: …)." — field enum without "model with"
-        enum = re.search(
-            r"(?i)\b(Name\s*,\s*.+?)(?:\.\s*(?:Simple|No\s+workflow|Menu)|;|$)",
-            text,
-        )
-        if enum:
-            body = enum.group(1)
-    # Split on commas / "and" while keeping parentheticals roughly intact
-    chunks: list[str] = []
-    buf = ""
-    depth = 0
-    for ch in body:
-        if ch == "(":
-            depth += 1
-            buf += ch
-        elif ch == ")":
-            depth = max(0, depth - 1)
-            buf += ch
-        elif ch == "," and depth == 0:
-            if buf.strip():
-                chunks.append(buf.strip())
-            buf = ""
-        else:
-            buf += ch
-    if buf.strip():
-        chunks.append(buf.strip())
-    # Also split trailing "and X"
-    normalized: list[str] = []
-    for chunk in chunks:
-        if re.search(r"(?i)\band\b", chunk) and "(" not in chunk:
-            parts = re.split(r"(?i)\s+and\s+", chunk)
-            normalized.extend(p.strip(" .") for p in parts if p.strip())
-        else:
-            # "Label (selection: …), and Label (Target)" already split by comma
-            if re.match(r"(?i)^and\s+", chunk):
-                chunk = re.sub(r"(?i)^and\s+", "", chunk).strip()
-            normalized.append(chunk.strip(" ."))
-
-    for chunk in normalized:
-        if not chunk or len(chunk) < 2:
-            continue
-        # Label (selection: A / B / C) — options from the brief, not hardcoded
-        sel = re.search(
-            r"(?i)^(.+?)\s*\(\s*selection\s*:\s*(.+?)\)\s*(?:\.|$)",
-            chunk,
-        )
-        if sel:
-            fname = sel.group(1).strip()
-            opts = re.sub(r"\s+", " ", sel.group(2)).strip(" .")
-            rows.append(f"{fname} selection ({opts})")
-            continue
-        # Label (link to Target) / Label (Target) → Many2one
-        # Label (date|char|…) → typed field, not Many2one
-        rel = re.search(
-            r"(?i)^(.+?)\s*\(\s*(?:link\s+to\s+)?(.+?)\s*\)\s*$",
-            chunk,
-        )
-        if rel:
-            fname = rel.group(1).strip()
-            target = rel.group(2).strip()
-            target = re.sub(r"(?i)^link\s+to\s+", "", target).strip()
-            tlow = target.lower()
-            if tlow.startswith("selection"):
-                # Malformed selection paren — skip rather than emit junk Many2one
-                continue
-            if tlow in _FIELD_TYPE_HINTS:
-                if tlow == "datetime":
-                    # Keep the type word so Must-do classifier picks datetime.
-                    rows.append(f"{fname} datetime" if "datetime" not in fname.lower() else fname)
-                elif tlow == "date":
-                    rows.append(fname if re.search(r"(?i)\bdate\b", fname) else f"{fname} date")
-                elif tlow in {"boolean", "checkbox"}:
-                    rows.append(f"Checkbox: {fname}")
-                else:
-                    rows.append(fname)
-                continue
-            rows.append(f"{fname}→{_relation_target_display(target)}")
-            continue
-        # Bare char / name-like field; date when the label says date
-        label_f = re.sub(r"\s+", " ", chunk).strip(" .")
-        if label_f.lower() in {"model", "with", "and", "a", "an", "the"}:
-            continue
-        rows.append(label_f)
-
-    mm = _MENU_UNDER_RE.search(text)
-    if mm:
-        rows.append(f"Menu under {mm.group(1).strip()}")
-    if _LIST_FORM_RE.search(text):
-        rows.append("List + form")
-    if _CREATE_READ_ONLY_RE.search(text):
-        rows.append("Create/read only")
-
-    return _dedupe(rows)[:12]
+    return ast_to_must_do(parse_det(prompt, host=None, inherit=False, grain="full_app"))
 
 
 
@@ -1032,32 +864,15 @@ def _merge_must_do(
     inherit: bool,
     needs_module: bool,
 ) -> list[str]:
-    """Union LLM Must-do with deterministic floor — never drop det seed bullets."""
-    llm = _dedupe([str(x).strip() for x in llm_rows if str(x).strip()])[:12]
-    det = _dedupe([str(x).strip() for x in det_rows if str(x).strip()])[:12]
-    if not llm:
-        return det
-    if not det:
-        return llm
-    merged = list(llm)
-    joined = " | ".join(merged).lower()
-    for row in det:
-        key = row.lower()
-        # Skip host-only det lines if LLM already named host/label
-        if key.startswith("on ") and any(
-            bit in joined for bit in ("on contacts", "res.partner", host or "\0")
-        ):
-            continue
-        # Significant tokens from det row must appear somewhere
-        toks = [t for t in re.split(r"\W+", key) if len(t) >= 4]
-        if toks and all(t in joined for t in toks[:3]):
-            continue
-        if key not in joined:
-            merged.append(row)
-    merged = _dedupe(merged)[:12]
-    # NEVER shrink below the deterministic floor. Score may prefer a short LLM
-    # list that drops delivery-window / status-hint rows — always keep the union.
-    return merged
+    """Union LLM Must-do with deterministic floor — never drop det seed bullets.
+
+    Hardened via ``ai_constraint_ast.merge_must_do``: det floor always wins
+    over the cap; LLM extras fill remaining slots only.
+    """
+    _ = (prompt, host, inherit, needs_module)
+    from app.ai_constraint_ast import merge_must_do as _ast_merge
+
+    return _ast_merge(det_rows, llm_rows)
 
 
 def _parse_enrich_payload(raw: Any) -> dict[str, Any] | None:
@@ -1230,13 +1045,15 @@ def _should_llm_enrich(prompt: str, det: Understanding) -> bool:
 def _must_do_system_prompt() -> str:
     return (
         "You diagnose an Odoo Community customization brief for App Studio. "
-        "Reply JSON only. constraints are operator-facing Must-do bullets — "
-        "as careful as a human reading the brief. Cover: (1) host/placement "
+        "Reply JSON only. Prefer filling constraint_ast "
+        "(fields[{label,ttype,relation?}], host, hints[], non_goals[], grain) "
+        "plus operator-facing constraints bullets. Cover: (1) host/placement "
         "(model + form/group when named), (2) fields with types when stated, "
         "(3) workflows/states if implied, (4) live Install vs Option A module "
         "delivery when Python/QWeb/HTTP is needed, (5) non-goals, (6) Online "
         "honesty when Python cannot Install live (module zip → sandbox → human "
-        "Promote). Infer beyond literal copy when the brief implies it, but "
+        "Promote). Prefer Date over Datetime unless time is stated/implied. "
+        "Infer beyond literal copy when the brief implies it, but "
         "never invent account.tax, never invent a fake x_* app when inheriting, "
         "never contradict inherit vs new home-screen tile. "
         "host_model must be an Odoo model like sale.order / res.partner when "
@@ -1258,7 +1075,9 @@ def _must_do_user_prompt(
         f"needs_module={det.needs_module} gold={det.gold_artifact_id} "
         f"grain={det.grain}\n"
         f"Deterministic Must-do seed: {json.dumps(seed)}\n"
-        "Fill title, summary, constraints (Must-do), out_of_scope. "
+        "Fill title, summary, constraints (Must-do), out_of_scope, and when "
+        "possible constraint_ast "
+        "(fields[{label,ttype,relation?}], host, hints[], non_goals[], grain). "
         "constraints must be concrete Must-do bullets for this brief's complexity. "
         "You may set host_model only if missing. Do not change gold or refuse."
     )
@@ -1331,6 +1150,18 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
     extra = parsed.get("constraints")
     if isinstance(extra, list):
         llm_constraints = [str(x).strip() for x in extra if str(x).strip()]
+
+    # Structured fill: optional constraint_ast → bullets on the LLM side only.
+    # Det floor stays ``det.constraints`` (never re-derived here — keeps
+    # backstop/monkeypatch semantics). Merge never shrinks that floor.
+    try:
+        from app.ai_constraint_ast import ast_to_must_do, parse_llm
+
+        llm_ast = parse_llm(parsed)
+        if llm_ast is not None:
+            llm_constraints = _dedupe(ast_to_must_do(llm_ast) + llm_constraints)
+    except Exception:  # noqa: BLE001
+        pass
 
     constraints = _merge_must_do(
         det.constraints,
