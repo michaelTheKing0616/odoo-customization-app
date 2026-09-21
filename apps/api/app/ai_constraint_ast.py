@@ -829,6 +829,89 @@ def merge_must_do(
 
 
 # Schema fragment for Flash enrich (optional; never required for tests)
+
+# ---------------------------------------------------------------------------
+# Prefer / inherit Diagnosis Name — from AST fields (any host)
+# ---------------------------------------------------------------------------
+
+_STRIP_FIELD_MODIFIER_RE = re.compile(r"(?i)^(required|preferred|optional)\s+")
+_STRIP_TRAILING_NOUN_RE = re.compile(
+    r"(?i)\s+(?:reference|ref\.?|number|no\.?|field|text)$"
+)
+_START_END_DATE_RE = re.compile(
+    r"(?i)^(?P<head>.+?)\s+(?:start|end)\s+dates?$"
+)
+
+
+def _short_field_concept(label: str) -> str:
+    """Compress one AST field label into a Prefer-title concept."""
+    s = re.sub(r"\s+", " ", (label or "").strip()).strip(" .:,-")
+    if not s:
+        return ""
+    s = _STRIP_FIELD_MODIFIER_RE.sub("", s).strip()
+    m = _START_END_DATE_RE.match(s)
+    if m:
+        s = m.group("head").strip()
+    # Drop placement tails the add-clause regex sometimes keeps («… on Contacts»).
+    s = re.sub(
+        r"(?i)\s+on\s+(?:the\s+)?(?:sales?|purchase|contacts?|employees?|"
+        r"crm|inventory|invoicing|calendar|projects?|"
+        r"sales?\s+orders?|purchase\s+orders?)\b.*$",
+        "",
+        s,
+    ).strip()
+    s = _STRIP_TRAILING_NOUN_RE.sub("", s).strip()
+    # Vague catch-alls are not Diagnosis Names («fields on Sales Orders»).
+    if re.search(r"(?i)^(?:extra\s+)?fields?(?:\s+on\b.*)?$", s):
+        return ""
+    if len(s) < 3 or s.lower() in {"field", "fields", "flag", "flags"}:
+        return ""
+    return s.strip(" .:,-")
+
+
+def prefer_pack_title(
+    ast: ConstraintAST | None = None,
+    *,
+    labels: list[str] | None = None,
+    host_label: str | None = None,
+    host: str | None = None,
+) -> str:
+    """Honest Diagnosis Name for Prefer/inherit packs — derived from AST fields.
+
+    Any Prefer host (Sales, Purchase, Contacts, HR, …). Examples:
+    «Customer PO + delivery window», «Loyalty tier + contact window».
+    Vague briefs → «Sales fields» (plural). Never invents a full_app app noun.
+    """
+    host_bit = (host_label or _host_label(host) or "").strip() or "Host"
+    raw: list[str] = []
+    if labels:
+        raw = [str(x) for x in labels if str(x or "").strip()]
+    elif ast is not None:
+        raw = [f.label for f in (ast.fields or []) if (f.label or "").strip()]
+
+    concepts: list[str] = []
+    seen: set[str] = set()
+    for lab in raw:
+        c = _short_field_concept(lab)
+        if not c:
+            continue
+        key = c.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        concepts.append(c)
+
+    if len(concepts) >= 2:
+        title = f"{concepts[0]} + {concepts[1]}"
+        if len(title) <= 72:
+            return title[:80]
+    if len(concepts) == 1 and len(concepts[0]) >= 3:
+        return concepts[0][:80]
+    # Vague / empty — plural host fields, not thin «Sales field»
+    return f"{host_bit} fields"[:80]
+
+
+
 CONSTRAINT_AST_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -866,5 +949,6 @@ __all__ = [
     "merge_must_do",
     "parse_det",
     "parse_llm",
+    "prefer_pack_title",
     "split_conjunction_chunks",
 ]

@@ -155,15 +155,39 @@ def _grounded_title(
     surfaces: list[str],
     *,
     grain: Grain | str = "field_pack",
+    host: str | None = None,
 ) -> str:
     if grain == "full_app" and not host_label:
         return _app_title_from_prompt(prompt)
+    # Prefer/inherit: Diagnosis-aligned title from constraint AST fields (any host).
+    if grain in {"field_pack", "feature_slice"} or host_label:
+        try:
+            from app.ai_constraint_ast import parse_det, prefer_pack_title
+
+            ast = parse_det(
+                prompt or "",
+                host=host,
+                inherit=True,
+                grain=str(grain or "field_pack"),
+            )
+            derived = prefer_pack_title(
+                ast, host=host, host_label=host_label or None
+            )
+            if derived and not re.search(r"(?i)^[\w.&/\s-]+ fields?$", derived):
+                return derived
+            # Keep delivery-preferences phrasing when surfaces imply that intent
+            # and AST had no distinctive field concepts.
+            if surfaces or _DELIVERY_PREF_RE.search(prompt or ""):
+                return f"{host_label or 'Contacts'} delivery preferences"
+            return derived or f"{host_label or 'Host'} fields"
+        except Exception:  # noqa: BLE001
+            pass
     if surfaces:
         return f"{host_label or 'Contacts'} delivery preferences"
     if _DELIVERY_PREF_RE.search(prompt or ""):
         return f"{host_label or 'Contacts'} delivery preferences"
     if host_label:
-        return f"{host_label} field pack"
+        return f"{host_label} fields"
     return _app_title_from_prompt(prompt)
 
 
@@ -200,7 +224,7 @@ def build_studio_contract(
     reuse = bool(
         re.search(r"(?i)\balready\s+(?:persist|exist)|reuse\s+existing|do\s+not\s+recreate", blob)
     )
-    title = _grounded_title(blob, host_label, surfaces, grain=resolved_grain)
+    title = _grounded_title(blob, host_label, surfaces, grain=resolved_grain, host=host or None)
     return {
         "version": CONTRACT_VERSION,
         "host_model": host or None,

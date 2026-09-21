@@ -964,10 +964,18 @@ def _deterministic_understanding(prompt: str) -> Understanding:
         inherit = False
         needs = False
         confidence = "high"
-    elif grain == "field_pack" and host:
-        title = title or f"{HOST_LABELS.get(host, host)} field"
+    elif inherit and host and grain in {"field_pack", "feature_slice"}:
+        # Prefer/inherit packs (any host): Diagnosis Name from AST fields — not
+        # thin «Sales field» / «Contacts field» host slugs.
+        from app.ai_constraint_ast import parse_det, prefer_pack_title
+
+        host_label = HOST_LABELS.get(host, host)
+        ast = parse_det(text, host=host, inherit=True, grain=grain)
+        title = title or prefer_pack_title(
+            ast, host=host, host_label=host_label
+        )
         summary = summary or (
-            f"Extra fields on the existing {HOST_LABELS.get(host, host)} form. "
+            f"Extra fields on the existing {host_label} form. "
             "Not a new home-screen app."
         )
         inherit = True
@@ -988,7 +996,7 @@ def _deterministic_understanding(prompt: str) -> Understanding:
 
     if plan.capability in {"option_a_authored", "option_a_standalone", "refuse_clone", "stock_reuse"}:
         confidence = "high"
-    elif grain == "field_pack" and host:
+    elif inherit and host and grain in {"field_pack", "feature_slice"}:
         confidence = "high"
 
     if not constraints and inherit:
@@ -1232,6 +1240,19 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
         out.extend(str(x) for x in extra_out if str(x).strip())
     title = str(parsed.get("title") or "").strip()[:80] or det.title
     if title.lower().startswith("the client"):
+        title = det.title
+    # Prefer/inherit: keep AST-derived Diagnosis Name over thin host slugs
+    # («Sales field», «Contacts field pack») from LLM paraphrases.
+    if (
+        det.inherit_existing
+        and det.grain in {"field_pack", "feature_slice"}
+        and det.title
+        and re.search(r"(?i)^[\w.&/\s-]+ field(?:\s*pack)?$", title)
+        and (
+            "+" in det.title
+            or not re.search(r"(?i)^[\w.&/\s-]+ fields?$", det.title)
+        )
+    ):
         title = det.title
     summary = str(parsed.get("summary") or "").strip()[:400] or det.summary
     inherit = det.inherit_existing or bool(parsed.get("inherit_existing"))

@@ -474,6 +474,10 @@ def test_tope_sales_prefer_must_do_keeps_all_fields_and_status_hint() -> None:
     assert u.grain == "field_pack"
     assert u.host_model == "sale.order"
     assert u.inherit_existing is True
+    # Diagnosis Name from AST fields — not thin «Sales field»
+    assert u.title.lower() != "sales field"
+    assert "po" in u.title.lower()
+    assert "delivery" in u.title.lower()
     uj = " | ".join(u.constraints).lower()
     assert "customer po reference and" not in uj
     assert "customer po reference" in uj
@@ -506,6 +510,9 @@ def test_prefer_purchase_multi_field_date_range_and_hint() -> None:
     assert u.grain == "field_pack"
     assert u.host_model == "purchase.order"
     assert u.inherit_existing is True
+    assert u.title.lower() != "purchase field"
+    assert "vendor" in u.title.lower()
+    assert "receipt" in u.title.lower()
     joined = " | ".join(u.constraints).lower()
     assert "vendor contract" in joined
     assert "receipt window" in joined and "start" in joined and "end" in joined
@@ -523,6 +530,9 @@ def test_prefer_contacts_multi_field_date_range_and_hint() -> None:
     u = build_understanding(prompt)
     assert u.grain == "field_pack"
     assert u.host_model == "res.partner"
+    assert u.title.lower() != "contacts field"
+    assert "loyalty" in u.title.lower()
+    assert "contact" in u.title.lower()
     joined = " | ".join(u.constraints).lower()
     assert "loyalty tier" in joined
     assert "contact window" in joined and "start" in joined and "end" in joined

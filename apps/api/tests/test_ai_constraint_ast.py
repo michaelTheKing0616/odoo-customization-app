@@ -18,6 +18,7 @@ from app.ai_constraint_ast import (  # noqa: E402
     merge_must_do,
     parse_det,
     parse_llm,
+    prefer_pack_title,
 )
 from app.ai_conversation.understand import build_understanding  # noqa: E402
 
@@ -160,3 +161,52 @@ def test_parse_llm_structured_fill() -> None:
     labels = [f.label for f in merged.fields]
     assert any("Extra note" in x for x in labels)
     assert any("Customer PO" in x for x in labels)
+
+
+def test_prefer_pack_title_tope_sales_from_ast_fields() -> None:
+    """Diagnosis Name reflects PO + delivery window — not «Sales field»."""
+    ast = parse_det(TOPE_SALES, host="sale.order", inherit=True, grain="field_pack")
+    title = prefer_pack_title(ast)
+    assert "sales field" not in title.lower()
+    assert "+" in title
+    assert "po" in title.lower()
+    assert "delivery" in title.lower()
+
+
+def test_prefer_pack_title_any_host_siblings() -> None:
+    purchase = (
+        "Extend Purchase Orders: add Vendor contract reference and Required receipt "
+        "window (date range or start/end dates). Prefer inherit."
+    )
+    contacts = (
+        "Extend Contacts: add Loyalty tier and Preferred contact window "
+        "(date range or start/end dates). Prefer inherit."
+    )
+    pt = prefer_pack_title(parse_det(purchase, host="purchase.order", inherit=True, grain="field_pack"))
+    ct = prefer_pack_title(parse_det(contacts, host="res.partner", inherit=True, grain="field_pack"))
+    assert "purchase field" not in pt.lower()
+    assert "+" in pt and "vendor" in pt.lower() and "receipt" in pt.lower()
+    assert "contacts field" not in ct.lower()
+    assert "+" in ct and "loyalty" in ct.lower() and "contact" in ct.lower()
+
+
+def test_prefer_pack_title_vague_falls_back_to_host_fields() -> None:
+    title = prefer_pack_title(
+        labels=[], host="sale.order", host_label="Sales"
+    )
+    assert title == "Sales fields"
+
+
+def test_build_understanding_prefer_title_not_host_slug() -> None:
+    u = build_understanding(TOPE_SALES)
+    assert u.grain == "field_pack"
+    assert "sales field" != u.title.lower()
+    assert "po" in u.title.lower()
+    assert "delivery" in u.title.lower()
+
+
+def test_visitor_log_full_app_title_unchanged() -> None:
+    u = build_understanding(VISITOR_LOG)
+    assert u.grain == "full_app"
+    assert "visitor" in u.title.lower()
+    assert "field" not in u.title.lower()
