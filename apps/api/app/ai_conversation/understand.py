@@ -299,16 +299,24 @@ def parse_locked_diagnosis(prompt: str) -> Understanding | None:
     )
     inherit = bool(re.search(r"(?im)^-\s*Inherit existing form:\s*yes", block))
     needs = bool(re.search(r"(?im)^-\s*Needs module:\s*yes", block))
+    gold = (
+        gold_m.group(1).strip()
+        if gold_m and gold_m.group(1).lower() not in {"none", "—"}
+        else None
+    )
+    if gold or needs:
+        grain = "full_app"
+    elif inherit:
+        grain = "field_pack"
+    else:
+        grain = "full_app"
     return Understanding(
         capability=str(cap_m.group(1) if cap_m else "residual_app"),
+        grain=grain,
         host_model=host,
         inherit_existing=inherit,
         needs_module=needs,
-        gold_artifact_id=(
-            gold_m.group(1).strip()
-            if gold_m and gold_m.group(1).lower() not in {"none", "—"}
-            else None
-        ),
+        gold_artifact_id=gold,
         title=(title_m.group(1).strip()[:80] if title_m else "Custom draft"),
         constraints=[c.strip() for c in constraints],
         out_of_scope=[o.strip() for o in out],
@@ -1461,13 +1469,54 @@ def reconcile_contract_with_draft(
     return understanding
 
 
-def attach_understanding(draft: dict[str, Any], prompt: str) -> dict[str, Any]:
+def attach_understanding(
+    draft: dict[str, Any],
+    prompt: str,
+    *,
+    locked: Understanding | dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Stamp `_understanding` and surface contradictions so Install stays off.
 
     Reconcile Contract ↔ draft identity before findings so stale Visitor Log IR
     cannot sit on a Restaurant (or other) residual draft.
+
+    Session-IR continuity: when Diagnosis confirm dumped ``craft_smart_buttons``
+    into session understanding, pass that as ``locked`` (or leave it on the draft)
+    so Generate does not rebuild from prompt alone and zero craft. Preference order
+    for the locked Contract: explicit ``locked`` → parse locked block → prior draft
+    ``_understanding`` → deterministic. Craft list is taken from the first source
+    that carries one (session wins over a craft-empty reparse).
     """
-    u = parse_locked_diagnosis(prompt) or _deterministic_understanding(prompt)
+    session_u = locked if isinstance(locked, Understanding) else Understanding.from_dict(
+        locked if isinstance(locked, dict) else None
+    )
+    parsed = parse_locked_diagnosis(prompt)
+    prior_raw = draft.get("_understanding")
+    prior = (
+        Understanding.from_dict(prior_raw)
+        if isinstance(prior_raw, dict)
+        else None
+    )
+
+    if session_u is not None:
+        u = session_u
+    elif parsed is not None:
+        u = parsed
+    elif prior is not None:
+        u = prior
+    else:
+        u = _deterministic_understanding(prompt)
+
+    # Preserve Diagnosis-confirmed craft across rebuild/reconcile.
+    # Session locked understanding is authoritative (empty list = chips removed).
+    if session_u is not None:
+        u.craft_smart_buttons = list(session_u.craft_smart_buttons or [])
+    elif not list(u.craft_smart_buttons or []):
+        for donor in (prior, parsed):
+            if donor is not None and list(donor.craft_smart_buttons or []):
+                u.craft_smart_buttons = list(donor.craft_smart_buttons or [])
+                break
+
     u = reconcile_contract_with_draft(draft, u, prompt=prompt)
     # Keep draft grain aligned with Contract for residual full_app.
     if u.grain == "full_app" and not u.inherit_existing:

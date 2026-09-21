@@ -157,21 +157,30 @@ def build_operator_surface(draft: dict[str, Any]) -> dict[str, Any]:
                 }
             )
             continue
-        # Residual full_app: never surface silent invent — confirmed craft chips OK.
+        # Residual full_app: stock-host find-it ⊆ confirmed craft only.
+        # Empty craft ⇒ no stock-host line (never invent Contacts/Employees from M2O).
+        # Prefer craft label («Visits») over invent/pluralize («Visitor Logs»).
         if suppress_host_invent:
+            u = draft.get("_understanding") if isinstance(draft.get("_understanding"), dict) else {}
+            craft = u.get("craft_smart_buttons") or []
+            craft_by_key = {
+                (str(c.get("on_model") or ""), str(c.get("related_model") or "")): c
+                for c in craft
+                if isinstance(c, dict)
+                and str(c.get("on_model") or "")
+                and str(c.get("related_model") or "")
+            }
+            craft_row = craft_by_key.get((on_model, related))
             src = str(btn.get("source") or "")
-            if src not in {"craft_confirmed", "craft_smart_button"}:
-                # Also allow when draft understanding lists this host as confirmed craft.
-                u = draft.get("_understanding") if isinstance(draft.get("_understanding"), dict) else {}
-                craft = u.get("craft_smart_buttons") or []
-                keys = {
-                    (str(c.get("on_model") or ""), str(c.get("related_model") or ""))
-                    for c in craft
-                    if isinstance(c, dict)
-                }
-                if (on_model, related) not in keys:
-                    continue
-        
+            if craft_row is None and src not in {"craft_confirmed", "craft_smart_button"}:
+                continue
+            if craft_row is None:
+                # Source-marked but not in locked craft — residual must not invent.
+                continue
+            craft_label = str(craft_row.get("label") or "").strip()
+            if craft_label:
+                label = craft_label
+
         key = (on_model, related, label)
         if key in seen_host:
             continue

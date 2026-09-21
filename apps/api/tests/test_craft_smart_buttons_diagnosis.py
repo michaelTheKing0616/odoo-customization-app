@@ -11,11 +11,13 @@ os.environ["AI_INTENT_LLM"] = "off"
 
 from app.ai_craft_smart_buttons import propose_craft_smart_buttons  # noqa: E402
 from app.ai_conversation.understand import (  # noqa: E402
+    append_locked_diagnosis,
     apply_understanding_edits,
+    attach_understanding,
     build_understanding,
     diagnosis_clarification,
 )
-from app.ai_operator_surface import build_operator_surface  # noqa: E402
+from app.ai_operator_surface import attach_operator_surface, build_operator_surface  # noqa: E402
 from app.ai_stock_host_smart_buttons import apply_stock_host_smart_buttons  # noqa: E402
 
 VISITOR = (
@@ -186,23 +188,124 @@ def test_punch_partner_tie_still_gets_contacts_without_craft() -> None:
     hosts = {b["on_model"] for b in draft["smart_buttons"]}
     assert "res.partner" in hosts
 
-def test_llm_shaped_must_do_still_proposes_craft() -> None:
-    """LLM enrich rewrites Must-do lines — craft must still parse Host/Company M2O."""
-    from app.ai_craft_smart_buttons import propose_craft_smart_buttons
 
-    class _U:
-        grain = "full_app"
-        inherit_existing = False
-        title = "Visitor Log"
-        constraints = [
-            "Create new model `x_visitor_log` (Visitor Log).",
-            "Add `company_id` field (Many2one to `res.partner`) for Company.",
-            "Add `host_id` field (Many2one to `hr.employee`) for Host.",
-        ]
+def _visitor_draft() -> dict:
+    return {
+        "display_name": "Visitor Log",
+        "grain": "full_app",
+        "_user_prompt": VISITOR,
+        "models": [
+            {
+                "model": "x_visitor_log",
+                "mode": "new",
+                "fields": [
+                    {"name": "x_host_id", "ttype": "many2one", "relation": "hr.employee"},
+                    {"name": "x_company_id", "ttype": "many2one", "relation": "res.partner"},
+                ],
+            }
+        ],
+        "smart_buttons": [],
+        "menus": [{"name": "Visitor Log", "technical_name": "visitor_log_root"}],
+    }
 
-    props = propose_craft_smart_buttons(VISITOR, _U())
-    assert props, "LLM-shaped Must-do must still yield craft chips"
-    assert props[0]["on_model"] == "hr.employee"
-    assert props[0]["default_on"] is True
-    assert any(p.get("on_model") == "res.partner" for p in props)
 
+def test_locked_employees_craft_survives_attach_and_find_it() -> None:
+    """Session craft must reach apply_stock + find-it (not zeroed by attach rebuild)."""
+    u = build_understanding(VISITOR)
+    kept = [p for p in u.craft_proposals if p.get("default_on")]
+    assert kept and kept[0]["on_model"] == "hr.employee"
+    locked = apply_understanding_edits(
+        u,
+        {
+            "title": u.title,
+            "constraints": u.constraints,
+            "inherit_existing": False,
+            "needs_module": False,
+            "craft_smart_buttons": kept,
+        },
+    )
+    # Live-shaped prompt: may or may not include locked block; session IR is source of truth.
+    prompt = append_locked_diagnosis(VISITOR, locked)
+    draft = _visitor_draft()
+    # Invent residual that must not appear on find-it.
+    draft["smart_buttons"] = [
+        {
+            "on_model": "res.partner",
+            "label": "Visitor Logs",
+            "related_model": "x_visitor_log",
+            "relation_field": "x_company_id",
+            "source": "odoo_app_bar",
+        }
+    ]
+    attach_understanding(draft, prompt, locked=locked.to_dict())
+    assert draft["_understanding"]["craft_smart_buttons"]
+    assert draft["_understanding"]["craft_smart_buttons"][0]["on_model"] == "hr.employee"
+    apply_stock_host_smart_buttons(draft, prompt=prompt)
+    attach_operator_surface(draft)
+    surface = draft["_operator_surface"]
+    hosts = {b.get("host_model") for b in surface.get("host_buttons") or []}
+    assert hosts == {"hr.employee"}
+    labels = {b.get("button_label") for b in surface["host_buttons"]}
+    assert labels == {"Visits"}
+    assert "Contacts" not in (surface.get("summary") or "")
+    assert "Visitor Logs" not in (surface.get("summary") or "")
+    assert "Visits" in (surface.get("summary") or "")
+
+
+def test_attach_without_locked_block_preserves_session_craft() -> None:
+    """Generate often re-attaches from prompt alone — session locked must still win."""
+    u = build_understanding(VISITOR)
+    kept = [p for p in u.craft_proposals if p.get("default_on")]
+    locked = apply_understanding_edits(
+        u,
+        {
+            "title": u.title,
+            "constraints": u.constraints,
+            "inherit_existing": False,
+            "needs_module": False,
+            "craft_smart_buttons": kept,
+        },
+    )
+    draft = _visitor_draft()
+    # Raw brief only — no ## Diagnosis (locked) block (the old zeroing path).
+    attach_understanding(draft, VISITOR, locked=locked.to_dict())
+    assert len(draft["_understanding"]["craft_smart_buttons"]) == 1
+    apply_stock_host_smart_buttons(draft, prompt=VISITOR)
+    attach_operator_surface(draft)
+    hosts = {b["host_model"] for b in draft["_operator_surface"]["host_buttons"]}
+    assert hosts == {"hr.employee"}
+
+
+def test_empty_craft_find_it_has_no_stock_host_line() -> None:
+    locked = apply_understanding_edits(
+        build_understanding(VISITOR),
+        {
+            "craft_smart_buttons": [],
+            "inherit_existing": False,
+            "needs_module": False,
+        },
+    )
+    draft = _visitor_draft()
+    draft["smart_buttons"] = [
+        {
+            "on_model": "res.partner",
+            "label": "Visitor Logs",
+            "related_model": "x_visitor_log",
+            "relation_field": "x_company_id",
+        },
+        {
+            "on_model": "hr.employee",
+            "label": "Visits",
+            "related_model": "x_visitor_log",
+            "relation_field": "x_host_id",
+        },
+    ]
+    attach_understanding(draft, VISITOR, locked=locked.to_dict())
+    assert draft["_understanding"]["craft_smart_buttons"] == []
+    apply_stock_host_smart_buttons(draft, prompt=VISITOR)
+    attach_operator_surface(draft)
+    surface = draft["_operator_surface"]
+    assert surface["host_buttons"] == []
+    summary = surface.get("summary") or ""
+    assert "Also on stock forms" not in summary
+    assert "Contacts" not in summary or "form fields" in summary.lower()

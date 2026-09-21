@@ -1087,7 +1087,11 @@ def ensure_relational_smart_buttons(draft: dict[str, Any]) -> list[str]:
             notes.append(f"app_bar: dropped notebook-duplicate smart button {on_model} → {rel}")
             continue
         label = str(btn.get("label") or "")
-        if rel in by_id and ("/" in label or len(label) > 28):
+        src = str(btn.get("source") or "")
+        # Never rewrite Diagnosis-confirmed craft labels (Visits ≠ Visitor Logs).
+        if src not in {"craft_confirmed", "craft_smart_button"} and rel in by_id and (
+            "/" in label or len(label) > 28
+        ):
             btn["label"] = short_model_label(
                 rel, str(by_id[rel].get("description") or ""), plural=True
             )

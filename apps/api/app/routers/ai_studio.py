@@ -418,6 +418,7 @@ def generate_session_route(
 
     understanding = load_understanding(resolved) or parse_locked_diagnosis(prompt)
     host_override = (understanding.host_model if understanding else None) or None
+    locked_understanding = understanding.to_dict() if understanding else None
 
     from app.ai_draft_jobs import build_draft_job_kwargs, enqueue_draft_job
     from app.odoo_service import get_connection_or_404
@@ -465,6 +466,7 @@ def generate_session_route(
                 host_model_override=host_override or draft_body.host_model,
                 connect_points_override=draft_body.connect_points,
                 ai_session_id=session_id,
+                locked_understanding=locked_understanding,
             ),
         )
     except HTTPException:

@@ -34,6 +34,7 @@ _DRAFT_JOB_KWARG_DEFAULTS: dict[str, Any] = {
     "gallery_id": None,
     "host_model_override": None,
     "connect_points_override": None,
+    "locked_understanding": None,
 }
 
 
@@ -57,6 +58,7 @@ def build_draft_job_kwargs(
     host_model_override: str | None = None,
     connect_points_override: dict[str, Any] | None = None,
     ai_session_id: str | None = None,
+    locked_understanding: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Keyword args for ``run_draft_job_body`` (excluding job_id, db_factory, client)."""
     kwargs: dict[str, Any] = {
@@ -77,6 +79,7 @@ def build_draft_job_kwargs(
         "gallery_id": gallery_id,
         "host_model_override": host_model_override,
         "connect_points_override": connect_points_override,
+        "locked_understanding": locked_understanding,
     }
     if ai_session_id:
         kwargs["ai_session_id"] = ai_session_id
@@ -114,6 +117,72 @@ def pack_seed_skips_llm(seed: dict[str, Any]) -> bool:
     )
 
 
+
+def _load_locked_understanding_from_session(
+    ai_session_id: str | None,
+    db_factory: Callable[[], Session] | None,
+) -> dict[str, Any] | None:
+    """Pull Diagnosis-confirmed understanding_json from the AI session."""
+    if not ai_session_id or db_factory is None:
+        return None
+    try:
+        from app.ai_conversation.session_store import get_session
+        from app.ai_conversation.understand import load_understanding
+
+        db = db_factory()
+        try:
+            row = get_session(db, ai_session_id)
+            if row is None:
+                return None
+            import json as _json
+
+            resolved = _json.loads(row.resolved_answers_json or "{}")
+            if not isinstance(resolved, dict):
+                return None
+            locked = load_understanding(resolved)
+            return locked.to_dict() if locked else None
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _stamp_locked_understanding(
+    draft: dict[str, Any],
+    prompt: str,
+    *,
+    locked_understanding: dict[str, Any] | None = None,
+) -> None:
+    """Stamp session/locked Contract IR before stock-host apply + find-it."""
+    from app.ai_conversation.understand import attach_understanding
+
+    attach_understanding(draft, prompt, locked=locked_understanding)
+
+
+def _apply_locked_craft_and_surface(
+    draft: dict[str, Any],
+    prompt: str,
+    *,
+    locked_understanding: dict[str, Any] | None = None,
+) -> list[str]:
+    """Re-stamp craft + find-it after closer/LLM so session IR always wins."""
+    notes: list[str] = []
+    _stamp_locked_understanding(draft, prompt, locked_understanding=locked_understanding)
+    try:
+        from app.ai_stock_host_smart_buttons import apply_stock_host_smart_buttons
+
+        notes.extend(apply_stock_host_smart_buttons(draft, prompt=prompt))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from app.ai_operator_surface import attach_operator_surface
+
+        notes.extend(attach_operator_surface(draft))
+    except Exception:  # noqa: BLE001
+        pass
+    return notes
+
+
 def complete_matched_pack_draft(
     *,
     prompt: str,
@@ -124,12 +193,21 @@ def complete_matched_pack_draft(
     available_models: list[str] | None = None,
     installed_modules: list[str] | None = None,
     stock_catalog: list[dict[str, Any]] | None = None,
+    locked_understanding: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Score/close a domain pack and cache it. No LLM, no background job."""
     warnings: list[str] = []
     emit = progress or (lambda *_a, **_k: None)
+    _stamp_locked_understanding(seed, prompt, locked_understanding=locked_understanding)
     emit(1, "Pack seeded", seed)
-    _cache_draft(db_factory, connection_id=connection_id, prompt=prompt, draft=seed, raw="")
+    _cache_draft(
+        db_factory,
+        connection_id=connection_id,
+        prompt=prompt,
+        draft=seed,
+        raw="",
+        locked_understanding=locked_understanding,
+    )
     draft = _finish_seed_draft(
         prompt,
         seed,
@@ -139,6 +217,7 @@ def complete_matched_pack_draft(
         stock_catalog=stock_catalog,
         connection_id=connection_id,
         db_factory=db_factory,
+        locked_understanding=locked_understanding,
     )
     from app.ai_generation_engine import (
         is_component_grain_draft,
@@ -157,7 +236,14 @@ def complete_matched_pack_draft(
         )
         attach_llm_status(draft, mode="pack_fallback", reason="option_a_authored")
         emit(len(STEP_LABELS) - 1, STEP_LABELS[-1], draft)
-        _cache_draft(db_factory, connection_id=connection_id, prompt=prompt, draft=draft, raw="")
+        _cache_draft(
+            db_factory,
+            connection_id=connection_id,
+            prompt=prompt,
+            draft=draft,
+            raw="",
+            locked_understanding=locked_understanding,
+        )
         rec = draft.get("_option_a_authoring") if isinstance(draft.get("_option_a_authoring"), dict) else {}
         note = (
             "Authoring gate passed — download zip and sandbox prove are unlocked."
@@ -200,8 +286,20 @@ def complete_matched_pack_draft(
         )
         warnings.append(reuse_note)
         attach_llm_status(draft, mode="pack_fallback", reason="honesty_seed")
+    warnings.extend(
+        _apply_locked_craft_and_surface(
+            draft, prompt, locked_understanding=locked_understanding
+        )
+    )
     emit(len(STEP_LABELS) - 1, STEP_LABELS[-1], draft)
-    _cache_draft(db_factory, connection_id=connection_id, prompt=prompt, draft=draft, raw="")
+    _cache_draft(
+        db_factory,
+        connection_id=connection_id,
+        prompt=prompt,
+        draft=draft,
+        raw="",
+        locked_understanding=locked_understanding,
+    )
     return {
         "ok": True,
         "draft": draft,
@@ -265,6 +363,7 @@ def _finish_seed_draft(
     stock_catalog: list[dict[str, Any]] | None = None,
     connection_id: str | None = None,
     db_factory: Callable[[], Session] | None = None,
+    locked_understanding: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Score and close a pack/seed draft so the wizard can apply it without LLM."""
     from app.ai_architecture_plan import stamp_architecture_plan
@@ -293,6 +392,8 @@ def _finish_seed_draft(
         )
     from app.ai_operator_brief import attach_operator_brief
 
+    # Session Contract IR before closer — craft must reach apply_stock_host_smart_buttons.
+    _stamp_locked_understanding(draft, prompt, locked_understanding=locked_understanding)
     attach_operator_brief(draft, user_prompt=prompt)
     if is_refuse_draft(draft):
         attach_generation_engine(draft, prompt, user_phase="review")
@@ -455,10 +556,14 @@ def _cache_draft(
     prompt: str,
     draft: dict[str, Any],
     raw: str,
+    locked_understanding: dict[str, Any] | None = None,
 ) -> None:
-    from app.ai_conversation.understand import attach_understanding
-
-    attach_understanding(draft, prompt)
+    prior = draft.get("_understanding") if isinstance(draft.get("_understanding"), dict) else None
+    _stamp_locked_understanding(
+        draft,
+        prompt,
+        locked_understanding=locked_understanding if locked_understanding is not None else prior,
+    )
     db = db_factory()
     try:
         save_draft_cache(
@@ -576,6 +681,8 @@ def run_draft_job_body(
     client: Any | None,
     db_factory: Callable[[], Session],
     connection_id: str | None,
+    locked_understanding: dict[str, Any] | None = None,
+    ai_session_id: str | None = None,
 ) -> dict[str, Any]:
     progress = _default_progress(job_id)
     warnings: list[str] = []
@@ -585,6 +692,11 @@ def run_draft_job_body(
     from app.ai_grain import classify_grain
     from app.ai_generation_engine import maybe_seed_from_capability
     from app.ai_operator_brief import intent_corpus, stated_residual_kind
+
+    if locked_understanding is None and ai_session_id:
+        locked_understanding = _load_locked_understanding_from_session(
+            ai_session_id, db_factory
+        )
 
     capability_seed = maybe_seed_from_capability(prompt)
     if capability_seed:
@@ -597,17 +709,11 @@ def run_draft_job_body(
             available_models=available_models,
             installed_modules=installed_modules,
             stock_catalog=stock_catalog,
+            locked_understanding=locked_understanding,
         )
 
     grain = grain_override or classify_grain(intent_corpus(prompt) or prompt)
-    from app.ai_grain import is_inherit_only_ops
-
-    # Inherit-only ops (reuse fields / wire into stock workflows / no new app)
-    # must never be forced into full_app by a false "named residual" read of
-    # field labels like "Prefer for delivery".
-    if is_inherit_only_ops(prompt):
-        grain = "field_pack"
-    elif stated_residual_kind(prompt)[0] == "named":
+    if stated_residual_kind(prompt)[0] == "named":
         grain = "full_app"
     if grain != "full_app":
         return _complete_component_draft(
@@ -638,10 +744,19 @@ def run_draft_job_body(
             available_models=available_models,
             installed_modules=installed_modules,
             stock_catalog=stock_catalog,
+            locked_understanding=locked_understanding,
         )
     # Snapshot immediately so Saved snapshots is populated even if closer/LLM later hits the cap.
+    _stamp_locked_understanding(seed, prompt, locked_understanding=locked_understanding)
     progress(1, "Pack seeded", seed)
-    _cache_draft(db_factory, connection_id=connection_id, prompt=prompt, draft=seed, raw="")
+    _cache_draft(
+        db_factory,
+        connection_id=connection_id,
+        prompt=prompt,
+        draft=seed,
+        raw="",
+        locked_understanding=locked_understanding,
+    )
     seed = _finish_seed_draft(
         prompt,
         seed,
@@ -651,9 +766,17 @@ def run_draft_job_body(
         stock_catalog=stock_catalog,
         connection_id=connection_id,
         db_factory=db_factory,
+        locked_understanding=locked_understanding,
     )
     progress(2, "Pack closed", seed)
-    _cache_draft(db_factory, connection_id=connection_id, prompt=prompt, draft=seed, raw="")
+    _cache_draft(
+        db_factory,
+        connection_id=connection_id,
+        prompt=prompt,
+        draft=seed,
+        raw="",
+        locked_understanding=locked_understanding,
+    )
 
     draft = seed
 
@@ -708,8 +831,20 @@ def run_draft_job_body(
     from app.ai_generation_engine import attach_generation_engine
 
     attach_generation_engine(draft, prompt, user_phase="review")
+    warnings.extend(
+        _apply_locked_craft_and_surface(
+            draft, prompt, locked_understanding=locked_understanding
+        )
+    )
     progress(len(STEP_LABELS) - 1, STEP_LABELS[-1], draft)
-    _cache_draft(db_factory, connection_id=connection_id, prompt=prompt, draft=draft, raw=raw)
+    _cache_draft(
+        db_factory,
+        connection_id=connection_id,
+        prompt=prompt,
+        draft=draft,
+        raw=raw,
+        locked_understanding=locked_understanding,
+    )
 
     return {
         "ok": True,
@@ -732,7 +867,7 @@ def enqueue_draft_job(db: Session, *, connection_id: str | None, body_kwargs: di
     kwargs = copy.deepcopy(serializable)
     for key, default in _DRAFT_JOB_KWARG_DEFAULTS.items():
         kwargs.setdefault(key, default)
-    ai_session_id = kwargs.pop("ai_session_id", None)
+    ai_session_id = kwargs.get("ai_session_id")
     conn_id = kwargs.get("connection_id") or connection_id
 
     def _fn() -> dict[str, Any]:
