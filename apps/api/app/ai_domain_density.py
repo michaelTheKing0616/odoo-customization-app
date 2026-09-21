@@ -588,7 +588,7 @@ def ensure_domain_density(
                     parent_for_rev,
                     _title(_leaf(parent_for_rev)),
                 ),
-                {"name": "x_date", "ttype": "datetime", "string": "Date"},
+                {"name": "x_date", "ttype": "date", "string": "Date"},
                 {"name": "x_notes", "ttype": "text", "string": "Notes"},
             ],
         )

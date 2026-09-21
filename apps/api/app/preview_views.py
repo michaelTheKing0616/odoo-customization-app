@@ -221,6 +221,21 @@ def _coerce_preview_ttype(name: str, spec: dict[str, Any]) -> str:
         # Must-do checkbox briefs sometimes land as char — stamp boolean for preview.
         if ttype in {"char", "text", ""} and "note" not in blob:
             return "boolean"
+    # Honest date vs datetime preview samples when IR is weak/wrong.
+    if widget in {"date", "datetime"}:
+        return widget
+    if ttype in {"date", "datetime"}:
+        return ttype
+    try:
+        from app.ai_field_ir import infer_date_or_datetime
+
+        temporal = infer_date_or_datetime(str(spec.get("string") or "")) or infer_date_or_datetime(
+            name
+        )
+        if temporal and ttype in {"char", "text", ""}:
+            return temporal
+    except Exception:  # noqa: BLE001
+        pass
     return ttype or "char"
 
 

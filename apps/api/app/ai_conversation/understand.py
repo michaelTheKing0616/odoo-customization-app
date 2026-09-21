@@ -619,8 +619,11 @@ def _brief_full_app_must_do(prompt: str) -> list[str]:
                 # Malformed selection paren — skip rather than emit junk Many2one
                 continue
             if tlow in _FIELD_TYPE_HINTS:
-                if tlow in {"date", "datetime"}:
-                    rows.append(fname)
+                if tlow == "datetime":
+                    # Keep the type word so Must-do classifier picks datetime.
+                    rows.append(f"{fname} datetime" if "datetime" not in fname.lower() else fname)
+                elif tlow == "date":
+                    rows.append(fname if re.search(r"(?i)\bdate\b", fname) else f"{fname} date")
                 elif tlow in {"boolean", "checkbox"}:
                     rows.append(f"Checkbox: {fname}")
                 else:

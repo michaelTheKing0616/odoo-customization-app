@@ -360,6 +360,14 @@ def _slug_field(label: str) -> str:
 
 
 def _guess_ttype(label: str) -> str:
+    try:
+        from app.ai_field_ir import infer_date_or_datetime
+
+        temporal = infer_date_or_datetime(label)
+        if temporal:
+            return temporal
+    except Exception:  # noqa: BLE001
+        pass
     low = (label or "").lower()
     if any(tok in low for tok in ("date", "due", "when")):
         return "date"

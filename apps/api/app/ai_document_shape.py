@@ -565,10 +565,13 @@ def ensure_residual_must_do_fields(draft: dict[str, Any], *, prompt: str = "") -
                 for existing in fields:
                     if str(existing.get("name") or "") != name:
                         continue
-                    if str(existing.get("ttype") or "char") == "char" and row.get("ttype") not in {
-                        None,
-                        "char",
-                    }:
+                    have_t = str(existing.get("ttype") or "char").lower()
+                    want_t = str(row.get("ttype") or "char").lower()
+                    # Upgrade weak char/text, AND correct date↔datetime when Must-do knows.
+                    if have_t != want_t and (
+                        (have_t in {"char", "text", ""} and want_t not in {None, "char", ""})
+                        or (have_t in {"date", "datetime"} and want_t in {"date", "datetime"})
+                    ):
                         existing.update({k: v for k, v in row.items() if k != "name"})
                         notes.append(f"must_do: upgraded {name} to {row.get('ttype')}")
                     break
@@ -615,16 +618,46 @@ def seed_register_from_brief(
     draft["_ambition"] = "thin"
     depends = ["base", "mail"]
     fields = _fields_from_column_list(text)
-    # Hollow column-list (Name-only) — stamp Must-do residual fields (char/M2O/date/selection).
-    if len(fields) <= 1:
-        try:
-            from app.ai_field_ir import fields_from_residual_brief
+    # Always merge Must-do residual fields (char/M2O/date/selection). Column-list
+    # alone often keeps only Name+Host and drops Visit date / Purpose.
+    try:
+        from app.ai_field_ir import fields_from_residual_brief
 
-            must = fields_from_residual_brief(text)
-            if len(must) > len(fields):
-                fields = must
-        except Exception:  # noqa: BLE001
-            pass
+        must = fields_from_residual_brief(text)
+        if must:
+            by_name = {str(f.get("name") or ""): dict(f) for f in fields if f.get("name")}
+            for row in must:
+                name = str(row.get("name") or "")
+                if not name:
+                    continue
+                if name not in by_name:
+                    by_name[name] = dict(row)
+                    continue
+                have_t = str(by_name[name].get("ttype") or "char").lower()
+                want_t = str(row.get("ttype") or "char").lower()
+                if have_t != want_t and (
+                    (have_t in {"char", "text", ""} and want_t not in {None, "char", ""})
+                    or (have_t in {"date", "datetime"} and want_t in {"date", "datetime"})
+                ):
+                    by_name[name].update({k: v for k, v in row.items() if k != "name"})
+            # Prefer Must-do order when it is richer; else keep column-list order + extras.
+            if len(must) >= len(fields):
+                ordered = []
+                seen: set[str] = set()
+                for row in must:
+                    name = str(row.get("name") or "")
+                    if name and name in by_name and name not in seen:
+                        ordered.append(by_name[name])
+                        seen.add(name)
+                for name, row in by_name.items():
+                    if name not in seen:
+                        ordered.append(row)
+                        seen.add(name)
+                fields = ordered
+            else:
+                fields = list(by_name.values())
+    except Exception:  # noqa: BLE001
+        pass
     if any(f.get("relation") == "hr.employee" for f in fields):
         depends.append("hr")
     if any(f.get("relation") == "res.partner" for f in fields):
@@ -2186,6 +2219,21 @@ def _fields_from_column_list(text: str) -> list[dict[str, Any]]:
                 }
             )
             continue
+        # Temporal leftovers (Visit date / Due date / Check-in time) — root classifier.
+        try:
+            from app.ai_field_ir import field_spec, human_field_label, infer_date_or_datetime
+
+            label = human_field_label(re.sub(r"(?i)\boptional\b", "", chunk))
+            temporal = infer_date_or_datetime(label) if label else None
+            if temporal and label:
+                spec = field_spec(label, ttype=temporal)
+                if spec:
+                    if optional:
+                        spec = {**spec, "required": False}
+                    add(spec)
+                    continue
+        except Exception:  # noqa: BLE001
+            pass
     if "x_name" not in names:
         fields.insert(
             0,

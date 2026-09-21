@@ -90,6 +90,71 @@ def human_field_label(label: str) -> str:
     return cleaned
 
 
+
+def infer_date_or_datetime(label: str) -> str | None:
+    """Prefer Date unless time is stated or reasonably implied.
+
+    Returns ``"date"``, ``"datetime"``, or ``None`` when the label is not
+    temporal. Shared by Must-do / constraints / column-list / refine / preview
+    so residual full_app, field_pack, and feature_slice share one rule.
+    """
+    low = re.sub(r"\s+", " ", (label or "").lower()).strip(" .:'\"")
+    if not low:
+        return None
+
+    # Explicit datetime / timestamp / date+time
+    if re.search(
+        r"(?i)\bdate\s*time\b|\bdatetime\b|\btimestamp\b|"
+        r"\bdate\s+and\s+time\b|\bat\s+\d{1,2}\s*(?:[:.]\d{2})?\s*(?:am|pm)?\b",
+        low,
+    ):
+        return "datetime"
+
+    # Time-of-day / schedule nouns (datetime even without the word "date")
+    if re.search(
+        r"(?i)\b("
+        r"check[- ]?in(?:\s+time)?|check[- ]?out(?:\s+time)?|"
+        r"clock[- ]?in|clock[- ]?out|"
+        r"time\s+in|time\s+out|time\s+of\s+day|"
+        r"(?:start|end|arrival|departure|appointment)\s+time|"
+        r"appointment\s+(?:start|end)|"
+        r"scheduled?\s+(?:start|end)|"
+        r"meeting\s+(?:start|end)"
+        r")\b",
+        low,
+    ):
+        return "datetime"
+
+    # Bare start/end with schedule semantics (not "start date" / "end date")
+    if re.fullmatch(r"(?i)(?:start|end|begins?|ends?)", low):
+        return "datetime"
+    if re.search(r"(?i)\b(?:from|between).{0,24}\b(?:to|and)\b.{0,24}\b(?:time|am|pm)\b", low):
+        return "datetime"
+
+    # Calendar-day labels — date wins when only a date is named
+    if re.search(
+        r"(?i)\b("
+        r"visit\s+date|birth\s*date|birthday|due\s+date|expiry\s+date|"
+        r"expiration\s+date|start\s+date|end\s+date|open(?:ed)?\s+date|"
+        r"close(?:d)?\s+date|deadline|dob|d\.o\.b\.?"
+        r")\b",
+        low,
+    ):
+        return "date"
+
+    # Trailing / bare "date" without time cues
+    if re.search(r"(?i)\bdate\b", low) and not re.search(r"(?i)\btime\b", low):
+        return "date"
+
+    # Due / deadline / expiry without an explicit "date" word
+    if re.search(r"(?i)\b(due|deadline|expir(?:y|es|ation))\b", low) and not re.search(
+        r"(?i)\btime\b", low
+    ):
+        return "date"
+
+    return None
+
+
 def ingenium_field_name(label: str, *, ttype: str) -> str:
     slug = _slug(strip_leading_articles(label))
     if slug.startswith("studio_"):
@@ -283,9 +348,12 @@ def _constraint_field_spec(line: str) -> dict[str, Any] | None:
     if "." in label and re.search(r"(?i)\bname\b", label):
         label = "Name"
     low = label.lower()
-    if _CONSTRAINT_DATE_RE.search(low):
-        ttype = "datetime" if "time" in low and "date" in low else "date"
-        return field_spec(label, ttype=ttype)
+    # Strip trailing explicit type tokens ("Visit datetime", "Due date")
+    temporal = infer_date_or_datetime(label)
+    if temporal is None and _CONSTRAINT_DATE_RE.search(low):
+        temporal = "datetime" if re.search(r"(?i)\b(?:date\s*time|datetime|timestamp)\b", low) else "date"
+    if temporal:
+        return field_spec(label, ttype=temporal)
     if low == "name" or low.endswith(" name"):
         return {
             "name": "x_name",
@@ -520,6 +588,7 @@ __all__ = [
     "extract_field_ir",
     "fields_from_residual_brief",
     "human_field_label",
+    "infer_date_or_datetime",
     "is_banned_slug",
     "is_junk_extension_field",
     "looks_like_contacts_delivery_brief",
