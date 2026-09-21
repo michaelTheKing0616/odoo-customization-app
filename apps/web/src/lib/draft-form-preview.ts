@@ -34,6 +34,14 @@ export type PreviewHeaderButton = {
   variant: "primary" | "secondary";
 };
 
+export type PreviewFormAlert = {
+  id: string;
+  level: "info" | "warning" | "danger" | string;
+  message: string;
+  when?: string | null;
+  kind?: "alert" | "ribbon" | string;
+};
+
 export type PreviewStatusBar = {
   field: string;
   stages: string[];
@@ -60,6 +68,7 @@ export type PreviewFormView = {
   notebooks?: PreviewNotebook[];
   chatter?: "stub" | "hidden";
   groupLayout?: "stack" | "two-column";
+  alerts?: PreviewFormAlert[];
 };
 
 export type PreviewListColumn = {
@@ -289,6 +298,7 @@ export function normalizeFormPreview(raw: unknown): PreviewFormView | null {
     groups,
     notebooks,
     chatter: rec.chatter === "stub" ? "stub" : "hidden",
+    alerts: Array.isArray((raw as any).alerts) ? ((raw as any).alerts as PreviewFormAlert[]) : [],
     groupLayout: rec.groupLayout === "two-column" ? "two-column" : "stack",
   };
 }

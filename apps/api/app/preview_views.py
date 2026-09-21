@@ -97,8 +97,7 @@ PreviewFormView = TypedDict(
         "groups": list[PreviewGroup],
         "notebooks": list[PreviewNotebook],
         "chatter": Literal["stub", "hidden"],
-        "groupLayout": Literal["stack", "two-column"],
-    },
+        "groupLayout": Literal["stack", "two-column"],},
     total=False,
 )
 
@@ -878,7 +877,7 @@ def build_form_preview(
 
     app_label = HOST_LABELS.get(mid) if is_inherit else None
 
-    return {
+    result = {
         "type": "form",
         "model": mid,
         "title": title,
@@ -892,6 +891,9 @@ def build_form_preview(
         "chatter": chatter,
         "groupLayout": group_layout,
     }
+    from app.ai_hint_chrome import attach_preview_alerts
+
+    return attach_preview_alerts(result, draft)  # type: ignore[return-value]
 
 
 def build_list_preview(draft: dict[str, Any], *, model: str | None = None) -> PreviewListView | None:

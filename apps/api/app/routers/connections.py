@@ -6,6 +6,7 @@ import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 from app.account_service import AccountError
 from app.capabilities import capabilities_from_version, probe_web_base_url, sample_installed_modules, tier_matrix_response
@@ -527,3 +528,44 @@ def get_protected_modules(connection_id: str, db: Session = Depends(get_db)) -> 
         manifest=manifest,
         tier_summary=summary,
     )
+
+
+# --- App Studio prefs (Flash AST enrich toggle) ---------------------------------
+
+class StudioPrefsOut(BaseModel):
+    flash_ast_enrich: bool | None = None
+    flash_ast_enrich_label: str = "Enrich Must-do with Flash"
+    flash_ast_enrich_help: str = ""
+
+
+class StudioPrefsIn(BaseModel):
+    flash_ast_enrich: bool | None = None
+
+
+@router.get("/{connection_id}/studio/prefs", response_model=StudioPrefsOut)
+def get_studio_prefs_route(connection_id: str, db: Session = Depends(get_db)) -> StudioPrefsOut:
+    from app.odoo_service import get_connection_or_404
+    from app.studio_prefs import get_studio_prefs
+
+    try:
+        row = get_connection_or_404(db, connection_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return StudioPrefsOut(**get_studio_prefs(row))
+
+
+@router.patch("/{connection_id}/studio/prefs", response_model=StudioPrefsOut)
+def patch_studio_prefs_route(
+    connection_id: str,
+    body: StudioPrefsIn,
+    db: Session = Depends(get_db),
+) -> StudioPrefsOut:
+    from app.odoo_service import get_connection_or_404
+    from app.studio_prefs import set_studio_prefs
+
+    try:
+        row = get_connection_or_404(db, connection_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    prefs = set_studio_prefs(db, row, flash_ast_enrich=body.flash_ast_enrich)
+    return StudioPrefsOut(**prefs)

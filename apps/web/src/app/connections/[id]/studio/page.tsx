@@ -106,6 +106,11 @@ export default function AppStudioPage() {
 
   const sessionIdParam = searchParams.get("session");
   const [prompt, setPrompt] = useState("");
+  const [flashAstEnrich, setFlashAstEnrich] = useState(false);
+  const [flashAstEnrichHelp, setFlashAstEnrichHelp] = useState(
+    "On: optional Flash AST fill (same path as AI_INTENT_LLM). Off: deterministic floor only.",
+  );
+
   const [session, setSession] = useState<StudioSession | null>(null);
   const [job, setJob] = useState<JobRow | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -611,6 +616,26 @@ export default function AppStudioPage() {
     };
   }, [session?.id, session?.job_id, phase, connectionId, router]);
 
+
+  useEffect(() => {
+    if (!connectionId?.trim()) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const prefs = await api.getStudioPrefs(connectionId.trim());
+        if (cancelled) return;
+        // null = follow env → default UI off (honest: no Flash unless operator asks)
+        setFlashAstEnrich(Boolean(prefs.flash_ast_enrich));
+        if (prefs.flash_ast_enrich_help) setFlashAstEnrichHelp(prefs.flash_ast_enrich_help);
+      } catch {
+        /* prefs are optional — keep product default off */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionId]);
+
   async function startSession() {
     if (!connectionId?.trim()) {
       setError("Open App Studio from a connection page, then try again.");
@@ -622,6 +647,7 @@ export default function AppStudioPage() {
       const created = await api.createStudioSession({
         connection_id: connectionId.trim(),
         prompt: prompt.trim(),
+        flash_ast_enrich: flashAstEnrich,
       });
       setSession(created);
       rememberStudioSession(connectionId, created.id);
@@ -1194,6 +1220,18 @@ export default function AppStudioPage() {
           busy={busy !== null}
           onPromptChange={setPrompt}
           onStart={() => void startSession()}
+          flashAstEnrich={flashAstEnrich}
+          flashAstEnrichHelp={flashAstEnrichHelp}
+          onFlashAstEnrichChange={(value) => {
+            setFlashAstEnrich(value);
+            if (connectionId?.trim()) {
+              void api.patchStudioPrefs(connectionId.trim(), {
+                flash_ast_enrich: value,
+              }).catch(() => {
+                /* local toggle still applies for this session */
+              });
+            }
+          }}
         />
       ) : null}
 

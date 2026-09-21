@@ -6,6 +6,8 @@ LLM may auto-clear pack_ambiguity or material_ambiguity when confidence is high.
 
 from __future__ import annotations
 
+import contextvars
+
 import json
 import logging
 import re
@@ -58,7 +60,38 @@ def _coerce_host_model(raw: str) -> str | None:
     return None
 
 
+
+# Session / connection override for Studio "Enrich Must-do with Flash" toggle.
+# None = follow env (AI_INTENT_LLM). True/False = force on/off for this request.
+_intent_llm_override: contextvars.ContextVar[bool | None] = contextvars.ContextVar(
+    "intent_llm_override", default=None
+)
+
+
+def set_intent_llm_override(value: bool | None) -> contextvars.Token[bool | None]:
+    """Force Flash AST enrich on/off for the current request; None clears to env."""
+    return _intent_llm_override.set(value)
+
+
+def reset_intent_llm_override(token: contextvars.Token[bool | None]) -> None:
+    _intent_llm_override.reset(token)
+
+
+def intent_llm_override() -> bool | None:
+    return _intent_llm_override.get()
+
+
 def intent_llm_enabled() -> bool:
+    """Whether Flash/LLM may enrich Must-do AST.
+
+    Precedence:
+    1. Request/session override from Studio toggle (set_intent_llm_override)
+    2. AI_INTENT_LLM env — off = always floor; on = always allow; auto = provider
+    Product default when env unset: auto (same as settings default).
+    """
+    override = _intent_llm_override.get()
+    if override is not None:
+        return bool(override)
     mode = (settings.ai_intent_llm or "auto").strip().lower()
     if mode == "off":
         return False

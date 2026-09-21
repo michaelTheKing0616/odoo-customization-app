@@ -11,6 +11,10 @@ type StudioBriefScreenProps = {
   busy: boolean;
   onPromptChange: (value: string) => void;
   onStart: () => void;
+  /** Enrich Must-do with Flash — on = Flash AST fill; off = det floor only */
+  flashAstEnrich?: boolean;
+  onFlashAstEnrichChange?: (value: boolean) => void;
+  flashAstEnrichHelp?: string;
 };
 
 export function StudioBriefScreen({
@@ -18,6 +22,9 @@ export function StudioBriefScreen({
   busy,
   onPromptChange,
   onStart,
+  flashAstEnrich = false,
+  onFlashAstEnrichChange,
+  flashAstEnrichHelp,
 }: StudioBriefScreenProps) {
   return (
     <div className="studio-prompt-screen studio-prompt-screen--hero" data-testid="studio-brief">
@@ -45,6 +52,32 @@ export function StudioBriefScreen({
             />
           ))}
         </div>
+        {onFlashAstEnrichChange ? (
+          <label
+            className="studio-flash-enrich-toggle"
+            data-testid="studio-flash-ast-enrich-toggle"
+            title={
+              flashAstEnrichHelp ||
+              "On: optional Flash AST fill (same path as AI_INTENT_LLM). Off: deterministic floor only."
+            }
+          >
+            <input
+              type="checkbox"
+              checked={flashAstEnrich}
+              disabled={busy}
+              onChange={(e) => onFlashAstEnrichChange(e.target.checked)}
+              data-testid="studio-flash-ast-enrich-input"
+            />
+            <span>
+              <strong>Enrich Must-do with Flash</strong>
+              <span className="studio-flash-enrich-hint">
+                {flashAstEnrich
+                  ? " — Flash may fill free prose into Must-do (never shrinks the floor)."
+                  : " — off = deterministic floor only."}
+              </span>
+            </span>
+          </label>
+        ) : null}
         <button
           type="button"
           className="btn btn-brand studio-prompt-cta"

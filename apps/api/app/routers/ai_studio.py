@@ -44,6 +44,8 @@ class CreateSessionIn(BaseModel):
     connection_id: str | None = None
     prompt: str = Field(min_length=10)
     feature: str = "studio"
+    # Studio toggle — Enrich Must-do with Flash (None = follow connection pref / env)
+    flash_ast_enrich: bool | None = None
 
     @field_validator("connection_id", mode="before")
     @classmethod
@@ -153,17 +155,37 @@ def _attach_diagnosis(
 def create_session_route(body: CreateSessionIn, db: Session = Depends(get_db)) -> dict[str, Any]:
     prompt = body.prompt.strip()
     connection_id = body.connection_id
+    conn_row = None
     if connection_id:
         from app.odoo_service import get_connection_or_404
 
         try:
-            get_connection_or_404(db, connection_id)
+            conn_row = get_connection_or_404(db, connection_id)
         except LookupError as exc:
             raise HTTPException(
                 status_code=404,
                 detail="Connection not found — open App Studio from a connection page, then Start new app.",
             ) from exc
 
+    # Flash AST enrich toggle: request body > connection studio pref > env
+    from app.ai_conversation.intent_llm import reset_intent_llm_override, set_intent_llm_override
+    from app.studio_prefs import get_studio_prefs, resolve_flash_ast_enrich
+
+    conn_pref = None
+    if conn_row is not None:
+        conn_pref = get_studio_prefs(conn_row).get("flash_ast_enrich")
+    enrich_override = resolve_flash_ast_enrich(
+        connection_pref=conn_pref if isinstance(conn_pref, bool) else None,
+        request_override=body.flash_ast_enrich,
+    )
+    override_token = set_intent_llm_override(enrich_override)
+    try:
+        return _create_session_inner(body, db, prompt, connection_id, enrich_override)
+    finally:
+        reset_intent_llm_override(override_token)
+
+
+def _create_session_inner(body, db, prompt, connection_id, enrich_override):
     resolved: dict[str, str] = {}
     assessment = assess_intent(prompt, resolved_answers=resolved)
     provider, fallback = _provider_meta()

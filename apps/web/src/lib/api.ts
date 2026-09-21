@@ -1505,9 +1505,32 @@ export const api = {
         async_job: opts?.async_job ?? false,
       }),
     }),
-  createStudioSession: (body: { prompt: string; connection_id?: string; feature?: string }) =>
+  createStudioSession: (body: {
+    prompt: string;
+    connection_id?: string;
+    feature?: string;
+    flash_ast_enrich?: boolean | null;
+  }) =>
     request<import("@/lib/studio-session").StudioSession>("/api/ai/sessions", {
       method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getStudioPrefs: (connectionId: string) =>
+    request<{
+      flash_ast_enrich: boolean | null;
+      flash_ast_enrich_label: string;
+      flash_ast_enrich_help: string;
+    }>(`/api/connections/${connectionId}/studio/prefs`),
+  patchStudioPrefs: (
+    connectionId: string,
+    body: { flash_ast_enrich?: boolean | null },
+  ) =>
+    request<{
+      flash_ast_enrich: boolean | null;
+      flash_ast_enrich_label: string;
+      flash_ast_enrich_help: string;
+    }>(`/api/connections/${connectionId}/studio/prefs`, {
+      method: "PATCH",
       body: JSON.stringify(body),
     }),
   getStudioSession: (sessionId: string) =>

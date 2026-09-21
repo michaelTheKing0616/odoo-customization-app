@@ -51,6 +51,20 @@ export function OdooFormView({
       />
       <OdooFormSheet>
         {showContactChrome ? <ContactTitleArea /> : null}
+        {(view.alerts || []).map((alert) => (
+          <div
+            key={alert.id}
+            className={`odoo-form-alert odoo-form-alert--${alert.level || "warning"}`}
+            role="alert"
+            data-testid={`odoo-form-alert-${alert.id}`}
+            data-hint-kind={alert.kind || "alert"}
+          >
+            <div className="odoo-form-alert-message">{alert.message}</div>
+            {alert.when ? (
+              <div className="odoo-form-alert-when">When: {alert.when}</div>
+            ) : null}
+          </div>
+        ))}
         <OdooButtonBox buttons={view.smartButtons || []} />
         <div
           className={`odoo-form-grid-2col ${twoColumn ? "is-two-column" : ""}`}
