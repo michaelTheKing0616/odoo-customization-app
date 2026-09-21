@@ -537,10 +537,34 @@ def humanize_app_surface(draft: dict[str, Any]) -> list[str]:
                         notes.append(f"app_bar: humanized menu {menu.get('technical_name')}")
                 break
 
+    # Diagnosis craft labels («Visits») must never become pluralized model names
+    # («Visitor Logs»). Prefer understanding craft rows when present.
+    craft_labels: dict[tuple[str, str], str] = {}
+    u = draft.get("_understanding") if isinstance(draft.get("_understanding"), dict) else {}
+    for c in u.get("craft_smart_buttons") or []:
+        if not isinstance(c, dict):
+            continue
+        on_m = str(c.get("on_model") or c.get("host_model") or "")
+        rel_m = str(c.get("related_model") or c.get("residual_model") or "")
+        lab = str(c.get("label") or "").strip()
+        if on_m and rel_m and lab:
+            craft_labels[(on_m, rel_m)] = lab
+
     for btn in draft.get("smart_buttons") or []:
         if not isinstance(btn, dict):
             continue
+        on_model = str(btn.get("on_model") or "")
         rel = str(btn.get("related_model") or "")
+        src = str(btn.get("source") or "")
+        craft_lab = craft_labels.get((on_model, rel))
+        if craft_lab:
+            if btn.get("label") != craft_lab:
+                btn["label"] = craft_lab
+                if btn.get("string"):
+                    btn["string"] = craft_lab
+            continue
+        if src in {"craft_confirmed", "craft_smart_button"}:
+            continue
         if rel in plurals:
             if btn.get("label") != plurals[rel]:
                 btn["label"] = plurals[rel]
@@ -4659,6 +4683,17 @@ def close_odoo_architecture(draft: dict[str, Any], *, user_prompt: str = "") -> 
     except Exception as exc:  # noqa: BLE001
         notes.append(f"capability: stamp skipped ({exc})")
     notes.extend(collapse_header_o2ms_into_notebook(draft))
+    # Residual craft ⊆ find-it: scrub invent + stamp Diagnosis craft before surface.
+    try:
+        from app.ai_stock_host_smart_buttons import apply_stock_host_smart_buttons
+
+        notes.extend(
+            apply_stock_host_smart_buttons(
+                draft, prompt=str(draft.get("_user_prompt") or prompt or "")
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        notes.append(f"stock_host_btn: closer skipped ({exc})")
     try:
         from app.ai_operator_surface import attach_operator_surface
 

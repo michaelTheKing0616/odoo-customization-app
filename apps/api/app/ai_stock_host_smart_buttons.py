@@ -194,8 +194,9 @@ def partner_tie_allows_contacts_button(prompt: str) -> bool:
 def _is_residual_full_app(draft: dict[str, Any]) -> bool:
     """True for residual new-app drafts — not Prefer/inherit field packs.
 
-    Locked Diagnosis ``_understanding.grain == full_app`` + residual x_new wins
-    over draft/LLM feature_slice/field_pack so craft scrub/apply still run.
+    Locked Diagnosis ``full_app`` + residual x_new wins over feature_slice flips.
+    Explicit ``field_pack`` (Prefer / companion x_) still allows stock-host stamp.
+    ``feature_slice`` + x_new without Prefer inherit ⇒ residual invent suppress.
     """
     models = [m for m in (draft.get("models") or []) if isinstance(m, dict)]
     x_new = [
@@ -215,21 +216,31 @@ def _is_residual_full_app(draft: dict[str, Any]) -> bool:
     if isinstance(engine, dict):
         if engine.get("capability") in {"option_a_authored", "option_a_standalone", "stock_reuse"}:
             return False
+    if draft.get("_component"):
+        return False
 
     u = draft.get("_understanding") if isinstance(draft.get("_understanding"), dict) else {}
     locked_grain = str(u.get("grain") or "")
-    if locked_grain == "full_app" and not u.get("inherit_existing") and x_new:
+    locked_inherit = bool(u.get("inherit_existing"))
+
+    if locked_grain == "full_app" and not locked_inherit and x_new:
         return True
 
     grain = str(draft.get("grain") or "").strip()
+    eg = str(engine.get("grain") or "") if isinstance(engine, dict) else ""
+
+    # Prefer / companion field_pack — allow legitimate stock-host invent.
+    if (grain == "field_pack" or eg == "field_pack") and locked_grain != "full_app":
+        return False
+
+    # LLM/grain flip feature_slice on a residual x_new register — suppress invent.
+    if x_new and not locked_inherit and (grain == "feature_slice" or eg == "feature_slice"):
+        return True
+
     if grain in {"field_pack", "feature_slice"}:
         return False
-    if draft.get("_component"):
+    if eg in {"field_pack", "feature_slice"}:
         return False
-    if isinstance(engine, dict):
-        eg = str(engine.get("grain") or "")
-        if eg in {"field_pack", "feature_slice"}:
-            return False
     return bool(x_new) or grain in {"", "full_app"}
 
 
@@ -257,6 +268,8 @@ def _drop_disallowed_stock_host_buttons(draft: dict[str, Any], *, prompt: str) -
         confirmed_craft = _confirmed_craft_list(draft)
     except Exception:  # noqa: BLE001
         confirmed_craft = []
+    u = draft.get("_understanding") if isinstance(draft.get("_understanding"), dict) else {}
+    craft_key_present = isinstance(u, dict) and "craft_smart_buttons" in u
     for b in btns:
         if not isinstance(b, dict):
             filtered.append(b)
@@ -265,12 +278,12 @@ def _drop_disallowed_stock_host_buttons(draft: dict[str, Any], *, prompt: str) -
         if on_model not in stock_hosts:
             filtered.append(b)
             continue
-        # Diagnosis-confirmed craft chips — keep.
-        if confirmed_craft and is_craft_confirmed_button(b, confirmed_craft):
-            filtered.append(b)
-            continue
-        if str(b.get("source") or "") in {"craft_confirmed", "craft_smart_button"}:
-            filtered.append(b)
+        # Diagnosis craft list is authoritative (incl. empty = no stock-host buttons).
+        if craft_key_present or confirmed_craft:
+            if confirmed_craft and is_craft_confirmed_button(b, confirmed_craft):
+                filtered.append(b)
+                continue
+            dropped.append(on_model)
             continue
         # Punch / loyalty: keep Contacts + PoS companion host buttons.
         if allow_partner and on_model in {"res.partner", "pos.order", "pos.session"}:

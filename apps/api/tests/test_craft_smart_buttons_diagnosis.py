@@ -18,6 +18,7 @@ from app.ai_conversation.understand import (  # noqa: E402
     diagnosis_clarification,
 )
 from app.ai_operator_surface import attach_operator_surface, build_operator_surface  # noqa: E402
+from app.ai_odoo_app_bar import humanize_app_surface  # noqa: E402
 from app.ai_stock_host_smart_buttons import apply_stock_host_smart_buttons  # noqa: E402
 from app.ai_grain import classify_grain  # noqa: E402
 from app.ai_operator_brief import intent_corpus  # noqa: E402
@@ -392,12 +393,18 @@ def test_feature_slice_empty_craft_no_stock_host_line() -> None:
         },
     ]
     apply_stock_host_smart_buttons(draft, prompt=VISITOR)
+    # Empty craft must scrub invent from IR — not only hide on find-it.
+    assert not any(
+        isinstance(b, dict) and str(b.get("on_model") or "") in {"res.partner", "hr.employee"}
+        for b in (draft.get("smart_buttons") or [])
+    )
     attach_operator_surface(draft)
     surface = draft["_operator_surface"]
     assert surface["host_buttons"] == []
     summary = surface.get("summary") or ""
     assert "Also on stock forms" not in summary
     assert "Visitor Logs" not in summary
+    assert "Customer, Last Transaction" not in summary
 
 
 def test_locked_diagnosis_chrome_does_not_flip_grain_via_intent_corpus() -> None:
@@ -458,3 +465,161 @@ def test_prefer_contacts_inherit_unchanged_with_feature_slice_path() -> None:
     assert "residual app" not in (surface.get("summary") or "").lower() or "Contacts" in (
         surface.get("summary") or ""
     )
+
+
+def test_humanize_does_not_pluralize_craft_visits_label() -> None:
+    """humanize_app_surface must not rewrite «Visits» → «Visitor Logs»."""
+    u = build_understanding(VISITOR)
+    kept = [p for p in u.craft_proposals if p.get("default_on")]
+    locked = apply_understanding_edits(
+        u,
+        {
+            "title": "Visitor Log",
+            "craft_smart_buttons": kept,
+            "inherit_existing": False,
+            "needs_module": False,
+            "grain": "full_app",
+        },
+    )
+    draft = _visitor_draft()
+    draft["models"][0]["description"] = "Visitor Log"
+    attach_understanding(draft, VISITOR, locked=locked.to_dict())
+    apply_stock_host_smart_buttons(draft, prompt=VISITOR)
+    assert any(
+        b.get("label") == "Visits" and b.get("on_model") == "hr.employee"
+        for b in draft["smart_buttons"]
+        if isinstance(b, dict)
+    )
+    humanize_app_surface(draft)
+    labels = {
+        (b.get("on_model"), b.get("label"))
+        for b in draft["smart_buttons"]
+        if isinstance(b, dict)
+    }
+    assert ("hr.employee", "Visits") in labels
+    assert not any(lab == "Visitor Logs" for _, lab in labels)
+    attach_operator_surface(draft)
+    summary = draft["_operator_surface"].get("summary") or ""
+    assert "Visits" in summary and "Employees" in summary
+    assert "Visitor Logs" not in summary
+    assert "on Contacts" not in summary
+    assert "Customer, Last Transaction" not in summary
+
+
+def test_illicit_craft_confirmed_contacts_dropped_when_craft_is_employees() -> None:
+    """Source=craft_confirmed on Contacts must not bypass craft-only ⊆ Employees."""
+    u = build_understanding(VISITOR)
+    kept = [p for p in u.craft_proposals if p.get("default_on")]
+    assert kept and kept[0]["on_model"] == "hr.employee"
+    locked = apply_understanding_edits(
+        u,
+        {
+            "craft_smart_buttons": kept,
+            "inherit_existing": False,
+            "grain": "full_app",
+        },
+    )
+    draft = _visitor_draft()
+    draft["_understanding"] = locked.to_dict()
+    draft["smart_buttons"] = [
+        {
+            "on_model": "res.partner",
+            "label": "Visitor Logs",
+            "related_model": "x_visitor_log",
+            "relation_field": "x_company_id",
+            "source": "craft_confirmed",
+        }
+    ]
+    apply_stock_host_smart_buttons(draft, prompt=VISITOR)
+    hosts = {
+        str(b.get("on_model"))
+        for b in (draft.get("smart_buttons") or [])
+        if isinstance(b, dict)
+    }
+    assert "res.partner" not in hosts
+    assert "hr.employee" in hosts
+    attach_operator_surface(draft)
+    summary = draft["_operator_surface"].get("summary") or ""
+    assert "on Contacts" not in summary
+    assert "Visitor Logs" not in summary
+    assert "Visits" in summary
+
+
+def test_no_craft_no_understanding_residual_does_not_invent_contacts_find_it() -> None:
+    """Rule 2: residual x_new with no craft must not invent Contacts find-it."""
+    prompt = "Equipment checkout register: Asset, Borrower, Due date."
+    draft = {
+        "display_name": "Equipment Checkout",
+        "technical_name": "equipment_checkout",
+        "grain": "feature_slice",
+        "_generation_engine": {"grain": "feature_slice"},
+        "_user_prompt": prompt,
+        "models": [
+            {
+                "model": "x_equipment_checkout",
+                "mode": "new",
+                "fields": [
+                    {
+                        "name": "x_partner_id",
+                        "ttype": "many2one",
+                        "relation": "res.partner",
+                        "string": "Borrower",
+                    }
+                ],
+            }
+        ],
+        "smart_buttons": [
+            {
+                "on_model": "res.partner",
+                "label": "Equipment Checkouts",
+                "related_model": "x_equipment_checkout",
+                "relation_field": "x_partner_id",
+                "source": "odoo_app_bar",
+            }
+        ],
+        "menus": [{"name": "Equipment Checkout", "technical_name": "eq_root"}],
+    }
+    apply_stock_host_smart_buttons(draft, prompt=prompt)
+    attach_operator_surface(draft)
+    surface = draft["_operator_surface"]
+    assert surface.get("host_buttons") == []
+    summary = surface.get("summary") or ""
+    assert "Also on stock forms" not in summary
+    assert "on Contacts" not in summary
+
+
+def test_prefer_contacts_field_pack_still_allows_legitimate_contacts() -> None:
+    """Prefer Contacts field_pack must still allow Contacts host find-it."""
+    draft = {
+        "display_name": "Preferred delivery",
+        "grain": "field_pack",
+        "_generation_engine": {"grain": "field_pack", "host_model": "res.partner"},
+        "_user_prompt": PREFER,
+        "_understanding": {
+            "grain": "field_pack",
+            "inherit_existing": True,
+            "host_model": "res.partner",
+        },
+        "models": [
+            {
+                "model": "res.partner",
+                "mode": "inherit",
+                "fields": [{"name": "x_preferred", "ttype": "boolean"}],
+            }
+        ],
+        "smart_buttons": [
+            {
+                "on_model": "res.partner",
+                "label": "Notes",
+                "related_model": "x_delivery_note",
+                "relation_field": "x_partner_id",
+            }
+        ],
+        "menus": [],
+    }
+    apply_stock_host_smart_buttons(draft, prompt=PREFER)
+    attach_operator_surface(draft)
+    surface = draft["_operator_surface"]
+    hosts = {b.get("host_model") for b in surface.get("host_buttons") or []}
+    assert "res.partner" in hosts or "Contacts" in (surface.get("summary") or "")
+

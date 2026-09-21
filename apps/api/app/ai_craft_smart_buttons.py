@@ -280,18 +280,23 @@ def _match_relation_field(
 def craft_button_keys(rows: list[dict[str, Any]]) -> set[tuple[str, str]]:
     keys: set[tuple[str, str]] = set()
     for row in rows:
-        on_model = str(row.get("on_model") or "")
-        related = str(row.get("related_model") or "")
+        on_model = str(row.get("on_model") or row.get("host_model") or "")
+        related = str(row.get("related_model") or row.get("residual_model") or "")
         if on_model and related:
             keys.add((on_model, related))
     return keys
 
 
 def is_craft_confirmed_button(btn: dict[str, Any], confirmed: list[dict[str, Any]]) -> bool:
-    if str(btn.get("source") or "") in {"craft_confirmed", "craft_smart_button"}:
-        return True
-    on_model = str(btn.get("on_model") or "")
-    related = str(btn.get("related_model") or "")
+    """True only when the button's host↔residual pair is in confirmed craft.
+
+    Source tags alone never authorize retention — illicit invent can be stamped
+    ``craft_confirmed``; empty craft must drop all stock-host buttons.
+    """
+    if not confirmed:
+        return False
+    on_model = str(btn.get("on_model") or btn.get("host_model") or "")
+    related = str(btn.get("related_model") or btn.get("residual_model") or "")
     return (on_model, related) in craft_button_keys(confirmed)
 
 
@@ -325,7 +330,7 @@ def apply_confirmed_craft_smart_buttons(
         )
         key = (on_model, related, fname)
         if key in existing:
-            # Ensure source marked confirmed
+            # Ensure source + craft label (humanize must not leave «Visitor Logs»).
             for b in draft.get("smart_buttons") or []:
                 if (
                     isinstance(b, dict)
@@ -333,6 +338,10 @@ def apply_confirmed_craft_smart_buttons(
                     and str(b.get("related_model") or "") == related
                 ):
                     b["source"] = "craft_confirmed"
+                    if label:
+                        b["label"] = label
+                        if b.get("string"):
+                            b["string"] = label
             continue
         if any(k[0] == on_model and k[1] == related for k in existing):
             continue
@@ -372,8 +381,9 @@ def normalize_craft_rows(raw: Any) -> list[dict[str, Any]]:
     for row in raw:
         if not isinstance(row, dict):
             continue
-        on_model = str(row.get("on_model") or "").strip()
-        related = str(row.get("related_model") or "").strip()
+        # Diagnosis lock lines / residual identity may use host_model / residual_model.
+        on_model = str(row.get("on_model") or row.get("host_model") or "").strip()
+        related = str(row.get("related_model") or row.get("residual_model") or "").strip()
         if not on_model or not related:
             continue
         label = str(row.get("label") or "Records").strip()[:80]

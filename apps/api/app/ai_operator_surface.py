@@ -104,8 +104,8 @@ def _has_residual_x_new(draft: dict[str, Any]) -> bool:
 def _residual_full_app_find_it(draft: dict[str, Any]) -> bool:
     """Find-it for residual full_app = app menu + residual buttons only (no invented host).
 
-    Diagnosis-locked ``_understanding.grain == full_app`` + residual x_new keeps
-    craft-only host gating even when draft/LLM later stamped feature_slice/field_pack.
+    Locked ``full_app`` + x_new keeps craft-only gating through feature_slice flips.
+    Explicit field_pack (Prefer) stays open; feature_slice + x_new suppresses invent.
     """
     try:
         from app.ai_stock_host_smart_buttons import partner_tie_allows_contacts_button
@@ -123,20 +123,32 @@ def _residual_full_app_find_it(draft: dict[str, Any]) -> bool:
         "stock_reuse",
     }:
         return False
+    if draft.get("_component"):
+        return False
 
     x_new = _has_residual_x_new(draft)
     u = draft.get("_understanding") if isinstance(draft.get("_understanding"), dict) else {}
     locked_grain = str(u.get("grain") or "")
     locked_inherit = bool(u.get("inherit_existing"))
 
-    # Locked Diagnosis residual full_app wins over draft/engine grain flips.
+    if locked_inherit and not x_new:
+        return False
+
     if locked_grain == "full_app" and not locked_inherit and x_new:
         return True
 
     grain = str(draft.get("grain") or "full_app")
-    if grain in {"field_pack", "feature_slice"} or draft.get("_component"):
+    eg = str(engine.get("grain") or "") if isinstance(engine, dict) else ""
+
+    if (grain == "field_pack" or eg == "field_pack") and locked_grain != "full_app":
         return False
-    if isinstance(engine, dict) and engine.get("grain") in {"field_pack", "feature_slice"}:
+
+    if x_new and not locked_inherit and (grain == "feature_slice" or eg == "feature_slice"):
+        return True
+
+    if grain in {"field_pack", "feature_slice"}:
+        return False
+    if eg in {"field_pack", "feature_slice"}:
         return False
     return x_new or grain == "full_app"
 
@@ -200,18 +212,20 @@ def build_operator_surface(draft: dict[str, Any]) -> dict[str, Any]:
             u = draft.get("_understanding") if isinstance(draft.get("_understanding"), dict) else {}
             craft = u.get("craft_smart_buttons") or []
             craft_by_key = {
-                (str(c.get("on_model") or ""), str(c.get("related_model") or "")): c
+                (
+                    str(c.get("on_model") or c.get("host_model") or ""),
+                    str(c.get("related_model") or c.get("residual_model") or ""),
+                ): c
                 for c in craft
                 if isinstance(c, dict)
-                and str(c.get("on_model") or "")
-                and str(c.get("related_model") or "")
+                and (
+                    str(c.get("on_model") or c.get("host_model") or "")
+                    and str(c.get("related_model") or c.get("residual_model") or "")
+                )
             }
             craft_row = craft_by_key.get((on_model, related))
-            src = str(btn.get("source") or "")
-            if craft_row is None and src not in {"craft_confirmed", "craft_smart_button"}:
-                continue
+            # Residual find-it ⊆ confirmed craft only — never source-tag invent.
             if craft_row is None:
-                # Source-marked but not in locked craft — residual must not invent.
                 continue
             craft_label = str(craft_row.get("label") or "").strip()
             if craft_label:
@@ -229,6 +243,35 @@ def build_operator_surface(draft: dict[str, Any]) -> dict[str, Any]:
                 "residual_model": related,
             }
         )
+
+    # Defence: craft rows missing from smart_buttons still appear on find-it.
+    if suppress_host_invent:
+        u_craft = draft.get("_understanding") if isinstance(draft.get("_understanding"), dict) else {}
+        for c in u_craft.get("craft_smart_buttons") or []:
+            if not isinstance(c, dict):
+                continue
+            on_model = str(c.get("on_model") or c.get("host_model") or "").strip()
+            related = str(c.get("related_model") or c.get("residual_model") or "").strip()
+            label = str(c.get("label") or related or "Open").strip()
+            if not on_model or not related or on_model.startswith("x_"):
+                continue
+            key = (on_model, related, label)
+            if any(
+                h.get("host_model") == on_model and h.get("residual_model") == related
+                for h in host_buttons
+            ):
+                continue
+            if key in seen_host:
+                continue
+            seen_host.add(key)
+            host_buttons.append(
+                {
+                    "host_model": on_model,
+                    "host_label": _host_label(on_model),
+                    "button_label": label,
+                    "residual_model": related,
+                }
+            )
 
     stock_links: list[dict[str, str]] = []
     seen_link: set[tuple[str, str]] = set()
@@ -284,15 +327,40 @@ def build_operator_surface(draft: dict[str, Any]) -> dict[str, Any]:
             "link related custom documents."
         )
     if stock_links and not host_buttons:
-        parts.append(
-            "Linked stock records appear as form fields on the residual "
-            "(e.g. Customer → Contacts)."
-        )
+        examples = []
+        for row in stock_links[:3]:
+            fl = str(row.get("field_label") or row.get("field") or "").strip()
+            sl = str(row.get("stock_label") or "").strip()
+            if fl and sl:
+                examples.append(f"{fl} → {sl}")
+        if examples:
+            parts.append(
+                "Linked stock records appear as form fields on the residual "
+                f"({'; '.join(examples)})."
+            )
+        else:
+            parts.append(
+                "Linked stock records appear as form fields on the residual."
+            )
     elif stock_links:
-        parts.append(
-            "Stock links on the residual form stay as fields "
-            "(Customer, Last Transaction, …) — not duplicate smart buttons."
-        )
+        labels = [
+            str(row.get("field_label") or row.get("field") or "").strip()
+            for row in stock_links[:4]
+            if str(row.get("field_label") or row.get("field") or "").strip()
+        ]
+        if labels:
+            shown = ", ".join(labels)
+            if len(stock_links) > len(labels):
+                shown += ", …"
+            parts.append(
+                f"Stock links on the residual form stay as fields ({shown}) "
+                "— not duplicate smart buttons."
+            )
+        else:
+            parts.append(
+                "Stock links on the residual form stay as fields "
+                "— not duplicate smart buttons."
+            )
     if not parts:
         engine = draft.get("_generation_engine")
         host = ""
