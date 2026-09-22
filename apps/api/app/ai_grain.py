@@ -75,6 +75,12 @@ _FULL_APP_RE = re.compile(
     r"full\s+app|standalone\s+app|new\s+application|from\s+scratch|"
     r"entire\s+system|complete\s+platform|"
     r"menu\s+under\s+\w+|"
+    # Residual document without trailing «app»: Build Field work orders / Create Visitor Log
+    r"(?:build|create|make)\s+(?:an?\s+)?(?:(?:tiny|simple|small|new|mini|full)\s+)*"
+    r"(?!(?:checkbox|boolean|column|filter)\b)"
+    r"[\w]+(?:\s+[\w]+){0,4}"
+    r"(?=\s+(?:a|an|the|for|that|which|where|with|could|to|next|:)|:)"
+    r"|"
     r"library\s+management|car\s+rental|law\s+firm|hospital|clinic"
     r")\b",
     re.I,
@@ -100,6 +106,7 @@ HOST_ALIASES: dict[str, str] = {
     "hr.employee": "hr.employee",
     "calendar.event": "calendar.event",
     "crm.lead": "crm.lead",
+    "project.project": "project.project",
     "project.task": "project.task",
     "sale order": "sale.order",
     "sale orders": "sale.order",
@@ -116,6 +123,10 @@ HOST_ALIASES: dict[str, str] = {
     "sales": "sale.order",
     "project task": "project.task",
     "project tasks": "project.task",
+    "project form": "project.project",
+    "projects form": "project.project",
+    "project": "project.project",
+    "projects": "project.project",
     "task": "project.task",
     "tasks": "project.task",
     "contact": "res.partner",
@@ -151,6 +162,7 @@ HOST_ALIASES: dict[str, str] = {
 
 MODEL_MODULE: dict[str, str] = {
     "sale.order": "sale",
+    "project.project": "project",
     "project.task": "project",
     "res.partner": "base",
     "account.move": "account",
@@ -185,6 +197,7 @@ def parent_menu_xml_id_for_module(mod: str) -> str | None:
 
 INHERIT_FORM_XML: dict[str, str] = {
     "sale.order": "sale.view_order_form",
+    "project.project": "project.edit_project",
     "project.task": "project.view_task_form2",
     "res.partner": "base.view_partner_form",
     "account.move": "account.view_move_form",
@@ -200,6 +213,7 @@ INHERIT_FORM_XPATH: dict[str, str] = {
     "account.move": "//group[@id='header_right_group']",
     "sale.order": "//sheet/group[1]",
     "res.partner": "//sheet/group[1]",
+    "project.project": "//sheet/group[1]",
     "project.task": "//sheet/group[1]",
     "hr.employee": "//sheet/group[1]",
     "calendar.event": "//sheet/group[1]",
@@ -210,7 +224,8 @@ INHERIT_FORM_XPATH: dict[str, str] = {
 
 HOST_LABELS: dict[str, str] = {
     "sale.order": "Sales",
-    "project.task": "Project",
+    "project.project": "Project",
+    "project.task": "Tasks",
     "res.partner": "Contacts",
     "account.move": "Invoicing",
     "hr.employee": "Employees",
@@ -233,6 +248,7 @@ HOST_WINDOW_ACTIONS: dict[str, tuple[str, ...]] = {
     ),
     "purchase.order": ("purchase.purchase_rfq", "purchase.purchase_form_action"),
     "res.partner": ("contacts.action_contacts", "base.action_partner_form"),
+    "project.project": ("project.open_view_project_all", "project.action_view_project"),
     "project.task": ("project.action_view_all_task", "project.action_view_task"),
     "hr.employee": ("hr.open_view_employee_list_my", "hr.act_hr_employee"),
     "calendar.event": ("calendar.action_calendar_event",),
@@ -307,14 +323,36 @@ def is_inherit_only_ops(prompt: str) -> bool:
     return bool(named_host_from_prompt(text) or _WIRING_VERBS_RE.search(text))
 
 
+_RESIDUAL_DOC_STRUCTURE_RE = re.compile(
+    r"(?i)\b(?:"
+    r"state\s*\(|workflow|"
+    r"menus?\s+list|list\s*/\s*kanban|"
+    r"checklist\s+lines?|parts\s+used|"
+    r"sign[- ]?off|handoff\s+note"
+    r")\b"
+)
+
+_RESIDUAL_SLICE_NOISE_RE = re.compile(
+    # Checklist/parts/lines on a residual document are satellites — not inherit slice.
+    r"(?i)\b(?:checklist\s+lines?|parts\s+used|line\s+items?)\b"
+)
+
+
 def classify_grain(prompt: str) -> Grain:
     """Classify prompt grain: field_pack | feature_slice | full_app."""
     raw = (prompt or "").strip().lower()
     # Scrub relation/selection/view chrome before component cues — "link to Employee"
     # and "on the calendar" must not force field_pack on residual full apps.
     text = _scrub_host_noise(raw).lower() or raw
-    # New app / menu-under-X briefs win before inherit-slice heuristics.
+    # New app / menu-under-X / Build-document briefs win before inherit-slice heuristics.
     if _FULL_APP_RE.search(raw) and not is_inherit_only_ops(raw):
+        return "full_app"
+    # Residual document with state/menus/lines — never Prefer-reshape via checklist slice.
+    if (
+        re.search(r"(?i)\b(?:build|create|make)\b", raw)
+        and _RESIDUAL_DOC_STRUCTURE_RE.search(raw)
+        and not is_inherit_only_ops(raw)
+    ):
         return "full_app"
     named = named_host_from_prompt(raw)
     # Ops-extension / reuse briefs stay field_pack even when "smart button" matches _SLICE_RE.
@@ -328,6 +366,11 @@ def classify_grain(prompt: str) -> Grain:
     if _COMPONENT_RE.search(text):
         if _FIELD_PACK_RE.search(text) and len(text.split()) < 12:
             return "field_pack"
+        # Residual checklist/parts lines are not an inherit feature_slice.
+        if _RESIDUAL_SLICE_NOISE_RE.search(text) and re.search(
+            r"(?i)\b(?:build|create|make)\b", raw
+        ):
+            return "full_app"
         # "Add SLA due date on invoices" is inherit-and-wire, not a second Invoices menu.
         if not _SLICE_RE.search(text):
             return "field_pack"
@@ -354,6 +397,12 @@ _FIELD_RELATION_NOISE_RE = re.compile(
     r"\([^)]*\blink\s+to\b[^)]*\)"
     r"|\blink\s+to\s+(?:the\s+)?[\w][\w.\s]{0,40}"
     r"|\b[A-Za-z][\w\s]{0,40}?\s*\(\s*(?![a-z][a-z0-9_]*\.[a-z0-9_.]+)[A-Za-z][\w\s./-]{0,40}\s*\)"
+    # Linked / related / require-a-linked document — relation field, not form host
+    r"|\b(?:(?:a\s+)?linked|related|optional)\s+"
+    r"(?:sales?\s+orders?|purchase\s+orders?|invoices?|contacts?|partners?|"
+    r"employees?|fleet\s+vehicles?|vehicles?|projects?|tasks?|assets?)\b"
+    r"(?:\s*\([^)]*\))?"
+    r"|\brequire\s+(?:a\s+)?linked\s+[\w\s.]{0,40}"
 )
 # Calendar as *view chrome* ("on the calendar") is not an inherit host.
 # Keep "calendar event(s)" so Add-on-Calendar field packs still host correctly.
@@ -362,6 +411,10 @@ _VIEW_CHROME_NOISE_RE = re.compile(
     r"\b(?:on|in)\s+(?:the\s+|a\s+)?calendar\b(?!\s+events?\b)"
     r"|\bcalendar(?:\s*-?\s*style)?\s+(?:view|schedule|board|layout)\b"
     r"|\bcalendar-style\b"
+    # View menus — «list/kanban/calendar» is chrome, not calendar.event host
+    r"|\bmenus?\s+list\s*/\s*kanban\s*/\s*calendar\b"
+    r"|\blist\s*/\s*kanban\s*/\s*calendar\b"
+    r"|\b(?:list|kanban|form|calendar)(?:\s*/\s*(?:list|kanban|form|calendar))+\b"
 )
 
 
@@ -386,6 +439,7 @@ def named_host_from_prompt(prompt: str) -> str | None:
     if not text:
         return None
     # Technical models always win when spelled (res.partner, stock.picking, …).
+    # Prefer project.project over project.task when both appear as technical ids.
     for model in (
         "res.partner",
         "stock.picking",
@@ -395,12 +449,21 @@ def named_host_from_prompt(prompt: str) -> str | None:
         "hr.employee",
         "calendar.event",
         "crm.lead",
+        "project.project",
         "project.task",
     ):
         if model in text:
             return model
-    # Field targets / view chrome are not the form host.
+    # Field targets / view chrome / linked-doc asides are not the form host.
     text = _scrub_host_noise(text)
+
+    # Primary Project Prefer/Extend anchors beat incidental Sales Order links.
+    if re.search(
+        r"(?i)\b(?:on\s+(?:the\s+)?project(?:\s+form)?\b|project\s+form\b|"
+        r"extend\s+stock\s+project\b|on\s+projects?\b(?!\s+task))",
+        text,
+    ) and not re.search(r"(?i)\bproject\s+tasks?\b", text):
+        return "project.project"
 
     # Correction clauses ("wait — actually … on Contacts") — last strong host wins.
     for m in re.finditer(
@@ -414,6 +477,8 @@ def named_host_from_prompt(prompt: str) -> str | None:
             if phrase in tail:
                 return model
     scrubbed = _FIELD_DELIVERY_NOISE_RE.sub(" ", text)
+    # Alias scans use scrubbed text so linked/related Sales Order asides cannot steal.
+    scan = scrubbed
     for phrase, model in sorted(HOST_ALIASES.items(), key=lambda kv: -len(kv[0])):
         if phrase == "delivery":
             # Bare "delivery" → picking only when not field-label noise and not
@@ -424,8 +489,27 @@ def named_host_from_prompt(prompt: str) -> str | None:
                 continue
         if phrase == "picking" and "stock.picking" in text:
             return "stock.picking"
+        # Bare "project" / "projects" must not win over an explicit project.task phrase
+        # already handled above; project form / on Project already returned project.project.
+        if phrase in {"project", "projects"} and re.search(
+            r"(?i)\bproject\s+tasks?\b", text
+        ):
+            continue
+        # Bare order/orders — not work/purchase/transfer/repair orders (residual nouns).
+        if phrase in {"order", "orders"} and re.search(
+            r"(?i)\b(?:work|purchase|transfer|repair|service|manufactur\w*|"
+            r"field\s+work|sales?|customer)\s+" + re.escape(phrase) + r"\b",
+            scan,
+        ):
+            # Allow when the longer sale-side phrase is what matched… but those are
+            # separate aliases (sales order). Bare order after work/purchase → skip.
+            if not re.search(
+                r"(?i)\b(?:sales?|customer)\s+" + re.escape(phrase) + r"\b",
+                scan,
+            ):
+                continue
         # Word-ish match: avoid 'order' inside 'border'
-        if re.search(rf"(?<![a-z0-9_.]){re.escape(phrase)}(?![a-z0-9_])", scrubbed if phrase == "delivery" else text):
+        if re.search(rf"(?<![a-z0-9_.]){re.escape(phrase)}(?![a-z0-9_])", scan):
             return model
     return None
 
@@ -436,6 +520,25 @@ _SALE_DOC_RE = re.compile(
 )
 _DELIVERY_HOST_RE = re.compile(
     r"(?i)delivery\s+(?:note|slip)|shipping\s+address"
+)
+
+
+_LINKED_DOC_ASIDE_RE = re.compile(
+    r"(?i)\b(?:"
+    r"(?:(?:a\s+)?linked|related|optional)\s+"
+    r"(?:sales?\s+orders?|purchase\s+orders?|invoices?)|"
+    r"require\s+(?:a\s+)?linked\s+(?:sales?\s+orders?|purchase\s+orders?|invoices?)"
+    r")\b"
+)
+
+_PRIMARY_PROJECT_HOST_RE = re.compile(
+    r"(?i)\b(?:"
+    r"on\s+(?:the\s+)?project(?:\s+form)?\b|"
+    r"project\s+form\b|"
+    r"extend\s+stock\s+project\b|"
+    r"project\.project\b|"
+    r"on\s+projects?\b(?!\s+task)"
+    r")"
 )
 
 
@@ -455,6 +558,11 @@ def preferred_inherit_host(prompt: str) -> str | None:
     except Exception:  # noqa: BLE001 — grain must stay import-light on failure
         pass
     named = named_host_from_prompt(text)
+    # Project Prefer/Extend — Commercial phase / billable cap on project form.
+    # Linked Sales Order warnings MUST NOT steal host onto sale.order.
+    if named == "project.project" or _PRIMARY_PROJECT_HOST_RE.search(text):
+        if not re.search(r"(?i)\bproject\s+tasks?\b", text):
+            return "project.project"
     # Explicit partner/Contacts host always wins over delivery-slip / picking noise.
     if named == "res.partner":
         # Markup/sales docs may still redirect below; field-pack partner stays.
@@ -477,11 +585,32 @@ def preferred_inherit_host(prompt: str) -> str | None:
         and not _FIELD_DELIVERY_NOISE_RE.search(text)
     ):
         return "stock.picking"
-    if _MARKUP_HOST_RE.search(text) or _SALE_DOC_RE.search(text):
+    # Sale-doc redirect only when Sales/Quotation is the PRIMARY document being
+    # extended — not when the brief only links/requires an SO from another host.
+    sale_primary = bool(_MARKUP_HOST_RE.search(text) or _SALE_DOC_RE.search(text))
+    if sale_primary and _LINKED_DOC_ASIDE_RE.search(text):
+        # Drop linked/related/optional SO asides; if no primary sale cue remains, skip.
+        aside_scrubbed = _LINKED_DOC_ASIDE_RE.sub(" ", text)
+        aside_scrubbed = _scrub_host_noise(aside_scrubbed)
+        if not (
+            _MARKUP_HOST_RE.search(aside_scrubbed) or _SALE_DOC_RE.search(aside_scrubbed)
+        ):
+            sale_primary = False
+        else:
+            scrubbed_named = named_host_from_prompt(aside_scrubbed)
+            if scrubbed_named and scrubbed_named != "sale.order":
+                sale_primary = False
+            elif named and named != "sale.order":
+                sale_primary = False
+            elif _PRIMARY_PROJECT_HOST_RE.search(text):
+                sale_primary = False
+    if sale_primary:
         if re.search(r"(?i)purchase\s+order", text) and not re.search(r"(?i)\bsales?\b", text):
             return named_host_from_prompt(text)
         return "sale.order"
     if named == "res.partner" and re.search(r"(?i)\b(sales?|quotation|invoices?)\b", text):
+        if _LINKED_DOC_ASIDE_RE.search(text):
+            return "res.partner"
         if re.search(r"(?i)\binvoices?\b", text) and not re.search(r"(?i)\bsales?\b", text):
             return "account.move"
         return "sale.order"

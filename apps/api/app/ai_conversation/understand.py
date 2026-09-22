@@ -636,10 +636,8 @@ def _brief_must_do_constraints(
 
 
 _APP_NOUN_RE = re.compile(
-    r"(?i)\b(?:build|create|make)\s+(?:an?\s+)?(?:(?:tiny|simple|small|new|mini)\s+)*"
+    r"(?i)\b(?:build|create|make)\s+(?:an?\s+)?(?:(?:tiny|simple|small|new|mini|full)\s+)*"
     r"(.+?)\s+app\b"
-    # "Dining Tables for our restaurant" / "Visitor Log: Name, …"
-    r"|^([A-Z][\w][\w\s/-]{1,48}?)(?:\s+for\s+(?:our|the|a)\b|\s*[:—-])"
 )
 _MODEL_WITH_FIELDS_RE = re.compile(
     r"(?i)\bmodel\s+with\s+(.+?)(?:\.\s*(?:Simple|No\s+workflow|Menu)|;|\.|$)"
@@ -1082,7 +1080,7 @@ def _deterministic_understanding(prompt: str) -> Understanding:
             app_m = _APP_NOUN_RE.search(text)
             if app_m:
                 nice = re.sub(
-                    r"\s+", " ", (app_m.group(1) or app_m.group(2) or "")
+                    r"\s+", " ", (app_m.group(1) or "")
                 ).strip(" .:,-")
                 nice = re.sub(r"(?i)^(a|an|the)\s+", "", nice).strip()
                 nice = re.sub(
@@ -1107,7 +1105,14 @@ def _deterministic_understanding(prompt: str) -> Understanding:
                 "",
                 nice,
             ).strip() or nice
-            title = nice.title() if nice.islower() or nice.lower() == nice else nice
+            # Never title a Studio grain word (Full / Prefer / Extend → x_full).
+            if re.fullmatch(
+                r"(?i)full|new|prefer|extend|full_app|residual|app|field_pack|feature_slice",
+                nice.strip(),
+            ):
+                nice = ""
+            if nice:
+                title = nice.title() if nice.islower() or nice.lower() == nice else nice
 
     result = Understanding(
         capability=plan.capability,

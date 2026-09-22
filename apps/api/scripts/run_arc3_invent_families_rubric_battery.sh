@@ -32,6 +32,7 @@ echo "== Arc3 invent families + Flash-on honor rubric battery (no_app_db) =="
   tests/test_report_layout_scrub_class.py \
   tests/test_prefer_field_pack_no_clarification_leak.py \
   tests/test_diagnosis_prefer_host_must_do.py \
+  tests/test_prefer_host_fullapp_noun_class.py \
   tests/test_ai_constraint_ast.py \
   tests/test_hosting_m1.py \
   tests/test_atlas_elite_p4.py \

@@ -41,11 +41,22 @@ def scrub_residual_display_name(title: str) -> str:
         "",
         text,
     ).strip()
+    text = re.sub(
+        r"(?i)^(tiny|simple|small|new|mini|full|light(?:weight)?|basic|minimal)\s+",
+        "",
+        text,
+    ).strip()
     while True:
         nxt = _TITLE_FLUFF_TRAILING_RE.sub("", text).strip(" -:.,")
         if nxt == text:
             break
         text = nxt
+    # Studio grain words are never residual nouns (Full → x_full).
+    if re.fullmatch(
+        r"(?i)full|new|prefer|extend|full_app|residual|app|apps|field_pack|feature_slice",
+        text.strip(),
+    ):
+        return ""
     # Only peel stock menu parent when a document noun follows
     # («Fleet Vehicle Request» → Vehicle Request; keep «Sales Orders»).
     stripped = re.sub(

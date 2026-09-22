@@ -118,7 +118,7 @@ _TYPED_TEXT_FIELD_RE = re.compile(
 _ADD_CLAUSE_RE = re.compile(
     r"(?i)\badd\s+(?:a\s+|an\s+)?(?!checkbox\b|boolean\b)"
     r"(.+?)(?="
-    r"\.\s*(?:On\s+the\s+form|Prefer|Do\s+not|Don't|Show\s+a\s+|When\b)|"
+    r"\.\s*(?:On\s+(?:the\s+)?(?:\w+\s+)?form|Prefer|Do\s+not|Don't|Show\s+a\s+|When\b)|"
     r"\.\s*$|;\s*|\n|$)"
 )
 _DATE_RANGE_PAREN_RE = re.compile(
@@ -142,9 +142,8 @@ _PRONOUN_LABELS = frozenset(
 )
 
 _APP_NOUN_RE = re.compile(
-    r"(?i)\b(?:build|create|make)\s+(?:an?\s+)?(?:(?:tiny|simple|small|new|mini)\s+)*"
+    r"(?i)\b(?:build|create|make)\s+(?:an?\s+)?(?:(?:tiny|simple|small|new|mini|full)\s+)*"
     r"(.+?)\s+app\b"
-    r"|^([A-Z][\w][\w\s/-]{1,48}?)(?:\s+for\s+(?:our|the|a)\b|\s*[:—-])"
 )
 _MODEL_WITH_FIELDS_RE = re.compile(
     r"(?i)\bmodel\s+with\s+(.+?)(?:\.\s*(?:Simple|No\s+workflow|Menu)|;|\.|$)"
@@ -245,7 +244,7 @@ def _strip_leading_imperative(title: str) -> str:
 
 
 def _full_app_naming(text: str) -> tuple[str, str]:
-    """Display + slug for residual full_app — never leading imperatives."""
+    """Display + slug for residual full_app — never leading imperatives or grain words."""
     display = ""
     slug = ""
     try:
@@ -259,10 +258,16 @@ def _full_app_naming(text: str) -> tuple[str, str]:
         app_m = _APP_NOUN_RE.search(text or "")
         if app_m:
             display = re.sub(
-                r"\s+", " ", (app_m.group(1) or app_m.group(2) or "")
+                r"\s+", " ", (app_m.group(1) or "")
             ).strip(" .:,-")
             display = re.sub(r"(?i)^(a|an|the)\s+", "", display).strip()
             display = _strip_leading_imperative(display)
+    # Reject Studio grain-only nouns (Full / Prefer / full_app → x_full failure class).
+    if display and re.fullmatch(
+        r"(?i)full|new|prefer|extend|full_app|residual|app|field_pack|feature_slice",
+        display.strip(),
+    ):
+        display, slug = "", ""
     if not display:
         return "", ""
     # Title-case when the brief left us lowercase crumbs
@@ -388,10 +393,39 @@ def _prose_full_app_fields(text: str) -> list[ConstraintField]:
         fields.append(
             ConstraintField(label="Employee", ttype="many2one", relation="Employee", bare=True)
         )
-    if re.search(r"(?i)\bfleet\s+vehicle\b|\bvehicle\b", text):
+    # Customer (Contact) — class-wide residual header, not flat invent.
+    if re.search(r"(?i)\bcustomer\s*\(\s*contact", text) or (
+        re.search(r"(?i)\bcustomer\b", text)
+        and re.search(r"(?i)\bcontact", text)
+        and re.search(r"(?i)\b(?:work\s+order|order|ticket|request|log)\b", text)
+    ):
+        fields.append(
+            ConstraintField(label="Customer", ttype="many2one", relation="Contact", bare=True)
+        )
+    if re.search(r"(?i)\b(?:related|linked|optional)\s+sales?\s+orders?\b", text):
+        fields.append(
+            ConstraintField(
+                label="Sales Order",
+                ttype="many2one",
+                relation="Sales Order",
+                bare=True,
+            )
+        )
+    if re.search(r"(?i)\bfleet\s+vehicle\b|\bvehicle\b|\basset\s*/\s*vehicle\b", text):
         fields.append(
             ConstraintField(
                 label="Vehicle", ttype="many2one", relation="Fleet Vehicle", bare=True
+            )
+        )
+    if re.search(r"(?i)\bscheduled\s+slot\b", text):
+        fields.append(ConstraintField(label="Scheduled Slot", ttype="datetime", bare=True))
+    if re.search(r"(?i)\bpriority\b", text):
+        fields.append(
+            ConstraintField(
+                label="Priority",
+                ttype="selection",
+                selection_options="Low / Normal / High / Urgent",
+                bare=True,
             )
         )
     if _DATE_RANGE_PROSE_RE.search(text or ""):
@@ -420,6 +454,9 @@ def _prose_full_app_fields(text: str) -> list[ConstraintField]:
             )
         )
 
+    if re.search(r"(?i)\bsign[- ]?off\b", text):
+        fields.append(ConstraintField(label="Sign-off", ttype="text", bare=True))
+
     note_label = _optional_note_label(text or "")
     if note_label:
         # Optional note cue → one free-text surface on the primary.
@@ -432,6 +469,10 @@ def _prose_full_app_fields(text: str) -> list[ConstraintField]:
                 bare=True,
             )
         )
+    elif re.search(r"(?i)\bhandoff\s+note\b|\bconsultant\s+handoff\b", text or ""):
+        fields.append(
+            ConstraintField(label="Handoff Note", ttype="text", bare=True)
+        )
     return fields
 
 
@@ -442,12 +483,19 @@ def _prose_full_app_structural(text: str) -> list[str]:
         rows.append(f"Menu under {parent}")
     if _APPROVE_REFUSE_RE.search(text or ""):
         rows.append("Buttons: Submit, Approve, Refuse, Mark Done")
-    if _LIST_KANBAN_RE.search(text or ""):
+    if re.search(r"(?i)\bmenus?\s+list\s*/\s*kanban\s*/\s*calendar\b", text or ""):
+        rows.append("Menus: list / kanban / calendar")
+    elif _LIST_KANBAN_RE.search(text or ""):
         rows.append("List + kanban by State")
     elif _LIST_FORM_RE.search(text or ""):
         rows.append("List + form")
     if _CREATE_READ_ONLY_RE.search(text or ""):
         rows.append("Create/read only")
+    # Class-wide: checklist / parts lines → structured O2M satellites, never flat Product/Qty Identity.
+    if re.search(r"(?i)\bchecklist\s+lines?\b", text or ""):
+        rows.append("Satellite O2M: Checklist lines (not flat Product/Quantity on primary)")
+    if re.search(r"(?i)\bparts?\s+used\b", text or ""):
+        rows.append("Satellite O2M: Parts used (not flat Product/Quantity on primary)")
     note_label = _optional_note_label(text or "")
     if note_label:
         rows.append(f"Optional: link or create {note_label} on Approve")
@@ -589,6 +637,31 @@ def expand_field_chunk(chunk: str) -> list[str]:
     return [raw]
 
 
+
+_SELECTION_OPTS_PAREN_RE = re.compile(
+    r"(?i)^(.+?)\s*\(\s*([A-Za-z][\w /&+-]*(?:\s*/\s*[A-Za-z][\w /&+-]*){1,})\s*\)\s*$"
+)
+
+
+def _peel_selection_label(label: str) -> tuple[str, str | None]:
+    """«Commercial phase (Discovery / Delivery / Hypercare / Closed)» → label + opts."""
+    raw = (label or "").strip()
+    m = _SELECTION_OPTS_PAREN_RE.match(raw)
+    if not m:
+        # Also peel units: Billable cap (hours)
+        unit = re.match(
+            r"(?i)^(.+?)\s*\(\s*(hours?|days?|qty|quantity|%)\s*\)\s*$",
+            raw,
+        )
+        if unit:
+            return unit.group(1).strip(), None
+        return raw, None
+    opts = re.sub(r"\s*/\s*", " / ", m.group(2)).strip()
+    if opts.lower() in {"hours", "hour", "days", "day", "qty", "quantity", "%"}:
+        return m.group(1).strip(), None
+    return m.group(1).strip(), opts
+
+
 def iter_add_field_labels(text: str) -> list[str]:
     """All Prefer/field_pack labels after add — conjunction + date-range aware."""
     labels: list[str] = []
@@ -596,7 +669,7 @@ def iter_add_field_labels(text: str) -> list[str]:
         body = m.group(1).strip()
         body = re.split(
             r"(?i)\s+(?:under\s+(?:the\s+)?[\w /&-]+?\s+group|"
-            r"required\s+before\b|on\s+the\s+\w+\s+form)\b",
+            r"required\s+before\b|on\s+(?:the\s+)?(?:\w+\s+)?form)\b",
             body,
             maxsplit=1,
         )[0].strip()
@@ -635,6 +708,10 @@ def _infer_ttype(label: str, *, stated: str | None = None) -> str:
         (label or "").strip(),
     ):
         return "text"
+    if re.search(r"(?i)\b(?:cap|hours?|qty|quantity|count|amount)\b", label or ""):
+        if re.search(r"(?i)\b(?:%|percent|rate|ratio)\b", label or ""):
+            return "float"
+        return "float"
     return "char"
 
 
@@ -731,15 +808,31 @@ def _parse_det_inherit(text: str, *, host: str | None) -> ConstraintAST:
         for label in iter_add_field_labels(text):
             if re.search(r"(?i)\b(?:filter|automat|activity|smart\s+button)\b", label):
                 continue
-            ttype = _infer_ttype(label)
-            bare = bool(re.search(r"(?i)\b(?:start|end)\s+date\b", label)) or ttype in {
-                "date",
-                "datetime",
-            }
+            # Read-only rollups / show-vs are hints, not invent fields.
+            if re.search(
+                r"(?i)^(?:show|display|actual)\b|\bvs\s+cap\b|\bread[- ]?only\b",
+                label,
+            ):
+                ast.hints.append(re.sub(r"\s+", " ", label).strip(" ."))
+                continue
+            clean, sel_opts = _peel_selection_label(label)
+            if not clean or len(clean) < 2:
+                continue
+            if sel_opts:
+                ast.fields.append(
+                    ConstraintField(
+                        label=clean,
+                        ttype="selection",
+                        selection_options=sel_opts,
+                        bare=False,
+                    )
+                )
+                continue
+            ttype = _infer_ttype(clean)
             # Match prior Must-do: only start/end date expansions were bare;
             # other Field: rows stay prefixed. Keep bare for start/end date.
-            bare = bool(re.search(r"(?i)\b(?:start|end)\s+date\b", label))
-            ast.fields.append(ConstraintField(label=label, ttype=ttype, bare=bare))
+            bare = bool(re.search(r"(?i)\b(?:start|end)\s+date\b", clean))
+            ast.fields.append(ConstraintField(label=clean, ttype=ttype, bare=bare))
 
     gm = _UNDER_GROUP_RE.search(text) or _UNDER_SECTION_RE.search(text)
     if gm:
@@ -771,6 +864,19 @@ def _parse_det_inherit(text: str, *, host: str | None) -> ConstraintAST:
         else:
             ast.non_goals.append("Do not create a new home-screen app")
 
+    # Online-safe vs Option A honesty — stamp hints, do not lock whole Prefer as residual_app.
+    if re.search(
+        r"(?i)\b(?:onchange|python|option\s*a|/\s*sh|compute|rollup|"
+        r"when\s+phase\s+moves|require\s+a\s+linked|clear\s+warning)\b",
+        text or "",
+    ):
+        if not any("option a" in (h or "").lower() for h in ast.hints):
+            ast.hints.append(
+                "Option A / .sh when Python required (phase warning, hours rollup); "
+                "phase + cap fields stay Online-safe metadata"
+            )
+    if re.search(r"(?i)\bno\s+second\s+pm\b|\bno\s+second\s+project\b", text or ""):
+        ast.non_goals.append("Do not invent a parallel Project app")
     # Honest if thin: mark uncertain so callers prefer extra Must-do over drop
     if host and not ast.fields and not ast.hints:
         ast.uncertain = True

@@ -62,7 +62,7 @@ _WORKSPACE_RE = re.compile(
     r"\bpms\b|\berp\b"
     r")\b"
 )
-_LINE_NOUN_RE = re.compile(r"(?i)\b(lines?|items?|qty|quantity|hours?)\b")
+_LINE_NOUN_RE = re.compile(r"(?i)\b(lines?|items?|qty|quantity|hours?|checklist|parts?\s+used)\b")
 _PARTY_NOUN_RE = re.compile(r"(?i)\b(roles?|parties|attendees|participants)\b")
 _COLUMN_LIST_RE = re.compile(
     r"(?i)in odoo\s*:\s*(.+?)(?:\.(?:\s+[A-Z])|$)",
@@ -401,12 +401,31 @@ def may_add_party_satellite(draft: dict[str, Any], *, prompt: str = "") -> bool:
 
 
 _APP_NOUN_RE = re.compile(
-    r"(?i)\b(?:build|create|make)\s+(?:an?\s+)?(?:(?:tiny|simple|small|new|mini|light(?:weight)?)\s+)*"
+    r"(?i)\b(?:build|create|make)\s+(?:an?\s+)?(?:(?:tiny|simple|small|new|mini|full|light(?:weight)?)\s+)*"
     r"(.+?)\s+apps?\b"
-    r"|^\s*([A-Z][\w][\w\s/-]{1,48}?)(?=\s*:)"
+)
+# Short business noun after Build/Create/Make before stop words / marketing prose.
+# Do NOT block «Field …» — only exact checkbox/boolean/column/filter tokens.
+_BUILD_SHORT_NOUN_RE = re.compile(
+    r"(?i)\b(?:build|create|make)\s+(?:an?\s+)?"
+    r"(?:(?:tiny|simple|small|new|mini|full|light(?:weight)?)\s+)*"
+    r"(?!(?:checkbox|boolean|column|filter)\b)"
+    r"([A-Za-z][\w]*(?:\s+[A-Za-z][\w]*){0,4}?)"
+    r"(?=\s+(?:a|an|the|for|that|which|where|with|could|to|next|app\b|mid[- ]market)|:|$)"
+)
+# «Build a Full app for Field work orders» — grain chrome then business noun.
+_FULL_APP_FOR_NOUN_RE = re.compile(
+    r"(?i)\b(?:build|create|make)\s+(?:an?\s+)?full\s+apps?\s+for\s+"
+    r"([A-Za-z][\w]*(?:\s+[A-Za-z][\w]*){0,4})"
+)
+# Mid-brief document header («Work order: Customer (Contact)») — class-wide.
+_DOC_HEADER_NOUN_RE = re.compile(
+    r"(?i)(?:^|[;.\n:\u2014\u2013-])\s*"
+    r"([A-Za-z][\w]+(?:\s+[A-Za-z][\w]+){0,3})\s*:\s*"
+    r"(?=[A-Za-z][\w]+\s*\()"
 )
 _SIZE_ADJ_RE = re.compile(
-    r"(?i)^(?:a|an|the|tiny|simple|small|new|mini|light(?:weight)?|basic|minimal)\s+"
+    r"(?i)^(?:a|an|the|tiny|simple|small|new|mini|full|light(?:weight)?|basic|minimal)\s+"
 )
 _APP_CHROME_RE = re.compile(
     r"(?i)\s+apps?(?:\s*:\s*models?)?$|\s*:\s*models?$|\s+models?$"
@@ -415,24 +434,98 @@ _APP_CHROME_RE = re.compile(
 _TITLE_FLUFF_TRAILING_RE = re.compile(
     r"(?i)\s+(?:management|system|module|platform|suite|solution|application)s?$"
 )
+# Studio grain words are never residual business nouns (Full → x_full failure class).
+_STUDIO_GRAIN_NOUNS = frozenset(
+    {
+        "full",
+        "new",
+        "prefer",
+        "extend",
+        "full_app",
+        "full app",
+        "residual",
+        "app",
+        "apps",
+        "field_pack",
+        "field pack",
+        "feature_slice",
+        "feature slice",
+        "component",
+        "slice",
+        "grain",
+    }
+)
+
+
+def _is_studio_grain_noun(label: str) -> bool:
+    """True when label is only a Studio grain word (Full / Prefer / full_app…)."""
+    low = re.sub(r"[_\s-]+", " ", (label or "").strip().lower())
+    low = re.sub(r"\s+", " ", low).strip()
+    if not low:
+        return True
+    if low in _STUDIO_GRAIN_NOUNS:
+        return True
+    if low.replace(" ", "_") in _STUDIO_GRAIN_NOUNS:
+        return True
+    return False
+
+
+def _extract_business_noun(prompt: str) -> str:
+    """Business noun from residual brief — never Studio grain words or marketing prose."""
+    text = (prompt or "").strip()
+    if not text:
+        return ""
+    # 0) Build a Full app for <noun> — grain chrome, keep the for-noun
+    m = _FULL_APP_FOR_NOUN_RE.search(text)
+    if m:
+        cand = (m.group(1) or "").strip()
+        if cand and not _is_studio_grain_noun(cand):
+            return cand
+    # 1) Build … app → noun before app (skip when noun is grain-only)
+    m = _APP_NOUN_RE.search(text)
+    if m:
+        cand = (m.group(1) or "").strip()
+        if cand and not _is_studio_grain_noun(cand):
+            return cand
+    # 2) Short noun after Build before stop words («Field work orders a mid-market…»)
+    m = _BUILD_SHORT_NOUN_RE.search(text)
+    if m:
+        cand = (m.group(1) or "").strip()
+        # Reject exact invent-chrome tokens (but allow «Field work orders»)
+        if cand and cand.lower() not in {"checkbox", "boolean", "column", "filter", "field", "fields"}:
+            if not _is_studio_grain_noun(cand):
+                return cand
+    # 3) Mid-brief document header («Work order: Customer (Contact)»)
+    for m in _DOC_HEADER_NOUN_RE.finditer(text):
+        cand = (m.group(1) or "").strip()
+        if cand and not _is_studio_grain_noun(cand) and len(cand) <= 40:
+            # Skip marketing «Odoo:» / single filler words
+            if cand.lower() in {"odoo", "online", "studio", "menu", "menus", "state"}:
+                continue
+            return cand
+    return ""
 
 
 def _scrub_residual_title(label: str) -> str:
-    """Visitor Log — never «Tiny X App: Model» / «… Models»."""
+    """Visitor Log — never «Tiny X App: Model» / «… Models» / «Full»."""
     text = (label or "").strip()
     if not text:
         return ""
-    # Prefer "Build a tiny Visitor Log app" noun over the whole clause.
-    m = _APP_NOUN_RE.search(text)
-    if m:
-        text = (m.group(1) or m.group(2) or "").strip()
+    extracted = _extract_business_noun(text)
+    if extracted:
+        text = extracted
+    else:
+        # Prefer "Build a tiny Visitor Log app" noun over the whole clause.
+        m = _APP_NOUN_RE.search(text)
+        if m:
+            text = (m.group(1) or "").strip()
     # Strip leading imperatives (Build/Create/Make) glued onto the noun.
     text = re.sub(
         r"(?i)^(build|create|make|add|implement|develop|generate)\s+",
         "",
         text,
     ).strip()
-    # Strip leading size/articles repeatedly.
+    # Strip leading size/articles repeatedly (incl. Full/New grain crumbs).
     while True:
         nxt = _SIZE_ADJ_RE.sub("", text).strip()
         if nxt == text:
@@ -457,6 +550,18 @@ def _scrub_residual_title(label: str) -> str:
         if len(left.strip()) <= 40 and not re.search(r"(?i)\bmodel", left):
             text = left.strip()
     text = re.sub(r"\s+", " ", text).strip(" -:.,")
+    # Cut marketing prose tails («… a mid-market firm could sell…»)
+    text = re.split(
+        r"(?i)\s+(?:a\s+mid[- ]market|that\s+could|which\s+could|for\s+our\b|next\s+to\b)\b",
+        text,
+        maxsplit=1,
+    )[0].strip(" -:.,")
+    if _is_studio_grain_noun(text):
+        return ""
+    # Leading «app for X» chrome after Full scrub
+    text = re.sub(r"(?i)^apps?\s+for\s+", "", text).strip()
+    if _is_studio_grain_noun(text):
+        return ""
     return text
 
 
@@ -477,7 +582,12 @@ def naming_from_residual(prompt: str) -> tuple[str, str]:
     label = re.split(r"[.(]", label, maxsplit=1)[0].strip()
     label = re.sub(r"(?i)^(a|an|the)\s+", "", label).strip()
     label = _scrub_residual_title(label)
-    if not label or label.lower() in {"none", "app", "module", "system", "named in brief", "model", "models"}:
+    if not label or label.lower() in {
+        "none", "app", "module", "system", "named in brief", "model", "models",
+        "full", "new", "prefer", "extend", "residual", "full_app", "field_pack",
+    }:
+        return "", ""
+    if _is_studio_grain_noun(label):
         return "", ""
     words = [w for w in re.split(r"[\s_]+", label) if w]
     # Preserve intentional internal caps (Visitor Log); otherwise title-case.
@@ -485,7 +595,7 @@ def naming_from_residual(prompt: str) -> tuple[str, str]:
         display = " ".join(words)
         # Normalize size-adj leftovers that survived with odd caps.
         display = re.sub(
-            r"(?i)^(tiny|simple|small|mini|new)\s+",
+            r"(?i)^(tiny|simple|small|mini|new|full)\s+",
             "",
             display,
         ).strip()
