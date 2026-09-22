@@ -48,8 +48,18 @@ _REGISTER_SHAPE_RE = re.compile(
     r"paper\s+(?:book|log|register)|"
     r"guest\s*book|"
     r"entry\s+(?:log|book)|"
-    r"checklist|"
+    # Standalone checklist *apps* only — never «Checklist lines» on a work order.
+    r"checklist\s+(?:app|log|register|book)\b|"
+    r"(?:safety|daily|inspection)\s+checklist\b|"
     r"loyalty\s+punch\s*card|punch\s*card|loyalty\s+card"
+    r")\b"
+)
+# Work-order / ticket residuals with line/state/customer cues are transactional headers,
+# not thin registers — so checklist/parts O2M satellites may materialize.
+_TRANSACTIONAL_DOC_RE = re.compile(
+    r"(?i)\b("
+    r"work\s+orders?|maintenance\s+tickets?|inspection\s+(?:orders?|tickets?|forms?)|"
+    r"field\s+work|service\s+orders?|job\s+tickets?"
     r")\b"
 )
 _CATALOG_SHAPE_RE = re.compile(
@@ -255,10 +265,15 @@ def classify_document_shape(
     if option_a_gen or bool(draft.get("_capability_primary_option_a")):
         return "option_a"
 
+    # Work-order / ticket + lines → transactional_header (never register via checklist cue).
+    if is_transactional_line_document(text):
+        return "transactional_header"
     if has_positive_match(_REGISTER_SHAPE_RE, text):
         return "register"
     kind, residual = _named_residual(text)
     if kind == "named" and residual and has_positive_match(_REGISTER_SHAPE_RE, residual):
+        if is_transactional_line_document(text):
+            return "transactional_header"
         return "register"
     if _CATALOG_SHAPE_RE.search(text):
         return "catalog"
@@ -312,10 +327,27 @@ def shape_budget(shape: str, *, x_models: int = 0, pack_n: int = 0) -> int:
     if shape == "workspace":
         return max(x_models, pack_n, 8)
     if shape == "transactional_header":
-        return max(1, x_models)
+        # Header + checklist lines + parts lines class floor (cued O2M satellites).
+        return max(3, x_models)
     if shape in SHAPE_BUDGET:
         return SHAPE_BUDGET[shape]
     return max(x_models, 1)
+
+
+def is_transactional_line_document(text: str) -> bool:
+    """True when brief is a work-order/ticket residual that may carry O2M line satellites."""
+    raw = text or ""
+    if not raw.strip():
+        return False
+    if _TRANSACTIONAL_DOC_RE.search(raw):
+        return True
+    has_lines = has_positive_match(_LINE_NOUN_RE, raw)
+    has_state = bool(
+        re.search(r"(?i)\bstate\b|\bdraft\s*[→\->]", raw)
+        or re.search(r"(?i)\bin\s+progress\b|\bscheduled\b", raw)
+    )
+    has_party = bool(re.search(r"(?i)\bcustomer\b|\bcontact\b|\bemployee\b", raw))
+    return bool(has_lines and has_state and has_party)
 
 
 _WORKSPACE_BRIDGE_APPS = frozenset(
@@ -1323,6 +1355,22 @@ def honor_operator_brief(draft: dict[str, Any], *, user_prompt: str = "") -> lis
         pass
     notes.extend(ensure_residual_must_do_fields(draft, prompt=prompt))
     try:
+        from app.ai_odoo_app_bar import ensure_cued_o2m_satellites
+
+        notes.extend(ensure_cued_o2m_satellites(draft, prompt=prompt))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from app.ai_model_quality import (
+            dedupe_identity_same_comodel_fields,
+            dedupe_redundant_partner_fields,
+        )
+
+        notes.extend(dedupe_redundant_partner_fields(draft))
+        notes.extend(dedupe_identity_same_comodel_fields(draft, prompt=prompt))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
         from app.ai_brief_cues import honor_stated_brief_cues
 
         notes.extend(honor_stated_brief_cues(draft, prompt=prompt))
@@ -1383,9 +1431,17 @@ def draft_needs_residual_recovery(draft: dict[str, Any], *, prompt: str = "") ->
 def draft_needs_hygiene_repair(draft: dict[str, Any], *, prompt: str = "") -> bool:
     """True when Expert/Retry should collapse Flash hygiene even if Completeness is 10.0.
 
-    Scorecards can be green while the form still has two Customer M2Os or junk depends.
+    Scorecards can be green while the form still has two Customer M2Os, literal
+    Satellite O2M stamps, or Sign-off as multiline instead of boolean+attachment.
     """
     text = prompt or str(draft.get("_user_prompt") or "")
+    try:
+        from app.ai_studio_contract import residual_generate_hygiene_gaps
+
+        if residual_generate_hygiene_gaps(draft, prompt=text):
+            return True
+    except Exception:  # noqa: BLE001
+        pass
     try:
         from app.ai_domain_coherence import helpdesk_ticket_intent
 
@@ -1467,6 +1523,12 @@ def recover_residual_draft(draft: dict[str, Any], *, prompt: str = "") -> list[s
     if text and not draft.get("_user_prompt"):
         draft["_user_prompt"] = text
     notes.extend(honor_operator_brief(draft, user_prompt=text))
+    try:
+        from app.ai_odoo_app_bar import ensure_cued_o2m_satellites
+
+        notes.extend(ensure_cued_o2m_satellites(draft, prompt=text))
+    except Exception:  # noqa: BLE001
+        pass
     # Ensure depends match stamped M2Os (Retry on hollow seeds often lacks contacts).
     for model in draft.get("models") or []:
         if not isinstance(model, dict):
@@ -2431,6 +2493,7 @@ __all__ = [
     "forbidden_stock_hosts",
     "honor_operator_brief",
     "llm_models_outside_plan",
+    "is_transactional_line_document",
     "may_add_line_satellite",
     "may_add_party_satellite",
     "merge_llm_fields_into_locked",

@@ -2358,6 +2358,101 @@ def dedupe_redundant_partner_fields(draft: dict[str, Any]) -> list[str]:
     return notes
 
 
+
+# Stock comodels that must appear at most once on residual Identity.
+_IDENTITY_STOCK_COMODELS = (
+    "res.partner",
+    "sale.order",
+    "fleet.vehicle",
+    "hr.employee",
+    "project.project",
+    "product.product",
+)
+
+# Prefer brief-cued labels when collapsing same-comodel duplicates.
+_IDENTITY_LABEL_PREF = {
+    "res.partner": ("customer", "contact", "partner", "client", "company"),
+    "sale.order": ("related sales order", "sales order", "sale order", "quotation"),
+    "fleet.vehicle": ("vehicle", "asset", "fleet vehicle"),
+    "hr.employee": ("employee", "host", "assignee", "technician"),
+    "project.project": ("project",),
+    "product.product": ("product",),
+}
+
+
+def dedupe_identity_same_comodel_fields(
+    draft: dict[str, Any], *, prompt: str = ""
+) -> list[str]:
+    """One stock comodel M2O on residual Identity — keep brief-cued label.
+
+    Class-wide: never two Customer→res.partner on Identity; do not drop cued
+    Related Sales Order / Fleet Vehicle / Contact while de-duping.
+    """
+    notes: list[str] = []
+    text = (prompt or str(draft.get("_user_prompt") or "")).lower()
+
+    def _pref_score(relation: str, field: dict[str, Any]) -> tuple[int, int, str]:
+        label = str(field.get("string") or "").strip().lower()
+        name = str(field.get("name") or "")
+        prefs = _IDENTITY_LABEL_PREF.get(relation) or ()
+        rank = 99
+        for i, pref in enumerate(prefs):
+            if label == pref or label.startswith(pref):
+                rank = i
+                break
+            if pref in label:
+                rank = i + 10
+                break
+        # Prefer names that look intentional over Flash invent.
+        name_penalty = 0 if name.endswith("_id") else 1
+        return (rank, name_penalty, name)
+
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        mid = str(model.get("model") or "")
+        if not mid.startswith("x_") or mid.endswith("_line") or mid.endswith("_party"):
+            continue
+        # Only primary residual header-ish models
+        if "_checklist_line" in mid or "_parts_line" in mid:
+            continue
+        fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
+        by_rel: dict[str, list[dict[str, Any]]] = {}
+        for field in fields:
+            if str(field.get("ttype") or "").lower() != "many2one":
+                continue
+            rel = str(field.get("relation") or "")
+            if rel not in _IDENTITY_STOCK_COMODELS:
+                continue
+            by_rel.setdefault(rel, []).append(field)
+        drop_names: set[str] = set()
+        for rel, group in by_rel.items():
+            if len(group) < 2:
+                continue
+            ranked = sorted(group, key=lambda f: _pref_score(rel, f))
+            keep = ranked[0]
+            # Prefer Related Sales Order label when brief cues related/linked SO.
+            if rel == "sale.order" and re.search(
+                r"(?i)\b(?:related|linked|optional)\s+sales?\s+orders?\b", text
+            ):
+                ranked[0]["string"] = "Related Sales Order"
+                keep = ranked[0]
+            doomed_here = [str(d.get("name") or "") for d in ranked[1:]]
+            drop_names.update(n for n in doomed_here if n)
+            notes.append(
+                f"quality: Identity de-dupe {rel} on {mid} → keep "
+                f"{keep.get('name')} ({keep.get('string')}); drop "
+                + ", ".join(sorted(n for n in doomed_here if n))
+            )
+        if drop_names:
+            model["fields"] = [
+                f
+                for f in fields
+                if str(f.get("name") or "") not in drop_names
+            ]
+    return notes
+
+
 def fill_empty_selection_fields(draft: dict[str, Any]) -> list[str]:
     """Give empty selection fields a usable default set."""
     notes: list[str] = []

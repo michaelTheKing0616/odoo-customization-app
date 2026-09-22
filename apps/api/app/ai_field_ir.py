@@ -119,7 +119,8 @@ def infer_date_or_datetime(label: str) -> str | None:
         r"time\s+in|time\s+out|time\s+of\s+day|"
         r"(?:start|end|arrival|departure|appointment)\s+time|"
         r"appointment\s+(?:start|end)|"
-        r"scheduled?\s+(?:start|end)|"
+        r"scheduled?\s+(?:start|end|slot)|"
+        r"time\s+slot|"
         r"meeting\s+(?:start|end)"
         r")\b",
         low,
@@ -236,18 +237,24 @@ def typed_fields_from_brief(prompt: str) -> list[dict[str, Any]]:
 
 
 _CONSTRAINT_META_RE = re.compile(
-    r"(?i)^(?:new\s+model\b|menu\s+under\b|list\s*\+\s*form\b|"
-    r"list\s*\+\s*kanban\b|buttons?\s*:|"
+    r"(?i)^(?:new\s+model\b|menu\s+under\b|menus?\s*:|"
+    r"list\s*\+\s*form\b|list\s*\+\s*kanban\b|buttons?\s*:|"
     r"optional\s*:\s*(?:link|create)\b|optional\s+(?:link|create)\b|"
     r"create\s*/\s*read\b|create\s+and\s+read\b|on\s+\w|"
     r"do\s+not\b|don't\b|never\s+create\b|place\s+under\b|"
     r"status\s+hint\b|banner\s+when\b|alert\s+when\b|decoration\b|"
     r"ui\s+hint\b|"
+    # O2M satellite Must-do stamps — never Char labels on the primary form
+    r"satellite\s+o2m\b|o2m\s+satellite\b|"
     # Clarification / locked-diagnosis chrome — never Char fields
     r"understanding_json\b|clarifications?\b|diagnosis\b|"
     r"capability\b|grain\b|host_model\b|inherit_existing\b|"
     r"needs_module\b|gold_artifact_id\b|craft_smart_buttons?\b|"
     r"out_of_scope\b|operator\b)"
+)
+_CONSTRAINT_ATTACHMENT_RE = re.compile(r"(?i)^(?:-\s*)?(?:attachment|binary)\s*:\s*(.+)$")
+_CONSTRAINT_DATETIME_SUFFIX_RE = re.compile(
+    r"(?i)^(.+?)\s*\(\s*datetime\s*\)\s*$"
 )
 
 _CONSTRAINT_PREFIX_RE = re.compile(r"(?i)^(?:constraint|must[- ]?do|field)\s*:\s*")
@@ -366,7 +373,7 @@ def _constraint_field_spec(line: str) -> dict[str, Any] | None:
     text = str(line or "").strip().lstrip("-•* ").strip()
     # Locked-block rows may still carry «Constraint: » / «Field: » chrome.
     text = _CONSTRAINT_PREFIX_RE.sub("", text).strip() if not re.match(
-        r"(?i)^(?:checkbox|text\s*field)\s*:", text
+        r"(?i)^(?:checkbox|text\s*field|attachment|binary)\s*:", text
     ) else text
     # After stripping a lone «Field:» prefix, re-check; keep typed prefixes.
     if re.match(r"(?i)^field\s*:", text):
@@ -381,7 +388,17 @@ def _constraint_field_spec(line: str) -> dict[str, Any] | None:
         return field_spec(m.group(1), ttype="boolean")
     m = _CONSTRAINT_TEXT_RE.match(text)
     if m:
-        return field_spec(m.group(1), ttype="text")
+        label = (m.group(1) or "").strip()
+        # Legacy «Text field: Sign-off» → boolean Customer signed (class-wide).
+        if re.match(r"(?i)^sign[- ]?off$", label):
+            return field_spec("Customer signed", ttype="boolean")
+        return field_spec(label, ttype="text")
+    m = _CONSTRAINT_ATTACHMENT_RE.match(text)
+    if m:
+        return field_spec(m.group(1), ttype="binary")
+    m = _CONSTRAINT_DATETIME_SUFFIX_RE.match(text)
+    if m:
+        return field_spec(m.group(1), ttype="datetime")
     m = _CONSTRAINT_FIELD_RE.match(text)
     if m:
         label = _short_ast_field_label(m.group(1))
@@ -441,10 +458,16 @@ def _constraint_field_spec(line: str) -> dict[str, Any] | None:
     if "." in label and re.search(r"(?i)\bname\b", label):
         label = "Name"
     low = label.lower()
+    # Sign-off cue → boolean Customer signed (never multiline notes as primary).
+    if re.match(r"(?i)^sign[- ]?off$", low) or low == "customer signed":
+        return field_spec("Customer signed", ttype="boolean")
     # Strip trailing explicit type tokens ("Visit datetime", "Due date")
     temporal = infer_date_or_datetime(label)
     if temporal is None and _CONSTRAINT_DATE_RE.search(low):
         temporal = "datetime" if re.search(r"(?i)\b(?:date\s*time|datetime|timestamp)\b", low) else "date"
+    # Scheduled slot / appointment window → datetime even without the word date.
+    if temporal is None and re.search(r"(?i)\bscheduled\s+slot\b|\btime\s+slot\b", low):
+        temporal = "datetime"
     if temporal:
         return field_spec(label, ttype=temporal)
     if low == "name" or low.endswith(" name"):

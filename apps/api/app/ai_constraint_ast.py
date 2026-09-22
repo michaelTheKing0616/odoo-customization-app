@@ -176,7 +176,7 @@ _FIELD_TYPE_HINTS = frozenset(
     }
 )
 
-_MUST_DO_CAP = 12
+_MUST_DO_CAP = 14
 
 
 def _dedupe_strs(rows: list[str]) -> list[str]:
@@ -405,7 +405,7 @@ def _prose_full_app_fields(text: str) -> list[ConstraintField]:
     if re.search(r"(?i)\b(?:related|linked|optional)\s+sales?\s+orders?\b", text):
         fields.append(
             ConstraintField(
-                label="Sales Order",
+                label="Related Sales Order",
                 ttype="many2one",
                 relation="Sales Order",
                 bare=True,
@@ -454,8 +454,14 @@ def _prose_full_app_fields(text: str) -> list[ConstraintField]:
             )
         )
 
-    if re.search(r"(?i)\bsign[- ]?off\b", text):
-        fields.append(ConstraintField(label="Sign-off", ttype="text", bare=True))
+    # Sign-off / customer signed → boolean + attachment (never multiline notes).
+    if re.search(r"(?i)\bsign[- ]?off\b|\bcustomer\s+signed\b|\bsignature\b", text):
+        fields.append(
+            ConstraintField(label="Customer signed", ttype="boolean", bare=True)
+        )
+        fields.append(
+            ConstraintField(label="Signature attachment", ttype="binary", bare=True)
+        )
 
     note_label = _optional_note_label(text or "")
     if note_label:
@@ -478,6 +484,11 @@ def _prose_full_app_fields(text: str) -> list[ConstraintField]:
 
 def _prose_full_app_structural(text: str) -> list[str]:
     rows: list[str] = []
+    # O2M satellites first — Generate must expand them; never truncate behind Menus.
+    if re.search(r"(?i)\bchecklist\s+lines?\b", text or ""):
+        rows.append("O2M satellite: Checklist lines")
+    if re.search(r"(?i)\bparts?\s+used\b", text or ""):
+        rows.append("O2M satellite: Parts used")
     parent = _resolve_menu_parent(text)
     if parent:
         rows.append(f"Menu under {parent}")
@@ -491,11 +502,6 @@ def _prose_full_app_structural(text: str) -> list[str]:
         rows.append("List + form")
     if _CREATE_READ_ONLY_RE.search(text or ""):
         rows.append("Create/read only")
-    # Class-wide: checklist / parts lines → structured O2M satellites, never flat Product/Qty Identity.
-    if re.search(r"(?i)\bchecklist\s+lines?\b", text or ""):
-        rows.append("Satellite O2M: Checklist lines (not flat Product/Quantity on primary)")
-    if re.search(r"(?i)\bparts?\s+used\b", text or ""):
-        rows.append("Satellite O2M: Parts used (not flat Product/Quantity on primary)")
     note_label = _optional_note_label(text or "")
     if note_label:
         rows.append(f"Optional: link or create {note_label} on Approve")
@@ -1219,6 +1225,10 @@ def ast_to_must_do(ast: ConstraintAST, *, cap: int = _MUST_DO_CAP) -> list[str]:
             rows.append(f"Checkbox: {f.label}")
         elif f.ttype == "text":
             rows.append(f"Text field: {f.label}")
+        elif f.ttype == "binary":
+            rows.append(f"Attachment: {f.label}")
+        elif f.ttype == "datetime" and f.bare:
+            rows.append(f"{f.label} (datetime)")
         elif f.ttype == "selection" and f.selection_options:
             rows.append(f"{f.label} selection ({f.selection_options})")
         elif f.ttype == "many2one" and f.relation:

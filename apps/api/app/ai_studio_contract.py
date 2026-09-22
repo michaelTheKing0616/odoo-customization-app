@@ -434,6 +434,57 @@ def fulfill_studio_contract(draft: dict[str, Any], prompt: str) -> list[str]:
         if contract.get("title") and not str(draft.get("display_name") or "").strip():
             draft["display_name"] = str(contract["title"])
             notes.append(f"contract: residual title → {contract['title']}")
+        # Elite Generate repair: expand O2M satellites + Identity de-dupe + sign-off class.
+        try:
+            from app.ai_odoo_app_bar import ensure_cued_o2m_satellites
+
+            notes.extend(ensure_cued_o2m_satellites(draft, prompt=prompt))
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            from app.ai_model_quality import (
+                dedupe_identity_same_comodel_fields,
+                dedupe_redundant_partner_fields,
+            )
+
+            notes.extend(dedupe_redundant_partner_fields(draft))
+            notes.extend(dedupe_identity_same_comodel_fields(draft, prompt=prompt))
+        except Exception:  # noqa: BLE001
+            pass
+        # Upgrade legacy Sign-off text → boolean Customer signed (+ binary if missing).
+        for model in draft.get("models") or []:
+            if not isinstance(model, dict):
+                continue
+            mid = str(model.get("model") or "")
+            if not mid.startswith("x_") or mid.endswith(("_line", "_party")):
+                continue
+            fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
+            changed = False
+            for field in fields:
+                lab = str(field.get("string") or "").strip()
+                if re.match(r"(?i)^sign[- ]?off$", lab) and str(
+                    field.get("ttype") or ""
+                ).lower() in {"text", "html", "char"}:
+                    field["ttype"] = "boolean"
+                    field["string"] = "Customer signed"
+                    field["name"] = "x_customer_signed"
+                    changed = True
+                    notes.append(f"contract: Sign-off → boolean Customer signed on {mid}")
+            names = {str(f.get("name") or "") for f in fields}
+            if changed and "x_signature_attachment" not in names and re.search(
+                r"(?i)\bsign[- ]?off\b|\bsignature\b", prompt or ""
+            ):
+                fields.append(
+                    {
+                        "name": "x_signature_attachment",
+                        "ttype": "binary",
+                        "string": "Signature attachment",
+                        "source": "studio_contract",
+                    }
+                )
+                notes.append(f"contract: + Signature attachment on {mid}")
+            if changed:
+                model["fields"] = fields
 
     # Grain lock for inherit-only — never Prefer-reshape a locked residual full_app
     # (craft on Employees is a smart button, not a host flip).
@@ -628,6 +679,154 @@ def sync_honesty_meta(draft: dict[str, Any]) -> None:
     draft["_meta"] = meta
 
 
+
+_LITERAL_STAMP_LABEL_RE = re.compile(
+    r"(?i)^(?:satellite\s+o2m|o2m\s+satellite)\b|^menus?\s*:"
+)
+
+
+def residual_generate_hygiene_gaps(
+    draft: dict[str, Any], *, prompt: str = ""
+) -> list[dict[str, str]]:
+    """Detect Generate leftovers that block elite first-try UX (class-wide).
+
+    Returns finding dicts with code/detail — empty when clean.
+    """
+    findings: list[dict[str, str]] = []
+    text = prompt or str(draft.get("_user_prompt") or "")
+    models = [m for m in (draft.get("models") or []) if isinstance(m, dict)]
+    primary = None
+    for m in models:
+        mid = str(m.get("model") or "")
+        if mid.startswith("x_") and not mid.endswith(("_line", "_party")):
+            if "_checklist_line" in mid or "_parts_line" in mid:
+                continue
+            primary = m
+            break
+    if primary is None:
+        return findings
+    mid = str(primary.get("model") or "")
+    fields = [f for f in (primary.get("fields") or []) if isinstance(f, dict)]
+
+    for field in fields:
+        label = str(field.get("string") or "").strip()
+        name = str(field.get("name") or "")
+        ttype = str(field.get("ttype") or "char").lower()
+        if ttype in {"char", "text", ""} and (
+            _LITERAL_STAMP_LABEL_RE.match(label)
+            or "satellite_o2m" in name.lower()
+            or name.lower().startswith("x_menus_list")
+        ):
+            findings.append(
+                {
+                    "severity": "error",
+                    "code": "literal_satellite_stamp",
+                    "detail": (
+                        f"Literal Must-do stamp on Identity: {label or name}. "
+                        "Generate must expand Checklist/Parts into real O2M lines."
+                    ),
+                }
+            )
+
+    # Duplicate same stock comodel on Identity
+    by_rel: dict[str, list[str]] = {}
+    for field in fields:
+        if str(field.get("ttype") or "").lower() != "many2one":
+            continue
+        rel = str(field.get("relation") or "")
+        if rel in {
+            "res.partner",
+            "sale.order",
+            "fleet.vehicle",
+            "hr.employee",
+        }:
+            by_rel.setdefault(rel, []).append(
+                str(field.get("string") or field.get("name") or rel)
+            )
+    for rel, labels in by_rel.items():
+        if len(labels) > 1:
+            findings.append(
+                {
+                    "severity": "error",
+                    "code": "duplicate_identity_m2o",
+                    "detail": (
+                        f"Duplicate {rel} on Identity ({', '.join(labels)}). "
+                        "Keep one brief-cued link."
+                    ),
+                }
+            )
+
+    # Sign-off as multiline text when brief cues sign
+    if re.search(r"(?i)\bsign[- ]?off\b|\bcustomer\s+signed\b|\bsignature\b", text):
+        has_bool = any(
+            str(f.get("ttype") or "").lower() == "boolean"
+            and re.search(
+                r"(?i)signed|sign[- ]?off|signature",
+                str(f.get("string") or f.get("name") or ""),
+            )
+            for f in fields
+        )
+        bad_text = [
+            f
+            for f in fields
+            if str(f.get("ttype") or "").lower() in {"text", "html", "char"}
+            and re.match(
+                r"(?i)^sign[- ]?off$",
+                str(f.get("string") or "").strip(),
+            )
+        ]
+        if bad_text and not has_bool:
+            findings.append(
+                {
+                    "severity": "error",
+                    "code": "signoff_as_text",
+                    "detail": (
+                        "Sign-off landed as multiline text. Prefer boolean "
+                        "«Customer signed» (+ attachment) or a Sign link."
+                    ),
+                }
+            )
+
+    # Checklist/parts cued but no O2M structure
+    want_checklist = bool(re.search(r"(?i)\bchecklist\s+lines?\b", text))
+    want_parts = bool(re.search(r"(?i)\bparts?\s+used\b", text))
+    o2m_labels = {
+        str(f.get("string") or "").strip().lower()
+        for f in fields
+        if str(f.get("ttype") or "").lower() == "one2many"
+    }
+    model_ids = {str(m.get("model") or "") for m in models}
+    if want_checklist and not (
+        any("checklist" in x for x in o2m_labels)
+        or any(x.endswith("_checklist_line") for x in model_ids)
+    ):
+        findings.append(
+            {
+                "severity": "error",
+                "code": "missing_checklist_o2m",
+                "detail": (
+                    "Brief cued Checklist lines but no One2many/line model. "
+                    "Repair expands real checklist lines (item + done)."
+                ),
+            }
+        )
+    if want_parts and not (
+        any("parts" in x for x in o2m_labels)
+        or any(x.endswith("_parts_line") for x in model_ids)
+    ):
+        findings.append(
+            {
+                "severity": "error",
+                "code": "missing_parts_o2m",
+                "detail": (
+                    "Brief cued Parts used but no One2many/line model. "
+                    "Repair expands parts lines (product + qty)."
+                ),
+            }
+        )
+    return findings
+
+
 def evaluate_studio_contract(draft: dict[str, Any]) -> dict[str, Any]:
     """Scorecard: pass only when authored draft satisfies the contract."""
     contract = draft.get("_studio_contract") if isinstance(draft.get("_studio_contract"), dict) else {}
@@ -747,6 +946,34 @@ def evaluate_studio_contract(draft: dict[str, Any]) -> dict[str, Any]:
             )
             repairs.append("Author on_write activity when Prefer for delivery is set")
 
+    # Residual Generate hygiene (satellite stamps, duplicate M2O, sign-off class)
+    prompt = str(draft.get("_user_prompt") or "")
+    for gap in residual_generate_hygiene_gaps(draft, prompt=prompt):
+        findings.append(gap)
+        code = str(gap.get("code") or "")
+        if code == "literal_satellite_stamp":
+            repairs.append(
+                "Repair with Expert — expand Satellite O2M stamps into real Checklist/Parts lines"
+            )
+        elif code == "duplicate_identity_m2o":
+            repairs.append(
+                "Repair with Expert — collapse duplicate Identity M2Os (keep brief-cued link)"
+            )
+        elif code == "signoff_as_text":
+            repairs.append(
+                "Repair with Expert — replace Sign-off text with Customer signed + attachment"
+            )
+        elif code == "missing_checklist_o2m":
+            repairs.append(
+                "Repair with Expert — materialize Checklist lines One2many (item + done)"
+            )
+        elif code == "missing_parts_o2m":
+            repairs.append(
+                "Repair with Expert — materialize Parts used One2many (product + qty)"
+            )
+        else:
+            repairs.append(str(gap.get("detail") or "Repair with Expert"))
+
     # Honesty: meta counts must match
     meta = draft.get("_meta") if isinstance(draft.get("_meta"), dict) else {}
     actual_btn = len([b for b in (draft.get("smart_buttons") or []) if isinstance(b, dict)])
@@ -758,6 +985,10 @@ def evaluate_studio_contract(draft: dict[str, Any]) -> dict[str, Any]:
                 "detail": "Meta smart_button_count disagrees with draft",
             }
         )
+
+    # Dedupe repair strings while preserving order
+    seen_r: set[str] = set()
+    repairs = [r for r in repairs if not (r in seen_r or seen_r.add(r))]  # type: ignore[func-returns-value]
 
     errors = [f for f in findings if f.get("severity") == "error"]
     return {
@@ -808,6 +1039,7 @@ __all__ = [
     "contract_diff",
     "contract_human_summary",
     "evaluate_studio_contract",
+    "residual_generate_hygiene_gaps",
     "fulfill_studio_contract",
     "stamp_studio_contract_pipeline",
     "sync_honesty_meta",

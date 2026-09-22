@@ -158,7 +158,7 @@ def test_field_work_orders_noun_not_full_or_x_full() -> None:
     assert "priority" in joined  # cued — invent honor must keep
     assert "checklist" in joined or "parts used" in joined
     # Honest satellites — not flat Product*/Quantity* Identity.
-    assert "flat product" in joined or "satellite" in joined or "o2m" in joined
+    assert "o2m satellite" in joined or "satellite" in joined or "flat product" in joined
     assert not any(
         x.lower().startswith("field: product") or x.lower().startswith("field: quantity")
         for x in u.constraints

@@ -96,13 +96,14 @@ export function StudioHonestyBanners({
       {contractScorecard?.blocking ? (
         <Callout
           variant="warning"
-          title="Studio contract not met"
+          title="Generate / Studio gates blocked — Repair before Apply"
           testId="studio-contract-blocker"
           actions={
             onRepairExpert ? (
               <button
                 type="button"
                 className="text-sm font-medium text-accent"
+                data-testid="studio-contract-repair-expert"
                 onClick={onRepairExpert}
                 disabled={refineBusy}
               >
@@ -111,11 +112,25 @@ export function StudioHonestyBanners({
             ) : null
           }
         >
-          {contractScorecard.summary
-            ? `Expected: ${contractScorecard.summary}. `
-            : ""}
-          {(contractScorecard.repairs || []).slice(0, 3).join(" · ") ||
-            "Fix placement or missing workflow surfaces before Apply."}
+          <p className="text-sm">
+            {contractScorecard.summary
+              ? `Expected: ${contractScorecard.summary}. `
+              : ""}
+            Apply/Install stays blocked until these class gates pass (duplicate M2O,
+            literal satellite stamps, missing Checklist/Parts O2M, Sign-off shape,
+            Option A honesty). Completeness ≠ Cert ≠ Autopilot.
+          </p>
+          {(contractScorecard.repairs || []).length > 0 ? (
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm" data-testid="studio-contract-repairs">
+              {(contractScorecard.repairs || []).slice(0, 5).map((r, i) => (
+                <li key={`repair-${i}`}>{r}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-sm">
+              Fix placement or missing workflow surfaces before Apply.
+            </p>
+          )}
         </Callout>
       ) : contractScorecard?.pass && contractScorecard.summary ? (
         <Callout

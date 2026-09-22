@@ -954,6 +954,214 @@ def ensure_residual_satellites(draft: dict[str, Any]) -> list[str]:
     return notes
 
 
+
+_LITERAL_SATELLITE_STAMP_RE = re.compile(
+    r"(?i)^(?:satellite\s+o2m|o2m\s+satellite)\b|^menus?\s*:"
+)
+
+
+def _scrub_literal_satellite_stamp_fields(model: dict[str, Any]) -> list[str]:
+    """Drop primary-form Char fields whose labels are Must-do satellite stamps."""
+    notes: list[str] = []
+    fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
+    kept: list[dict[str, Any]] = []
+    for field in fields:
+        label = str(field.get("string") or field.get("name") or "").strip()
+        name = str(field.get("name") or "")
+        ttype = str(field.get("ttype") or "char").lower()
+        if ttype in {"char", "text", ""} and (
+            _LITERAL_SATELLITE_STAMP_RE.match(label)
+            or "satellite_o2m" in name.lower()
+            or name.lower().startswith("x_menus_list")
+        ):
+            notes.append(
+                f"app_bar: scrubbed literal stamp field {name!r}/{label!r}"
+            )
+            continue
+        kept.append(field)
+    if len(kept) != len(fields):
+        model["fields"] = kept
+    return notes
+
+
+def ensure_cued_o2m_satellites(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
+    """Materialize brief-cued Checklist / Parts O2M satellites (class-wide).
+
+    When Must-do / brief says checklist lines or parts used:
+    - Create real line models + One2many on the primary (labels/done or product+qty).
+    - Never leave human-facing «Satellite O2M: …» Char fields on Identity.
+    Flat Product*/Quantity* invent on primary remains a hard fail elsewhere.
+    """
+    notes: list[str] = []
+    text = prompt or str(draft.get("_user_prompt") or "")
+    if draft.get("_component"):
+        return notes
+    mid = _residual_header_id(draft)
+    if not mid:
+        return notes
+    by_id = _models_index(draft)
+    header = by_id.get(mid)
+    if not isinstance(header, dict):
+        return notes
+
+    notes.extend(_scrub_literal_satellite_stamp_fields(header))
+
+    want_checklist = bool(re.search(r"(?i)\bchecklist\s+lines?\b", text))
+    want_parts = bool(re.search(r"(?i)\bparts?\s+used\b", text))
+    if not want_checklist and not want_parts:
+        # Still scrub stamps when Must-do leftovers exist without live brief cues.
+        return notes
+
+    # Cued O2M satellites unlock transactional growth even if an older draft
+    # stamped register from a bare «checklist» cue.
+    try:
+        from app.ai_document_shape import is_transactional_line_document
+
+        if is_transactional_line_document(text) or want_checklist or want_parts:
+            draft["_document_shape"] = "transactional_header"
+    except Exception:  # noqa: BLE001
+        draft["_document_shape"] = draft.get("_document_shape") or "transactional_header"
+
+    leaf = mid[2:] if mid.startswith("x_") else mid
+    label = short_model_label(mid, str(header.get("description") or ""))
+    fk = f"x_{leaf}_id"
+    depends = [str(x) for x in (draft.get("depends") or []) if x]
+
+    def _ensure_o2m(o2m_name: str, relation: str, string: str) -> None:
+        if o2m_name in _field_names(header):
+            # Upgrade literal/wrong ttype if a prior stamp polluted the name.
+            for field in header.get("fields") or []:
+                if not isinstance(field, dict):
+                    continue
+                if str(field.get("name") or "") != o2m_name:
+                    continue
+                field["ttype"] = "one2many"
+                field["relation"] = relation
+                field["relation_field"] = fk
+                field["string"] = string
+                field["source"] = field.get("source") or "cued_o2m"
+                return
+        header.setdefault("fields", []).append(
+            {
+                "name": o2m_name,
+                "ttype": "one2many",
+                "relation": relation,
+                "relation_field": fk,
+                "string": string,
+                "source": "cued_o2m",
+            }
+        )
+
+    if want_checklist:
+        line_id = f"{mid}_checklist_line"
+        if line_id not in by_id:
+            line = {
+                "model": line_id,
+                "description": f"{label} Checklist Line",
+                "mode": "new",
+                "source": "cued_o2m",
+                "fields": [
+                    {
+                        "name": "x_name",
+                        "ttype": "char",
+                        "string": "Checklist item",
+                        "required": True,
+                    },
+                    {
+                        "name": fk,
+                        "ttype": "many2one",
+                        "relation": mid,
+                        "string": label,
+                        "required": True,
+                    },
+                    {"name": "x_done", "ttype": "boolean", "string": "Done"},
+                    {"name": "x_notes", "ttype": "char", "string": "Notes"},
+                ],
+            }
+            draft.setdefault("models", []).append(line)
+            by_id[line_id] = line
+            notes.append(f"app_bar: cued checklist line model {line_id}")
+        _ensure_o2m(f"x_{leaf}_checklist_line_ids", line_id, "Checklist lines")
+        if f"x_{leaf}_checklist_line_ids" in _field_names(header):
+            notes.append(f"app_bar: cued O2M Checklist lines on {mid}")
+
+    if want_parts:
+        line_id = f"{mid}_parts_line"
+        if line_id not in by_id:
+            line = {
+                "model": line_id,
+                "description": f"{label} Parts Line",
+                "mode": "new",
+                "source": "cued_o2m",
+                "fields": [
+                    {
+                        "name": "x_name",
+                        "ttype": "char",
+                        "string": "Line",
+                        "required": True,
+                    },
+                    {
+                        "name": fk,
+                        "ttype": "many2one",
+                        "relation": mid,
+                        "string": label,
+                        "required": True,
+                    },
+                    {
+                        "name": "x_product_id",
+                        "ttype": "many2one",
+                        "relation": "product.product",
+                        "string": "Product",
+                    },
+                    {
+                        "name": "x_qty",
+                        "ttype": "float",
+                        "string": "Quantity",
+                        "default": 1.0,
+                    },
+                ],
+            }
+            draft.setdefault("models", []).append(line)
+            by_id[line_id] = line
+            notes.append(f"app_bar: cued parts line model {line_id}")
+        _ensure_o2m(f"x_{leaf}_parts_line_ids", line_id, "Parts used")
+        if "product" not in depends:
+            depends.append("product")
+        notes.append(f"app_bar: cued O2M Parts used on {mid}")
+
+    # Drop flat Product/Quantity invent on primary when line satellites exist.
+    if want_checklist or want_parts:
+        flat_drop = []
+        kept = []
+        for field in header.get("fields") or []:
+            if not isinstance(field, dict):
+                continue
+            name = str(field.get("name") or "")
+            lab = str(field.get("string") or "").strip().lower()
+            ttype = str(field.get("ttype") or "").lower()
+            if ttype == "one2many":
+                kept.append(field)
+                continue
+            if lab in {"product", "quantity", "qty"} or name in {
+                "x_product_id",
+                "x_qty",
+                "x_quantity",
+            }:
+                # Keep only if not the parts-line product (primary Identity invent).
+                flat_drop.append(name or lab)
+                continue
+            kept.append(field)
+        if flat_drop:
+            header["fields"] = kept
+            notes.append(
+                "app_bar: dropped flat Product/Qty on primary (use Parts used O2M) "
+                + ", ".join(flat_drop)
+            )
+
+    draft["depends"] = list(dict.fromkeys(depends))
+    return notes
+
+
 def ensure_stock_inherit_bridges(draft: dict[str, Any]) -> list[str]:
     """Hang the residual FK on stock documents — senior Community inherit, not x_bill."""
     notes: list[str] = []
@@ -4527,6 +4735,7 @@ def close_odoo_architecture(draft: dict[str, Any], *, user_prompt: str = "") -> 
     notes.extend(prune_generic_loop_models(draft, user_prompt=prompt))
     notes.extend(prune_leftover_specialty_satellites(draft))
     notes.extend(drop_orphan_relational_fields(draft))
+    notes.extend(ensure_cued_o2m_satellites(draft))
     notes.extend(ensure_residual_satellites(draft))
     notes.extend(ensure_stock_inherit_bridges(draft))
     notes.extend(drop_stock_inverse_o2ms(draft))
@@ -5095,6 +5304,7 @@ def run_odoo_app_bar_pass(draft: dict[str, Any], *, user_prompt: str = "") -> li
     notes.extend(ensure_header_line_models(draft))
     notes.extend(ensure_reverse_o2ms(draft))
     notes.extend(wire_stock_apps_from_depends(draft))
+    notes.extend(ensure_cued_o2m_satellites(draft))
     notes.extend(ensure_residual_satellites(draft))
     notes.extend(ensure_stock_inherit_bridges(draft))
     notes.extend(ensure_invoice_link_on_headers(draft))

@@ -1,4 +1,4 @@
-/** @vitest-environment jsdom */
+/** @vitest-environment happy-dom */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { StudioHonestyBanners } from "./StudioHonestyBanners";
@@ -105,6 +105,32 @@ describe("StudioHonestyBanners", () => {
       target: { value: "next_to_vendor" },
     });
     expect(onPlaceField).toHaveBeenCalledWith("Vendor TIN", "next to vendor");
+  });
+
+
+  it("surfaces Generate gate repairs with one-click Expert path", () => {
+    const onRepairExpert = vi.fn();
+    render(
+      <StudioHonestyBanners
+        {...base}
+        onRepairExpert={onRepairExpert}
+        contractScorecard={{
+          pass: false,
+          blocking: true,
+          summary: "New app: Field Work Orders",
+          repairs: [
+            "Repair with Expert — expand Satellite O2M stamps into real Checklist/Parts lines",
+            "Repair with Expert — replace Sign-off text with Customer signed + attachment",
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByTestId("studio-contract-blocker").textContent).toMatch(
+      /Generate \/ Studio gates blocked/,
+    );
+    expect(screen.getByTestId("studio-contract-repairs").textContent).toMatch(/Checklist\/Parts/);
+    fireEvent.click(screen.getByTestId("studio-contract-repair-expert"));
+    expect(onRepairExpert).toHaveBeenCalled();
   });
 
   it("overrides residual-app copy for Option A inherit modules", () => {
