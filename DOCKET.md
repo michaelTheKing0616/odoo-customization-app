@@ -40,6 +40,9 @@ Never Prefer when Option A required; never Online Python promote.
 - [x] **P4 Config Atlas elite** — 2026-09-22  
   Closed last Atlas stub (`docs.orders` → `document_batch.orders` CSV→draft SO/PO). Expert/Intent → Atlas → recipe → Apply continuity with atlas_class/recipe/risk/delivery_lane handoff. Build spine Stock/Config deep-links Config Atlas / journal tabs. Multi-brief Atlas goldens + L3/preview honesty. Rubric battery green (`run_p4_atlas_elite_rubric_battery.sh`, AI_INTENT_LLM=off).
 
+- [x] **Install grammar + uncued smart invent + O2M preview** — 2026-09-22  
+  Class-wide: checklist/parts roles never collapse; notebook↔O2M Install gate green; uncued Quotations/Invoices/Meetings never invent on residual forms; canvas O2M shows item+done / product+qty (not Tag A/B). Rubric `run_install_grammar_o2m_preview_rubric_battery.sh`.
+
 - [x] **First-try Generate repair (O2M / M2O / sign-off / UI)** — 2026-09-22  
   Class-wide: checklist/parts Must-do → real O2M line models (never literal Satellite Char stamps); Identity same-comodel M2O de-dupe keeps cued Related Sales Order/Fleet; Sign-off → boolean Customer signed + attachment; Studio contract scorecard blocks Apply with Repair-with-Expert path. Prefer Project + Vehicle green. Rubric `run_first_try_generate_repair_rubric_battery.sh`.
 
@@ -140,7 +143,7 @@ Release gates for Config Atlas elite — `AI_INTENT_LLM=off`, `apps/api/scripts/
 - Journal/CoA Atlas intents remain `recipe: null` catalog pointers (status complete by design — not stubs).
 - ConfigCommandCenter vitest hit a pre-existing jsdom/undici env error on this box; Atlas browser + OrderBatchPanel + spine handoff vitest green.
 
-**Tip SHAs:** feat  (Mac; tip )`0b9f9bd` · APPLY `35c9fb8`. Mac APPLY: `/workspace/odoo-mac-tip/APPLY_ATLAS_ELITE_P4_ON_MAC.sh` with patch `0001-feat-ingenium-atlas-elite-p4.patch`.
+**Tip SHAs:** feat `0b9f9bd` · APPLY `35c9fb8`. Mac APPLY: `/workspace/odoo-mac-tip/APPLY_ATLAS_ELITE_P4_ON_MAC.sh` with patch `0001-feat-ingenium-atlas-elite-p4.patch`.
 
 
 ## Arc3 invent families rubric matrix (2026-09-22)
@@ -162,7 +165,7 @@ Release gates for invent families + Flash-on honor — `AI_INTENT_LLM=off` floor
 
 **Battery:** 282 pytest passed (`no_app_db`). Web: 8 vitest passed (build-spine + handoff + Atlas browser + OrderBatchPanel).
 
-**Tip SHAs:** feat  (Mac; tip )`f47bd33` · APPLY `4bf0ae5`. Mac APPLY: `/workspace/odoo-mac-tip/APPLY_INVENT_FAMILIES_ARC3_ON_MAC.sh` with patch `0001-feat-ingenium-invent-families-arc3.patch` (also `/workspace/0001-feat-ingenium-invent-families-arc3.patch`).
+**Tip SHAs:** feat `f47bd33` · APPLY `4bf0ae5`. Mac APPLY: `/workspace/odoo-mac-tip/APPLY_INVENT_FAMILIES_ARC3_ON_MAC.sh` with patch `0001-feat-ingenium-invent-families-arc3.patch` (also `/workspace/0001-feat-ingenium-invent-families-arc3.patch`).
 
 ### Arc3 remaining gaps (honest)
 - Live Odoo order-batch dry-run/apply still mock-only (unchanged from P4).
@@ -188,7 +191,7 @@ Release gates for Prefer host lock + residual business-noun naming — `AI_INTEN
 
 **Battery:** 289 pytest passed (`no_app_db`). Web: 7 vitest passed (build-spine + handoff + Atlas browser + OrderBatchPanel).
 
-**Tip SHAs:** feat  (Mac; tip )`6f87d41` · APPLY `b7bb37c`. Mac APPLY: `/workspace/odoo-mac-tip/APPLY_PREFER_HOST_FULLAPP_NOUN_ON_MAC.sh` with patch `0001-feat-ingenium-prefer-host-fullapp-noun.patch` (also `/workspace/0001-feat-ingenium-prefer-host-fullapp-noun.patch`).
+**Tip SHAs:** feat `6f87d41` · APPLY `b7bb37c`. Mac APPLY: `/workspace/odoo-mac-tip/APPLY_PREFER_HOST_FULLAPP_NOUN_ON_MAC.sh` with patch `0001-feat-ingenium-prefer-host-fullapp-noun.patch` (also `/workspace/0001-feat-ingenium-prefer-host-fullapp-noun.patch`).
 
 ### Prefer-host / full_app-noun remaining gaps (honest)
 - Live Odoo order-batch dry-run/apply still mock-only (unchanged from P4/Arc3).
@@ -218,7 +221,7 @@ Release gates for residual Generate leftovers — `AI_INTENT_LLM=off`, `apps/api
 
 **Battery:** 301 pytest passed (`no_app_db`). Web: 5 vitest passed (StudioHonestyBanners Generate-repair banner; jsdom/undici env error retained on some jsdom-forced files).
 
-**Tip SHAs:** feat  (Mac; tip )`29776f7` (Mac; tip `58468fe`) · APPLY `8d147c9` . Mac APPLY: `/workspace/odoo-mac-tip/APPLY_FIRST_TRY_GENERATE_REPAIR_ON_MAC.sh` with patch `0001-feat-ingenium-first-try-generate-repair.patch` (also `/workspace/0001-feat-ingenium-first-try-generate-repair.patch`).
+**Tip SHAs:** feat `58468fe` · APPLY `8d147c9` . Mac APPLY: `/workspace/odoo-mac-tip/APPLY_FIRST_TRY_GENERATE_REPAIR_ON_MAC.sh` with patch `0001-feat-ingenium-first-try-generate-repair.patch` (also `/workspace/0001-feat-ingenium-first-try-generate-repair.patch`).
 
 ### First-try Generate repair remaining gaps (honest)
 - Live Odoo order-batch dry-run/apply still mock-only (unchanged from P4/Arc3).
