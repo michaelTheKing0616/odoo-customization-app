@@ -80,7 +80,7 @@ export function ConfigAtlasBrowser({ connectionId }: Props) {
     <div className="space-y-4" data-testid="config-atlas-browser">
       <Callout variant="info" title="Config Atlas">
         Intent → class → models → risk → recipe. All eight atlas classes are complete —
-        master data, settings, access, automation, UI Studio, and housekeeping included.
+        zero stub intents (orders included). Preview ≠ posted/confirmed. L3 lock dates need confirm.
       </Callout>
       {error ? <ErrorNotice message={error} /> : null}
 

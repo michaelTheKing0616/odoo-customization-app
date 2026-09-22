@@ -14,9 +14,10 @@ import { EMPTY_STATES, REVERSIBILITY } from "@/lib/copy-guide";
 import { JournalBatchPanel } from "@/components/batch-os/JournalBatchPanel";
 import { DocumentBatchPanel } from "@/components/batch-os/DocumentBatchPanel";
 import { MasterDataBatchPanel } from "@/components/batch-os/MasterDataBatchPanel";
+import { OrderBatchPanel } from "@/components/batch-os/OrderBatchPanel";
 
 type TimelineFilter = "all" | "snapshot" | "audit" | "health";
-type PageTab = "timeline" | "batch" | "invoices" | "master";
+type PageTab = "timeline" | "batch" | "invoices" | "orders" | "master";
 
 type TimelineEntry =
   | { kind: "snapshot"; at: string; snapshot: SnapshotRow }
@@ -51,7 +52,7 @@ export default function ChangeJournalPage() {
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get("tab") as PageTab | null) || "timeline";
   const [tab, setTab] = useState<PageTab>(
-    initialTab === "batch" || initialTab === "invoices" || initialTab === "master" ? initialTab : "timeline",
+    initialTab === "batch" || initialTab === "invoices" || initialTab === "orders" || initialTab === "master" ? initialTab : "timeline",
   );
 
   const refresh = useCallback(async () => {
@@ -139,7 +140,7 @@ export default function ChangeJournalPage() {
     <div className="mx-auto max-w-5xl" data-testid="journal-page">
       <PageHeader
         title="Change journal"
-        description="Change timeline · Journal batch · Invoices & bills (CSV → draft account.move)"
+        description="Change timeline · Journal batch · Invoices & bills · Orders (CSV → draft SO/PO)"
       />
       <VersionAwarenessBanner capabilities={connection?.capabilities} />
 
@@ -171,6 +172,15 @@ export default function ChangeJournalPage() {
         </Button>
         <Button
           type="button"
+          variant={tab === "orders" ? "secondary" : "ghost"}
+          size="sm"
+          onClick={() => setTab("orders")}
+          data-testid="journal-tab-orders"
+        >
+          Orders
+        </Button>
+        <Button
+          type="button"
           variant={tab === "master" ? "secondary" : "ghost"}
           size="sm"
           onClick={() => setTab("master")}
@@ -187,6 +197,10 @@ export default function ChangeJournalPage() {
       ) : tab === "invoices" ? (
         <div className="mt-6">
           <DocumentBatchPanel connectionId={connectionId} />
+        </div>
+      ) : tab === "orders" ? (
+        <div className="mt-6">
+          <OrderBatchPanel connectionId={connectionId} />
         </div>
       ) : tab === "master" ? (
         <div className="mt-6">

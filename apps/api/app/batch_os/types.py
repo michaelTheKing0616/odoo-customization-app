@@ -23,6 +23,11 @@ HONESTY_PREVIEW_NE_POSTED = (
     "Apply creates drafts; posting (if requested) is a separate L2 step."
 )
 
+HONESTY_PREVIEW_NE_CONFIRMED = (
+    "Preview is not confirmed. Dry-run only validates shape — "
+    "Apply creates draft sale/purchase orders; confirmation is a separate step."
+)
+
 RISK_LABELS: dict[RiskTier, str] = {
     "L0": "Read / preview only",
     "L1": "Draft creates (reversible via draft unlink)",
@@ -286,5 +291,58 @@ PAYMENT_HEADER_ALIASES: dict[str, str] = {
     "communication": "memo",
     "payment_type": "payment_type",
     "type": "payment_type",
+}
+
+
+# Canonical order-batch (sale.order / purchase.order) column targets
+ORDER_COLUMN_TARGETS: tuple[str, ...] = (
+    "order_type",
+    "partner",
+    "date",
+    "product",
+    "label",
+    "qty",
+    "price",
+    "ref",
+    "order_group",
+)
+
+ORDER_HEADER_ALIASES: dict[str, str] = {
+    "order_type": "order_type",
+    "type": "order_type",
+    "doc_type": "order_type",
+    "document_type": "order_type",
+    "partner": "partner",
+    "partner_name": "partner",
+    "customer": "partner",
+    "vendor": "partner",
+    "supplier": "partner",
+    "date": "date",
+    "order_date": "date",
+    "date_order": "date",
+    "product": "product",
+    "product_code": "product",
+    "product_name": "product",
+    "default_code": "product",
+    "label": "label",
+    "description": "label",
+    "name": "label",
+    "qty": "qty",
+    "quantity": "qty",
+    "product_uom_qty": "qty",
+    "product_qty": "qty",
+    "price": "price",
+    "price_unit": "price",
+    "unit_price": "price",
+    "ref": "ref",
+    "reference": "ref",
+    "client_order_ref": "ref",
+    "partner_ref": "ref",
+    "order_group": "order_group",
+    "group": "order_group",
+    "order": "order_group",
+    "order_number": "order_group",
+    "so": "order_group",
+    "po": "order_group",
 }
 

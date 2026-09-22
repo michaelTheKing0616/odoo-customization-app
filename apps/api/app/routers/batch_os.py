@@ -15,8 +15,10 @@ from app.batch_os.recipes.registry import list_recipes, require_recipe
 from app.batch_os.runner import job_public, run_phase
 from app.batch_os.types import (
     DOCUMENT_COLUMN_TARGETS,
+    HONESTY_PREVIEW_NE_CONFIRMED,
     HONESTY_PREVIEW_NE_POSTED,
     JOURNAL_COLUMN_TARGETS,
+    ORDER_COLUMN_TARGETS,
     PAYMENT_COLUMN_TARGETS,
 )
 from app.db import get_db
@@ -308,6 +310,141 @@ def payment_columns(connection_id: str) -> dict[str, Any]:
         "honesty": HONESTY_PREVIEW_NE_POSTED,
         "risk": "L2",
     }
+
+
+
+@router.get("/order/columns")
+def order_columns(connection_id: str) -> dict[str, Any]:
+    del connection_id
+    return {
+        "targets": list(ORDER_COLUMN_TARGETS),
+        "required": ["partner", "product"],
+        "optional": ["order_type", "date", "label", "qty", "price", "ref", "order_group"],
+        "honesty": HONESTY_PREVIEW_NE_CONFIRMED,
+        "risk": "L1",
+    }
+
+
+@router.post("/order/intake")
+async def order_intake(
+    connection_id: str,
+    db: Session = Depends(get_db),
+    file: UploadFile = File(...),
+    recipe_id: str = Form("document_batch.orders"),
+) -> dict[str, Any]:
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty upload")
+    try:
+        headers, rows = parse_upload(raw, file.filename or "upload.csv")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        recipe = require_recipe(recipe_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    state = run_phase(
+        db,
+        recipe,
+        phase="intake",
+        connection_id=connection_id,
+        filename=file.filename or "upload.csv",
+        headers=headers,
+        rows=rows,
+    )
+    return _state_out(state)
+
+
+@router.post("/order/map")
+def order_map(
+    connection_id: str,
+    body: MapBody,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    try:
+        state = _batch_flow(
+            connection_id=connection_id,
+            db=db,
+            recipe_id="document_batch.orders",
+            phase="map",
+            job_id=body.job_id,
+            column_map=body.column_map or None,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _state_out(state)
+
+
+@router.post("/order/validate")
+def order_validate(
+    connection_id: str,
+    body: PhaseBody,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    try:
+        state = _batch_flow(
+            connection_id=connection_id,
+            db=db,
+            recipe_id="document_batch.orders",
+            phase="validate",
+            job_id=body.job_id,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _state_out(state)
+
+
+@router.post("/order/dry-run")
+def order_dry_run(
+    connection_id: str,
+    body: PhaseBody,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    try:
+        state = _batch_flow(
+            connection_id=connection_id,
+            db=db,
+            recipe_id="document_batch.orders",
+            phase="dry_run",
+            job_id=body.job_id,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _state_out(state)
+
+
+@router.post("/order/apply")
+def order_apply(
+    connection_id: str,
+    body: ApplyBody,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    risks = [
+        "Creates draft sale.order / purchase.order on the live database",
+        HONESTY_PREVIEW_NE_CONFIRMED,
+        "Never auto-confirms — confirmation is a separate operator step",
+    ]
+    try:
+        require_advanced_confirmation(
+            confirm_advanced=body.confirm_advanced,
+            confirm_phrase=body.confirm_phrase,
+            warning="Order batch apply writes draft sales/purchase orders to live Odoo",
+            risks=risks,
+        )
+    except ConfirmationRequired as exc:
+        raise _confirm_http(exc) from exc
+    try:
+        state = _batch_flow(
+            connection_id=connection_id,
+            db=db,
+            recipe_id="document_batch.orders",
+            phase="apply",
+            job_id=body.job_id,
+            post_after_create=False,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _state_out(state)
 
 
 def _batch_flow(

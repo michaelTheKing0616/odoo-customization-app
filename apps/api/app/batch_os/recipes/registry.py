@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.batch_os.document_batch import DocumentBatchRecipe
+from app.batch_os.order_batch import OrderBatchRecipe
 from app.batch_os.journal_batch import JournalBatchRecipe
 from app.batch_os.master_data_batch import PartnersBatchRecipe, ProductsBatchRecipe
 from app.batch_os.payment_batch import PaymentBatchRecipe
@@ -39,6 +40,7 @@ _COMPLETE = {
     "accounting.fiscal_year",
     "document_batch.invoices",
     "document_batch.payments",
+    "document_batch.orders",
     "master_data.partners_batch",
     "master_data.products_batch",
     "settings.board_apply",
@@ -66,6 +68,7 @@ def _registry() -> dict[str, Any]:
         "accounting.fiscal_year": FiscalYearRecipe(),
         "document_batch.invoices": DocumentBatchRecipe(),
         "document_batch.payments": PaymentBatchRecipe(),
+        "document_batch.orders": OrderBatchRecipe(),
         "master_data.partners_batch": PartnersBatchRecipe(),
         "master_data.products_batch": ProductsBatchRecipe(),
         "settings.board_apply": SettingsBoardRecipe(),
@@ -110,6 +113,7 @@ def list_recipes() -> list[RecipeCard]:
         "document_batch.payments": [
             "account.payment", "account.payment.register", "account.move", "account.journal", "res.partner"
         ],
+        "document_batch.orders": ["sale.order", "purchase.order", "res.partner", "product.product"],
         "master_data.partners_batch": ["res.partner"],
         "master_data.products_batch": ["product.template", "product.product"],
         "settings.board_apply": ["account.payment.term", "res.currency", "ir.sequence", "product.pricelist"],

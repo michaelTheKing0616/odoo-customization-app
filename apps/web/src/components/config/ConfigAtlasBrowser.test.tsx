@@ -30,5 +30,6 @@ describe("ConfigAtlasBrowser", () => {
     });
     expect(screen.getByTestId("atlas-class-filter")).toBeInTheDocument();
     expect(screen.getByText(/All eight atlas classes are complete/i)).toBeInTheDocument();
+    expect(screen.getByText(/zero stub intents/i)).toBeInTheDocument();
   });
 });

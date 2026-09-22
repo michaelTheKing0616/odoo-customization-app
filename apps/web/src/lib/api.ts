@@ -4313,6 +4313,38 @@ listConfigRecipes: (id: string) =>
       method: "POST",
       body: JSON.stringify(body),
     }),
+  batchOsOrderIntake: async (id: string, file: File, recipeId = "document_batch.orders") => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("recipe_id", recipeId);
+    return requestForm<BatchOsJob>(`/api/connections/${id}/batch-os/order/intake`, fd);
+  },
+  batchOsOrderMap: (
+    id: string,
+    body: { job_id: string; column_map: Record<string, string> },
+  ) =>
+    request<BatchOsJob>(`/api/connections/${id}/batch-os/order/map`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  batchOsOrderDryRun: (id: string, body: { job_id: string }) =>
+    request<BatchOsJob>(`/api/connections/${id}/batch-os/order/dry-run`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  batchOsOrderApply: (
+    id: string,
+    body: {
+      job_id: string;
+      post_after_create?: boolean;
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+    },
+  ) =>
+    request<BatchOsJob>(`/api/connections/${id}/batch-os/order/apply`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   batchOsPaymentIntake: async (id: string, file: File, recipeId = "document_batch.payments") => {
     const fd = new FormData();
     fd.append("file", file);

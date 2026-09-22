@@ -210,6 +210,30 @@ def build_spine_payload(
                 if src.get(copy_key):
                     stamp[copy_key] = src[copy_key]
 
+    atlas = None
+    try:
+        from app.ai_atlas_elite import resolve_atlas_handoff
+
+        atlas = resolve_atlas_handoff(text)
+    except Exception:  # noqa: BLE001
+        atlas = None
+    if atlas:
+        kind_now = str(stamp.get("artifact_kind") or "")
+        cap_now = str(ir.get("capability") or "")
+        # Prefer / Option A / report / connector keep their stamps.
+        # Residual full_app mis-classify yields to Atlas stock_config (elite continuity).
+        protected = {
+            "option_a_module",
+            "report_layout",
+            "external_connector",
+            "field_pack",
+            "refuse",
+        }
+        if kind_now not in protected and not cap_now.startswith("option_a"):
+            stamp["artifact_kind"] = atlas.get("artifact_kind") or "stock_config"
+            stamp["delivery_lane"] = atlas.get("delivery_lane") or "online_metadata"
+            stamp["prove_status"] = atlas.get("prove_status") or "not_required"
+
     mode = resolve_build_mode(
         prompt=text,
         capability=str(ir.get("capability") or u.get("capability") or ""),
@@ -222,13 +246,17 @@ def build_spine_payload(
     chips = []
     for m in modes:
         meta = MODE_META[m]
+        href = href_for_mode(connection_id, m) if connection_id else ""
+        # Atlas / Batch class-wide briefs deep-link into Config Atlas or journal tabs.
+        if m == mode == "stock_autopilot" and atlas and atlas.get("route") and connection_id:
+            href = f"/connections/{connection_id}/{atlas['route'].lstrip('/')}"
         chips.append(
             {
                 "id": m,
                 "label": meta["label"],
                 "blurb": meta["blurb"],
-                "surface": meta["surface"],
-                "href": href_for_mode(connection_id, m) if connection_id else "",
+                "surface": "config" if (m == mode == "stock_autopilot" and atlas) else meta["surface"],
+                "href": href,
                 "active": m == mode,
             }
         )
@@ -274,6 +302,11 @@ def build_spine_payload(
             "One Build entry — App Studio, Draft Studio, and Job Autopilot share this "
             "brief and stamps. Completeness ≠ Cert ≠ Autopilot. Promote stays human."
         ),
+        "atlas_class": (atlas or {}).get("atlas_class") if atlas else None,
+        "recipe_id": (atlas or {}).get("recipe_id") if atlas else None,
+        "risk": (atlas or {}).get("risk") if atlas else None,
+        "atlas_route": (atlas or {}).get("route") if atlas else None,
+        "atlas_intent_id": (atlas or {}).get("intent_id") if atlas else None,
     }
 
 

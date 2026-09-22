@@ -18,7 +18,10 @@ const STARTERS = [
   "upload 200 journal entries",
   "bulk create customers",
   "upload invoices",
+  "upload sales orders",
   "lock accounting dates",
+  "tax pack",
+  "settings board",
   "build a visitor log app",
 ];
 
@@ -34,10 +37,17 @@ function MatchRow({
   const pct = Math.round((match.confidence || 0) * 100);
   function onGo() {
     const fid = String(match.feature_id || "");
+    const src = String(match.source || "");
+    const isAtlas =
+      src === "atlas" ||
+      src === "batch_os" ||
+      src === "recipe" ||
+      Boolean(match.atlas_class) ||
+      Boolean(match.recipe);
     const mode = fid.includes("designer")
       ? resolveBuildModeLocal({ grain: "field_pack", artifact_kind: "field_pack" })
-      : fid.includes("job")
-        ? resolveBuildModeLocal({ capability: "stock_reuse" })
+      : isAtlas || fid.includes("job") || fid.includes("journal") || fid.includes("config")
+        ? resolveBuildModeLocal({ capability: "stock_reuse", artifact_kind: "stock_config" })
         : resolveBuildModeLocal({ capability: "residual_app", grain: "full_app" });
     if (prompt.trim()) {
       stashBuildSpineHandoff(connectionId, {
@@ -45,6 +55,13 @@ function MatchRow({
         brief: prompt.trim(),
         prompt: prompt.trim(),
         build_mode: mode,
+        capability: isAtlas ? "stock_reuse" : undefined,
+        grain: isAtlas ? "stock" : undefined,
+        delivery_lane: isAtlas ? "online_metadata" : undefined,
+        artifact_kind: isAtlas ? "stock_config" : undefined,
+        atlas_class: match.atlas_class ?? null,
+        recipe_id: match.recipe ?? null,
+        risk: match.risk ?? null,
       });
     }
   }

@@ -31,6 +31,24 @@ describe("build-spine-handoff", () => {
     expect(readJobAutopilotBrief(id)).toContain("markup");
   });
 
+  it("carries atlas_class / recipe_id / risk for config batch handoff", () => {
+    stashBuildSpineHandoff(id, {
+      version: 1,
+      brief: "lock accounting dates",
+      prompt: "lock accounting dates",
+      build_mode: "stock_autopilot",
+      delivery_lane: "online_metadata",
+      artifact_kind: "stock_config",
+      atlas_class: "accounting",
+      recipe_id: "accounting.lock_dates",
+      risk: "L3",
+    });
+    const got = readBuildSpineHandoff(id);
+    expect(got?.atlas_class).toBe("accounting");
+    expect(got?.recipe_id).toBe("accounting.lock_dates");
+    expect(got?.risk).toBe("L3");
+  });
+
   it("handoffFromDraft reads IR stamps", () => {
     const h = handoffFromDraft({
       _user_prompt: "scrub delivery slip address",

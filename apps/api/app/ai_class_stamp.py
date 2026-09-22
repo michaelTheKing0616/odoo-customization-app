@@ -114,6 +114,17 @@ def is_report_layout_class(prompt: str) -> bool:
     return bool(_REPORT_SCRUB_RE.search(prompt or ""))
 
 
+
+
+def is_atlas_config_batch_class(prompt: str) -> bool:
+    """Stock/Config/Batch Atlas grain — not Prefer / Option A invent."""
+    try:
+        from app.ai_atlas_elite import is_atlas_config_batch_brief
+
+        return is_atlas_config_batch_brief(prompt or "")
+    except Exception:  # noqa: BLE001
+        return False
+
 def resolve_class_stamp(
     *,
     prompt: str = "",
@@ -172,7 +183,7 @@ def resolve_class_stamp(
         lane = "online_metadata" if not needs_module else "module_sh_or_self"
         kind = "full_app"
         prove = "not_required" if lane == "online_metadata" else "pending"
-    elif cap == "stock_reuse" or g in {"", "stock"}:
+    elif is_atlas_config_batch_class(text) or cap == "stock_reuse" or g in {"", "stock"}:
         lane = "online_metadata"
         kind = "stock_config"
         prove = "not_required"

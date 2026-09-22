@@ -121,9 +121,9 @@ classes:
         title: Order batch
         models: [sale.order, purchase.order]
         risk: L1
-        recipe: null
-        status: stub
-        blurb: Sales/purchase order batch — planned after invoice layer.
+        recipe: document_batch.orders
+        status: complete
+        blurb: CSV/XLSX → draft sale.order / purchase.order. Preview ≠ confirmed.
       - id: docs.journal
         title: Journal entries
         models: [account.move]

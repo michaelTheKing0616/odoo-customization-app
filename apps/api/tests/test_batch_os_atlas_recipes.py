@@ -74,3 +74,15 @@ def test_all_atlas_classes_complete_and_intents_wired():
             assert intent.get("status") in {"complete", "stub"}, intent
             # every intent either has a recipe id or is an explicit catalog pointer (recipe null)
             assert "recipe" in intent
+
+
+def test_docs_orders_intent_complete_with_recipe():
+    reload_atlas()
+    classes = list_atlas()
+    doc = next(c for c in classes if c["id"] == "document_batch")
+    orders = next(i for i in doc["intents"] if i["id"] == "docs.orders")
+    assert orders["status"] == "complete"
+    assert orders["recipe"] == "document_batch.orders"
+    assert get_recipe("document_batch.orders") is not None
+    cards = {c.id: c for c in list_recipes()}
+    assert cards["document_batch.orders"].status == "complete"

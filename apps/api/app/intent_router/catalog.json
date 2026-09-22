@@ -9,6 +9,7 @@
     "accounting.fiscal_year": "config",
     "document_batch.invoices": "journal?tab=invoices",
     "document_batch.payments": "journal?tab=invoices",
+    "document_batch.orders": "journal?tab=orders",
     "master_data.partners_batch": "journal?tab=master",
     "master_data.products_batch": "journal?tab=master",
     "settings.board_apply": "config",
@@ -75,6 +76,33 @@
       "weight": 1.15
     },
     {
+      "id": "journal.orders",
+      "title": "Order batch",
+      "blurb": "CSV \u2192 draft sale.order / purchase.order. Preview \u2260 confirmed. Never auto-confirm.",
+      "route": "journal?tab=orders",
+      "source": "batch_os",
+      "status": "complete",
+      "can_handle": true,
+      "recipe": "document_batch.orders",
+      "atlas_class": "document_batch",
+      "risk": "L1",
+      "keywords": [
+        "order batch",
+        "sales order batch",
+        "purchase order batch",
+        "upload orders",
+        "upload sales orders",
+        "upload purchase orders",
+        "bulk orders",
+        "bulk sales orders",
+        "sale.order",
+        "purchase.order",
+        "draft quotations",
+        "draft rfq"
+      ],
+      "weight": 1.2
+    },
+    {
       "id": "journal.master",
       "title": "Master data batch",
       "blurb": "Bulk create/update partners or products via CSV/XLSX. Preview \u2260 written.",
@@ -119,6 +147,23 @@
         "freeze books"
       ],
       "weight": 1.3
+    },
+    {
+      "id": "atlas.orders",
+      "title": "Order batch (Atlas)",
+      "blurb": "Document-batch class \u2014 CSV \u2192 draft SO/PO via Config Atlas / journal Orders tab.",
+      "route": "journal?tab=orders",
+      "source": "atlas",
+      "status": "complete",
+      "can_handle": true,
+      "recipe": "document_batch.orders",
+      "atlas_class": "document_batch",
+      "risk": "L1",
+      "keywords": [
+        "docs.orders",
+        "order batch atlas"
+      ],
+      "weight": 1.05
     },
     {
       "id": "config.atlas",

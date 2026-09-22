@@ -198,9 +198,9 @@
             "purchase.order"
           ],
           "risk": "L1",
-          "recipe": null,
-          "status": "stub",
-          "blurb": "Sales/purchase order batch \u2014 planned after invoice layer."
+          "recipe": "document_batch.orders",
+          "status": "complete",
+          "blurb": "CSV/XLSX \u2192 draft sale.order / purchase.order. Preview \u2260 confirmed."
         },
         {
           "id": "docs.journal",

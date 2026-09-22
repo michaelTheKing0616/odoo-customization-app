@@ -26,6 +26,9 @@ export type BuildSpineHandoff = {
   diagnosis?: Record<string, unknown> | null;
   contract?: Record<string, unknown> | null;
   generation_ir?: Record<string, unknown> | null;
+  atlas_class?: string | null;
+  recipe_id?: string | null;
+  risk?: string | null;
   updated_at?: string;
 };
 
@@ -129,5 +132,9 @@ export function handoffFromDraft(
     diagnosis: ir,
     contract,
     generation_ir: ir,
+    atlas_class:
+      ir && typeof ir.atlas_class === "string" ? ir.atlas_class : null,
+    recipe_id: ir && typeof ir.recipe_id === "string" ? ir.recipe_id : null,
+    risk: ir && typeof ir.risk === "string" ? ir.risk : null,
   };
 }

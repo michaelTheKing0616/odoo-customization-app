@@ -37,6 +37,10 @@ export type BuildSpinePayload = {
   contract?: Record<string, unknown>;
   surfaces?: Record<string, string>;
   honesty?: string;
+  atlas_class?: string | null;
+  recipe_id?: string | null;
+  risk?: string | null;
+  atlas_route?: string | null;
 };
 
 export const BUILD_MODE_META: Record<
