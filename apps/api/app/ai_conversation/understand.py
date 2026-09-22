@@ -1074,6 +1074,22 @@ def _deterministic_understanding(prompt: str) -> Understanding:
                     nice,
                 ).strip()
         if nice and len(nice) <= 48:
+            nice = re.sub(
+                r"(?i)\s+(?:management|system|module|platform|suite|solution|application)s?$",
+                "",
+                nice,
+            ).strip()
+            # Drop accidental stock-parent prefix when primary noun already stands alone
+            # («Fleet Vehicle Request» → Vehicle Request when brief noun is Vehicle Request).
+            nice = re.sub(
+                r"(?i)^(fleet|hr|sales|crm|inventory|stock|project|purchase|"
+                r"accounting|contacts|calendar)\s+"
+                r"(?=(?:[\w-]+\s+)*(?:request|log|checkout|check[- ]?out|"
+                r"ticket|application|claim|booking|reservation|inquiry|"
+                r"enquiry|complaint|incident|case|requisition)\b)",
+                "",
+                nice,
+            ).strip() or nice
             title = nice.title() if nice.islower() or nice.lower() == nice else nice
 
     return Understanding(

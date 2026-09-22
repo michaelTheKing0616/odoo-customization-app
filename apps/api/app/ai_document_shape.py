@@ -397,6 +397,10 @@ _SIZE_ADJ_RE = re.compile(
 _APP_CHROME_RE = re.compile(
     r"(?i)\s+apps?(?:\s*:\s*models?)?$|\s*:\s*models?$|\s+models?$"
 )
+# Residual Diagnosis / Contract chrome — never keep Build/Management/System fluff.
+_TITLE_FLUFF_TRAILING_RE = re.compile(
+    r"(?i)\s+(?:management|system|module|platform|suite|solution|application)s?$"
+)
 
 
 def _scrub_residual_title(label: str) -> str:
@@ -421,6 +425,12 @@ def _scrub_residual_title(label: str) -> str:
             break
         text = nxt
     text = _APP_CHROME_RE.sub("", text).strip(" -:.,")
+    # Strip trailing Management/System/Module fluff (Diagnosis + Contract chrome).
+    while True:
+        nxt = _TITLE_FLUFF_TRAILING_RE.sub("", text).strip(" -:.,")
+        if nxt == text:
+            break
+        text = nxt
     # "Dining Tables for our restaurant" → Dining Tables
     text = re.sub(
         r"(?i)\s+for\s+(?:our|the|a|my|this)\s+[\w][\w\s-]{0,40}$",

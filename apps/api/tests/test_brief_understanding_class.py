@@ -4,8 +4,9 @@ Root class (not Vehicle-only): Flash-off deterministic floor must honor every
 explicit cue in the brief for ALL residuals:
 1. Stated workflow states (incl. terminal Done) materialize end-to-end; Contract count matches.
 2. Named stock parent («under Fleet|HR|…») → menu under that app; never orphan-only home tile.
-3. No invented Type/category without clear cues.
-4. Prefer Sales / real packs still Prefer-reshape (control).
+3. No invented Type/Category/Kind/Rate/Unit/UOM/Priority compounds without clear cues.
+4. Diagnosis Name + Contract chrome match primary noun (no Management/System/Build fluff).
+5. Prefer Sales / real packs still Prefer-reshape (control).
 """
 
 from __future__ import annotations
@@ -19,12 +20,16 @@ pytestmark = pytest.mark.no_app_db
 os.environ["AI_INTENT_LLM"] = "off"
 
 from app.ai_brief_cues import (  # noqa: E402
+    brief_has_rate_cue,
     brief_has_type_cue,
     honor_stated_brief_cues,
     model_is_equipment_roster,
     stated_menu_parent,
     stated_workflow_states,
 )
+from app.ai_document_shape import naming_from_residual  # noqa: E402
+from app.ai_domain_briefing import build_domain_briefing  # noqa: E402
+from app.ai_residual_identity import scrub_residual_display_name  # noqa: E402
 from app.ai_conversation.understand import build_understanding  # noqa: E402
 from app.ai_draft_jobs import _finish_seed_draft  # noqa: E402
 from app.ai_pipeline import seed_studio_draft  # noqa: E402
@@ -187,8 +192,11 @@ def test_no_type_without_cues(prompt: str) -> None:
                 continue
             name = str(f.get("name") or "")
             string = str(f.get("string") or "").lower()
-            assert name not in {"x_type", "x_category"}
-            assert string not in {"type", "category"}
+            assert name not in {"x_type", "x_category", "x_kind", "x_class", "x_vehicle_type"}
+            assert string not in {"type", "category", "kind", "class"}
+            assert " type" not in f" {string}" and not string.endswith(" type")
+            assert name not in {"x_rate_unit", "x_rate_uom", "x_uom", "x_unit", "x_rate_type"}
+            assert string not in {"rate unit", "rate uom", "unit", "uom", "rate type"}
 
 
 def test_prefer_sales_still_field_pack() -> None:
@@ -216,3 +224,143 @@ def test_honor_cues_idempotent_on_seed() -> None:
     assert isinstance(n1, list) and isinstance(n2, list)
     header = _header(draft)
     assert "done" in _state_keys(header)
+
+TYPE_CUE = (
+    "Build Vehicle request: employees request a fleet vehicle; "
+    "include Vehicle Type (Economy / SUV / Van). "
+    "List/kanban by state (Draft → Submitted → Approved/Refused → Done). "
+    "Menu under Fleet."
+)
+
+RATE_CUE = (
+    "Build Equipment rental contract: customer, equipment, Rate Unit "
+    "(Hour / Day / Week), and amount. Menu under Sales."
+)
+
+
+def test_vehicle_no_rate_unit_without_pricing_cue() -> None:
+    assert not brief_has_rate_cue(VEHICLE)
+    out = _finish(VEHICLE)
+    for m in out.get("models") or []:
+        if not isinstance(m, dict):
+            continue
+        for f in m.get("fields") or []:
+            if not isinstance(f, dict):
+                continue
+            name = str(f.get("name") or "")
+            string = str(f.get("string") or "").strip().lower()
+            assert name not in {"x_rate_unit", "x_rate_uom", "x_uom", "x_unit", "x_rate_type"}
+            assert string not in {"rate unit", "rate uom", "unit", "uom", "rate type"}
+
+
+def test_compound_vehicle_type_dropped_without_cue() -> None:
+    """Compound «Vehicle Type» is same invent family as bare Type."""
+    draft = {
+        "technical_name": "vehicle_request",
+        "display_name": "Vehicle Request",
+        "_user_prompt": VEHICLE,
+        "models": [
+            {
+                "model": "x_vehicle_request",
+                "mode": "new",
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "string": "Name"},
+                    {
+                        "name": "x_vehicle_type",
+                        "ttype": "selection",
+                        "string": "Vehicle Type",
+                        "selection": "[('suv','SUV'),('van','Van')]",
+                        "required": True,
+                        "source": "density",
+                    },
+                    {
+                        "name": "x_rate_unit",
+                        "ttype": "selection",
+                        "string": "Rate Unit",
+                        "selection": "[('day','Day'),('week','Week')]",
+                        "required": True,
+                        "source": "pack_default",
+                    },
+                ],
+            }
+        ],
+    }
+    notes = honor_stated_brief_cues(draft, prompt=VEHICLE)
+    names = {str(f.get("name")) for f in draft["models"][0]["fields"]}
+    assert "x_vehicle_type" not in names
+    assert "x_rate_unit" not in names
+    assert any("Type" in n or "Rate" in n for n in notes)
+
+
+def test_type_cue_keeps_vehicle_type() -> None:
+    assert brief_has_type_cue(TYPE_CUE)
+    draft = {
+        "technical_name": "vehicle_request",
+        "display_name": "Vehicle Request",
+        "_user_prompt": TYPE_CUE,
+        "models": [
+            {
+                "model": "x_vehicle_request",
+                "mode": "new",
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "string": "Name"},
+                    {
+                        "name": "x_vehicle_type",
+                        "ttype": "selection",
+                        "string": "Vehicle Type",
+                        "selection": "[('economy','Economy'),('suv','SUV'),('van','Van')]",
+                    },
+                ],
+            }
+        ],
+    }
+    honor_stated_brief_cues(draft, prompt=TYPE_CUE)
+    names = {str(f.get("name")) for f in draft["models"][0]["fields"]}
+    assert "x_vehicle_type" in names
+
+
+def test_rate_cue_keeps_rate_unit() -> None:
+    assert brief_has_rate_cue(RATE_CUE)
+    draft = {
+        "technical_name": "equipment_rental",
+        "display_name": "Equipment Rental",
+        "_user_prompt": RATE_CUE,
+        "models": [
+            {
+                "model": "x_equipment_rental",
+                "mode": "new",
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "string": "Name"},
+                    {
+                        "name": "x_rate_unit",
+                        "ttype": "selection",
+                        "string": "Rate Unit",
+                        "selection": "[('hour','Hour'),('day','Day'),('week','Week')]",
+                    },
+                ],
+            }
+        ],
+    }
+    honor_stated_brief_cues(draft, prompt=RATE_CUE)
+    names = {str(f.get("name")) for f in draft["models"][0]["fields"]}
+    assert "x_rate_unit" in names
+
+
+def test_diagnosis_name_strips_management_fluff() -> None:
+    """Diagnosis Name + Contract chrome match primary noun — no Management fluff."""
+    u = build_understanding(VEHICLE)
+    assert u.title == "Vehicle Request"
+    assert "management" not in u.title.lower()
+    assert "build" not in u.title.lower()
+    assert not u.title.lower().startswith("fleet ")
+    display, slug = naming_from_residual(VEHICLE)
+    assert display == "Vehicle Request"
+    assert slug == "vehicle_request"
+    assert scrub_residual_display_name("Fleet Vehicle Request Management") == "Vehicle Request"
+    assert scrub_residual_display_name("Build Vehicle Request System") == "Vehicle Request"
+
+
+def test_vehicle_request_does_not_match_rental_briefing() -> None:
+    """Bare «fleet» menu parent must not trigger vehicle_rental rate/type bleed."""
+    brief = build_domain_briefing(VEHICLE)
+    assert brief.collocation_id != "vehicle_rental"

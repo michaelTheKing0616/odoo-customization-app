@@ -21,6 +21,47 @@ _FIELD_FOR_TITLE_RE = re.compile(
 )
 
 
+_TITLE_FLUFF_TRAILING_RE = re.compile(
+    r"(?i)\s+(?:management|system|module|platform|suite|solution|application)s?$"
+)
+
+
+def scrub_residual_display_name(title: str) -> str:
+    """Strip Build/Management/System fluff — Diagnosis Name + Contract chrome.
+
+    Also drops an accidental stock-parent prefix («Fleet Vehicle Request» →
+    Vehicle Request) when a following primary noun remains. Bare «Fleet» alone
+    is preserved.
+    """
+    text = (title or "").strip()
+    if not text:
+        return ""
+    text = re.sub(
+        r"(?i)^(build|create|make|add|implement|develop|generate)\s+",
+        "",
+        text,
+    ).strip()
+    while True:
+        nxt = _TITLE_FLUFF_TRAILING_RE.sub("", text).strip(" -:.,")
+        if nxt == text:
+            break
+        text = nxt
+    # Only peel stock menu parent when a document noun follows
+    # («Fleet Vehicle Request» → Vehicle Request; keep «Sales Orders»).
+    stripped = re.sub(
+        r"(?i)^(fleet|hr|sales|crm|inventory|stock|project|purchase|"
+        r"accounting|contacts|calendar|time\s*off)\s+"
+        r"(?=(?:[\w-]+\s+)*(?:request|log|checkout|check[- ]?out|"
+        r"ticket|application|claim|booking|reservation|inquiry|"
+        r"enquiry|complaint|incident|case|requisition)\b)",
+        "",
+        text,
+    ).strip()
+    if stripped:
+        text = stripped
+    return text
+
+
 def is_field_type_display_name(title: str) -> bool:
     """True when display_name was mangled from a field ttype/label (never an app noun)."""
     text = str(title or "").strip()
@@ -176,7 +217,7 @@ def enforce_residual_draft_identity(
                 text, locked, prefer_locked=prefer_locked
             )
             if title:
-                draft["display_name"] = title
+                draft["display_name"] = scrub_residual_display_name(title) or title
                 notes.append(f"identity: display_name {display!r} → {title}")
             if slug:
                 draft["technical_name"] = slug
@@ -269,13 +310,13 @@ def enforce_residual_draft_identity(
         else:
             notes.extend(ensure_residual_must_do_fields(draft, prompt=text))
             if title:
-                draft["display_name"] = title
+                draft["display_name"] = scrub_residual_display_name(title) or title
             if slug:
                 draft["technical_name"] = slug
     except Exception as exc:  # noqa: BLE001
         notes.append(f"identity: rebuild skipped ({exc})")
         if title:
-            draft["display_name"] = title
+            draft["display_name"] = scrub_residual_display_name(title) or title
         if slug:
             draft["technical_name"] = slug
 
@@ -310,9 +351,9 @@ def enforce_residual_draft_identity(
         ]
 
     if title:
-        draft["display_name"] = title
+        draft["display_name"] = scrub_residual_display_name(title) or title
     if is_field_type_display_name(str(draft.get("display_name") or "")):
-        draft["display_name"] = title or slug.replace("_", " ").title()
+        draft["display_name"] = scrub_residual_display_name(title) or title
     return notes
 
 
@@ -342,5 +383,6 @@ __all__ = [
     "draft_mismatches_residual_identity",
     "enforce_residual_draft_identity",
     "is_field_type_display_name",
+    "scrub_residual_display_name",
     "locked_contract_should_win",
 ]

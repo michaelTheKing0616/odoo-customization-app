@@ -204,7 +204,16 @@ _COLLOCATIONS: tuple[_Collocation, ...] = (
     _Collocation(
         id="vehicle_rental",
         industry="vehicle rental",
-        any_of=("car rental", "vehicle rental", "car hire", "auto hire", "fleet"),
+        any_of=(
+            "car rental",
+            "vehicle rental",
+            "car hire",
+            "auto hire",
+            "fleet rental",
+            "rental fleet",
+            "rent a car",
+            "rent cars",
+        ),
         none_of=("recording", "film", "studio"),
         equipment_types=_pairs(
             ("economy", "Economy"),

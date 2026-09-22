@@ -145,6 +145,11 @@ def _app_title_from_prompt(prompt: str) -> str:
     if m:
         nice = re.sub(r"\s+", " ", m.group(1)).strip(" .:,-")
         nice = re.sub(r"(?i)^(a|an|the)\s+", "", nice).strip()
+        nice = re.sub(
+            r"(?i)\s+(?:management|system|module|platform|suite|solution|application)s?$",
+            "",
+            nice,
+        ).strip()
         if nice:
             return nice.title() if nice.islower() else nice
     m = re.search(
@@ -154,6 +159,11 @@ def _app_title_from_prompt(prompt: str) -> str:
     if m:
         nice = re.sub(r"\s+", " ", m.group(1)).strip(" .:,-")
         nice = re.sub(r"(?i)^(build|create|make|add)\s+", "", nice).strip()
+        nice = re.sub(
+            r"(?i)\s+(?:management|system|module|platform|suite|solution|application)s?$",
+            "",
+            nice,
+        ).strip()
         if nice:
             return nice.title() if nice.islower() else nice
     return "Custom app"

@@ -13,6 +13,12 @@ Notes/Description siblings from packs or padding.
 
 Same invent family as Type: never invent Priority/Urgency/Importance Selection
 without a clear brief cue.
+
+Same invent family for Rate/Unit/UOM Selection compounds (Rate Unit, UoM, …) —
+rental/pricing domain bleed must not land on a request doc with no pricing language.
+
+Type gate covers compound labels («Vehicle Type», «Request Category», …) — not only
+bare Type/Category/Kind/Class.
 """
 
 from __future__ import annotations
@@ -81,6 +87,42 @@ _PRIORITY_CUE_RE = re.compile(
     r"|priority\s+level"
     r"|set\s+(?:a\s+)?priority"
     r")\b"
+)
+
+# Brief Rate/pricing/UOM cue — invent Rate Unit only when clearly asked.
+_RATE_CUE_RE = re.compile(
+    r"(?i)\b("
+    r"rate\s*unit"
+    r"|rate\s*(?:selection|field|dropdown|column|card|plan)?"
+    r"|pricing"
+    r"|price\s*list|pricelist"
+    r"|tariff"
+    r"|hourly\s+rate|daily\s+rate"
+    r"|per\s+(?:hour|day|week|night|session)"
+    r"|\buom\b|unit\s+of\s+measure"
+    r"|billing\s+unit"
+    r")\b"
+)
+
+# Compound Type-family label/name tokens (Vehicle Type, Request Category, …).
+_TYPE_INVENT_NAME_RE = re.compile(
+    r"(?i)^x_(?:\w+_)?(?:type|category|kind|class)$"
+    r"|^x_(?:type|category|kind|class)_\w+$"
+)
+_TYPE_INVENT_STRING_RE = re.compile(
+    r"(?i)^(?:[\w/&-]+\s+)*(?:type|category|kind|class)$"
+    r"|^(?:type|category|kind|class)$"
+)
+
+# Compound Rate/Unit/UOM invent family.
+_RATE_INVENT_NAME_RE = re.compile(
+    r"(?i)^x_(?:\w+_)?(?:rate_unit|rate_uom|rate_type|uom|unit)$"
+    r"|^x_(?:rate_unit|rate_uom|uom|unit)_\w+$"
+)
+_RATE_INVENT_STRING_RE = re.compile(
+    r"(?i)^(?:[\w/&-]+\s+)*(?:rate\s*unit|rate\s*uom|rate\s*type|uom|"
+    r"unit\s+of\s+measure|billing\s+unit)$"
+    r"|^(?:rate\s*unit|unit|uom)$"
 )
 
 
@@ -234,6 +276,11 @@ def brief_has_type_cue(prompt: str) -> bool:
 def brief_has_priority_cue(prompt: str) -> bool:
     """True when the brief clearly asks for Priority/Urgency/Importance."""
     return bool(_PRIORITY_CUE_RE.search(prompt or ""))
+
+
+def brief_has_rate_cue(prompt: str) -> bool:
+    """True when the brief clearly asks for Rate/pricing/UOM Selection."""
+    return bool(_RATE_CUE_RE.search(prompt or ""))
 
 
 def model_is_equipment_roster(mid: str) -> bool:
@@ -429,7 +476,7 @@ def should_skip_generic_notes_pad(
 
 
 def honor_stated_brief_cues(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
-    """Materialize stated states, stock menu parent, no-invent Type/Priority, one notes surface."""
+    """Materialize stated states, stock menu parent, no-invent Type/Priority/Rate, one notes surface."""
     notes: list[str] = []
     text = prompt or str(draft.get("_user_prompt") or "")
     if not text or not isinstance(draft, dict):
@@ -438,6 +485,7 @@ def honor_stated_brief_cues(draft: dict[str, Any], *, prompt: str = "") -> list[
     notes.extend(_honor_menu_parent(draft, text))
     notes.extend(_drop_uncued_type_fields(draft, text))
     notes.extend(_drop_uncued_priority_fields(draft, text))
+    notes.extend(_drop_uncued_rate_unit_fields(draft, text))
     notes.extend(dedupe_notes_surfaces(draft, prompt=text))
     return notes
 
@@ -810,6 +858,36 @@ def _honor_menu_parent(draft: dict[str, Any], text: str) -> list[str]:
     return notes
 
 
+def _is_type_invent_field(field: dict[str, Any]) -> bool:
+    """True for bare or compound Type/Category/Kind/Class Selection invent."""
+    name = str(field.get("name") or "").strip()
+    string = str(field.get("string") or "").strip()
+    if name in {"x_type", "x_category", "x_kind", "x_class"}:
+        return True
+    if string.lower() in {"type", "category", "kind", "class"}:
+        return True
+    if _TYPE_INVENT_NAME_RE.match(name):
+        return True
+    if string and _TYPE_INVENT_STRING_RE.match(string):
+        return True
+    return False
+
+
+def _is_rate_invent_field(field: dict[str, Any]) -> bool:
+    """True for Rate Unit / UOM / Unit Selection invent (pricing domain bleed)."""
+    name = str(field.get("name") or "").strip()
+    string = str(field.get("string") or "").strip()
+    if name in {"x_rate_unit", "x_rate_uom", "x_rate_type", "x_uom", "x_unit"}:
+        return True
+    if string.lower() in {"rate unit", "rate uom", "rate type", "unit", "uom"}:
+        return True
+    if _RATE_INVENT_NAME_RE.match(name):
+        return True
+    if string and _RATE_INVENT_STRING_RE.match(string):
+        return True
+    return False
+
+
 def _drop_uncued_type_fields(draft: dict[str, Any], text: str) -> list[str]:
     notes: list[str] = []
     if brief_has_type_cue(text):
@@ -828,12 +906,19 @@ def _drop_uncued_type_fields(draft: dict[str, Any], text: str) -> list[str]:
             name = str(field.get("name") or "")
             string = str(field.get("string") or "").strip().lower()
             source = str(field.get("source") or "")
-            is_type = (
-                name in {"x_type", "x_category", "x_kind", "x_class"}
-                or string in {"type", "category", "kind", "class"}
-            )
+            is_type = _is_type_invent_field(field)
             if is_type and (
-                source in {"domain_briefing", "density", "pack_default", ""}
+                source
+                in {
+                    "domain_briefing",
+                    "density",
+                    "pack_default",
+                    "domain_density",
+                    "pad",
+                    "senior_shape",
+                    "apply_readiness",
+                    "",
+                }
                 or str(field.get("ttype") or "") == "selection"
             ):
                 dropped.append(name or string)
@@ -870,6 +955,13 @@ def _drop_uncued_priority_fields(draft: dict[str, Any], text: str) -> list[str]:
             is_priority = (
                 name in {"x_priority", "x_urgency", "x_importance"}
                 or string in {"priority", "urgency", "importance"}
+                or bool(re.match(r"(?i)^x_(?:\w+_)?(?:priority|urgency|importance)$", name))
+                or bool(
+                    re.match(
+                        r"(?i)^(?:[\w/&-]+\s+)*(?:priority|urgency|importance)$",
+                        string,
+                    )
+                )
             )
             if is_priority and (
                 source in {"domain_briefing", "density", "pack_default", ""}
@@ -887,6 +979,58 @@ def _drop_uncued_priority_fields(draft: dict[str, Any], text: str) -> list[str]:
     return notes
 
 
+def _drop_uncued_rate_unit_fields(draft: dict[str, Any], text: str) -> list[str]:
+    """Drop Rate Unit / UOM / Unit Selection when the brief has no pricing cue.
+
+    Same invent family as Type/Priority — rental/density/pads must not invent
+    Rate Unit on a vehicle request (or any residual) without rate/pricing language.
+    """
+    notes: list[str] = []
+    if brief_has_rate_cue(text):
+        return notes
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        mid = str(model.get("model") or "")
+        # Dedicated rate-card / tariff models may keep UOM when the model is a rate.
+        hay = mid.replace("x_", "").replace(".", "_").lower()
+        if any(tok in hay for tok in ("rate", "tariff", "pricelist", "price_list")):
+            if not any(tok in hay for tok in _DOCUMENT_MODEL_TOKENS):
+                continue
+        fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
+        keep: list[dict[str, Any]] = []
+        dropped: list[str] = []
+        for field in fields:
+            name = str(field.get("name") or "")
+            string = str(field.get("string") or "").strip().lower()
+            source = str(field.get("source") or "")
+            is_rate = _is_rate_invent_field(field)
+            if is_rate and (
+                source
+                in {
+                    "domain_briefing",
+                    "density",
+                    "pack_default",
+                    "domain_density",
+                    "pad",
+                    "senior_shape",
+                    "apply_readiness",
+                    "",
+                }
+                or str(field.get("ttype") or "") == "selection"
+            ):
+                dropped.append(name or string)
+                continue
+            keep.append(field)
+        if dropped:
+            model["fields"] = keep
+            notes.append(
+                f"brief_cues: dropped unsolicited Rate/Unit on {mid} "
+                f"({', '.join(dropped)}) — no Rate cue in brief"
+            )
+    return notes
+
+
 
 __all__ = [
     "brief_asks_description",
@@ -894,6 +1038,7 @@ __all__ = [
     "brief_has_named_notes_cue",
     "brief_has_type_cue",
     "brief_has_priority_cue",
+    "brief_has_rate_cue",
     "dedupe_notes_surfaces",
     "honor_stated_brief_cues",
     "is_bare_generic_notes_field",
