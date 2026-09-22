@@ -25,13 +25,17 @@ Never Prefer when Option A required; never Online Python promote.
 | **P0** | Contract docs · intent class routes · `delivery_lane`/`artifact_kind`/`prove_status` stamps · Online+Python host gate · goldens | **done** (this tip) |
 | **P1** | Job 1 FX/CBN rate CLASS + Job 2 markup+WHT + Job 3 report scrub | **done** |
 | **P2** | Build spine — one entry, mode chips, handoff without re-briefing | **done** |
-| **P3** | (was Job1) — closed under P1 | **done** |
-| **P4** | Atlas elite | out of scope this tip |
+| **P3** | Continuous invent hardening — Studio/Draft/Generate quality gates | **done** (this tip) |
+| **P4** | Atlas elite | out of scope this tip — still next |
 
 ## Done
 
 - [x] **Intent → feature router (Expert)** — 2026-09-21  
   Plain language → best-fitting feature + can/can't. Expert UI (`IntentRouterPanel`), `POST /connections/{id}/expert/route` (+ `/batch-os/intent-route`). Deterministic catalog (YAML/JSON + Atlas + recipes); `AI_INTENT_LLM` optional only.
+
+
+- [x] **P3 continuous invent hardening** — 2026-09-22  
+  Class-wide invent/pack/residual gates (not Vehicle-only): uncued Selection, one-cue→one-field note labels from brief noun, thin residual never pack-workspace party/line bleed, calendar block note ≠ calendar.event, Diagnosis Name scrub, Date≠Datetime. Rubric battery green (`run_p3_invent_rubric_battery.sh`, AI_INTENT_LLM=off).
 
 - [x] **P2 Build spine** — 2026-09-22  
   One Build entry with mode chips (Prefer / Residual / Option A / Stock Autopilot / Report / Connector). Handoff Draft↔App↔Autopilot carries brief + Diagnosis/Contract + delivery_lane stamps. Capability gaps always propose Option A scaffold when Live cannot finish. Expert routes into spine. Rubric battery green (184 no_app_db).
@@ -72,3 +76,28 @@ Release gates for Build spine — `AI_INTENT_LLM=off`, `apps/api/scripts/run_p2_
 | Build spine handoff without re-briefing (brief + stamps) | **pass** |
 
 **Battery:** 184 pytest passed (`no_app_db`). Web: 9 vitest passed (build-spine + handoff + bar).
+
+
+## P3 continuous invent rubric matrix (2026-09-22)
+
+Release gates for continuous invent — `AI_INTENT_LLM=off`, `apps/api/scripts/run_p3_invent_rubric_battery.sh` (+ web vitest build-spine retained).
+
+| Gate | Result |
+|------|--------|
+| Prefer Sales / Prefer Contacts stay Prefer (never residual-reshape Prefer) | **pass** |
+| Residual full_app identity lock (never Prefer-reshape; no foreign pack canvas) | **pass** |
+| Invent gates: uncued Type/Priority/Rate/Selection; one cue→one field; notes surface | **pass** |
+| Multi-brief goldens: Vehicle / Leave / Incident / Ticket / Visitor / Dining / Asset | **pass** |
+| Optional note label follows brief noun (Assignment Note vs Calendar Block Note) | **pass** |
+| Thin residual ≠ pack workspace party/line invent | **pass** |
+| Pack adoption: positive product cues; shared workflow tokens ≠ pack identity | **pass** |
+| Grain + delivery_lane stamps Prefer / residual / Option A / report / FX | **pass** |
+| Online + Python Option A: promote blocked + honest alternatives | **pass** |
+| Completeness ≠ Cert ≠ Autopilot | **pass** (honesty copy + stamps) |
+| Job1/2/3 class acceptance goldens | **pass** |
+| Flash-free / AI_INTENT_LLM=off deterministic floor | **pass** |
+| Prefer Must-do constraint AST | **pass** |
+| Build spine handoff without re-briefing (brief + stamps) | **pass** |
+
+**Battery:** 236 pytest passed (`no_app_db`). Web: 5 vitest passed (build-spine retained).
+

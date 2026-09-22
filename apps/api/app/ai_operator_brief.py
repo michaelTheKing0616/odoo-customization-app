@@ -36,7 +36,15 @@ _STOCK_NAMED: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(?i)\bquotations?\b|\bsales orders?\b"), "sale"),
     (re.compile(r"(?i)\binvoices?\b|\binvoicing\b"), "account"),
     (re.compile(r"(?i)\bemployees?\b|\btimesheets?\b|\bhr\b"), "hr"),
-    (re.compile(r"(?i)\bcalendar\b|\bmeetings?\b"), "calendar"),
+    (re.compile(
+        # Never match Purpose selection «Meeting / …» or «calendar block note».
+        r"(?i)\bcalendar\s+events?\b|"
+        r"\b(?:use|open|under)\s+(?:the\s+)?calendar\b|"
+        r"\bcalendar\s+app\b|"
+        r"\b(?:schedule|book)\s+meetings?\b|"
+        r"\bmeetings?\s+(?:app|module)\b|"
+        r"\bcalendar\b(?!\s+block)"
+    ), "calendar"),
     (re.compile(r"(?i)\bleads?\b|\bcrm\b"), "crm"),
     # Standalone project/tasks — not the ``task`` suffix of negated ``project.task``.
     (re.compile(r"(?i)\bprojects?\b|(?<!project\.)\btasks?\b"), "project"),

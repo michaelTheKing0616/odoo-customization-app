@@ -237,7 +237,18 @@ def classify_document_shape(
 
         matched = match_domain_pack(text)
         if matched:
-            return pack_document_shape(matched[1])
+            pack_id, pack = matched
+            # Pack lexical match alone is not adoption — require positive product
+            # cues and refuse thin simple residuals (enumerated fields + list/form).
+            cues_ok = True
+            try:
+                from app.ai_domain_coherence import pack_adoption_cues_present
+
+                cues_ok = pack_adoption_cues_present(text, pack_id)
+            except Exception:  # noqa: BLE001
+                cues_ok = True
+            if cues_ok and not _is_thin_simple_residual(text):
+                return pack_document_shape(pack)
     except Exception:  # noqa: BLE001
         pass
 
@@ -366,23 +377,26 @@ def forbidden_stock_hosts(draft: dict[str, Any]) -> set[str]:
 
 
 def may_add_line_satellite(draft: dict[str, Any], *, prompt: str = "") -> bool:
+    """Line satellites only when the brief positively names lines/items/qty.
+
+    Class-wide: workspace pack lexical match alone must never invent _line on a
+    thin residual (Support Ticket Name/Subject/Description). Pack seeds still
+    bring their own models when positively adopted.
+    """
     shape = document_shape_of(draft, prompt=prompt)
     if shape in ADDITIVE_BLOCKED or shape == "catalog":
         return False
     text = prompt or str(draft.get("_user_prompt") or "")
-    if shape == "transactional_header":
-        return has_positive_match(_LINE_NOUN_RE, text)
-    return True
+    return has_positive_match(_LINE_NOUN_RE, text)
 
 
 def may_add_party_satellite(draft: dict[str, Any], *, prompt: str = "") -> bool:
+    """Party satellites only when the brief positively names roles/parties/…"""
     shape = document_shape_of(draft, prompt=prompt)
     if shape in ADDITIVE_BLOCKED or shape == "catalog":
         return False
     text = prompt or str(draft.get("_user_prompt") or "")
-    if shape == "transactional_header":
-        return has_positive_match(_PARTY_NOUN_RE, text)
-    return True
+    return has_positive_match(_PARTY_NOUN_RE, text)
 
 
 

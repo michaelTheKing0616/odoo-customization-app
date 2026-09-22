@@ -214,10 +214,17 @@ _APPROVE_REFUSE_RE = re.compile(
     r"(?i)\bapprove\s*/\s*refuse\b|\bapprove\s+or\s+refuse\b|\bapprove\s+and\s+refuse\b|"
     r"\bmanager\s+approve"
 )
+# Named optional note cue — extract the brief's note noun (never hardcode
+# Assignment Note for every "optionally link/create … note").
+_OPTIONAL_NOTE_CUE_RE = re.compile(
+    r"(?i)\boptionally\s+(?:link|create)(?:\s*/\s*(?:create|link))?\s+"
+    r"(?:an?\s+)?"
+    r"((?:[\w/&-]+\s+){0,6}?notes?)\b"
+)
 _ASSIGNMENT_NOTE_RE = re.compile(
-    r"(?i)\b(?:assignment\s+note|vehicle\s+assignment)\b|"
-    r"\b(?:link|create)\s*/\s*(?:create|link)\b.*\b(?:fleet\s+)?vehicle\b|"
-    r"\boptionally\s+(?:link|create)\b"
+    r"(?i)\b(?:assignment\s+notes?|vehicle\s+assignment(?:\s+notes?)?)\b|"
+    r"\b(?:link|create)\s*/\s*(?:create|link)\b.*\b(?:fleet\s+)?vehicle\b"
+    r".*\bnotes?\b"
 )
 _LIST_KANBAN_RE = re.compile(r"(?i)\blist\s*/\s*kanban\b|\bkanban\b.*\b(?:by\s+)?state\b|\blist\s*,?\s*kanban\b")
 _MUST_DO_LEAK_RE = re.compile(
@@ -342,6 +349,34 @@ def _has_enumerated_fields(text: str) -> bool:
     return False
 
 
+
+def _title_note_label(raw: str) -> str:
+    """Calendar block note → Calendar Block Note; assignment → Assignment Note."""
+    words = [w for w in re.split(r"\s+", (raw or "").strip()) if w]
+    if not words:
+        return "Notes"
+    if any(w.lower() == "assignment" for w in words):
+        return "Assignment Note"
+    out: list[str] = []
+    for w in words:
+        low = w.lower()
+        if low in {"note", "notes"}:
+            out.append("Note" if low == "note" else "Notes")
+        else:
+            out.append(w[:1].upper() + w[1:] if w else w)
+    return " ".join(out) or "Notes"
+
+
+def _optional_note_label(text: str) -> str | None:
+    """Label for optional link/create … note cue — class-wide, not Vehicle-only."""
+    m = _OPTIONAL_NOTE_CUE_RE.search(text or "")
+    if m:
+        return _title_note_label(m.group(1))
+    if _ASSIGNMENT_NOTE_RE.search(text or ""):
+        return "Assignment Note"
+    return None
+
+
 def _prose_full_app_fields(text: str) -> list[ConstraintField]:
     """Structural fields from residual prose (Vehicle Request-shaped briefs)."""
     fields: list[ConstraintField] = []
@@ -385,14 +420,14 @@ def _prose_full_app_fields(text: str) -> list[ConstraintField]:
             )
         )
 
-    if _ASSIGNMENT_NOTE_RE.search(text or "") or (
-        "optionally" in low and "assignment" in low
-    ):
+    note_label = _optional_note_label(text or "")
+    if note_label:
         # Optional note cue → one free-text surface on the primary.
         # Never emit M2O+text for the same named cue (stock-link vs notes pad).
+        # Label follows the brief noun (Assignment Note / Calendar Block Note / …).
         fields.append(
             ConstraintField(
-                label="Assignment Note",
+                label=note_label,
                 ttype="text",
                 bare=True,
             )
@@ -413,10 +448,9 @@ def _prose_full_app_structural(text: str) -> list[str]:
         rows.append("List + form")
     if _CREATE_READ_ONLY_RE.search(text or ""):
         rows.append("Create/read only")
-    if _ASSIGNMENT_NOTE_RE.search(text or "") or (
-        "optionally" in (text or "").lower() and "assignment" in (text or "").lower()
-    ):
-        rows.append("Optional: link or create Assignment Note on Approve")
+    note_label = _optional_note_label(text or "")
+    if note_label:
+        rows.append(f"Optional: link or create {note_label} on Approve")
     return rows
 
 
@@ -477,12 +511,14 @@ def split_conjunction_chunks(body: str) -> list[str]:
         chunks.append(buf.strip())
     normalized: list[str] = []
     for chunk in chunks:
-        if re.search(r"(?i)\band\b", chunk) and "(" not in chunk:
+        # Strip leading conjunction left after comma splits ("and notes" → "notes").
+        chunk = re.sub(r"(?i)^(and|or)\s+", "", (chunk or "").strip()).strip(" .")
+        if not chunk:
+            continue
+        if re.search(r"(?i)\s+and\s+", chunk) and "(" not in chunk:
             parts = re.split(r"(?i)\s+and\s+", chunk)
-            normalized.extend(p.strip(" .") for p in parts if p.strip())
+            normalized.extend(p.strip(" .") for p in parts if p.strip(" ."))
         else:
-            if re.match(r"(?i)^and\s+", chunk):
-                chunk = re.sub(r"(?i)^and\s+", "", chunk).strip()
             if re.search(r"(?i)\band\b", chunk):
                 parts: list[str] = []
                 part = ""
@@ -593,6 +629,12 @@ def _infer_ttype(label: str, *, stated: str | None = None) -> str:
         return "datetime"
     if re.search(r"(?i)\bdate\b", label):
         return "date"
+    # Bare notes/remarks/comments/description → Multiline text (not Char).
+    if re.search(
+        r"(?i)^(?:notes?|remarks?|comments?|description)$",
+        (label or "").strip(),
+    ):
+        return "text"
     return "char"
 
 
@@ -835,10 +877,20 @@ def _parse_det_full_app(text: str) -> ConstraintAST:
                 )
                 continue
             label_f = re.sub(r"\s+", " ", chunk).strip(" .")
+            label_f = re.sub(r"(?i)^(and|or)\s+", "", label_f).strip(" .")
             if label_f.lower() in {"model", "with", "and", "a", "an", "the"}:
                 continue
             if _is_prose_dump_label(label_f):
                 continue
+            # Bare notes cue → canonical Notes (text), not «and notes» / «notes» char.
+            if re.fullmatch(r"(?i)notes?", label_f):
+                label_f = "Notes"
+            elif re.fullmatch(r"(?i)remarks?", label_f):
+                label_f = "Remarks"
+            elif re.fullmatch(r"(?i)comments?", label_f):
+                label_f = "Comments"
+            elif re.fullmatch(r"(?i)description", label_f):
+                label_f = "Description"
             expanded = expand_field_chunk(label_f)
             if len(expanded) > 1:
                 for lab in expanded:
