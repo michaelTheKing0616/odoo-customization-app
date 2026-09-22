@@ -1,3 +1,20 @@
+# State Must-do + Build-title + Identity spray (2026-09-22)
+**Decided:** Four architectural leftover classes fixed class-wide after Install grammar (not Maintenance-only). (A) State range cues `state Draft→Done` / `Draft to Done` / bare `Draft → … → Done` wire into `stated_workflow_states` + Must-do State selection + generate residual selection — never omit State while inventing Cancel. (B) Diagnosis/canvas title from business noun (Maintenance Tickets) — never Build-verb / grain pollution («Build Maintenance»). (C) Uncued `x_company_id` / Contact / Purchase Order / Invoice Identity M2Os never invent on thin residuals; Field Work keeps Customer + Related SO; depth company gate requires multi-company cue. (D) «Online-honest on stock moves» → honesty / consultant stamp; Parts stay product+qty — no stock/PO depends as substitute. Prefer Project + Vehicle + Install grammar + first-try stay green. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+
+**Root causes (file:symbol):**
+- `ai_brief_cues.stated_workflow_states` — `_STATE_CHAIN_RE` existed but unused; parentheses-only → Must-do dropped State (`state Draft→Done`)
+- `ai_constraint_ast._prose_full_app_fields` — only `_STATE_MACHINE_RE` parenthetical
+- `ai_depth._ensure_workflow_minimum_fields` — invent Cancel (`draft/done/cancelled`) when stated range present
+- `ai_depth._ensure_company_on_transactional` — sprayed `x_company_id` on comprehensive without multi-company cue
+- `ai_odoo_app_bar.wire_stock_apps_from_depends` — `purchase` depends → Purchase Order M2O; Online-honest ≠ PO cue
+- Canvas/Diagnosis title fallback — Build-verb crumbs before `naming_from_residual` scrub
+
+**Tip SHAs:** feat `7eba359` (Mac; tip `e3617f0`) · APPLY `5957750`. Rubric 324 pytest + 17 vitest. Mac APPLY: `APPLY_STATE_TITLE_IDENTITY_SPRAY_ON_MAC.sh` with patch `0001-feat-ingenium-state-title-identity-spray.patch` (also `/workspace/0001-feat-ingenium-state-title-identity-spray.patch`).
+
+**Remaining gaps:** Live Mac re-run Maintenance + Field Work after parent APPLY; party satellite invent on thin residuals still gated elsewhere; calendar.event reuse stamp out of this tip.
+
+---
+
 # Install grammar + uncued smart invent + O2M preview (2026-09-22)
 **Decided:** Three Generate leftover classes fixed class-wide after first-try O2M materialize (not Field Work one-offs). (A) Install/compile hygiene — distinct checklist/parts line roles never collapse; notebook pages match O2M count; O2Ms never sit in Identity/header groups; Related Sales Order stays on Identity (not stripped for invent smarts). (B) Uncued Quotation/Invoice/Meeting smart buttons never invent on residual forms — Related Sales Order / Menus…calendar / Invoiced *state* alone are not cues; Contacts→residual Nice-to-have craft path unchanged. (C) Canvas O2M preview carries real columns (checklist item+done / parts product+qty) — never Tag A/B placeholder chrome. Repair-with-Expert stays for true gaps; default path first-try green. Prefer Project + Vehicle + prior first-try goldens stay green. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
 
@@ -7,7 +24,7 @@
 - `ai_enrich._form_field_names` / `_xml_strip_related_stock_document_fields` stripped Related Sales Order from Identity
 - `OdooField.tsx` rendered all O2M as Tag A/B; `preview_views._preview_field` lacked `relationColumns`
 
-**Tip SHAs:** feat `49d7650` (Mac; tip `c11f351`) · APPLY `c1d362f`. Rubric 311 pytest + 11 vitest OdooField. Mac APPLY patch `0001-feat-ingenium-install-grammar-o2m-preview.patch`.
+**Tip SHAs:** feat `c11f351` · APPLY `c1d362f`. Rubric 311 pytest + 11 vitest OdooField. Mac APPLY patch `0001-feat-ingenium-install-grammar-o2m-preview.patch`.
 
 **Remaining gaps:** Live Mac re-run Field Work after parent APPLY; calendar menu cue still may stamp calendar.event into reuse plan (smart invent scrubbed — deeper stock_first calendar-view vs meeting noun is out of this tip); party satellite invent on thin residuals still gated elsewhere.
 

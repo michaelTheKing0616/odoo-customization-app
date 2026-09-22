@@ -43,6 +43,10 @@ Never Prefer when Option A required; never Online Python promote.
 - [x] **Install grammar + uncued smart invent + O2M preview** — 2026-09-22  
   Class-wide: checklist/parts roles never collapse; notebook↔O2M Install gate green; uncued Quotations/Invoices/Meetings never invent on residual forms; canvas O2M shows item+done / product+qty (not Tag A/B). Rubric `run_install_grammar_o2m_preview_rubric_battery.sh`.
 
+
+- [x] **State Must-do + Build-title + Identity spray** — 2026-09-22  
+  Class-wide: `state Draft→Done` / `Draft to Done` range cues → State in Must-do + matching selection (no Cancel invent); Diagnosis/canvas title from business noun (never «Build Maintenance»); uncued `x_company_id` / Purchase Order / Invoice Identity M2O never invent; Online-honest stock moves → honesty stamp (Parts stay product+qty). Rubric `run_state_title_identity_spray_rubric_battery.sh`.
+
 - [x] **First-try Generate repair (O2M / M2O / sign-off / UI)** — 2026-09-22  
   Class-wide: checklist/parts Must-do → real O2M line models (never literal Satellite Char stamps); Identity same-comodel M2O de-dupe keeps cued Related Sales Order/Fleet; Sign-off → boolean Customer signed + attachment; Studio contract scorecard blocks Apply with Repair-with-Expert path. Prefer Project + Vehicle green. Rubric `run_first_try_generate_repair_rubric_battery.sh`.
 
@@ -192,6 +196,35 @@ Release gates for Prefer host lock + residual business-noun naming — `AI_INTEN
 **Battery:** 289 pytest passed (`no_app_db`). Web: 7 vitest passed (build-spine + handoff + Atlas browser + OrderBatchPanel).
 
 **Tip SHAs:** feat `6f87d41` · APPLY `b7bb37c`. Mac APPLY: `/workspace/odoo-mac-tip/APPLY_PREFER_HOST_FULLAPP_NOUN_ON_MAC.sh` with patch `0001-feat-ingenium-prefer-host-fullapp-noun.patch` (also `/workspace/0001-feat-ingenium-prefer-host-fullapp-noun.patch`).
+
+
+
+## State / title / identity-spray rubric matrix (2026-09-22)
+
+Release gates — `AI_INTENT_LLM=off`, `apps/api/scripts/run_state_title_identity_spray_rubric_battery.sh` (+ prior Install grammar / first-try / Prefer-host / Vehicle).
+
+| Gate | Result |
+|------|--------|
+| `state Draft→Done` / `Draft to Done` → State in Must-do | **pass** |
+| Generate residual selection matches range (no Cancel invent) | **pass** |
+| Diagnosis/canvas title = business noun (never Build Maintenance) | **pass** |
+| Exact Maintenance brief: State + O2Ms; no company/PO/Contact spray | **pass** |
+| Field Work: keep Customer + Related SO; no uncued Invoice/PO M2O | **pass** |
+| Unseen thin residual (Service cards) Draft→Done Must-do | **pass** |
+| Online-honest stock moves → honesty stamp; no stock/PO depends | **pass** |
+| Install grammar + first-try + Prefer Project + Vehicle green | **pass** |
+| Completeness ≠ Cert ≠ Autopilot | **pass** |
+| Flash-free / AI_INTENT_LLM=off deterministic floor | **pass** |
+
+**Battery:** 324 pytest passed (`no_app_db`). Web: 17 vitest passed (OdooField + StudioHonesty + BuildSpineBar).
+
+**Tip SHAs:** feat `7eba359` (Mac; tip `e3617f0`) · APPLY `5957750`. Mac APPLY: `/workspace/odoo-mac-tip/APPLY_STATE_TITLE_IDENTITY_SPRAY_ON_MAC.sh` with patch `0001-feat-ingenium-state-title-identity-spray.patch` (also `/workspace/0001-feat-ingenium-state-title-identity-spray.patch`).
+
+### State / title / identity-spray remaining gaps (honest)
+- Live Mac re-run Maintenance + Field Work after parent APPLY.
+- Party satellite invent on thin residuals still gated elsewhere (unchanged).
+- Calendar menu cue may still stamp calendar.event into reuse plan (smart invent scrubbed).
+
 
 ### Prefer-host / full_app-noun remaining gaps (honest)
 - Live Odoo order-batch dry-run/apply still mock-only (unchanged from P4/Arc3).
