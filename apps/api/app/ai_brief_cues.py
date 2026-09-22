@@ -323,7 +323,12 @@ def _snake_state(label: str) -> str:
 
 
 def stated_workflow_states(prompt: str) -> list[str]:
-    """Ordered workflow keys when the brief enumerates them (incl. terminal Done)."""
+    """Ordered workflow keys when the brief enumerates them (incl. terminal Done).
+
+    Class-wide range cues — not parentheses-only:
+    ``state Draft→Done``, ``Draft to Done``, ``Draft → Scheduled → …``,
+    ``State (Draft → … → Done)``, ``state selection (…)``.
+    """
     text = prompt or ""
     raw = ""
     # Prefer constraint AST machine (handles Approved/Refused → Done).
@@ -348,13 +353,38 @@ def stated_workflow_states(prompt: str) -> list[str]:
         if m:
             raw = m.group(1)
     if not raw:
+        # Bare ``state Draft→Done`` / ``status Draft to Done`` (no parens).
+        m = _STATE_CHAIN_RE.search(text)
+        if m:
+            raw = m.group(1)
+    if not raw:
+        # Bare arrow / "to" chain starting at Draft … terminal Done (range cue).
+        m = re.search(
+            r"(?i)\b(Draft(?:\s*(?:→|->|—|–|>|to|/)\s*[A-Za-z][A-Za-z0-9_ ]*?)+?"
+            r"(?:\s*(?:→|->|—|–|>|to|/)\s*)?"
+            r"(?:Done|Cancelled|Canceled|Closed|Completed|Refused|Rejected|Approved|Invoiced))\b",
+            text,
+        )
+        if m:
+            raw = m.group(1)
+    if not raw:
         return []
-    # Approved/Refused → two states; arrows → separators
+    try:
+        from app.ai_constraint_ast import _normalize_state_options
+
+        raw = _normalize_state_options(raw)
+    except Exception:  # noqa: BLE001
+        pass
+    # Approved/Refused → two states; arrows / "to" → separators
     chunk = re.sub(r"(?i)\b([A-Za-z]+)/([A-Za-z]+)\b", r"\1 / \2", raw)
-    chunk = re.sub(r"\s*[→\-–>]+\s*", " / ", chunk)
+    chunk = re.sub(r"\s*(?:→|->|—|–|>)+\s*", " / ", chunk)
+    chunk = re.sub(r"(?i)\s+to\s+", " / ", chunk)
     parts = [p.strip(" .") for p in re.split(r"\s*/\s*", chunk) if p.strip(" .")]
     keys: list[str] = []
     for part in parts:
+        # Multi-word labels ("In progress") stay one key; skip junk "to".
+        if part.lower() in {"to", "and", "or", "then"}:
+            continue
         key = _snake_state(part)
         if key and key not in keys:
             keys.append(key)

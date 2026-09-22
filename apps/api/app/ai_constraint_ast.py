@@ -338,7 +338,9 @@ def _resolve_menu_parent(text: str) -> str | None:
 
 def _normalize_state_options(raw: str) -> str:
     text = re.sub(r"\s+", " ", (raw or "")).strip(" .")
-    text = re.sub(r"\s*[→\-–]+\s*", " / ", text)
+    text = re.sub(r"\s*(?:→|->|—|–|>)+\s*", " / ", text)
+    # ``Draft to Done`` range cue (not the label "In progress").
+    text = re.sub(r"(?i)\s+to\s+", " / ", text)
     # Approved/Refused → Approved / Refused
     text = re.sub(r"(?i)\b([A-Za-z]+)/([A-Za-z]+)\b", r"\1 / \2", text)
     text = re.sub(r"\s*/\s*", " / ", text)
@@ -432,9 +434,34 @@ def _prose_full_app_fields(text: str) -> list[ConstraintField]:
         fields.append(ConstraintField(label="Start Date", ttype="date", bare=True))
         fields.append(ConstraintField(label="End Date", ttype="date", bare=True))
 
-    sm = _STATE_MACHINE_RE.search(text or "")
-    if sm:
-        opts = _normalize_state_options(sm.group(1))
+    # State range cues class-wide (parens, ``state Draft→Done``, ``Draft to Done``).
+    stated_keys: list[str] = []
+    try:
+        from app.ai_brief_cues import stated_workflow_states
+
+        stated_keys = stated_workflow_states(text or "")
+    except Exception:  # noqa: BLE001
+        stated_keys = []
+    if stated_keys:
+        # Prefer parenthetical / normalized brief labels when present.
+        sm = _STATE_MACHINE_RE.search(text or "")
+        if sm:
+            opts = _normalize_state_options(sm.group(1))
+        else:
+            _LABEL = {
+                "draft": "Draft",
+                "done": "Done",
+                "scheduled": "Scheduled",
+                "in_progress": "In progress",
+                "submitted": "Submitted",
+                "approved": "Approved",
+                "refused": "Refused",
+                "cancelled": "Cancelled",
+                "invoiced": "Invoiced",
+            }
+            opts = " / ".join(
+                _LABEL.get(k, k.replace("_", " ").title()) for k in stated_keys
+            )
         if opts:
             fields.append(
                 ConstraintField(

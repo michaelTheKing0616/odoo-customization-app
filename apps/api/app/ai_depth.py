@@ -490,8 +490,22 @@ def _ensure_currency_on_amounts(draft: dict[str, Any]) -> list[str]:
 def _ensure_company_on_transactional(
     draft: dict[str, Any], ambition: Ambition
 ) -> list[str]:
+    """Add x_company_id only when the brief cues multi-company / legal-entity split.
+
+    Thin residuals (Maintenance tickets, Field work) must not spray Company on
+    Identity — class-wide, not Maintenance-only.
+    """
     if ambition != "comprehensive":
         return []
+    prompt = str(draft.get("_user_prompt") or "")
+    try:
+        from app.multi_company_pack import prompt_asks_multi_company
+
+        if not prompt_asks_multi_company(prompt):
+            return []
+    except Exception:  # noqa: BLE001
+        if not re.search(r"(?i)\bmulti[\s-]?compan|legal[\s-]?entit", prompt):
+            return []
     notes: list[str] = []
     for m in _models(draft):
         names = _field_names(m)
@@ -517,27 +531,62 @@ def _ensure_company_on_transactional(
 
 
 def _ensure_workflow_minimum_fields(draft: dict[str, Any]) -> list[str]:
-    """Workflow models should carry status + code."""
+    """Workflow models should carry status + code.
+
+    When the brief cues a state range (Draft→Done), honor those endpoints —
+    never invent Cancel / extra junk that the brief did not list.
+    """
     notes: list[str] = []
+    prompt = str(draft.get("_user_prompt") or "")
+    stated: list[str] = []
+    selection = "[('draft','Draft'),('done','Done'),('cancelled','Cancelled')]"
+    try:
+        from app.ai_brief_cues import selection_literal_from_keys, stated_workflow_states
+
+        stated = stated_workflow_states(prompt)
+        if stated:
+            selection = selection_literal_from_keys(stated)
+    except Exception:  # noqa: BLE001
+        stated = []
     for m in _models(draft):
         names = _field_names(m)
-        if "x_status" not in names and not m.get("is_workflow"):
+        if (
+            "x_status" not in names
+            and "x_state" not in names
+            and not m.get("is_workflow")
+        ):
             continue
         fields = list(m.get("fields") or [])
-        if "x_status" not in names:
+        if "x_status" not in names and "x_state" not in names:
+            fname = "x_state" if stated else "x_status"
             fields.append(
                 {
-                    "name": "x_status",
+                    "name": fname,
                     "ttype": "selection",
-                    "string": "Status",
-                    "selection": (
-                        "[('draft','Draft'),('done','Done'),('cancelled','Cancelled')]"
-                    ),
+                    "string": "State" if fname == "x_state" else "Status",
+                    "selection": selection,
                     "required": True,
+                    "default": stated[0] if stated else "draft",
                 }
             )
-            notes.append(f"depth: status on {m.get('model')}")
-            names.add("x_status")
+            notes.append(
+                f"depth: {fname} on {m.get('model')}"
+                + (f" ({', '.join(stated)})" if stated else "")
+            )
+            names.add(fname)
+        elif stated:
+            # Overwrite Cancel-invented / truncated selections with brief range.
+            for field in fields:
+                if not isinstance(field, dict):
+                    continue
+                if str(field.get("name") or "") not in {"x_state", "x_status"}:
+                    continue
+                field["selection"] = selection
+                field.setdefault("default", stated[0])
+                notes.append(
+                    f"depth: aligned {m.get('model')}.{field.get('name')} → "
+                    f"{', '.join(stated)}"
+                )
         if "x_code" not in names and "x_reference" not in names:
             fields.insert(
                 1 if fields and fields[0].get("name") == "x_name" else 0,

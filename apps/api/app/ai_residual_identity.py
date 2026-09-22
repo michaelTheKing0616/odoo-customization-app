@@ -31,16 +31,21 @@ def scrub_residual_display_name(title: str) -> str:
 
     Also drops an accidental stock-parent prefix («Fleet Vehicle Request» →
     Vehicle Request) when a following primary noun remains. Bare «Fleet» alone
-    is preserved.
+    is preserved. Never leave a Build-verb title («Build Maintenance»).
     """
     text = (title or "").strip()
     if not text:
         return ""
-    text = re.sub(
-        r"(?i)^(build|create|make|add|implement|develop|generate)\s+",
-        "",
-        text,
-    ).strip()
+    # Peel Build/Create/… repeatedly (canvas sometimes glues the verb twice).
+    while True:
+        nxt = re.sub(
+            r"(?i)^(build|create|make|add|implement|develop|generate)\s+",
+            "",
+            text,
+        ).strip()
+        if nxt == text:
+            break
+        text = nxt
     text = re.sub(
         r"(?i)^(tiny|simple|small|new|mini|full|light(?:weight)?|basic|minimal)\s+",
         "",

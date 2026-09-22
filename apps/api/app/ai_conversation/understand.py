@@ -1039,7 +1039,14 @@ def _deterministic_understanding(prompt: str) -> Understanding:
             _brief_must_do_constraints(text, host=host, inherit=True)
         )
     else:
-        title = title or (text.split(".")[0].strip()[:48] or "Custom draft")
+        # Never seed Diagnosis/canvas title from «Build …» imperative crumbs.
+        raw_slice = (text.split(".")[0].strip()[:48] or "Custom draft")
+        raw_slice = re.sub(
+            r"(?i)^(build|create|make|add|implement|develop|generate)\s+",
+            "",
+            raw_slice,
+        ).strip() or "Custom draft"
+        title = title or raw_slice
         if len(title) > 48 or title.lower().startswith("the client"):
             title = "Custom draft"
         summary = summary or "A custom record people will open from the home screen."

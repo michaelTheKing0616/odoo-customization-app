@@ -766,7 +766,14 @@ def wire_stock_apps_from_depends(draft: dict[str, Any]) -> list[str]:
         _add_m2o(asset or ops, "x_equipment_id", "maintenance.equipment", "Equipment")
         _add_m2o(ops, "x_maintenance_request_id", "maintenance.request", "Maintenance request")
     if "purchase" in depends:
-        _add_m2o(ops, "x_purchase_order_id", "purchase.order", "Purchase order")
+        prompt = str(draft.get("_user_prompt") or "")
+        # Online-honest stock / parts qty alone ≠ Purchase Order Identity M2O.
+        if re.search(
+            r"(?i)\bpurchase\s+orders?\b|\blink(?:ed)?\s+(?:a\s+)?(?:purchase|PO)\b|"
+            r"\bRFQ\b|\bvendor\s+bill",
+            prompt,
+        ):
+            _add_m2o(ops, "x_purchase_order_id", "purchase.order", "Purchase order")
     if "project" in depends and not _skip_stock_project_on_residual(draft, by_id):
         _add_m2o(ops or site, "x_project_id", "project.project", "Project / turnaround")
     if "stock" in depends:
@@ -1242,6 +1249,175 @@ def _is_residual_full_app_draft(draft: dict[str, Any]) -> bool:
     except Exception:  # noqa: BLE001
         grain = str(draft.get("grain") or "").lower()
         return grain in {"", "full_app"} and not draft.get("domain_pack")
+
+
+def scrub_uncued_identity_link_m2os(
+    draft: dict[str, Any], *, prompt: str = ""
+) -> list[str]:
+    """Drop uncued Purchase Order / Invoice Identity M2Os on residual headers.
+
+    Class-wide: Related Sales Order / Online-honest stock / Invoiced *state*
+    are not cues for Purchase Order or Invoice M2O fields. Keep when the brief
+    clearly asks for those links.
+    """
+    notes: list[str] = []
+    text = prompt or str(draft.get("_user_prompt") or "")
+    if not isinstance(draft, dict):
+        return notes
+    wants_po = bool(
+        re.search(
+            r"(?i)\bpurchase\s+orders?\b|\blink(?:ed)?\s+(?:a\s+)?(?:purchase|PO)\b|"
+            r"\bRFQ\b|\bvendor\s+bill",
+            text,
+        )
+    )
+    # Invoiced *state* / Online-honest stock ≠ Invoice M2O Identity field.
+    wants_invoice = bool(
+        re.search(
+            r"(?i)\b(?:related|linked|optional)\s+invoices?\b|"
+            r"\binvoice\s+(?:link|field|m2o|many2one)\b|"
+            r"\blink(?:ed)?\s+(?:an?\s+)?invoices?\b|"
+            r"\bcustomer\s+invoices?\b",
+            text,
+        )
+    )
+
+    drop_rels: set[str] = set()
+    drop_names: set[str] = set()
+    if not wants_po:
+        drop_rels.add("purchase.order")
+        drop_names.update({"x_purchase_order_id", "x_po_id", "x_purchase_id"})
+    if not wants_invoice:
+        drop_rels.add("account.move")
+        drop_names.update({"x_invoice_id", "x_bill_id", "x_move_id"})
+
+    wants_company = False
+    try:
+        from app.multi_company_pack import prompt_asks_multi_company
+
+        wants_company = prompt_asks_multi_company(text)
+    except Exception:  # noqa: BLE001
+        wants_company = bool(
+            re.search(r"(?i)\bmulti[\s-]?compan|legal[\s-]?entit", text)
+        )
+    if not wants_company:
+        drop_rels.add("res.company")
+        drop_names.update({"x_company_id", "company_id"})
+
+    # Uncued Contact spray on Identity — only keep when brief cues Contact/Customer/Partner.
+    wants_contact = bool(
+        re.search(
+            r"(?i)\b(?:customer|contact|partner|vendor|client)\b",
+            text,
+        )
+    )
+    if not wants_contact:
+        drop_rels.add("res.partner")
+        drop_names.update(
+            {"x_partner_id", "x_contact_id", "x_customer_id", "x_client_id"}
+        )
+
+    if not drop_rels and not drop_names:
+        return notes
+
+    by_id = _models_index(draft)
+    for mid, model in by_id.items():
+        if not str(mid).startswith("x_"):
+            continue
+        if str(mid).endswith("_line") or str(mid).endswith("_party"):
+            continue
+        if str(model.get("mode") or "new") == "inherit":
+            continue
+        fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
+        kept: list[dict[str, Any]] = []
+        dropped: list[str] = []
+        for field in fields:
+            name = str(field.get("name") or "")
+            rel = str(field.get("relation") or "")
+            lab = str(field.get("string") or "").strip().lower()
+            if name in drop_names or rel in drop_rels:
+                dropped.append(name or lab)
+                continue
+            if lab in {"purchase order", "purchase orders", "invoice", "invoices"} and (
+                (lab.startswith("purchase") and not wants_po)
+                or (lab.startswith("invoice") and not wants_invoice)
+            ):
+                dropped.append(name or lab)
+                continue
+            kept.append(field)
+        if dropped:
+            model["fields"] = kept
+            notes.append(
+                f"app_bar: dropped uncued Identity link on {mid}: "
+                + ", ".join(dropped)
+            )
+    return notes
+
+
+def stamp_online_stock_honesty(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
+    """Brief «Online-honest on stock moves» → honesty stamp; Parts stay structured data.
+
+    Do not invent deep stock.move / PO as a substitute for honesty.
+    """
+    notes: list[str] = []
+    text = prompt or str(draft.get("_user_prompt") or "")
+    if not re.search(
+        r"(?i)\bonline[\s-]?honest(?:y)?\b[^.]{0,40}\bstock\b|"
+        r"\bstock\s+moves?\b[^.]{0,40}\bonline|"
+        r"\bhonest(?:y)?\b[^.]{0,30}\bstock\s+moves?",
+        text,
+    ):
+        return notes
+    meta = draft.get("_honesty") if isinstance(draft.get("_honesty"), dict) else {}
+    meta = {
+        **meta,
+        "online_stock_moves": True,
+        "note": (
+            "Online-honest on stock moves — Parts used stay structured product+qty; "
+            "do not invent deep stock.move / Purchase Order as a substitute. "
+            "Completeness ≠ Cert ≠ Autopilot. Promote stays human."
+        ),
+    }
+    draft["_honesty"] = meta
+    # Consultant-facing stamp on draft chrome (non-field).
+    stamps = draft.get("_consultant_notes")
+    if not isinstance(stamps, list):
+        stamps = []
+    note = (
+        "Online-honest on stock moves: Parts used = product + qty structured data; "
+        "no fake stock.move / PO invent."
+    )
+    if note not in stamps:
+        stamps.append(note)
+        draft["_consultant_notes"] = stamps
+        notes.append("app_bar: stamped Online-honest stock moves")
+    # Never add stock/purchase depends from honesty alone.
+    depends = [str(d) for d in (draft.get("depends") or []) if d]
+    cleaned = [d for d in depends if d.lower() not in {"stock", "purchase", "mrp"}]
+    # Keep product when Parts used / product.product fields exist.
+    if cleaned != depends:
+        # Only drop stock/purchase if no field actually needs them beyond honesty.
+        by_id = _models_index(draft)
+        needs_purchase = any(
+            isinstance(f, dict) and str(f.get("relation") or "") == "purchase.order"
+            for m in by_id.values()
+            for f in (m.get("fields") or [])
+        )
+        needs_stock = any(
+            isinstance(f, dict)
+            and str(f.get("relation") or "").startswith("stock.")
+            for m in by_id.values()
+            for f in (m.get("fields") or [])
+        )
+        keep = list(depends)
+        if not needs_purchase:
+            keep = [d for d in keep if d.lower() != "purchase"]
+        if not needs_stock:
+            keep = [d for d in keep if d.lower() not in {"stock", "mrp"}]
+        if keep != depends:
+            draft["depends"] = keep
+            notes.append("app_bar: clipped stock/purchase depends (Online-honest only)")
+    return notes
 
 
 def scrub_uncued_residual_stock_smart_buttons(
@@ -5490,6 +5666,8 @@ def run_odoo_app_bar_pass(draft: dict[str, Any], *, user_prompt: str = "") -> li
     notes.extend(ensure_residual_satellites(draft))
     notes.extend(ensure_stock_inherit_bridges(draft))
     notes.extend(scrub_uncued_residual_stock_smart_buttons(draft, prompt=prompt))
+    notes.extend(scrub_uncued_identity_link_m2os(draft, prompt=prompt))
+    notes.extend(stamp_online_stock_honesty(draft, prompt=prompt))
     notes.extend(ensure_invoice_link_on_headers(draft))
     notes.extend(ensure_relational_smart_buttons(draft))
     notes.extend(drop_hollow_automations(draft))
