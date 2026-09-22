@@ -80,6 +80,13 @@ def is_fx_rate_class(prompt: str) -> bool:
 
 
 def is_markup_tax_class(prompt: str) -> bool:
+    try:
+        from app.ai_markup_wht_class import is_markup_wht_class_brief
+
+        if is_markup_wht_class_brief(prompt or ""):
+            return True
+    except Exception:  # noqa: BLE001
+        pass
     return bool(_MARKUP_TAX_RE.search(prompt or ""))
 
 

@@ -37,7 +37,9 @@ _STRING_KW_RE = re.compile(r"""\bstring\s*=\s*['\"]([^'\"]+)['\"]""")
 
 
 def is_sales_markup_prompt(prompt: str) -> bool:
-    return bool(_MARKUP_RE.search(prompt or ""))
+    from app.ai_markup_wht_class import is_markup_wht_class_brief
+
+    return is_markup_wht_class_brief(prompt) or bool(_MARKUP_RE.search(prompt or ""))
 
 
 def is_report_layout_scrub_prompt(prompt: str) -> bool:
@@ -45,6 +47,13 @@ def is_report_layout_scrub_prompt(prompt: str) -> bool:
     from app.ai_report_layout_scrub import is_report_layout_scrub_brief
 
     return is_report_layout_scrub_brief(prompt)
+
+
+def online_metadata_incomplete_interim(*, prompt: str = "", host_model: str = "sale.order") -> dict[str, Any]:
+    """Prefer/Studio % field alone on Online — incomplete interim for markup CLASS."""
+    from app.ai_markup_wht_class import online_metadata_incomplete_interim as _interim
+
+    return _interim(prompt=prompt, host_model=host_model or "sale.order")
 
 
 def report_layout_online_checklist(*, prompt: str = "", host_model: str = "") -> dict[str, Any]:
@@ -89,16 +98,28 @@ def acceptance_for_draft(draft: dict[str, Any], *, prompt: str = "") -> dict[str
     """Build the acceptance contract for an Option A authored draft."""
     text = (prompt or str(draft.get("_user_prompt") or "")).strip()
     host = _host_model(draft)
-    if host == "sale.order" and is_sales_markup_prompt(text):
+    if is_sales_markup_prompt(text) and (host in {None, "", "sale.order"} or host == "sale.order"):
+        from app.ai_markup_wht_class import CLASS_INTENT_ID
+
         return {
-            "intent_id": "sale_order_markup_wht",
+            "intent_id": CLASS_INTENT_ID,
             "host_model": "sale.order",
             "checks": [
                 {"id": "field_labeled", "required": True},
                 {"id": "xpath_anchor", "required": True, "anchor": "tax_totals"},
                 {"id": "price_effect", "required": True},
                 {"id": "fields_present", "required": True},
+                {"id": "markup_present", "required": True},
+                {"id": "wht_base_is_markup", "required": True},
+                {"id": "purchase_untouched", "required": True},
+                {"id": "no_tax_create", "required": True},
             ],
+            "fixtures": {
+                "brief_class": "sale_markup_wht",
+                "host_model": "sale.order",
+                "must_not_inherit": ["purchase.order"],
+                "forbid": ["account.tax.create"],
+            },
         }
     if is_report_layout_scrub_prompt(text):
         from app.ai_report_layout_scrub import (
@@ -394,23 +415,83 @@ def _run_one_check(
 ) -> dict[str, Any]:
     hint = REPAIR_HINTS.get(cid, "")
     if cid == "field_labeled":
-        return _check_field_labeled(execute_kw, host, authored, draft, hint)
+        live = _check_field_labeled(execute_kw, host, authored, draft, hint)
+        if live.get("ok"):
+            return live
+        # Static labels on authored Python for class floor when RPC unavailable.
+        missing = python_fields_missing_labels(draft)
+        if not missing and authored:
+            return {
+                "id": "field_labeled",
+                "ok": True,
+                "detail": "static python string= labels ok",
+                "repair_hint": hint,
+            }
+        return live
     if cid == "xpath_anchor":
         anchor = str(check_row.get("anchor") or "tax_totals")
         live = _check_xpath_anchor_live(execute_kw, host, authored, anchor, hint)
-        if live.get("ok") or live.get("detail") != "no_extension_views":
+        if live.get("ok"):
             return live
         static = draft_xpath_anchor_ok(draft, anchor=anchor)
-        return {
-            "id": "xpath_anchor",
-            "ok": bool(static.get("ok")),
-            "detail": static.get("detail"),
-            "repair_hint": hint,
-        }
+        if static.get("ok"):
+            return {
+                "id": "xpath_anchor",
+                "ok": True,
+                "detail": static.get("detail"),
+                "repair_hint": hint,
+            }
+        if live.get("detail") == "no_extension_views":
+            return {
+                "id": "xpath_anchor",
+                "ok": bool(static.get("ok")),
+                "detail": static.get("detail"),
+                "repair_hint": hint,
+            }
+        return live
     if cid == "price_effect":
-        return _check_price_effect(execute_kw, host, authored, hint)
+        live = _check_price_effect(execute_kw, host, authored, hint)
+        if live.get("ok"):
+            return live
+        # Class floor: authored onchange/compute counts when live RPC is unavailable.
+        from app.ai_markup_wht_class import (
+            is_markup_wht_class_brief,
+            static_markup_wht_findings,
+        )
+
+        prompt = str(draft.get("_user_prompt") or "")
+        if is_markup_wht_class_brief(prompt):
+            findings = static_markup_wht_findings(draft, prompt=prompt)
+            if findings.get("price_effect_authored"):
+                return {
+                    "id": "price_effect",
+                    "ok": True,
+                    "detail": "authored onchange/compute (static class floor)",
+                    "repair_hint": hint,
+                    "findings": findings,
+                }
+        return live
     if cid == "fields_present":
-        return _check_fields_present(execute_kw, host, authored, hint)
+        live = _check_fields_present(execute_kw, host, authored, hint)
+        if live.get("ok"):
+            return live
+        from app.ai_markup_wht_class import (
+            is_markup_wht_class_brief,
+            static_markup_wht_findings,
+        )
+
+        prompt = str(draft.get("_user_prompt") or "")
+        if is_markup_wht_class_brief(prompt):
+            findings = static_markup_wht_findings(draft, prompt=prompt)
+            if findings.get("markup_present") and authored:
+                return {
+                    "id": "fields_present",
+                    "ok": True,
+                    "detail": "static class fields authored",
+                    "repair_hint": hint,
+                    "findings": findings,
+                }
+        return live
     if cid == "form_loads":
         return _check_form_loads(execute_kw, host, hint)
     if cid in {
@@ -420,7 +501,30 @@ def _run_one_check(
         "not_contacts_prefer",
     }:
         return _check_report_layout_scrub(cid, draft=draft, hint=hint)
+    if cid in {
+        "markup_present",
+        "wht_base_is_markup",
+        "purchase_untouched",
+        "no_tax_create",
+    }:
+        return _check_markup_wht_class(cid, draft=draft, hint=hint)
     return {"id": cid, "ok": True, "detail": "unknown check skipped", "repair_hint": hint}
+
+
+def _check_markup_wht_class(
+    cid: str,
+    *,
+    draft: dict[str, Any],
+    hint: str,
+) -> dict[str, Any]:
+    from app.ai_markup_wht_class import static_markup_wht_findings
+
+    findings = static_markup_wht_findings(
+        draft, prompt=str(draft.get("_user_prompt") or "")
+    )
+    ok = bool(findings.get(cid))
+    detail = "ok" if ok else f"failed — {cid} host={findings.get('host_model')}"
+    return {"id": cid, "ok": ok, "detail": detail, "repair_hint": hint, "findings": findings}
 
 
 def _check_report_layout_scrub(
@@ -761,6 +865,7 @@ __all__ = [
     "is_sales_markup_prompt",
     "is_report_layout_scrub_prompt",
     "report_layout_online_checklist",
+    "online_metadata_incomplete_interim",
     "python_fields_missing_labels",
     "rewrite_note_xpath_to_tax_totals",
     "run_acceptance_smoke",

@@ -200,6 +200,23 @@ def seed_option_a_authored(prompt: str, plan: Any) -> dict[str, Any]:
                 ir["artifact_kind"] = "report_layout"
                 ir["delivery_lane"] = "module_sh_or_self"
                 ir["prove_status"] = "pending"
+    else:
+        from app.ai_markup_wht_class import (
+            is_markup_wht_class_brief,
+            scaffold_markup_wht_blocks,
+        )
+
+        if is_markup_wht_class_brief(prompt):
+            markup_blocks = scaffold_markup_wht_blocks(draft, prompt=prompt)
+            if markup_blocks:
+                draft["custom_code_blocks"] = markup_blocks
+                draft["_pipeline"] = "option_a_markup_wht_class"
+                draft["display_name"] = _authored_display_name(prompt, "sale.order")
+                if isinstance(ir, dict):
+                    ir["artifact_kind"] = "option_a_module"
+                    ir["delivery_lane"] = "module_sh_or_self"
+                    ir["prove_status"] = "pending"
+                    ir["class_id"] = "sale_order_markup_wht"
 
     draft["_option_a_authoring"] = {
         "status": "pending",
