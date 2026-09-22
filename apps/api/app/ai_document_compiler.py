@@ -75,7 +75,17 @@ def _field_names(model: dict[str, Any]) -> set[str]:
 
 
 def _is_line_model(mid: str) -> bool:
-    return bool(_LINE_MODEL_RE.search(str(mid or ""))) or str(mid or "").endswith("_party")
+    """True for embedded line/join rows — not bare depth-seed hubs.
+
+    ``x_matter_party`` / ``x_foo_party`` are joins. Bare ``x_party`` is a
+    depth_seed hub and must NOT survive thin compile as a third O2M.
+    """
+    s = str(mid or "")
+    if bool(_LINE_MODEL_RE.search(s)):
+        return True
+    if s.endswith("_party") and s not in {"x_party", "party"} and s.count("_") >= 2:
+        return True
+    return False
 
 
 def _pack_header_id(draft: dict[str, Any]) -> str:

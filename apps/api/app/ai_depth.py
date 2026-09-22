@@ -52,6 +52,16 @@ _SINGLE_DOC_RESIDUAL_RE = re.compile(
     r"|attendance\s+request|remote\s+work\s+request"
     r")\b"
 )
+# Thin residual workflow docs (tickets/cards + Draft→Done / checklist / parts).
+# Must NOT floor to comprehensive — that depth-seeds x_party / x_rate and sprays
+# Company/Contact/PO. Class-wide (Service cards, Maintenance tickets, …).
+_THIN_RESIDUAL_WORKFLOW_RE = re.compile(
+    r"(?i)\b(?:"
+    r"(?:maintenance\s+)?tickets?"
+    r"|(?:service\s+)?cards?"
+    r"|work\s+orders?"
+    r")\b"
+)
 _COMPREHENSIVE_RE = re.compile(
     r"\b("
     r"comprehensive|world[\s-]?class|enterprise[\s-]?grade|production[\s-]?grade|"
@@ -126,6 +136,22 @@ def classify_ambition_with_notes(prompt: str) -> tuple[Ambition, list[str]]:
     if _SINGLE_DOC_RESIDUAL_RE.search(text) and not _SCALE_RE.search(text):
         notes.append(
             "ambition: single-document residual request/log → thin (no satellite floor)"
+        )
+        return "thin", notes
+    # Tickets/cards with stated state / checklist / parts — thin residual, not
+    # comprehensive depth_seed floor (x_party / x_rate / Company spray).
+    if (
+        _THIN_RESIDUAL_WORKFLOW_RE.search(text)
+        and not _SCALE_RE.search(text)
+        and not _COMPREHENSIVE_RE.search(text)
+        and (
+            re.search(r"(?i)\b(?:state|draft)\b", text)
+            or re.search(r"(?i)\bchecklist\s+lines?\b|\bparts?\s+used\b", text)
+        )
+        and len(text.split()) < 55
+    ):
+        notes.append(
+            "ambition: thin residual ticket/card workflow → thin (no depth_seed floor)"
         )
         return "thin", notes
     # Full-scale Odoo apps are the default. Bare "multiple" is still not a scale
@@ -895,23 +921,9 @@ def _build_seed_fields(
                 ),
             }
         )
-    fields.extend(
-        [
-            {
-                "name": "x_partner_id",
-                "ttype": "many2one",
-                "relation": "res.partner",
-                "string": "Contact",
-            },
-            {
-                "name": "x_company_id",
-                "ttype": "many2one",
-                "relation": "res.company",
-                "string": "Company",
-            },
-            {"name": "x_notes", "ttype": "text", "string": "Notes"},
-        ]
-    )
+    # Contact / Company are Identity spray unless the brief cues them — do not
+    # stamp them onto every depth_seed (that chicken-eggs multi-company rules).
+    fields.append({"name": "x_notes", "ttype": "text", "string": "Notes"})
     return fields
 
 

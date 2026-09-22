@@ -65,8 +65,15 @@ def prompt_asks_multi_company(prompt: str) -> bool:
 
 
 def _draft_has_company_field(draft: dict[str, Any]) -> bool:
+    """True when a non-depth_seed model carries company.
+
+    Depth seeds used to stamp x_company_id on every satellite, which
+    chicken-egged multi-company record rules on thin residuals. Ignore those.
+    """
     for model in draft.get("models") or []:
         if not isinstance(model, dict):
+            continue
+        if str(model.get("source") or "") == "depth_seed":
             continue
         for field in model.get("fields") or []:
             if isinstance(field, dict) and str(field.get("name") or "") in {

@@ -403,6 +403,17 @@ def run_production_shape_pass(draft: dict[str, Any]) -> list[str]:
 
     notes.extend(attach_live_apply_contract(draft))
     notes.extend(finalize_draft_readiness_metadata(draft))
+    try:
+        from app.ai_odoo_app_bar import (
+            scrub_uncued_depth_seed_satellites,
+            scrub_uncued_identity_link_m2os,
+        )
+
+        prompt = str(draft.get("_user_prompt") or "")
+        notes.extend(scrub_uncued_identity_link_m2os(draft, prompt=prompt))
+        notes.extend(scrub_uncued_depth_seed_satellites(draft, prompt=prompt))
+    except Exception as exc:  # noqa: BLE001
+        notes.append(f"production: identity scrub skipped ({exc})")
     return notes
 
 

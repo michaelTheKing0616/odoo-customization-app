@@ -592,11 +592,19 @@ def humanize_app_surface(draft: dict[str, Any]) -> list[str]:
 
 
 def ensure_header_line_models(draft: dict[str, Any]) -> list[str]:
-    """Document headers get a line model — Odoo sale.order / purchase.order shape."""
+    """Document headers get a line model — Odoo sale.order / purchase.order shape.
+
+    When the brief already cues Checklist / Parts O2Ms, do NOT invent a third
+    generic ``{mid}_line`` (Mac surface: «Rate Line For …»). Cued satellites
+    own the line shape.
+    """
     notes: list[str] = []
     from app.ai_document_shape import may_add_line_satellite
 
     if not may_add_line_satellite(draft):
+        return notes
+    prompt = str(draft.get("_user_prompt") or "")
+    if re.search(r"(?i)\bchecklist\s+lines?\b|\bparts?\s+used\b", prompt):
         return notes
     depends = set(draft.get("depends") or [])
     by_id = _models_index(draft)
@@ -1417,6 +1425,132 @@ def stamp_online_stock_honesty(draft: dict[str, Any], *, prompt: str = "") -> li
         if keep != depends:
             draft["depends"] = keep
             notes.append("app_bar: clipped stock/purchase depends (Online-honest only)")
+    return notes
+
+
+
+def scrub_uncued_depth_seed_satellites(
+    draft: dict[str, Any], *, prompt: str = ""
+) -> list[str]:
+    """Drop bare depth_seed hubs (x_party / x_rate) when the brief did not cue them.
+
+    Class-wide: checklist + parts cues must not keep a third Party/Rate O2M, and
+    Find-it must not advertise Contact/Company from those hubs.
+    """
+    notes: list[str] = []
+    text = prompt or str(draft.get("_user_prompt") or "")
+    if not isinstance(draft, dict):
+        return notes
+    wants_party = bool(
+        re.search(
+            r"(?i)\b(?:part(?:y|ies)|participant|stakeholder|role\s+link)s?\b",
+            text,
+        )
+    )
+    wants_rate = bool(
+        re.search(
+            r"(?i)\b(?:rate\s+cards?|billing\s+rates?|price\s+cards?|rate\s+lines?)\b",
+            text,
+        )
+    )
+    drop_mids: set[str] = set()
+    for model in list(draft.get("models") or []):
+        if not isinstance(model, dict):
+            continue
+        mid = str(model.get("model") or "")
+        src = str(model.get("source") or "")
+        if mid == "x_party" and not wants_party:
+            drop_mids.add(mid)
+        if mid == "x_rate" and not wants_rate:
+            drop_mids.add(mid)
+        # Generic {header}_line when checklist/parts already present
+        if (
+            mid.endswith("_line")
+            and not mid.endswith("_checklist_line")
+            and not mid.endswith("_parts_line")
+            and re.search(r"(?i)\bchecklist\s+lines?\b|\bparts?\s+used\b", text)
+            and src in {"odoo_app_bar", "depth_seed", ""}
+        ):
+            # Only drop the bare generic leaf `_line`, not named satellites.
+            leaf = mid.rsplit("_", 1)[0]
+            if mid == f"{leaf}_line" or mid.endswith("_tickets_line") or mid.endswith("_cards_line") or mid.endswith("_orders_line"):
+                # Keep if relation is the only line child — handled below via header O2M scan
+                pass
+    # Stronger: if header already has checklist + parts O2Ms, drop generic `{mid}_line`.
+    by_id = _models_index(draft)
+    for mid, model in list(by_id.items()):
+        if not str(mid).startswith("x_") or str(mid).endswith("_line") or str(mid).endswith("_party"):
+            continue
+        fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
+        o2m_rels = {
+            str(f.get("relation") or "")
+            for f in fields
+            if str(f.get("ttype") or "") == "one2many"
+        }
+        has_cued = any("checklist" in r for r in o2m_rels) and any(
+            "parts" in r for r in o2m_rels
+        )
+        generic = f"{mid}_line"
+        if has_cued and generic in by_id:
+            drop_mids.add(generic)
+        if "x_party" in by_id and not wants_party:
+            drop_mids.add("x_party")
+        if "x_rate" in by_id and not wants_rate:
+            drop_mids.add("x_rate")
+
+    if not drop_mids:
+        return notes
+
+    draft["models"] = [
+        m
+        for m in (draft.get("models") or [])
+        if not (isinstance(m, dict) and str(m.get("model") or "") in drop_mids)
+    ]
+    # Drop O2Ms / FKs pointing at purged models
+    for model in draft.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        kept = []
+        for field in model.get("fields") or []:
+            if not isinstance(field, dict):
+                continue
+            rel = str(field.get("relation") or "")
+            if rel in drop_mids:
+                continue
+            kept.append(field)
+        model["fields"] = kept
+    for key in ("actions", "menus", "views", "smart_buttons", "automations", "access_rules"):
+        rows = draft.get(key)
+        if not isinstance(rows, list):
+            continue
+        if key == "menus":
+            action_model = {
+                str(a.get("technical_name") or ""): str(a.get("model") or "")
+                for a in (draft.get("actions") or [])
+                if isinstance(a, dict)
+            }
+            draft[key] = [
+                m
+                for m in rows
+                if not (
+                    isinstance(m, dict)
+                    and action_model.get(str(m.get("action_xml_id") or ""), "") in drop_mids
+                )
+            ]
+            continue
+        draft[key] = [
+            r
+            for r in rows
+            if not (
+                isinstance(r, dict)
+                and str(r.get("model") or r.get("on_model") or r.get("related_model") or "")
+                in drop_mids
+            )
+        ]
+    notes.append(
+        "app_bar: scrubbed uncued depth/generic satellites "
+        + ", ".join(sorted(drop_mids))
+    )
     return notes
 
 
@@ -5659,16 +5793,23 @@ def run_odoo_app_bar_pass(draft: dict[str, Any], *, user_prompt: str = "") -> li
     notes.extend(scrub_selection_chrome_smart_buttons(draft))
     notes.extend(drop_leftover_state_fields(draft))
     notes.extend(ensure_mail_mixins(draft))
+    # Cued Checklist/Parts first so generic {mid}_line invent never becomes a
+    # third Rate/service O2M on thin residuals.
+    notes.extend(ensure_cued_o2m_satellites(draft))
     notes.extend(ensure_header_line_models(draft))
     notes.extend(ensure_reverse_o2ms(draft))
     notes.extend(wire_stock_apps_from_depends(draft))
-    notes.extend(ensure_cued_o2m_satellites(draft))
     notes.extend(ensure_residual_satellites(draft))
     notes.extend(ensure_stock_inherit_bridges(draft))
     notes.extend(scrub_uncued_residual_stock_smart_buttons(draft, prompt=prompt))
     notes.extend(scrub_uncued_identity_link_m2os(draft, prompt=prompt))
+    notes.extend(scrub_uncued_depth_seed_satellites(draft, prompt=prompt))
     notes.extend(stamp_online_stock_honesty(draft, prompt=prompt))
     notes.extend(ensure_invoice_link_on_headers(draft))
+    # Re-scrub after invoice/PO link helpers — production_shape may also re-inject;
+    # this catches app_bar-local re-adds before UI sync.
+    notes.extend(scrub_uncued_identity_link_m2os(draft, prompt=prompt))
+    notes.extend(scrub_uncued_depth_seed_satellites(draft, prompt=prompt))
     notes.extend(ensure_relational_smart_buttons(draft))
     notes.extend(drop_hollow_automations(draft))
     notes.extend(ensure_lifecycle_automations(draft))

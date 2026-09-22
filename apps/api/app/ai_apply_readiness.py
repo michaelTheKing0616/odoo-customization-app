@@ -559,19 +559,42 @@ def _is_sales_header(model: dict[str, Any]) -> bool:
     return any(word in desc for word in ("sales", "customer order", "retail", "pos"))
 
 
-def _keeps_purchase_document_link(model: dict[str, Any]) -> bool:
-    """purchase.order is valid on procurement and operations headers, never on sales."""
+def _brief_cues_purchase_order(prompt: str) -> bool:
+    """Same gate as scrub_uncued_identity_link_m2os — Online-honest/parts ≠ PO."""
+    return bool(
+        re.search(
+            r"(?i)\bpurchase\s+orders?\b|\blink(?:ed)?\s+(?:a\s+)?(?:purchase|PO)\b|"
+            r"\bRFQ\b|\bvendor\s+bill",
+            prompt or "",
+        )
+    )
+
+
+def _keeps_purchase_document_link(
+    model: dict[str, Any], *, prompt: str = ""
+) -> bool:
+    """purchase.order on procurement headers, or operations headers when brief cues PO.
+
+    Class-wide: Maintenance tickets / Field work / Service cards are operations
+    documents — the *token* alone must not invent Purchase Order Identity.
+    """
     if _is_sales_header(model):
         return False
     mid = str(model.get("model") or "").lower()
     if "line" in mid or any(tok in mid for tok in _INTERNAL_HEADER_TOKENS):
         return False
-    return _is_procurement_header(model) or _is_operations_header(model)
+    if _is_procurement_header(model):
+        return True
+    if _is_operations_header(model):
+        return _brief_cues_purchase_order(prompt)
+    return False
 
 
-def _stock_link_applies(stock_model: str, model: dict[str, Any]) -> bool:
+def _stock_link_applies(
+    stock_model: str, model: dict[str, Any], *, prompt: str = ""
+) -> bool:
     if stock_model == "purchase.order":
-        return _keeps_purchase_document_link(model)
+        return _keeps_purchase_document_link(model, prompt=prompt)
     if stock_model == "sale.order":
         return _is_sales_header(model)
     if stock_model == "account.move":
@@ -843,10 +866,17 @@ def consolidate_header_monetary_fields(draft: dict[str, Any]) -> list[str]:
 def scrub_misapplied_stock_document_links(draft: dict[str, Any]) -> list[str]:
     """Drop stock-document M2O fields on semantically wrong header models."""
     notes: list[str] = []
+    prompt = str(draft.get("_user_prompt") or "")
     checks = (
-        ("x_purchase_order_id", _keeps_purchase_document_link),
+        (
+            "x_purchase_order_id",
+            lambda model: _keeps_purchase_document_link(model, prompt=prompt),
+        ),
         ("x_sale_order_id", lambda model: _is_sales_header(model)),
-        ("x_invoice_id", lambda model: _stock_link_applies("account.move", model)),
+        (
+            "x_invoice_id",
+            lambda model: _stock_link_applies("account.move", model, prompt=prompt),
+        ),
     )
     for model in draft.get("models") or []:
         if not isinstance(model, dict):
@@ -865,11 +895,14 @@ def ensure_transaction_document_links(draft: dict[str, Any]) -> list[str]:
     notes: list[str] = []
     reuse = _reuse_models(draft)
     depends = set(draft.get("depends") or [])
+    prompt = str(draft.get("_user_prompt") or "")
     for stock_model, fname, label, dep_module in _STOCK_DOCUMENT_LINKS:
         if stock_model not in reuse and dep_module not in depends:
             continue
         for model in draft.get("models") or []:
-            if not isinstance(model, dict) or not _stock_link_applies(stock_model, model):
+            if not isinstance(model, dict) or not _stock_link_applies(
+                stock_model, model, prompt=prompt
+            ):
                 continue
             mid = str(model.get("model") or "")
             names = _field_names(model)
@@ -967,7 +1000,9 @@ _REUSE_STOCK_DOCUMENT_TARGETS: tuple[tuple[str, str, str], ...] = (
 )
 
 
-def _needs_reuse_stock_document(model: str, by_id: dict[str, dict[str, Any]]) -> bool:
+def _needs_reuse_stock_document(
+    model: str, by_id: dict[str, dict[str, Any]], *, prompt: str = ""
+) -> bool:
     if model == "sale.order":
         return any(_is_sales_header(m) for m in by_id.values())
     if model == "account.move":
@@ -975,7 +1010,9 @@ def _needs_reuse_stock_document(model: str, by_id: dict[str, dict[str, Any]]) ->
             _is_sales_header(m) or _is_procurement_header(m) for m in by_id.values()
         )
     if model == "purchase.order":
-        return any(_keeps_purchase_document_link(m) for m in by_id.values())
+        return any(
+            _keeps_purchase_document_link(m, prompt=prompt) for m in by_id.values()
+        )
     return False
 
 
@@ -1000,8 +1037,9 @@ def wire_reuse_stock_documents(draft: dict[str, Any]) -> list[str]:
     models_reuse = set(reuse.get("models") or [])
     depends = list(draft.get("depends") or [])
 
+    prompt = str(draft.get("_user_prompt") or "")
     for stock_model, dep_module, default_reason in _REUSE_STOCK_DOCUMENT_TARGETS:
-        if not _needs_reuse_stock_document(stock_model, by_id):
+        if not _needs_reuse_stock_document(stock_model, by_id, prompt=prompt):
             continue
         pack_row = pack_rows.get(stock_model, {})
         reason = str(pack_row.get("reason") or default_reason)
@@ -4106,6 +4144,30 @@ def run_apply_readiness_pass(draft: dict[str, Any]) -> list[str]:
     from app.ai_live_apply_contract import attach_live_apply_contract
 
     notes.extend(attach_live_apply_contract(draft))
+    # Identity / depth-seed spray gates — same scrub as app_bar (Generate path
+    # re-injects PO/company via wire_reuse + multi-company alignment).
+    try:
+        from app.ai_odoo_app_bar import (
+            scrub_uncued_depth_seed_satellites,
+            scrub_uncued_identity_link_m2os,
+        )
+
+        prompt = str(draft.get("_user_prompt") or "")
+        notes.extend(scrub_uncued_identity_link_m2os(draft, prompt=prompt))
+        notes.extend(scrub_uncued_depth_seed_satellites(draft, prompt=prompt))
+        # Drop purchase depend if no PO field remains after scrub.
+        depends = [str(d) for d in (draft.get("depends") or []) if d]
+        needs_po = any(
+            isinstance(f, dict) and str(f.get("relation") or "") == "purchase.order"
+            for m in (draft.get("models") or [])
+            if isinstance(m, dict)
+            for f in (m.get("fields") or [])
+        )
+        if not needs_po and any(d.lower() == "purchase" for d in depends):
+            draft["depends"] = [d for d in depends if d.lower() != "purchase"]
+            notes.append("apply: clipped purchase depend after Identity scrub")
+    except Exception as exc:  # noqa: BLE001
+        notes.append(f"apply: identity scrub skipped ({exc})")
     return notes
 
 
