@@ -417,8 +417,23 @@ def stamp_capability_gaps(draft: dict[str, Any], prompt: str) -> list[str]:
         set(draft.get("_noun_skips") or []) | assessment.covered_nouns
     )
 
+    # Always stamp gap → Option A scaffold proposals (domain-agnostic) when Live
+    # metadata cannot finish — even if LLM authoring owns custom_code_blocks.
+    draft["_capability_gaps"] = [
+        {
+            "id": g.id,
+            "label": g.label,
+            "detail": g.detail,
+            "option_a_path": g.option_a_path,
+            "proposes_option_a_scaffold": True,
+        }
+        for g in assessment.gaps
+    ]
+    for gap in assessment.gaps:
+        notes.append(f"capability: Option A proposed — {gap.id}")
+
     if isinstance(ir, dict) and ir.get("capability") == "option_a_authored":
-        notes.append("capability: LLM authoring owns custom_code_blocks — skip scaffolds")
+        notes.append("capability: LLM authoring owns custom_code_blocks — skip scaffold attach")
         return notes
 
     from app.ai_capability_option_a_scaffold import scaffold_blocks_for_gaps
@@ -469,6 +484,7 @@ def stamp_capability_gaps(draft: dict[str, Any], prompt: str) -> list[str]:
             "label": g.label,
             "detail": g.detail,
             "option_a_path": path_by_gap.get(g.id) or g.option_a_path,
+            "proposes_option_a_scaffold": True,
         }
         for g in assessment.gaps
     ]

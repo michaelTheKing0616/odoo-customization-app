@@ -76,7 +76,7 @@ export const NAV_GROUPS: {
   {
     id: "ai",
     label: "AI Studio",
-    tooltip: "App Studio, Draft Studio, Job Autopilot, and Projects",
+    tooltip: "One Build entry — App Studio / Draft / Autopilot modes (chips). Projects + Expert route in.",
   },
   {
     id: "data",

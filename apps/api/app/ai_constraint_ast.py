@@ -68,11 +68,50 @@ _NO_NEW_APP_RE = re.compile(
 _UNDER_GROUP_RE = re.compile(
     r"(?i)\bunder\s+(?:(?:the|a|an)\s+)?([A-Za-z][\w /&-]{0,40}?)\s+group\b"
 )
+_UNDER_SECTION_RE = re.compile(
+    r"(?i)\bunder\s+(?:(?:the|a|an)\s+)?(Delivery|Sales|Purchase|Inventory)(\s+group)?\b"
+)
 _LEADING_ARTICLE_RE = re.compile(r"(?i)^(a|an|the)\s+")
 _CHECKBOX_FIELD_RE = re.compile(
     r"(?i)\bcheckbox\s+[\"']?([^\"',.;]+?)[\"']?"
     r"(?=\s+and\b|\s+under\b|\s+on\b|,|\.|$)"
 )
+# "Prefer for delivery checkbox" — label precedes the word checkbox.
+_LABEL_THEN_CHECKBOX_RE = re.compile(
+    r"(?i)\b("
+    r"prefer(?:red)?\s+for\s+delivery|"
+    r"[A-Z][\w /&-]{2,40}?"
+    r")\s+checkbox\b"
+)
+_DELIVERY_NOTES_FIELD_RE = re.compile(
+    r"(?i)\b(delivery\s+notes?)\b"
+)
+_PREFER_FOR_DELIVERY_RE = re.compile(
+    r"(?i)\bprefer(?:red)?\s+for\s+delivery\b"
+)
+_REUSE_FIELDS_RE = re.compile(
+    r"(?i)\b("
+    r"fields?\s+already\s+exist|"
+    r"already\s+exists?|"
+    r"reuse\s+(?:existing\s+)?fields?|"
+    r"do\s+not\s+(?:re-?)?add\s+fields?"
+    r")\b"
+)
+_AUTOMATION_HINT_RE = re.compile(
+    r"(?i)\b("
+    r"creat(?:e|es|ing)\s+(?:a\s+)?(?:light\s+)?(?:follow[- ]?up\s+)?activity|"
+    r"automat(?:e|ion|ed)|when\s+.{0,40}checked"
+    r")\b"
+)
+_FILTER_HINT_RE = re.compile(
+    r"(?i)\b("
+    r"(?:optional\s+)?filter|"
+    r"search\s+filter|"
+    r"list\s+filter"
+    r")\b"
+)
+_SMART_BUTTON_RE = re.compile(r"(?i)\bsmart\s+buttons?\b")
+_SUBMENU_RE = re.compile(r"(?i)\b(?:prefer\s+)?submenu\b")
 _TYPED_TEXT_FIELD_RE = re.compile(
     r"(?i)(?:\badd\b|\band\b|,)\s+([A-Z][\w /&-]{1,40}?)\s+text(?:\s+field)?\b"
 )
@@ -596,10 +635,44 @@ def _parse_det_inherit(text: str, *, host: str | None) -> ConstraintAST:
         # Host row emitted via ast_to_must_do from host/host_label
         pass
 
-    for m in _CHECKBOX_FIELD_RE.finditer(text):
-        label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
-        if label:
+    # Prefer-for-delivery (+ optional Delivery notes) — label-before-checkbox or explicit pair.
+    prefer_seen = False
+    prefer_pair = bool(_PREFER_FOR_DELIVERY_RE.search(text)) and (
+        re.search(r"(?i)\bcheckbox\b", text)
+        or _DELIVERY_NOTES_FIELD_RE.search(text)
+        or re.search(r"(?i)\bprefer(?:red)?\s+for\s+delivery\s*\+", text)
+    )
+    if prefer_pair:
+        ast.fields.append(ConstraintField(label="Prefer for delivery", ttype="boolean"))
+        prefer_seen = True
+        if _DELIVERY_NOTES_FIELD_RE.search(text):
+            ast.fields.append(ConstraintField(label="Delivery notes", ttype="text"))
+    else:
+        for m in _LABEL_THEN_CHECKBOX_RE.finditer(text):
+            label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
+            label = _LEADING_ARTICLE_RE.sub("", label).strip()
+            if not label or label.lower() in {"add", "a", "an", "the", "new", "and", "or"}:
+                continue
+            # Skip if this was the trailing half of "checkbox and X" noise.
+            if label.lower().startswith("and "):
+                continue
             ast.fields.append(ConstraintField(label=label, ttype="boolean"))
+
+        for m in _CHECKBOX_FIELD_RE.finditer(text):
+            label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
+            # Guard: "checkbox and Delivery notes" is not a boolean label.
+            if not label or label.lower().startswith("and "):
+                continue
+            if prefer_seen and "prefer" in label.lower():
+                continue
+            ast.fields.append(ConstraintField(label=label, ttype="boolean"))
+
+        if _DELIVERY_NOTES_FIELD_RE.search(text) and not any(
+            "delivery notes" in (f.label or "").lower() for f in ast.fields
+        ):
+            # Delivery notes as companion text when Prefer cue present without "checkbox and".
+            if _PREFER_FOR_DELIVERY_RE.search(text):
+                ast.fields.append(ConstraintField(label="Delivery notes", ttype="text"))
 
     for m in _TYPED_TEXT_FIELD_RE.finditer(text):
         label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
@@ -614,6 +687,8 @@ def _parse_det_inherit(text: str, *, host: str | None) -> ConstraintAST:
     typed_or_check = any(f.ttype in {"boolean", "text"} for f in ast.fields)
     if not typed_or_check:
         for label in iter_add_field_labels(text):
+            if re.search(r"(?i)\b(?:filter|automat|activity|smart\s+button)\b", label):
+                continue
             ttype = _infer_ttype(label)
             bare = bool(re.search(r"(?i)\b(?:start|end)\s+date\b", label)) or ttype in {
                 "date",
@@ -624,7 +699,7 @@ def _parse_det_inherit(text: str, *, host: str | None) -> ConstraintAST:
             bare = bool(re.search(r"(?i)\b(?:start|end)\s+date\b", label))
             ast.fields.append(ConstraintField(label=label, ttype=ttype, bare=bare))
 
-    gm = _UNDER_GROUP_RE.search(text)
+    gm = _UNDER_GROUP_RE.search(text) or _UNDER_SECTION_RE.search(text)
     if gm:
         gtitle = _LEADING_ARTICLE_RE.sub("", gm.group(1).strip()).strip()
         if gtitle:
@@ -635,6 +710,16 @@ def _parse_det_inherit(text: str, *, host: str | None) -> ConstraintAST:
         if cond and len(cond) >= 8:
             ast.hints.append(f"Status hint when {cond}")
 
+    if _REUSE_FIELDS_RE.search(text):
+        ast.hints.append("Reuse existing fields")
+    if _AUTOMATION_HINT_RE.search(text):
+        ast.hints.append("Automation: activity when Prefer for delivery is checked")
+        if not prefer_seen and _PREFER_FOR_DELIVERY_RE.search(text):
+            # Ensure Prefer cue survives when fields already exist (no new checkbox invent).
+            if not any("prefer" in (f.label or "").lower() for f in ast.fields):
+                ast.hints.append("Prefer for delivery (existing)")
+    if _FILTER_HINT_RE.search(text):
+        ast.hints.append("Filter preferred-delivery partners on transfers")
     if _NO_NEW_APP_RE.search(text):
         if re.search(r"(?i)\binvent\b|\bparallel\b", text):
             host_bit = ""

@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/layout-primitives";
 import { DraftStudioStageRail } from "./DraftStudioStageRail";
 import type { DraftStudioJourneyState } from "@/lib/draft-studio-journey";
+import { BuildSpineBar } from "@/components/build/BuildSpineBar";
+import { useBuildSpineHandoff } from "@/lib/use-build-spine-handoff";
 
 type DraftStudioShellProps = {
   connectionId: string;
@@ -25,6 +27,7 @@ export function DraftStudioShell({
   onStartNew,
   children,
 }: DraftStudioShellProps) {
+  const handoff = useBuildSpineHandoff(connectionId);
   return (
     <div className="studio-refinement" data-testid="draft-studio">
       <div className={`studio-page${canvas ? " is-canvas" : ""}`}>
@@ -72,6 +75,14 @@ export function DraftStudioShell({
           }
         />
         <DraftStudioStageRail journey={journey} />
+        <div className="mb-4">
+          <BuildSpineBar
+            connectionId={connectionId}
+            activeMode="residual_app"
+            handoff={handoff}
+            compact
+          />
+        </div>
         {children}
       </div>
     </div>

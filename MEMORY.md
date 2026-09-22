@@ -1,8 +1,14 @@
+### 2026-09-22 — P2 Build spine closed (mode chips + handoff + rubric battery)
+**Decided:** One Build front door — App Studio / Draft Studio / Job Autopilot are modes, not rival homes. Mode chips: Prefer pack, Residual app, Option A, Stock Autopilot, Report layout, Connector (as applicable). Handoff IR (`build-spine-handoff` + `ai_build_spine.build_spine_payload`) carries brief + Diagnosis/Contract + `delivery_lane`/`artifact_kind`/`prove_status` without re-briefing. Capability-gap stamps always set `proposes_option_a_scaffold` + `option_a_path` when Live metadata cannot finish (even if LLM owns `custom_code_blocks`). Expert Overview + Intent Go stash into the spine. Prefer Must-do AST root-fixed (Prefer for delivery checkbox + Delivery notes; automation/filter/reuse hints). Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+**Why:** Operators bounced between App/Draft/Autopilot and re-pasted briefs; Prefer Must-do goldens were thin.
+**Rejected:** Parallel nav; claiming Online Python Autopilot; Prefer-reshaping residual full_app.
+**P2:** done. P3 continuous invent / P4 Atlas elite still out of scope.
+
 ### 2026-09-22 — P1 Job 1: FX / rate-provider sync CLASS closed
 **Decided:** Class-wide FX rate sync into stock `res.currency.rate` (parameterized USD/GBP/EUR or brief ISOs). CBN / Central Bank of Nigeria remains the earned gold shortcut (`currency_rate_cbn`) inside the class — not the only member. Generic HTTP/ECB/Open Exchange briefs → Option A authored scaffold (`ai_fx_rate_class.py`, marker `ingenium:fx_rate_provider_class`) on `res.company` + settings + cron. Online cannot promote Python → `external_connector` runbook IR + host stamps (`module_sh_or_self` vs `external_connector` vs online block copy). Never Prefer / Nigeria Autopilot `stock_reuse` alone for live HTTP fetch. Acceptance: writes_currency_rate, currencies_parameterized, no_x_fx_app, not_nigeria_autopilot_alone, gold_or_scaffold_present. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
 **Why:** Operators asked for CBN as exemplar; any-customization needs the whole rate-provider class under gates.
 **Rejected:** One-off CBN-only path as the whole product; inventing x_fx residual; Prefer/metadata-only as live HTTP done; Online Python Autopilot.
-**P1 Job1:** done. P2 Build spine chips still deferred.
+**P1 Job1:** done. P2 Build spine closed same tip.
 
 ### 2026-09-22 — P1 Job 2: sale markup % + WHT-on-markup CLASS closed
 **Decided:** Class-wide Option A on sale.order (not one client SOW). Deterministic CE-safe scaffold (`ai_markup_wht_class.py`): x_markup_percent + x_markup_amount + x_wht_on_markup / x_wht_rate; onchange price effect; tax_totals xpath; never purchase.order inherit; never account.tax.create. Acceptance checks: markup_present, wht_base_is_markup, purchase_untouched, no_tax_create (+ existing labeled/xpath/price_effect/fields). Online Prefer/Studio % field alone → `online_metadata_incomplete_interim` (module lane still required). Mutant briefs parameterized. Completeness ≠ Cert ≠ Autopilot. Promote stays human. Online Python promote blocked (.sh/self-host).

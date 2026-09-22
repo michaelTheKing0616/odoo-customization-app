@@ -4219,6 +4219,23 @@ listConfigRecipes: (id: string) =>
       method: "POST",
       body: JSON.stringify(body),
     }),
+  /** P2 Build spine — mode chips + handoff IR (brief + Diagnosis/Contract + stamps). */
+  buildSpineResolve: (
+    id: string,
+    body: {
+      prompt?: string;
+      understanding?: Record<string, unknown>;
+      contract?: Record<string, unknown>;
+      generation_ir?: Record<string, unknown>;
+    },
+  ) =>
+    request<import("@/lib/build-spine").BuildSpinePayload>(
+      `/api/connections/${id}/build-spine/resolve`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
   batchOsIntentRoute: (
     id: string,
     body: { prompt: string; limit?: number },

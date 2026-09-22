@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/layout-primitives";
 import { useShellOptional } from "@/context/ShellContext";
@@ -12,6 +11,7 @@ import {
   expertOverviewKicker,
   expertOverviewTitle,
 } from "@/lib/expert-journey";
+import { BuildSpineBar } from "@/components/build/BuildSpineBar";
 
 type ExpertOverviewCardProps = {
   connectionId: string;
@@ -66,22 +66,8 @@ export function ExpertOverviewCard({
           Open Expert
         </Button>
       </div>
-      <div className="job-handoff-bar mt-4">
-        <Button asChild variant="ghost" size="sm">
-          <Link href={`/connections/${connectionId}/wizard`}>Draft Studio</Link>
-        </Button>
-        <Button asChild variant="ghost" size="sm">
-          <Link href={`/connections/${connectionId}/designer`}>View Designer</Link>
-        </Button>
-        <Button asChild variant="ghost" size="sm">
-          <Link href={`/connections/${connectionId}/projects`}>Projects</Link>
-        </Button>
-        <Button asChild variant="ghost" size="sm">
-          <Link href={`/connections/${connectionId}/modulespec`}>ModuleSpec</Link>
-        </Button>
-        <Button asChild variant="ghost" size="sm">
-          <Link href={`/connections/${connectionId}/job`}>Job Autopilot</Link>
-        </Button>
+      <div className="mt-4">
+        <BuildSpineBar connectionId={connectionId} compact />
       </div>
     </Card>
   );

@@ -55,6 +55,10 @@ import {
   stashJobAutopilotBrief,
 } from "@/lib/job-brief-handoff";
 import {
+  handoffFromDraft,
+  stashBuildSpineHandoff,
+} from "@/lib/build-spine-handoff";
+import {
   busyLabelFromJobResult,
   draftFinisherComplete,
   generationEngineFromDraft,
@@ -226,6 +230,15 @@ export default function AppWizardPage() {
   function stashBriefForJobAutopilot() {
     const text = briefTextForJobAutopilot(aiDraft, nlPrompt);
     if (text) stashJobAutopilotBrief(connectionId, text);
+    const handoff = handoffFromDraft(
+      aiDraft && typeof aiDraft === "object"
+        ? (aiDraft as Record<string, unknown>)
+        : null,
+      nlPrompt,
+    );
+    if (handoff.brief || handoff.delivery_lane) {
+      stashBuildSpineHandoff(connectionId, handoff);
+    }
   }
   const certTierDisplay = displayedCertificationTier(aiDraft);
   const certShipReady =

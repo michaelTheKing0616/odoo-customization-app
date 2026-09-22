@@ -7,6 +7,8 @@ import {
   jobAutopilotHeaderDescription,
   type JobAutopilotJourneyState,
 } from "@/lib/job-autopilot-journey";
+import { BuildSpineBar } from "@/components/build/BuildSpineBar";
+import { useBuildSpineHandoff } from "@/lib/use-build-spine-handoff";
 
 type JobAutopilotShellProps = {
   connectionId: string;
@@ -23,6 +25,7 @@ export function JobAutopilotShell({
   journey,
   children,
 }: JobAutopilotShellProps) {
+  const handoff = useBuildSpineHandoff(connectionId);
   return (
     <div className="studio-refinement" data-testid="job-autopilot">
       <div className="studio-page">
@@ -47,6 +50,14 @@ export function JobAutopilotShell({
           }
         />
         <JobAutopilotStageRail journey={journey} />
+        <div className="mb-4">
+          <BuildSpineBar
+            connectionId={connectionId}
+            activeMode="stock_autopilot"
+            handoff={handoff}
+            compact
+          />
+        </div>
         <div className="space-y-6">{children}</div>
       </div>
     </div>

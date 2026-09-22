@@ -14,6 +14,7 @@ import { HealthCheckBanner } from "@/components/HealthCheckBanner";
 import { EePlaybooksPanel } from "@/components/EePlaybooksPanel";
 import { DomainPlaybooksPanel } from "@/components/DomainPlaybooksPanel";
 import { StudioFeatureRecipesPanel } from "@/components/StudioFeatureRecipesPanel";
+import { BuildSpineBar } from "@/components/build/BuildSpineBar";
 import {
   api,
   Connection,
@@ -681,7 +682,10 @@ export default function BrowserPage() {
           ))}
         </div>
 
-        <div className="mt-6 flex flex-wrap gap-2">
+        <div className="mt-6" data-testid="overview-build-spine">
+          <BuildSpineBar connectionId={connectionId} />
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
           <Button variant="primary" size="sm" asChild>
             <Link href={`/connections/${connectionId}/studio`} data-testid="overview-draft-with-ai">
               App Studio

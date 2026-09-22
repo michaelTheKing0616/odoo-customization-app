@@ -31,3 +31,25 @@ def expert_route_catalog(connection_id: str) -> dict[str, Any]:
 
     features = [f.to_dict() for f in load_features()]
     return {"count": len(features), "honesty": catalog_honesty(), "features": features}
+
+
+class BuildSpineBody(BaseModel):
+    prompt: str = Field("", max_length=8000)
+    understanding: dict[str, Any] | None = None
+    contract: dict[str, Any] | None = None
+    generation_ir: dict[str, Any] | None = None
+
+
+@router.post("/connections/{connection_id}/build-spine/resolve")
+def build_spine_resolve(connection_id: str, body: BuildSpineBody) -> dict[str, Any]:
+    """P2 Build spine — mode chips + handoff IR (brief + Diagnosis/Contract + stamps)."""
+    from app.ai_build_spine import build_spine_payload
+
+    return build_spine_payload(
+        prompt=body.prompt or "",
+        connection_id=connection_id,
+        understanding=body.understanding,
+        contract=body.contract,
+        generation_ir=body.generation_ir,
+    )
+

@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/Input";
 import { Card } from "@/components/ui/layout-primitives";
 import { Callout } from "@/components/ui/Callout";
 import { api, type IntentRouteMatch, type IntentRouteResult } from "@/lib/api";
+import { stashBuildSpineHandoff } from "@/lib/build-spine-handoff";
+import { resolveBuildModeLocal } from "@/lib/build-spine";
 
 type IntentRouterPanelProps = {
   connectionId: string;
@@ -20,8 +22,32 @@ const STARTERS = [
   "build a visitor log app",
 ];
 
-function MatchRow({ match }: { match: IntentRouteMatch }) {
+function MatchRow({
+  match,
+  connectionId,
+  prompt,
+}: {
+  match: IntentRouteMatch;
+  connectionId: string;
+  prompt: string;
+}) {
   const pct = Math.round((match.confidence || 0) * 100);
+  function onGo() {
+    const fid = String(match.feature_id || "");
+    const mode = fid.includes("designer")
+      ? resolveBuildModeLocal({ grain: "field_pack", artifact_kind: "field_pack" })
+      : fid.includes("job")
+        ? resolveBuildModeLocal({ capability: "stock_reuse" })
+        : resolveBuildModeLocal({ capability: "residual_app", grain: "full_app" });
+    if (prompt.trim()) {
+      stashBuildSpineHandoff(connectionId, {
+        version: 1,
+        brief: prompt.trim(),
+        prompt: prompt.trim(),
+        build_mode: mode,
+      });
+    }
+  }
   return (
     <li
       className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3 sm:flex-row sm:items-center sm:justify-between"
@@ -38,7 +64,9 @@ function MatchRow({ match }: { match: IntentRouteMatch }) {
         </p>
       </div>
       <Button asChild variant="primary" size="sm" data-testid="intent-route-go">
-        <Link href={match.deep_link}>Go</Link>
+        <Link href={match.deep_link} onClick={onGo}>
+          Go
+        </Link>
       </Button>
     </li>
   );
@@ -164,7 +192,7 @@ export function IntentRouterPanel({ connectionId }: IntentRouterPanelProps) {
               ) : null}
               <ul className="space-y-2" data-testid="intent-router-matches">
                 {matches.map((m) => (
-                  <MatchRow key={`${m.feature_id}-${m.deep_link}`} match={m} />
+                  <MatchRow key={`${m.feature_id}-${m.deep_link}`} match={m} connectionId={connectionId} prompt={prompt} />
                 ))}
               </ul>
               {result.honesty ? (

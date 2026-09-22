@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/layout-primitives";
 import { StudioStageRail } from "./StudioStageRail";
 import type { StudioJourneyState } from "@/lib/studio-journey";
+import { BuildSpineBar } from "@/components/build/BuildSpineBar";
+import { useBuildSpineHandoff } from "@/lib/use-build-spine-handoff";
 
 type StudioShellProps = {
   connectionId: string;
@@ -23,6 +25,7 @@ export function StudioShell({
   onStartNew,
   children,
 }: StudioShellProps) {
+  const handoff = useBuildSpineHandoff(connectionId);
   return (
     <div className="studio-refinement" data-testid="studio-page">
       <div className={`studio-page${canvas ? " is-canvas" : ""}`}>
@@ -53,6 +56,14 @@ export function StudioShell({
           }
         />
         <StudioStageRail journey={journey} />
+        <div className="mb-4">
+          <BuildSpineBar
+            connectionId={connectionId}
+            activeMode="option_a"
+            handoff={handoff}
+            compact
+          />
+        </div>
         {children}
       </div>
     </div>
