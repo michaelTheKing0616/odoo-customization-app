@@ -40,6 +40,9 @@ Never Prefer when Option A required; never Online Python promote.
 - [x] **P4 Config Atlas elite** — 2026-09-22  
   Closed last Atlas stub (`docs.orders` → `document_batch.orders` CSV→draft SO/PO). Expert/Intent → Atlas → recipe → Apply continuity with atlas_class/recipe/risk/delivery_lane handoff. Build spine Stock/Config deep-links Config Atlas / journal tabs. Multi-brief Atlas goldens + L3/preview honesty. Rubric battery green (`run_p4_atlas_elite_rubric_battery.sh`, AI_INTENT_LLM=off).
 
+- [x] **Arc3 invent families + Flash-on honor** — 2026-09-22  
+  Class-wide Selection invent gates expand beyond Type/Priority/Rate to **Severity**, **Channel**, and **Stage** (workflow State/Status ≠ Stage). Brief must cue them before they appear. Flash/LLM proposals may suggest invents; honor/apply + Flash AST scrub still drop uncued fields (closes P3 Flash-on gap). Goldens fail if Flash-on lets Severity/Channel/Stage/Type through without cues. `AI_INTENT_LLM=off` floor still green. Rubric `run_arc3_invent_families_rubric_battery.sh`.
+
 - [x] **P2 Build spine** — 2026-09-22  
   One Build entry with mode chips (Prefer / Residual / Option A / Stock Autopilot / Report / Connector). Handoff Draft↔App↔Autopilot carries brief + Diagnosis/Contract + delivery_lane stamps. Capability gaps always propose Option A scaffold when Live cannot finish. Expert routes into spine. Rubric battery green (184 no_app_db).
 
@@ -67,7 +70,7 @@ Release gates for Build spine — `AI_INTENT_LLM=off`, `apps/api/scripts/run_p2_
 |------|--------|
 | Prefer Sales / Prefer Contacts stay Prefer (never residual-reshape Prefer) | **pass** |
 | Residual full_app identity lock (never Prefer-reshape; no foreign pack canvas) | **pass** |
-| Invent gates: uncued Type/Priority/Rate/Selection; one cue→one field; notes surface | **pass** |
+| Invent gates: uncued Type/Priority/Rate/Severity/Channel/Stage; one cue→one field; notes | **pass** |
 | Pack adoption: positive product cues; shared workflow tokens ≠ pack identity | **pass** |
 | Grain + delivery_lane stamps Prefer / residual / Option A / report / FX | **pass** |
 | Online + Python Option A: promote blocked + honest alternatives | **pass** |
@@ -89,7 +92,7 @@ Release gates for continuous invent — `AI_INTENT_LLM=off`, `apps/api/scripts/r
 |------|--------|
 | Prefer Sales / Prefer Contacts stay Prefer (never residual-reshape Prefer) | **pass** |
 | Residual full_app identity lock (never Prefer-reshape; no foreign pack canvas) | **pass** |
-| Invent gates: uncued Type/Priority/Rate/Selection; one cue→one field; notes surface | **pass** |
+| Invent gates: uncued Type/Priority/Rate/Severity/Channel/Stage; one cue→one field; notes | **pass** |
 | Multi-brief goldens: Vehicle / Leave / Incident / Ticket / Visitor / Dining / Asset | **pass** |
 | Optional note label follows brief noun (Assignment Note vs Calendar Block Note) | **pass** |
 | Thin residual ≠ pack workspace party/line invent | **pass** |
@@ -113,7 +116,7 @@ Release gates for Config Atlas elite — `AI_INTENT_LLM=off`, `apps/api/scripts/
 |------|--------|
 | Prefer Sales / Prefer Contacts stay Prefer (never residual-reshape Prefer) | **pass** |
 | Residual full_app identity lock (never Prefer-reshape; no foreign pack canvas) | **pass** |
-| Invent gates: uncued Type/Priority/Rate/Selection; one cue→one field; notes surface | **pass** |
+| Invent gates: uncued Type/Priority/Rate/Severity/Channel/Stage; one cue→one field; notes | **pass** |
 | Invent/pack bleed; grain+delivery_lane; Online+Python honesty | **pass** |
 | Completeness ≠ Cert ≠ Autopilot | **pass** |
 | Job1–3 class goldens | **pass** |

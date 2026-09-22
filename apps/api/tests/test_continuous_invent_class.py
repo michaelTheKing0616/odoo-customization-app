@@ -15,11 +15,17 @@ os.environ["AI_INTENT_LLM"] = "off"
 pytestmark = pytest.mark.no_app_db
 
 from app.ai_brief_cues import (  # noqa: E402
+    brief_has_channel_cue,
     brief_has_priority_cue,
     brief_has_rate_cue,
+    brief_has_severity_cue,
+    brief_has_stage_cue,
     brief_has_type_cue,
     honor_stated_brief_cues,
+    scrub_uncued_invent_from_llm_ast,
+    scrub_uncued_invent_must_do_rows,
 )
+from app.ai_constraint_ast import ConstraintAST, ConstraintField  # noqa: E402
 from app.ai_continuous_invent import continuous_invent_stamp  # noqa: E402
 from app.ai_conversation.understand import build_understanding  # noqa: E402
 from app.ai_document_shape import (  # noqa: E402
@@ -261,8 +267,14 @@ def test_no_uncued_type_priority_rate(prompt: str) -> None:
         "uom",
         "unit",
         "vehicle type",
+        "severity",
+        "channel",
+        "stage",
     }
     assert not (sels & banned), sels
+    assert not brief_has_severity_cue(prompt)
+    assert not brief_has_channel_cue(prompt)
+    assert not brief_has_stage_cue(prompt)
 
 
 @pytest.mark.parametrize("prompt", [VEHICLE, LEAVE, ASSET])
@@ -332,3 +344,255 @@ def test_honor_drops_injected_uncued_priority_on_leave() -> None:
     names = {str(f.get("name")) for f in draft["models"][0]["fields"]}
     assert "x_priority" not in names
     assert "x_calendar_block_note" in names
+
+
+SEVERITY_CUE = (
+    "Build Incident Log: Name, Date, Severity (selection: Low / Medium / High / Critical), "
+    "and notes. Simple list + form. Menu under Employees."
+)
+CHANNEL_CUE = (
+    "Build Support Ticket: Name, Subject, Channel (selection: Email / Phone / Chat / Web), "
+    "Description. Simple list + form. Menu under Helpdesk."
+)
+STAGE_CUE = (
+    "Build Deal Tracker: Name, Amount, Stage (selection: New / Qualified / Won / Lost). "
+    "Simple list + form. Menu under CRM."
+)
+
+
+def test_honor_drops_uncued_severity_channel_stage_on_ticket() -> None:
+    """Class-wide invent family — Severity/Channel/Stage drop when uncued."""
+    draft = {
+        "display_name": "Support Ticket",
+        "_user_prompt": TICKET,
+        "models": [
+            {
+                "model": "x_support_ticket",
+                "mode": "new",
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "string": "Name"},
+                    {
+                        "name": "x_severity",
+                        "ttype": "selection",
+                        "string": "Severity",
+                        "selection": "[('low','Low'),('high','High')]",
+                        "source": "pack_default",
+                    },
+                    {
+                        "name": "x_channel",
+                        "ttype": "selection",
+                        "string": "Channel",
+                        "selection": "[('email','Email'),('phone','Phone')]",
+                        "source": "density",
+                    },
+                    {
+                        "name": "x_stage",
+                        "ttype": "selection",
+                        "string": "Stage",
+                        "selection": "[('new','New'),('won','Won')]",
+                        "source": "llm",
+                    },
+                    {
+                        "name": "x_description",
+                        "ttype": "text",
+                        "string": "Description",
+                    },
+                ],
+            }
+        ],
+    }
+    notes = honor_stated_brief_cues(draft, prompt=TICKET)
+    names = {str(f.get("name")) for f in draft["models"][0]["fields"]}
+    assert "x_severity" not in names
+    assert "x_channel" not in names
+    assert "x_stage" not in names
+    assert "x_description" in names
+    blob = " | ".join(notes).lower()
+    assert "severity" in blob and "channel" in blob and "stage" in blob
+
+
+def test_severity_cue_keeps_severity() -> None:
+    assert brief_has_severity_cue(SEVERITY_CUE)
+    draft = {
+        "display_name": "Incident Log",
+        "_user_prompt": SEVERITY_CUE,
+        "models": [
+            {
+                "model": "x_incident_log",
+                "mode": "new",
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "string": "Name"},
+                    {
+                        "name": "x_severity",
+                        "ttype": "selection",
+                        "string": "Severity",
+                        "selection": "[('low','Low'),('critical','Critical')]",
+                    },
+                ],
+            }
+        ],
+    }
+    honor_stated_brief_cues(draft, prompt=SEVERITY_CUE)
+    names = {str(f.get("name")) for f in draft["models"][0]["fields"]}
+    assert "x_severity" in names
+
+
+def test_channel_cue_keeps_channel() -> None:
+    assert brief_has_channel_cue(CHANNEL_CUE)
+    draft = {
+        "display_name": "Support Ticket",
+        "_user_prompt": CHANNEL_CUE,
+        "models": [
+            {
+                "model": "x_support_ticket",
+                "mode": "new",
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "string": "Name"},
+                    {
+                        "name": "x_channel",
+                        "ttype": "selection",
+                        "string": "Channel",
+                        "selection": "[('email','Email'),('phone','Phone')]",
+                    },
+                ],
+            }
+        ],
+    }
+    honor_stated_brief_cues(draft, prompt=CHANNEL_CUE)
+    assert "x_channel" in {str(f.get("name")) for f in draft["models"][0]["fields"]}
+
+
+def test_stage_cue_keeps_stage_not_confused_with_state() -> None:
+    assert brief_has_stage_cue(STAGE_CUE)
+    assert not brief_has_stage_cue(VEHICLE)  # by state ≠ Stage invent
+    draft = {
+        "display_name": "Deal Tracker",
+        "_user_prompt": STAGE_CUE,
+        "models": [
+            {
+                "model": "x_deal_tracker",
+                "mode": "new",
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "string": "Name"},
+                    {
+                        "name": "x_stage",
+                        "ttype": "selection",
+                        "string": "Stage",
+                        "selection": "[('new','New'),('won','Won')]",
+                    },
+                ],
+            }
+        ],
+    }
+    honor_stated_brief_cues(draft, prompt=STAGE_CUE)
+    assert "x_stage" in {str(f.get("name")) for f in draft["models"][0]["fields"]}
+
+
+def test_flash_on_honor_drops_uncued_invent_source_llm() -> None:
+    """Flash-on path: source=llm/flash still dropped when cues absent (P3 gap)."""
+    draft = {
+        "display_name": "Leave Request",
+        "_user_prompt": LEAVE,
+        "models": [
+            {
+                "model": "x_leave_request",
+                "mode": "new",
+                "fields": [
+                    {"name": "x_name", "ttype": "char", "string": "Name"},
+                    {
+                        "name": "x_type",
+                        "ttype": "selection",
+                        "string": "Type",
+                        "selection": "[('a','A'),('b','B')]",
+                        "source": "flash",
+                    },
+                    {
+                        "name": "x_severity",
+                        "ttype": "char",
+                        "string": "Severity",
+                        "source": "llm",
+                    },
+                    {
+                        "name": "x_channel",
+                        "ttype": "selection",
+                        "string": "Channel",
+                        "source": "enrich",
+                    },
+                    {
+                        "name": "x_stage",
+                        "ttype": "selection",
+                        "string": "Stage",
+                        "source": "proposal",
+                    },
+                    {
+                        "name": "x_calendar_block_note",
+                        "ttype": "text",
+                        "string": "Calendar Block Note",
+                    },
+                ],
+            }
+        ],
+    }
+    notes = honor_stated_brief_cues(draft, prompt=LEAVE)
+    names = {str(f.get("name")) for f in draft["models"][0]["fields"]}
+    assert "x_type" not in names
+    assert "x_severity" not in names
+    assert "x_channel" not in names
+    assert "x_stage" not in names
+    assert "x_calendar_block_note" in names
+    assert notes
+
+
+def test_flash_ast_scrub_drops_uncued_severity_channel_stage_type() -> None:
+    """Flash ConstraintAST invent fields scrubbed before Must-do merge."""
+    llm = ConstraintAST(
+        grain="full_app",
+        fields=[
+            ConstraintField(label="Name", ttype="char"),
+            ConstraintField(label="Severity", ttype="selection"),
+            ConstraintField(label="Channel", ttype="selection"),
+            ConstraintField(label="Stage", ttype="selection"),
+            ConstraintField(label="Type", ttype="selection"),
+            ConstraintField(label="Subject", ttype="char"),
+        ],
+        source="llm",
+    )
+    scrubbed = scrub_uncued_invent_from_llm_ast(llm, prompt=TICKET)
+    labels = {f.label.lower() for f in scrubbed.fields}
+    assert "severity" not in labels
+    assert "channel" not in labels
+    assert "stage" not in labels
+    assert "type" not in labels
+    assert "name" in labels and "subject" in labels
+
+    rows = scrub_uncued_invent_must_do_rows(
+        [
+            "Field: Name",
+            "Field: Severity",
+            "Selection field: Channel",
+            "Field: Stage",
+            "Field: Type",
+            "Field: Subject",
+        ],
+        prompt=TICKET,
+    )
+    joined = " | ".join(rows).lower()
+    assert "severity" not in joined
+    assert "channel" not in joined
+    assert "stage" not in joined
+    assert "type" not in joined
+    assert "name" in joined and "subject" in joined
+
+
+def test_flash_ast_keeps_cued_severity() -> None:
+    llm = ConstraintAST(
+        grain="full_app",
+        fields=[
+            ConstraintField(label="Name", ttype="char"),
+            ConstraintField(label="Severity", ttype="selection"),
+        ],
+        source="llm",
+    )
+    scrubbed = scrub_uncued_invent_from_llm_ast(llm, prompt=SEVERITY_CUE)
+    labels = {f.label.lower() for f in scrubbed.fields}
+    assert "severity" in labels

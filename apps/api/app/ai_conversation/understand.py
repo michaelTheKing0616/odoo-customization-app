@@ -1279,7 +1279,21 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
         )
         llm_ast = expert_gate_llm_ast(det_ast, llm_ast)
         if llm_ast is not None:
+            try:
+                from app.ai_brief_cues import scrub_uncued_invent_from_llm_ast
+
+                llm_ast = scrub_uncued_invent_from_llm_ast(llm_ast, prompt=prompt)
+            except Exception:  # noqa: BLE001
+                pass
             llm_constraints = _dedupe(ast_to_must_do(llm_ast) + llm_constraints)
+            try:
+                from app.ai_brief_cues import scrub_uncued_invent_must_do_rows
+
+                llm_constraints = scrub_uncued_invent_must_do_rows(
+                    llm_constraints, prompt=prompt
+                )
+            except Exception:  # noqa: BLE001
+                pass
     except Exception:  # noqa: BLE001
         pass
 
@@ -1328,7 +1342,23 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
                     parse_llm(repaired),
                 )
                 if repair_ast is not None:
+                    try:
+                        from app.ai_brief_cues import scrub_uncued_invent_from_llm_ast
+
+                        repair_ast = scrub_uncued_invent_from_llm_ast(
+                            repair_ast, prompt=prompt
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
                     repair_rows = _dedupe(ast_to_must_do(repair_ast) + repair_rows)
+                    try:
+                        from app.ai_brief_cues import scrub_uncued_invent_must_do_rows
+
+                        repair_rows = scrub_uncued_invent_must_do_rows(
+                            repair_rows, prompt=prompt
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
             except Exception:  # noqa: BLE001
                 pass
             if repair_rows:

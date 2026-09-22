@@ -17,8 +17,15 @@ without a clear brief cue.
 Same invent family for Rate/Unit/UOM Selection compounds (Rate Unit, UoM, …) —
 rental/pricing domain bleed must not land on a request doc with no pricing language.
 
+Same invent family for Severity / Channel / Stage Selection compounds — packs,
+density, and Flash/LLM proposals must not land them without a clear brief cue.
+Workflow State/Status (Draft→…→Done) is not Stage invent.
+
 Type gate covers compound labels («Vehicle Type», «Request Category», …) — not only
 bare Type/Category/Kind/Class.
+
+Flash-on: proposals may suggest invents; honor/apply gates still drop uncued
+fields (same floor as AI_INTENT_LLM=off).
 """
 
 from __future__ import annotations
@@ -123,6 +130,92 @@ _RATE_INVENT_STRING_RE = re.compile(
     r"(?i)^(?:[\w/&-]+\s+)*(?:rate\s*unit|rate\s*uom|rate\s*type|uom|"
     r"unit\s+of\s+measure|billing\s+unit)$"
     r"|^(?:rate\s*unit|unit|uom)$"
+)
+
+# Brief Severity cue — invent only when clearly asked (Type family).
+_SEVERITY_CUE_RE = re.compile(
+    r"(?i)\b("
+    r"severity\s*(?:selection|field|dropdown|column|level)?"
+    r"|severity\s+level"
+    r"|set\s+(?:a\s+)?severity"
+    r"|incident\s+severity"
+    r"|criticality"
+    r")\b"
+)
+
+# Brief Channel cue — support/intake channel, not payment/sales "channel partner".
+_CHANNEL_CUE_RE = re.compile(
+    r"(?i)\b("
+    r"channel\s*(?:selection|field|dropdown|column)?"
+    r"|support\s+channel"
+    r"|contact\s+channel"
+    r"|intake\s+channel"
+    r"|ticket\s+channel"
+    r"|via\s+(?:email|phone|chat|whatsapp|web\s*form)"
+    r")\b"
+)
+
+# Brief Stage cue — pipeline/kanban Stage invent (NOT workflow State/Status).
+_STAGE_CUE_RE = re.compile(
+    r"(?i)\b("
+    r"(?:pipeline\s+)?stage\s*(?:selection|field|dropdown|column)?"
+    r"|kanban\s+stage"
+    r"|crm\s+stage"
+    r"|deal\s+stage"
+    r"|ticket\s+stage"
+    r"|pipeline\s+stages?"
+    r")\b"
+)
+
+# Compound Severity invent family.
+_SEVERITY_INVENT_NAME_RE = re.compile(
+    r"(?i)^x_(?:\w+_)?severity$"
+    r"|^x_severity_\w+$"
+)
+_SEVERITY_INVENT_STRING_RE = re.compile(
+    r"(?i)^(?:[\w/&-]+\s+)*severity$"
+    r"|^severity$"
+)
+
+# Compound Channel invent family.
+_CHANNEL_INVENT_NAME_RE = re.compile(
+    r"(?i)^x_(?:\w+_)?channel$"
+    r"|^x_channel_\w+$"
+)
+_CHANNEL_INVENT_STRING_RE = re.compile(
+    r"(?i)^(?:[\w/&-]+\s+)*channel$"
+    r"|^channel$"
+)
+
+# Compound Stage invent family — never match State/Status workflow fields.
+_STAGE_INVENT_NAME_RE = re.compile(
+    r"(?i)^x_(?:\w+_)?stage$"
+    r"|^x_stage_\w+$"
+)
+_STAGE_INVENT_STRING_RE = re.compile(
+    r"(?i)^(?:[\w/&-]+\s+)*stage$"
+    r"|^stage$"
+)
+
+# Sources that densify/pad/Flash invent without an operator cue.
+_INVENT_DROP_SOURCES = frozenset(
+    {
+        "domain_briefing",
+        "density",
+        "pack_default",
+        "domain_density",
+        "pad",
+        "senior_shape",
+        "apply_readiness",
+        "llm",
+        "flash",
+        "enrich",
+        "ai",
+        "must_do",
+        "proposal",
+        "constraint_ast",
+        "",
+    }
 )
 
 
@@ -281,6 +374,21 @@ def brief_has_priority_cue(prompt: str) -> bool:
 def brief_has_rate_cue(prompt: str) -> bool:
     """True when the brief clearly asks for Rate/pricing/UOM Selection."""
     return bool(_RATE_CUE_RE.search(prompt or ""))
+
+
+def brief_has_severity_cue(prompt: str) -> bool:
+    """True when the brief clearly asks for Severity Selection."""
+    return bool(_SEVERITY_CUE_RE.search(prompt or ""))
+
+
+def brief_has_channel_cue(prompt: str) -> bool:
+    """True when the brief clearly asks for Channel Selection."""
+    return bool(_CHANNEL_CUE_RE.search(prompt or ""))
+
+
+def brief_has_stage_cue(prompt: str) -> bool:
+    """True when the brief clearly asks for Stage Selection (not State/Status)."""
+    return bool(_STAGE_CUE_RE.search(prompt or ""))
 
 
 def model_is_equipment_roster(mid: str) -> bool:
@@ -476,7 +584,11 @@ def should_skip_generic_notes_pad(
 
 
 def honor_stated_brief_cues(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
-    """Materialize stated states, stock menu parent, no-invent Type/Priority/Rate, one notes surface."""
+    """Materialize stated states, stock menu parent, no-invent Selection families, one notes surface.
+
+    Invent families: Type / Priority / Rate / Severity / Channel / Stage.
+    Flash-on proposals may suggest invents; this gate still drops uncued fields.
+    """
     notes: list[str] = []
     text = prompt or str(draft.get("_user_prompt") or "")
     if not text or not isinstance(draft, dict):
@@ -486,6 +598,9 @@ def honor_stated_brief_cues(draft: dict[str, Any], *, prompt: str = "") -> list[
     notes.extend(_drop_uncued_type_fields(draft, text))
     notes.extend(_drop_uncued_priority_fields(draft, text))
     notes.extend(_drop_uncued_rate_unit_fields(draft, text))
+    notes.extend(_drop_uncued_severity_fields(draft, text))
+    notes.extend(_drop_uncued_channel_fields(draft, text))
+    notes.extend(_drop_uncued_stage_fields(draft, text))
     notes.extend(dedupe_notes_surfaces(draft, prompt=text))
     return notes
 
@@ -888,16 +1003,105 @@ def _is_rate_invent_field(field: dict[str, Any]) -> bool:
     return False
 
 
-def _drop_uncued_type_fields(draft: dict[str, Any], text: str) -> list[str]:
+def _is_priority_invent_field(field: dict[str, Any]) -> bool:
+    """True for Priority/Urgency/Importance invent family."""
+    name = str(field.get("name") or "").strip()
+    string = str(field.get("string") or "").strip()
+    if name in {"x_priority", "x_urgency", "x_importance"}:
+        return True
+    if string.lower() in {"priority", "urgency", "importance"}:
+        return True
+    if re.match(r"(?i)^x_(?:\w+_)?(?:priority|urgency|importance)$", name):
+        return True
+    if string and re.match(
+        r"(?i)^(?:[\w/&-]+\s+)*(?:priority|urgency|importance)$",
+        string,
+    ):
+        return True
+    return False
+
+
+def _is_severity_invent_field(field: dict[str, Any]) -> bool:
+    """True for Severity invent family."""
+    name = str(field.get("name") or "").strip()
+    string = str(field.get("string") or "").strip()
+    if name in {"x_severity"}:
+        return True
+    if string.lower() in {"severity"}:
+        return True
+    if _SEVERITY_INVENT_NAME_RE.match(name):
+        return True
+    if string and _SEVERITY_INVENT_STRING_RE.match(string):
+        return True
+    return False
+
+
+def _is_channel_invent_field(field: dict[str, Any]) -> bool:
+    """True for Channel invent family."""
+    name = str(field.get("name") or "").strip()
+    string = str(field.get("string") or "").strip()
+    if name in {"x_channel"}:
+        return True
+    if string.lower() in {"channel"}:
+        return True
+    if _CHANNEL_INVENT_NAME_RE.match(name):
+        return True
+    if string and _CHANNEL_INVENT_STRING_RE.match(string):
+        return True
+    return False
+
+
+def _is_stage_invent_field(field: dict[str, Any]) -> bool:
+    """True for Stage invent — never State/Status workflow fields."""
+    name = str(field.get("name") or "").strip()
+    string = str(field.get("string") or "").strip()
+    low = string.lower()
+    if name in {"state", "x_state", "x_status", "status"} or low in {
+        "state",
+        "status",
+        "workflow state",
+        "workflow status",
+    }:
+        return False
+    if name in {"x_stage"}:
+        return True
+    if low in {"stage"}:
+        return True
+    if _STAGE_INVENT_NAME_RE.match(name):
+        return True
+    if string and _STAGE_INVENT_STRING_RE.match(string):
+        return True
+    return False
+
+
+def _should_drop_invent_field(field: dict[str, Any]) -> bool:
+    """Drop invent-family fields from density/pack/Flash/empty-source or Selection."""
+    source = str(field.get("source") or "")
+    if source in _INVENT_DROP_SOURCES:
+        return True
+    if str(field.get("ttype") or "") == "selection":
+        return True
+    return False
+
+
+def _drop_uncued_invent_family(
+    draft: dict[str, Any],
+    text: str,
+    *,
+    family: str,
+    has_cue,
+    is_invent,
+    skip_model=None,
+) -> list[str]:
+    """Shared dropper for Type/Priority/Rate/Severity/Channel/Stage invent families."""
     notes: list[str] = []
-    if brief_has_type_cue(text):
+    if has_cue(text):
         return notes
     for model in draft.get("models") or []:
         if not isinstance(model, dict):
             continue
         mid = str(model.get("model") or "")
-        # Roster equipment may keep Type only when the model truly is a roster.
-        if model_is_equipment_roster(mid):
+        if skip_model is not None and skip_model(mid, model):
             continue
         fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
         keep: list[dict[str, Any]] = []
@@ -905,130 +1109,198 @@ def _drop_uncued_type_fields(draft: dict[str, Any], text: str) -> list[str]:
         for field in fields:
             name = str(field.get("name") or "")
             string = str(field.get("string") or "").strip().lower()
-            source = str(field.get("source") or "")
-            is_type = _is_type_invent_field(field)
-            if is_type and (
-                source
-                in {
-                    "domain_briefing",
-                    "density",
-                    "pack_default",
-                    "domain_density",
-                    "pad",
-                    "senior_shape",
-                    "apply_readiness",
-                    "",
-                }
-                or str(field.get("ttype") or "") == "selection"
-            ):
+            if is_invent(field) and _should_drop_invent_field(field):
                 dropped.append(name or string)
                 continue
             keep.append(field)
         if dropped:
             model["fields"] = keep
             notes.append(
-                f"brief_cues: dropped unsolicited Type on {mid} "
-                f"({', '.join(dropped)}) — no Type cue in brief"
+                f"brief_cues: dropped unsolicited {family} on {mid} "
+                f"({', '.join(dropped)}) — no {family} cue in brief"
             )
     return notes
+
+
+def _drop_uncued_type_fields(draft: dict[str, Any], text: str) -> list[str]:
+    def _skip(mid: str, model: dict[str, Any]) -> bool:
+        return model_is_equipment_roster(mid)
+
+    return _drop_uncued_invent_family(
+        draft,
+        text,
+        family="Type",
+        has_cue=brief_has_type_cue,
+        is_invent=_is_type_invent_field,
+        skip_model=_skip,
+    )
 
 
 def _drop_uncued_priority_fields(draft: dict[str, Any], text: str) -> list[str]:
-    """Drop Priority/Urgency/Importance Selection when the brief has no such cue.
-
-    Same invent family as Type — packs/density/pads must not invent without a cue.
-    """
-    notes: list[str] = []
-    if brief_has_priority_cue(text):
-        return notes
-    for model in draft.get("models") or []:
-        if not isinstance(model, dict):
-            continue
-        mid = str(model.get("model") or "")
-        fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
-        keep: list[dict[str, Any]] = []
-        dropped: list[str] = []
-        for field in fields:
-            name = str(field.get("name") or "")
-            string = str(field.get("string") or "").strip().lower()
-            source = str(field.get("source") or "")
-            is_priority = (
-                name in {"x_priority", "x_urgency", "x_importance"}
-                or string in {"priority", "urgency", "importance"}
-                or bool(re.match(r"(?i)^x_(?:\w+_)?(?:priority|urgency|importance)$", name))
-                or bool(
-                    re.match(
-                        r"(?i)^(?:[\w/&-]+\s+)*(?:priority|urgency|importance)$",
-                        string,
-                    )
-                )
-            )
-            if is_priority and (
-                source in {"domain_briefing", "density", "pack_default", ""}
-                or str(field.get("ttype") or "") == "selection"
-            ):
-                dropped.append(name or string)
-                continue
-            keep.append(field)
-        if dropped:
-            model["fields"] = keep
-            notes.append(
-                f"brief_cues: dropped unsolicited Priority on {mid} "
-                f"({', '.join(dropped)}) — no Priority cue in brief"
-            )
-    return notes
+    """Drop Priority/Urgency/Importance when the brief has no such cue."""
+    return _drop_uncued_invent_family(
+        draft,
+        text,
+        family="Priority",
+        has_cue=brief_has_priority_cue,
+        is_invent=_is_priority_invent_field,
+    )
 
 
 def _drop_uncued_rate_unit_fields(draft: dict[str, Any], text: str) -> list[str]:
-    """Drop Rate Unit / UOM / Unit Selection when the brief has no pricing cue.
+    """Drop Rate Unit / UOM / Unit when the brief has no pricing cue."""
 
-    Same invent family as Type/Priority — rental/density/pads must not invent
-    Rate Unit on a vehicle request (or any residual) without rate/pricing language.
-    """
-    notes: list[str] = []
-    if brief_has_rate_cue(text):
-        return notes
-    for model in draft.get("models") or []:
-        if not isinstance(model, dict):
-            continue
-        mid = str(model.get("model") or "")
-        # Dedicated rate-card / tariff models may keep UOM when the model is a rate.
+    def _skip(mid: str, model: dict[str, Any]) -> bool:
         hay = mid.replace("x_", "").replace(".", "_").lower()
         if any(tok in hay for tok in ("rate", "tariff", "pricelist", "price_list")):
             if not any(tok in hay for tok in _DOCUMENT_MODEL_TOKENS):
-                continue
-        fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
-        keep: list[dict[str, Any]] = []
-        dropped: list[str] = []
-        for field in fields:
-            name = str(field.get("name") or "")
-            string = str(field.get("string") or "").strip().lower()
-            source = str(field.get("source") or "")
-            is_rate = _is_rate_invent_field(field)
-            if is_rate and (
-                source
-                in {
-                    "domain_briefing",
-                    "density",
-                    "pack_default",
-                    "domain_density",
-                    "pad",
-                    "senior_shape",
-                    "apply_readiness",
-                    "",
-                }
-                or str(field.get("ttype") or "") == "selection"
-            ):
-                dropped.append(name or string)
-                continue
-            keep.append(field)
-        if dropped:
-            model["fields"] = keep
-            notes.append(
-                f"brief_cues: dropped unsolicited Rate/Unit on {mid} "
-                f"({', '.join(dropped)}) — no Rate cue in brief"
-            )
-    return notes
+                return True
+        return False
+
+    return _drop_uncued_invent_family(
+        draft,
+        text,
+        family="Rate/Unit",
+        has_cue=brief_has_rate_cue,
+        is_invent=_is_rate_invent_field,
+        skip_model=_skip,
+    )
+
+
+def _drop_uncued_severity_fields(draft: dict[str, Any], text: str) -> list[str]:
+    return _drop_uncued_invent_family(
+        draft,
+        text,
+        family="Severity",
+        has_cue=brief_has_severity_cue,
+        is_invent=_is_severity_invent_field,
+    )
+
+
+def _drop_uncued_channel_fields(draft: dict[str, Any], text: str) -> list[str]:
+    return _drop_uncued_invent_family(
+        draft,
+        text,
+        family="Channel",
+        has_cue=brief_has_channel_cue,
+        is_invent=_is_channel_invent_field,
+    )
+
+
+def _drop_uncued_stage_fields(draft: dict[str, Any], text: str) -> list[str]:
+    return _drop_uncued_invent_family(
+        draft,
+        text,
+        family="Stage",
+        has_cue=brief_has_stage_cue,
+        is_invent=_is_stage_invent_field,
+    )
+
+
+_INVENT_LABEL_DROP_RES: tuple[tuple[str, object, object], ...] = (
+    (
+        "Type",
+        brief_has_type_cue,
+        re.compile(r"(?i)^(?:[\w/&-]+\s+)*(?:type|category|kind|class)$"),
+    ),
+    (
+        "Priority",
+        brief_has_priority_cue,
+        re.compile(r"(?i)^(?:[\w/&-]+\s+)*(?:priority|urgency|importance)$"),
+    ),
+    (
+        "Rate/Unit",
+        brief_has_rate_cue,
+        re.compile(
+            r"(?i)^(?:[\w/&-]+\s+)*(?:rate\s*unit|rate\s*uom|rate\s*type|uom|"
+            r"unit\s+of\s+measure|billing\s+unit|unit)$"
+        ),
+    ),
+    (
+        "Severity",
+        brief_has_severity_cue,
+        re.compile(r"(?i)^(?:[\w/&-]+\s+)*severity$"),
+    ),
+    (
+        "Channel",
+        brief_has_channel_cue,
+        re.compile(r"(?i)^(?:[\w/&-]+\s+)*channel$"),
+    ),
+    (
+        "Stage",
+        brief_has_stage_cue,
+        re.compile(r"(?i)^(?:[\w/&-]+\s+)*stage$"),
+    ),
+)
+
+
+def _label_is_uncued_invent(label: str, prompt: str) -> str | None:
+    """Return invent family name when label is uncued invent, else None."""
+    lab = re.sub(r"\s+", " ", (label or "").strip()).strip(" .:,-")
+    lab = re.sub(
+        r"(?i)^(field|selection(?:\s+field)?|text\s+field|add(?:\s+a|\s+an)?)\s*[:\-]?\s*",
+        "",
+        lab,
+    ).strip()
+    if not lab:
+        return None
+    low = lab.lower()
+    if low in {"state", "status", "workflow state", "workflow status"}:
+        return None
+    for family, has_cue, pat in _INVENT_LABEL_DROP_RES:
+        if has_cue(prompt):  # type: ignore[operator]
+            continue
+        if pat.match(lab):  # type: ignore[union-attr]
+            return family
+    return None
+
+
+def scrub_uncued_invent_must_do_rows(rows: list[str], *, prompt: str = "") -> list[str]:
+    """Drop Flash/LLM Must-do bullets that invent uncued Selection families.
+
+    Flash-on proposals may suggest invents; honor/apply still drops them.
+    """
+    if not rows:
+        return []
+    kept: list[str] = []
+    for row in rows:
+        s = str(row or "").strip()
+        if not s:
+            continue
+        m = re.match(
+            r"(?i)^(?:field|selection(?:\s+field)?|text\s+field|add(?:\s+a|\s+an)?)\s*[:\-]?\s*(.+)$",
+            s,
+        )
+        label = m.group(1).strip() if m else s
+        if _label_is_uncued_invent(label, prompt):
+            continue
+        kept.append(s)
+    return kept
+
+
+def scrub_uncued_invent_from_llm_ast(llm_ast: Any, *, prompt: str = "") -> Any:
+    """Strip uncued invent-family fields from a Flash/LLM ConstraintAST.
+
+    Returns the same object (mutated). Det floor is never passed here — only LLM fill.
+    """
+    if llm_ast is None:
+        return None
+    fields = list(getattr(llm_ast, "fields", None) or [])
+    if not fields:
+        return llm_ast
+    kept = []
+    for f in fields:
+        label = str(getattr(f, "label", "") or "")
+        if _label_is_uncued_invent(label, prompt):
+            continue
+        kept.append(f)
+    try:
+        llm_ast.fields = kept
+    except Exception:  # noqa: BLE001
+        return llm_ast
+    return llm_ast
+
+
 
 
 
@@ -1039,12 +1311,17 @@ __all__ = [
     "brief_has_type_cue",
     "brief_has_priority_cue",
     "brief_has_rate_cue",
+    "brief_has_severity_cue",
+    "brief_has_channel_cue",
+    "brief_has_stage_cue",
     "dedupe_notes_surfaces",
     "honor_stated_brief_cues",
     "is_bare_generic_notes_field",
     "is_named_notes_field",
     "model_has_notes_surface",
     "model_is_equipment_roster",
+    "scrub_uncued_invent_from_llm_ast",
+    "scrub_uncued_invent_must_do_rows",
     "selection_literal_from_keys",
     "should_skip_generic_notes_pad",
     "stated_menu_parent",

@@ -2,7 +2,7 @@
 
 Class-wide (not Vehicle-only). Any residual / Prefer brief must stay honest:
 
-1. Uncued Selection invent — never invent Type/Priority/Rate Unit/… without cues
+1. Uncued Selection invent — never invent Type/Priority/Rate/Severity/Channel/Stage without cues
 2. One cue → one field — no duplicate Notes/Assignment Note parallels
 3. Satellite ≠ primary — optional peers never steal canvas; no uncued party/line
 4. Pack bleed — packs only when prompt clearly asks (shape + adoption cues)
@@ -47,7 +47,7 @@ def assert_no_uncued_selection_invent(
     *,
     allowed_names: set[str] | None = None,
 ) -> list[str]:
-    """Return invent findings for Type/Priority/Rate Selection without cues."""
+    """Return invent findings for Type/Priority/Rate/Severity/Channel/Stage without cues."""
     allowed = allowed_names or set()
     findings: list[str] = []
     banned_exact = {
@@ -62,6 +62,25 @@ def assert_no_uncued_selection_invent(
         "x_rate_uom",
         "x_uom",
         "x_unit",
+        "x_severity",
+        "x_channel",
+        "x_stage",
+    }
+    banned_strings = {
+        "type",
+        "category",
+        "kind",
+        "class",
+        "priority",
+        "urgency",
+        "importance",
+        "rate unit",
+        "rate uom",
+        "uom",
+        "unit",
+        "severity",
+        "channel",
+        "stage",
     }
     for field in fields or []:
         if not isinstance(field, dict):
@@ -70,19 +89,7 @@ def assert_no_uncued_selection_invent(
         string = str(field.get("string") or "").strip().lower()
         if name in allowed or name in {a for a in allowed}:
             continue
-        if name in banned_exact or string in {
-            "type",
-            "category",
-            "kind",
-            "class",
-            "priority",
-            "urgency",
-            "importance",
-            "rate unit",
-            "rate uom",
-            "uom",
-            "unit",
-        }:
+        if name in banned_exact or string in banned_strings:
             if str(field.get("ttype") or "") == "selection" or not field.get("source"):
                 findings.append(f"uncued_selection:{name or string}")
     return findings
