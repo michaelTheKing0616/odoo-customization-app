@@ -127,3 +127,41 @@ describe("OdooChatterStub", () => {
     expect(screen.getByText(/Write a message/)).toBeTruthy();
   });
 });
+
+  it("renders one2many as embedded list columns (not Tag A/B)", () => {
+    const field: PreviewField = {
+      id: "x_checklist_line_ids",
+      name: "x_checklist_line_ids",
+      string: "Checklist lines",
+      ttype: "one2many",
+      relation: "x_demo_checklist_line",
+      relationColumns: [
+        { name: "x_name", string: "Checklist item", ttype: "char" },
+        { name: "x_done", string: "Done", ttype: "boolean" },
+      ],
+    };
+    render(<OdooField field={field} />);
+    const el = screen.getByTestId("odoo-widget-o2m-x_checklist_line_ids");
+    expect(el).toBeTruthy();
+    expect(el.textContent || "").toMatch(/Checklist item/);
+    expect(el.textContent || "").toMatch(/Done/);
+    expect(el.textContent || "").not.toMatch(/Tag A/);
+  });
+
+  it("renders parts used O2M with product + qty columns", () => {
+    const field: PreviewField = {
+      id: "x_parts_line_ids",
+      name: "x_parts_line_ids",
+      string: "Parts used",
+      ttype: "one2many",
+      relationColumns: [
+        { name: "x_product_id", string: "Product", ttype: "many2one" },
+        { name: "x_qty", string: "Quantity", ttype: "float" },
+      ],
+    };
+    render(<OdooField field={field} />);
+    const el = screen.getByTestId("odoo-widget-o2m-x_parts_line_ids");
+    expect(el.textContent || "").toMatch(/Product/);
+    expect(el.textContent || "").toMatch(/Quantity/);
+  });
+

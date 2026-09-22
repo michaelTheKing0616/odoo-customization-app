@@ -69,11 +69,55 @@ function WidgetBody({ field }: { field: PreviewField }) {
     );
   }
 
-  if (ttype === "many2many" || ttype === "one2many" || widget === "many2many_tags") {
+  if (widget === "many2many_tags" || (ttype === "many2many" && !field.relationColumns?.length)) {
     return (
       <span className="odoo-widget-tags" data-testid={`odoo-widget-tags-${field.name}`}>
         <span className="odoo-widget-tag">Tag A</span>
         <span className="odoo-widget-tag">Tag B</span>
+      </span>
+    );
+  }
+
+  if (ttype === "one2many" || ttype === "many2many") {
+    const cols =
+      field.relationColumns && field.relationColumns.length > 0
+        ? field.relationColumns
+        : [
+            { name: "x_name", string: "Line", ttype: "char" },
+            { name: "x_done", string: "Done", ttype: "boolean" },
+          ];
+    const sample = (col: { name: string; string: string; ttype?: string }) => {
+      const ct = (col.ttype || "char").toLowerCase();
+      const n = `${col.name} ${col.string}`.toLowerCase();
+      if (ct === "boolean" || /\bdone\b/.test(n)) return "☐";
+      if (ct === "many2one" || /product/.test(n)) return "Product";
+      if (ct === "float" || ct === "integer" || ct === "monetary" || /\bqty\b|quantity/.test(n))
+        return "1";
+      if (/checklist|item|label|line/.test(n)) return "Sample item";
+      return "Sample";
+    };
+    return (
+      <span
+        className="odoo-widget-o2m"
+        data-testid={`odoo-widget-o2m-${field.name}`}
+        data-relation={field.relation || ""}
+      >
+        <table className="odoo-widget-o2m-table">
+          <thead>
+            <tr>
+              {cols.map((col) => (
+                <th key={col.name}>{col.string || col.name}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              {cols.map((col) => (
+                <td key={col.name}>{sample(col)}</td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
       </span>
     );
   }

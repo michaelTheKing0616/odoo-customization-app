@@ -1162,6 +1162,139 @@ def ensure_cued_o2m_satellites(draft: dict[str, Any], *, prompt: str = "") -> li
     return notes
 
 
+_UNCUED_RESIDUAL_STOCK_SMART_LABELS = frozenset(
+    {
+        "quotations",
+        "quotation",
+        "invoices",
+        "invoice",
+        "meetings",
+        "meeting",
+        "leads",
+        "lead",
+        "tasks",
+        "task",
+        "projects",
+        "project",
+        "purchase orders",
+        "purchase order",
+        "timesheets",
+        "timesheet",
+        "payments",
+        "payment",
+        "expenses",
+        "expense",
+        "transfers",
+        "transfer",
+    }
+)
+
+
+def _prompt_cues_residual_stock_smart_button(
+    prompt: str, *, host: str, label: str
+) -> bool:
+    """True only when the brief clearly asks for this stock smart-button chrome.
+
+    Related Sales Order / Menus…calendar / Invoiced *state* alone are NOT cues.
+    Contacts→residual Nice-to-have craft is handled on the stock-host path.
+    """
+    text = prompt or ""
+    if not text.strip():
+        return False
+    lab = re.escape(str(label or "").strip())
+    host_leaf = re.escape(str(host or "").split(".")[-1])
+    if not lab:
+        return False
+    if re.search(
+        rf"(?i)\bsmart\s+buttons?\b[^.]{{0,80}}\b{lab}\b|\b{lab}\b[^.]{{0,80}}\bsmart\s+buttons?\b",
+        text,
+    ):
+        return True
+    if re.search(
+        rf"(?i)\b(button\s+box|stat\s+button|header\s+button)\b[^.]{{0,60}}\b{lab}\b",
+        text,
+    ):
+        return True
+    if re.search(
+        rf"(?i)\b(show|open|link)\b[^.]{{0,40}}\b{lab}\b[^.]{{0,40}}\b(button|count|smart)\b",
+        text,
+    ):
+        return True
+    if re.search(
+        rf"(?i)\b{lab}\b[^.]{{0,40}}\b(smart\s+button|button\s+box|stat\s+button)\b",
+        text,
+    ):
+        return True
+    # Explicit host navigation ("Meetings smart button on the form").
+    if host_leaf and re.search(
+        rf"(?i)\b{host_leaf}\b[^.]{{0,40}}\bsmart\s+button",
+        text,
+    ):
+        return True
+    return False
+
+
+def _is_residual_full_app_draft(draft: dict[str, Any]) -> bool:
+    try:
+        from app.ai_stock_host_smart_buttons import _is_residual_full_app
+
+        return bool(_is_residual_full_app(draft))
+    except Exception:  # noqa: BLE001
+        grain = str(draft.get("grain") or "").lower()
+        return grain in {"", "full_app"} and not draft.get("domain_pack")
+
+
+def scrub_uncued_residual_stock_smart_buttons(
+    draft: dict[str, Any], *, prompt: str = ""
+) -> list[str]:
+    """Drop invented Quotations/Invoices/Meetings smarts on residual forms (class-wide)."""
+    notes: list[str] = []
+    if not _is_residual_full_app_draft(draft):
+        return notes
+    text = prompt or str(draft.get("_user_prompt") or "")
+    try:
+        from app.ai_craft_smart_buttons import _confirmed_craft_list, is_craft_confirmed_button
+
+        confirmed = _confirmed_craft_list(draft)
+    except Exception:  # noqa: BLE001
+        confirmed = []
+    btns = draft.get("smart_buttons")
+    if not isinstance(btns, list) or not btns:
+        return notes
+    kept: list[Any] = []
+    dropped: list[str] = []
+    for b in btns:
+        if not isinstance(b, dict):
+            kept.append(b)
+            continue
+        on_model = str(b.get("on_model") or "")
+        rel = str(b.get("related_model") or "")
+        label = str(b.get("label") or "").strip()
+        # Residual → stock commercial host invent (Quotations / Meetings / …).
+        if (
+            on_model.startswith("x_")
+            and rel
+            and not rel.startswith("x_")
+            and label.lower() in _UNCUED_RESIDUAL_STOCK_SMART_LABELS
+        ):
+            if confirmed and is_craft_confirmed_button(b, confirmed):
+                kept.append(b)
+                continue
+            if _prompt_cues_residual_stock_smart_button(text, host=rel, label=label):
+                kept.append(b)
+                continue
+            dropped.append(label or rel)
+            continue
+        kept.append(b)
+    if dropped:
+        draft["smart_buttons"] = kept
+        notes.append(
+            "app_bar: dropped uncued residual stock smart button(s) "
+            + ", ".join(sorted(set(dropped)))
+        )
+    return notes
+
+
 def ensure_stock_inherit_bridges(draft: dict[str, Any]) -> list[str]:
     """Hang the residual FK on stock documents — senior Community inherit, not x_bill."""
     notes: list[str] = []
@@ -1191,10 +1324,18 @@ def ensure_stock_inherit_bridges(draft: dict[str, Any]) -> list[str]:
     }
 
     allowed = allowed_bridge_modules(draft)
+    residual_full = _is_residual_full_app_draft(draft)
+    prompt = str(draft.get("_user_prompt") or "")
     for module, host, btn_label in _STOCK_BRIDGE_HOSTS:
         if module not in allowed:
             continue
         if module not in depends and host not in reused:
+            continue
+        # Residual full_app: Related Sales Order / calendar menu ≠ invent Quotation/
+        # Meeting smart buttons (or reverse stock inherits) unless clearly cued.
+        if residual_full and not _prompt_cues_residual_stock_smart_button(
+            prompt, host=host, label=btn_label
+        ):
             continue
         row = by_id.get(host)
         if row is None:
@@ -1238,6 +1379,7 @@ def ensure_stock_inherit_bridges(draft: dict[str, Any]) -> list[str]:
             )
             existing_btns.add(key)
             notes.append(f"app_bar: smart button {residual} → {host}")
+    notes.extend(scrub_uncued_residual_stock_smart_buttons(draft, prompt=prompt))
     return notes
 
 
@@ -2339,6 +2481,40 @@ def ensure_job_header_children_fk(
     return notes
 
 
+def _line_collapse_role_bucket(mid: str) -> str:
+    """Distinct satellite roles never collapse into each other (class-wide).
+
+    ``x_*_checklist_line`` + ``x_*_parts_line`` are different notebooks — not the
+    same role as generic ``x_*_line`` / ``x_*_card_line`` alias pairs.
+    """
+    m = re.search(
+        r"_(checklist|parts?|materials?|labou?r|tasks?|items?|timesheets?|"
+        r"expenses?|services?)_line$",
+        mid,
+        flags=re.I,
+    )
+    if not m:
+        return "line"
+    role = m.group(1).lower()
+    if role in {"part", "parts"}:
+        return "parts"
+    if role in {"material", "materials"}:
+        return "parts"
+    if role.startswith("labou"):
+        return "labor"
+    if role.startswith("task"):
+        return "task"
+    if role.startswith("item"):
+        return "item"
+    if role.startswith("timesheet"):
+        return "time"
+    if role.startswith("expense"):
+        return "expense"
+    if role.startswith("service"):
+        return "service"
+    return role
+
+
 def _line_primary_parent(
     mid: str, model: dict[str, Any], by_id: dict[str, dict[str, Any]]
 ) -> str | None:
@@ -2379,20 +2555,25 @@ def _dedupe_o2ms_by_relation(model: dict[str, Any]) -> None:
 
 
 def collapse_duplicate_line_models(draft: dict[str, Any]) -> list[str]:
-    """One header keeps one `*_line` child — `x_rate_line` + `x_rate_card_line` is the same role."""
+    """Collapse same-role line aliases — never checklist↔parts (distinct satellites).
+
+    ``x_rate_line`` + ``x_rate_card_line`` share the generic ``line`` bucket and merge.
+    ``x_*_checklist_line`` and ``x_*_parts_line`` are different role buckets.
+    """
     notes: list[str] = []
     if draft.get("domain_pack"):
         return notes
     by_id = _models_index(draft)
-    groups: dict[str, list[str]] = {}
+    groups: dict[tuple[str, str], list[str]] = {}
     for mid, model in by_id.items():
         parent = _line_primary_parent(mid, model, by_id)
         if not parent:
             continue
-        groups.setdefault(parent, []).append(mid)
+        bucket = _line_collapse_role_bucket(mid)
+        groups.setdefault((parent, bucket), []).append(mid)
     from app.ai_domain_packs import _purge_draft_artifacts_for_models
 
-    for parent, lines in groups.items():
+    for (parent, _bucket), lines in groups.items():
         unique = sorted(set(lines))
         if len(unique) < 2:
             continue
@@ -4738,6 +4919,7 @@ def close_odoo_architecture(draft: dict[str, Any], *, user_prompt: str = "") -> 
     notes.extend(ensure_cued_o2m_satellites(draft))
     notes.extend(ensure_residual_satellites(draft))
     notes.extend(ensure_stock_inherit_bridges(draft))
+    notes.extend(scrub_uncued_residual_stock_smart_buttons(draft, prompt=prompt))
     notes.extend(drop_stock_inverse_o2ms(draft))
     notes.extend(repair_named_foreign_keys(draft))
     notes.extend(ensure_site_fk_on_operations(draft))
@@ -5307,6 +5489,7 @@ def run_odoo_app_bar_pass(draft: dict[str, Any], *, user_prompt: str = "") -> li
     notes.extend(ensure_cued_o2m_satellites(draft))
     notes.extend(ensure_residual_satellites(draft))
     notes.extend(ensure_stock_inherit_bridges(draft))
+    notes.extend(scrub_uncued_residual_stock_smart_buttons(draft, prompt=prompt))
     notes.extend(ensure_invoice_link_on_headers(draft))
     notes.extend(ensure_relational_smart_buttons(draft))
     notes.extend(drop_hollow_automations(draft))

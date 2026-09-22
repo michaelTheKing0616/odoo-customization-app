@@ -928,6 +928,29 @@ body {
   gap: 0.25rem;
 }
 
+.odoo-widget-o2m {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+}
+.odoo-widget-o2m-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+.odoo-widget-o2m-table th,
+.odoo-widget-o2m-table td {
+  border: 1px solid var(--odoo-border, #d8dadd);
+  padding: 0.25rem 0.5rem;
+  text-align: left;
+  white-space: nowrap;
+}
+.odoo-widget-o2m-table th {
+  background: var(--odoo-bg-subtle, #f8f9fa);
+  font-weight: 600;
+  color: var(--odoo-muted, #714b67);
+}
+
 .odoo-widget-tag {
   background: color-mix(in srgb, var(--odoo-canvas) 70%, var(--surface));
   border: 1px solid var(--odoo-border);

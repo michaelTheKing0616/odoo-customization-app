@@ -8,6 +8,10 @@ export type PreviewField = {
   widget?: string | null;
   required?: boolean;
   selection?: Array<{ value: string; label: string }> | null;
+  /** Child model for O2M/M2M */
+  relation?: string | null;
+  /** Embedded list columns (checklist item+done / parts product+qty) */
+  relationColumns?: Array<{ name: string; string: string; ttype?: string }> | null;
 };
 
 export type PreviewGroup = {

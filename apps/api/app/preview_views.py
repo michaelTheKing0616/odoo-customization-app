@@ -25,6 +25,9 @@ PreviewField = TypedDict(
         "widget": str | None,
         "required": bool,
         "selection": list[dict[str, str]] | None,
+        # Embedded O2M list columns (checklist label+done / parts product+qty).
+        "relation": str | None,
+        "relationColumns": list[dict[str, str]] | None,
     },
     total=False,
 )
@@ -238,7 +241,78 @@ def _coerce_preview_ttype(name: str, spec: dict[str, Any]) -> str:
     return ttype or "char"
 
 
-def _preview_field(name: str, field_map: dict[str, dict[str, Any]]) -> PreviewField:
+def _o2m_relation_columns(
+    spec: dict[str, Any],
+    models: dict[str, dict[str, Any]] | None,
+) -> list[dict[str, str]]:
+    """Column chrome for O2M preview — checklist item+done / parts product+qty."""
+    rel = str(spec.get("relation") or "")
+    child = (models or {}).get(rel) if rel else None
+    if not isinstance(child, dict):
+        return []
+    parent_m2os = {
+        str(f.get("name") or "")
+        for f in (child.get("fields") or [])
+        if isinstance(f, dict)
+        and str(f.get("ttype") or "") == "many2one"
+        and str(f.get("relation") or "").startswith("x_")
+    }
+    preferred = (
+        "x_name",
+        "x_done",
+        "x_product_id",
+        "x_qty",
+        "x_quantity",
+        "x_notes",
+        "x_hours",
+        "x_amount",
+    )
+    by_name = {
+        str(f.get("name") or ""): f
+        for f in (child.get("fields") or [])
+        if isinstance(f, dict) and f.get("name")
+    }
+    cols: list[dict[str, str]] = []
+    for pname in preferred:
+        f = by_name.get(pname)
+        if not f or pname in parent_m2os:
+            continue
+        cols.append(
+            {
+                "name": pname,
+                "string": str(f.get("string") or pname),
+                "ttype": str(f.get("ttype") or "char"),
+            }
+        )
+        if len(cols) >= 4:
+            break
+    if not cols:
+        for f in child.get("fields") or []:
+            if not isinstance(f, dict):
+                continue
+            fname = str(f.get("name") or "")
+            if not fname or fname in parent_m2os:
+                continue
+            if str(f.get("ttype") or "") in {"one2many", "many2many", "binary"}:
+                continue
+            cols.append(
+                {
+                    "name": fname,
+                    "string": str(f.get("string") or fname),
+                    "ttype": str(f.get("ttype") or "char"),
+                }
+            )
+            if len(cols) >= 3:
+                break
+    return cols
+
+
+def _preview_field(
+    name: str,
+    field_map: dict[str, dict[str, Any]],
+    *,
+    models: dict[str, dict[str, Any]] | None = None,
+) -> PreviewField:
     tech = _rewrite_ingenium_name(name)
     spec = field_map.get(name) or field_map.get(tech) or {}
     selection_raw = spec.get("selection")
@@ -259,7 +333,7 @@ def _preview_field(name: str, field_map: dict[str, dict[str, Any]]) -> PreviewFi
     widget = str(spec.get("widget")) if spec.get("widget") else None
     if ttype == "boolean" and widget and widget.lower() not in {"boolean", "boolean_toggle"}:
         widget = None
-    return {
+    out: PreviewField = {
         "id": tech,
         "name": tech,
         "string": _human_preview_string(tech, str(spec.get("string") or "")),
@@ -268,16 +342,24 @@ def _preview_field(name: str, field_map: dict[str, dict[str, Any]]) -> PreviewFi
         "required": bool(spec.get("required")),
         "selection": selection,
     }
+    if ttype in {"one2many", "many2many"}:
+        rel = str(spec.get("relation") or "") or None
+        cols = _o2m_relation_columns(spec, models)
+        out["relation"] = rel
+        out["relationColumns"] = cols or None
+    return out
 
 
 def _fields_from_nodes(
     nodes: list[ViewNode],
     field_map: dict[str, dict[str, Any]],
+    *,
+    models: dict[str, dict[str, Any]] | None = None,
 ) -> list[PreviewField]:
     out: list[PreviewField] = []
     for node in nodes:
         if isinstance(node, FieldNode) and node.name:
-            out.append(_preview_field(node.name, field_map))
+            out.append(_preview_field(node.name, field_map, models=models))
     return out
 
 
@@ -302,6 +384,7 @@ def _groups_from_nodes(
     field_map: dict[str, dict[str, Any]],
     *,
     prefix: str,
+    models: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[list[PreviewGroup], list[PreviewNotebook], Literal["stack", "two-column"]]:
     groups: list[PreviewGroup] = []
     notebooks: list[PreviewNotebook] = []
@@ -318,7 +401,7 @@ def _groups_from_nodes(
                     "id": gid,
                     "string": str(node.string or "Group"),
                     "columns": 2 if layout == "two-column" else 1,
-                    "fields": _fields_from_nodes(node.children, field_map),
+                    "fields": _fields_from_nodes(node.children, field_map, models=models),
                 }
             )
         elif isinstance(node, NotebookNode):
@@ -328,7 +411,7 @@ def _groups_from_nodes(
                     {
                         "id": f"{prefix}-nb-{idx}-page-{pidx}",
                         "string": str(page.string or f"Page {pidx + 1}"),
-                        "fields": _fields_from_nodes(page.children, field_map),
+                        "fields": _fields_from_nodes(page.children, field_map, models=models),
                     }
                 )
             notebooks.append({"id": f"{prefix}-notebook-{idx}", "pages": pages})
@@ -813,7 +896,10 @@ def build_form_preview(
         try:
             spec = parse_form_arch(arch)
             groups, notebooks, group_layout = _groups_from_nodes(
-                spec.children, field_map, prefix=mid.replace(".", "_")
+                spec.children,
+                field_map,
+                prefix=mid.replace(".", "_"),
+                models=models,
             )
             if not is_line:
                 statusbar = _statusbar_from_arch(
@@ -842,10 +928,20 @@ def build_form_preview(
 
     if not groups and not notebooks:
         fields = [
-            _preview_field(str(f.get("name") or ""), field_map)
+            _preview_field(str(f.get("name") or ""), field_map, models=models)
             for f in (row.get("fields") or [])
             if isinstance(f, dict) and f.get("name")
         ][:16]
+        scalars = [
+            f
+            for f in fields
+            if str(f.get("ttype") or "").lower() not in {"one2many", "many2many"}
+        ]
+        line_fields = [
+            f
+            for f in fields
+            if str(f.get("ttype") or "").lower() in {"one2many", "many2many"}
+        ]
         group_label = "Added on this form" if is_inherit else "Identity"
         points = draft.get("connect_points") if isinstance(draft.get("connect_points"), dict) else {}
         raw_label = (
@@ -864,15 +960,56 @@ def build_form_preview(
                 "id": "identity",
                 "string": group_label,
                 "columns": 1,
-                "fields": fields,
+                "fields": scalars,
             }
         ]
-        if not is_line and any(f["name"] == "x_status" for f in fields):
+        if line_fields and not is_inherit:
+            pages = []
+            for idx, lf in enumerate(line_fields):
+                pages.append(
+                    {
+                        "id": f"o2m-page-{idx}",
+                        "string": str(lf.get("string") or lf.get("name") or "Lines"),
+                        "fields": [lf],
+                    }
+                )
+            notebooks = [{"id": "o2m_notebook", "pages": pages}]
+        if not is_line and any(f["name"] == "x_status" for f in scalars):
             statusbar = _statusbar_from_arch(
                 statusbar_field="x_status",
                 statusbar_visible=None,
                 field_map=field_map,
             )
+
+    # Never leave one2many / satellite lines in Identity/header groups — notebook only.
+    if not is_inherit and not is_line and groups:
+        lifted_pages: list[PreviewNotebookPage] = []
+        for g in groups:
+            if not isinstance(g, dict):
+                continue
+            kept_fields = []
+            for f in g.get("fields") or []:
+                if not isinstance(f, dict):
+                    continue
+                if str(f.get("ttype") or "").lower() in {"one2many", "many2many"}:
+                    lifted_pages.append(
+                        {
+                            "id": f"lift-{f.get('name') or len(lifted_pages)}",
+                            "string": str(f.get("string") or f.get("name") or "Lines"),
+                            "fields": [f],
+                        }
+                    )
+                else:
+                    kept_fields.append(f)
+            g["fields"] = kept_fields
+        if lifted_pages:
+            if notebooks:
+                for nb in notebooks:
+                    if isinstance(nb, dict):
+                        nb.setdefault("pages", []).extend(lifted_pages)
+                        break
+            else:
+                notebooks = [{"id": "o2m_notebook", "pages": lifted_pages}]
 
     # Inherit host skeleton: show stock Contact chrome around new fields (S1).
     if is_inherit and mid == "res.partner" and (groups or notebooks):

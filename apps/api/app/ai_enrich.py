@@ -139,6 +139,8 @@ def _list_columns(fields: list[dict[str, Any]], *, limit: int = 8) -> list[str]:
 
 _PREFERRED_EMBEDDED_COLS = (
     "x_name",
+    "x_done",
+    "x_product_id",
     "x_date",
     "x_partner_id",
     "x_employee_id",
@@ -293,8 +295,8 @@ def _form_field_names(fields: list[dict[str, Any]]) -> tuple[list[str], list[str
         if ttype in {"one2many", "many2many"}:
             lines.append(name)
         elif name == "x_name" or ttype == "many2one":
-            if _is_related_stock_document_m2o(f):
-                continue
+            # Brief-cued Related Sales Order / similar stay on Identity — not only
+            # as invent smart buttons (Quotations). Strip path handles true doubles.
             identity.append(name)
         elif ttype == "binary" and not is_image_field(f):
             continue
@@ -574,13 +576,30 @@ def _xml_prune_empty_wrappers(root: ET.Element) -> None:
 
 
 def _xml_strip_related_stock_document_fields(
-    root: ET.Element, model: dict[str, Any]
+    root: ET.Element, model: dict[str, Any], *, draft: dict[str, Any] | None = None
 ) -> bool:
-    """Related stock documents stay on the model; header Identity is people/org FKs only."""
+    """Drop related stock M2Os from Identity only when a smart button already covers them.
+
+    Brief-cued Related Sales Order must remain a form field when Quotations was not
+    invented as button_box chrome.
+    """
+    covered_hosts: set[str] = set()
+    mid = str(model.get("model") or "")
+    if isinstance(draft, dict):
+        for b in draft.get("smart_buttons") or []:
+            if not isinstance(b, dict):
+                continue
+            if str(b.get("on_model") or "") != mid:
+                continue
+            rel = str(b.get("related_model") or "")
+            if rel and not rel.startswith("x_"):
+                covered_hosts.add(rel)
     drop = {
         str(f.get("name") or "")
         for f in _field_list(model)
-        if _is_related_stock_document_m2o(f) and f.get("name")
+        if _is_related_stock_document_m2o(f)
+        and f.get("name")
+        and str(f.get("relation") or "") in covered_hosts
     }
     if not drop:
         return False
@@ -703,7 +722,7 @@ def collapse_header_o2ms_into_notebook(draft: dict[str, Any]) -> list[str]:
                     continue
                 _xml_set_embedded_list(field_el, cols, list_root)
                 mutated = True
-        if _xml_strip_related_stock_document_fields(root, model):
+        if _xml_strip_related_stock_document_fields(root, model, draft=draft):
             mutated = True
         if mutated:
             view["arch"] = ET.tostring(root, encoding="unicode")
