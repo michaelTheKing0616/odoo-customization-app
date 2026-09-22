@@ -129,3 +129,27 @@ Release gates for Config Atlas elite — `AI_INTENT_LLM=off`, `apps/api/scripts/
 
 **Battery:** 275 pytest passed (`no_app_db`). Web: 7 vitest passed (build-spine + handoff + Atlas browser + OrderBatchPanel).
 
+
+## Arc3 invent families rubric matrix (2026-09-22)
+
+Release gates for invent families + Flash-on honor — `AI_INTENT_LLM=off` floor + additive Flash-on goldens. `apps/api/scripts/run_arc3_invent_families_rubric_battery.sh`.
+
+| Gate | Result |
+|------|--------|
+| Prefer Sales / Prefer Contacts stay Prefer | **pass** |
+| Residual full_app identity lock | **pass** |
+| Invent gates: uncued Type/Priority/Rate/**Severity/Channel/Stage**; one cue→one field; notes | **pass** |
+| Multi-brief goldens: uncued Severity/Channel/Stage never land; cued ones may | **pass** |
+| Flash-on + honor gate drops uncued invents (AST scrub + source=llm/flash) | **pass** |
+| Pack bleed; grain+delivery_lane; Online+Python honesty | **pass** |
+| Completeness ≠ Cert ≠ Autopilot | **pass** |
+| Job1–3 class goldens | **pass** |
+| Atlas elite continuity (P4 battery retained) | **pass** |
+| Flash-free / AI_INTENT_LLM=off deterministic floor | **pass** |
+
+**Battery:** 282 pytest passed (`no_app_db`). Web: 8 vitest. Mac HEAD `a94cefe` (32 continuous-invent tests green locally).
+
+### Arc3 remaining gaps (honest)
+- ConfigCommandCenter vitest still hits pre-existing jsdom/undici env error on tip box.
+- Packs that intentionally ship Severity (hospital/oil_gas) still rely on brief cues + honor drop when those packs bleed onto uncued residuals.
+- Live order-batch dry-run against Odoo 19 NGN sandbox was proven separately (My Company + Apple → draft-only dry-run OK).
