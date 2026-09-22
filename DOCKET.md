@@ -40,6 +40,9 @@ Never Prefer when Option A required; never Online Python promote.
 - [x] **P4 Config Atlas elite** — 2026-09-22  
   Closed last Atlas stub (`docs.orders` → `document_batch.orders` CSV→draft SO/PO). Expert/Intent → Atlas → recipe → Apply continuity with atlas_class/recipe/risk/delivery_lane handoff. Build spine Stock/Config deep-links Config Atlas / journal tabs. Multi-brief Atlas goldens + L3/preview honesty. Rubric battery green (`run_p4_atlas_elite_rubric_battery.sh`, AI_INTENT_LLM=off).
 
+- [x] **Prefer host lock + full_app business noun** — 2026-09-22  
+  Class-wide: Prefer/Extend Project Prefer-locks `project.project` (linked Sales Order never steals host); residual full_app Name/model from brief business noun — never Studio grain Full→x_full. Rubric `run_prefer_host_fullapp_noun_rubric_battery.sh`.
+
 - [x] **Arc3 invent families + Flash-on honor** — 2026-09-22  
   Class-wide Selection invent gates expand beyond Type/Priority/Rate to **Severity**, **Channel**, and **Stage** (workflow State/Status ≠ Stage). Brief must cue them before they appear. Flash/LLM proposals may suggest invents; honor/apply + Flash AST scrub still drop uncued fields (closes P3 Flash-on gap). Goldens fail if Flash-on lets Severity/Channel/Stage/Type through without cues. `AI_INTENT_LLM=off` floor still green. Rubric `run_arc3_invent_families_rubric_battery.sh`.
 
@@ -129,6 +132,13 @@ Release gates for Config Atlas elite — `AI_INTENT_LLM=off`, `apps/api/scripts/
 
 **Battery:** 275 pytest passed (`no_app_db`). Web: 7 vitest passed (build-spine + handoff + Atlas browser + OrderBatchPanel).
 
+### P4 remaining gaps (honest)
+- Live Odoo order-batch dry-run/apply not exercised on this tip (mock public-RPC FakeClient only — same pattern as invoice/journal batch unit gates).
+- Journal/CoA Atlas intents remain `recipe: null` catalog pointers (status complete by design — not stubs).
+- ConfigCommandCenter vitest hit a pre-existing jsdom/undici env error on this box; Atlas browser + OrderBatchPanel + spine handoff vitest green.
+
+**Tip SHAs:** feat `0b9f9bd` · APPLY `35c9fb8`. Mac APPLY: `/workspace/odoo-mac-tip/APPLY_ATLAS_ELITE_P4_ON_MAC.sh` with patch `0001-feat-ingenium-atlas-elite-p4.patch`.
+
 
 ## Arc3 invent families rubric matrix (2026-09-22)
 
@@ -147,9 +157,38 @@ Release gates for invent families + Flash-on honor — `AI_INTENT_LLM=off` floor
 | Atlas elite continuity (P4 battery retained) | **pass** |
 | Flash-free / AI_INTENT_LLM=off deterministic floor | **pass** |
 
-**Battery:** 282 pytest passed (`no_app_db`). Web: 8 vitest. Mac HEAD `a94cefe` (32 continuous-invent tests green locally).
+**Battery:** 282 pytest passed (`no_app_db`). Web: 8 vitest passed (build-spine + handoff + Atlas browser + OrderBatchPanel).
+
+**Tip SHAs:** feat `f47bd33` · APPLY `4bf0ae5`. Mac APPLY: `/workspace/odoo-mac-tip/APPLY_INVENT_FAMILIES_ARC3_ON_MAC.sh` with patch `0001-feat-ingenium-invent-families-arc3.patch` (also `/workspace/0001-feat-ingenium-invent-families-arc3.patch`).
 
 ### Arc3 remaining gaps (honest)
-- ConfigCommandCenter vitest still hits pre-existing jsdom/undici env error on tip box.
+- Live Odoo order-batch dry-run/apply still mock-only (unchanged from P4).
+- ConfigCommandCenter vitest still hits pre-existing jsdom/undici env error on this box.
 - Packs that intentionally ship Severity (hospital/oil_gas) still rely on brief cues + honor drop when those packs bleed onto uncued residuals.
-- Live order-batch dry-run against Odoo 19 NGN sandbox was proven separately (My Company + Apple → draft-only dry-run OK).
+
+## Prefer host + full_app noun rubric matrix (2026-09-22)
+
+Release gates for Prefer host lock + residual business-noun naming — `AI_INTENT_LLM=off`, `apps/api/scripts/run_prefer_host_fullapp_noun_rubric_battery.sh` (+ Arc3 battery extended; web vitest spine retained).
+
+| Gate | Result |
+|------|--------|
+| Prefer Project Commercial Extend Prefer-locks `project.project` (NOT sale.order) | **pass** |
+| Linked/related Sales Order asides never steal Prefer host | **pass** |
+| Prefer Sales Customer PO + delivery window still Prefer sale.order | **pass** |
+| Residual full_app Name/model from business noun — never Full/x_full grain words | **pass** |
+| Field work orders Full-app → Field Work Orders / x_field_work_orders; Priority kept when cued | **pass** |
+| Checklist/parts → honest O2M satellite stamps (not flat Product/Quantity Identity) | **pass** |
+| Vehicle Request residual + invent families (Type/Priority/Rate/Severity/Channel/Stage) + Flash-on honor | **pass** |
+| Pack bleed; grain+delivery_lane; Online+Python honesty; Job1–3 | **pass** |
+| Completeness ≠ Cert ≠ Autopilot | **pass** |
+| Flash-free / AI_INTENT_LLM=off deterministic floor | **pass** |
+
+**Battery:** 289 pytest passed (`no_app_db`). Web: 7 vitest passed (build-spine + handoff + Atlas browser + OrderBatchPanel).
+
+**Tip SHAs:** feat `48679dc` (Mac; tip `6f87d41`) · APPLY via git am on Mac tip. Mac APPLY: `/workspace/odoo-mac-tip/APPLY_PREFER_HOST_FULLAPP_NOUN_ON_MAC.sh` with patch `0001-feat-ingenium-prefer-host-fullapp-noun.patch` (also `/workspace/0001-feat-ingenium-prefer-host-fullapp-noun.patch`).
+
+### Prefer-host / full_app-noun remaining gaps (honest)
+- Live Odoo order-batch dry-run/apply still mock-only (unchanged from P4/Arc3).
+- ConfigCommandCenter vitest still hits pre-existing jsdom/undici env error on this box.
+- Project Prefer `classify_generation.capability` may still say `residual_app` while grain/inherit correctly Prefer-lock (honesty copy says inherit-and-wire); tile suppressed via inherit + out_of_scope.
+- Field work O2M satellites are Must-do/structural stamps — full IR line models still rely on residual recovery when Generate expands.
