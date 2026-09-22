@@ -42,10 +42,9 @@ def is_sales_markup_prompt(prompt: str) -> bool:
 
 def is_report_layout_scrub_prompt(prompt: str) -> bool:
     """Document/report address scrub CLASS — not Contacts Prefer delivery-notes."""
-    text = prompt or ""
-    if _PREFER_CONTACTS_RE.search(text):
-        return False
-    return bool(_REPORT_SCRUB_RE.search(text))
+    from app.ai_report_layout_scrub import is_report_layout_scrub_brief
+
+    return is_report_layout_scrub_brief(prompt)
 
 
 def report_layout_online_checklist(*, prompt: str = "", host_model: str = "") -> dict[str, Any]:
@@ -102,18 +101,26 @@ def acceptance_for_draft(draft: dict[str, Any], *, prompt: str = "") -> dict[str
             ],
         }
     if is_report_layout_scrub_prompt(text):
-        scrub_host = host or "stock.picking"
-        if re.search(r"(?i)\binvoice\b", text):
-            scrub_host = host or "account.move"
-        elif re.search(r"(?i)\b(?:sale|quotation)\b", text):
-            scrub_host = host or "sale.order"
+        from app.ai_report_layout_scrub import (
+            REPORT_SCRUB_TARGETS,
+            report_scrub_host_from_prompt,
+            targets_for_host,
+        )
+
+        scrub_host = host if host in REPORT_SCRUB_TARGETS else report_scrub_host_from_prompt(text)
+        # Prefer draft inherit when it is a commercial document host.
+        if host in REPORT_SCRUB_TARGETS:
+            scrub_host = host
+        report_ids = [t["inherit_id"] for t in targets_for_host(scrub_host, prompt=text)]
         return {
             "intent_id": "report_layout_address_scrub",
             "host_model": scrub_host,
-            "parameterized_reports": [
+            "parameterized_reports": report_ids
+            or [
                 "stock.report_deliveryslip",
                 "stock.report_picking",
                 "account.report_invoice_document",
+                "sale.report_saleorder_document",
             ],
             "checks": [
                 {"id": "qweb_inherit_present", "required": True},
@@ -124,6 +131,8 @@ def acceptance_for_draft(draft: dict[str, Any], *, prompt: str = "") -> dict[str
             "fixtures": {
                 "brief_class": "report_layout_scrub",
                 "must_not_route": "contacts_prefer_delivery_notes",
+                "host_model": scrub_host,
+                "report_xmlids": report_ids,
             },
         }
     checks: list[dict[str, Any]] = [
@@ -404,7 +413,31 @@ def _run_one_check(
         return _check_fields_present(execute_kw, host, authored, hint)
     if cid == "form_loads":
         return _check_form_loads(execute_kw, host, hint)
+    if cid in {
+        "qweb_inherit_present",
+        "partner_name_scrubbed",
+        "address_block_preserved",
+        "not_contacts_prefer",
+    }:
+        return _check_report_layout_scrub(cid, draft=draft, hint=hint)
     return {"id": cid, "ok": True, "detail": "unknown check skipped", "repair_hint": hint}
+
+
+def _check_report_layout_scrub(
+    cid: str,
+    *,
+    draft: dict[str, Any],
+    hint: str,
+) -> dict[str, Any]:
+    from app.ai_report_layout_scrub import static_scrub_findings
+
+    findings = static_scrub_findings(
+        draft, prompt=str(draft.get("_user_prompt") or "")
+    )
+    key = cid
+    ok = bool(findings.get(key))
+    detail = "ok" if ok else f"failed — host={findings.get('host_model')} inherits={findings.get('inherit_ids')}"
+    return {"id": cid, "ok": ok, "detail": detail, "repair_hint": hint, "findings": findings}
 
 
 def _check_field_labeled(

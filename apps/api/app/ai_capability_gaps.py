@@ -296,13 +296,19 @@ _GAP_SPECS: tuple[tuple[str, re.Pattern[str], str, str, str, tuple[dict[str, Any
     (
         "qweb_inherit",
         re.compile(
-            r"\b(delivery\s+(?:note|slip)|shipping\s+address|"
-            r"inherit\s+(?:the\s+)?(?:report|qweb)|remove.{0,40}from\s+the\s+(?:pdf|note|slip))\b",
+            r"\b("
+            r"delivery\s+(?:note|slip)|shipping\s+address|address\s+block|"
+            r"invoice\s+address|picking\s+(?:report|operations)|"
+            r"inherit\s+(?:the\s+)?(?:report|qweb)|"
+            r"remove.{0,100}(?:customer|partner|commercial)?\s*name|"
+            r"(?:customer|partner|commercial)\s+name.{0,60}(?:removed|strip|scrub)|"
+            r"remove.{0,80}from\s+the\s+(?:pdf|note|slip|report|address)"
+            r")\b",
             re.I,
         ),
         "QWeb report inherit",
         "Changing stock PDF/QWeb layout is an installable inherit — not View Designer.",
-        "report/<host>_inherit.xml (Option A)",
+        "report/<host>_address_scrub.xml (Option A)",
         (),
     ),
 )

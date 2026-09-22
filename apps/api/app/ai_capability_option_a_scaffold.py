@@ -484,6 +484,56 @@ def scaffold_blocks_for_gaps(
                 deps.append(dep)
             draft["depends"] = deps
 
+    if "qweb_inherit" in gap_ids and not (gap_ids & _REPORTISH):
+        from app.ai_report_layout_scrub import scaffold_address_scrub_blocks
+
+        scrub_blocks = scaffold_address_scrub_blocks(
+            draft, prompt=str(draft.get("_user_prompt") or "")
+        )
+        if scrub_blocks:
+            blocks.extend(scrub_blocks)
+        else:
+            report_path = f"report/{slug}_qweb_inherit.xml"
+            inherit_id = _HOST_REPORT_INHERIT.get(host, "")
+            xml_id = f"report_{slug}_qweb_inherit"
+            if inherit_id:
+                body = (
+                    '<?xml version="1.0" encoding="utf-8"?>\n'
+                    "<odoo>\n"
+                    f'    <template id="{xml_id}" inherit_id="{inherit_id}">\n'
+                    '        <xpath expr="//div[contains(@class,\'page\')]" position="inside">\n'
+                    "            <!-- Option A QWeb inherit placeholder -->\n"
+                    "        </xpath>\n"
+                    "    </template>\n"
+                    "</odoo>\n"
+                )
+            else:
+                body = (
+                    '<?xml version="1.0" encoding="utf-8"?>\n'
+                    "<odoo>\n"
+                    f'    <template id="{xml_id}"/>\n'
+                    "</odoo>\n"
+                )
+            blocks.append(
+                {
+                    "source_file": report_path,
+                    "path": report_path,
+                    "kind": "qweb",
+                    "filename": report_path.split("/")[-1],
+                    "model": host,
+                    "reason": "QWeb report inherit skeleton (Option A)",
+                    "source": "capability_gap_scaffold",
+                    "option_a": True,
+                    "content": body,
+                }
+            )
+            dep = _HOST_MODULE.get(host)
+            if dep:
+                deps = list(draft.get("depends") or ["base"])
+                if dep not in deps:
+                    deps.append(dep)
+                draft["depends"] = deps
+
     if "website_controller" in gap_ids:
         path = "controllers/document_extras_portal.py"
         blocks.append(

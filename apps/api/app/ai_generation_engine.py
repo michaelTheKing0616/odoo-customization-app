@@ -131,6 +131,14 @@ _AUTHORED_GAP_IDS = frozenset(
 
 
 def _invoice_qweb_gold(prompt: str, gap_ids: set[str]) -> bool:
+    # Address scrub CLASS is authored QWeb inherit — not Pay/QR invoice gold.
+    try:
+        from app.ai_report_layout_scrub import is_report_layout_scrub_brief
+
+        if is_report_layout_scrub_brief(prompt or ""):
+            return False
+    except Exception:  # noqa: BLE001
+        pass
     if gap_ids & {"qr_on_document", "click_to_pay"}:
         return True
     if "pdf_report" in gap_ids and re.search(r"(?i)\binvoices?\b", prompt or ""):
@@ -201,6 +209,26 @@ def classify_generation(prompt: str) -> GenerationPlan:
                 "No x_* FX app. Module → sandbox → Promote."
             ),
             notes=["gold: currency_rate_cbn"],
+        )
+
+    try:
+        from app.ai_report_layout_scrub import is_report_layout_scrub_brief
+    except Exception:  # noqa: BLE001
+        is_report_layout_scrub_brief = lambda _p: False  # type: ignore[misc, assignment]
+
+    if is_report_layout_scrub_brief(text):
+        return GenerationPlan(
+            capability="option_a_authored",
+            grain="full_app",
+            module_delivery=True,
+            needs_clarification=clarify,
+            honesty=(
+                "Report/document layout address scrub CLASS — Option A QWeb inherit "
+                "on stock delivery slip / picking / invoice / sale reports. "
+                "Strip commercial partner name; keep address. Not Contacts Prefer "
+                "delivery-notes. Module → sandbox prove → human Promote."
+            ),
+            notes=["option_a_authored: report_layout_address_scrub"],
         )
 
     if wants_stock_reuse(text):

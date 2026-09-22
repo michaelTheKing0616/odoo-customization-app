@@ -43,6 +43,18 @@ _AUTHOR_SYSTEM = (
     "Close every string. Prefer at most 6 short files."
 )
 
+_SCRUB_SHAPE_HINT = (
+    "\n\nCE-safe shape for report address scrub CLASS (follow this pattern):\n"
+    "- report/*_address_scrub.xml: inherit stock report xmlids "
+    "(stock.report_deliveryslip / stock.report_picking / "
+    "account.report_invoice_document / sale.report_saleorder_document).\n"
+    "- Drop commercial partner name via contact widget fields "
+    "[\"address\", \"phone\"] (no \"name\") and/or replace t-field=*.name nodes.\n"
+    "- Keep address block (street/city). Never invent Contacts Prefer fields.\n"
+    "- Comment marker ingenium:partner_name_scrubbed required for prove.\n"
+    "- depends: stock|account|sale as appropriate. No res.partner field pack.\n"
+)
+
 _MARKUP_SHAPE_HINT = (
     "\n\nCE-safe shape for sales markup (follow this pattern, still author full files):\n"
     "- models/sale_order_markup.py: class SaleOrder(_inherit='sale.order') with "
@@ -94,8 +106,12 @@ def _authored_display_name(prompt: str, host: str | None) -> str:
     text = prompt or ""
     if re.search(r"(?i)mark-?up", text):
         return f"{label or 'Sales'} markup"[:80]
-    if re.search(r"(?i)delivery\s+(?:note|slip)|shipping\s+address", text):
+    if re.search(r"(?i)delivery\s+(?:note|slip)|shipping\s+address|picking\s+operations", text):
         return "Delivery slip layout"
+    if re.search(r"(?i)invoice\s+address|invoice\s+PDF|invoice\s+report", text):
+        return "Invoice address layout"
+    if re.search(r"(?i)sale\s+order\s+PDF|quotation\s+document", text):
+        return "Quotation address layout"
     if re.search(r"(?i)withh?olding|\bwht\b", text):
         return f"{label or 'Sales'} withholding"[:80]
     first = re.split(r"[.!\n]", text.strip())[0].strip()
@@ -157,11 +173,34 @@ def seed_option_a_authored(prompt: str, plan: Any) -> dict[str, Any]:
     attach_generation_engine(draft, prompt, user_phase="codegen")
     ir = draft.get("_generation_engine")
     if isinstance(ir, dict) and plan is not None:
-        for key, val in plan_to_ir(plan, user_phase="codegen").items():
+        for key, val in plan_to_ir(plan, user_phase="codegen", prompt=prompt).items():
             ir[key] = val
         ir["capability"] = "option_a_authored"
         ir["module_delivery"] = True
         ir["gold_artifact_id"] = None
+
+    from app.ai_report_layout_scrub import (
+        is_report_layout_scrub_brief,
+        report_scrub_host_from_prompt,
+        scaffold_address_scrub_blocks,
+    )
+
+    if is_report_layout_scrub_brief(prompt):
+        scrub_host = report_scrub_host_from_prompt(prompt)
+        draft["models"] = [{"model": scrub_host, "mode": "inherit", "fields": []}]
+        draft["depends"] = [module_for_model(scrub_host)]
+        draft["display_name"] = _authored_display_name(prompt, scrub_host)
+        scrub_blocks = scaffold_address_scrub_blocks(
+            draft, prompt=prompt, host=scrub_host
+        )
+        if scrub_blocks:
+            draft["custom_code_blocks"] = scrub_blocks
+            draft["_pipeline"] = "option_a_report_layout_scrub"
+            if isinstance(ir, dict):
+                ir["artifact_kind"] = "report_layout"
+                ir["delivery_lane"] = "module_sh_or_self"
+                ir["prove_status"] = "pending"
+
     draft["_option_a_authoring"] = {
         "status": "pending",
         "findings": [
@@ -334,6 +373,11 @@ def _author_user_prompt(prompt: str, draft: dict[str, Any]) -> str:
         f"Depends so far: {draft.get('depends')}\n"
         "Author the module files. Inherit the named host when present."
     )
+    if re.search(
+        r"(?i)delivery\s+(?:note|slip)|shipping\s+address|address\s+block|partner\s+name",
+        prompt or "",
+    ):
+        body += _SCRUB_SHAPE_HINT
     if re.search(r"(?i)mark-?up", prompt or ""):
         body += _MARKUP_SHAPE_HINT
     return body

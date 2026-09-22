@@ -23,7 +23,7 @@ Never Prefer when Option A required; never Online Python promote.
 | Phase | Focus | Status |
 |-------|-------|--------|
 | **P0** | Contract docs · intent class routes · `delivery_lane`/`artifact_kind`/`prove_status` stamps · Online+Python host gate · goldens | **done** (this tip) |
-| **P1** | Job 3 CLASS — report/document layout scrub (QWeb address blocks) + acceptance scaffold | **in progress** (scaffold landed; full prove/author still open) |
+| **P1** | Job 3 CLASS — report/document layout scrub (QWeb address blocks) + acceptance prove | **done** (this tip) |
 | **P2** | Build spine chips | deferred |
 | **P3** | Job1/Job2 close (unless tiny wiring) | out of scope this tip |
 | **P4** | Atlas elite | out of scope this tip |
@@ -32,6 +32,9 @@ Never Prefer when Option A required; never Online Python promote.
 
 - [x] **Intent → feature router (Expert)** — 2026-09-21  
   Plain language → best-fitting feature + can/can't. Expert UI (`IntentRouterPanel`), `POST /connections/{id}/expert/route` (+ `/batch-os/intent-route`). Deterministic catalog (YAML/JSON + Atlas + recipes); `AI_INTENT_LLM` optional only.
+
+- [x] **P1 Job 3 report layout scrub CLASS** — 2026-09-22  
+  Parameterized QWeb address scrub (delivery slip / picking / invoice / sale). Option A seed + static prove (`partner_name_scrubbed`). Prefer Contacts delivery-notes excluded. Online checklist stays `online_metadata`; module zip `module_sh_or_self`.
 
 - [x] **P0 any-customization class spine** — 2026-09-22  
   Class-wide intent routes (FX/CBN, markup+tax, report scrub, Prefer fields, residual app, python/owl cues). Contract/Diagnosis/generation IR stamps. Online+Python promote block with .sh/self-host/connector alternatives. Product name **ingenium** (lowercase).

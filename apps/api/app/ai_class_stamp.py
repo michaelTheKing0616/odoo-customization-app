@@ -83,16 +83,21 @@ def is_markup_tax_class(prompt: str) -> bool:
     return bool(_MARKUP_TAX_RE.search(prompt or ""))
 
 
-def is_report_layout_class(prompt: str) -> bool:
-    return bool(_REPORT_SCRUB_RE.search(prompt or ""))
-
-
 def is_prefer_field_class(prompt: str) -> bool:
     text = prompt or ""
-    if is_report_layout_class(text) and not _PREFER_FIELD_RE.search(text):
-        # Delivery-slip scrub must not look like Contacts Prefer.
+    if _PREFER_FIELD_RE.search(text):
+        return True
+    return False
+
+
+def is_report_layout_class(prompt: str) -> bool:
+    from app.ai_report_layout_scrub import is_report_layout_scrub_brief
+
+    if is_prefer_field_class(prompt or ""):
         return False
-    return bool(_PREFER_FIELD_RE.search(text))
+    if is_report_layout_scrub_brief(prompt or ""):
+        return True
+    return bool(_REPORT_SCRUB_RE.search(prompt or ""))
 
 
 def resolve_class_stamp(

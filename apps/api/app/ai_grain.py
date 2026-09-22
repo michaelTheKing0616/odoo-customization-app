@@ -442,6 +442,18 @@ _DELIVERY_HOST_RE = re.compile(
 def preferred_inherit_host(prompt: str) -> str | None:
     """Host for Option A inherit seeds — prefer the document, not incidental 'customer'."""
     text = prompt or ""
+    # Report/document address scrub CLASS wins over incidental "Customer" → partner.
+    # Prefer Contacts delivery-notes stays on res.partner (handled below).
+    try:
+        from app.ai_report_layout_scrub import (
+            is_report_layout_scrub_brief,
+            report_scrub_host_from_prompt,
+        )
+
+        if is_report_layout_scrub_brief(text):
+            return report_scrub_host_from_prompt(text)
+    except Exception:  # noqa: BLE001 — grain must stay import-light on failure
+        pass
     named = named_host_from_prompt(text)
     # Explicit partner/Contacts host always wins over delivery-slip / picking noise.
     if named == "res.partner":
