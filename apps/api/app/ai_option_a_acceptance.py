@@ -14,6 +14,17 @@ from app.ai_option_a_view_fields import collect_draft_python_fields
 ExecuteKw = Callable[..., Any]
 
 _MARKUP_RE = re.compile(r"(?i)mark-?up|withh?olding\s+tax|\bwht\b")
+_REPORT_SCRUB_RE = re.compile(
+    r"(?i)\b("
+    r"delivery\s+(?:note|slip)|shipping\s+address|address\s+block|"
+    r"invoice\s+address|remove.{0,60}(?:customer|partner)\s+name|"
+    r"(?:customer|partner)\s+name.{0,40}(?:removed|strip|scrub)|"
+    r"qweb\s+(?:inherit|layout|report)"
+    r")\b"
+)
+_PREFER_CONTACTS_RE = re.compile(
+    r"(?i)\bprefer\s+for\s+delivery|delivery\s+notes?\s+on\s+contacts\b"
+)
 _NOTE_XPATH_RE = re.compile(
     r"""xpath\s+expr=["'][^"']*@name=["']note["'][^"']*["']""",
     re.I,
@@ -27,6 +38,52 @@ _STRING_KW_RE = re.compile(r"""\bstring\s*=\s*['\"]([^'\"]+)['\"]""")
 
 def is_sales_markup_prompt(prompt: str) -> bool:
     return bool(_MARKUP_RE.search(prompt or ""))
+
+
+def is_report_layout_scrub_prompt(prompt: str) -> bool:
+    """Document/report address scrub CLASS — not Contacts Prefer delivery-notes."""
+    text = prompt or ""
+    if _PREFER_CONTACTS_RE.search(text):
+        return False
+    return bool(_REPORT_SCRUB_RE.search(text))
+
+
+def report_layout_online_checklist(*, prompt: str = "", host_model: str = "") -> dict[str, Any]:
+    """Online checklist IR for Studio report metadata path (not Python promote)."""
+    from app.ai_class_stamp import apply_class_stamp, resolve_class_stamp
+
+    host = host_model or "stock.picking"
+    ir = {
+        "intent_id": "report_layout_online_checklist",
+        "host_model": host,
+        "path": "studio_report_metadata",
+        "checks": [
+            {"id": "report_action_present", "required": True},
+            {"id": "paperformat_ok", "required": False},
+            {"id": "preview_renders", "required": True},
+            {"id": "no_python_promote", "required": True},
+        ],
+        "operator_copy": (
+            "Online lane: edit report layout via Reports / Studio metadata. "
+            "QWeb partner-name scrub that needs inherit Python stays module lane "
+            "(.sh / self-host) — Prefer must not steal as Contacts delivery-notes."
+        ),
+    }
+    apply_class_stamp(
+        ir,
+        resolve_class_stamp(
+            prompt=prompt,
+            capability="",
+            grain="field_pack",
+            needs_module=False,
+            inherit_only=False,
+        ),
+    )
+    # Force report_layout + online for this checklist surface.
+    ir["artifact_kind"] = "report_layout"
+    ir["delivery_lane"] = "online_metadata"
+    ir["prove_status"] = "not_required"
+    return ir
 
 
 def acceptance_for_draft(draft: dict[str, Any], *, prompt: str = "") -> dict[str, Any]:
@@ -44,6 +101,31 @@ def acceptance_for_draft(draft: dict[str, Any], *, prompt: str = "") -> dict[str
                 {"id": "fields_present", "required": True},
             ],
         }
+    if is_report_layout_scrub_prompt(text):
+        scrub_host = host or "stock.picking"
+        if re.search(r"(?i)\binvoice\b", text):
+            scrub_host = host or "account.move"
+        elif re.search(r"(?i)\b(?:sale|quotation)\b", text):
+            scrub_host = host or "sale.order"
+        return {
+            "intent_id": "report_layout_address_scrub",
+            "host_model": scrub_host,
+            "parameterized_reports": [
+                "stock.report_deliveryslip",
+                "stock.report_picking",
+                "account.report_invoice_document",
+            ],
+            "checks": [
+                {"id": "qweb_inherit_present", "required": True},
+                {"id": "partner_name_scrubbed", "required": True},
+                {"id": "address_block_preserved", "required": True},
+                {"id": "not_contacts_prefer", "required": True},
+            ],
+            "fixtures": {
+                "brief_class": "report_layout_scrub",
+                "must_not_route": "contacts_prefer_delivery_notes",
+            },
+        }
     checks: list[dict[str, Any]] = [
         {"id": "field_labeled", "required": True},
         {"id": "fields_present", "required": True},
@@ -57,15 +139,34 @@ def acceptance_for_draft(draft: dict[str, Any], *, prompt: str = "") -> dict[str
 
 
 def stamp_option_a_acceptance(draft: dict[str, Any], *, prompt: str = "") -> dict[str, Any]:
+    from app.ai_class_stamp import apply_class_stamp, resolve_class_stamp
+
     contract = acceptance_for_draft(draft, prompt=prompt)
     draft["_option_a_acceptance"] = contract
     ir = draft.get("_generation_engine")
+    text = (prompt or str(draft.get("_user_prompt") or "")).strip()
+    stamp = resolve_class_stamp(
+        prompt=text,
+        capability=str((ir or {}).get("capability") or "option_a_authored")
+        if isinstance(ir, dict)
+        else "option_a_authored",
+        grain=str(draft.get("grain") or "full_app"),
+        needs_module=True,
+        gold_artifact_id=(ir or {}).get("gold_artifact_id") if isinstance(ir, dict) else None,
+        module_delivery=True,
+        prove_ok=None,
+    )
+    apply_class_stamp(contract, stamp)
     if isinstance(ir, dict):
         ir["option_a_acceptance"] = {
             "intent_id": contract.get("intent_id"),
             "host_model": contract.get("host_model"),
             "check_count": len(contract.get("checks") or []),
+            "delivery_lane": contract.get("delivery_lane"),
+            "artifact_kind": contract.get("artifact_kind"),
+            "prove_status": contract.get("prove_status"),
         }
+        apply_class_stamp(ir, stamp)
     return contract
 
 
@@ -625,6 +726,8 @@ __all__ = [
     "draft_xpath_anchor_ok",
     "ensure_python_field_strings",
     "is_sales_markup_prompt",
+    "is_report_layout_scrub_prompt",
+    "report_layout_online_checklist",
     "python_fields_missing_labels",
     "rewrite_note_xpath_to_tax_totals",
     "run_acceptance_smoke",

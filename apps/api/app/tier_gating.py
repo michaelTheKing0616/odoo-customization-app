@@ -179,23 +179,24 @@ def approvals_gating(ctx: TierContext) -> GatingCallout:
 
 
 def online_python_promote_gating() -> GatingCallout:
+    from app.ai_class_stamp import online_python_block_alternatives
+
+    alts = online_python_block_alternatives()
     return GatingCallout(
         feature="promote_python",
         title="Python module promote isn't available on Odoo Online",
         why=(
             "Odoo Online cannot install custom Python modules on the filesystem — only "
-            "metadata/data import paths are supported."
+            "metadata/data import paths are supported. Option A Python needs .sh / "
+            "self-host; FX/HTTP providers can use an external connector instead."
         ),
-        options=(
-            "Re-export with install_mode=data for metadata-only modules.",
-            "Move to Odoo.sh or self-hosted for Option A Python module deploy.",
-            "Or keep the validated zip for a non-Online target connection.",
-        ),
+        options=alts,
         available=False,
         capability_key=TierCapabilityKey.PYTHON_MODULE_INSTALL.value,
         choices=(
-            GatingOption(id="export_module", label="Re-export with install_mode=data"),
-            GatingOption(id="leave_out", label="Cancel promote"),
+            GatingOption(id="export_module", label="Re-export with install_mode=data (Online lane)"),
+            GatingOption(id="use_staging", label="Promote on Odoo.sh / self-host (module lane)"),
+            GatingOption(id="leave_out", label="Cancel promote / use external connector"),
         ),
     )
 

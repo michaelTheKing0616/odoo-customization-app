@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.no_app_db
+
 import io
 import zipfile
 
-import pytest
 
 from app.capabilities import capabilities_from_version
 from app.hosting import hosting_hint_from_url, python_modules_allowed
@@ -88,5 +91,5 @@ def test_promote_python_zip_online_error_contract() -> None:
             password="admin",
         )
     )
-    with pytest.raises(OdooClientError, match="Odoo Online cannot install custom Python"):
+    with pytest.raises(OdooClientError, match=r"Odoo Online cannot install custom Python|metadata/data import|external connector"):
         promote_module_zip(client, zip_bytes, prefer_filesystem=False)

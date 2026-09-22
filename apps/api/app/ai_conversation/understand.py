@@ -193,11 +193,22 @@ class Understanding:
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         from app.ai_grain import HOST_LABELS
+        from app.ai_class_stamp import apply_class_stamp, resolve_class_stamp
 
         data["host_label"] = HOST_LABELS.get(self.host_model or "", self.host_model)
         score = getattr(self, "_must_do_score", None)
         if isinstance(score, dict):
             data["_must_do_score"] = score
+        stamp = resolve_class_stamp(
+            prompt=str(getattr(self, "_source_prompt", "") or ""),
+            capability=self.capability,
+            grain=self.grain,
+            needs_module=self.needs_module,
+            gold_artifact_id=self.gold_artifact_id,
+            module_delivery=self.needs_module,
+            inherit_only=self.inherit_existing,
+        )
+        apply_class_stamp(data, stamp)
         return data
 
     @classmethod
@@ -937,6 +948,12 @@ def _stamp_must_do_score(understanding: Understanding, score: dict[str, Any]) ->
     return understanding
 
 
+def _stamp_source_prompt(understanding: Understanding, prompt: str) -> Understanding:
+    """Keep the brief on the IR so class-wide stamps stay class-aware."""
+    object.__setattr__(understanding, "_source_prompt", (prompt or "")[:4000])
+    return understanding
+
+
 
 def _deterministic_understanding(prompt: str) -> Understanding:
     from app.ai_generation_engine import classify_generation
@@ -1092,7 +1109,7 @@ def _deterministic_understanding(prompt: str) -> Understanding:
             ).strip() or nice
             title = nice.title() if nice.islower() or nice.lower() == nice else nice
 
-    return Understanding(
+    result = Understanding(
         capability=plan.capability,
         grain=grain,
         host_model=host,
@@ -1106,6 +1123,7 @@ def _deterministic_understanding(prompt: str) -> Understanding:
         source="deterministic",
         confidence=confidence,
     )
+    return _stamp_source_prompt(result, text)
 
 
 def _should_llm_enrich(prompt: str, det: Understanding) -> bool:
@@ -1413,7 +1431,7 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
         source="mixed" if (coerced or llm_constraints) else "deterministic",
         confidence=confidence,
     )
-    return _stamp_must_do_score(result, score)
+    return _stamp_source_prompt(_stamp_must_do_score(result, score), prompt)
 
 
 def build_understanding(prompt: str) -> Understanding:
@@ -1430,7 +1448,8 @@ def build_understanding(prompt: str) -> Understanding:
         )
         understanding = _stamp_must_do_score(det, scored)
     understanding = _force_live_fields_for_residual(understanding, prompt)
-    return _attach_craft_proposals(prompt, understanding)
+    understanding = _attach_craft_proposals(prompt, understanding)
+    return _stamp_source_prompt(understanding, prompt)
 
 
 def diagnosis_clarification(understanding: Understanding) -> dict[str, Any]:
@@ -1447,13 +1466,18 @@ def diagnosis_clarification(understanding: Understanding) -> dict[str, Any]:
         help_bits.append("This is an Option A module — not Install this app.")
     elif understanding.inherit_existing:
         help_bits.append("Extra fields on a form people already use — not a new Apps tile.")
+    stamp_lane = getattr(understanding, "delivery_lane", None)
+    u_dict = understanding.to_dict()
+    if u_dict.get("delivery_lane_copy"):
+        help_bits.append(str(u_dict["delivery_lane_copy"]))
+    _ = stamp_lane
     return {
         "id": "diagnosis",
         "kind": "diagnosis",
         "merge_key": "diagnosis",
         "question": f"We'll build: {understanding.title}",
         "help": " ".join(bit for bit in help_bits if bit).strip(),
-        "understanding": understanding.to_dict(),
+        "understanding": u_dict,
         "host_choices": [
             {"id": model, "label": label} for model, label in HOST_LABELS.items()
         ],

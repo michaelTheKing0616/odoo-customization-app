@@ -331,8 +331,15 @@ def classify_generation(prompt: str) -> GenerationPlan:
     )
 
 
-def plan_to_ir(plan: GenerationPlan, *, user_phase: UserPhase = "building") -> dict[str, Any]:
-    return {
+def plan_to_ir(
+    plan: GenerationPlan,
+    *,
+    user_phase: UserPhase = "building",
+    prompt: str = "",
+) -> dict[str, Any]:
+    from app.ai_class_stamp import apply_class_stamp, resolve_class_stamp
+
+    ir = {
         "capability": plan.capability,
         "grain": plan.grain,
         "gold_artifact_id": plan.gold_artifact_id,
@@ -347,6 +354,19 @@ def plan_to_ir(plan: GenerationPlan, *, user_phase: UserPhase = "building") -> d
         "scorecard_is_not_cert": True,
         "studio_parity_deferred": plan.gold_artifact_id == "pos_receipt_options",
     }
+    apply_class_stamp(
+        ir,
+        resolve_class_stamp(
+            prompt=prompt,
+            capability=plan.capability,
+            grain=plan.grain,
+            needs_module=plan.module_delivery
+            or plan.capability in {"option_a_authored", "option_a_standalone"},
+            gold_artifact_id=plan.gold_artifact_id,
+            module_delivery=plan.module_delivery,
+        ),
+    )
+    return ir
 
 
 def attach_generation_engine(
@@ -356,7 +376,7 @@ def attach_generation_engine(
     user_phase: UserPhase = "building",
 ) -> dict[str, Any]:
     plan = classify_generation(prompt)
-    ir = plan_to_ir(plan, user_phase=user_phase)
+    ir = plan_to_ir(plan, user_phase=user_phase, prompt=prompt)
     prior = draft.get("_generation_engine")
     if (
         isinstance(prior, dict)

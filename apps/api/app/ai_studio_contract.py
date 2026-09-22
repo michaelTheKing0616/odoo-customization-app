@@ -249,7 +249,15 @@ def build_studio_contract(
         re.search(r"(?i)\balready\s+(?:persist|exist)|reuse\s+existing|do\s+not\s+recreate", blob)
     )
     title = _grounded_title(blob, host_label, surfaces, grain=resolved_grain, host=host or None)
-    return {
+    from app.ai_class_stamp import (
+        apply_class_stamp,
+        is_fx_rate_class,
+        is_markup_tax_class,
+        is_report_layout_class,
+        resolve_class_stamp,
+    )
+
+    contract = {
         "version": CONTRACT_VERSION,
         "host_model": host or None,
         "host_label": host_label or None,
@@ -273,6 +281,23 @@ def build_studio_contract(
         ),
         "source_prompt": (prompt or "")[:2000],
     }
+    option_a_class = (
+        is_fx_rate_class(blob)
+        or is_markup_tax_class(blob)
+        or (is_report_layout_class(blob) and not inherit_only)
+    )
+    apply_class_stamp(
+        contract,
+        resolve_class_stamp(
+            prompt=blob,
+            grain=resolved_grain,
+            inherit_only=inherit_only and not option_a_class,
+            needs_module=option_a_class,
+            module_delivery=option_a_class,
+            capability="option_a_authored" if option_a_class else "",
+        ),
+    )
+    return contract
 
 
 def contract_human_summary(contract: dict[str, Any]) -> str:

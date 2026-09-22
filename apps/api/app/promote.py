@@ -215,20 +215,17 @@ def promote_module_zip(
         )
 
     if has_py:
-        from app.hosting import hosting_hint_from_url
+        from app.hosting import hosting_hint_from_url, online_python_promote_block
 
         hint = hosting_hint_from_url(client.config.url)
         if hint == "online":
-            raise OdooClientError(
-                "Odoo Online cannot install custom Python modules. "
-                "Re-export with install_mode=data (XML/metadata only) for "
-                "base_import_module, or promote on Odoo.sh / self-hosted Docker "
-                "where filesystem Option A is available."
-            )
+            block = online_python_promote_block(hosting_hint=hint)
+            raise OdooClientError(block["message"])
         raise OdooClientError(
             "This zip contains Python models. Remote promote requires install_mode=data "
             "(ir.model XML) or a local Docker connection with filesystem access "
-            f"(detected hosting={hint})."
+            f"(detected hosting={hint}). Alternatives: Odoo.sh / self-host module lane, "
+            "or an external connector for FX/HTTP providers."
         )
 
     info = client.import_module_zip(zip_bytes, force=True)

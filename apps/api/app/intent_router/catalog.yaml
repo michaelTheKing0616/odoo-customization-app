@@ -138,7 +138,7 @@ features:
 
   - id: studio.app
     title: App Studio
-    blurb: Build a custom Odoo app from a plain-language brief (Visitor Log, etc.). Human promote.
+    blurb: Build a custom Odoo app or Option A module from a plain-language brief. Human promote. Completeness ≠ Cert ≠ Autopilot.
     route: "studio"
     source: app
     status: complete
@@ -152,11 +152,37 @@ features:
       - app studio
       - new module
       - invent a model
-    weight: 1.2
+      - new app for
+      - build a new app
+      - app for leave
+      - leave requests
+      - for requests
+      - cbn
+      - central bank
+      - fx rates
+      - fx rate
+      - exchange rates
+      - exchange rate
+      - currency rates
+      - currency rate
+      - rate provider
+      - automatic currency rates
+      - markup percent
+      - mark-up
+      - markup
+      - withholding tax
+      - wht
+      - sale order compute
+      - custom python
+      - python compute
+      - owl widget
+      - http controller
+      - option a
+    weight: 1.35
 
   - id: designer
     title: View Designer
-    blurb: Visual form/list view editing for a technical model.
+    blurb: Prefer / field-pack editing on stock hosts (Sales, Contacts). Not QWeb report scrub.
     route: "designer"
     source: app
     status: complete
@@ -167,11 +193,22 @@ features:
       - visual designer
       - edit form view
       - canvas
-    weight: 1.0
+      - add a field on
+      - add field on
+      - field on sales
+      - field on contacts
+      - prefer for delivery
+      - delivery notes on contacts
+      - delivery notes
+      - checkbox on contacts
+      - inherit-only
+      - inherit only
+      - no new app
+    weight: 1.3
 
   - id: draft.studio
     title: Draft Studio
-    blurb: Natural language → ModuleSpec draft. Completeness ≠ Cert ≠ Autopilot.
+    blurb: Natural language → ModuleSpec / Option A draft. Completeness ≠ Cert ≠ Autopilot.
     route: "wizard"
     source: app
     status: complete
@@ -181,7 +218,11 @@ features:
       - wizard
       - modulespec draft
       - natural language draft
-    weight: 0.95
+      - option a module
+      - qweb inherit
+      - modulespec
+      - python module draft
+    weight: 1.05
 
   - id: bulk.suite
     title: Bulk Suite
@@ -230,7 +271,7 @@ features:
 
   - id: cron.manager
     title: Cron Manager
-    blurb: Inspect and manage ir.cron jobs.
+    blurb: Inspect and manage ir.cron jobs. Custom HTTP/Python cron body is Option A (App Studio), not Online Python promote.
     route: "cron-manager"
     source: app
     status: complete
@@ -243,6 +284,7 @@ features:
       - ir.cron
       - scheduled jobs
       - schedule jobs
+      - manage cron
     weight: 1.05
 
   - id: housekeeping
@@ -301,6 +343,31 @@ features:
       - menus
       - ir.ui.menu
     weight: 0.9
+
+
+  - id: reports.layout
+    title: Report layout
+    blurb: QWeb / PDF report layout and address-block scrub (delivery slip, picking, invoice). Option A inherit when Python/QWeb needed — not Contacts Prefer delivery notes.
+    route: "reports"
+    source: app
+    status: complete
+    can_handle: true
+    keywords:
+      - report layout
+      - qweb layout
+      - qweb report
+      - delivery slip
+      - delivery note scrub
+      - shipping address
+      - address block
+      - invoice address
+      - partner name on report
+      - customer name from delivery
+      - remove customer name
+      - strip partner name
+      - report address
+      - picking report
+    weight: 1.4
 
   - id: job.autopilot
     title: Job Autopilot

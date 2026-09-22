@@ -1,3 +1,9 @@
+### 2026-09-22 — Any-customization contract (P0) + report scrub CLASS scaffold (P1 Job3)
+**Decided:** ingenium owns ANY Odoo customization (LLM + hard gates). Class-wide — CBN / markup+WHT / delivery-note QWeb are proof exemplars, never one-offs. Two host lanes: Online=`online_metadata`; .sh/self-host=`module_sh_or_self`; FX/HTTP alt=`external_connector`. Stamp `delivery_lane` + `artifact_kind` + `prove_status` on Diagnosis / Studio Contract / generation IR / Option A acceptance. Intent catalog routes class briefs away from Prefer defaults (FX→studio Option A gold, markup→studio/draft.studio, report scrub→reports.layout, Prefer Sales/Contacts fields→designer, residual →studio.app). Online+Python Option A promote reuses honesty with .sh/self-host/connector alternatives — never Online Python promote. Completeness ≠ Cert ≠ Autopilot. Promote stays human. AI_INTENT_LLM stays off for deterministic floor.
+**Why:** Operator briefs were Prefer-stealing (Contacts delivery-notes, Atlas tax lock) instead of Option A / report layout classes; Online promote needed explicit connector alternative.
+**Rejected:** One-off CBN/markup/delivery modules; inventing new feature ids beyond shipped surfaces; Cloud Agent usage; auto-promote; Prefer when Option A required.
+**P0:** done this tip. **P1 Job3:** acceptance + Online checklist IR scaffold landed; full QWeb author/prove still open. P2–P4 deferred.
+
 ### 2026-09-16 — Option A acceptance smoke (self-heal)
 **Decided:** Stamp `_option_a_acceptance` contracts (markup pack: labels, tax_totals xpath, price_effect). Sandbox RPC smoke executes them; fail → Failure IR + one auto-repair then re-prove. Free harden adds `string=` and retargets note→tax_totals. Completeness ≠ Cert ≠ Autopilot. Promote stays human. Restart `:8001`.
 **Why:** Install-only gates let unlabeled fields, Terms placement, and no price change ship to operators.

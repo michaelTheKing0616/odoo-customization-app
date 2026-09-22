@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from urllib.parse import urlparse
 
 LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "0.0.0.0", "host.docker.internal", "::1"})
@@ -62,8 +63,34 @@ def python_modules_allowed(hosting_hint: str) -> bool:
     return matrix_python_modules_allowed(hosting_hint)
 
 
-def python_modules_allowed(hosting_hint: str) -> bool:
-    """Backward-compatible shim — delegates to tier_matrix (lazy import)."""
-    from app.tier_matrix import python_modules_allowed as matrix_python_modules_allowed
+def online_option_a_python_blocked(hosting_hint: str) -> bool:
+    """True when this host cannot install Option A Python modules."""
+    return hosting_hint == "online" or not python_modules_allowed(hosting_hint)
 
-    return matrix_python_modules_allowed(hosting_hint)
+
+def online_python_promote_block(*, hosting_hint: str | None = None) -> dict[str, Any]:
+    """Honest block payload for Online + Python Option A promote.
+
+    Reuses tier_gating / class-stamp alternatives — do not fork copy.
+    """
+    from app.ai_class_stamp import LANE_COPY, online_python_block_alternatives
+    from app.tier_gating import online_python_promote_gating
+
+    callout = online_python_promote_gating()
+    alts = online_python_block_alternatives()
+    return {
+        "blocked": True,
+        "hosting_hint": hosting_hint or "online",
+        "delivery_lane": "online_metadata",
+        "delivery_lane_copy": LANE_COPY["online_metadata"],
+        "module_lane_copy": LANE_COPY["module_sh_or_self"],
+        "connector_lane_copy": LANE_COPY["external_connector"],
+        "title": callout.title,
+        "why": callout.why,
+        "alternatives": list(alts),
+        "gating": callout.to_dict(),
+        "promote_human": True,
+        "message": (
+            f"{callout.why} Alternatives: (1) {alts[0]} (2) {alts[1]} (3) {alts[2]}"
+        ),
+    }

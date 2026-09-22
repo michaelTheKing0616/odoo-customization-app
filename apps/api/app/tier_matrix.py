@@ -237,8 +237,9 @@ def _rule_module_deploy(ctx: TierContext) -> TierCapabilityResult:
             available="no",
             reason="Odoo Online cannot install custom Python/modules on the filesystem.",
             options=(
-                "Use metadata/XML data import for safe customizations",
+                "Use metadata/XML data import for safe customizations (Online lane)",
                 "Move to Odoo.sh or self-host for Option A module deploy",
+                "Use an external connector for FX/HTTP providers instead of Online Python",
             ),
         )
     if ctx.hosting == "sh":
@@ -585,7 +586,8 @@ def _legacy_matrix(ctx: TierContext) -> tuple[list[str], list[dict[str, str]], b
     if ctx.hosting == "online":
         warnings.append(
             "Custom Python module install is not available on Odoo Online — "
-            "use data/XML export or move to Odoo.sh / self-host for Option A."
+            "use data/XML export, move to Odoo.sh / self-host for Option A, "
+            "or use an external connector for FX/HTTP providers."
         )
     if any(m in ctx.installed for m in ("web_studio", "studio_customization")):
         warnings.append(
