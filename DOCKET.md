@@ -40,6 +40,9 @@ Never Prefer when Option A required; never Online Python promote.
 - [x] **P4 Config Atlas elite** — 2026-09-22  
   Closed last Atlas stub (`docs.orders` → `document_batch.orders` CSV→draft SO/PO). Expert/Intent → Atlas → recipe → Apply continuity with atlas_class/recipe/risk/delivery_lane handoff. Build spine Stock/Config deep-links Config Atlas / journal tabs. Multi-brief Atlas goldens + L3/preview honesty. Rubric battery green (`run_p4_atlas_elite_rubric_battery.sh`, AI_INTENT_LLM=off).
 
+- [x] **First-try Generate repair (O2M / M2O / sign-off / UI)** — 2026-09-22  
+  Class-wide: checklist/parts Must-do → real O2M line models (never literal Satellite Char stamps); Identity same-comodel M2O de-dupe keeps cued Related Sales Order/Fleet; Sign-off → boolean Customer signed + attachment; Studio contract scorecard blocks Apply with Repair-with-Expert path. Prefer Project + Vehicle green. Rubric `run_first_try_generate_repair_rubric_battery.sh`.
+
 - [x] **Prefer host lock + full_app business noun** — 2026-09-22  
   Class-wide: Prefer/Extend Project Prefer-locks `project.project` (linked Sales Order never steals host); residual full_app Name/model from brief business noun — never Studio grain Full→x_full. Rubric `run_prefer_host_fullapp_noun_rubric_battery.sh`.
 
@@ -137,7 +140,7 @@ Release gates for Config Atlas elite — `AI_INTENT_LLM=off`, `apps/api/scripts/
 - Journal/CoA Atlas intents remain `recipe: null` catalog pointers (status complete by design — not stubs).
 - ConfigCommandCenter vitest hit a pre-existing jsdom/undici env error on this box; Atlas browser + OrderBatchPanel + spine handoff vitest green.
 
-**Tip SHAs:** feat `0b9f9bd` · APPLY `35c9fb8`. Mac APPLY: `/workspace/odoo-mac-tip/APPLY_ATLAS_ELITE_P4_ON_MAC.sh` with patch `0001-feat-ingenium-atlas-elite-p4.patch`.
+**Tip SHAs:** feat  (Mac; tip )`0b9f9bd` · APPLY `35c9fb8`. Mac APPLY: `/workspace/odoo-mac-tip/APPLY_ATLAS_ELITE_P4_ON_MAC.sh` with patch `0001-feat-ingenium-atlas-elite-p4.patch`.
 
 
 ## Arc3 invent families rubric matrix (2026-09-22)
@@ -159,7 +162,7 @@ Release gates for invent families + Flash-on honor — `AI_INTENT_LLM=off` floor
 
 **Battery:** 282 pytest passed (`no_app_db`). Web: 8 vitest passed (build-spine + handoff + Atlas browser + OrderBatchPanel).
 
-**Tip SHAs:** feat `f47bd33` · APPLY `4bf0ae5`. Mac APPLY: `/workspace/odoo-mac-tip/APPLY_INVENT_FAMILIES_ARC3_ON_MAC.sh` with patch `0001-feat-ingenium-invent-families-arc3.patch` (also `/workspace/0001-feat-ingenium-invent-families-arc3.patch`).
+**Tip SHAs:** feat  (Mac; tip )`f47bd33` · APPLY `4bf0ae5`. Mac APPLY: `/workspace/odoo-mac-tip/APPLY_INVENT_FAMILIES_ARC3_ON_MAC.sh` with patch `0001-feat-ingenium-invent-families-arc3.patch` (also `/workspace/0001-feat-ingenium-invent-families-arc3.patch`).
 
 ### Arc3 remaining gaps (honest)
 - Live Odoo order-batch dry-run/apply still mock-only (unchanged from P4).
@@ -185,10 +188,41 @@ Release gates for Prefer host lock + residual business-noun naming — `AI_INTEN
 
 **Battery:** 289 pytest passed (`no_app_db`). Web: 7 vitest passed (build-spine + handoff + Atlas browser + OrderBatchPanel).
 
-**Tip SHAs:** feat `48679dc` (Mac; tip `6f87d41`) · APPLY via git am on Mac tip. Mac APPLY: `/workspace/odoo-mac-tip/APPLY_PREFER_HOST_FULLAPP_NOUN_ON_MAC.sh` with patch `0001-feat-ingenium-prefer-host-fullapp-noun.patch` (also `/workspace/0001-feat-ingenium-prefer-host-fullapp-noun.patch`).
+**Tip SHAs:** feat  (Mac; tip )`6f87d41` · APPLY `b7bb37c`. Mac APPLY: `/workspace/odoo-mac-tip/APPLY_PREFER_HOST_FULLAPP_NOUN_ON_MAC.sh` with patch `0001-feat-ingenium-prefer-host-fullapp-noun.patch` (also `/workspace/0001-feat-ingenium-prefer-host-fullapp-noun.patch`).
 
 ### Prefer-host / full_app-noun remaining gaps (honest)
 - Live Odoo order-batch dry-run/apply still mock-only (unchanged from P4/Arc3).
 - ConfigCommandCenter vitest still hits pre-existing jsdom/undici env error on this box.
 - Project Prefer `classify_generation.capability` may still say `residual_app` while grain/inherit correctly Prefer-lock (honesty copy says inherit-and-wire); tile suppressed via inherit + out_of_scope.
-- Field work O2M satellites are Must-do/structural stamps — full IR line models still rely on residual recovery when Generate expands.
+- Field work O2M satellites now expand end-to-end in Generate recovery (checklist/parts line models) — see First-try Generate repair matrix below.
+
+
+## First-try Generate repair rubric matrix (2026-09-22)
+
+Release gates for residual Generate leftovers — `AI_INTENT_LLM=off`, `apps/api/scripts/run_first_try_generate_repair_rubric_battery.sh` (+ Prefer-host battery extended; web vitest Studio honesty).
+
+| Gate | Result |
+|------|--------|
+| Prefer Project Commercial Prefer-locks `project.project` | **pass** |
+| Residual full_app Name/model from business noun — never Full/x_full | **pass** |
+| Checklist/parts → real O2M line models (item+done / product+qty) | **pass** |
+| NEVER literal `Satellite O2M: …` / Menus Char labels on Identity | **pass** |
+| Identity same-comodel M2O de-dupe; Related Sales Order / Fleet kept | **pass** |
+| Sign-off → boolean Customer signed + attachment (handoff note stays Text) | **pass** |
+| Unseen Maintenance tickets + Inspection sign-off goldens | **pass** |
+| Studio contract blocks Apply with Repair-with-Expert for gap classes | **pass** |
+| Vehicle Request + invent families + Prefer sale.order packs | **pass** |
+| Pack bleed; grain+delivery_lane; Online+Python honesty; Job1–3 | **pass** |
+| Completeness ≠ Cert ≠ Autopilot | **pass** |
+| Flash-free / AI_INTENT_LLM=off deterministic floor | **pass** |
+
+**Battery:** 301 pytest passed (`no_app_db`). Web: 5 vitest passed (StudioHonestyBanners Generate-repair banner; jsdom/undici env error retained on some jsdom-forced files).
+
+**Tip SHAs:** feat  (Mac; tip )`29776f7` (Mac; tip `58468fe`) · APPLY `8d147c9` . Mac APPLY: `/workspace/odoo-mac-tip/APPLY_FIRST_TRY_GENERATE_REPAIR_ON_MAC.sh` with patch `0001-feat-ingenium-first-try-generate-repair.patch` (also `/workspace/0001-feat-ingenium-first-try-generate-repair.patch`).
+
+### First-try Generate repair remaining gaps (honest)
+- Live Odoo order-batch dry-run/apply still mock-only (unchanged from P4/Arc3).
+- ConfigCommandCenter / some jsdom-forced vitest still hit pre-existing undici env error on this box.
+- Generic `ensure_residual_satellites` `_line` still available for non-checklist line cues; cued checklist/parts prefer dedicated `*_checklist_line` / `*_parts_line`.
+- Sign → Odoo Sign (`sign.request`) link remains optional/advanced — boolean+attachment is the Online-safe primary.
+

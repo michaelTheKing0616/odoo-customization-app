@@ -1,20 +1,35 @@
+# First-try Generate repair — O2M / M2O / sign-off / UI (2026-09-22)
+**Decided:** Four architectural leftover classes fixed class-wide (not Field Work one-offs). (A) Checklist/parts Must-do is meta (`O2M satellite: …`) and Generate materializes real One2many + line models (item+done / product+qty); never leave literal Satellite Char labels on Identity; transactional_header (not register) when work-order/ticket + lines — bare `checklist` no longer forces register. (B) Identity same-comodel M2O de-dupe keeps one Customer/Related Sales Order/Fleet. (C) Sign-off → boolean Customer signed + binary attachment; consultant handoff note stays Text. (D) `evaluate_studio_contract` / `residual_generate_hygiene_gaps` block Apply with Repair-with-Expert banner for these gates. Prefer Project ~9/10 + Vehicle stay green. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+
+**Root causes (file:symbol):**
+- `ai_document_shape._REGISTER_SHAPE_RE` bare `checklist` → register → blocked O2M (`is_transactional_line_document` / classify)
+- `ai_constraint_ast._prose_full_app_structural` Satellite stamps + `_constraint_field_spec` Char invent (`ai_field_ir`)
+- `ai_constraint_ast._prose_full_app_fields` Sign-off as text
+- Missing Generate materializer → `ai_odoo_app_bar.ensure_cued_o2m_satellites`
+- Duplicate Identity M2O → `ai_model_quality.dedupe_identity_same_comodel_fields`
+- Repair UI → `ai_studio_contract.residual_generate_hygiene_gaps` + `StudioHonestyBanners` contract blocker
+
+**Tip SHAs:** feat  (Mac; tip )`29776f7` (Mac; tip `58468fe`) · APPLY `8d147c9`. Rubric 301 pytest. Mac APPLY patch `0001-feat-ingenium-first-try-generate-repair.patch`.
+
+---
+
 ### 2026-09-22 — Prefer host lock + full_app business noun (class-wide)
 **Decided:** Two architectural failure classes fixed class-wide (not Project Commercial / Field work one-offs). (A) Prefer/Extend briefs that add fields on Project / project form Prefer-lock host `project.project`; linked/related/require-a-linked Sales Order asides + bare «orders» inside «work orders» must not steal onto `sale.order`; Online-safe Commercial phase Selection + Billable cap float; Option A / .sh honesty stamps only for Python bits (phase warning, hours rollup) — never lock the whole Prefer as residual_app tile. (B) Residual full_app Diagnosis Name + model slug from brief business noun (`Field Work Orders` / `x_field_work_orders`); Studio grain words Full/New/Prefer/Extend/full_app never become Name/x_full; checklist/parts → honest O2M satellite Must-do (not flat Product/Quantity Identity); Priority kept when cued. Prefer sale.order packs + Vehicle Request residual + invent families + Flash-on honor stay green. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
 **Why:** NEW domains failed badly — host steal + grain-noun collapse are architectural, not domain hardness.
 **Rejected:** One-off regex for Vehicle/Project Commercial/Field work only; Prefer-reshaping residual full_app; Online Python Autopilot; redoing P0–P4/Arc3.
-**Tip:** feat `48679dc` (Mac; tip `6f87d41`) · APPLY via git am on Mac tip. Battery 289 no_app_db + 7 vitest spine.
+**Tip:** feat  (Mac; tip )`6f87d41` · APPLY `b7bb37c`. Battery 289 no_app_db + 7 vitest spine.
 
 ### 2026-09-22 — Arc3 invent families + Flash-on honor (Severity/Channel/Stage)
 **Decided:** Expand class-wide uncued Selection invent gates beyond Type/Priority/Rate to Severity, Channel, and Stage (same pattern as continuous invent / studio). Brief must cue them before they appear; workflow State/Status ≠ Stage invent. Flash/LLM may propose invents into ConstraintAST/Must-do, but honor/apply gates + `scrub_uncued_invent_from_llm_ast` / `scrub_uncued_invent_must_do_rows` still drop uncued fields (closes pre-existing P3 Flash-on gap). Additive Flash-on goldens; `AI_INTENT_LLM=off` floor unchanged. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
 **Why:** Packs/density/Flash still invented Severity/Channel/Stage (and Type via source=llm) on uncued residuals; P3 honor covered Type/Priority/Rate floor but not the broader family or Flash-on AST merge path.
 **Rejected:** Vehicle-only patches; treating State workflow as Stage; letting Flash-on bypass honor; Online Python Autopilot; redoing P4 Atlas / Mac apply of P0–P4.
-**Arc3:** done this tip. feat `f47bd33` · APPLY `4bf0ae5`.
+**Arc3:** done this tip. feat  (Mac; tip )`f47bd33` · APPLY `4bf0ae5`.
 
 ### 2026-09-22 — P4 Config Atlas elite closed (Stock/Config/Batch craft)
 **Decided:** Elevate Config Atlas + Batch OS from seed-complete / zero-stub-recipes to elite operator craft. Root fixes: (1) close last Atlas stub `docs.orders` with CE-safe public-RPC `document_batch.orders` (CSV→draft sale.order/purchase.order; Preview ≠ confirmed; never auto-confirm); (2) `ai_atlas_elite` multi-brief class goldens route lock dates / tax pack / partners CSV / invoice+order batch / settings board onto atlas_class+recipe+risk with `stock_config`/`online_metadata`; (3) Build spine handoff + Expert Go carry atlas_class/recipe_id/risk/delivery_lane and deep-link Config Atlas / journal tabs without re-brief; (4) L3 lock + stub/complete badge honesty; (5) Prefer/Option A never stolen by Atlas. Rubric `run_p4_atlas_elite_rubric_battery.sh` green (275 no_app_db). Completeness ≠ Cert ≠ Autopilot. Promote stays human.
 **Why:** Operators needed class-wide Stock/Config/Batch grain continuity after P3 invent — one remaining Atlas stub + spine not first-class for config/batch briefs.
 **Rejected:** Claiming Online Python Autopilot; inventing EE-only as CE defaults; auto-promote; reopening P3 invent without regression; Vehicle-only patches.
-**P4:** done this tip. feat `0b9f9bd` · APPLY `35c9fb8`.
+**P4:** done this tip. feat  (Mac; tip )`0b9f9bd` · APPLY `35c9fb8`.
 
 ### 2026-09-22 — P3 continuous invent hardening closed (class-wide quality gates)
 **Decided:** Continuous invent is a class-wide Studio/Draft/Generate quality-gate arc — not Vehicle Request keyword patches. Root fixes: (1) optional note cue extracts brief noun (Assignment Note vs Calendar Block Note) — never hardcode Assignment Note for every optionally link/create; (2) conjunction field lists strip leading and/or so «Name, Date, and notes» → Notes (text); (3) line/party satellites always require positive cues (workspace pack lexical match alone never invents _line/_party on thin residuals); (4) pack shape adoption gated by positive cues + not thin simple residual; (5) calendar stock_reuse ignores «calendar block note» and Purpose «Meeting / …». Multi-brief goldens in `test_continuous_invent_class.py`. Battery `run_p3_invent_rubric_battery.sh`. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
