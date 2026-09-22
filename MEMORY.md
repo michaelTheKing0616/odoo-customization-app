@@ -1,8 +1,14 @@
+### 2026-09-22 — P1 Job 1: FX / rate-provider sync CLASS closed
+**Decided:** Class-wide FX rate sync into stock `res.currency.rate` (parameterized USD/GBP/EUR or brief ISOs). CBN / Central Bank of Nigeria remains the earned gold shortcut (`currency_rate_cbn`) inside the class — not the only member. Generic HTTP/ECB/Open Exchange briefs → Option A authored scaffold (`ai_fx_rate_class.py`, marker `ingenium:fx_rate_provider_class`) on `res.company` + settings + cron. Online cannot promote Python → `external_connector` runbook IR + host stamps (`module_sh_or_self` vs `external_connector` vs online block copy). Never Prefer / Nigeria Autopilot `stock_reuse` alone for live HTTP fetch. Acceptance: writes_currency_rate, currencies_parameterized, no_x_fx_app, not_nigeria_autopilot_alone, gold_or_scaffold_present. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+**Why:** Operators asked for CBN as exemplar; any-customization needs the whole rate-provider class under gates.
+**Rejected:** One-off CBN-only path as the whole product; inventing x_fx residual; Prefer/metadata-only as live HTTP done; Online Python Autopilot.
+**P1 Job1:** done. P2 Build spine chips still deferred.
+
 ### 2026-09-22 — P1 Job 2: sale markup % + WHT-on-markup CLASS closed
 **Decided:** Class-wide Option A on sale.order (not one client SOW). Deterministic CE-safe scaffold (`ai_markup_wht_class.py`): x_markup_percent + x_markup_amount + x_wht_on_markup / x_wht_rate; onchange price effect; tax_totals xpath; never purchase.order inherit; never account.tax.create. Acceptance checks: markup_present, wht_base_is_markup, purchase_untouched, no_tax_create (+ existing labeled/xpath/price_effect/fields). Online Prefer/Studio % field alone → `online_metadata_incomplete_interim` (module lane still required). Mutant briefs parameterized. Completeness ≠ Cert ≠ Autopilot. Promote stays human. Online Python promote blocked (.sh/self-host).
 **Why:** Markup+WHT briefs need automated math under gates; Prefer % metadata on Online is incomplete interim, not done.
 **Rejected:** Purchase-order markup in this class; inventing account.tax; claiming Online Python Autopilot.
-**P1 Job2:** done. Job1 CBN still open.
+**P1 Job2:** done. Job1 CBN CLASS closed same tip.
 
 ### 2026-09-22 — P1 Job 3: report/document layout address scrub CLASS closed
 **Decided:** Class-wide QWeb partner-name scrub on stock reports (delivery slip, picking, invoice, sale/PO) via parameterized inherits in `ai_report_layout_scrub.py`. Option A seed attaches `report/*_address_scrub.xml` with contact widget fields `["address","phone"]` (no name) + `.name` replace + `ingenium:partner_name_scrubbed` marker. Acceptance smoke proves `qweb_inherit_present` / `partner_name_scrubbed` / `address_block_preserved` / `not_contacts_prefer` statically. `preferred_inherit_host` + classify early-route scrub before invoice Pay/QR gold; Prefer Contacts delivery-notes stays designer/Contacts. Online checklist IR = `online_metadata`; module lane = `module_sh_or_self`. Completeness ≠ Cert ≠ Autopilot. Promote stays human.

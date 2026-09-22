@@ -296,6 +296,11 @@ def _currency_rate_cbn_draft(
                 },
             ],
         }
+        ir["class_id"] = "fx_rate_provider_sync"
+        ir["fx_member"] = "cbn_gold"
+    from app.ai_option_a_acceptance import stamp_option_a_acceptance
+
+    stamp_option_a_acceptance(draft, prompt=prompt)
     return draft
 
 

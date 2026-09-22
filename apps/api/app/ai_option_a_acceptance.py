@@ -49,6 +49,20 @@ def is_report_layout_scrub_prompt(prompt: str) -> bool:
     return is_report_layout_scrub_brief(prompt)
 
 
+def is_fx_rate_provider_prompt(prompt: str) -> bool:
+    """FX / rate-provider sync CLASS — write stock res.currency.rate."""
+    from app.ai_fx_rate_class import is_fx_rate_provider_class_brief
+
+    return is_fx_rate_provider_class_brief(prompt)
+
+
+def fx_rate_online_connector_runbook(*, prompt: str = "") -> dict[str, Any]:
+    """Online honesty appendix for FX CLASS — connector runbook IR."""
+    from app.ai_fx_rate_class import online_connector_runbook
+
+    return online_connector_runbook(prompt=prompt)
+
+
 def online_metadata_incomplete_interim(*, prompt: str = "", host_model: str = "sale.order") -> dict[str, Any]:
     """Prefer/Studio % field alone on Online — incomplete interim for markup CLASS."""
     from app.ai_markup_wht_class import online_metadata_incomplete_interim as _interim
@@ -156,6 +170,10 @@ def acceptance_for_draft(draft: dict[str, Any], *, prompt: str = "") -> dict[str
                 "report_xmlids": report_ids,
             },
         }
+    if is_fx_rate_provider_prompt(text):
+        from app.ai_fx_rate_class import acceptance_contract_for_prompt
+
+        return acceptance_contract_for_prompt(text, draft=draft)
     checks: list[dict[str, Any]] = [
         {"id": "field_labeled", "required": True},
         {"id": "fields_present", "required": True},
@@ -288,12 +306,21 @@ def ensure_python_field_strings(content: str) -> str:
             return full
         if _STRING_KW_RE.search(args):
             return full
+        # Regex stops at the first ")"; nested Selection([...("a","b")]) or
+        # multi-line fields.Selection([...) captures are unbalanced — skip.
+        if args.count("(") != args.count(")") or "[" in args:
+            return full
         label = _label_from_fname(fname)
         insert = f"string={label!r}"
         # Append after positional comodel (Many2one/One2many) — never
         # `string=..., 'model'` which is a SyntaxError and blanks field extract.
-        if args.strip():
-            new_args = f"{args.strip()}, {insert}"
+        stripped = args.strip()
+        if stripped:
+            # Avoid `readonly=False,, string=...` when args already end with a comma.
+            if stripped.endswith(","):
+                new_args = f"{stripped} {insert}"
+            else:
+                new_args = f"{stripped}, {insert}"
         else:
             new_args = insert
         return full[: m.start(2) - m.start(0)] + new_args + full[m.end(2) - m.start(0) :]
@@ -508,6 +535,15 @@ def _run_one_check(
         "no_tax_create",
     }:
         return _check_markup_wht_class(cid, draft=draft, hint=hint)
+    if cid in {
+        "writes_currency_rate",
+        "currencies_parameterized",
+        "no_x_fx_app",
+        "not_nigeria_autopilot_alone",
+        "gold_or_scaffold_present",
+        "online_honesty_appendix",
+    }:
+        return _check_fx_rate_class(cid, draft=draft, hint=hint)
     return {"id": cid, "ok": True, "detail": "unknown check skipped", "repair_hint": hint}
 
 
@@ -524,6 +560,29 @@ def _check_markup_wht_class(
     )
     ok = bool(findings.get(cid))
     detail = "ok" if ok else f"failed — {cid} host={findings.get('host_model')}"
+    return {"id": cid, "ok": ok, "detail": detail, "repair_hint": hint, "findings": findings}
+
+
+def _check_fx_rate_class(
+    cid: str,
+    *,
+    draft: dict[str, Any],
+    hint: str,
+) -> dict[str, Any]:
+    from app.ai_fx_rate_class import static_fx_rate_findings
+
+    findings = static_fx_rate_findings(
+        draft, prompt=str(draft.get("_user_prompt") or "")
+    )
+    ok = bool(findings.get(cid))
+    detail = (
+        "ok"
+        if ok
+        else (
+            f"failed — {cid} currencies={findings.get('quoted_currencies')} "
+            f"found={findings.get('found_currencies')}"
+        )
+    )
     return {"id": cid, "ok": ok, "detail": detail, "repair_hint": hint, "findings": findings}
 
 
@@ -864,6 +923,8 @@ __all__ = [
     "ensure_python_field_strings",
     "is_sales_markup_prompt",
     "is_report_layout_scrub_prompt",
+    "is_fx_rate_provider_prompt",
+    "fx_rate_online_connector_runbook",
     "report_layout_online_checklist",
     "online_metadata_incomplete_interim",
     "python_fields_missing_labels",

@@ -179,13 +179,36 @@ def seed_option_a_authored(prompt: str, plan: Any) -> dict[str, Any]:
         ir["module_delivery"] = True
         ir["gold_artifact_id"] = None
 
+    from app.ai_fx_rate_class import (
+        apply_generic_fx_scaffold,
+        is_cbn_class_match,
+        is_fx_rate_provider_class_brief,
+        resolve_fx_host_stamp,
+    )
     from app.ai_report_layout_scrub import (
         is_report_layout_scrub_brief,
         report_scrub_host_from_prompt,
         scaffold_address_scrub_blocks,
     )
 
-    if is_report_layout_scrub_brief(prompt):
+    if is_fx_rate_provider_class_brief(prompt) and not is_cbn_class_match(prompt):
+        apply_generic_fx_scaffold(draft, prompt=prompt)
+        if isinstance(ir, dict):
+            stamp = resolve_fx_host_stamp(prompt=prompt)
+            for k, v in stamp.items():
+                if k in {
+                    "delivery_lane",
+                    "artifact_kind",
+                    "prove_status",
+                    "delivery_lane_copy",
+                    "artifact_kind_copy",
+                    "promote_human",
+                    "completeness_is_not_cert",
+                }:
+                    ir[k] = v
+            ir["class_id"] = "fx_rate_provider_sync"
+            ir["fx_member"] = stamp.get("fx_member")
+    elif is_report_layout_scrub_brief(prompt):
         scrub_host = report_scrub_host_from_prompt(prompt)
         draft["models"] = [{"model": scrub_host, "mode": "inherit", "fields": []}]
         draft["depends"] = [module_for_model(scrub_host)]

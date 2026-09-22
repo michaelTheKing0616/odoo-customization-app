@@ -23,15 +23,18 @@ Never Prefer when Option A required; never Online Python promote.
 | Phase | Focus | Status |
 |-------|-------|--------|
 | **P0** | Contract docs · intent class routes · `delivery_lane`/`artifact_kind`/`prove_status` stamps · Online+Python host gate · goldens | **done** (this tip) |
-| **P1** | Job 2 markup+WHT CLASS + Job 3 report scrub CLASS | **done** |
-| **P2** | Build spine chips | deferred |
-| **P3** | Job1 CBN full close | next |
+| **P1** | Job 1 FX/CBN rate CLASS + Job 2 markup+WHT + Job 3 report scrub | **done** |
+| **P2** | Build spine chips | deferred (note only) |
+| **P3** | (was Job1) — closed under P1 | **done** |
 | **P4** | Atlas elite | out of scope this tip |
 
 ## Done
 
 - [x] **Intent → feature router (Expert)** — 2026-09-21  
   Plain language → best-fitting feature + can/can't. Expert UI (`IntentRouterPanel`), `POST /connections/{id}/expert/route` (+ `/batch-os/intent-route`). Deterministic catalog (YAML/JSON + Atlas + recipes); `AI_INTENT_LLM` optional only.
+
+- [x] **P1 Job 1 FX / rate-provider sync CLASS** — 2026-09-22  
+  CBN gold shortcut inside class (`currency_rate_cbn`); generic provider → Option A scaffold writing `res.currency.rate`; Online → `external_connector` runbook. Never Prefer / Nigeria Autopilot stock_reuse alone for live HTTP.
 
 - [x] **P1 Job 2 sale markup % + WHT CLASS** — 2026-09-22  
   Option A fiscal/compute on sale.order: markup % drives amounts; WHT base = markup only; never purchase; Prefer/Studio % alone on Online = incomplete interim. Class scaffold + static prove.

@@ -212,6 +212,49 @@ def classify_generation(prompt: str) -> GenerationPlan:
         )
 
     try:
+        from app.ai_fx_rate_class import (
+            is_fx_rate_provider_class_brief,
+            resolve_fx_member,
+        )
+    except Exception:  # noqa: BLE001
+        is_fx_rate_provider_class_brief = lambda _p: False  # type: ignore[misc, assignment]
+        resolve_fx_member = lambda _p: "generic_option_a"  # type: ignore[misc, assignment]
+
+    if is_fx_rate_provider_class_brief(text) and not cbn:
+        member = resolve_fx_member(text)
+        if member == "external_connector":
+            return GenerationPlan(
+                capability="option_a_authored",
+                grain="full_app",
+                module_delivery=True,
+                needs_clarification=clarify,
+                honesty=(
+                    "FX / rate-provider CLASS — Online cannot promote Python. "
+                    "Use external_connector runbook to write stock res.currency.rate "
+                    "(parameterized currencies), or promote Option A on Odoo.sh / "
+                    "self-host after sandbox prove. Never Prefer / Nigeria Autopilot "
+                    "stock_reuse alone for live HTTP fetch. Completeness ≠ Cert. "
+                    "Promote stays human."
+                ),
+                notes=["option_a_authored: fx_rate_external_connector"],
+            )
+        return GenerationPlan(
+            capability="option_a_authored",
+            grain="full_app",
+            module_delivery=True,
+            needs_clarification=clarify,
+            honesty=(
+                "FX / rate-provider CLASS — Option A module writes stock "
+                "res.currency.rate (parameterized currencies). CBN is the earned "
+                "gold shortcut inside this class; generic providers are LLM/scaffold "
+                "authored under gates. Never Prefer / Nigeria Autopilot stock_reuse "
+                "alone for live HTTP. Online → connector/.sh alternatives. "
+                "Completeness ≠ Cert. Promote stays human."
+            ),
+            notes=["option_a_authored: fx_rate_provider_sync"],
+        )
+
+    try:
         from app.ai_report_layout_scrub import is_report_layout_scrub_brief
     except Exception:  # noqa: BLE001
         is_report_layout_scrub_brief = lambda _p: False  # type: ignore[misc, assignment]

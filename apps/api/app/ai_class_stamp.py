@@ -76,6 +76,13 @@ _PREFER_FIELD_RE = re.compile(
 
 
 def is_fx_rate_class(prompt: str) -> bool:
+    try:
+        from app.ai_fx_rate_class import is_fx_rate_provider_class_brief
+
+        if is_fx_rate_provider_class_brief(prompt or ""):
+            return True
+    except Exception:  # noqa: BLE001
+        pass
     return bool(_FX_CONNECTOR_RE.search(prompt or ""))
 
 
