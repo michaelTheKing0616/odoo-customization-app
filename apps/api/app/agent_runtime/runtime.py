@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import copy
 import json
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 from app.agent_runtime.phases import ENGINE_ONLY, PHASES, IllegalTransition, assert_transition
+from app.agent_runtime.prompt import AssembledContext, Exchange, PromptRejected, assemble_context
 from app.agent_runtime.tools import (
     ToolDenied,
     ask_user_result,
@@ -225,11 +227,78 @@ class AgentRuntime:
     ) -> None:
         self.grant = grant
         self.requester_ops = requester_ops
+        self._transcripts: dict[int, list[Exchange]] = {}
 
     def start(self) -> RunState:
         state = RunState()
         state.events.append({"kind": "phase", "phase": "INTAKE"})
         return state
+
+    def record_exchange(self, state: RunState, exchange: Exchange) -> None:
+        """Append one turn to this run's transcript.
+
+        Inputs: the run state and one exchange.
+        Outputs: none.
+        Side effects: stores a deep copy on this runtime, keyed by the state
+        object. The copy is not in ``export_state``. A restored run has an
+        empty transcript. Does not call a model and does not write to disk.
+        """
+        if not isinstance(exchange, Exchange):
+            raise TypeError("exchange must be an Exchange")
+        stored = copy.deepcopy(exchange)
+        bucket = self._transcripts.setdefault(id(state), [])
+        seen = {tool.call_id for item in bucket for tool in item.tools}
+        for tool in stored.tools:
+            if tool.call_id in seen:
+                raise PromptRejected(f"duplicate tool call id {tool.call_id}")
+            seen.add(tool.call_id)
+        bucket.append(stored)
+
+    def build_context(
+        self,
+        state: RunState,
+        *,
+        window_tokens: int,
+        count_tokens: Callable[[str], int],
+        tools: Sequence[Mapping[str, str]] = (),
+        skills: str = "",
+        memory: str = "",
+        overlay: str = "",
+        overlay_runtime_edited: bool = False,
+        core_runtime_edited: bool = False,
+        core: str | None = None,
+        production: bool = False,
+        explorer: bool = False,
+        tier: str | None = None,
+        secrets: Sequence[str] = (),
+    ) -> AssembledContext:
+        """Assemble the model context for turns recorded on this run.
+
+        Inputs: run state, window size, and a local token counter. Layers and
+        budgets are applied by ``assemble_context``. The transcript is the
+        one recorded with ``record_exchange`` for this state object.
+        Outputs: messages, the scrubbed cacheable prefix, and budget counts.
+        Side effects: none. Does not mutate the run or the transcript.
+        Does not call a model provider.
+        """
+        exchanges = tuple(self._transcripts.get(id(state), ()))
+        return assemble_context(
+            state,
+            exchanges,
+            window_tokens=window_tokens,
+            count_tokens=count_tokens,
+            tools=tools,
+            skills=skills,
+            memory=memory,
+            overlay=overlay,
+            overlay_runtime_edited=overlay_runtime_edited,
+            core_runtime_edited=core_runtime_edited,
+            core=core,
+            production=production,
+            explorer=explorer,
+            tier=tier,
+            secrets=secrets,
+        )
 
     def complete_phase(self, state: RunState, nxt: str) -> RunState:
         self._guard(state)
