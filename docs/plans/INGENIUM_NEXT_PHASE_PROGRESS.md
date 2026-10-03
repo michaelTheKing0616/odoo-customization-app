@@ -1150,6 +1150,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - A process kill still loses a run. Resume restores an exported in-memory dict only. GATE-P4-08 is not a durable restart.
 - Three tool names sit beside the card list: `changeset_validate`, `changeset_simulate`, and `changeset_render`. The registered card set is 42 names and does not include an apply tool.
 - The prompt transcript is in memory on the runtime and is not part of `export_state`. GATE-P4-07 is not closed. Compaction was not run against a live model.
+- EV-AMB-01 through EV-AMB-08 have no YAML scenario bodies. The clarification rules were tested without scoring those ids.
 - `docker/*` and `apps/api/tests/test_wave16_gen2.py` still use `ServerProxy` outside the XML-RPC product scan.
 - Recaptured token screenshots in `docs/vision-verify/tokens-light.png` and `tokens-dark.png` are unstaged. The CSS text did not change.
 
@@ -1355,6 +1356,11 @@ Not done: T8-PROMPT. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09,
 Track: T8 T8-PROMPT. Worker [Prove prompt compaction and scrubbing](40519cbd-47b8-4700-94a6-4a3cf70bef27). No push. L4 stays off.
 Intent: A 30-turn transcript compacts without splitting tool-call pairs. The cached prefix is scrubbed. System and tools stay at or under 15 percent, skills 15, memory 5, history 40, and tool results 25. The result stays at or under 90 percent. Re-ran prompt and import-boundary tests: 14 passed. The version-branch count stayed 22. No live model was called. GATE-P4-07 stays open.
 Not done: T8-CLARIFY. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, GATE-P3-03, GATE-P3-06, GATE-P3-08, GATE-P3-10, GATE-P4-07, and GATE-P4-08 stay open. L4 stays off.
+
+## 2026-10-03 — T8-CLARIFY rules
+Track: T8 T8-CLARIFY. Worker [Prove the clarification rules](01cfc562-371b-4216-a43a-0c0cc39f1560). No push. L4 stays off.
+Intent: The runtime asks when targets conflict, a safe default is missing, an R3 request is underspecified, sources conflict, or the topic is financial, HR, or legal. R0 and R1 proceed when assumptions are stated. A fact already answered is not asked again. Re-ran clarify and import-boundary tests: 38 passed. The version-branch count stayed 22. EV-AMB-01 through EV-AMB-08 were not scored.
+Not done: T8-CRITIC. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, GATE-P3-03, GATE-P3-06, GATE-P3-08, GATE-P3-10, GATE-P4-07, and GATE-P4-08 stay open. L4 stays off.
 
 ## 2026-10-03 — Harness queued
 Cards H1–H8 in docs/plans/next-phase/cards/HARNESS.md. PR eval stays cassette/property. No product code.
