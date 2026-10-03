@@ -8,6 +8,7 @@ from typing import Any, Final
 from app.changeset.logic_ops import logic_base_raise
 from app.changeset.schema_ops import compute_requested, nonempty_sensitive_delete
 from app.changeset.security_ops import security_base_raise
+from app.changeset.setting_ops import setting_base_raise
 
 RiskBase = str  # R0 .. R4
 Reversible = str  # E | S | N
@@ -113,6 +114,9 @@ def op_base_risk(op_type: str, params: dict[str, Any] | None) -> RiskBase:
     secured = security_base_raise(op_type, p)
     if secured is not None:
         base = _max_risk(base, secured)
+    settings = setting_base_raise(op_type, p)
+    if settings is not None:
+        base = _max_risk(base, settings)
     if op_type in {"field.create", "field.update"} and compute_requested(p):
         base = _max_risk(base, "R3")
     elif op_type == "field.delete" and nonempty_sensitive_delete(p):

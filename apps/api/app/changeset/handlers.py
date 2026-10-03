@@ -14,6 +14,13 @@ from app.changeset.security_ops import (
 )
 from app.changeset.ops import OP_CATALOG
 from app.changeset.protected_registry import protected_denial
+from app.changeset.setting_ops import (
+    company_update_issues,
+    company_update_refusal,
+    install_reversal_warning,
+    protected_config_key,
+    protected_param_issues,
+)
 from app.changeset.schema_ops import (
     CONSTRAINT_X_MODELS_ONLY,
     TYPE_CHANGE_UNSUPPORTED,
@@ -181,15 +188,10 @@ _ISSUE_FNS: dict[str, IssueFn] = {
     "rule.create": lambda p: _need(p, "model", "domain_force") + (
         ["group-less global rule needs an explicit global flag"] if not p.get("groups") and not p.get("global") else []
     ),
-    "company.update": lambda p: ["lock dates are refused"] if p.get("lock_date") else [],
+    "company.update": company_update_issues,
     "group.create": lambda p: [GROUP_MUST_NOT_IMPLY_ADMIN] if group_implies_admin(p) else [],
     "user.groups.assign": _assign_issues,
-    "config_param.set": lambda p: ["protected parameter"] if p.get("key") in {
-        "database.secret",
-        "database.uuid",
-        "web.base.url",
-        "database.enterprise_code",
-    } else _need(p, "key"),
+    "config_param.set": protected_param_issues,
 }
 
 
@@ -215,8 +217,10 @@ class OpHandler:
         if entry is not None and entry.risk_base == "R4":
             return f"{self.op_type} is prohibited"
         body = _params(params)
-        if self.op_type == "company.update" and body.get("lock_date"):
-            return "lock dates are prohibited"
+        if self.op_type == "company.update":
+            company_reason = company_update_refusal(body)
+            if company_reason:
+                return company_reason
         if self.op_type == "user.groups.assign" and body.get("admin"):
             return "admin group assignment is prohibited"
         if self.op_type == "user.groups.assign" and privileged_assignment(body):
@@ -227,12 +231,7 @@ class OpHandler:
             return "accounting sequences are prohibited"
         if self.op_type in {"access.create", "access.update"} and not body.get("group"):
             return "group-less access is forbidden"
-        if self.op_type == "config_param.set" and body.get("key") in {
-            "database.secret",
-            "database.uuid",
-            "web.base.url",
-            "database.enterprise_code",
-        }:
+        if self.op_type == "config_param.set" and protected_config_key(body):
             return "protected parameter"
         if self.op_type == "field.update" and type_change_requested(body):
             return TYPE_CHANGE_UNSUPPORTED
@@ -251,10 +250,14 @@ class OpHandler:
         body = _params(params)
         target = body.get("model") or body.get("module") or body.get("name") or ""
         entry = OP_CATALOG[self.op_type]
-        return (
+        text = (
             f"{self.op_type} on {target}: risk {entry.risk_base}, "
             f"reversible {entry.reversible}, ddl {entry.ddl}"
         )
+        warning = install_reversal_warning(self.op_type)
+        if warning:
+            return f"{text}. {warning}"
+        return text
 
     def inverse(
         self,

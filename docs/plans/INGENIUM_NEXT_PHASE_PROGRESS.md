@@ -1255,3 +1255,8 @@ Not done: T8-OP-SEC. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P2
 Track: T8 T8-OP-SEC. Worker [Prove security operation risk rules](ae3e8883-ba64-4571-9d51-0a10bf9f1705). No push. L4 stays off.
 Intent: A group that would imply admin is R4 and is not written. A group-less ACL is R4. Assigning admin, system, or service is R4. `user.unlink` stays out of the catalog. On Odoo 20, rule create and update compile to `ir.access` through the existing compiler. Re-ran security, Odoo 20 access, and import-boundary tests: 32 passed. The version-branch count stayed 22. The full engine suites were not run.
 Not done: T8-OP-SET. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P2-09 stay open. L4 stays off.
+
+## 2026-10-03 — T8-OP-SET risk rules
+Track: T8 T8-OP-SET. Worker [Prove settings and module risk rules](93004747-6c26-4262-b069-f08e5a8b0df1). No push. L4 stays off.
+Intent: Module install and upgrade stay R3 and may be billable on paid editions. Uninstall stays R4 and is refused before any port call. Protected keys, lock dates, fiscal year, currency, and the chart of accounts are R4. Install warns that reversal is uninstall. Re-ran settings and import-boundary tests: 18 passed. The version-branch count stayed 22. No live module was installed.
+Not done: T8-OP-DATA. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P2-09 stay open. L4 stays off.
