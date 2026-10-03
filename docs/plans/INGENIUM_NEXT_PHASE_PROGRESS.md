@@ -1023,3 +1023,9 @@ Track: T7 UI-SP-API. Worker [Split the web API client by domain](fbd5e735-aba5-4
 Intent: Move `api.ts` into domain modules. `api.ts` is a 57-line re-export. No method name is defined twice. URLs and bodies were not rewritten.
 Tests: `pnpm exec vitest run src/lib/api.test.ts src/lib/capabilities.test.ts src/lib/jobs.test.ts src/lib/draft-job-outcome.test.ts` — 78 passed. No file under `src/lib/api/` is over 400 lines.
 Not done: UI-SP-WIZARD. L4 off.
+
+## 2026-10-03 — UI-SP-WIZARD page split
+Track: T7 UI-SP-WIZARD. Worker [Split the wizard page into components](540caf38-b9f0-486e-8810-0f758c42bb72). No push. L4 stays off.
+Intent: Move the wizard page into `components/wizard/` without changing the route. The page is 13 lines and still default-exports `AppWizardPage`. No new file is over 400 lines.
+Tests: draft-studio vitest — 7 passed. Playwright `e2e/wizard-scaffold.spec.ts`, `wizard-scorecard.spec.ts`, `wizard-component.spec.ts` — 4 passed.
+Not done: UI-SP-STUDIO. L4 off.
