@@ -1390,5 +1390,10 @@ Track: T8 T8-S03. Worker [Prove a second apply writes nothing](2b53a71a-5910-42c
 Intent: A second apply of the same plan does not call create or write again. That covers eight ops the executor can apply. The other catalog ops are listed and not claimed. A repeat that would write fails closed. Re-ran the suite, the existing idempotency test, and import-boundary tests: 22 passed. The version-branch count stayed 22.
 Not done: T8-S04. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
 
+## 2026-10-04 — T8-S04 atomicity
+Track: T8 T8-S04. Worker [Prove mode T and mode C atomicity](09f32556-9909-461b-8994-590943605629). No push. L4 stays off.
+Intent: A Mode T failure clears the in-memory plan and is not verified. Mode C compensates from the last applied step backward. A partial apply is not reported as verified. An irreversible Mode C op fails closed. Re-ran the suite and import-boundary tests: 16 passed. The version-branch count stayed 22. The journal is still in memory. GATE-P3-03 stays open.
+Not done: T8-S05. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
+
 ## 2026-10-03 — Harness queued
 Cards H1–H8 in docs/plans/next-phase/cards/HARNESS.md. PR eval stays cassette/property. No product code.
