@@ -1116,6 +1116,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - Axe was not run for `/bots`, `/bots/rooms/[id]`, `/bots/[id]`, `/studio/dashboards`, `/bridge/connections`, or `/onboarding`. `/connections` only redirects.
 - Durable WAL is still T8-EXEC. The journal is in-process.
 - T8-MEM is still open. ADR-09 records the four memory classes. The code does not exist yet. `memory_propose` is not implemented.
+- The skill router is not built. ADR-10 records the package rules. No skill card has shipped the router.
 - `docker/*` and `apps/api/tests/test_wave16_gen2.py` still use `ServerProxy` outside the XML-RPC product scan.
 - Recaptured token screenshots in `docs/vision-verify/tokens-light.png` and `tokens-dark.png` are unstaged. The CSS text did not change.
 
@@ -1129,3 +1130,8 @@ Older "Not done" lines that only name the next card are closed when that card ha
 Track: T8 ADR-09. Worker [Record the memory-model ADR](4167b26b-b1e4-4455-a875-2e1ca15eae95). No push. L4 stays off.
 Intent: Four classes. Working memory is engine-trusted. Tenant or database memory is human-confirmed. Global knowledge is a pull request plus eval. Episodic memory is never auto-injected. `memory_propose` stays pending until a human confirms. Memory is at most 5% of the window. RT-47 is refused. T8-MEM is still the implementation card.
 Not done: ADR-10. ADR-02 stays open until Tope accepts D8. L4 off.
+
+## 2026-10-03 — ADR-10 skill package
+Track: T8 ADR-10. Worker [Record the skill-package ADR](4215d4ff-f5b6-46c4-836f-d4210bb4ffb7). No push. L4 stays off.
+Intent: No executable code in a skill. A skill can only narrow a grant. At most 3 skills load by default. `SKILL.md` is at most 2500 tokens. Router bars are recall@3 at least 0.95 and precision@3 at least 0.6 on at least 300 labeled phrasings. CI is at least 5 evals per skill and at least 12 for Tier-1. The router is not built.
+Not done: ADR-11. ADR-02 stays open until Tope accepts D8. L4 off.
