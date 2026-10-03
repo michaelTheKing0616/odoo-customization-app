@@ -1085,3 +1085,8 @@ Not done: ADR-07. ADR-02 stays open until Tope accepts D8. L4 off.
 Track: T8 ADR-07. Worker [Record the open staging ADR](a6b4170f-081c-424d-a875-e95e06902b20). No push. L4 stays off.
 Intent: Leave the clone provider unchosen. Production R3 stays blocked. Above R1 the path is review-only until staging exists.
 Not done: ADR-08. ADR-02 stays open until Tope accepts D8. L4 off.
+
+## 2026-10-03 — ADR-08 who approves
+Track: T8 ADR-08. Worker [Record the approval-flow ADR](d2b51a8d-e316-4176-9d48-eadeaaeba49d). No push. L4 stays off.
+Intent: Follow `02_APPROVAL_FLOW.md`. Production R3 needs two approvers who are not the requester, plus the domain owner when the target is elevated, plus simulation, backup, and an allowed window. Chat may only link to the approval page. Production expiry is 24 hours for R at or above 2. Staging expiry is 7 days. L4 stays off.
+Not done: ADR-09. ADR-02 stays open until Tope accepts D8. L4 off.
