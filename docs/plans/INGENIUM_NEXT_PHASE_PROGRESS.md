@@ -1212,3 +1212,8 @@ Not done: T8-OD-TRANSPORT. GATE-P0-03, GATE-P0-05, and GATE-P1-02 stay open. L4 
 Track: T8 T8-OD-TRANSPORT. Worker [Prove the transport contracts](4ff81ddc-bfd0-4eb7-a602-88b11aea9d12). No push. L4 stays off.
 Intent: A fake send function enforces two calls per database, a 30-second read timeout, a 120-second write timeout, TLS with `verify=false` refused, no write redirects, and bounded retries. Re-ran `tests/test_transport_contract.py`: 24 passed. The gate is not wrapped around XML-RPC or JSON-2. No live Odoo transport was used.
 Not done: T8-OD-ENV. GATE-P0-03, GATE-P0-05, and GATE-P1-02 stay open. The transport gate is not on the live adapters. L4 stays off.
+
+## 2026-10-03 — T8-OD-ENV environment profile
+Track: T8 T8-OD-ENV. Worker [Complete the environment profile](31979eb9-5eae-452e-81c5-829f345e01ea). No push. L4 stays off.
+Intent: The profile builds from an in-memory payload. Majors at or below 15 are refused. An unsupported major is read-only Q&A. An unavailable API is Guided Mode only. Re-ran `tests/test_env_profile.py` and `tests/test_read_plane.py`: 18 passed. No socket was opened.
+Not done: T8-OD-GRAPH. GATE-P0-03, GATE-P0-05, and GATE-P1-02 stay open. The transport gate is not on the live adapters. L4 stays off.
