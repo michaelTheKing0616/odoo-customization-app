@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import xmlrpc.client
 from dataclasses import dataclass, field
 from typing import Any, Protocol
+
+from odoo_client.rpc_transport_errors import XmlRpcFault, XmlRpcProtocolError
 
 
 class RpcCaller(Protocol):
@@ -21,9 +22,9 @@ DEFAULT_VERIFY_FIELDS = ("write_date", "display_name")
 
 
 def is_transport_rpc_error(exc: BaseException) -> bool:
-    if isinstance(exc, (ConnectionError, TimeoutError, OSError, xmlrpc.client.ProtocolError)):
+    if isinstance(exc, (ConnectionError, TimeoutError, OSError, XmlRpcProtocolError)):
         return True
-    if isinstance(exc, xmlrpc.client.Fault):
+    if isinstance(exc, XmlRpcFault):
         return False
     msg = str(exc).lower()
     return any(

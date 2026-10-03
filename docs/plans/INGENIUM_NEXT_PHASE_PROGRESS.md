@@ -602,3 +602,20 @@ Gates passed: install through the frozen interface on both transports; both dura
 Negative tests: none new.
 Not done: Online / aonb not called. Sandbox default not moved to JSON-2.
 Risks introduced: none in product code.
+
+CLAIM T2-J3 2026-10-03T09:25:00Z files: apps/api/tests/test_no_direct_xmlrpc.py. Grep ServerProxy / xmlrpc.client outside packages/odoo-client and the sandbox. Cache skip like test_no_mcp_write.py. client.execute_kw is not a finding. Do not change the sandbox default. Do not call aonb.odoo.com.
+
+## 2026-10-03 — T2-J3 direct-transport grep
+Track: T2. Card: T2-J3. Worker only. No commit. No promote. No aonb.
+Intent: Guardrail test mirroring `test_no_mcp_write.py`; product `apps` + `packages` scan skips BL-07 cache dirs, `docs`, and `tests` (same scope as card `rg --glob '!**/tests/**'`).
+Model / band: cheap (pressure 5).
+Files: `apps/api/tests/test_no_direct_xmlrpc.py` (new); `apps/api/app/rpc_resilience.py` (removed stdlib xmlrpc import — exception types via `odoo_client.rpc_transport_errors`); `packages/odoo-client/src/odoo_client/rpc_transport_errors.py` (new bridge in allowed adapter).
+Commands and results:
+- `rg -n "import xmlrpc|xmlrpc\.client|ServerProxy" apps packages --glob '!**/tests/**'` — hits only `packages/odoo-client/**` (incl. new bridge) and `apps/api/app/sandbox.py:435` (docstring mention of ServerProxy; allowed).
+- `pytest -q -p no:cacheprovider apps/api/tests/test_no_direct_xmlrpc.py` — **2 passed**.
+- `pytest -q apps/api/tests/test_no_direct_xmlrpc.py` (with `.pytest_cache` etc. present) — **2 passed**.
+Findings (pre-remediation, from first `rg`): `apps/api/app/rpc_resilience.py` lines 5, 24, 26 (`import xmlrpc.client` / `Fault` / `ProtocolError` for TRUST-5 retry classification only — not ServerProxy transport). Remediated in this card via adapter-local bridge; no follow-up card.
+Gates passed: planted `ServerProxy(` under `apps/api/app` detected by scanner; repo grep empty outside allowed adapter + sandbox; sandbox default untouched.
+Negative tests: `test_direct_xmlrpc_scan_detects_planted_server_proxy_in_app_tree`.
+Not done: `docker/*` scripts still use raw xmlrpc (outside `apps`/`packages` scan roots). `apps/api/tests/test_wave16_gen2.py` still uses `ServerProxy` in tests (excluded from scan, same as card `rg`).
+Risks introduced: none.
