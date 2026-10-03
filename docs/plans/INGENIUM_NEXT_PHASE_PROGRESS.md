@@ -652,3 +652,13 @@ Tests: (1) 41st LLM step raises BudgetExceeded, MAX_STEPS stays 40. (2) 121st ca
 Pointers: (4) change windows → T6-04 freeze-on-approve and T6-06 allowed time window. (5) two-person R3 → T6-06 and self_approval_allowed (R3 still False). (6) kill switch → test_kill_switch_protocol_and_escalation_refuse_before_work and test_reader_and_kill_switch_do_not_touch_the_port_or_journal.
 Files: `runtime.py` (MAX_TOOL_CALLS), `blast_radius.py` (PRODUCTION_APPLY_RECORD_CAP), `executor.py` (production record gate), `test_production_budgets.py`.
 Not done: L4 remains unconfirmed and inactive. No aonb.odoo.com call.
+
+CLAIM 5B-02 2026-10-03T09:40:00Z files: config_as_code apply through the change-set executor. Fake port only. Do not enable L4. Do not call aonb.odoo.com.
+
+Track: 5B. Card: 5B-02. Worker only. No commit. No push. Fake port only. L4 stays off.
+Intent: Compile each spec section to a closed catalog op; upsert by xmlid with read-before-write; apply through `changeset.executor.apply` (Mode C) against a fake port.
+Closest existing catalog ops (no new names): languages/currencies/mail_servers/tax+product+HR/POS/project master data → `config_record.upsert`; crm_stages/task_stages → `stage.upsert`; views → `view.inherit.create`.
+Command: `.venv/bin/python -m pytest -q -p no:cacheprovider apps/api/tests/test_config_apply.py apps/api/tests/test_bridge_and_config_spec.py` — **18 passed**.
+Acceptance: `test_plan_apply_idempotent` second apply `port.call_count == 0` after `reset_journal`; `test_adopt_example_compiles`; `test_errors_block_apply` type mismatch writes nothing; `test_second_apply_writes_nothing` still 1 MemoryDb write. `write_mode=production` refused. No aonb call.
+Files: `config_as_code/loader.py`, `config_as_code/apply.py`, `changeset/dispatch.py` (`setting.set`, `config_record.upsert`), `tests/test_config_apply.py`.
+Not done: durable WAL (T8-EXEC). Production acknowledgement is gated but 5B-09 oracle names are not this card. L4 off.

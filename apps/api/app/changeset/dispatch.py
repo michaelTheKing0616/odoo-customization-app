@@ -77,4 +77,29 @@ def dispatch_op(
         if not module:
             raise DispatchError("module name is required")
         return port.create("ir.module.module", {"name": module, "state": "to install"})
+    if op_type == "setting.set":
+        key = str(params.get("key") or "")
+        if not key:
+            raise DispatchError("key is required")
+        payload = {"key": key, "value": params.get("value")}
+        xmlid = params.get("xmlid")
+        if xmlid:
+            payload["xmlid"] = xmlid
+        return port.create("ir.config_parameter", payload)
+    if op_type == "config_record.upsert":
+        model = str(params.get("model") or "")
+        if not model:
+            raise DispatchError("model is required")
+        values = dict(params.get("values") or {})
+        xmlid = params.get("xmlid")
+        if xmlid:
+            values = {**values, "xmlid": xmlid}
+        existing_id = None
+        lookup = getattr(port, "lookup_xmlid", None)
+        if callable(lookup) and xmlid:
+            existing_id = lookup(xmlid)
+        if existing_id:
+            port.write(model, [existing_id], values)
+            return existing_id
+        return port.create(model, values)
     raise DispatchError(f"no dispatcher for {op_type}")

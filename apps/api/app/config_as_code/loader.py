@@ -5,10 +5,12 @@ This does not talk to Odoo. Apply stays behind classify_rpc and the dry-run gate
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Final
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.changeset.ops import OP_CATALOG
 
 SECTIONS: tuple[str, ...] = (
     "modules",
@@ -63,12 +65,74 @@ SECTIONS: tuple[str, ...] = (
 _TOP = frozenset({"version", "project", "description", "target", *SECTIONS})
 _SECRET_PREFIX = "secret:"
 
+# Closed catalog only. Sections without a dedicated op use the closest existing name.
+SECTION_OP: Final[dict[str, str]] = {
+    "modules": "module.install",
+    "languages": "config_record.upsert",
+    "currencies": "config_record.upsert",
+    "companies": "company.update",
+    "settings": "setting.set",
+    "users": "user.create",
+    "sequences": "sequence.create",
+    "mail_servers": "config_record.upsert",
+    "tax_groups": "config_record.upsert",
+    "accounts": "config_record.upsert",
+    "taxes": "config_record.upsert",
+    "journals": "config_record.upsert",
+    "payment_terms": "config_record.upsert",
+    "fiscal_positions": "config_record.upsert",
+    "analytic_plans": "config_record.upsert",
+    "analytic_accounts": "config_record.upsert",
+    "product_categories": "config_record.upsert",
+    "product_attributes": "config_record.upsert",
+    "warehouses": "config_record.upsert",
+    "locations": "config_record.upsert",
+    "operation_types": "config_record.upsert",
+    "routes": "config_record.upsert",
+    "products": "config_record.upsert",
+    "pricelists": "config_record.upsert",
+    "reorder_rules": "config_record.upsert",
+    "putaway_rules": "config_record.upsert",
+    "crm_stages": "stage.upsert",
+    "sales_teams": "config_record.upsert",
+    "sale_templates": "config_record.upsert",
+    "workcenters": "config_record.upsert",
+    "boms": "config_record.upsert",
+    "departments": "config_record.upsert",
+    "jobs": "config_record.upsert",
+    "employees": "config_record.upsert",
+    "leave_types": "config_record.upsert",
+    "pos_payment_methods": "config_record.upsert",
+    "pos_configs": "config_record.upsert",
+    "projects": "config_record.upsert",
+    "task_stages": "stage.upsert",
+    "custom_fields": "field.create",
+    "views": "view.inherit.create",
+    "server_actions": "server_action.create",
+    "automations": "automation.create",
+    "crons": "cron.create",
+    "access_rights": "access.create",
+    "record_rules": "rule.create",
+    "records": "config_record.upsert",
+}
+
 
 class SpecError(ValueError):
     """The YAML spec is not safe to plan."""
 
 
+class CompileError(SpecError):
+    """Named compile failure (no_matching_op)."""
+
+    def __init__(self, name: str, detail: str = "") -> None:
+        self.name = name
+        message = name if not detail else f"{name}: {detail}"
+        super().__init__(message)
+
+
 class CustomField(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     model: str
     name: str
     field_description: str = ""
@@ -162,12 +226,47 @@ def load_spec(text: str) -> ConfigSpec:
         raise SpecError(str(exc)) from exc
 
 
+def op_for_section(section: str) -> str:
+    """Map a spec section to a catalog op. Missing or unknown names fail closed."""
+    op_type = SECTION_OP.get(section)
+    if not op_type or op_type not in OP_CATALOG:
+        raise CompileError("no_matching_op", section)
+    return op_type
+
+
+def _xmlid_for(project: str, section: str, index: int, body: dict[str, Any]) -> str:
+    if body.get("xmlid"):
+        return str(body["xmlid"])
+    key = body.get("key")
+    if key:
+        text = str(key)
+        return text if "." in text else f"{project}.{text}"
+    name = body.get("name")
+    model = body.get("model")
+    prefix = project or "ingenium"
+    if name and model:
+        return f"{prefix}.{section}_{model}_{name}"
+    if name:
+        return f"{prefix}.{section}_{name}"
+    return f"{prefix}.{section}_{index}"
+
+
 def compile_plan(spec: ConfigSpec) -> list[dict[str, Any]]:
-    """Ordered operations. res_id is never included, so the plan fingerprint is stable."""
+    """Ordered catalog ops. res_id is never included, so the plan fingerprint is stable."""
     plan: list[dict[str, Any]] = []
+    project = spec.project
     for section in SECTIONS:
         rows = getattr(spec, section)
+        op_type = op_for_section(section)
         for index, row in enumerate(rows):
             body = row.model_dump() if isinstance(row, BaseModel) else dict(row)
-            plan.append({"section": section, "index": index, "body": body})
+            plan.append(
+                {
+                    "section": section,
+                    "index": index,
+                    "type": op_type,
+                    "xmlid": _xmlid_for(project, section, index, body),
+                    "body": body,
+                }
+            )
     return plan
