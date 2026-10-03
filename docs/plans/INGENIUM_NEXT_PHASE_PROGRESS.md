@@ -1120,7 +1120,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - `cmdk` still depends on `@radix-ui/react-dialog`. No source file imports it.
 - The expert panel and billing still use `Sheet`, not the motion sheet.
 - Axe was not run for `/bots`, `/bots/rooms/[id]`, `/bots/[id]`, `/studio/dashboards`, `/bridge/connections`, or `/onboarding`. `/connections` only redirects.
-- Durable WAL is still T8-EXEC. The journal is in-process.
+- Durable WAL is still in memory. `apps/api/alembic/versions/s9t0u1v2w3x4_journal_wal.py` declares `journal_entry`, `before_image`, and `apply_database_lock` and has not been applied. A process kill still loses the journal. GATE-P3-03 is not closed.
 - T8-MEM is still open. ADR-09 records the four memory classes. The code does not exist yet. `memory_propose` is not implemented.
 - The skill router is not built. ADR-10 records the package rules. No skill card has shipped the router.
 - Audit retention is not wired. ADR-11 locks the chain shape. Append and verify already exist. 24 months, 7 years for accounting kinds, and 7 days for raw LLM payloads are still open.
@@ -1297,6 +1297,11 @@ Not done: T8-SIM. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, an
 Track: T8 T8-SIM. Worker [Prove the simulation modes](585d9931-4695-42a6-8077-28d1ff290d64). No push. L4 stays off.
 Intent: Static, Bridge dry-run, staging, and synthetic modes run in process. A failed simulation returns the plan to planning. Production apply without a recorded simulation is refused unless policy allows an R1 direct apply. A DDL op stays off the in-place path. The runtime `changeset_simulate` tool now calls that module. Re-ran simulation, runtime, and import-boundary tests: 30 passed. The version-branch count stayed 22. No live Odoo call.
 Not done: T8-EXEC. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, and GATE-P3-06 stay open. L4 stays off.
+
+## 2026-10-03 — T8-EXEC journal schema
+Track: T8 T8-EXEC. Worker [Add a durable executor journal](6645bf27-b6c6-45e4-a6c2-ba6fef57c1fd). No push. L4 stays off.
+Intent: The migration declares the journal, before-image, and per-database lock tables. It was not applied. Recovery of a stale APPLYING run that has INTENT and no RESULT compensates and is not verified. An unknown outcome is not retried and becomes NEEDS_HUMAN. Re-ran WAL and import-boundary tests: 15 passed. The version-branch count stayed 22. The journal rows are still in memory. GATE-P3-03 stays open.
+Not done: T8-VERIFY. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, GATE-P3-03, and GATE-P3-06 stay open. L4 stays off.
 
 ## 2026-10-03 — Harness queued
 Cards H1–H8 in docs/plans/next-phase/cards/HARNESS.md. PR eval stays cassette/property. No product code.

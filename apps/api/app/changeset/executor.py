@@ -1,4 +1,10 @@
-"""In-memory journal executor (Mode T / Mode C). The bridge gate runs before any journal write."""
+"""In-memory journal executor (Mode T / Mode C).
+
+The bridge gate runs before any journal write. WAL rows still live in
+``_JOURNAL``. The Alembic revision ``s9t0u1v2w3x4`` declares ``journal_entry``,
+``before_image``, and ``apply_database_lock``; this process does not write
+those tables. ``recover_stale_applying`` reads a journal list, not Postgres.
+"""
 
 from __future__ import annotations
 
@@ -13,11 +19,12 @@ from app.blast_radius import assert_production_apply_records, changeset_record_c
 from app.changeset.ops import OP_CATALOG, get_op
 from app.changeset.policy import risk_of
 from app.changeset.protected_registry import protected_denial, reset_detections
-from app.changeset.recovery import recover
+from app.changeset.recovery import DatabaseApplyLock, recover
 from app.changeset.simulate import guard_production_apply
 
 _JOURNAL: list[dict[str, Any]] = []
 _RESULTS_BY_FINGERPRINT: dict[str, dict[str, Any]] = {}
+_APPLY_LOCK = DatabaseApplyLock()
 _PROTOCOL: Any = None
 
 
@@ -39,9 +46,10 @@ def changeset_fingerprint(changeset: list[dict[str, Any]]) -> str:
 
 
 def reset_journal() -> None:
-    """Test helper: clear journal and cached apply results."""
+    """Test helper: clear journal, cached apply results, and the process lock."""
     _JOURNAL.clear()
     _RESULTS_BY_FINGERPRINT.clear()
+    _APPLY_LOCK.clear()
     reset_detections()
 
 
@@ -84,6 +92,8 @@ def apply(
     environment: str = "",
     write_mode: str = "",
     record_count: int | None = None,
+    odoo_database: str = "",
+    apply_lock: DatabaseApplyLock | None = None,
 ) -> dict[str, Any]:
     if mode not in {"T", "C"}:
         raise ValueError("mode must be T or C")
@@ -116,6 +126,51 @@ def apply(
         escalated=escalated,
     )
 
+    lock_held = False
+    active_lock: DatabaseApplyLock | None = None
+    if odoo_database:
+        active_lock = apply_lock if apply_lock is not None else _APPLY_LOCK
+        if not active_lock.acquire(odoo_database, fp, now=datetime.now(timezone.utc)):
+            return {
+                "status": "NEEDS_HUMAN",
+                "plan_hash": fp,
+                "mode": mode,
+                "heartbeat": datetime.now(timezone.utc).isoformat(),
+                "risk_bump": 0,
+                "applied_count": 0,
+                "report": {
+                    "reason": "database_busy",
+                    "odoo_database": odoo_database,
+                    "results": [],
+                    "missing": [],
+                    "compensates": [],
+                },
+            }
+        lock_held = True
+
+    try:
+        return _apply_journaled(
+            changeset,
+            mode=mode,
+            fail_at=fail_at,
+            port=port,
+            fp=fp,
+            odoo_database=odoo_database,
+        )
+    finally:
+        if lock_held and active_lock is not None:
+            active_lock.release(odoo_database, fp)
+
+
+def _apply_journaled(
+    changeset: list[dict[str, Any]],
+    *,
+    mode: str,
+    fail_at: int | None,
+    port: Any | None,
+    fp: str,
+    odoo_database: str,
+) -> dict[str, Any]:
     if fp in _RESULTS_BY_FINGERPRINT:
         return dict(_RESULTS_BY_FINGERPRINT[fp])
 
@@ -124,17 +179,18 @@ def apply(
     applied_indices: list[int] = []
     status = "APPLIED"
     risk_bump = 0
-
-    _JOURNAL.append(
-        {
-            "kind": "INTENT",
-            "run_id": run_id,
-            "plan_hash": fp,
-            "mode": mode,
-            "op_count": len(changeset),
-            "heartbeat": heartbeat,
-        }
-    )
+    run_intent: dict[str, Any] = {
+        "kind": "INTENT",
+        "run_id": run_id,
+        "plan_hash": fp,
+        "mode": mode,
+        "op_count": len(changeset),
+        "heartbeat": heartbeat,
+        "status": "APPLYING",
+    }
+    if odoo_database:
+        run_intent["odoo_database"] = odoo_database
+    _JOURNAL.append(run_intent)
 
     try:
         for index, op in enumerate(changeset):
@@ -173,6 +229,7 @@ def apply(
                 try:
                     dispatch_op(port, op, document=changeset)
                 except UnknownOutcome:
+                    # The write may have landed. Do not dispatch this op again.
                     _JOURNAL.append({"kind": "UNKNOWN", "run_id": run_id, "index": index, "type": op_type})
                     raise _ApplyAbort()
 
@@ -215,6 +272,7 @@ def apply(
         expected_ops=len(changeset),
     )
     status = decision["status"]
+    run_intent["status"] = status
     result = {
         "status": status,
         "plan_hash": fp,
