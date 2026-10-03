@@ -21,6 +21,7 @@ dependencies = [
   "argon2-cffi>=23.1",
   "pyotp>=2.9",
   "authlib>=1.4",
+  "pyyaml>=6",
   # Runtime: OAuth callbacks, ingest vision OCR, outbound HTTP probes
   "httpx>=0.28",
 ]
@@ -31,6 +32,8 @@ stripe = [
 ]
 dev = [
   "pytest>=8.3",
+  "ruff>=0.11",
+  "mypy>=1.15",
 ]
 # Local MiniLM embeddings for domain-pack RAG (Apple Silicon friendly)
 ai-rag = [
@@ -54,3 +57,20 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+check_untyped_defs = false
+disallow_untyped_defs = false
+ignore_missing_imports = true
+follow_imports = "silent"
