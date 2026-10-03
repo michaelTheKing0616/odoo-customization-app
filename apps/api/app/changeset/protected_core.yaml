@@ -1,0 +1,48 @@
+# Core protected registry. Tenants may add targets. They cannot remove these.
+version: 1
+deny_models:
+  - account.move
+  - account.move.line
+  - account.payment
+  - account.bank.statement
+  - account.bank.statement.line
+  - stock.quant
+  - stock.move
+  - stock.move.line
+  - hr.payslip
+  - hr.salary.rule
+  - hr.payroll.structure
+  - hr.contract
+  - res.users.apikeys
+  - ir.mail_server
+  - fetchmail.server
+  - payment.provider
+  - delivery.carrier
+elevate_models:
+  - account.fiscal.position
+  - account.reconcile.model
+  - product.category
+  - stock.warehouse
+lock_fields:
+  - lock_date
+  - fiscalyear_lock_date
+  - period_lock_date
+  - tax_lock_date
+private_fields:
+  - hr.employee:ssnid
+  - hr.employee:passport_id
+  - hr.employee:identification_id
+  - hr.employee:private_street
+  - hr.employee:bank_account_id
+  - res.users:password
+  - res.users:new_password
+  - res.users:totp_secret
+journal_markers:
+  - account.journal
+  - account.move
+code_tricks:
+  - sudo(
+  - getattr(
+  - __getattr__
+  - env[
+  - self.env
