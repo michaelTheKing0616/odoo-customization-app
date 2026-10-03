@@ -815,3 +815,14 @@ Commands:
 - `./docker/run-sandbox-major-gate.sh 20` → **exit 0**. `SandboxResult(ok=True, module='sandbox_smoke_m20', odoo_major=20)` after first-run blockers were fixed (Odoo 20 loopback-only HTTP on published port; Postgres 16 for `db20`; smoke zip `security/ir_access.xml` with `operation=crud` not per-perm `read`).
 Files: `docker/run-sandbox-major-gate.sh`, `docker/docker-compose.odoo20.yml`, `apps/api/app/sandbox.py` (`sandbox_stack_for_major(20)` → odoo20 compose; XML-RPC default unchanged), `packages/module-generator` (major ≥20 ACL XML), `apps/api/app/ai_structural_zip_gate.py` (accept `ir_access.xml`).
 Not done: L4 off. No aonb.odoo.com. No commit.
+
+CLAIM O20-11 2026-10-03T11:40:00Z files: Odoo 20 sandbox flow checks. Do not enable L4. Do not call aonb.odoo.com.
+
+Track: O20. Card: O20-11. Worker only. No commit. No push. No customer DB. L4 stays off.
+Intent: Quote-to-cash, procure-to-pay, and manufacture on the local Community 20 sandbox (`docker/docker-compose.odoo20.yml`, project `odoo20-custom-dev`, http://127.0.0.1:8073, XML-RPC admin/admin, db `sandbox_test`). No existing 7/6/2 flow runner; Autopilot `job_autopilot/smoke.py` is a different done-bar. Added `apps/api/scripts/run_odoo20_flow_checks.py` (`rpc_protocol=xmlrpc`, records prefixed `ingenium_o20_`). Stack was down on fresh volumes; started compose and `odoo db init sandbox_test` (same path as `sandbox._init_db`). First pass installed stock apps `sale_management`, `purchase`, `mrp` on this sandbox only after `state='uninstalled'`.
+Counts (second run, apps already installed):
+- quote-to-cash **7/7** (customer, product, quotation, confirm, delivery, invoice, invoice_post)
+- procure-to-pay **6/6** (vendor, product, rfq, confirm, receipt, vendor_bill posted)
+- manufacture **2/2** (mfg.order mo=2 bom=2, mfg.produce done)
+Command: `uv run --directory apps/api python scripts/run_odoo20_flow_checks.py` → exit 0. First-run bill post needed `invoice_date` on 20; script writes today's date then posts. Cleanup cancels/unlinks drafts; posted/done rows stay prefixed. Sandbox XML-RPC default unchanged.
+Not done: L4 off. No aonb.odoo.com. No commit.
