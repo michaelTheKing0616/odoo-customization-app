@@ -1029,3 +1029,9 @@ Track: T7 UI-SP-WIZARD. Worker [Split the wizard page into components](540caf38-
 Intent: Move the wizard page into `components/wizard/` without changing the route. The page is 13 lines and still default-exports `AppWizardPage`. No new file is over 400 lines.
 Tests: draft-studio vitest — 7 passed. Playwright `e2e/wizard-scaffold.spec.ts`, `wizard-scorecard.spec.ts`, `wizard-component.spec.ts` — 4 passed.
 Not done: UI-SP-STUDIO. L4 off.
+
+## 2026-10-03 — UI-SP-STUDIO page split
+Track: T7 UI-SP-STUDIO. Worker [Split the studio page into components](b2d457ed-2664-4fd6-a1ad-98f991f07e4c). No push. L4 stays off.
+Intent: Move the App Studio page into `components/studio/` without changing the route. The page is 13 lines and still default-exports `AppStudioPage`. No new file is over 400 lines. Existing studio components were reused.
+Tests: `pnpm exec vitest run src/components/studio` — 22 passed. `e2e/studio-preview.spec.ts` targets the designer harness, not this page, and was not run.
+Not done: UI-SP-DESIGNER. L4 off.
