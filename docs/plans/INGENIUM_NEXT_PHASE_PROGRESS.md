@@ -1124,6 +1124,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - T8-MEM is still open. ADR-09 records the four memory classes. The code does not exist yet. `memory_propose` is not implemented.
 - The skill router is not built. ADR-10 records the package rules. No skill card has shipped the router.
 - Audit retention is not wired. ADR-11 locks the chain shape. Append and verify already exist. 24 months, 7 years for accounting kinds, and 7 days for raw LLM payloads are still open.
+- The KMS vendor is unchosen. ADR-12 keeps secrets on the existing `fernet_key`. No cloud KMS client.
 - `docker/*` and `apps/api/tests/test_wave16_gen2.py` still use `ServerProxy` outside the XML-RPC product scan.
 - Recaptured token screenshots in `docs/vision-verify/tokens-light.png` and `tokens-dark.png` are unstaged. The CSS text did not change.
 
@@ -1147,3 +1148,8 @@ Not done: ADR-11. ADR-02 stays open until Tope accepts D8. L4 off.
 Track: T8 ADR-11. Worker [Record the audit-chain ADR](88d5f186-340a-4ef4-9ff0-3ac4ac29425b). No push. L4 stays off.
 Intent: One append-only chain. Genesis previous hash is 64 zeros. Each entry hash is SHA-256 of the canonical JSON without the hash field. Append and verify already exist in `apps/api/app/audit_chain.py`. Retention windows are still open.
 Not done: ADR-12. L4 stays off.
+
+## 2026-10-03 — ADR-12 Fernet envelope
+Track: T8 ADR-12. Worker [Record the secrets ADR](594a9770-91f0-41f7-9dc8-9ee5e894e33f). No push. L4 stays off.
+Intent: Fernet with the existing `fernet_key`. BYO provider keys stay under that envelope. Display the last 4 characters only. Prefer API keys over passwords. No secrets in prompts. The sandbox API-key helper is never an agent tool. The KMS vendor stays unchosen.
+Not done: ADR-13. L4 stays off.
