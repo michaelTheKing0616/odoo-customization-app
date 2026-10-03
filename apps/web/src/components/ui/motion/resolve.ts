@@ -95,11 +95,13 @@ export function listItemTransition(
 }
 
 export function listItemInitial(reduced: boolean): PanelMotionStyle {
-  return resolveMotionStyle({ opacity: 0, y: 8 }, reduced);
+  if (reduced) return { opacity: 1 };
+  return { opacity: 1, y: 8 };
 }
 
 export function listItemRest(reduced: boolean): PanelMotionStyle {
-  return resolveMotionStyle({ opacity: 1, y: 0 }, reduced);
+  if (reduced) return { opacity: 1 };
+  return { opacity: 1, y: 0 };
 }
 
 export function motionKeys(style: object): string[] {

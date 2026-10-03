@@ -263,7 +263,7 @@ export default function LiveDemoCopilotPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-6 p-6">
+    <div className="mx-auto flex max-w-4xl flex-col gap-6 p-6" data-testid="live-demo-copilot-page">
       <PageHeader
         title="Live Demo Co-Pilot"
         description="Consent-first meeting assist — Attendee bot joins Zoom, Meet, or Teams; answers stay private to you."

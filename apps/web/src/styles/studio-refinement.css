@@ -20,6 +20,7 @@
   --text-accent: var(--accent);
   --border-accent: color-mix(in srgb, var(--accent) 45%, transparent);
   --on-accent: var(--on-accent);
+  --color-on-accent: var(--on-accent);
 
   --color-brand: var(--brand);
   --color-brand-hover: var(--brand-hover);

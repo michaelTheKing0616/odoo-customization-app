@@ -38,7 +38,7 @@ export function FirstRunCard({ connectionId, modelCount }: Props) {
         <li>
           <Link
             href={`/connections/${connectionId}/studio`}
-            className="text-accent hover:underline"
+            className="font-medium text-ink underline underline-offset-2"
             data-testid="overview-first-run-app-studio"
           >
             App Studio
@@ -48,7 +48,7 @@ export function FirstRunCard({ connectionId, modelCount }: Props) {
         <li>
           <Link
             href={`/connections/${connectionId}/projects`}
-            className="text-accent hover:underline"
+            className="font-medium text-ink underline underline-offset-2"
             data-testid="overview-first-run-projects"
           >
             Projects
@@ -56,7 +56,10 @@ export function FirstRunCard({ connectionId, modelCount }: Props) {
           — track drafts and open ModuleSpec / Job Autopilot from the board when you need them.
         </li>
         <li>
-          <Link href={`/connections/${connectionId}/builder`} className="text-accent hover:underline">
+          <Link
+            href={`/connections/${connectionId}/builder`}
+            className="font-medium text-ink underline underline-offset-2"
+          >
             Apply in Builder
           </Link>{" "}
           — create models and fields, or export as a module.

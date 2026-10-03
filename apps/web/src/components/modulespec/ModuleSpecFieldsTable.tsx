@@ -65,6 +65,7 @@ export function ModuleSpecFieldsTable({
                         value={field.ttype || "char"}
                         onChange={(event) => onUpdate(index, { ...field, ttype: event.target.value })}
                         className="input text-xs"
+                        aria-label={`Field type for ${field.name || "field"}`}
                       >
                         {MODULESPEC_TTYPES.map((type) => (
                           <option key={type} value={type}>

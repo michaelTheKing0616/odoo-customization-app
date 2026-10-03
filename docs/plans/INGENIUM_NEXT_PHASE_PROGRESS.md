@@ -1004,3 +1004,10 @@ Track: T7 UI-F11. Worker [Virtualize large data tables](c387e48a-5b29-4963-892a-
 Intent: `react-virtuoso` 4.18.16 when a table has more than 50 rows. 50 or fewer stay a normal table. ArrowUp/ArrowDown moves the active row. Sort and filter of 5,000 rows stay under 100 ms.
 Tests: `pnpm exec vitest run src/components/ui/DataTable.test.tsx` — 7 passed. Measured sort+filter 0.403 ms. Keyboard navigation did not exist before this card.
 Not done: UI-F12 axe. A 51-row table was not opened in the browser. L4 off.
+
+## 2026-10-03 — UI-F12 axe on operate routes
+Track: T7 UI-F12. Worker [Extend axe coverage on operate routes](c32c15e5-7ee1-4651-aaa6-0d37ece1acae). No push. L4 stays off.
+Intent: Extend the existing axe spec from 8 to 39 operate and govern routes. Disabled rules stay document-title, html-has-lang, and label. The top bar stays excluded.
+Tests: Playwright `e2e/a11y-primary.spec.ts` on the dev server — 38 passed, Projects failed on list text fading through contrast 1.59. List items now stay at full opacity and only translate. Projects then passed.
+Not run: `/connections` (redirect), `/bots`, `/bots/rooms/[id]`, `/bots/[id]`, `/studio/dashboards`, `/bridge/connections`, `/onboarding`. Marketing and auth routes are outside this card.
+Not done: UI-F13 reorder primitive. L4 off.

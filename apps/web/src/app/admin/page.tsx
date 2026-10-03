@@ -195,15 +195,27 @@ export default function AdminPage() {
       ) : null}
       <Card className="p-4">
         <h2 className="mb-3 text-lg font-semibold text-ink">Users</h2>
-        <DataTable columns={userColumns} rows={users} rowKey={(r) => r.id} />
+        {users.length === 0 ? (
+          <p className="text-sm text-muted">No users loaded.</p>
+        ) : (
+          <DataTable columns={userColumns} rows={users} rowKey={(r) => r.id} />
+        )}
       </Card>
       <Card className="p-4">
         <h2 className="mb-3 text-lg font-semibold text-ink">Workspaces</h2>
-        <DataTable columns={wsColumns} rows={workspaces} rowKey={(r) => r.id} />
+        {workspaces.length === 0 ? (
+          <p className="text-sm text-muted">No workspaces loaded.</p>
+        ) : (
+          <DataTable columns={wsColumns} rows={workspaces} rowKey={(r) => r.id} />
+        )}
       </Card>
       <Card className="p-4">
         <h2 className="mb-3 text-lg font-semibold text-ink">Trust telemetry</h2>
-        <DataTable columns={telColumns} rows={telemetry} rowKey={(r) => r.workspace_id} />
+        {telemetry.length === 0 ? (
+          <p className="text-sm text-muted">No telemetry loaded.</p>
+        ) : (
+          <DataTable columns={telColumns} rows={telemetry} rowKey={(r) => r.workspace_id} />
+        )}
       </Card>
     </div>
   );

@@ -75,6 +75,7 @@ export function JobAutopilotBriefPanel({
         <Button
           type="button"
           variant={runBlocked ? "secondary" : "primary"}
+          className={runBlocked ? undefined : "text-white"}
           disabled={busy !== null || runBlocked}
           loading={busy === "run"}
           onClick={onRun}

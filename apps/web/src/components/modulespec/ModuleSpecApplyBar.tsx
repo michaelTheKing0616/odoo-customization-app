@@ -79,6 +79,7 @@ export function ModuleSpecApplyBar({
       <Button
         type="button"
         variant={stockReuse ? "secondary" : "primary"}
+        className={stockReuse ? undefined : "text-white"}
         size="sm"
         disabled={working || !hasModels || !canApply || stockReuse}
         title={

@@ -36,11 +36,17 @@ export function DraftStudioShell({
           data-testid="draft-studio-ia-banner"
         >
           Draft Studio is now a power worksheet of{" "}
-          <Link href={`/connections/${connectionId}/studio`} className="text-accent hover:underline">
+          <Link
+            href={`/connections/${connectionId}/studio`}
+            className="font-medium text-ink underline underline-offset-2"
+          >
             App Studio
           </Link>
           . Existing drafts stay safe — prefer App Studio for new work, or{" "}
-          <Link href={`/connections/${connectionId}/projects`} className="text-accent hover:underline">
+          <Link
+            href={`/connections/${connectionId}/projects`}
+            className="font-medium text-ink underline underline-offset-2"
+          >
             Projects
           </Link>{" "}
           to track them.

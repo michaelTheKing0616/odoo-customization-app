@@ -334,12 +334,16 @@ export default function SettingsPage() {
           Recent mutating API requests (POST/PUT/PATCH/DELETE).
         </p>
         <div className="mt-4">
-          <DataTable
-            columns={auditColumns}
-            rows={auditLogs}
-            rowKey={(r) => r.id}
-            emptyState={<p className="text-sm text-muted">No entries yet.</p>}
-          />
+          {auditLogs.length === 0 ? (
+            <p className="text-sm text-muted">No entries yet.</p>
+          ) : (
+            <DataTable
+              columns={auditColumns}
+              rows={auditLogs}
+              rowKey={(r) => r.id}
+              emptyState={<p className="text-sm text-muted">No entries yet.</p>}
+            />
+          )}
         </div>
       </Card>
     </div>

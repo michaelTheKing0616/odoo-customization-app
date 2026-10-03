@@ -62,7 +62,13 @@ export function ExpertOverviewCard({
             {prompt.label}
           </Button>
         ))}
-        <Button type="button" variant="primary" size="sm" onClick={() => shell?.openExpert()}>
+        <Button
+          type="button"
+          variant="primary"
+          size="sm"
+          className="text-white"
+          onClick={() => shell?.openExpert()}
+        >
           Open Expert
         </Button>
       </div>

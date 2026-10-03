@@ -622,7 +622,7 @@ export default function BulkSuitePage() {
       <Callout variant="info" title="Invoices & bills" className="mt-4" testId="bulk-suite-document-batch-link">
         CSV/XLSX invoice & bill intake lives on{" "}
         <a
-          className="font-medium text-accent underline"
+          className="font-medium text-ink underline underline-offset-2"
           href={`/connections/${connectionId}/journal?tab=invoices`}
         >
           Snapshots & Journal → Invoices & bills
@@ -633,7 +633,7 @@ export default function BulkSuitePage() {
       <Callout variant="info" title="Master data batch" className="mt-4" testId="bulk-suite-master-data-link">
         Partners & products CSV →{" "}
         <a
-          className="font-medium text-accent underline"
+          className="font-medium text-ink underline underline-offset-2"
           href={`/connections/${connectionId}/journal?tab=master`}
         >
           Snapshots & Journal → Master data

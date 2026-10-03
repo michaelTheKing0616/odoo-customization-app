@@ -135,9 +135,9 @@ const MOCK_COLOR_PALETTE = [
 ];
 
 const MOCK_PREVIEW_VARS = {
-  "--odoo-primary": "var(--brand)",
-  "--odoo-primary-hover": "var(--brand)",
-  "--odoo-statusbar": "var(--brand)",
+  "--odoo-primary": "var(--accent8)",
+  "--odoo-primary-hover": "var(--accent9)",
+  "--odoo-statusbar": "var(--accent8)",
 };
 
 function parseMode(raw: string | null): ViewMode {

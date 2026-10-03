@@ -51,6 +51,7 @@ export function ProjectApplyBar({
       <Button
         type="button"
         variant="primary"
+        className="text-white"
         size="sm"
         disabled={working || !canApply || archived}
         title={archived ? "Un-archive this draft before Apply" : (applyBlocked ?? undefined)}

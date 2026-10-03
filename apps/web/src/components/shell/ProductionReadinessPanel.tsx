@@ -189,7 +189,10 @@ export function ProductionReadinessPanel({ connection, onRefreshConnection }: Pr
           {sandbox ? " (and is not required for local sandbox Autopilot)" : ""}. The snapshot
           drill downloads a real CSV from this connection (tracked customization if you have
           one, otherwise a live company export).{" "}
-          <Link href="/settings/trust-safety" className="text-accent hover:underline">
+          <Link
+            href="/settings/trust-safety"
+            className="font-medium text-ink underline underline-offset-2"
+          >
             Safety contract
           </Link>
           .
@@ -217,7 +220,10 @@ export function ProductionReadinessPanel({ connection, onRefreshConnection }: Pr
         Required before enabling <strong>production</strong> write mode. Incomplete steps show
         as <strong>todo</strong>; <strong>fail</strong> means something is actually broken.
         The drill CSV is a real export from this connection.{" "}
-        <Link href="/settings/trust-safety" className="text-accent hover:underline">
+        <Link
+          href="/settings/trust-safety"
+          className="font-medium text-ink underline underline-offset-2"
+        >
           Read the safety contract
         </Link>
         .
