@@ -1,6 +1,7 @@
 "use client";
 
-import * as Dialog from "@radix-ui/react-dialog";
+import { useEffect, useRef } from "react";
+import { Dialog } from "@base-ui/react/dialog";
 import { X } from "@/components/ui/icons";
 import { cn } from "@/lib/cn";
 
@@ -15,6 +16,23 @@ type DialogProps = {
   testId?: string;
 };
 
+function useReturnFocusOnClose(open: boolean) {
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  if (open && previousFocusRef.current == null && typeof document !== "undefined") {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) {
+      previousFocusRef.current = active;
+    }
+  }
+  useEffect(() => {
+    if (open) return;
+    const node = previousFocusRef.current;
+    previousFocusRef.current = null;
+    node?.focus?.();
+  }, [open]);
+  return previousFocusRef;
+}
+
 export function DialogPanel({
   open,
   onOpenChange,
@@ -25,12 +43,14 @@ export function DialogPanel({
   className,
   testId,
 }: DialogProps) {
+  const previousFocusRef = useReturnFocusOnClose(open);
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root open={open} onOpenChange={(nextOpen) => onOpenChange(nextOpen)}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
-        <Dialog.Content
+        <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
+        <Dialog.Popup
           data-testid={testId ?? "dialog-panel"}
+          finalFocus={previousFocusRef}
           className={cn(
             "fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border-subtle bg-surface-raised p-5 shadow-overlay outline-none",
             className,
@@ -54,7 +74,7 @@ export function DialogPanel({
           </div>
           <div className="mt-4">{children}</div>
           {footer ? <div className="mt-4 flex justify-end gap-2">{footer}</div> : null}
-        </Dialog.Content>
+        </Dialog.Popup>
       </Dialog.Portal>
     </Dialog.Root>
   );

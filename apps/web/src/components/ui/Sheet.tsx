@@ -1,6 +1,7 @@
 "use client";
 
-import * as Dialog from "@radix-ui/react-dialog";
+import { useEffect, useRef } from "react";
+import { Dialog } from "@base-ui/react/dialog";
 import { X } from "@/components/ui/icons";
 import { cn } from "@/lib/cn";
 
@@ -17,6 +18,23 @@ type SheetProps = {
   testId?: string;
 };
 
+function useReturnFocusOnClose(open: boolean) {
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  if (open && previousFocusRef.current == null && typeof document !== "undefined") {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) {
+      previousFocusRef.current = active;
+    }
+  }
+  useEffect(() => {
+    if (open) return;
+    const node = previousFocusRef.current;
+    previousFocusRef.current = null;
+    node?.focus?.();
+  }, [open]);
+  return previousFocusRef;
+}
+
 export function Sheet({
   open,
   onOpenChange,
@@ -28,12 +46,14 @@ export function Sheet({
   className,
   testId,
 }: SheetProps) {
+  const previousFocusRef = useReturnFocusOnClose(open);
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root open={open} onOpenChange={(nextOpen) => onOpenChange(nextOpen)}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out" />
-        <Dialog.Content
+        <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out" />
+        <Dialog.Popup
           data-testid={testId}
+          finalFocus={previousFocusRef}
           className={cn(
             "fixed top-0 z-50 flex h-full w-full max-w-md flex-col border-border-subtle bg-surface-raised shadow-overlay outline-none",
             side === "right" ? "right-0 border-l" : "left-0 border-r",
@@ -71,7 +91,7 @@ export function Sheet({
             </Dialog.Close>
           </div>
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
-        </Dialog.Content>
+        </Dialog.Popup>
       </Dialog.Portal>
     </Dialog.Root>
   );

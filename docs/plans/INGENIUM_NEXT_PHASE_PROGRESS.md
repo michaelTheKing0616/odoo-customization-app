@@ -955,3 +955,9 @@ Pages (1):
 - `apps/web/src/app/connections/[id]/code-studio/page.tsx` — safe_eval symbols `contextHydrated` in `refresh` `finally` + skeleton + empty re-probe action
 Tests: none (page-only; no component file changed).
 Remaining without page-level EmptyState import: operations (static hub), ingest (job-gated lists), reminders (post-submit warnings), cron-manager/wizard/builder/modulespec (handled in child components or excluded). L4 off. No commit.
+
+## 2026-10-03 — UI-F04 Dialog and Sheet on Base UI
+Track: T7 UI-F04. Worker [Move dialogs onto Base UI](0ce4a7e3-a16a-4b8b-9902-bf6925974e76). No push. L4 stays off.
+Intent: Rewrite Dialog and Sheet internals onto `@base-ui/react` 1.8.0. Exported props unchanged. Direct `@radix-ui/react-dialog` removed. `cmdk` still pulls that package transitively.
+Tests: `pnpm exec vitest run src/components/ui/Dialog.test.tsx` — 4 passed (name, Escape, focus trap, focus returns). `e2e/confirm-dialog.spec.ts` — 4 passed against the dev server on :3010 (`next build` still fails on pre-existing eslint errors, so Playwright reused `next dev`). Kit page: dialog and sheet open, Escape closes, focus returns to the trigger.
+Not done: UI-F05 Tabs. ConfirmDialogV2 is still its own overlay, not DialogPanel. L4 off.
