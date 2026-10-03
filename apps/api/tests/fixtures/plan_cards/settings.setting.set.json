@@ -1,0 +1,74 @@
+{
+  "family": "settings",
+  "op_type": "setting.set",
+  "goal": "Set the default delivery note text",
+  "assumptions": [
+    "the key is not a module_ setting",
+    "the value is plain text"
+  ],
+  "environment": "staging",
+  "changeset": [
+    {
+      "type": "setting.set",
+      "params": {
+        "name": "x_delivery.default_note",
+        "key": "x_delivery.default_note",
+        "value": "Leave at the dock"
+      }
+    }
+  ],
+  "card": {
+    "goal": "Set the default delivery note text",
+    "assumptions": [
+      "the key is not a module_ setting",
+      "the value is plain text"
+    ],
+    "changes": [
+      {
+        "type": "setting.set",
+        "params": {
+          "name": "x_delivery.default_note",
+          "key": "x_delivery.default_note",
+          "value": "Leave at the dock"
+        },
+        "description": "setting.set on x_delivery.default_note: risk R2, reversible E, ddl False"
+      }
+    ],
+    "impact": {
+      "op_count": 1
+    },
+    "risk": {
+      "per_op": [
+        "R2"
+      ],
+      "max": "R2",
+      "policy": {
+        "allow": true,
+        "approvers": 1,
+        "needs_simulation": false,
+        "deny": false,
+        "domain_owner": false,
+        "needs_backup": false,
+        "needs_window": false,
+        "expiry_hours": 168
+      }
+    },
+    "not_changing": [
+      "data.delete",
+      "module.uninstall",
+      "rpc.write"
+    ],
+    "verification": [
+      "postcondition:setting.set"
+    ],
+    "rollback": [
+      {
+        "op": "setting.set",
+        "inverse": null,
+        "irreversible": true
+      }
+    ],
+    "environment": "staging",
+    "plan_hash": "fa00c24f574417bb"
+  }
+}

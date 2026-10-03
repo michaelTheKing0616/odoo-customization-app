@@ -1,0 +1,74 @@
+{
+  "family": "schema",
+  "op_type": "field.create",
+  "goal": "Add a delivery note on the custom delivery order",
+  "assumptions": [
+    "x_delivery.order exists",
+    "x_delivery_note is not already a field"
+  ],
+  "environment": "staging",
+  "changeset": [
+    {
+      "type": "field.create",
+      "params": {
+        "model": "x_delivery.order",
+        "name": "x_delivery_note",
+        "field_type": "char"
+      }
+    }
+  ],
+  "card": {
+    "goal": "Add a delivery note on the custom delivery order",
+    "assumptions": [
+      "x_delivery.order exists",
+      "x_delivery_note is not already a field"
+    ],
+    "changes": [
+      {
+        "type": "field.create",
+        "params": {
+          "model": "x_delivery.order",
+          "name": "x_delivery_note",
+          "field_type": "char"
+        },
+        "description": "field.create on x_delivery.order: risk R2, reversible E, ddl True"
+      }
+    ],
+    "impact": {
+      "op_count": 1
+    },
+    "risk": {
+      "per_op": [
+        "R2"
+      ],
+      "max": "R2",
+      "policy": {
+        "allow": true,
+        "approvers": 1,
+        "needs_simulation": false,
+        "deny": false,
+        "domain_owner": false,
+        "needs_backup": false,
+        "needs_window": false,
+        "expiry_hours": 168
+      }
+    },
+    "not_changing": [
+      "data.delete",
+      "module.uninstall",
+      "rpc.write"
+    ],
+    "verification": [
+      "postcondition:field.create"
+    ],
+    "rollback": [
+      {
+        "op": "field.create",
+        "inverse": "field.deprecate",
+        "irreversible": false
+      }
+    ],
+    "environment": "staging",
+    "plan_hash": "ba76bda2083722bb"
+  }
+}

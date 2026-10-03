@@ -1,0 +1,80 @@
+{
+  "family": "security",
+  "op_type": "access.update",
+  "goal": "Let the delivery user group read the delivery order",
+  "assumptions": [
+    "the group x_delivery_user already exists",
+    "this is not a group-less ACL"
+  ],
+  "environment": "staging",
+  "changeset": [
+    {
+      "type": "access.update",
+      "params": {
+        "model": "x_delivery.order",
+        "group": "x_delivery_user",
+        "perm_read": true,
+        "perm_write": false,
+        "perm_create": false,
+        "perm_unlink": false
+      }
+    }
+  ],
+  "card": {
+    "goal": "Let the delivery user group read the delivery order",
+    "assumptions": [
+      "the group x_delivery_user already exists",
+      "this is not a group-less ACL"
+    ],
+    "changes": [
+      {
+        "type": "access.update",
+        "params": {
+          "model": "x_delivery.order",
+          "group": "x_delivery_user",
+          "perm_read": true,
+          "perm_write": false,
+          "perm_create": false,
+          "perm_unlink": false
+        },
+        "description": "access.update on x_delivery.order: risk R3, reversible E, ddl False"
+      }
+    ],
+    "impact": {
+      "op_count": 1
+    },
+    "risk": {
+      "per_op": [
+        "R3"
+      ],
+      "max": "R3",
+      "policy": {
+        "allow": true,
+        "approvers": 1,
+        "needs_simulation": false,
+        "deny": false,
+        "domain_owner": false,
+        "needs_backup": false,
+        "needs_window": false,
+        "expiry_hours": 168
+      }
+    },
+    "not_changing": [
+      "data.delete",
+      "module.uninstall",
+      "rpc.write"
+    ],
+    "verification": [
+      "postcondition:access.update"
+    ],
+    "rollback": [
+      {
+        "op": "access.update",
+        "inverse": "access.update",
+        "irreversible": false
+      }
+    ],
+    "environment": "staging",
+    "plan_hash": "9cdcdfa7f32a5e68"
+  }
+}

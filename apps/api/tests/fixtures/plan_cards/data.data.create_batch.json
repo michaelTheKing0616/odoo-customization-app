@@ -1,0 +1,76 @@
+{
+  "family": "data",
+  "op_type": "data.create_batch",
+  "goal": "Create one sample delivery order",
+  "assumptions": [
+    "the batch stays under the row cap",
+    "no stock.quant rows are included"
+  ],
+  "environment": "staging",
+  "changeset": [
+    {
+      "type": "data.create_batch",
+      "params": {
+        "model": "x_delivery.order",
+        "name": "x_seed_delivery",
+        "batch_size": 200,
+        "row_count": 1
+      }
+    }
+  ],
+  "card": {
+    "goal": "Create one sample delivery order",
+    "assumptions": [
+      "the batch stays under the row cap",
+      "no stock.quant rows are included"
+    ],
+    "changes": [
+      {
+        "type": "data.create_batch",
+        "params": {
+          "model": "x_delivery.order",
+          "name": "x_seed_delivery",
+          "batch_size": 200,
+          "row_count": 1
+        },
+        "description": "data.create_batch on x_delivery.order: risk R2, reversible E, ddl False"
+      }
+    ],
+    "impact": {
+      "op_count": 1
+    },
+    "risk": {
+      "per_op": [
+        "R2"
+      ],
+      "max": "R2",
+      "policy": {
+        "allow": true,
+        "approvers": 1,
+        "needs_simulation": false,
+        "deny": false,
+        "domain_owner": false,
+        "needs_backup": false,
+        "needs_window": false,
+        "expiry_hours": 168
+      }
+    },
+    "not_changing": [
+      "data.delete",
+      "module.uninstall",
+      "rpc.write"
+    ],
+    "verification": [
+      "postcondition:data.create_batch"
+    ],
+    "rollback": [
+      {
+        "op": "data.create_batch",
+        "inverse": null,
+        "irreversible": true
+      }
+    ],
+    "environment": "staging",
+    "plan_hash": "19c1765a9b499712"
+  }
+}

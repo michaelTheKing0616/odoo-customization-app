@@ -1,0 +1,72 @@
+{
+  "family": "logic",
+  "op_type": "mail_template.create",
+  "goal": "Add a mail template for the delivery note",
+  "assumptions": [
+    "mail is installed",
+    "the template name is unused"
+  ],
+  "environment": "staging",
+  "changeset": [
+    {
+      "type": "mail_template.create",
+      "params": {
+        "model": "x_delivery.order",
+        "name": "Delivery note"
+      }
+    }
+  ],
+  "card": {
+    "goal": "Add a mail template for the delivery note",
+    "assumptions": [
+      "mail is installed",
+      "the template name is unused"
+    ],
+    "changes": [
+      {
+        "type": "mail_template.create",
+        "params": {
+          "model": "x_delivery.order",
+          "name": "Delivery note"
+        },
+        "description": "mail_template.create on x_delivery.order: risk R1, reversible E, ddl False"
+      }
+    ],
+    "impact": {
+      "op_count": 1
+    },
+    "risk": {
+      "per_op": [
+        "R1"
+      ],
+      "max": "R1",
+      "policy": {
+        "allow": true,
+        "approvers": 1,
+        "needs_simulation": false,
+        "deny": false,
+        "domain_owner": false,
+        "needs_backup": false,
+        "needs_window": false,
+        "expiry_hours": 168
+      }
+    },
+    "not_changing": [
+      "data.delete",
+      "module.uninstall",
+      "rpc.write"
+    ],
+    "verification": [
+      "postcondition:mail_template.create"
+    ],
+    "rollback": [
+      {
+        "op": "mail_template.create",
+        "inverse": "mail_template.update",
+        "irreversible": false
+      }
+    ],
+    "environment": "staging",
+    "plan_hash": "e5c7b493d9ac6caa"
+  }
+}

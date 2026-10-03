@@ -1,0 +1,76 @@
+{
+  "family": "ui",
+  "op_type": "view.inherit.create",
+  "goal": "Show the delivery note under the partner on the form",
+  "assumptions": [
+    "the form has a partner_id field",
+    "the inherit anchor matches one node"
+  ],
+  "environment": "staging",
+  "changeset": [
+    {
+      "type": "view.inherit.create",
+      "params": {
+        "model": "x_delivery.order",
+        "name": "x_delivery_note_form",
+        "anchor": "//field[@name='partner_id']",
+        "position": "after"
+      }
+    }
+  ],
+  "card": {
+    "goal": "Show the delivery note under the partner on the form",
+    "assumptions": [
+      "the form has a partner_id field",
+      "the inherit anchor matches one node"
+    ],
+    "changes": [
+      {
+        "type": "view.inherit.create",
+        "params": {
+          "model": "x_delivery.order",
+          "name": "x_delivery_note_form",
+          "anchor": "//field[@name='partner_id']",
+          "position": "after"
+        },
+        "description": "view.inherit.create on x_delivery.order: risk R1, reversible E, ddl False"
+      }
+    ],
+    "impact": {
+      "op_count": 1
+    },
+    "risk": {
+      "per_op": [
+        "R1"
+      ],
+      "max": "R1",
+      "policy": {
+        "allow": true,
+        "approvers": 1,
+        "needs_simulation": false,
+        "deny": false,
+        "domain_owner": false,
+        "needs_backup": false,
+        "needs_window": false,
+        "expiry_hours": 168
+      }
+    },
+    "not_changing": [
+      "data.delete",
+      "module.uninstall",
+      "rpc.write"
+    ],
+    "verification": [
+      "postcondition:view.inherit.create"
+    ],
+    "rollback": [
+      {
+        "op": "view.inherit.create",
+        "inverse": "view.archive",
+        "irreversible": false
+      }
+    ],
+    "environment": "staging",
+    "plan_hash": "a1547826edfdbf5f"
+  }
+}
