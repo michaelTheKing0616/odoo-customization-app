@@ -19,6 +19,7 @@ import { ExplainThisButton } from "@/components/expert/ExplainThisButton";
 import {
   advancedMutationAllowed,
   advancedMutationBlockedReason,
+  connectionMajor,
   mutationAllowed,
   mutationBlockedReason,
 } from "@/lib/capabilities";
@@ -46,6 +47,11 @@ import {
   type AccessPane,
   type RuleComposerForm,
 } from "@/lib/accessForm";
+import {
+  accessScreenBranch,
+  shouldOfferRecordRuleCreate,
+} from "@/lib/accessMajor";
+import { Odoo20AccessNote } from "@/components/access/Odoo20AccessNote";
 import { AccessComposer } from "@/components/access/AccessComposer";
 import { AccessDetail } from "@/components/access/AccessDetail";
 import { AccessExtras } from "@/components/access/AccessExtras";
@@ -117,13 +123,15 @@ export default function AccessPage() {
 
   const refresh = useCallback(
     async (target: string) => {
-      const [conn, gs, rs, rls, snaps] = await Promise.all([
-        api.getConnection(connectionId),
-        api.listGroups(connectionId),
-        api.listAccessRights(connectionId, target),
-        api.listRecordRules(connectionId, target),
-        api.listSnapshots(connectionId).catch(() => [] as SnapshotRow[]),
-      ]);
+      const connP = api.getConnection(connectionId);
+      const groupsP = api.listGroups(connectionId);
+      const rightsP = api.listAccessRights(connectionId, target);
+      const snapsP = api.listSnapshots(connectionId).catch(() => [] as SnapshotRow[]);
+      const conn = await connP;
+      const rulesP = accessScreenBranch(connectionMajor(conn)).fetchRecordRules
+        ? api.listRecordRules(connectionId, target)
+        : Promise.resolve([] as RecordRuleRow[]);
+      const [gs, rs, rls, snaps] = await Promise.all([groupsP, rightsP, rulesP, snapsP]);
       setConnection(conn);
       setGroups(gs);
       setRights(rs);
@@ -211,6 +219,9 @@ export default function AccessPage() {
 
   async function onCreateRule(e: FormEvent) {
     e.preventDefault();
+    if (!shouldOfferRecordRuleCreate(connectionMajor(connection))) {
+      return;
+    }
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -331,8 +342,10 @@ export default function AccessPage() {
   const selectedRule = rules.find((r) => r.id === selectedRuleId) ?? null;
   const accessDirty = isComposerDirty(accessForm, accessBaseline);
   const ruleDirty = isComposerDirty(ruleForm, ruleBaseline);
+  const major = connectionMajor(connection);
+  const accessBranch = accessScreenBranch(major);
   const composingAccess = pane === "new-access";
-  const composingRule = pane === "new-rule";
+  const composingRule = pane === "new-rule" && accessBranch.offerRecordRuleCreate;
   const sessionState = composerSessionState({
     dirty: composingAccess ? accessDirty : composingRule ? ruleDirty : false,
     savedOnce,
@@ -362,6 +375,7 @@ export default function AccessPage() {
         grants (no group) affect every user — confirm before you delete.
       </p>
       <VersionAwarenessBanner capabilities={connection?.capabilities} className="mt-4" />
+      <Odoo20AccessNote major={major} />
       <CapabilityProbePanel
         capabilities={connection?.capabilities}
         defaultOpen={false}
@@ -438,25 +452,27 @@ export default function AccessPage() {
               setNotice(null);
             }}
           />
-          <RecordRulesList
-            rows={rules}
-            loading={listLoading}
-            selectedId={selectedRuleId}
-            query={rulesQuery}
-            onQueryChange={setRulesQuery}
-            onSelect={(row) => {
-              setSelectedRuleId(row.id);
-              setSelectedAccessId(null);
-              setPane("rule");
-              setNotice(null);
-            }}
-            onCreate={() => {
-              setSelectedRuleId(null);
-              setSelectedAccessId(null);
-              setPane("new-rule");
-              setNotice(null);
-            }}
-          />
+          {accessBranch.offerRecordRuleCreate ? (
+            <RecordRulesList
+              rows={rules}
+              loading={listLoading}
+              selectedId={selectedRuleId}
+              query={rulesQuery}
+              onQueryChange={setRulesQuery}
+              onSelect={(row) => {
+                setSelectedRuleId(row.id);
+                setSelectedAccessId(null);
+                setPane("rule");
+                setNotice(null);
+              }}
+              onCreate={() => {
+                setSelectedRuleId(null);
+                setSelectedAccessId(null);
+                setPane("new-rule");
+                setNotice(null);
+              }}
+            />
+          ) : null}
           <AccessSnapshots
             connectionId={connectionId}
             snapshots={snapshots}
@@ -498,7 +514,7 @@ export default function AccessPage() {
                 })
               }
             />
-          ) : pane === "rule" && selectedRule ? (
+          ) : pane === "rule" && selectedRule && accessBranch.offerRecordRuleCreate ? (
             <RecordRuleDetail
               key={selectedRule.id}
               connectionId={connectionId}

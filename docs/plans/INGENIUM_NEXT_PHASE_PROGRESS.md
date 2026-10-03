@@ -752,3 +752,11 @@ REPAIR O20-04 2026-10-03T10:30:00Z reviewer FAIL. Do not enable L4. Do not call 
 7. fixed: the `rule.create` test asserts `DispatchError` "no dispatcher for rule.create" and that the fake port was not called. That is the existing missing dispatcher, not a new branch.
 8. fixed when `ModuleSpec.odoo_major` >= 20: module render raises the rewrite message and does not emit `record_rules.xml`. Residual: when `odoo_major` is unset, `record_rules.xml.j2` still emits `model="ir.rule"` because the generator does not invent a major. It is not a live RPC create.
 Pytest: `.venv/bin/python -m pytest -q -p no:cacheprovider` on the O20-04 write-path set — 86 passed. L4 stays off. No Odoo host call.
+
+CLAIM O20-05 2026-10-03T10:50:00Z files: access screen branches on major 20. Do not enable L4. Do not call aonb.odoo.com. Do not migrate dialogs.
+Vitest: `pnpm exec vitest run src/components/access/Odoo20AccessNote.test.tsx` from `apps/web` — **2 passed**.
+
+Track: O20. Card: O20-05. Worker only. No commit. No push. No Odoo host. L4 stays off.
+Intent: Access screen data branch on major 20 reads/writes `ir.access` (existing rights endpoints; API already compiles operation + domain). It does not fetch `ir.rule` or offer a create-record-rule action. ≤19 keeps the current list + New rule path. One inline note: "Odoo 20 combines access rights and record rules." No Studio / Enterprise copy. ConfirmDialogV2 left as-is (UI-F04).
+Files: `accessMajor.ts`, `Odoo20AccessNote.tsx`, `Odoo20AccessNote.test.tsx`, `access/page.tsx` (data branch + note only).
+Not done: L4 off. No aonb.odoo.com call. No dialog migration. No access-page restyle.
