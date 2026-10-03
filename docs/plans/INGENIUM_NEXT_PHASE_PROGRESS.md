@@ -998,3 +998,9 @@ Track: T7 UI-F10. Worker [Add TOTP one-time-code input](84f8cc05-2ce9-4ddb-a7b3-
 Intent: Login 2FA uses `input-otp` 1.5.0. Paste of 6 digits sets the code. `autocomplete="one-time-code"`. No enrol page exists.
 Tests: `pnpm exec vitest run src/components/auth/TotpCodeInput.test.tsx` — 1 passed. Login page: the field is named “2FA code (if enabled)” and typing `123456` set the value to `123456`.
 Not done: UI-F11 virtualized tables. L4 off.
+
+## 2026-10-03 — UI-F11 virtualized tables
+Track: T7 UI-F11. Worker [Virtualize large data tables](c387e48a-5b29-4963-892a-68ae4f869e63). No push. L4 stays off.
+Intent: `react-virtuoso` 4.18.16 when a table has more than 50 rows. 50 or fewer stay a normal table. ArrowUp/ArrowDown moves the active row. Sort and filter of 5,000 rows stay under 100 ms.
+Tests: `pnpm exec vitest run src/components/ui/DataTable.test.tsx` — 7 passed. Measured sort+filter 0.403 ms. Keyboard navigation did not exist before this card.
+Not done: UI-F12 axe. A 51-row table was not opened in the browser. L4 off.

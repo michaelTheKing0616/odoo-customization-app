@@ -38,7 +38,16 @@ type BulkResultTableProps = {
   abortBusy?: boolean;
 };
 
-type Filter = "all" | "succeeded" | "failed";
+export type BulkResultFilter = "all" | "succeeded" | "failed";
+
+export function filterBulkResultRows(
+  records: readonly PerRecordResult[],
+  filter: BulkResultFilter,
+): PerRecordResult[] {
+  if (filter === "succeeded") return records.filter((r) => r.ok);
+  if (filter === "failed") return records.filter((r) => !r.ok);
+  return [...records];
+}
 
 export function BulkResultTable({
   result,
@@ -48,13 +57,12 @@ export function BulkResultTable({
   continueBusy,
   abortBusy,
 }: BulkResultTableProps) {
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<BulkResultFilter>("all");
 
-  const rows = useMemo(() => {
-    if (filter === "succeeded") return result.per_record.filter((r) => r.ok);
-    if (filter === "failed") return result.per_record.filter((r) => !r.ok);
-    return result.per_record;
-  }, [filter, result.per_record]);
+  const rows = useMemo(
+    () => filterBulkResultRows(result.per_record, filter),
+    [filter, result.per_record],
+  );
 
   const columns: DataTableColumn<PerRecordResult>[] = [
     {
