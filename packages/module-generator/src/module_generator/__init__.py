@@ -982,16 +982,46 @@ def render_module_files(spec: ModuleSpec) -> dict[str, str]:
                 )
             )
     if rules:
-        access_lines = [
-            "id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink"
-        ]
-        for rule in rules:
-            access_lines.append(
-                f"{rule.id},{rule.name},{rule.model},{rule.group},"
-                f"{rule.perm_read},{rule.perm_write},{rule.perm_create},{rule.perm_unlink}"
-            )
-        files[f"{root}/security/ir.model.access.csv"] = "\n".join(access_lines) + "\n"
-        data_files.append("security/ir.model.access.csv")
+        major = int(spec.odoo_major or 19)
+        if major >= 20:
+            access_xml: list[str] = [
+                '<?xml version="1.0" encoding="utf-8"?>',
+                "<odoo>",
+            ]
+            for rule in rules:
+                op_letters: list[str] = []
+                if rule.perm_create:
+                    op_letters.append("c")
+                if rule.perm_read:
+                    op_letters.append("r")
+                if rule.perm_write:
+                    op_letters.append("u")
+                if rule.perm_unlink:
+                    op_letters.append("d")
+                operation = "".join(op_letters) or "r"
+                access_xml.append(f'  <record id="{rule.id}" model="ir.access">')
+                access_xml.append(f'    <field name="name">{rule.name}</field>')
+                access_xml.append(f'    <field name="model_id" ref="{rule.model}"/>')
+                if rule.group:
+                    access_xml.append(
+                        f'    <field name="group_id" ref="{rule.group}"/>'
+                    )
+                access_xml.append(f'    <field name="operation">{operation}</field>')
+                access_xml.append("  </record>")
+            access_xml.append("</odoo>")
+            files[f"{root}/security/ir_access.xml"] = "\n".join(access_xml) + "\n"
+            data_files.append("security/ir_access.xml")
+        else:
+            access_lines = [
+                "id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink"
+            ]
+            for rule in rules:
+                access_lines.append(
+                    f"{rule.id},{rule.name},{rule.model},{rule.group},"
+                    f"{rule.perm_read},{rule.perm_write},{rule.perm_create},{rule.perm_unlink}"
+                )
+            files[f"{root}/security/ir.model.access.csv"] = "\n".join(access_lines) + "\n"
+            data_files.append("security/ir.model.access.csv")
 
     if spec.record_rules:
         # odoo_major is optional. Do not invent one: an unset major still emits ir.rule.

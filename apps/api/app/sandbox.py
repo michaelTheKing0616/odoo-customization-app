@@ -1,8 +1,9 @@
 """Phase 6 — ephemeral Docker Odoo sandbox that installs a generated module zip.
 
-Matching-major: image is ``odoo:{16|17|18|19}`` from the connection (or explicit
+Matching-major: image is ``odoo:{16|17|18|19|20}`` from the connection (or explicit
 ``odoo_major``). Serialized via a process lock — one sandbox at a time.
-Host port **18069** (avoids clash with permanent Odoo 18 on 8070).
+Host port **18069** for 16–19 (``docker-compose.sandbox.yml``); **8073** for 20
+(``docker-compose.odoo20.yml``).
 """
 
 from __future__ import annotations
@@ -34,7 +35,41 @@ SANDBOX_PASSWORD = "admin"
 ODOO_CONTAINER = "odoo-custom-sandbox-odoo"
 DB_CONTAINER = "odoo-custom-sandbox-db"
 
-SUPPORTED_SANDBOX_MAJORS = frozenset({16, 17, 18, 19})
+SUPPORTED_SANDBOX_MAJORS = frozenset({16, 17, 18, 19, 20})
+
+
+@dataclass(frozen=True)
+class SandboxStack:
+    compose: Path
+    project: str
+    url: str
+    odoo_service: str
+    odoo_container: str
+    db_container: str
+    db_host: str
+
+
+def sandbox_stack_for_major(major: int) -> SandboxStack:
+    """Compose project + service names for ephemeral install (one stack per major band)."""
+    if major == 20:
+        return SandboxStack(
+            compose=REPO_ROOT / "docker" / "docker-compose.odoo20.yml",
+            project="odoo20-custom-dev",
+            url="http://127.0.0.1:8073",
+            odoo_service="odoo20",
+            odoo_container="odoo20",
+            db_container="odoo20-db",
+            db_host="db20",
+        )
+    return SandboxStack(
+        compose=SANDBOX_COMPOSE,
+        project="odoo-sandbox",
+        url=SANDBOX_URL,
+        odoo_service="odoo",
+        odoo_container=ODOO_CONTAINER,
+        db_container=DB_CONTAINER,
+        db_host="db",
+    )
 
 # Serialize sandbox runs — shared addons dir + fixed compose project name.
 _sandbox_lock = threading.Lock()
@@ -211,6 +246,7 @@ def _compose(
     odoo_major: int = 19,
     job_id: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    stack = sandbox_stack_for_major(odoo_major)
     env = {
         **os.environ,
         "ODOO_SANDBOX_IMAGE": sandbox_image_for_major(odoo_major),
@@ -219,9 +255,9 @@ def _compose(
         "docker",
         "compose",
         "-p",
-        "odoo-sandbox",
+        stack.project,
         "-f",
-        str(SANDBOX_COMPOSE),
+        str(stack.compose),
         *args,
     ]
     logger.info("sandbox: %s (image=%s)", " ".join(cmd), env["ODOO_SANDBOX_IMAGE"])
@@ -287,12 +323,13 @@ def _wait_http(url: str, timeout_s: float = 120) -> None:
     raise TimeoutError(f"Sandbox Odoo not ready at {url}: {last_err}")
 
 
-def _drop_sandbox_db() -> None:
+def _drop_sandbox_db(odoo_major: int = 19) -> None:
+    db_container = sandbox_stack_for_major(odoo_major).db_container
     subprocess.run(
         [
             "docker",
             "exec",
-            DB_CONTAINER,
+            db_container,
             "psql",
             "-U",
             "odoo",
@@ -312,7 +349,7 @@ def _drop_sandbox_db() -> None:
         [
             "docker",
             "exec",
-            DB_CONTAINER,
+            db_container,
             "psql",
             "-U",
             "odoo",
@@ -328,16 +365,17 @@ def _drop_sandbox_db() -> None:
 
 
 def _init_db(odoo_major: int) -> None:
-    """Create sandbox_test. Odoo 19 uses ``odoo db init``; ≤18 uses classic -i base,web."""
+    """Create sandbox_test. Odoo 19+ uses ``odoo db init``; ≤18 uses classic -i base,web."""
+    stack = sandbox_stack_for_major(odoo_major)
     if odoo_major >= 19:
         subprocess.run(
             [
                 "docker",
                 "exec",
-                ODOO_CONTAINER,
+                stack.odoo_container,
                 "odoo",
                 "db",
-                "--db_host=db",
+                f"--db_host={stack.db_host}",
                 "-r",
                 "odoo",
                 "-w",
@@ -357,15 +395,17 @@ def _init_db(odoo_major: int) -> None:
         return
 
     # Avoid KeyError ir.http: stop worker, drop DB, one-shot init, start worker.
-    _compose("stop", "odoo", check=False, odoo_major=odoo_major)
-    _drop_sandbox_db()
+    _compose(
+        "stop", stack.odoo_service, check=False, odoo_major=odoo_major
+    )
+    _drop_sandbox_db(odoo_major)
     _compose(
         "run",
         "--rm",
         "--no-deps",
+        stack.odoo_service,
         "odoo",
-        "odoo",
-        "--db_host=db",
+        f"--db_host={stack.db_host}",
         "-r",
         "odoo",
         "-w",
@@ -380,7 +420,7 @@ def _init_db(odoo_major: int) -> None:
         check=True,
         odoo_major=odoo_major,
     )
-    _compose("start", "odoo", check=True, odoo_major=odoo_major)
+    _compose("start", stack.odoo_service, check=True, odoo_major=odoo_major)
 
 
 def _sandbox_client(expected_major: int = 19) -> Any:
@@ -391,9 +431,10 @@ def _sandbox_client(expected_major: int = 19) -> Any:
     """
     from odoo_client import ConnectionConfig, OdooClient
 
+    stack = sandbox_stack_for_major(expected_major)
     client = OdooClient(
         ConnectionConfig(
-            url=SANDBOX_URL,
+            url=stack.url,
             db=SANDBOX_DB,
             username=SANDBOX_USER,
             password=SANDBOX_PASSWORD,
@@ -519,15 +560,15 @@ def _resolve_extra_modules(extra_modules: list[str] | None) -> list[str]:
 def build_test_enable_argv(module: str, *, odoo_major: int = 19) -> list[str]:
     """Argv for ``odoo … -u MODULE --test-enable --stop-after-init`` (PR-D).
 
-    ``odoo_major`` reserved for future flag drift; argv shape is shared 16–19 CE.
+    ``odoo_major`` reserved for future flag drift; argv shape is shared 16–20 CE.
     """
-    _ = odoo_major
+    db_host = sandbox_stack_for_major(odoo_major).db_host
     technical = (module or "").strip()
     if not technical:
         raise ValueError("module name required for --test-enable")
     return [
         "odoo",
-        "--db_host=db",
+        f"--db_host={db_host}",
         "-r",
         "odoo",
         "-w",
@@ -582,11 +623,12 @@ def _run_module_tests(
 ) -> tuple[bool, str, list[str]]:
     """Run ``--test-enable`` against the live sandbox DB. Returns (ok, log, failures)."""
     argv = build_test_enable_argv(module, odoo_major=odoo_major)
+    odoo_service = sandbox_stack_for_major(odoo_major).odoo_service
     # compose exec into the already-up odoo service (DB + addons volume mounted).
     cp = _compose(
         "exec",
         "-T",
-        "odoo",
+        odoo_service,
         *argv,
         check=False,
         odoo_major=odoo_major,
@@ -643,9 +685,6 @@ def run_sandbox_install(
             odoo_major=odoo_major,
         )
 
-    if not SANDBOX_COMPOSE.exists():
-        raise FileNotFoundError(f"Missing {SANDBOX_COMPOSE}")
-
     docker_ok, docker_detail = sandbox_docker_status()
     if not docker_ok:
         return SandboxResult(
@@ -664,6 +703,10 @@ def run_sandbox_install(
             message=str(exc),
             odoo_major=odoo_major,
         )
+
+    stack = sandbox_stack_for_major(major)
+    if not stack.compose.exists():
+        raise FileNotFoundError(f"Missing {stack.compose}")
 
     acquired = _sandbox_lock.acquire(blocking=True, timeout=900)
     if not acquired:
@@ -706,6 +749,7 @@ def _run_sandbox_install_unlocked(
     _active_sandbox_job_id = job_id
     logs: list[str] = []
     technical = module_name or "unknown"
+    stack = sandbox_stack_for_major(odoo_major)
     try:
         if job_id and job_cancelled(job_id):
             return SandboxResult(
@@ -726,15 +770,17 @@ def _run_sandbox_install_unlocked(
         up = _compose("up", "-d", odoo_major=odoo_major, job_id=job_id)
         logs.append(up.stdout[-500:] if up.stdout else "")
 
-        _wait_http(f"{SANDBOX_URL}/web/login", timeout_s=180)
+        _wait_http(f"{stack.url}/web/login", timeout_s=180)
         logs.append("http ready")
 
         _init_db(odoo_major)
         logs.append(f"db initialized (major={odoo_major})")
 
         if odoo_major >= 19:
-            _compose("restart", "odoo", check=False, odoo_major=odoo_major)
-        _wait_http(f"{SANDBOX_URL}/web/login", timeout_s=150)
+            _compose(
+                "restart", stack.odoo_service, check=False, odoo_major=odoo_major
+            )
+        _wait_http(f"{stack.url}/web/login", timeout_s=150)
 
         extras = _resolve_extra_modules(extra_modules)
         if extras:
@@ -767,7 +813,7 @@ def _run_sandbox_install_unlocked(
                     module=technical,
                     message=f"Sandbox tests failed for {technical}: {detail}",
                     log_tail=_join_sandbox_logs(logs),
-                    sandbox_url=SANDBOX_URL if keep_alive else None,
+                    sandbox_url=stack.url if keep_alive else None,
                     odoo_major=odoo_major,
                     test_failures=test_failures,
                     tests_ran=True,
@@ -786,7 +832,7 @@ def _run_sandbox_install_unlocked(
                 f"successfully{extra_msg}{test_msg}"
             ),
             log_tail=_join_sandbox_logs(logs),
-            sandbox_url=SANDBOX_URL if keep_alive else None,
+            sandbox_url=stack.url if keep_alive else None,
             odoo_major=odoo_major,
             test_failures=[],
             tests_ran=tests_ran,

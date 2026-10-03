@@ -4,15 +4,16 @@
 #   ./docker/run-sandbox-major-gate.sh           # defaults to 19
 #   ./docker/run-sandbox-major-gate.sh 18
 #   ./docker/run-sandbox-major-gate.sh 16
+#   ./docker/run-sandbox-major-gate.sh 20   # docker-compose.odoo20.yml (host :8073)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 MAJOR="${1:-${ODOO_SANDBOX_MAJOR:-19}}"
 case "$MAJOR" in
-  16|17|18|19) ;;
+  16|17|18|19|20) ;;
   *)
-    echo "Unsupported major: $MAJOR (allowed: 16 17 18 19)" >&2
+    echo "Unsupported major: $MAJOR (allowed: 16 17 18 19 20)" >&2
     exit 2
     ;;
 esac

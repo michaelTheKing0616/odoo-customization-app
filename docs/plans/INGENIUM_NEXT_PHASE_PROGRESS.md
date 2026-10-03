@@ -805,3 +805,13 @@ Files: `apps/web/src/lib/odoo-native-mcp.ts`, `apps/web/src/lib/odoo-native-mcp.
 Pytest: `.venv/bin/python -m pytest -q -p no:cacheprovider packages/odoo-client/tests/test_odoo20_version_table.py::test_community_without_ai_modules_has_no_native_mcp` — **1 passed**.
 Vitest: `pnpm --filter @odoo-custom/web exec vitest run src/lib/odoo-native-mcp.test.ts` — **3 passed**.
 Not done: L4 off. No aonb.odoo.com call. No UI banner for MCP absence (silence is correct).
+
+CLAIM O20-10 2026-10-03T11:20:00Z files: sandbox major gate includes 20. Do not enable L4. Do not call aonb.odoo.com.
+
+Track: O20. Card: O20-10. Worker only. No commit. No push. No customer DB. L4 stays off.
+Intent: `./docker/run-sandbox-major-gate.sh` accepts major **20** and uses existing `docker/docker-compose.odoo20.yml` (project `odoo20-custom-dev`, host **8073**). Major **15** still rejected before Docker.
+Commands:
+- `./docker/run-sandbox-major-gate.sh 15` → **exit 2** (`Unsupported major: 15 (allowed: 16 17 18 19 20)`).
+- `./docker/run-sandbox-major-gate.sh 20` → **exit 0**. `SandboxResult(ok=True, module='sandbox_smoke_m20', odoo_major=20)` after first-run blockers were fixed (Odoo 20 loopback-only HTTP on published port; Postgres 16 for `db20`; smoke zip `security/ir_access.xml` with `operation=crud` not per-perm `read`).
+Files: `docker/run-sandbox-major-gate.sh`, `docker/docker-compose.odoo20.yml`, `apps/api/app/sandbox.py` (`sandbox_stack_for_major(20)` → odoo20 compose; XML-RPC default unchanged), `packages/module-generator` (major ≥20 ACL XML), `apps/api/app/ai_structural_zip_gate.py` (accept `ir_access.xml`).
+Not done: L4 off. No aonb.odoo.com. No commit.

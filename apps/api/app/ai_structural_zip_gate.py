@@ -66,10 +66,14 @@ def structural_zip_gate(
             if mid.startswith("x_"):
                 new_x_models.append(mid)
 
-    has_access = any(p.replace("\\", "/").endswith("security/ir.model.access.csv") for p in blob)
+    norm_paths = [p.replace("\\", "/") for p in blob]
+    has_access = any(
+        p.endswith("security/ir.model.access.csv") or p.endswith("security/ir_access.xml")
+        for p in norm_paths
+    )
     if new_x_models and not has_access:
         findings.append(
-            "missing security/ir.model.access.csv for new models: "
+            "missing security ACL (ir.model.access.csv or ir_access.xml) for new models: "
             + ", ".join(sorted(set(new_x_models)))
         )
 
