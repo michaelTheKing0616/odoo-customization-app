@@ -1017,3 +1017,9 @@ Track: T7 UI-F13. Worker [Add one canvas reorder primitive](5d1d48fe-0394-4c4d-b
 Intent: One `ReorderableBlocks` for pointer drag and keyboard arrows. A pointer-up outside the list does not reorder. Five canvas callers use it. Saved XML and QWeb unchanged.
 Tests: vitest `ReorderableBlocks.test.tsx` + `FormCanvas.test.tsx` — 7 passed. Playwright `e2e/designer-keyboard.spec.ts` — 1 passed (arrow keys swap Name and Customer, then swap back).
 Not done: UI-SP-API. L4 off.
+
+## 2026-10-03 — UI-SP-API client split
+Track: T7 UI-SP-API. Worker [Split the web API client by domain](fbd5e735-aba5-409e-ac3a-038218b4974d). No push. L4 stays off.
+Intent: Move `api.ts` into domain modules. `api.ts` is a 57-line re-export. No method name is defined twice. URLs and bodies were not rewritten.
+Tests: `pnpm exec vitest run src/lib/api.test.ts src/lib/capabilities.test.ts src/lib/jobs.test.ts src/lib/draft-job-outcome.test.ts` — 78 passed. No file under `src/lib/api/` is over 400 lines.
+Not done: UI-SP-WIZARD. L4 off.
