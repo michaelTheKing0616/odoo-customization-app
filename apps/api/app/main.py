@@ -9,9 +9,11 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.audit import AuditLogMiddleware
+from app.dry_run_middleware import DryRunHashMiddleware
 from app.auth import ensure_env_bootstrap_key
 from app.db import SessionLocal, init_db
 from app.rate_limit import RateLimitMiddleware
+from app.request_id import RequestIdMiddleware
 from app.entitlements import require_feature
 from app.safety_dependency import enforce_safety_gate
 from app.workspace_auth import require_app_auth
@@ -118,6 +120,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+from app.logging_config import install_json_logging
+
+install_json_logging()
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -127,6 +133,8 @@ app.add_middleware(
 )
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(AuditLogMiddleware)
+app.add_middleware(DryRunHashMiddleware)
+app.add_middleware(RequestIdMiddleware)
 
 # All /api/* routers (except auth status/bootstrap which skip inside the dependency)
 _protected = [Depends(require_app_auth), Depends(enforce_safety_gate)]
