@@ -96,6 +96,15 @@ _PRIORITY_CUE_RE = re.compile(
     r")\b"
 )
 
+# Brief Date cue — plain date columns only when clearly asked or date_slots craft.
+_DATE_CUE_RE = re.compile(
+    r"(?i)\b("
+    r"date\s*(?:field|column)?"
+    r"|due\s+date|start\s+date|end\s+date|visit\s+date"
+    r"|deadline|scheduled\s+date"
+    r")\b"
+)
+
 # Brief Rate/pricing/UOM cue — invent Rate Unit only when clearly asked.
 _RATE_CUE_RE = re.compile(
     r"(?i)\b("
@@ -405,6 +414,11 @@ def brief_has_priority_cue(prompt: str) -> bool:
 def brief_has_rate_cue(prompt: str) -> bool:
     """True when the brief clearly asks for Rate/pricing/UOM Selection."""
     return bool(_RATE_CUE_RE.search(prompt or ""))
+
+
+def brief_has_date_cue(prompt: str) -> bool:
+    """True when the brief clearly asks for a Date column (not workflow state)."""
+    return bool(_DATE_CUE_RE.search(prompt or ""))
 
 
 def brief_has_severity_cue(prompt: str) -> bool:
@@ -1279,6 +1293,13 @@ _INVENT_LABEL_DROP_RES: tuple[tuple[str, object, object], ...] = (
         brief_has_stage_cue,
         re.compile(r"(?i)^(?:[\w/&-]+\s+)*stage$"),
     ),
+    (
+        "Date",
+        brief_has_date_cue,
+        re.compile(
+            r"(?i)^(?:[\w/&-]+\s+)*(?:date|due\s+date|start\s+date|end\s+date|deadline)$"
+        ),
+    ),
 )
 
 
@@ -1303,14 +1324,14 @@ def _label_is_uncued_invent(label: str, prompt: str) -> str | None:
     return None
 
 
-def scrub_uncued_invent_must_do_rows(rows: list[str], *, prompt: str = "") -> list[str]:
-    """Drop Flash/LLM Must-do bullets that invent uncued Selection families.
-
-    Flash-on proposals may suggest invents; honor/apply still drops them.
-    """
+def _scrub_uncued_invent_must_do_partition(
+    rows: list[str], *, prompt: str = ""
+) -> tuple[list[str], list[str]]:
+    """Return (kept rows, removed row strings) for uncued invent Must-do bullets."""
     if not rows:
-        return []
+        return [], []
     kept: list[str] = []
+    removed: list[str] = []
     for row in rows:
         s = str(row or "").strip()
         if not s:
@@ -1321,31 +1342,44 @@ def scrub_uncued_invent_must_do_rows(rows: list[str], *, prompt: str = "") -> li
         )
         label = m.group(1).strip() if m else s
         if _label_is_uncued_invent(label, prompt):
+            removed.append(s)
             continue
         kept.append(s)
+    return kept, removed
+
+
+def scrub_uncued_invent_must_do_rows(rows: list[str], *, prompt: str = "") -> list[str]:
+    """T1-RET — assert-only; uncued invent Must-do must not reach this path."""
+    kept, removed = _scrub_uncued_invent_must_do_partition(rows, prompt=prompt)
+    assert removed == []
     return kept
 
 
-def scrub_uncued_invent_from_llm_ast(llm_ast: Any, *, prompt: str = "") -> Any:
-    """Strip uncued invent-family fields from a Flash/LLM ConstraintAST.
-
-    Returns the same object (mutated). Det floor is never passed here — only LLM fill.
-    """
+def _scrub_uncued_invent_from_llm_ast_partition(
+    llm_ast: Any, *, prompt: str = ""
+) -> tuple[list[Any], list[str]]:
     if llm_ast is None:
-        return None
+        return [], []
     fields = list(getattr(llm_ast, "fields", None) or [])
     if not fields:
-        return llm_ast
-    kept = []
+        return [], []
+    kept: list[Any] = []
+    removed: list[str] = []
     for f in fields:
         label = str(getattr(f, "label", "") or "")
         if _label_is_uncued_invent(label, prompt):
+            removed.append(label or repr(f))
             continue
         kept.append(f)
-    try:
-        llm_ast.fields = kept
-    except Exception:  # noqa: BLE001
-        return llm_ast
+    return kept, removed
+
+
+def scrub_uncued_invent_from_llm_ast(llm_ast: Any, *, prompt: str = "") -> Any:
+    """T1-RET — assert-only; uncued invent AST fields must not reach this path."""
+    if llm_ast is None:
+        return None
+    _, removed = _scrub_uncued_invent_from_llm_ast_partition(llm_ast, prompt=prompt)
+    assert removed == []
     return llm_ast
 
 
@@ -1359,6 +1393,7 @@ __all__ = [
     "brief_has_type_cue",
     "brief_has_priority_cue",
     "brief_has_rate_cue",
+    "brief_has_date_cue",
     "brief_has_severity_cue",
     "brief_has_channel_cue",
     "brief_has_stage_cue",

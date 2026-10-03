@@ -673,6 +673,43 @@ def coerce_uncued_datetime_fields(draft: dict[str, Any]) -> list[str]:
     return notes
 
 
+def coerce_uncued_date_fields(draft: dict[str, Any]) -> list[str]:
+    """Enrich boundary: drop uncued date columns unless date_slots craft or brief cue."""
+    notes: list[str] = []
+    try:
+        from app.ai_generate_ir_enforce import _admitted_names, _date_allowed, _is_thin_residual
+    except Exception:  # noqa: BLE001
+        return notes
+    if not _is_thin_residual(draft):
+        return notes
+    admitted = _admitted_names(draft)
+    for m in draft.get("models") or []:
+        if not isinstance(m, dict):
+            continue
+        mid = str(m.get("model") or "")
+        fields = m.get("fields")
+        if not isinstance(fields, list):
+            continue
+        kept: list[Any] = []
+        for f in fields:
+            if not isinstance(f, dict):
+                kept.append(f)
+                continue
+            name = str(f.get("name") or "")
+            ttype = str(f.get("ttype") or "")
+            if ttype != "date":
+                kept.append(f)
+                continue
+            lab = str(f.get("string") or name)
+            if name in admitted or _date_allowed(lab, draft):
+                kept.append(f)
+                continue
+            notes.append(f"enrich: dropped uncued date field {mid}.{name or ttype}")
+        if len(kept) != len(fields):
+            m["fields"] = kept
+    return notes
+
+
 def coerce_uncued_money_fields(draft: dict[str, Any]) -> list[str]:
     """Enrich boundary: drop uncued currency/monetary spray without money craft.
 
@@ -1187,6 +1224,7 @@ def ensure_default_ui(draft: dict[str, Any]) -> list[str]:
     """Add actions/menus/views when missing. Mutates draft. Returns warnings."""
     warnings: list[str] = []
     warnings.extend(coerce_uncued_datetime_fields(draft))
+    warnings.extend(coerce_uncued_date_fields(draft))
     warnings.extend(coerce_uncued_money_fields(draft))
     models = [m for m in (draft.get("models") or []) if isinstance(m, dict) and m.get("model")]
     if not models:

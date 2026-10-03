@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Dump Maintenance GenerateIR AI_IR_TRACE stages (Wave 4 / §4.1 operator helper).
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$ROOT/apps/api"
 export AI_IR_TRACE=1
 export AI_INTENT_LLM=off

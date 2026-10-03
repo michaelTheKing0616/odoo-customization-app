@@ -226,6 +226,20 @@ def _datetime_allowed(label: str, draft: dict[str, Any]) -> bool:
         return False
 
 
+def _date_allowed(label: str, draft: dict[str, Any]) -> bool:
+    craft = _craft(draft)
+    if craft.get("date_slots") or _settings_craft("date_slots"):
+        return True
+    prompt = _prompt(draft)
+    blob = f"{label} {prompt}"
+    try:
+        from app.ai_brief_cues import brief_has_date_cue
+
+        return brief_has_date_cue(blob)
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def purge_unadmitted_spray(draft: dict[str, Any]) -> list[str]:
     """Remove spray-family fields/models not allowed by cue/craft/admission."""
     notes: list[str] = []
@@ -291,6 +305,14 @@ def purge_unadmitted_spray(draft: dict[str, Any]) -> list[str]:
             if ttype == "datetime" and not _datetime_allowed(lab, draft):
                 f = {**f, "ttype": "date"}
                 notes.append(f"generate_ir: coerced {mid}.{name} datetime→date")
+            if (
+                ttype == "date"
+                and thin
+                and name not in admitted
+                and not _date_allowed(lab, draft)
+            ):
+                dropped.append(name or "date")
+                continue
             if thin and (name in _SPRAY_FIELD_NAMES or rel in _SPRAY_RELS):
                 # On party/line satellites, Contact M2O is structural when party exists.
                 if (

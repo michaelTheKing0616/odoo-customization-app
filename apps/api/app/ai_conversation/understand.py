@@ -94,6 +94,7 @@ def _coerce_craft_list(raw) -> list[dict]:
 APPROVED_CRAFT_KEYS: tuple[str, ...] = (
     "company_scoping",
     "money_slots",
+    "date_slots",
     "purchase_link",
     "partner_links",
     "datetime_over_date",

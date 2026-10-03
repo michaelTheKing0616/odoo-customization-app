@@ -118,6 +118,7 @@ class Settings(BaseSettings):
     # Opt-in craft flags for residual Generate (handoff T5) — default off = cue-only
     ai_craft_company_scoping: bool = False
     ai_craft_money_slots: bool = False
+    ai_craft_date_slots: bool = False
     ai_craft_depth_seeds: bool = False
     ai_craft_purchase_link: bool = False
     ai_craft_partner_links: bool = False

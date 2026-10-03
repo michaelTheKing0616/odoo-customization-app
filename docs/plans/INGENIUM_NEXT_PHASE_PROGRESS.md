@@ -484,6 +484,9 @@ Risks introduced: generated zips lose distinctive FA home-grid icons and share t
 
 CLAIM T1-F3 2026-10-03T08:15:07Z files: a live Option A prove with run_tests=True. Do not promote. Do not commit .cache. Smoke install already exited 0.
 
+CLAIM T1-RET 2026-10-03T08:25:00Z files: trace script only if its cd is still wrong, then the progress log. Do not delete scrub unless two recorded runs have zero removals.
+
+
 ## 2026-10-03 — T1-F3 (option_a_authored prove with tests)
 Track: T1
 Intent: One Option A module reaches live `prove_status=proved` on the Odoo 19 sandbox with `run_tests=True`. Do not promote. Do not commit `.cache`.
@@ -498,5 +501,21 @@ Gates passed: T1-F3 live Option A prove bar (`prove_status=proved` via `run_test
 Negative tests: unit argv still requires `--test-enable` + `--stop-after-init`; prove-bar mocks still refuse `proved` without `tests_ran`.
 Not done: promote (human). Do not treat `promote_eligible=True` as a promote.
 Risks introduced: test-enable HTTP binds 8070 inside the sandbox container only; host `:18069` unchanged.
+
+## 2026-10-03 — T1-RET (retire scrub gate + assert-only)
+Track: T1
+Intent: Record two consecutive Maintenance `AI_IR_TRACE` dumps with zero GenerateIR `scrub_hits`; then replace `scrub_uncued_*` with assert-only and move Date/Datetime/money gating into `approved_craft`. Do not commit. Do not commit `.cache`.
+Model / band: worker. Pressure 9.
+Files: `apps/api/scripts/dump_maintenance_ir_trace.sh` (`ROOT` three levels up to repo root). `apps/api/app/ai_brief_cues.py`, `ai_conversation/understand.py`, `ai_generate_ir_enforce.py`, `ai_enrich.py`, `settings.py`, `tests/test_generate_ir_closed_class.py`. This entry.
+Commands and results:
+- Fixed dump script `ROOT` (`../../..`); `AI_IR_TRACE=1 bash apps/api/scripts/dump_maintenance_ir_trace.sh` from repo root ×2.
+- **Run 1 stamp:** `20261003T092128` — **scrub removal count:** `0` (`enforce_closed_generate_ir` → `extra.closure.scrub_hits: []`). Apply-phase view arch note only: `apply: scrubbed 4 stale arch field ref(s)` (not counted as closure scrub_hits; same as PF-3).
+- **Run 2 stamp:** `20261003T092133` — **scrub removal count:** `0` (same `scrub_hits: []`).
+- Both gates passed → continued card (did **not** stop before scrub retirement): `scrub_uncued_invent_*` now `assert removed == []`; added `date_slots` to `APPROVED_CRAFT_KEYS` + `ai_craft_date_slots`; `_date_allowed` / `coerce_uncued_date_fields`; Datetime/money remain on `datetime_over_date` / `money_slots`.
+- `uv run --directory apps/api python -m pytest -q -p no:cacheprovider tests/test_generate_ir_closed_class.py tests/test_generate_ir_spine.py tests/test_approved_craft_default_off.py` → **36 passed in 2.34s**.
+Gates passed: two recorded zero-`scrub_hits` Maintenance traces; assert-only scrub; craft date slots; GenerateIR battery green.
+Negative tests: `test_scrub_uncued_must_do_asserts_on_uncued_date` (uncued `Date` Must-do trips assert).
+Not done: delete `scrub_uncued_*` symbols entirely (one release assert-only per card); full battery / Mac §9 live grade; `test_continuous_invent_class` not re-run this card.
+Risks introduced: LLM paths that still emit uncued invent labels will raise at scrub assert until upstream gates catch them.
 
 

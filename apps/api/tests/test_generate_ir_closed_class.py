@@ -333,3 +333,14 @@ def test_purge_owns_uncued_spray_removal() -> None:
     assert notes
     names = {str(f.get("name")) for f in draft["models"][0]["fields"]}
     assert "x_partner_id" not in names
+
+
+def test_scrub_uncued_must_do_asserts_on_uncued_date() -> None:
+    """T1-RET negative — uncued Date Must-do must not reach assert-only scrub."""
+    from app.ai_brief_cues import scrub_uncued_invent_must_do_rows
+
+    with pytest.raises(AssertionError):
+        scrub_uncued_invent_must_do_rows(
+            ["Date"],
+            prompt="Build tickets with name only",
+        )
