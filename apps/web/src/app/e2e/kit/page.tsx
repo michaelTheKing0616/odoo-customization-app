@@ -14,6 +14,7 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Sheet } from "@/components/ui/Sheet";
+import { Drawer, SheetMotion } from "@/components/ui/motion";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Tabs } from "@/components/ui/Tabs";
 import { Textarea } from "@/components/ui/Textarea";
@@ -35,6 +36,8 @@ const demoColumns: DataTableColumn<DemoRow>[] = [
 export default function KitE2EPage() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [motionDrawerOpen, setMotionDrawerOpen] = useState(false);
+  const [motionSheetOpen, setMotionSheetOpen] = useState(false);
   const [combo, setCombo] = useState("partner");
 
   if (process.env.NEXT_PUBLIC_E2E !== "1") {
@@ -114,6 +117,12 @@ export default function KitE2EPage() {
             <Button variant="secondary" onClick={() => setDialogOpen(true)}>
               Open dialog
             </Button>
+            <Button variant="secondary" onClick={() => setMotionDrawerOpen(true)}>
+              Open motion drawer
+            </Button>
+            <Button variant="secondary" onClick={() => setMotionSheetOpen(true)}>
+              Open motion sheet
+            </Button>
           </div>
         </Card>
       </div>
@@ -123,6 +132,12 @@ export default function KitE2EPage() {
       <DialogPanel open={dialogOpen} onOpenChange={setDialogOpen} title="Dialog demo">
         <p className="text-sm text-muted">Focus-trapped dialog content.</p>
       </DialogPanel>
+      <Drawer open={motionDrawerOpen} onOpenChange={setMotionDrawerOpen} title="Motion drawer">
+        <p className="p-4 text-sm">Drawer panel</p>
+      </Drawer>
+      <SheetMotion open={motionSheetOpen} onOpenChange={setMotionSheetOpen} title="Motion sheet">
+        <p className="p-4 text-sm">Motion sheet panel</p>
+      </SheetMotion>
     </main>
   );
 }

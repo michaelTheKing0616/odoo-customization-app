@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState, Skeleton } from "@/components/ui/layout-primitives";
+import { ListLayout, ListLayoutItem } from "@/components/ui/motion";
 
 type Plan = {
   plan_hash: string;
@@ -97,9 +98,13 @@ export default function ApprovalsPage() {
           }
         />
       ) : null}
-      <ul className="flex flex-col gap-3">
-        {(plans ?? []).map((plan) => (
-          <li key={plan.plan_hash} className="rounded-md border border-border bg-surface px-4 py-3">
+      <ListLayout stagger={false} className="flex flex-col gap-3">
+        {(plans ?? []).map((plan, index) => (
+          <ListLayoutItem
+            key={plan.plan_hash}
+            index={index}
+            className="rounded-md border border-border bg-surface px-4 py-3"
+          >
             <div className="flex items-baseline justify-between gap-3">
               <h2 className="text-sm font-medium text-ink">{plan.goal}</h2>
               <span className="font-mono text-xs text-muted">{plan.max_risk}</span>
@@ -108,9 +113,9 @@ export default function ApprovalsPage() {
               {plan.plan_hash} · {plan.status} · {plan.environment}
             </p>
             <p className="mt-2 text-sm text-ink">{plan.changes.map((change) => change.type).join(", ")}</p>
-          </li>
+          </ListLayoutItem>
         ))}
-      </ul>
+      </ListLayout>
     </main>
   );
 }

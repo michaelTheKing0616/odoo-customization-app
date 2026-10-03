@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { ListLayout, ListLayoutItem } from "@/components/ui/motion";
 import { cn } from "@/lib/cn";
 
 export type DiffLine = { type: "add" | "remove" | "context"; text: string };
@@ -58,10 +59,16 @@ export function DiffView({ before, after, className }: DiffViewProps) {
         </div>
       </div>
       {mode === "unified" ? (
-        <pre className="max-h-80 overflow-auto p-3 font-mono text-xs">
+        <ListLayout
+          as="div"
+          stagger={false}
+          className="max-h-80 overflow-auto p-3 font-mono text-xs"
+        >
           {unified.map((line, i) => (
-            <div
+            <ListLayoutItem
+              as="div"
               key={`${line.type}-${i}`}
+              index={i}
               className={cn(
                 line.type === "add" && "bg-success-subtle text-success",
                 line.type === "remove" && "bg-danger-subtle text-danger",
@@ -69,14 +76,22 @@ export function DiffView({ before, after, className }: DiffViewProps) {
             >
               {line.type === "add" ? "+ " : line.type === "remove" ? "- " : "  "}
               {line.text}
-            </div>
+            </ListLayoutItem>
           ))}
-        </pre>
+        </ListLayout>
       ) : (
-        <div className="grid max-h-80 grid-cols-2 divide-x divide-border-subtle overflow-auto">
-          <pre className="p-3 font-mono text-xs text-danger">{before}</pre>
-          <pre className="p-3 font-mono text-xs text-success">{after}</pre>
-        </div>
+        <ListLayout
+          as="div"
+          stagger={false}
+          className="grid max-h-80 grid-cols-2 divide-x divide-border-subtle overflow-auto"
+        >
+          <ListLayoutItem as="div" index={0}>
+            <pre className="p-3 font-mono text-xs text-danger">{before}</pre>
+          </ListLayoutItem>
+          <ListLayoutItem as="div" index={1}>
+            <pre className="p-3 font-mono text-xs text-success">{after}</pre>
+          </ListLayoutItem>
+        </ListLayout>
       )}
     </div>
   );

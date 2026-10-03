@@ -985,3 +985,10 @@ Track: T7 UI-F08. Worker [Move remaining toasts to Sonner](ae7db3f1-7015-431b-b7
 Intent: Remove the unused `Toast.tsx` and the connection-layout `ToastProvider`. Success toasts last 4000 ms. Error toasts use `duration: Infinity` until dismissed. Sonner region is `aria-live=polite`.
 Tests: `pnpm exec vitest run src/components/ui/kit.test.tsx` — 16 passed, including success auto-dismiss and an error toast still present after 10 s.
 Not done: UI-F09 motion primitives. A live toast was not opened in the browser. L4 off.
+
+## 2026-10-03 — UI-F09 motion primitives
+Track: T7 UI-F09. Worker [Add motion primitives](e38e14c1-5a72-4071-b250-b9bc1e1d0c20), then a follow-up on the four unproven gaps. No push. L4 stays off.
+Intent: One constants module, interruptible Drawer and SheetMotion, ListLayout on the approvals inbox and diff panes. Reduced motion fades in place.
+Tests: `pnpm exec vitest run src/components/ui/motion/motion.test.tsx` — 6 passed, twice. The interrupt test starts closed, opens, samples x between 5 and 95, then closes and requires x to increase. The rendered reduced-motion case sets `data-motion-keys` to `opacity x` with `x: 0`.
+Browser on `/e2e/kit`: open samples moved translateX 448 → 287 → 102. Close started at 62, then 384 → 433, so the reverse continued from the in-progress offset. With reduced motion on, the open drawer’s transform was `none` while opacity faded (0.76). Approvals renders one `motion-list-layout`. The kit diff renders one. Drawer and SheetMotion are on the kit page.
+Not done: UI-F10 TOTP input. Expert and billing still use the existing Sheet. L4 off.

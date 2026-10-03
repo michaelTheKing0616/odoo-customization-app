@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/layout-primitives";
 import { DiffView } from "@/components/ui/DiffView";
+import { ListLayout, ListLayoutItem } from "@/components/ui/motion";
 import { Tabs } from "@/components/ui/Tabs";
 import {
   PROJECT_DIFF_FILTERS,
@@ -92,31 +93,37 @@ export function ProjectDiffPanel({ diff }: ProjectDiffPanelProps) {
                 {showConflicts && diff.conflicts.length > 0 ? (
                   <div>
                     <Badge variant="danger">Conflicts</Badge>
-                    <ul className="mt-2 list-disc space-y-1 pl-5 text-danger">
-                      {diff.conflicts.map((item) => (
-                        <li key={item}>{item}</li>
+                    <ListLayout className="mt-2 list-disc space-y-1 pl-5 text-danger">
+                      {diff.conflicts.map((item, index) => (
+                        <ListLayoutItem key={item} index={index}>
+                          {item}
+                        </ListLayoutItem>
                       ))}
-                    </ul>
+                    </ListLayout>
                   </div>
                 ) : null}
                 {showCreate && diff.to_create_models.length > 0 ? (
                   <div>
                     <Badge variant="info">Models to create</Badge>
-                    <ul className="mt-2 list-disc space-y-1 pl-5 font-mono text-accent">
-                      {diff.to_create_models.map((item) => (
-                        <li key={item}>{item}</li>
+                    <ListLayout className="mt-2 list-disc space-y-1 pl-5 font-mono text-accent">
+                      {diff.to_create_models.map((item, index) => (
+                        <ListLayoutItem key={item} index={index}>
+                          {item}
+                        </ListLayoutItem>
                       ))}
-                    </ul>
+                    </ListLayout>
                   </div>
                 ) : null}
                 {showCreate && diff.to_create_fields.length > 0 ? (
                   <div>
                     <Badge variant="info">Fields to create</Badge>
-                    <ul className="mt-2 list-disc space-y-1 pl-5 font-mono text-accent">
-                      {diff.to_create_fields.map((item) => (
-                        <li key={item}>{item}</li>
+                    <ListLayout className="mt-2 list-disc space-y-1 pl-5 font-mono text-accent">
+                      {diff.to_create_fields.map((item, index) => (
+                        <ListLayoutItem key={item} index={index}>
+                          {item}
+                        </ListLayoutItem>
                       ))}
-                    </ul>
+                    </ListLayout>
                   </div>
                 ) : null}
                 {showExisting && diff.existing_models.length > 0 ? (
