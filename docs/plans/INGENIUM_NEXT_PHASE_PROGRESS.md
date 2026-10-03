@@ -769,3 +769,12 @@ Result: `.venv/bin/python -m pytest -q -p no:cacheprovider packages/odoo-client/
 Still verify (card wording kept, not upgraded): V06 18–19 `verify override`; V24 17 and 19 `verify`; V26 19 `verify`; V28 19 `verify`; V29 19 `verify`; V30 19 `verify`.
 Files: `packages/odoo-client/src/odoo_client/compat/version_table.py`, `packages/odoo-client/tests/test_odoo20_version_table.py`.
 Not done: live 20 probes. L4 off. No aonb.odoo.com call. No Docker.
+
+CLAIM O20-07 2026-10-03T11:05:00Z files: JSON-2 password error on major 20. Do not enable L4. Do not call aonb.odoo.com.
+
+Track: O20. Card: O20-07. Worker only. No commit. No push. No Odoo host. L4 stays off.
+Intent: On major ≥ 20, `_connect_json2` auth failure explains that JSON-2 needs an API key and points password users to `rpc_protocol=xmlrpc` — not “leave auto on non-Online hosts” (auto on 20 is JSON-2). Major 19 keeps the existing Online/local auto hint.
+Files: `packages/odoo-client/src/odoo_client/client.py`, `packages/odoo-client/tests/test_odoo20_version_table.py`.
+Pytest: `.venv/bin/python -m pytest -q -p no:cacheprovider packages/odoo-client/tests/test_odoo20_version_table.py packages/odoo-client/tests/test_json2_transport.py` — **70 passed, 32 skipped**.
+Major-20 hint sentence: `JSON-2 requires an API key (Settings → Users → Account Security → New API Key). To use a login password instead, set rpc_protocol=xmlrpc.`
+Not done: L4 off. No aonb.odoo.com call.

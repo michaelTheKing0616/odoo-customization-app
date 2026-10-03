@@ -325,13 +325,21 @@ class OdooClient:
         try:
             ctx = transport.context_get()
         except Json2TransportError as exc:
-            raise OdooClientError(
-                f"JSON-2 auth failed at {self.config.url}: {exc}. "
-                "Odoo 19 External JSON-2 requires an API key "
-                "(Settings → Users → Account Security → New API Key). "
-                "For local Docker with a login password, set rpc_protocol=xmlrpc "
-                "or leave auto on non-Online hosts."
-            ) from exc
+            prefix = f"JSON-2 auth failed at {self.config.url}: {exc}. "
+            if major >= 20:
+                hint = (
+                    "JSON-2 requires an API key "
+                    "(Settings → Users → Account Security → New API Key). "
+                    "To use a login password instead, set rpc_protocol=xmlrpc."
+                )
+            else:
+                hint = (
+                    "Odoo 19 External JSON-2 requires an API key "
+                    "(Settings → Users → Account Security → New API Key). "
+                    "For local Docker with a login password, set rpc_protocol=xmlrpc "
+                    "or leave auto on non-Online hosts."
+                )
+            raise OdooClientError(prefix + hint) from exc
         uid = ctx.get("uid")
         if not uid:
             raise OdooClientError(

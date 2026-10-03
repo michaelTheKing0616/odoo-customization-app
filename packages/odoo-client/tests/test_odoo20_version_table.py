@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
 from odoo_client import ConnectionConfig, OdooClient
+from odoo_client.client import OdooClientError
+from odoo_client.transport.json2 import Json2TransportError
 from odoo_client.compat.adapters.views_v20 import list_arch_root, normalize_view_mode
 from odoo_client.compat.version_table import (
     DIFFERENCES,
@@ -121,6 +125,25 @@ def test_major_20_auto_selects_json2_even_when_local() -> None:
     assert client._should_use_json2(major=20, hosting="local") is True
     assert client._should_use_json2(major=19, hosting="local") is False
     assert client._should_use_json2(major=19, hosting="online") is True
+
+
+def test_major_20_json2_password_auth_error_does_not_suggest_auto_xmlrpc() -> None:
+    client = OdooClient(
+        ConnectionConfig(url="http://127.0.0.1:9", db="t", username="u", password="p")
+    )
+    with patch(
+        "odoo_client.client.Json2Transport.context_get",
+        side_effect=Json2TransportError(
+            "Invalid apikey", status=401, body={"message": "Invalid apikey"}
+        ),
+    ):
+        with pytest.raises(OdooClientError) as caught:
+            client._connect_json2(major=20)
+    msg = str(caught.value)
+    assert "JSON-2 requires an API key" in msg
+    assert "Odoo 19" not in msg
+    assert "non-Online" not in msg
+    assert "rpc_protocol=xmlrpc" in msg
 
 
 def test_community_without_ai_modules_has_no_native_mcp() -> None:
