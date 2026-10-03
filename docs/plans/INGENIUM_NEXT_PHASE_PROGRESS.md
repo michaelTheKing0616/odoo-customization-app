@@ -1135,6 +1135,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - GATE-P1-04 and GATE-P1-06 are proven with 200 scripted calls, not a live cassette. A recorded live 200-call cassette is still open.
 - The transport contract in `packages/odoo-client/src/odoo_client/transport/contract.py` is proven on a fake send function. It is not wrapped around the XML-RPC or JSON-2 adapters. Local HTTP sandboxes are unchanged.
 - GATE-P2-08 and GATE-P2-09 are not fully passed. The seven bridge methods are proven on an in-memory fake. Apply, rollback, a real savepoint, the live kill switch, and staging neutralization have not run on Odoo.
+- Version drift live nightly rows were not run. Unknown cells remain for kanban, `name_get`, company-dependent fields, selection storage, mail template syntax, and translations on 20.
 - `docker/*` and `apps/api/tests/test_wave16_gen2.py` still use `ServerProxy` outside the XML-RPC product scan.
 - Recaptured token screenshots in `docs/vision-verify/tokens-light.png` and `tokens-dark.png` are unstaged. The CSS text did not change.
 
@@ -1228,3 +1229,8 @@ Not done: T8-OD-BRIDGE. GATE-P0-03, GATE-P0-05, and GATE-P1-02 stay open. The tr
 Track: T8 T8-OD-BRIDGE. Worker [Prove the bridge protocol](c9222a36-3958-43ef-8602-f7133f5bb35f). No push. L4 stays off.
 Intent: The seven methods are proven on an in-memory fake. Unknown ops fail closed. DDL does not dry-run in place. The kill switch stops apply. A stolen key is refused. Promotion replays a change-set and does not copy a database. Re-ran the bridge tests: 16 passed. No addon was installed. GATE-P2-08 and GATE-P2-09 stay open.
 Not done: T8-OD-DRIFT. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P2-09 stay open. L4 stays off.
+
+## 2026-10-03 — T8-OD-DRIFT version table
+Track: T8 T8-OD-DRIFT. Worker [Record version drift with fakes](693df5c9-eb6f-487e-8f41-adcce98e227f). No push. L4 stays off.
+Intent: Fake answers cover the checklist rows the existing version tests did not already lock. Known cells cite code already in the repo. Unstated cells stay unknown. Re-ran `tests/test_t8_od_drift.py`: 93 passed, 44 skipped. The skips are the live nightly rows. No major was probed.
+Not done: T8-OP-SCHEMA. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P2-09 stay open. Live drift nightly stays unrun. L4 stays off.
