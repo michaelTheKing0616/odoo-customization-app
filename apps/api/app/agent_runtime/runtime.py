@@ -8,7 +8,14 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.agent_runtime.phases import ENGINE_ONLY, PHASES, IllegalTransition, assert_transition
-from app.agent_runtime.tools import ToolDenied, assert_tool_allowed, wrap_untrusted
+from app.agent_runtime.tools import (
+    ToolDenied,
+    ask_user_result,
+    assert_tool_allowed,
+    data_sample_result,
+    memory_propose_result,
+    wrap_untrusted,
+)
 from app.changeset.executor import apply as engine_apply
 from app.changeset.executor import changeset_fingerprint
 from app.changeset.policy import self_approval_allowed
@@ -384,7 +391,11 @@ class AgentRuntime:
         if name == "env_info":
             return {"transport": "json2"}
         if name == "ask_user":
-            return {"suspended": True, "questions": args.get("questions") or []}
+            return ask_user_result(args)
+        if name == "data_sample":
+            return data_sample_result(args)
+        if name == "memory_propose":
+            return memory_propose_result(args)
         if name == "changeset_status":
             return {"phase": state.phase, "applied": state.applied, "status": state.status}
         if name == "verification_report_get":

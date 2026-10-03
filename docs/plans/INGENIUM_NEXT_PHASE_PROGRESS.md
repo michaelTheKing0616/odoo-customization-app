@@ -1148,6 +1148,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - GATE-P3-10 is not fully passed. Six plan-card snapshots exist, one op per family. The rest of the catalog has no snapshot.
 - Changeset coverage is under the bar: 89.59% line and 79.46% branch, measured on the changeset tests, not the full suite. No CI floor was added.
 - A process kill still loses a run. Resume restores an exported in-memory dict only. GATE-P4-08 is not a durable restart.
+- Three tool names sit beside the card list: `changeset_validate`, `changeset_simulate`, and `changeset_render`. The registered card set is 42 names and does not include an apply tool.
 - `docker/*` and `apps/api/tests/test_wave16_gen2.py` still use `ServerProxy` outside the XML-RPC product scan.
 - Recaptured token screenshots in `docs/vision-verify/tokens-light.png` and `tokens-dark.png` are unstaged. The CSS text did not change.
 
@@ -1343,6 +1344,11 @@ Not done: T8-RUN. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, GA
 Track: T8 T8-RUN. Worker [Prove the phase machine](c1f72282-ac2a-42ef-8980-9b263bea1052). No push. L4 stays off.
 Intent: A scripted run walks INTAKE through REPORT with no LLM. No phase exposes an apply tool. The third identical call returns LOOP_DETECTED. The fourth aborts. That matches the source: three times is the warning, and the next identical call aborts. Resume restores an exported in-memory dict. A process kill still loses the run. Re-ran runtime and import-boundary tests: 23 passed. The version-branch count stayed 22.
 Not done: T8-TOOLS. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, GATE-P3-03, GATE-P3-06, GATE-P3-08, GATE-P3-10, and GATE-P4-08 stay open. L4 stays off.
+
+## 2026-10-03 — T8-TOOLS tool names
+Track: T8 T8-TOOLS. Worker [Match the registered tool names](7db910dd-fa4d-424c-98d6-f0e66cf3879e). No push. L4 stays off.
+Intent: The registered names equal the 42-name card list. Tool payloads stay inside `wrap_untrusted`. `data_sample` returns at most 5 rows. `ask_user` returns at most 3 questions. `memory_propose` stays pending. Re-ran tool, runtime, and import-boundary tests: 30 passed. The version-branch count stayed 22. No apply tool was added.
+Not done: T8-PROMPT. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, GATE-P3-03, GATE-P3-06, GATE-P3-08, GATE-P3-10, and GATE-P4-08 stay open. L4 stays off.
 
 ## 2026-10-03 — Harness queued
 Cards H1–H8 in docs/plans/next-phase/cards/HARNESS.md. PR eval stays cassette/property. No product code.
