@@ -1395,5 +1395,10 @@ Track: T8 T8-S04. Worker [Prove mode T and mode C atomicity](09f32556-9909-461b-
 Intent: A Mode T failure clears the in-memory plan and is not verified. Mode C compensates from the last applied step backward. A partial apply is not reported as verified. An irreversible Mode C op fails closed. Re-ran the suite and import-boundary tests: 16 passed. The version-branch count stayed 22. The journal is still in memory. GATE-P3-03 stays open.
 Not done: T8-S05. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
 
+## 2026-10-04 — T8-S05 state machine
+Track: T8 T8-S05. Worker [Prove only legal phase transitions](ac15a162-50fa-4eb2-ab87-af2cb4b2518f). No push. L4 stays off.
+Intent: All 26 legal phase edges are allowed. A skip from INTAKE to EXECUTE is refused. The phase table was not changed. Re-ran the suite, the existing skip test, and import-boundary tests: 38 passed. The version-branch count stayed 22.
+Not done: T8-S06. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
+
 ## 2026-10-03 — Harness queued
 Cards H1–H8 in docs/plans/next-phase/cards/HARNESS.md. PR eval stays cassette/property. No product code.
