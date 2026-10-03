@@ -120,3 +120,15 @@ Risks introduced: paths outside the repo root are scanned when a test passes the
 
 CLAIM BL-08 2026-10-03T06:30:45Z files: product modules by track (no .cache, no .pnpm-store, no 0001-*.patch). Tope said yes to start and to commit. Do not push.
 
+## 2026-10-03 — BL-08
+Track: BL
+Intent: Commit the uncommitted product slices by track. Do not push.
+Model / band: composer-2.5-fast worker (e7db649d-ab31-4d1d-8699-6f8ae9bc71ba); composer-2.5-fast tester (4d94aad5-f0b7-4580-bf4d-55c72a440d7d). Pressure 6. No reviewer.
+Files: 26 commits on `premium-local-tip` from `139ddf3` through `473fbcf`. Not pushed.
+Commands and results: VERIFIED. `git status -sb` shows ahead 44 of `origin/premium-local-tip`. Product paths under apps/, packages/, docker/, docs/, odoo_addons/, and skills/ are clean. Worker-reported pytest per slice is in that worker's return; the tester did not re-run the suite. One slice (`807a62e`) failed two understand tests until `473fbcf` (must-do AST). After that fix the worker reported 284 passed.
+Gates passed: BL-08 — no untracked product module; forbidden paths (`.cache/`, `.pnpm-store/`, `0001-*.patch`, `APPLY_INVENT_FAMILIES_ARC3_ON_MAC.sh`, secrets) are not in `f155e2b..HEAD`. `.env.example` only.
+Negative tests: none named. Push was not done.
+Not done: push. Needs a separate yes.
+Risks introduced: `473fbcf` changes `ai_constraint_ast.py` so a wave test would pass. It is a product fix, not only a commit split.
+
+
