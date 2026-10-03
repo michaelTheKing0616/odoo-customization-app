@@ -895,3 +895,16 @@ Pages (5):
 - `apps/web/src/app/connections/[id]/script-runner/page.tsx` — library/history skeleton + `EmptyState`
 Tests: `pnpm exec vitest run src/components/projects/ProjectBoard.test.tsx` — **3 passed** (empty list + loading skeleton; no `Loading...` string).
 Not done: remaining operate routes (UI-F03 continues). L4 off. No commit.
+
+CLAIM UI-F03-C 2026-10-03T12:30:00Z files: next five operate empty states. Do not redo batches A or B. Do not enable L4.
+
+Track: T7 UI-F03 (batch C). Worker only. No commit. No push. No Odoo host. L4 stays off.
+Intent: Next five connection operate pages use kit Skeleton + EmptyState; list/feed areas use a hydrated flag cleared before fetch and set in `finally`.
+Pages (5):
+- `apps/web/src/app/connections/[id]/journal/page.tsx` — timeline `listHydrated` + skeleton + empty action
+- `apps/web/src/app/connections/[id]/bulk-suite/page.tsx` — `pageHydrated` hero skeleton + empty action
+- `apps/web/src/app/connections/[id]/cron-manager/page.tsx` — `CronJobsList` + `listHydrated`
+- `apps/web/src/app/connections/[id]/housekeeping/page.tsx` — attachment scan `EmptyState`
+- `apps/web/src/app/connections/[id]/live-demo-copilot/page.tsx` — answers/transcript `feedHydrated` + `EmptyState`
+Tests: `pnpm exec vitest run src/components/cron/CronJobsList.test.tsx` — **3 passed** (empty list + loading skeleton; no `Loading...` string).
+Not done: remaining operate routes (UI-F03 continues). L4 off. No commit.

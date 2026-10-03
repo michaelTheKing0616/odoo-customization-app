@@ -15,7 +15,8 @@ import {
 import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { Callout } from "@/components/ui/Callout";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
-import { Card, PageHeader } from "@/components/ui/layout-primitives";
+import { Button } from "@/components/ui/Button";
+import { Card, EmptyState, PageHeader } from "@/components/ui/layout-primitives";
 import { Disclosure } from "@/components/ui/Disclosure";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 
@@ -31,13 +32,27 @@ function AttachmentTable({
   rows,
   selected,
   onToggle,
+  onRescan,
 }: {
   rows: AttachmentRowOut[];
   selected: Set<number>;
   onToggle: (id: number) => void;
+  onRescan?: () => void;
 }) {
   if (!rows.length) {
-    return <p className="text-sm text-[var(--odoo-muted)]">No rows.</p>;
+    return (
+      <EmptyState
+        title="No attachment rows in this scan"
+        description="Run the scan again or adjust filters to list cleanable files before selecting rows."
+        action={
+          onRescan ? (
+            <Button type="button" variant="secondary" size="sm" onClick={onRescan}>
+              Scan again
+            </Button>
+          ) : undefined
+        }
+      />
+    );
   }
   return (
     <div className="overflow-x-auto">
@@ -290,6 +305,7 @@ export default function HousekeepingPage() {
                 rows={orphanScan.orphans}
                 selected={selected}
                 onToggle={toggleSelected}
+                onRescan={() => void scanOrphans()}
               />
               <button
                 type="button"
@@ -389,6 +405,7 @@ export default function HousekeepingPage() {
                 rows={largeScan.attachments}
                 selected={selected}
                 onToggle={toggleSelected}
+                onRescan={() => void scanLargeOld()}
               />
               <button
                 type="button"

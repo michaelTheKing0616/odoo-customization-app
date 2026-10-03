@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Input } from "@/components/ui/Input";
-import { Card, PageHeader } from "@/components/ui/layout-primitives";
+import { Card, EmptyState, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
 import { Badge } from "@/components/ui/Badge";
 import {
   api,
@@ -52,6 +52,7 @@ export default function LiveDemoCopilotPage() {
   const [presenterNames, setPresenterNames] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [feedHydrated, setFeedHydrated] = useState(true);
 
   useEffect(() => {
     api
@@ -69,6 +70,19 @@ export default function LiveDemoCopilotPage() {
     const res = await api.liveDemoCopilotAnswers(sid);
     setAnswers(res.answers);
   }, []);
+
+  useEffect(() => {
+    if (!session?.id) {
+      setLines([]);
+      setAnswers([]);
+      setFeedHydrated(true);
+      return;
+    }
+    setFeedHydrated(false);
+    Promise.all([refreshTranscript(session.id), refreshAnswers(session.id)])
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setFeedHydrated(true));
+  }, [session?.id, refreshTranscript, refreshAnswers]);
 
   useEffect(() => {
     if (!session?.id) return;
@@ -456,9 +470,28 @@ export default function LiveDemoCopilotPage() {
           Odoo-relevant client questions trigger Expert RAG, compressed to 2–3 bullets. Low-confidence
           answers still surface with a clear flag (never silent mid-demo).
         </p>
-        <div className="space-y-3">
-          {answers.length === 0 ? (
-            <p className="text-sm text-muted">No triggered answers yet.</p>
+        <div className="space-y-3" data-testid="live-demo-answers-feed">
+          {!feedHydrated ? (
+            <div className="space-y-2" data-testid="live-demo-answers-loading">
+              <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-20 w-full" />
+            </div>
+          ) : answers.length === 0 ? (
+            <EmptyState
+              title="No triggered answers yet"
+              description="Launch the bot and ask an Odoo question in the meeting to see Expert bullets here."
+              action={
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={!session?.id || busy}
+                  onClick={() => void onRefreshStatus()}
+                >
+                  Refresh bot status
+                </Button>
+              }
+            />
           ) : (
             answers.map((a) => (
               <div
@@ -508,9 +541,43 @@ export default function LiveDemoCopilotPage() {
             </Button>
           </div>
         ) : null}
-        <div className="max-h-80 overflow-y-auto rounded-lg border border-border-subtle bg-surface p-3">
-          {lines.length === 0 ? (
-            <p className="text-sm text-muted">No transcript yet.</p>
+        <div
+          className="max-h-80 overflow-y-auto rounded-lg border border-border-subtle bg-surface p-3"
+          data-testid="live-demo-transcript-feed"
+        >
+          {!feedHydrated ? (
+            <div className="space-y-2" data-testid="live-demo-transcript-loading">
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+            </div>
+          ) : lines.length === 0 ? (
+            <EmptyState
+              title="No transcript yet"
+              description="Transcript lines appear after the bot joins or you inject a mock utterance in mock mode."
+              action={
+                session?.mock_mode ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={busy || !mockText.trim() || !session?.id}
+                    onClick={() => void onMockUtterance()}
+                  >
+                    Inject mock line
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={!canLaunch || busy}
+                    onClick={() => void onLaunch()}
+                  >
+                    Launch bot
+                  </Button>
+                )
+              }
+            />
           ) : (
             <ul className="space-y-2">
               {lines.map((line, i) => (

@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
-import { Card, EmptyState, PageHeader } from "@/components/ui/layout-primitives";
+import { Card, EmptyState, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
 import { EMPTY_STATES, REVERSIBILITY } from "@/lib/copy-guide";
 import { JournalBatchPanel } from "@/components/batch-os/JournalBatchPanel";
 import { DocumentBatchPanel } from "@/components/batch-os/DocumentBatchPanel";
@@ -54,6 +54,7 @@ export default function ChangeJournalPage() {
   const [tab, setTab] = useState<PageTab>(
     initialTab === "batch" || initialTab === "invoices" || initialTab === "orders" || initialTab === "master" ? initialTab : "timeline",
   );
+  const [listHydrated, setListHydrated] = useState(false);
 
   const refresh = useCallback(async () => {
     const [conn, snaps, logs, runs] = await Promise.all([
@@ -81,7 +82,10 @@ export default function ChangeJournalPage() {
   }, [connectionId]);
 
   useEffect(() => {
-    refresh().catch((err: Error) => setError(err.message));
+    setListHydrated(false);
+    refresh()
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setListHydrated(true));
   }, [refresh]);
 
   const timeline = useMemo(() => {
@@ -230,6 +234,13 @@ export default function ChangeJournalPage() {
         ))}
       </div>
 
+      {!listHydrated ? (
+        <div className="mt-8 space-y-4" data-testid="journal-timeline-loading">
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+        </div>
+      ) : (
       <ul className="relative mt-8 space-y-4 border-l border-border-subtle pl-6">
         {timeline.map((entry) => {
           if (entry.kind === "snapshot") {
@@ -345,10 +356,27 @@ export default function ChangeJournalPage() {
             <EmptyState
               title="No journal entries yet"
               description={EMPTY_STATES.journal}
+              action={
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => {
+                    setListHydrated(false);
+                    void refresh()
+                      .catch((err: Error) => setError(err.message))
+                      .finally(() => setListHydrated(true));
+                  }}
+                >
+                  Refresh timeline
+                </Button>
+              }
             />
           </li>
         ) : null}
       </ul>
+      )}
       </>
       )}
     </div>

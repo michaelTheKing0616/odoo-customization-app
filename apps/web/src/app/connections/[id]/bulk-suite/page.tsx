@@ -16,7 +16,7 @@ import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { BulkResultTable, type BulkRunResult } from "@/components/ui/BulkResultTable";
 import { Callout } from "@/components/ui/Callout";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
-import { Card, EmptyState, PageHeader } from "@/components/ui/layout-primitives";
+import { Card, EmptyState, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
 import { EMPTY_STATES } from "@/lib/copy-guide";
 import { ScanToFieldPanel } from "@/components/scanner/ScanToFieldPanel";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
@@ -147,6 +147,7 @@ export default function BulkSuitePage() {
   const [sendBody, setSendBody] = useState("<p>Bulk message</p>");
   const [sendSubject, setSendSubject] = useState("Bulk update");
   const [sendTemplateId, setSendTemplateId] = useState("");
+  const [pageHydrated, setPageHydrated] = useState(false);
 
   const filteredModels = useMemo(() => {
     const q = modelQuery.trim().toLowerCase();
@@ -170,6 +171,7 @@ export default function BulkSuitePage() {
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      setPageHydrated(false);
       try {
         const [conn, mods] = await Promise.all([
           api.getConnection(connectionId),
@@ -205,6 +207,8 @@ export default function BulkSuitePage() {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Failed to load connection");
         }
+      } finally {
+        if (!cancelled) setPageHydrated(true);
       }
     }
     void load();
@@ -658,12 +662,25 @@ export default function BulkSuitePage() {
         </Callout>
       ) : null}
 
-      {!result && !busy ? (
+      {!pageHydrated ? (
+        <div className="mt-6" data-testid="bulk-suite-hero-loading">
+          <Skeleton className="h-32 w-full" />
+        </div>
+      ) : !result && !busy ? (
         <div className="mt-6">
-        <EmptyState
-          title="Bulk operations"
-          description={EMPTY_STATES.bulkSuite}
-        />
+          <EmptyState
+            title="Bulk operations"
+            description={EMPTY_STATES.bulkSuite}
+            action={
+              <button
+                type="button"
+                className="odoo-btn-secondary text-sm"
+                onClick={() => document.getElementById("bulk-suite-model")?.focus()}
+              >
+                Choose a model
+              </button>
+            }
+          />
         </div>
       ) : null}
 
@@ -671,6 +688,7 @@ export default function BulkSuitePage() {
           <label className="block text-sm">
             Model
             <input
+              id="bulk-suite-model"
               className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-sm"
               value={model}
               onChange={(e) => setModel(e.target.value)}

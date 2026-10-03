@@ -15,6 +15,7 @@ import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { Callout } from "@/components/ui/Callout";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Card, PageHeader } from "@/components/ui/layout-primitives";
+import { CronJobsList } from "@/components/cron/CronJobsList";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 
 const CONFIRM_PHRASE = "I understand the risks";
@@ -48,6 +49,7 @@ export default function CronManagerPage() {
   const [intervalType, setIntervalType] = useState<
     "minutes" | "hours" | "days" | "weeks" | "months"
   >("days");
+  const [listHydrated, setListHydrated] = useState(false);
 
   const filteredCrons = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -69,9 +71,21 @@ export default function CronManagerPage() {
     setProbe(res.probe);
   }, [connectionId]);
 
+  const reloadCronList = useCallback(async () => {
+    setListHydrated(false);
+    try {
+      await refreshCrons();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to refresh crons");
+    } finally {
+      setListHydrated(true);
+    }
+  }, [refreshCrons]);
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      setListHydrated(false);
       try {
         const [conn, mods] = await Promise.all([
           api.getConnection(connectionId),
@@ -90,6 +104,8 @@ export default function CronManagerPage() {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Failed to load connection");
         }
+      } finally {
+        if (!cancelled) setListHydrated(true);
       }
     }
     void load();
@@ -292,62 +308,21 @@ export default function CronManagerPage() {
               type="button"
               className="odoo-btn-secondary"
               disabled={busy}
-              onClick={() => void refreshCrons()}
+              onClick={() => void reloadCronList()}
             >
               Refresh
             </button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-[var(--odoo-border)] text-[var(--odoo-muted)]">
-                  <th className="py-2 pr-2">Pick</th>
-                  <th className="py-2 pr-2">Description</th>
-                  <th className="py-2 pr-2">Model</th>
-                  <th className="py-2 pr-2">Active</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredCrons.map((row) => (
-                  <tr key={row.id} className="border-b border-[var(--odoo-border)]/60">
-                    <td className="py-2 pr-2 align-top">
-                      <input
-                        type="checkbox"
-                        checked={selected.has(row.id)}
-                        onChange={() => toggleSelected(row.id)}
-                      />
-                    </td>
-                    <td className="py-2 pr-2 align-top">
-                      <div className="font-medium">{row.name}</div>
-                      <div className="text-xs text-[var(--odoo-muted)]">{row.description}</div>
-                      {row.nextcall && (
-                        <div className="text-xs text-[var(--odoo-muted)]">
-                          Next: {row.nextcall}
-                        </div>
-                      )}
-                    </td>
-                    <td className="py-2 pr-2 align-top font-mono text-xs">
-                      {row.model_name || "—"}
-                    </td>
-                    <td className="py-2 pr-2 align-top">
-                      <button
-                        type="button"
-                        className="text-xs underline"
-                        disabled={busy}
-                        onClick={() => void toggleActive(row)}
-                      >
-                        {row.active ? "Active" : "Inactive"}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {!filteredCrons.length && (
-              <p className="py-4 text-sm text-[var(--odoo-muted)]">No scheduled actions match.</p>
-            )}
-          </div>
+          <CronJobsList
+            rows={filteredCrons}
+            loading={!listHydrated}
+            selected={selected}
+            busy={busy}
+            onToggleSelected={toggleSelected}
+            onToggleActive={(row) => void toggleActive(row)}
+            onRefresh={() => void reloadCronList()}
+          />
 
           <div className="flex flex-wrap gap-2 pt-2">
             <button
