@@ -795,3 +795,13 @@ Former db-service mentions (`rg "/web/database|db\.dump|dump_db|ServerProxy"` in
 5. No `dump_db` function and no `/web/database` HTTP client existed. `request_database_backup` (via `snapshot_flow(kind="database")`) is the database-level backup entry. On major 20 it returns the host-backup message and does not call the client. Odoo.sh and Odoo Online get that refusal on any major (`test_snapshot_refuses_on_odoo_sh_and_online`). A 20 fake that raises on `/web/database` is used for metadata `snapshot_view` and is never hit. ≤19 self-host also gets no new dump client.
 
 Not done: live production callers do not pass `odoo_major` into `require_production_snapshot`, so the major-20 branch is unreached there; the dump stays impossible because there is no dump client. `database_backup.py` uses `>= 20` and `snapshot_gate.py` uses `== 20`. L4 off. No aonb.odoo.com call. No Docker.
+
+CLAIM O20-09 2026-10-03T11:15:00Z files: Community 20 does not claim native MCP. Do not enable L4. Do not call aonb.odoo.com.
+
+Track: O20. Card: O20-09. Worker only. No commit. No push. No Odoo host. L4 stays off.
+Intent: Product UI must never say native/MCP is *available* on Community 20 (no ai* modules). Connect copy that Odoo RPC keys are *not* Cursor MCP stays unchanged.
+UI audit (`rg MCP apps/web/src`): only connect-checklist.ts, ConnectApiKeyGuide.tsx, connect/page.tsx — all negate Cursor MCP / RPC-vs-MCP guidance. No “MCP available”, “native MCP available”, or similar positive availability strings.
+Files: `apps/web/src/lib/odoo-native-mcp.ts`, `apps/web/src/lib/odoo-native-mcp.test.ts` (helper mirrors `native_mcp_present`; vitest scans `src/` for positive MCP availability copy).
+Pytest: `.venv/bin/python -m pytest -q -p no:cacheprovider packages/odoo-client/tests/test_odoo20_version_table.py::test_community_without_ai_modules_has_no_native_mcp` — **1 passed**.
+Vitest: `pnpm --filter @odoo-custom/web exec vitest run src/lib/odoo-native-mcp.test.ts` — **3 passed**.
+Not done: L4 off. No aonb.odoo.com call. No UI banner for MCP absence (silence is correct).
