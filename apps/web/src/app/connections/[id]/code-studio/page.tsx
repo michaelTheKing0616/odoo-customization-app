@@ -19,7 +19,7 @@ import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Card, PageHeader } from "@/components/ui/layout-primitives";
+import { Card, EmptyState, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
 import { useShellOptional } from "@/context/ShellContext";
 import {
   api,
@@ -74,28 +74,34 @@ export default function CodeStudioPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmRisks, setConfirmRisks] = useState<string[]>([]);
   const [gatingChoice, setGatingChoice] = useState<null>(null);
+  const [contextHydrated, setContextHydrated] = useState(false);
 
   useSyncShellContext({ model, draftSummary: `Code Studio: ${name}` });
 
   const probeOk = Boolean(gate?.probe && (gate.probe as { supported?: boolean }).supported);
 
   const refresh = useCallback(async () => {
-    const [conn, gateRes, modelRows, ctx, snip] = await Promise.all([
-      api.getConnection(connectionId),
-      api.getCodeStudioGate(connectionId),
-      api.listModels(connectionId),
-      api.getCodeStudioContext(connectionId),
-      api.getCodeStudioSnippets(connectionId),
-    ]);
-    setConnection(conn);
-    setGate(gateRes);
-    setModels(modelRows);
-    setSymbols(ctx.symbols);
-    setSnippets(snip.snippets);
-    if (modelRows.some((m) => m.model === "res.partner")) {
-      setModel("res.partner");
-    } else if (modelRows[0]) {
-      setModel(modelRows[0].model);
+    setContextHydrated(false);
+    try {
+      const [conn, gateRes, modelRows, ctx, snip] = await Promise.all([
+        api.getConnection(connectionId),
+        api.getCodeStudioGate(connectionId),
+        api.listModels(connectionId),
+        api.getCodeStudioContext(connectionId),
+        api.getCodeStudioSnippets(connectionId),
+      ]);
+      setConnection(conn);
+      setGate(gateRes);
+      setModels(modelRows);
+      setSymbols(ctx.symbols);
+      setSnippets(snip.snippets);
+      if (modelRows.some((m) => m.model === "res.partner")) {
+        setModel("res.partner");
+      } else if (modelRows[0]) {
+        setModel(modelRows[0].model);
+      }
+    } finally {
+      setContextHydrated(true);
     }
   }, [connectionId]);
 
@@ -322,14 +328,32 @@ export default function CodeStudioPage() {
                 <p className="text-xs text-muted">
                   Odoo {connection?.server_version ?? "?"} — documented server-action symbols.
                 </p>
-                <ul className="space-y-2 text-sm">
-                  {symbols.map((s) => (
-                    <li key={s.name}>
-                      <code className="font-mono text-accent">{s.name}</code>
-                      <span className="text-muted"> — {s.description}</span>
-                    </li>
-                  ))}
-                </ul>
+                {!contextHydrated ? (
+                  <div className="space-y-2" data-testid="code-studio-symbols-loading">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-5/6" />
+                    <Skeleton className="h-4 w-4/6" />
+                  </div>
+                ) : symbols.length === 0 ? (
+                  <EmptyState
+                    title="No safe_eval symbols"
+                    description="Re-probe Code Studio if this instance should expose server-action context."
+                    action={
+                      <Button type="button" variant="secondary" size="sm" onClick={reprobe} disabled={busy}>
+                        Re-probe instance
+                      </Button>
+                    }
+                  />
+                ) : (
+                  <ul className="space-y-2 text-sm" data-testid="code-studio-symbols-list">
+                    {symbols.map((s) => (
+                      <li key={s.name}>
+                        <code className="font-mono text-accent">{s.name}</code>
+                        <span className="text-muted"> — {s.description}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </Card>
 
               <Card className="p-4 space-y-3">

@@ -946,3 +946,12 @@ Pages (4):
 - `apps/web/src/app/connections/[id]/expert/page.tsx` + `IntentRouterPanel` — route matches feed skeleton + empty re-route action
 Tests: `pnpm exec vitest run src/components/config/ConfigAtlasBrowser.test.tsx` (batch F primary); extended `IntentRouterPanel.test.tsx` for empty matches.
 L4 off. No commit.
+
+CLAIM UI-F03-G 2026-10-03T12:50:00Z files: remaining connection empty lists, or none. Do not redo A–F. Do not enable L4.
+
+Track: T7 UI-F03 (batch G). Worker only. No commit. No push. No Odoo host. L4 stays off.
+Scan: connection operate `page.tsx` files with `.map(` and no `EmptyState` import → builder, wizard, cron-manager, modulespec inner, ingest, operations, reminders, code-studio (A–F already cover builder/wizard/cron via child lists; ingest/reminders/operations skipped as non-fetch or form-only lists).
+Pages (1):
+- `apps/web/src/app/connections/[id]/code-studio/page.tsx` — safe_eval symbols `contextHydrated` in `refresh` `finally` + skeleton + empty re-probe action
+Tests: none (page-only; no component file changed).
+Remaining without page-level EmptyState import: operations (static hub), ingest (job-gated lists), reminders (post-submit warnings), cron-manager/wizard/builder/modulespec (handled in child components or excluded). L4 off. No commit.
