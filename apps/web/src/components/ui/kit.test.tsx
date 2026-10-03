@@ -8,7 +8,8 @@ import { CodeBlock } from "@/components/ui/CodeBlock";
 import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { DataTable, type DataTableColumn } from "@/components/ui/DataTable";
 import { BulkResultTable, type BulkRunResult } from "@/components/ui/BulkResultTable";
-import { ToastProvider, useToast } from "@/components/ui/Toast";
+import { toast } from "sonner";
+import { AppToaster, APP_TOAST_DURATION_MS } from "@/components/ui/AppToaster";
 
 type Row = { id: string; name: string; score: number };
 
@@ -259,32 +260,53 @@ describe("ConfirmDialogV2", () => {
 });
 
 describe("Toast", () => {
-  function ToastProbe() {
-    const { toast } = useToast();
-    return (
-      <button
-        type="button"
-        onClick={() => toast({ variant: "success", title: "Saved", description: "Done." })}
-      >
-        Fire toast
-      </button>
-    );
-  }
+  it("uses a polite live region on the Sonner toaster", () => {
+    const { container } = render(<AppToaster />);
+    const region = container.querySelector('section[aria-live="polite"]');
+    expect(region).not.toBeNull();
+  });
 
-  it("shows and auto-dismisses toasts", async () => {
+  it("shows and auto-dismisses success toasts", async () => {
+    render(
+      <>
+        <AppToaster />
+        <button type="button" onClick={() => toast.success("Saved", { description: "Done." })}>
+          Fire success toast
+        </button>
+      </>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Fire success toast" }));
+    await waitFor(() => {
+      expect(screen.getByText("Saved")).toBeInTheDocument();
+    });
+    await waitFor(
+      () => {
+        expect(screen.queryByText("Saved")).not.toBeInTheDocument();
+      },
+      { timeout: APP_TOAST_DURATION_MS + 500 },
+    );
+  });
+
+  it("keeps error toasts visible after 10 seconds", async () => {
+    render(
+      <>
+        <AppToaster />
+        <button type="button" onClick={() => toast.error("Request failed")}>
+          Fire error toast
+        </button>
+      </>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Fire error toast" }));
+    await waitFor(() => {
+      expect(screen.getByText("Request failed")).toBeInTheDocument();
+    });
+
     vi.useFakeTimers();
     try {
-      render(
-        <ToastProvider>
-          <ToastProbe />
-        </ToastProvider>,
-      );
-      fireEvent.click(screen.getByRole("button", { name: "Fire toast" }));
-      expect(screen.getByTestId("toast")).toHaveTextContent("Saved");
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(6100);
+        await vi.advanceTimersByTimeAsync(10_000);
       });
-      expect(screen.queryByTestId("toast")).not.toBeInTheDocument();
+      expect(screen.getByText("Request failed")).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }

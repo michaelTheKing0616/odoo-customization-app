@@ -979,3 +979,9 @@ Track: T7 UI-F07. Worker [Replace Radix Slot on Button](f07ca7ce-e481-40a7-9c8c-
 Intent: `Button` `asChild` merges with `@base-ui/react/merge-props` (button props first, child props second). `@radix-ui/react-slot` removed as a direct dependency. No `@radix-ui` import remains under `apps/web/src`. `cmdk` still pulls Radix dialog and slot transitively.
 Tests: `pnpm exec vitest run src/components/ui/Button.test.ts src/components/ui/Button.asChild.test.tsx` — 6 passed (anchor keeps href and classes, child click runs, default button click). jsdom logs “Not implemented: navigation to another Document” on the anchor click; the assertion still passed.
 Not done: UI-F08 Sonner. Live asChild link was not opened in the browser. L4 off.
+
+## 2026-10-03 — UI-F08 remaining toasts on Sonner
+Track: T7 UI-F08. Worker [Move remaining toasts to Sonner](ae7db3f1-7015-431b-b71c-0f1ba455fe0c). No push. L4 stays off.
+Intent: Remove the unused `Toast.tsx` and the connection-layout `ToastProvider`. Success toasts last 4000 ms. Error toasts use `duration: Infinity` until dismissed. Sonner region is `aria-live=polite`.
+Tests: `pnpm exec vitest run src/components/ui/kit.test.tsx` — 16 passed, including success auto-dismiss and an error toast still present after 10 s.
+Not done: UI-F09 motion primitives. A live toast was not opened in the browser. L4 off.
