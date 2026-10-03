@@ -32,6 +32,7 @@ from odoo_client.models import (
 )
 from odoo_client.transport.json2 import Json2Transport, Json2TransportError
 from odoo_client.transport.json2_probe import probe_json2
+from odoo_client.transport.production_probe import probe_legacy
 
 
 class OdooClientError(Exception):
@@ -110,6 +111,7 @@ class OdooClient:
         self._rpc_protocol: Literal["xmlrpc", "jsonrpc", "json2"] = "xmlrpc"
         self._json2: Json2Transport | None = None
         self.json2_probe: dict | None = None
+        self.production_probe: dict | None = None
         # Default to 19 capabilities before connect; connect() refreshes from server.
         self.capabilities: VersionCapabilities = for_major(19)
         self._ir_fields_colnames: frozenset[str] | None = None
@@ -269,6 +271,11 @@ class OdooClient:
                 f"{_online_hint('authentication failed')}"
             )
         self._uid = int(uid)
+        self.production_probe = probe_legacy(
+            self.execute_kw,
+            protocol=self._rpc_protocol,
+            major=major,
+        )
         return self._uid
 
     def _env_protocol_override(self) -> str | None:
@@ -320,6 +327,11 @@ class OdooClient:
             )
         self._json2 = transport
         self.json2_probe = probe_json2(transport)
+        self.production_probe = {
+            **self.json2_probe,
+            "protocol": "json2",
+            "major": major,
+        }
         self._rpc_protocol = "json2"
         self._jsonrpc_mode = False
         self._uid = int(uid)

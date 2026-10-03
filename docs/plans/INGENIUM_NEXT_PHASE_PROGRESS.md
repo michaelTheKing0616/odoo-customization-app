@@ -573,4 +573,18 @@ Commands and results: VERIFIED. pytest `packages/odoo-client/tests/test_json2_tr
 Gates passed: website `/doc` does not supply parameters; live `domain` / `attributes` / `vals_list` are kept; a 500 `Domain()` TypeError is a caller error and is not retryable; a pasted `/odoo` URL calls the host root.
 Negative tests: `test_domain_typeerror_500_is_a_caller_error_and_is_not_retryable`, `test_probe_live_parameters_win_when_doc_disagrees`.
 Not done: T2-J2 live `button_immediate_install` on a non-production 19 database. Not run against the operator Online database.
+
+CLAIM T2-J2 2026-10-03T09:19:00Z files: a local Odoo 19 sandbox timing of button_immediate_install via the frozen client, XML-RPC and JSON-2. Do not change the sandbox default. Do not call aonb.odoo.com. Do not promote.
+
+## 2026-10-03 — production probe for 17–19
+Track: T2
+Intent: The same production probe runs on XML-RPC and JSON-RPC connections for 17, 18, and self-hosted 19.
+Model / band: this session.
+Files: `packages/odoo-client/src/odoo_client/transport/production_probe.py`, `client.py`, `tests/test_json2_transport.py`.
+Commands and results: VERIFIED. pytest `packages/odoo-client/tests/test_json2_transport.py` — 31 passed.
+Gates passed: a 17 XML-RPC connect stores `production_probe` with major 17 and create shape `vals`. The probe calls `search_read` and `fields_get` only.
+Negative tests: `test_legacy_probe_learns_17_and_does_not_call_create`.
+Not done: T2-J2 sandbox timing is in progress separately.
+Risks introduced: a legacy connect adds two read RPCs.
+
 Risks introduced: every JSON-2 connect runs the probe (one GET and three POSTs). `create` is an empty body and must stay that way so the probe does not insert a row.

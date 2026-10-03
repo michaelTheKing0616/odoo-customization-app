@@ -324,7 +324,53 @@ def test_connect_json2_stores_the_probe() -> None:
             uid = client._connect_json2(major=20)
     assert uid == 2
     assert client.json2_probe["doc_route"] == "website"
+    assert client.production_probe["protocol"] == "json2"
+    assert client.production_probe["major"] == 20
     probed.assert_called_once()
+
+
+def test_legacy_probe_learns_17_and_does_not_call_create() -> None:
+    from odoo_client.transport.production_probe import probe_legacy
+
+    seen: list[str] = []
+
+    def execute(model: str, method: str, args: list | None, kwargs: dict | None):
+        seen.append(method)
+        assert model == "res.partner"
+        if method == "search_read":
+            assert args == [[("id", "=", 0)]]
+            assert kwargs == {"fields": ["id"], "limit": 1}
+            return []
+        if method == "fields_get":
+            assert kwargs == {"attributes": ["string", "type"]}
+            return {"id": {"string": "ID", "type": "integer"}}
+        raise AssertionError(method)
+
+    for protocol, major in (("xmlrpc", 17), ("jsonrpc", 18), ("xmlrpc", 19)):
+        probe = probe_legacy(execute, protocol=protocol, major=major)
+        assert probe["protocol"] == protocol
+        assert probe["major"] == major
+        assert probe["doc_route"] == "not_applicable"
+        assert probe["parameters"]["search_read"] == ["domain", "fields", "limit"]
+        assert probe["parameters"]["fields_get"] == ["attributes"]
+        assert probe["parameters"]["create"] == ["vals"]
+        assert probe["calls"]["search_read"] == 200
+    assert "create" not in seen
+
+
+def test_xmlrpc_connect_stores_a_17_probe() -> None:
+    client = OdooClient(_cfg())
+    with patch.object(client._common, "version", return_value={"server_version": "17.0+e"}):
+        with patch.object(client._common, "authenticate", return_value=5):
+            with patch.object(client, "execute_kw", return_value=[]) as execute:
+                uid = client.connect()
+    assert uid == 5
+    assert client.production_probe["protocol"] == "xmlrpc"
+    assert client.production_probe["major"] == 17
+    assert client.production_probe["parameters"]["create"] == ["vals"]
+    methods = [call.args[1] for call in execute.call_args_list]
+    assert methods == ["search_read", "fields_get"]
+    assert "create" not in methods
 
 
 def _http_error(status: int, body: dict) -> HTTPError:
