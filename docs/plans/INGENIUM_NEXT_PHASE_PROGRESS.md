@@ -404,5 +404,25 @@ Commands: `cd apps/api && ../../.venv/bin/python -m pytest -q -p no:cacheprovide
 Gates: fast suite excludes `test_sandbox_prove_slow.py`; slow job runs `pytest -m "sandbox and slow"`; `validate_draft_module_spec` rejects invalid model names in CI.
 Not done: Docker sandbox prove on GHA (slow job may skip when Docker unavailable).
 
+## 2026-10-03 — T1-E2
+Track: T1
+Intent: Record how D2 is encoded. Do not reopen the decision.
+Model / band: no worker. Citation only. Pressure 3.
+Files: none.
+Commands and results: VERIFIED by reading the code. `prove_option_a_in_sandbox` in `apps/api/app/ai_option_a_quality.py` states `prove_status=proved` requires `run_tests=True` plus tests ran. Smoke-only leaves `prove_pending` (`test_smoke_only_success_leaves_prove_pending`). MEMORY.md line 9: D2 (`proved` requires `run_tests=True`) stays closed by the 2026-09-23 entries. The string `proved_smoke_only` is not used.
+Gates passed: T1-E2.
+Negative tests: the smoke-only test in the D1/D2 re-measure (5 passed).
+Not done: none on this card.
+Risks introduced: none.
 
+## 2026-10-03 — T1-F1
+Track: T1
+Intent: Re-measure the Maintenance golden. No new brief-specific product code.
+Model / band: no worker. Deterministic re-measure. Pressure 8.
+Files: none.
+Commands and results: VERIFIED. `test_maintenance_closed_ir_no_uncued_spray` — passed (2 passed in 0.45s with the sibling test). This card did not edit `apps/api/app/`.
+Gates passed: Maintenance golden, no new brief-name literal in this change.
+Negative tests: the closed-IR spray test.
+Not done: T1-F2 still needs a test that fails if `if "maintenance" in brief` is added.
+Risks introduced: none.
 
