@@ -1145,6 +1145,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - `verify` is not called by the executor. The checks run only when a caller invokes them.
 - Undo through validate, policy, and approval is not called by the executor.
 - Engine suite 2 round-trips 18 of 63 catalog ops. The other 45 have no handler inverse and were not stubbed.
+- A second apply is proven only for the eight ops the executor can apply. The rest of the catalog is not claimed.
 - GATE-P3-10 is not fully passed. Six plan-card snapshots exist, one op per family. The rest of the catalog has no snapshot.
 - Changeset coverage is under the bar: 89.59% line and 79.46% branch, measured on the changeset tests, not the full suite. No CI floor was added.
 - A process kill still loses a run. Resume restores an exported in-memory dict only. GATE-P4-08 is not a durable restart.
@@ -1383,6 +1384,11 @@ Not done: T8-S02. The twelve-part gap stays open. T8-P4-TIERA waits on a live mo
 Track: T8 T8-S02. Worker [Round-trip ops that already invert](e6ef9194-4659-4a30-88eb-314ac0b8b589). No push. L4 stays off.
 Intent: Apply, verify, inverse, then MetaSnapshot equality for the 18 ops whose handlers already return an inverse. The other 45 are listed and not stubbed. A snapshot mismatch is not success. Re-ran the suite and import-boundary tests: 30 passed. The version-branch count stayed 22. This is not a green result for the whole catalog.
 Not done: T8-S03. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
+
+## 2026-10-04 — T8-S03 idempotency
+Track: T8 T8-S03. Worker [Prove a second apply writes nothing](2b53a71a-5910-42ce-8125-7568780aac27). No push. L4 stays off.
+Intent: A second apply of the same plan does not call create or write again. That covers eight ops the executor can apply. The other catalog ops are listed and not claimed. A repeat that would write fails closed. Re-ran the suite, the existing idempotency test, and import-boundary tests: 22 passed. The version-branch count stayed 22.
+Not done: T8-S04. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
 
 ## 2026-10-03 — Harness queued
 Cards H1–H8 in docs/plans/next-phase/cards/HARNESS.md. PR eval stays cassette/property. No product code.
