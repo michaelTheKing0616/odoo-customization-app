@@ -760,3 +760,12 @@ Track: O20. Card: O20-05. Worker only. No commit. No push. No Odoo host. L4 stay
 Intent: Access screen data branch on major 20 reads/writes `ir.access` (existing rights endpoints; API already compiles operation + domain). It does not fetch `ir.rule` or offer a create-record-rule action. ≤19 keeps the current list + New rule path. One inline note: "Odoo 20 combines access rights and record rules." No Studio / Enterprise copy. ConfirmDialogV2 left as-is (UI-F04).
 Files: `accessMajor.ts`, `Odoo20AccessNote.tsx`, `Odoo20AccessNote.test.tsx`, `access/page.tsx` (data branch + note only).
 Not done: L4 off. No aonb.odoo.com call. No dialog migration. No access-page restyle.
+
+CLAIM O20-06 2026-10-03T11:00:00Z files: version table rows and fake tests. No live probe. Do not enable L4. Do not call aonb.odoo.com.
+
+Track: O20. Card: O20-06. Worker only. No commit. No push. No Odoo host. L4 stays off.
+Intent: Encode all 32 card rows (V01–V32) in `compat/version_table.py`. Fake test per row asserts the 20 value and one older value. `difference()` returns the 20 `removed`/`absent` fact; it does not fall back to 19. `require_present("company_type", 20)` raises `VersionFactUnavailable` (named message, not KeyError).
+Result: `.venv/bin/python -m pytest -q -p no:cacheprovider packages/odoo-client/tests/test_odoo20_version_table.py` — **38 passed, 32 skipped**. 32 V-rows encoded. Live half skipped: "live N/A until ODOO20_URL is set." Do not mark a live probe as passed.
+Still verify (card wording kept, not upgraded): V06 18–19 `verify override`; V24 17 and 19 `verify`; V26 19 `verify`; V28 19 `verify`; V29 19 `verify`; V30 19 `verify`.
+Files: `packages/odoo-client/src/odoo_client/compat/version_table.py`, `packages/odoo-client/tests/test_odoo20_version_table.py`.
+Not done: live 20 probes. L4 off. No aonb.odoo.com call. No Docker.
