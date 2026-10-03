@@ -17,7 +17,12 @@ pytestmark = pytest.mark.no_app_db
 
 from app.ai_depth import apply_deterministic_depth  # noqa: E402
 from app.ai_draft_jobs import studio_generate_offline_finish  # noqa: E402
-from app.ai_generate_ir import ir_closure_violations  # noqa: E402
+from app.ai_generate_ir import (  # noqa: E402
+    Proposal,
+    build_ir,
+    ir_closure_violations,
+    proposal_allowed,
+)
 from app.ai_generate_ir_lint import invent_outside_admit_violations  # noqa: E402
 from app.ai_pipeline import seed_studio_draft  # noqa: E402
 from app.ai_schema_client import FakeSchemaClient, schema_client_for_draft  # noqa: E402
@@ -184,6 +189,46 @@ def test_invent_outside_admit_flags_density_source() -> None:
     }
     hits = invent_outside_admit_violations(draft)
     assert any("x_pad_field" in h for h in hits)
+
+
+def test_uncued_not_allowlisted_not_schema_verified_rejected() -> None:
+    """PR-B: uncued + not allowlisted + not schema-verified must reject.
+
+    Today this would have been admitted by source_cue=structural_default or by
+    the quality_scaffold / density_role proposer shortcuts.
+    """
+    draft = {
+        "_user_prompt": "Thin tickets Draft→Done only",
+        "_understanding": {"must_do": ["State Draft→Done"]},
+        "models": [{"model": "x_ticket", "mode": "new", "fields": []}],
+    }
+    ir = build_ir(draft)
+    tagged = Proposal(
+        kind="m2o",
+        name="x_partner_id",
+        payload={
+            "model": "x_ticket",
+            "ttype": "many2one",
+            "relation": "res.partner",
+            "string": "Contact",
+        },
+        source_cue="structural_default",
+        proposer="test.structural_default_tag",
+    )
+    ok, reason = proposal_allowed(tagged, ir=ir, draft=draft)
+    assert ok is False
+    assert reason == "no_cue_or_craft"
+
+    scaffold = Proposal(
+        kind="field",
+        name="x_pad_field",
+        payload={"model": "x_ticket", "ttype": "char", "string": "Pad"},
+        source_cue=None,
+        proposer="ai_model_quality.ensure_min_workflows",
+    )
+    ok, reason = proposal_allowed(scaffold, ir=ir, draft=draft)
+    assert ok is False
+    assert reason == "no_cue_or_craft"
 
 
 def test_purge_owns_uncued_spray_removal() -> None:

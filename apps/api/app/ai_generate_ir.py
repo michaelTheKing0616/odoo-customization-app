@@ -50,12 +50,20 @@ class GenerateIR:
         return asdict(self)
 
 
-# Cue-independent allowlist — keep short; review every addition (handoff §3.2b).
-STRUCTURAL_DEFAULT_ALLOWLIST: frozenset[str] = frozenset(
-    {
-        # Intentionally near-empty: force cue or approved_craft for craft fields.
-    }
-)
+# Cue-independent allowlist — review every addition (PR-B / handoff §3.2b).
+# Membership is by proposal.name only; source_cue="structural_default" is not enough.
+STRUCTURAL_ALLOWLIST: dict[str, str] = {
+    "x_name": "Odoo display name on every residual model",
+    "x_active": "standard archive flag; not identity spray",
+    "x_state": "workflow statusbar on a declared workflow model",
+    "x_status": "ops/workflow status when State is not named",
+    "x_code": "sequence/reference companion on a workflow model",
+    "x_reference": "alternate sequence field name",
+    "x_sequence": "line ordering; not a domain invent",
+    "Requests": "compiler document-menu label when header title equals app title",
+}
+# Back-compat alias for GenerateIR.structural_defaults consumers.
+STRUCTURAL_DEFAULT_ALLOWLIST: frozenset[str] = frozenset(STRUCTURAL_ALLOWLIST)
 
 
 def _seed_spray_allowed(
@@ -272,7 +280,7 @@ def build_ir(
         menus=menus,
         cues={"tokens": sorted(cues), "ast": constraint_ast or {}},
         approved_craft=craft,
-        structural_defaults=sorted(STRUCTURAL_DEFAULT_ALLOWLIST),
+        structural_defaults=sorted(STRUCTURAL_ALLOWLIST),
         admitted=seeded_admitted,
     )
     draft["_generate_ir"] = ir.to_dict()
@@ -286,7 +294,7 @@ def proposal_allowed(
     schema_client: Any | None = None,
     draft: dict[str, Any] | None = None,
 ) -> tuple[bool, str]:
-    """Merge gate: cue / craft / structural / schema-verified stock reuse.
+    """Merge gate: (a) cued, (b) STRUCTURAL_ALLOWLIST, or (c) schema-verified reuse.
 
     (c) ``schema_verified_reuse`` never invents new ``x_*`` models by itself —
     it only confirms stock relations/fields the brief already cues.
@@ -294,8 +302,10 @@ def proposal_allowed(
     name = (proposal.name or "").strip()
     if not name:
         return False, "empty_name"
-    if name in STRUCTURAL_DEFAULT_ALLOWLIST or proposal.source_cue == "structural_default":
+    # (b) name must be listed — source_cue="structural_default" is not an admit path.
+    if name in STRUCTURAL_ALLOWLIST:
         return True, "structural_default"
+    # (a) operator craft lock and brief Must-do are cues.
     craft = ir.approved_craft or {}
     allow = craft.get("allow") if isinstance(craft.get("allow"), list) else []
     if name in {str(x) for x in allow}:
@@ -303,13 +313,6 @@ def proposal_allowed(
     toggle = str(proposal.payload.get("craft_key") or "").strip()
     if toggle and craft.get(toggle) is True:
         return True, f"approved_craft:{toggle}"
-    try:
-        from app.settings import settings
-
-        if toggle and bool(getattr(settings, f"ai_craft_{toggle}", False)):
-            return True, f"settings_craft:{toggle}"
-    except Exception:  # noqa: BLE001
-        pass
 
     # Must-do residual columns are the brief's closed constraints — always admit.
     if proposal.proposer in {
@@ -318,36 +321,6 @@ def proposal_allowed(
         "ai_document_shape",
     }:
         return True, "must_do_constraint"
-
-    # Quality / apply scaffolds that repair already-present graph (not thin spray).
-    if proposal.proposer in {
-        "ai_model_quality.ensure_line_bill_link",
-        "ai_apply_readiness.ensure_header_line_models",
-        "ai_model_quality.deepen_thin_ops_children",
-        "ai_model_quality.ensure_min_workflows",
-    }:
-        if draft is not None:
-            try:
-                from app.ai_generate_ir_enforce import _is_thin_residual
-
-                if _is_thin_residual(draft) and _proposal_is_spray(proposal):
-                    return False, "thin_spray_blocked"
-            except Exception:  # noqa: BLE001
-                pass
-        if _proposal_is_spray(proposal):
-            return False, "quality_spray_needs_cue"
-        return True, "quality_scaffold"
-
-    # Adopted pack floor may still supply cued line models / O2Ms.
-    if (
-        draft is not None
-        and draft.get("domain_pack")
-        and proposal.proposer
-        in {"domain_pack", "ai_domain_packs", "ai_pipeline.pack_seed"}
-    ):
-        if _proposal_is_spray(proposal):
-            return False, "pack_spray_needs_cue"
-        return True, "pack_adopted"
 
     # Named Rate-Line class: maintenance/service lexical ≠ O2M cue.
     if _looks_like_generic_line_invent(proposal) and not _ast_has_o2m_or_line_cue(ir):
@@ -369,16 +342,6 @@ def proposal_allowed(
         ):
             return True, "schema_verified_reuse"
         return True, "cue_match" if cue_hit else "cue_name"
-
-    # Comprehensive densifier role-fill (not thin residual): structural density.
-    if proposal.proposer == "ai_domain_density" and draft is not None:
-        try:
-            from app.ai_generate_ir_enforce import _is_thin_residual
-
-            if not _is_thin_residual(draft):
-                return True, "density_role"
-        except Exception:  # noqa: BLE001
-            pass
 
     # (c) alone: reuse an *existing* stock field on a stock/inherit host — never new x_*.
     if (
@@ -857,6 +820,7 @@ def ir_closure_violations(draft: dict[str, Any]) -> list[str]:
 
 
 __all__ = [
+    "STRUCTURAL_ALLOWLIST",
     "STRUCTURAL_DEFAULT_ALLOWLIST",
     "GenerateIR",
     "Proposal",

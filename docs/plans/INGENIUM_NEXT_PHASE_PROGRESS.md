@@ -308,4 +308,15 @@ Pass names listed (15): `seed_studio_draft:honesty`, `after_deterministic_depth`
 Gates passed: PF-3 answered with dump path under `.cache/ai_ir_trace/`; scrub-key refuted on `scrub_hits`; per-pass deltas from dump JSON only.
 Not done: shell script fix (out of Change); fresh trace re-run blocked by script `cd` bug.
 
+## 2026-10-03 — T1-B1
+Track: T1
+Intent: `merge_proposals` admits only (a) cued, (b) `STRUCTURAL_ALLOWLIST`, or (c) schema-verified reuse.
+Files: `apps/api/app/ai_generate_ir.py` (`STRUCTURAL_ALLOWLIST`, 8 entries); `apps/api/tests/test_generate_ir_closed_class.py` (`test_uncued_not_allowlisted_not_schema_verified_rejected`).
+Deleted leak paths: `source_cue==structural_default` tag, `quality_scaffold`, `pack_adopted`, `density_role`, `settings_craft`. Stale-catalog gate kept. TTL unchanged.
+Commands and results: VERIFIED. pytest closed-class + spine + invent-leak + wave0 — 38 passed in 2.31s.
+Negative tests: `test_uncued_not_allowlisted_not_schema_verified_rejected` (generic `res.partner` m2o tagged `structural_default`, and quality-scaffold `x_pad_field`).
+Not done: T1-B2 named Rate Line case (already in spine; card still SEEDED).
+Model / band: cursor-grok-4.6-high-fast worker (ce418616-0f22-45ad-8cfe-347633ad0500); composer-2.5-fast tester (c91a45ee-8b3c-4fc3-b165-03c911c27584). Pressure 10. Tester re-run: 38 passed in 2.24s. TTL still 15 * 60.
+
+
 
