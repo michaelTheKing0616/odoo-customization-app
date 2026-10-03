@@ -6,7 +6,14 @@ from app.changeset.executor import apply, get_journal, reset_journal
 from app.changeset.ops import get_op
 from app.changeset.plan_card import render_plan_card
 from app.changeset.policy import policy_decision, risk_of, self_approval_allowed
-from app.changeset.validate import validate
+from app.changeset.validate import (
+    MAX_DEPTH,
+    MAX_PARAMS_BYTES,
+    PROTOTYPE_POLLUTION_KEYS,
+    STAGE_NAMES,
+    repair,
+    validate,
+)
 
 
 def _field_create(model: str = "x_test.model", name: str = "x_flag") -> dict:
@@ -147,3 +154,123 @@ def test_catalog_is_the_closed_list() -> None:
     assert "rpc.write" not in OP_CATALOG
     assert OP_CATALOG["module.uninstall"].risk_base == "R4"
     assert OP_CATALOG["field.create"].ddl is True
+
+
+def _stage_names(report: dict) -> list[str]:
+    return [stage["name"] for stage in report["stages"]]
+
+
+def _params_at_depth(leaf_level: int) -> dict:
+    """Field params whose deepest dict is at walk level ``leaf_level``.
+
+    The root params object is level 0. ``leaf_level`` wrappers are not added
+    on the root; the nested ``child`` chain places the leaf there.
+    """
+    node: dict = {"leaf": 1}
+    for _ in range(leaf_level - 1):
+        node = {"child": node}
+    return {"model": "x_test.model", "name": "x_flag", "child": node}
+
+
+def test_report_lists_nine_stages_when_shape_fails() -> None:
+    report = validate([_field_create() for _ in range(51)], known_models={"x_test.model"})
+    assert _stage_names(report) == list(STAGE_NAMES)
+    assert len(report["stages"]) == 9
+    assert report["valid"] is False
+    assert report["stages"][0]["name"] == "shape"
+    assert report["stages"][0]["passed"] is False
+    assert all(stage["passed"] is False for stage in report["stages"])
+
+
+def test_valid_changeset_lists_nine_passing_stages() -> None:
+    report = validate([_field_create()], known_models={"x_test.model"})
+    assert _stage_names(report) == list(STAGE_NAMES)
+    assert report["valid"] is True
+    assert all(stage["passed"] is True for stage in report["stages"])
+
+
+def test_rt26_oversized_params_rejected() -> None:
+    params = {"model": "x_test.model", "name": "x_flag", "note": "a" * (MAX_PARAMS_BYTES + 1)}
+    report = validate([{"type": "field.create", "params": params}], known_models={"x_test.model"})
+    shape = next(stage for stage in report["stages"] if stage["name"] == "shape")
+    assert shape["passed"] is False
+    assert any("exceeds" in error and str(MAX_PARAMS_BYTES) in error for error in shape["errors"])
+    assert _stage_names(report) == list(STAGE_NAMES)
+    assert report["valid"] is False
+
+
+def test_rt27_deep_params_rejected_at_named_depth() -> None:
+    allowed = validate(
+        [{"type": "field.create", "params": _params_at_depth(3)}],
+        known_models={"x_test.model"},
+    )
+    rejected = validate(
+        [{"type": "field.create", "params": _params_at_depth(MAX_DEPTH)}],
+        known_models={"x_test.model"},
+    )
+    assert allowed["valid"] is True
+    shape = next(stage for stage in rejected["stages"] if stage["name"] == "shape")
+    assert shape["passed"] is False
+    assert any(f"exceeds depth {MAX_DEPTH}" in error for error in shape["errors"])
+    assert _stage_names(rejected) == list(STAGE_NAMES)
+
+
+def test_rt33_prototype_pollution_keys_rejected() -> None:
+    assert PROTOTYPE_POLLUTION_KEYS == frozenset({"__proto__", "constructor", "prototype"})
+    for pollution_key in PROTOTYPE_POLLUTION_KEYS:
+        params = {"model": "x_test.model", "name": "x_flag", pollution_key: {"admin": True}}
+        report = validate(
+            [{"type": "field.create", "params": params}],
+            known_models={"x_test.model"},
+        )
+        shape = next(stage for stage in report["stages"] if stage["name"] == "shape")
+        assert shape["passed"] is False
+        assert any(f"prototype-pollution key {pollution_key!r}" in error for error in shape["errors"])
+        assert _stage_names(report) == list(STAGE_NAMES)
+        assert report["valid"] is False
+
+
+def test_rt33_existing_confusable_protected_name_rejected() -> None:
+    # Same homoglyph already used for the protected-registry confusable case.
+    homoglyph = {"type": "sequence.create", "params": {"code": "sale.order", "name": "аccount.journal"}}
+    report = validate([homoglyph], known_models={"sale.order"})
+    static = next(stage for stage in report["stages"] if stage["name"] == "static")
+    assert static["passed"] is False
+    assert any("protected_deny" in error for error in static["errors"])
+    assert _stage_names(report) == list(STAGE_NAMES)
+    assert report["valid"] is False
+
+
+def test_repair_stops_after_four_rounds_and_explains() -> None:
+    seen = {"n": 0}
+
+    def revise(changeset: list[dict], report: dict) -> list[dict]:
+        seen["n"] += 1
+        return [{"type": "still.unknown", "params": {}}]
+
+    out = repair([{"type": "nope", "params": {}}], revise, known_models=set())
+    assert out["rounds"] == 4
+    assert out["valid"] is False
+    assert out["explanation"] == "repair stopped after 4 rounds"
+    assert seen["n"] == 4
+    assert _stage_names(out["report"]) == list(STAGE_NAMES)
+
+
+def test_repair_stops_early_when_revise_returns_none() -> None:
+    def revise(changeset: list[dict], report: dict) -> None:
+        return None
+
+    out = repair([{"type": "nope", "params": {}}], revise, known_models=set())
+    assert out["rounds"] == 1
+    assert out["valid"] is False
+    assert out["explanation"] == "repair stopped after 1 round(s): no further change"
+
+
+def test_repair_stops_when_validation_passes() -> None:
+    def revise(changeset: list[dict], report: dict) -> list[dict]:
+        return [_field_create()]
+
+    out = repair([{"type": "nope", "params": {}}], revise, known_models={"x_test.model"})
+    assert out["valid"] is True
+    assert out["rounds"] == 1
+    assert out["explanation"] == "validation passed after 1 repair round(s)"

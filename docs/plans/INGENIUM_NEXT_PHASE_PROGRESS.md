@@ -1286,3 +1286,11 @@ Track: T8 T8-POLICY. Worker [Prove the approval policy matrix](3e4b52b1-75e3-4af
 Intent: The ten risk and environment cells are covered, plus freeze and expiry. Production R3 needs two approvers, a passed simulation, a backup, and an allowed window. The requester cannot approve their own R3. R4 is denied. L4 does not lower a production count. Re-ran the matrix and import-boundary tests: 22 passed. The version-branch count stayed 22. GATE-P3-06 was not run.
 Reviewer: expiry and freeze live on the policy decision. The executor does not call `apply_blocked`, and plan cards still use 24 hours for every production risk.
 Not done: T8-VALID. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, and GATE-P3-06 stay open. L4 stays off.
+
+## 2026-10-03 — T8-VALID nine stages
+Track: T8 T8-VALID. Worker [Prove the nine validation stages](a629db01-4116-43dc-adf3-86e3a64fb448). No push. L4 stays off.
+Intent: All nine stages stay on the report even when shape fails. Params over 64 KB, nesting past depth 12, and the three prototype-pollution keys are refused. Repair stops after four rounds. Re-ran the engine and import-boundary tests: 34 passed. The version-branch count stayed 22.
+Not done: T8-SIM. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, and GATE-P3-06 stay open. L4 stays off.
+
+## 2026-10-03 — Harness queued
+Cards H1–H8 in docs/plans/next-phase/cards/HARNESS.md. PR eval stays cassette/property. No product code.

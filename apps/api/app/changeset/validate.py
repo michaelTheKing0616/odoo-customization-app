@@ -1,8 +1,14 @@
-"""Nine-stage change-set validation (no repair)."""
+"""Nine-stage change-set validation.
+
+``validate`` always records all nine stages and does not change the change-set.
+``repair`` may ask the caller to revise the plan, at most four rounds, then
+stops and explains.
+"""
 
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from difflib import get_close_matches
 from typing import Any
 
@@ -12,6 +18,13 @@ from app.changeset.protected_registry import protected_denial
 
 MAX_OPS = 50
 MAX_PARAMS_BYTES = 64 * 1024
+# Same payload-depth cap as the gateway args parser and the $ref walker.
+MAX_DEPTH = 12
+MAX_REPAIR_ROUNDS = 4
+# RT-33 names this class. The set is closed: no extra keys.
+PROTOTYPE_POLLUTION_KEYS = frozenset({"__proto__", "constructor", "prototype"})
+
+Revise = Callable[[list[dict[str, Any]], dict[str, Any]], list[dict[str, Any]] | None]
 
 STAGE_NAMES = (
     "shape",
@@ -26,12 +39,55 @@ STAGE_NAMES = (
 )
 
 
+def _payload_problems(value: Any, *, op_index: int) -> list[str]:
+    """Depth and prototype-pollution problems for one params value.
+
+    Inputs: a JSON-like value and the op index. The root container is level 0.
+    Outputs: error strings. Empty when every container is shallower than depth
+    12 and no prototype-pollution key is present.
+    Side effects: none. Walking stops at ``MAX_DEPTH``.
+    """
+    problems: list[str] = []
+    reported_depth = False
+
+    def walk(node: Any, level: int) -> None:
+        nonlocal reported_depth
+        if not isinstance(node, (dict, list)):
+            return
+        if level >= MAX_DEPTH:
+            if not reported_depth:
+                problems.append(f"op[{op_index}].params exceeds depth {MAX_DEPTH}")
+                reported_depth = True
+            return
+        if isinstance(node, dict):
+            for key, child in node.items():
+                if key in PROTOTYPE_POLLUTION_KEYS:
+                    problems.append(
+                        f"op[{op_index}].params contains prototype-pollution key {key!r}"
+                    )
+                walk(child, level + 1)
+            return
+        for child in node:
+            walk(child, level + 1)
+
+    walk(value, 0)
+    return problems
+
+
 def validate(
     changeset: list[dict[str, Any]],
     *,
     known_models: set[str] | frozenset[str] | None = None,
     tenant: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Run all nine stages and return the report.
+
+    Inputs: a change-set, optional known model names, optional tenant.
+    Outputs: valid, stages (always nine, in ``STAGE_NAMES`` order), impact,
+    risks, and max_risk. An early failure does not skip later stage entries.
+    Side effects: ``protected_denial`` may append a detection when an op hits
+    the protected registry. The change-set is not modified.
+    """
     known = set(known_models or ())
     stages: list[dict[str, Any]] = []
     halted = False
@@ -67,6 +123,7 @@ def validate(
             continue
         if len(encoded.encode("utf-8")) > MAX_PARAMS_BYTES:
             shape_errors.append(f"op[{i}].params exceeds {MAX_PARAMS_BYTES} bytes")
+        shape_errors.extend(_payload_problems(params, op_index=i))
     record("shape", shape_errors)
 
     # 2 static
@@ -205,4 +262,53 @@ def validate(
         "impact": impact,
         "risks": risks,
         "max_risk": max_risk,
+    }
+
+
+def repair(
+    changeset: list[dict[str, Any]],
+    revise: Revise,
+    *,
+    known_models: set[str] | frozenset[str] | None = None,
+    tenant: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Validate, then ask ``revise`` for a new plan, at most four rounds.
+
+    Inputs: the change-set, ``revise(changeset, report)`` returning a new
+    change-set or None, and the same ``known_models`` and ``tenant`` as
+    ``validate``.
+    Outputs: valid, rounds, explanation, the last change-set, and the last
+    report. Explanation says the plan passed, that revise made no further
+    change, or that repair stopped after four rounds.
+    Side effects: none in this function. ``revise`` may allocate a new list.
+    Stops when validation passes, ``revise`` returns None, or four rounds
+    have run.
+    """
+    current = changeset
+    report = validate(current, known_models=known_models, tenant=tenant)
+    rounds = 0
+    stopped_early = False
+    while not report["valid"] and rounds < MAX_REPAIR_ROUNDS:
+        revised = revise(current, report)
+        rounds += 1
+        if revised is None:
+            stopped_early = True
+            break
+        current = revised
+        report = validate(current, known_models=known_models, tenant=tenant)
+
+    if report["valid"] and rounds == 0:
+        explanation = "validation passed"
+    elif report["valid"]:
+        explanation = f"validation passed after {rounds} repair round(s)"
+    elif stopped_early:
+        explanation = f"repair stopped after {rounds} round(s): no further change"
+    else:
+        explanation = f"repair stopped after {MAX_REPAIR_ROUNDS} rounds"
+    return {
+        "valid": bool(report["valid"]),
+        "rounds": rounds,
+        "explanation": explanation,
+        "changeset": current,
+        "report": report,
     }
