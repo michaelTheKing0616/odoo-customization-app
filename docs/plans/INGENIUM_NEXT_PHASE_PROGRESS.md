@@ -1035,3 +1035,9 @@ Track: T7 UI-SP-STUDIO. Worker [Split the studio page into components](b2d457ed-
 Intent: Move the App Studio page into `components/studio/` without changing the route. The page is 13 lines and still default-exports `AppStudioPage`. No new file is over 400 lines. Existing studio components were reused.
 Tests: `pnpm exec vitest run src/components/studio` — 22 passed. `e2e/studio-preview.spec.ts` targets the designer harness, not this page, and was not run.
 Not done: UI-SP-DESIGNER. L4 off.
+
+## 2026-10-03 — UI-SP-DESIGNER page split
+Track: T7 UI-SP-DESIGNER. Worker [Split the designer page into components](70ea16c2-f9c2-4f42-9247-6618678588fe). No push. L4 stays off.
+Intent: Move the designer page into `components/designer/` without changing the route or styles. The page is 105 lines and still default-exports `DesignerPage`. No new file is over 400 lines.
+Tests: `pnpm exec vitest run src/components/designer` — 55 passed. `e2e/designer-*.spec.ts` open `/e2e/designer` harnesses, not this route, and were not run.
+Not done: UI-SP-BULK. L4 off.
