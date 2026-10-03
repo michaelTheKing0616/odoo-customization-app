@@ -35,6 +35,11 @@ export function VersionAwarenessBanner({
           Some actions may be unavailable — expand the capability panel on Connect for details.
         </Callout>
       )}
+      {capabilities.major === 20 && !isExperimentalMajor(capabilities) && (
+        <Callout variant="info" title="Odoo 20">
+          Odoo 20 is supported.
+        </Callout>
+      )}
       {isEnterpriseEdition(capabilities) && (
         <Callout variant="info" title="Enterprise edition detected">
           Public ORM only — Studio / <code className="text-xs">web_studio</code> source is never

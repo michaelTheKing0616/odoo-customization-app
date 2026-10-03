@@ -705,3 +705,10 @@ Intent: Destructive config ops (`data.delete`, uninstall, partner merge, posting
 Command: `.venv/bin/python -m pytest -q -p no:cacheprovider apps/api/tests/test_config_apply.py apps/api/tests/test_bridge_and_config_spec.py` — **28 passed**.
 Files: `config_as_code/apply.py` (`approve_destructive`, `ApplyResult`, read-back), `tests/test_config_apply.py`.
 Not done: L4 remains off. No aonb.odoo.com call. `write_mode=production` still refused. Approved destructive ops are recorded only on `FakeConfigPort` or `MemoryDb`; any other port raises `destructive_fake_port_only`.
+
+CLAIM O20-02 2026-10-03T10:10:00Z files: VersionAwarenessBanner says Odoo 20 is supported. Do not enable L4. Do not call aonb.odoo.com.
+
+Track: O20. Card: O20-02. Worker only. No commit. No push. No Odoo RPC.
+Intent: Registry already lists Odoo 20 as GA; web banner should say so for probed major 20 (non-experimental). Experimental and Enterprise callouts unchanged.
+Result: Vitest `VersionAwarenessBanner.test.tsx` — 2 passed. Pytest `packages/odoo-client/tests/test_registry_odoo20.py` — 5 passed.
+Files: `apps/web/src/components/VersionAwarenessBanner.tsx`, `apps/web/src/components/VersionAwarenessBanner.test.tsx`.
