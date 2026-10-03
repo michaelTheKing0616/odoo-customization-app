@@ -1131,6 +1131,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - Missing call ids are still `call_{index:04d}`. The `call_<ulid>` form is not implemented. No ulid package was added.
 - `parse_tool_args` rejects payloads over 256 KB. That reject has no dedicated test.
 - GATE-P1-02 is not fully passed. Replay fixtures under `apps/api/tests/fixtures/llm_gateway/` are synthetic. Still needs an operator recording: C07, C08, C10, C11, C13, C14, C16, C17, C18, C19, and OpenAI C20.
+- The model registry stores no product model ids yet. The outside-file scan passes because that list is empty. An unknown id stays untiered with read-only caps.
 - `docker/*` and `apps/api/tests/test_wave16_gen2.py` still use `ServerProxy` outside the XML-RPC product scan.
 - Recaptured token screenshots in `docs/vision-verify/tokens-light.png` and `tokens-dark.png` are unstaged. The CSS text did not change.
 
@@ -1194,3 +1195,8 @@ Not done: T8-GW-C. GATE-P0-03 and GATE-P0-05 stay open. L4 stays off.
 Track: T8 T8-GW-C. Worker [Replay the conformance cases](ad0e5490-f995-4204-9893-72ae7f6d68de). No push. L4 stays off.
 Intent: Synthetic replay for Anthropic, OpenAI, and Gemini covers C01, C02, C03, C04, C05, C06, C09, C12, and C15. C20 is replayed for Anthropic and Gemini. C11, C18, and C19 are scored and do not fail the suite. Re-ran the gateway and replay tests: 42 passed. The fixtures are not live recordings. GATE-P1-02 stays open.
 Not done: T8-GW-REG. GATE-P0-03, GATE-P0-05, and GATE-P1-02 stay open. L4 stays off.
+
+## 2026-10-03 — T8-GW-REG model registry
+Track: T8 T8-GW-REG. Worker [Lock the model registry](0559f9ca-3265-4955-903e-993aa6e46730). No push. L4 stays off.
+Intent: An unknown model id stays untiered and uses read-only caps. It cannot submit a change-set. A planted model id outside the registry file fails the scan. Re-ran the registry tests: 3 passed. The registry stores no product model ids yet, so the live scan has an empty list.
+Not done: T8-GW-REST. GATE-P0-03, GATE-P0-05, and GATE-P1-02 stay open. L4 stays off.

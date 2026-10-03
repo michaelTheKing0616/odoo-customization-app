@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import ast
+from pathlib import Path
+
 import pytest
 
 from app.llm_gateway.conformance import run_conformance
 from app.llm_gateway.emulated import EmulatedRejected, parse_emulated_json
 from app.llm_gateway.fallback import Endpoint, call_with_fallback
 from app.llm_gateway.gateway import Gateway
-from app.llm_gateway.registry import load_registry
+from app.llm_gateway.registry import TIER_C_CAPS, load_registry, lookup, model_ids_in_source
 from app.llm_gateway.scrub import scrub
 from app.llm_gateway.scripted import ScriptedAdapter
 from app.llm_gateway.ssrf import SsrfRejected, guard_base_url
@@ -141,6 +144,68 @@ def test_registry_rejects_an_invented_tier_and_a_missing_id() -> None:
         load_registry([{"provider": "local", "model_id": "x", "tier": "S"}])
     with pytest.raises(ValueError):
         load_registry([{"provider": "local"}])
+
+
+def test_unknown_model_id_stays_unset_with_tier_c_caps() -> None:
+    records = load_registry([{"provider": "local", "model_id": "configured-at-runtime", "tier": "C"}])
+    missing = lookup(records, "local", "x")
+    assert missing.record is None
+    assert missing.tier is None
+    assert missing.caps == TIER_C_CAPS
+    assert missing.caps.read_only is True
+    assert missing.caps.can_submit_changeset is False
+    known = lookup(records, "local", "configured-at-runtime")
+    assert known.record is not None
+    assert known.tier == "C"
+    assert known.caps == TIER_C_CAPS
+    unset = load_registry([{"provider": "local", "model_id": "configured-at-runtime", "tier": None}])
+    pending = lookup(unset, "local", "configured-at-runtime")
+    assert pending.record is not None
+    assert pending.tier is None
+    assert pending.caps == TIER_C_CAPS
+    measured = load_registry([{"provider": "local", "model_id": "configured-at-runtime", "tier": "A"}])
+    ranked = lookup(measured, "local", "configured-at-runtime")
+    assert ranked.tier == "A"
+    assert ranked.caps.read_only is False
+    assert ranked.caps.can_submit_changeset is True
+    assert ("local", "x") not in records
+
+
+def _literal_hits(root: Path, ids: frozenset[str], registry_path: Path) -> list[str]:
+    if not ids:
+        return []
+    registry_resolved = registry_path.resolve()
+    hits: list[str] = []
+    for path in sorted(root.rglob("*.py")):
+        if "__pycache__" in path.parts or path.resolve() == registry_resolved:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value in ids:
+                hits.append(f"{path}:{node.lineno}:{node.value}")
+    return hits
+
+
+def test_registry_model_id_strings_do_not_appear_outside_the_registry_file(tmp_path: Path) -> None:
+    api_root = Path(__file__).resolve().parents[1]
+    registry_path = api_root / "app" / "llm_gateway" / "registry.py"
+    ids = model_ids_in_source(registry_path.read_text(encoding="utf-8"))
+    assert model_ids_in_source('MODEL_IDS = ("configured", "configured-at-runtime")\n') == frozenset()
+    assert "configured" not in ids
+    assert "configured-at-runtime" not in ids
+    hits = _literal_hits(api_root, ids, registry_path)
+    assert hits == [], hits
+
+    copied = "registry-scan-copy"
+    registry_copy = tmp_path / "registry.py"
+    registry_copy.write_text(f"MODEL_IDS = ({copied!r},)\n", encoding="utf-8")
+    planted = tmp_path / "leaked.py"
+    planted.write_text(f"value = {copied!r}\n", encoding="utf-8")
+    copied_ids = model_ids_in_source(registry_copy.read_text(encoding="utf-8"))
+    assert copied in copied_ids
+    planted_hits = _literal_hits(tmp_path, copied_ids, registry_copy)
+    assert planted_hits
+    assert all("registry.py" not in hit for hit in planted_hits)
 
 
 def test_conformance_suite_passes_every_gate_case() -> None:
