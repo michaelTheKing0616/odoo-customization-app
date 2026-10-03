@@ -372,3 +372,14 @@ Commands and results: VERIFIED. `pnpm --filter @odoo-custom/web exec vitest run 
 Gates passed: no 1 on Accuracy or Ethics; each row states what gets added in plain words.
 Not done: API copy unchanged (out of Change).
 
+## 2026-10-03 — T1-D1 and T1-D2
+Track: T1
+Intent: Re-measure the repair cap and the prove stamp. Do not rebuild them.
+Model / band: no worker. Deterministic re-measure.
+Files: none. Tests already in `apps/api/tests/test_option_a_prove_bar.py`. `DEFAULT_MAX_REPAIR = 3` in `apps/api/app/ai_repair_loop.py`.
+Commands and results: VERIFIED. pytest `tests/test_option_a_prove_bar.py` — 5 passed in 0.78s.
+Gates passed: three failing installs stop at 3 and stamp `failed` with `promote_eligible` false (`test_three_install_fails_stamps_failed`). A first passing install with tests stamps `proved` (`test_run_tests_true_stamps_proved`). There is no `install_ready` string in `apps/api`; the live stamp is `prove_status`. Smoke-only success leaves `prove_pending` (`test_smoke_only_success_leaves_prove_pending`). The string `proved_smoke_only` is not in the code.
+Negative tests: the three-fail test; the smoke-only test.
+Not done: T1-D3 verbatim sandbox error text is still open.
+Risks introduced: none.
+
