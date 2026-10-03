@@ -1123,6 +1123,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - Durable WAL is still T8-EXEC. The journal is in-process.
 - T8-MEM is still open. ADR-09 records the four memory classes. The code does not exist yet. `memory_propose` is not implemented.
 - The skill router is not built. ADR-10 records the package rules. No skill card has shipped the router.
+- Audit retention is not wired. ADR-11 locks the chain shape. Append and verify already exist. 24 months, 7 years for accounting kinds, and 7 days for raw LLM payloads are still open.
 - `docker/*` and `apps/api/tests/test_wave16_gen2.py` still use `ServerProxy` outside the XML-RPC product scan.
 - Recaptured token screenshots in `docs/vision-verify/tokens-light.png` and `tokens-dark.png` are unstaged. The CSS text did not change.
 
@@ -1142,4 +1143,7 @@ Track: T8 ADR-10. Worker [Record the skill-package ADR](4215d4ff-f5b6-46c4-836f-
 Intent: No executable code in a skill. A skill can only narrow a grant. At most 3 skills load by default. `SKILL.md` is at most 2500 tokens. Router bars are recall@3 at least 0.95 and precision@3 at least 0.6 on at least 300 labeled phrasings. CI is at least 5 evals per skill and at least 12 for Tier-1. The router is not built.
 Not done: ADR-11. ADR-02 stays open until Tope accepts D8. L4 off.
 
-CLAIM ADR-11 2026-10-03T16:26:00Z file: docs/adr/ADR-11.md only. Accept the audit chain shape from 11_LOGGING_AUDIT_OBSERVABILITY.md section 2. Record that apps/api/app/audit_chain.py already appends and verifies a SHA-256 chain with genesis 64 zeros. Do not claim retention windows or every kind are wired. Do not change product code. Do not close ADR-02. Do not enable L4.
+## 2026-10-03 — ADR-11 audit hash chain
+Track: T8 ADR-11. Worker [Record the audit-chain ADR](88d5f186-340a-4ef4-9ff0-3ac4ac29425b). No push. L4 stays off.
+Intent: One append-only chain. Genesis previous hash is 64 zeros. Each entry hash is SHA-256 of the canonical JSON without the hash field. Append and verify already exist in `apps/api/app/audit_chain.py`. Retention windows are still open.
+Not done: ADR-12. L4 stays off.
