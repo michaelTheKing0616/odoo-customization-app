@@ -95,12 +95,14 @@ class Json2Transport:
         database: str | None = None,
         send_db_header: bool = False,
         timeout: float = 60.0,
+        odoo_major: int = 19,
     ) -> None:
         self.base_url = json2_origin(base_url)
         self.api_key = api_key
         self.database = database
         self.send_db_header = send_db_header
         self.timeout = timeout
+        self.odoo_major = odoo_major
 
     def request(
         self,
@@ -182,7 +184,7 @@ class Json2Transport:
         args: list[Any] | None = None,
         kwargs: dict[str, Any] | None = None,
     ) -> Any:
-        body = execute_kw_to_json2_body(method, args, kwargs)
+        body = execute_kw_to_json2_body(method, args, kwargs, major=self.odoo_major)
         return self.call(model, method, body)
 
     def context_get(self) -> dict[str, Any]:

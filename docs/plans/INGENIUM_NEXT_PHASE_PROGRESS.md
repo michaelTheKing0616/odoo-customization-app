@@ -842,3 +842,12 @@ Operator checklist only — not a completed production run on a customer databas
 Track: O20. Card: O20-13. Worker only. No commit. No push. No Odoo host. L4 stays off.
 Intent: `docs/runbooks/odoo20-production-checklist.md` — bot user + expiring RPC API key, `ODOO_PROTOCOL=auto` / JSON-2 vs explicit `rpc_protocol=xmlrpc`, version-table verify rows (V06, V24, V26, V28–V30), 20 deltas (`company_type`, registry, pricelist discount, `ir.access`), duplicate-DB flow tests vs local 7/7·6/6·2/2 sandbox, invoice print check, Community no native MCP, operator-owned DB dumps + 10‑min metadata snapshot, sandbox-before-promote.
 Not done: L4 off. No aonb.odoo.com. Checklist does not assert JSON-2 `/doc` text match verified. No customer DB execution.
+
+CLAIM O20-14 2026-10-03T12:00:00Z files: name_search keyword from the version table. Do not enable L4. Do not call aonb.odoo.com.
+
+Track: O20. Card: O20-14. Worker only. No commit. No push. No Odoo host. L4 stays off.
+Intent: ``name_search`` filter keyword is ``args`` on 16–18 and ``domain`` on 19–20 via ``difference("name_search_kw", major)`` — not hardcoded at API call sites.
+Change: `packages/odoo-client/src/odoo_client/compat/name_search.py` (`build_name_search_execute_kw`); JSON-2 mapper + `Json2Transport.odoo_major`; `apps/api/app/data_import.py` `_resolve_m2o`.
+Call sites in `apps/api/app`: `data_import.py` only (``rpc_classify.py`` lists the method name, no RPC).
+Tests: `.venv/bin/python -m pytest -q -p no:cacheprovider packages/odoo-client/tests/test_name_search_compat.py` — **4 passed**.
+Not done: L4 off. No aonb.odoo.com. No commit.

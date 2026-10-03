@@ -10,11 +10,15 @@ from __future__ import annotations
 
 from typing import Any
 
+from odoo_client.compat.version_table import difference
+
 
 def execute_kw_to_json2_body(
     method: str,
     args: list[Any] | None = None,
     kwargs: dict[str, Any] | None = None,
+    *,
+    major: int | None = None,
 ) -> dict[str, Any]:
     """Translate one ``execute_kw`` call into a JSON-2 request body.
 
@@ -48,7 +52,7 @@ def execute_kw_to_json2_body(
     if m in {"button_immediate_install", "button_immediate_uninstall", "button_immediate_upgrade"}:
         return _ids_only_body(positional, named)
     if m == "name_search":
-        return _name_search_body(positional, named)
+        return _name_search_body(positional, named, major=major)
     if m == "update_list":
         # ir.module.module.update_list — no args
         if positional:
@@ -177,13 +181,31 @@ def _ids_only_body(positional: list[Any], named: dict[str, Any]) -> dict[str, An
     return body
 
 
-def _name_search_body(positional: list[Any], named: dict[str, Any]) -> dict[str, Any]:
+def _name_search_body(
+    positional: list[Any],
+    named: dict[str, Any],
+    *,
+    major: int | None = None,
+) -> dict[str, Any]:
     body = dict(named)
-    # name_search(name='', args=None, operator='ilike', limit=100)
-    keys = ("name", "args", "operator", "limit")
-    for i, key in enumerate(keys):
-        if i < len(positional) and key not in body:
-            body[key] = positional[i]
+    # name_search(name='', args|domain=None, operator='ilike', limit=100)
+    filter_key = "args"
+    if major is not None:
+        filter_key = "domain" if difference("name_search_kw", major) == "domain" else "args"
+    if positional and "name" not in body:
+        body["name"] = positional[0]
+    if len(positional) > 1:
+        body.setdefault(filter_key, positional[1])
+    if len(positional) > 2 and "operator" not in body:
+        body["operator"] = positional[2]
+    if len(positional) > 3 and "limit" not in body:
+        body["limit"] = positional[3]
+    if major is not None:
+        other = "args" if filter_key == "domain" else "domain"
+        if other in body and filter_key not in body:
+            body[filter_key] = body.pop(other)
+        elif other in body and filter_key in body:
+            body.pop(other, None)
     return body
 
 

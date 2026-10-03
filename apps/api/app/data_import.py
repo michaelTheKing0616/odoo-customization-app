@@ -10,6 +10,7 @@ from typing import Any, Literal
 
 from odoo_client import OdooClient
 from odoo_client.client import OdooClientError
+from odoo_client.compat.name_search import build_name_search_execute_kw
 
 Mode = Literal["create", "upsert"]
 
@@ -243,13 +244,13 @@ def _resolve_m2o(
                 "ir.model.data", "read", [ids], {"fields": ["res_id"]}
             )
             return int(data[0]["res_id"])
-    # name search
-    found = client.execute_kw(
-        relation,
-        "name_search",
-        [text],
-        {"limit": 2},
+    # name search (``args`` on 16–18, ``domain`` kw on 19–20 — version table)
+    ns_args, ns_kwargs = build_name_search_execute_kw(
+        text,
+        major=client.capabilities.major,
+        limit=2,
     )
+    found = client.execute_kw(relation, "name_search", ns_args, ns_kwargs)
     if not found:
         raise ValueError(f"No {relation} matching {text!r}")
     if len(found) > 1:

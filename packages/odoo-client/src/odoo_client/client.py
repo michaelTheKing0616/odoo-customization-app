@@ -321,6 +321,7 @@ class OdooClient:
             database=self.config.db,
             send_db_header=bool(self.config.json2_send_db_header),
             timeout=float(self.config.timeout or 60.0),
+            odoo_major=major,
         )
         try:
             ctx = transport.context_get()
