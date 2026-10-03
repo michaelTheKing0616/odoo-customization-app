@@ -1272,3 +1272,8 @@ Track: T8 T8-PROT. Worker [Prove the protected registry](08b36e8b-c703-46b2-9266
 Intent: RT-10 through RT-16 each have a named test for `protected_deny`, `policy_denied`, and R4. A tenant `remove_models` list does not shrink the core set. Elevate is risk +1 and sets `domain_owner`. Re-ran protected-registry and import-boundary tests: 25 passed. The version-branch count stayed 22.
 Reviewer: what could be wrong is that `domain_owner` is a flag on the policy decision and apply does not yet refuse when that person has not approved. The named RT tests cover the known shapes, not every confusable or nested `$ref`.
 Not done: T8-RISK. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P2-09 stay open. L4 stays off.
+
+## 2026-10-03 — T8-RISK escalations
+Track: T8 T8-RISK. Worker [Prove risk only goes up](b6758ea2-9bcf-4c10-8705-7a2d050ebd0c). No push. L4 stays off.
+Intent: Rows over 1000 or users over 10, outbound, production with no simulation, and Mode C each add one risk level. A raise stops at R4. Final risk stays at least the catalog risk. A caller-supplied risk does not lower it. Re-ran risk and import-boundary tests: 15 passed. The version-branch count stayed 22.
+Not done: T8-POLICY. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P2-09 stay open. L4 stays off.

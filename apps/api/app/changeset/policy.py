@@ -23,9 +23,18 @@ def risk_of(
     outbound: bool = False,
     mode_c: bool = False,
     protected: bool = False,
+    no_simulation_on_production: bool = False,
     tenant: dict[str, Any] | None = None,
     document: list[dict[str, Any]] | None = None,
 ) -> str:
+    """Catalog risk plus escalations. Each escalation adds one. The result stays in R0–R4.
+
+    Inputs: one op and optional impact flags. A `risk` key on the op is ignored, so a
+    caller cannot talk the catalog class down. `no_simulation_on_production` is a
+    production apply with no recorded simulation. Defaults leave existing callers unchanged.
+    Output: R0–R4.
+    Side effects: none.
+    """
     op_type = str(op.get("type", ""))
     params = op.get("params")
     if not isinstance(params, dict):
@@ -46,6 +55,8 @@ def risk_of(
     if users > 10:
         bumps += 1
     if outbound:
+        bumps += 1
+    if no_simulation_on_production:
         bumps += 1
     if mode_c:
         bumps += 1
@@ -112,6 +123,7 @@ def policy_for_op(
     users: int = 0,
     outbound: bool = False,
     mode_c: bool = False,
+    no_simulation_on_production: bool = False,
 ) -> dict[str, bool | int]:
     """Policy for one op, including the protected:elevate domain-owner requirement.
 
@@ -125,6 +137,7 @@ def policy_for_op(
         users=users,
         outbound=outbound,
         mode_c=mode_c,
+        no_simulation_on_production=no_simulation_on_production,
         tenant=tenant,
         document=document,
     )
