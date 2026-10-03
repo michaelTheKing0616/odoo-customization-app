@@ -1,0 +1,71 @@
+name: odoo20-custom-dev
+
+# Local Odoo 20 Community + Postgres (parallel to primary 19 stack).
+# Usage (from repo root):
+#   docker compose -p odoo20-custom-dev -f docker/docker-compose.odoo20.yml up -d
+#   ./docker/run-odoo20-smoke.sh   # prints the command; does not start containers
+# Host Odoo: http://127.0.0.1:8073 — Postgres for app-db20: localhost:5436
+
+services:
+  app-db20:
+    image: postgres:15
+    container_name: odoo20-app-db
+    environment:
+      POSTGRES_DB: odoo_custom
+      POSTGRES_USER: odoo_custom
+      POSTGRES_PASSWORD: odoo_custom
+    ports:
+      - "5436:5432"
+    volumes:
+      - odoo20-app-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo_custom -d odoo_custom"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  db20:
+    image: postgres:15
+    container_name: odoo20-db
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: odoo
+    volumes:
+      - odoo20-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  odoo20:
+    image: odoo:20
+    container_name: odoo20
+    depends_on:
+      db20:
+        condition: service_healthy
+    ports:
+      - "8073:8069"
+    environment:
+      HOST: db20
+      USER: odoo
+      PASSWORD: odoo
+    volumes:
+      - odoo20-web-data:/var/lib/odoo
+      - ./sandbox-addons:/mnt/extra-addons
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8069/web/login', timeout=5)\"",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 40s
+
+volumes:
+  odoo20-db-data:
+  odoo20-web-data:
+  odoo20-app-db-data:

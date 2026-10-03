@@ -32,6 +32,7 @@ def normalize_odoo_base_url(url: str) -> str:
         "/xmlrpc/2",
         "/xmlrpc",
         "/jsonrpc",
+        "/json/2",
         "/web/login",
         "/web/session/authenticate",
         "/web",
@@ -129,6 +130,12 @@ class ConnectionConfig(BaseModel):
     password: str = Field(..., description="Password or API key")
     timeout: float = 30.0
     write_mode: Literal["observer", "standard", "production"] = "standard"
+    # Dual-protocol: auto prefers External JSON-2 on Odoo 19+ Online (or when
+    # forced); local self-host 19 with login passwords stays on XML-RPC so
+    # Docker sandboxes keep working without an API key.
+    rpc_protocol: Literal["auto", "xmlrpc", "json2"] = "auto"
+    # Multi-DB hosts without dbfilter need X-Odoo-Database on JSON-2.
+    json2_send_db_header: bool = False
 
     @field_validator("url")
     @classmethod

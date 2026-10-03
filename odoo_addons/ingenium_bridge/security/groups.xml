@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="group_ingenium_reader" model="res.groups">
+        <field name="name">Ingenium Reader</field>
+    </record>
+    <record id="group_ingenium_operator" model="res.groups">
+        <field name="name">Ingenium Operator</field>
+        <field name="implied_ids" eval="[(4, ref('group_ingenium_reader'))]"/>
+    </record>
+</odoo>

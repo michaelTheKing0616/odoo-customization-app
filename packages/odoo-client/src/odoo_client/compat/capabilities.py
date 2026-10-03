@@ -1,4 +1,4 @@
-"""Version capability matrix — M3: 16–19 supported; 17+18+19 GA."""
+"""Version capability matrix — 16–20 supported; 17+18+19+20 GA; 16 experimental."""
 
 from __future__ import annotations
 
@@ -35,6 +35,7 @@ _FULL_SAFE: frozenset[CapabilityId] = frozenset(
     }
 )
 
+ODOO_20_CAPABILITIES = _FULL_SAFE
 ODOO_19_CAPABILITIES = _FULL_SAFE
 ODOO_18_CAPABILITIES = _FULL_SAFE
 

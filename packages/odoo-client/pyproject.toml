@@ -1,7 +1,7 @@
 [project]
 name = "odoo-client"
 version = "0.1.0"
-description = "Typed Odoo Community 19 XML-RPC client for the no-code customization platform"
+description = "Typed Odoo Community 16–19 client (XML-RPC + External JSON-2) for the no-code customization platform"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

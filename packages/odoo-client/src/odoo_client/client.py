@@ -1,13 +1,23 @@
-"""Odoo XML-RPC client wrapping stdlib xmlrpc.client with typed helpers."""
+"""Odoo XML-RPC / External JSON-2 client wrapping typed helpers.
+
+Transport selection (dual-protocol):
+- Majors ≤18: XML-RPC (or legacy ``/jsonrpc`` fallback when XML-RPC is blocked).
+- Major ≥19 + ``rpc_protocol=json2`` or Online ``auto``: External JSON-2
+  (``POST /json/2/<model>/<method>`` + Bearer API key).
+- Major ≥19 local/self-host ``auto``: keep XML-RPC so admin passwords still work
+  without requiring an API key (Docker sandbox safety).
+"""
 
 from __future__ import annotations
 
+import os
 import xmlrpc.client
 from typing import Any, Literal
 from urllib.parse import urljoin
 
 from odoo_client.compat.capabilities import VersionCapabilities
 from odoo_client.compat.registry import for_major, parse_major
+from odoo_client.rpc_policy import builtin_forbidden, scrub_config_param_result
 from odoo_client.write_mode import is_rpc_blocked_in_observer
 from odoo_client.models import (
     ConnectionConfig,
@@ -20,6 +30,7 @@ from odoo_client.models import (
     ModuleInfo,
     ViewInfo,
 )
+from odoo_client.transport.json2 import Json2Transport, Json2TransportError
 
 
 class OdooClientError(Exception):
@@ -29,6 +40,8 @@ class OdooClientError(Exception):
 def _rpc_error_text(exc: BaseException) -> str:
     if isinstance(exc, xmlrpc.client.Fault):
         return str(exc.faultString or exc)
+    if isinstance(exc, Json2TransportError):
+        return str(exc)
     return str(exc)
 
 
@@ -83,12 +96,18 @@ def _jsonrpc_call(base_url: str, service: str, method: str, args: list[Any], *, 
 
 
 class OdooClient:
-    """Synchronous XML-RPC client for Odoo Community 16–19 (17+18+19 GA)."""
+    """Synchronous client for Odoo Community 16–19 (17+18+19 GA).
+
+    Public method signatures are stable. Transport is XML-RPC (≤18 / local 19)
+    or External JSON-2 (19+ Online / forced).
+    """
 
     def __init__(self, config: ConnectionConfig) -> None:
         self.config = config
         self._uid: int | None = None
-        self._jsonrpc_mode = False
+        self._jsonrpc_mode = False  # legacy /jsonrpc fallback (≤18 or blocked xmlrpc)
+        self._rpc_protocol: Literal["xmlrpc", "jsonrpc", "json2"] = "xmlrpc"
+        self._json2: Json2Transport | None = None
         # Default to 19 capabilities before connect; connect() refreshes from server.
         self.capabilities: VersionCapabilities = for_major(19)
         self._ir_fields_colnames: frozenset[str] | None = None
@@ -100,6 +119,7 @@ class OdooClient:
             urljoin(config.url + "/", "xmlrpc/2/object"),
             allow_none=True,
         )
+        self.rpc_guard = None
 
     @property
     def uid(self) -> int:
@@ -209,6 +229,15 @@ class OdooClient:
             )
 
         try:
+            if self._should_use_json2(major=major, hosting=hosting):
+                try:
+                    return self._connect_json2(major=major)
+                except OdooClientError:
+                    # Forced json2 must not silently fall back.
+                    override = self._env_protocol_override() or self.config.rpc_protocol
+                    if override == "json2":
+                        raise
+                    # auto: fall through to legacy XML-RPC /jsonrpc auth
             if transport == "jsonrpc" or getattr(self, "_jsonrpc_mode", False):
                 uid = _jsonrpc_call(
                     self.config.url,
@@ -216,6 +245,7 @@ class OdooClient:
                     "authenticate",
                     [self.config.db, self.config.username, self.config.password, {}],
                 )
+                self._rpc_protocol = "jsonrpc"
             else:
                 uid = self._common.authenticate(
                     self.config.db,
@@ -223,6 +253,7 @@ class OdooClient:
                     self.config.password,
                     {},
                 )
+                self._rpc_protocol = "xmlrpc"
         except OdooClientError:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -238,6 +269,58 @@ class OdooClient:
         self._uid = int(uid)
         return self._uid
 
+    def _env_protocol_override(self) -> str | None:
+        raw = (os.environ.get("ODOO_RPC_PROTOCOL") or "").strip().lower()
+        if raw in {"auto", "xmlrpc", "json2"}:
+            return raw
+        return None
+
+    def _should_use_json2(self, *, major: int, hosting: str) -> bool:
+        """Decide External JSON-2 without breaking local password sandboxes."""
+        if major < 19:
+            return False
+        override = self._env_protocol_override() or self.config.rpc_protocol
+        if override == "xmlrpc":
+            return False
+        if override == "json2":
+            return True
+        # Odoo 20 defaults to JSON-2, including local images. A password login
+        # fails with the existing JSON-2 auth error instead of a silent XML-RPC fallback.
+        if major >= 20:
+            return True
+        # auto on 19: Online prefers JSON-2; local/self-host stays XML-RPC.
+        return hosting == "online"
+
+    def _connect_json2(self, *, major: int) -> int:
+        """Authenticate via Bearer API key + res.users.context_get."""
+        self.capabilities = for_major(major)
+        transport = Json2Transport(
+            self.config.url,
+            self.config.password,
+            database=self.config.db,
+            send_db_header=bool(self.config.json2_send_db_header),
+            timeout=float(self.config.timeout or 60.0),
+        )
+        try:
+            ctx = transport.context_get()
+        except Json2TransportError as exc:
+            raise OdooClientError(
+                f"JSON-2 auth failed at {self.config.url}: {exc}. "
+                "Odoo 19 External JSON-2 requires an API key "
+                "(Settings → Users → Account Security → New API Key). "
+                "For local Docker with a login password, set rpc_protocol=xmlrpc "
+                "or leave auto on non-Online hosts."
+            ) from exc
+        uid = ctx.get("uid")
+        if not uid:
+            raise OdooClientError(
+                f"JSON-2 context_get returned no uid: {ctx!r}"
+            )
+        self._json2 = transport
+        self._rpc_protocol = "json2"
+        self._jsonrpc_mode = False
+        self._uid = int(uid)
+        return self._uid
 
     def execute_kw(
         self,
@@ -248,7 +331,29 @@ class OdooClient:
     ) -> Any:
         if is_rpc_blocked_in_observer(self.config.write_mode, method):
             raise ObserverModeError(model, method)
-        if getattr(self, "_jsonrpc_mode", False):
+        reason = builtin_forbidden(model, method, args, kwargs)
+        if reason:
+            raise OdooClientError(f"forbidden {model}.{method}: {reason}")
+        if self.rpc_guard is not None:
+            self.rpc_guard(model, method, args or [], kwargs or {})
+        result = self._dispatch_execute(model, method, args, kwargs)
+        return scrub_config_param_result(model, method, result)
+
+    def _dispatch_execute(
+        self,
+        model: str,
+        method: str,
+        args: list[Any] | None,
+        kwargs: dict[str, Any] | None,
+    ) -> Any:
+        if self._rpc_protocol == "json2" and self._json2 is not None:
+            try:
+                return self._json2.execute_kw(model, method, args, kwargs)
+            except Json2TransportError as exc:
+                raise OdooClientError(str(exc)) from exc
+            except ValueError as exc:
+                raise OdooClientError(f"JSON-2 execute_kw mapping failed: {exc}") from exc
+        if getattr(self, "_jsonrpc_mode", False) or self._rpc_protocol == "jsonrpc":
             return _jsonrpc_call(
                 self.config.url,
                 "object",
@@ -274,6 +379,15 @@ class OdooClient:
         )
 
     def server_version(self) -> dict[str, Any]:
+        if self._rpc_protocol == "json2":
+            # JSON-2 has no common.version; return a minimal stub from capabilities.
+            return {
+                "server_version": f"{self.capabilities.major}.0",
+                "server_version_info": [self.capabilities.major, 0, 0, "final", 0, ""],
+                "protocol": "json2",
+            }
+        if self._rpc_protocol == "jsonrpc" or self._jsonrpc_mode:
+            return dict(_jsonrpc_call(self.config.url, "common", "version", []) or {})
         return dict(self._common.version())
 
     def list_modules(

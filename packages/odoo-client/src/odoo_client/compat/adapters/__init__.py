@@ -9,6 +9,7 @@ from odoo_client.compat.adapters import (
     views_v17,
     views_v18,
     views_v19,
+    views_v20,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "views_v17",
     "views_v18",
     "views_v19",
+    "views_v20",
 ]

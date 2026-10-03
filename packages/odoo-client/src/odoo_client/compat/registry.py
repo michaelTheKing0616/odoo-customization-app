@@ -1,4 +1,4 @@
-"""Major → capability registry. M3: 16–19; GA = 17 + 18 + 19."""
+"""Major → capability registry. 16–20 supported; GA = 17 + 18 + 19 + 20; 16 experimental."""
 
 from __future__ import annotations
 
@@ -9,11 +9,18 @@ from odoo_client.compat.capabilities import (
     ODOO_17_CAPABILITIES,
     ODOO_18_CAPABILITIES,
     ODOO_19_CAPABILITIES,
+    ODOO_20_CAPABILITIES,
     UnsupportedOdooMajorError,
     VersionCapabilities,
 )
 
 _REGISTRY: dict[int, VersionCapabilities] = {
+    20: VersionCapabilities(
+        major=20,
+        edition="community",
+        enabled=ODOO_20_CAPABILITIES,
+        ga=True,
+    ),
     19: VersionCapabilities(
         major=19,
         edition="community",

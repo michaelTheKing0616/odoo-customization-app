@@ -21,9 +21,11 @@ from odoo_client.compat import (
 from odoo_client.compat.adapters import automation_v16, automation_v19, views_v16, views_v19
 
 
-def test_supported_majors_16_to_19() -> None:
-    assert supported_majors() == frozenset({16, 17, 18, 19})
-    assert ga_majors() == frozenset({17, 18, 19})
+def test_supported_majors_16_to_20() -> None:
+    assert supported_majors() == frozenset({16, 17, 18, 19, 20})
+    assert ga_majors() == frozenset({17, 18, 19, 20})
+    assert for_major(20).ga is True
+    assert for_major(16).ga is False
 
 
 def test_for_major_19_18_17_are_ga() -> None:
