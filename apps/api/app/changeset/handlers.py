@@ -120,6 +120,7 @@ _ISSUE_FNS: dict[str, IssueFn] = {
     "data.update_batch": lambda p: _need(p, "model", "domain", "values") + (
         ["unbounded domain is forbidden"] if p.get("domain") == [] else []
     ),
+    "data.unlink": lambda p: _need(p, "model", "ids"),
     "data.import_upsert": lambda p: _need(p, "model"),
     "rule.create": lambda p: _need(p, "model", "domain_force") + (
         ["group-less global rule needs an explicit global flag"] if not p.get("groups") and not p.get("global") else []

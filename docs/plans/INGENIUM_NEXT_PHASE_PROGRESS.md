@@ -542,3 +542,13 @@ Not done: 5A-11 rollback tiers.
 Risks introduced: none.
 
 CLAIM 5A-11 2026-10-03T08:40:00Z files: compensating plan from change rows through the change-set pipeline. Do not raw-RPC the undo. Do not create a second audit table.
+
+## 2026-10-03 — 5A-11 rollback tiers wired
+Track: 5A. Worker only. No commit.
+Intent: Name three rollback tiers. Build a compensating change-set from audit `change` rows and send it through validate / policy / apply. Do not live-restore `/web/database`.
+Files: `apps/api/app/rollback_tiers.py`, `apps/api/app/changeset/ops.py` (`data.unlink`), `apps/api/app/changeset/handlers.py`, `apps/api/tests/test_rollback_tiers.py`, `apps/api/scripts/lint_new_modules.sh`, this entry.
+Commands and results: `cd apps/api && ../../.venv/bin/python -m pytest -q -p no:cacheprovider tests/test_rollback_tiers.py tests/test_snapshot_gate.py` → **24 passed in 1.84s**. `scripts/lint_new_modules.sh` clean.
+Gates passed: compensating plan from change rows through the change-set pipeline; module install and posted entries listed as not reversible by this tier.
+Negative tests: `test_compensating_plan_unlink_res_users_refused_by_never_allowed`.
+Not done: live `/web/database` restore (named as tier 1 only; not for Online, Odoo.sh, or Odoo 20).
+Risks introduced: `data.unlink` is a catalog op for compensating created rows only; never-allowed still refuses `res.users` unlink via `classify_rpc`.

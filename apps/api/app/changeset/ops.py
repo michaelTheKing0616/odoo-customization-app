@@ -75,6 +75,7 @@ OP_CATALOG: Final[dict[str, OpDef]] = {
     "module.uninstall": OpDef("module.uninstall", "R4", "N", False),
     "data.create_batch": OpDef("data.create_batch", "R2", "E", False),
     "data.update_batch": OpDef("data.update_batch", "R2", "E", False),
+    "data.unlink": OpDef("data.unlink", "R2", "E", False),
     "data.archive_batch": OpDef("data.archive_batch", "R2", "E", False),
     "data.import_upsert": OpDef("data.import_upsert", "R2", "E", False),
     "data.merge": OpDef("data.merge", "R3", "N", False),

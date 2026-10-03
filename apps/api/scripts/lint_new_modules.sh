@@ -6,8 +6,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FILES=()
 REQ="$ROOT/app/request_id.py"
 LOG="$ROOT/app/logging_config.py"
+RB="$ROOT/app/rollback_tiers.py"
 if [[ -f "$REQ" ]]; then FILES+=("$REQ"); fi
 if [[ -f "$LOG" ]]; then FILES+=("$LOG"); fi
+if [[ -f "$RB" ]]; then FILES+=("$RB"); fi
 if [[ ${#FILES[@]} -eq 0 ]]; then
   exit 0
 fi
