@@ -1142,6 +1142,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - `plan_card.py` still expires every production card at 24 hours, including R0 and R1. Policy expiry for those two is 7 days.
 - `apply_blocked` is not called by the executor. A freeze is a decision flag until apply reads it.
 - Simulation staging is an in-memory clone. It is not an operator-owned neutralized database.
+- `verify` is not called by the executor. The checks run only when a caller invokes them.
 - `docker/*` and `apps/api/tests/test_wave16_gen2.py` still use `ServerProxy` outside the XML-RPC product scan.
 - Recaptured token screenshots in `docs/vision-verify/tokens-light.png` and `tokens-dark.png` are unstaged. The CSS text did not change.
 
@@ -1302,6 +1303,11 @@ Not done: T8-EXEC. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, a
 Track: T8 T8-EXEC. Worker [Add a durable executor journal](6645bf27-b6c6-45e4-a6c2-ba6fef57c1fd). No push. L4 stays off.
 Intent: The migration declares the journal, before-image, and per-database lock tables. It was not applied. Recovery of a stale APPLYING run that has INTENT and no RESULT compensates and is not verified. An unknown outcome is not retried and becomes NEEDS_HUMAN. Re-ran WAL and import-boundary tests: 15 passed. The version-branch count stayed 22. The journal rows are still in memory. GATE-P3-03 stays open.
 Not done: T8-VERIFY. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, GATE-P3-03, and GATE-P3-06 stay open. L4 stays off.
+
+## 2026-10-03 — T8-VERIFY checks
+Track: T8 T8-VERIFY. Worker [Prove verification checks](ca31c2b8-57c3-41f7-9964-69d8945629e4). No push. L4 stays off.
+Intent: Nine fake checks. A failure rolls back at R2 and above. Below that the outcome is NEEDS_HUMAN and links to `docs/runbooks/4-failed-rollback.md`. A model success flag cannot turn a failure into verified. Re-ran verify and import-boundary tests: 29 passed. The version-branch count stayed 22. No live view was rendered. The executor does not call `verify` yet.
+Not done: T8-ROLLBACK. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, GATE-P3-03, and GATE-P3-06 stay open. L4 stays off.
 
 ## 2026-10-03 — Harness queued
 Cards H1–H8 in docs/plans/next-phase/cards/HARNESS.md. PR eval stays cassette/property. No product code.
