@@ -1125,6 +1125,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - The skill router is not built. ADR-10 records the package rules. No skill card has shipped the router.
 - Audit retention is not wired. ADR-11 locks the chain shape. Append and verify already exist. 24 months, 7 years for accounting kinds, and 7 days for raw LLM payloads are still open.
 - The KMS vendor is unchosen. ADR-12 keeps secrets on the existing `fernet_key`. No cloud KMS client.
+- The eval harness is not built. ADR-13 records the A/B/C bars. GATE-P4-04 and GATE-P6 are still open.
 - `docker/*` and `apps/api/tests/test_wave16_gen2.py` still use `ServerProxy` outside the XML-RPC product scan.
 - Recaptured token screenshots in `docs/vision-verify/tokens-light.png` and `tokens-dark.png` are unstaged. The CSS text did not change.
 
@@ -1153,3 +1154,8 @@ Not done: ADR-12. L4 stays off.
 Track: T8 ADR-12. Worker [Record the secrets ADR](594a9770-91f0-41f7-9dc8-9ee5e894e33f). No push. L4 stays off.
 Intent: Fernet with the existing `fernet_key`. BYO provider keys stay under that envelope. Display the last 4 characters only. Prefer API keys over passwords. No secrets in prompts. The sandbox API-key helper is never an agent tool. The KMS vendor stays unchosen.
 Not done: ADR-13. L4 stays off.
+
+## 2026-10-03 — ADR-13 eval tiers
+Track: T8 ADR-13. Worker [Record the eval-tier ADR](09e789ba-39eb-4724-9d79-f1040453c4bb). No push. L4 stays off.
+Intent: A/B/C is model trust. Below A, submitted risk caps at R2. Tier C cannot submit a change-set. Emulated adapters stay at Tier B until an eval lifts that cap. Tier A is at least 80% on 60 scenarios. The suite is at least 150 scenarios, with at least one Tier A model. Local models stay honestly B or C. The harness is not built.
+Not done: ADR-14. L4 stays off.
