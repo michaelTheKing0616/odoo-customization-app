@@ -826,3 +826,11 @@ Counts (second run, apps already installed):
 - manufacture **2/2** (mfg.order mo=2 bom=2, mfg.produce done)
 Command: `uv run --directory apps/api python scripts/run_odoo20_flow_checks.py` → exit 0. First-run bill post needed `invoice_date` on 20; script writes today's date then posts. Cleanup cancels/unlinks drafts; posted/done rows stay prefixed. Sandbox XML-RPC default unchanged.
 Not done: L4 off. No aonb.odoo.com. No commit.
+
+CLAIM O20-12 2026-10-03T11:45:00Z files: designer list arch is list on Odoo 20. Do not enable L4. Do not call aonb.odoo.com.
+
+Track: O20. Card: O20-12. Worker only. No commit. No push. No Odoo host. L4 stays off.
+Intent: Designer form/list writers on major 20 emit `<form>` and `<list>`; list root is never `<tree>`. Major 16 listing views stay `<tree>`.
+Change: `render_list_arch` uses `views_v20.list_arch_root` (18+ `list`, ≤17 `tree`). Designer preview/save already go through `render_arch` + connection major.
+Tests: `.venv/bin/python -m pytest -q -p no:cacheprovider packages/odoo-client/tests/test_view_arch.py packages/odoo-client/tests/test_view_parse.py packages/odoo-client/tests/test_view_arch_reporting.py` — **56 passed** (2 new: `test_render_list_arch_major20_root_is_list_never_tree`, `test_render_list_arch_major16_root_stays_tree`).
+Not done: L4 off. No aonb.odoo.com. No Playwright 20 fixture (unit test sees the arch). No designer restyle.

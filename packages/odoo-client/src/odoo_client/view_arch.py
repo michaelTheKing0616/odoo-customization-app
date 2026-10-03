@@ -428,9 +428,24 @@ def render_form_arch(spec: FormViewSpec, *, major: int = 19) -> str:
     return _pretty_xml(root)
 
 
+def _list_arch_root_for_major(major: int, view_type: str = "list") -> str:
+    """XML root for designer/list writers: ``tree`` on ≤17, ``list`` on 18+ (incl. 20)."""
+    if major <= 16:
+        from odoo_client.compat.adapters import views_v16 as views
+    elif major == 17:
+        from odoo_client.compat.adapters import views_v17 as views
+    elif major == 18:
+        from odoo_client.compat.adapters import views_v18 as views
+    elif major >= 20:
+        from odoo_client.compat.adapters import views_v20 as views
+    else:
+        from odoo_client.compat.adapters import views_v19 as views
+    return views.list_arch_root(view_type)
+
+
 def render_list_arch(spec: ListViewSpec, *, major: int = 19) -> str:
-    # Odoo 19 prefers <list>; older used <tree>. Emit <list>.
-    root = Element("list")
+    # Odoo 18+ (incl. 20) stores listing views as <list>; ≤17 still uses <tree>.
+    root = Element(_list_arch_root_for_major(major))
     root.set("string", spec.string)
     _set_bool_attr(root, "create", spec.create)
     _set_bool_attr(root, "edit", spec.edit)

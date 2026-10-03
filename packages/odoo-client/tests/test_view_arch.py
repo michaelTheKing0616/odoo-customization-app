@@ -10,6 +10,7 @@ from odoo_client.view_arch import (
     SearchViewSpec,
     field_names_in_arch,
     inject_field_into_arch,
+    render_arch,
     render_form_arch,
     render_inherit_field_arch,
     render_list_arch,
@@ -301,6 +302,44 @@ def test_render_list_columns() -> None:
     assert arch.startswith("<list")
     assert 'name="x_name"' in arch
     assert 'name="x_priority"' in arch
+
+
+def test_render_list_arch_major20_root_is_list_never_tree() -> None:
+    """Designer list writer on Odoo 20 emits <list>, never a <tree> root."""
+    spec = ListViewSpec(string="Tickets", columns=[FieldNode(name="x_name")])
+    arch = render_list_arch(spec, major=20)
+    assert arch.startswith("<list")
+    assert "</list>" in arch
+    assert "<tree" not in arch
+    assert "</tree>" not in arch
+
+    form = render_form_arch(
+        FormViewSpec(
+            string="Ticket",
+            children=[GroupNode(children=[FieldNode(name="x_name")])],
+        ),
+        major=20,
+    )
+    assert form.startswith("<form")
+
+    via_router = render_arch(
+        "list",
+        {"string": "Tickets", "columns": [{"name": "x_name"}], "major": 20},
+    )
+    assert via_router.startswith("<list")
+    assert "<tree" not in via_router
+
+
+def test_render_list_arch_major16_root_stays_tree() -> None:
+    """Odoo 16 listing views stay <tree>; this card must not flip them to <list>."""
+    arch = render_list_arch(
+        ListViewSpec(string="Tickets", columns=[FieldNode(name="x_name")]),
+        major=16,
+    )
+    assert arch.startswith("<tree")
+    assert "</tree>" in arch
+    assert "<list" not in arch
+    assert "</list>" not in arch
 
 
 def test_inject_and_parse_fields() -> None:
