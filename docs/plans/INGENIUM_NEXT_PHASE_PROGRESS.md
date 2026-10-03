@@ -318,5 +318,17 @@ Negative tests: `test_uncued_not_allowlisted_not_schema_verified_rejected` (gene
 Not done: T1-B2 named Rate Line case (already in spine; card still SEEDED).
 Model / band: cursor-grok-4.6-high-fast worker (ce418616-0f22-45ad-8cfe-347633ad0500); composer-2.5-fast tester (c91a45ee-8b3c-4fc3-b165-03c911c27584). Pressure 10. Tester re-run: 38 passed in 2.24s. TTL still 15 * 60.
 
+## 2026-10-03 — T1-B2 and T1-B3
+Track: T1
+Intent: Re-measure the seeded Rate Line, uncued partner, and sibling golden tests. Do not rebuild them.
+Model / band: no worker. Deterministic re-measure.
+Files: none.
+Commands and results: VERIFIED. `test_named_rate_line_invent_rejected_without_o2m_cue`, `test_schema_verified_reuse_rejects_without_cue`, `test_service_cards_sibling_closed` — 3 passed in 0.67s. Service-cards and Maintenance live in `tests/test_generate_ir_closed_class.py`. `rg` on `ai_generate_ir.py` hits two comments (depend-module cue note; Rate-Line class note), not a branch on those names.
+Gates passed: T1-B2 both negatives; T1-B3 shared module and no brief-name branch.
+Negative tests: the three tests above.
+Not done: T1-C1 default-off craft is not proven by a named test.
+Risks introduced: none.
+
+
 
 
