@@ -1090,3 +1090,42 @@ Not done: ADR-08. ADR-02 stays open until Tope accepts D8. L4 off.
 Track: T8 ADR-08. Worker [Record the approval-flow ADR](d2b51a8d-e316-4176-9d48-eadeaaeba49d). No push. L4 stays off.
 Intent: Follow `02_APPROVAL_FLOW.md`. Production R3 needs two approvers who are not the requester, plus the domain owner when the target is elevated, plus simulation, backup, and an allowed window. Chat may only link to the approval page. Production expiry is 24 hours for R at or above 2. Staging expiry is 7 days. L4 stays off.
 Not done: ADR-09. ADR-02 stays open until Tope accepts D8. L4 off.
+
+## Open residuals — close these before the phase ends
+
+Older "Not done" lines that only name the next card are closed when that card has its own later entry. This section is the list that still has to be finished. A line is removed only when that leftover is done.
+
+### Waiting on you
+- ADR-02 / D8: in-house gateway versus LiteLLM. T4-LLM3 does not go past this.
+- L4 thresholds. L4 stays off.
+- ADR-07 / OQ-STAGING: who provides neutralized clones. Production R3 stays blocked. Above R1 is review-only.
+- ADR-05: union tools versus family tools. GATE-P6-04 has not been run.
+- BL-08 commit hygiene. Needs an explicit yes.
+- Push. Needs an explicit yes.
+- Mac §9 operator paste.
+
+### Product leftovers
+- T2-J1 `/doc` text match is not verified. Do not say JSON-2 is complete. Sandbox default stays XML-RPC. Promote stays human.
+- `safety_gate.preflight` does not pass `odoo_major`. `snapshot_gate.py` uses `== 20`. `database_backup.py` uses `>= 20`. Snapshot freshness (`created_at`, last write, BILLABLE) is not wired on that caller.
+- An unset module major still emits `security/record_rules.xml` as `ir.rule` (`packages/module-generator`).
+- Live Odoo 20 version-table probes stay skipped until `ODOO20_URL` is set.
+- UI-F03 was not re-checked against every route in screen spec 13 marked "can be empty".
+- `ConfirmDialogV2` is still its own overlay, not `DialogPanel`.
+- `cmdk` still depends on `@radix-ui/react-dialog`. No source file imports it.
+- The expert panel and billing still use `Sheet`, not the motion sheet.
+- Axe was not run for `/bots`, `/bots/rooms/[id]`, `/bots/[id]`, `/studio/dashboards`, `/bridge/connections`, or `/onboarding`. `/connections` only redirects.
+- Durable WAL is still T8-EXEC. The journal is in-process.
+- T8-MEM is still open. ADR-09 records the four memory classes. The code does not exist yet. `memory_propose` is not implemented.
+- `docker/*` and `apps/api/tests/test_wave16_gen2.py` still use `ServerProxy` outside the XML-RPC product scan.
+- Recaptured token screenshots in `docs/vision-verify/tokens-light.png` and `tokens-dark.png` are unstaged. The CSS text did not change.
+
+### Checked in a test, not in the browser
+- Tooltip hover.
+- An `asChild` link after a connection is saved.
+- A toast on a live page.
+- A table with 51 rows.
+
+## 2026-10-03 — ADR-09 memory model
+Track: T8 ADR-09. Worker [Record the memory-model ADR](4167b26b-b1e4-4455-a875-2e1ca15eae95). No push. L4 stays off.
+Intent: Four classes. Working memory is engine-trusted. Tenant or database memory is human-confirmed. Global knowledge is a pull request plus eval. Episodic memory is never auto-injected. `memory_propose` stays pending until a human confirms. Memory is at most 5% of the window. RT-47 is refused. T8-MEM is still the implementation card.
+Not done: ADR-10. ADR-02 stays open until Tope accepts D8. L4 off.
