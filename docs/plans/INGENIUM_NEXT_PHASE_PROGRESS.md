@@ -1327,5 +1327,10 @@ Track: T8 T8-CARD. Worker [Add plan card golden files](4a40cde0-b79f-4031-9704-5
 Intent: One snapshot for schema, UI, logic, security, settings, and data. Changing an assumption changes the hash. Production cards still expire at 24 hours for every risk. Re-ran golden and import-boundary tests: 24 passed. The version-branch count stayed 22. GATE-P3-10 stays open because the other catalog ops have no snapshot.
 Not done: T8-CLI. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, GATE-P3-03, GATE-P3-06, and GATE-P3-10 stay open. L4 stays off.
 
+## 2026-10-03 — T8-CLI change-set commands
+Track: T8 T8-CLI. Worker [Add an LLM-free change-set CLI](54b146a0-5db4-47e9-8a88-2dd4a4a7bd66). No push. L4 stays off.
+Intent: plan, validate, simulate, apply, and rollback run a two-op file on an in-memory port. Apply returns verified. Rollback leaves the port empty. The module does not import an LLM package and does not open a socket. Re-ran CLI and import-boundary tests: 13 passed. The version-branch count stayed 22.
+Not done: T8-P3-COV. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, GATE-P3-03, GATE-P3-06, and GATE-P3-10 stay open. L4 stays off.
+
 ## 2026-10-03 — Harness queued
 Cards H1–H8 in docs/plans/next-phase/cards/HARNESS.md. PR eval stays cassette/property. No product code.
