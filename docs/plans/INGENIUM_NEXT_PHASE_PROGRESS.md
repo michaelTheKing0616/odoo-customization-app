@@ -1080,3 +1080,8 @@ Not done: ADR-06. ADR-02 stays open until Tope accepts D8. L4 off.
 Track: T8 ADR-06. Worker [Record executor Mode T and Mode C](3c014fe0-ccd8-4496-a0ba-beda76e8bc43). No push. L4 stays off.
 Intent: Both modes exist. Mode T is one transaction, dry-run for non-DDL, native rollback then inverse, default 50 ops. Mode C is per-op, no dry-run, compensate in reverse, only reversible E or S and idempotent, default 15 ops, risk +1.
 Not done: ADR-07. ADR-02 stays open until Tope accepts D8. L4 off.
+
+## 2026-10-03 — ADR-07 staging clones
+Track: T8 ADR-07. Worker [Record the open staging ADR](a6b4170f-081c-424d-a875-e95e06902b20). No push. L4 stays off.
+Intent: Leave the clone provider unchosen. Production R3 stays blocked. Above R1 the path is review-only until staging exists.
+Not done: ADR-08. ADR-02 stays open until Tope accepts D8. L4 off.
