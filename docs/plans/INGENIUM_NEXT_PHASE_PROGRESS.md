@@ -1260,3 +1260,8 @@ Not done: T8-OP-SET. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P2
 Track: T8 T8-OP-SET. Worker [Prove settings and module risk rules](93004747-6c26-4262-b069-f08e5a8b0df1). No push. L4 stays off.
 Intent: Module install and upgrade stay R3 and may be billable on paid editions. Uninstall stays R4 and is refused before any port call. Protected keys, lock dates, fiscal year, currency, and the chart of accounts are R4. Install warns that reversal is uninstall. Re-ran settings and import-boundary tests: 18 passed. The version-branch count stayed 22. No live module was installed.
 Not done: T8-OP-DATA. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P2-09 stay open. L4 stays off.
+
+## 2026-10-03 — T8-OP-DATA risk rules
+Track: T8 T8-OP-DATA. Worker [Prove data operation risk rules](228dae57-1c5f-4236-b6d6-01527c49ac34). No push. L4 stays off.
+Intent: A sample is at most 20 rows. The cap is 1000. Batches are 200. Merge stays R3 and is not reversible. Delete stays R4, needs two approvers who are not the requester plus an allow-list, and defaults to deny. `stock.quant` is refused. Re-ran data and import-boundary tests: 14 passed. The version-branch count stayed 22. No live write.
+Not done: T8-PROT. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P2-09 stay open. L4 stays off.

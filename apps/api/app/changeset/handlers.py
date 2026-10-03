@@ -5,6 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from app.changeset.data_ops import (
+    STOCK_QUANT_REFUSED,
+    data_limit_issues,
+    targets_stock_quant,
+)
 from app.changeset.logic_ops import safe_eval_issues_in_params
 from app.changeset.security_ops import (
     GROUP_MUST_NOT_IMPLY_ADMIN,
@@ -138,6 +143,22 @@ def _sequence_issues(params: dict[str, Any]) -> Issues:
     return []
 
 
+def _with_data_limits(fn: IssueFn) -> IssueFn:
+    """Keep an existing issue function and append the data row limits.
+
+    Inputs: the issue function that already passes.
+    Outputs: a function that returns those issues, then any sample, cap, or
+    batch issue that is not already present.
+    Side effects: none.
+    """
+
+    def issues(params: dict[str, Any]) -> Issues:
+        base = fn(params)
+        return base + [item for item in data_limit_issues(params) if item not in base]
+
+    return issues
+
+
 _ALWAYS_REFUSE = frozenset({"module.uninstall", "data.delete", "rpc.write"})
 
 _INVERSE: dict[str, str] = {
@@ -180,11 +201,16 @@ _ISSUE_FNS: dict[str, IssueFn] = {
     "sequence.update": _sequence_issues,
     "module.install": lambda p: _need(p, "module"),
     "module.upgrade": lambda p: _need(p, "module"),
-    "data.update_batch": lambda p: _need(p, "model", "domain", "values") + (
-        ["unbounded domain is forbidden"] if p.get("domain") == [] else []
+    "data.create_batch": data_limit_issues,
+    "data.update_batch": _with_data_limits(
+        lambda p: _need(p, "model", "domain", "values")
+        + (["unbounded domain is forbidden"] if p.get("domain") == [] else [])
     ),
     "data.unlink": lambda p: _need(p, "model", "ids"),
-    "data.import_upsert": lambda p: _need(p, "model"),
+    "data.archive_batch": data_limit_issues,
+    "data.import_upsert": _with_data_limits(lambda p: _need(p, "model")),
+    "data.merge": data_limit_issues,
+    "translation.upsert": data_limit_issues,
     "rule.create": lambda p: _need(p, "model", "domain_force") + (
         ["group-less global rule needs an explicit global flag"] if not p.get("groups") and not p.get("global") else []
     ),
@@ -241,6 +267,8 @@ class OpHandler:
             replaced = root_or_large_replace_reason(body)
             if replaced:
                 return replaced
+        if self.op_type == "translation.upsert" and targets_stock_quant(body):
+            return STOCK_QUANT_REFUSED
         op = {"type": self.op_type, "params": body}
         if protected_denial(op, tenant=tenant, document=document if document is not None else [op]):
             return "protected_deny"

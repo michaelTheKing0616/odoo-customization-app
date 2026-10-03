@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from app.changeset.data_ops import LIMITED_DATA_OPS, data_limit_issues, delete_port_reason
 from app.changeset.handlers import handler_for
 from app.changeset.protected_registry import resolve_op
 
@@ -118,6 +119,10 @@ def dispatch_op(
     op_type = str(op.get("type") or "")
     doc = document if document is not None else [op]
     raw = op.get("params") if isinstance(op.get("params"), dict) else {}
+    if op_type == "data.delete":
+        blocked = delete_port_reason(op)
+        if blocked:
+            raise DispatchError(blocked)
     if op_type in _REFUSED:
         raise DispatchError(f"{op_type} is refused")
     try:
@@ -126,6 +131,10 @@ def dispatch_op(
         reason = f"no handler for {op_type}"
     if reason:
         raise DispatchError(reason)
+    if op_type in LIMITED_DATA_OPS:
+        limit_issues = data_limit_issues(raw)
+        if limit_issues:
+            raise DispatchError("; ".join(limit_issues))
     resolved = resolve_op(op, doc)
     params = resolved.get("params") if isinstance(resolved.get("params"), dict) else {}
     if op_type == "field.create":
