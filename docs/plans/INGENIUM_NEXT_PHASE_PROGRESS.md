@@ -834,3 +834,11 @@ Intent: Designer form/list writers on major 20 emit `<form>` and `<list>`; list 
 Change: `render_list_arch` uses `views_v20.list_arch_root` (18+ `list`, ≤17 `tree`). Designer preview/save already go through `render_arch` + connection major.
 Tests: `.venv/bin/python -m pytest -q -p no:cacheprovider packages/odoo-client/tests/test_view_arch.py packages/odoo-client/tests/test_view_parse.py packages/odoo-client/tests/test_view_arch_reporting.py` — **56 passed** (2 new: `test_render_list_arch_major20_root_is_list_never_tree`, `test_render_list_arch_major16_root_stays_tree`).
 Not done: L4 off. No aonb.odoo.com. No Playwright 20 fixture (unit test sees the arch). No designer restyle.
+
+CLAIM O20-13 2026-10-03T11:50:00Z files: docs/runbooks/odoo20-production-checklist.md. Do not enable L4. Do not call aonb.odoo.com.
+
+Operator checklist only — not a completed production run on a customer database.
+
+Track: O20. Card: O20-13. Worker only. No commit. No push. No Odoo host. L4 stays off.
+Intent: `docs/runbooks/odoo20-production-checklist.md` — bot user + expiring RPC API key, `ODOO_PROTOCOL=auto` / JSON-2 vs explicit `rpc_protocol=xmlrpc`, version-table verify rows (V06, V24, V26, V28–V30), 20 deltas (`company_type`, registry, pricelist discount, `ir.access`), duplicate-DB flow tests vs local 7/7·6/6·2/2 sandbox, invoice print check, Community no native MCP, operator-owned DB dumps + 10‑min metadata snapshot, sandbox-before-promote.
+Not done: L4 off. No aonb.odoo.com. Checklist does not assert JSON-2 `/doc` text match verified. No customer DB execution.
