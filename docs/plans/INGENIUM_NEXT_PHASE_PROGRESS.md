@@ -1144,6 +1144,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - Simulation staging is an in-memory clone. It is not an operator-owned neutralized database.
 - `verify` is not called by the executor. The checks run only when a caller invokes them.
 - Undo through validate, policy, and approval is not called by the executor.
+- Engine suite 2 was not run for every catalog op. One `field.create` round-trip matched a MetaSnapshot.
 - `docker/*` and `apps/api/tests/test_wave16_gen2.py` still use `ServerProxy` outside the XML-RPC product scan.
 - Recaptured token screenshots in `docs/vision-verify/tokens-light.png` and `tokens-dark.png` are unstaged. The CSS text did not change.
 
@@ -1314,6 +1315,11 @@ Not done: T8-ROLLBACK. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-0
 Track: T8 T8-ROLLBACK. Worker [Prove undo as a change-set](f7543fc4-55e4-42d9-84ae-860038fef6a1). No push. L4 stays off.
 Intent: Undo runs through validate, policy, and approval. A MetaSnapshot mismatch is NEEDS_HUMAN. When a new field still has rows, undo hides the field and reports the remaining count. Deleting those rows is a separate higher-risk approval. Re-ran rollback and import-boundary tests: 22 passed. The version-branch count stayed 22. No live undo. The executor does not call undo yet.
 Not done: T8-META. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, GATE-P3-03, and GATE-P3-06 stay open. L4 stays off.
+
+## 2026-10-03 — T8-META snapshot
+Track: T8 T8-META. Worker [Add an order-independent snapshot](827aebfa-c7fb-435d-8996-d238b942d7f9). No push. L4 stays off.
+Intent: MetaSnapshot is an in-memory export. `metadata_snapshots` stays the per-resource restore table because that shape is different. Equality ignores key order and list order. Allowlisted config keys stay. Secret-shaped keys are dropped. Ingenium xmlids stay. Re-ran snapshot and import-boundary tests: 18 passed. The version-branch count stayed 22. Full engine suite 2 was not run.
+Not done: T8-CARD. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, GATE-P3-03, and GATE-P3-06 stay open. L4 stays off.
 
 ## 2026-10-03 — Harness queued
 Cards H1–H8 in docs/plans/next-phase/cards/HARNESS.md. PR eval stays cassette/property. No product code.
