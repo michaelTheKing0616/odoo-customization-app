@@ -1,0 +1,160 @@
+"""Phase 1 remainder: stream, emulation, fallback, SSRF, scrub, registry, conformance."""
+
+from __future__ import annotations
+
+import pytest
+
+from app.llm_gateway.conformance import run_conformance
+from app.llm_gateway.emulated import EmulatedRejected, parse_emulated_json
+from app.llm_gateway.fallback import Endpoint, call_with_fallback
+from app.llm_gateway.gateway import Gateway
+from app.llm_gateway.registry import load_registry
+from app.llm_gateway.scrub import scrub
+from app.llm_gateway.scripted import ScriptedAdapter
+from app.llm_gateway.ssrf import SsrfRejected, guard_base_url
+from app.llm_gateway.stream import assemble, events_from_step
+from app.llm_gateway.types import LLMError
+
+
+def test_stream_matches_complete_and_incomplete_json_is_not_executed() -> None:
+    step = {"text": "hi", "tool_calls": [{"id": "s1", "name": "describe_model", "raw_args": '{"model":"sale.order"}'}]}
+    assembled = assemble(events_from_step(step))
+    direct = Gateway(ScriptedAdapter([step]), sleep=lambda _ms: None).complete(
+        {},
+        {
+            "describe_model": {
+                "type": "object",
+                "properties": {"model": {"type": "string"}},
+                "required": ["model"],
+                "additionalProperties": False,
+            }
+        },
+    )
+    assert assembled.text == direct.text
+    assert assembled.tool_calls[0].args == direct.tool_calls[0].args
+    partial = assemble(
+        [
+            {"kind": "tool_call_start", "id": "x", "name": "describe_model"},
+            {"kind": "tool_call_args_delta", "id": "x", "fragment": '{"model":'},
+            {"kind": "stop", "reason": "end"},
+        ]
+    )
+    assert partial.stop_reason == "malformed_tool_call"
+    assert partial.tool_calls[0].args is None
+
+
+def test_emulated_json_rejects_partial_and_ambiguous_actions() -> None:
+    parsed = parse_emulated_json('{"action": {"tool": "describe_model", "args": {"model": "sale.order"}}}')
+    assert parsed["tool"] == "describe_model"
+    with pytest.raises(EmulatedRejected):
+        parse_emulated_json('{"action": {"tool": "describe_model"}}')
+    with pytest.raises(EmulatedRejected):
+        parse_emulated_json('{"action": {"tool": "describe_model", "args": {}, "final": "no"}}')
+
+
+def test_fallback_degrades_when_the_next_tier_is_too_low() -> None:
+    primary = Gateway(ScriptedAdapter([{"error": "server"}] * 4), sleep=lambda _ms: None)
+    weak = Gateway(
+        ScriptedAdapter([{"tool_calls": [{"id": "w", "name": "describe_model", "raw_args": '{"model":"sale.order"}'}]}]),
+        sleep=lambda _ms: None,
+    )
+    response, trace = call_with_fallback(
+        [Endpoint("primary", primary, "A"), Endpoint("weak", weak, "C")],
+        {},
+        required_tier="A",
+    )
+    assert response.text == "degraded to read-only"
+    assert response.tool_calls == ()
+    assert trace == ["primary", "weak"]
+    strong = Gateway(ScriptedAdapter([{"text": "planned"}]), sleep=lambda _ms: None)
+    recovered, trace = call_with_fallback(
+        [
+            Endpoint("primary", Gateway(ScriptedAdapter([{"error": "server"}] * 4), sleep=lambda _ms: None), "A"),
+            Endpoint("strong", strong, "A"),
+        ],
+        {},
+        required_tier="A",
+    )
+    assert recovered.text == "planned"
+    assert trace[-1] == "strong"
+
+
+def test_cancel_does_not_call_the_adapter_and_auth_does_not_fall_through() -> None:
+    adapter = ScriptedAdapter([{"text": "should-not-run"}])
+    paused = Gateway(adapter, sleep=lambda _ms: None).complete({"cancelled": True})
+    assert paused.stop_reason == "pause"
+    assert adapter.calls == 0
+    primary = Gateway(ScriptedAdapter([{"error": "auth"}, {"text": "no"}]), sleep=lambda _ms: None)
+    secondary = Gateway(ScriptedAdapter([{"text": "fallback"}]), sleep=lambda _ms: None)
+    with pytest.raises(LLMError) as caught:
+        call_with_fallback(
+            [Endpoint("primary", primary, "A"), Endpoint("secondary", secondary, "A")],
+            {},
+            required_tier="A",
+        )
+    assert caught.value.kind == "auth"
+    assert secondary.calls == 0
+
+
+def test_ssrf_blocks_https_link_local_public_http_and_cgnat() -> None:
+    with pytest.raises(SsrfRejected):
+        guard_base_url("https://169.254.169.254/latest", resolve=lambda _host: ["169.254.169.254"])
+    with pytest.raises(SsrfRejected):
+        guard_base_url("http://api.example.com/v1", resolve=lambda _host: ["93.184.216.34"])
+    with pytest.raises(SsrfRejected):
+        guard_base_url(
+            "https://metadata.google.internal/",
+            resolve=lambda _host: ["169.254.169.254"],
+            allow_private_hosts=frozenset({"metadata.google.internal"}),
+        )
+    with pytest.raises(SsrfRejected):
+        guard_base_url("https://meta.aliyun/latest", resolve=lambda _host: ["100.100.100.200"])
+    with pytest.raises(SsrfRejected):
+        guard_base_url("http://169.254.169.254/latest", resolve=lambda _host: ["169.254.169.254"])
+    with pytest.raises(SsrfRejected):
+        guard_base_url("https://metadata.google.internal/path", resolve=lambda _host: ["169.254.169.254"])
+    with pytest.raises(SsrfRejected):
+        guard_base_url("https://model.internal/v1", resolve=lambda _host: ["10.0.0.8"])
+    assert guard_base_url("https://api.example.com/v1", resolve=lambda _host: ["93.184.216.34"]) == "api.example.com"
+    assert (
+        guard_base_url(
+            "http://llm.internal/v1",
+            resolve=lambda _host: ["10.1.1.5"],
+            allow_private_hosts=frozenset({"llm.internal"}),
+        )
+        == "llm.internal"
+    )
+
+
+def test_scrub_removes_exact_secrets_and_key_shapes() -> None:
+    cleaned = scrub("key sk-abcdef123456 and Bearer abcdefghij and db-secret", ["db-secret"])
+    assert "sk-abcdef123456" not in cleaned
+    assert "abcdefghij" not in cleaned
+    assert "db-secret" not in cleaned
+    assert cleaned.count("[redacted]") == 3
+
+
+def test_registry_rejects_an_invented_tier_and_a_missing_id() -> None:
+    rows = load_registry([{"provider": "local", "model_id": "configured-at-runtime", "tier": None}])
+    assert rows[("local", "configured-at-runtime")].tier is None
+    with pytest.raises(ValueError):
+        load_registry([{"provider": "local", "model_id": "x", "tier": "S"}])
+    with pytest.raises(ValueError):
+        load_registry([{"provider": "local"}])
+
+
+def test_conformance_suite_passes_every_gate_case() -> None:
+    report = run_conformance()
+    gates = [f"C{index:02d}" for index in range(1, 21) if index not in {11, 18, 19}]
+    assert [report[case] for case in gates] == ["pass"] * len(gates)
+    assert report["C11"] == "scored"
+    assert report["C18"] == "scored"
+    assert report["C19"] == "informational"
+
+
+def test_vision_request_is_refused_when_the_model_cannot_see() -> None:
+    adapter = ScriptedAdapter([{"text": "saw it"}])
+    with pytest.raises(LLMError) as caught:
+        Gateway(adapter, sleep=lambda _ms: None).complete({"images": ["abc"], "vision": False})
+    assert caught.value.kind == "unsupported_feature"
+    assert adapter.calls == 0
