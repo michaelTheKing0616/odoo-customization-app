@@ -144,6 +144,48 @@ Negative tests: no `@ts-ignore`, `@ts-expect-error`, or `: any` in the changed f
 Not done: this slice is uncommitted. Kit, axe, and screenshots are not in this card's acceptance boxes.
 Risks introduced: `studio-session.ts` no longer reads `understanding.grain`. `StudioBusyLabel` now renders the text `Repairing…`.
 
+CLAIM T1-PF 2026-10-03T07:03:19Z files: docs/plans/INGENIUM_NEXT_PHASE_PROGRESS.md only.
+
+## 2026-10-03 — T1-PF (PF-1 through PF-6 re-verify)
+Track: T1
+Intent: Pre-flight answers with path or command evidence only. Progress log append; no product edits.
+Model / band: composer-2.5-fast worker (T1-PF card). Pressure 5. No commit.
+
+### PF-1 — `GenerateIR` / `build_ir` landed?
+**Yes.** Command: `rg -n "def build_ir|class GenerateIR" apps/api/app/ai_generate_ir.py` → `33:class GenerateIR:` and `148:def build_ir(`.
+
+### PF-2 — PR-A→F work landed (SEEDED cards only)?
+**Partial — multiple SEEDED cards in** `docs/plans/next-phase/cards/T1_SCHEMA_GROUNDING.md` **with tests/code already present (not rebuilt this run):**
+| Card | SEEDED evidence |
+|------|-----------------|
+| T1-F0 | `apps/api/tests/test_pr_f0_entrypoint.py` (`test_studio_generate_offline_finish_calls_seed_and_locked_craft`, `test_studio_generate_offline_finish_docstring_golden_entrypoint`) |
+| T1-A1 | `apps/api/tests/test_ai_schema_client.py` (`test_model_exists_known_and_unknown`, `test_relation_ok_positive_and_negative`) |
+| T1-A2 | same file: `test_factory_ttl_denies_stale_catalog`, `test_factory_missing_loaded_at_denies`; TTL `SCHEMA_CATALOG_TTL_S` in `apps/api/app/ai_schema_client.py` |
+| T1-A3 | `test_field_is_writable_rejects_readonly_related` in `tests/test_ai_schema_client.py` |
+| T1-B1 | `merge_proposals` in `apps/api/app/ai_generate_ir.py` + `ai_generate_ir_enforce.py`; `tests/test_generate_ir_closed_class.py` |
+| T1-B2 | `tests/test_generate_ir_closed_class.py`: `test_maintenance_closed_ir_no_uncued_spray`, `test_maintenance_o2ms_subseteq_generate_ir` |
+| T1-B3 | `test_service_cards_sibling_closed` (same closed-class module) |
+| T1-C1 | `approved_craft` in `apps/api/app/ai_generate_ir.py`, `ai_enrich.py`, `ai_depth.py` (default-off test not named — card still SEEDED) |
+| T1-D1 | `MAX_REPAIR` in `apps/api/app/ai_repair_loop.py`; `tests/test_option_a_prove_bar.py` (`test_three_install_fails_stamps_failed`, `test_fail_repair_then_ok_with_tests_stamps_proved`) |
+| T1-D2 | `tests/test_option_a_prove_bar.py`: `test_smoke_only_success_leaves_prove_pending`, `test_run_tests_true_stamps_proved`, `test_sandbox_verify_and_repair_defaults_run_tests_true` |
+| T1-E2 | Closed via T1-D2 (card says cite code path — same prove tests) |
+| T1-F1 | `test_maintenance_closed_ir_no_uncued_spray` in `tests/test_generate_ir_closed_class.py` |
+| T1-F2 | `test_service_cards_sibling_closed` in same file |
+**Not SEEDED / still OPEN:** T1-INST, T1-C2, T1-D3, T1-E1, T1-F3 PARTIAL, T1-RET, etc. (per card file).
+
+### PF-3 — `AI_IR_TRACE` on Maintenance; scrub-key hypothesis
+**Script (card command) failed:** `AI_IR_TRACE=1 bash apps/api/scripts/dump_maintenance_ir_trace.sh` → exit 1: `apps/api/scripts/dump_maintenance_ir_trace.sh: line 5: cd: …/apps/apps/api: No such file or directory` (script `ROOT` resolves to `apps/`, not repo root).
+**Equivalent trace produced manually from repo:** `cd apps/api && AI_IR_TRACE=1 AI_INTENT_LLM=off DATABASE_URL=sqlite+pysqlite:///:memory: AI_IR_TRACE_DIR=$REPO/.cache/ai_ir_trace ../../.venv/bin/python` (inline body from the script). Stamp **`20261003T080355`**; dumps under `.cache/ai_ir_trace/20261003T080355_*.json` (not committed).
+**Scrub-key hypothesis (did scrub remove cued IR nodes?): refuted for GenerateIR closure scrub.** Pass `enforce_closed_generate_ir`: `"scrub_hits": []` in `.cache/ai_ir_trace/20261003T080355_enforce_closed_generate_ir.json`. Cued checklist/parts graph **appears** in pass `admit_and_apply` — quote from same stamp file `field_names`: `"x_maintenance_tickets.x_maintenance_tickets_checklist_line_ids"`, `"x_maintenance_tickets.x_maintenance_tickets_parts_line_ids"`, child models `x_maintenance_tickets_checklist_line.*`, `x_maintenance_tickets_parts_line.*`. **Separate apply-phase arch scrub did run** (stale view refs, not IR node deletion): `close_odoo_architecture:end` notes include `"apply: scrubbed 4 stale arch field ref(s) on x_maintenance_tickets"`. Closure note: `"generate_ir: purged unadmitted seed/generic models x_maintenance_tickets_line"`.
+
+### PF-4 — Live RPC schema vs static only?
+**Both paths; factory chooses.** `apps/api/app/ai_schema_client.py` → **`schema_client_for_draft`**: live RPC when `client is not None` → `LiveSchemaClient(client)`; else injected `draft["_schema_client"]`; else fresh catalog → `CatalogSchemaClient`; stale/missing catalog → `DenySchemaClient`. Static/deterministic: `FakeSchemaClient`, `CatalogSchemaClient`, `DenySchemaClient` in the same file.
+
+### PF-5 — Sandbox `-i <module> --test-enable` non-interactive, parseable failures?
+**Yes (unit-tested with fake compose).** Command: `cd apps/api && ../../.venv/bin/python -m pytest -q -p no:cacheprovider tests/test_sandbox_test_enable.py` → **6 passed in 0.88s**. Cited test: `apps/api/tests/test_sandbox_test_enable.py::test_run_module_tests_failing_module_is_parseable` — asserts `ok is False` and `FAIL: test_ingenium_smoke.test_always_false` appears in `failures` and log; happy path asserts compose argv includes `--test-enable`, `--stop-after-init`, module name.
+
+### PF-6 — PR-J1 landed (transport)?
+**Transport: yes.** `packages/odoo-client/src/odoo_client/transport/json2.py` (`Json2Transport`, `POST /json/2/<model>/<method>`); wired in `packages/odoo-client/src/odoo_client/client.py` (`_connect_json2`, `_should_use_json2`, `execute_kw` on json2). Tests: `packages/odoo-client/tests/test_json2_transport.py`. **Live `/doc` parity smoke: no** — operator card **T2-J1** (`docs/plans/next-phase/cards/T2_JSON2.md`); this worker did not open a live Odoo instance.
 
 
 
