@@ -10,6 +10,7 @@ from odoo_client.read_plane import ReadPlane
 from odoo_client.schema_fingerprint import schema_fingerprint
 
 ROW_CAP = 200
+SAMPLE_CAP = 5
 _USAGE_MODELS = (
     ("ir.ui.view", "arch_db", ("model",)),
     ("base.automation", "filter_domain", ("model_name",)),
@@ -72,6 +73,11 @@ class SchemaGraph:
             raise TypeError("search_read must return a list")
         truncated = len(rows) > ROW_CAP
         return {"rows": rows[:ROW_CAP], "truncated": truncated}
+
+    def sample_rows(self, model: str, domain: list[Any], fields: list[str]) -> list[dict[str, Any]]:
+        """Return at most SAMPLE_CAP rows. The search itself still stops at ROW_CAP."""
+        page = self.search_read(model, domain, fields)
+        return list(page["rows"][:SAMPLE_CAP])
 
     def find_usages(self, model: str, field: str) -> list[dict[str, str]]:
         hits: list[dict[str, str]] = []

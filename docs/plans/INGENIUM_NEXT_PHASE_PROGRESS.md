@@ -1217,3 +1217,8 @@ Not done: T8-OD-ENV. GATE-P0-03, GATE-P0-05, and GATE-P1-02 stay open. The trans
 Track: T8 T8-OD-ENV. Worker [Complete the environment profile](31979eb9-5eae-452e-81c5-829f345e01ea). No push. L4 stays off.
 Intent: The profile builds from an in-memory payload. Majors at or below 15 are refused. An unsupported major is read-only Q&A. An unavailable API is Guided Mode only. Re-ran `tests/test_env_profile.py` and `tests/test_read_plane.py`: 18 passed. No socket was opened.
 Not done: T8-OD-GRAPH. GATE-P0-03, GATE-P0-05, and GATE-P1-02 stay open. The transport gate is not on the live adapters. L4 stays off.
+
+## 2026-10-03 — T8-OD-GRAPH schema graph
+Track: T8 T8-OD-GRAPH. Worker [Prove the schema graph bars](87906f5a-7896-48b3-8676-4f3b3ee696c8) timed out after adding the sample cap. The labeled checks were finished in the follow-up. No push. L4 stays off.
+Intent: `messy_client` builds from 150 in-memory field names. Search stops at 200 rows. A sample returns 5. `find_usages` on the labeled set is at least 0.98 precision and 0.95 recall. Two reads of the same payload keep the same fingerprint. Re-ran `tests/test_schema_graph.py`: 6 passed. No live database was read.
+Not done: T8-OD-BRIDGE. GATE-P0-03, GATE-P0-05, and GATE-P1-02 stay open. The transport gate is not on the live adapters. L4 stays off.
