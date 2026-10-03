@@ -961,3 +961,9 @@ Track: T7 UI-F04. Worker [Move dialogs onto Base UI](0ce4a7e3-a16a-4b8b-9902-bf6
 Intent: Rewrite Dialog and Sheet internals onto `@base-ui/react` 1.8.0. Exported props unchanged. Direct `@radix-ui/react-dialog` removed. `cmdk` still pulls that package transitively.
 Tests: `pnpm exec vitest run src/components/ui/Dialog.test.tsx` — 4 passed (name, Escape, focus trap, focus returns). `e2e/confirm-dialog.spec.ts` — 4 passed against the dev server on :3010 (`next build` still fails on pre-existing eslint errors, so Playwright reused `next dev`). Kit page: dialog and sheet open, Escape closes, focus returns to the trigger.
 Not done: UI-F05 Tabs. ConfirmDialogV2 is still its own overlay, not DialogPanel. L4 off.
+
+## 2026-10-03 — UI-F05 Tabs on Base UI
+Track: T7 UI-F05. Worker [Move tabs onto Base UI](0a71bb1c-34be-453c-9543-17eb4a676c4d). No push. L4 stays off.
+Intent: Rewrite Tabs onto `@base-ui/react/tabs`. Exported `Tabs` and `TabItem` unchanged. `@radix-ui/react-tabs` removed from package.json and pnpm-lock.yaml.
+Tests: `pnpm exec vitest run src/components/ui/Tabs.test.tsx` — 4 passed (testid, aria-selected, roving tabindex, arrow keys). Kit page: click and ArrowRight select Tab B and show its panel. Arrow keys moved focus without selecting until a follow-up activated the focused tab.
+Not done: UI-F06 Tooltip. Slot and tooltip Radix packages remain. L4 off.
