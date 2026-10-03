@@ -63,3 +63,19 @@ Each bullet is tagged **`[verified]`** (supported by files in this repo at read 
 - **`[unverified]`** End-to-end tamper-evident audit chain as in the next-phase spec (including fail-closed append on apply).
 
 **Section status:** spec **`[verified]`**; implementation **`[unverified]`** (not present in product code read here).
+
+---
+
+## 6. LLM gateway provider map (GATE-P1-01)
+
+Read from `apps/api/app/llm_gateway/adapters/` on 2026-10-03. No live provider was called. Vendor HTTP behavior is **`[unverified]`**.
+
+- **`[verified]`** The adapter package exports three providers and no others: `openai` (`openai_body`, `parse_openai`), `anthropic` (`anthropic_body`, `parse_anthropic`), and `gemini` (`gemini_body`, `parse_gemini`). See `adapters/__init__.py`.
+- **`[verified]`** None of those modules open a socket. Each body builder raises `LLMError` kind `invalid_request` when the request contains `api_key`. Anthropic also rejects `authorization`.
+- **`[verified]`** OpenAI body fields from `openai_body`: `model`, `input` (the message list), `tools` entries `{type: "function", name, description, parameters, strict: True}`, `store: False`, `max_output_tokens`. `parameters` is `to_openai_strict`. `parse_openai` reads `output` items of type `message` (`output_text` or `text`) and `function_call`. `arguments` stays a string until `parse_tool_args`. A missing `call_id` uses `synthesize_call_id`. A non-object argument string becomes stop reason `malformed_tool_call` with `args is None`. `openai_error`: 429 → `rate_limit` (keeps `retry_after_ms`), 401 and 403 → `auth`, 400 → `invalid_request`, status ≥ 500 → `server`, any other status → `unknown`.
+- **`[verified]`** Anthropic body fields from `anthropic_body`: `model`, `max_tokens`, `system`, `messages`, and `tools` `{name, description, input_schema}` only when tools are present. A provided `input_schema` goes through `to_openai_strict`. `parse_anthropic` maps `stop_reason` with `map_stop_reason` and reads `content` blocks `text` and `tool_use`. A non-dict `input` is `malformed_tool_call`. Tool calls present with a mapped reason of `end` become `tool_calls`. `anthropic_error`: 429 → `rate_limit`, 529 → `overloaded`, 401 and 403 → `auth`, 400 → `invalid_request`, status ≥ 500 → `server`, any other status → `unknown`.
+- **`[verified]`** Gemini body fields from `gemini_body`: `systemInstruction.parts`, `contents` (the message list), and `tools[0].functionDeclarations` `{name, description, parameters}` when tools are present. `parameters` is `to_gemini`. If `builtin_tools` is set and function declarations exist, the builder raises `invalid_request` with message `built-in tools cannot mix with functions`. `parse_gemini` reads `candidates[0].finishReason` through `map_stop_reason` and `content.parts` for `text` and `functionCall`. A missing function-call id uses `synthesize_call_id`. A non-dict `args` is `malformed_tool_call`. Tool calls present with a mapped reason of `end` become `tool_calls`. `gemini_error`: 429 → `rate_limit`, 401 and 403 → `auth`, 400 → `invalid_request`, status ≥ 500 → `server`, any other status → `unknown`. This mapper does not special-case 529.
+- **`[verified]`** Lowerers in `schema_lowering.py`: `to_openai_strict` sets object `required` to every property name, sets `additionalProperties` false, and wraps a property that was not required in `anyOf` with `{"type": "null"}`. `to_gemini` replaces `const` with a one-value `enum` and drops `pattern` and `$ref`.
+- **`[unverified]`** Live status bodies, streaming frames, and model ids. This section is the in-repo adapter contract only.
+
+**Section status:** in-repo provider map **`[verified]`** by reading the adapter modules. Live provider behavior **`[unverified]`**.

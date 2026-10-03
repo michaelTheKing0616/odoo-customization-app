@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import ast
+import json
 from pathlib import Path
 
 import pytest
 
+from app.llm_gateway.adapters.anthropic import parse_anthropic
+from app.llm_gateway.adapters.gemini import parse_gemini
+from app.llm_gateway.adapters.openai import parse_openai
 from app.llm_gateway.conformance import run_conformance
 from app.llm_gateway.emulated import EmulatedRejected, parse_emulated_json
 from app.llm_gateway.fallback import Endpoint, call_with_fallback
@@ -16,7 +20,7 @@ from app.llm_gateway.scrub import scrub
 from app.llm_gateway.scripted import ScriptedAdapter
 from app.llm_gateway.ssrf import SsrfRejected, guard_base_url
 from app.llm_gateway.stream import assemble, events_from_step
-from app.llm_gateway.types import LLMError
+from app.llm_gateway.types import LLMError, LLMResponse
 
 
 def test_stream_matches_complete_and_incomplete_json_is_not_executed() -> None:
@@ -44,6 +48,131 @@ def test_stream_matches_complete_and_incomplete_json_is_not_executed() -> None:
     )
     assert partial.stop_reason == "malformed_tool_call"
     assert partial.tool_calls[0].args is None
+
+
+def test_scripted_stream_matches_complete_on_200_calls() -> None:
+    """Two hundred scripted calls, not live cassettes.
+
+    Each call compares canonical stream assembly with ``Gateway.complete``
+    and with the in-repo OpenAI, Anthropic, or Gemini parser. Nothing here
+    is a recorded live cassette.
+    """
+    schema = {
+        "type": "object",
+        "properties": {"model": {"type": "string"}},
+        "required": ["model"],
+        "additionalProperties": False,
+    }
+    families = ("openai", "anthropic", "gemini")
+    matched = 0
+    for index in range(200):
+        raw = json.dumps({"model": f"sale.order.{index}"})
+        step = {
+            "text": f"n{index}",
+            "tool_calls": [{"id": f"s{index}", "name": "describe_model", "raw_args": raw}],
+        }
+        assembled = assemble(events_from_step(step))
+        direct = Gateway(ScriptedAdapter([step]), sleep=lambda _ms: None).complete(
+            {},
+            {"describe_model": schema},
+        )
+        family = families[index % 3]
+        parsed = _parse_scripted_family(family, index, raw)
+        assert assembled.text == direct.text == f"n{index}"
+        assert assembled.stop_reason == direct.stop_reason == parsed.stop_reason == "tool_calls"
+        assert assembled.tool_calls[0].args == direct.tool_calls[0].args == parsed.tool_calls[0].args
+        matched += 1
+    assert matched == 200
+
+
+def _parse_scripted_family(family: str, index: int, raw: str) -> LLMResponse:
+    args = json.loads(raw)
+    if family == "openai":
+        return parse_openai(
+            {
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "function_call",
+                        "call_id": f"fc_{index}",
+                        "name": "describe_model",
+                        "arguments": raw,
+                    }
+                ],
+            }
+        )
+    if family == "anthropic":
+        return parse_anthropic(
+            {
+                "stop_reason": "tool_use",
+                "content": [
+                    {"type": "tool_use", "id": f"tu_{index}", "name": "describe_model", "input": args}
+                ],
+            }
+        )
+    return parse_gemini(
+        {
+            "candidates": [
+                {
+                    "finishReason": "STOP",
+                    "content": {
+                        "parts": [
+                            {"functionCall": {"id": f"gm_{index}", "name": "describe_model", "args": args}}
+                        ]
+                    },
+                }
+            ]
+        }
+    )
+
+
+def test_scripted_emulated_path_accepts_at_least_95_percent_of_200_calls() -> None:
+    """Two hundred scripted emulated calls, not live cassettes.
+
+    Ten calls are partial or ambiguous and must not return an executable
+    action. The other 190 parse. 190/200 is 95 percent.
+    """
+    accepted = 0
+    rejected = 0
+    for index in range(200):
+        if index % 40 == 0:
+            with pytest.raises(EmulatedRejected):
+                parse_emulated_json('{"action": {"tool": "describe_model"}}')
+            rejected += 1
+            continue
+        if index % 40 == 20:
+            with pytest.raises(EmulatedRejected):
+                parse_emulated_json(
+                    '{"action": {"tool": "describe_model", "args": {}, "final": "no"}}'
+                )
+            rejected += 1
+            continue
+        parsed = parse_emulated_json(
+            json.dumps({"action": {"tool": "describe_model", "args": {"model": f"m{index}"}}})
+        )
+        assert parsed == {"tool": "describe_model", "args": {"model": f"m{index}"}}
+        accepted += 1
+    assert accepted + rejected == 200
+    assert rejected == 10
+    assert accepted >= 190
+
+
+def test_gateway_does_not_store_a_raw_provider_key() -> None:
+    adapter = ScriptedAdapter([{"text": "ok"}])
+    secret = "sk-abcdef123456"
+    Gateway(adapter, sleep=lambda _ms: None).complete(
+        {
+            "api_key": secret,
+            "authorization": "Bearer abcdefghij",
+            "messages": [{"role": "user", "content": "hi"}],
+        }
+    )
+    assert adapter.last_request is not None
+    assert "api_key" not in adapter.last_request
+    assert "authorization" not in adapter.last_request
+    stored = str(adapter.last_request)
+    assert secret not in stored
+    assert "abcdefghij" not in stored
 
 
 def test_emulated_json_rejects_partial_and_ambiguous_actions() -> None:

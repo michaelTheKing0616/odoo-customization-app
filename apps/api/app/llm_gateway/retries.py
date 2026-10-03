@@ -24,3 +24,12 @@ def should_stop(attempt: int, kind: str, *, max_attempts: int = 4) -> bool:
     if not is_retryable(kind):
         return True
     return attempt >= max_attempts
+
+
+# Follow-up calls that ask the model to fix tool arguments. The original call is not one of these.
+MAX_ARG_REPAIRS = 2
+
+
+def arg_repair_stopped(repairs_sent: int, *, max_repairs: int = MAX_ARG_REPAIRS) -> bool:
+    """True once `repairs_sent` argument-repair calls have already been sent."""
+    return repairs_sent >= max_repairs

@@ -5,11 +5,15 @@ from __future__ import annotations
 from typing import Any
 
 from app.llm_gateway.normalize import drop_foreign_reasoning, nfc, nfc_data, nfc_message, partition_tool_calls, repair_roles
-from app.llm_gateway.retries import delay_ms, should_stop
+from app.llm_gateway.retries import arg_repair_stopped, delay_ms, should_stop
 from app.llm_gateway.schema_lowering import canonical_issues
 from app.llm_gateway.scripted import ScriptedAdapter
 from app.llm_gateway.stream import IDLE_TIMEOUT_MS
 from app.llm_gateway.types import LLMError, LLMResponse, ToolCall
+
+
+# Local control and credentials. They are not provider fields and must not be stored on the adapter.
+_NOT_FOR_ADAPTER = frozenset({"api_key", "authorization", "allow_arg_repair"})
 
 
 def _default_sleep(delay_ms: int) -> None:
@@ -40,7 +44,24 @@ class Gateway:
             return LLMResponse(stop_reason="pause")
         if request.get("images") and not request.get("vision", True):
             raise LLMError("unsupported_feature", "vision is not available")
+        allow_repair = request.get("allow_arg_repair") is True
         prepared = _prepare(request)
+        checked_schemas = schemas or {}
+        write_names = _write_names(prepared)
+        repairs_sent = 0
+        while True:
+            response = self._complete_once(prepared)
+            checked = self._check(_finish(prepared, response), checked_schemas, write_names)
+            if (
+                allow_repair
+                and checked.stop_reason == "malformed_tool_call"
+                and not arg_repair_stopped(repairs_sent)
+            ):
+                repairs_sent += 1
+                continue
+            return checked
+
+    def _complete_once(self, prepared: dict[str, Any]) -> LLMResponse:
         attempt = 0
         while True:
             if self.calls >= self._max_calls:
@@ -48,16 +69,13 @@ class Gateway:
             self.calls += 1
             attempt += 1
             try:
-                response = self._adapter.complete(prepared)
-                break
+                return self._adapter.complete(prepared)
             except LLMError as exc:
                 if should_stop(attempt, exc.kind):
                     raise
                 waited = delay_ms(attempt, retry_after_ms=exc.retry_after_ms)
                 self.last_delay_ms = waited
                 self._sleep(waited)
-                continue
-        return self._check(_finish(prepared, response), schemas or {}, _write_names(prepared))
 
     def _check(
         self,
@@ -89,7 +107,7 @@ class Gateway:
 
 
 def _prepare(request: dict[str, Any]) -> dict[str, Any]:
-    prepared = dict(request)
+    prepared = {key: value for key, value in request.items() if key not in _NOT_FOR_ADAPTER}
     if prepared.get("stream") and prepared.get("stream_tools") is False:
         prepared["stream"] = False
     messages = prepared.get("messages")

@@ -9,7 +9,7 @@ import pytest
 
 from app.llm_gateway.gateway import Gateway
 from app.llm_gateway.normalize import ArgsRejected, parse_tool_args, synthesize_call_id
-from app.llm_gateway.retries import delay_ms, is_retryable, should_stop
+from app.llm_gateway.retries import MAX_ARG_REPAIRS, arg_repair_stopped, delay_ms, is_retryable, should_stop
 from app.llm_gateway.schema_lowering import canonical_issues, canonical_tool_issues, to_gemini, to_openai_strict
 from app.llm_gateway.scripted import ScriptedAdapter
 from app.llm_gateway.types import LLMError
@@ -434,3 +434,48 @@ def test_stream_tools_false_falls_back_to_non_stream() -> None:
     assert response.text == "hi"
     assert response.stop_reason == "tool_calls"
     assert response.tool_calls[0].args == {"model": "sale.order"}
+
+
+def test_arg_repair_stops_at_2_and_budget_defaults_to_40() -> None:
+    """Argument repair allows two follow-up calls. The default call budget is 40.
+
+    Retry stopping at 4 is already asserted by
+    ``test_gateway_retries_timeout_and_stops_on_auth`` (``exhausted.calls == 4``)
+    and ``test_retry_policy_honors_retry_after_and_stops_on_auth``.
+    """
+    assert MAX_ARG_REPAIRS == 2
+    assert arg_repair_stopped(1) is False
+    assert arg_repair_stopped(2) is True
+    bad = {"tool_calls": [{"id": "b", "name": "describe_model", "raw_args": '{"limit": "no"}'}]}
+    adapter = ScriptedAdapter([bad, bad, bad, {"text": "must-not-run"}])
+    rejected = Gateway(adapter, sleep=lambda _ms: None).complete(
+        {"allow_arg_repair": True},
+        {"describe_model": SCHEMA},
+    )
+    assert rejected.stop_reason == "malformed_tool_call"
+    assert rejected.tool_calls[0].args is None
+    # Original call plus two repairs. The fourth scripted step is not sent.
+    assert adapter.calls == 3
+    leftover = Gateway(adapter, sleep=lambda _ms: None).complete({})
+    assert leftover.text == "must-not-run"
+    repaired = ScriptedAdapter(
+        [
+            bad,
+            bad,
+            {"tool_calls": [{"id": "g", "name": "describe_model", "raw_args": '{"model": "sale.order"}'}]},
+        ]
+    )
+    accepted = Gateway(repaired, sleep=lambda _ms: None).complete(
+        {"allow_arg_repair": True},
+        {"describe_model": SCHEMA},
+    )
+    assert accepted.stop_reason == "tool_calls"
+    assert accepted.tool_calls[0].args == {"model": "sale.order"}
+    assert repaired.calls == 3
+    budget = Gateway(ScriptedAdapter([{"text": "ok"}] * 41), sleep=lambda _ms: None)
+    for _index in range(40):
+        assert budget.complete({}).text == "ok"
+    with pytest.raises(LLMError) as caught:
+        budget.complete({})
+    assert caught.value.kind == "budget"
+    assert budget.calls == 40

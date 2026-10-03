@@ -1132,6 +1132,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - `parse_tool_args` rejects payloads over 256 KB. That reject has no dedicated test.
 - GATE-P1-02 is not fully passed. Replay fixtures under `apps/api/tests/fixtures/llm_gateway/` are synthetic. Still needs an operator recording: C07, C08, C10, C11, C13, C14, C16, C17, C18, C19, and OpenAI C20.
 - The model registry stores no product model ids yet. The outside-file scan passes because that list is empty. An unknown id stays untiered with read-only caps.
+- GATE-P1-04 and GATE-P1-06 are proven with 200 scripted calls, not a live cassette. A recorded live 200-call cassette is still open.
 - `docker/*` and `apps/api/tests/test_wave16_gen2.py` still use `ServerProxy` outside the XML-RPC product scan.
 - Recaptured token screenshots in `docs/vision-verify/tokens-light.png` and `tokens-dark.png` are unstaged. The CSS text did not change.
 
@@ -1200,3 +1201,8 @@ Not done: T8-GW-REG. GATE-P0-03, GATE-P0-05, and GATE-P1-02 stay open. L4 stays 
 Track: T8 T8-GW-REG. Worker [Lock the model registry](0559f9ca-3265-4955-903e-993aa6e46730). No push. L4 stays off.
 Intent: An unknown model id stays untiered and uses read-only caps. It cannot submit a change-set. A planted model id outside the registry file fails the scan. Re-ran the registry tests: 3 passed. The registry stores no product model ids yet, so the live scan has an empty list.
 Not done: T8-GW-REST. GATE-P0-03, GATE-P0-05, and GATE-P1-02 stay open. L4 stays off.
+
+## 2026-10-03 — T8-GW-REST remaining gateway gates
+Track: T8 T8-GW-REST. Worker [Close the remaining gateway gates](478aa352-b0d4-4e78-99aa-4e170fd82da7). No push. L4 stays off.
+Intent: The provider map in `docs/verified-facts.md` lists OpenAI, Anthropic, and Gemini only. Two hundred scripted calls match stream to complete, and 190 of 200 emulated calls are accepted. Retry stops at 4. Argument repair stops at 2. The call budget defaults to 40. Raw keys are dropped before the adapter stores the request. Re-ran gateway and import-boundary tests: 53 passed. The loops are scripted. A live cassette is still open. GATE-P1-02 stays open.
+Not done: T8-OD-TRANSPORT. GATE-P0-03, GATE-P0-05, and GATE-P1-02 stay open. L4 stays off.
