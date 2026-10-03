@@ -151,9 +151,17 @@ class OdooClient:
             from odoo_client.compat.adapters import automation_v17 as mod
         elif major == 18:
             from odoo_client.compat.adapters import automation_v18 as mod
+        elif major == 20:
+            from odoo_client.compat.adapters import automation_v20 as mod
         else:
             from odoo_client.compat.adapters import automation_v19 as mod
         return mod
+
+    def _security_adapter(self):  # noqa: ANN201
+        if self.capabilities.major == 20:
+            from odoo_client.compat.adapters import security_v20 as mod
+            return mod
+        return None
 
     def _views_adapter(self):  # noqa: ANN201
         major = self.capabilities.major
@@ -163,6 +171,8 @@ class OdooClient:
             from odoo_client.compat.adapters import views_v17 as mod
         elif major == 18:
             from odoo_client.compat.adapters import views_v18 as mod
+        elif major == 20:
+            from odoo_client.compat.adapters import views_v20 as mod
         else:
             from odoo_client.compat.adapters import views_v19 as mod
         return mod
@@ -2000,6 +2010,10 @@ class OdooClient:
     def create_record_rule(self, request: Any) -> Any:
         from odoo_client.security import CreateRecordRuleRequest, RecordRuleInfo
 
+        security = self._security_adapter()
+        if security is not None:
+            security.create_record_rule(request)
+
         req = (
             request
             if isinstance(request, CreateRecordRuleRequest)
@@ -2966,15 +2980,26 @@ class OdooClient:
         interval_type: str = "days",
         active: bool = True,
     ) -> int:
-        """Create ir.cron (Odoo 19: inherits ir.actions.server; no numbercall)."""
+        """Create ir.cron (Odoo 19+: inherits ir.actions.server; no numbercall)."""
         model_id = self._model_id(model)
-        vals = {
-            "name": name,
-            "model_id": model_id,
-            "state": "code",
-            "code": code,
-            "interval_number": interval_number,
-            "interval_type": interval_type,
-            "active": active,
-        }
+        encode = getattr(self._automation_adapter(), "encode_cron_vals", None)
+        if encode is not None:
+            vals = encode(
+                name=name,
+                model_id=model_id,
+                code=code,
+                interval_number=interval_number,
+                interval_type=interval_type,
+                active=active,
+            )
+        else:
+            vals = {
+                "name": name,
+                "model_id": model_id,
+                "state": "code",
+                "code": code,
+                "interval_number": interval_number,
+                "interval_type": interval_type,
+                "active": active,
+            }
         return int(self.execute_kw("ir.cron", "create", [vals]))

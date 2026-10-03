@@ -712,3 +712,12 @@ Track: O20. Card: O20-02. Worker only. No commit. No push. No Odoo RPC.
 Intent: Registry already lists Odoo 20 as GA; web banner should say so for probed major 20 (non-experimental). Experimental and Enterprise callouts unchanged.
 Result: Vitest `VersionAwarenessBanner.test.tsx` — 2 passed. Pytest `packages/odoo-client/tests/test_registry_odoo20.py` — 5 passed.
 Files: `apps/web/src/components/VersionAwarenessBanner.tsx`, `apps/web/src/components/VersionAwarenessBanner.test.tsx`.
+
+CLAIM O20-03 2026-10-03T10:15:00Z files: automation_v20 and security_v20. Major 20 only. Do not enable L4. Do not call aonb.odoo.com.
+
+Track: O20. Card: O20-03. Worker only. No commit. No push. No Odoo host. L4 stays off.
+Intent: Add `automation_v20` (v19 encoder + V12 no `numbercall`; V11 still a nested `ir.actions.server`) and `security_v20` (`access_model`=`ir.access`; `ir.rule` create raises `IrRuleNotSupportedOnOdoo20`). Register both for major 20 only. Thin wrapper in the package (same field names as `access_compiler.py`); cannot import `apps.api` without a cycle.
+Result: pytest `test_views_adapters_multimajor.py` + `test_automation_encoders_multimajor.py` + `test_odoo20_automation_security_adapters.py` — **63 passed**.
+Negative: `security_v20.create_record_rule` and client `create_record_rule` on major 20 raise `IrRuleNotSupportedOnOdoo20` before `execute_kw`. Cron vals omit `numbercall`. 16–19 pickers unchanged. Major 20 views use `views_v20` (`list`, not `tree`); major 19 stays on `views_v19`.
+Files: `automation_v20.py`, `security_v20.py`, `adapters/__init__.py`, `client.py` picker + `create_record_rule` / `create_cron`, new test file.
+Not done: O20-04 write-path wiring for all `ir.model.access` creates. L4 off. No aonb.odoo.com call.
