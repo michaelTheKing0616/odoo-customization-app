@@ -27,6 +27,7 @@ export type DesignerPageBootstrapDeps = {
     SetStateAction<Array<{ index: number; name: string }>>
   >;
   setSnapshots: Dispatch<SetStateAction<SnapshotRow[]>>;
+  setSnapshotsHydrated?: Dispatch<SetStateAction<boolean>>;
   canvasFlashId: string | null;
   setCanvasFlashId: Dispatch<SetStateAction<string | null>>;
   toolbarFlash: string | null;
@@ -52,6 +53,7 @@ export function useDesignerPageBootstrap(deps: DesignerPageBootstrapDeps) {
     setNicheWidgets,
     setColorPalette,
     setSnapshots,
+    setSnapshotsHydrated,
     canvasFlashId,
     setCanvasFlashId,
     toolbarFlash,
@@ -63,13 +65,16 @@ export function useDesignerPageBootstrap(deps: DesignerPageBootstrapDeps) {
   } = deps;
 
   const refreshSnapshots = useCallback(async () => {
+    setSnapshotsHydrated?.(false);
     try {
       const snaps = await api.listSnapshots(connectionId);
       setSnapshots(snaps.filter((s: SnapshotRow) => s.resource_type === "view"));
     } catch {
       setSnapshots([]);
+    } finally {
+      setSnapshotsHydrated?.(true);
     }
-  }, [api, connectionId, setSnapshots]);
+  }, [api, connectionId, setSnapshots, setSnapshotsHydrated]);
 
   useEffect(() => {
     api

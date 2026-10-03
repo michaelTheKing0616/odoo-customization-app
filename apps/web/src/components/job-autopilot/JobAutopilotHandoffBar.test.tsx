@@ -58,4 +58,53 @@ describe("JobAutopilotHandoffBar", () => {
     expect(screen.getByTestId("job-promote-or-handoff").textContent).toBe("Handoff");
     expect(screen.queryByRole("link", { name: "ModuleSpec" })).toBeNull();
   });
+
+  it("shows skeleton while promote targets load", () => {
+    render(
+      <JobAutopilotHandoffBar
+        connectionId="c1"
+        targets={[]}
+        targetsHydrated={false}
+        targetId=""
+        sandboxUrl={null}
+        sandboxLabel="Open sandbox"
+        hasResult={false}
+        promoteReady={false}
+        hasResidualZip={false}
+        showModuleSpec={false}
+        busy={null}
+        onTargetChange={vi.fn()}
+        onPromote={vi.fn()}
+        onDownloadReport={vi.fn()}
+        onDownloadPdf={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("job-promote-targets-loading")).toBeInTheDocument();
+    expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
+  });
+
+  it("shows empty state when no promote targets exist", () => {
+    render(
+      <JobAutopilotHandoffBar
+        connectionId="c1"
+        targets={[]}
+        targetsHydrated
+        targetId=""
+        sandboxUrl={null}
+        sandboxLabel="Open sandbox"
+        hasResult={false}
+        promoteReady={false}
+        hasResidualZip={false}
+        showModuleSpec={false}
+        busy={null}
+        onTargetChange={vi.fn()}
+        onPromote={vi.fn()}
+        onDownloadReport={vi.fn()}
+        onDownloadPdf={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("job-promote-targets-empty")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open Connect" })).toHaveAttribute("href", "/connect");
+    expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
+  });
 });

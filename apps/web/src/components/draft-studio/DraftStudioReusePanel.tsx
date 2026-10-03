@@ -3,6 +3,7 @@
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { EmptyState, Skeleton } from "@/components/ui/layout-primitives";
 import type { ReuseModelRow } from "@/lib/api";
 import type { ReuseDecisionChip } from "@/lib/reuse-chips";
 
@@ -69,7 +70,7 @@ export function DraftStudioReusePanel({
         {reuseCatalog.length
           ? ` (${reuseCatalog.length.toLocaleString()} models)`
           : reuseCatalogStatus === "loading"
-            ? " (loading…)"
+            ? ""
             : ""}
         — not the full unused CE Apps list. After Job Autopilot or Install &amp;
         reuse, refresh so newly installed apps appear. Install &amp; reuse shows
@@ -104,11 +105,49 @@ export function DraftStudioReusePanel({
         />
         <div className="max-h-48 overflow-y-auto rounded-md border border-border-subtle bg-surface">
           {reuseCatalogStatus === "loading" && reuseCatalog.length === 0 ? (
-            <p className="px-2 py-2 text-xs text-muted">Loading stock models…</p>
+            <div className="space-y-2 p-2" data-testid="reuse-catalog-loading">
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+            </div>
           ) : filteredReuseCatalog.length === 0 ? (
-            <p className="px-2 py-2 text-xs text-muted">
-              {reuseCatalogError || "No models match."}
-            </p>
+            <div className="p-2" data-testid="reuse-catalog-empty">
+              <EmptyState
+                title={
+                  reuseCatalog.length === 0 && reuseCatalogStatus === "ready"
+                    ? "No stock models on this connection"
+                    : "No models match your search"
+                }
+                description={
+                  reuseCatalogError ||
+                  (reuseCatalog.length === 0
+                    ? "Start Odoo for this connection or retry once RPC is reachable."
+                    : "Clear the search box to browse the catalog again.")
+                }
+                action={
+                  reuseSearch.trim() ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => onSearch("")}
+                    >
+                      Clear search
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      loading={reuseCatalogStatus === "loading"}
+                      onClick={onReloadCatalog}
+                    >
+                      Retry catalog
+                    </Button>
+                  )
+                }
+              />
+            </div>
           ) : (
             filteredReuseCatalog.map((row) => {
               const on = reuseModels.includes(row.model);

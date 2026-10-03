@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/layout-primitives";
+import { Card, EmptyState, Skeleton } from "@/components/ui/layout-primitives";
 import type { Connection } from "@/lib/api";
 import type { JobAutopilotBusy } from "@/lib/job-autopilot-journey";
 
 type JobAutopilotHandoffBarProps = {
   connectionId: string;
   targets: Connection[];
+  targetsHydrated?: boolean;
   targetId: string;
   sandboxUrl: string | null;
   sandboxLabel: string;
@@ -26,6 +27,7 @@ type JobAutopilotHandoffBarProps = {
 export function JobAutopilotHandoffBar({
   connectionId,
   targets,
+  targetsHydrated = true,
   targetId,
   sandboxUrl,
   sandboxLabel,
@@ -46,22 +48,40 @@ export function JobAutopilotHandoffBar({
         Autopilot never writes production. Promote stays a human step onto another
         connection. Stock-only jobs hand off the sandbox itself.
       </p>
-      <label className="mt-4 block text-sm text-ink">
-        Promote target
-        <select
-          className="mt-1 block min-w-[16rem] rounded border border-line bg-surface px-2 py-1 text-sm"
-          value={targetId}
-          onChange={(e) => onTargetChange(e.target.value)}
-          data-testid="job-promote-target"
-        >
-          <option value="">Select another connection…</option>
-          {targets.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name} ({c.write_mode})
-            </option>
-          ))}
-        </select>
-      </label>
+      {!targetsHydrated ? (
+        <div className="mt-4 space-y-2" data-testid="job-promote-targets-loading">
+          <Skeleton className="h-9 w-64" />
+        </div>
+      ) : targets.length === 0 ? (
+        <div className="mt-4" data-testid="job-promote-targets-empty">
+          <EmptyState
+            title="No other connections to promote to"
+            description="Add another Odoo connection under Connect, then pick it here for human promote."
+            action={
+              <Button type="button" variant="secondary" size="sm" asChild>
+                <Link href="/connect">Open Connect</Link>
+              </Button>
+            }
+          />
+        </div>
+      ) : (
+        <label className="mt-4 block text-sm text-ink">
+          Promote target
+          <select
+            className="mt-1 block min-w-[16rem] rounded border border-line bg-surface px-2 py-1 text-sm"
+            value={targetId}
+            onChange={(e) => onTargetChange(e.target.value)}
+            data-testid="job-promote-target"
+          >
+            <option value="">Select another connection…</option>
+            {targets.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} ({c.write_mode})
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <div className="job-handoff-bar mt-4">
         {sandboxUrl ? (
           <Button asChild>

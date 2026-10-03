@@ -3,6 +3,8 @@
 import { useEffect, useRef } from "react";
 import type { StudioTurn } from "@/lib/studio-session";
 import { undoInstructionForRefine } from "@/lib/studio-session";
+import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/layout-primitives";
 import { ChatBubble } from "./ChatBubble";
 import { RefineHistoryPopover } from "./RefineHistoryPopover";
 
@@ -12,6 +14,7 @@ type StudioChatThreadProps = {
   refineBusy: boolean;
   onReuse: (content: string) => void;
   onUndo: (instruction: string) => void;
+  onFocusComposer?: () => void;
 };
 
 export function StudioChatThread({
@@ -20,6 +23,7 @@ export function StudioChatThread({
   refineBusy,
   onReuse,
   onUndo,
+  onFocusComposer,
 }: StudioChatThreadProps) {
   const endRef = useRef<HTMLDivElement>(null);
   const reviewTurns = (conversation || []).filter(
@@ -51,10 +55,19 @@ export function StudioChatThread({
         />
       </div>
       {reviewTurns.length === 0 ? (
-        <ChatBubble role="assistant">
-          Preview is on the left. Ask for a change and the form updates — remove a field,
-          make one required, or add one.
-        </ChatBubble>
+        <div data-testid="studio-refine-feed-empty">
+          <EmptyState
+            title="No refinements yet"
+            description="Describe a change below and the preview form will update on the left."
+            action={
+              onFocusComposer ? (
+                <Button type="button" variant="secondary" size="sm" onClick={onFocusComposer}>
+                  Focus refine box
+                </Button>
+              ) : undefined
+            }
+          />
+        </div>
       ) : null}
       {reviewTurns.map((turn, idx) => {
         const isUserRefine = turn.kind === "refine" && turn.role === "user";

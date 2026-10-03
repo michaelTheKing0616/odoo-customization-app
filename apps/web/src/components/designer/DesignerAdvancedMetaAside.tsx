@@ -1,10 +1,13 @@
 "use client";
 
+import { Button } from "@/components/ui/Button";
+import { EmptyState, Skeleton } from "@/components/ui/layout-primitives";
 import type { SnapshotRow } from "@/lib/api";
 
 export type DesignerAdvancedMetaAsideProps = {
   arch: string;
   snapshots: SnapshotRow[];
+  snapshotsHydrated?: boolean;
   busy: boolean;
   onRefreshSnapshots: () => void;
   onRollback: (snapshotId: string) => void;
@@ -14,6 +17,7 @@ export type DesignerAdvancedMetaAsideProps = {
 export function DesignerAdvancedMetaAside({
   arch,
   snapshots,
+  snapshotsHydrated = true,
   busy,
   onRefreshSnapshots,
   onRollback,
@@ -40,10 +44,25 @@ export function DesignerAdvancedMetaAside({
             Refresh
           </button>
         </div>
+        {!snapshotsHydrated ? (
+          <div className="mt-3 space-y-2" data-testid="designer-snapshots-loading">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        ) : snapshots.length === 0 ? (
+          <div className="mt-3" data-testid="designer-snapshots-empty">
+            <EmptyState
+              title="No published checkpoints yet"
+              description="Save to Odoo on this view to create a rollback checkpoint."
+              action={
+                <Button type="button" variant="secondary" size="sm" onClick={() => onRefreshSnapshots()}>
+                  Refresh checkpoints
+                </Button>
+              }
+            />
+          </div>
+        ) : (
         <ul className="mt-3 max-h-48 space-y-2 overflow-auto text-xs">
-          {snapshots.length === 0 && (
-            <li className="text-muted">No published checkpoints yet. Save to Odoo creates one.</li>
-          )}
           {snapshots.map((s) => (
             <li
               key={s.id}
@@ -66,6 +85,7 @@ export function DesignerAdvancedMetaAside({
             </li>
           ))}
         </ul>
+        )}
       </div>
     </aside>
   );

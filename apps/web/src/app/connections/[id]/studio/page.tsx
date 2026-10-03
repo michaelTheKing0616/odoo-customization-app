@@ -142,6 +142,7 @@ export default function AppStudioPage() {
   } | null>(null);
   const [installOpen, setInstallOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<"preview" | "chat">("preview");
+  const refineComposerRef = useRef<HTMLTextAreaElement | null>(null);
 
   const draftOpts = useMemo(
     () => scaffoldOptsFromSpec(session?.artifact ?? null),
@@ -1427,10 +1428,15 @@ export default function AppStudioPage() {
                 refineBusy={busy === "refine"}
                 onReuse={(content) => setRefineInput(content)}
                 onUndo={(instruction) => void submitRefine(instruction)}
+                onFocusComposer={() => {
+                  setMobileTab("chat");
+                  refineComposerRef.current?.focus();
+                }}
               />
             }
             chatInput={
               <StudioRefineComposer
+                composerRef={refineComposerRef}
                 chips={refineChips}
                 value={refineInput}
                 fieldPack={fieldPack}

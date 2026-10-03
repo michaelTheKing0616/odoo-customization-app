@@ -1,9 +1,11 @@
 "use client";
 
+import type { RefObject } from "react";
 import { Spokes } from "@/components/loading-ui/spokes";
 import { SuggestionChip } from "./SuggestionChip";
 
 type StudioRefineComposerProps = {
+  composerRef?: RefObject<HTMLTextAreaElement | null>;
   chips: string[];
   value: string;
   fieldPack: boolean;
@@ -14,6 +16,7 @@ type StudioRefineComposerProps = {
 };
 
 export function StudioRefineComposer({
+  composerRef,
   chips,
   value,
   fieldPack,
@@ -38,8 +41,10 @@ export function StudioRefineComposer({
       ) : null}
       <div className="chat-input-row">
         <textarea
+          ref={composerRef}
           className="input chat-composer-input"
           rows={1}
+          data-testid="studio-refine-composer"
           placeholder={
             fieldPack
               ? `Describe a change — e.g. make ${hostFormName.toLowerCase()} fields required`

@@ -921,3 +921,16 @@ Pages (5):
 - `apps/web/src/app/connections/[id]/page.tsx` — promoted modules empty + loading skeleton on overview develop tab
 Tests: `pnpm exec vitest run src/components/website/WebsiteEditor.test.tsx` — **4 passed** (empty + loading skeleton; no `Loading...` string).
 Remaining: `rg -n 'Loading\.\.\.' apps/web/src/app` → **0** literal hits; operate routes without kit empty/loading (e.g. designer, studio, wizard, job, ingest, config, id-generator, reminders, expert) still open for UI-F03. L4 off. No commit.
+
+CLAIM UI-F03-E 2026-10-03T12:40:00Z files: designer studio wizard job ingest empty states. Do not redo batches A–D. Do not enable L4.
+
+Track: T7 UI-F03 (batch E). Worker only. No commit. No push. No Odoo host. L4 stays off.
+Intent: Five named operate routes use kit Skeleton + EmptyState on real list/feed areas; hydrated flags set in `finally` where fetches apply.
+Pages (5):
+- `apps/web/src/app/connections/[id]/designer/page.tsx` + `DesignerAdvancedMetaAside` — published checkpoint list `snapshotsHydrated` via `useDesignerPageBootstrap`
+- `apps/web/src/app/connections/[id]/studio/page.tsx` + `StudioChatThread` — empty refine feed + composer focus action
+- `apps/web/src/app/connections/[id]/wizard/page.tsx` + `DraftStudioReusePanel` — stock reuse catalog skeleton + empty retry/clear-search
+- `apps/web/src/app/connections/[id]/job/page.tsx` + `JobAutopilotHandoffBar` — promote-target connections `targetsHydrated` in `finally`
+- `apps/web/src/app/connections/[id]/ingest/page.tsx` — **skipped** (upload/interview forms only until a job exists; no page-level empty collection)
+Tests: `pnpm exec vitest run src/components/draft-studio/DraftStudioReusePanel.test.tsx` (batch E primary); extended `JobAutopilotHandoffBar.test.tsx` for job promote targets.
+Not done: config, id-generator, reminders, expert, etc. L4 off. No commit.

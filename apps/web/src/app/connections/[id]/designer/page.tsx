@@ -180,6 +180,7 @@ export default function DesignerPage() {
   const [lastSnapshotId, setLastSnapshotId] = useState<string | null>(null);
   const [loadedViewId, setLoadedViewId] = useState<number | null>(null);
   const [snapshots, setSnapshots] = useState<SnapshotRow[]>([]);
+  const [snapshotsHydrated, setSnapshotsHydrated] = useState(false);
   const [selected, setSelected] = useState<SelectedField | null>(null);
   const [canvasMode, setCanvasMode] = useState<DesignerCanvasMode>("live");
   const [liveFailed, setLiveFailed] = useState(false);
@@ -425,6 +426,7 @@ export default function DesignerPage() {
     setNicheWidgets,
     setColorPalette,
     setSnapshots,
+    setSnapshotsHydrated,
     canvasFlashId,
     setCanvasFlashId,
     toolbarFlash,
@@ -1395,6 +1397,7 @@ export default function DesignerPage() {
           <DesignerAdvancedMetaAside
             arch={arch}
             snapshots={snapshots}
+            snapshotsHydrated={snapshotsHydrated}
             busy={busy}
             onRefreshSnapshots={() => void refreshSnapshots()}
             onRollback={(id) => void onRollback(id)}

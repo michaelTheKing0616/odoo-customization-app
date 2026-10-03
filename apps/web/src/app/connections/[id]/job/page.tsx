@@ -113,6 +113,7 @@ export default function JobAutopilotPage() {
 
   const [connection, setConnection] = useState<Connection | null>(null);
   const [targets, setTargets] = useState<Connection[]>([]);
+  const [targetsHydrated, setTargetsHydrated] = useState(false);
   const [targetId, setTargetId] = useState("");
   const [prompt, setPrompt] = useState("");
   const [files, setFiles] = useState<File[]>([]);
@@ -142,10 +143,12 @@ export default function JobAutopilotPage() {
       .getConnection(connectionId)
       .then(setConnection)
       .catch(() => setConnection(null));
+    setTargetsHydrated(false);
     api
       .listConnections()
       .then((rows) => setTargets(rows.filter((c) => c.id !== connectionId)))
-      .catch(() => setTargets([]));
+      .catch(() => setTargets([]))
+      .finally(() => setTargetsHydrated(true));
     api
       .jobAutopilotContract(connectionId)
       .then(setContract)
@@ -660,6 +663,7 @@ export default function JobAutopilotPage() {
           <JobAutopilotHandoffBar
             connectionId={connectionId}
             targets={targets}
+            targetsHydrated={targetsHydrated}
             targetId={targetId}
             sandboxUrl={sandboxUrl}
             sandboxLabel={sandboxOpenLabel(result)}
