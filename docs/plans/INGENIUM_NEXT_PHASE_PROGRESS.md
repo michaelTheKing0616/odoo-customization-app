@@ -1053,3 +1053,9 @@ Track: T7 UI-SP-OVERVIEW. Worker [Split the connection overview page](8264c376-2
 Intent: Move the connection overview into `components/overview/` without changing the route. The page is 31 lines and still default-exports `BrowserPage`. No new file is over 400 lines. FirstRunCard, InstanceFingerprintCard, and OverviewViewsPanel were reused.
 Tests: those three overview vitest files — 6 passed.
 Not done: UI-SP-CONFIG. L4 off.
+
+## 2026-10-03 — UI-SP-CONFIG page split
+Track: T7 UI-SP-CONFIG. Worker [Split the config page into components](fd34a138-8715-4c28-934b-d2e6345537ec). No push. L4 stays off.
+Intent: Move the config page into `components/config/` without changing the route. The page is 109 lines and still default-exports `ConfigPage`. No new file is over 400 lines. ConfigCommandCenter, ConfigAtlasBrowser, and InstanceFingerprintCard were reused.
+Tests: `ConfigAtlasBrowser.test.tsx` and `ConfigCommandCenter.test.tsx` — 4 passed.
+Not done: UI-SP-CSS. L4 off.
