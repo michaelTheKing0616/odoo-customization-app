@@ -1047,3 +1047,9 @@ Track: T7 UI-SP-BULK. Worker [Split the bulk suite page](0d243f91-0c1a-4ed9-9407
 Intent: Move the bulk suite page into `components/bulk/` without changing the route. The page is 67 lines and still default-exports `BulkSuitePage`. No new file is over 400 lines. Section headings stay on the page so the characterization test still matches.
 Tests: `uif-regression.test.ts`, `kit.test.tsx`, `DataTable.test.tsx` — 25 passed.
 Not done: UI-SP-OVERVIEW. L4 off.
+
+## 2026-10-03 — UI-SP-OVERVIEW page split
+Track: T7 UI-SP-OVERVIEW. Worker [Split the connection overview page](8264c376-2eac-4d90-8ae6-34c651576676). No push. L4 stays off.
+Intent: Move the connection overview into `components/overview/` without changing the route. The page is 31 lines and still default-exports `BrowserPage`. No new file is over 400 lines. FirstRunCard, InstanceFingerprintCard, and OverviewViewsPanel were reused.
+Tests: those three overview vitest files — 6 passed.
+Not done: UI-SP-CONFIG. L4 off.
