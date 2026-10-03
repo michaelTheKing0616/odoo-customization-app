@@ -83,7 +83,8 @@ export default function BuilderPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [listLoading, setListLoading] = useState(true);
+  const [listHydrated, setListHydrated] = useState(false);
+  const [listLoading, setListLoading] = useState(false);
   const [fieldsLoading, setFieldsLoading] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [confirmTyped, setConfirmTyped] = useState("");
@@ -170,7 +171,10 @@ export default function BuilderPage() {
     setListLoading(true);
     refresh()
       .catch((err: Error) => setError(err.message))
-      .finally(() => setListLoading(false));
+      .finally(() => {
+        setListLoading(false);
+        setListHydrated(true);
+      });
   }, [refresh]);
 
   useEffect(() => {
@@ -644,7 +648,7 @@ export default function BuilderPage() {
           <>
           <BuilderModelsList
             rows={customModels}
-            loading={listLoading}
+            loading={!listHydrated || listLoading}
             selectedModel={pane === "model" ? selectedModel : null}
             query={listQuery}
             onQueryChange={setListQuery}

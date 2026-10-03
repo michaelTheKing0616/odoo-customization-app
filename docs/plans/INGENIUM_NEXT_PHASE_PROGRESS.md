@@ -869,3 +869,16 @@ Command: `.venv/bin/python -m pytest -q -p no:cacheprovider apps/api/tests/test_
 Known refusals: `company_type` removed; group record rules must become `ir.access` with a domain; percentage pricelist is discount; `company_registry` is additional identifiers. Verify rows V06, V24, V26, V28–V30 are named as not translated, not guessed into a field name.
 Files: `apps/api/app/odoo20/spec_replay.py`, `apps/api/tests/test_odoo20_spec_replay.py`, `docs/runbooks/odoo20-spec-that-will-not-translate.md`.
 Not done: L4 off. No aonb.odoo.com. No commit. JSON-2 track stays open.
+
+CLAIM UI-F03-A 2026-10-03T12:20:00Z files: first five operate empty states. Do not enable L4. Do not do the other 65 pages.
+
+Track: T7 UI-F03 (batch A). Worker only. No commit. No push. No Odoo host. L4 stays off.
+Intent: First five connection operate pages that could show ad-hoc loading or empty lists use kit Skeleton + EmptyState; list routes avoid treating an unloaded fetch as an empty list.
+Pages (5):
+- `apps/web/src/app/connections/[id]/builder/page.tsx` — `listHydrated` + skeleton via `BuilderModelsList`
+- `apps/web/src/app/connections/[id]/menus/page.tsx` — same for `MenusTree`
+- `apps/web/src/app/connections/[id]/automations/page.tsx` — same for `AutomationsList`
+- `apps/web/src/app/connections/[id]/access/page.tsx` — same for rights/rules lists
+- `apps/web/src/app/connections/[id]/import/page.tsx` — seed pack picker skeleton + empty `EmptyState` (removed “Loading packs…”)
+Tests: `pnpm exec vitest run src/components/automations/AutomationsList.test.tsx` — **3 passed** (empty list + loading skeleton; no `Loading...` string).
+Not done: remaining ~65 operate routes (UI-F03 continues). L4 off. No commit.

@@ -50,6 +50,23 @@ describe("AutomationsList", () => {
     expect(onSelect).toHaveBeenCalledWith(rows[1]);
   });
 
+  it("shows skeleton while loading without Loading... copy", () => {
+    render(
+      <AutomationsList
+        rows={[]}
+        loading
+        selectedId={null}
+        modelFilter=""
+        query=""
+        onQueryChange={vi.fn()}
+        onSelect={vi.fn()}
+        onCreate={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("automations-list-loading")).toBeInTheDocument();
+    expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
+  });
+
   it("shows empty state with create action", () => {
     const onCreate = vi.fn();
     render(
@@ -65,5 +82,6 @@ describe("AutomationsList", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Create automation" }));
     expect(onCreate).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
   });
 });

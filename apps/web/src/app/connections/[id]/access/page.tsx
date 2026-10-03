@@ -83,7 +83,8 @@ export default function AccessPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [listLoading, setListLoading] = useState(true);
+  const [listHydrated, setListHydrated] = useState(false);
+  const [listLoading, setListLoading] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [livePackOpen, setLivePackOpen] = useState(false);
   const [pane, setPane] = useState<AccessPane>("new-access");
@@ -145,7 +146,10 @@ export default function AccessPage() {
     setListLoading(true);
     refresh(DEFAULT_ACCESS_MODEL)
       .catch((err: Error) => setError(err.message))
-      .finally(() => setListLoading(false));
+      .finally(() => {
+        setListLoading(false);
+        setListHydrated(true);
+      });
     api.getMultiCompanyGuidance(connectionId).then(setMcGuidance).catch(() => {});
     api
       .getDocumentsGate(connectionId)
@@ -166,7 +170,10 @@ export default function AccessPage() {
     setListLoading(true);
     refresh(fromQuery)
       .catch((err: Error) => setError(err.message))
-      .finally(() => setListLoading(false));
+      .finally(() => {
+        setListLoading(false);
+        setListHydrated(true);
+      });
   }, [refresh]);
 
   async function onLoadModel(e: FormEvent) {
@@ -435,7 +442,7 @@ export default function AccessPage() {
           />
           <AccessRightsList
             rows={rights}
-            loading={listLoading}
+            loading={!listHydrated || listLoading}
             selectedId={selectedAccessId}
             query={rightsQuery}
             onQueryChange={setRightsQuery}
@@ -455,7 +462,7 @@ export default function AccessPage() {
           {accessBranch.offerRecordRuleCreate ? (
             <RecordRulesList
               rows={rules}
-              loading={listLoading}
+              loading={!listHydrated || listLoading}
               selectedId={selectedRuleId}
               query={rulesQuery}
               onQueryChange={setRulesQuery}

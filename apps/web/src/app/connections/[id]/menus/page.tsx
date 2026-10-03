@@ -55,7 +55,8 @@ export default function MenusBuilderPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [listLoading, setListLoading] = useState(true);
+  const [listHydrated, setListHydrated] = useState(false);
+  const [listLoading, setListLoading] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [savedOnce, setSavedOnce] = useState(false);
 
@@ -96,7 +97,10 @@ export default function MenusBuilderPage() {
     setListLoading(true);
     refresh()
       .catch((err: Error) => setError(err.message))
-      .finally(() => setListLoading(false));
+      .finally(() => {
+        setListLoading(false);
+        setListHydrated(true);
+      });
   }, [refresh]);
 
   useEffect(() => {
@@ -271,7 +275,7 @@ export default function MenusBuilderPage() {
           <>
           <MenusTree
             menus={menus}
-            loading={listLoading}
+            loading={!listHydrated || listLoading}
             selectedId={selectedId}
             query={listQuery}
             onQueryChange={setListQuery}

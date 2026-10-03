@@ -71,7 +71,8 @@ export default function AutomationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [listLoading, setListLoading] = useState(true);
+  const [listHydrated, setListHydrated] = useState(false);
+  const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [confirmMode, setConfirmMode] = useState<ConfirmMode | null>(null);
   const [confirmWarning, setConfirmWarning] = useState("");
@@ -134,7 +135,10 @@ export default function AutomationsPage() {
     setListLoading(true);
     refresh()
       .catch((err: Error) => setError(err.message))
-      .finally(() => setListLoading(false));
+      .finally(() => {
+        setListLoading(false);
+        setListHydrated(true);
+      });
   }, [refresh]);
 
   useEffect(() => {
@@ -561,7 +565,7 @@ export default function AutomationsPage() {
           ) : null}
           <AutomationsList
             rows={rows}
-            loading={listLoading}
+            loading={!listHydrated || listLoading}
             selectedId={selectedId}
             modelFilter={modelFilter}
             query={listQuery}

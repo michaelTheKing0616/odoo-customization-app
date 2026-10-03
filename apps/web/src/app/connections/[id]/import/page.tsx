@@ -17,7 +17,7 @@ import { Callout } from "@/components/ui/Callout";
 import { DataTable, type DataTableColumn } from "@/components/ui/DataTable";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Input } from "@/components/ui/Input";
-import { Card, PageHeader } from "@/components/ui/layout-primitives";
+import { Card, EmptyState, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 
 const CONFIRM_PHRASE = "I understand the risks";
@@ -30,19 +30,42 @@ function SeedPackPicker({
   onPick: (model: string, csv: string) => void;
 }) {
   const [packs, setPacks] = useState<
-    Array<{ id: string; name: string; description: string; models: string[] }>
-  >([]);
+    Array<{ id: string; name: string; description: string; models: string[] }> | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    setPacks(null);
+    setError(null);
     api
       .listSeedPacks(connectionId)
       .then(setPacks)
       .catch((err: Error) => setError(err.message));
-  }, [connectionId]);
+  }, [connectionId, reloadKey]);
 
   if (error) return <p className="text-xs text-danger">{error}</p>;
-  if (!packs.length) return <p className="text-xs text-muted">Loading packs…</p>;
+  if (packs === null) {
+    return (
+      <div className="grid gap-3 sm:grid-cols-2" data-testid="seed-packs-loading">
+        <Skeleton className="h-28 w-full" />
+        <Skeleton className="h-28 w-full" />
+      </div>
+    );
+  }
+  if (packs.length === 0) {
+    return (
+      <EmptyState
+        title="No seed packs on this connection"
+        description="Upload a CSV below, or ask your admin to enable demo seed packs for this instance."
+        action={
+          <Button type="button" variant="secondary" size="sm" onClick={() => setReloadKey((k) => k + 1)}>
+            Reload packs
+          </Button>
+        }
+      />
+    );
+  }
 
   return (
     <div className="grid gap-3 sm:grid-cols-2">
