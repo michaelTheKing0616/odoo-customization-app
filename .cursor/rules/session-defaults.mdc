@@ -22,7 +22,7 @@ Never wear all four hats alone without separation: Orchestrator / Worker / Check
 Workers get a **card** (`skills/team-brief-and-cards.md`). Gate (tests/build/RPC smoke) before checker. Maker is never the checker (`skills/verifier-subagent.md`).
 
 ## Locked constraints
-- Target: **Odoo Community 19 + 18 + 17 = GA**; **16 = experimental** (compat registry).
+- Target: **Odoo Community 20 + 19 + 18 + 17 = GA**; **16 = experimental** (compat registry). 20 is specified (D11); the stack is not built yet.
 - Public ORM/RPC only — never Studio Enterprise source.
 - Python code path = Option A (module → sandbox → promote). Advanced/destructive actions
   need Odoo-style confirm + API confirmation flag. Snapshot before risky mutations; rollback when possible.

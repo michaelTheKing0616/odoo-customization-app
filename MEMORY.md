@@ -1,3 +1,69 @@
+# L4 autonomy, Odoo 20 GA, Prime UI stack (2026-10-02)
+**Decided:** D10 — L4 production allow-list autonomy is in this phase. It amends the agent spec's "No L4". Gates GATE-L4-01–12 in `docs/plans/next-phase/01_LOCKS_DECISIONS_CONFLICTS.md`. The numeric thresholds (200 L3 applies, 60 days, ≤1% rollback, 30-day standing rules, daily cap 20, blast radius 50) were set in that file and still need a confirm before L4 is turned on. D11 — Community 20 is GA beside 17, 18, and 19. 16 stays experimental. ≤15 stays refused. 20 writes `ir.access`, not `ir.rule`. D12 — UI moves to Base UI, Sonner, and `motion/react`. `cmdk` stays. One component family per card. The working spec is `docs/plans/next-phase/00_INDEX.md`. The older consolidated spec stays, with a redirect header. No product code in this pass.
+**Pack v2 (2026-10-02, late):** the executable cards live in `docs/plans/next-phase/cards/` and the `13` UI-S blocks. `14` is the index only. Authoritative counts: 62 ops, 188 skills, 129 oracle tests, 32 version rows.
+
+# Auth stays self-hosted; Bridge name; config pattern reimplemented (2026-10-02)
+**Decided:** Ingenium Bridge is the product name (D3). Login stays in FastAPI with Authlib for Google and Microsoft and pyotp for TOTP (D6). No managed auth vendor and no Keycloak until a paying customer needs SAML. Config-as-code is reimplemented in this API; `odoo-config-agent` is an oracle, not a dependency (D7). Client Approver is a connection grant, not a workspace role, and cross-client access returns 404 (D9).
+
+# Next-phase plan is the build spec (2026-10-02)
+**Decided:** The folder `ingenium new phase` is ingested into `docs/plans/INGENIUM_NEXT_PHASE_CONSOLIDATED_BUILD_SPEC.md`. Duplicate master specs and agent specs are byte-identical; the undated filenames are canonical. D1 (dual-protocol) and D2 (`proved` requires `run_tests=True`) stay closed by the 2026-09-23 entries below even though the master spec text still says Open. Prime skills (339), workflow skills (8), and the later adaptive pack (16) are installed in the personal Agent Store. Adaptive routing plus the escalation-pressure heuristic governs model choice. `AGENTS.md` product locks are not replaced. Implementation has not started; the first slice after approval is a baseline trace only.
+
+# Mac §9 agent path ≠ UI paste (2026-09-23)
+**Decided:** Agent may run `studio_generate_offline_finish` + ephemeral `run_sandbox_install` for Maintenance/Service-cards and record scorecards under `.cache/mac9_agent/`. That advances Install evidence but **does not** close Mac §9 — operator Studio UI Generate + paste remains the hard gate. Local tip `/doc` absent (404); JSON-2 without API key correctly 401; live Bearer smoke stays operator. Health `sandbox_docker_enabled` requires `SANDBOX_DOCKER_SOCKET`; host `sandbox_docker_status()` can still be ok when Docker CLI + socket exist.
+
+# External JSON-2 dual-protocol (2026-09-23)
+**Decided:** Dual-protocol behind frozen `OdooClient` API. Major ≤18 → XML-RPC (legacy `/jsonrpc` only if XML-RPC blocked). Major ≥19 Online `auto` → External JSON-2 Bearer API key; local/self-host `auto` stays XML-RPC so Docker admin/password sandboxes keep working. Force with `rpc_protocol` / `ODOO_RPC_PROTOCOL=json2|xmlrpc`. Sandbox installs force `xmlrpc`. `execute_kw` positional→named body mapping is the only caller-facing adapter. Removal timeline (re-verify live docs): Online ~21.1 winter 2027, self-host ~Odoo 22 fall 2028. Mac §9 still operator paste.
+
+# Honest test closure (2026-09-23)
+**Decided:** Leak-closure tests must assert one contract (no OR escape hatches). Custom residual `x_bill_id`→`x_*` is not stock Accounting spray; `account.move` still needs cue/craft. Draft amount/price/total columns are a money cue for companion currency (enrich must not drop). Production shape re-syncs Monetary computes + depth smart-buttons/automations + `_meta` counts before critique-ready. Mac §9 still operator paste only.
+
+# Invent-leak closure (2026-09-23)
+**Decided:** Remaining quality/readiness invent (`ensure_line_bill_link`, `deepen_thin_rate_models`, `ensure_header_line_models`) only via `admit_and_apply` + `quality_scaffold` (spray still needs cue/craft). Inherit form slots fall back to `new_tab` when `view_has_field` misses. Prove slow mocks `SandboxResult`. Code gaps closed; Mac §9 still operator paste only.
+
+# Zero-gap Waves 0–8 (2026-09-23)
+**Decided:** Invent (fields/models/menus/O2Ms/pack/densifier/must_do/quality) only via `propose`→`admit_and_apply`. Collapse/copy/retarget stay mutate when invent-outside-admit stays green. Prove/promote API defaults `run_tests=True`. Scrub_uncued_* deleted from `app/`. `view_has_field` implemented on Live/Fake. Enrich gates datetime+money. POS/`law_firm` honesty = accepted Wave 8 debt. Mac §9 remains operator paste gate — agent stops after checklist in STATE.md.
+
+# Live-schema PR-C→F (2026-09-22)
+**Decided:** Diagnosis `approved_craft` → draft stamp. Sandbox `run_tests` default off for fast install helpers; **prove path defaults on**. Prove: max 3; **`proved` only with `run_tests=True`+tests_ran**; smoke-only=`pending`. Closed-class harness uses FakeSchemaClient on `studio_generate_offline_finish`. `@pytest.mark.sandbox` = slow Docker opt-in. Mac §9 still operator.
+
+# Live-schema PR-B (2026-09-22)
+**Decided:** `proposal_allowed` admits stock M2O reuse as `schema_verified_reuse` when cue + schema verify; invent of generic/rate `*_line` O2Ms rejected as `uncued_line_invent` without checklist/parts/lines cue in AST/tokens (historical Maintenance Rate-Line class). Schema alone never invents new `x_*` models.
+
+# Live-schema plan start (2026-09-22)
+**Decided:** No mcp-odoo vendor — wrap `OdooClient`/catalog. PR-F.0: Studio Generate golden target is end of `run_draft_job_body` invent path; AI-off harness = `studio_generate_offline_finish` (`_finish_seed_draft` + `_apply_locked_craft_and_surface`), not `_finish_seed_draft` alone. PR-A: `schema_client` with `relation_ok`/`field_is_writable`/catalog TTL (15m) → deny when stale. `view_has_field` stub. Prove bar (later PR-E): `proved` requires `run_tests=True` once.
+
+# Nos-flip push (2026-09-22 late)
+**Decided:** App-bar structural invent (`ensure_stock_inherit_bridges`, reverse O2Ms, site/parent FKs, O2M inverses, asset usage lines) admits via GenerateIR; IR apply preserves `inherit`. Partner cue regex includes `res.partner` / optional-partner / already-a-contact (honesty Visitor). Scrub symbols stay as detectors until enforce-only fold. Pre-existing honesty POS/`law_firm` fails are separate. Mac §9 still operator.
+
+# Nos-flip push (2026-09-22 evening continued)
+**Decided:** Remaining depth invent (`_ensure_workflow_minimum_fields`, `seed_operational_loop_models`) and cued checklist/parts O2Ms go through `propose`→`admit_and_apply` only. Install notebook pages prefer stamped `GenerateIR.o2ms`. Enrich coerces uncued datetime→date at `ensure_default_ui`. Country-on-branch cue must be the matched global phrase (not the literal `"global country"`) so admit matches prompt tokens. Mac §9 still operator-owned.
+
+# Nos-flip push (2026-09-22 evening)
+**Decided:** Flip code-side §4 Nos without lying about Mac. Visitor Company→Contact must not be purged as multi-company (`x_company_id`+`res.partner`); Purpose `selection→A/B/C` parses as Selection. First IR stamp admits cue-legal spray only; re-stamp keeps prior admitted. `ai_generate_ir_lint` + closed-class tests gate invent-outside-admit. Scrub remains assert-only (mutate deleted). Menus prune prefers GenerateIR.models. Mac §9 stays operator checklist in STATE.md.
+
+**Symbols:** `ai_generate_ir_enforce._field_allowed`, `ai_field_ir` selection-arrow, `ai_generate_ir_lint`, `tests/test_generate_ir_closed_class.py`, seed `stamp_generate_ir`.
+
+**Still No:** full ensurer→propose; pack invent as propose-only; Install O2M from IR.o2ms rewire; Mac live §9.
+
+---
+
+**Decided:** Unseen prompts → gated LLM + closed GenerateIR (propose→admit→purge), not pack invent. Thin enumerated residuals (Support Ticket / Dining Tables list+form) refuse workspace pack adoption. Scrub is assert-only; `enforce_closed_generate_ir` owns purge on thin residuals only. Isomorphic collapse is synonym-role only (never booking≠session, job_cost≠deliverable). SLA “Do not create a new Invoices app” is field_pack via negation-aware grain. Empty invent `source=""` is not invent — hand-authored Rate Unit selections survive canonicalize.
+
+**Symbols:** `ai_generate_ir_enforce._is_thin_residual`, `ai_document_shape._is_thin_simple_residual`, `ai_pipeline` thin pack refuse, `ai_document_compiler._collapse_isomorphic_siblings`, `ai_grain.classify_grain` + `text_negation`, `ai_brief_cues._INVENT_DROP_SOURCES`, `ai_constraint_ast` filter-hint gate.
+
+**Remaining:** Mac §9 live; full ensurer→propose; surface/pack IR_TRACE completeness.
+
+---
+
+# GenerateIR spine — honesty correction (2026-09-22)
+**Decided:** Prior “spine done” claim was **false** vs Claude handoff §3/§4. Tip has P0/partial-P1 only (`GenerateIR`, partial propose, enforce purge, spray unit goldens). Domain packs are **not** the production default for unseen prompts — closed IR + LLM enrich inside the lock is; packs only on clear brief match and as proposals. Scrub mutate off ≠ scrub deleted. Mac §9 live grade still required. Stop T12 blocklist expansion.
+
+**Symbols:** `ai_ir_trace`, `ai_generate_ir`, `ai_generate_ir_enforce.enforce_closed_generate_ir`, `tests/test_generate_spray_grammar_class.py`.
+
+**Remaining:** full propose conversion (depth/app_bar/enrich/packs); scrub delete; harness = Studio Generate→XML; Mac live §9; architecture_close reds (27 fail).
+
+---
+
 # State Must-do + Build-title + Identity spray (2026-09-22)
 **Decided:** Four architectural leftover classes fixed class-wide after Install grammar (not Maintenance-only). (A) State range cues `state Draft→Done` / `Draft to Done` / bare `Draft → … → Done` wire into `stated_workflow_states` + Must-do State selection + generate residual selection — never omit State while inventing Cancel. (B) Diagnosis/canvas title from business noun (Maintenance Tickets) — never Build-verb / grain pollution («Build Maintenance»). (C) Uncued `x_company_id` / Contact / Purchase Order / Invoice Identity M2Os never invent on thin residuals; Field Work keeps Customer + Related SO; depth company gate requires multi-company cue. (D) «Online-honest on stock moves» → honesty / consultant stamp; Parts stay product+qty — no stock/PO depends as substitute. Prefer Project + Vehicle + Install grammar + first-try stay green. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
 

@@ -49,12 +49,31 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --all-packages
+      - name: Ruff slot (new modules)
+        run: |
+          cd apps/api
+          uv sync --extra dev
+          if [ -f app/request_id.py ]; then
+            uv run --extra dev ruff check app/request_id.py app/logging_config.py
+          fi
       - name: API unit suite
         run: >
           uv run --directory apps/api pytest -q
           tests/test_auth.py
           tests/test_rate_limit.py
           tests/test_audit.py
+          tests/test_request_id.py
+          tests/test_logging_config.py
+          tests/test_rpc_classify.py
+          tests/test_plan_fingerprint.py
+          tests/test_audit_chain.py
+          tests/test_pr_f0_entrypoint.py
+          tests/test_power_ops_forbidden.py
+          tests/test_no_mcp_write.py
+          tests/test_rpc_guard.py
+          tests/test_snapshot_gate.py
+          tests/test_dry_run_ledger.py
+          tests/test_bridge_and_config_spec.py
           tests/test_module_inspect.py
           tests/test_zip_safety.py
           tests/test_crypto.py

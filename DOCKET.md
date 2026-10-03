@@ -262,3 +262,49 @@ Release gates for residual Generate leftovers — `AI_INTENT_LLM=off`, `apps/api
 - Generic `ensure_residual_satellites` `_line` still available for non-checklist line cues; cued checklist/parts prefer dedicated `*_checklist_line` / `*_parts_line`.
 - Sign → Odoo Sign (`sign.request`) link remains optional/advanced — boolean+attachment is the Online-safe primary.
 
+## GenerateIR spine (handoff 2026-09-22) — **Nos flipping — Mac §9 still open**
+
+**Honesty:** Code can flip structural Nos; Mac Install re-grade flips §9. Do not claim Mac done without the operator walkthrough below.
+
+**PR-F.0 entrypoint (2026-09-22):** Studio Generate = `generateStudioSession` → `POST …/sessions/{id}/generate` → `run_draft_job_body`. Last invent after closer: `_apply_locked_craft_and_surface` (and optional LLM enrich). Offline golden harness: `studio_generate_offline_finish`. Prior `_finish_seed_draft`-only greens were provisional.
+
+**PR-A→E (unit, non-provisional vs plan gates):** `ai_schema_client` · `schema_verified_reuse` + Rate-Line · Diagnosis `approved_craft` · sandbox `--test-enable` · prove bar (`proved` only with `run_tests=True`, max 3). **Scrub symbols deleted (Wave 4).**
+
+**PR-F (2026-09-22):** Closed-class harness injects `FakeSchemaClient` on `studio_generate_offline_finish`; `@pytest.mark.sandbox` slow suite separate from fast CI. Maintenance + Service-cards unit re-grade green. **Mac §9 still operator.**
+
+**Zero-gap Waves 0–8 (2026-09-23):** densifier/quality/must_do/pack invent → `admit_and_apply`; menus via Proposal; Install O2Ms ⊆ `GenerateIR.o2ms`; scrub deleted; prove API defaults `run_tests=True`; `view_has_field` Live/Fake; enrich datetime+money craft. **Leak closure + honest tests:** quality bill O2M+FK admit together; deepen_rate +/- craft paths; form_slots assert both; readiness header-line admit notes; amount-columns keep currency; title phrase-in-brief; production_shape depth floor. Battery **157** green. **Wave 8 accepted debt:** POS / `law_firm` honesty. **Mac §9 NOT done.**
+
+
+| Step (Claude response §4) | Status |
+|------|--------|
+| 1 `AI_IR_TRACE` after every named pass + Maintenance dump | **done** (+ `scripts/dump_maintenance_ir_trace.sh`) |
+| 2 `GenerateIR` + `build_ir` | **done** (+ seed admit snapshot for cue-legal spray) |
+| 3 Convert ai_depth + ai_odoo_app_bar to `propose()` | **done** (densifier/quality/must_do/pack/menus) |
+| 4 `merge_proposals` + empty structural allowlist | **done** + **schema_client (c)** (`schema_verified_reuse`; uncued Rate-Line invent rejected) |
+| 5 Rate Line / pack lexical → propose | **done** (pack seed/merge via admit; thin refuse unchanged) |
+| 6 Harness = real Studio Generate → Install XML | **improved** (PR-F harness = `studio_generate_offline_finish` + Fake schema; UI→Install = Mac) |
+| 7 Service-cards sibling | **done** (unit) + closed-IR class + Fake schema |
+| 8 Delete scrub mutate | **done** (symbols gone from `app/`; purge + invent-outside-admit) |
+| 9 DateTime + money → `approved_craft` | **done** (Diagnosis + enrich coerce gates) |
+| 10 Full battery + Mac live §9 | **unit green**; **agent offline+sandbox green 2026-09-23**; **Mac UI paste still open** |
+
+### Mac §9 agent evidence (2026-09-23) — **not** operator UI paste
+Artifacts: `.cache/mac9_agent/{maintenance,service_cards}.{zip,_scorecard.json}` + `sandbox_summary.json`.
+
+| Brief | score_0_10 | live_apply | invent | spray | models / O2Ms | sandbox Install |
+|-------|------------|------------|--------|-------|---------------|-----------------|
+| Maintenance tickets | 7.54 | True | [] | [] | header + checklist_line + parts_line; notebook O2Ms; menu root | `maintenance_tickets` ok (Odoo 19) |
+| Service cards | 7.54 | True | [] | [] | same shape | `service_cards` ok (Odoo 19) |
+
+Zip XML: statusbar Draft→Done; notebook Checklist + Parts; **no** uncued Company/PO/Invoice fields. Scorecard still notes thin line columns (done/product/qty nouns) and line-model “missing menu” noise — separate from Install spray/O2M bar.
+
+**Still operator:** Studio UI Generate on Mac + paste into this section (or chat). Do not flip §9 to done on agent evidence alone.
+
+**External JSON-2 (PR-J1/J2, 2026-09-23):** Dual-protocol behind frozen `OdooClient` — Online 19+ `auto`→`/json/2` Bearer; local 19 / ≤18 XML-RPC; sandbox forced xmlrpc. Mapper + HTTP error matrix unit-tested. **Local tip probe:** `/doc` 404; XML-RPC admin ok; JSON-2 without API key → 401. Live `/doc` + API-key smoke still operator.
+
+**New:** notebook collapse filters to `GenerateIR.o2ms`; invent-outside-admit CI; closed-class + spine goldens; `ai_schema_client`; Diagnosis craft UI; sandbox test-enable; prove_status bar.
+
+**Stop doing:** claiming §9 without Mac UI Install paste.
+
+---
+
