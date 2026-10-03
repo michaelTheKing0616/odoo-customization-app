@@ -1,6 +1,7 @@
 "use client";
 
-import { Slot } from "@radix-ui/react-slot";
+import { mergeProps } from "@base-ui/react/merge-props";
+import { Children, cloneElement, isValidElement } from "react";
 import { Spokes } from "@/components/loading-ui/spokes";
 import { cn } from "@/lib/cn";
 
@@ -37,35 +38,30 @@ export function Button({
   children,
   ...props
 }: ButtonProps) {
-  const Comp = asChild ? Slot : "button";
+  const sharedClassName = cn(
+    "inline-flex items-center justify-center rounded-md font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none",
+    variants[variant],
+    sizes[size],
+    className,
+  );
+
   if (asChild) {
-    return (
-      <Comp
-        className={cn(
-          "inline-flex items-center justify-center rounded-md font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none",
-          variants[variant],
-          sizes[size],
-          className,
-        )}
-        {...props}
-      >
-        {children}
-      </Comp>
-    );
+    const child = Children.only(children);
+    if (!isValidElement(child)) {
+      throw new Error("Button: asChild expects a single React element child.");
+    }
+    const buttonProps = { className: sharedClassName, ...props };
+    return cloneElement(child, mergeProps(buttonProps, child.props));
   }
+
   return (
-    <Comp
-      className={cn(
-        "inline-flex items-center justify-center rounded-md font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none",
-        variants[variant],
-        sizes[size],
-        className,
-      )}
+    <button
+      className={sharedClassName}
       disabled={disabled || loading}
       {...props}
     >
       {loading ? <Spokes className="studio-loader-spokes h-4 w-4" aria-hidden /> : null}
       {children}
-    </Comp>
+    </button>
   );
 }

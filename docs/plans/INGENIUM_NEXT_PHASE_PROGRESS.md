@@ -973,3 +973,9 @@ Track: T7 UI-F06. Worker [Move tooltips onto Base UI](579cd3ce-b19d-454f-8a5e-17
 Intent: Rewrite Tooltip onto `@base-ui/react/tooltip`. `Tooltip` and `TooltipProvider` props unchanged. Open delay 200 ms. `@radix-ui/react-tooltip` removed from package.json and pnpm-lock.yaml.
 Tests: `pnpm exec vitest run src/components/ui/Tooltip.test.tsx` — 4 passed (keyboard focus, Escape, 200 ms hover delay, child onClick kept). Trigger uses Base UI `render` so the child's click handler is merged, not replaced.
 Not done: UI-F07 Slot. `@radix-ui/react-slot` remains. Live hover was not opened in the browser. L4 off.
+
+## 2026-10-03 — UI-F07 Button asChild without Radix Slot
+Track: T7 UI-F07. Worker [Replace Radix Slot on Button](f07ca7ce-e481-40a7-9c8c-0e8b7d28aedd). No push. L4 stays off.
+Intent: `Button` `asChild` merges with `@base-ui/react/merge-props` (button props first, child props second). `@radix-ui/react-slot` removed as a direct dependency. No `@radix-ui` import remains under `apps/web/src`. `cmdk` still pulls Radix dialog and slot transitively.
+Tests: `pnpm exec vitest run src/components/ui/Button.test.ts src/components/ui/Button.asChild.test.tsx` — 6 passed (anchor keeps href and classes, child click runs, default button click). jsdom logs “Not implemented: navigation to another Document” on the anchor click; the assertion still passed.
+Not done: UI-F08 Sonner. Live asChild link was not opened in the browser. L4 off.
