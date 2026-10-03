@@ -1,0 +1,204 @@
+{
+  "label": "synthetic replay",
+  "provenance": "synthetic_replay",
+  "recorded_from_live_provider": false,
+  "parser": "parse_openai",
+  "note": "Hand-authored synthetic replay. Not a cassette recorded from a live provider. Cassette recording remains a manual operator step.",
+  "cases": {
+    "C01": {
+      "bodies": [
+        {
+          "status": "completed",
+          "output": [
+            {
+              "type": "message",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "hello"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "C02": {
+      "bodies": [
+        {
+          "status": "completed",
+          "output": [
+            {
+              "type": "function_call",
+              "call_id": "c2",
+              "name": "describe_model",
+              "arguments": "{\"model\":\"sale.order\"}"
+            }
+          ]
+        }
+      ]
+    },
+    "C03": {
+      "bodies": [
+        {
+          "status": "completed",
+          "output": [
+            {
+              "type": "function_call",
+              "call_id": "c3",
+              "name": "describe_model",
+              "arguments": "{\"model\":\"sale.order\",\"nested\":{\"name\":\"x\"},\"tags\":[\"draft\",\"sent\"],\"state\":\"sale\",\"choice\":{\"kind\":\"partner\",\"id\":\"res.partner\"}}"
+            }
+          ]
+        }
+      ]
+    },
+    "C04": {
+      "bodies": [
+        {
+          "status": "completed",
+          "output": [
+            {
+              "type": "function_call",
+              "call_id": "c4",
+              "name": "describe_model",
+              "arguments": "{\"model\":\"sale.order\"}"
+            }
+          ]
+        },
+        {
+          "status": "completed",
+          "output": [
+            {
+              "type": "message",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "done"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "C05": {
+      "bodies": [
+        {
+          "status": "completed",
+          "output": [
+            {
+              "type": "message",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "step-0"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "status": "completed",
+          "output": [
+            {
+              "type": "message",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "step-1"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "status": "completed",
+          "output": [
+            {
+              "type": "message",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "step-2"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "C06": {
+      "bodies": [
+        {
+          "status": "completed",
+          "output": [
+            {
+              "type": "function_call",
+              "call_id": "p1",
+              "name": "describe_model",
+              "arguments": "{\"model\":\"a\"}"
+            },
+            {
+              "type": "function_call",
+              "call_id": "p2",
+              "name": "describe_model",
+              "arguments": "{\"model\":\"b\"}"
+            }
+          ]
+        }
+      ]
+    },
+    "C09": {
+      "bodies": [
+        {
+          "status": "completed",
+          "output": [
+            {
+              "type": "message",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "{\"ok\": true}"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "C12": {
+      "bodies": [
+        {
+          "status": "incomplete",
+          "output": [
+            {
+              "type": "message",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "cut"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "C15": {
+      "bodies": [
+        {
+          "status": "completed",
+          "output": [
+            {
+              "type": "function_call",
+              "call_id": "u",
+              "name": "describe_model",
+              "arguments": "{\"model\":\"\\u8ca9\\u58f2 \\ud83d\\ude80\",\"note\":\"quote:\\\"x\\\"\"}"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

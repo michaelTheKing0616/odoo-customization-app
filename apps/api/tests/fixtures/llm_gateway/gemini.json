@@ -1,0 +1,283 @@
+{
+  "label": "synthetic replay",
+  "provenance": "synthetic_replay",
+  "recorded_from_live_provider": false,
+  "parser": "parse_gemini",
+  "note": "Hand-authored synthetic replay. Not a cassette recorded from a live provider. Cassette recording remains a manual operator step.",
+  "cases": {
+    "C01": {
+      "bodies": [
+        {
+          "candidates": [
+            {
+              "finishReason": "STOP",
+              "content": {
+                "parts": [
+                  {
+                    "text": "hello"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "C02": {
+      "bodies": [
+        {
+          "candidates": [
+            {
+              "finishReason": "STOP",
+              "content": {
+                "parts": [
+                  {
+                    "functionCall": {
+                      "id": "c2",
+                      "name": "describe_model",
+                      "args": {
+                        "model": "sale.order"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "C03": {
+      "bodies": [
+        {
+          "candidates": [
+            {
+              "finishReason": "STOP",
+              "content": {
+                "parts": [
+                  {
+                    "functionCall": {
+                      "id": "c3",
+                      "name": "describe_model",
+                      "args": {
+                        "model": "sale.order",
+                        "nested": {
+                          "name": "x"
+                        },
+                        "tags": [
+                          "draft",
+                          "sent"
+                        ],
+                        "state": "sale",
+                        "choice": {
+                          "kind": "partner",
+                          "id": "res.partner"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "C04": {
+      "bodies": [
+        {
+          "candidates": [
+            {
+              "finishReason": "STOP",
+              "content": {
+                "parts": [
+                  {
+                    "functionCall": {
+                      "id": "c4",
+                      "name": "describe_model",
+                      "args": {
+                        "model": "sale.order"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "candidates": [
+            {
+              "finishReason": "STOP",
+              "content": {
+                "parts": [
+                  {
+                    "text": "done"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "C05": {
+      "bodies": [
+        {
+          "candidates": [
+            {
+              "finishReason": "STOP",
+              "content": {
+                "parts": [
+                  {
+                    "text": "step-0"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "candidates": [
+            {
+              "finishReason": "STOP",
+              "content": {
+                "parts": [
+                  {
+                    "text": "step-1"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "candidates": [
+            {
+              "finishReason": "STOP",
+              "content": {
+                "parts": [
+                  {
+                    "text": "step-2"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "C06": {
+      "bodies": [
+        {
+          "candidates": [
+            {
+              "finishReason": "STOP",
+              "content": {
+                "parts": [
+                  {
+                    "functionCall": {
+                      "id": "p1",
+                      "name": "describe_model",
+                      "args": {
+                        "model": "a"
+                      }
+                    }
+                  },
+                  {
+                    "functionCall": {
+                      "id": "p2",
+                      "name": "describe_model",
+                      "args": {
+                        "model": "b"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "C09": {
+      "bodies": [
+        {
+          "candidates": [
+            {
+              "finishReason": "STOP",
+              "content": {
+                "parts": [
+                  {
+                    "text": "{\"ok\": true}"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "C12": {
+      "bodies": [
+        {
+          "candidates": [
+            {
+              "finishReason": "MAX_TOKENS",
+              "content": {
+                "parts": [
+                  {
+                    "text": "cut"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "C15": {
+      "bodies": [
+        {
+          "candidates": [
+            {
+              "finishReason": "STOP",
+              "content": {
+                "parts": [
+                  {
+                    "functionCall": {
+                      "id": "u",
+                      "name": "describe_model",
+                      "args": {
+                        "model": "販売 🚀",
+                        "note": "quote:\"x\""
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "C20": {
+      "bodies": [
+        {
+          "candidates": [
+            {
+              "finishReason": "SAFETY",
+              "content": {
+                "parts": [
+                  {
+                    "text": ""
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
