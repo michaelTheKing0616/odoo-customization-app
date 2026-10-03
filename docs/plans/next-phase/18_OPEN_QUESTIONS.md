@@ -4,12 +4,12 @@ Blocking means a card must stop rather than guess. Non-blocking means the card p
 
 | ID | Question | Blocking? | Assumption if not |
 |---|---|---|---|
-| D8 / ADR-02 | Thin in-house gateway vs LiteLLM | Yes for T4-LLM3 implementation. No for the ADR stub | Document only until Tope accepts ADR-02 |
-| GATE-L4 numbers | 200 applies, 60 days, 1% rollback, 30-day standing rules, daily cap 20, blast 50 | Yes before enabling L4. No for writing the negative tests | Implementation of BL cards does not wait on this. Thresholds in `01` stay the contract until Tope edits MEMORY. L4 cards are not started |
+| D8 / ADR-02 | Thin in-house gateway vs LiteLLM | No. Accepted 2026-10-03: in-house gateway. LiteLLM stays out | T4-LLM3 uses `apps/api/app/llm_gateway` when that card is reached |
+| GATE-L4 numbers | 200 applies, 60 days, 1% rollback, 30-day standing rules, daily cap 20, blast 50 | Numbers confirmed 2026-10-03. Enabling L4 still waits on GATE-L4-08 evidence | L4 stays off. The numbers in `01` are the contract |
 | OQ-STACK | Confirm this repo is the only deploy target | No | ADR-01 says this repo |
 | OQ-VERSIONS | Which Enterprise builds get fixtures | No | Community 17–20 first. Enterprise flagged untested |
 | OQ-BRIDGE-ONLINE | Can the Bridge addon be installed on Online | Yes before promising P1 on Online | Online without the addon is P2, stricter gate |
-| OQ-STAGING | Who provides neutralized clones | Yes before production R3 | No staging means review-only above R1 |
+| OQ-STAGING | Who provides neutralized clones | Provider chosen 2026-10-03: operator-owned host. Production R3 still waits until that clone exists for the tenant | Above R1 stays review-only until the clone exists. A customer production database is never cloned |
 | OQ-BYO | BYO provider keys in v1 | No | ADR-12. Fernet until a KMS is chosen |
 | OQ-APPROVERS | Named people beyond the role model | No | Roles in T6 |
 | OQ-LANG | UI languages | No | English only. Do not add i18n in this phase |

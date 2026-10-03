@@ -1096,16 +1096,22 @@ Not done: ADR-09. ADR-02 stays open until Tope accepts D8. L4 off.
 Older "Not done" lines that only name the next card are closed when that card has its own later entry. This section is the list that still has to be finished. A line is removed only when that leftover is done.
 
 ### Waiting on you
-- ADR-02 / D8: in-house gateway versus LiteLLM. T4-LLM3 does not go past this.
-- L4 thresholds. L4 stays off.
-- ADR-07 / OQ-STAGING: who provides neutralized clones. Production R3 stays blocked. Above R1 is review-only.
-- ADR-05: union tools versus family tools. GATE-P6-04 has not been run.
-- BL-08 commit hygiene. Needs an explicit yes.
-- Push. Needs an explicit yes.
-- Mac §9 operator paste.
+- Mac §9 operator paste. Only a paste in the product UI closes this. A sandbox scorecard does not.
+
+### Decided 2026-10-03
+- D8 / ADR-02: in-house gateway. LiteLLM stays out.
+- L4 thresholds confirmed. L4 stays off until GATE-L4-08 evidence exists.
+- ADR-07: operator-owned neutralized clone. Production R3 stays blocked until that clone exists for the tenant. Above R1 stays review-only.
+- ADR-05: family tool lists. No apply tool. GATE-P6-04 is later evidence.
+- BL-08: later, as a directory split, after a second yes on the commit plan.
+- Push: local only until a later explicit yes.
 
 ### Product leftovers
 - T2-J1 `/doc` text match is not verified. Do not say JSON-2 is complete. Sandbox default stays XML-RPC. Promote stays human.
+- L4 stays off until GATE-L4-08 evidence exists. Thresholds are confirmed.
+- Production R3 stays blocked until an operator-owned neutralized clone exists for that tenant. Above R1 stays review-only.
+- GATE-P6-04 has not been run. The tool shape is family lists.
+- BL-08 commit plan is not written yet. A second yes is required before those commits.
 - `safety_gate.preflight` does not pass `odoo_major`. `snapshot_gate.py` uses `== 20`. `database_backup.py` uses `>= 20`. Snapshot freshness (`created_at`, last write, BILLABLE) is not wired on that caller.
 - An unset module major still emits `security/record_rules.xml` as `ir.rule` (`packages/module-generator`).
 - Live Odoo 20 version-table probes stay skipped until `ODOO20_URL` is set.
@@ -1135,3 +1141,5 @@ Not done: ADR-10. ADR-02 stays open until Tope accepts D8. L4 off.
 Track: T8 ADR-10. Worker [Record the skill-package ADR](4215d4ff-f5b6-46c4-836f-d4210bb4ffb7). No push. L4 stays off.
 Intent: No executable code in a skill. A skill can only narrow a grant. At most 3 skills load by default. `SKILL.md` is at most 2500 tokens. Router bars are recall@3 at least 0.95 and precision@3 at least 0.6 on at least 300 labeled phrasings. CI is at least 5 evals per skill and at least 12 for Tier-1. The router is not built.
 Not done: ADR-11. ADR-02 stays open until Tope accepts D8. L4 off.
+
+CLAIM ADR-11 2026-10-03T16:26:00Z file: docs/adr/ADR-11.md only. Accept the audit chain shape from 11_LOGGING_AUDIT_OBSERVABILITY.md section 2. Record that apps/api/app/audit_chain.py already appends and verifies a SHA-256 chain with genesis 64 zeros. Do not claim retention windows or every kind are wired. Do not change product code. Do not close ADR-02. Do not enable L4.

@@ -1,6 +1,17 @@
+# Waiting items closed (2026-10-03)
+**Decided:** Tope accepted the recommendations.
+- D8 / ADR-02: thin in-house gateway in `apps/api/app/llm_gateway`. LiteLLM stays out. T4-LLM3 may use that gateway when its card is reached. Do not add LiteLLM.
+- L4 thresholds are confirmed: 200 L3 applies over 60 days, rollback rate at or under 1%, zero verify failures, standing rules expire within 30 days, daily cap 20, blast radius 50 records. L4 stays off until GATE-L4-08 evidence exists. L4 never covers R3, R4, module installs, or promote.
+- ADR-07 / OQ-STAGING: the operator provides the neutralized clone on a host they control. No managed clone vendor. A customer production database is never cloned. Production R3 stays blocked, and anything above R1 stays review-only, until that clone exists for the tenant.
+- ADR-05: family tool lists (inspection, planning, post-submit), about 20 tools visible for the current phase. No list includes an apply tool. GATE-P6-04 is later evidence for that shape, not the decider.
+- BL-08: a later pass may propose small commits by directory. Those commits wait for a second yes. Caches, the pnpm store, patch files, and recaptured token screenshots stay out.
+- Push: `premium-local-tip` stays local until a later explicit yes.
+- Mac §9 stays open. Only an operator paste in the product UI closes it.
+
 # L4 autonomy, Odoo 20 GA, Prime UI stack (2026-10-02)
 **Decided:** D10 — L4 production allow-list autonomy is in this phase. It amends the agent spec's "No L4". Gates GATE-L4-01–12 in `docs/plans/next-phase/01_LOCKS_DECISIONS_CONFLICTS.md`. The numeric thresholds (200 L3 applies, 60 days, ≤1% rollback, 30-day standing rules, daily cap 20, blast radius 50) were set in that file and still need a confirm before L4 is turned on. D11 — Community 20 is GA beside 17, 18, and 19. 16 stays experimental. ≤15 stays refused. 20 writes `ir.access`, not `ir.rule`. D12 — UI moves to Base UI, Sonner, and `motion/react`. `cmdk` stays. One component family per card. The working spec is `docs/plans/next-phase/00_INDEX.md`. The older consolidated spec stays, with a redirect header. No product code in this pass.
 **Pack v2 (2026-10-02, late):** the executable cards live in `docs/plans/next-phase/cards/` and the `13` UI-S blocks. `14` is the index only. Authoritative counts: 62 ops, 188 skills, 129 oracle tests, 32 version rows.
+**PDF Studio (2026-10-03):** custom printouts are a queued gap, not a shipped claim. Cards PDF-01–06 in `docs/plans/next-phase/cards/T7_PDF_STUDIO.md` extend the existing `ReportDesigner`. Create from scratch or extend a stock QWeb report. Drag-and-drop on a paper canvas. Public RPC only. Unsafe QWeb stays refused.
 
 # Auth stays self-hosted; Bridge name; config pattern reimplemented (2026-10-02)
 **Decided:** Ingenium Bridge is the product name (D3). Login stays in FastAPI with Authlib for Google and Microsoft and pyotp for TOTP (D6). No managed auth vendor and no Keycloak until a paying customer needs SAML. Config-as-code is reimplemented in this API; `odoo-config-agent` is an oracle, not a dependency (D7). Client Approver is a connection grant, not a workspace role, and cross-client access returns 404 (D9).

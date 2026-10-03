@@ -53,15 +53,15 @@ A lock fails the build if weakened. A decision in this file beats an older sourc
 | D5 | Connections are a first-class subsystem. Contracts reference `connection_id`, not inlined secrets | Closed |
 | D6 | Auth is self-hosted: Authlib + TOTP. No Clerk/WorkOS/Auth0 | Closed |
 | D7 | Config-as-code is reimplemented in this repo. `odoo-config-agent` is the test oracle, not a vendored runtime | Closed |
-| D8 | AI gateway: thin in-house vs LiteLLM. ADR-02 still open | Open |
+| D8 | Thin in-house gateway in `apps/api/app/llm_gateway`. LiteLLM stays out | Closed 2026-10-03 |
 | D9 | Client Approver is a connection grant (`client_approver` / `client_viewer`). Out of scope returns 404 | Closed. First slice shipped |
 | D10 | L4 production allow-list autonomy is built this phase. Amends agent spec §10 "No L4" | Closed 2026-10-02 |
 | D11 | Odoo 20 is GA this phase, beside 17/18/19. 16 stays experimental. ≤15 refused | Closed 2026-10-02 |
 | D12 | UI stack moves to Base UI, Sonner, and `motion/react`. `cmdk` stays. Migration is one component family per card | Closed 2026-10-02 |
 
-### D10 gates (authored here; thresholds need Tope confirmation before L4-01 starts)
+### D10 gates (thresholds confirmed by Tope on 2026-10-03; L4 stays off until GATE-L4-08 evidence exists)
 
-These numbers are not copied from a source. They are the build contract until Tope changes them in MEMORY.
+These numbers are the build contract. Confirming them does not enable L4.
 
 | ID | Gate |
 |---|---|

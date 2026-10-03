@@ -58,7 +58,7 @@
 ## Permanent facts / constraints
 - **Odoo Community 20 + 19 + 18 + 17 = GA.** **16 = experimental** (16 omits dotted `update_path` /
   related_write). Majors ≤15 refused. Odoo 20 uses `ir.access` instead of `ir.model.access` + `ir.rule`, and the `db` service is gone. No silent “best effort” outside the capability registry. D11, 2026-10-02. `docker/docker-compose.odoo20.yml` (port 8073) and `views_v20` exist uncommitted; the automation/security v20 adapters and the major gate for 20 are still T9 cards.
-- **D10:** L4 production allow-list autonomy is in this phase, gated by GATE-L4-01–12. The thresholds need Tope's confirm before L4 is enabled. **D12:** UI uses Base UI, Sonner, `motion/react`, input-otp, react-virtuoso, and recharts (Dashboard Studio only). `cmdk` stays. Build pack: `docs/plans/next-phase/00_INDEX.md`, cards in `docs/plans/next-phase/cards/`.
+- **D8:** thin in-house gateway in `apps/api/app/llm_gateway`. LiteLLM stays out (accepted 2026-10-03). **D10:** L4 production allow-list autonomy is in this phase, gated by GATE-L4-01–12. Thresholds are confirmed (200 applies / 60 days / ≤1% rollback / 30-day rules / daily cap 20 / blast 50). L4 stays off until GATE-L4-08 evidence exists. **D12:** UI uses Base UI, Sonner, `motion/react`, input-otp, react-virtuoso, and recharts (Dashboard Studio only). `cmdk` stays. Build pack: `docs/plans/next-phase/00_INDEX.md`, cards in `docs/plans/next-phase/cards/`.
 - Customize via **public ORM/RPC only** (`ir.model`, `ir.model.fields`, `ir.ui.view`,
   `ir.ui.menu`, `ir.actions.*`, `base.automation`, access rules). Legitimate; not Studio.
 - **Never** read, copy, or reverse-engineer Odoo Enterprise Studio source.
