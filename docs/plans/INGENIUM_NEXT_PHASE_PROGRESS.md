@@ -1065,3 +1065,8 @@ Track: T7 UI-SP-CSS. Worker [Split stylesheets by area](6c478512-4324-4f29-a24f-
 Intent: Split `studio-refinement.css` and `globals.css` into area files. Import order matches the original source. No selector, property, or declaration changed. Concatenating the pieces matches the committed CSS byte for byte (studio 37259 bytes, globals 30858 bytes including the Tailwind import).
 Tests: Playwright `/e2e/tokens` on next dev — 3 passed (light capture, dark capture, harness render). Those tests do not pixel-diff. The recaptured PNGs differ in size and were left unstaged.
 Not done: ADR-01. L4 off.
+
+## 2026-10-03 — ADR-04 tool-call emulation ladder
+Track: T8 ADR-04. Worker [Record the tool-call emulation ADR](91042cc3-9f72-4acd-a61c-007b702c86d6). No push. L4 stays off.
+Intent: Record native, then `emulated_json`, then `emulated_text`. Emulated modes stay at Tier B until an eval. Partial and ambiguous actions are not tool calls. Matches ADR-03 and `parse_emulated_json`.
+Not done: ADR-05. ADR-02 stays open until Tope accepts D8. L4 off.
