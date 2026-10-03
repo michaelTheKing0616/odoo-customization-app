@@ -18,7 +18,7 @@ os.environ.setdefault("RATE_LIMIT_PER_MINUTE", "0")
 
 from app.account_models import Workspace  # noqa: E402
 from app.db import SessionLocal, init_db  # noqa: E402
-from app.db_models import DryRunReceipt, OdooConnection  # noqa: E402
+from app.db_models import DryRunReceipt, MetadataSnapshot, OdooConnection  # noqa: E402
 from app.safety_gate import SafetyGate, SafetyGateError, SafetySpec, params_fingerprint  # noqa: E402
 
 
@@ -55,6 +55,74 @@ def test_preflight_checks_writes_paused_before_write_mode(db) -> None:
     with pytest.raises(SafetyGateError) as exc:
         gate.preflight(spec)
     assert exc.value.refusal.code == "writes_paused"
+
+
+def _persist_connection(db, **overrides) -> OdooConnection:
+    conn = _connection(**overrides)
+    db.add(conn)
+    db.commit()
+    db.refresh(conn)
+    return conn
+
+
+def _persist_snapshot(
+    db,
+    connection_id: str,
+    *,
+    created_at: datetime | None = None,
+) -> MetadataSnapshot:
+    snap = MetadataSnapshot(
+        connection_id=connection_id,
+        resource_type="view",
+        resource_key="view:1",
+        label="preflight-snap",
+        payload_json="{}",
+        reversible="yes",
+    )
+    if created_at is not None:
+        snap.created_at = created_at
+    db.add(snap)
+    db.commit()
+    db.refresh(snap)
+    if created_at is not None:
+        snap.created_at = created_at
+        db.add(snap)
+        db.commit()
+        db.refresh(snap)
+    return snap
+
+
+def test_preflight_production_two_hour_old_snapshot_refused(db) -> None:
+    conn = _persist_connection(db, write_mode="production")
+    now = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
+    stale = _persist_snapshot(db, conn.id, created_at=now - timedelta(hours=2))
+    gate = SafetyGate(db, connection=conn)
+    spec = SafetySpec(risk="destructive")
+    with pytest.raises(SafetyGateError) as exc:
+        gate.preflight(spec, snapshot_id=stale.id, now=now)
+    assert exc.value.refusal.code == "snapshot_required"
+    assert "10-minute freshness window" in exc.value.refusal.message
+
+
+def test_preflight_production_snapshot_from_other_connection_refused(db) -> None:
+    conn = _persist_connection(db, write_mode="production")
+    other = _persist_connection(db, write_mode="production")
+    foreign = _persist_snapshot(db, other.id)
+    gate = SafetyGate(db, connection=conn)
+    spec = SafetySpec(risk="destructive")
+    with pytest.raises(SafetyGateError) as exc:
+        gate.preflight(spec, snapshot_id=foreign.id)
+    assert exc.value.refusal.code == "snapshot_required"
+    assert "different connection" in exc.value.refusal.message
+
+
+def test_preflight_production_billable_method_without_fresh_snapshot_refused(db) -> None:
+    conn = _persist_connection(db, write_mode="production")
+    gate = SafetyGate(db, connection=conn)
+    spec = SafetySpec(risk="reversible")
+    with pytest.raises(SafetyGateError) as exc:
+        gate.preflight(spec, method="button_install")
+    assert exc.value.refusal.code == "snapshot_required"
 
 
 def test_preflight_observer_mode(db) -> None:

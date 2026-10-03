@@ -12,10 +12,11 @@ from typing import Any, Literal
 from sqlalchemy.orm import Session
 
 from app.account_models import Workspace
-from app.db_models import DryRunReceipt, OdooConnection
+from app.db_models import AuditLog, DryRunReceipt, MetadataSnapshot, OdooConnection
+from app.snapshot_gate import SnapshotRequired, require_production_snapshot
 from app.snapshots import ConfirmationRequired, require_advanced_confirmation
 
-RiskClass = Literal["read", "reversible", "partially_reversible", "destructive", "code"]
+RiskClass = Literal["read", "reversible", "partially_reversible", "destructive", "code", "billable"]
 ConfirmLevel = Literal["none", "simple", "phrase"]
 
 RECEIPT_TTL_MINUTES = 15
@@ -75,7 +76,15 @@ class SafetyGate:
         self.connection = connection
         self.workspace = workspace
 
-    def preflight(self, spec: SafetySpec, *, snapshot_id: str | None = None) -> None:
+    def preflight(
+        self,
+        spec: SafetySpec,
+        *,
+        snapshot_id: str | None = None,
+        method: str | None = None,
+        last_write_audited_at: datetime | None = None,
+        now: datetime | None = None,
+    ) -> None:
         if not spec.bypass_writes_paused:
             self._check_writes_paused()
         if spec.odoo_mutation:
@@ -83,26 +92,33 @@ class SafetyGate:
         if self.connection is not None:
             write_mode = getattr(self.connection, "write_mode", "standard") or "standard"
             exists = False
-            if snapshot_id and write_mode == "production" and spec.risk in {"destructive", "code"}:
-                from app.db_models import MetadataSnapshot
-
+            snapshot_created_at: datetime | None = None
+            snapshot_connection_id: str | None = None
+            if snapshot_id and write_mode == "production":
                 row = (
                     self.db.query(MetadataSnapshot)
-                    .filter(
-                        MetadataSnapshot.id == snapshot_id,
-                        MetadataSnapshot.connection_id == self.connection.id,
-                    )
+                    .filter(MetadataSnapshot.id == snapshot_id)
                     .first()
                 )
-                exists = row is not None
-            from app.snapshot_gate import SnapshotRequired, require_production_snapshot
-
+                if row is not None:
+                    exists = True
+                    snapshot_created_at = row.created_at
+                    snapshot_connection_id = row.connection_id
+            audited_at = last_write_audited_at
+            if audited_at is None and write_mode == "production":
+                audited_at = self._last_write_audited_at(self.connection.id)
             try:
                 require_production_snapshot(
                     write_mode=write_mode,
                     risk=spec.risk,
                     snapshot_id=snapshot_id,
                     snapshot_exists=exists,
+                    snapshot_created_at=snapshot_created_at,
+                    last_write_audited_at=audited_at,
+                    snapshot_connection_id=snapshot_connection_id,
+                    connection_id=self.connection.id,
+                    method=method,
+                    now=now,
                 )
             except SnapshotRequired as exc:
                 raise SafetyGateError(
@@ -112,6 +128,16 @@ class SafetyGate:
                         options=["Create a snapshot, then retry with header X-Snapshot-Id"],
                     )
                 ) from exc
+
+    def _last_write_audited_at(self, connection_id: str) -> datetime | None:
+        row = (
+            self.db.query(AuditLog)
+            .filter(AuditLog.path.contains(connection_id))
+            .filter(AuditLog.method.in_(("POST", "PUT", "PATCH", "DELETE")))
+            .order_by(AuditLog.created_at.desc())
+            .first()
+        )
+        return row.created_at if row is not None else None
 
     def _check_writes_paused(self) -> None:
         if self.workspace is not None and getattr(self.workspace, "writes_paused", False):

@@ -518,4 +518,17 @@ Negative tests: `test_scrub_uncued_must_do_asserts_on_uncued_date` (uncued `Date
 Not done: delete `scrub_uncued_*` symbols entirely (one release assert-only per card); full battery / Mac §9 live grade; `test_continuous_invent_class` not re-run this card.
 Risks introduced: LLM paths that still emit uncued invent labels will raise at scrub assert until upstream gates catch them.
 
+CLAIM 5A-06 2026-10-03T08:25:35Z files: apps/api/app/snapshot_gate.py and its tests. Freshness window 10 minutes. Cover BILLABLE. Do not create a second audit table.
+
+## 2026-10-03 — 5A-06 snapshot freshness + BILLABLE
+Track: 5A. Worker only. No commit.
+Intent: Production DESTRUCTIVE or BILLABLE refuses unless a connection-scoped metadata snapshot was recorded immediately before (≤10 min and newer than the last audited write). Odoo 20 accepts metadata; no `/web/database` backup.
+Files: `apps/api/app/snapshot_gate.py`, `apps/api/tests/test_snapshot_gate.py`, this entry.
+Commands and results: `cd apps/api && ../../.venv/bin/python -m pytest -q -p no:cacheprovider tests/test_snapshot_gate.py` → **20 passed in 1.82s**.
+Gates passed: freshness window; BILLABLE risk + method patterns reuse `rpc_classify._is_billable_method` (no second taxonomy); Odoo 20 metadata accepted.
+Negative tests: `test_production_destructive_two_hour_old_snapshot_refused`, `test_production_snapshot_from_other_connection_refused`.
+Not done: `safety_gate.preflight` still only passes `snapshot_exists` — wire `created_at` / last write / BILLABLE risk on the caller (changeset executor not touched).
+Risks introduced: fail-closed when `created_at` is omitted on a gated production apply.
+
+
 
