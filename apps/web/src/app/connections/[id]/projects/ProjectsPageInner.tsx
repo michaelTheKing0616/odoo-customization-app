@@ -65,6 +65,7 @@ export default function ProjectsPageInner() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<ProjectsBusy>(null);
+  const [listHydrated, setListHydrated] = useState(false);
   const [listLoading, setListLoading] = useState(true);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [applyTarget, setApplyTarget] = useState<ProjectRow | null>(null);
@@ -101,7 +102,10 @@ export default function ProjectsPageInner() {
         setFailed(true);
         setError(err.message);
       })
-      .finally(() => setListLoading(false));
+      .finally(() => {
+        setListLoading(false);
+        setListHydrated(true);
+      });
   }, [refresh]);
 
   useEffect(() => {
@@ -347,7 +351,7 @@ export default function ProjectsPageInner() {
         <div className="project-board-pane">
           <ProjectBoard
             projects={projects}
-            loading={listLoading}
+            loading={!listHydrated || listLoading}
             selectedId={selectedId}
             filter={filter}
             query={query}

@@ -882,3 +882,16 @@ Pages (5):
 - `apps/web/src/app/connections/[id]/import/page.tsx` — seed pack picker skeleton + empty `EmptyState` (removed “Loading packs…”)
 Tests: `pnpm exec vitest run src/components/automations/AutomationsList.test.tsx` — **3 passed** (empty list + loading skeleton; no `Loading...` string).
 Not done: remaining ~65 operate routes (UI-F03 continues). L4 off. No commit.
+
+CLAIM UI-F03-B 2026-10-03T12:25:00Z files: next five operate empty states. Do not redo batch A. Do not enable L4.
+
+Track: T7 UI-F03 (batch B). Worker only. No commit. No push. No Odoo host. L4 stays off.
+Intent: Next five connection operate pages replace ad-hoc Suspense/empty list copy with kit Skeleton + EmptyState; list areas use a hydrated flag cleared before fetch and set in `finally`.
+Pages (5):
+- `apps/web/src/app/connections/[id]/projects/page.tsx` — Suspense fallback skeleton; `ProjectsPageInner` `listHydrated` + board loading gate
+- `apps/web/src/app/connections/[id]/modulespec/page.tsx` — Suspense fallback skeleton
+- `apps/web/src/app/connections/[id]/reports/page.tsx` — report list skeleton + `EmptyState`
+- `apps/web/src/app/connections/[id]/approvals/page.tsx` — rules/entries skeleton + `EmptyState`
+- `apps/web/src/app/connections/[id]/script-runner/page.tsx` — library/history skeleton + `EmptyState`
+Tests: `pnpm exec vitest run src/components/projects/ProjectBoard.test.tsx` — **3 passed** (empty list + loading skeleton; no `Loading...` string).
+Not done: remaining operate routes (UI-F03 continues). L4 off. No commit.

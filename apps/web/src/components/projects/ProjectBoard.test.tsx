@@ -50,4 +50,41 @@ describe("ProjectBoard", () => {
     expect(screen.queryByRole("button", { name: "Apply" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
   });
+
+  it("shows skeleton while loading without Loading... copy", () => {
+    render(
+      <ProjectBoard
+        projects={[]}
+        loading
+        selectedId={null}
+        filter="all"
+        query=""
+        onQueryChange={vi.fn()}
+        onFilterChange={vi.fn()}
+        onSelect={vi.fn()}
+        onCreate={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("projects-board-loading")).toBeInTheDocument();
+    expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
+  });
+
+  it("shows empty state with create action", () => {
+    const onCreate = vi.fn();
+    render(
+      <ProjectBoard
+        projects={[]}
+        selectedId={null}
+        filter="all"
+        query=""
+        onQueryChange={vi.fn()}
+        onFilterChange={vi.fn()}
+        onSelect={vi.fn()}
+        onCreate={onCreate}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+    expect(onCreate).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
+  });
 });

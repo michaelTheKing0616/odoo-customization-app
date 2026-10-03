@@ -7,7 +7,7 @@ import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
-import { Card, PageHeader } from "@/components/ui/layout-primitives";
+import { Card, EmptyState, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
 import { ReportDesigner } from "@/components/reports/ReportDesigner";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import {
@@ -56,6 +56,7 @@ export default function ReportsPage() {
   >([{ reportId: "", recordIds: "1" }]);
   const [renderProbe, setRenderProbe] = useState<string | null>(null);
   const [editorTab, setEditorTab] = useState<"visual" | "code">("visual");
+  const [listHydrated, setListHydrated] = useState(false);
 
   const refresh = useCallback(async () => {
     const [r, p] = await Promise.all([
@@ -74,7 +75,10 @@ export default function ReportsPage() {
   }, [connectionId]);
 
   useEffect(() => {
-    refresh().catch((err: Error) => setError(err.message));
+    setListHydrated(false);
+    refresh()
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setListHydrated(true));
   }, [refresh]);
 
   const reportsCaveat = useMemo(() => {
@@ -194,7 +198,7 @@ export default function ReportsPage() {
         </Callout>
       ) : null}
 
-      <Card className="mt-8 p-5">
+      <Card className="mt-8 p-5" id="reports-create-form">
         <form onSubmit={onCreate} className="grid gap-3 sm:grid-cols-2">
           <h2 className="sm:col-span-2 text-xl font-semibold text-ink">New report</h2>
           <label className="text-sm">
@@ -251,27 +255,54 @@ export default function ReportsPage() {
       </Card>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[280px_1fr]">
-          <ul className="max-h-96 space-y-1 overflow-auto border border-border-subtle p-3 text-sm">
-            {reports.map((r) => (
-              <li key={r.id}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedId(r.id)}
-                  className={`w-full px-2 py-1.5 text-left ${
-                    selectedId === r.id ? "bg-surface-raised text-ink" : "text-muted"
-                  }`}
-                >
-                  {r.name}
-                  <span className="block font-mono text-[10px] text-muted">
-                    {r.model} · {r.report_name}
-                  </span>
-                </button>
-              </li>
-            ))}
-            {reports.length === 0 && (
-              <li className="text-xs text-muted">No reports yet.</li>
+          <div
+            className="max-h-96 overflow-auto border border-border-subtle p-3 text-sm"
+            data-testid="reports-list"
+          >
+            {!listHydrated ? (
+              <div className="space-y-2" data-testid="reports-list-loading">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+              </div>
+            ) : reports.length === 0 ? (
+              <EmptyState
+                title="No custom reports yet"
+                description="Fill in the New report form above to add a QWeb printout on this connection."
+                action={
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() =>
+                      document.getElementById("reports-create-form")?.scrollIntoView({ behavior: "smooth" })
+                    }
+                  >
+                    Open create form
+                  </Button>
+                }
+              />
+            ) : (
+              <ul className="space-y-1">
+                {reports.map((r) => (
+                  <li key={r.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedId(r.id)}
+                      className={`w-full px-2 py-1.5 text-left ${
+                        selectedId === r.id ? "bg-surface-raised text-ink" : "text-muted"
+                      }`}
+                    >
+                      {r.name}
+                      <span className="block font-mono text-[10px] text-muted">
+                        {r.model} · {r.report_name}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
-          </ul>
+          </div>
 
           <div className="rounded-md border border-border-subtle bg-surface p-4">
             <div className="flex gap-2 border-b border-border-subtle pb-2">

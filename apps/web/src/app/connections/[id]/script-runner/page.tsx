@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Input } from "@/components/ui/Input";
-import { Card, PageHeader } from "@/components/ui/layout-primitives";
+import { Card, EmptyState, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
 import { Select } from "@/components/ui/Select";
 import { api, ConfirmationRequiredError, Connection } from "@/lib/api";
 import { reportApiError } from "@/lib/api-error";
@@ -52,6 +52,7 @@ export default function ScriptRunnerPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmRisks, setConfirmRisks] = useState<string[]>([]);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [sidebarHydrated, setSidebarHydrated] = useState(false);
 
   const refresh = useCallback(async () => {
     const [conn, tpl, history, library] = await Promise.all([
@@ -67,7 +68,10 @@ export default function ScriptRunnerPage() {
   }, [connectionId]);
 
   useEffect(() => {
-    refresh().catch((err: Error) => setError(err.message));
+    setSidebarHydrated(false);
+    refresh()
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setSidebarHydrated(true));
   }, [refresh]);
 
   async function abortRun() {
@@ -209,6 +213,7 @@ export default function ScriptRunnerPage() {
           />
           <div className="flex flex-wrap items-end gap-2">
             <Input
+              id="script-runner-save-name"
               label="Save as"
               value={saveName}
               onChange={(e) => setSaveName(e.target.value)}
@@ -230,10 +235,28 @@ export default function ScriptRunnerPage() {
         </Card>
 
         <div className="space-y-4">
-          <Card className="p-4 space-y-3">
+          <Card className="p-4 space-y-3" data-testid="script-runner-library-panel">
             <h2 className="text-sm font-semibold">Saved scripts</h2>
-            {savedScripts.length === 0 ? (
-              <p className="text-xs text-muted">No saved scripts yet.</p>
+            {!sidebarHydrated ? (
+              <div className="space-y-2" data-testid="script-runner-library-loading">
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+            ) : savedScripts.length === 0 ? (
+              <EmptyState
+                title="No saved scripts yet"
+                description="Name the script in Save as and store it here for quick reuse on this connection."
+                action={
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => document.getElementById("script-runner-save-name")?.focus()}
+                  >
+                    Name a script
+                  </Button>
+                }
+              />
             ) : (
               <ul className="space-y-2 text-xs" data-testid="script-runner-library">
                 {savedScripts.map((s) => (
@@ -252,21 +275,38 @@ export default function ScriptRunnerPage() {
             )}
           </Card>
 
-          <Card className="p-4 space-y-3">
+          <Card className="p-4 space-y-3" data-testid="script-runner-history-panel">
             <h2 className="text-sm font-semibold">Run history</h2>
-            <ul className="space-y-2 text-xs">
-              {runs.map((r) => (
-                <li key={r.id} className="border-b border-border-subtle pb-2">
-                  <span className="font-mono text-accent">{r.status}</span> · {r.id.slice(0, 8)}
-                  {Object.keys(r.write_counts || {}).length ? (
-                    <p className="text-muted">writes: {JSON.stringify(r.write_counts)}</p>
-                  ) : null}
-                  <pre className="mt-1 max-h-20 overflow-auto whitespace-pre-wrap text-muted">
-                    {r.script_content.slice(0, 200)}
-                  </pre>
-                </li>
-              ))}
-            </ul>
+            {!sidebarHydrated ? (
+              <div className="space-y-2" data-testid="script-runner-history-loading">
+                <Skeleton className="h-14 w-full" />
+                <Skeleton className="h-14 w-full" />
+              </div>
+            ) : runs.length === 0 ? (
+              <EmptyState
+                title="No runs logged yet"
+                description="Run history fills in after you execute a script with journaled RPC on this connection."
+                action={
+                  <Button type="button" variant="secondary" size="sm" onClick={() => void executeRun()} disabled={busy}>
+                    Run script
+                  </Button>
+                }
+              />
+            ) : (
+              <ul className="space-y-2 text-xs">
+                {runs.map((r) => (
+                  <li key={r.id} className="border-b border-border-subtle pb-2">
+                    <span className="font-mono text-accent">{r.status}</span> · {r.id.slice(0, 8)}
+                    {Object.keys(r.write_counts || {}).length ? (
+                      <p className="text-muted">writes: {JSON.stringify(r.write_counts)}</p>
+                    ) : null}
+                    <pre className="mt-1 max-h-20 overflow-auto whitespace-pre-wrap text-muted">
+                      {r.script_content.slice(0, 200)}
+                    </pre>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Card>
         </div>
       </div>
