@@ -16,6 +16,8 @@ def test_build_test_enable_argv_contains_flags() -> None:
     argv = build_test_enable_argv("x_demo_app", odoo_major=19)
     assert "--test-enable" in argv
     assert "--stop-after-init" in argv
+    assert "--http-port" in argv
+    assert argv[argv.index("--http-port") + 1] == "8070"
     assert "-u" in argv
     assert argv[argv.index("-u") + 1] == "x_demo_app"
     assert "-d" in argv

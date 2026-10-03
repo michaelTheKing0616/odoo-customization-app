@@ -482,3 +482,21 @@ Negative tests: FA `fa-th-large,#714B67` is coerced; rendered `menus.xml` has no
 Not done: T1-F3 acceptance — one Option A module with `run_tests=True` and live `prove_status=proved` (card wording `install_ready`). This gate script is smoke-install only; `tests_ran` stayed false.
 Risks introduced: generated zips lose distinctive FA home-grid icons and share the stock `base` icon. Live Apply already did this.
 
+CLAIM T1-F3 2026-10-03T08:15:07Z files: a live Option A prove with run_tests=True. Do not promote. Do not commit .cache. Smoke install already exited 0.
+
+## 2026-10-03 — T1-F3 (option_a_authored prove with tests)
+Track: T1
+Intent: One Option A module reaches live `prove_status=proved` on the Odoo 19 sandbox with `run_tests=True`. Do not promote. Do not commit `.cache`.
+Model / band: worker (Grok standard). Pressure 8.
+Files: `apps/api/scripts/prove_option_a_sandbox.py` (minimal `option_a_authored` draft, depends `base` only, trivial `x_prove_note` + passing TransactionCase). `apps/api/app/sandbox.py` (`build_test_enable_argv` adds `--http-port 8070` so compose-exec test-enable does not collide with the already-running HTTP server on 8069). `apps/api/tests/test_sandbox_test_enable.py` (asserts the port flag). This entry.
+Commands and results:
+- First live prove (`run_tests=True`, default auto_repair): **install ok**, then test-enable **exit 1** — `Address already in use` / `Port 8069 is in use`. `tests_ran=True`, `prove_status=failed`. Not stamped proved.
+- After argv fix: `uv run --directory apps/api python -m pytest -q -p no:cacheprovider tests/test_sandbox_test_enable.py tests/test_option_a_prove_bar.py` → **11 passed in 1.20s**.
+- `uv run --directory apps/api python scripts/prove_option_a_sandbox.py` (`prove_option_a_in_sandbox(..., odoo_major=19, run_tests=True, auto_repair=False)`) → **ok=True, prove_status=proved, tests_ran=True, test_failures=[], install_attempts=1, repairs_used=0, promoted=False**. Module `option_a_prove_note`. Log: `Starting TestProveNote.test_note_create_and_mark_seen` then `0 failed, 0 error(s) of 1 tests` then `test-enable ok for option_a_prove_note`.
+- **Log path:** `.cache/t1_f3_option_a_prove_19.log` (summary JSON beside it). Do not commit `.cache`.
+Gates passed: T1-F3 live Option A prove bar (`prove_status=proved` via `run_tests=True` + tests actually ran). Card wording `install_ready` is this stamp.
+Negative tests: unit argv still requires `--test-enable` + `--stop-after-init`; prove-bar mocks still refuse `proved` without `tests_ran`.
+Not done: promote (human). Do not treat `promote_eligible=True` as a promote.
+Risks introduced: test-enable HTTP binds 8070 inside the sandbox container only; host `:18069` unchanged.
+
+

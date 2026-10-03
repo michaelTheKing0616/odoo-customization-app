@@ -538,6 +538,9 @@ def build_test_enable_argv(module: str, *, odoo_major: int = 19) -> list[str]:
         technical,
         "--test-enable",
         "--stop-after-init",
+        # compose exec starts a second odoo while the HTTP server still owns 8069.
+        "--http-port",
+        "8070",
     ]
 
 
