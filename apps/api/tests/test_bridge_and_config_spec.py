@@ -112,6 +112,90 @@ def test_unknown_section_is_rejected() -> None:
         load_spec("version: 1\nproject: demo\nnot_a_section: []\n")
 
 
+def test_example_spec_is_valid() -> None:
+    text = """
+version: 1
+project: demo
+settings:
+  - key: mail.smtp_password
+    values:
+      value: secret:MAIL_SMTP_PASSWORD
+custom_fields:
+  - model: res.partner
+    name: x_note
+    ttype: text
+"""
+    spec = load_spec(text)
+    assert spec.version == 1
+    assert spec.project == "demo"
+    plan = compile_plan(spec)
+    assert plan
+    assert all(entry["type"] for entry in plan)
+
+
+def test_schema_errors() -> None:
+    with pytest.raises(SpecError):
+        load_spec("project: demo\n")
+
+    with pytest.raises(SpecError, match="mapping"):
+        load_spec("- not a mapping\n")
+
+    with pytest.raises(SpecError, match="unknown"):
+        load_spec("version: 1\nproject: demo\nbogus_top_level: []\n")
+
+
+def test_duplicate_keys_rejected() -> None:
+    text = """
+version: 1
+project: demo
+settings:
+  - key: sale.auto_done
+    values:
+      value: "True"
+  - key: sale.auto_done
+    values:
+      value: "False"
+"""
+    with pytest.raises(SpecError, match="duplicate key"):
+        load_spec(text)
+
+
+def test_key_field_reference_and_placeholders() -> None:
+    ok_refs = """
+version: 1
+project: demo
+settings:
+  - key: base.main_company
+    values:
+      value: ref:base.main_company
+records:
+  - model: res.partner
+    values:
+      name: name:Acme Ltd
+      parent_id: find:res.partner|name=Acme Ltd
+      comment: ?key:does.not.exist
+"""
+    spec = load_spec(ok_refs)
+    assert spec.settings[0]["values"]["value"] == "ref:base.main_company"
+
+    with pytest.raises(SpecError, match="secret:"):
+        load_spec(
+            "version: 1\nproject: demo\nmail_servers:\n"
+            "  - name: smtp\n    password: plain-text-secret\n"
+        )
+
+    missing_key = """
+version: 1
+project: demo
+settings:
+  - key: only.one
+    values:
+      value: key:missing.setting
+"""
+    with pytest.raises(SpecError, match="unknown key"):
+        load_spec(missing_key)
+
+
 def test_odoo_20_access_compiles_to_ir_access() -> None:
     ops = compile_access(
         20,

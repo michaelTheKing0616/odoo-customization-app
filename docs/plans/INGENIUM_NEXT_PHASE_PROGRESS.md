@@ -688,3 +688,12 @@ Intent: Document config-as-code custom field naming — `x_` required, `x_studio
 Command: `.venv/bin/python -m pytest -q -p no:cacheprovider apps/api/tests/test_bridge_and_config_spec.py` — **15 passed**.
 Acceptance: `test_custom_field_requires_x_prefix` rejects `note` and `x_studio_note`; `x_note` loads. `test_studio_field_prefix_is_rejected` unchanged. No product change.
 Files: `apps/api/tests/test_bridge_and_config_spec.py`.
+
+CLAIM 5B-08a 2026-10-03T10:00:00Z files: remaining spec oracle names. Do not enable L4. Do not call aonb.odoo.com.
+
+Track: 5B. Card: 5B-08a. Worker only. No commit. No push. No Odoo host. L4 stays off.
+Intent: Port oracle `test_spec.py` names (spec slice only): `test_example_spec_is_valid`, `test_schema_errors`, `test_duplicate_keys_rejected`, `test_key_field_reference_and_placeholders` against `config_as_code/loader.py`. Leave 5B-09 approval/version oracles and 5B-08c profiles out of scope.
+Command: `.venv/bin/python -m pytest -q -p no:cacheprovider apps/api/tests/test_bridge_and_config_spec.py apps/api/tests/test_config_apply.py` — **24 passed**.
+Loader checks added: duplicate `key` per section (`_reject_duplicate_keys`); required `key:` references must resolve to a key defined in the spec (`_validate_key_references`; `?key:` optional). Existing literal-secret and unknown-section guards unchanged.
+Files: `apps/api/app/config_as_code/loader.py`, `apps/api/tests/test_bridge_and_config_spec.py`.
+Not done: 5B-08b importers / 5B-08c version profiles / 5B-09 approval oracles. No aonb.odoo.com call.

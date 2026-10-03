@@ -64,6 +64,7 @@ SECTIONS: tuple[str, ...] = (
 
 _TOP = frozenset({"version", "project", "description", "target", *SECTIONS})
 _SECRET_PREFIX = "secret:"
+_REF_PREFIXES: Final[tuple[str, ...]] = ("key:", "ref:", "find:", "name:", "secret:")
 
 # Closed catalog only. Sections without a dedicated op use the closest existing name.
 SECTION_OP: Final[dict[str, str]] = {
@@ -199,6 +200,55 @@ class ConfigSpec(BaseModel):
     records: list[dict[str, Any]] = Field(default_factory=list)
 
 
+def _collect_defined_keys(raw: dict[str, Any]) -> set[str]:
+    keys: set[str] = set()
+    for section in SECTIONS:
+        rows = raw.get(section)
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if isinstance(row, dict) and row.get("key") is not None:
+                keys.add(str(row["key"]))
+    return keys
+
+
+def _reject_duplicate_keys(raw: dict[str, Any]) -> None:
+    for section in SECTIONS:
+        rows = raw.get(section)
+        if not isinstance(rows, list):
+            continue
+        seen: dict[str, int] = {}
+        for index, row in enumerate(rows):
+            if not isinstance(row, dict):
+                continue
+            key = row.get("key")
+            if key is None:
+                continue
+            text = str(key)
+            if text in seen:
+                raise SpecError(
+                    f"duplicate key {text} in {section} (rows {seen[text]} and {index})"
+                )
+            seen[text] = index
+
+
+def _validate_key_references(obj: object, known_keys: set[str], path: str = "") -> None:
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            here = f"{path}.{key}" if path else str(key)
+            _validate_key_references(value, known_keys, here)
+    elif isinstance(obj, list):
+        for index, item in enumerate(obj):
+            _validate_key_references(item, known_keys, f"{path}[{index}]")
+    elif isinstance(obj, str):
+        optional = obj.startswith("?")
+        rest = obj[1:] if optional else obj
+        if rest.startswith("key:"):
+            target = rest[4:]
+            if not optional and target not in known_keys:
+                raise SpecError(f"{path} references unknown key {target}")
+
+
 def _reject_literal_secrets(obj: object, path: str = "") -> None:
     if isinstance(obj, dict):
         for key, value in obj.items():
@@ -220,6 +270,9 @@ def load_spec(text: str) -> ConfigSpec:
     if unknown:
         raise SpecError("unknown sections: " + ", ".join(sorted(unknown)))
     _reject_literal_secrets(raw)
+    _reject_duplicate_keys(raw)
+    known_keys = _collect_defined_keys(raw)
+    _validate_key_references(raw, known_keys)
     try:
         return ConfigSpec.model_validate(raw)
     except ValueError as exc:
