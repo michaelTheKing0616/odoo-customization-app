@@ -44,6 +44,7 @@ class LLMResponse:
     tool_calls: tuple[ToolCall, ...] = ()
     usage: dict[str, int] = field(default_factory=dict)
     reasoning: str = ""
+    tool_batches: tuple[tuple[str, ...], ...] = ()
 
     def __post_init__(self) -> None:
         if self.stop_reason not in STOP_REASONS:

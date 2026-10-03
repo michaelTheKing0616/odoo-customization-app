@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.llm_gateway.normalize import synthesize_call_id
+from app.llm_gateway.normalize import map_stop_reason, synthesize_call_id
 from app.llm_gateway.schema_lowering import canonical_tool_issues, to_gemini
 from app.llm_gateway.types import LLMError, LLMResponse, ToolCall
 
@@ -24,6 +24,8 @@ def gemini_body(request: dict[str, Any]) -> dict[str, Any]:
                 "parameters": to_gemini(tool.get("input_schema") or {"type": "object"}),
             }
         )
+    if request.get("builtin_tools") and declarations:
+        raise LLMError("invalid_request", "built-in tools cannot mix with functions")
     body: dict[str, Any] = {
         "systemInstruction": {"parts": [{"text": request.get("system") or ""}]},
         "contents": list(request.get("messages") or []),
@@ -37,13 +39,7 @@ def parse_gemini(payload: dict[str, Any]) -> LLMResponse:
     candidates = payload.get("candidates") or [{}]
     content = (candidates[0] or {}).get("content") or {}
     finish = str((candidates[0] or {}).get("finishReason") or "STOP")
-    reason = {
-        "STOP": "end",
-        "MAX_TOKENS": "max_tokens",
-        "SAFETY": "content_filter",
-        "RECITATION": "content_filter",
-        "MALFORMED_FUNCTION_CALL": "malformed_tool_call",
-    }.get(finish, "error")
+    reason = map_stop_reason(finish)
     text: list[str] = []
     calls: list[ToolCall] = []
     for index, part in enumerate(content.get("parts") or []):

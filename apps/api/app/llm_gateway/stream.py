@@ -7,6 +7,8 @@ from typing import Any
 from app.llm_gateway.normalize import parse_tool_args
 from app.llm_gateway.types import LLMResponse, ToolCall
 
+IDLE_TIMEOUT_MS = 30_000
+
 
 def events_from_step(step: dict[str, Any]) -> list[dict[str, str]]:
     events: list[dict[str, str]] = []
@@ -25,12 +27,18 @@ def events_from_step(step: dict[str, Any]) -> list[dict[str, str]]:
     return events
 
 
-def assemble(events: list[dict[str, str]]) -> LLMResponse:
+def assemble(events: list[dict[str, str]], *, idle_timeout_ms: int = IDLE_TIMEOUT_MS) -> LLMResponse:
     text: list[str] = []
     open_calls: dict[str, dict[str, str]] = {}
     finished: list[ToolCall] = []
     stop = "end"
+    last_at: int | None = None
     for event in events:
+        if "at_ms" in event:
+            at_ms = int(event["at_ms"])
+            if last_at is not None and at_ms - last_at > idle_timeout_ms:
+                return LLMResponse(stop_reason="error", text="".join(text), tool_calls=tuple(finished))
+            last_at = at_ms
         kind = event.get("kind")
         if kind == "text_delta":
             text.append(event.get("text") or "")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.llm_gateway.normalize import synthesize_call_id
+from app.llm_gateway.normalize import map_stop_reason, synthesize_call_id
 from app.llm_gateway.schema_lowering import canonical_tool_issues, to_openai_strict
 from app.llm_gateway.types import LLMError, LLMResponse, ToolCall
 
@@ -36,14 +36,7 @@ def anthropic_body(request: dict[str, Any]) -> dict[str, Any]:
 
 
 def parse_anthropic(payload: dict[str, Any]) -> LLMResponse:
-    reason = {
-        "end_turn": "end",
-        "tool_use": "tool_calls",
-        "max_tokens": "max_tokens",
-        "refusal": "refusal",
-        "stop_sequence": "end",
-        "pause_turn": "pause",
-    }.get(str(payload.get("stop_reason") or ""), "error")
+    reason = map_stop_reason(str(payload.get("stop_reason") or ""))
     calls: list[ToolCall] = []
     text: list[str] = []
     for index, block in enumerate(payload.get("content") or []):

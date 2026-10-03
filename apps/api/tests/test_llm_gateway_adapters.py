@@ -118,3 +118,26 @@ def test_gemini_synthesizes_a_missing_call_id_and_maps_malformed() -> None:
     assert parsed.tool_calls[0].id == "call_0000"
     malformed = parse_gemini({"candidates": [{"finishReason": "MALFORMED_FUNCTION_CALL", "content": {"parts": []}}]})
     assert malformed.stop_reason == "malformed_tool_call"
+
+
+def test_gemini_builtin_tools_are_not_mixed_with_functions() -> None:
+    with pytest.raises(LLMError) as caught:
+        gemini_body(
+            {
+                "model_id": "configured",
+                "max_output_tokens": 8,
+                "builtin_tools": ["google_search"],
+                "tools": [{"name": "describe_model", "input_schema": SCHEMA}],
+            }
+        )
+    assert caught.value.kind == "invalid_request"
+    body = gemini_body(
+        {
+            "model_id": "configured",
+            "max_output_tokens": 8,
+            "tools": [{"name": "describe_model", "input_schema": SCHEMA}],
+        }
+    )
+    assert body["tools"][0]["functionDeclarations"][0]["name"] == "describe_model"
+    assert "googleSearch" not in str(body)
+    assert "codeExecution" not in str(body)

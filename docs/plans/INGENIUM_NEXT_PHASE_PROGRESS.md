@@ -1128,6 +1128,8 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - The eval harness is not built. ADR-13 records the A/B/C bars. GATE-P4-04 and GATE-P6 are still open.
 - GATE-P0-03 is still open. The eight seed names exist only as catalog definitions in `apps/api/app/changeset/fixture_catalog.py`. Live fixtures on Odoo 17, 18, 19, and 20 were not brought up. The stand-in reset is not a live database reset.
 - GATE-P0-05 stays open. `apps/api/tests/test_import_boundary.py` locks 22 Odoo-version branches outside `compat/` in `apps/api/app`. A new hit fails the test. Those branches were not moved.
+- Missing call ids are still `call_{index:04d}`. The `call_<ulid>` form is not implemented. No ulid package was added.
+- `parse_tool_args` rejects payloads over 256 KB. That reject has no dedicated test.
 - `docker/*` and `apps/api/tests/test_wave16_gen2.py` still use `ServerProxy` outside the XML-RPC product scan.
 - Recaptured token screenshots in `docs/vision-verify/tokens-light.png` and `tokens-dark.png` are unstaged. The CSS text did not change.
 
@@ -1181,3 +1183,8 @@ Not done: T8-GW-TYPES. GATE-P0-03 and GATE-P0-05 stay open. L4 stays off.
 Track: T8 T8-GW-TYPES. Worker [Add canonical tool limits](88508d36-f23c-4f2f-9105-1e5ab2f802cd). No push. L4 stays off.
 Intent: Tool names match `[a-z][a-z0-9_]{2,40}`. Descriptions are at most 1024 characters. The three adapter bodies reject a bad name before building a request. Re-ran gateway and adapter tests: 19 passed.
 Not done: T8-GW-NORM. GATE-P0-03 and GATE-P0-05 stay open. L4 stays off.
+
+## 2026-10-03 — T8-GW-NORM normalization rules
+Track: T8 T8-GW-NORM. Worker [Cover the missing gateway rules](193bbc9f-2f7c-444f-ad60-6f0692a0c648). No push. L4 stays off.
+Intent: Rules 3, 4, 6, 7, 8, and 9 now have a test. Parallel reads share a batch and writes stay sequential. Roles are repaired. Stop reasons and usage are recorded. Reasoning drops on a provider switch. Text is NFC. Re-ran gateway, adapter, phase-1, and import-boundary tests: 47 passed. Call ids stay `call_{index:04d}`. The ulid form is still open.
+Not done: T8-GW-C. GATE-P0-03 and GATE-P0-05 stay open. L4 stays off.

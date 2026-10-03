@@ -260,3 +260,177 @@ def test_gateway_retries_timeout_and_stops_on_auth() -> None:
         Gateway(exhausted, sleep=lambda _ms: None).complete({})
     assert give_up.value.kind == "timeout"
     assert exhausted.calls == 4
+
+
+def test_rule_3_parallel_reads_share_a_batch_and_writes_stay_sequential() -> None:
+    adapter = ScriptedAdapter(
+        [
+            {
+                "tool_calls": [
+                    {"id": "r1", "name": "describe_model", "raw_args": '{"model":"sale.order"}'},
+                    {"id": "r2", "name": "describe_field", "raw_args": '{"model":"sale.order"}'},
+                    {"id": "w1", "name": "changeset_add_op", "raw_args": '{"model":"sale.order"}'},
+                    {"id": "w2", "name": "field_create", "raw_args": '{"model":"sale.order"}'},
+                    {"id": "r3", "name": "schema_search", "raw_args": '{"model":"sale.order"}'},
+                ]
+            }
+        ]
+    )
+    response = Gateway(adapter, sleep=lambda _ms: None).complete(
+        {
+            "tools": [
+                {"name": "describe_model", "class": "read"},
+                {"name": "describe_field", "class": "read"},
+                {"name": "changeset_add_op", "class": "write"},
+                {"name": "field_create", "class": "write"},
+                {"name": "schema_search", "class": "read"},
+            ]
+        },
+        {
+            "describe_model": SCHEMA,
+            "describe_field": SCHEMA,
+            "changeset_add_op": SCHEMA,
+            "field_create": SCHEMA,
+            "schema_search": SCHEMA,
+        },
+    )
+    assert response.stop_reason == "tool_calls"
+    assert response.tool_batches == (("r1", "r2"), ("w1",), ("w2",), ("r3",))
+
+
+def test_rule_4_repair_roles_maps_aliases_and_orphan_tools() -> None:
+    adapter = ScriptedAdapter([{"text": "ok"}])
+    Gateway(adapter, sleep=lambda _ms: None).complete(
+        {
+            "messages": [
+                {"role": "function", "content": "orphan"},
+                {"role": "developer", "content": "plan"},
+                {"role": "human", "content": "hello"},
+                {"role": "model", "content": "ok"},
+                {"role": "tool_result", "content": "1"},
+            ]
+        }
+    )
+    assert adapter.last_request is not None
+    assert adapter.last_request["messages"] == [
+        {"role": "user", "content": "orphan"},
+        {"role": "system", "content": "plan"},
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "ok"},
+        {"role": "tool", "content": "1"},
+    ]
+
+
+def test_rule_6_maps_provider_stop_reasons() -> None:
+    expected = {
+        "end_turn": "end",
+        "stop_sequence": "end",
+        "STOP": "end",
+        "tool_use": "tool_calls",
+        "MAX_TOKENS": "max_tokens",
+        "SAFETY": "content_filter",
+        "RECITATION": "content_filter",
+        "MALFORMED_FUNCTION_CALL": "malformed_tool_call",
+        "pause_turn": "pause",
+        "refusal": "refusal",
+        "not-a-reason": "error",
+    }
+    for raw, canonical in expected.items():
+        response = Gateway(ScriptedAdapter([{"text": "x", "stop_reason": raw}]), sleep=lambda _ms: None).complete({})
+        assert response.stop_reason == canonical
+
+
+def test_rule_7_records_provider_usage() -> None:
+    response = Gateway(
+        ScriptedAdapter([{"text": "ok", "usage": {"promptTokenCount": 4, "candidatesTokenCount": 2}}]),
+        sleep=lambda _ms: None,
+    ).complete({})
+    assert response.usage == {"input_tokens": 4, "output_tokens": 2}
+
+
+def test_rule_8_reasoning_stays_opaque_and_drops_on_provider_switch() -> None:
+    trace = 'do-not-parse {"tool": "secret"}'
+    same = Gateway(
+        ScriptedAdapter([{"text": "visible", "reasoning": trace}]),
+        sleep=lambda _ms: None,
+    ).complete({"provider": "anthropic"})
+    assert same.reasoning == trace
+    assert trace not in same.text
+    switched_adapter = ScriptedAdapter([{"text": "next", "reasoning": trace}])
+    switched = Gateway(switched_adapter, sleep=lambda _ms: None).complete(
+        {
+            "provider": "openai",
+            "reasoning_provider": "anthropic",
+            "reasoning": trace,
+            "messages": [{"role": "assistant", "content": "visible", "reasoning": trace}],
+        }
+    )
+    assert switched.reasoning == ""
+    assert switched_adapter.last_request is not None
+    assert "secret" not in str(switched_adapter.last_request)
+
+
+def test_rule_9_unicode_text_and_args_are_nfc() -> None:
+    decomposed = "e\u0301"
+    raw = '{"model": "' + decomposed + '"}'
+    adapter = ScriptedAdapter(
+        [
+            {
+                "text": decomposed,
+                "tool_calls": [{"id": "u9", "name": "describe_model", "raw_args": raw}],
+            }
+        ]
+    )
+    response = Gateway(adapter, sleep=lambda _ms: None).complete(
+        {"messages": [{"role": "user", "content": decomposed}]},
+        {
+            "describe_model": {
+                "type": "object",
+                "properties": {"model": {"type": "string"}},
+                "required": ["model"],
+                "additionalProperties": False,
+            }
+        },
+    )
+    assert response.text == "\u00e9"
+    assert response.tool_calls[0].args == {"model": "\u00e9"}
+    assert response.tool_calls[0].raw_args == raw
+    assert adapter.last_request is not None
+    assert adapter.last_request["messages"][0]["content"] == "\u00e9"
+
+
+def test_idle_timeout_defaults_to_30_seconds() -> None:
+    from app.llm_gateway.stream import assemble
+
+    gateway = Gateway(ScriptedAdapter([{"text": "ok"}]), sleep=lambda _ms: None)
+    assert gateway.idle_timeout_ms == 30_000
+    assert gateway.complete({}).text == "ok"
+    stalled = assemble(
+        [
+            {"kind": "text_delta", "text": "a", "at_ms": "0"},
+            {"kind": "text_delta", "text": "b", "at_ms": "30001"},
+        ]
+    )
+    assert stalled.stop_reason == "error"
+    assert stalled.text == "a"
+
+
+def test_stream_tools_false_falls_back_to_non_stream() -> None:
+    adapter = ScriptedAdapter(
+        [
+            {
+                "text": "hi",
+                "tool_calls": [{"id": "s1", "name": "describe_model", "raw_args": '{"model":"sale.order"}'}],
+            }
+        ]
+    )
+    response = Gateway(adapter, sleep=lambda _ms: None).complete(
+        {"stream": True, "stream_tools": False},
+        {"describe_model": SCHEMA},
+    )
+    assert adapter.last_request is not None
+    assert adapter.last_request["stream"] is False
+    assert adapter.last_request["stream_tools"] is False
+    assert response.text == "hi"
+    assert response.stop_reason == "tool_calls"
+    assert response.tool_calls[0].args == {"model": "sale.order"}
