@@ -2,7 +2,22 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
+
 PROTOCOL_VERSION = 1
+KILL_SWITCH_PARAM = "ingenium.bridge.enabled"
+_CALLBACK_KEYS = frozenset(
+    {
+        "callback",
+        "callback_url",
+        "telemetry",
+        "telemetry_url",
+        "webhook_url",
+        "phone_home",
+    }
+)
 
 READ_METHODS = frozenset(
     {
@@ -95,3 +110,101 @@ def ping_payload(*, server_version: str, edition: str, module_hash: str, capabil
         "capabilities": capabilities,
         "enabled": True,
     }
+
+
+def enabled_from_param(value: object) -> bool:
+    """Kill switch. Missing means enabled. The strings 0, false, and False stop the bridge."""
+    if value is None:
+        return True
+    return value not in {"0", "false", "False"}
+
+
+def enabled_from_params(params: dict[str, object]) -> bool:
+    """Read ingenium.bridge.enabled only. Any other key is ignored."""
+    if KILL_SWITCH_PARAM not in params:
+        return True
+    return enabled_from_param(params[KILL_SWITCH_PARAM])
+
+
+def assert_no_callback(payload: object) -> None:
+    """INV-19. A callback or telemetry field is refused. Nothing is fetched."""
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            if str(key).lower() in _CALLBACK_KEYS:
+                raise BridgeError("outbound_refused")
+            assert_no_callback(value)
+    elif isinstance(payload, list):
+        for item in payload:
+            assert_no_callback(item)
+
+
+def apply_posture(
+    ops: list[dict],
+    *,
+    environment: str,
+    neutralized_clone: bool,
+    mode: str,
+) -> None:
+    """Production R3 is blocked. Above R1 stays review-only until a neutralized clone exists."""
+    if mode not in {"validate", "dry_run", "apply"}:
+        raise BridgeError("unknown_mode")
+    ceiling = 0
+    ddl = False
+    for op in ops:
+        risk = str(op.get("risk") or "R0")
+        if risk not in _RANK:
+            raise BridgeError("unknown_risk")
+        ceiling = max(ceiling, _RANK[risk])
+        ddl = ddl or bool(op.get("ddl"))
+    writing = mode != "validate"
+    if environment == "production" and ceiling >= _RANK["R3"] and writing:
+        raise BridgeError("production_r3_blocked")
+    if environment == "staging" and not neutralized_clone and writing:
+        raise BridgeError("neutralization_required")
+    if not neutralized_clone and ceiling > _RANK["R1"] and writing:
+        raise BridgeError("review_only")
+    if mode == "dry_run" and ddl:
+        raise BridgeError("ddl_no_inplace")
+
+
+def dispatch_grant(*, server_secret: str, method: str, body: dict) -> str:
+    """Control-plane grant. This is not an Odoo API key and is not a bridge method."""
+    canonical = json.dumps(
+        {"method": method, "body": body},
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hmac.new(server_secret.encode("utf-8"), canonical.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def authorize_direct_json(
+    *,
+    presented_key: str,
+    dispatch_grant_value: str | None,
+    server_secret: str,
+    method: str,
+    body: dict,
+) -> None:
+    """RT-36. Direct Bridge JSON authenticated only by a key is refused.
+
+    The presented key is never sufficient and is never copied into the error.
+    """
+    if not isinstance(presented_key, str) or presented_key == "":
+        raise BridgeError("stolen_key")
+    if not isinstance(dispatch_grant_value, str) or dispatch_grant_value == "":
+        raise BridgeError("stolen_key")
+    if hmac.compare_digest(dispatch_grant_value, presented_key):
+        raise BridgeError("stolen_key")
+    expected = dispatch_grant(server_secret=server_secret, method=method, body=body)
+    if not hmac.compare_digest(dispatch_grant_value, expected):
+        raise BridgeError("stolen_key")
+
+
+def assert_promotion(*, copy_database: bool, neutralized: bool) -> str:
+    """Promotion replays a change-set. It does not copy a database."""
+    if not neutralized:
+        raise BridgeError("neutralization_required")
+    if copy_database:
+        raise BridgeError("database_copy_refused")
+    return "replay"

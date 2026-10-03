@@ -2,7 +2,7 @@
 
 from odoo import api, models
 
-from ..protocol import authorize, ping_payload
+from ..protocol import KILL_SWITCH_PARAM, authorize, enabled_from_param, ping_payload
 
 
 class IngeniumBridge(models.AbstractModel):
@@ -10,7 +10,7 @@ class IngeniumBridge(models.AbstractModel):
     _description = "Ingenium bridge"
 
     def _gate(self, method: str, user_id: int | None = None) -> None:
-        parameter = self.env["ir.config_parameter"].sudo().get_param("ingenium.bridge.enabled", "1")
+        parameter = self.env["ir.config_parameter"].sudo().get_param(KILL_SWITCH_PARAM, "1")
         groups = set()
         if self.env.user.has_group("ingenium_bridge.group_ingenium_reader"):
             groups.add("reader")
@@ -19,7 +19,7 @@ class IngeniumBridge(models.AbstractModel):
         authorize(
             method=method,
             protocol_version=1,
-            enabled=parameter not in {"0", "false", "False"},
+            enabled=enabled_from_param(parameter),
             groups=groups,
             caller_id=self.env.uid,
             user_id=user_id,
