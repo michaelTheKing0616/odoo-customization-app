@@ -1,9 +1,15 @@
 # Union tools vs family tools
 
-**Status:** proposed
+**Status:** open. Blocking question: whether the model sees one union tool list or separate family tool lists. That is decided by eval GATE-P6-04, which has not been run.
 
-**Context:** This ADR is tracked as part of the next-phase bot engine plan in [T8_BOT_ENGINE.md](../plans/next-phase/T8_BOT_ENGINE.md).
+**Context:** The agent runtime must not give the model an apply tool. Tool calls use the ADR-03 shape (text plus zero or more calls, each with an id, a name, parsed args, and the raw argument string) and the ADR-04 ladder (native, then `emulated_json`, then `emulated_text`). How the visible names — about twenty at a time from the inspection, planning, and post-submit read-only lists — are presented to the model is still open.
 
-**Decision:** Decision deferred to an eval.
+**Options considered:**
+- One union catalog. The model sees a single deterministically sorted list of every tool that is currently visible.
+- Tools grouped by family. The model sees separate lists for inspection, planning, and post-submit read-only tools, and may see only the family that matches the current phase.
 
-**Consequences:** Tool surface design for the bot engine waits on eval results before implementation commits.
+**Decision:** None yet. GATE-P6-04 has not been run. This ADR does not pick a winner.
+
+**Consequences:** Until the eval, shipping a tool surface as if the shape were settled stays harder. Changing the shape after prompts and cassettes exist also stays harder: both prompt layers and recorded conformance tapes would have to be rewritten.
+
+**How to revisit:** Run GATE-P6-04. Accept this ADR only from that eval.

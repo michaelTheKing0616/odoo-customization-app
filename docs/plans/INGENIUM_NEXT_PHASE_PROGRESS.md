@@ -1070,3 +1070,8 @@ Not done: ADR-01. L4 off.
 Track: T8 ADR-04. Worker [Record the tool-call emulation ADR](91042cc3-9f72-4acd-a61c-007b702c86d6). No push. L4 stays off.
 Intent: Record native, then `emulated_json`, then `emulated_text`. Emulated modes stay at Tier B until an eval. Partial and ambiguous actions are not tool calls. Matches ADR-03 and `parse_emulated_json`.
 Not done: ADR-05. ADR-02 stays open until Tope accepts D8. L4 off.
+
+## 2026-10-03 — ADR-05 tool list shape
+Track: T8 ADR-05. Worker [Record the open tools-shape ADR](1e741b7b-264c-4cee-a3df-a3ab6f7411ed). No push. L4 stays off.
+Intent: Leave union tools versus family tools undecided. GATE-P6-04 has not been run. The model still has no apply tool. Calls stay on the ADR-03 shape and the ADR-04 ladder.
+Not done: ADR-06. ADR-02 stays open until Tope accepts D8. L4 off.
