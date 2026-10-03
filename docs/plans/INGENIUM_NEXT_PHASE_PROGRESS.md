@@ -1159,3 +1159,8 @@ Not done: ADR-13. L4 stays off.
 Track: T8 ADR-13. Worker [Record the eval-tier ADR](09e789ba-39eb-4724-9d79-f1040453c4bb). No push. L4 stays off.
 Intent: A/B/C is model trust. Below A, submitted risk caps at R2. Tier C cannot submit a change-set. Emulated adapters stay at Tier B until an eval lifts that cap. Tier A is at least 80% on 60 scenarios. The suite is at least 150 scenarios, with at least one Tier A model. Local models stay honestly B or C. The harness is not built.
 Not done: ADR-14. L4 stays off.
+
+## 2026-10-03 — ADR-14 supported versions
+Track: T8 ADR-14. Worker [Correct the version ADR](661f85d0-4687-4928-b753-b727039b09b6). No push. L4 stays off.
+Intent: Community 20, 19, 18, and 17 stay GA. 16 stays experimental. Majors at or below 15 stay refused. `docker/docker-compose.odoo20.yml` publishes host Odoo on port 8073. `docker/run-odoo20-smoke.sh` prints the command and does not start containers. Live version-table probes stay skipped until `ODOO20_URL` is set.
+Not done: T8-P0-FIX. L4 stays off.
