@@ -1,4 +1,4 @@
-"""OAuth login — Google + GitHub via authlib (REM-13)."""
+"""OAuth login — Google, Microsoft Entra, and GitHub via authlib (REM-13)."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ from app.account_service import (
 )
 from app.settings import settings
 
-SUPPORTED_PROVIDERS = frozenset({"google", "github"})
+SUPPORTED_PROVIDERS = frozenset({"google", "microsoft", "github"})
 STATE_MINUTES = 10
 TOTP_PENDING_MINUTES = 10
 
@@ -84,6 +84,17 @@ def _provider_config(provider: str) -> ProviderConfig | None:
             token_url="https://oauth2.googleapis.com/token",
             scope="openid email profile",
             userinfo_url="https://openidconnect.googleapis.com/v1/userinfo",
+        )
+    if provider == "microsoft":
+        tenant = (settings.microsoft_oauth_tenant or "common").strip() or "common"
+        return ProviderConfig(
+            name="microsoft",
+            client_id=settings.microsoft_oauth_client_id,
+            client_secret=settings.microsoft_oauth_client_secret,
+            authorize_url=f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize",
+            token_url=f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token",
+            scope="openid email profile",
+            userinfo_url="https://graph.microsoft.com/oidc/userinfo",
         )
     if provider == "github":
         return ProviderConfig(
@@ -185,7 +196,10 @@ def _fetch_profile(
 
         email = ""
         if cfg.email_from_userinfo:
-            email = normalize_email(str(data.get("email") or ""))
+            raw_email = str(data.get("email") or "")
+            if not raw_email and "@" in str(data.get("preferred_username") or ""):
+                raw_email = str(data.get("preferred_username"))
+            email = normalize_email(raw_email) if raw_email else ""
         else:
             emails_resp = client.get(
                 "https://api.github.com/user/emails",

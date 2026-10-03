@@ -10,7 +10,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
 
-MembershipRole = str  # owner | admin | builder | viewer
+MembershipRole = str  # owner | admin | developer | builder | viewer
+# Client roles are connection grants, not workspace memberships.
+ClientGrantRole = str  # client_approver | client_viewer
 
 
 class User(Base):
@@ -90,6 +92,28 @@ class UserSession(Base):
     ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(String(500), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ConnectionAccessGrant(Base):
+    """One client, one job. Not a workspace role — workspace roles see every connection."""
+
+    __tablename__ = "connection_access_grants"
+    __table_args__ = (
+        UniqueConstraint("connection_id", "user_id", name="uq_connection_grant_user"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    connection_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("odoo_connections.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    role: Mapped[str] = mapped_column(String(32), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

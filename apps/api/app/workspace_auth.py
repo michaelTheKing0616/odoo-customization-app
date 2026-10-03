@@ -9,7 +9,6 @@ from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.account_service import (
-    SessionContext,
     can_admin,
     can_develop,
     can_mutate,
@@ -17,6 +16,7 @@ from app.account_service import (
     resolve_session,
     SESSION_COOKIE,
 )
+from app.client_access import client_request_decision
 from app.auth import extract_raw_key, key_matches_env, verify_api_key
 from app.db import get_db
 from app.db_models import OdooConnection
@@ -52,10 +52,16 @@ class WorkspaceAuth:
     role: str | None = None
     is_superadmin: bool = False
     api_key_authenticated: bool = False
+    # None means every connection in the workspace. A set means only those.
+    connection_scope: frozenset[str] | None = None
 
     @property
     def workspace_scoped(self) -> bool:
         return self.mode == "accounts" and self.workspace_id is not None and not self.api_key_authenticated
+
+    @property
+    def client_limited(self) -> bool:
+        return self.connection_scope is not None and not self.is_superadmin and not self.api_key_authenticated
 
     def require_role(self, minimum: str) -> None:
         if self.mode != "accounts" or self.api_key_authenticated or self.is_superadmin:
@@ -134,7 +140,26 @@ async def require_app_auth(
                 workspace_id=ctx.workspace_id,
                 role=ctx.role,
                 is_superadmin=ctx.is_superadmin,
+                connection_scope=ctx.connection_scope,
             )
+            if auth.client_limited and auth.connection_scope is not None:
+                decision = client_request_decision(
+                    request.method,
+                    request.url.path,
+                    auth.role or "",
+                    auth.connection_scope,
+                )
+                if decision == "hide":
+                    raise HTTPException(status_code=404, detail="Connection not found")
+                if decision == "deny":
+                    raise HTTPException(
+                        status_code=403,
+                        detail={
+                            "error": "forbidden",
+                            "message": "This account can only open approvals for its granted client.",
+                            "role": auth.role,
+                        },
+                    )
             request.state.auth = auth
             bind_workspace_auth(auth)
             return auth
@@ -209,6 +234,8 @@ def require_developer(auth: WorkspaceAuth = Depends(require_app_auth)) -> Worksp
 
 def scoped_connection_query(db: Session, auth: WorkspaceAuth):
     q = db.query(OdooConnection)
+    if auth.client_limited and auth.connection_scope is not None:
+        return q.filter(OdooConnection.id.in_(auth.connection_scope))
     if auth.workspace_scoped and auth.workspace_id:
         q = q.filter(OdooConnection.workspace_id == auth.workspace_id)
     return q

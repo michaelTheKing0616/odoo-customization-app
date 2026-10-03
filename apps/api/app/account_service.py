@@ -15,6 +15,7 @@ from argon2.exceptions import VerifyMismatchError
 from sqlalchemy.orm import Session
 
 from app.account_models import (
+    ConnectionAccessGrant,
     EmailVerification,
     PasswordReset,
     TotpRecoveryCode,
@@ -32,6 +33,7 @@ _ph = PasswordHasher(time_cost=2, memory_cost=65536, parallelism=1, hash_len=32,
 
 ROLE_ORDER = {"viewer": 0, "builder": 1, "developer": 2, "admin": 3, "owner": 4}
 VALID_ROLES = frozenset(ROLE_ORDER)
+CLIENT_GRANT_ROLES = frozenset({"client_approver", "client_viewer"})
 
 SESSION_COOKIE = "oc_session"
 SESSION_DAYS = 14
@@ -125,6 +127,8 @@ class SessionContext:
     role: str
     is_superadmin: bool
     session_id: str
+    # None = every connection in the workspace. A set = only those connections.
+    connection_scope: frozenset[str] | None = None
 
 
 def _unique_slug(db: Session, base: str) -> str:
@@ -241,6 +245,114 @@ def authenticate_user(db: Session, *, email: str, password: str) -> User:
     return user
 
 
+def grants_for_user(db: Session, user_id: str, workspace_id: str | None = None) -> list[ConnectionAccessGrant]:
+    query = db.query(ConnectionAccessGrant).filter(ConnectionAccessGrant.user_id == user_id)
+    if workspace_id is not None:
+        query = query.filter(ConnectionAccessGrant.workspace_id == workspace_id)
+    return query.order_by(ConnectionAccessGrant.created_at.asc()).all()
+
+
+def role_from_grants(grants: list[ConnectionAccessGrant]) -> str:
+    if any(grant.role == "client_approver" for grant in grants):
+        return "client_approver"
+    return "client_viewer"
+
+
+def login_workspace(db: Session, user: User) -> tuple[str, str]:
+    """Workspace a password or OAuth login should open.
+
+    A consultant membership in a workspace that already has connections wins.
+    An empty personal workspace from signup does not hide a client grant —
+    otherwise an invited approver would log into a blank workspace as owner.
+    """
+    from app.db_models import OdooConnection
+
+    memberships = (
+        db.query(WorkspaceMembership)
+        .filter(WorkspaceMembership.user_id == user.id)
+        .order_by(WorkspaceMembership.created_at.asc())
+        .all()
+    )
+    grants = grants_for_user(db, user.id)
+    if grants:
+        grant_workspace = grants[0].workspace_id
+        member_of_grant_workspace = any(row.workspace_id == grant_workspace for row in memberships)
+        consultant_elsewhere = any(
+            db.query(OdooConnection).filter(OdooConnection.workspace_id == row.workspace_id).count() > 0
+            for row in memberships
+            if row.workspace_id != grant_workspace
+        )
+        if not member_of_grant_workspace and not consultant_elsewhere:
+            scoped = [grant for grant in grants if grant.workspace_id == grant_workspace]
+            return grant_workspace, role_from_grants(scoped)
+    if memberships:
+        return memberships[0].workspace_id, memberships[0].role
+    if not grants:
+        raise AccountError("no_workspace", "No workspace membership.", 400)
+    workspace_id = grants[0].workspace_id
+    scoped = [grant for grant in grants if grant.workspace_id == workspace_id]
+    return workspace_id, role_from_grants(scoped)
+
+
+def grant_connection_access(
+    db: Session,
+    *,
+    workspace_id: str,
+    connection_id: str,
+    user_id: str,
+    role: str,
+) -> ConnectionAccessGrant:
+    if role not in CLIENT_GRANT_ROLES:
+        raise AccountError("invalid_role", "Client grant role must be client_approver or client_viewer.")
+    from app.db_models import OdooConnection
+
+    connection = db.get(OdooConnection, connection_id)
+    if connection is None or connection.workspace_id != workspace_id:
+        raise AccountError("not_found", "Connection is not in this workspace.", 404)
+    user = db.get(User, user_id)
+    if user is None:
+        raise AccountError("not_found", "User not found.", 404)
+    if (
+        db.query(WorkspaceMembership)
+        .filter(
+            WorkspaceMembership.user_id == user_id,
+            WorkspaceMembership.workspace_id == workspace_id,
+        )
+        .first()
+        is not None
+    ):
+        raise AccountError(
+            "already_member",
+            "This person already has a workspace role. Client Approver is a separate grant, not an extra role on a consultant.",
+            409,
+        )
+    existing = (
+        db.query(ConnectionAccessGrant)
+        .filter(
+            ConnectionAccessGrant.connection_id == connection_id,
+            ConnectionAccessGrant.user_id == user_id,
+        )
+        .first()
+    )
+    if existing is not None:
+        existing.role = role
+        existing.workspace_id = workspace_id
+        db.add(existing)
+        db.commit()
+        db.refresh(existing)
+        return existing
+    row = ConnectionAccessGrant(
+        workspace_id=workspace_id,
+        connection_id=connection_id,
+        user_id=user_id,
+        role=role,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
 def create_session(
     db: Session,
     *,
@@ -250,15 +362,19 @@ def create_session(
     user_agent: str | None = None,
 ) -> tuple[UserSession, str]:
     if workspace_id is None:
+        workspace_id, _role = login_workspace(db, user)
+    else:
         membership = (
             db.query(WorkspaceMembership)
-            .filter(WorkspaceMembership.user_id == user.id)
-            .order_by(WorkspaceMembership.created_at.asc())
+            .filter(
+                WorkspaceMembership.user_id == user.id,
+                WorkspaceMembership.workspace_id == workspace_id,
+            )
             .first()
         )
-        if membership is None:
+        grants = grants_for_user(db, user.id, workspace_id)
+        if membership is None and not grants and not user.is_superadmin:
             raise AccountError("no_workspace", "User has no workspace membership.", 400)
-        workspace_id = membership.workspace_id
 
     raw = generate_token()
     session = UserSession(
@@ -294,7 +410,8 @@ def resolve_session(db: Session, raw_token: str | None) -> SessionContext | None
     if user is None:
         return None
     role = "owner"
-    if row.workspace_id:
+    connection_scope: frozenset[str] | None = None
+    if row.workspace_id and not user.is_superadmin:
         membership = (
             db.query(WorkspaceMembership)
             .filter(
@@ -303,10 +420,14 @@ def resolve_session(db: Session, raw_token: str | None) -> SessionContext | None
             )
             .first()
         )
-        if membership is None and not user.is_superadmin:
-            return None
-        if membership:
+        if membership is not None:
             role = membership.role
+        else:
+            grants = grants_for_user(db, user.id, row.workspace_id)
+            if not grants:
+                return None
+            role = role_from_grants(grants)
+            connection_scope = frozenset(grant.connection_id for grant in grants)
     return SessionContext(
         user_id=user.id,
         email=user.email,
@@ -314,6 +435,7 @@ def resolve_session(db: Session, raw_token: str | None) -> SessionContext | None
         role=role,
         is_superadmin=user.is_superadmin,
         session_id=row.id,
+        connection_scope=connection_scope,
     )
 
 

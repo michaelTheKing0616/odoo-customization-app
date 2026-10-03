@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.account_models import TotpRecoveryCode, User, Workspace, WorkspaceMembership
+from app.db_models import OdooConnection
 from app.account_service import (
     AccountError,
     SESSION_COOKIE,
@@ -18,6 +19,8 @@ from app.account_service import (
     authenticate_user,
     create_invitation,
     create_session,
+    grant_connection_access,
+    login_workspace,
     generate_token,
     hash_token,
     request_password_reset,
@@ -74,6 +77,12 @@ class AcceptInviteBody(BaseModel):
 class InviteBody(BaseModel):
     email: str
     role: str = "builder"
+
+
+class ConnectionGrantBody(BaseModel):
+    connection_id: str
+    email: str
+    role: str = "client_approver"
 
 
 class UserOut(BaseModel):
@@ -233,24 +242,20 @@ def login(
 
     _verify_totp_or_recovery(db, user, body)
 
-    membership = (
-        db.query(WorkspaceMembership)
-        .filter(WorkspaceMembership.user_id == user.id)
-        .order_by(WorkspaceMembership.created_at.asc())
-        .first()
-    )
-    if membership is None:
-        raise HTTPException(status_code=400, detail="No workspace membership")
+    try:
+        workspace_id, role = login_workspace(db, user)
+    except AccountError as exc:
+        raise _account_error(exc) from exc
 
     _, raw = create_session(
         db,
         user=user,
-        workspace_id=membership.workspace_id,
+        workspace_id=workspace_id,
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
     _set_session_cookie(response, raw)
-    return _session_out(db, user, membership.workspace_id, membership.role)
+    return _session_out(db, user, workspace_id, role)
 
 
 @router.post("/logout", status_code=204)
@@ -329,6 +334,38 @@ def invite_member(
         invited_by_user_id=auth.user_id,
     )
     return {"message": "Invitation sent."}
+
+
+@router.post("/connection-grants", status_code=201)
+def create_connection_grant(
+    body: ConnectionGrantBody,
+    auth: WorkspaceAuth = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Grant a client approver or viewer access to one connection. Not a workspace role."""
+    if not auth.user_id or not auth.workspace_id or auth.client_limited:
+        raise HTTPException(status_code=403, detail="Workspace admin required")
+    email = body.email.strip().lower()
+    user = db.query(User).filter(User.email == email).first()
+    if user is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No account for that email yet. They need an Ingenium login before they can approve.",
+        )
+    connection = db.get(OdooConnection, body.connection_id)
+    if connection is None or connection.workspace_id != auth.workspace_id:
+        raise HTTPException(status_code=404, detail="Connection not found")
+    try:
+        grant = grant_connection_access(
+            db,
+            workspace_id=auth.workspace_id,
+            connection_id=connection.id,
+            user_id=user.id,
+            role=body.role,
+        )
+    except AccountError as exc:
+        raise _account_error(exc) from exc
+    return {"id": grant.id, "role": grant.role, "connection_id": grant.connection_id}
 
 
 @router.post("/totp/enroll", response_model=TotpEnrollOut)
@@ -438,19 +475,15 @@ def oauth_callback(
             status_code=302,
         )
 
-    membership = (
-        db.query(WorkspaceMembership)
-        .filter(WorkspaceMembership.user_id == result.user.id)
-        .order_by(WorkspaceMembership.created_at.asc())
-        .first()
-    )
-    if membership is None:
-        raise HTTPException(status_code=400, detail="No workspace membership")
+    try:
+        workspace_id, _role = login_workspace(db, result.user)
+    except AccountError as exc:
+        raise _account_error(exc) from exc
 
     _, raw = create_session(
         db,
         user=result.user,
-        workspace_id=membership.workspace_id,
+        workspace_id=workspace_id,
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
@@ -473,27 +506,19 @@ def oauth_complete_2fa(
         raise HTTPException(status_code=400, detail="OAuth not available")
     try:
         user = complete_oauth_totp(db, raw_token=body.token, totp_code=body.totp_code)
+        workspace_id, role = login_workspace(db, user)
     except AccountError as exc:
         raise _account_error(exc) from exc
-
-    membership = (
-        db.query(WorkspaceMembership)
-        .filter(WorkspaceMembership.user_id == user.id)
-        .order_by(WorkspaceMembership.created_at.asc())
-        .first()
-    )
-    if membership is None:
-        raise HTTPException(status_code=400, detail="No workspace membership")
 
     _, raw = create_session(
         db,
         user=user,
-        workspace_id=membership.workspace_id,
+        workspace_id=workspace_id,
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
     _set_session_cookie(response, raw)
-    return _session_out(db, user, membership.workspace_id, membership.role)
+    return _session_out(db, user, workspace_id, role)
 
 
 @router.get("/oauth/identities", response_model=list[OAuthIdentityOut])
