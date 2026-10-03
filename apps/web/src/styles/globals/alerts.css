@@ -1,0 +1,56 @@
+/* Hint chrome — status / banner / alert decorations on form preview */
+.odoo-form-alert {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.odoo-form-alert-message {
+  font-weight: 600;
+}
+.odoo-form-alert-when {
+  margin-top: 4px;
+  opacity: 0.75;
+  font-size: 12px;
+}
+.odoo-form-alert--info {
+  background: var(--info-1);
+  border-color: var(--info-2);
+  color: var(--info-5);
+}
+.odoo-form-alert--warning {
+  background: var(--warning-1);
+  border-color: var(--warning-2);
+  color: var(--warning-5);
+}
+.odoo-form-alert--danger {
+  background: var(--danger-1);
+  border-color: var(--danger-2);
+  color: var(--danger-5);
+}
+.odoo-form-alert[data-hint-kind="ribbon"] {
+  border-left-width: 4px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.studio-flash-enrich-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0 4px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--ink, #1a1a1a);
+  cursor: pointer;
+}
+.studio-flash-enrich-toggle input {
+  margin-top: 2px;
+}
+.studio-flash-enrich-hint {
+  font-weight: 400;
+  opacity: 0.75;
+}

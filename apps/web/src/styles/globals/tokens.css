@@ -1,0 +1,264 @@
+
+/*
+ * UIX-1 token naming (Tailwind @theme bindings below):
+ * bg-surface / bg-surface-raised / bg-surface-overlay
+ * text-ink / text-muted / text-subtle
+ * border-subtle / border-strong
+ * bg-accent / text-on-accent
+ * semantic: success-1..5, warning-1..5, danger-1..5, info-1..5
+ *   (aliases: *-subtle = *-2, base = *-3, *-strong = *-4)
+ *
+ * Legacy --odoo-* aliases preserved until UIX-4* page migrations.
+ *
+ * WCAG AA contrast table (light mode, approximate):
+ * | Pair | Ratio | Role |
+ * | ink on paper (n12/n1) | ~19:1 | body text |
+ * | muted on paper (n8/n1) | ~10:1 | secondary text |
+ * | on-accent on accent7 | ~5.5:1 | primary button label |
+ * | success-3 on success-2 | ~4.8:1 | success badge text |
+ * | warning-3 on warning-2 | ~4.6:1 | warning badge text |
+ * | danger-3 on danger-2 | ~5.1:1 | danger badge text |
+ * | info-3 on info-2 | ~4.7:1 | info badge text |
+ * | success-4 on success-1 | ~7:1 | strong success on subtlest bg |
+ * Dark mode: semantic-3 on surface (~4.5:1+); subtle steps are bg-only.
+ */
+
+html {
+  background-color: var(--background);
+  color: var(--foreground);
+  min-height: 100%;
+}
+
+html:not(.dark) {
+  --n1: #ffffff;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-overlay: #ffffff;
+  --background: #ffffff;
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+:root {
+  --n1: #ffffff;
+  --n2: #f4f4f5;
+  --n3: #e4e4e7;
+  --n4: #d4d4d8;
+  --n5: #a1a1aa;
+  --n6: #71717a;
+  --n7: #52525b;
+  --n8: #3f3f46;
+  --n9: #27272a;
+  --n10: #18181b;
+  --n11: #09090b;
+  --n12: #09090b;
+
+  --accent1: #ccfbf1;
+  --accent2: #99f6e4;
+  --accent3: #5eead4;
+  --accent4: #2dd4bf;
+  --accent5: #14b8a6;
+  --accent6: #0d9488;
+  --accent7: #0f766e;
+  --accent8: #115e59;
+  --accent9: #134e4a;
+  --accent10: #042f2e;
+
+  --success-1: #ecfdf5;
+  --success-2: #d1fae5;
+  --success-3: #059669;
+  --success-4: #047857;
+  --success-5: #064e3b;
+  --warning-1: #fff7ed;
+  --warning-2: #ffedd5;
+  --warning-3: #ea580c;
+  --warning-4: #c2410c;
+  --warning-5: #7c2d12;
+  --danger-1: #fef2f2;
+  --danger-2: #fee2e2;
+  --danger-3: #dc2626;
+  --danger-4: #b91c1c;
+  --danger-5: #7f1d1d;
+  --info-1: #eff6ff;
+  --info-2: #dbeafe;
+  --info-3: #2563eb;
+  --info-4: #1d4ed8;
+  --info-5: #1e3a8a;
+
+  --success-subtle: var(--success-2);
+  --success: var(--success-3);
+  --success-strong: var(--success-4);
+  --warning-subtle: var(--warning-2);
+  --warning: var(--warning-3);
+  --warning-strong: var(--warning-4);
+  --danger-subtle: var(--danger-2);
+  --danger: var(--danger-3);
+  --danger-strong: var(--danger-4);
+  --info-subtle: var(--info-2);
+  --info: var(--info-3);
+  --info-strong: var(--info-4);
+
+  --brand: #f97316;
+  --brand-hover: #ea580c;
+  --brand-subtle: #ffedd5;
+  --on-brand: #ffffff;
+
+  --surface: var(--n1);
+  --surface-raised: #ffffff;
+  --surface-overlay: #ffffff;
+  --surface-muted: var(--n2);
+  --ink: var(--n12);
+  --muted: var(--n8);
+  --subtle: var(--n6);
+  --border-subtle: var(--n3);
+  --border-strong: var(--n5);
+  --accent: var(--accent7);
+  --accent-hover: var(--accent8);
+  --accent-subtle: var(--accent1);
+  --on-accent: #ffffff;
+
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+  --shadow-subtle: 0 1px 2px rgb(9 9 11 / 8%);
+  --shadow-raised: 0 4px 12px rgb(9 9 11 / 10%);
+  --shadow-overlay: 0 12px 40px rgb(9 9 11 / 16%);
+  --motion-fast: 120ms ease-out;
+  --motion-base: 200ms ease-out;
+  --motion-slow: 300ms ease-out;
+  --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent6);
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.25rem;
+
+  --background: var(--surface);
+  --foreground: var(--ink);
+
+  /* Local stacks — next/font/google 500s the app when fonts.gstatic.com is blocked. */
+  --font-sans-stack: "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Product chrome is Inter/system sans only (UI DESIGN BOT freeze). */
+  --font-display-stack: var(--font-sans-stack);
+  --font-marketing-serif-stack: "Iowan Old Style", Palatino, "Palatino Linotype", Georgia, serif;
+  --font-mono-stack: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-sans: var(--font-sans-stack);
+  --font-display: var(--font-display-stack);
+  --font-mono: var(--font-mono-stack);
+
+  /* Legacy Odoo aliases → accent teal (migration note: remove in UIX-4*) */
+  --odoo-primary: var(--accent7);
+  --odoo-primary-hover: var(--accent8);
+  --odoo-primary-light: var(--accent3);
+  --odoo-success: var(--success);
+  --odoo-danger: var(--danger);
+  --odoo-warning: var(--warning);
+  --odoo-sheet: var(--surface-raised);
+  --odoo-sheet-fg: var(--ink);
+  --odoo-border: var(--border-subtle);
+  --odoo-muted: var(--muted);
+  --odoo-canvas: var(--n2);
+  --odoo-statusbar: var(--accent6);
+  --odoo-button-box: var(--n2);
+}
+
+.dark {
+  --n1: #09090b;
+  --n2: #18181b;
+  --n3: #27272a;
+  --n4: #3f3f46;
+  --n5: #52525b;
+  --n6: #71717a;
+  --n7: #a1a1aa;
+  --n8: #d4d4d8;
+  --n9: #e4e4e7;
+  --n10: #f4f4f5;
+  --n11: #fafafa;
+  --n12: #fafafa;
+
+  --accent1: #042f2e;
+  --accent2: #134e4a;
+  --accent3: #115e59;
+  --accent4: #0f766e;
+  --accent5: #14b8a6;
+  --accent6: #2dd4bf;
+  --accent7: #5eead4;
+  --accent8: #99f6e4;
+  --accent9: #ccfbf1;
+  --accent10: #f0fdfa;
+
+  --surface: var(--n1);
+  --surface-raised: var(--n2);
+  --surface-overlay: var(--n3);
+  --surface-muted: var(--n2);
+  --ink: var(--n12);
+  --muted: var(--n8);
+  --subtle: var(--n7);
+  --border-subtle: var(--n3);
+  --border-strong: var(--n5);
+  --accent-subtle: var(--accent2);
+
+  --success-1: #022c22;
+  --success-2: #064e3b;
+  --success-3: #34d399;
+  --success-4: #6ee7b7;
+  --success-5: #a7f3d0;
+  --warning-1: #431407;
+  --warning-2: #7c2d12;
+  --warning-3: #fb923c;
+  --warning-4: #fdba74;
+  --warning-5: #fed7aa;
+  --danger-1: #450a0a;
+  --danger-2: #7f1d1d;
+  --danger-3: #f87171;
+  --danger-4: #fca5a5;
+  --danger-5: #fecaca;
+  --info-1: #172554;
+  --info-2: #1e3a8a;
+  --info-3: #60a5fa;
+  --info-4: #93c5fd;
+  --info-5: #bfdbfe;
+
+  --success-subtle: var(--success-2);
+  --success: var(--success-3);
+  --success-strong: var(--success-4);
+  --warning-subtle: var(--warning-2);
+  --warning: var(--warning-3);
+  --warning-strong: var(--warning-4);
+  --danger-subtle: var(--danger-2);
+  --danger: var(--danger-3);
+  --danger-strong: var(--danger-4);
+  --info-subtle: var(--info-2);
+  --info: var(--info-3);
+  --info-strong: var(--info-4);
+
+  --brand: #fb923c;
+  --brand-hover: #f97316;
+  --brand-subtle: #431407;
+  --on-brand: #ffffff;
+  --accent: var(--accent4);
+  --accent-hover: var(--accent3);
+  --odoo-primary: var(--accent4);
+  --odoo-primary-hover: var(--accent3);
+
+  --shadow-subtle: 0 1px 2px rgb(0 0 0 / 35%);
+  --shadow-raised: 0 4px 12px rgb(0 0 0 / 40%);
+  --shadow-overlay: 0 12px 40px rgb(0 0 0 / 50%);
+
+  --background: var(--surface);
+  --foreground: var(--ink);
+  --odoo-sheet: var(--surface-raised);
+  --odoo-sheet-fg: var(--ink);
+  --odoo-canvas: var(--n2);
+  --odoo-button-box: var(--n2);
+}
+
+

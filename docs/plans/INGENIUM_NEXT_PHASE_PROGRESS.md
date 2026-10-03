@@ -1059,3 +1059,9 @@ Track: T7 UI-SP-CONFIG. Worker [Split the config page into components](fd34a138-
 Intent: Move the config page into `components/config/` without changing the route. The page is 109 lines and still default-exports `ConfigPage`. No new file is over 400 lines. ConfigCommandCenter, ConfigAtlasBrowser, and InstanceFingerprintCard were reused.
 Tests: `ConfigAtlasBrowser.test.tsx` and `ConfigCommandCenter.test.tsx` — 4 passed.
 Not done: UI-SP-CSS. L4 off.
+
+## 2026-10-03 — UI-SP-CSS stylesheet split
+Track: T7 UI-SP-CSS. Worker [Split stylesheets by area](6c478512-4324-4f29-a24f-5ceb24ad58c6). No push. L4 stays off.
+Intent: Split `studio-refinement.css` and `globals.css` into area files. Import order matches the original source. No selector, property, or declaration changed. Concatenating the pieces matches the committed CSS byte for byte (studio 37259 bytes, globals 30858 bytes including the Tailwind import).
+Tests: Playwright `/e2e/tokens` on next dev — 3 passed (light capture, dark capture, harness render). Those tests do not pixel-diff. The recaptured PNGs differ in size and were left unstaged.
+Not done: ADR-01. L4 off.

@@ -1,0 +1,39 @@
+/* Refractor / CodeBlock token colors */
+.code-block-highlight .token.comment,
+.code-block-highlight .token.prolog,
+.code-block-highlight .token.doctype {
+  color: var(--n8);
+}
+.code-block-highlight .token.punctuation {
+  color: var(--n9);
+}
+.code-block-highlight .token.property,
+.code-block-highlight .token.tag,
+.code-block-highlight .token.boolean,
+.code-block-highlight .token.number,
+.code-block-highlight .token.constant,
+.code-block-highlight .token.symbol {
+  color: var(--info);
+}
+.code-block-highlight .token.selector,
+.code-block-highlight .token.attr-name,
+.code-block-highlight .token.string,
+.code-block-highlight .token.char,
+.code-block-highlight .token.builtin {
+  color: var(--success);
+}
+.code-block-highlight .token.operator,
+.code-block-highlight .token.entity,
+.code-block-highlight .token.url {
+  color: var(--accent);
+}
+.code-block-highlight .token.atrule,
+.code-block-highlight .token.attr-value,
+.code-block-highlight .token.keyword {
+  color: var(--warning);
+}
+.code-block-highlight .token.function,
+.code-block-highlight .token.class-name {
+  color: var(--danger);
+}
+

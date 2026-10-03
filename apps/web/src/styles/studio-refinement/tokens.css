@@ -1,0 +1,58 @@
+/* ============================================================
+   Conversational Refinement UI — scoped to .studio-refinement
+   ============================================================ */
+
+.studio-refinement {
+  --surface-0: var(--surface);
+  --surface-1: var(--surface-muted);
+  --surface-2: var(--surface-raised);
+
+  --text-primary: var(--ink);
+  --text-secondary: var(--muted);
+  --text-muted: var(--subtle);
+
+  --border: var(--border-subtle);
+  --border-strong: var(--border-strong);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --bg-accent: var(--accent-subtle);
+  --text-accent: var(--accent);
+  --border-accent: color-mix(in srgb, var(--accent) 45%, transparent);
+  --on-accent: var(--on-accent);
+  --color-on-accent: var(--on-accent);
+
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --on-brand: var(--on-brand);
+
+  --text-danger: var(--danger);
+  --border-danger: color-mix(in srgb, var(--danger) 35%, transparent);
+  --bg-warning: var(--warning-subtle);
+  --border-warning: color-mix(in srgb, var(--warning) 45%, transparent);
+  --bg-success: var(--success-subtle);
+  --border-success: color-mix(in srgb, var(--success) 45%, transparent);
+
+  --radius-control: 8px;
+  --radius-card: 12px;
+
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+
+  --font-sans: var(--font-sans-stack);
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-md: 15px;
+  --font-size-lg: 20px;
+
+  background: var(--surface-0);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  line-height: 1.55;
+}
+

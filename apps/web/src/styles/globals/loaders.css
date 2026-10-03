@@ -1,0 +1,61 @@
+@keyframes expert-bubble-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.expert-launcher-hint {
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border-subtle));
+  background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--muted);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 6%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.studio-loader-infinity {
+  width: 88px;
+  height: 88px;
+  margin: 0 auto;
+  display: block;
+  color: var(--brand);
+}
+
+.studio-loader-infinity-path {
+  transform: scale(0.8);
+  transform-origin: 50px 50px;
+  animation: loading-ui-infinity-dash var(--duration, 2s) linear infinite;
+}
+
+.studio-loader-spokes {
+  width: 1.1em;
+  height: 1.1em;
+  flex: 0 0 auto;
+  color: currentColor;
+  animation: loading-ui-spokes-spin var(--duration, 1s) linear infinite;
+}
+
+.studio-btn-busy {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@keyframes loading-ui-infinity-dash {
+  to {
+    stroke-dashoffset: 256.58892822265625;
+  }
+}
+
+@keyframes loading-ui-spokes-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+

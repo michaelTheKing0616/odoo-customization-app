@@ -1,0 +1,322 @@
+/* Default boolean = square Odoo checkbox (not iOS pill). */
+.odoo-widget-checkbox {
+  background: var(--surface-raised);
+  border: 1.5px solid var(--odoo-border);
+  border-radius: 2px;
+  box-sizing: border-box;
+  display: inline-block;
+  height: 0.95rem;
+  position: relative;
+  width: 0.95rem;
+}
+
+.odoo-widget-checkbox[data-checked="true"] {
+  background: var(--odoo-primary);
+  border-color: var(--odoo-primary);
+}
+
+.odoo-widget-checkbox[data-checked="true"]::after {
+  border: solid var(--on-accent);
+  border-width: 0 1.5px 1.5px 0;
+  content: "";
+  height: 0.45rem;
+  left: 0.28rem;
+  position: absolute;
+  top: 0.08rem;
+  transform: rotate(45deg);
+  width: 0.25rem;
+}
+
+/* Pill toggle only when widget=boolean_toggle */
+.odoo-widget-toggle {
+  background: var(--odoo-border);
+  border-radius: 999px;
+  display: inline-block;
+  height: 0.9rem;
+  position: relative;
+  width: 1.6rem;
+}
+
+.odoo-widget-toggle::after {
+  background: var(--surface-raised);
+  border-radius: 999px;
+  content: "";
+  height: 0.7rem;
+  left: 0.1rem;
+  position: absolute;
+  top: 0.1rem;
+  width: 0.7rem;
+}
+
+.odoo-widget-toggle-label {
+  color: var(--odoo-muted);
+  font-size: var(--text-xs);
+}
+
+.odoo-contact-title {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid var(--odoo-border);
+}
+
+.odoo-contact-avatar {
+  align-items: center;
+  background: color-mix(in srgb, var(--odoo-canvas) 70%, var(--surface));
+  border: 1px solid var(--odoo-border);
+  border-radius: 4px;
+  display: flex;
+  font-size: 1.35rem;
+  height: 3rem;
+  justify-content: center;
+  width: 3rem;
+}
+
+.odoo-contact-name {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--odoo-sheet-fg);
+  line-height: 1.2;
+}
+
+.odoo-contact-subtitle {
+  color: var(--odoo-muted);
+  font-size: var(--text-xs);
+  margin-top: 0.15rem;
+}
+
+.odoo-breadcrumb-current {
+  color: var(--odoo-sheet-fg);
+  font-weight: 600;
+}
+
+.odoo-breadcrumb-sep {
+  color: var(--odoo-muted);
+}
+
+.odoo-control-panel-actions .odoo-btn-primary[disabled] {
+  cursor: default;
+  opacity: 1;
+}
+
+.odoo-widget-selection {
+  align-items: center;
+  display: inline-flex;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.odoo-widget-caret {
+  color: var(--odoo-muted);
+  font-size: 0.65rem;
+}
+
+.odoo-widget-m2o {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
+.odoo-widget-m2o-chip {
+  background: color-mix(in srgb, var(--odoo-primary) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--odoo-primary) 25%, var(--odoo-border));
+  border-radius: 3px;
+  color: var(--odoo-primary);
+  font-size: var(--text-xs);
+  padding: 0.1rem 0.4rem;
+}
+
+.odoo-widget-m2o-open {
+  color: var(--odoo-muted);
+  font-size: 0.7rem;
+}
+
+.odoo-widget-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.odoo-widget-o2m {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+}
+.odoo-widget-o2m-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+.odoo-widget-o2m-table th,
+.odoo-widget-o2m-table td {
+  border: 1px solid var(--odoo-border, #d8dadd);
+  padding: 0.25rem 0.5rem;
+  text-align: left;
+  white-space: nowrap;
+}
+.odoo-widget-o2m-table th {
+  background: var(--odoo-bg-subtle, #f8f9fa);
+  font-weight: 600;
+  color: var(--odoo-muted, #714b67);
+}
+
+.odoo-widget-tag {
+  background: color-mix(in srgb, var(--odoo-canvas) 70%, var(--surface));
+  border: 1px solid var(--odoo-border);
+  border-radius: 3px;
+  font-size: 0.7rem;
+  padding: 0.1rem 0.35rem;
+}
+
+.odoo-widget-date {
+  align-items: center;
+  display: inline-flex;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.odoo-widget-date-icon {
+  border: 1px solid var(--odoo-border);
+  border-radius: 2px;
+  display: inline-block;
+  height: 0.85rem;
+  position: relative;
+  width: 0.85rem;
+}
+
+.odoo-widget-date-icon::before {
+  background: var(--odoo-primary);
+  content: "";
+  height: 2px;
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+
+.odoo-widget-monetary {
+  align-items: baseline;
+  display: inline-flex;
+  gap: 0.35rem;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.odoo-widget-currency {
+  color: var(--odoo-muted);
+  font-size: var(--text-xs);
+}
+
+.odoo-widget-amount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.odoo-kanban-column {
+  background: color-mix(in srgb, var(--odoo-canvas) 55%, var(--surface));
+  border: 1px solid var(--odoo-border);
+  border-radius: 4px;
+  min-width: 14rem;
+}
+
+.odoo-kanban-column-title {
+  align-items: center;
+  border-bottom: 1px solid var(--odoo-border);
+  color: var(--odoo-muted);
+  display: flex;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  justify-content: space-between;
+  letter-spacing: 0.03em;
+  padding: 0.45rem 0.55rem;
+  text-transform: uppercase;
+}
+
+.odoo-kanban-count {
+  background: var(--surface);
+  border: 1px solid var(--odoo-border);
+  border-radius: 999px;
+  font-size: 0.65rem;
+  padding: 0 0.35rem;
+}
+
+.odoo-kanban-column-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.45rem;
+}
+
+.odoo-kanban-card {
+  background: var(--surface);
+  border: 1px solid var(--odoo-border);
+  border-left: 3px solid var(--odoo-primary);
+  border-radius: 3px;
+  padding: 0.5rem 0.55rem 0.65rem;
+  position: relative;
+}
+
+.odoo-kanban-card-top {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.35rem;
+  justify-content: space-between;
+}
+
+.odoo-kanban-card-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.odoo-kanban-card-field {
+  color: var(--odoo-muted);
+  font-size: var(--text-xs);
+  margin-top: 0.2rem;
+}
+
+.odoo-kanban-state {
+  border-radius: 999px;
+  display: inline-block;
+  flex-shrink: 0;
+  height: 0.55rem;
+  width: 0.55rem;
+}
+
+.odoo-kanban-state-normal {
+  background: var(--odoo-primary);
+}
+
+.odoo-kanban-state-done {
+  background: var(--odoo-success);
+}
+
+.odoo-kanban-state-blocked {
+  background: var(--odoo-danger);
+}
+
+.odoo-kanban-color-swatch {
+  border-radius: 2px;
+  bottom: 0.35rem;
+  height: 0.35rem;
+  position: absolute;
+  right: 0.4rem;
+  width: 0.85rem;
+}
+
+.odoo-control-panel-search {
+  background: var(--surface);
+  border: 1px solid var(--odoo-border);
+  border-radius: 3px;
+  color: var(--odoo-muted);
+  font-size: var(--text-xs);
+  min-width: 10rem;
+  padding: 0.25rem 0.5rem;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
