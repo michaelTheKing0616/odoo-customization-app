@@ -125,6 +125,40 @@ describe("ClarifyInterstitial diagnosis", () => {
     cleanup();
   });
 
+  it("renders every approved_craft toggle unchecked by default", () => {
+    render(
+      <ClarifyInterstitial
+        onAnswer={vi.fn()}
+        clarification={{
+          kind: "diagnosis",
+          merge_key: "diagnosis",
+          question: "We'll build: Maintenance",
+          help: "Residual full_app.",
+          understanding: {
+            title: "Maintenance",
+            inherit_existing: false,
+            needs_module: false,
+            constraints: ["Tickets with Draft→Done"],
+          },
+        }}
+      />,
+    );
+    const keys = [
+      "company_scoping",
+      "money_slots",
+      "purchase_link",
+      "partner_links",
+      "datetime_over_date",
+      "depth_seeds",
+    ] as const;
+    for (const key of keys) {
+      const btn = screen.getByTestId(`studio-craft-toggle-${key}`);
+      expect(btn.getAttribute("aria-pressed")).toBe("false");
+      expect(btn.textContent).toMatch(/Off/i);
+    }
+    cleanup();
+  });
+
   it("renders approved_craft toggles default off and includes them in confirm payload", () => {
     const onAnswer = vi.fn();
     render(

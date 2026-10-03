@@ -329,6 +329,16 @@ Negative tests: the three tests above.
 Not done: T1-C1 default-off craft is not proven by a named test.
 Risks introduced: none.
 
+CLAIM T1-C1 2026-10-03T07:25:35Z files: tests that prove approved_craft defaults off, plus the API or web checklist only if the default is not already off.
+
+## 2026-10-03 — T1-C1
+Track: T1
+Intent: Prove `approved_craft` defaults off (API checklist + web diagnosis toggles); one craft toggle changes generated views XML.
+Files: `apps/api/tests/test_approved_craft_default_off.py` (new); `apps/web/src/components/studio/ClarifyInterstitial.test.tsx` (all toggles default off).
+Product code: none — defaults already off in `understand.py` / `ClarifyInterstitial.tsx`.
+Commands and results: VERIFIED. `pytest tests/test_approved_craft_default_off.py` — 4 passed in 1.19s; `vitest run ClarifyInterstitial.test.tsx` — 5 passed in 632ms.
+Gates: default-off negatives; `money_slots` on adds `x_currency_id` to views.xml vs off.
+Model / band: composer-2.5-fast worker (6b237b82-d850-47e9-8ae4-9b0e858dbd18); composer-2.5-fast tester (5d662418-b523-419f-a685-db84f76da155). Tester re-run: API 4 passed in 0.90s; web 5 passed.
 
 
 
