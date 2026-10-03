@@ -125,7 +125,12 @@ class InProcessJobRunner:
                 if cancel_ev.is_set():
                     _set_status(job_id, "cancelled", error="Cancelled during run")
                     return
-                _set_status(job_id, "succeeded", result=result)
+                job_error: str | None = None
+                if kind == "sandbox" and isinstance(result, dict):
+                    from app.sandbox import sandbox_job_error_from_result
+
+                    job_error = sandbox_job_error_from_result(result)
+                _set_status(job_id, "succeeded", result=result, error=job_error)
                 logger.info("job.succeeded", extra={"job_id": job_id, "kind": kind})
             except TimeoutError as exc:
                 logger.warning(
@@ -163,10 +168,13 @@ class InProcessJobRunner:
                     _set_status(job_id, "cancelled", error=f"Cancelled: {exc}")
                 else:
                     logger.exception("job.failed", extra={"job_id": job_id, "kind": kind})
+                    from app.sandbox import redact_sandbox_secrets
+
+                    tb = traceback.format_exc()
                     _set_status(
                         job_id,
                         "failed",
-                        error=f"{exc}\n{traceback.format_exc()[-1500:]}",
+                        error=redact_sandbox_secrets(f"{exc}\n{tb}"),
                     )
             finally:
                 with self._lock:
@@ -329,7 +337,7 @@ def _set_status(
         if result is not None:
             row.result_json = json.dumps(result)
         if error is not None:
-            row.error = error[:4000]
+            row.error = error
         if status in _TERMINAL_STATUSES:
             row.finished_at = datetime.now(timezone.utc)
         db.add(row)

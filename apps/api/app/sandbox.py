@@ -80,6 +80,67 @@ _TEST_SUMMARY_FAIL_RE = re.compile(
     r"(?i)(\d+)\s+failed(?:\s*,\s*(\d+)\s+error)?|"
     r"FAILED\s*\(failures?=(\d+)(?:,\s*errors?=(\d+))?\)"
 )
+_CREDENTIAL_KV_RE = re.compile(
+    r"(?i)\b(password|passwd|api_key|api-key|secret|token)\s*([=:])\s*\S+"
+)
+
+
+def _redact_credential_kv(match: re.Match[str]) -> str:
+    return f"{match.group(1)}{match.group(2)}[redacted]"
+
+
+def redact_sandbox_secrets(text: str) -> str:
+    """Strip sandbox passwords / API keys before persisting Odoo fault text."""
+    from app.llm_gateway.scrub import scrub
+
+    secrets = [SANDBOX_PASSWORD]
+    try:
+        from app.settings import settings
+
+        key = (settings.app_api_key or "").strip()
+        if key:
+            secrets.append(key)
+    except Exception:  # noqa: BLE001
+        pass
+    scrubbed = scrub(text or "", secrets)
+    return _CREDENTIAL_KV_RE.sub(_redact_credential_kv, scrubbed)
+
+
+def _join_sandbox_logs(logs: list[str]) -> str:
+    """Full install/test log for persistence (redacted, not tail-truncated)."""
+    return redact_sandbox_secrets("\n".join(logs))
+
+
+def verbatim_sandbox_error_text(*, message: str = "", log_tail: str = "") -> str:
+    """Combine sandbox message + log without dropping traceback lines (T1-D3)."""
+    msg = (message or "").strip()
+    tail = (log_tail or "").strip()
+    if msg and tail:
+        if tail in msg:
+            combined = msg
+        elif msg in tail:
+            combined = tail
+        else:
+            combined = f"{msg}\n{tail}"
+    else:
+        combined = msg or tail
+    return redact_sandbox_secrets(combined)
+
+
+def sandbox_job_error_from_result(result: dict[str, Any]) -> str | None:
+    """Verbatim Odoo install fault for ``BackgroundJob.error`` when sandbox failed."""
+    if not isinstance(result, dict):
+        return None
+    nested = result.get("sandbox") if isinstance(result.get("sandbox"), dict) else {}
+    ok = result.get("ok")
+    if ok is None:
+        ok = nested.get("ok")
+    if ok is not False:
+        return None
+    msg = str(result.get("message") or nested.get("message") or "")
+    tail = str(result.get("log_tail") or nested.get("log_tail") or "")
+    text = verbatim_sandbox_error_text(message=msg, log_tail=tail).strip()
+    return text or None
 
 def _coerce_sandbox_major(major: int | str | None) -> int:
     """Accept 19, ``'19.0'``, ``'19.0+e'``; empty/unparseable → 19."""
@@ -695,14 +756,14 @@ def _run_sandbox_install_unlocked(
                 technical, odoo_major=odoo_major, job_id=job_id
             )
             if test_log:
-                logs.append(test_log[-2000:])
+                logs.append(test_log)
             if not test_ok:
                 detail = "; ".join(test_failures[:5]) or "unknown test failure"
                 return SandboxResult(
                     ok=False,
                     module=technical,
                     message=f"Sandbox tests failed for {technical}: {detail}",
-                    log_tail="\n".join(logs)[-4000:],
+                    log_tail=_join_sandbox_logs(logs),
                     sandbox_url=SANDBOX_URL if keep_alive else None,
                     odoo_major=odoo_major,
                     test_failures=test_failures,
@@ -721,7 +782,7 @@ def _run_sandbox_install_unlocked(
                 f"Sandbox (Odoo {odoo_major}) installed {technical} "
                 f"successfully{extra_msg}{test_msg}"
             ),
-            log_tail="\n".join(logs)[-4000:],
+            log_tail=_join_sandbox_logs(logs),
             sandbox_url=SANDBOX_URL if keep_alive else None,
             odoo_major=odoo_major,
             test_failures=[],
@@ -733,7 +794,7 @@ def _run_sandbox_install_unlocked(
             ok=False,
             module=technical,
             message=str(exc),
-            log_tail="\n".join(logs)[-4000:],
+            log_tail=_join_sandbox_logs(logs),
             sandbox_url=None,
             odoo_major=odoo_major,
         )

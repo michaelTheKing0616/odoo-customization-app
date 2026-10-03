@@ -383,3 +383,14 @@ Negative tests: the three-fail test; the smoke-only test.
 Not done: T1-D3 verbatim sandbox error text is still open.
 Risks introduced: none.
 
+CLAIM T1-D3 2026-10-03T07:40:00Z files: a test that stores a known traceback, and the store path only if the text is summarized today.
+
+## 2026-10-03 — T1-D3 verbatim sandbox log
+Track: T1
+Intent: Store Odoo install fault text on sandbox background jobs without summarizing (secrets redacted).
+Model / band: worker (cheap).
+Files: `apps/api/app/sandbox.py` (`verbatim_sandbox_error_text`, `sandbox_job_error_from_result`), `apps/api/app/job_runner.py` (stamp `BackgroundJob.error` on sandbox `ok=false`), `apps/api/tests/test_verbatim_sandbox_job_log.py`.
+Commands: pytest `tests/test_option_a_prove_bar.py` + `tests/test_verbatim_sandbox_job_log.py`.
+Gates: known traceback present on job row; password/api_key absent after redaction.
+
+
