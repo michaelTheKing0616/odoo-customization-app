@@ -619,3 +619,26 @@ Gates passed: planted `ServerProxy(` under `apps/api/app` detected by scanner; r
 Negative tests: `test_direct_xmlrpc_scan_detects_planted_server_proxy_in_app_tree`.
 Not done: `docker/*` scripts still use raw xmlrpc (outside `apps`/`packages` scan roots). `apps/api/tests/test_wave16_gen2.py` still uses `ServerProxy` in tests (excluded from scan, same as card `rg`).
 Risks introduced: none.
+
+CLAIM T2-J4 2026-10-03T09:30:00Z files: STATE.md and the progress log. Honest done vs operator-only. Do not write JSON-2 complete.
+
+## 2026-10-03 — T2-J4 honest docs (PR-J4)
+Track: T2. Card: T2-J4. Worker only. Docs only. No commit. No push. No product code. No live Odoo calls.
+Intent: `STATE.md` and this log state what is done vs still open. T2-SMOKE's three Online methods are recorded. T2-J1 `/doc` text match is not verified, so the JSON-2 track stays open.
+Model / band: docs. Pressure 3.
+
+**Done (verified in repo / recorded facts):**
+- JSON-2 transport, mapper, and production probe in `packages/odoo-client` — commits **a67877a**, **603523c**. Odoo **19 Online** and **20** use JSON-2; Odoo **17**, **18**, and **self-hosted 19** use XML-RPC or JSON-RPC. Production probe confirms `search_read` and `fields_get` live and does not insert a row. JSON-2 create shape is `vals_list`; legacy create is positional `vals`.
+- Live calls on **https://aonb.odoo.com** (db `aonb`) and **https://aonb-mirror.odoo.com** (db `aonb-mirror`), build path **odoo/20.0**, documented in `docs/verified-facts.md`: `search_read`, `fields_get`, and create matched the mapper; bad key **401**; empty create **422** missing `vals_list`; string domain **500** `Domain()` TypeError. **GET `/doc`** is the public website, so `/doc` parameter match is **not** verified.
+- **T2-J2** (commit **f626a00**): stock module `board` installed through `OdooClient.ensure_module_installed` on two local ephemeral Odoo 19 sandboxes — XML-RPC **6.151 s**, JSON-2 **4.053 s**, both state `installed`. Sandbox default stayed **xmlrpc**. Online was not installed to. First admin API key cannot be minted over XML-RPC on Odoo 19.
+- **T2-J3** (commit **1cf4417**): `apps/api/tests/test_no_direct_xmlrpc.py` — **2 passed**. Direct `xmlrpc.client` / `ServerProxy` outside `packages/odoo-client` and `apps/api/app/sandbox.py` fails the test. `rpc_resilience` imports `Fault`/`ProtocolError` from `odoo_client.rpc_transport_errors`. `docker/*` raw xmlrpc and `test_wave16_gen2.py` `ServerProxy` are outside scan roots (tests/docker).
+- **T2-SMOKE:** the three Online methods are recorded on aonb (20.0) in `docs/verified-facts.md`. That is the card's acceptance. No new live call. An Online module install was not part of this card and was not run.
+
+**Still open:**
+- **T2-J1:** `/doc` text match is not verified. The website owns that route. Do not guess signatures. The JSON-2 track stays open for that reason.
+- Sandbox default remains **XML-RPC**. **Promote stays human.**
+
+Files touched: `STATE.md` (Last run + Next + Docket); this entry.
+Gates passed: no sentence claims the JSON-2 track is finished; T2-SMOKE methods are cited from verified-facts; Mac §9 UI paste remains operator; L4 stays unconfirmed.
+Not done: T2-J1 `/doc` text match, Mac §9 UI paste. Sandbox default stays XML-RPC. Promote stays human.
+Risks introduced: none (docs only).
