@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import copy
 import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.agent_runtime.phases import ENGINE_ONLY, IllegalTransition, assert_transition
+from app.agent_runtime.phases import ENGINE_ONLY, PHASES, IllegalTransition, assert_transition
 from app.agent_runtime.tools import ToolDenied, assert_tool_allowed, wrap_untrusted
 from app.changeset.executor import apply as engine_apply
 from app.changeset.executor import changeset_fingerprint
@@ -47,6 +48,131 @@ class RunState:
             "op_count": len(self.changeset),
             "tool_calls": self.tool_calls,
         }
+
+    def export_state(self) -> dict[str, Any]:
+        """Copy the fields this run already holds.
+
+        Inputs: this RunState.
+        Outputs: phase, step, tool_calls, changeset, facts, plan_hash,
+        approved_hash, applied, report, events, status, loop_warnings,
+        and tool_counts. Nested values are copies.
+        Side effects: none. Nothing is written to disk or a database.
+        A process kill still drops the run unless the caller kept this dict.
+        """
+        return {
+            "phase": self.phase,
+            "step": self.step,
+            "tool_calls": self.tool_calls,
+            "changeset": copy.deepcopy(self.changeset),
+            "facts": copy.deepcopy(self.facts),
+            "plan_hash": self.plan_hash,
+            "approved_hash": self.approved_hash,
+            "applied": self.applied,
+            "report": copy.deepcopy(self.report),
+            "events": copy.deepcopy(self.events),
+            "status": self.status,
+            "loop_warnings": self.loop_warnings,
+            "tool_counts": dict(self._tool_counts),
+        }
+
+    @classmethod
+    def restore(cls, payload: dict[str, Any]) -> RunState:
+        """Rebuild a run from an exported state dict.
+
+        Inputs: the dict from export_state. Every key is required.
+        Outputs: a new RunState. Nested lists are copies, so the payload
+        and the restored run do not share objects.
+        Side effects: none. Tools are not replayed. Nothing is written
+        to disk or a database.
+        Raises ValueError when the payload is incomplete or the wrong shape.
+        Raises IllegalTransition when phase is not in the machine.
+        """
+        if not isinstance(payload, dict):
+            raise ValueError("exported state must be an object")
+        missing = [key for key in _EXPORT_KEYS if key not in payload]
+        if missing:
+            raise ValueError(f"exported state is missing {missing}")
+        phase = payload["phase"]
+        if not isinstance(phase, str) or phase not in PHASES:
+            raise IllegalTransition(f"unknown phase {phase!r}")
+        report = payload["report"]
+        if report is not None and not isinstance(report, dict):
+            raise ValueError("report must be an object or null")
+        raw_counts = payload["tool_counts"]
+        if not isinstance(raw_counts, dict):
+            raise ValueError("tool_counts must be an object")
+        tool_counts: dict[str, int] = {}
+        for key, count in raw_counts.items():
+            if not isinstance(key, str):
+                raise ValueError("tool_counts keys must be strings")
+            tool_counts[key] = _require_int(count, "tool_counts value")
+        return cls(
+            phase=phase,
+            step=_require_int(payload["step"], "step"),
+            tool_calls=_require_int(payload["tool_calls"], "tool_calls"),
+            changeset=_copy_records(payload["changeset"], label="changeset"),
+            facts=_copy_records(payload["facts"], label="facts"),
+            plan_hash=_optional_str(payload["plan_hash"], "plan_hash"),
+            approved_hash=_optional_str(payload["approved_hash"], "approved_hash"),
+            applied=_require_bool(payload["applied"], "applied"),
+            report=copy.deepcopy(report) if report is not None else None,
+            events=_copy_records(payload["events"], label="events"),
+            status=_require_str(payload["status"], "status"),
+            loop_warnings=_require_int(payload["loop_warnings"], "loop_warnings"),
+            _tool_counts=tool_counts,
+        )
+
+
+_EXPORT_KEYS = (
+    "phase",
+    "step",
+    "tool_calls",
+    "changeset",
+    "facts",
+    "plan_hash",
+    "approved_hash",
+    "applied",
+    "report",
+    "events",
+    "status",
+    "loop_warnings",
+    "tool_counts",
+)
+
+
+def _require_int(value: Any, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{label} must be an int")
+    return value
+
+
+def _require_bool(value: Any, label: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"{label} must be a bool")
+    return value
+
+
+def _require_str(value: Any, label: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{label} must be a string")
+    return value
+
+
+def _optional_str(value: Any, label: str) -> str | None:
+    if value is None:
+        return None
+    return _require_str(value, label)
+
+
+def _copy_records(records: Any, *, label: str) -> list[dict[str, Any]]:
+    if not isinstance(records, list):
+        raise ValueError(f"{label} must be a list")
+    copied: list[dict[str, Any]] = []
+    for index, record in enumerate(records):
+        if not isinstance(record, dict):
+            raise ValueError(f"{label}[{index}] must be an object")
+        copied.append(copy.deepcopy(record))
+    return copied
 
 
 class BudgetExceeded(Exception):
@@ -188,6 +314,7 @@ class AgentRuntime:
         state.applied = verified
         assert_transition("EXECUTE", "VERIFY")
         state.phase = "VERIFY"
+        state.events.append({"kind": "phase", "phase": "VERIFY"})
         state.events.append({"kind": "verified", "ok": verified})
         assert_transition("VERIFY", "REPORT")
         state.phase = "REPORT"

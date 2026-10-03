@@ -1147,6 +1147,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - Engine suite 2 was not run for every catalog op. One `field.create` round-trip matched a MetaSnapshot.
 - GATE-P3-10 is not fully passed. Six plan-card snapshots exist, one op per family. The rest of the catalog has no snapshot.
 - Changeset coverage is under the bar: 89.59% line and 79.46% branch, measured on the changeset tests, not the full suite. No CI floor was added.
+- A process kill still loses a run. Resume restores an exported in-memory dict only. GATE-P4-08 is not a durable restart.
 - `docker/*` and `apps/api/tests/test_wave16_gen2.py` still use `ServerProxy` outside the XML-RPC product scan.
 - Recaptured token screenshots in `docs/vision-verify/tokens-light.png` and `tokens-dark.png` are unstaged. The CSS text did not change.
 
@@ -1337,6 +1338,11 @@ Not done: T8-P3-COV. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09,
 Track: T8 T8-P3-COV. Worker [Measure changeset test coverage](0f980822-f72d-4d42-8f6e-03cdaff2168b). No push. L4 stays off.
 Intent: Line coverage is 89.59%. Branch coverage is 79.46%. The bar is 90% and 80%. No CI floor was added. The run was the changeset tests, not the full suite. That run also failed three approval tests that used a group-less ACL. A group-less ACL is R4, so those tests now use `sales.group_sale_user` and pass.
 Not done: T8-RUN. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, GATE-P3-03, GATE-P3-06, GATE-P3-08, and GATE-P3-10 stay open. L4 stays off.
+
+## 2026-10-03 — T8-RUN phase machine
+Track: T8 T8-RUN. Worker [Prove the phase machine](c1f72282-ac2a-42ef-8980-9b263bea1052). No push. L4 stays off.
+Intent: A scripted run walks INTAKE through REPORT with no LLM. No phase exposes an apply tool. The third identical call returns LOOP_DETECTED. The fourth aborts. That matches the source: three times is the warning, and the next identical call aborts. Resume restores an exported in-memory dict. A process kill still loses the run. Re-ran runtime and import-boundary tests: 23 passed. The version-branch count stayed 22.
+Not done: T8-TOOLS. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, GATE-P3-03, GATE-P3-06, GATE-P3-08, GATE-P3-10, and GATE-P4-08 stay open. L4 stays off.
 
 ## 2026-10-03 — Harness queued
 Cards H1–H8 in docs/plans/next-phase/cards/HARNESS.md. PR eval stays cassette/property. No product code.

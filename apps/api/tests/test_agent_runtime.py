@@ -7,7 +7,7 @@ import json
 import pytest
 
 from app.agent_runtime.phases import IllegalTransition
-from app.agent_runtime.runtime import AgentRuntime, LoopDetected
+from app.agent_runtime.runtime import AgentRuntime, LoopDetected, RunState
 from app.agent_runtime.tools import FORBIDDEN, PHASE_TOOLS, ToolDenied
 from app.changeset.executor import reset_journal
 
@@ -185,6 +185,140 @@ def test_r3_self_approval_is_refused() -> None:
     )
     assert result["applied"] is False
     assert result["error"] == "SELF_APPROVAL"
+
+
+_PHASES_INTAKE_THROUGH_REPORT = (
+    "INTAKE",
+    "DISCOVER",
+    "CLARIFY",
+    "PLAN",
+    "VALIDATE",
+    "CRITIC",
+    "SIMULATE",
+    "PRESENT",
+    "AWAITING_APPROVAL",
+    "EXECUTE",
+    "VERIFY",
+    "REPORT",
+)
+
+_FIELD_OP = {"type": "field.create", "params": {"model": "sale.order", "name": "x_po_reference"}}
+
+
+def _phase_names(state: object) -> list[str]:
+    events = getattr(state, "events")
+    return [event["phase"] for event in events if event.get("kind") == "phase"]
+
+
+def test_scripted_run_walks_every_phase_without_an_llm() -> None:
+    """GATE-P4-01. Tool calls and phase changes only. No model is invoked."""
+    reset_journal()
+    runtime = AgentRuntime()
+    state = runtime.start()
+    assert state.phase == "INTAKE"
+
+    runtime.complete_phase(state, "DISCOVER")
+    discovered = json.loads(runtime.call_tool(state, "env_info", {})["untrusted_data"])
+    assert discovered["transport"] == "json2"
+
+    runtime.complete_phase(state, "CLARIFY")
+    clarified = json.loads(
+        runtime.call_tool(state, "ask_user", {"questions": ["Which sales order field?"]})["untrusted_data"]
+    )
+    assert clarified["suspended"] is True
+
+    runtime.complete_phase(state, "PLAN")
+    added = json.loads(runtime.call_tool(state, "changeset_add_op", {"op": _FIELD_OP})["untrusted_data"])
+    assert added["added"] is True
+
+    runtime.complete_phase(state, "VALIDATE")
+    validated = json.loads(
+        runtime.call_tool(state, "changeset_validate", {"known_models": ["sale.order"]})["untrusted_data"]
+    )
+    assert validated["valid"] is True
+
+    runtime.complete_phase(state, "CRITIC")
+    criticized = json.loads(
+        runtime.call_tool(state, "describe_model", {"model": "sale.order"})["untrusted_data"]
+    )
+    assert criticized["model"] == "sale.order"
+
+    runtime.complete_phase(state, "SIMULATE")
+    simulated = json.loads(runtime.call_tool(state, "changeset_simulate", {})["untrusted_data"])
+    assert simulated["writes"] == 0
+    assert simulated["live"] is False
+
+    runtime.complete_phase(state, "PRESENT")
+    assert state.phase == "AWAITING_APPROVAL"
+    result = runtime.approve(
+        state,
+        plan_hash=state.plan_hash or "",
+        approver_id="u2",
+        requester_id="u1",
+        known_models={"sale.order"},
+    )
+    assert result["applied"] is True
+    assert result["status"] == "verified"
+    assert state.phase == "REPORT"
+    assert _phase_names(state) == list(_PHASES_INTAKE_THROUGH_REPORT)
+
+    status = runtime.call_tool(state, "changeset_status", {})
+    assert '"applied": true' in status["untrusted_data"]
+    with pytest.raises(ToolDenied):
+        runtime.call_tool(state, "apply", {})
+    assert state.applied is True
+
+
+def test_exported_state_restores_without_replaying_tools_and_a_process_kill_loses_it() -> None:
+    """GATE-P4-08. Resume uses the dict the caller kept.
+
+    A process kill still loses the run. RunState is in memory. export_state
+    does not write a database or a file. A fresh start() is an empty INTAKE.
+    """
+    reset_journal()
+    runtime = AgentRuntime()
+    state = runtime.start()
+    runtime.complete_phase(state, "DISCOVER")
+    runtime.call_tool(state, "schema_search", {"query": "sale.order"})
+    runtime.complete_phase(state, "PLAN")
+    runtime.call_tool(state, "changeset_add_op", {"op": _FIELD_OP})
+    assert len(state.changeset) == 1
+    exported = json.loads(json.dumps(state.export_state()))
+    del state
+    del runtime
+
+    resumed = RunState.restore(exported)
+    exported["changeset"].clear()
+    assert resumed.changeset == [_FIELD_OP]
+    assert resumed.phase == "PLAN"
+    assert resumed.tool_calls == 2
+
+    resumed_runtime = AgentRuntime()
+    resumed_runtime.call_tool(resumed, "schema_search", {"query": "sale.order"})
+    warned = resumed_runtime.call_tool(resumed, "schema_search", {"query": "sale.order"})
+    assert "LOOP_DETECTED" in warned["untrusted_data"]
+    assert resumed.status == "running"
+    assert len(resumed.changeset) == 1
+
+    resumed_runtime.complete_phase(resumed, "VALIDATE")
+    resumed_runtime.complete_phase(resumed, "CRITIC")
+    resumed_runtime.complete_phase(resumed, "SIMULATE")
+    resumed_runtime.complete_phase(resumed, "PRESENT")
+    result = resumed_runtime.approve(
+        resumed,
+        plan_hash=resumed.plan_hash or "",
+        approver_id="u2",
+        requester_id="u1",
+        known_models={"sale.order"},
+    )
+    assert result["applied"] is True
+    assert resumed.phase == "REPORT"
+    assert resumed.changeset == [_FIELD_OP]
+
+    fresh = AgentRuntime().start()
+    assert fresh.phase == "INTAKE"
+    assert fresh.changeset == []
+    assert fresh.tool_calls == 0
 
 
 def test_changeset_simulate_uses_the_in_process_simulator() -> None:
