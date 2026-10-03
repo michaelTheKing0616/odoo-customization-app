@@ -662,3 +662,12 @@ Command: `.venv/bin/python -m pytest -q -p no:cacheprovider apps/api/tests/test_
 Acceptance: `test_plan_apply_idempotent` second apply `port.call_count == 0` after `reset_journal`; `test_adopt_example_compiles`; `test_errors_block_apply` type mismatch writes nothing; `test_second_apply_writes_nothing` still 1 MemoryDb write. `write_mode=production` refused. No aonb call.
 Files: `config_as_code/loader.py`, `config_as_code/apply.py`, `changeset/dispatch.py` (`setting.set`, `config_record.upsert`), `tests/test_config_apply.py`.
 Not done: durable WAL (T8-EXEC). Production acknowledgement is gated but 5B-09 oracle names are not this card. L4 off.
+
+CLAIM 5B-03 2026-10-03T09:45:00Z files: config apply aborts on fake-db fingerprint drift. Do not enable L4. Do not call aonb.odoo.com.
+
+Track: 5B. Card: 5B-03. Worker only. No commit. No push. Fake port only. L4 stays off.
+Intent: Abort config apply when fake-port rows change between compile and apply. Reuse `plan_fingerprint` (same 16-hex hash). Caller-facing error is `ApplyError.name == plan_drift`. No expected fingerprint keeps today's apply.
+Command: `.venv/bin/python -m pytest -q -p no:cacheprovider apps/api/tests/test_config_apply.py apps/api/tests/test_plan_fingerprint.py apps/api/tests/test_bridge_and_config_spec.py` — **22 passed**.
+Acceptance: `test_fingerprint_drift_detected` mutates `FakeConfigPort.rows` after the plan exists; apply raises `plan_drift` with `call_count == 0`. Matching fingerprint still applies. Existing idempotent tests stay green. `write_mode=production` refused. No aonb call.
+Files: `config_as_code/apply.py` (`port_fingerprint`, `expected_fingerprint` → `plan_drift`), `tests/test_config_apply.py`.
+Not done: durable WAL (T8-EXEC). T1/T3/T4 drift oracles (5A-03 open delta). L4 off.

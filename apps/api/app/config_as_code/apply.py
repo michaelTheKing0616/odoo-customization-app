@@ -10,6 +10,7 @@ from typing import Any
 from app.changeset.executor import apply as apply_changeset
 from app.changeset.ops import OP_CATALOG
 from app.config_as_code.loader import SECTION_OP, CompileError, op_for_section
+from app.plan_fingerprint import fingerprints_match, plan_fingerprint
 
 
 class ApplyError(ValueError):
@@ -165,6 +166,28 @@ def _assert_types(changeset: list[dict[str, Any]]) -> None:
                 raise ApplyError("type_mismatch", f"{op_type}.{field}")
 
 
+def _row_changes(port: Any) -> list[dict[str, Any]]:
+    """Fake port/db rows as the list-of-dicts shape ``plan_fingerprint`` already hashes."""
+    rows = getattr(port, "rows", None)
+    if not isinstance(rows, dict):
+        return []
+    changes: list[dict[str, Any]] = []
+    for key in sorted(rows):
+        body = rows[key]
+        entry: dict[str, Any] = {"xmlid": str(key)}
+        if isinstance(body, dict):
+            entry.update(body)
+        else:
+            entry["value"] = body
+        changes.append(entry)
+    return changes
+
+
+def port_fingerprint(port: Any) -> str:
+    """SHA-256[:16] of fake port/db rows. Same format as compile ``plan_fingerprint``."""
+    return plan_fingerprint(_row_changes(port))
+
+
 def _remembered_params(port: Any) -> dict[str, dict[str, Any]]:
     store = getattr(port, "applied_params", None)
     if not isinstance(store, dict):
@@ -189,16 +212,23 @@ def apply_plan(
     environment: str = "",
     acknowledge_production: bool = False,
     mode: str = "C",
+    expected_fingerprint: str | None = None,
 ) -> int:
     """Apply through the change-set executor. Second apply writes nothing when values match.
 
     write_mode=production is refused. A production environment still needs
     acknowledge_production (sandbox / confirmed staging only).
+    When ``expected_fingerprint`` is passed and fake-port rows have changed,
+    raise ``plan_drift`` before any create/write. Omit it to keep today's apply.
     """
     if str(write_mode or "").strip().lower() == "production":
         raise ApplyError("write_mode_production_refused")
     if str(environment or "").strip().lower() == "production" and not acknowledge_production:
         raise ApplyError("production_acknowledgement_required")
+    if expected_fingerprint is not None and not fingerprints_match(
+        expected_fingerprint, _row_changes(db)
+    ):
+        raise ApplyError("plan_drift")
 
     changeset = plan_to_changeset(plan)
     _assert_types(changeset)

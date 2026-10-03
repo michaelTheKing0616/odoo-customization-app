@@ -6,7 +6,13 @@ import pytest
 
 from app.changeset.executor import reset_journal
 from app.changeset.ops import OP_CATALOG
-from app.config_as_code.apply import ApplyError, FakeConfigPort, MemoryDb, apply_plan
+from app.config_as_code.apply import (
+    ApplyError,
+    FakeConfigPort,
+    MemoryDb,
+    apply_plan,
+    port_fingerprint,
+)
 from app.config_as_code.loader import SECTIONS, SECTION_OP, compile_plan, load_spec
 
 _SPEC = """
@@ -85,6 +91,24 @@ def test_adopt_example_compiles() -> None:
         "adopt_demo.access_partner_rc",
         "adopt_demo.tag_vip",
     }
+
+
+def test_fingerprint_drift_detected() -> None:
+    reset_journal()
+    plan = compile_plan(load_spec(_SPEC))
+    port = FakeConfigPort()
+    expected = port_fingerprint(port)
+    assert apply_plan(port, plan, expected_fingerprint=expected) == 1
+    assert port.call_count > 0
+
+    reset_journal()
+    drifted = FakeConfigPort()
+    expected_empty = port_fingerprint(drifted)
+    drifted.rows["poison"] = {"name": "someone-else-wrote"}
+    with pytest.raises(ApplyError, match="plan_drift") as exc:
+        apply_plan(drifted, plan, expected_fingerprint=expected_empty)
+    assert exc.value.name == "plan_drift"
+    assert drifted.call_count == 0
 
 
 def test_errors_block_apply() -> None:
