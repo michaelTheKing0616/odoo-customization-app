@@ -860,3 +860,12 @@ Change: `packages/odoo-client/src/odoo_client/compat/read_group.py` (`aggregate_
 Call sites in `apps/api/app`: none (allowlists only in `rpc_classify.py`, `mcp_guard.py`). Transport/client rewrite covers callers that still pass ``read_group`` on 19+.
 Tests: `.venv/bin/python -m pytest -q -p no:cacheprovider packages/odoo-client/tests/test_read_group_compat.py` — **6 passed**.
 Not done: L4 off. No aonb.odoo.com. No commit.
+
+CLAIM O20-16 2026-10-03T12:15:00Z files: 19-to-20 spec replay fails closed. Do not enable L4. Do not call aonb.odoo.com.
+
+Track: O20. Card: O20-16. Worker only. No commit. No push. No Odoo host. L4 stays off.
+Intent: A 19 config spec replayed as major 20 either applies through the existing `compile_access` translator (`ir.access`) or fails with a named migration note. The first refused op leaves the fake port at `call_count == 0`.
+Command: `.venv/bin/python -m pytest -q -p no:cacheprovider apps/api/tests/test_odoo20_spec_replay.py` — **8 passed**.
+Known refusals: `company_type` removed; group record rules must become `ir.access` with a domain; percentage pricelist is discount; `company_registry` is additional identifiers. Verify rows V06, V24, V26, V28–V30 are named as not translated, not guessed into a field name.
+Files: `apps/api/app/odoo20/spec_replay.py`, `apps/api/tests/test_odoo20_spec_replay.py`, `docs/runbooks/odoo20-spec-that-will-not-translate.md`.
+Not done: L4 off. No aonb.odoo.com. No commit. JSON-2 track stays open.
