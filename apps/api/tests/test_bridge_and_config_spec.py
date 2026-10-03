@@ -87,6 +87,26 @@ def test_studio_field_prefix_is_rejected() -> None:
         load_spec(text)
 
 
+def test_custom_field_requires_x_prefix() -> None:
+    without_prefix = (
+        "version: 1\nproject: demo\ncustom_fields:\n  - model: res.partner\n    name: note\n"
+    )
+    with pytest.raises(SpecError, match="must start with x_"):
+        load_spec(without_prefix)
+
+    studio = (
+        "version: 1\nproject: demo\ncustom_fields:\n  - model: res.partner\n    name: x_studio_note\n"
+    )
+    with pytest.raises(SpecError, match="x_studio_"):
+        load_spec(studio)
+
+    valid = (
+        "version: 1\nproject: demo\ncustom_fields:\n  - model: res.partner\n    name: x_note\n"
+    )
+    spec = load_spec(valid)
+    assert spec.custom_fields[0].name == "x_note"
+
+
 def test_unknown_section_is_rejected() -> None:
     with pytest.raises(SpecError, match="unknown"):
         load_spec("version: 1\nproject: demo\nnot_a_section: []\n")

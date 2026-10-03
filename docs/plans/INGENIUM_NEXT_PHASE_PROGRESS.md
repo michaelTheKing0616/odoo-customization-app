@@ -680,3 +680,11 @@ Command: `.venv/bin/python -m pytest -q -p no:cacheprovider apps/api/tests/test_
 Acceptance: oracle names `test_phone_normalisation`, `test_duplicates_in_sample`, `test_template_from_fields`, `test_validate_bad_file`, `test_validate_good_file_and_load`, `test_selection_and_numeric_validation`, `test_blank_values_are_not_duplicates`. EV-DATA-03: 30 bad rows report all 30 and load none. 501 rows → two `load()` calls (500 + 1) with the three context flags on each.
 Files: `config_as_code/importers.py`, `tests/test_importers.py`.
 Not done: 5B-04 / O20-06 (not this card). Live Odoo import. L4 off. No aonb.odoo.com call.
+
+CLAIM 5B-07 2026-10-03T09:55:00Z files: oracle test_custom_field_requires_x_prefix. Do not enable L4. Do not call aonb.odoo.com.
+
+Track: 5B. Card: 5B-07. Worker only. No commit. No push. No Odoo host. L4 stays off.
+Intent: Document config-as-code custom field naming — `x_` required, `x_studio_` forbidden — via oracle test; loader already enforces in `CustomField.x_prefix`.
+Command: `.venv/bin/python -m pytest -q -p no:cacheprovider apps/api/tests/test_bridge_and_config_spec.py` — **15 passed**.
+Acceptance: `test_custom_field_requires_x_prefix` rejects `note` and `x_studio_note`; `x_note` loads. `test_studio_field_prefix_is_rejected` unchanged. No product change.
+Files: `apps/api/tests/test_bridge_and_config_spec.py`.
