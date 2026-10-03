@@ -44,7 +44,7 @@ def test_r4_is_not_queued() -> None:
 def test_requester_cannot_approve_r3() -> None:
     inbox = Inbox()
     result = inbox.submit(
-        [{"type": "access.create", "params": {"model": "res.partner", "name": "x_acl"}}],
+        [{"type": "access.create", "params": {"model": "res.partner", "name": "x_acl", "group": "sales.group_sale_user"}}],
         goal="grant",
         assumptions=[],
         environment="production",

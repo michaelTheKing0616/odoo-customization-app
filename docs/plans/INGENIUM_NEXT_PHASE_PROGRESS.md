@@ -1146,6 +1146,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - Undo through validate, policy, and approval is not called by the executor.
 - Engine suite 2 was not run for every catalog op. One `field.create` round-trip matched a MetaSnapshot.
 - GATE-P3-10 is not fully passed. Six plan-card snapshots exist, one op per family. The rest of the catalog has no snapshot.
+- Changeset coverage is under the bar: 89.59% line and 79.46% branch, measured on the changeset tests, not the full suite. No CI floor was added.
 - `docker/*` and `apps/api/tests/test_wave16_gen2.py` still use `ServerProxy` outside the XML-RPC product scan.
 - Recaptured token screenshots in `docs/vision-verify/tokens-light.png` and `tokens-dark.png` are unstaged. The CSS text did not change.
 
@@ -1331,6 +1332,11 @@ Not done: T8-CLI. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, GA
 Track: T8 T8-CLI. Worker [Add an LLM-free change-set CLI](54b146a0-5db4-47e9-8a88-2dd4a4a7bd66). No push. L4 stays off.
 Intent: plan, validate, simulate, apply, and rollback run a two-op file on an in-memory port. Apply returns verified. Rollback leaves the port empty. The module does not import an LLM package and does not open a socket. Re-ran CLI and import-boundary tests: 13 passed. The version-branch count stayed 22.
 Not done: T8-P3-COV. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, GATE-P3-03, GATE-P3-06, and GATE-P3-10 stay open. L4 stays off.
+
+## 2026-10-03 — T8-P3-COV changeset coverage
+Track: T8 T8-P3-COV. Worker [Measure changeset test coverage](0f980822-f72d-4d42-8f6e-03cdaff2168b). No push. L4 stays off.
+Intent: Line coverage is 89.59%. Branch coverage is 79.46%. The bar is 90% and 80%. No CI floor was added. The run was the changeset tests, not the full suite. That run also failed three approval tests that used a group-less ACL. A group-less ACL is R4, so those tests now use `sales.group_sale_user` and pass.
+Not done: T8-RUN. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, GATE-P3-03, GATE-P3-06, GATE-P3-08, and GATE-P3-10 stay open. L4 stays off.
 
 ## 2026-10-03 — Harness queued
 Cards H1–H8 in docs/plans/next-phase/cards/HARNESS.md. PR eval stays cassette/property. No product code.

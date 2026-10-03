@@ -26,7 +26,7 @@ def _mail_template_create() -> dict:
 def _access_create() -> dict:
     return {
         "type": "access.create",
-        "params": {"model": "res.partner", "name": "x_acl"},
+        "params": {"model": "res.partner", "name": "x_acl", "group": "sales.group_sale_user"},
     }
 
 

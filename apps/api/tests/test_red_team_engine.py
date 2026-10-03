@@ -52,7 +52,7 @@ def test_rt17_modified_plan_is_not_the_approved_hash() -> None:
 def test_rt18_self_approval_of_r3_is_refused() -> None:
     inbox = Inbox()
     result = inbox.submit(
-        [{"type": "access.create", "params": {"model": "res.partner", "name": "x_acl"}}],
+        [{"type": "access.create", "params": {"model": "res.partner", "name": "x_acl", "group": "sales.group_sale_user"}}],
         goal="acl",
         assumptions=[],
         environment="production",
