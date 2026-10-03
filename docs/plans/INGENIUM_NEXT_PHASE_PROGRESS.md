@@ -150,6 +150,21 @@ CLAIM T1-F0 2026-10-03T07:05:19Z files: apps/api/tests/test_pr_f0_entrypoint.py 
 
 CLAIM T1-INST 2026-10-03T07:07:37Z files: docs/plans/INGENIUM_NEXT_PHASE_PROGRESS.md only. Do not commit .cache.
 
+CLAIM T1-A1 2026-10-03T07:09:09Z files: apps/api/tests/test_ai_schema_client.py only. fields_get pass and fail are missing.
+
+## 2026-10-03 — T1-A1
+Track: T1
+Intent: fields_get has a pass and a fail, matching model_exists and relation_ok.
+Model / band: composer-2.5-fast worker (4aea71ca-8a2d-4269-961c-2fa15a5b268b); composer-2.5-fast tester (560ba7d6-fd89-4114-8afc-f59d29031874). Pressure 4.
+Files: `apps/api/tests/test_ai_schema_client.py` (`test_fields_get_known_and_unknown`).
+Commands and results: VERIFIED. pytest `tests/test_ai_schema_client.py` — 10 passed in 0.02s.
+Gates passed: six assertions (pass and fail for model_exists, fields_get, relation_ok).
+Negative tests: unknown model `fields_get` returns `{}`.
+Not done: T1-A2 stale admit_and_apply.
+Risks introduced: none. Product client code was not edited.
+
+
+
 
 
 ## 2026-10-03 — T1-PF (PF-1 through PF-6 re-verify)

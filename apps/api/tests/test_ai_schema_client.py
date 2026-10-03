@@ -54,6 +54,12 @@ def test_model_exists_known_and_unknown() -> None:
     assert client.model_exists("x_invent_nowhere") is False
 
 
+def test_fields_get_known_and_unknown() -> None:
+    client = _partner_fake()
+    assert "x_partner_id" in client.fields_get("x_ticket")
+    assert client.fields_get("x_invent_nowhere") == {}
+
+
 def test_relation_ok_positive_and_negative() -> None:
     client = _partner_fake()
     assert client.relation_ok("x_ticket", "x_partner_id", "res.partner") is True
