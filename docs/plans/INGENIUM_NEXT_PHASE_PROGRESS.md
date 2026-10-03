@@ -1011,3 +1011,9 @@ Intent: Extend the existing axe spec from 8 to 39 operate and govern routes. Dis
 Tests: Playwright `e2e/a11y-primary.spec.ts` on the dev server — 38 passed, Projects failed on list text fading through contrast 1.59. List items now stay at full opacity and only translate. Projects then passed.
 Not run: `/connections` (redirect), `/bots`, `/bots/rooms/[id]`, `/bots/[id]`, `/studio/dashboards`, `/bridge/connections`, `/onboarding`. Marketing and auth routes are outside this card.
 Not done: UI-F13 reorder primitive. L4 off.
+
+## 2026-10-03 — UI-F13 canvas reorder
+Track: T7 UI-F13. Worker [Add one canvas reorder primitive](5d1d48fe-0394-4c4d-b5c4-3c5ad0e46076). No push. L4 stays off.
+Intent: One `ReorderableBlocks` for pointer drag and keyboard arrows. A pointer-up outside the list does not reorder. Five canvas callers use it. Saved XML and QWeb unchanged.
+Tests: vitest `ReorderableBlocks.test.tsx` + `FormCanvas.test.tsx` — 7 passed. Playwright `e2e/designer-keyboard.spec.ts` — 1 passed (arrow keys swap Name and Customer, then swap back).
+Not done: UI-SP-API. L4 off.

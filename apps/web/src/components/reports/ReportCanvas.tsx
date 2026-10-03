@@ -1,5 +1,7 @@
 "use client";
 
+import { ReorderableBlocks } from "@/components/ui/canvas/ReorderableBlocks";
+
 export type ReportBlockType =
   | "heading"
   | "field"
@@ -82,90 +84,98 @@ export function ReportCanvas({
           web.external_layout — header / footer placeholder ({paperLabel})
         </div>
       )}
-      <div className="min-h-[240mm] px-10 py-8">
-        {blocks.length === 0 && (
+      <ReorderableBlocks
+        items={blocks}
+        getId={(block) => block.id}
+        disabled={!onMove}
+        onMove={onMove}
+        className="min-h-[240mm] px-10 py-8"
+        empty={
           <p className="text-center text-sm text-muted">
             Add blocks from the palette — visual first, QWeb code in the Code tab.
           </p>
-        )}
-        {blocks.map((block) => {
+        }
+        itemProps={(block) => {
           const selected = selectedId === block.id;
-          return (
-            <div
-              key={block.id}
-              className={`group relative mb-3 rounded border px-3 py-2 ${
-                selected ? "border-[var(--brand)] bg-brand-subtle" : "border-transparent hover:border-border-subtle"
-              }`}
-              onClick={() => onSelect?.(block.id)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") onSelect?.(block.id);
-              }}
-              role="button"
-              tabIndex={0}
-            >
-              {block.type === "heading" && (
-                <div
-                  className="font-semibold text-[var(--brand)]"
-                  style={{ fontSize: block.level === 1 ? "1.25rem" : "1rem" }}
+          return {
+            role: "button",
+            tabIndex: 0,
+            className: `group relative mb-3 rounded border px-3 py-2 ${
+              selected ? "border-[var(--brand)] bg-brand-subtle" : "border-transparent hover:border-border-subtle"
+            }`,
+            onClick: () => onSelect?.(block.id),
+            onKeyDown: (e) => {
+              if (e.key === "Enter") onSelect?.(block.id);
+            },
+          };
+        }}
+      >
+        {(block) => (
+          <>
+            {block.type === "heading" && (
+              <div
+                className="font-semibold text-[var(--brand)]"
+                style={{ fontSize: block.level === 1 ? "1.25rem" : "1rem" }}
+              >
+                {blockPreview(block)}
+              </div>
+            )}
+            {block.type === "divider" && <hr className="border-border-subtle" />}
+            {block.type === "page_break" && (
+              <p className="text-center text-xs text-muted">{blockPreview(block)}</p>
+            )}
+            {block.type === "o2m_table" && (
+              <table className="w-full border-collapse text-xs">
+                <thead>
+                  <tr className="border-b bg-surface-muted">
+                    {(block.columns || [{ field: "name", label: "Line" }]).map((c) => (
+                      <th key={c.field} className="px-2 py-1 text-left">
+                        {c.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td colSpan={(block.columns || []).length || 1} className="px-2 py-2 text-muted">
+                      … lines from {block.o2m_field || "line_ids"} …
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            )}
+            {!["heading", "divider", "page_break", "o2m_table"].includes(block.type) && (
+              <p className="text-sm">{blockPreview(block)}</p>
+            )}
+            {onMove && (
+              <div className="absolute right-1 top-1 hidden gap-1 group-hover:flex">
+                <button
+                  type="button"
+                  className="rounded bg-surface-muted px-1 text-xs"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMove(block.id, -1);
+                  }}
                 >
-                  {blockPreview(block)}
-                </div>
-              )}
-              {block.type === "divider" && <hr className="border-border-subtle" />}
-              {block.type === "page_break" && (
-                <p className="text-center text-xs text-muted">{blockPreview(block)}</p>
-              )}
-              {block.type === "o2m_table" && (
-                <table className="w-full border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b bg-surface-muted">
-                      {(block.columns || [{ field: "name", label: "Line" }]).map((c) => (
-                        <th key={c.field} className="px-2 py-1 text-left">
-                          {c.label}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td colSpan={(block.columns || []).length || 1} className="px-2 py-2 text-muted">
-                        … lines from {block.o2m_field || "line_ids"} …
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              )}
-              {!["heading", "divider", "page_break", "o2m_table"].includes(block.type) && (
-                <p className="text-sm">{blockPreview(block)}</p>
-              )}
-              {onMove && (
-                <div className="absolute right-1 top-1 hidden gap-1 group-hover:flex">
-                  <button
-                    type="button"
-                    className="rounded bg-surface-muted px-1 text-xs"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onMove(block.id, -1);
-                    }}
-                  >
-                    ↑
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded bg-surface-muted px-1 text-xs"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onMove(block.id, 1);
-                    }}
-                  >
-                    ↓
-                  </button>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  className="rounded bg-surface-muted px-1 text-xs"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMove(block.id, 1);
+                  }}
+                >
+                  ↓
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </ReorderableBlocks>
     </div>
   );
 }

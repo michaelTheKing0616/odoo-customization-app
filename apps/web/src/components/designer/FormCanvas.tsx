@@ -3,12 +3,10 @@
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import type { PreviewHeaderButton, PreviewSmartButton, PreviewStatusBar } from "@/lib/draft-form-preview";
 import {
-  attachDragGhost,
   insertIndexFromElements,
-  readCanvasFieldId,
   readPaletteFieldName,
-  setCanvasFieldDragData,
 } from "@/lib/designer-dnd";
+import { ReorderableBlocks } from "@/components/ui/canvas/ReorderableBlocks";
 import { OdooButtonBox } from "@/components/odoo-preview/OdooButtonBox";
 import { OdooChatterStub } from "@/components/odoo-preview/OdooChatterStub";
 import { OdooField } from "@/components/odoo-preview/OdooField";
@@ -129,7 +127,7 @@ function DroppableFieldList({
   onPaletteDrop: (fieldName: string, index: number) => void;
   onCanvasReorder?: (fieldId: string, index: number) => void;
 }) {
-  const listRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLElement | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
 
   function itemEls(): HTMLElement[] {
@@ -148,46 +146,58 @@ function DroppableFieldList({
     e.preventDefault();
     const els = itemEls();
     const index = insertIndexFromElements(e.clientY, els);
-    const canvasId = readCanvasFieldId(e.dataTransfer);
-    if (canvasId && onCanvasReorder) {
-      onCanvasReorder(canvasId, index);
-    } else {
-      const name = readPaletteFieldName(e.dataTransfer);
-      if (name) onPaletteDrop(name, index);
-    }
+    const name = readPaletteFieldName(e.dataTransfer);
+    if (name) onPaletteDrop(name, index);
     setDropIndex(null);
   }
 
   return (
-    <div
-      ref={listRef}
+    <ReorderableBlocks
+      items={items}
+      getId={(f) => f.id}
+      disabled={!onCanvasReorder}
+      onReorder={
+        onCanvasReorder
+          ? (from, to) => {
+              const field = items[from];
+              if (field) onCanvasReorder(field.id, to);
+            }
+          : undefined
+      }
       className={cn("designer-drop-list relative min-h-[2.5rem]", dropIndex !== null && "is-over")}
-      data-testid="canvas-drop-list"
-      onDragOver={onDragOver}
-      onDragLeave={(e) => {
-        if (!listRef.current?.contains(e.relatedTarget as Node)) setDropIndex(null);
+      empty={
+        dropIndex === null ? (
+          <p className="px-1 py-3 text-xs text-[var(--odoo-muted)]">Drop a field here</p>
+        ) : null
+      }
+      footer={dropIndex === items.length ? <span className="designer-drop-line" aria-hidden /> : null}
+      listProps={{
+        ref: listRef,
+        "data-testid": "canvas-drop-list",
+        onDragOver,
+        onDragLeave: (e) => {
+          if (!listRef.current?.contains(e.relatedTarget as Node)) setDropIndex(null);
+        },
+        onDrop,
       }}
-      onDrop={onDrop}
+      itemProps={(f, idx) => ({
+        "data-canvas-field": "",
+        "data-field-id": f.id,
+        "data-testid": `canvas-field-${f.name}`,
+        tabIndex: -1,
+        className: cn(
+          "designer-canvas-field relative",
+          selectedFieldId === f.id && "is-selected",
+          flashId === f.id && "is-flash",
+          dropIndex === idx && "drop-before",
+        ),
+      })}
     >
-      {items.map((f, idx) => (
-        <div
-          key={f.id}
-          data-canvas-field
-          data-field-id={f.id}
-          data-testid={`canvas-field-${f.name}`}
-          draggable={Boolean(onCanvasReorder)}
-          onDragStart={(e) => {
-            setCanvasFieldDragData(e.dataTransfer, f.id, f.name);
-            attachDragGhost(e.dataTransfer, f.string || f.name, e.currentTarget);
-          }}
-          className={cn(
-            "designer-canvas-field relative",
-            selectedFieldId === f.id && "is-selected",
-            flashId === f.id && "is-flash",
-            dropIndex === idx && "drop-before",
-          )}
-        >
-          {dropIndex === idx ? <span className="designer-drop-line" aria-hidden /> : null}
+      {(f, idx, meta) => (
+        <>
+          {dropIndex === idx || meta.isDropTarget ? (
+            <span className="designer-drop-line" aria-hidden />
+          ) : null}
           <OdooField
             field={{
               id: f.id,
@@ -200,13 +210,9 @@ function DroppableFieldList({
             highlighted={selectedFieldId === f.id}
             onClick={() => onSelectField?.(f.id)}
           />
-        </div>
-      ))}
-      {dropIndex === items.length ? <span className="designer-drop-line" aria-hidden /> : null}
-      {items.length === 0 && dropIndex === null ? (
-        <p className="px-1 py-3 text-xs text-[var(--odoo-muted)]">Drop a field here</p>
-      ) : null}
-    </div>
+        </>
+      )}
+    </ReorderableBlocks>
   );
 }
 

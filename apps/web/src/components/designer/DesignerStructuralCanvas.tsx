@@ -22,6 +22,9 @@ import {
   type ViewType,
 } from "@/components/designer/designer-model";
 import type { DesignerRailTabId } from "@/components/designer/DesignerToolsRail";
+import { ReorderableBlocks, moveIndexById } from "@/components/ui/canvas/ReorderableBlocks";
+
+export { ReorderableBlocks };
 
 export type DesignerStructuralCanvasProps = {
   viewType: ViewType;
@@ -172,16 +175,7 @@ export function DesignerStructuralCanvas(props: DesignerStructuralCanvasProps) {
             setFormChildren((children) =>
               children.map((child) => {
                 if (child.kind !== "group") return child;
-                const idx = child.children.findIndex(
-                  (n) => n.kind === "field" && n.id === fieldId,
-                );
-                if (idx < 0) return child;
-                const next = idx + dir;
-                if (next < 0 || next >= child.children.length) return child;
-                const copy = [...child.children];
-                const [item] = copy.splice(idx, 1);
-                copy.splice(next, 0, item);
-                return { ...child, children: copy };
+                return { ...child, children: moveIndexById(child.children, fieldId, dir) };
               }),
             );
           }}

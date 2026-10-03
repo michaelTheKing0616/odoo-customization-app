@@ -1,5 +1,7 @@
 "use client";
 
+import { ReorderableBlocks } from "@/components/ui/canvas/ReorderableBlocks";
+
 /**
  * Odoo-familiar kanban card preview for the View Designer.
  * Structural preview — Open-in-Odoo remains authoritative.
@@ -87,68 +89,77 @@ export function KanbanCardPreview({
                     Drop fields here to build the card
                   </p>
                 ) : (
-                  <ul className="space-y-1.5">
-                    {fields.map((f, idx) => (
-                      <li
-                        key={f.id}
-                        className={`rounded border px-2 py-1.5 ${
-                          selectedFieldId === f.id
-                            ? "border-[var(--odoo-primary)] bg-brand-subtle"
-                            : "border-transparent hover:border-[var(--odoo-border)]"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
+                  <ReorderableBlocks
+                    as="ul"
+                    itemAs="li"
+                    items={fields}
+                    getId={(f) => f.id}
+                    disabled={!onMoveField}
+                    onMove={onMoveField}
+                    className="space-y-1.5"
+                    itemProps={(f) => ({
+                      className: `rounded border px-2 py-1.5 ${
+                        selectedFieldId === f.id
+                          ? "border-[var(--odoo-primary)] bg-brand-subtle"
+                          : "border-transparent hover:border-[var(--odoo-border)]"
+                      }`,
+                    })}
+                  >
+                    {(f, idx) => (
+                      <div className="flex items-start justify-between gap-2">
+                        <button
+                          type="button"
+                          className="min-w-0 flex-1 text-left"
+                          onClick={() => onSelectField?.(f.id)}
+                        >
+                          <div className="truncate text-sm font-medium text-[var(--odoo-sheet-fg)]">
+                            {f.string || f.name}
+                          </div>
+                          <div className="truncate font-mono text-[10px] text-[var(--odoo-muted)]">
+                            {f.name}
+                          </div>
+                          {idx === 0 && (
+                            <div className="mt-1 text-[11px] text-[var(--odoo-muted)]">
+                              Sample value
+                            </div>
+                          )}
+                        </button>
+                        <span className="flex shrink-0 flex-col gap-0.5">
                           <button
                             type="button"
-                            className="min-w-0 flex-1 text-left"
-                            onClick={() => onSelectField?.(f.id)}
+                            className="text-xs text-[var(--odoo-primary)] disabled:opacity-30"
+                            disabled={idx === 0}
+                            aria-label={`Move ${f.name} up`}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={() => onMoveField?.(f.id, -1)}
                           >
-                            <div className="truncate text-sm font-medium text-[var(--odoo-sheet-fg)]">
-                              {f.string || f.name}
-                            </div>
-                            <div className="truncate font-mono text-[10px] text-[var(--odoo-muted)]">
-                              {f.name}
-                            </div>
-                            {idx === 0 && (
-                              <div className="mt-1 text-[11px] text-[var(--odoo-muted)]">
-                                Sample value
-                              </div>
-                            )}
+                            ↑
                           </button>
-                          <span className="flex shrink-0 flex-col gap-0.5">
+                          <button
+                            type="button"
+                            className="text-xs text-[var(--odoo-primary)] disabled:opacity-30"
+                            disabled={idx >= fields.length - 1}
+                            aria-label={`Move ${f.name} down`}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={() => onMoveField?.(f.id, 1)}
+                          >
+                            ↓
+                          </button>
+                          {onRemoveField && (
                             <button
                               type="button"
-                              className="text-xs text-[var(--odoo-primary)] disabled:opacity-30"
-                              disabled={idx === 0}
-                              aria-label={`Move ${f.name} up`}
-                              onClick={() => onMoveField?.(f.id, -1)}
+                              className="text-[10px] text-[var(--odoo-danger)]"
+                              aria-label={`Remove ${f.name}`}
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onClick={() => onRemoveField(f.id)}
                             >
-                              ↑
+                              ×
                             </button>
-                            <button
-                              type="button"
-                              className="text-xs text-[var(--odoo-primary)] disabled:opacity-30"
-                              disabled={idx >= fields.length - 1}
-                              aria-label={`Move ${f.name} down`}
-                              onClick={() => onMoveField?.(f.id, 1)}
-                            >
-                              ↓
-                            </button>
-                            {onRemoveField && (
-                              <button
-                                type="button"
-                                className="text-[10px] text-[var(--odoo-danger)]"
-                                aria-label={`Remove ${f.name}`}
-                                onClick={() => onRemoveField(f.id)}
-                              >
-                                ×
-                              </button>
-                            )}
-                          </span>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+                          )}
+                        </span>
+                      </div>
+                    )}
+                  </ReorderableBlocks>
                 )}
               </div>
               {col.key === columns[0]?.key && fields.length > 0 && (

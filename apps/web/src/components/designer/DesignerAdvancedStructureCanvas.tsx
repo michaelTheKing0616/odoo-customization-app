@@ -25,6 +25,7 @@ import type {
   ViewType,
 } from "@/components/designer/designer-model";
 import { resolveFieldLabel, uid } from "@/components/designer/designer-model";
+import { ReorderableBlocks, moveIndex } from "@/components/ui/canvas/ReorderableBlocks";
 
 export type DesignerAdvancedStructureCanvasProps = {
   viewType: ViewType;
@@ -1027,16 +1028,31 @@ export function DesignerAdvancedStructureCanvas({
                       </span>
                     ) : null}
                   </p>
-                  <ul className="space-y-1">
-                    {kanbanFields.map((f, idx) => (
-                      <li
-                        key={f.id}
-                        className={`flex items-center justify-between gap-2 px-2 py-1.5 text-sm ${
-                          selected?.scope === "kanban" && selected.fieldId === f.id
-                            ? "bg-surface-muted ring-1 ring-accent"
-                            : "bg-surface"
-                        }`}
-                      >
+                  <ReorderableBlocks
+                    as="ul"
+                    itemAs="li"
+                    items={kanbanFields}
+                    getId={(f) => f.id}
+                    onMove={moveKanbanField}
+                    onReorder={(from, to) => {
+                      setKanbanFields((cols) => moveIndex(cols, from, to));
+                    }}
+                    className="space-y-1"
+                    empty={
+                      <li className="text-xs text-muted">
+                        Click or drop fields from the palette to build the card.
+                      </li>
+                    }
+                    itemProps={(f) => ({
+                      className: `flex items-center justify-between gap-2 px-2 py-1.5 text-sm ${
+                        selected?.scope === "kanban" && selected.fieldId === f.id
+                          ? "bg-surface-muted ring-1 ring-accent"
+                          : "bg-surface"
+                      }`,
+                    })}
+                  >
+                    {(f, idx) => (
+                      <>
                         <button
                           type="button"
                           className="min-w-0 flex-1 text-left"
@@ -1058,6 +1074,7 @@ export function DesignerAdvancedStructureCanvas({
                             className="text-xs text-muted disabled:opacity-30"
                             disabled={idx === 0}
                             aria-label={`Move ${f.name} up`}
+                            onPointerDown={(e) => e.stopPropagation()}
                             onClick={() => moveKanbanField(f.id, -1)}
                           >
                             ↑
@@ -1067,6 +1084,7 @@ export function DesignerAdvancedStructureCanvas({
                             className="text-xs text-muted disabled:opacity-30"
                             disabled={idx >= kanbanFields.length - 1}
                             aria-label={`Move ${f.name} down`}
+                            onPointerDown={(e) => e.stopPropagation()}
                             onClick={() => moveKanbanField(f.id, 1)}
                           >
                             ↓
@@ -1074,6 +1092,7 @@ export function DesignerAdvancedStructureCanvas({
                           <button
                             type="button"
                             className="text-xs text-danger"
+                            onPointerDown={(e) => e.stopPropagation()}
                             onClick={() => {
                               setKanbanFields((cols) =>
                                 cols.filter((c) => c.id !== f.id),
@@ -1088,14 +1107,9 @@ export function DesignerAdvancedStructureCanvas({
                             remove
                           </button>
                         </span>
-                      </li>
-                    ))}
-                    {kanbanFields.length === 0 && (
-                      <li className="text-xs text-muted">
-                        Click or drop fields from the palette to build the card.
-                      </li>
+                      </>
                     )}
-                  </ul>
+                  </ReorderableBlocks>
                 </div>
               </div>
             )}
