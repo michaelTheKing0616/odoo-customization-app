@@ -7,6 +7,14 @@ from typing import Any, Callable
 
 from app.changeset.ops import OP_CATALOG
 from app.changeset.protected_registry import protected_denial
+from app.changeset.schema_ops import (
+    CONSTRAINT_X_MODELS_ONLY,
+    TYPE_CHANGE_UNSUPPORTED,
+    constraint_sql_issues,
+    field_update_issues,
+    is_x_model,
+    type_change_requested,
+)
 
 Issues = list[str]
 IssueFn = Callable[[dict[str, Any]], Issues]
@@ -104,9 +112,10 @@ _INVERSE: dict[str, str] = {
 
 _ISSUE_FNS: dict[str, IssueFn] = {
     "field.create": _field_issues,
-    "field.update": lambda p: _need(p, "model", "name"),
+    "field.update": field_update_issues,
     "field.deprecate": lambda p: _need(p, "model", "name"),
     "field.delete": lambda p: _need(p, "model", "name"),
+    "constraint.sql": constraint_sql_issues,
     "view.inherit.create": _view_issues,
     "view.inherit.update": _view_issues,
     "access.create": _access_issues,
@@ -173,6 +182,10 @@ class OpHandler:
             "database.enterprise_code",
         }:
             return "protected parameter"
+        if self.op_type == "field.update" and type_change_requested(body):
+            return TYPE_CHANGE_UNSUPPORTED
+        if self.op_type == "constraint.sql" and not is_x_model(str(body.get("model") or "")):
+            return CONSTRAINT_X_MODELS_ONLY
         op = {"type": self.op_type, "params": body}
         if protected_denial(op, tenant=tenant, document=document if document is not None else [op]):
             return "protected_deny"

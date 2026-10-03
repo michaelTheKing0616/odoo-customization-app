@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final
+from typing import Any, Final
+
+from app.changeset.schema_ops import compute_requested, nonempty_sensitive_delete
 
 RiskBase = str  # R0 .. R4
 Reversible = str  # E | S | N
@@ -96,7 +98,7 @@ def get_op(op_type: str) -> OpDef | None:
     return OP_CATALOG.get(op_type)
 
 
-def op_base_risk(op_type: str, params: dict | None) -> RiskBase:
+def op_base_risk(op_type: str, params: dict[str, Any] | None) -> RiskBase:
     """Base risk before policy bumps (flag params on select ops)."""
     entry = get_op(op_type)
     if entry is None:
@@ -106,6 +108,10 @@ def op_base_risk(op_type: str, params: dict | None) -> RiskBase:
     if op_type == "server_action.create":
         if p.get("code") or p.get("email") or p.get("webhook"):
             base = _max_risk(base, "R3")
+    elif op_type in {"field.create", "field.update"} and compute_requested(p):
+        base = _max_risk(base, "R3")
+    elif op_type == "field.delete" and nonempty_sensitive_delete(p):
+        base = "R4"
     elif op_type == "company.update":
         if p.get("lock_date"):
             base = "R4"

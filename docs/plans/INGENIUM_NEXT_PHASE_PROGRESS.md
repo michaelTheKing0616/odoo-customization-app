@@ -1136,6 +1136,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - The transport contract in `packages/odoo-client/src/odoo_client/transport/contract.py` is proven on a fake send function. It is not wrapped around the XML-RPC or JSON-2 adapters. Local HTTP sandboxes are unchanged.
 - GATE-P2-08 and GATE-P2-09 are not fully passed. The seven bridge methods are proven on an in-memory fake. Apply, rollback, a real savepoint, the live kill switch, and staging neutralization have not run on Odoo.
 - Version drift live nightly rows were not run. Unknown cells remain for kanban, `name_get`, company-dependent fields, selection storage, mail template syntax, and translations on 20.
+- Engine suite 1 and suite 2 were not run for the schema family. `model.create`, `model.scaffold`, `field.deprecate`, `selection.update`, and `constraint.sql` still have no inverse in the handler.
 - `docker/*` and `apps/api/tests/test_wave16_gen2.py` still use `ServerProxy` outside the XML-RPC product scan.
 - Recaptured token screenshots in `docs/vision-verify/tokens-light.png` and `tokens-dark.png` are unstaged. The CSS text did not change.
 
@@ -1234,3 +1235,8 @@ Not done: T8-OD-DRIFT. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-
 Track: T8 T8-OD-DRIFT. Worker [Record version drift with fakes](693df5c9-eb6f-487e-8f41-adcce98e227f). No push. L4 stays off.
 Intent: Fake answers cover the checklist rows the existing version tests did not already lock. Known cells cite code already in the repo. Unstated cells stay unknown. Re-ran `tests/test_t8_od_drift.py`: 93 passed, 44 skipped. The skips are the live nightly rows. No major was probed.
 Not done: T8-OP-SCHEMA. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P2-09 stay open. Live drift nightly stays unrun. L4 stays off.
+
+## 2026-10-03 — T8-OP-SCHEMA risk rules
+Track: T8 T8-OP-SCHEMA. Worker [Prove schema operation risk rules](4cb0ebb5-ee0c-4378-8524-d9fdef7ad48c). No push. L4 stays off.
+Intent: A compute field is R3. A type change is refused. A non-empty financial, HR, or stock delete is R4. `constraint.sql` is allowed on `x_` models only. Cascade and protected scaffolding were already refused. Re-ran schema and import-boundary tests: 15 passed. The version-branch count stayed 22. Engine suite 1 and suite 2 were not run.
+Not done: T8-OP-UI. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P2-09 stay open. L4 stays off.
