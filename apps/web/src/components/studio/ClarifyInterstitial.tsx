@@ -39,33 +39,33 @@ const HOST_FALLBACK: { id: string; label: string }[] = [
 const CRAFT_TOGGLE_DEFS: { key: keyof StudioApprovedCraft; label: string; help: string }[] = [
   {
     key: "company_scoping",
-    label: "Multi-company scoping",
-    help: "Add x_company_id on transactional models",
+    label: "Company field on records",
+    help: "Adds a company field on transactional models so each record can belong to one company.",
   },
   {
     key: "money_slots",
-    label: "Currency / money fields",
-    help: "Currency companion when amounts exist without a money cue",
+    label: "Currency field with amounts",
+    help: "Adds a currency field when the draft has money amounts but no currency field yet.",
   },
   {
     key: "purchase_link",
     label: "Purchase order link",
-    help: "Wire a stock purchase.order M2O when useful",
+    help: "Adds a purchase order link field on the record.",
   },
   {
     key: "partner_links",
-    label: "Contact (partner) links",
-    help: "res.partner M2Os beyond brief cues",
+    label: "Contact link",
+    help: "Adds a contact link on the record beyond links your brief already named.",
   },
   {
     key: "datetime_over_date",
-    label: "Prefer DateTime over Date",
-    help: "Use datetime fields instead of date when inventing schedule slots",
+    label: "Date and time (not date only)",
+    help: "Uses date-and-time fields instead of date-only when adding schedule-style slots.",
   },
   {
     key: "depth_seeds",
-    label: "Depth seed models",
-    help: "Allow generic depth padding models when the brief is thin",
+    label: "Extra models when brief is thin",
+    help: "Adds extra supporting models to pad a thin brief — optional filler, not requirements from your prompt.",
   },
 ];
 

@@ -340,5 +340,35 @@ Commands and results: VERIFIED. `pytest tests/test_approved_craft_default_off.py
 Gates: default-off negatives; `money_slots` on adds `x_currency_id` to views.xml vs off.
 Model / band: composer-2.5-fast worker (6b237b82-d850-47e9-8ae4-9b0e858dbd18); composer-2.5-fast tester (5d662418-b523-419f-a685-db84f76da155). Tester re-run: API 4 passed in 0.90s; web 5 passed.
 
+CLAIM T1-C2 2026-10-03T07:32:00Z files: apps/web/src/components/studio/ClarifyInterstitial.tsx labels, its test if assertions name the old labels, and the progress log.
 
+## 2026-10-03 — T1-C2
+Track: T1
+Intent: Replace jargon craft checklist labels/help with operator-plain “what it adds” copy; keys and testids unchanged; default off unchanged.
+Files: `apps/web/src/components/studio/ClarifyInterstitial.tsx` (`CRAFT_TOGGLE_DEFS` only). Test file unchanged (no old-label assertions).
+Model / band: composer-2.5-fast worker (T1-C2 card). Pressure 5. No commit.
+
+### Copy critique (craft toggle rows + section lead)
+Quoted surface: section “Optional craft (off by default)” + six row labels and help strings in `CRAFT_TOGGLE_DEFS`.
+
+| Dimension | Score |
+|-----------|-------|
+| Clarity | 5 |
+| Task fit | 5 |
+| Actionability | 5 |
+| Accuracy and proof | 5 |
+| Tone fit | 5 |
+| Concision | 3 |
+| Accessibility | 5 |
+| Ethics | 5 |
+| Slop-free | 5 |
+
+Biggest problem: `depth_seeds` help is longer than the others because honesty about padding needs a full sentence.
+Revision applied: labels name the artifact (company field, currency field, PO link, contact link, date-and-time, extra models); help lines start with “Adds…” / “Uses…” and match API keys (`company_scoping`, `money_slots`, etc.) without Odoo internals in the primary line.
+Confidence: high — wording tied to T1-C1 pytest/XML behavior and card “do not invent” list.
+Would settle it: operator UAT on one diagnosis screen; optional snapshot test on label text if regressions recur.
+
+Commands and results: VERIFIED. `pnpm --filter @odoo-custom/web exec vitest run src/components/studio/ClarifyInterstitial.test.tsx` — 5 passed in 36ms (1 file).
+Gates passed: no 1 on Accuracy or Ethics; each row states what gets added in plain words.
+Not done: API copy unchanged (out of Change).
 
