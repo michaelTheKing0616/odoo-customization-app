@@ -1112,12 +1112,12 @@ Execution queue. A line leaves this list only when that item is finished. Items 
 
 In progress, code that can be finished without a live Odoo or a live model:
 1. Executor applies the freeze flag, runs verify, and refuses an elevate apply that has no domain owner.
-2. An unset module major does not emit `ir.rule`.
-3. Confirmed tenant memory is included in the prompt, inside the 5% budget.
+2. Confirmed tenant memory is included in the prompt, inside the 5% budget.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
 - `parse_tool_args` has a dedicated test for payloads over 256 KB.
+- An unset module major does not emit `ir.rule`. Community 19 emits it when the major is 19, including the library and multi-company templates. Odoo 20 still refuses it.
 
 Blocked until something outside this repo exists. The product behavior stays the refuse or the off switch:
 - T2-J1 `/doc` text match. Sandbox default stays XML-RPC. Promote stays human.
@@ -1138,7 +1138,6 @@ Still to finish in code:
 - GATE-P6-04 has not been run. The tool shape is family lists.
 - BL-08 commit plan is not written yet. A second yes is required before those commits.
 - `safety_gate.preflight` does not pass `odoo_major`. `snapshot_gate.py` uses `== 20`. `database_backup.py` uses `>= 20`. Snapshot freshness (`created_at`, last write, BILLABLE) is not wired on that caller.
-- An unset module major still emits `security/record_rules.xml` as `ir.rule` (`packages/module-generator`).
 - Live Odoo 20 version-table probes stay skipped until `ODOO20_URL` is set.
 - UI-F03 was not re-checked against every route in screen spec 13 marked "can be empty".
 - `ConfirmDialogV2` is still its own overlay, not `DialogPanel`.
@@ -1432,3 +1431,5 @@ Not done: T8-S07. The inverse gap stays open. T8-P4-TIERA waits on a live model.
 Track: T8 T8-S07. Worker [Prove a stale plan cannot apply](101fd5cf-6357-46b9-9027-6ffcea8b5ac8). No push. L4 stays off.
 Intent: An out-of-band schema change after approval is STALE. Apply does not run. The run is not verified. A missing live slice fails closed and is not treated as current. Re-ran the drift suite and import-boundary tests: 12 passed. The version-branch count stayed 22. No live database was probed.
 Not done: T8-S08. The inverse gap stays open. T8-P4-TIERA waits on a live model. GATE-P3-06 stays open. L4 stays off.
+
+CLAIM T8-S08 2026-10-04T00:43:00Z. Policy suite only. The approval matrix is already covered by tests/test_policy_matrix.py. Do not duplicate it. Do not install mutmut or cosmic-ray. Do not invent a mutation score. GATE-P3-06 stays unrun. A suite file may point at the existing matrix tests. Do not enable L4. Do not commit.

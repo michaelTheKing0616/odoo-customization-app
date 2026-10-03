@@ -1024,8 +1024,13 @@ def render_module_files(spec: ModuleSpec) -> dict[str, str]:
             data_files.append("security/ir.model.access.csv")
 
     if spec.record_rules:
-        # odoo_major is optional. Do not invent one: an unset major still emits ir.rule.
-        if spec.odoo_major is not None and int(spec.odoo_major) >= 20:
+        # Do not invent a major. ir.rule is Community ≤19 only, and only when named.
+        if spec.odoo_major is None:
+            raise ValueError(
+                "odoo_major is missing. Cannot emit security/record_rules.xml as ir.rule "
+                "when odoo_major is unset. Pass odoo_major=19 for Community ir.rule."
+            )
+        if int(spec.odoo_major) >= 20:
             raise ValueError(
                 "Odoo 20 has no ir.rule. Rewrite the group record rule as an access right with a domain."
             )

@@ -179,8 +179,25 @@ def _rule_technical(model: str) -> str:
     return f"rule_{slug[:48]}_multi_company"
 
 
+def _named_major(draft: dict[str, Any]) -> int | None:
+    """Return a draft's named Odoo major, or None when it is unset or not an int."""
+    raw = draft.get("odoo_major")
+    if raw is None or raw is False or raw == "":
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 def apply_multi_company_to_draft(draft: dict[str, Any]) -> dict[str, Any]:
-    """Enrich ModuleSpec-like draft with company_id + record rules on new x_* models."""
+    """Enrich ModuleSpec-like draft with company_id + record rules on new x_* models.
+
+    Company record rules are Community ``ir.rule``. When the draft names no major,
+    this sets ``odoo_major`` to 19 so the generator does not invent one at emit
+    time. A draft that already names a major keeps that major. Odoo 20 is refused
+    when the generator emits the rules.
+    """
     out = copy.deepcopy(draft)
     models = out.setdefault("models", [])
     rules = out.setdefault("record_rules", [])
@@ -214,6 +231,8 @@ def apply_multi_company_to_draft(draft: dict[str, Any]) -> dict[str, Any]:
             existing_rule_models.add(xml_id)
 
     out["multi_company"] = True
+    if _named_major(out) is None and rules:
+        out["odoo_major"] = 19
     out.setdefault("review_notes", []).append(
         "Multi-company: company_id + ir.rule with company_ids domain on workflow models."
     )

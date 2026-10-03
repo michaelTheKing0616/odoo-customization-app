@@ -69,6 +69,7 @@ def test_generated_manifest_includes_all_types_in_contract_order() -> None:
     spec = ModuleSpec(
         technical_name="cmp1_full",
         display_name="CMP1 Full",
+        odoo_major=19,
         models=[
             ModelSpec(
                 model="x_ticket",

@@ -142,6 +142,7 @@ def test_library_module_spec_multi_company() -> None:
     spec = library_module_spec("library_mc", "Library MC", multi_company=True)
     for model in spec.models:
         assert any(f.name == "company_id" for f in model.fields)
+    assert spec.odoo_major == 19
     assert len(spec.record_rules) == 4
     assert all("company_ids" in r.domain_force for r in spec.record_rules)
     files = render_module_files(spec)
@@ -260,6 +261,7 @@ def test_record_rules_xml_emitted() -> None:
             technical_name="demo_rules",
             display_name="Demo Rules",
             install_mode="data",
+            odoo_major=19,
             models=[
                 ModelSpec(
                     model="x_owned",
@@ -282,6 +284,33 @@ def test_record_rules_xml_emitted() -> None:
     assert "ir.rule" in rules_xml
     assert "create_uid" in rules_xml
     assert "security/record_rules.xml" in files["demo_rules/__manifest__.py"]
+
+
+def test_record_rules_refused_when_odoo_major_is_unset() -> None:
+    from module_generator import RecordRuleSpec
+
+    rule = RecordRuleSpec(
+        name="Own records",
+        model_xml_id="model_x_owned",
+        domain_force="[('create_uid', '=', user.id)]",
+        group_xml_ids=["base.group_user"],
+    )
+    with pytest.raises(ValueError, match="odoo_major"):
+        render_module_files(
+            ModuleSpec(
+                technical_name="demo_rules_unset",
+                display_name="Demo Rules Unset",
+                install_mode="data",
+                models=[
+                    ModelSpec(
+                        model="x_owned",
+                        description="Owned",
+                        fields=[FieldSpec(name="x_name", ttype="char", string="Name")],
+                    )
+                ],
+                record_rules=[rule],
+            )
+        )
 
 
 def test_record_rules_template_refused_when_odoo_major_is_20() -> None:

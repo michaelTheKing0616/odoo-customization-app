@@ -415,10 +415,20 @@ def draft_dict_to_module_spec(draft: dict[str, Any]) -> ModuleSpec:
                     technical_name=rr.get("technical_name"),
                 )
             )
+    raw_major = draft.get("odoo_major")
+    odoo_major: int | None
+    if raw_major is None or raw_major is False or raw_major == "":
+        odoo_major = None
+    else:
+        try:
+            odoo_major = int(raw_major)
+        except (TypeError, ValueError):
+            odoo_major = None
     return ModuleSpec(
         technical_name=technical_name,
         display_name=str(draft.get("display_name") or "Custom Module"),
         depends=list(draft.get("depends") or ["base"]),
+        odoo_major=odoo_major,
         models=models,
         views=views,
         actions=actions,

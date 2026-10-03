@@ -5,6 +5,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from app.module_spec_codec import draft_dict_to_module_spec, merge_module_spec_fragment
 from app.multi_company_pack import (
     COMPANY_RULE_DOMAIN_MODULE,
@@ -50,6 +52,7 @@ def test_apply_multi_company_to_draft_adds_company_and_rule() -> None:
     fields = out["models"][0]["fields"]
     assert any(f["name"] == "company_id" for f in fields)
     assert out["record_rules"]
+    assert out["odoo_major"] == 19
     assert COMPANY_RULE_DOMAIN_MODULE in out["record_rules"][0]["domain_force"]
 
 
@@ -69,10 +72,61 @@ def test_draft_dict_to_module_spec_emits_record_rules_xml() -> None:
         }
     )
     spec = draft_dict_to_module_spec(draft)
+    assert spec.odoo_major == 19
     files = render_module_files(spec)
     rules_xml = files["mc_demo/security/record_rules.xml"]
+    assert 'model="ir.rule"' in rules_xml
     assert "company_ids" in rules_xml
     assert "company_id" in rules_xml
+
+
+def test_multi_company_rules_on_odoo_20_are_refused_at_emit() -> None:
+    draft = apply_multi_company_to_draft(
+        {
+            "technical_name": "mc_20",
+            "display_name": "MC 20",
+            "odoo_major": 20,
+            "models": [
+                {
+                    "model": "x_case",
+                    "mode": "new",
+                    "fields": [{"name": "x_name", "ttype": "char", "string": "Name"}],
+                }
+            ],
+        }
+    )
+    assert draft["odoo_major"] == 20
+    assert draft["record_rules"]
+    spec = draft_dict_to_module_spec(draft)
+    assert spec.odoo_major == 20
+    with pytest.raises(ValueError, match="ir.rule"):
+        render_module_files(spec)
+
+
+def test_record_rules_without_a_major_are_not_emitted() -> None:
+    draft = {
+        "technical_name": "rules_unset",
+        "display_name": "Rules Unset",
+        "models": [
+            {
+                "model": "x_owned",
+                "mode": "new",
+                "fields": [{"name": "x_name", "ttype": "char", "string": "Name"}],
+            }
+        ],
+        "record_rules": [
+            {
+                "name": "Own records",
+                "model": "x_owned",
+                "model_xml_id": "model_x_owned",
+                "domain_force": "[('create_uid', '=', user.id)]",
+            }
+        ],
+    }
+    spec = draft_dict_to_module_spec(draft)
+    assert spec.odoo_major is None
+    with pytest.raises(ValueError, match="odoo_major"):
+        render_module_files(spec)
 
 
 def test_report_t_lang_emitted_in_qweb() -> None:

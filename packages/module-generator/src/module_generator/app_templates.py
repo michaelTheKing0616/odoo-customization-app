@@ -111,7 +111,8 @@ def library_module_spec(
     Depends on ``base``, ``contacts``, and ``mail``.
     When ``include_fines`` is True, adds Option A python automation on loan write.
     When ``include_reminders`` is True (default), adds mail template + ir.cron.
-    When ``multi_company`` is True, adds ``company_id`` + company record rules.
+    When ``multi_company`` is True, adds ``company_id`` + company record rules
+    and sets ``odoo_major=19`` so those rules emit as Community ``ir.rule``.
     """
     status_sel = "[('available', 'Available'), ('loaned', 'Loaned'), ('lost', 'Lost')]"
 
@@ -623,6 +624,8 @@ def library_module_spec(
         cron_jobs=cron_jobs,
         record_rules=record_rules,
         reports=reports,
+        # 19-primary path: company rules are ir.rule. Do not leave the major unset.
+        odoo_major=19 if record_rules else None,
     )
 
 
