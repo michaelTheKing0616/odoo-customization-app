@@ -1240,3 +1240,8 @@ Not done: T8-OP-SCHEMA. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE
 Track: T8 T8-OP-SCHEMA. Worker [Prove schema operation risk rules](4cb0ebb5-ee0c-4378-8524-d9fdef7ad48c). No push. L4 stays off.
 Intent: A compute field is R3. A type change is refused. A non-empty financial, HR, or stock delete is R4. `constraint.sql` is allowed on `x_` models only. Cascade and protected scaffolding were already refused. Re-ran schema and import-boundary tests: 15 passed. The version-branch count stayed 22. Engine suite 1 and suite 2 were not run.
 Not done: T8-OP-UI. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P2-09 stay open. L4 stays off.
+
+## 2026-10-03 — T8-OP-UI risk rules
+Track: T8 T8-OP-UI. Worker [Prove UI operation risk rules](59c4dc29-43da-4da5-9fa6-f965f07297df). No push. L4 stays off.
+Intent: UI ops stay R1. The three report ops stay R2. A view inherit already required one anchor. `report.inherit` now does too. An XPath that replaces the root or a large subtree is refused. Re-ran UI, handler, and import-boundary tests: 101 passed. The version-branch count stayed 22. Engine suites were not run.
+Not done: T8-OP-LOGIC. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P2-09 stay open. L4 stays off.

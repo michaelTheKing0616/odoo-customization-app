@@ -15,6 +15,12 @@ from app.changeset.schema_ops import (
     is_x_model,
     type_change_requested,
 )
+from app.changeset.ui_ops import (
+    inherit_op,
+    report_inherit_issues,
+    root_or_large_replace_issues,
+    root_or_large_replace_reason,
+)
 
 Issues = list[str]
 IssueFn = Callable[[dict[str, Any]], Issues]
@@ -56,6 +62,22 @@ def _view_issues(params: dict[str, Any]) -> Issues:
         issues.append("anchor must match exactly one node")
     if str(params.get("position") or "after") == "replace":
         issues.append("position replace is forbidden")
+    return issues
+
+
+def _view_inherit_issues(params: dict[str, Any]) -> Issues:
+    """View-inherit preconditions plus an RT-22 issue when one applies.
+
+    Inputs: op params. ``_view_issues`` still decides the anchor count and the
+    blanket ``position=replace`` ban.
+    Outputs: those issues, with the RT-22 message appended when the xpath
+    replaces the root or a large subtree.
+    Side effects: none.
+    """
+    issues = _view_issues(params)
+    for item in root_or_large_replace_issues(params):
+        if item not in issues:
+            issues.append(item)
     return issues
 
 
@@ -116,8 +138,9 @@ _ISSUE_FNS: dict[str, IssueFn] = {
     "field.deprecate": lambda p: _need(p, "model", "name"),
     "field.delete": lambda p: _need(p, "model", "name"),
     "constraint.sql": constraint_sql_issues,
-    "view.inherit.create": _view_issues,
-    "view.inherit.update": _view_issues,
+    "view.inherit.create": _view_inherit_issues,
+    "view.inherit.update": _view_inherit_issues,
+    "report.inherit": report_inherit_issues,
     "access.create": _access_issues,
     "access.update": _access_issues,
     "server_action.create": _code_issues,
@@ -186,6 +209,10 @@ class OpHandler:
             return TYPE_CHANGE_UNSUPPORTED
         if self.op_type == "constraint.sql" and not is_x_model(str(body.get("model") or "")):
             return CONSTRAINT_X_MODELS_ONLY
+        if inherit_op(self.op_type):
+            replaced = root_or_large_replace_reason(body)
+            if replaced:
+                return replaced
         op = {"type": self.op_type, "params": body}
         if protected_denial(op, tenant=tenant, document=document if document is not None else [op]):
             return "protected_deny"
