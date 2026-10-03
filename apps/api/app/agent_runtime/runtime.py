@@ -14,6 +14,7 @@ from app.changeset.policy import self_approval_allowed
 from app.changeset.validate import validate
 
 MAX_STEPS = 40
+MAX_TOOL_CALLS = 120
 REPEAT_WARN = 3
 REPEAT_ABORT = 4
 
@@ -22,6 +23,7 @@ REPEAT_ABORT = 4
 class RunState:
     phase: str = "INTAKE"
     step: int = 0
+    tool_calls: int = 0
     changeset: list[dict[str, Any]] = field(default_factory=list)
     facts: list[dict[str, Any]] = field(default_factory=list)
     plan_hash: str | None = None
@@ -42,6 +44,7 @@ class RunState:
             "plan_hash": self.plan_hash,
             "approved_hash": self.approved_hash,
             "op_count": len(self.changeset),
+            "tool_calls": self.tool_calls,
         }
 
 
@@ -117,13 +120,13 @@ class AgentRuntime:
         key = _canonical_call(name, payload)
         state._tool_counts[key] = state._tool_counts.get(key, 0) + 1
         count = state._tool_counts[key]
-        state.step += 1
+        state.tool_calls += 1
         if count == REPEAT_WARN:
             state.loop_warnings += 1
             state.events.append({"kind": "loop_detected", "tool": name, "count": count})
             return wrap_untrusted(
                 name=name,
-                evidence_id=f"E{state.step}",
+                evidence_id=f"E{state.tool_calls}",
                 payload={"code": "LOOP_DETECTED", "message": "Change approach. Do not repeat this call."},
                 tainted=False,
             )
@@ -137,7 +140,7 @@ class AgentRuntime:
         result = self._dispatch(state, name, payload)
         wrapped = wrap_untrusted(
             name=name,
-            evidence_id=f"E{state.step}",
+            evidence_id=f"E{state.tool_calls}",
             payload=result,
             tainted=tainted,
         )
@@ -198,6 +201,10 @@ class AgentRuntime:
             state.phase = "ABORTED"
             state.status = "aborted_budget"
             raise BudgetExceeded("max steps")
+        if state.tool_calls >= MAX_TOOL_CALLS:
+            state.phase = "ABORTED"
+            state.status = "aborted_budget"
+            raise BudgetExceeded("max tool calls")
         if state.phase in {"EXECUTE", "VERIFY"}:
             raise ToolDenied("the model has no tools during execute or verify")
 

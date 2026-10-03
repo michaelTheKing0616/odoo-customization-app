@@ -642,3 +642,13 @@ Files touched: `STATE.md` (Last run + Next + Docket); this entry.
 Gates passed: no sentence claims the JSON-2 track is finished; T2-SMOKE methods are cited from verified-facts; Mac §9 UI paste remains operator; L4 stays unconfirmed.
 Not done: T2-J1 `/doc` text match, Mac §9 UI paste. Sandbox default stays XML-RPC. Promote stays human.
 Risks introduced: none (docs only).
+
+CLAIM 5A-12 2026-10-03T09:35:00Z files: production budget caps and apps/api/tests/test_production_budgets.py. Do not enable L4. Do not call aonb.odoo.com.
+
+Track: 5A. Card: 5A-12. Worker only. No commit. No push. L4 stays off.
+Intent: Production budgets from blueprint §5.6 — 40 LLM steps, 120 tool calls, 200-record production apply (L4 50 inactive), plus pointers for windows / R3 / kill switch.
+Command: `.venv/bin/python -m pytest -q -p no:cacheprovider apps/api/tests/test_production_budgets.py` — **6 passed**.
+Tests: (1) 41st LLM step raises BudgetExceeded, MAX_STEPS stays 40. (2) 121st call_tool raises BudgetExceeded, MAX_TOOL_CALLS=120. (3) production apply of 201 records refused; L4_MAX_BLAST stays 50 and WorkerBot("L4") still raises.
+Pointers: (4) change windows → T6-04 freeze-on-approve and T6-06 allowed time window. (5) two-person R3 → T6-06 and self_approval_allowed (R3 still False). (6) kill switch → test_kill_switch_protocol_and_escalation_refuse_before_work and test_reader_and_kill_switch_do_not_touch_the_port_or_journal.
+Files: `runtime.py` (MAX_TOOL_CALLS), `blast_radius.py` (PRODUCTION_APPLY_RECORD_CAP), `executor.py` (production record gate), `test_production_budgets.py`.
+Not done: L4 remains unconfirmed and inactive. No aonb.odoo.com call.

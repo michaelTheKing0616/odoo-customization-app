@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from app.blast_radius import assert_production_apply_records, changeset_record_count
 from app.changeset.ops import OP_CATALOG, get_op
 from app.changeset.policy import risk_of
 from app.changeset.protected_registry import protected_denial, reset_detections
@@ -79,9 +80,15 @@ def apply(
     expected_fingerprint: str | None = None,
     live_fingerprint: str | None = None,
     tenant: dict[str, Any] | None = None,
+    environment: str = "",
+    write_mode: str = "",
+    record_count: int | None = None,
 ) -> dict[str, Any]:
     if mode not in {"T", "C"}:
         raise ValueError("mode must be T or C")
+
+    count = changeset_record_count(changeset) if record_count is None else int(record_count)
+    assert_production_apply_records(count, environment=environment, write_mode=write_mode)
 
     fp = changeset_fingerprint(changeset)
     protocol = _protocol()
