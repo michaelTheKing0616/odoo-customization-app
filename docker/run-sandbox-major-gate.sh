@@ -22,7 +22,7 @@ export ZIP_PATH
 export ODOO_SANDBOX_MAJOR="$MAJOR"
 export PYTHONPATH="${ROOT}/packages/module-generator/src:${ROOT}/packages/odoo-client/src:${PYTHONPATH:-}"
 
-python3 <<'PY'
+uv run --directory "${ROOT}/apps/api" python <<'PY'
 import os
 from pathlib import Path
 

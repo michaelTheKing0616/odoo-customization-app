@@ -428,6 +428,9 @@ Risks introduced: none.
 
 CLAIM T1-F2 2026-10-03T07:50:00Z files: a test that fails if a maintenance brief branch is added. Do not add that branch to product code.
 
+CLAIM T1-F3 2026-10-03T07:55:00Z files: the sandbox log path in the progress log. Do not promote. Do not commit .cache.
+
+
 ## 2026-10-03 — T1-F2
 Track: T1
 Intent: Service-cards golden sibling plus AST source lock against brief-name branches in GenerateIR.
@@ -438,5 +441,20 @@ Gates passed: T1-F2 acceptance — sibling closed IR; adding `if "maintenance" i
 Negative tests: AST scan of `ai_generate_ir.py` and `ai_generate_ir_enforce.py` (comments allowed; real `if`/`elif` conditions not).
 Not done: T1-F3 sandbox install_ready evidence on this card.
 Risks introduced: none in product code.
+
+## 2026-10-03 — T1-F3 (sandbox major gate 19)
+Track: T1
+Intent: Run the real Docker sandbox gate for Odoo 19 and record evidence. Do not promote. Do not commit `.cache`.
+Model / band: worker (Grok standard). Pressure 8.
+Files: `docs/plans/INGENIUM_NEXT_PHASE_PROGRESS.md` (this entry). One-line gate unblock: `docker/run-sandbox-major-gate.sh` (zip-build step uses `uv run --directory apps/api python` instead of bare `python3`, which lacked `pydantic` on `PYTHONPATH`).
+Commands and results:
+- `./docker/run-sandbox-major-gate.sh 19` → **exit 1** (Docker available; compose up + DB init succeeded; RPC install failed).
+- First attempt (before script fix): **exit 1** — `ModuleNotFoundError: No module named 'pydantic'` in zip-build inline Python (`build_module_zip` → `odoo_client`).
+- After script fix: zip written `docker/sandbox-addons/_smoke_m19.zip` (4541 bytes). `SandboxResult(ok=False, module='sandbox_smoke_m19', odoo_major=19, tests_ran=False, test_failures=[])`. Install fault: Odoo 19 rejects root menu `web_icon="fa-th-large,#714B67"` (`ParseError` on `views/menus.xml` — `ValueError: Unsupported file: fa-th-large/#714B67`). Not Option A (`option_a_authored` / gold template); script does not call `prove_option_a_in_sandbox` or pass `run_tests=True`.
+- **Log path:** no file sink in the gate script. Evidence: this entry; artifact `docker/sandbox-addons/_smoke_m19.zip`; `SandboxResult.log_tail` prefix: `extracted sandbox_smoke_m19 into …/docker/sandbox-addons (target major=19, image=odoo:19)` then `http ready` / `db initialized (major=19)` before RPC fault (full traceback on stdout).
+Gates passed: none for T1-F3 acceptance (install + prove bar not met).
+Negative tests: n/a (live gate run).
+Not done: T1-F3 acceptance — one Option A module with `run_tests=True` and live `prove_status=proved` (card wording `install_ready`; repo stamp is `prove_status` per T1-D1/D2). Fix menu `web_icon` for Odoo 19 smoke modules or run Option A prove path separately.
+Risks introduced: gate script now depends on `uv` for both inline Python blocks (consistent with install block).
 
 
