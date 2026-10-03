@@ -148,6 +148,9 @@ CLAIM T1-PF 2026-10-03T07:03:19Z files: docs/plans/INGENIUM_NEXT_PHASE_PROGRESS.
 
 CLAIM T1-F0 2026-10-03T07:05:19Z files: apps/api/tests/test_pr_f0_entrypoint.py and the progress log. Seeded tests already 24 passed. Count-equality assertion is missing.
 
+CLAIM T1-INST 2026-10-03T07:07:37Z files: docs/plans/INGENIUM_NEXT_PHASE_PROGRESS.md only. Do not commit .cache.
+
+
 
 ## 2026-10-03 — T1-PF (PF-1 through PF-6 re-verify)
 Track: T1
@@ -220,5 +223,46 @@ Commands and results: VERIFIED (this card). `cd apps/api && ../../.venv/bin/pyth
 Gates passed: T1-F0 acceptance — call chain logged; count-equality assertion exists and passes.
 Negative tests: post-entrypoint invent double in `test_pr_f0_entrypoint.py`.
 Not done: no product/router edits; commit/push out of scope for this card.
+
+## 2026-10-03 — T1-INST (AI_IR_TRACE on Maintenance; PF-3)
+Track: T1
+Intent: Run Maintenance `AI_IR_TRACE` dump; per-pass model/field node deltas; scrub-key hypothesis from dump evidence only.
+Model / band: composer-2.5-fast worker (T1-INST card). Pressure 6. Change: this file only. No commit; `.cache` not committed.
+
+### Command
+From repo root: `AI_IR_TRACE=1 bash apps/api/scripts/dump_maintenance_ir_trace.sh` → **exit 1**: `line 5: cd: …/Odoo_Customization_App/apps/apps/api: No such file or directory` (`ROOT` in script resolves to `apps/`, not repo root).
+
+### Dump path (newest stamp under `.cache/ai_ir_trace/`)
+**Stamp:** `20261003T080355`  
+**Directory:** `.cache/ai_ir_trace/`  
+**Files:** `20261003T080355_*.json` (15 passes; pre-existing manual/offline run — not regenerated this worker turn).
+
+### Scrub-key hypothesis (did closure scrub remove cued IR nodes?)
+**Refuted for GenerateIR closure scrub.** Pass `enforce_closed_generate_ir` → `extra.closure.scrub_hits: []` in `.cache/ai_ir_trace/20261003T080355_enforce_closed_generate_ir.json`. Cued checklist/parts models and O2M fields remain in that pass’s `model_ids` / `field_names` (same file).  
+**Related but not IR-node scrub:** notes `"generate_ir: purged unadmitted seed/generic models x_maintenance_tickets_line"` (generic seed line model, not checklist/parts). Apply-phase **view arch** scrub: `"apply: scrubbed 4 stale arch field ref(s) on x_maintenance_tickets"` on `close_odoo_architecture:end` and `finish_seed_draft:after_close` — no matching `model_ids` / `field_names` delta in those passes.
+
+### Per-pass nodes added / removed (`model_ids` + `field_names` vs previous pass in pipeline order)
+| Pass | Models added | Models removed | Fields added | Fields removed |
+|------|--------------|----------------|--------------|----------------|
+| `seed_studio_draft:honesty` | *(baseline)* `x_maintenance_tickets` | — | `x_maintenance_tickets.x_name`, `x_maintenance_tickets.x_state` | — |
+| `after_deterministic_depth` | — | — | `x_maintenance_tickets.x_code` | — |
+| `ensure_residual_must_do:before_admit` | — | `x_maintenance_tickets` | — | `x_maintenance_tickets.x_code`, `x_maintenance_tickets.x_name`, `x_maintenance_tickets.x_state` |
+| `admit_and_apply` | `x_maintenance_tickets`, `x_maintenance_tickets_checklist_line`, `x_maintenance_tickets_parts_line` | — | cued O2M graph (12 fields: parent O2Ms + checklist/parts child fields) | — |
+| `ensure_residual_must_do:after_admit` | — | `x_maintenance_tickets_checklist_line`, `x_maintenance_tickets_parts_line` | — | same 10 checklist/parts fields + 2 parent O2M fields |
+| `compiler:rebuild_thin_menus:before_admit` | checklist + parts models | — | same 10 checklist/parts fields + 2 parent O2M fields | — |
+| `compiler:rebuild_thin_menus:after_admit` | — | — | — | — |
+| `enforce_closed_generate_ir` | — | — | — | — |
+| `honor_operator_brief:start` | — | — | `x_maintenance_tickets.x_partner_id` | — |
+| `honor_operator_brief:end` | — | — | — | `x_maintenance_tickets.x_partner_id` |
+| `close_odoo_architecture:start` | — | checklist + parts models | — | same 10 + 2 O2M fields |
+| `close_odoo_architecture:end` | checklist + parts models | — | same 10 + 2 O2M fields | — |
+| `attach_operator_surface:start` | — | — | — | — |
+| `attach_operator_surface:end` | — | — | — | — |
+| `finish_seed_draft:after_close` | — | — | — | — |
+
+Pass names listed (15): `seed_studio_draft:honesty`, `after_deterministic_depth`, `ensure_residual_must_do:before_admit`, `admit_and_apply`, `ensure_residual_must_do:after_admit`, `compiler:rebuild_thin_menus:before_admit`, `compiler:rebuild_thin_menus:after_admit`, `enforce_closed_generate_ir`, `honor_operator_brief:start`, `honor_operator_brief:end`, `close_odoo_architecture:start`, `close_odoo_architecture:end`, `attach_operator_surface:start`, `attach_operator_surface:end`, `finish_seed_draft:after_close`.
+
+Gates passed: PF-3 answered with dump path under `.cache/ai_ir_trace/`; scrub-key refuted on `scrub_hits`; per-pass deltas from dump JSON only.
+Not done: shell script fix (out of Change); fresh trace re-run blocked by script `cd` bug.
 
 
