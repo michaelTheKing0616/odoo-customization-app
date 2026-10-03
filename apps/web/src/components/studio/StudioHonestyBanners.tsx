@@ -107,7 +107,7 @@ export function StudioHonestyBanners({
                 onClick={onRepairExpert}
                 disabled={refineBusy}
               >
-                {refineBusy ? <StudioBusyLabel /> : "Repair with Expert"}
+                {refineBusy ? <StudioBusyLabel>Repairing…</StudioBusyLabel> : "Repair with Expert"}
               </button>
             ) : null
           }

@@ -18,6 +18,7 @@ const connection = {
     edition: "community",
     hosting_hint: "unknown",
     major: 17,
+    server_version: "17.0",
     supported: ["view_inject_inherit", "view_inject_mutate"],
     unsupported: [],
     message: "",
@@ -44,7 +45,7 @@ const baseProps = {
   addSearchField: vi.fn(),
   addKanbanField: vi.fn(),
   nicheWidgets: [] as [],
-  colorPalette: [] as string[],
+  colorPalette: [] as { index: number; name: string }[],
   onCreateAndInject: vi.fn(),
   onPickNicheWidget: vi.fn(),
 };

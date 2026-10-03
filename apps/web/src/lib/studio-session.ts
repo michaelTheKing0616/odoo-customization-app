@@ -351,15 +351,13 @@ export const STUDIO_STARTER_CHIPS = [
 ];
 
 
-/** True when residual canvas display_name matches locked Contract title (grain-aware). */
+/** True when residual canvas display_name matches locked Contract title. */
 export function artifactMatchesLockedContract(
   artifact: Record<string, unknown> | null | undefined,
   understanding: StudioUnderstanding | null | undefined,
 ): boolean {
   if (!artifact || !understanding) return true;
-  const grain = String(understanding.grain || "");
   const inherit = Boolean(understanding.inherit_existing);
-  if (grain && grain !== "full_app") return true;
   if (inherit) return true;
   const locked = String(understanding.title || "").trim().toLowerCase();
   const shown = String(artifact.display_name || "").trim().toLowerCase();

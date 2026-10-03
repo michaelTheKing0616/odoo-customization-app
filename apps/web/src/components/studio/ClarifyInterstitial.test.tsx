@@ -60,7 +60,6 @@ describe("ClarifyInterstitial diagnosis", () => {
           options: [],
           understanding: {
             title: "Visitor Log",
-            grain: "full_app",
             host_model: null,
             inherit_existing: false,
             needs_module: false,

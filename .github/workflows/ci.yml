@@ -152,6 +152,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install
+      - run: pnpm --filter @odoo-custom/web typecheck
       - run: pnpm --filter @odoo-custom/web test
 
   web-e2e:

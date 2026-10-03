@@ -131,4 +131,19 @@ Negative tests: none named. Push was not done.
 Not done: push. Needs a separate yes.
 Risks introduced: `473fbcf` changes `ai_constraint_ast.py` so a wave test would pass. It is a product fix, not only a commit split.
 
+CLAIM UI-F00 2026-10-03T06:49:17Z files: the 13 tsc errors (e2e/overlay-editor.spec.ts, DesignerAdvancedFieldsAside.test.tsx, InstanceIdentity.test.tsx, ClarifyInterstitial.test.tsx, StudioHonestyBanners.tsx, capabilities.test.ts, studio-session.ts) and .github/workflows/ci.yml web job.
+
+## 2026-10-03 — UI-F00
+Track: T7
+Intent: Clear the 13 web type errors and run typecheck in CI.
+Model / band: composer-2.5-fast worker (68f26cc8-817e-4bdd-812a-93bc5d5ff887); composer-2.5-fast tester (2da0ff9d-1e4e-4ed4-a509-78074f05305c). Pressure 5. No reviewer.
+Files: `apps/web/e2e/overlay-editor.spec.ts`, `DesignerAdvancedFieldsAside.test.tsx`, `InstanceIdentity.test.tsx`, `ClarifyInterstitial.test.tsx`, `StudioHonestyBanners.tsx`, `capabilities.test.ts`, `studio-session.ts`, `.github/workflows/ci.yml`.
+Commands and results: VERIFIED. `pnpm --filter @odoo-custom/web typecheck` exit 0. CI job `web-unit` runs that command with no `continue-on-error`.
+Gates passed: UI-F00 — typecheck exits 0; CI runs it.
+Negative tests: no `@ts-ignore`, `@ts-expect-error`, or `: any` in the changed files.
+Not done: this slice is uncommitted. Kit, axe, and screenshots are not in this card's acceptance boxes.
+Risks introduced: `studio-session.ts` no longer reads `understanding.grain`. `StudioBusyLabel` now renders the text `Repairing…`.
+
+
+
 

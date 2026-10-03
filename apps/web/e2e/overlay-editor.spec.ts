@@ -111,7 +111,7 @@ test.describe("Overlay live loop (docker Odoo)", () => {
     test.skip(!connectionId, "ODOO_E2E_CONNECTION_ID required");
     const apiBase = process.env.PLAYWRIGHT_API_BASE || "http://127.0.0.1:8000";
     const apiKey = process.env.PLAYWRIGHT_API_KEY;
-    const authHeaders = apiKey
+    const authHeaders: Record<string, string> = apiKey
       ? { Authorization: `Bearer ${apiKey}`, "X-API-Key": apiKey }
       : {};
 
