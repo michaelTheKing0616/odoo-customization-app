@@ -697,3 +697,11 @@ Command: `.venv/bin/python -m pytest -q -p no:cacheprovider apps/api/tests/test_
 Loader checks added: duplicate `key` per section (`_reject_duplicate_keys`); required `key:` references must resolve to a key defined in the spec (`_validate_key_references`; `?key:` optional). Existing literal-secret and unknown-section guards unchanged.
 Files: `apps/api/app/config_as_code/loader.py`, `apps/api/tests/test_bridge_and_config_spec.py`.
 Not done: 5B-08b importers / 5B-08c version profiles / 5B-09 approval oracles. No aonb.odoo.com call.
+
+CLAIM 5B-09 2026-10-03T10:05:00Z files: destructive config requires approval. Do not enable L4. Do not call aonb.odoo.com.
+
+Track: 5B. Card: 5B-09. Worker only. No commit. No push. Fake port only. L4 stays off.
+Intent: Destructive config ops (`data.delete`, uninstall, partner merge, posting) need `approve_destructive` before any port call. `environment=production` needs `acknowledge_production` even for `setting.set`. `write_mode=production` still raises `write_mode_production_refused`; neither acknowledgement flag bypasses it. Fake-port read-back marks dropped writes IGNORED, never VERIFIED. Plan card comes from existing `render_plan_card` (`plan_hash`, `risk`, `environment`). Version compile reuses `compile_access` (19=`ir.model.access`+`ir.rule`, 20=`ir.access`).
+Command: `.venv/bin/python -m pytest -q -p no:cacheprovider apps/api/tests/test_config_apply.py apps/api/tests/test_bridge_and_config_spec.py` — **28 passed**.
+Files: `config_as_code/apply.py` (`approve_destructive`, `ApplyResult`, read-back), `tests/test_config_apply.py`.
+Not done: L4 remains off. No aonb.odoo.com call. `write_mode=production` still refused. Approved destructive ops are recorded only on `FakeConfigPort` or `MemoryDb`; any other port raises `destructive_fake_port_only`.
