@@ -7,7 +7,9 @@ live-schema facade (PR-F). Mac UI Install walkthrough remains operator §9.
 
 from __future__ import annotations
 
+import ast
 import os
+from pathlib import Path
 
 import pytest
 
@@ -40,6 +42,76 @@ SERVICE_CARDS = (
     "Build Service cards: checklist lines with done flags, parts used (product + qty), "
     "state Draft→Done; Online-honest on stock moves."
 )
+
+_APP_DIR = Path(__file__).resolve().parents[1] / "app"
+_GENERATE_IR_BRIEF_BRANCH_SOURCES = (
+    _APP_DIR / "ai_generate_ir.py",
+    _APP_DIR / "ai_generate_ir_enforce.py",
+)
+
+
+def _brief_lexeme_forbidden_in_string(value: str) -> bool:
+    low = value.lower()
+    return "maintenance" in low or "service card" in low
+
+
+def _is_brief_text_expr(node: ast.AST) -> bool:
+    """Expression that likely holds operator brief / prompt text."""
+    if isinstance(node, ast.Name):
+        low = node.id.lower()
+        return "brief" in low or "prompt" in low
+    if isinstance(node, ast.Attribute):
+        if node.attr.lower() in {"lower", "casefold", "strip", "replace"}:
+            return _is_brief_text_expr(node.value)
+        return _is_brief_text_expr(node.value)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        if node.func.attr.lower() in {"lower", "casefold", "strip", "get"}:
+            return _is_brief_text_expr(node.func.value)
+    if isinstance(node, ast.Subscript):
+        return _is_brief_text_expr(node.value)
+    return False
+
+
+def _forbidden_brief_membership(left: ast.AST, right: ast.AST) -> bool:
+    if isinstance(left, ast.Constant) and isinstance(left.value, str):
+        if _brief_lexeme_forbidden_in_string(left.value) and _is_brief_text_expr(right):
+            return True
+    if isinstance(right, ast.Constant) and isinstance(right.value, str):
+        if _brief_lexeme_forbidden_in_string(right.value) and _is_brief_text_expr(left):
+            return True
+    return False
+
+
+def _if_test_branches_on_forbidden_brief_lexeme(test: ast.AST) -> bool:
+    for node in ast.walk(test):
+        if not isinstance(node, ast.Compare):
+            continue
+        cursor = node.left
+        for op, comp in zip(node.ops, node.comparators, strict=False):
+            if isinstance(op, (ast.In, ast.NotIn)) and _forbidden_brief_membership(cursor, comp):
+                return True
+            cursor = comp
+    return False
+
+
+def _brief_lexical_branch_violations(source_path: Path) -> list[str]:
+    tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
+    hits: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.If) and _if_test_branches_on_forbidden_brief_lexeme(node.test):
+            hits.append(f"{source_path.name}:{node.lineno}")
+    return hits
+
+
+def test_generate_ir_sources_forbid_brief_maintenance_or_service_card_branch() -> None:
+    """T1-F2: golden siblings must not use brief-name ``if`` / ``elif`` branches."""
+    violations: list[str] = []
+    for path in _GENERATE_IR_BRIEF_BRANCH_SOURCES:
+        violations.extend(_brief_lexical_branch_violations(path))
+    assert not violations, (
+        "GenerateIR modules must not branch on brief text maintenance or service card; "
+        f"found: {', '.join(violations)}"
+    )
 
 
 def _stock_fake() -> FakeSchemaClient:

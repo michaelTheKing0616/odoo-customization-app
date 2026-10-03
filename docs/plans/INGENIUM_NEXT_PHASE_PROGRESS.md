@@ -426,3 +426,17 @@ Negative tests: the closed-IR spray test.
 Not done: T1-F2 still needs a test that fails if `if "maintenance" in brief` is added.
 Risks introduced: none.
 
+CLAIM T1-F2 2026-10-03T07:50:00Z files: a test that fails if a maintenance brief branch is added. Do not add that branch to product code.
+
+## 2026-10-03 — T1-F2
+Track: T1
+Intent: Service-cards golden sibling plus AST source lock against brief-name branches in GenerateIR.
+Model / band: worker. Pressure 8. No commit.
+Files: `apps/api/tests/test_generate_ir_closed_class.py` (`test_generate_ir_sources_forbid_brief_maintenance_or_service_card_branch`).
+Commands and results: VERIFIED. `pytest -q -p no:cacheprovider tests/test_generate_ir_closed_class.py::test_service_cards_sibling_closed tests/test_generate_ir_closed_class.py::test_generate_ir_sources_forbid_brief_maintenance_or_service_card_branch`.
+Gates passed: T1-F2 acceptance — sibling closed IR; adding `if "maintenance" in brief` (or service-card brief branch) in `ai_generate_ir*.py` fails the new test.
+Negative tests: AST scan of `ai_generate_ir.py` and `ai_generate_ir_enforce.py` (comments allowed; real `if`/`elif` conditions not).
+Not done: T1-F3 sandbox install_ready evidence on this card.
+Risks introduced: none in product code.
+
+
