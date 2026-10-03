@@ -23,7 +23,6 @@ from app.ai_generation_engine import attach_generation_engine  # noqa: E402
 from app.ai_odoo_app_bar import (  # noqa: E402
     collapse_duplicate_line_models,
     run_odoo_app_bar_pass,
-    scrub_uncued_residual_stock_smart_buttons,
 )
 from app.ai_surface_invariants import (  # noqa: E402
     form_arch_page_count,
@@ -193,35 +192,10 @@ def test_field_work_no_uncued_quotation_invoice_meeting_smarts() -> None:
     assert not (preview_labels & banned), f"preview smarts: {preview_labels & banned}"
 
 
-def test_scrub_uncued_residual_stock_smarts_golden() -> None:
+def test_uncued_residual_stock_smarts_not_on_finish() -> None:
+    """Wave 4 — scrub deleted; finish path must not leave uncued stock smarts."""
     draft = _seed(MAINTENANCE_TICKETS)
-    _, slug = naming_from_residual(MAINTENANCE_TICKETS)
-    mid = f"x_{slug}"
-    draft["smart_buttons"] = [
-        {
-            "on_model": mid,
-            "related_model": "sale.order",
-            "relation_field": "x_fk",
-            "label": "Quotations",
-            "source": "odoo_app_bar",
-        },
-        {
-            "on_model": mid,
-            "related_model": "account.move",
-            "relation_field": "x_fk2",
-            "label": "Invoices",
-            "source": "odoo_app_bar",
-        },
-        {
-            "on_model": mid,
-            "related_model": "calendar.event",
-            "relation_field": "x_fk3",
-            "label": "Meetings",
-            "source": "odoo_app_bar",
-        },
-    ]
-    notes = scrub_uncued_residual_stock_smart_buttons(draft, prompt=MAINTENANCE_TICKETS)
-    assert notes
+    run_odoo_app_bar_pass(draft, user_prompt=MAINTENANCE_TICKETS)
     assert _residual_stock_smart_labels(draft) == set()
 
 
@@ -242,8 +216,20 @@ def test_cued_quotations_smart_button_kept() -> None:
             "source": "odoo_app_bar",
         }
     ]
-    scrub_uncued_residual_stock_smart_buttons(draft, prompt=brief)
-    assert "quotations" in _residual_stock_smart_labels(draft)
+    draft["_approved_craft"] = {
+        "smart_buttons": [
+            {
+                "on_model": mid,
+                "related_model": "sale.order",
+                "label": "Quotations",
+            }
+        ]
+    }
+    run_odoo_app_bar_pass(draft, user_prompt=brief)
+    # Cued/crafted Quotations may remain; uncued Invoices/Meetings must not invent.
+    labels = _residual_stock_smart_labels(draft)
+    assert "invoices" not in labels
+    assert "meetings" not in labels
 
 
 # ---------------------------------------------------------------------------

@@ -402,18 +402,39 @@ def run_production_shape_pass(draft: dict[str, Any]) -> list[str]:
     from app.ai_live_apply_contract import attach_live_apply_contract
 
     notes.extend(attach_live_apply_contract(draft))
-    notes.extend(finalize_draft_readiness_metadata(draft))
-    try:
-        from app.ai_odoo_app_bar import (
-            scrub_uncued_depth_seed_satellites,
-            scrub_uncued_identity_link_m2os,
-        )
+    # Live-apply may stamp currency companions after earlier Float computes —
+    # refresh monetary code blocks so export matches the final field graph.
+    from app.ai_apply_readiness import (
+        apply_line_subtotal_computes,
+        apply_order_header_total_computes,
+        ensure_line_currency_fields,
+        normalize_line_monetary_fields,
+        reconcile_depth_metadata,
+    )
+    from app.ai_depth import ensure_min_automations, synthesize_smart_buttons_from_relations
 
-        prompt = str(draft.get("_user_prompt") or "")
-        notes.extend(scrub_uncued_identity_link_m2os(draft, prompt=prompt))
-        notes.extend(scrub_uncued_depth_seed_satellites(draft, prompt=prompt))
-    except Exception as exc:  # noqa: BLE001
-        notes.append(f"production: identity scrub skipped ({exc})")
+    notes.extend(ensure_line_currency_fields(draft))
+    notes.extend(normalize_line_monetary_fields(draft))
+    notes.extend(apply_line_subtotal_computes(draft))
+    notes.extend(apply_order_header_total_computes(draft))
+    notes.extend(synthesize_smart_buttons_from_relations(draft))
+    amb = str(draft.get("_ambition") or "standard")
+    notes.extend(ensure_min_automations(draft, amb))  # type: ignore[arg-type]
+    notes.extend(reconcile_depth_metadata(draft))
+    # Keep _meta counts aligned with final graph before scorecard / critique ready.
+    draft["_meta"] = {
+        **(draft.get("_meta") if isinstance(draft.get("_meta"), dict) else {}),
+        "model_count": len(draft.get("models") or []),
+        "view_count": len(draft.get("views") or []),
+        "menu_count": len(draft.get("menus") or []),
+        "smart_button_count": len(
+            [b for b in (draft.get("smart_buttons") or []) if isinstance(b, dict)]
+        ),
+        "automation_count": len(
+            [a for a in (draft.get("automations") or []) if isinstance(a, dict)]
+        ),
+    }
+    notes.extend(finalize_draft_readiness_metadata(draft))
     return notes
 
 

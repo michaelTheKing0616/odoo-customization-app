@@ -296,6 +296,7 @@ def stamp_connection_catalog(
             for e in (stock_catalog or [])
             if isinstance(e, dict) and e.get("model")
         ],
+        "loaded_at": __import__("time").time(),
     }
 
 

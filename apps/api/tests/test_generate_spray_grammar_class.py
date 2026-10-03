@@ -26,8 +26,9 @@ from app.ai_brief_cues import honor_stated_brief_cues  # noqa: E402
 from app.ai_constraint_ast import ast_to_must_do, parse_det  # noqa: E402
 from app.ai_depth import classify_ambition, apply_deterministic_depth  # noqa: E402
 from app.ai_document_shape import naming_from_residual  # noqa: E402
-from app.ai_enrich_jobs import finalize_enriched_draft  # noqa: E402
 from app.ai_generation_engine import attach_generation_engine  # noqa: E402
+from app.ai_generate_ir import ir_closure_violations  # noqa: E402
+from app.ai_generate_ir_lint import invent_outside_admit_violations  # noqa: E402
 from app.ai_pipeline import seed_studio_draft  # noqa: E402
 from app.preview_views import build_form_preview  # noqa: E402
 
@@ -76,14 +77,20 @@ VEHICLE_REQUEST = (
 
 
 def _produce(brief: str) -> dict:
-    """Full production Generate path that Mac Studio uses."""
+    """Exact Studio Generate finish path: seed → depth → ``_finish_seed_draft``.
+
+    Matches ``POST /ai/sessions/{id}/generate`` → ``run_draft_job_body`` closer
+    (handoff §4 step 6) — not Diagnosis/`understand` alone.
+    """
+    from app.ai_draft_jobs import _finish_seed_draft
+    from app.ai_pipeline import seed_studio_draft
+
     draft = seed_studio_draft(brief)
     draft, _ = apply_deterministic_depth(draft, user_prompt=brief)
-    warns: list[str] = []
-    finalize_enriched_draft(draft, prompt=brief, warnings=warns, llm_mode="seed_fallback")
-    honor_stated_brief_cues(draft, prompt=brief)
-    attach_generation_engine(draft, brief, user_phase="review")
-    return draft
+    out = _finish_seed_draft(brief, draft, warnings=[])
+    honor_stated_brief_cues(out, prompt=brief)
+    attach_generation_engine(out, brief, user_phase="review")
+    return out
 
 
 def _primary(draft: dict) -> dict:
@@ -229,6 +236,37 @@ def test_service_cards_produce_same_class_no_spray() -> None:
     assert f"x_{slug}_line" not in mids if slug else True
     assert "x_party" not in mids
     assert "x_rate" not in mids
+
+
+def test_finish_gate_leaves_no_invent_outside_admit() -> None:
+    """Wave 4 — scrub deleted; invent-outside-admit + closure own the gate."""
+    for brief in (MAINTENANCE_EXACT, SERVICE_CARDS):
+        draft = _produce(brief)
+        assert invent_outside_admit_violations(draft) == []
+        assert ir_closure_violations(draft) == []
+
+
+def test_service_cards_matches_maintenance_class_shape() -> None:
+    """Sibling golden — zero Maintenance-specific code (handoff §4 step 7)."""
+    maint = _produce(MAINTENANCE_EXACT)
+    svc = _produce(SERVICE_CARDS)
+    for draft in (maint, svc):
+        _assert_no_spray(draft)
+        header = _primary(draft)
+        o2ms = [
+            f
+            for f in header.get("fields") or []
+            if isinstance(f, dict) and str(f.get("ttype")) == "one2many"
+        ]
+        assert len(o2ms) == 2
+        honesty = draft.get("_honesty") or {}
+        assert honesty.get("online_stock_moves") is True
+        roots = [
+            m
+            for m in (draft.get("menus") or [])
+            if isinstance(m, dict) and not m.get("parent_xml_id")
+        ]
+        assert len(roots) == 1
 
 
 def test_maintenance_form_o2ms_in_notebook_not_header() -> None:

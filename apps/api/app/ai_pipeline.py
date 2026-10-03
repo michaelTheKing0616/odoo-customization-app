@@ -198,6 +198,17 @@ def seed_studio_draft(prompt: str) -> dict[str, Any]:
         return draft
 
     matched = match_domain_pack(prompt)
+    # Enumerated-field thin residuals (Support Ticket Name/Subject/Description,
+    # Dining Tables list+form) must not adopt a full workspace pack — LLM/gated
+    # residual Generate owns fidelity; packs only seed when the brief asks.
+    if matched:
+        try:
+            from app.ai_document_shape import _is_thin_simple_residual
+
+            if _is_thin_simple_residual(prompt):
+                matched = None
+        except Exception:  # noqa: BLE001
+            pass
     # Thin residual with declared Must-do columns whose noun ≠ pack title
     # (Dining Tables ≠ Restaurant Management) — honesty seed, not full pack IR.
     if matched:
@@ -211,19 +222,32 @@ def seed_studio_draft(prompt: str) -> dict[str, Any]:
             rn = (residual_name or "").strip().lower()
             pt = pack_title.strip().lower()
             divergent = bool(rn and pt and rn not in pt and pt not in rn)
+            # Keep pack when adoption collocates are present (Hotel PMS + housekeeping).
+            # Only refuse pack bleed when the residual noun is a different vertical
+            # *and* pack product cues are absent (visitor log vs restaurant).
             if divergent and len(must) > 1:
-                matched = None
+                cues_ok = True
+                try:
+                    from app.ai_domain_coherence import pack_adoption_cues_present
+
+                    cues_ok = pack_adoption_cues_present(prompt, matched[0])
+                except Exception:  # noqa: BLE001
+                    cues_ok = False
+                if not cues_ok:
+                    matched = None
         except Exception:  # noqa: BLE001
             pass
     if matched:
         pack_id, pack = matched
         draft: dict[str, Any] = {
-            key: copy.deepcopy(pack[key]) for key in _STUDIO_SPEC_KEYS if key in pack
+            key: copy.deepcopy(pack[key])
+            for key in _STUDIO_SPEC_KEYS
+            if key in pack and key != "models"
         }
+        draft["models"] = []
         draft.setdefault("technical_name", re.sub(r"[^a-z0-9_]+", "_", pack_id)[:64])
         draft.setdefault("display_name", str(pack.get("display_name") or pack_id))
         draft.setdefault("depends", ["mail", "contacts"])
-        draft.setdefault("models", [])
         draft["domain_pack"] = pack_id
         draft["grain"] = "full_app"
         draft["_user_prompt"] = prompt
@@ -246,14 +270,43 @@ def seed_studio_draft(prompt: str) -> dict[str, Any]:
         if not draft.get("_pack_model_ids"):
             draft["_pack_model_ids"] = [
                 str(m.get("model"))
-                for m in (draft.get("models") or [])
+                for m in (pack.get("models") or [])
                 if isinstance(m, dict) and m.get("model")
             ]
+        # Wave 2: pack body invents only via admit_and_apply.
+        try:
+            from app.ai_domain_packs import admit_pack_models
+            from app.ai_ir_trace import trace_ir
+
+            trace_ir(draft, stage="seed_studio_draft:pack_before_admit")
+            gate = admit_pack_models(
+                draft, pack, proposer="ai_pipeline.pack_seed"
+            )
+            trace_ir(
+                draft,
+                stage="seed_studio_draft:pack_after_admit",
+                notes=[f"pack:{pack_id}", *gate[-8:]],
+            )
+        except Exception:  # noqa: BLE001
+            # Fail closed — empty models rather than ungated deepcopy invent.
+            draft.setdefault("models", [])
         if draft.get("models"):
             try:
-                from app.ai_document_shape import ensure_residual_must_do_fields, naming_from_residual
+                from app.ai_document_shape import ensure_residual_must_do_fields
 
                 ensure_residual_must_do_fields(draft, prompt=prompt)
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                from app.ai_generate_ir import stamp_generate_ir
+                from app.ai_ir_trace import trace_ir
+
+                stamp_generate_ir(draft)
+                trace_ir(
+                    draft,
+                    stage="seed_studio_draft:pack",
+                    notes=[f"pack:{pack_id}"],
+                )
             except Exception:  # noqa: BLE001
                 pass
             return draft
@@ -267,6 +320,14 @@ def seed_studio_draft(prompt: str) -> dict[str, Any]:
     attach_llm_status(draft, mode="pack_fallback", reason="honesty_seed")
     attach_operator_brief(draft, user_prompt=prompt)
     attach_generation_engine(draft, prompt, user_phase="building")
+    try:
+        from app.ai_generate_ir import stamp_generate_ir
+        from app.ai_ir_trace import trace_ir
+
+        stamp_generate_ir(draft)
+        trace_ir(draft, stage="seed_studio_draft:honesty", notes=["ir_stamped"])
+    except Exception:  # noqa: BLE001
+        pass
     return draft
 
 

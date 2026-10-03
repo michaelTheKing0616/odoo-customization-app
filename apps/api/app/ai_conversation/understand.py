@@ -90,6 +90,31 @@ def _coerce_craft_list(raw) -> list[dict]:
         return [x for x in raw if isinstance(x, dict)][:2]
 
 
+# Operator-visible craft opt-ins (handoff §3.3 / live-schema PR-C). Defaults off.
+APPROVED_CRAFT_KEYS: tuple[str, ...] = (
+    "company_scoping",
+    "money_slots",
+    "purchase_link",
+    "partner_links",
+    "datetime_over_date",
+    "depth_seeds",
+)
+
+
+def default_approved_craft() -> dict[str, bool]:
+    return {key: False for key in APPROVED_CRAFT_KEYS}
+
+
+def coerce_approved_craft(raw: Any) -> dict[str, bool]:
+    """Normalize approved_craft — unknown keys dropped; missing keys default False."""
+    out = default_approved_craft()
+    if isinstance(raw, dict):
+        for key in APPROVED_CRAFT_KEYS:
+            if key in raw:
+                out[key] = bool(raw[key])
+    return out
+
+
 def _attach_craft_proposals(prompt: str, understanding: "Understanding") -> "Understanding":
     """Fill craft_proposals for Diagnosis Nice-to-have chips (all grains).
 
@@ -187,6 +212,7 @@ class Understanding:
     out_of_scope: list[str] = field(default_factory=list)
     craft_proposals: list[dict] = field(default_factory=list)
     craft_smart_buttons: list[dict] = field(default_factory=list)
+    approved_craft: dict[str, bool] = field(default_factory=default_approved_craft)
     source: str = "deterministic"
     confidence: str = "high"
 
@@ -230,6 +256,7 @@ class Understanding:
             out_of_scope=[str(x) for x in out] if isinstance(out, list) else [],
             craft_proposals=_coerce_craft_list(raw.get("craft_proposals")),
             craft_smart_buttons=_coerce_craft_list(raw.get("craft_smart_buttons")),
+            approved_craft=coerce_approved_craft(raw.get("approved_craft")),
             source=str(raw.get("source") or "deterministic"),
             confidence="low" if raw.get("confidence") == "low" else "high",
         )
@@ -322,6 +349,16 @@ def apply_understanding_edits(
         ]
         craft_buttons = _coerce_craft_list(craft_buttons)
 
+    approved = coerce_approved_craft(base.approved_craft)
+    if "approved_craft" in edits:
+        approved = coerce_approved_craft(edits.get("approved_craft"))
+    elif any(key in edits for key in APPROVED_CRAFT_KEYS):
+        merged = dict(approved)
+        for key in APPROVED_CRAFT_KEYS:
+            if key in edits:
+                merged[key] = bool(edits[key])
+        approved = coerce_approved_craft(merged)
+
     return Understanding(
         capability=capability,
         grain=grain,
@@ -335,6 +372,7 @@ def apply_understanding_edits(
         out_of_scope=out,
         craft_proposals=craft_proposals,
         craft_smart_buttons=craft_buttons,
+        approved_craft=approved,
         source="operator",
         confidence="high",
     )
@@ -377,6 +415,13 @@ def parse_locked_diagnosis(prompt: str) -> Understanding | None:
             for lab, on, rel, fld in craft_raw
         ]
     )
+    approved_raw: dict[str, bool] = {}
+    craft_line = re.search(r"(?im)^-\s*Approved craft:\s*(.+)$", block)
+    if craft_line:
+        for token in re.split(r"[,;\s]+", craft_line.group(1).strip()):
+            key = token.strip().lower()
+            if key in APPROVED_CRAFT_KEYS:
+                approved_raw[key] = True
     inherit = bool(re.search(r"(?im)^-\s*Inherit existing form:\s*yes", block))
     needs = bool(re.search(r"(?im)^-\s*Needs module:\s*yes", block))
     gold = (
@@ -402,6 +447,7 @@ def parse_locked_diagnosis(prompt: str) -> Understanding | None:
         out_of_scope=[o.strip() for o in out],
         craft_proposals=[],
         craft_smart_buttons=craft_buttons,
+        approved_craft=coerce_approved_craft(approved_raw),
         source="locked",
         confidence="high",
     )
@@ -434,6 +480,10 @@ def append_locked_diagnosis(prompt: str, understanding: Understanding) -> str:
             f"{row.get('label') or 'Records'} | {on_model} | "
             f"{related} | {rel_field}"
         )
+    craft = coerce_approved_craft(understanding.approved_craft)
+    on_keys = [key for key, enabled in craft.items() if enabled]
+    if on_keys:
+        lines.append(f"- Approved craft: {', '.join(on_keys)}")
     return "\n".join(lines).strip()
 
 
@@ -1684,6 +1734,7 @@ def reconcile_contract_with_draft(
             out_of_scope=list(understanding.out_of_scope or []),
             craft_proposals=list(understanding.craft_proposals or []),
             craft_smart_buttons=list(understanding.craft_smart_buttons or []),
+            approved_craft=coerce_approved_craft(understanding.approved_craft),
             source="reconciled_draft",
             confidence="high",
         )
@@ -1706,11 +1757,12 @@ def attach_understanding(
     cannot sit on a Restaurant (or other) residual draft.
 
     Session-IR continuity: when Diagnosis confirm dumped ``craft_smart_buttons``
-    into session understanding, pass that as ``locked`` (or leave it on the draft)
-    so Generate does not rebuild from prompt alone and zero craft. Preference order
-    for the locked Contract: explicit ``locked`` → parse locked block → prior draft
-    ``_understanding`` → deterministic. Craft list is taken from the first source
-    that carries one (session wins over a craft-empty reparse).
+    / ``approved_craft`` into session understanding, pass that as ``locked``
+    (or leave it on the draft) so Generate does not rebuild from prompt alone
+    and zero craft. Preference order for the locked Contract: explicit ``locked``
+    → parse locked block → prior draft ``_understanding`` → deterministic.
+    Craft list / approved_craft are taken from the first source that carries
+    them (session wins over a craft-empty reparse).
     """
     session_u = locked if isinstance(locked, Understanding) else Understanding.from_dict(
         locked if isinstance(locked, dict) else None
@@ -1736,10 +1788,18 @@ def attach_understanding(
     # Session locked understanding is authoritative (empty list = chips removed).
     if session_u is not None:
         u.craft_smart_buttons = list(session_u.craft_smart_buttons or [])
+        u.approved_craft = coerce_approved_craft(session_u.approved_craft)
     elif not list(u.craft_smart_buttons or []):
         for donor in (prior, parsed):
             if donor is not None and list(donor.craft_smart_buttons or []):
                 u.craft_smart_buttons = list(donor.craft_smart_buttons or [])
+                break
+    if session_u is None and not any(coerce_approved_craft(u.approved_craft).values()):
+        for donor in (prior, parsed):
+            if donor is not None and any(
+                coerce_approved_craft(donor.approved_craft).values()
+            ):
+                u.approved_craft = coerce_approved_craft(donor.approved_craft)
                 break
 
     prefer_locked = session_u is not None
@@ -1795,6 +1855,10 @@ def attach_understanding(
         elif draft.get("display_name") and u.source == "reconciled_draft":
             u.title = str(draft.get("display_name"))[:80]
     payload = u.to_dict()
+    craft = coerce_approved_craft(u.approved_craft)
+    payload["approved_craft"] = craft
+    # Operator craft toggles land on the draft before invent gates run.
+    draft["_approved_craft"] = craft
     findings = understanding_contradictions(draft, u)
     payload["contradictions"] = findings
     draft["_understanding"] = payload
@@ -1825,11 +1889,14 @@ def attach_understanding(
 
 
 __all__ = [
+    "APPROVED_CRAFT_KEYS",
     "DIAGNOSIS_KEY",
     "UNDERSTANDING_KEY",
     "Understanding",
     "append_locked_diagnosis",
     "attach_understanding",
+    "coerce_approved_craft",
+    "default_approved_craft",
     "reconcile_contract_with_draft",
     "build_understanding",
     "clear_enrich_cache",

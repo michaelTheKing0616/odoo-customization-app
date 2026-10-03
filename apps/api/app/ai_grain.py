@@ -299,15 +299,18 @@ _INHERIT_ONLY_OPS_RE = re.compile(
     r"(?i)\b(?:"
     r"no\s+new\s+(?:home[- ]?screen\s+)?app(?:\s+tile)?|"
     r"still\s+inherit[- ]only|inherit[- ]only|"
-    r"do\s+not\s+create\s+a\s+new\s+(?:home[- ]?screen\s+)?app|"
+    r"do\s+not\s+create\s+a\s+new\s+(?:home[- ]?screen\s+|(?:\w+\s+){0,4})?app|"
+    r"don'?t\s+create\s+a\s+new\s+(?:\w+\s+){0,4}app|"
+    r"just\s+inherit|inherit\s+the\s+stock|"
     r"already\s+(?:persist|exist)|reuse\s+existing|"
-    r"do\s+not\s+recreate|don'?t\s+recreate"
+    r"do\s+not\s+recreate|don'?t\s+recreate|"
+    r"do\s+not\s+clone|don'?t\s+clone"
     r")\b"
 )
 _WIRING_VERBS_RE = re.compile(
     r"(?i)\b(?:"
     r"surface|smart\s+button|domain|filter|automation|"
-    r"pickings?|transfers?|wire|extend\s+so"
+    r"pickings?|transfers?|wire|extend\s+so|inherit"
     r")\b"
 )
 
@@ -316,6 +319,16 @@ def is_inherit_only_ops(prompt: str) -> bool:
     """True when the brief reuses/extends a stock host without a new app tile."""
     text = (prompt or "").strip()
     if not text:
+        return False
+    # Residual apps often say "don't clone project.task" meaning refuse a fake
+    # Project mirror — that is not inherit-only field_pack wiring.
+    if re.search(
+        r"(?i)don'?t\s+clone\s+project\.task|"
+        r"do\s+not\s+clone\s+project\.task|"
+        r"don'?t\s+clone\s+(?:a\s+)?fake\s+project|"
+        r"dump\s+a\s+fake\s+project",
+        text,
+    ):
         return False
     if not _INHERIT_ONLY_OPS_RE.search(text):
         return False
@@ -340,16 +353,19 @@ _RESIDUAL_SLICE_NOISE_RE = re.compile(
 
 def classify_grain(prompt: str) -> Grain:
     """Classify prompt grain: field_pack | feature_slice | full_app."""
+    from app.text_negation import has_positive_match
+
     raw = (prompt or "").strip().lower()
     # Scrub relation/selection/view chrome before component cues — "link to Employee"
     # and "on the calendar" must not force field_pack on residual full apps.
     text = _scrub_host_noise(raw).lower() or raw
     # New app / menu-under-X / Build-document briefs win before inherit-slice heuristics.
-    if _FULL_APP_RE.search(raw) and not is_inherit_only_ops(raw):
+    # Negation-aware: "Do not create a new Invoices app" must not force full_app.
+    if has_positive_match(_FULL_APP_RE, raw) and not is_inherit_only_ops(raw):
         return "full_app"
     # Residual document with state/menus/lines — never Prefer-reshape via checklist slice.
     if (
-        re.search(r"(?i)\b(?:build|create|make)\b", raw)
+        has_positive_match(re.compile(r"(?i)\b(?:build|create|make)\b"), raw)
         and _RESIDUAL_DOC_STRUCTURE_RE.search(raw)
         and not is_inherit_only_ops(raw)
     ):

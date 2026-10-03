@@ -27,7 +27,6 @@ from app.ai_document_shape import naming_from_residual  # noqa: E402
 from app.ai_generation_engine import attach_generation_engine  # noqa: E402
 from app.ai_odoo_app_bar import (  # noqa: E402
     run_odoo_app_bar_pass,
-    scrub_uncued_identity_link_m2os,
     stamp_online_stock_honesty,
 )
 from app.ai_residual_identity import scrub_residual_display_name  # noqa: E402
@@ -238,8 +237,10 @@ def test_scrub_drops_invented_po_invoice_company() -> None:
             },
         ]
     )
-    notes = scrub_uncued_identity_link_m2os(draft, prompt=MAINTENANCE_EXACT)
-    assert notes
+    from app.ai_generate_ir_enforce import purge_unadmitted_spray
+
+    purge_notes = purge_unadmitted_spray(draft)
+    assert purge_notes
     names = {str(f.get("name") or "") for f in header["fields"]}
     assert "x_company_id" not in names
     assert "x_purchase_order_id" not in names

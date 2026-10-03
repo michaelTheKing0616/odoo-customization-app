@@ -1782,15 +1782,16 @@ def odoo_o2m_field_name(child_model: str) -> str:
 def ensure_parent_o2ms_for_children(
     draft: dict[str, Any], *, max_o2m_per_parent: int = 8
 ) -> list[str]:
-    """Add missing one2many on custom parents for each child M2O pointing at them."""
+    """Propose missing one2many on custom parents for each child M2O pointing at them."""
+    from app.ai_generate_ir import Proposal, admit_and_apply
+    from app.ai_ir_trace import trace_ir
+
     notes: list[str] = []
     by_id = {
         str(m["model"]): m
         for m in (draft.get("models") or [])
         if isinstance(m, dict) and m.get("model")
     }
-    # Only custom x_* headers. Stock inherit (sale.order, project.task) is not a
-    # parent to decorate — inverse of inherit x_matter_id lives on the residual.
     parents = [
         m
         for m in by_id.values()
@@ -1806,6 +1807,7 @@ def ensure_parent_o2ms_for_children(
     if not parents:
         return notes
 
+    proposals: list[Proposal] = []
     for parent in parents:
         pid = str(parent["model"])
         fields = list(parent.get("fields") or [])
@@ -1817,7 +1819,6 @@ def ensure_parent_o2ms_for_children(
         existing_names = {
             str(f.get("name")) for f in fields if isinstance(f, dict)
         }
-        # Drop illegal dotted O2M names left by earlier passes
         cleaned: list[dict[str, Any]] = []
         for f in fields:
             if not isinstance(f, dict):
@@ -1836,14 +1837,13 @@ def ensure_parent_o2ms_for_children(
             for f in fields
             if isinstance(f, dict) and f.get("ttype") == "one2many"
         }
-        added = 0
+        # Apply illegal-name cleanup immediately (repair, not invent).
+        if len(cleaned) != len(list(parent.get("fields") or [])):
+            parent["fields"] = fields
         for child in by_id.values():
             cid = str(child["model"])
             if cid == pid or cid in existing_rels:
                 continue
-            # Stock inherit (sale.order, calendar.event) is a smart-button
-            # target. Nested O2M lists would emit x_name, which those models
-            # do not have. Inverse M2O already lives on the inherit.
             if not cid.startswith("x_"):
                 continue
             inverse = None
@@ -1861,24 +1861,35 @@ def ensure_parent_o2ms_for_children(
             if fname in existing_names:
                 continue
             label = str(child.get("description") or cid).split("/")[0].strip()
-            fields.append(
-                {
-                    "name": fname,
-                    "ttype": "one2many",
-                    "string": label or cid,
-                    "relation": cid,
-                    "relation_field": inverse,
-                    "source": "quality_o2m",
-                }
+            cue = cid.removeprefix("x_").split("_")[0]
+            proposals.append(
+                Proposal(
+                    kind="o2m",
+                    name=fname,
+                    payload={
+                        "model": pid,
+                        "ttype": "one2many",
+                        "string": label or cid,
+                        "relation": cid,
+                        "relation_field": inverse,
+                        "source": "quality_o2m",
+                    },
+                    source_cue=cue,
+                    rationale=f"parent O2M for child {cid}",
+                    proposer="ai_model_quality.ensure_parent_o2ms",
+                    confidence=0.85,
+                )
             )
             existing_rels.add(cid)
             existing_names.add(fname)
-            added += 1
-            notes.append(f"quality: added O2M {pid}.{fname} → {cid}.{inverse}")
+            notes.append(f"quality: propose O2M {pid}.{fname} → {cid}.{inverse}")
             if len(existing_rels) >= max_o2m_per_parent:
                 break
-        if added or len(cleaned) != len(list(parent.get("fields") or [])):
-            parent["fields"] = fields
+    if proposals:
+        trace_ir(draft, stage="ensure_parent_o2ms:before_admit")
+        _, gate = admit_and_apply(draft, proposals)
+        notes.extend(gate)
+        trace_ir(draft, stage="ensure_parent_o2ms:after_admit")
     notes.extend(drop_illegal_o2ms(draft))
     return notes
 
@@ -1931,8 +1942,11 @@ def drop_illegal_o2ms(draft: dict[str, Any]) -> list[str]:
 
 
 def ensure_line_bill_link(draft: dict[str, Any]) -> list[str]:
-    """Connect time/line models to bill/invoice when both exist."""
+    """Connect time/line models to bill/invoice when both exist — via admit only."""
     notes: list[str] = []
+    from app.ai_generate_ir import Proposal, admit_and_apply
+    from app.ai_ir_trace import trace_ir
+
     by_id = {
         str(m["model"]): m
         for m in (draft.get("models") or [])
@@ -1949,6 +1963,7 @@ def ensure_line_bill_link(draft: dict[str, Any]) -> list[str]:
     if not bill:
         return notes
     bill_id = str(bill["model"])
+    proposals: list[Proposal] = []
     for mid, line in by_id.items():
         if not any(k in mid for k in ("line", "time", "entry", "timesheet")):
             continue
@@ -1957,18 +1972,25 @@ def ensure_line_bill_link(draft: dict[str, Any]) -> list[str]:
             for f in (line.get("fields") or [])
             if isinstance(f, dict)
         }
-        if "x_bill_id" in names:
-            continue
-        line.setdefault("fields", []).append(
-            {
-                "name": "x_bill_id",
-                "ttype": "many2one",
-                "relation": bill_id,
-                "string": "Bill",
-            }
-        )
-        notes.append(f"quality: linked {mid}.x_bill_id → {bill_id}")
-        # O2M on bill if missing
+        if "x_bill_id" not in names:
+            proposals.append(
+                Proposal(
+                    kind="m2o",
+                    name="x_bill_id",
+                    payload={
+                        "model": mid,
+                        "ttype": "many2one",
+                        "relation": bill_id,
+                        "string": "Bill",
+                        "source": "quality_o2m",
+                    },
+                    source_cue="bill",
+                    rationale=f"line→bill link {mid}",
+                    proposer="ai_model_quality.ensure_line_bill_link",
+                    confidence=0.85,
+                )
+            )
+            notes.append(f"quality: propose {mid}.x_bill_id → {bill_id}")
         bill_fields = bill.get("fields") or []
         if not any(
             isinstance(f, dict)
@@ -1977,18 +1999,31 @@ def ensure_line_bill_link(draft: dict[str, Any]) -> list[str]:
             for f in bill_fields
         ):
             leaf = mid.replace("x_", "")
-            bill_fields.append(
-                {
-                    "name": f"x_{leaf}_ids",
-                    "ttype": "one2many",
-                    "string": str(line.get("description") or leaf),
-                    "relation": mid,
-                    "relation_field": "x_bill_id",
-                    "source": "quality_o2m",
-                }
+            fname = f"x_{leaf}_ids"
+            proposals.append(
+                Proposal(
+                    kind="o2m",
+                    name=fname,
+                    payload={
+                        "model": bill_id,
+                        "ttype": "one2many",
+                        "string": str(line.get("description") or leaf),
+                        "relation": mid,
+                        "relation_field": "x_bill_id",
+                        "source": "quality_o2m",
+                    },
+                    source_cue="line",
+                    rationale=f"bill O2M → {mid}",
+                    proposer="ai_model_quality.ensure_line_bill_link",
+                    confidence=0.85,
+                )
             )
-            bill["fields"] = bill_fields
-            notes.append(f"quality: added O2M {bill_id}.x_{leaf}_ids → {mid}")
+            notes.append(f"quality: propose O2M {bill_id}.{fname} → {mid}")
+    if proposals:
+        trace_ir(draft, stage="ensure_line_bill_link:before_admit")
+        _, gate = admit_and_apply(draft, proposals)
+        notes.extend(gate)
+        trace_ir(draft, stage="ensure_line_bill_link:after_admit")
     return notes
 
 
@@ -2554,12 +2589,16 @@ def dedupe_automation_safe_actions(draft: dict[str, Any]) -> list[str]:
 
 
 def deepen_thin_ops_children(draft: dict[str, Any]) -> list[str]:
-    """Add status to deadline/party-style seed children when missing."""
+    """Add status to deadline/ops seed children when missing — via admit only."""
     notes: list[str] = []
+    from app.ai_generate_ir import Proposal, admit_and_apply
+    from app.ai_ir_trace import trace_ir
+
     status_sel = (
         "[('draft','Draft'),('open','Open'),('done','Done'),"
         "('cancelled','Cancelled')]"
     )
+    proposals: list[Proposal] = []
     for m in draft.get("models") or []:
         if not isinstance(m, dict):
             continue
@@ -2580,21 +2619,44 @@ def deepen_thin_ops_children(draft: dict[str, Any]) -> list[str]:
         ) or "x_date_deadline" in names
         if not wants_status or "x_status" in names:
             continue
-        m.setdefault("fields", []).append(
-            {
-                "name": "x_status",
-                "ttype": "selection",
-                "string": "Status",
-                "selection": status_sel,
-            }
+        proposals.append(
+            Proposal(
+                kind="field",
+                name="x_status",
+                payload={
+                    "model": mid,
+                    "ttype": "selection",
+                    "string": "Status",
+                    "selection": status_sel,
+                    "source": "quality_o2m",
+                },
+                source_cue="status",
+                rationale=f"ops child status on {mid}",
+                proposer="ai_model_quality.deepen_thin_ops_children",
+                confidence=0.85,
+            )
         )
-        notes.append(f"quality: added x_status on ops child {mid}")
+        notes.append(f"quality: propose x_status on ops child {mid}")
+    if proposals:
+        trace_ir(draft, stage="deepen_thin_ops_children:before_admit")
+        _, gate = admit_and_apply(draft, proposals)
+        notes.extend(gate)
+        if any("admitted" in g for g in gate):
+            notes.append("quality: deepened ops children status via admit")
+        trace_ir(draft, stage="deepen_thin_ops_children:after_admit")
     return notes
 
 
 def deepen_thin_rate_models(draft: dict[str, Any]) -> list[str]:
-    """Ensure rate/price models have currency + company + filled rate_type."""
+    """Ensure rate/price models have currency (+ optional company) via admit.
+
+    Selection fill on existing ``x_rate_type`` stays mutate (collapse allowlist).
+    """
     notes: list[str] = []
+    from app.ai_generate_ir import Proposal, admit_and_apply
+    from app.ai_ir_trace import trace_ir
+
+    proposals: list[Proposal] = []
     for m in draft.get("models") or []:
         if not isinstance(m, dict):
             continue
@@ -2603,37 +2665,58 @@ def deepen_thin_rate_models(draft: dict[str, Any]) -> list[str]:
             continue
         fields = [f for f in (m.get("fields") or []) if isinstance(f, dict)]
         names = {str(f.get("name")) for f in fields}
-        changed = False
         if "x_currency_id" not in names:
-            fields.append(
-                {
-                    "name": "x_currency_id",
-                    "ttype": "many2one",
-                    "relation": "res.currency",
-                    "string": "Currency",
-                }
+            proposals.append(
+                Proposal(
+                    kind="m2o",
+                    name="x_currency_id",
+                    payload={
+                        "model": mid,
+                        "ttype": "many2one",
+                        "relation": "res.currency",
+                        "string": "Currency",
+                        "source": "quality_o2m",
+                        "craft_key": "money_slots",
+                    },
+                    source_cue="currency",
+                    rationale=f"rate currency on {mid}",
+                    proposer="ai_model_quality.deepen_thin_rate",
+                    confidence=0.8,
+                )
             )
-            changed = True
         if "x_company_id" not in names:
-            fields.append(
-                {
-                    "name": "x_company_id",
-                    "ttype": "many2one",
-                    "relation": "res.company",
-                    "string": "Company",
-                }
+            proposals.append(
+                Proposal(
+                    kind="m2o",
+                    name="x_company_id",
+                    payload={
+                        "model": mid,
+                        "ttype": "many2one",
+                        "relation": "res.company",
+                        "string": "Company",
+                        "source": "quality_o2m",
+                        "craft_key": "company_scoping",
+                    },
+                    source_cue="company",
+                    rationale=f"rate company on {mid}",
+                    proposer="ai_model_quality.deepen_thin_rate",
+                    confidence=0.7,
+                )
             )
-            changed = True
         for f in fields:
             if f.get("name") == "x_rate_type" and not f.get("selection"):
                 f["selection"] = (
                     "[('hourly','Hourly'),('daily','Daily'),"
                     "('fixed','Fixed'),('other','Other')]"
                 )
-                changed = True
-        if changed:
-            m["fields"] = fields
-            notes.append(f"quality: deepened rate model {mid}")
+                notes.append(f"quality: filled rate_type selection on {mid}")
+    if proposals:
+        trace_ir(draft, stage="deepen_thin_rate_models:before_admit")
+        _, gate = admit_and_apply(draft, proposals)
+        notes.extend(gate)
+        if any("admitted" in g for g in gate):
+            notes.append("quality: deepened rate model(s) via admit")
+        trace_ir(draft, stage="deepen_thin_rate_models:after_admit")
     return notes
 
 
@@ -3046,8 +3129,13 @@ def ensure_required_on_name_fields(draft: dict[str, Any]) -> list[str]:
 
 
 def ensure_min_workflows(draft: dict[str, Any], ambition: str) -> list[str]:
-    """Promote substantive models to workflows when comprehensive floor not met."""
+    """Promote substantive models to workflows when comprehensive floor not met.
+
+    Status invent goes through admit; ``is_workflow`` flag is mutate-only.
+    """
     from app.ai_depth import AMBITION_TARGETS, compute_depth_metrics
+    from app.ai_generate_ir import Proposal, admit_and_apply
+    from app.ai_ir_trace import trace_ir
 
     notes: list[str] = []
     if ambition not in AMBITION_TARGETS:
@@ -3061,7 +3149,6 @@ def ensure_min_workflows(draft: dict[str, Any], ambition: str) -> list[str]:
         if not isinstance(m, dict) or m.get("is_workflow"):
             continue
         mid = str(m.get("model") or "")
-        leaf = mid.replace("x_", "")
         # Never promote party/role-link models into workflows
         if is_party_link_model(m):
             continue
@@ -3080,27 +3167,54 @@ def ensure_min_workflows(draft: dict[str, Any], ambition: str) -> list[str]:
         # Prefer event/task/document/line models
         if any(k in mid for k in ("event", "task", "hearing", "document", "time", "line")):
             candidates.append(m)
+    proposals: list[Proposal] = []
+    promoted: list[dict[str, Any]] = []
     for m in candidates:
-        if metrics["workflow_count"] >= need:
+        if metrics["workflow_count"] + len(promoted) >= need:
             break
         fields = list(m.get("fields") or [])
         names = {str(f.get("name") or "") for f in fields if isinstance(f, dict)}
+        mid = str(m.get("model") or "")
         if "x_status" not in names:
-            fields.append(
-                {
-                    "name": "x_status",
-                    "ttype": "selection",
-                    "string": "Status",
-                    "selection": (
-                        "[('draft','Draft'),('open','Open'),('done','Done'),"
-                        "('cancelled','Cancelled')]"
-                    ),
-                    "required": True,
-                }
+            proposals.append(
+                Proposal(
+                    kind="field",
+                    name="x_status",
+                    payload={
+                        "model": mid,
+                        "ttype": "selection",
+                        "string": "Status",
+                        "selection": (
+                            "[('draft','Draft'),('open','Open'),('done','Done'),"
+                            "('cancelled','Cancelled')]"
+                        ),
+                        "required": True,
+                        "source": "quality_o2m",
+                    },
+                    source_cue="status",
+                    rationale=f"workflow floor status on {mid}",
+                    proposer="ai_model_quality.ensure_min_workflows",
+                    confidence=0.85,
+                )
             )
-            m["fields"] = fields
-        m["is_workflow"] = True
-        notes.append(f"quality: promoted {m.get('model')} to workflow")
+        promoted.append(m)
+        notes.append(f"quality: propose promote {mid} to workflow")
+    if proposals:
+        trace_ir(draft, stage="ensure_min_workflows:before_admit")
+        _, gate = admit_and_apply(draft, proposals)
+        notes.extend(gate)
+        trace_ir(draft, stage="ensure_min_workflows:after_admit")
+    for m in promoted:
+        mid = str(m.get("model") or "")
+        names = {
+            str(f.get("name") or "")
+            for f in (m.get("fields") or [])
+            if isinstance(f, dict)
+        }
+        # Only flag workflow when status is present (admitted or pre-existing).
+        if "x_status" in names or "x_state" in names:
+            m["is_workflow"] = True
+            notes.append(f"quality: promoted {mid} to workflow")
         metrics = compute_depth_metrics(draft)
     return notes
 

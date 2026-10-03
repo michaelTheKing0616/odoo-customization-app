@@ -886,7 +886,14 @@ def _parse_det_inherit(text: str, *, host: str | None) -> ConstraintAST:
             # Ensure Prefer cue survives when fields already exist (no new checkbox invent).
             if not any("prefer" in (f.label or "").lower() for f in ast.fields):
                 ast.hints.append("Prefer for delivery (existing)")
-    if _FILTER_HINT_RE.search(text):
+    if _FILTER_HINT_RE.search(text) and (
+        _PREFER_FOR_DELIVERY_RE.search(text)
+        or re.search(
+            r"(?i)\b(?:preferred[- ]delivery|stock\.picking|transfers?\b.*\bfilter|"
+            r"filter\b.*\b(?:transfers?|pickings?))\b",
+            text,
+        )
+    ):
         ast.hints.append("Filter preferred-delivery partners on transfers")
     if _NO_NEW_APP_RE.search(text):
         if re.search(r"(?i)\binvent\b|\bparallel\b", text):

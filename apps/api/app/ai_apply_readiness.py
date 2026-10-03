@@ -137,6 +137,30 @@ def scrub_unknown_arch_field_refs(draft: dict[str, Any]) -> list[str]:
             cleaned,
             flags=re.I,
         )
+
+        # Search filters / group_by that still name purged fields (e.g. Contact).
+        def filter_repl(match: re.Match[str]) -> str:
+            nonlocal removed
+            block = match.group(0)
+            refs = re.findall(
+                r"(?:group_by['\"]?\s*[:=]\s*['\"]|['\"]name['\"]\s*:\s*['\"]|\('[^']*',)"
+                r"|name=\"group_([^\"]+)\"|group_by['\"]:\s*['\"]([^'\"]+)",
+                block,
+            )
+            # Simpler: any x_* token in the filter block must exist on the model.
+            tokens = set(re.findall(r"\bx_[a-z0-9_]+\b", block, flags=re.I))
+            bad = {t for t in tokens if t not in names}
+            if bad:
+                removed += 1
+                return ""
+            return block
+
+        cleaned = re.sub(
+            r"<filter\b[^>]*/>|<filter\b[^>]*>\s*</filter>",
+            filter_repl,
+            cleaned,
+            flags=re.I,
+        )
         return cleaned, removed
 
     for v in draft.get("views") or []:
@@ -560,7 +584,6 @@ def _is_sales_header(model: dict[str, Any]) -> bool:
 
 
 def _brief_cues_purchase_order(prompt: str) -> bool:
-    """Same gate as scrub_uncued_identity_link_m2os — Online-honest/parts ≠ PO."""
     return bool(
         re.search(
             r"(?i)\bpurchase\s+orders?\b|\blink(?:ed)?\s+(?:a\s+)?(?:purchase|PO)\b|"
@@ -570,13 +593,31 @@ def _brief_cues_purchase_order(prompt: str) -> bool:
     )
 
 
+def _craft_allows_purchase_link(draft: dict[str, Any] | None) -> bool:
+    if not isinstance(draft, dict):
+        return False
+    craft = draft.get("_approved_craft")
+    if isinstance(craft, dict) and craft.get("purchase_link"):
+        return True
+    try:
+        from app.settings import settings
+
+        return bool(getattr(settings, "ai_craft_purchase_link", False))
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _keeps_purchase_document_link(
-    model: dict[str, Any], *, prompt: str = ""
+    model: dict[str, Any],
+    *,
+    prompt: str = "",
+    draft: dict[str, Any] | None = None,
 ) -> bool:
     """purchase.order on procurement headers, or operations headers when brief cues PO.
 
     Class-wide: Maintenance tickets / Field work / Service cards are operations
     documents — the *token* alone must not invent Purchase Order Identity.
+    Approved craft.purchase_link opts back in (handoff T5/T6).
     """
     if _is_sales_header(model):
         return False
@@ -586,15 +627,19 @@ def _keeps_purchase_document_link(
     if _is_procurement_header(model):
         return True
     if _is_operations_header(model):
-        return _brief_cues_purchase_order(prompt)
+        return _brief_cues_purchase_order(prompt) or _craft_allows_purchase_link(draft)
     return False
 
 
 def _stock_link_applies(
-    stock_model: str, model: dict[str, Any], *, prompt: str = ""
+    stock_model: str,
+    model: dict[str, Any],
+    *,
+    prompt: str = "",
+    draft: dict[str, Any] | None = None,
 ) -> bool:
     if stock_model == "purchase.order":
-        return _keeps_purchase_document_link(model, prompt=prompt)
+        return _keeps_purchase_document_link(model, prompt=prompt, draft=draft)
     if stock_model == "sale.order":
         return _is_sales_header(model)
     if stock_model == "account.move":
@@ -870,12 +915,16 @@ def scrub_misapplied_stock_document_links(draft: dict[str, Any]) -> list[str]:
     checks = (
         (
             "x_purchase_order_id",
-            lambda model: _keeps_purchase_document_link(model, prompt=prompt),
+            lambda model: _keeps_purchase_document_link(
+                model, prompt=prompt, draft=draft
+            ),
         ),
         ("x_sale_order_id", lambda model: _is_sales_header(model)),
         (
             "x_invoice_id",
-            lambda model: _stock_link_applies("account.move", model, prompt=prompt),
+            lambda model: _stock_link_applies(
+                "account.move", model, prompt=prompt, draft=draft
+            ),
         ),
     )
     for model in draft.get("models") or []:
@@ -901,7 +950,7 @@ def ensure_transaction_document_links(draft: dict[str, Any]) -> list[str]:
             continue
         for model in draft.get("models") or []:
             if not isinstance(model, dict) or not _stock_link_applies(
-                stock_model, model, prompt=prompt
+                stock_model, model, prompt=prompt, draft=draft
             ):
                 continue
             mid = str(model.get("model") or "")
@@ -1001,7 +1050,11 @@ _REUSE_STOCK_DOCUMENT_TARGETS: tuple[tuple[str, str, str], ...] = (
 
 
 def _needs_reuse_stock_document(
-    model: str, by_id: dict[str, dict[str, Any]], *, prompt: str = ""
+    model: str,
+    by_id: dict[str, dict[str, Any]],
+    *,
+    prompt: str = "",
+    draft: dict[str, Any] | None = None,
 ) -> bool:
     if model == "sale.order":
         return any(_is_sales_header(m) for m in by_id.values())
@@ -1011,7 +1064,8 @@ def _needs_reuse_stock_document(
         )
     if model == "purchase.order":
         return any(
-            _keeps_purchase_document_link(m, prompt=prompt) for m in by_id.values()
+            _keeps_purchase_document_link(m, prompt=prompt, draft=draft)
+            for m in by_id.values()
         )
     return False
 
@@ -1039,7 +1093,9 @@ def wire_reuse_stock_documents(draft: dict[str, Any]) -> list[str]:
 
     prompt = str(draft.get("_user_prompt") or "")
     for stock_model, dep_module, default_reason in _REUSE_STOCK_DOCUMENT_TARGETS:
-        if not _needs_reuse_stock_document(stock_model, by_id, prompt=prompt):
+        if not _needs_reuse_stock_document(
+            stock_model, by_id, prompt=prompt, draft=draft
+        ):
             continue
         pack_row = pack_rows.get(stock_model, {})
         reason = str(pack_row.get("reason") or default_reason)
@@ -1681,10 +1737,16 @@ def _copy_field_stub(parent: dict[str, Any], fname: str) -> dict[str, Any] | Non
 
 
 def ensure_header_line_models(draft: dict[str, Any]) -> list[str]:
-    """Scaffold *_line models when headers still carry single-product qty fields."""
+    """Scaffold *_line models when headers still carry single-product qty fields.
+
+    Invent only via admit_and_apply (Wave closure).
+    """
     notes: list[str] = []
+    from app.ai_generate_ir import Proposal, admit_and_apply
+    from app.ai_ir_trace import trace_ir
+
     by_id = _models_index(draft)
-    added = False
+    proposals: list[Proposal] = []
     for spec in _HEADER_LINE_SPECS:
         parent_id = str(spec["parent"])
         line_id = str(spec["line"])
@@ -1704,13 +1766,14 @@ def ensure_header_line_models(draft: dict[str, Any]) -> list[str]:
             continue
         fk_name = str(spec["fk_name"])
         line_fields: list[dict[str, Any]] = [
-            {"name": "x_name", "ttype": "char", "string": "Line", "required": True},
+            {"name": "x_name", "ttype": "char", "string": "Line", "required": True, "source": "apply_readiness"},
             {
                 "name": fk_name,
                 "ttype": "many2one",
                 "relation": parent_id,
                 "string": str(parent.get("description") or parent_id),
                 "required": True,
+                "source": "apply_readiness",
             },
         ]
         for fname in move_fields:
@@ -1720,31 +1783,66 @@ def ensure_header_line_models(draft: dict[str, Any]) -> list[str]:
         for extra in spec.get("extra_line_fields") or ():
             if isinstance(extra, dict):
                 line_fields.append({**extra, "source": "apply_readiness"})
-        if _LIVE_COMPANY_FIELD not in {str(f.get("name")) for f in line_fields}:
-            line_fields.append(dict(COMPANY_FIELD_LIVE))
-        line_model = {
-            "model": line_id,
-            "description": str(spec["description"]),
-            "mode": "new",
-            "fields": line_fields,
-            "source": "apply_readiness",
-        }
-        draft.setdefault("models", []).append(line_model)
-        by_id[line_id] = line_model
-        parent.setdefault("fields", []).append(
-            {
-                "name": str(spec["o2m_name"]),
-                "ttype": "one2many",
-                "relation": line_id,
-                "relation_field": fk_name,
-                "string": str(spec["o2m_string"]),
-                "source": "apply_readiness",
-            }
+        # Do not auto-inject company spray — admit + craft/cue only.
+        leaf = line_id.removeprefix("x_")
+        proposals.append(
+            Proposal(
+                kind="model",
+                name=line_id,
+                payload={
+                    "description": str(spec["description"]),
+                    "mode": "new",
+                    "source": "apply_readiness",
+                    "fields": line_fields,
+                },
+                source_cue=leaf.split("_")[0] if leaf else "line",
+                rationale=f"header line scaffold {line_id}",
+                proposer="ai_apply_readiness.ensure_header_line_models",
+                confidence=0.9,
+            )
         )
-        _drop_model_fields(draft, parent_id, set(move_fields))
-        notes.append(f"apply: scaffolded {line_id} from header fields on {parent_id}")
-        added = True
-    if added:
+        proposals.append(
+            Proposal(
+                kind="o2m",
+                name=str(spec["o2m_name"]),
+                payload={
+                    "model": parent_id,
+                    "ttype": "one2many",
+                    "relation": line_id,
+                    "relation_field": fk_name,
+                    "string": str(spec["o2m_string"]),
+                    "source": "apply_readiness",
+                },
+                source_cue="line",
+                rationale=f"header O2M {parent_id}→{line_id}",
+                proposer="ai_apply_readiness.ensure_header_line_models",
+                confidence=0.9,
+            )
+        )
+        notes.append(f"apply: propose scaffold {line_id} from header fields on {parent_id}")
+        # Optimistically mark so next spec iteration does not double-propose.
+        by_id[line_id] = {"model": line_id, "fields": line_fields}
+
+    if not proposals:
+        return notes
+    trace_ir(draft, stage="ensure_header_line_models:before_admit")
+    _, gate = admit_and_apply(draft, proposals)
+    notes.extend(gate)
+    trace_ir(draft, stage="ensure_header_line_models:after_admit")
+    admitted_lines = {
+        str(m.get("model"))
+        for m in (draft.get("models") or [])
+        if isinstance(m, dict) and str(m.get("source") or "") == "apply_readiness"
+    }
+    for spec in _HEADER_LINE_SPECS:
+        line_id = str(spec["line"])
+        parent_id = str(spec["parent"])
+        if line_id not in admitted_lines and line_id not in _models_index(draft):
+            continue
+        move_fields = tuple(spec["move_fields"])
+        if line_id in _models_index(draft):
+            _drop_model_fields(draft, parent_id, set(move_fields))
+    if any("admitted" in g for g in gate):
         from app.ai_enrich import ensure_default_ui
         from app.ai_post_critique import ensure_line_model_parent_links
 
@@ -4108,6 +4206,16 @@ def run_apply_readiness_pass(draft: dict[str, Any]) -> list[str]:
     notes.extend(consolidate_inventory_count_fields(draft))
     notes.extend(wire_stock_document_links(draft))
     notes.extend(scrub_unused_domain_tags(draft))
+    # Workflow headers flagged without status — admit status via GenerateIR,
+    # then derive state_field transitions from the selection.
+    try:
+        from app.ai_depth import _ensure_workflow_minimum_fields
+        from app.ai_workflow import ensure_workflow_transitions_on_draft
+
+        notes.extend(_ensure_workflow_minimum_fields(draft))
+        notes.extend(ensure_workflow_transitions_on_draft(draft))
+    except Exception:  # noqa: BLE001
+        pass
     notes.extend(ensure_line_currency_fields(draft))
     notes.extend(normalize_line_monetary_fields(draft))
     notes.extend(apply_line_subtotal_computes(draft))
@@ -4147,14 +4255,6 @@ def run_apply_readiness_pass(draft: dict[str, Any]) -> list[str]:
     # Identity / depth-seed spray gates — same scrub as app_bar (Generate path
     # re-injects PO/company via wire_reuse + multi-company alignment).
     try:
-        from app.ai_odoo_app_bar import (
-            scrub_uncued_depth_seed_satellites,
-            scrub_uncued_identity_link_m2os,
-        )
-
-        prompt = str(draft.get("_user_prompt") or "")
-        notes.extend(scrub_uncued_identity_link_m2os(draft, prompt=prompt))
-        notes.extend(scrub_uncued_depth_seed_satellites(draft, prompt=prompt))
         # Drop purchase depend if no PO field remains after scrub.
         depends = [str(d) for d in (draft.get("depends") or []) if d]
         needs_po = any(

@@ -456,6 +456,7 @@ def apply_form_slots(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
     # Contract / operator overrides win over prompt heuristics (model-agnostic).
     prior_group = str(prior.get("group_title") or "").strip() or None
     mapping = assign_slots(draft, prompt=user_prompt)
+    mapping = _gate_slots_with_view_has_field(draft, host, mapping, notes)
     group_title = prior_group or named_group_title(user_prompt)
     catalog = slot_catalog(host, group_title=group_title)
     draft["_form_slots"] = {
@@ -492,6 +493,58 @@ def apply_form_slots(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
     )
     notes.append(f"slots: placed {len(mapping)} field(s) on {host}")
     return notes
+
+
+_SLOT_ANCHOR_FIELDS: dict[str, str] = {
+    "next_to_partner": "partner_id",
+    "next_to_dates": "date_order",
+}
+
+
+def _view_has_field_known(
+    draft: dict[str, Any], host: str, field: str
+) -> bool | None:
+    """True/False when schema knows; None when Deny / no arch map (do not gate)."""
+    try:
+        from app.ai_schema_client import (
+            DenySchemaClient,
+            FakeSchemaClient,
+            schema_client_for_draft,
+        )
+
+        client = schema_client_for_draft(draft)
+        if isinstance(client, DenySchemaClient):
+            return None
+        if isinstance(client, FakeSchemaClient) and host not in (client.view_fields or {}):
+            return None
+        return bool(client.view_has_field(host, field))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _gate_slots_with_view_has_field(
+    draft: dict[str, Any],
+    host: str,
+    mapping: dict[str, str],
+    notes: list[str],
+) -> dict[str, str]:
+    """Fail closed on known-missing stock anchors — fall back to new_tab."""
+    if not host or not mapping:
+        return mapping
+    out = dict(mapping)
+    for fname, slot in list(out.items()):
+        anchor = _SLOT_ANCHOR_FIELDS.get(str(slot))
+        if not anchor:
+            continue
+        if slot == "next_to_dates" and host == "account.move":
+            anchor = "invoice_date"
+        known = _view_has_field_known(draft, host, anchor)
+        if known is False:
+            out[fname] = "new_tab"
+            notes.append(
+                f"slots: {fname} → new_tab (view_has_field miss {host}.{anchor})"
+            )
+    return out
 
 
 __all__ = [

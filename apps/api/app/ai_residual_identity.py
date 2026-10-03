@@ -171,6 +171,17 @@ def draft_mismatches_residual_identity(
 ) -> bool:
     """True when draft IR is foreign pack / field-title noise under a residual brief."""
     text = prompt or str(draft.get("_user_prompt") or "")
+    pack_id = str(draft.get("domain_pack") or "")
+    # Positive pack collocates (Hotel PMS + housekeeping, law firm matter…) keep
+    # pack IR — LLM enrich may tailor inside the lock; do not rebuild as register.
+    if pack_id:
+        try:
+            from app.ai_domain_coherence import pack_adoption_cues_present
+
+            if pack_adoption_cues_present(text, pack_id):
+                return False
+        except Exception:  # noqa: BLE001
+            pass
     slug, title = _residual_slug_and_title(text, locked, prefer_locked=prefer_locked)
     if not slug and not title:
         return False

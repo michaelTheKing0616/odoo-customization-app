@@ -61,7 +61,8 @@ def test_pack_seed_skips_llm_for_law_firm() -> None:
 
     seed = seed_studio_draft(AOP_LEGAL_BRIEF)
     assert seed.get("domain_pack") == "law_firm"
-    assert pack_seed_skips_llm(seed) is True
+    # Packs seed a floor; Create still runs gated LLM (not pack-skip).
+    assert pack_seed_skips_llm(seed) is False
     assert pack_seed_skips_llm({"models": [{"model": "x_foo"}]}) is False
 
 

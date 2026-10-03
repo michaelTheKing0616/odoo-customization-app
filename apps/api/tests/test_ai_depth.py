@@ -45,6 +45,7 @@ def test_classify_ambition_business_prompt_is_comprehensive() -> None:
 
 def test_seed_fills_comprehensive_model_floor() -> None:
     draft = {
+        "_approved_craft": {"depth_seeds": True, "money_slots": True},
         "models": [
             {
                 "model": "x_attorney",
@@ -211,6 +212,8 @@ def test_synthesize_smart_buttons_from_m2o_graph() -> None:
 def test_deterministic_depth_adds_currency_and_buttons() -> None:
     draft = {
         "_ambition": "standard",
+        "_approved_craft": {"money_slots": True},
+        "_user_prompt": "orders with amount and currency",
         "models": [
             {
                 "model": "x_order",
@@ -392,6 +395,7 @@ def test_packed_three_models_are_below_senior_floor() -> None:
 
 def test_run_depth_pass_without_llm_sets_ambition() -> None:
     draft = {
+        "_approved_craft": {"depth_seeds": True},
         "models": [
             {
                 "model": "x_a",

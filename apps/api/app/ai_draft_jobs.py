@@ -95,7 +95,11 @@ _COMPONENT_GRAIN_NOTE = (
 
 
 def pack_seed_skips_llm(seed: dict[str, Any]) -> bool:
-    """Create draft returns the pack immediately; LLM belongs on Retry AI enrichment."""
+    """Only capability shortcuts skip LLM — domain packs do not.
+
+    Production unseen prompts cannot be covered by packs. Packs may seed a
+    floor, but Create/enrich still run the gated LLM path (GenerateIR admit).
+    """
     from app.ai_generation_engine import (
         is_component_grain_draft,
         is_gold_option_a_draft,
@@ -110,11 +114,7 @@ def pack_seed_skips_llm(seed: dict[str, Any]) -> bool:
         return True
     if is_component_grain_draft(seed):
         return True
-    if not str(seed.get("domain_pack") or ""):
-        return False
-    return any(
-        isinstance(row, dict) and row.get("model") for row in (seed.get("models") or [])
-    )
+    return False
 
 
 
@@ -353,6 +353,55 @@ def _default_progress(job_id: str) -> ProgressFn:
     return emit
 
 
+def studio_generate_offline_finish(
+    prompt: str,
+    draft: dict[str, Any],
+    warnings: list[str] | None = None,
+    *,
+    available_models: list[str] | None = None,
+    installed_modules: list[str] | None = None,
+    stock_catalog: list[dict[str, Any]] | None = None,
+    connection_id: str | None = None,
+    db_factory: Callable[[], Session] | None = None,
+    locked_understanding: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """AI-off Studio Generate entrypoint mirror (PR-F.0 golden target).
+
+    UI path: ``generateStudioSession`` → ``POST /api/ai/sessions/{id}/generate``
+    → ``generate_session_route`` → ``enqueue_draft_job`` → ``run_draft_job_body``.
+
+    For residual full_app with AI assist off (or after pack close before LLM),
+    invent still runs in ``_finish_seed_draft`` (``close_odoo_architecture``)
+    **then** ``_apply_locked_craft_and_surface`` (stock-host smart buttons +
+    operator surface). Goldens must call this wrapper — not
+    ``_finish_seed_draft`` alone — or they miss post-closer invent.
+    """
+    notes = list(warnings or [])
+    out = _finish_seed_draft(
+        prompt,
+        draft,
+        notes,
+        available_models=available_models,
+        installed_modules=installed_modules,
+        stock_catalog=stock_catalog,
+        connection_id=connection_id,
+        db_factory=db_factory,
+        locked_understanding=locked_understanding,
+    )
+    notes.extend(
+        _apply_locked_craft_and_surface(
+            out, prompt, locked_understanding=locked_understanding
+        )
+    )
+    if notes:
+        existing = out.get("_warnings")
+        if isinstance(existing, list):
+            existing.extend(notes)
+        else:
+            out.setdefault("_finish_notes", notes[-40:])
+    return out
+
+
 def _finish_seed_draft(
     prompt: str,
     draft: dict[str, Any],
@@ -498,6 +547,14 @@ def _finish_seed_draft(
         installed_modules=installed_modules,
     )
     warnings.extend(close_odoo_architecture(draft, user_prompt=prompt))
+    try:
+        from app.ai_ir_trace import trace_ir
+        from app.ai_generate_ir import stamp_generate_ir
+
+        stamp_generate_ir(draft)
+        trace_ir(draft, stage="finish_seed_draft:after_close", notes=list(warnings[-20:]))
+    except Exception:  # noqa: BLE001
+        pass
     try:
         warnings.extend(attach_live_apply_contract(draft))
     except Exception as exc:  # noqa: BLE001
@@ -1002,4 +1059,5 @@ __all__ = [
     "enqueue_draft_job",
     "pack_seed_skips_llm",
     "run_draft_job_body",
+    "studio_generate_offline_finish",
 ]

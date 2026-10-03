@@ -152,6 +152,63 @@ SHAPE_DEPTH_FLOORS: dict[str, dict[str, float]] = {
 }
 
 
+def _is_thin_simple_residual(text: str) -> bool:
+    """True for enumerated-field registers that must not adopt a workspace pack.
+
+    Support Ticket Name/Subject/Description — pack lexical match must not win.
+    Hotel PMS + housekeeping collocates are NOT thin simple.
+    Dining Tables with Name/Capacity/Status + list/form is thin — not restaurant
+    workspace bleed.
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    if has_positive_match(_WORKSPACE_RE, raw):
+        return False
+    if is_transactional_line_document(raw):
+        return False
+    list_form = bool(
+        re.search(
+            r"(?i)\bsimple\s+list\b|\blist\s*\+\s*form\b|\blist\s+and\s+form\b|"
+            r"\blist\s*/\s*form\b",
+            raw,
+        )
+    )
+    # Enumerated column list (name, purpose, time in) + list/form chrome
+    cols = re.findall(
+        r"(?i)\b([a-z][a-z0-9 ]{1,40}?)\s*(?:,|/|\band\b)",
+        raw,
+    )
+    # Trailing item before period: "Name, Subject, Description."
+    cols.extend(
+        re.findall(
+            r"(?i)(?:,|/|\band\b)\s*([a-z][a-z0-9 ]{1,40}?)\s*(?:\(|\.|$)",
+            raw,
+        )
+    )
+    fieldish = []
+    seen: set[str] = set()
+    for c in cols:
+        key = c.strip().lower()
+        if not key or key in seen:
+            continue
+        if len(key.split()) > 4:
+            continue
+        if re.search(r"(?i)\b(?:odoo|module|app|workflow|company|selection)\b", key):
+            continue
+        seen.add(key)
+        fieldish.append(c.strip())
+    if len(fieldish) >= 3 and (
+        has_positive_match(_REGISTER_SHAPE_RE, raw) or list_form
+    ):
+        return True
+    if len(fieldish) >= 2 and list_form and len(raw.split()) < 60:
+        return True
+    if has_positive_match(_REGISTER_SHAPE_RE, raw) and len(raw.split()) < 40:
+        return True
+    return False
+
+
 def classify_document_shape(
     prompt: str,
     draft: dict[str, Any] | None = None,
@@ -311,6 +368,31 @@ def classify_document_shape(
             return "workspace"
     except Exception:  # noqa: BLE001
         pass
+    # Multi-entity comprehensive briefs (studios + artistes + company, …) are
+    # workspaces — not a single thin header for residual-noun rename.
+    # Multi-entity business briefs (studios + artistes + company, …) are
+    # workspaces — not a single thin header for residual-noun rename.
+    # Do NOT call classify_ambition here (it re-enters this function).
+    entity_hits = sum(
+        1
+        for tok in (
+            r"\bstudios?\b",
+            r"\bartistes?\b",
+            r"\bartists?\b",
+            r"\bcompan(?:y|ies)\b",
+            r"\bbranches?\b",
+            r"\blocations?\b",
+            r"\bequipment\b",
+            r"\bbookings?\b",
+            r"\bsessions?\b",
+            r"\bmatters?\b",
+            r"\bwarehouses?\b",
+            r"\bemployees?\b",
+        )
+        if re.search(tok, text, re.I)
+    )
+    if entity_hits >= 2 and len(text.split()) >= 8:
+        return "workspace"
     return "transactional_header"
 
 
@@ -695,11 +777,10 @@ def stamp_document_shape(
 
 
 def ensure_residual_must_do_fields(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
-    """Stamp Diagnosis Must-do fields onto the primary residual x_* model.
+    """Propose Diagnosis Must-do fields onto the primary residual x_* model.
 
     Structural: any residual full_app with declared columns (char / M2O / date /
-    selection) — not Visitor-only. Covers honesty seed when shape ≠ register
-    (Asset Checkout → transactional_header) and pack-seed overlays (Dining Tables).
+    selection) — not Visitor-only. Writes only via admit_and_apply.
     """
     notes: list[str] = []
     text = prompt or str(draft.get("_user_prompt") or "")
@@ -707,6 +788,8 @@ def ensure_residual_must_do_fields(draft: dict[str, Any], *, prompt: str = "") -
         return notes
     try:
         from app.ai_field_ir import fields_from_residual_brief
+        from app.ai_generate_ir import Proposal, admit_and_apply
+        from app.ai_ir_trace import trace_ir
     except Exception:  # noqa: BLE001
         return notes
     must = fields_from_residual_brief(text)
@@ -716,23 +799,31 @@ def ensure_residual_must_do_fields(draft: dict[str, Any], *, prompt: str = "") -
     want_mid = f"x_{slug}" if slug and not slug.startswith("x_") else (slug or "")
     models = [m for m in (draft.get("models") or []) if isinstance(m, dict) and m.get("model")]
     header = next((m for m in models if want_mid and str(m.get("model")) == want_mid), None)
-    freshly_seeded = False
+    proposals: list[Proposal] = []
     if header is None:
         mid = want_mid or "x_custom"
-        header = {
-            "model": mid,
-            "description": display or mid,
-            "mode": "new",
-            "source": "must_do_fields",
-            "fields": list(must),
-        }
-        draft.setdefault("models", []).insert(0, header)
-        notes.append(f"must_do: seeded primary {mid} with {len(must)} fields")
-        freshly_seeded = True
-    if not freshly_seeded:
+        cue = slug or mid.removeprefix("x_")
+        proposals.append(
+            Proposal(
+                kind="model",
+                name=mid,
+                payload={
+                    "description": display or mid,
+                    "mode": "new",
+                    "source": "must_do_fields",
+                    "fields": [dict(r) | {"source": "must_do_fields"} for r in must],
+                },
+                source_cue=cue,
+                rationale="must-do primary residual",
+                proposer="ai_document_shape.must_do",
+                confidence=0.95,
+            )
+        )
+        notes.append(f"must_do: propose primary {mid} with {len(must)} fields")
+    else:
+        mid = str(header.get("model") or "")
         fields = [f for f in (header.get("fields") or []) if isinstance(f, dict)]
         have = {str(f.get("name") or "") for f in fields}
-        added = 0
         for row in must:
             name = str(row.get("name") or "")
             if not name:
@@ -743,23 +834,50 @@ def ensure_residual_must_do_fields(draft: dict[str, Any], *, prompt: str = "") -
                         continue
                     have_t = str(existing.get("ttype") or "char").lower()
                     want_t = str(row.get("ttype") or "char").lower()
-                    # Upgrade weak char/text, AND correct date↔datetime when Must-do knows.
                     if have_t != want_t and (
                         (have_t in {"char", "text", ""} and want_t not in {None, "char", ""})
                         or (have_t in {"date", "datetime"} and want_t in {"date", "datetime"})
                     ):
+                        # Type upgrade is repair of existing field — mutate in place.
                         existing.update({k: v for k, v in row.items() if k != "name"})
                         notes.append(f"must_do: upgraded {name} to {row.get('ttype')}")
                     break
                 continue
-            fields.append(dict(row))
+            payload = {k: v for k, v in row.items() if k != "name"}
+            payload["model"] = mid
+            payload["source"] = "must_do_fields"
+            kind = (
+                "o2m"
+                if payload.get("ttype") == "one2many"
+                else ("m2o" if payload.get("ttype") == "many2one" else "field")
+            )
+            cue = str(row.get("string") or name).lower()
+            proposals.append(
+                Proposal(
+                    kind=kind,  # type: ignore[arg-type]
+                    name=name,
+                    payload=payload,
+                    source_cue=cue,
+                    rationale="must-do field from brief",
+                    proposer="ai_document_shape.must_do",
+                    confidence=0.95,
+                )
+            )
             have.add(name)
-            added += 1
-        header["fields"] = fields
-        if added:
-            notes.append(f"must_do: +{added} fields on {header.get('model')}")
+        if proposals:
+            notes.append(f"must_do: propose +{len(proposals)} fields on {mid}")
+    if proposals:
+        trace_ir(draft, stage="ensure_residual_must_do:before_admit")
+        _, gate = admit_and_apply(draft, proposals)
+        notes.extend(gate)
+        trace_ir(draft, stage="ensure_residual_must_do:after_admit")
+    # Refresh header for depends after possible admit.
+    models = [m for m in (draft.get("models") or []) if isinstance(m, dict) and m.get("model")]
+    header = next((m for m in models if want_mid and str(m.get("model")) == want_mid), None)
+    if header is None and models:
+        header = models[0]
     depends = [str(x) for x in (draft.get("depends") or []) if x]
-    for field in header.get("fields") or []:
+    for field in (header or {}).get("fields") or []:
         if not isinstance(field, dict):
             continue
         rel = str(field.get("relation") or "")
@@ -1287,6 +1405,12 @@ def honor_operator_brief(draft: dict[str, Any], *, user_prompt: str = "") -> lis
     notes: list[str] = []
     prompt = user_prompt or str(draft.get("_user_prompt") or "")
     try:
+        from app.ai_ir_trace import trace_ir
+
+        trace_ir(draft, stage="honor_operator_brief:start", notes=[])
+    except Exception:  # noqa: BLE001
+        pass
+    try:
         from app.ai_operator_brief import attach_operator_brief
 
         attach_operator_brief(draft, user_prompt=prompt)
@@ -1398,6 +1522,12 @@ def honor_operator_brief(draft: dict[str, Any], *, user_prompt: str = "") -> lis
         from app.ai_rules import completeness_checklist
 
         draft["_completeness"] = completeness_checklist(draft, user_prompt=prompt)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from app.ai_ir_trace import trace_ir
+
+        trace_ir(draft, stage="honor_operator_brief:end", notes=notes[-20:])
     except Exception:  # noqa: BLE001
         pass
     return notes

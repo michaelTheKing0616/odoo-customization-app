@@ -142,6 +142,10 @@ def title_is_grounded(display: str, prompt: str, *, pack_display_name: str = "")
     from app.ai_operator_brief import intent_corpus
 
     blob = intent_corpus(prompt or "").lower()
+    # Phrase-in-brief: stopword-heavy titles ("Super Market") are still grounded
+    # when that exact phrase appears in the operator prompt.
+    if _norm(text) and _norm(text) in _norm(prompt or ""):
+        return True
     disp = set(extract_prompt_nouns(text)) - _TITLE_STOP
     if not disp:
         return False

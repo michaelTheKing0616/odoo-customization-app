@@ -113,6 +113,18 @@ class Settings(BaseSettings):
     ai_critique: str = "auto"
     # Write verbatim final LLM prompt payloads to .cache/ai_llm_prompts/ (UAT hop debug)
     ai_log_llm_prompts: bool = False
+    # Dump draft IR after Generate passes → .cache/ai_ir_trace/ (handoff L1 order-of-ops)
+    ai_ir_trace: bool = False
+    # Opt-in craft flags for residual Generate (handoff T5) — default off = cue-only
+    ai_craft_company_scoping: bool = False
+    ai_craft_money_slots: bool = False
+    ai_craft_depth_seeds: bool = False
+    ai_craft_purchase_link: bool = False
+    ai_craft_partner_links: bool = False
+    # Date default; Datetime only via cue or this craft flag (handoff §4.9).
+    ai_craft_datetime_over_date: bool = False
+    # Scrub mutate retired — always assert-only; purge via enforce_closed_generate_ir.
+    ai_ir_scrub_mutate: bool = False
     # Production-shape / apply-readiness always run on enrich + reuse merge (not configurable).
     # Self-consistency vote/merge on scaffold + workflow steps: off|on (default off)
     ai_self_consistency: str = "off"
@@ -141,6 +153,9 @@ class Settings(BaseSettings):
     google_oauth_client_secret: str = ""
     github_oauth_client_id: str = ""
     github_oauth_client_secret: str = ""
+    microsoft_oauth_client_id: str = ""
+    microsoft_oauth_client_secret: str = ""
+    microsoft_oauth_tenant: str = "common"
 
     app_admin_email: str = ""
     app_admin_password: str = ""

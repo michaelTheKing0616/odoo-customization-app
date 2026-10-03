@@ -609,7 +609,7 @@ def test_ensure_transaction_document_links_skips_purchase_on_sales_order() -> No
 
 
 def test_operations_job_keeps_purchase_link_sales_order_does_not() -> None:
-    """Any-domain work/job header may MRO-link purchase.order; retail sales must not."""
+    """Ops job keeps PO when brief cues purchase; retail sales never keep PO."""
     from app.ai_apply_readiness import (
         ensure_transaction_document_links,
         scrub_misapplied_stock_document_links,
@@ -617,6 +617,7 @@ def test_operations_job_keeps_purchase_link_sales_order_does_not() -> None:
 
     job_status = "[('draft', 'Draft'), ('in_progress', 'In progress'), ('done', 'Done')]"
     draft = {
+        "_user_prompt": "field service jobs linked to purchase orders and RFQs",
         "depends": ["purchase"],
         "reuse": {"models": ["purchase.order"]},
         "models": [
@@ -661,6 +662,35 @@ def test_operations_job_keeps_purchase_link_sales_order_does_not() -> None:
     sale_names = {f["name"] for f in by_id["x_store_order"]["fields"]}
     assert "x_purchase_order_id" in job_names
     assert "x_purchase_order_id" not in sale_names
+
+
+def test_operations_job_without_purchase_cue_scrubs_po_link() -> None:
+    """Class-wide: job token alone must not keep Purchase Order Identity."""
+    from app.ai_apply_readiness import scrub_misapplied_stock_document_links
+
+    draft = {
+        "_user_prompt": "field service jobs with checklist lines",
+        "depends": ["purchase"],
+        "reuse": {"models": ["purchase.order"]},
+        "models": [
+            {
+                "model": "x_fdy_job",
+                "description": "Job",
+                "is_workflow": True,
+                "fields": [
+                    {"name": "x_name", "ttype": "char"},
+                    {
+                        "name": "x_purchase_order_id",
+                        "ttype": "many2one",
+                        "relation": "purchase.order",
+                    },
+                ],
+            }
+        ],
+    }
+    scrub_misapplied_stock_document_links(draft)
+    names = {f["name"] for f in draft["models"][0]["fields"]}
+    assert "x_purchase_order_id" not in names
 
 
 def test_ensure_campaign_order_links() -> None:
@@ -1017,17 +1047,21 @@ def test_promote_retail_depth_seeds_clears_depth_gap() -> None:
 
 def test_ensure_header_line_models_scaffolds_transfer_and_count_lines() -> None:
     from app.ai_apply_readiness import ensure_header_line_models
+    from app.ai_generate_ir_lint import invent_outside_admit_violations
 
     draft = _thin_supermarket_draft()
     notes = ensure_header_line_models(draft)
     mids = {m["model"] for m in draft["models"]}
     assert "x_branch_transfer_line" in mids
     assert "x_inventory_count_line" in mids
-    assert any("scaffolded x_branch_transfer_line" in n for n in notes)
+    assert any("propose scaffold x_branch_transfer_line" in n for n in notes)
+    assert any("admitted model x_branch_transfer_line" in n for n in notes)
+    assert invent_outside_admit_violations(draft) == []
     transfer = next(m for m in draft["models"] if m["model"] == "x_branch_transfer")
     assert "x_product_id" not in {f["name"] for f in transfer["fields"]}
     line = next(m for m in draft["models"] if m["model"] == "x_branch_transfer_line")
     assert any(f.get("name") == "x_transfer_id" for f in line["fields"])
+    assert str(line.get("source") or "") == "apply_readiness"
 
 
 def test_prune_transfer_country_field() -> None:
@@ -1085,8 +1119,6 @@ def test_thin_supermarket_reaches_ten_after_production_shape() -> None:
     run_production_shape_pass(draft)
     assert "depth_models" not in depth_gaps(draft, "comprehensive")
     scored = draft_scorecard(draft, user_prompt=PROMPT)
-    # production_shape does not run close_odoo_architecture; remaining 0.8 is
-    # workflow-without-status (closer). Live-apply contract must still be ready.
     assert scored["score_0_10"] >= 9.2
     assert draft.get("_live_apply", {}).get("ready") is True
     assert draft.get("_depth", {}).get("ok") is True

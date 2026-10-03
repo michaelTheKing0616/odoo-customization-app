@@ -488,9 +488,54 @@ def synthesize_smart_buttons_from_relations(draft: dict[str, Any]) -> list[str]:
     return notes
 
 
-def _ensure_currency_on_amounts(draft: dict[str, Any]) -> list[str]:
-    notes: list[str] = []
+def _craft_enabled(key: str) -> bool:
+    """Residual craft defaults off unless settings or draft._approved_craft opt in."""
+    try:
+        from app.settings import settings
+
+        if bool(getattr(settings, f"ai_craft_{key}", False)):
+            return True
+    except Exception:  # noqa: BLE001
+        pass
+    return False
+
+
+def _approved_craft(draft: dict[str, Any]) -> dict[str, Any]:
+    raw = draft.get("_approved_craft")
+    return raw if isinstance(raw, dict) else {}
+
+
+def _money_cued(prompt: str) -> bool:
+    return bool(
+        re.search(
+            r"(?i)\b(?:amount|currency|price|total|money|monetary|billing|invoice\s+amount|"
+            r"cost|fee|payment)\b",
+            prompt or "",
+        )
+    )
+
+
+def propose_currency_on_amounts(draft: dict[str, Any]) -> list[Any]:
+    """Propose currency M2O when money is cued or craft.money_slots is approved."""
+    from app.ai_generate_ir import Proposal
+
+    craft = _approved_craft(draft)
+    prompt = str(draft.get("_user_prompt") or "")
+    money = bool(
+        craft.get("money_slots")
+        or _craft_enabled("money_slots")
+        or _money_cued(prompt)
+    )
+    if not money:
+        return []
+    out: list[Proposal] = []
+    cue = None
+    if re.search(r"(?i)\b(?:currency|price|money|monetary|billing|fee|payment|cost)\b", prompt):
+        cue = "currency"
+    elif re.search(r"(?i)\b(?:amount|total)\b", prompt):
+        cue = "amount"
     for m in _models(draft):
+        mid = str(m.get("model") or "")
         names = _field_names(m)
         fields = list(m.get("fields") or [])
         has_amount = any(
@@ -500,40 +545,59 @@ def _ensure_currency_on_amounts(draft: dict[str, Any]) -> list[str]:
             for f in fields
         )
         if has_amount and "x_currency_id" not in names:
-            fields.append(
-                {
-                    "name": "x_currency_id",
-                    "ttype": "many2one",
-                    "string": "Currency",
-                    "relation": "res.currency",
-                }
+            out.append(
+                Proposal(
+                    kind="m2o",
+                    name="x_currency_id",
+                    payload={
+                        "model": mid,
+                        "ttype": "many2one",
+                        "string": "Currency",
+                        "relation": "res.currency",
+                        "craft_key": "money_slots",
+                    },
+                    source_cue=cue,
+                    rationale="currency companion for amount field",
+                    proposer="ai_depth.propose_currency",
+                    confidence=0.9,
+                )
             )
-            m["fields"] = fields
-            notes.append(f"depth: currency on {m.get('model')}")
-    return notes
+    return out
 
 
-def _ensure_company_on_transactional(
-    draft: dict[str, Any], ambition: Ambition
-) -> list[str]:
-    """Add x_company_id only when the brief cues multi-company / legal-entity split.
-
-    Thin residuals (Maintenance tickets, Field work) must not spray Company on
-    Identity — class-wide, not Maintenance-only.
-    """
-    if ambition != "comprehensive":
+def _ensure_currency_on_amounts(draft: dict[str, Any]) -> list[str]:
+    """Currency M2O only via GenerateIR gate (propose → merge → apply)."""
+    props = propose_currency_on_amounts(draft)
+    if not props:
         return []
+    from app.ai_generate_ir import admit_and_apply
+
+    _, notes = admit_and_apply(draft, props)
+    return [n for n in notes if "admitted" in n or "rejected" in n]
+
+
+def propose_company_on_transactional(
+    draft: dict[str, Any], ambition: Ambition
+) -> list[Any]:
+    """Propose x_company_id only when multi-company is cued or craft.company_scoping."""
+    from app.ai_generate_ir import Proposal
+
+    craft = _approved_craft(draft)
     prompt = str(draft.get("_user_prompt") or "")
+    cued = False
     try:
         from app.multi_company_pack import prompt_asks_multi_company
 
-        if not prompt_asks_multi_company(prompt):
-            return []
+        cued = bool(prompt_asks_multi_company(prompt))
     except Exception:  # noqa: BLE001
-        if not re.search(r"(?i)\bmulti[\s-]?compan|legal[\s-]?entit", prompt):
-            return []
-    notes: list[str] = []
+        cued = bool(re.search(r"(?i)\bmulti[\s-]?compan|legal[\s-]?entit", prompt))
+    if not (cued or craft.get("company_scoping") or _craft_enabled("company_scoping")):
+        return []
+    if ambition != "comprehensive" and not cued and not craft.get("company_scoping"):
+        return []
+    out: list[Proposal] = []
     for m in _models(draft):
+        mid = str(m.get("model") or "")
         names = _field_names(m)
         fields = [f for f in (m.get("fields") or []) if isinstance(f, dict)]
         needs = (
@@ -543,24 +607,45 @@ def _ensure_company_on_transactional(
             or any("amount" in str(f.get("name") or "") for f in fields)
         )
         if needs and "x_company_id" not in names:
-            fields.append(
-                {
-                    "name": "x_company_id",
-                    "ttype": "many2one",
-                    "string": "Company",
-                    "relation": "res.company",
-                }
+            out.append(
+                Proposal(
+                    kind="m2o",
+                    name="x_company_id",
+                    payload={
+                        "model": mid,
+                        "ttype": "many2one",
+                        "string": "Company",
+                        "relation": "res.company",
+                        "craft_key": "company_scoping",
+                    },
+                    source_cue="multi-company" if cued else None,
+                    rationale="company scoping on transactional header",
+                    proposer="ai_depth.propose_company",
+                    confidence=0.85,
+                )
             )
-            m["fields"] = fields
-            notes.append(f"depth: company on {m.get('model')}")
-    return notes
+    return out
+
+
+def _ensure_company_on_transactional(
+    draft: dict[str, Any], ambition: Ambition
+) -> list[str]:
+    """Add x_company_id only via GenerateIR gate (handoff T5)."""
+    props = propose_company_on_transactional(draft, ambition)
+    if not props:
+        return []
+    from app.ai_generate_ir import admit_and_apply
+
+    _, notes = admit_and_apply(draft, props)
+    return [n for n in notes if "admitted" in n or "rejected" in n]
 
 
 def _ensure_workflow_minimum_fields(draft: dict[str, Any]) -> list[str]:
-    """Workflow models should carry status + code.
+    """Workflow models should carry status + code — via GenerateIR admit only.
 
     When the brief cues a state range (Draft→Done), honor those endpoints —
     never invent Cancel / extra junk that the brief did not list.
+    Selection alignment on *existing* status fields is repair (not invent).
     """
     notes: list[str] = []
     prompt = str(draft.get("_user_prompt") or "")
@@ -574,6 +659,10 @@ def _ensure_workflow_minimum_fields(draft: dict[str, Any]) -> list[str]:
             selection = selection_literal_from_keys(stated)
     except Exception:  # noqa: BLE001
         stated = []
+
+    from app.ai_generate_ir import Proposal, admit_and_apply
+
+    proposals: list[Proposal] = []
     for m in _models(draft):
         names = _field_names(m)
         if (
@@ -582,22 +671,28 @@ def _ensure_workflow_minimum_fields(draft: dict[str, Any]) -> list[str]:
             and not m.get("is_workflow")
         ):
             continue
+        mid = str(m.get("model") or "")
         fields = list(m.get("fields") or [])
         if "x_status" not in names and "x_state" not in names:
             fname = "x_state" if stated else "x_status"
-            fields.append(
-                {
-                    "name": fname,
-                    "ttype": "selection",
-                    "string": "State" if fname == "x_state" else "Status",
-                    "selection": selection,
-                    "required": True,
-                    "default": stated[0] if stated else "draft",
-                }
-            )
-            notes.append(
-                f"depth: {fname} on {m.get('model')}"
-                + (f" ({', '.join(stated)})" if stated else "")
+            proposals.append(
+                Proposal(
+                    kind="field",
+                    name=fname,
+                    payload={
+                        "model": mid,
+                        "ttype": "selection",
+                        "string": "State" if fname == "x_state" else "Status",
+                        "selection": selection,
+                        "required": True,
+                        "default": stated[0] if stated else "draft",
+                        "source": "depth_workflow",
+                    },
+                    source_cue="structural_default",
+                    rationale="complete declared workflow model",
+                    proposer="ai_depth.ensure_workflow_minimum",
+                    confidence=0.95,
+                )
             )
             names.add(fname)
         elif stated:
@@ -614,18 +709,27 @@ def _ensure_workflow_minimum_fields(draft: dict[str, Any]) -> list[str]:
                     f"{', '.join(stated)}"
                 )
         if "x_code" not in names and "x_reference" not in names:
-            fields.insert(
-                1 if fields and fields[0].get("name") == "x_name" else 0,
-                {
-                    "name": "x_code",
-                    "ttype": "char",
-                    "string": "Reference",
-                    "help": "Sequence / reference — wire ir.sequence later",
-                },
+            proposals.append(
+                Proposal(
+                    kind="field",
+                    name="x_code",
+                    payload={
+                        "model": mid,
+                        "ttype": "char",
+                        "string": "Reference",
+                        "help": "Sequence / reference — wire ir.sequence later",
+                        "source": "depth_workflow",
+                    },
+                    source_cue="structural_default",
+                    rationale="reference companion on workflow model",
+                    proposer="ai_depth.ensure_workflow_minimum",
+                    confidence=0.9,
+                )
             )
-            notes.append(f"depth: reference code on {m.get('model')}")
-        m["fields"] = fields
         m["is_workflow"] = True
+    if proposals:
+        _, gate_notes = admit_and_apply(draft, proposals)
+        notes.extend(n for n in gate_notes if "admitted" in n or "rejected" in n)
     return notes
 
 
@@ -932,13 +1036,18 @@ def seed_operational_loop_models(
 ) -> list[str]:
     """Deterministically add substantive ops-loop models when under the model floor.
 
-    Does not invent domain jargon — generic roles renamed only by parent FK.
-    Skips roles already present. Never adds type/tag/client mini-CRM stubs.
+    Opt-in (handoff T5): thin residual full_app never auto-seeds party/rate/expense
+    hubs unless ``_approved_craft.depth_seeds`` / ``AI_CRAFT_DEPTH_SEEDS`` — cue-driven
+    O2Ms come from Must-do / ensure_cued_o2m_satellites instead.
     """
     notes: list[str] = []
     from app.ai_document_shape import additive_model_growth_blocked
     from app.ai_stock_first import forbid_new_models_from_draft, is_reuse_rich
 
+    craft = _approved_craft(draft)
+    if not (craft.get("depth_seeds") or _craft_enabled("depth_seeds")):
+        # Handoff T5: automatic ops-loop seeds (x_rate / x_party / …) are opt-in craft.
+        return notes
     if (
         draft.get("_component")
         or is_reuse_rich(draft)
@@ -1024,6 +1133,9 @@ def seed_operational_loop_models(
     ]
 
     blocked = forbid_new_models_from_draft(draft)
+    from app.ai_generate_ir import Proposal, admit_and_apply
+
+    proposals: list[Proposal] = []
     for mid, desc, keywords, opts in seeds:
         if need <= 0:
             break
@@ -1044,18 +1156,42 @@ def seed_operational_loop_models(
         desc_neutral = _neutral_seed_description(
             desc, parent_label=parent_label, user_prompt=prompt
         )
-        draft.setdefault("models", []).append(
-            {
-                "model": model_name,
-                "description": desc_neutral,
-                "mode": "new",
-                "fields": fields,
-                "source": "depth_seed",
-            }
+        cue = next(
+            (kw for kw in keywords if re.search(rf"(?i)\b{re.escape(kw)}\b", prompt)),
+            keywords[0] if keywords else "depth_seed",
+        )
+        proposals.append(
+            Proposal(
+                kind="model",
+                name=model_name,
+                payload={
+                    "description": desc_neutral,
+                    "mode": "new",
+                    "fields": fields,
+                    "source": "depth_seed",
+                    "craft_key": "depth_seeds",
+                },
+                source_cue=cue,
+                rationale=f"ops-loop seed for {desc_neutral}",
+                proposer="ai_depth.seed_operational_loop",
+                confidence=0.75,
+            )
         )
         known.add(model_name)
         need -= 1
-        notes.append(f"depth: seeded substantive model {model_name}")
+    if proposals:
+        _, gate_notes = admit_and_apply(draft, proposals)
+        for n in gate_notes:
+            if "admitted" in n or "rejected" in n:
+                notes.append(n)
+        admitted_names = {
+            str(m.get("model"))
+            for m in _models(draft)
+            if isinstance(m, dict) and m.get("source") == "depth_seed"
+        }
+        for prop in proposals:
+            if prop.name in admitted_names:
+                notes.append(f"depth: seeded substantive model {prop.name}")
     return notes
 
 
@@ -1075,27 +1211,42 @@ def _is_branch_model(model: dict[str, Any]) -> bool:
 def ensure_country_on_branch_for_global_prompt(
     draft: dict[str, Any], user_prompt: str
 ) -> list[str]:
-    """Add x_country_id (res.country) on branch models when prompt implies multi-country ops."""
-    if not _GLOBAL_PROMPT_RE.search(user_prompt or ""):
+    """Propose x_country_id (res.country) on branch models when prompt implies multi-country ops."""
+    match = _GLOBAL_PROMPT_RE.search(user_prompt or "")
+    if not match:
         return []
-    notes: list[str] = []
+    if not draft.get("_user_prompt"):
+        draft["_user_prompt"] = user_prompt
+    # Cue must appear inside IR prompt tokens (full prompt is one token).
+    cue = match.group(0).strip().lower()
+    from app.ai_generate_ir import Proposal, admit_and_apply
+
+    proposals: list[Proposal] = []
     for m in _models(draft):
         if not _is_branch_model(m):
             continue
         names = _field_names(m)
         if "x_country_id" in names:
             continue
-        m.setdefault("fields", [])
-        if isinstance(m["fields"], list):
-            m["fields"].append(
-                {
-                    "name": "x_country_id",
+        mid = str(m.get("model") or "")
+        proposals.append(
+            Proposal(
+                kind="m2o",
+                name="x_country_id",
+                payload={
+                    "model": mid,
                     "ttype": "many2one",
                     "relation": "res.country",
                     "string": "Country",
-                }
+                    "source": "depth",
+                },
+                source_cue=cue,
+                proposer="depth.ensure_country_on_branch",
             )
-            notes.append(f"depth: added x_country_id on {m.get('model')} (global prompt)")
+        )
+    if not proposals:
+        return []
+    _, notes = admit_and_apply(draft, proposals)
     return notes
 
 
@@ -1283,6 +1434,12 @@ def apply_deterministic_depth(
         notes.extend(_ensure_currency_on_amounts(out))
         notes.extend(_ensure_company_on_transactional(out, amb))
         notes.extend(synthesize_smart_buttons_from_relations(out))
+    try:
+        from app.ai_ir_trace import trace_ir
+
+        trace_ir(out, stage="after_deterministic_depth", notes=notes)
+    except Exception:  # noqa: BLE001
+        pass
     out["_depth"] = build_depth_block(out, ambition=amb)
     gaps = out["_depth"]["gaps"]
     gaps_no_seed = _gaps_for_metrics(out["_depth"]["metrics_without_seeds"])
@@ -1504,4 +1661,6 @@ __all__ = [
     "strip_unsafe_automations",
     "seed_operational_loop_models",
     "ensure_min_automations",
+    "propose_currency_on_amounts",
+    "propose_company_on_transactional",
 ]

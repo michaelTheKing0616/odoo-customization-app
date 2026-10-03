@@ -198,6 +198,8 @@ _STAGE_INVENT_STRING_RE = re.compile(
 )
 
 # Sources that densify/pad/Flash invent without an operator cue.
+# Empty string is NOT invent — hand-authored / fixture fields must survive
+# canonicalize and architecture-close (Rate Unit selection, etc.).
 _INVENT_DROP_SOURCES = frozenset(
     {
         "domain_briefing",
@@ -214,7 +216,6 @@ _INVENT_DROP_SOURCES = frozenset(
         "must_do",
         "proposal",
         "constraint_ast",
-        "",
     }
 )
 
@@ -1105,11 +1106,28 @@ def _is_stage_invent_field(field: dict[str, Any]) -> bool:
 
 
 def _should_drop_invent_field(field: dict[str, Any]) -> bool:
-    """Drop invent-family fields from density/pack/Flash/empty-source or Selection."""
+    """Drop invent-family fields from density/pack/Flash — not bare authored fixtures.
+
+    Selection alone used to force-drop every ``x_rate_unit`` even when the field
+    was hand-authored for canonicalize/architecture close. Invent sources still
+    scrub; cue-less residual Generate still proposes→gate instead of silent keep.
+    """
     source = str(field.get("source") or "")
     if source in _INVENT_DROP_SOURCES:
         return True
-    if str(field.get("ttype") or "") == "selection":
+    # Empty source + selection: only drop when the invent family name is a
+    # generic spray label without a model-local string override from packs.
+    if str(field.get("ttype") or "") == "selection" and source in {
+        "density",
+        "domain_density",
+        "flash",
+        "llm",
+        "enrich",
+        "pad",
+        "depth_seed",
+        "domain_briefing",
+        "pack_default",
+    }:
         return True
     return False
 

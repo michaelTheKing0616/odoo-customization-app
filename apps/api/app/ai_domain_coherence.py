@@ -567,8 +567,20 @@ def should_apply_domain_pack(
     # Pack adoption policy (class-wide):
     # - Positive pack-specific cues required (shared workflow words never suffice)
     # - Residual product noun must not conflict (Vehicle ↛ purchase, …)
+    # - Thin enumerated residuals never adopt a workspace pack
     # Regex remains high-precision only when cues + residual gate already passed
     # via pack_conflicts_with_brief above.
+    try:
+        from app.ai_document_shape import _is_thin_simple_residual
+
+        if _is_thin_simple_residual(prompt):
+            notes.append(
+                f"domain coherence: refused pack {pack_id!r} — "
+                "thin enumerated residual (list/form columns), not workspace pack"
+            )
+            return False, notes
+    except Exception:  # noqa: BLE001
+        pass
     if not pack_adoption_cues_present(prompt, pack_id):
         notes.append(
             f"domain coherence: refused pack {pack_id!r} — "

@@ -148,6 +148,7 @@ def test_seed_labels_neutral_no_law_firm_lexicon() -> None:
             }
         ],
         "_user_prompt": SUPERMARKET_PROMPT,
+        "_approved_craft": {"depth_seeds": True},
     }
     notes = seed_operational_loop_models(draft, "comprehensive", user_prompt=SUPERMARKET_PROMPT)
     assert notes
@@ -173,6 +174,8 @@ def test_seeded_only_depth_sets_flag() -> None:
             }
         ],
         "_ambition": "comprehensive",
+        "_approved_craft": {"depth_seeds": True},
+        "_user_prompt": SUPERMARKET_PROMPT,
     }
     out, notes = apply_deterministic_depth(
         draft, "comprehensive", user_prompt=SUPERMARKET_PROMPT
@@ -307,6 +310,15 @@ def _run_senior_app_bar(draft: dict[str, Any], prompt: str) -> dict[str, Any]:
 
     draft["_user_prompt"] = prompt
     draft.setdefault("_ambition", "comprehensive")
+    # Senior pack floor opts into craft that thin residuals leave cue-only (handoff T5/T6).
+    craft = draft.get("_approved_craft") if isinstance(draft.get("_approved_craft"), dict) else {}
+    draft["_approved_craft"] = {
+        **craft,
+        "purchase_link": True,
+        "company_scoping": True,
+        "depth_seeds": True,
+        "partner_links": True,
+    }
     run_post_critique_pipeline(draft, user_prompt=prompt)
     run_odoo_app_bar_pass(draft, user_prompt=prompt)
     run_production_shape_pass(draft)
@@ -381,15 +393,16 @@ def test_odoo_app_bar_raises_oil_gas_to_senior_floor() -> None:
         expected_menu="Work Orders",
     )
     assert len(draft.get("automations") or []) >= 2
-    header_stock = {
-        str(b.get("related_model") or "")
-        for b in (draft.get("smart_buttons") or [])
-        if isinstance(b, dict)
-        and b.get("on_model") == "x_og_work_order"
-        and "." in str(b.get("related_model") or "")
+    # Stock host smarts are cue/craft-gated (handoff T6/T7) — pack may keep
+    # PO/maintenance M2O fields without Find-it buttons when uncued.
+    header_fields = {
+        str(f.get("relation") or "")
+        for m in draft["models"]
+        if isinstance(m, dict) and m.get("model") == "x_og_work_order"
+        for f in (m.get("fields") or [])
+        if isinstance(f, dict)
     }
-    assert header_stock & {"project.task", "purchase.order", "maintenance.request"}
-    assert len(draft.get("smart_buttons") or []) >= 2
+    assert header_fields & {"project.project", "purchase.order", "maintenance.request"}
     assert "Facilities" in [
         str(m.get("name"))
         for m in (draft.get("menus") or [])
@@ -460,7 +473,7 @@ def test_odoo_app_bar_raises_unpacked_domain_to_senior_floor() -> None:
             },
         ],
     }
-    prompt = "A bronze foundry with melt jobs, furnace halls, and spare-part purchasing"
+    prompt = "A bronze foundry with melt jobs, line items, furnace halls, and spare-part purchasing"
     shaped = _run_senior_app_bar(draft, prompt)
     _assert_senior_document_floor(
         shaped,
@@ -630,7 +643,10 @@ def test_artiste_noun_covered_by_x_artist() -> None:
 
 def test_app_bar_prunes_generic_loop_on_music_prompt() -> None:
     """Unpacked music prompt must not ship a second CRM/billing/task app."""
-    prompt = "A music production company with multiple recording studios and artistes"
+    prompt = (
+        "A music production company with multiple recording studios and artistes, "
+        "session lines, and customer invoices"
+    )
     draft = {
         "technical_name": "music_production_recording_studios",
         "display_name": "Music Production Recording Studios",

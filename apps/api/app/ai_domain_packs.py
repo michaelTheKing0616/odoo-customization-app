@@ -1017,8 +1017,15 @@ def match_domain_pack(prompt: str) -> tuple[str, dict[str, Any]] | None:
     if not text:
         return None
     # Inherit-and-wire field packs must not steal a vertical pack ("new menu").
+    # Helpdesk/ticket residual apps often say "don't clone project.task" — still pack.
     if classify_grain(intent_corpus(text) or text) == "field_pack":
-        return None
+        try:
+            from app.ai_domain_coherence import helpdesk_ticket_intent
+
+            if not helpdesk_ticket_intent(text):
+                return None
+        except Exception:  # noqa: BLE001
+            return None
     # Marketing copy that mentions restaurant/retail as examples must not
     # steal a POS receipt Option A prompt into a vertical pack.
     if is_pos_receipt_prompt(text) or is_cbn_currency_rates_prompt(text):
@@ -1249,6 +1256,168 @@ def prune_extraneous_models(
     return notes
 
 
+_PACK_SPRAY_NAMES = frozenset(
+    {
+        "x_company_id",
+        "company_id",
+        "x_purchase_order_id",
+        "x_po_id",
+        "x_purchase_id",
+        "x_invoice_id",
+        "x_bill_id",
+        "x_move_id",
+        "x_currency_id",
+        "x_partner_id",
+        "x_contact_id",
+        "x_customer_id",
+        "x_client_id",
+    }
+)
+_PACK_SPRAY_RELS = frozenset(
+    {"res.company", "purchase.order", "account.move", "res.partner", "res.currency"}
+)
+
+
+def _pack_field_is_spray(field: dict[str, Any]) -> bool:
+    name = str(field.get("name") or "")
+    rel = str(field.get("relation") or "")
+    return name in _PACK_SPRAY_NAMES or rel in _PACK_SPRAY_RELS
+
+
+def pack_model_proposals(
+    pack: dict[str, Any],
+    *,
+    proposer: str = "domain_pack",
+    only_models: set[str] | None = None,
+    only_fields_on: dict[str, set[str]] | None = None,
+) -> list[Any]:
+    """Build GenerateIR proposals from a pack body (spray fields proposed alone)."""
+    from app.ai_generate_ir import Proposal
+
+    proposals: list[Any] = []
+    only_fields_on = only_fields_on or {}
+
+    for pm in pack.get("models") or []:
+        if not isinstance(pm, dict) or not pm.get("model"):
+            continue
+        mid = str(pm["model"])
+        leaf = mid.removeprefix("x_")
+        raw_fields = [
+            f for f in (pm.get("fields") or []) if isinstance(f, dict) and f.get("name")
+        ]
+
+        add_full_model = only_models is None or mid in only_models
+        field_filter = only_fields_on.get(mid)
+
+        if not add_full_model and field_filter is None:
+            continue
+
+        safe: list[dict[str, Any]] = []
+        spray: list[dict[str, Any]] = []
+        for f in raw_fields:
+            fname = str(f["name"])
+            if field_filter is not None and fname not in field_filter:
+                # When only filling missing fields, ignore others.
+                if not add_full_model:
+                    continue
+            row = {**copy.deepcopy(f), "source": "pack_seed"}
+            if _pack_field_is_spray(row):
+                spray.append(row)
+            else:
+                safe.append(row)
+
+        if add_full_model:
+            payload: dict[str, Any] = {
+                "description": pm.get("description") or leaf,
+                "mode": pm.get("mode") or "new",
+                "source": "pack_seed",
+                "is_workflow": bool(pm.get("is_workflow")),
+                "fields": safe,
+            }
+            if isinstance(pm.get("state_field"), dict):
+                payload["state_field"] = copy.deepcopy(pm["state_field"])
+            if pm.get("mixins"):
+                payload["mixins"] = copy.deepcopy(pm["mixins"])
+            proposals.append(
+                Proposal(
+                    kind="model",
+                    name=mid,
+                    payload=payload,
+                    source_cue=leaf,
+                    rationale=f"domain pack model {mid}",
+                    proposer=proposer,
+                    confidence=0.9,
+                )
+            )
+            # Spray on new models — separate proposals (cue or reject).
+            for row in spray:
+                proposals.append(
+                    _pack_field_proposal(mid, row, proposer=proposer, leaf=leaf)
+                )
+        elif field_filter is not None:
+            for row in safe + spray:
+                if str(row.get("name") or "") not in field_filter:
+                    continue
+                proposals.append(
+                    _pack_field_proposal(mid, row, proposer=proposer, leaf=leaf)
+                )
+    return proposals
+
+
+def _pack_field_proposal(
+    mid: str,
+    row: dict[str, Any],
+    *,
+    proposer: str,
+    leaf: str,
+) -> Any:
+    from app.ai_generate_ir import Proposal
+
+    fname = str(row["name"])
+    payload = {k: v for k, v in row.items() if k != "name"}
+    payload["model"] = mid
+    kind = (
+        "o2m"
+        if payload.get("ttype") == "one2many"
+        else ("m2o" if payload.get("ttype") == "many2one" else "field")
+    )
+    cue = str(row.get("string") or fname).lower().removeprefix("x_") or leaf
+    return Proposal(
+        kind=kind,  # type: ignore[arg-type]
+        name=fname,
+        payload=payload,
+        source_cue=cue,
+        rationale=f"domain pack field {mid}.{fname}",
+        proposer=proposer,
+        confidence=0.85,
+    )
+
+def admit_pack_models(
+    draft: dict[str, Any],
+    pack: dict[str, Any],
+    *,
+    proposer: str = "domain_pack",
+    only_models: set[str] | None = None,
+    only_fields_on: dict[str, set[str]] | None = None,
+) -> list[str]:
+    """Admit pack models/fields via admit_and_apply; return gate notes."""
+    from app.ai_generate_ir import admit_and_apply
+    from app.ai_ir_trace import trace_ir
+
+    proposals = pack_model_proposals(
+        pack,
+        proposer=proposer,
+        only_models=only_models,
+        only_fields_on=only_fields_on,
+    )
+    if not proposals:
+        return []
+    trace_ir(draft, stage="merge_domain_pack:before_admit")
+    _, gate = admit_and_apply(draft, proposals)
+    trace_ir(draft, stage="merge_domain_pack:after_admit", notes=gate[-12:])
+    return gate
+
+
 def merge_domain_pack(
     draft: dict[str, Any],
     pack: dict[str, Any],
@@ -1256,6 +1425,9 @@ def merge_domain_pack(
     hints_only: bool = False,
 ) -> tuple[dict[str, Any], list[str]]:
     """Fill missing models/fields/smart_buttons/automations from pack; keep AI extras.
+
+    New models/fields invent only via ``admit_and_apply`` (Wave 2). Selection/relation
+    upgrades on already-present fields remain direct mutate (collapse allowlist).
 
     ``hints_only=True`` (residual full_app LLM drafts): seed reuse_hints / tags only —
     do not override display_name, grain, or inject Contacts host smart buttons.
@@ -1297,22 +1469,23 @@ def merge_domain_pack(
     out["depends"] = depends or ["base"]
 
     draft_models = {
-        m.get("model"): m
+        str(m.get("model")): m
         for m in (out.get("models") or [])
         if isinstance(m, dict) and m.get("model")
     }
-    merged_models: list[dict[str, Any]] = []
+    missing_models: set[str] = set()
+    missing_fields: dict[str, set[str]] = {}
     seen: set[str] = set()
 
     for pm in pack.get("models") or []:
         if not isinstance(pm, dict) or not pm.get("model"):
             continue
-        mid = pm["model"]
+        mid = str(pm["model"])
         seen.add(mid)
         if mid not in draft_models:
-            merged_models.append(copy.deepcopy(pm))
-            warnings.append(f"domain pack added model {mid}")
+            missing_models.add(mid)
             leaf = mid.replace("x_", "")
+            warnings.append(f"domain pack added model {mid}")
             if any(
                 k in leaf
                 for k in (
@@ -1331,23 +1504,21 @@ def merge_domain_pack(
                     "(LLM under-covered scaffold — raise prompt adherence)"
                 )
             continue
-        dm = copy.deepcopy(draft_models[mid])
+        dm = draft_models[mid]
         existing_by_name = {
             f.get("name"): f
             for f in (dm.get("fields") or [])
             if isinstance(f, dict) and f.get("name")
         }
-        fields = list(dm.get("fields") or [])
         for pf in pm.get("fields") or []:
             if not isinstance(pf, dict) or not pf.get("name"):
                 continue
-            fname = pf["name"]
+            fname = str(pf["name"])
             if fname not in existing_by_name:
-                fields.append(copy.deepcopy(pf))
+                missing_fields.setdefault(mid, set()).add(fname)
                 warnings.append(f"domain pack added field {mid}.{fname}")
                 continue
-            # Pack owns selection literals on pack fields (LLM "more keys" is not better —
-            # discovery/trial on a matter file beats intake→open→billed→closed).
+            # Pack owns selection literals / relation retargets on existing fields.
             df = existing_by_name[fname]
             if (
                 str(pf.get("ttype") or df.get("ttype")) == "selection"
@@ -1369,7 +1540,6 @@ def merge_domain_pack(
                     f"domain pack upgraded selection {mid}.{fname} "
                     f"({len(draft_keys)}→{len(pack_keys)} keys)"
                 )
-            # Fix wrong M2O targets (e.g. fee earner → res.users instead of x_attorney)
             if (
                 str(pf.get("ttype") or df.get("ttype")) == "many2one"
                 and pf.get("relation")
@@ -1378,7 +1548,7 @@ def merge_domain_pack(
                 pref = str(pf["relation"])
                 cur = str(df.get("relation") or "")
                 prefer_pack = False
-                fname = str(df.get("name") or pf.get("name") or "").lower()
+                fname_l = str(df.get("name") or pf.get("name") or "").lower()
                 _STOCK_RELATIONS = {
                     "hr.employee",
                     "account.move",
@@ -1390,8 +1560,7 @@ def merge_domain_pack(
                     "account.analytic.line",
                     "account.analytic.account",
                 }
-                # Keep generic assignee/login on res.users even if pack points at staff
-                if fname in {"x_assignee_id", "assignee_id", "x_user_id", "user_id"}:
+                if fname_l in {"x_assignee_id", "assignee_id", "x_user_id", "user_id"}:
                     prefer_pack = False
                 elif pref in _STOCK_RELATIONS and (
                     cur.startswith("x_") or cur in {"res.users", "", "False"}
@@ -1418,7 +1587,6 @@ def merge_domain_pack(
             if pf.get("required") and not df.get("required"):
                 df["required"] = True
                 warnings.append(f"domain pack set required {mid}.{fname}")
-        dm["fields"] = fields
         if pm.get("description") and dm.get("description") != pm.get("description"):
             dm["description"] = pm["description"]
             warnings.append(f"domain pack restored description {mid}")
@@ -1434,13 +1602,17 @@ def merge_domain_pack(
             warnings.append(f"domain pack restored state_field {mid}")
         if pm.get("mixins") and not dm.get("mixins"):
             dm["mixins"] = copy.deepcopy(pm["mixins"])
-        merged_models.append(dm)
 
-    for mid, dm in draft_models.items():
-        if mid not in seen:
-            merged_models.append(copy.deepcopy(dm))
-
-    out["models"] = merged_models
+    if missing_models or missing_fields:
+        # only_models empty set = no full-model admits; None = admit all (seed path).
+        gate = admit_pack_models(
+            out,
+            pack,
+            proposer="ai_domain_packs",
+            only_models=missing_models,
+            only_fields_on=missing_fields or None,
+        )
+        warnings.extend(gate)
 
     def _pack_btn_ok(btn: dict[str, Any]) -> bool:
         # Residual full_app / non-field_pack: packs must not inject Contacts host buttons.
@@ -1527,6 +1699,8 @@ __all__ = [
     "subscription_pack",
     "match_domain_pack",
     "merge_domain_pack",
+    "admit_pack_models",
+    "pack_model_proposals",
     "retrieve_domain_pack",
     "retrieve_domain_pack_lexical",
     "score_domain_pack",

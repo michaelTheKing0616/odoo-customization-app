@@ -68,6 +68,32 @@ def _load_law_firm_gold() -> dict[str, Any]:
     return json.loads(LAW_FIRM_GOLD.read_text())
 
 
+def _retail_craft(draft: dict[str, Any]) -> dict[str, Any]:
+    """Comprehensive retail fixtures opt into craft thin residuals leave cue-only."""
+    craft = draft.get("_approved_craft") if isinstance(draft.get("_approved_craft"), dict) else {}
+    draft["_approved_craft"] = {
+        **craft,
+        "company_scoping": True,
+        "purchase_link": True,
+        "depth_seeds": True,
+        "money_slots": True,
+        "partner_links": True,
+    }
+    return draft
+
+
+def _shape_fixture(loader, prompt: str) -> dict[str, Any]:
+    import copy
+
+    from app.ai_post_critique import run_post_critique_pipeline
+    from app.ai_production_shape import run_production_shape_pass
+
+    draft = _retail_craft(copy.deepcopy(loader()))
+    draft["_user_prompt"] = prompt
+    run_post_critique_pipeline(draft, user_prompt=prompt)
+    run_production_shape_pass(draft)
+    return draft
+
 def test_sanitize_removes_top_level_error() -> None:
     draft = {"error": "Invalid JSON", "models": []}
     clean = sanitize_draft_payload(draft)
@@ -311,6 +337,7 @@ def test_hub_anchor_seeds_optional_fk() -> None:
                 ],
             },
         ],
+        "_approved_craft": {"depth_seeds": True},
     }
     seed_operational_loop_models(
         draft, "comprehensive", user_prompt=SUPERMARKET_PROMPT
@@ -1186,30 +1213,17 @@ def test_production_shape_adds_search_views() -> None:
 
 
 def test_scorecard_fixture5_floor_after_passes() -> None:
-    import copy
-
     from app.ai_draft_scorecard import draft_scorecard
-    from app.ai_post_critique import run_post_critique_pipeline
-    from app.ai_production_shape import run_production_shape_pass
 
     raw = draft_scorecard(_load_fixture5(), user_prompt=SUPERMARKET3_PROMPT)
     assert raw["score_0_10"] >= 5.7
-    draft = copy.deepcopy(_load_fixture5())
-    run_post_critique_pipeline(draft, user_prompt=SUPERMARKET3_PROMPT)
-    run_production_shape_pass(draft)
+    draft = _shape_fixture(_load_fixture5, SUPERMARKET3_PROMPT)
     scored = draft_scorecard(draft, user_prompt=SUPERMARKET3_PROMPT)
     assert scored["score_0_10"] >= 9.5
 
 
 def test_apply_readiness_company_rules_match_fields() -> None:
-    import copy
-
-    from app.ai_post_critique import run_post_critique_pipeline
-    from app.ai_production_shape import run_production_shape_pass
-
-    draft = copy.deepcopy(_load_fixture5())
-    run_post_critique_pipeline(draft, user_prompt=SUPERMARKET3_PROMPT)
-    run_production_shape_pass(draft)
+    draft = _shape_fixture(_load_fixture5, SUPERMARKET3_PROMPT)
     branch = next(m for m in draft["models"] if m["model"] == "x_branch")
     names = {f["name"] for f in branch["fields"]}
     assert "x_company_id" in names
@@ -1220,14 +1234,7 @@ def test_apply_readiness_company_rules_match_fields() -> None:
 
 
 def test_apply_readiness_dedupes_transfer_smart_buttons() -> None:
-    import copy
-
-    from app.ai_post_critique import run_post_critique_pipeline
-    from app.ai_production_shape import run_production_shape_pass
-
-    draft = copy.deepcopy(_load_fixture5())
-    run_post_critique_pipeline(draft, user_prompt=SUPERMARKET3_PROMPT)
-    run_production_shape_pass(draft)
+    draft = _shape_fixture(_load_fixture5, SUPERMARKET3_PROMPT)
     labels = [
         b["label"]
         for b in draft.get("smart_buttons") or []
@@ -1237,15 +1244,9 @@ def test_apply_readiness_dedupes_transfer_smart_buttons() -> None:
 
 
 def test_apply_readiness_fixture5_scores_ten() -> None:
-    import copy
-
     from app.ai_draft_scorecard import draft_scorecard
-    from app.ai_post_critique import run_post_critique_pipeline
-    from app.ai_production_shape import run_production_shape_pass
 
-    draft = copy.deepcopy(_load_fixture5())
-    run_post_critique_pipeline(draft, user_prompt=SUPERMARKET3_PROMPT)
-    run_production_shape_pass(draft)
+    draft = _shape_fixture(_load_fixture5, SUPERMARKET3_PROMPT)
     scored = draft_scorecard(draft, user_prompt=SUPERMARKET3_PROMPT)
     assert scored["score_0_10"] >= 9.9
     assert not any("duplicate smart button" in f.get("detail", "") for f in scored["findings"])
@@ -1312,9 +1313,6 @@ def test_llm_deepen_malformed_json_does_not_raise(monkeypatch: pytest.MonkeyPatc
 
 def test_scorecard_regression_monotonic_supermarket_fixtures() -> None:
     from app.ai_draft_scorecard import draft_scorecard
-    from app.ai_post_critique import run_post_critique_pipeline
-    from app.ai_production_shape import run_production_shape_pass
-    import copy
 
     scores: list[float] = []
     for loader, prompt in (
@@ -1323,9 +1321,7 @@ def test_scorecard_regression_monotonic_supermarket_fixtures() -> None:
         (_load_fixture4, SUPERMARKET3_PROMPT),
         (_load_fixture5, SUPERMARKET3_PROMPT),
     ):
-        d = copy.deepcopy(loader())
-        run_post_critique_pipeline(d, user_prompt=prompt)
-        run_production_shape_pass(d)
+        d = _shape_fixture(loader, prompt)
         scores.append(draft_scorecard(d, user_prompt=prompt)["score_0_10"])
     assert scores[-1] >= 8.0
     assert scores[-1] >= scores[0] - 1.0
@@ -1343,20 +1339,13 @@ def test_expert_review_improves_score_mocked() -> None:
 
 def test_gen2_13_calibration_bands() -> None:
     """Known-bad fixtures must not score 10; post-shape fixture6 lands in honest band."""
-    import copy
-
     from app.ai_draft_scorecard import draft_scorecard
-    from app.ai_post_critique import run_post_critique_pipeline
-    from app.ai_production_shape import run_production_shape_pass
 
     raw6 = draft_scorecard(_load_fixture6(), user_prompt=SUPERMARKET3_PROMPT)
     assert raw6["score_0_10"] < 10.0
     assert raw6["validators"]["all_green"] is False
 
-    shaped = copy.deepcopy(_load_fixture6())
-    shaped["_user_prompt"] = SUPERMARKET3_PROMPT
-    run_post_critique_pipeline(shaped, user_prompt=SUPERMARKET3_PROMPT)
-    run_production_shape_pass(shaped)
+    shaped = _shape_fixture(_load_fixture6, SUPERMARKET3_PROMPT)
     scored6 = draft_scorecard(shaped, user_prompt=SUPERMARKET3_PROMPT)
     assert scored6["score_0_10"] >= 9.5
     assert scored6["score_0_10"] < 10.0
@@ -1372,9 +1361,7 @@ def test_gen2_13_calibration_bands() -> None:
     law = draft_scorecard(_load_law_firm_gold(), user_prompt="law firm matter billing")["score_0_10"]
     assert law < 10.0
 
-    shaped5 = copy.deepcopy(_load_fixture5())
-    run_post_critique_pipeline(shaped5, user_prompt=SUPERMARKET3_PROMPT)
-    run_production_shape_pass(shaped5)
+    shaped5 = _shape_fixture(_load_fixture5, SUPERMARKET3_PROMPT)
     s5 = draft_scorecard(shaped5, user_prompt=SUPERMARKET3_PROMPT)["score_0_10"]
     assert s5 >= 9.5
 

@@ -168,6 +168,8 @@ def _company_field() -> dict[str, Any]:
         "relation": "res.company",
         "string": "Company",
         "on_delete": "restrict",
+        "craft_key": "company_scoping",
+        "source": "domain_density",
     }
 
 
@@ -177,34 +179,71 @@ def _m2o(name: str, relation: str, string: str) -> dict[str, Any]:
         "ttype": "many2one",
         "relation": relation,
         "string": string,
+        "source": "domain_density",
     }
 
 
-def _add_model(
-    draft: dict[str, Any],
+def _model_proposal(
     *,
     mid: str,
     description: str,
     fields: list[dict[str, Any]],
     is_workflow: bool = False,
-) -> None:
-    known = set(_models_index(draft))
-    if mid in known:
-        return
-    names = {str(f.get("name")) for f in fields if isinstance(f, dict)}
-    if "x_company_id" not in names:
-        fields = [*fields, _company_field()]
-    row: dict[str, Any] = {
-        "model": mid,
-        "description": description,
-        "mode": "new",
-        "fields": fields,
-        "source": "domain_density",
-        "is_workflow": is_workflow,
-    }
-    if is_workflow:
-        row["mixins"] = ["mail.thread", "mail.activity.mixin"]
-    draft.setdefault("models", []).append(row)
+    source_cue: str | None = None,
+    add_company: bool = False,
+) -> Any:
+    """Build a GenerateIR model Proposal (admit is the only writer)."""
+    from app.ai_generate_ir import Proposal
+
+    known_fields = [dict(f) for f in fields if isinstance(f, dict)]
+    names = {str(f.get("name")) for f in known_fields}
+    # Company only when multi-company is cued/craft — never silent spray.
+    if add_company and "x_company_id" not in names:
+        known_fields = [*known_fields, _company_field()]
+    for f in known_fields:
+        f.setdefault("source", "domain_density")
+    cue = (source_cue or _leaf(mid) or mid).strip()
+    return Proposal(
+        kind="model",
+        name=mid,
+        payload={
+            "description": description,
+            "mode": "new",
+            "source": "domain_density",
+            "is_workflow": is_workflow,
+            "fields": known_fields,
+        },
+        source_cue=cue,
+        rationale=f"domain density role {mid}",
+        proposer="ai_domain_density",
+        confidence=0.75,
+    )
+
+
+def _field_proposal(
+    *,
+    model: str,
+    field: dict[str, Any],
+    source_cue: str | None = None,
+) -> Any:
+    from app.ai_generate_ir import Proposal
+
+    name = str(field.get("name") or "")
+    payload = {k: v for k, v in field.items() if k != "name"}
+    payload["model"] = model
+    payload.setdefault("source", "domain_density")
+    kind = "o2m" if payload.get("ttype") == "one2many" else (
+        "m2o" if payload.get("ttype") == "many2one" else "field"
+    )
+    return Proposal(
+        kind=kind,  # type: ignore[arg-type]
+        name=name,
+        payload=payload,
+        source_cue=source_cue or name.removeprefix("x_"),
+        rationale=f"domain density field {model}.{name}",
+        proposer="ai_domain_density",
+        confidence=0.7,
+    )
 
 
 def _deliverable_leaf(draft: dict[str, Any], prompt: str) -> str | None:
@@ -237,7 +276,10 @@ def ensure_domain_density(
     user_prompt: str = "",
     ambition: str = "",
 ) -> list[str]:
-    """Add missing residual roles. Never clone stock invoices/staff/tasks/events."""
+    """Propose missing residual roles; only admit_and_apply may write them."""
+    from app.ai_generate_ir import admit_and_apply
+    from app.ai_ir_trace import trace_ir
+
     notes: list[str] = []
     if draft.get("domain_pack"):
         return notes
@@ -265,35 +307,79 @@ def ensure_domain_density(
     blocked = _blocked_ids(draft)
     reused = reuse_models_from_draft(draft)
     ops = stock_ops_reused(draft)
+    proposals: list[Any] = []
+    pending: set[str] = set()
+
+    def _index() -> dict[str, dict[str, Any]]:
+        out = _models_index(draft)
+        for mid in pending:
+            out.setdefault(mid, {"model": mid, "fields": []})
+        return out
+
+    def _non_line() -> set[str]:
+        return {
+            mid
+            for mid in _index()
+            if mid.startswith("x_") and not mid.endswith("_line")
+        }
 
     def _room() -> bool:
-        return len(_non_line_ids(draft)) < target
+        return len(_non_line()) < target
 
     def _may_add(mid: str) -> bool:
-        return mid not in blocked and _leaf(mid) not in STAFF_ROLE_LEAVES
+        return mid not in blocked and _leaf(mid) not in STAFF_ROLE_LEAVES and mid not in _index()
 
-    site = _find_by_tokens(draft, _SITE_TOKENS)
-    party = _find_by_tokens(draft, _PARTY_TOKENS)
-    engagement = _find_by_tokens(draft, _ENGAGEMENT_TOKENS)
+    def _find(tokens: tuple[str, ...]) -> str | None:
+        for mid, model in _index().items():
+            if mid.endswith("_line"):
+                continue
+            hay = f"{_leaf(mid)} {model.get('description') or ''}".lower()
+            if any(tok in hay for tok in tokens):
+                return mid
+        return None
+
+    def _queue_model(
+        *,
+        mid: str,
+        description: str,
+        fields: list[dict[str, Any]],
+        is_workflow: bool = False,
+        source_cue: str | None = None,
+    ) -> None:
+        if not _may_add(mid):
+            return
+        proposals.append(
+            _model_proposal(
+                mid=mid,
+                description=description,
+                fields=fields,
+                is_workflow=is_workflow,
+                source_cue=source_cue or _leaf(mid),
+            )
+        )
+        pending.add(mid)
+
+    site = _find(_SITE_TOKENS)
+    party = _find(_PARTY_TOKENS)
+    engagement = _find(_ENGAGEMENT_TOKENS)
     if not site:
         leaf = _prompt_token_hit(prompt, _SITE_TOKENS)
         if leaf and _may_add(f"x_{leaf}"):
             site = f"x_{leaf}"
-            _add_model(
-                draft,
+            _queue_model(
                 mid=site,
                 description=_title(leaf),
                 fields=[
                     {"name": "x_name", "ttype": "char", "string": "Name", "required": True},
                 ],
+                source_cue=leaf,
             )
-            notes.append(f"density: site from prompt {site}")
+            notes.append(f"density: propose site {site}")
     if not party:
         leaf = _prompt_token_hit(prompt, _PARTY_TOKENS)
         if leaf and _may_add(f"x_{leaf}"):
             party = f"x_{leaf}"
-            _add_model(
-                draft,
+            _queue_model(
                 mid=party,
                 description=_title(leaf),
                 fields=[
@@ -303,10 +389,12 @@ def ensure_domain_density(
                         "ttype": "many2one",
                         "relation": "res.partner",
                         "string": "Contact",
+                        "craft_key": "partner_links",
                     },
                 ],
+                source_cue=leaf,
             )
-            notes.append(f"density: party from prompt {party}")
+            notes.append(f"density: propose party {party}")
     if not engagement:
         leaf = _prompt_token_hit(prompt, _ENGAGEMENT_TOKENS)
         if not leaf:
@@ -322,23 +410,24 @@ def ensure_domain_density(
                     "ttype": "many2one",
                     "relation": "res.partner",
                     "string": "Contact",
+                    "craft_key": "partner_links",
                 },
             ]
             if "hr.employee" in reused or "hr.employee" in ops:
                 fields.append(_m2o("x_employee_id", "hr.employee", "Employee"))
-            _add_model(
-                draft,
+            _queue_model(
                 mid=engagement,
                 description=_title(leaf),
                 is_workflow=True,
                 fields=fields,
+                source_cue=leaf,
             )
-            notes.append(f"density: residual from prompt {engagement}")
-    booking = _find_by_tokens(draft, _BOOKING_TOKENS)
-    asset = _find_by_tokens(draft, _ASSET_TOKENS)
-    rate = _find_by_tokens(draft, _RATE_TOKENS)
-    agreement = _find_by_tokens(draft, _AGREEMENT_TOKENS)
-    expense = _find_by_tokens(draft, _EXPENSE_TOKENS)
+            notes.append(f"density: propose residual {engagement}")
+    booking = _find(_BOOKING_TOKENS)
+    asset = _find(_ASSET_TOKENS)
+    rate = _find(_RATE_TOKENS)
+    agreement = _find(_AGREEMENT_TOKENS)
+    expense = _find(_EXPENSE_TOKENS)
 
     prompt_has_booking = any(
         re.search(rf"\b{re.escape(tok)}s?\b", prompt, re.I) for tok in _BOOKING_TOKENS
@@ -349,15 +438,15 @@ def ensure_domain_density(
         and _room()
         and prompt_has_booking
         and "calendar.event" not in reused
-        and _may_add("x_booking")
     ):
-        booking = "x_session" if "x_session" not in _models_index(draft) else "x_booking"
+        booking = "x_session" if "x_session" not in _index() else "x_booking"
         if _may_add(booking):
-            _add_model(
-                draft,
+            cue = "session" if booking.endswith("session") else "booking"
+            _queue_model(
                 mid=booking,
                 description="Booking",
                 is_workflow=True,
+                source_cue=cue,
                 fields=[
                     {"name": "x_name", "ttype": "char", "string": "Name", "required": True},
                     _m2o(
@@ -380,9 +469,10 @@ def ensure_domain_density(
                     {"name": "x_end", "ttype": "datetime", "string": "End"},
                 ],
             )
-            notes.append(f"density: booking document {booking}")
+            notes.append(f"density: propose booking {booking}")
 
     deliverable_leaf = _deliverable_leaf(draft, prompt)
+    # Also search pending+draft for output tokens
     if deliverable_leaf and _room() and _may_add(f"x_{deliverable_leaf}"):
         d_id = f"x_{deliverable_leaf}"
         fields = [
@@ -403,14 +493,14 @@ def ensure_domain_density(
             )
         if party:
             fields.append(_m2o(f"x_{_leaf(party)}_id", party, _title(_leaf(party))))
-        _add_model(
-            draft,
+        _queue_model(
             mid=d_id,
             description=_title(deliverable_leaf),
             is_workflow=True,
             fields=fields,
+            source_cue=deliverable_leaf,
         )
-        notes.append(f"density: deliverable {d_id}")
+        notes.append(f"density: propose deliverable {d_id}")
 
     if site and not asset and _room() and _may_add("x_equipment"):
         asset = "x_equipment"
@@ -427,10 +517,10 @@ def ensure_domain_density(
             if brief and brief.equipment_types
             else "[('standard','Standard'),('other','Other')]"
         )
-        _add_model(
-            draft,
+        _queue_model(
             mid=asset,
             description="Equipment",
+            source_cue="equipment",
             fields=[
                 {"name": "x_name", "ttype": "char", "string": "Name", "required": True},
                 _m2o(f"x_{_leaf(site)}_id", site, _title(_leaf(site))),
@@ -450,19 +540,23 @@ def ensure_domain_density(
                 },
             ],
         )
-        notes.append(f"density: equipment roster on {site}")
+        notes.append(f"density: propose equipment on {site}")
+
+    # Re-read asset after potential queue (still pending until admit)
+    if asset is None:
+        asset = _find(_ASSET_TOKENS) or ("x_equipment" if "x_equipment" in pending else None)
 
     if (
         asset
         and _room()
         and _may_add("x_maintenance")
-        and not _find_by_tokens(draft, ("maintenance", "repair"))
+        and not _find(("maintenance", "repair"))
     ):
-        _add_model(
-            draft,
+        _queue_model(
             mid="x_maintenance",
             description="Maintenance",
             is_workflow=True,
+            source_cue="maintenance",
             fields=[
                 {"name": "x_name", "ttype": "char", "string": "Name", "required": True},
                 _m2o(f"x_{_leaf(asset)}_id", asset, _title(_leaf(asset))),
@@ -476,14 +570,14 @@ def ensure_domain_density(
                 {"name": "x_notes", "ttype": "text", "string": "Notes"},
             ],
         )
-        notes.append(f"density: maintenance log on {asset}")
+        notes.append(f"density: propose maintenance on {asset}")
 
     if site and not rate and _room() and _may_add("x_rate"):
         rate = "x_rate"
-        _add_model(
-            draft,
+        _queue_model(
             mid=rate,
             description="Rate",
+            source_cue="rate",
             fields=[
                 {"name": "x_name", "ttype": "char", "string": "Name", "required": True},
                 _m2o(f"x_{_leaf(site)}_id", site, _title(_leaf(site))),
@@ -498,6 +592,7 @@ def ensure_domain_density(
                     "ttype": "many2one",
                     "relation": "res.currency",
                     "string": "Currency",
+                    "craft_key": "money_slots",
                 },
                 {
                     "name": "x_uom",
@@ -507,7 +602,7 @@ def ensure_domain_density(
                 },
             ],
         )
-        notes.append(f"density: rate card on {site}")
+        notes.append(f"density: propose rate on {site}")
 
     prompt_wants_agreement = any(
         re.search(rf"\b{re.escape(tok)}s?\b", prompt, re.I) for tok in _AGREEMENT_TOKENS
@@ -538,25 +633,25 @@ def ensure_domain_density(
             fields.append(
                 _m2o(f"x_{_leaf(engagement)}_id", engagement, _title(_leaf(engagement)))
             )
-        _add_model(
-            draft,
+        _queue_model(
             mid=agreement,
             description="Agreement",
             is_workflow=True,
             fields=fields,
+            source_cue="agreement" if prompt_wants_agreement else (party or engagement or "agreement"),
         )
-        notes.append("density: agreement / license document")
+        notes.append("density: propose agreement")
 
     if (
         site
         and _room()
         and _may_add("x_unavailability")
-        and not _find_by_tokens(draft, ("unavailability", "blackout", "closure"))
+        and not _find(("unavailability", "blackout", "closure"))
     ):
-        _add_model(
-            draft,
+        _queue_model(
             mid="x_unavailability",
             description="Unavailability",
+            source_cue="unavailability",
             fields=[
                 {"name": "x_name", "ttype": "char", "string": "Name", "required": True},
                 _m2o(f"x_{_leaf(site)}_id", site, _title(_leaf(site))),
@@ -565,22 +660,22 @@ def ensure_domain_density(
                 {"name": "x_reason", "ttype": "char", "string": "Reason"},
             ],
         )
-        notes.append(f"density: unavailability calendar on {site}")
+        notes.append(f"density: propose unavailability on {site}")
 
-    deliverable = _find_by_tokens(
-        draft, tuple({deliverable_leaf} if deliverable_leaf else ()) or ("recording", "track", "output")
+    deliverable = _find(
+        tuple({deliverable_leaf} if deliverable_leaf else ()) or ("recording", "track", "output")
     )
     parent_for_rev = deliverable or booking
     if (
         parent_for_rev
         and _room()
         and _may_add("x_revision")
-        and not _find_by_tokens(draft, ("revision", "take", "version"))
+        and not _find(("revision", "take", "version"))
     ):
-        _add_model(
-            draft,
+        _queue_model(
             mid="x_revision",
             description="Revision",
+            source_cue="revision",
             fields=[
                 {"name": "x_name", "ttype": "char", "string": "Name", "required": True},
                 _m2o(
@@ -592,17 +687,17 @@ def ensure_domain_density(
                 {"name": "x_notes", "ttype": "text", "string": "Notes"},
             ],
         )
-        notes.append(f"density: revision / take on {parent_for_rev}")
+        notes.append(f"density: propose revision on {parent_for_rev}")
 
     stock_covers_expense = bool(ops & {"hr.expense", "account.move"})
     if not expense and (engagement or booking) and _room() and not stock_covers_expense and _may_add("x_expense"):
         parent = engagement or booking
         assert parent
-        _add_model(
-            draft,
+        _queue_model(
             mid="x_expense",
             description="Expense",
             is_workflow=True,
+            source_cue="expense",
             fields=[
                 {"name": "x_name", "ttype": "char", "string": "Name", "required": True},
                 {"name": "x_date", "ttype": "date", "string": "Date", "required": True},
@@ -618,6 +713,7 @@ def ensure_domain_density(
                     "ttype": "many2one",
                     "relation": "res.currency",
                     "string": "Currency",
+                    "craft_key": "money_slots",
                 },
                 _m2o(f"x_{_leaf(parent)}_id", parent, _title(_leaf(parent))),
                 {
@@ -628,7 +724,7 @@ def ensure_domain_density(
                 },
             ],
         )
-        notes.append(f"density: job costing on {parent}")
+        notes.append(f"density: propose expense on {parent}")
     elif expense:
         emodel = _models_index(draft).get(expense) or {}
         names = {
@@ -637,35 +733,54 @@ def ensure_domain_density(
             if isinstance(f, dict)
         }
         parent = engagement or booking
-        extra: list[dict[str, Any]] = []
         if "x_date" not in names:
-            extra.append({"name": "x_date", "ttype": "date", "string": "Date"})
-        if "x_amount" not in names:
-            extra.append(
-                {
-                    "name": "x_amount",
-                    "ttype": "monetary",
-                    "string": "Amount",
-                    "currency_field": "x_currency_id",
-                }
+            proposals.append(
+                _field_proposal(
+                    model=expense,
+                    field={"name": "x_date", "ttype": "date", "string": "Date"},
+                    source_cue="expense",
+                )
             )
-            extra.append(
-                {
-                    "name": "x_currency_id",
-                    "ttype": "many2one",
-                    "relation": "res.currency",
-                    "string": "Currency",
-                }
+        if "x_amount" not in names:
+            proposals.append(
+                _field_proposal(
+                    model=expense,
+                    field={
+                        "name": "x_amount",
+                        "ttype": "monetary",
+                        "string": "Amount",
+                        "currency_field": "x_currency_id",
+                        "craft_key": "money_slots",
+                    },
+                    source_cue="amount",
+                )
+            )
+            proposals.append(
+                _field_proposal(
+                    model=expense,
+                    field={
+                        "name": "x_currency_id",
+                        "ttype": "many2one",
+                        "relation": "res.currency",
+                        "string": "Currency",
+                        "craft_key": "money_slots",
+                    },
+                    source_cue="currency",
+                )
             )
         if parent and f"x_{_leaf(parent)}_id" not in names:
-            extra.append(_m2o(f"x_{_leaf(parent)}_id", parent, _title(_leaf(parent))))
-        if extra:
-            emodel.setdefault("fields", []).extend(extra)
-            emodel["is_workflow"] = True
-            notes.append(f"density: enriched job costing on {expense}")
+            proposals.append(
+                _field_proposal(
+                    model=expense,
+                    field=_m2o(f"x_{_leaf(parent)}_id", parent, _title(_leaf(parent))),
+                    source_cue=_leaf(parent),
+                )
+            )
 
-    booking_now = _find_by_tokens(draft, _BOOKING_TOKENS)
-    if booking_now:
+    booking_now = _find(_BOOKING_TOKENS) or (
+        "x_session" if "x_session" in pending else ("x_booking" if "x_booking" in pending else None)
+    )
+    if booking_now and booking_now in _models_index(draft):
         bmodel = _models_index(draft).get(booking_now) or {}
         names = {
             str(f.get("name"))
@@ -673,20 +788,29 @@ def ensure_domain_density(
             if isinstance(f, dict)
         }
         if "x_employee_id" not in names:
-            bmodel.setdefault("fields", []).append(
-                _m2o("x_employee_id", "hr.employee", "Crew")
+            proposals.append(
+                _field_proposal(
+                    model=booking_now,
+                    field=_m2o("x_employee_id", "hr.employee", "Crew"),
+                    source_cue="employee",
+                )
             )
             depends = list(draft.get("depends") or [])
             if "hr" not in depends:
                 depends.append("hr")
                 draft["depends"] = depends
-            notes.append(f"density: hr.employee crew on {booking_now}")
+            notes.append(f"density: propose hr.employee crew on {booking_now}")
 
-    if notes:
+    if proposals:
+        trace_ir(draft, stage="ensure_domain_density:before_admit")
+        _, gate = admit_and_apply(draft, proposals)
+        notes.extend(gate)
+        trace_ir(draft, stage="ensure_domain_density:after_admit")
         notes.append(
             f"density: {len(_non_line_ids(draft))} domain models (target {target})"
         )
     return notes
+
 
 
 __all__ = ["ensure_domain_density"]

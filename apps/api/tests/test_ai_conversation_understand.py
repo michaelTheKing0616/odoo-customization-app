@@ -150,6 +150,37 @@ def test_diagnosis_confirm_lock_still_requires_yes_build_this() -> None:
     assert diagnosis_confirmed({}) is False
 
 
+def test_approved_craft_edits_stamp_draft_on_attach() -> None:
+    """PR-C: Diagnosis craft toggles persist and land on draft['_approved_craft']."""
+    from app.ai_conversation.understand import (
+        Understanding,
+        apply_understanding_edits,
+        attach_understanding,
+        coerce_approved_craft,
+        dump_understanding,
+        load_understanding,
+    )
+
+    base = Understanding(title="Maintenance", grain="full_app")
+    assert coerce_approved_craft(base.approved_craft)["money_slots"] is False
+    edited = apply_understanding_edits(
+        base,
+        {"approved_craft": {"money_slots": True, "company_scoping": False}},
+    )
+    assert edited.approved_craft["money_slots"] is True
+    assert edited.approved_craft["company_scoping"] is False
+    answers: dict[str, str] = {}
+    dump_understanding(answers, edited)
+    loaded = load_understanding(answers)
+    assert loaded is not None
+    assert loaded.approved_craft["money_slots"] is True
+    draft: dict = {"models": [], "display_name": "Maintenance"}
+    attach_understanding(draft, "Build Maintenance tickets", locked=loaded)
+    craft = draft.get("_approved_craft")
+    assert isinstance(craft, dict)
+    assert craft.get("money_slots") is True
+    assert craft.get("depth_seeds") is False
+
 
 S1_CONTACTS = (
     "On Contacts (res.partner), add checkbox Preferred for delivery and "

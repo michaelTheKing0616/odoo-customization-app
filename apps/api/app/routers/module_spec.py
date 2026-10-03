@@ -175,6 +175,8 @@ class OptionAProveBody(BaseModel):
     odoo_major: int | None = None
     structural_only: bool = False
     auto_repair: bool = True
+    # Wave 5: prove endpoints default to full test-enable bar.
+    run_tests: bool = True
 
 
 class OptionARepairFeedbackBody(BaseModel):
@@ -479,7 +481,10 @@ def option_a_prove(
         body.odoo_major if body.odoo_major is not None else conn.server_version
     )
     result = prove_option_a_in_sandbox(
-        spec, odoo_major=major, auto_repair=body.auto_repair
+        spec,
+        odoo_major=major,
+        auto_repair=body.auto_repair,
+        run_tests=bool(body.run_tests),
     )
     from app.promote import stamp_option_a_promote_token
 
@@ -539,7 +544,7 @@ def option_a_repair_feedback(
         from app.promote import stamp_option_a_promote_token
 
         proved = prove_option_a_in_sandbox(
-            spec, odoo_major=major, auto_repair=False
+            spec, odoo_major=major, auto_repair=False, run_tests=True
         )
         proved = stamp_option_a_promote_token(
             db, connection_id=connection_id, result=proved

@@ -500,16 +500,72 @@ def stamp_option_a_smoke(draft: dict[str, Any], smoke: dict[str, Any]) -> None:
     attach_scorecard(draft, user_prompt=str(draft.get("_user_prompt") or ""))
 
 
+def _stamp_option_a_prove_status(
+    draft: dict[str, Any],
+    *,
+    prove_ok: bool | None,
+) -> str:
+    """PR-E: prove_status proved/failed only via resolve_class_stamp(prove_ok=…)."""
+    from app.ai_class_stamp import apply_class_stamp, resolve_class_stamp
+
+    ir = draft.get("_generation_engine")
+    ir_dict = ir if isinstance(ir, dict) else {}
+    acceptance = draft.get("_option_a_acceptance")
+    stamp = resolve_class_stamp(
+        prompt=str(draft.get("_user_prompt") or ""),
+        capability=str(ir_dict.get("capability") or "option_a_authored"),
+        grain=str(draft.get("grain") or "full_app"),
+        needs_module=True,
+        gold_artifact_id=ir_dict.get("gold_artifact_id"),
+        module_delivery=True,
+        prove_ok=prove_ok,
+    )
+    if isinstance(acceptance, dict):
+        apply_class_stamp(acceptance, stamp)
+    if ir_dict:
+        apply_class_stamp(ir_dict, stamp)
+        opt = ir_dict.get("option_a_acceptance")
+        if isinstance(opt, dict):
+            opt["prove_status"] = stamp["prove_status"]
+    draft["prove_status"] = stamp["prove_status"]
+    return str(stamp["prove_status"])
+
+
+def sandbox_verify_and_repair(
+    draft: dict[str, Any],
+    *,
+    odoo_major: int | None = None,
+    run_tests: bool = True,
+    max_attempts: int = 3,
+) -> dict[str, Any]:
+    """Tier-3 orchestrator: install → repair ≤3; proved only with run_tests=True."""
+    return prove_option_a_in_sandbox(
+        draft,
+        odoo_major=odoo_major,
+        auto_repair=True,
+        run_tests=run_tests,
+        max_attempts=max_attempts,
+    )
+
+
 def prove_option_a_in_sandbox(
     draft: dict[str, Any],
     *,
     odoo_major: int | None = None,
     auto_repair: bool = True,
+    run_tests: bool = True,
+    max_attempts: int = 3,
 ) -> dict[str, Any]:
     """Export zip -> ephemeral sandbox install -> RPC smoke -> restamp scorecard.
 
     On install fail for LLM-authored modules, feed the Odoo Fault back to the
-    author once, then retry sandbox once when the authoring gate still passes.
+    author and retry (max ``max_attempts`` installs, default 3). Gold templates
+    never auto-repair.
+
+    ``run_tests`` (default **True** for prove/promote honesty): pass through to
+    ``run_sandbox_install``. Fast in-loop callers may set ``False``; then
+    ``prove_status`` stays ``pending`` — never silent promote eligibility.
+    **``prove_status=proved`` requires ``run_tests=True`` + tests ran + smoke ok.**
     """
     from app.ai_generation_engine import is_gold_option_a_draft, is_option_a_authored_draft
     from app.module_spec_codec import export_draft_module_zip
@@ -519,7 +575,14 @@ def prove_option_a_in_sandbox(
     if not structural.get("structural_ok"):
         smoke = {**structural, "ok": False, "message": "Structural scaffold checks failed"}
         stamp_option_a_smoke(draft, smoke)
-        return {"ok": False, "draft": draft, "smoke": smoke}
+        status = _stamp_option_a_prove_status(draft, prove_ok=False)
+        return {
+            "ok": False,
+            "draft": draft,
+            "smoke": smoke,
+            "prove_status": status,
+            "promote_eligible": False,
+        }
 
     tech = str(draft.get("technical_name") or "ext_option_a")
     from app.ai_failure_ir import (
@@ -527,13 +590,15 @@ def prove_option_a_in_sandbox(
         failures_from_smoke,
         stamp_failures,
     )
-    from app.ai_repair_loop import begin_repair_attempt, lock_certified_artifacts, repair_guidance
+    from app.ai_repair_loop import lock_certified_artifacts, repair_guidance
 
     feedback_repair: dict[str, Any] | None = None
-    attempted_repair = False
     zip_bytes = b""
     result: Any = None
     smoke_holder: dict[str, Any] = {}
+    attempts = max(1, min(int(max_attempts or 3), 3))
+    install_attempt = 0
+    repairs_used = 0
 
     def _after(uid: int, models: Any, major: int) -> None:
         def execute_kw(model: str, method: str, args: list, kwargs: dict | None = None):
@@ -550,7 +615,16 @@ def prove_option_a_in_sandbox(
         smoke_holder.update(rpc_option_a_smoke(draft, execute_kw=execute_kw))
         smoke_holder["odoo_major"] = major
 
-    while True:
+    def _can_repair() -> bool:
+        return (
+            auto_repair
+            and repairs_used < attempts - 1
+            and is_option_a_authored_draft(draft)
+            and not is_gold_option_a_draft(draft)
+        )
+
+    while install_attempt < attempts:
+        install_attempt += 1
         smoke_holder.clear()
         zip_bytes = export_draft_module_zip(draft, odoo_major=odoo_major)
         result = run_sandbox_install(
@@ -559,6 +633,7 @@ def prove_option_a_in_sandbox(
             odoo_major=odoo_major,
             extra_modules=list(draft.get("depends") or []),
             after_install=_after,
+            run_tests=run_tests,
         )
         if result.ok:
             break
@@ -570,17 +645,13 @@ def prove_option_a_in_sandbox(
             "ok": False,
             "message": result.message,
             "job_id": getattr(result, "job_id", None),
+            "test_failures": list(getattr(result, "test_failures", None) or []),
+            "tests_ran": bool(getattr(result, "tests_ran", False)),
         }
-        should_repair = (
-            auto_repair
-            and not attempted_repair
-            and is_option_a_authored_draft(draft)
-            and not is_gold_option_a_draft(draft)
-        )
-        if should_repair:
-            attempted_repair = True
+        if _can_repair():
             from app.ai_option_a_feedback import repair_option_a_from_feedback
 
+            repairs_used += 1
             error_text = "\n".join(
                 part for part in (result.message or "", result.log_tail or "") if part
             )
@@ -599,7 +670,6 @@ def prove_option_a_in_sandbox(
                 "repair_count": int(draft.get("_sandbox_repair_count") or 0),
             }
         else:
-            # Do NOT burn sandbox repair budget just to stamp metadata on a failed prove.
             repair_meta = {
                 "ok": False,
                 "reason": "prove_failed_no_auto_repair",
@@ -613,8 +683,10 @@ def prove_option_a_in_sandbox(
             "message": result.message,
             "log_tail": result.log_tail,
             "checks": structural.get("checks") or [],
+            "test_failures": list(getattr(result, "test_failures", None) or []),
         }
         stamp_option_a_smoke(draft, smoke)
+        status = _stamp_option_a_prove_status(draft, prove_ok=False)
         payload: dict[str, Any] = {
             "ok": False,
             "draft": draft,
@@ -627,15 +699,19 @@ def prove_option_a_in_sandbox(
                 "ok": False,
                 "message": result.message,
                 "log_tail": result.log_tail,
+                "tests_ran": bool(getattr(result, "tests_ran", False)),
+                "test_failures": list(getattr(result, "test_failures", None) or []),
             },
-            # Keep the Odoo Fault as the primary message — budget copy stays in feedback_repair.
             "message": result.message,
+            "prove_status": status,
+            "promote_eligible": False,
+            "install_attempts": install_attempt,
+            "repairs_used": repairs_used,
         }
         if feedback_repair:
             payload["feedback_repair"] = feedback_repair
             if (
-                attempted_repair
-                and feedback_repair.get("applied")
+                feedback_repair.get("applied")
                 and feedback_repair.get("gate_status") == "pass"
             ):
                 payload["message"] = (
@@ -654,8 +730,18 @@ def prove_option_a_in_sandbox(
             elif feedback_repair.get("message") and not result.message:
                 payload["message"] = str(feedback_repair["message"])
         return payload
+    else:
+        # Loop exhausted without a successful install (should be unreachable).
+        status = _stamp_option_a_prove_status(draft, prove_ok=False)
+        return {
+            "ok": False,
+            "draft": draft,
+            "message": "Sandbox prove exhausted without a successful install",
+            "prove_status": status,
+            "promote_eligible": False,
+        }
 
-    # Install succeeded — evaluate acceptance smoke; auto-repair once on fail.
+    # Install succeeded — evaluate acceptance smoke; auto-repair remaining budget.
     smoke_attempt = 0
     while True:
         smoke = {
@@ -664,6 +750,8 @@ def prove_option_a_in_sandbox(
             "message": result.message,
             "module": result.module,
             "log_tail": result.log_tail,
+            "tests_ran": bool(getattr(result, "tests_ran", False)),
+            "test_failures": list(getattr(result, "test_failures", None) or []),
         }
         if "ok" not in smoke:
             smoke["ok"] = True
@@ -671,6 +759,8 @@ def prove_option_a_in_sandbox(
             "ok": True,
             "message": result.message,
             "module": result.module,
+            "tests_ran": bool(getattr(result, "tests_ran", False)),
+            "test_failures": list(getattr(result, "test_failures", None) or []),
         }
         stamp_option_a_smoke(draft, smoke)
         if smoke.get("ok"):
@@ -679,18 +769,12 @@ def prove_option_a_in_sandbox(
 
         fails = failures_from_smoke(smoke)
         stamp_failures(draft, fails)
-        should_repair_smoke = (
-            auto_repair
-            and not attempted_repair
-            and is_option_a_authored_draft(draft)
-            and not is_gold_option_a_draft(draft)
-            and smoke_attempt == 0
-        )
+        should_repair_smoke = _can_repair() and smoke_attempt == 0
         smoke_attempt += 1
         if should_repair_smoke:
-            attempted_repair = True
             from app.ai_option_a_feedback import repair_option_a_from_feedback
 
+            repairs_used += 1
             error_text = "\n".join(
                 part
                 for part in (
@@ -718,6 +802,7 @@ def prove_option_a_in_sandbox(
                     odoo_major=odoo_major,
                     extra_modules=list(draft.get("depends") or []),
                     after_install=_after,
+                    run_tests=run_tests,
                 )
                 if not result.ok:
                     fails_i = failures_from_sandbox_log(
@@ -733,8 +818,10 @@ def prove_option_a_in_sandbox(
                         "message": result.message,
                         "log_tail": result.log_tail,
                         "checks": structural.get("checks") or [],
+                        "test_failures": list(getattr(result, "test_failures", None) or []),
                     }
                     stamp_option_a_smoke(draft, smoke)
+                    status = _stamp_option_a_prove_status(draft, prove_ok=False)
                     return {
                         "ok": False,
                         "draft": draft,
@@ -747,11 +834,17 @@ def prove_option_a_in_sandbox(
                             "ok": False,
                             "message": result.message,
                             "log_tail": result.log_tail,
+                            "tests_ran": bool(getattr(result, "tests_ran", False)),
+                            "test_failures": list(
+                                getattr(result, "test_failures", None) or []
+                            ),
                         },
                         "message": (
                             "Acceptance repair applied, but re-install failed: "
                             f"{result.message}"
                         ),
+                        "prove_status": status,
+                        "promote_eligible": False,
                     }
                 continue
             repair_meta = feedback_repair.get("repair") or {
@@ -767,6 +860,7 @@ def prove_option_a_in_sandbox(
                 "bucket": "sandbox",
                 "repair_count": int(draft.get("_sandbox_repair_count") or 0),
             }
+        status = _stamp_option_a_prove_status(draft, prove_ok=False)
         out_fail: dict[str, Any] = {
             "ok": False,
             "draft": draft,
@@ -780,14 +874,33 @@ def prove_option_a_in_sandbox(
                 "module": result.module,
                 "message": result.message,
                 "log_tail": result.log_tail,
+                "tests_ran": bool(getattr(result, "tests_ran", False)),
+                "test_failures": list(getattr(result, "test_failures", None) or []),
             },
             "score_0_10": (draft.get("_scorecard") or {}).get("score_0_10"),
             "go_live_ready": draft.get("_go_live_ready"),
             "message": str(smoke.get("message") or "Acceptance / Option A smoke failed"),
+            "prove_status": status,
+            "promote_eligible": False,
         }
         if feedback_repair:
             out_fail["feedback_repair"] = feedback_repair
         return out_fail
+
+    # Success path — proved only when test-enable ran cleanly (PR-E).
+    tests_ran = bool(getattr(result, "tests_ran", False))
+    if run_tests and tests_ran and smoke.get("ok"):
+        prove_status = _stamp_option_a_prove_status(draft, prove_ok=True)
+    else:
+        # Smoke-only / fast loop: keep pending — never silent proved.
+        prove_status = _stamp_option_a_prove_status(draft, prove_ok=None)
+        if prove_status == "proved":
+            # Defensive: class stamp must not invent proved without prove_ok.
+            prove_status = "pending"
+            draft["prove_status"] = "pending"
+            ir = draft.get("_generation_engine")
+            if isinstance(ir, dict):
+                ir["prove_status"] = "pending"
 
     payload = {
         "ok": bool(smoke.get("ok")),
@@ -801,15 +914,27 @@ def prove_option_a_in_sandbox(
             "module": result.module,
             "message": result.message,
             "log_tail": result.log_tail,
+            "tests_ran": tests_ran,
+            "test_failures": list(getattr(result, "test_failures", None) or []),
         },
         "score_0_10": (draft.get("_scorecard") or {}).get("score_0_10"),
         "go_live_ready": draft.get("_go_live_ready"),
+        "prove_status": prove_status,
+        "promote_eligible": prove_status == "proved",
+        "install_attempts": install_attempt,
+        "repairs_used": repairs_used,
+        "run_tests": bool(run_tests),
     }
     if feedback_repair and feedback_repair.get("applied"):
         payload["feedback_repair"] = feedback_repair
         payload["message"] = (
             "Sandbox proved after AI repaired the previous error. "
             "Promote stays human. Do not click Install this app."
+            if prove_status == "proved"
+            else (
+                "Sandbox installed after AI repair (smoke only — run_tests=True "
+                "required before prove_status=proved). Promote stays human."
+            )
         )
     if payload["ok"]:
         payload["zip_bytes"] = zip_bytes
@@ -825,6 +950,7 @@ __all__ = [
     "is_option_a_runtime_block",
     "prove_option_a_in_sandbox",
     "rpc_option_a_smoke",
+    "sandbox_verify_and_repair",
     "stamp_done_bar",
     "stamp_option_a_smoke",
     "structural_option_a_smoke",

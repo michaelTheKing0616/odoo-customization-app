@@ -92,8 +92,22 @@ def human_field_label(label: str) -> str:
 
 
 
-def infer_date_or_datetime(label: str) -> str | None:
-    """Prefer Date unless time is stated or reasonably implied.
+def _datetime_craft_enabled(draft: dict | None = None) -> bool:
+    """Handoff §4.9 — Datetime-over-Date only via approved_craft / settings."""
+    if isinstance(draft, dict):
+        craft = draft.get("_approved_craft")
+        if isinstance(craft, dict) and craft.get("datetime_over_date"):
+            return True
+    try:
+        from app.settings import settings
+
+        return bool(getattr(settings, "ai_craft_datetime_over_date", False))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def infer_date_or_datetime(label: str, *, draft: dict | None = None) -> str | None:
+    """Prefer Date unless time is stated, implied, or datetime craft is on.
 
     Returns ``"date"``, ``"datetime"``, or ``None`` when the label is not
     temporal. Shared by Must-do / constraints / column-list / refine / preview
@@ -109,6 +123,8 @@ def infer_date_or_datetime(label: str) -> str | None:
         r"\bdate\s+and\s+time\b|\bat\s+\d{1,2}\s*(?:[:.]\d{2})?\s*(?:am|pm)?\b",
         low,
     ):
+        return "datetime"
+    if _datetime_craft_enabled(draft) and re.search(r"(?i)\bdate\b", low):
         return "datetime"
 
     # Time-of-day / schedule nouns (datetime even without the word "date")
@@ -433,6 +449,24 @@ def _constraint_field_spec(line: str) -> dict[str, Any] | None:
         target_raw = (m.group(2) or "").strip()
         low_label = label_raw.lower()
         low_target = target_raw.lower()
+        # «Purpose selection→Meeting / Delivery / Other» is a Selection, not an M2O.
+        if (
+            "selection" in low_label
+            or re.search(r"\s/\s", target_raw)
+            or (
+                "," not in target_raw
+                and target_raw.count("/") >= 1
+                and not re.search(r"\b(?:contact|employee|product|partner|user)\b", low_target)
+            )
+        ):
+            label = human_field_label(re.sub(r"(?i)\s*selection\s*$", "", label_raw).strip() or label_raw)
+            if label:
+                return {
+                    "name": ingenium_field_name(label, ttype="selection"),
+                    "ttype": "selection",
+                    "string": label,
+                    "selection": _selection_literal(target_raw),
+                }
         # Optional secondary «assignment note» craft stays a note on the primary —
         # never a peer model / satellite app.
         if (

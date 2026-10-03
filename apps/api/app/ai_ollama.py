@@ -540,7 +540,17 @@ def _finalize_draft_generation(
     warnings.extend(humanize_app_surface(draft))
     from app.ai_odoo_app_bar import close_odoo_architecture
 
+    try:
+        from app.ai_ir_trace import trace_ir
+        trace_ir(draft, stage="ollama_before_close", notes=warnings[-10:])
+    except Exception:
+        pass
     warnings.extend(close_odoo_architecture(draft, user_prompt=prompt))
+    try:
+        from app.ai_ir_trace import trace_ir
+        trace_ir(draft, stage="ollama_after_close", notes=warnings[-10:])
+    except Exception:
+        pass
     from app.ai_apply_readiness import filter_stale_enrich_warnings
 
     warnings = filter_stale_enrich_warnings(warnings, draft)
@@ -970,8 +980,14 @@ def draft_module_from_prompt(
         coherence_notes = list((matched[1] or {}).get("_coherence_warnings") or [])
         if coherence_notes:
             warnings.extend(coherence_notes)
+        before_pack = copy.deepcopy(draft)
         draft, pack_warnings = merge_domain_pack(draft, matched[1])
         warnings.extend(pack_warnings)
+        try:
+            from app.ai_generate_ir_enforce import gate_llm_draft_mutations
+            warnings.extend(gate_llm_draft_mutations(before_pack, draft))
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"generate_ir: pack gate skipped ({exc})")
         _emit_partial_progress(progress_callback, 3, draft)
         pack_stock = matched[1].get("reuse_stock") or draft.get("_pack_reuse_stock")
         if pack_stock:

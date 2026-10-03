@@ -520,19 +520,41 @@ def finalize_enriched_draft(
     warnings.extend(recover_residual_draft(draft, prompt=prompt))
     warnings.extend(honor_operator_brief(draft, user_prompt=prompt))
     warnings.extend(restore_pack_identity(draft, user_prompt=prompt))
+    before_pack = copy.deepcopy(draft)
     pack = load_domain_pack(str(draft.get("domain_pack") or ""))
     if pack and not additive_model_growth_blocked(draft, prompt=prompt):
         merged, merge_notes = merge_domain_pack(draft, pack)
         warnings.extend(merge_notes)
         draft.clear()
         draft.update(merged)
+        try:
+            from app.ai_generate_ir_enforce import gate_llm_draft_mutations
+
+            warnings.extend(gate_llm_draft_mutations(before_pack, draft))
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"generate_ir: pack gate skipped ({exc})")
     warnings.extend(clip_to_stock_first_floor(draft, user_prompt=prompt))
     warnings.extend(honor_operator_brief(draft, user_prompt=prompt))
     warnings.extend(sync_form_archs_to_models(draft))
+    before_app_bar = copy.deepcopy(draft)
     warnings.extend(run_post_critique_pipeline(draft, user_prompt=prompt))
     warnings.extend(run_odoo_app_bar_pass(draft, user_prompt=prompt))
     warnings.extend(run_production_shape_pass(draft))
+    try:
+        from app.ai_generate_ir_enforce import gate_llm_draft_mutations
+        from app.ai_ir_trace import trace_ir
+
+        warnings.extend(gate_llm_draft_mutations(before_app_bar, draft))
+        trace_ir(draft, stage="finalize_enriched_before_close", notes=warnings[-20:])
+    except Exception as exc:  # noqa: BLE001
+        warnings.append(f"generate_ir: enrich gate skipped ({exc})")
     warnings.extend(close_odoo_architecture(draft, user_prompt=prompt))
+    try:
+        from app.ai_ir_trace import trace_ir
+
+        trace_ir(draft, stage="finalize_enriched_after_close", notes=warnings[-20:])
+    except Exception:  # noqa: BLE001
+        pass
     warnings.extend(clip_to_stock_first_floor(draft, user_prompt=prompt))
     warnings.extend(recover_residual_draft(draft, prompt=prompt))
     warnings.extend(finalize_critique_block(draft))

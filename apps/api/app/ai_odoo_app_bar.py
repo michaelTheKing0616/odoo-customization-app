@@ -8,6 +8,7 @@ and at least one real automation. Public ORM/RPC shapes only.
 from __future__ import annotations
 
 import ast
+import os
 import re
 from html import escape
 from typing import Any
@@ -592,22 +593,32 @@ def humanize_app_surface(draft: dict[str, Any]) -> list[str]:
 
 
 def ensure_header_line_models(draft: dict[str, Any]) -> list[str]:
-    """Document headers get a line model — Odoo sale.order / purchase.order shape.
+    """Document headers get a line model — via GenerateIR gate only.
 
     When the brief already cues Checklist / Parts O2Ms, do NOT invent a third
     generic ``{mid}_line`` (Mac surface: «Rate Line For …»). Cued satellites
     own the line shape.
     """
-    notes: list[str] = []
     from app.ai_document_shape import may_add_line_satellite
+    from app.ai_generate_ir import Proposal, admit_and_apply
 
-    if not may_add_line_satellite(draft):
-        return notes
     prompt = str(draft.get("_user_prompt") or "")
+    if re.search(r"(?i)\bchecklist\b|\bparts?\s+used\b|\bparts?\b.*\bqty\b", prompt):
+        return []
+    und = draft.get("_understanding") if isinstance(draft.get("_understanding"), dict) else {}
+    must = " ".join(
+        str(x.get("label") if isinstance(x, dict) else x)
+        for x in (und.get("must_do") or [])
+    ).lower()
+    if "checklist" in must or "parts" in must:
+        return []
+    if not may_add_line_satellite(draft, prompt=prompt):
+        return []
     if re.search(r"(?i)\bchecklist\s+lines?\b|\bparts?\s+used\b", prompt):
-        return notes
+        return []
     depends = set(draft.get("depends") or [])
     by_id = _models_index(draft)
+    proposals: list[Proposal] = []
     for mid, model in list(by_id.items()):
         if not _looks_like_header(model):
             continue
@@ -617,7 +628,13 @@ def ensure_header_line_models(draft: dict[str, Any]) -> list[str]:
         if line_id in by_id:
             continue
         parent_label = short_model_label(mid, str(model.get("description") or ""))
-        fk = "x_order_id" if mid.endswith("_order") else "x_transfer_id" if "transfer" in mid else f"x_{mid.replace('x_', '')}_id"
+        fk = (
+            "x_order_id"
+            if mid.endswith("_order")
+            else "x_transfer_id"
+            if "transfer" in mid
+            else f"x_{mid.replace('x_', '')}_id"
+        )
         if mid.endswith("_work_order") or "work_order" in mid:
             fk = "x_work_order_id"
         fields: list[dict[str, Any]] = [
@@ -661,29 +678,44 @@ def ensure_header_line_models(draft: dict[str, Any]) -> list[str]:
                     "string": "Product / spare",
                 },
             )
-        line = {
-            "model": line_id,
-            "description": f"{parent_label} Line",
-            "mode": "new",
-            "source": "odoo_app_bar",
-            "fields": fields,
-        }
-        draft.setdefault("models", []).append(line)
         o2m = f"x_{line_id.replace('x_', '')}_ids"
-        if o2m not in _field_names(model):
-            model.setdefault("fields", []).append(
-                {
-                    "name": o2m,
+        if o2m in _field_names(model):
+            continue
+        # source_cue from positive line noun in brief (may_add already true)
+        cue = "lines"
+        for tok in ("lines", "items", "qty", "quantity", "hours"):
+            if re.search(rf"(?i)\b{tok}\b", prompt):
+                cue = tok
+                break
+        proposals.append(
+            Proposal(
+                kind="o2m",
+                name=o2m,
+                payload={
+                    "model": mid,
                     "ttype": "one2many",
                     "relation": line_id,
                     "relation_field": fk,
                     "string": "Lines",
                     "source": "odoo_app_bar",
-                }
+                    "line_model": {
+                        "model": line_id,
+                        "description": f"{parent_label} Line",
+                        "mode": "new",
+                        "source": "odoo_app_bar",
+                        "fields": fields,
+                    },
+                },
+                source_cue=cue,
+                rationale="document header line satellite",
+                proposer="ai_odoo_app_bar.propose_header_line",
+                confidence=0.8,
             )
-        notes.append(f"app_bar: added line model {line_id}")
-        by_id[line_id] = line
-    return notes
+        )
+    if not proposals:
+        return []
+    _, notes = admit_and_apply(draft, proposals)
+    return [n for n in notes if "admitted" in n or "rejected" in n]
 
 
 def _skip_stock_project_on_residual(
@@ -716,9 +748,10 @@ def _skip_stock_project_on_residual(
 
 
 def wire_stock_apps_from_depends(draft: dict[str, Any]) -> list[str]:
-    """If depends lists hr/maintenance/purchase/project/stock, actually link them."""
+    """If depends lists hr/maintenance/purchase/project/stock, propose links via GenerateIR."""
     notes: list[str] = []
     from app.ai_document_shape import additive_model_growth_blocked
+    from app.ai_generate_ir import Proposal, admit_and_apply
 
     if additive_model_growth_blocked(draft):
         return notes
@@ -726,6 +759,8 @@ def wire_stock_apps_from_depends(draft: dict[str, Any]) -> list[str]:
     forbidden = {str(x).strip().lower() for x in (brief.get("forbidden_bridges") or []) if x}
     depends = {str(x) for x in (draft.get("depends") or []) if str(x) not in forbidden}
     by_id = _models_index(draft)
+    prompt = str(draft.get("_user_prompt") or "")
+    craft = draft.get("_approved_craft") if isinstance(draft.get("_approved_craft"), dict) else {}
 
     def _pick(tokens: tuple[str, ...]) -> dict[str, Any] | None:
         for mid, model in by_id.items():
@@ -745,23 +780,58 @@ def wire_stock_apps_from_depends(draft: dict[str, Any]) -> list[str]:
             None,
         )
     asset = _pick(("asset", "equipment", "well"))
+    proposals: list[Proposal] = []
 
-    def _add_m2o(model: dict[str, Any] | None, name: str, relation: str, label: str) -> None:
+    def _queue(
+        model: dict[str, Any] | None,
+        *,
+        name: str,
+        relation: str,
+        label: str,
+        source_cue: str,
+        craft_key: str | None = None,
+        require_cue: bool = False,
+        cue_re: str | None = None,
+    ) -> None:
         if not model:
             return
         if name in _field_names(model):
             return
-        model.setdefault("fields", []).append(
-            {
-                "name": name,
-                "ttype": "many2one",
-                "relation": relation,
-                "string": label,
-                "help": f"Link-only — use the {relation} app; do not duplicate it.",
-                "source": "odoo_app_bar",
-            }
+        mid = str(model.get("model") or "")
+        if not mid:
+            return
+        craft_ok = bool(craft_key and craft.get(craft_key))
+        if craft_key:
+            try:
+                from app.settings import settings
+
+                craft_ok = craft_ok or bool(getattr(settings, f"ai_craft_{craft_key}", False))
+            except Exception:  # noqa: BLE001
+                pass
+        cued = True
+        if require_cue or cue_re:
+            cued = bool(cue_re and re.search(cue_re, prompt)) or craft_ok
+            if not cued:
+                return
+        proposals.append(
+            Proposal(
+                kind="m2o",
+                name=name,
+                payload={
+                    "model": mid,
+                    "ttype": "many2one",
+                    "relation": relation,
+                    "string": label,
+                    "help": f"Link-only — use the {relation} app; do not duplicate it.",
+                    "source": "odoo_app_bar",
+                    **({"craft_key": craft_key} if craft_key else {}),
+                },
+                source_cue=source_cue,
+                rationale=f"depend wire → {relation}",
+                proposer="ai_odoo_app_bar.propose_stock_wire",
+                confidence=0.85,
+            )
         )
-        notes.append(f"app_bar: {model.get('model')}.{name} → {relation}")
 
     if "hr" in depends:
         already_employee = any(
@@ -769,23 +839,64 @@ def wire_stock_apps_from_depends(draft: dict[str, Any]) -> list[str]:
             for f in ((ops or {}).get("fields") or [])
         )
         if not already_employee:
-            _add_m2o(ops, "x_employee_id", "hr.employee", "Employee / crew")
+            _queue(
+                ops,
+                name="x_employee_id",
+                relation="hr.employee",
+                label="Employee / crew",
+                source_cue="hr",
+            )
     if "maintenance" in depends:
-        _add_m2o(asset or ops, "x_equipment_id", "maintenance.equipment", "Equipment")
-        _add_m2o(ops, "x_maintenance_request_id", "maintenance.request", "Maintenance request")
+        _queue(
+            asset or ops,
+            name="x_equipment_id",
+            relation="maintenance.equipment",
+            label="Equipment",
+            source_cue="maintenance",
+        )
+        _queue(
+            ops,
+            name="x_maintenance_request_id",
+            relation="maintenance.request",
+            label="Maintenance request",
+            source_cue="maintenance",
+        )
     if "purchase" in depends:
-        prompt = str(draft.get("_user_prompt") or "")
-        # Online-honest stock / parts qty alone ≠ Purchase Order Identity M2O.
-        if re.search(
-            r"(?i)\bpurchase\s+orders?\b|\blink(?:ed)?\s+(?:a\s+)?(?:purchase|PO)\b|"
-            r"\bRFQ\b|\bvendor\s+bill",
-            prompt,
-        ):
-            _add_m2o(ops, "x_purchase_order_id", "purchase.order", "Purchase order")
+        # Package presence alone must not invent PO — cue/craft required (T6).
+        _queue(
+            ops,
+            name="x_purchase_order_id",
+            relation="purchase.order",
+            label="Purchase order",
+            source_cue="purchase order",
+            craft_key="purchase_link",
+            require_cue=True,
+            cue_re=(
+                r"(?i)\bpurchase\s+orders?\b|\blink(?:ed)?\s+(?:a\s+)?(?:purchase|PO)\b|"
+                r"\bRFQ\b|\bvendor\s+bill"
+            ),
+        )
     if "project" in depends and not _skip_stock_project_on_residual(draft, by_id):
-        _add_m2o(ops or site, "x_project_id", "project.project", "Project / turnaround")
+        _queue(
+            ops or site,
+            name="x_project_id",
+            relation="project.project",
+            label="Project / turnaround",
+            source_cue="project",
+        )
     if "stock" in depends:
-        _add_m2o(site, "x_warehouse_id", "stock.warehouse", "Warehouse")
+        _queue(
+            site,
+            name="x_warehouse_id",
+            relation="stock.warehouse",
+            label="Warehouse",
+            source_cue="stock",
+        )
+
+    if proposals:
+        _, gate_notes = admit_and_apply(draft, proposals)
+        notes.extend(n for n in gate_notes if "admitted" in n or "rejected" in n)
+        by_id = _models_index(draft)
 
     reuse = draft.get("reuse") if isinstance(draft.get("reuse"), dict) else {}
     models_reuse = set(reuse.get("models") or [])
@@ -855,7 +966,7 @@ def _residual_header_id(draft: dict[str, Any]) -> str | None:
 
 
 def ensure_residual_satellites(draft: dict[str, Any]) -> list[str]:
-    """Party + line on the residual header (senior document workspace)."""
+    """Party + line on the residual header — via GenerateIR gate; never spray company."""
     notes: list[str] = []
     if draft.get("domain_pack") or draft.get("_component"):
         return notes
@@ -864,6 +975,7 @@ def ensure_residual_satellites(draft: dict[str, Any]) -> list[str]:
         may_add_line_satellite,
         may_add_party_satellite,
     )
+    from app.ai_generate_ir import Proposal, admit_and_apply
 
     if additive_model_growth_blocked(draft):
         return notes
@@ -877,97 +989,115 @@ def ensure_residual_satellites(draft: dict[str, Any]) -> list[str]:
     leaf = mid[2:] if mid.startswith("x_") else mid
     label = short_model_label(mid, str(header.get("description") or ""))
     fk = f"x_{leaf}_id"
+    prompt = str(draft.get("_user_prompt") or "")
+    proposals: list[Proposal] = []
 
     party_id = f"{mid}_party"
     if party_id not in by_id and may_add_party_satellite(draft):
-        party = {
-            "model": party_id,
-            "description": f"{label} party / role",
-            "mode": "new",
-            "source": "odoo_app_bar",
-            "fields": [
-                {"name": "x_name", "ttype": "char", "string": "Role label"},
-                {
-                    "name": fk,
-                    "ttype": "many2one",
-                    "relation": mid,
-                    "string": label,
-                    "required": True,
-                },
-                {
-                    "name": "x_partner_id",
-                    "ttype": "many2one",
-                    "relation": "res.partner",
-                    "string": "Contact",
-                    "required": True,
-                },
-                {"name": "x_role", "ttype": "char", "string": "Role"},
-                {
-                    "name": "x_company_id",
-                    "ttype": "many2one",
-                    "relation": "res.company",
-                    "string": "Company",
-                },
-            ],
-        }
-        draft.setdefault("models", []).append(party)
         o2m = f"x_{leaf}_party_ids"
         if o2m not in _field_names(header):
-            header.setdefault("fields", []).append(
-                {
-                    "name": o2m,
-                    "ttype": "one2many",
-                    "relation": party_id,
-                    "relation_field": fk,
-                    "string": "Parties",
-                    "source": "odoo_app_bar",
-                }
+            cue = "party"
+            for tok in ("parties", "party", "roles", "attendees", "participants"):
+                if re.search(rf"(?i)\b{tok}\b", prompt):
+                    cue = tok
+                    break
+            proposals.append(
+                Proposal(
+                    kind="o2m",
+                    name=o2m,
+                    payload={
+                        "model": mid,
+                        "ttype": "one2many",
+                        "relation": party_id,
+                        "relation_field": fk,
+                        "string": "Parties",
+                        "source": "odoo_app_bar",
+                        "line_model": {
+                            "model": party_id,
+                            "description": f"{label} party / role",
+                            "mode": "new",
+                            "source": "odoo_app_bar",
+                            "fields": [
+                                {"name": "x_name", "ttype": "char", "string": "Role label"},
+                                {
+                                    "name": fk,
+                                    "ttype": "many2one",
+                                    "relation": mid,
+                                    "string": label,
+                                    "required": True,
+                                },
+                                {
+                                    "name": "x_partner_id",
+                                    "ttype": "many2one",
+                                    "relation": "res.partner",
+                                    "string": "Contact",
+                                    "required": True,
+                                },
+                                {"name": "x_role", "ttype": "char", "string": "Role"},
+                            ],
+                        },
+                    },
+                    source_cue=cue,
+                    rationale="residual party satellite",
+                    proposer="ai_odoo_app_bar.propose_residual_party",
+                    confidence=0.8,
+                )
             )
-        notes.append(f"app_bar: added party satellite {party_id}")
-        by_id[party_id] = party
 
     line_id = f"{mid}_line"
     if line_id not in by_id and not _has_line_child(draft, mid) and may_add_line_satellite(draft):
-        line = {
-            "model": line_id,
-            "description": f"{label} line",
-            "mode": "new",
-            "source": "odoo_app_bar",
-            "fields": [
-                {"name": "x_name", "ttype": "char", "string": "Line", "required": True},
-                {
-                    "name": fk,
-                    "ttype": "many2one",
-                    "relation": mid,
-                    "string": label,
-                    "required": True,
-                },
-                {"name": "x_qty", "ttype": "float", "string": "Quantity", "default": 1.0},
-                {"name": "x_notes", "ttype": "text", "string": "Notes"},
-                {
-                    "name": "x_company_id",
-                    "ttype": "many2one",
-                    "relation": "res.company",
-                    "string": "Company",
-                },
-            ],
-        }
-        draft.setdefault("models", []).append(line)
-        o2m = f"x_{leaf}_line_ids"
-        if o2m not in _field_names(header):
-            header.setdefault("fields", []).append(
-                {
-                    "name": o2m,
-                    "ttype": "one2many",
-                    "relation": line_id,
-                    "relation_field": fk,
-                    "string": "Lines",
-                    "source": "odoo_app_bar",
-                }
-            )
-        notes.append(f"app_bar: added line satellite {line_id}")
-    return notes
+        # Checklist/parts own the line shape — never invent a third generic line.
+        if re.search(r"(?i)\bchecklist\b|\bparts?\s+used\b|\bparts?\b.*\bqty\b", prompt):
+            pass
+        else:
+            o2m = f"x_{leaf}_line_ids"
+            if o2m not in _field_names(header):
+                cue = "lines"
+                for tok in ("lines", "items", "qty", "quantity", "hours"):
+                    if re.search(rf"(?i)\b{tok}\b", prompt):
+                        cue = tok
+                        break
+                proposals.append(
+                    Proposal(
+                        kind="o2m",
+                        name=o2m,
+                        payload={
+                            "model": mid,
+                            "ttype": "one2many",
+                            "relation": line_id,
+                            "relation_field": fk,
+                            "string": "Lines",
+                            "source": "odoo_app_bar",
+                            "line_model": {
+                                "model": line_id,
+                                "description": f"{label} line",
+                                "mode": "new",
+                                "source": "odoo_app_bar",
+                                "fields": [
+                                    {"name": "x_name", "ttype": "char", "string": "Line", "required": True},
+                                    {
+                                        "name": fk,
+                                        "ttype": "many2one",
+                                        "relation": mid,
+                                        "string": label,
+                                        "required": True,
+                                    },
+                                    {"name": "x_qty", "ttype": "float", "string": "Quantity", "default": 1.0},
+                                    {"name": "x_notes", "ttype": "text", "string": "Notes"},
+                                ],
+                            },
+                        },
+                        source_cue=cue,
+                        rationale="residual line satellite",
+                        proposer="ai_odoo_app_bar.propose_residual_line",
+                        confidence=0.8,
+                    )
+                )
 
+    if proposals:
+        _, gate_notes = admit_and_apply(draft, proposals)
+        notes.extend(n for n in gate_notes if "admitted" in n or "rejected" in n)
+    return notes
 
 
 _LITERAL_SATELLITE_STAMP_RE = re.compile(
@@ -1000,10 +1130,10 @@ def _scrub_literal_satellite_stamp_fields(model: dict[str, Any]) -> list[str]:
 
 
 def ensure_cued_o2m_satellites(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
-    """Materialize brief-cued Checklist / Parts O2M satellites (class-wide).
+    """Materialize brief-cued Checklist / Parts O2M satellites via GenerateIR admit.
 
     When Must-do / brief says checklist lines or parts used:
-    - Create real line models + One2many on the primary (labels/done or product+qty).
+    - Propose real line models + One2many on the primary (labels/done or product+qty).
     - Never leave human-facing «Satellite O2M: …» Char fields on Identity.
     Flat Product*/Quantity* invent on primary remains a hard fail elsewhere.
     """
@@ -1042,107 +1172,177 @@ def ensure_cued_o2m_satellites(draft: dict[str, Any], *, prompt: str = "") -> li
     fk = f"x_{leaf}_id"
     depends = [str(x) for x in (draft.get("depends") or []) if x]
 
-    def _ensure_o2m(o2m_name: str, relation: str, string: str) -> None:
-        if o2m_name in _field_names(header):
-            # Upgrade literal/wrong ttype if a prior stamp polluted the name.
-            for field in header.get("fields") or []:
-                if not isinstance(field, dict):
-                    continue
-                if str(field.get("name") or "") != o2m_name:
-                    continue
-                field["ttype"] = "one2many"
-                field["relation"] = relation
-                field["relation_field"] = fk
-                field["string"] = string
-                field["source"] = field.get("source") or "cued_o2m"
-                return
-        header.setdefault("fields", []).append(
-            {
-                "name": o2m_name,
-                "ttype": "one2many",
-                "relation": relation,
-                "relation_field": fk,
-                "string": string,
-                "source": "cued_o2m",
-            }
-        )
+    from app.ai_generate_ir import Proposal, admit_and_apply
+
+    proposals: list[Proposal] = []
+
+    def _upgrade_existing_o2m(o2m_name: str, relation: str, string: str) -> bool:
+        if o2m_name not in _field_names(header):
+            return False
+        for field in header.get("fields") or []:
+            if not isinstance(field, dict):
+                continue
+            if str(field.get("name") or "") != o2m_name:
+                continue
+            field["ttype"] = "one2many"
+            field["relation"] = relation
+            field["relation_field"] = fk
+            field["string"] = string
+            field["source"] = field.get("source") or "cued_o2m"
+            return True
+        return False
 
     if want_checklist:
         line_id = f"{mid}_checklist_line"
-        if line_id not in by_id:
-            line = {
-                "model": line_id,
-                "description": f"{label} Checklist Line",
-                "mode": "new",
-                "source": "cued_o2m",
-                "fields": [
-                    {
-                        "name": "x_name",
-                        "ttype": "char",
-                        "string": "Checklist item",
-                        "required": True,
-                    },
-                    {
-                        "name": fk,
-                        "ttype": "many2one",
-                        "relation": mid,
-                        "string": label,
-                        "required": True,
-                    },
-                    {"name": "x_done", "ttype": "boolean", "string": "Done"},
-                    {"name": "x_notes", "ttype": "char", "string": "Notes"},
-                ],
-            }
-            draft.setdefault("models", []).append(line)
-            by_id[line_id] = line
-            notes.append(f"app_bar: cued checklist line model {line_id}")
-        _ensure_o2m(f"x_{leaf}_checklist_line_ids", line_id, "Checklist lines")
-        if f"x_{leaf}_checklist_line_ids" in _field_names(header):
-            notes.append(f"app_bar: cued O2M Checklist lines on {mid}")
+        o2m_name = f"x_{leaf}_checklist_line_ids"
+        if not _upgrade_existing_o2m(o2m_name, line_id, "Checklist lines"):
+            line_fields = [
+                {
+                    "name": "x_name",
+                    "ttype": "char",
+                    "string": "Checklist item",
+                    "required": True,
+                },
+                {
+                    "name": fk,
+                    "ttype": "many2one",
+                    "relation": mid,
+                    "string": label,
+                    "required": True,
+                },
+                {"name": "x_done", "ttype": "boolean", "string": "Done"},
+                {"name": "x_notes", "ttype": "char", "string": "Notes"},
+            ]
+            if line_id not in by_id:
+                proposals.append(
+                    Proposal(
+                        kind="o2m",
+                        name=o2m_name,
+                        payload={
+                            "model": mid,
+                            "ttype": "one2many",
+                            "relation": line_id,
+                            "relation_field": fk,
+                            "string": "Checklist lines",
+                            "source": "cued_o2m",
+                            "line_model": {
+                                "model": line_id,
+                                "description": f"{label} Checklist Line",
+                                "mode": "new",
+                                "source": "cued_o2m",
+                                "fields": line_fields,
+                            },
+                        },
+                        source_cue="checklist",
+                        rationale="brief-cued checklist lines O2M",
+                        proposer="ai_odoo_app_bar.ensure_cued_o2m",
+                        confidence=0.95,
+                    )
+                )
+            elif o2m_name not in _field_names(header):
+                proposals.append(
+                    Proposal(
+                        kind="o2m",
+                        name=o2m_name,
+                        payload={
+                            "model": mid,
+                            "ttype": "one2many",
+                            "relation": line_id,
+                            "relation_field": fk,
+                            "string": "Checklist lines",
+                            "source": "cued_o2m",
+                        },
+                        source_cue="checklist",
+                        rationale="brief-cued checklist lines O2M",
+                        proposer="ai_odoo_app_bar.ensure_cued_o2m",
+                        confidence=0.95,
+                    )
+                )
 
     if want_parts:
         line_id = f"{mid}_parts_line"
-        if line_id not in by_id:
-            line = {
-                "model": line_id,
-                "description": f"{label} Parts Line",
-                "mode": "new",
-                "source": "cued_o2m",
-                "fields": [
-                    {
-                        "name": "x_name",
-                        "ttype": "char",
-                        "string": "Line",
-                        "required": True,
-                    },
-                    {
-                        "name": fk,
-                        "ttype": "many2one",
-                        "relation": mid,
-                        "string": label,
-                        "required": True,
-                    },
-                    {
-                        "name": "x_product_id",
-                        "ttype": "many2one",
-                        "relation": "product.product",
-                        "string": "Product",
-                    },
-                    {
-                        "name": "x_qty",
-                        "ttype": "float",
-                        "string": "Quantity",
-                        "default": 1.0,
-                    },
-                ],
-            }
-            draft.setdefault("models", []).append(line)
-            by_id[line_id] = line
-            notes.append(f"app_bar: cued parts line model {line_id}")
-        _ensure_o2m(f"x_{leaf}_parts_line_ids", line_id, "Parts used")
+        o2m_name = f"x_{leaf}_parts_line_ids"
+        if not _upgrade_existing_o2m(o2m_name, line_id, "Parts used"):
+            line_fields = [
+                {
+                    "name": "x_name",
+                    "ttype": "char",
+                    "string": "Line",
+                    "required": True,
+                },
+                {
+                    "name": fk,
+                    "ttype": "many2one",
+                    "relation": mid,
+                    "string": label,
+                    "required": True,
+                },
+                {
+                    "name": "x_product_id",
+                    "ttype": "many2one",
+                    "relation": "product.product",
+                    "string": "Product",
+                },
+                {
+                    "name": "x_qty",
+                    "ttype": "float",
+                    "string": "Quantity",
+                    "default": 1.0,
+                },
+            ]
+            if line_id not in by_id:
+                proposals.append(
+                    Proposal(
+                        kind="o2m",
+                        name=o2m_name,
+                        payload={
+                            "model": mid,
+                            "ttype": "one2many",
+                            "relation": line_id,
+                            "relation_field": fk,
+                            "string": "Parts used",
+                            "source": "cued_o2m",
+                            "line_model": {
+                                "model": line_id,
+                                "description": f"{label} Parts Line",
+                                "mode": "new",
+                                "source": "cued_o2m",
+                                "fields": line_fields,
+                            },
+                        },
+                        source_cue="parts",
+                        rationale="brief-cued parts used O2M",
+                        proposer="ai_odoo_app_bar.ensure_cued_o2m",
+                        confidence=0.95,
+                    )
+                )
+            elif o2m_name not in _field_names(header):
+                proposals.append(
+                    Proposal(
+                        kind="o2m",
+                        name=o2m_name,
+                        payload={
+                            "model": mid,
+                            "ttype": "one2many",
+                            "relation": line_id,
+                            "relation_field": fk,
+                            "string": "Parts used",
+                            "source": "cued_o2m",
+                        },
+                        source_cue="parts",
+                        rationale="brief-cued parts used O2M",
+                        proposer="ai_odoo_app_bar.ensure_cued_o2m",
+                        confidence=0.95,
+                    )
+                )
         if "product" not in depends:
             depends.append("product")
-        notes.append(f"app_bar: cued O2M Parts used on {mid}")
+
+    if proposals:
+        _, gate_notes = admit_and_apply(draft, proposals)
+        notes.extend(n for n in gate_notes if "admitted" in n or "rejected" in n)
+        by_id = _models_index(draft)
+        header = by_id.get(mid) or header
 
     # Drop flat Product/Quantity invent on primary when line satellites exist.
     if want_checklist or want_parts:
@@ -1162,7 +1362,6 @@ def ensure_cued_o2m_satellites(draft: dict[str, Any], *, prompt: str = "") -> li
                 "x_qty",
                 "x_quantity",
             }:
-                # Keep only if not the parts-line product (primary Identity invent).
                 flat_drop.append(name or lab)
                 continue
             kept.append(field)
@@ -1259,107 +1458,27 @@ def _is_residual_full_app_draft(draft: dict[str, Any]) -> bool:
         return grain in {"", "full_app"} and not draft.get("domain_pack")
 
 
-def scrub_uncued_identity_link_m2os(
-    draft: dict[str, Any], *, prompt: str = ""
-) -> list[str]:
-    """Drop uncued Purchase Order / Invoice Identity M2Os on residual headers.
+def _scrub_mutate_enabled() -> bool:
+    """Scrub mutate retired (handoff §4.8 / true fidelity).
 
-    Class-wide: Related Sales Order / Online-honest stock / Invoiced *state*
-    are not cues for Purchase Order or Invoice M2O fields. Keep when the brief
-    clearly asks for those links.
+    Always False — invent is blocked at GenerateIR admit; scrub only records
+    ``_ir_scrub_violations``. Purge lives in ``enforce_closed_generate_ir``.
     """
-    notes: list[str] = []
-    text = prompt or str(draft.get("_user_prompt") or "")
-    if not isinstance(draft, dict):
-        return notes
-    wants_po = bool(
-        re.search(
-            r"(?i)\bpurchase\s+orders?\b|\blink(?:ed)?\s+(?:a\s+)?(?:purchase|PO)\b|"
-            r"\bRFQ\b|\bvendor\s+bill",
-            text,
-        )
-    )
-    # Invoiced *state* / Online-honest stock ≠ Invoice M2O Identity field.
-    wants_invoice = bool(
-        re.search(
-            r"(?i)\b(?:related|linked|optional)\s+invoices?\b|"
-            r"\binvoice\s+(?:link|field|m2o|many2one)\b|"
-            r"\blink(?:ed)?\s+(?:an?\s+)?invoices?\b|"
-            r"\bcustomer\s+invoices?\b",
-            text,
-        )
-    )
+    return False
 
-    drop_rels: set[str] = set()
-    drop_names: set[str] = set()
-    if not wants_po:
-        drop_rels.add("purchase.order")
-        drop_names.update({"x_purchase_order_id", "x_po_id", "x_purchase_id"})
-    if not wants_invoice:
-        drop_rels.add("account.move")
-        drop_names.update({"x_invoice_id", "x_bill_id", "x_move_id"})
 
-    wants_company = False
-    try:
-        from app.multi_company_pack import prompt_asks_multi_company
+def _record_scrub_violations(draft: dict[str, Any], hits: list[str]) -> None:
+    if not hits:
+        return
+    bucket = draft.get("_ir_scrub_violations")
+    if not isinstance(bucket, list):
+        bucket = []
+    bucket.extend(hits)
+    draft["_ir_scrub_violations"] = bucket
 
-        wants_company = prompt_asks_multi_company(text)
-    except Exception:  # noqa: BLE001
-        wants_company = bool(
-            re.search(r"(?i)\bmulti[\s-]?compan|legal[\s-]?entit", text)
-        )
-    if not wants_company:
-        drop_rels.add("res.company")
-        drop_names.update({"x_company_id", "company_id"})
 
-    # Uncued Contact spray on Identity — only keep when brief cues Contact/Customer/Partner.
-    wants_contact = bool(
-        re.search(
-            r"(?i)\b(?:customer|contact|partner|vendor|client)\b",
-            text,
-        )
-    )
-    if not wants_contact:
-        drop_rels.add("res.partner")
-        drop_names.update(
-            {"x_partner_id", "x_contact_id", "x_customer_id", "x_client_id"}
-        )
 
-    if not drop_rels and not drop_names:
-        return notes
 
-    by_id = _models_index(draft)
-    for mid, model in by_id.items():
-        if not str(mid).startswith("x_"):
-            continue
-        if str(mid).endswith("_line") or str(mid).endswith("_party"):
-            continue
-        if str(model.get("mode") or "new") == "inherit":
-            continue
-        fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
-        kept: list[dict[str, Any]] = []
-        dropped: list[str] = []
-        for field in fields:
-            name = str(field.get("name") or "")
-            rel = str(field.get("relation") or "")
-            lab = str(field.get("string") or "").strip().lower()
-            if name in drop_names or rel in drop_rels:
-                dropped.append(name or lab)
-                continue
-            if lab in {"purchase order", "purchase orders", "invoice", "invoices"} and (
-                (lab.startswith("purchase") and not wants_po)
-                or (lab.startswith("invoice") and not wants_invoice)
-            ):
-                dropped.append(name or lab)
-                continue
-            kept.append(field)
-        if dropped:
-            model["fields"] = kept
-            notes.append(
-                f"app_bar: dropped uncued Identity link on {mid}: "
-                + ", ".join(dropped)
-            )
-    return notes
 
 
 def stamp_online_stock_honesty(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
@@ -1387,7 +1506,6 @@ def stamp_online_stock_honesty(draft: dict[str, Any], *, prompt: str = "") -> li
         ),
     }
     draft["_honesty"] = meta
-    # Consultant-facing stamp on draft chrome (non-field).
     stamps = draft.get("_consultant_notes")
     if not isinstance(stamps, list):
         stamps = []
@@ -1399,12 +1517,9 @@ def stamp_online_stock_honesty(draft: dict[str, Any], *, prompt: str = "") -> li
         stamps.append(note)
         draft["_consultant_notes"] = stamps
         notes.append("app_bar: stamped Online-honest stock moves")
-    # Never add stock/purchase depends from honesty alone.
     depends = [str(d) for d in (draft.get("depends") or []) if d]
     cleaned = [d for d in depends if d.lower() not in {"stock", "purchase", "mrp"}]
-    # Keep product when Parts used / product.product fields exist.
     if cleaned != depends:
-        # Only drop stock/purchase if no field actually needs them beyond honesty.
         by_id = _models_index(draft)
         needs_purchase = any(
             isinstance(f, dict) and str(f.get("relation") or "") == "purchase.order"
@@ -1428,189 +1543,13 @@ def stamp_online_stock_honesty(draft: dict[str, Any], *, prompt: str = "") -> li
     return notes
 
 
-
-def scrub_uncued_depth_seed_satellites(
-    draft: dict[str, Any], *, prompt: str = ""
-) -> list[str]:
-    """Drop bare depth_seed hubs (x_party / x_rate) when the brief did not cue them.
-
-    Class-wide: checklist + parts cues must not keep a third Party/Rate O2M, and
-    Find-it must not advertise Contact/Company from those hubs.
-    """
-    notes: list[str] = []
-    text = prompt or str(draft.get("_user_prompt") or "")
-    if not isinstance(draft, dict):
-        return notes
-    wants_party = bool(
-        re.search(
-            r"(?i)\b(?:part(?:y|ies)|participant|stakeholder|role\s+link)s?\b",
-            text,
-        )
-    )
-    wants_rate = bool(
-        re.search(
-            r"(?i)\b(?:rate\s+cards?|billing\s+rates?|price\s+cards?|rate\s+lines?)\b",
-            text,
-        )
-    )
-    drop_mids: set[str] = set()
-    for model in list(draft.get("models") or []):
-        if not isinstance(model, dict):
-            continue
-        mid = str(model.get("model") or "")
-        src = str(model.get("source") or "")
-        if mid == "x_party" and not wants_party:
-            drop_mids.add(mid)
-        if mid == "x_rate" and not wants_rate:
-            drop_mids.add(mid)
-        # Generic {header}_line when checklist/parts already present
-        if (
-            mid.endswith("_line")
-            and not mid.endswith("_checklist_line")
-            and not mid.endswith("_parts_line")
-            and re.search(r"(?i)\bchecklist\s+lines?\b|\bparts?\s+used\b", text)
-            and src in {"odoo_app_bar", "depth_seed", ""}
-        ):
-            # Only drop the bare generic leaf `_line`, not named satellites.
-            leaf = mid.rsplit("_", 1)[0]
-            if mid == f"{leaf}_line" or mid.endswith("_tickets_line") or mid.endswith("_cards_line") or mid.endswith("_orders_line"):
-                # Keep if relation is the only line child — handled below via header O2M scan
-                pass
-    # Stronger: if header already has checklist + parts O2Ms, drop generic `{mid}_line`.
-    by_id = _models_index(draft)
-    for mid, model in list(by_id.items()):
-        if not str(mid).startswith("x_") or str(mid).endswith("_line") or str(mid).endswith("_party"):
-            continue
-        fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
-        o2m_rels = {
-            str(f.get("relation") or "")
-            for f in fields
-            if str(f.get("ttype") or "") == "one2many"
-        }
-        has_cued = any("checklist" in r for r in o2m_rels) and any(
-            "parts" in r for r in o2m_rels
-        )
-        generic = f"{mid}_line"
-        if has_cued and generic in by_id:
-            drop_mids.add(generic)
-        if "x_party" in by_id and not wants_party:
-            drop_mids.add("x_party")
-        if "x_rate" in by_id and not wants_rate:
-            drop_mids.add("x_rate")
-
-    if not drop_mids:
-        return notes
-
-    draft["models"] = [
-        m
-        for m in (draft.get("models") or [])
-        if not (isinstance(m, dict) and str(m.get("model") or "") in drop_mids)
-    ]
-    # Drop O2Ms / FKs pointing at purged models
-    for model in draft.get("models") or []:
-        if not isinstance(model, dict):
-            continue
-        kept = []
-        for field in model.get("fields") or []:
-            if not isinstance(field, dict):
-                continue
-            rel = str(field.get("relation") or "")
-            if rel in drop_mids:
-                continue
-            kept.append(field)
-        model["fields"] = kept
-    for key in ("actions", "menus", "views", "smart_buttons", "automations", "access_rules"):
-        rows = draft.get(key)
-        if not isinstance(rows, list):
-            continue
-        if key == "menus":
-            action_model = {
-                str(a.get("technical_name") or ""): str(a.get("model") or "")
-                for a in (draft.get("actions") or [])
-                if isinstance(a, dict)
-            }
-            draft[key] = [
-                m
-                for m in rows
-                if not (
-                    isinstance(m, dict)
-                    and action_model.get(str(m.get("action_xml_id") or ""), "") in drop_mids
-                )
-            ]
-            continue
-        draft[key] = [
-            r
-            for r in rows
-            if not (
-                isinstance(r, dict)
-                and str(r.get("model") or r.get("on_model") or r.get("related_model") or "")
-                in drop_mids
-            )
-        ]
-    notes.append(
-        "app_bar: scrubbed uncued depth/generic satellites "
-        + ", ".join(sorted(drop_mids))
-    )
-    return notes
-
-
-def scrub_uncued_residual_stock_smart_buttons(
-    draft: dict[str, Any], *, prompt: str = ""
-) -> list[str]:
-    """Drop invented Quotations/Invoices/Meetings smarts on residual forms (class-wide)."""
-    notes: list[str] = []
-    if not _is_residual_full_app_draft(draft):
-        return notes
-    text = prompt or str(draft.get("_user_prompt") or "")
-    try:
-        from app.ai_craft_smart_buttons import _confirmed_craft_list, is_craft_confirmed_button
-
-        confirmed = _confirmed_craft_list(draft)
-    except Exception:  # noqa: BLE001
-        confirmed = []
-    btns = draft.get("smart_buttons")
-    if not isinstance(btns, list) or not btns:
-        return notes
-    kept: list[Any] = []
-    dropped: list[str] = []
-    for b in btns:
-        if not isinstance(b, dict):
-            kept.append(b)
-            continue
-        on_model = str(b.get("on_model") or "")
-        rel = str(b.get("related_model") or "")
-        label = str(b.get("label") or "").strip()
-        # Residual → stock commercial host invent (Quotations / Meetings / …).
-        if (
-            on_model.startswith("x_")
-            and rel
-            and not rel.startswith("x_")
-            and label.lower() in _UNCUED_RESIDUAL_STOCK_SMART_LABELS
-        ):
-            if confirmed and is_craft_confirmed_button(b, confirmed):
-                kept.append(b)
-                continue
-            if _prompt_cues_residual_stock_smart_button(text, host=rel, label=label):
-                kept.append(b)
-                continue
-            dropped.append(label or rel)
-            continue
-        kept.append(b)
-    if dropped:
-        draft["smart_buttons"] = kept
-        notes.append(
-            "app_bar: dropped uncued residual stock smart button(s) "
-            + ", ".join(sorted(set(dropped)))
-        )
-    return notes
-
-
 def ensure_stock_inherit_bridges(draft: dict[str, Any]) -> list[str]:
-    """Hang the residual FK on stock documents — senior Community inherit, not x_bill."""
+    """Hang the residual FK on stock documents — via GenerateIR admit only."""
     notes: list[str] = []
     if draft.get("_component"):
         return notes
     from app.ai_document_shape import additive_model_growth_blocked, allowed_bridge_modules
+    from app.ai_generate_ir import Proposal, admit_and_apply
 
     if additive_model_growth_blocked(draft):
         return notes
@@ -1636,60 +1575,84 @@ def ensure_stock_inherit_bridges(draft: dict[str, Any]) -> list[str]:
     allowed = allowed_bridge_modules(draft)
     residual_full = _is_residual_full_app_draft(draft)
     prompt = str(draft.get("_user_prompt") or "")
+    proposals: list[Proposal] = []
     for module, host, btn_label in _STOCK_BRIDGE_HOSTS:
         if module not in allowed:
             continue
         if module not in depends and host not in reused:
             continue
-        # Residual full_app: Related Sales Order / calendar menu ≠ invent Quotation/
-        # Meeting smart buttons (or reverse stock inherits) unless clearly cued.
         if residual_full and not _prompt_cues_residual_stock_smart_button(
             prompt, host=host, label=btn_label
         ):
             continue
         row = by_id.get(host)
+        fk_payload = {
+            "name": fk,
+            "ttype": "many2one",
+            "relation": residual,
+            "string": label,
+            "help": f"Link-only — use the {host} app; do not duplicate it.",
+            "source": "odoo_app_bar",
+        }
         if row is None:
-            row = {
-                "model": host,
-                "mode": "inherit",
-                "inherit": host,
-                "description": f"{btn_label} linked to {label}",
-                "source": "odoo_app_bar",
-                "fields": [],
-            }
-            draft.setdefault("models", []).append(row)
-            by_id[host] = row
-            notes.append(f"app_bar: inherit {host} for {fk}")
-        elif str(row.get("mode") or "new") != "inherit" and not str(host).startswith("x_"):
-            row["mode"] = "inherit"
-            row["inherit"] = host
-        if fk not in _field_names(row):
-            row.setdefault("fields", []).append(
-                {
-                    "name": fk,
-                    "ttype": "many2one",
-                    "relation": residual,
-                    "string": label,
-                    "help": f"Link-only — use the {host} app; do not duplicate it.",
-                    "source": "odoo_app_bar",
-                }
+            proposals.append(
+                Proposal(
+                    kind="model",
+                    name=host,
+                    payload={
+                        "mode": "inherit",
+                        "inherit": host,
+                        "description": f"{btn_label} linked to {label}",
+                        "source": "odoo_app_bar",
+                        "fields": [fk_payload],
+                    },
+                    source_cue="structural_default",
+                    rationale=f"stock inherit bridge {host}",
+                    proposer="ai_odoo_app_bar.ensure_stock_inherit",
+                    confidence=0.85,
+                )
             )
-            notes.append(f"app_bar: {host}.{fk} → {residual}")
+        elif fk not in _field_names(row):
+            if str(row.get("mode") or "new") != "inherit" and not str(host).startswith("x_"):
+                row["mode"] = "inherit"
+                row["inherit"] = host
+            proposals.append(
+                Proposal(
+                    kind="m2o",
+                    name=fk,
+                    payload={
+                        "model": host,
+                        **{k: v for k, v in fk_payload.items() if k != "name"},
+                    },
+                    source_cue="structural_default",
+                    rationale=f"stock inherit FK on {host}",
+                    proposer="ai_odoo_app_bar.ensure_stock_inherit",
+                    confidence=0.85,
+                )
+            )
         key = (residual, host, fk)
         if key not in existing_btns:
-            draft.setdefault("smart_buttons", []).append(
-                {
-                    "on_model": residual,
-                    "related_model": host,
-                    "relation_field": fk,
-                    "label": btn_label,
-                    "icon": "fa-external-link",
-                    "source": "odoo_app_bar",
-                }
+            proposals.append(
+                Proposal(
+                    kind="smart_button",
+                    name=btn_label,
+                    payload={
+                        "on_model": residual,
+                        "related_model": host,
+                        "relation_field": fk,
+                        "icon": "fa-external-link",
+                        "source": "odoo_app_bar",
+                    },
+                    source_cue="structural_default",
+                    rationale=f"stock smart button {residual}→{host}",
+                    proposer="ai_odoo_app_bar.ensure_stock_inherit",
+                    confidence=0.8,
+                )
             )
             existing_btns.add(key)
-            notes.append(f"app_bar: smart button {residual} → {host}")
-    notes.extend(scrub_uncued_residual_stock_smart_buttons(draft, prompt=prompt))
+    if proposals:
+        _, gate_notes = admit_and_apply(draft, proposals)
+        notes.extend(n for n in gate_notes if "admitted" in n or "rejected" in n)
     return notes
 
 
@@ -2048,15 +2011,17 @@ def apply_senior_sequence_prefixes(draft: dict[str, Any]) -> list[str]:
 
 
 def ensure_reverse_o2ms(draft: dict[str, Any]) -> list[str]:
-    """Parent gets O2M when a child already M2Os it (permit→WO, incident→facility).
+    """Parent gets O2M when a child already M2Os it — via GenerateIR admit.
 
     Stock inherit (sale.order, calendar.event) is a smart-button target — not
     an embedded form O2M. Nested lists would emit x_name those models lack.
     """
+    from app.ai_generate_ir import Proposal, admit_and_apply
     from app.ai_model_quality import odoo_o2m_field_name
 
     notes: list[str] = []
     by_id = _models_index(draft)
+    proposals: list[Proposal] = []
     for mid, model in by_id.items():
         if mid.endswith("_line") or not str(mid).startswith("x_"):
             continue
@@ -2077,17 +2042,29 @@ def ensure_reverse_o2ms(draft: dict[str, Any]) -> list[str]:
             if already:
                 continue
             o2m = odoo_o2m_field_name(mid)
-            parent.setdefault("fields", []).append(
-                {
-                    "name": o2m,
-                    "ttype": "one2many",
-                    "relation": mid,
-                    "relation_field": fk,
-                    "string": short_model_label(mid, str(model.get("description") or ""), plural=True),
-                    "source": "odoo_app_bar",
-                }
+            proposals.append(
+                Proposal(
+                    kind="o2m",
+                    name=o2m,
+                    payload={
+                        "model": parent_id,
+                        "ttype": "one2many",
+                        "relation": mid,
+                        "relation_field": fk,
+                        "string": short_model_label(
+                            mid, str(model.get("description") or ""), plural=True
+                        ),
+                        "source": "odoo_app_bar",
+                    },
+                    source_cue="structural_default",
+                    rationale=f"reverse O2M for existing {mid}.{fk}",
+                    proposer="ai_odoo_app_bar.ensure_reverse_o2ms",
+                    confidence=0.9,
+                )
             )
-            notes.append(f"app_bar: reverse O2M {parent_id}.{o2m} → {mid}")
+    if proposals:
+        _, gate_notes = admit_and_apply(draft, proposals)
+        notes.extend(n for n in gate_notes if "admitted" in n or "rejected" in n)
     return notes
 
 
@@ -2492,14 +2469,17 @@ def _find_site_model(draft: dict[str, Any]) -> str | None:
 
 
 def ensure_site_fk_on_operations(draft: dict[str, Any]) -> list[str]:
-    """Booking/session/unavailability/rate/equipment must M2O the site (studio/facility)."""
+    """Booking/session/unavailability/rate/equipment must M2O the site — via admit."""
     notes: list[str] = []
     site = _find_site_model(draft)
     if not site:
         return notes
+    from app.ai_generate_ir import Proposal, admit_and_apply
+
     site_leaf = site.replace("x_", "")
     fk_name = f"x_{site_leaf}_id"
     by_id = _models_index(draft)
+    proposals: list[Proposal] = []
     for mid, model in by_id.items():
         if mid == site or mid.endswith("_line"):
             continue
@@ -2521,16 +2501,26 @@ def ensure_site_fk_on_operations(draft: dict[str, Any]) -> list[str]:
                         field["relation"] = site
                         notes.append(f"app_bar: retargeted {mid}.{fk_name} → {site}")
             continue
-        model.setdefault("fields", []).append(
-            {
-                "name": fk_name,
-                "ttype": "many2one",
-                "relation": site,
-                "string": short_model_label(site, plural=False),
-                "source": "odoo_app_bar",
-            }
+        proposals.append(
+            Proposal(
+                kind="m2o",
+                name=fk_name,
+                payload={
+                    "model": mid,
+                    "ttype": "many2one",
+                    "relation": site,
+                    "string": short_model_label(site, plural=False),
+                    "source": "odoo_app_bar",
+                },
+                source_cue="structural_default",
+                rationale=f"site FK on ops model {mid}",
+                proposer="ai_odoo_app_bar.ensure_site_fk",
+                confidence=0.9,
+            )
         )
-        notes.append(f"app_bar: added {mid}.{fk_name} → {site}")
+    if proposals:
+        _, gate_notes = admit_and_apply(draft, proposals)
+        notes.extend(n for n in gate_notes if "admitted" in n or "rejected" in n)
     return notes
 
 
@@ -2584,16 +2574,29 @@ def _ensure_parent_fk(
                     field["string"] = short_model_label(parent_id, plural=False)
                     notes.append(f"app_bar: retargeted {child_id}.{fk_name} → {parent_id}")
         return notes
-    child.setdefault("fields", []).append(
-        {
-            "name": fk_name,
-            "ttype": "many2one",
-            "relation": parent_id,
-            "string": short_model_label(parent_id, plural=False),
-            "source": source,
-        }
+    from app.ai_generate_ir import Proposal, admit_and_apply
+
+    _, gate_notes = admit_and_apply(
+        draft,
+        [
+            Proposal(
+                kind="m2o",
+                name=fk_name,
+                payload={
+                    "model": child_id,
+                    "ttype": "many2one",
+                    "relation": parent_id,
+                    "string": short_model_label(parent_id, plural=False),
+                    "source": source,
+                },
+                source_cue="structural_default",
+                rationale=f"parent FK {child_id}→{parent_id}",
+                proposer="ai_odoo_app_bar.ensure_parent_fk",
+                confidence=0.9,
+            )
+        ],
     )
-    notes.append(f"app_bar: added {child_id}.{fk_name} → {parent_id}")
+    notes.extend(n for n in gate_notes if "admitted" in n or "rejected" in n)
     return notes
 
 
@@ -3070,16 +3073,31 @@ def repair_agreement_party_shape(draft: dict[str, Any]) -> list[str]:
             for f in (model.get("fields") or [])
         )
         if not has_partner:
-            model.setdefault("fields", []).append(
-                {
-                    "name": "x_partner_id",
-                    "ttype": "many2one",
-                    "relation": "res.partner",
-                    "string": "Client",
-                    "source": "odoo_app_bar",
-                }
+            from app.ai_generate_ir import Proposal, admit_and_apply
+
+            _, gate = admit_and_apply(
+                draft,
+                [
+                    Proposal(
+                        kind="m2o",
+                        name="x_partner_id",
+                        payload={
+                            "model": mid,
+                            "ttype": "many2one",
+                            "relation": "res.partner",
+                            "string": "Client",
+                            "source": "odoo_app_bar",
+                            "craft_key": "partner_links",
+                        },
+                        source_cue="partner",
+                        rationale="agreement needs client partner",
+                        proposer="repair_agreement_party_shape",
+                        confidence=0.8,
+                    )
+                ],
             )
-            notes.append(f"app_bar: added {mid}.x_partner_id → res.partner")
+            notes.extend(gate)
+            notes.append(f"app_bar: propose {mid}.x_partner_id → res.partner")
     return notes
 
 
@@ -3134,50 +3152,72 @@ def ensure_asset_usage_line(draft: dict[str, Any]) -> list[str]:
     line_id = f"{asset}_line"
     if line_id in by_id:
         return notes
+    from app.ai_generate_ir import Proposal, admit_and_apply
+
     fk_asset = f"x_{asset.replace('x_', '', 1)}_id"
     fk_booking = f"x_{booking.replace('x_', '', 1)}_id"
     asset_label = short_model_label(asset, plural=False)
     booking_label = short_model_label(booking, plural=False)
-    line = {
-        "model": line_id,
-        "description": f"{asset_label} Line",
-        "mode": "new",
-        "source": "odoo_app_bar",
-        "fields": [
-            {"name": "x_name", "ttype": "char", "string": "Line", "required": True},
-            {
-                "name": fk_asset,
-                "ttype": "many2one",
-                "relation": asset,
-                "string": asset_label,
-                "required": True,
-            },
-            {
-                "name": fk_booking,
-                "ttype": "many2one",
-                "relation": booking,
-                "string": booking_label,
-            },
-            {"name": "x_qty", "ttype": "float", "string": "Quantity", "default": 1.0},
-            {"name": "x_notes", "ttype": "text", "string": "Notes"},
-        ],
-    }
-    draft.setdefault("models", []).append(line)
-    booking_model = _models_index(draft).get(booking)
-    if booking_model:
-        o2m = f"x_{line_id.replace('x_', '')}_ids"
-        if o2m not in _field_names(booking_model):
-            booking_model.setdefault("fields", []).append(
-                {
-                    "name": o2m,
+    o2m = f"x_{line_id.replace('x_', '')}_ids"
+    booking_model = by_id.get(booking) or {}
+    if o2m in _field_names(booking_model):
+        return notes
+    _, gate_notes = admit_and_apply(
+        draft,
+        [
+            Proposal(
+                kind="o2m",
+                name=o2m,
+                payload={
+                    "model": booking,
                     "ttype": "one2many",
                     "relation": line_id,
                     "relation_field": fk_booking,
                     "string": "Lines",
                     "source": "odoo_app_bar",
-                }
+                    "line_model": {
+                        "model": line_id,
+                        "description": f"{asset_label} Line",
+                        "mode": "new",
+                        "source": "odoo_app_bar",
+                        "fields": [
+                            {
+                                "name": "x_name",
+                                "ttype": "char",
+                                "string": "Line",
+                                "required": True,
+                            },
+                            {
+                                "name": fk_asset,
+                                "ttype": "many2one",
+                                "relation": asset,
+                                "string": asset_label,
+                                "required": True,
+                            },
+                            {
+                                "name": fk_booking,
+                                "ttype": "many2one",
+                                "relation": booking,
+                                "string": booking_label,
+                            },
+                            {
+                                "name": "x_qty",
+                                "ttype": "float",
+                                "string": "Quantity",
+                                "default": 1.0,
+                            },
+                            {"name": "x_notes", "ttype": "text", "string": "Notes"},
+                        ],
+                    },
+                },
+                source_cue="structural_default",
+                rationale="asset usage line on booking (catalog+booking present)",
+                proposer="ai_odoo_app_bar.ensure_asset_usage_line",
+                confidence=0.8,
             )
-    notes.append(f"app_bar: added asset usage line {line_id}")
+        ],
+    )
+    notes.extend(n for n in gate_notes if "admitted" in n or "rejected" in n)
     return notes
 
 
@@ -4311,23 +4351,41 @@ def collapse_typed_asset_foreign_keys(draft: dict[str, Any]) -> list[str]:
         keep = f"x_{assets[0].replace('x_', '', 1)}_id"
         if keep in _field_names(model):
             continue
-        model.setdefault("fields", []).append(
-            {
-                "name": keep,
-                "ttype": "many2one",
-                "relation": assets[0],
-                "string": short_model_label(assets[0], plural=False),
-                "source": "odoo_app_bar",
-            }
+        from app.ai_generate_ir import Proposal, admit_and_apply
+
+        cue = assets[0].removeprefix("x_")
+        _, gate = admit_and_apply(
+            draft,
+            [
+                Proposal(
+                    kind="m2o",
+                    name=keep,
+                    payload={
+                        "model": mid,
+                        "ttype": "many2one",
+                        "relation": assets[0],
+                        "string": short_model_label(assets[0], plural=False),
+                        "source": "odoo_app_bar",
+                    },
+                    source_cue=cue,
+                    rationale="single asset FK after typed collapse",
+                    proposer="collapse_typed_asset_foreign_keys",
+                    confidence=0.7,
+                )
+            ],
         )
-        notes.append(f"app_bar: kept single {mid}.{keep} → {assets[0]}")
+        notes.extend(gate)
+        notes.append(f"app_bar: propose single {mid}.{keep} → {assets[0]}")
     return notes
 
 
 def ensure_o2m_inverse_fields(draft: dict[str, Any]) -> list[str]:
-    """Parent O2M relation_field must exist as a M2O on the child."""
+    """Parent O2M relation_field must exist as a M2O on the child — via admit."""
     notes: list[str] = []
+    from app.ai_generate_ir import Proposal, admit_and_apply
+
     by_id = _models_index(draft)
+    proposals: list[Proposal] = []
     for mid, model in by_id.items():
         for field in model.get("fields") or []:
             if not isinstance(field, dict) or field.get("ttype") != "one2many":
@@ -4342,16 +4400,26 @@ def ensure_o2m_inverse_fields(draft: dict[str, Any]) -> list[str]:
             names = _field_names(child)
             if inverse in names:
                 continue
-            child.setdefault("fields", []).append(
-                {
-                    "name": inverse,
-                    "ttype": "many2one",
-                    "relation": mid,
-                    "string": short_model_label(mid, plural=False),
-                    "source": "odoo_app_bar",
-                }
+            proposals.append(
+                Proposal(
+                    kind="m2o",
+                    name=inverse,
+                    payload={
+                        "model": child_id,
+                        "ttype": "many2one",
+                        "relation": mid,
+                        "string": short_model_label(mid, plural=False),
+                        "source": "odoo_app_bar",
+                    },
+                    source_cue="structural_default",
+                    rationale=f"O2M inverse for {mid}.{field.get('name')}",
+                    proposer="ai_odoo_app_bar.ensure_o2m_inverse",
+                    confidence=0.95,
+                )
             )
-            notes.append(f"app_bar: added inverse {child_id}.{inverse} → {mid}")
+    if proposals:
+        _, gate_notes = admit_and_apply(draft, proposals)
+        notes.extend(n for n in gate_notes if "admitted" in n or "rejected" in n)
     return notes
 
 
@@ -5220,6 +5288,14 @@ def close_odoo_architecture(draft: dict[str, Any], *, user_prompt: str = "") -> 
     notes.extend(clip_to_stock_first_floor(draft, user_prompt=prompt))
     from app.ai_document_shape import honor_operator_brief
 
+    try:
+        from app.ai_ir_trace import trace_ir
+        from app.ai_generate_ir import stamp_generate_ir
+
+        stamp_generate_ir(draft)
+        trace_ir(draft, stage="close_odoo_architecture:start", notes=[])
+    except Exception:  # noqa: BLE001
+        pass
     notes.extend(honor_operator_brief(draft, user_prompt=prompt))
     notes.extend(prefer_prompt_model_names(draft, user_prompt=prompt))
     notes.extend(prune_stock_clone_models(draft, user_prompt=prompt))
@@ -5229,7 +5305,6 @@ def close_odoo_architecture(draft: dict[str, Any], *, user_prompt: str = "") -> 
     notes.extend(ensure_cued_o2m_satellites(draft))
     notes.extend(ensure_residual_satellites(draft))
     notes.extend(ensure_stock_inherit_bridges(draft))
-    notes.extend(scrub_uncued_residual_stock_smart_buttons(draft, prompt=prompt))
     notes.extend(drop_stock_inverse_o2ms(draft))
     notes.extend(repair_named_foreign_keys(draft))
     notes.extend(ensure_site_fk_on_operations(draft))
@@ -5407,6 +5482,30 @@ def close_odoo_architecture(draft: dict[str, Any], *, user_prompt: str = "") -> 
         notes.extend(attach_operator_surface(draft))
     except Exception as exc:  # noqa: BLE001
         notes.append(f"operator_surface: skipped ({exc})")
+    notes.extend(stamp_online_stock_honesty(draft, prompt=prompt))
+    try:
+        from app.ai_generate_ir_enforce import enforce_closed_generate_ir
+
+        notes.extend(enforce_closed_generate_ir(draft))
+    except Exception as exc:  # noqa: BLE001
+        notes.append(f"generate_ir: enforce skipped ({exc})")
+    # Enforce may purge fields after earlier arch sync — scrub stale refs.
+    try:
+        from app.ai_apply_readiness import scrub_unknown_arch_field_refs
+        from app.ai_enrich import sync_form_archs_to_models
+
+        notes.extend(sync_form_archs_to_models(draft))
+        notes.extend(scrub_unknown_arch_field_refs(draft))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from app.ai_ir_trace import trace_ir
+        from app.ai_generate_ir import stamp_generate_ir
+
+        stamp_generate_ir(draft)
+        trace_ir(draft, stage="close_odoo_architecture:end", notes=notes[-40:])
+    except Exception:  # noqa: BLE001
+        pass
     return notes
 
 
@@ -5538,9 +5637,10 @@ def drop_hollow_automations(draft: dict[str, Any]) -> list[str]:
 
 
 def ensure_invoice_link_on_headers(draft: dict[str, Any]) -> list[str]:
-    """After dropping parallel x_bill, headers link account.move (PCM link-only)."""
+    """After dropping parallel x_bill, propose account.move link via GenerateIR."""
     notes: list[str] = []
     from app.ai_document_shape import additive_model_growth_blocked
+    from app.ai_generate_ir import Proposal, admit_and_apply
 
     if additive_model_growth_blocked(draft):
         return notes
@@ -5549,7 +5649,7 @@ def ensure_invoice_link_on_headers(draft: dict[str, Any]) -> list[str]:
     if not billing_dropped:
         return notes
     by_id = _models_index(draft)
-    added = False
+    proposals: list[Proposal] = []
     for mid, model in by_id.items():
         if mid.endswith("_line"):
             continue
@@ -5570,28 +5670,43 @@ def ensure_invoice_link_on_headers(draft: dict[str, Any]) -> list[str]:
                         field["string"] = "Invoice"
                         notes.append(f"app_bar: invoice link on {mid} → account.move")
             continue
-        model.setdefault("fields", []).append(
-            {
-                "name": "x_invoice_id",
-                "ttype": "many2one",
-                "relation": "account.move",
-                "string": "Invoice",
-                "source": "odoo_app_bar",
-            }
+        proposals.append(
+            Proposal(
+                kind="m2o",
+                name="x_invoice_id",
+                payload={
+                    "model": mid,
+                    "ttype": "many2one",
+                    "relation": "account.move",
+                    "string": "Invoice",
+                    "source": "odoo_app_bar",
+                },
+                source_cue="structural_default",
+                rationale="parallel bill pruned → link-only invoice",
+                proposer="ai_odoo_app_bar.propose_invoice_link",
+                confidence=0.8,
+            )
         )
-        added = True
-        notes.append(f"app_bar: added x_invoice_id on {mid}")
-    if added or billing_dropped:
+    if proposals:
+        _, gate_notes = admit_and_apply(draft, proposals)
+        notes.extend(n for n in gate_notes if "admitted" in n or "rejected" in n)
+        if any("admitted" in n for n in gate_notes):
+            depends = list(draft.get("depends") or [])
+            if "account" not in depends:
+                depends.append("account")
+                draft["depends"] = depends
+                notes.append("app_bar: depends account")
+            reuse = draft.get("reuse") if isinstance(draft.get("reuse"), dict) else {}
+            models_reuse = list(reuse.get("models") or [])
+            if "account.move" not in models_reuse:
+                models_reuse.append("account.move")
+                draft["reuse"] = {**reuse, "models": models_reuse}
+    elif billing_dropped:
         depends = list(draft.get("depends") or [])
         if "account" not in depends:
             depends.append("account")
             draft["depends"] = depends
             notes.append("app_bar: depends account")
-        reuse = draft.get("reuse") if isinstance(draft.get("reuse"), dict) else {}
-        models_reuse = list(reuse.get("models") or [])
-        if "account.move" not in models_reuse:
-            models_reuse.append("account.move")
-            draft["reuse"] = {**reuse, "models": models_reuse}
     return notes
 
 
@@ -5801,15 +5916,10 @@ def run_odoo_app_bar_pass(draft: dict[str, Any], *, user_prompt: str = "") -> li
     notes.extend(wire_stock_apps_from_depends(draft))
     notes.extend(ensure_residual_satellites(draft))
     notes.extend(ensure_stock_inherit_bridges(draft))
-    notes.extend(scrub_uncued_residual_stock_smart_buttons(draft, prompt=prompt))
-    notes.extend(scrub_uncued_identity_link_m2os(draft, prompt=prompt))
-    notes.extend(scrub_uncued_depth_seed_satellites(draft, prompt=prompt))
     notes.extend(stamp_online_stock_honesty(draft, prompt=prompt))
     notes.extend(ensure_invoice_link_on_headers(draft))
     # Re-scrub after invoice/PO link helpers — production_shape may also re-inject;
     # this catches app_bar-local re-adds before UI sync.
-    notes.extend(scrub_uncued_identity_link_m2os(draft, prompt=prompt))
-    notes.extend(scrub_uncued_depth_seed_satellites(draft, prompt=prompt))
     notes.extend(ensure_relational_smart_buttons(draft))
     notes.extend(drop_hollow_automations(draft))
     notes.extend(ensure_lifecycle_automations(draft))

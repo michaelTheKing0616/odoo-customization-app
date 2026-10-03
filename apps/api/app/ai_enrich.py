@@ -640,11 +640,90 @@ def _xml_official_single_notebook(
     return not outside
 
 
+def coerce_uncued_datetime_fields(draft: dict[str, Any]) -> list[str]:
+    """Enrich boundary: datetime→date unless craft/time cue allows (handoff craft).
+
+    Mirrors ``purge_unadmitted_spray`` datetime branch so invent that lands at
+    enrich (before finish purge) cannot ship uncued DateTime slots.
+    """
+    notes: list[str] = []
+    try:
+        from app.ai_generate_ir_enforce import _datetime_allowed
+    except Exception:  # noqa: BLE001
+        return notes
+    for m in draft.get("models") or []:
+        if not isinstance(m, dict):
+            continue
+        mid = str(m.get("model") or "")
+        fields = m.get("fields")
+        if not isinstance(fields, list):
+            continue
+        for i, f in enumerate(fields):
+            if not isinstance(f, dict):
+                continue
+            if str(f.get("ttype") or "") != "datetime":
+                continue
+            lab = str(f.get("string") or f.get("name") or "")
+            if _datetime_allowed(lab, draft):
+                continue
+            fields[i] = {**f, "ttype": "date"}
+            notes.append(
+                f"enrich: coerced {mid}.{f.get('name')} datetime→date (no time cue)"
+            )
+    return notes
+
+
+def coerce_uncued_money_fields(draft: dict[str, Any]) -> list[str]:
+    """Enrich boundary: drop uncued currency/monetary spray without money craft.
+
+    Wave 7 — mirrors ``_field_allowed`` money_slots gate so preview/enrich cannot
+    ship ``x_currency_id`` / bare monetary without cue or approved_craft.
+    """
+    notes: list[str] = []
+    try:
+        from app.ai_generate_ir_enforce import _admitted_names, _field_allowed
+    except Exception:  # noqa: BLE001
+        return notes
+    admitted = _admitted_names(draft)
+    for m in draft.get("models") or []:
+        if not isinstance(m, dict):
+            continue
+        mid = str(m.get("model") or "")
+        fields = m.get("fields")
+        if not isinstance(fields, list):
+            continue
+        kept: list[Any] = []
+        for f in fields:
+            if not isinstance(f, dict):
+                kept.append(f)
+                continue
+            name = str(f.get("name") or "")
+            rel = str(f.get("relation") or "")
+            ttype = str(f.get("ttype") or "")
+            moneyish = (
+                name == "x_currency_id"
+                or rel == "res.currency"
+                or ttype == "monetary"
+                or bool(f.get("currency_field"))
+            )
+            if not moneyish:
+                kept.append(f)
+                continue
+            if _field_allowed(name=name or "x_currency_id", rel=rel or "res.currency", draft=draft, admitted=admitted):
+                kept.append(f)
+                continue
+            notes.append(f"enrich: dropped uncued money field {mid}.{name or ttype}")
+        if len(kept) != len(fields):
+            m["fields"] = kept
+    return notes
+
+
 def collapse_header_o2ms_into_notebook(draft: dict[str, Any]) -> list[str]:
     """sale.order shape: scalars in groups, one notebook page per custom child O2M.
 
-    Unwraps ``<group><notebook><page>`` (production_shape used to wrap each O2M
-    independently) and enriches nested lists that only show ``x_name``.
+    Prefer closed ``GenerateIR.o2ms`` when stamped — Install pages track admitted
+    O2Ms only (handoff §4). Unwraps ``<group><notebook><page>`` and enriches
+    nested lists that only show ``x_name``.
     """
     notes: list[str] = []
     by_id = {
@@ -652,6 +731,15 @@ def collapse_header_o2ms_into_notebook(draft: dict[str, Any]) -> list[str]:
         for m in (draft.get("models") or [])
         if isinstance(m, dict) and m.get("model")
     }
+    ir = draft.get("_generate_ir") if isinstance(draft.get("_generate_ir"), dict) else {}
+    ir_o2ms_by_model: dict[str, set[str]] = {}
+    for row in ir.get("o2ms") or []:
+        if not isinstance(row, dict):
+            continue
+        on_mid = str(row.get("on_model") or "")
+        fname = str(row.get("name") or "")
+        if on_mid and fname:
+            ir_o2ms_by_model.setdefault(on_mid, set()).add(fname)
     try:
         odoo_major = int(draft.get("odoo_major") or 19)
     except (TypeError, ValueError):
@@ -674,6 +762,10 @@ def collapse_header_o2ms_into_notebook(draft: dict[str, Any]) -> list[str]:
             and str(f.get("name") or "")
             and str(f.get("relation") or "").startswith("x_")
         }
+        if ir:
+            # Closed IR stamped: only notebook pages for admitted O2Ms on this model.
+            allowed = ir_o2ms_by_model.get(mid, set())
+            o2m_meta = {k: v for k, v in o2m_meta.items() if k in allowed}
         arch = str(view.get("arch") or "").strip()
         if not arch:
             continue
@@ -813,9 +905,16 @@ def _ensure_menus_for_models(
     display: str,
     tech: str,
 ) -> list[str]:
+    """Ensure root + per-model menus via admit (Wave 3)."""
     notes: list[str] = []
     menus = list(draft.get("menus") or []) if isinstance(draft.get("menus"), list) else []
     root_xml = f"menu_root_{_slug(tech)}"
+    proposals: list[Any] = []
+    try:
+        from app.ai_generate_ir import Proposal, admit_and_apply
+    except Exception:  # noqa: BLE001
+        return notes
+
     if not any(isinstance(m, dict) and m.get("xml_id") == root_xml for m in menus):
         root = next(
             (
@@ -830,14 +929,20 @@ def _ensure_menus_for_models(
         if root and root.get("xml_id"):
             root_xml = str(root["xml_id"])
         else:
-            menus.insert(
-                0,
-                {
-                    "name": display,
-                    "sequence": 10,
-                    "technical_name": f"root_{_slug(tech)}",
-                    "xml_id": root_xml,
-                },
+            proposals.append(
+                Proposal(
+                    kind="menu",
+                    name=display,
+                    payload={
+                        "sequence": 10,
+                        "technical_name": f"root_{_slug(tech)}",
+                        "xml_id": root_xml,
+                    },
+                    source_cue="structural_default",
+                    rationale="enrich root menu",
+                    proposer="ai_enrich.menus",
+                    confidence=0.9,
+                )
             )
     covered_actions = {
         str(m.get("action_xml_id") or "")
@@ -849,8 +954,7 @@ def _ensure_menus_for_models(
         for a in (draft.get("actions") or [])
         if isinstance(a, dict)
     }
-    added = 0
-    seq = 10 + len(menus)
+    seq = 10 + len(menus) + len(proposals)
     for m in new_models:
         mid = str(m["model"])
         if mid.endswith("_line"):
@@ -860,21 +964,28 @@ def _ensure_menus_for_models(
         if act_xml in covered_actions:
             continue
         label = str(m.get("description") or mid)
-        menus.append(
-            {
-                "name": label,
-                "action_xml_id": act_xml,
-                "parent_xml_id": root_xml,
-                "sequence": seq,
-                "technical_name": f"menu_{_slug(mid)}",
-            }
+        proposals.append(
+            Proposal(
+                kind="menu",
+                name=label,
+                payload={
+                    "action_xml_id": act_xml,
+                    "parent_xml_id": root_xml,
+                    "sequence": seq,
+                    "technical_name": f"menu_{_slug(mid)}",
+                },
+                source_cue="structural_default",
+                rationale=f"enrich menu for {mid}",
+                proposer="ai_enrich.menus",
+                confidence=0.85,
+            )
         )
         covered_actions.add(str(act_xml))
         seq += 1
-        added += 1
-    if added:
-        draft["menus"] = menus
-        notes.append(f"added {added} menu(s) for seeded/extra models")
+    if proposals:
+        _, gate = admit_and_apply(draft, proposals)
+        notes.extend(gate)
+        notes.append(f"added {len(proposals)} menu proposal(s) for seeded/extra models")
     return notes
 
 
@@ -1075,6 +1186,8 @@ def _rebuild_stale_views(
 def ensure_default_ui(draft: dict[str, Any]) -> list[str]:
     """Add actions/menus/views when missing. Mutates draft. Returns warnings."""
     warnings: list[str] = []
+    warnings.extend(coerce_uncued_datetime_fields(draft))
+    warnings.extend(coerce_uncued_money_fields(draft))
     models = [m for m in (draft.get("models") or []) if isinstance(m, dict) and m.get("model")]
     if not models:
         return warnings

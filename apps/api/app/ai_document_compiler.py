@@ -169,6 +169,20 @@ def _purge(draft: dict[str, Any], removed: set[str]) -> None:
 
 
 def _model_signature(model: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+    """Structural fingerprint for isomorphic collapse.
+
+    Soft identity spray (partner/company/status) is excluded so a studio
+    register and an equipment register are not treated as the same document
+    after reuse adds ``x_partner_id``.
+    """
+    soft = {
+        ("many2one", "res.partner"),
+        ("many2one", "res.company"),
+        ("many2one", "res.users"),
+        ("many2one", "res.currency"),
+        ("selection", "x_status"),
+        ("selection", "state"),
+    }
     rows: list[tuple[str, str]] = []
     mid = str(model.get("model") or "")
     for field in _field_list(model):
@@ -181,24 +195,33 @@ def _model_signature(model: dict[str, Any]) -> tuple[tuple[str, str], ...]:
             continue
         if ttype in {"one2many", "many2many"}:
             continue
-        rows.append((ttype, rel or name))
+        key = (ttype, rel or name)
+        if key in soft or (ttype == "many2one" and rel.startswith("res.")):
+            continue
+        rows.append(key)
     return tuple(sorted(rows))
 
 
 def _o2m_column_signature(
     field: dict[str, Any], models_by_id: dict[str, dict[str, Any]]
 ) -> tuple[str, ...]:
-    child = models_by_id.get(str(field.get("relation") or ""))
+    """Signature for duplicate-notebook detection.
+
+    Relation model id is always part of the key — booking_line vs equipment_line
+    both looking like ``(x_name,)`` must not collapse into one notebook page.
+    """
+    rel = str(field.get("relation") or "")
+    child = models_by_id.get(rel)
     if not child:
-        return ("x_name",)
-    names = []
+        return (rel or "x_name",)
+    names = [f"rel:{rel}"]
     for f in _field_list(child):
         n = str(f.get("name") or "")
         ttype = str(f.get("ttype") or "")
         if ttype == "many2one" and str(f.get("relation") or "").startswith("x_"):
             continue
         names.append(n)
-    return tuple(sorted(names)[:8]) or ("x_name",)
+    return tuple(sorted(names)[:9]) or (rel or "x_name",)
 
 
 def _ensure_field(model: dict[str, Any], spec: dict[str, Any]) -> bool:
@@ -431,11 +454,24 @@ def _compile_thin(
         f"x_{slug}" if slug and not str(slug).startswith("x_") else slug
     )
     old_id = str(header.get("model") or "")
-    if want_id and old_id != want_id:
+    # Preserve already-specific catalog/register models (rate_card, uom, …).
+    # Residual-noun rename is for placeholders / wrong grain titles — not every header.
+    _keep_leaf = (
+        "rate_card", "rate", "uom", "category", "type", "tag", "reason",
+        "equipment", "asset", "product", "sku", "price_list",
+    )
+    old_leaf = old_id[2:] if old_id.startswith("x_") else old_id
+    preserve = any(
+        old_leaf == tok or old_leaf.endswith(f"_{tok}") or old_leaf.startswith(f"{tok}_")
+        for tok in _keep_leaf
+    )
+    if want_id and old_id != want_id and not preserve:
         header["model"] = want_id
         if _display and not str(header.get("description") or "").strip():
             header["description"] = _display.rstrip("s")
         notes.append(f"compiler: renamed header {old_id} → {want_id}")
+    elif want_id and old_id != want_id and preserve:
+        notes.append(f"compiler: kept catalog header {old_id} (not residual noun {want_id})")
     header_id = str(header.get("model") or "")
     keep = {header_id}
     if may_add_line_satellite(draft, prompt=prompt):
@@ -470,6 +506,7 @@ def _compile_thin(
 
 
 def _rebuild_thin_menus(draft: dict[str, Any], header_id: str) -> list[str]:
+    """Rebuild thin residual root+document menus via admit (Wave 3)."""
     notes: list[str] = []
     tech = str(draft.get("technical_name") or "custom_app")
     display = str(draft.get("display_name") or tech.replace("_", " ").title())
@@ -504,27 +541,119 @@ def _rebuild_thin_menus(draft: dict[str, Any], header_id: str) -> list[str]:
             action_tech = str(action.get("technical_name") or action_tech)
     draft["actions"] = actions
     root_xml = f"menu_root_{slug}"
-    draft["menus"] = [
-        {
-            "name": display,
-            "sequence": 10,
-            "technical_name": f"root_{slug}",
-            "xml_id": root_xml,
-        },
-        {
-            "name": header_label if header_label != display else "Requests",
-            "action_xml_id": action_tech,
-            "parent_xml_id": root_xml,
-            "sequence": 10,
-            "technical_name": f"menu_{header_id}",
-        },
-    ]
-    notes.append("compiler: rebuilt thin menus")
+    child_name = header_label if header_label != display else "Requests"
+    try:
+        from app.ai_generate_ir import Proposal, admit_and_apply
+        from app.ai_ir_trace import trace_ir
+
+        # Replace prior thin menus — prune then admit closed pair.
+        draft["menus"] = []
+        proposals = [
+            Proposal(
+                kind="menu",
+                name=display,
+                payload={
+                    "sequence": 10,
+                    "technical_name": f"root_{slug}",
+                    "xml_id": root_xml,
+                },
+                source_cue="structural_default",
+                rationale="thin residual root menu",
+                proposer="ai_document_compiler.menus",
+                confidence=1.0,
+            ),
+            Proposal(
+                kind="menu",
+                name=child_name,
+                payload={
+                    "action_xml_id": action_tech,
+                    "parent_xml_id": root_xml,
+                    "sequence": 10,
+                    "technical_name": f"menu_{header_id}",
+                },
+                source_cue="structural_default",
+                rationale="thin residual document menu",
+                proposer="ai_document_compiler.menus",
+                confidence=1.0,
+            ),
+        ]
+        trace_ir(draft, stage="compiler:rebuild_thin_menus:before_admit")
+        _, gate = admit_and_apply(draft, proposals)
+        notes.extend(gate)
+        notes.append("compiler: rebuilt thin menus via admit")
+        trace_ir(draft, stage="compiler:rebuild_thin_menus:after_admit")
+    except Exception:  # noqa: BLE001
+        draft["menus"] = [
+            {
+                "name": display,
+                "sequence": 10,
+                "technical_name": f"root_{slug}",
+                "xml_id": root_xml,
+            },
+            {
+                "name": child_name,
+                "action_xml_id": action_tech,
+                "parent_xml_id": root_xml,
+                "sequence": 10,
+                "technical_name": f"menu_{header_id}",
+            },
+        ]
+        notes.append("compiler: rebuilt thin menus (fallback)")
     return notes
 
 
+# Parallel job-header collapse owns these aliases — isomorphic must not.
+_JOB_HEADER_LEAVES = frozenset(
+    {"engagement", "project", "matter", "case", "stay", "job"}
+)
+# Only collapse models that are the same role under different names.
+_ISOMORPHIC_SYNONYM_GROUPS: tuple[frozenset[str], ...] = (
+    frozenset({"engagement", "project", "matter", "case", "stay", "job"}),
+    frozenset({"site", "location", "venue", "branch"}),
+    frozenset({"party", "counterparty"}),
+)
+
+
+def _leaf_grounded_in_prompt(mid: str, text: str) -> bool:
+    """True when the model leaf appears as a prompt token (studios→studio, artistes→artist)."""
+    leaf = str(mid or "").replace("x_", "", 1).replace("_", " ").strip().lower()
+    if not leaf or not text:
+        return False
+    blob = text.lower()
+    # Whole-word / optional plural / Romance -e plural (artiste/artistes).
+    if re.search(rf"\b{re.escape(leaf)}e?s?\b", blob):
+        return True
+    # Prefix stem: artist ⊂ artistes, studio ⊂ studios already covered; keep stem fallback.
+    for tok in re.findall(r"[a-z0-9]+", blob):
+        if len(tok) >= 4 and len(leaf) >= 4 and (
+            tok.startswith(leaf) or leaf.startswith(tok)
+        ):
+            return True
+    return False
+
+
+def _same_isomorphic_role(a: str, b: str) -> bool:
+    """True when two model ids are aliases for the same document role."""
+    la = str(a or "").replace("x_", "", 1)
+    lb = str(b or "").replace("x_", "", 1)
+    if not la or not lb:
+        return False
+    if la == lb:
+        return True
+    for group in _ISOMORPHIC_SYNONYM_GROUPS:
+        if la in group and lb in group:
+            return True
+    return False
+
+
 def _collapse_isomorphic_siblings(draft: dict[str, Any], prompt: str) -> list[str]:
-    """Workspace: drop custom models that are the same document twice."""
+    """Workspace: drop custom models that are the same document twice.
+
+    Field-signature match alone is not enough — booking vs recording_session and
+    job_cost vs deliverable can share FKs without being the same document.
+    Collapse only synonym-role pairs (engagement/project/matter, site/location, …)
+    or exact duplicate leaves, preferring prompt-grounded keepers.
+    """
     notes: list[str] = []
     pack_allowed: set[str] = set()
     pack_id = str(draft.get("domain_pack") or "")
@@ -544,7 +673,10 @@ def _collapse_isomorphic_siblings(draft: dict[str, Any], prompt: str) -> list[st
     groups: dict[tuple[tuple[str, str], ...], list[str]] = {}
     for model in _custom_models(draft):
         mid = str(model.get("model") or "")
+        leaf = mid.replace("x_", "", 1)
         if mid == header_id or _is_line_model(mid) or mid in pack_allowed:
+            continue
+        if leaf in _JOB_HEADER_LEAVES:
             continue
         sig = _model_signature(model)
         if len(sig) < 1:
@@ -557,10 +689,12 @@ def _collapse_isomorphic_siblings(draft: dict[str, Any], prompt: str) -> list[st
             continue
         ranked = sorted(
             mids,
-            key=lambda m: (0 if m.replace("x_", "").replace("_", " ") in text else 1, m),
+            key=lambda m: (0 if _leaf_grounded_in_prompt(m, text) else 1, m),
         )
+        keep = ranked[0]
         for extra in ranked[1:]:
-            removed.add(extra)
+            if _same_isomorphic_role(extra, keep):
+                removed.add(extra)
     if removed:
         _purge(draft, removed)
         notes.append("compiler: collapsed isomorphic siblings " + ", ".join(sorted(removed)))

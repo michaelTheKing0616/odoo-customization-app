@@ -449,6 +449,12 @@ def attach_operator_surface(draft: dict[str, Any]) -> list[str]:
     """Stamp ``_operator_surface`` for Wizard discoverability."""
     if not isinstance(draft, dict):
         return []
+    try:
+        from app.ai_ir_trace import trace_ir
+
+        trace_ir(draft, stage="attach_operator_surface:start", notes=[])
+    except Exception:  # noqa: BLE001
+        pass
     # Scrub invented Contacts host buttons before find-it (do not stamp new ones here).
     try:
         from app.ai_stock_host_smart_buttons import scrub_residual_contacts_host_buttons
@@ -475,9 +481,16 @@ def attach_operator_surface(draft: dict[str, Any]) -> list[str]:
     draft["_operator_surface"] = surface
     n_host = len(surface.get("host_buttons") or [])
     n_res = len(surface.get("residual_buttons") or [])
-    return [
+    notes = [
         f"operator_surface: {n_host} host button(s), {n_res} residual button(s)"
     ]
+    try:
+        from app.ai_ir_trace import trace_ir
+
+        trace_ir(draft, stage="attach_operator_surface:end", notes=notes)
+    except Exception:  # noqa: BLE001
+        pass
+    return notes
 
 
 __all__ = [
