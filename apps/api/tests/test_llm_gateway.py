@@ -10,7 +10,7 @@ import pytest
 from app.llm_gateway.gateway import Gateway
 from app.llm_gateway.normalize import ArgsRejected, parse_tool_args, synthesize_call_id
 from app.llm_gateway.retries import delay_ms, is_retryable, should_stop
-from app.llm_gateway.schema_lowering import canonical_issues, to_gemini, to_openai_strict
+from app.llm_gateway.schema_lowering import canonical_issues, canonical_tool_issues, to_gemini, to_openai_strict
 from app.llm_gateway.scripted import ScriptedAdapter
 from app.llm_gateway.types import LLMError
 
@@ -93,6 +93,33 @@ def test_budget_stops_before_another_provider_call() -> None:
 
 def test_canonical_validator_rejects_extra_fields() -> None:
     assert canonical_issues({"model": "sale.order", "sql": "drop"}, SCHEMA)
+
+
+def test_adapter_bodies_reject_a_bad_tool_name() -> None:
+    from app.llm_gateway.adapters.anthropic import anthropic_body
+    from app.llm_gateway.adapters.gemini import gemini_body
+    from app.llm_gateway.adapters.openai import openai_body
+
+    request = {
+        "model_id": "configured",
+        "max_output_tokens": 8,
+        "tools": [{"name": "1abc", "description": "ok", "input_schema": SCHEMA}],
+    }
+    for builder in (openai_body, anthropic_body, gemini_body):
+        with pytest.raises(LLMError) as caught:
+            builder(request)
+        assert caught.value.kind == "invalid_request"
+
+
+def test_tool_name_and_description_limits() -> None:
+    assert canonical_tool_issues("ab", "ok")
+    assert canonical_tool_issues("1abc", "ok")
+    too_long_name = "a" + ("b" * 41)
+    assert len(too_long_name) == 42
+    assert canonical_tool_issues(too_long_name, "ok")
+    assert canonical_tool_issues("abc", "d" * 1024) == []
+    assert canonical_tool_issues("a" + ("b" * 40), "d" * 1024) == []
+    assert canonical_tool_issues("abc", "d" * 1025)
 
 
 def test_gateway_package_does_not_import_odoo_or_changeset() -> None:

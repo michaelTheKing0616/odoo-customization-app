@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.llm_gateway.normalize import ArgsRejected, parse_tool_args, synthesize_call_id
-from app.llm_gateway.schema_lowering import to_openai_strict
+from app.llm_gateway.schema_lowering import canonical_tool_issues, to_openai_strict
 from app.llm_gateway.types import LLMError, LLMResponse, ToolCall
 
 
@@ -14,6 +14,9 @@ def openai_body(request: dict[str, Any]) -> dict[str, Any]:
         raise LLMError("invalid_request", "credentials do not belong in the body")
     tools = []
     for tool in request.get("tools") or []:
+        issues = canonical_tool_issues(str(tool.get("name") or ""), str(tool.get("description") or ""))
+        if issues:
+            raise LLMError("invalid_request", issues[0])
         schema = tool.get("input_schema") or {"type": "object", "properties": {}}
         tools.append(
             {

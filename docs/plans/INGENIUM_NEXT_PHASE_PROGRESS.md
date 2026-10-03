@@ -1176,3 +1176,8 @@ Not done: T8-P0-LINT. The live fixture gate stays open. L4 stays off.
 Track: T8 T8-P0-LINT. Worker [Add import-boundary lint tests](46dec7bc-ef95-45d8-be27-6b6a6cb09c31). No push. L4 stays off.
 Intent: Changeset does not import `llm_gateway` or `agent_runtime`. Provider SDK imports stay out of the tree outside `llm_gateway/adapters/`. A planted version branch outside `compat/` fails. Re-ran `tests/test_import_boundary.py`: 10 passed. The real tree still has 22 version branches outside `compat/`. GATE-P0-05 stays open.
 Not done: T8-GW-TYPES. GATE-P0-03 and GATE-P0-05 stay open. L4 stays off.
+
+## 2026-10-03 — T8-GW-TYPES tool limits
+Track: T8 T8-GW-TYPES. Worker [Add canonical tool limits](88508d36-f23c-4f2f-9105-1e5ab2f802cd). No push. L4 stays off.
+Intent: Tool names match `[a-z][a-z0-9_]{2,40}`. Descriptions are at most 1024 characters. The three adapter bodies reject a bad name before building a request. Re-ran gateway and adapter tests: 19 passed.
+Not done: T8-GW-NORM. GATE-P0-03 and GATE-P0-05 stay open. L4 stays off.

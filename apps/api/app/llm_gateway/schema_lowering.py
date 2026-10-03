@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
+
+# First character is a letter; two to forty more from the same class (length 3–41).
+_TOOL_NAME = re.compile(r"[a-z][a-z0-9_]{2,40}")
+_MAX_DESCRIPTION_CHARS = 1024
 
 
 def to_openai_strict(schema: dict[str, Any]) -> dict[str, Any]:
@@ -95,4 +100,18 @@ def canonical_issues(args: dict[str, Any] | None, schema: dict[str, Any]) -> lis
             issues.append(f"{name} not in enum")
         if "const" in prop and value != prop["const"]:
             issues.append(f"{name} must equal const")
+    return issues
+
+
+def canonical_tool_issues(name: str, description: str) -> list[str]:
+    """Return schema issues for a canonical tool name and description.
+
+    ``name`` must match ``[a-z][a-z0-9_]{2,40}``. ``description`` must be a
+    string of at most 1024 characters. No side effects.
+    """
+    issues: list[str] = []
+    if not isinstance(name, str) or _TOOL_NAME.fullmatch(name) is None:
+        issues.append("invalid tool name")
+    if not isinstance(description, str) or len(description) > _MAX_DESCRIPTION_CHARS:
+        issues.append("description exceeds 1024 characters")
     return issues
