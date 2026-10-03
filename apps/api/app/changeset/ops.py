@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Final
 
+from app.changeset.logic_ops import logic_base_raise
 from app.changeset.schema_ops import compute_requested, nonempty_sensitive_delete
 
 RiskBase = str  # R0 .. R4
@@ -105,10 +106,10 @@ def op_base_risk(op_type: str, params: dict[str, Any] | None) -> RiskBase:
         return "R4"
     base = entry.risk_base
     p = params or {}
-    if op_type == "server_action.create":
-        if p.get("code") or p.get("email") or p.get("webhook"):
-            base = _max_risk(base, "R3")
-    elif op_type in {"field.create", "field.update"} and compute_requested(p):
+    raised = logic_base_raise(op_type, p)
+    if raised is not None:
+        base = _max_risk(base, raised)
+    if op_type in {"field.create", "field.update"} and compute_requested(p):
         base = _max_risk(base, "R3")
     elif op_type == "field.delete" and nonempty_sensitive_delete(p):
         base = "R4"

@@ -1245,3 +1245,8 @@ Not done: T8-OP-UI. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P2-
 Track: T8 T8-OP-UI. Worker [Prove UI operation risk rules](59c4dc29-43da-4da5-9fa6-f965f07297df). No push. L4 stays off.
 Intent: UI ops stay R1. The three report ops stay R2. A view inherit already required one anchor. `report.inherit` now does too. An XPath that replaces the root or a large subtree is refused. Re-ran UI, handler, and import-boundary tests: 101 passed. The version-branch count stayed 22. Engine suites were not run.
 Not done: T8-OP-LOGIC. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P2-09 stay open. L4 stays off.
+
+## 2026-10-03 — T8-OP-LOGIC risk rules
+Track: T8 T8-OP-LOGIC. Worker [Prove logic operation risk rules](76259126-ba68-46a4-b79a-1058e693fd62). No push. L4 stays off.
+Intent: Code, email, SMS, and webhook server actions are R3. Outbound or mass automation is R3. Cron stays R3. An accounting, journal, or legal sequence is R4. The safe_eval checker rejects the named RT-25 patterns and does not run the snippet. Re-ran logic, schema, handler, and import-boundary tests: 52 passed. The version-branch count stayed 22. The full engine suite was not run.
+Not done: T8-OP-SEC. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P2-09 stay open. L4 stays off.

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from app.changeset.logic_ops import safe_eval_issues_in_params
 from app.changeset.ops import OP_CATALOG
 from app.changeset.protected_registry import protected_denial
 from app.changeset.schema_ops import (
@@ -90,14 +91,13 @@ def _access_issues(params: dict[str, Any]) -> Issues:
 
 def _code_issues(params: dict[str, Any]) -> Issues:
     code = str(params.get("code") or "")
-    if not code:
-        return []
-    lowered = code.lower()
-    for token in ("import ", "__import__", "sudo(", "eval(", "exec(", "commit(", "__class__"):
-        if token in lowered or token in code:
-            issues_token = token.strip()
-            return [f"server action code contains forbidden token {issues_token}"]
-    return []
+    if code:
+        lowered = code.lower()
+        for token in ("import ", "__import__", "sudo(", "eval(", "exec(", "commit(", "__class__"):
+            if token in lowered or token in code:
+                issues_token = token.strip()
+                return [f"server action code contains forbidden token {issues_token}"]
+    return safe_eval_issues_in_params(params)
 
 
 def _sequence_issues(params: dict[str, Any]) -> Issues:
@@ -145,6 +145,8 @@ _ISSUE_FNS: dict[str, IssueFn] = {
     "access.update": _access_issues,
     "server_action.create": _code_issues,
     "server_action.update": _code_issues,
+    "automation.create": safe_eval_issues_in_params,
+    "automation.update": safe_eval_issues_in_params,
     "sequence.create": _sequence_issues,
     "sequence.update": _sequence_issues,
     "module.install": lambda p: _need(p, "module"),
