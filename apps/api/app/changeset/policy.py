@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.changeset.ops import op_base_risk
-from app.changeset.protected_registry import protection_level
+from app.changeset.protected_registry import protection_level, requires_domain_owner
 
 _RISK_ORDER = ("R0", "R1", "R2", "R3", "R4")
 
@@ -57,30 +57,79 @@ def policy_decision(
     environment: str,
     *,
     autonomy: str = "L2",
+    elevated: bool = False,
 ) -> dict[str, bool | int]:
+    """Who must approve.
+
+    Inputs: risk class, environment, autonomy, and whether the target is protected:elevate.
+    Output: allow, approvers, needs_simulation, deny, and domain_owner.
+    Side effects: none. An elevated target that is still allowed needs a domain-owner
+    approver. R4 stays denied, so a domain owner cannot unlock it.
+    """
+
+    def finish(allow: bool, approvers: int, needs_simulation: bool, deny: bool) -> dict[str, bool | int]:
+        return {
+            "allow": allow,
+            "approvers": approvers,
+            "needs_simulation": needs_simulation,
+            "deny": deny,
+            "domain_owner": bool(elevated) and not deny,
+        }
+
     env = environment.lower()
     deny = risk == "R4"
     if deny:
-        return {"allow": False, "approvers": 0, "needs_simulation": False, "deny": True}
+        return finish(False, 0, False, True)
 
     if env == "staging":
         if risk == "R0":
-            return {"allow": True, "approvers": 0, "needs_simulation": False, "deny": False}
+            return finish(True, 0, False, False)
         if risk == "R1":
             approvers = 0 if autonomy in {"L3", "L4"} else 1
-            return {"allow": True, "approvers": approvers, "needs_simulation": False, "deny": False}
+            return finish(True, approvers, False, False)
         if risk in {"R2", "R3"}:
-            return {"allow": True, "approvers": 1, "needs_simulation": False, "deny": False}
-        return {"allow": False, "approvers": 0, "needs_simulation": False, "deny": True}
+            return finish(True, 1, False, False)
+        return finish(False, 0, False, True)
 
     # production (default)
     if risk == "R0":
-        return {"allow": True, "approvers": 0, "needs_simulation": False, "deny": False}
+        return finish(True, 0, False, False)
     if risk in {"R1", "R2"}:
-        return {"allow": True, "approvers": 1, "needs_simulation": True, "deny": False}
+        return finish(True, 1, True, False)
     if risk == "R3":
-        return {"allow": True, "approvers": 2, "needs_simulation": True, "deny": False}
-    return {"allow": False, "approvers": 0, "needs_simulation": False, "deny": True}
+        return finish(True, 2, True, False)
+    return finish(False, 0, False, True)
+
+
+def policy_for_op(
+    op: dict[str, Any],
+    environment: str,
+    *,
+    autonomy: str = "L2",
+    tenant: dict[str, Any] | None = None,
+    document: list[dict[str, Any]] | None = None,
+    rows: int = 0,
+    users: int = 0,
+    outbound: bool = False,
+    mode_c: bool = False,
+) -> dict[str, bool | int]:
+    """Policy for one op, including the protected:elevate domain-owner requirement.
+
+    Inputs: the op, environment, and the same risk bumps `risk_of` accepts.
+    Output: the policy decision. `domain_owner` is true only for an allowed elevate.
+    Side effects: none.
+    """
+    risk = risk_of(
+        op,
+        rows=rows,
+        users=users,
+        outbound=outbound,
+        mode_c=mode_c,
+        tenant=tenant,
+        document=document,
+    )
+    elevated = requires_domain_owner(op, document=document, tenant=tenant)
+    return policy_decision(risk, environment, autonomy=autonomy, elevated=elevated)
 
 
 def self_approval_allowed(risk: str) -> bool:

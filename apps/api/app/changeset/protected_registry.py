@@ -1,8 +1,8 @@
 """Protected registry. Core targets cannot be removed. Tenants may only add.
 
-`protected:deny` blocks the apply. `protected:elevate` raises risk by one and
-never lowers it. Composite expansion, `$ref`, and batch domains are checked
-before any journal write.
+`protected:deny` blocks the apply at R4. `protected:elevate` raises risk by one
+and requires a domain-owner approver. It never lowers risk. Composite expansion,
+`$ref`, and batch domains are checked before any journal write.
 """
 
 from __future__ import annotations
@@ -573,3 +573,18 @@ def protection_level(
     if _is_model(model, deny_models(tenant)) or _is_model(model, elevate_models()):
         return "elevate"
     return None
+
+
+def requires_domain_owner(
+    op: dict[str, Any],
+    *,
+    document: list[dict[str, Any]] | None = None,
+    tenant: dict[str, Any] | None = None,
+) -> bool:
+    """True when the op is `protected:elevate` and needs a domain-owner approver.
+
+    Inputs: one op, the optional change-set it `$ref`s, and an optional tenant overlay.
+    Output: whether a domain owner must approve. Deny stays a block, not an approval.
+    Side effects: none. This does not record a detection.
+    """
+    return protection_level(op, document=document, tenant=tenant) == "elevate"

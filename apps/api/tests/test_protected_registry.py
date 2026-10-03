@@ -9,16 +9,35 @@ import yaml
 
 from app.changeset.executor import _protocol, apply, get_journal, reset_journal
 from app.changeset.handlers import apply_memory
-from app.changeset.policy import risk_of
-from app.changeset.policy import risk_of
+from app.changeset.ops import op_base_risk
+from app.changeset.policy import policy_for_op, risk_of
 from app.changeset.protected_registry import (
     _FLOOR_MODELS,
     deny_models,
     detections,
+    elevate_models,
     protected_case,
     protected_denial,
+    requires_domain_owner,
+    reset_detections,
 )
 from app.changeset.validate import validate
+
+
+def _assert_policy_denied(
+    op: dict,
+    case: str,
+    *,
+    document: list[dict] | None = None,
+    tenant: dict | None = None,
+) -> None:
+    """The named RT case blocks, records policy_denied, and is R4."""
+    reset_detections()
+    assert protected_denial(op, document=document, tenant=tenant) == "protected_deny"
+    record = detections()[-1]
+    assert record["case"] == case
+    assert record["alert"] == "policy_denied"
+    assert risk_of(op, document=document, tenant=tenant) == "R4"
 
 
 def _batch(model: str, **extra: object) -> dict:
@@ -43,6 +62,11 @@ def test_tenant_cannot_remove_a_core_model() -> None:
     assert protected_case(_batch("stock.quant"), tenant=tenant) == "RT-12"
     assert protected_case(_batch("x_secret"), tenant=tenant) == "RT-12"
     assert "stock.quant" in deny_models(tenant)
+    removed = {"remove_models": ["stock.quant", "account.move", "hr.payslip"]}
+    assert deny_models(removed) == deny_models()
+    assert deny_models(tenant) == deny_models() | {"x_secret"}
+    assert "x_secret" in deny_models({"add_models": ["x_secret"], "remove_models": ["x_secret"]})
+    _assert_policy_denied(_batch("stock.quant"), "RT-12", tenant=removed)
 
 
 def test_rt10_scaffold_expansion_into_a_protected_model() -> None:
@@ -62,6 +86,7 @@ def test_rt10_scaffold_expansion_into_a_protected_model() -> None:
     assert protected_case(blocked) == "RT-10"
     assert protected_case(relation) == "RT-10"
     assert protected_case(allowed) is None
+    _assert_policy_denied(blocked, "RT-10")
 
 
 def test_rt11_ref_to_a_protected_model() -> None:
@@ -73,6 +98,7 @@ def test_rt11_ref_to_a_protected_model() -> None:
         },
     ]
     assert protected_case(document[1], document=document) == "RT-11"
+    _assert_policy_denied(document[1], "RT-11", document=document)
     bare = [
         {"type": "field.update", "params": {"model": "account.move", "name": "ref"}},
         {"type": "field.update", "params": {"model": {"$ref": "#/0/params/model"}, "name": "x_note"}},
@@ -87,10 +113,12 @@ def test_rt12_widened_domain_and_extra_models() -> None:
     assert protected_case(widened) == "RT-12"
     assert protected_case(extra) == "RT-12"
     assert protected_case(_batch("res.partner")) is None
+    _assert_policy_denied(widened, "RT-12")
 
 
 def test_rt13_setting_side_effects() -> None:
-    assert protected_case({"type": "setting.set", "params": {"key": "module_sale", "value": True}}) == "RT-13"
+    lock = {"type": "setting.set", "params": {"key": "module_sale", "value": True}}
+    assert protected_case(lock) == "RT-13"
     assert (
         protected_case(
             {
@@ -105,6 +133,7 @@ def test_rt13_setting_side_effects() -> None:
         == "RT-13"
     )
     assert protected_case({"type": "setting.set", "params": {"key": "sale.auto", "value": True}}) is None
+    _assert_policy_denied(lock, "RT-13")
 
 
 def test_rt14_stored_compute_and_private_field() -> None:
@@ -119,6 +148,7 @@ def test_rt14_stored_compute_and_private_field() -> None:
     assert protected_case(label) is None
     assert risk_of(compute) == "R4"
     assert risk_of({"type": "field.create", "params": {"model": "product.category", "name": "x_note"}}) == "R3"
+    _assert_policy_denied(compute, "RT-14")
 
 
 def test_rt15_server_action_tricks() -> None:
@@ -130,6 +160,7 @@ def test_rt15_server_action_tricks() -> None:
     assert protected_case(named) == "RT-15"
     assert protected_case(fetched) == "RT-15"
     assert protected_case(plain) is None
+    _assert_policy_denied(trick, "RT-15")
     with pytest.raises(PermissionError):
         apply_memory({}, trick)
 
@@ -141,6 +172,7 @@ def test_rt16_journal_sequence_alias_and_confusable() -> None:
     assert protected_case(alias) == "RT-16"
     assert protected_case(homoglyph) == "RT-16"
     assert protected_case(plain) is None
+    _assert_policy_denied(alias, "RT-16")
 
 
 def test_blocked_cases_do_not_journal_and_are_alerted() -> None:
@@ -278,6 +310,33 @@ def test_review_bypasses_stay_blocked() -> None:
     ]
     assert protected_case(linked[1], document=linked) is None
     assert risk_of(linked[1], document=linked) == "R2"
+
+
+def test_protected_elevate_is_risk_plus_one_and_needs_a_domain_owner() -> None:
+    order = ("R0", "R1", "R2", "R3", "R4")
+    denied = {"type": "model.scaffold", "params": {"model": "account.move"}}
+    denied_policy = policy_for_op(denied, "production")
+    assert risk_of(denied) == "R4"
+    assert denied_policy["deny"] is True
+    assert denied_policy["domain_owner"] is False
+    assert requires_domain_owner(denied) is False
+
+    for model in sorted(elevate_models()):
+        op = {"type": "field.create", "params": {"model": model, "name": "x_note"}}
+        base = op_base_risk("field.create", op["params"])
+        bumped = risk_of(op)
+        assert order.index(bumped) == order.index(base) + 1
+        assert requires_domain_owner(op) is True
+        assert requires_domain_owner(op, tenant={"remove_models": [model]}) is True
+        for environment, approvers in (("production", 2), ("staging", 1)):
+            decision = policy_for_op(op, environment)
+            assert decision["domain_owner"] is True
+            assert decision["deny"] is False
+            assert decision["approvers"] == approvers
+
+    plain = {"type": "field.create", "params": {"model": "sale.order", "name": "x_note"}}
+    assert risk_of(plain) == "R2"
+    assert policy_for_op(plain, "production")["domain_owner"] is False
 
 
 def test_apply_uses_tenant_additions_and_elevated_risk() -> None:

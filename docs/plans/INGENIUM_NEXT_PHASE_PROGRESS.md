@@ -1137,6 +1137,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - GATE-P2-08 and GATE-P2-09 are not fully passed. The seven bridge methods are proven on an in-memory fake. Apply, rollback, a real savepoint, the live kill switch, and staging neutralization have not run on Odoo.
 - Version drift live nightly rows were not run. Unknown cells remain for kanban, `name_get`, company-dependent fields, selection storage, mail template syntax, and translations on 20.
 - Engine suite 1 and suite 2 were not run for the schema family. `model.create`, `model.scaffold`, `field.deprecate`, `selection.update`, and `constraint.sql` still have no inverse in the handler.
+- `domain_owner` is set on an elevate policy decision. Apply does not yet refuse when that person has not approved.
 - `docker/*` and `apps/api/tests/test_wave16_gen2.py` still use `ServerProxy` outside the XML-RPC product scan.
 - Recaptured token screenshots in `docs/vision-verify/tokens-light.png` and `tokens-dark.png` are unstaged. The CSS text did not change.
 
@@ -1265,3 +1266,9 @@ Not done: T8-OP-DATA. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P
 Track: T8 T8-OP-DATA. Worker [Prove data operation risk rules](228dae57-1c5f-4236-b6d6-01527c49ac34). No push. L4 stays off.
 Intent: A sample is at most 20 rows. The cap is 1000. Batches are 200. Merge stays R3 and is not reversible. Delete stays R4, needs two approvers who are not the requester plus an allow-list, and defaults to deny. `stock.quant` is refused. Re-ran data and import-boundary tests: 14 passed. The version-branch count stayed 22. No live write.
 Not done: T8-PROT. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P2-09 stay open. L4 stays off.
+
+## 2026-10-03 — T8-PROT protected registry
+Track: T8 T8-PROT. Worker [Prove the protected registry](08b36e8b-c703-46b2-9266-cfd6b6e4fba8). No push. L4 stays off.
+Intent: RT-10 through RT-16 each have a named test for `protected_deny`, `policy_denied`, and R4. A tenant `remove_models` list does not shrink the core set. Elevate is risk +1 and sets `domain_owner`. Re-ran protected-registry and import-boundary tests: 25 passed. The version-branch count stayed 22.
+Reviewer: what could be wrong is that `domain_owner` is a flag on the policy decision and apply does not yet refuse when that person has not approved. The named RT tests cover the known shapes, not every confusable or nested `$ref`.
+Not done: T8-RISK. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P2-09 stay open. L4 stays off.
