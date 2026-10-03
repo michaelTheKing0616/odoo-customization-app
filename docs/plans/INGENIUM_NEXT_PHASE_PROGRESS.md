@@ -146,6 +146,9 @@ Risks introduced: `studio-session.ts` no longer reads `understanding.grain`. `St
 
 CLAIM T1-PF 2026-10-03T07:03:19Z files: docs/plans/INGENIUM_NEXT_PHASE_PROGRESS.md only.
 
+CLAIM T1-F0 2026-10-03T07:05:19Z files: apps/api/tests/test_pr_f0_entrypoint.py and the progress log. Seeded tests already 24 passed. Count-equality assertion is missing.
+
+
 ## 2026-10-03 — T1-PF (PF-1 through PF-6 re-verify)
 Track: T1
 Intent: Pre-flight answers with path or command evidence only. Progress log append; no product edits.
@@ -187,5 +190,35 @@ Model / band: composer-2.5-fast worker (T1-PF card). Pressure 5. No commit.
 ### PF-6 — PR-J1 landed (transport)?
 **Transport: yes.** `packages/odoo-client/src/odoo_client/transport/json2.py` (`Json2Transport`, `POST /json/2/<model>/<method>`); wired in `packages/odoo-client/src/odoo_client/client.py` (`_connect_json2`, `_should_use_json2`, `execute_kw` on json2). Tests: `packages/odoo-client/tests/test_json2_transport.py`. **Live `/doc` parity smoke: no** — operator card **T2-J1** (`docs/plans/next-phase/cards/T2_JSON2.md`); this worker did not open a live Odoo instance.
 
+## 2026-10-03 — T1-F0 (PR-F.0 entrypoint trace)
+Track: T1
+Intent: Document Studio Generate → `_finish_seed_draft` call chain; lock T1 invariant 2 (field / one2many / menu counts vs stamped `GenerateIR`) in tests.
+Model / band: composer-2.5-fast worker (T1-F0 card). Pressure 9. No commit.
+
+### PR-F.0 call chain (file:line)
+1. `apps/web/src/app/connections/[id]/studio/page.tsx:347` — `api.generateStudioSession(session.id)` (also `:484`, `:661`, `:705`).
+2. `apps/web/src/lib/api.ts:1554-1560` — `POST /api/ai/sessions/${sessionId}/generate`.
+3. `apps/api/app/routers/ai_studio.py:384-385` — `generate_session_route` (`@router.post("/{session_id}/generate")`).
+4. `apps/api/app/routers/ai_studio.py:474-496` — `enqueue_draft_job(..., build_draft_job_kwargs(...))`.
+5. `apps/api/app/ai_draft_jobs.py:967-981` — `enqueue_draft_job` background worker → `run_draft_job_body`.
+6. `apps/api/app/ai_draft_jobs.py:745` — `run_draft_job_body` (full_app residual path).
+7. `apps/api/app/ai_draft_jobs.py:864-874` — `_finish_seed_draft(...)`.
+8. Inside `_finish_seed_draft`: `apps/api/app/ai_draft_jobs.py:549` — `close_odoo_architecture`; `:554` — `stamp_generate_ir` (presumed GenerateIR entrypoint / closure stamp); `:558-570` — live-apply contract, scorecard, generation engine metadata, `sanitize_draft_payload`.
+9. Live job tail (AI assist off): `apps/api/app/ai_draft_jobs.py:932-941` — `_apply_locked_craft_and_surface` after `_finish_seed_draft`.
+10. Offline golden harness (PR-F.0): `apps/api/app/ai_draft_jobs.py:356-402` — `studio_generate_offline_finish` = `_finish_seed_draft` + `_apply_locked_craft_and_surface`.
+
+**Post-entrypoint invent check:** On Maintenance harness, field / O2M / menu counts on the returned draft still equal `_generate_ir` after steps 8–10 (no retarget needed).
+
+### Provisional labels (pre–F.0 write-up)
+Any green **rubric battery** or **`_finish_seed_draft`-only** harness result recorded before this entry (including `DOCKET.md` PR-F.0 note and PF-2 SEEDED rows) is **provisional** until this call chain and invariant-2 assertion landed.
+
+### Tests added
+- `test_finish_seed_draft_invent_counts_match_generate_ir` — invariant 2 count equality after `_finish_seed_draft`.
+- `test_finish_seed_draft_post_entrypoint_invent_fails_count_invariant` — unit double injects a field after `stamp_generate_ir`; assertion fails.
+
+Commands and results: VERIFIED (this card). `cd apps/api && ../../.venv/bin/python -m pytest -q -p no:cacheprovider tests/test_pr_f0_entrypoint.py tests/test_generate_ir_spine.py` → **26 passed in 1.86s**.
+Gates passed: T1-F0 acceptance — call chain logged; count-equality assertion exists and passes.
+Negative tests: post-entrypoint invent double in `test_pr_f0_entrypoint.py`.
+Not done: no product/router edits; commit/push out of scope for this card.
 
 
