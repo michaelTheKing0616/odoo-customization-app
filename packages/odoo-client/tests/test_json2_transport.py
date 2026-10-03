@@ -12,7 +12,14 @@ import pytest
 
 from odoo_client.models import ConnectionConfig
 from odoo_client.transport.execute_kw_map import execute_kw_to_json2_body
-from odoo_client.transport.json2 import Json2Transport, Json2TransportError
+from odoo_client.transport.json2 import (
+    Json2Transport,
+    Json2TransportError,
+    classify_json2_error,
+    is_retryable_json2,
+    json2_origin,
+)
+from odoo_client.transport.json2_probe import probe_json2
 from odoo_client.client import OdooClient, OdooClientError
 
 
@@ -247,3 +254,84 @@ def test_json2_auth_failure_surfaces_odoo_client_error() -> None:
     ):
         with pytest.raises(OdooClientError, match="JSON-2 auth failed"):
             client._connect_json2(major=19)
+
+
+def test_json2_origin_strips_web_client_path() -> None:
+    assert json2_origin("https://aonb.odoo.com/odoo") == "https://aonb.odoo.com"
+    assert json2_origin("https://odoo.example/web/") == "https://odoo.example"
+    assert json2_origin("https://odoo.example/custom") == "https://odoo.example/custom"
+
+
+def test_domain_typeerror_500_is_a_caller_error_and_is_not_retryable() -> None:
+    body = {
+        "name": "builtins.TypeError",
+        "message": "Domain() invalid argument type for domain: 'not-a-domain'",
+    }
+    assert classify_json2_error(500, body) == "caller"
+    assert classify_json2_error(422, {"message": "missing a required argument: 'vals_list'"}) == "caller"
+    assert classify_json2_error(401, {"message": "Invalid apikey"}) == "auth"
+    assert classify_json2_error(500, {"name": "werkzeug.exceptions.InternalServerError", "message": "boom"}) == "server"
+    exc = Json2TransportError("domain", status=500, body=body)
+    assert is_retryable_json2(exc) is False
+
+
+def test_probe_ignores_website_doc_and_keeps_live_parameters() -> None:
+    website = b"<!DOCTYPE html><html data-website-id=\"1\"><body>create a page</body></html>"
+    responses = [
+        _FakeHTTPResponse(website),
+        _FakeHTTPResponse([]),
+        _FakeHTTPResponse({"id": {"string": "ID", "type": "integer"}}),
+        _http_error(422, {"message": "missing a required argument: 'vals_list'"}),
+    ]
+    transport = Json2Transport("https://aonb.odoo.com/odoo", "secret-key")
+    with patch("odoo_client.transport.json2.urlopen", side_effect=responses):
+        probe = probe_json2(transport)
+    assert transport.base_url == "https://aonb.odoo.com"
+    assert probe["doc_route"] == "website"
+    assert probe["parameters"]["search_read"] == ["domain", "fields", "limit"]
+    assert probe["parameters"]["fields_get"] == ["attributes"]
+    assert probe["parameters"]["create"] == ["vals_list"]
+    assert probe["disagreements"] == []
+    assert "secret-key" not in json.dumps(probe)
+
+
+def test_probe_live_parameters_win_when_doc_disagrees() -> None:
+    api_doc = b"search_read fields_get create allfields domain"
+    responses = [
+        _FakeHTTPResponse(api_doc),
+        _FakeHTTPResponse([]),
+        _FakeHTTPResponse({"id": {"string": "ID", "type": "integer"}}),
+        _http_error(422, {"message": "missing a required argument: 'vals_list'"}),
+    ]
+    transport = Json2Transport("https://odoo.example", "secret-key")
+    with patch("odoo_client.transport.json2.urlopen", side_effect=responses):
+        probe = probe_json2(transport)
+    assert probe["doc_route"] == "api"
+    assert probe["parameters"]["fields_get"] == ["attributes"]
+    assert any("fields_get" in note for note in probe["disagreements"])
+
+
+def test_connect_json2_stores_the_probe() -> None:
+    client = OdooClient(_cfg(rpc_protocol="json2", password="secret-key", url="https://aonb.odoo.com/odoo"))
+    with patch(
+        "odoo_client.client.Json2Transport.context_get",
+        return_value={"uid": 2},
+    ):
+        with patch(
+            "odoo_client.client.probe_json2",
+            return_value={"doc_route": "website", "parameters": {"create": ["vals_list"]}},
+        ) as probed:
+            uid = client._connect_json2(major=20)
+    assert uid == 2
+    assert client.json2_probe["doc_route"] == "website"
+    probed.assert_called_once()
+
+
+def _http_error(status: int, body: dict) -> HTTPError:
+    return HTTPError(
+        "https://odoo.example/json/2/res.partner/create",
+        status,
+        "err",
+        hdrs=None,  # type: ignore[arg-type]
+        fp=BytesIO(json.dumps(body).encode("utf-8")),
+    )

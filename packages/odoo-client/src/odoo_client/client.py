@@ -31,6 +31,7 @@ from odoo_client.models import (
     ViewInfo,
 )
 from odoo_client.transport.json2 import Json2Transport, Json2TransportError
+from odoo_client.transport.json2_probe import probe_json2
 
 
 class OdooClientError(Exception):
@@ -108,6 +109,7 @@ class OdooClient:
         self._jsonrpc_mode = False  # legacy /jsonrpc fallback (≤18 or blocked xmlrpc)
         self._rpc_protocol: Literal["xmlrpc", "jsonrpc", "json2"] = "xmlrpc"
         self._json2: Json2Transport | None = None
+        self.json2_probe: dict | None = None
         # Default to 19 capabilities before connect; connect() refreshes from server.
         self.capabilities: VersionCapabilities = for_major(19)
         self._ir_fields_colnames: frozenset[str] | None = None
@@ -317,6 +319,7 @@ class OdooClient:
                 f"JSON-2 context_get returned no uid: {ctx!r}"
             )
         self._json2 = transport
+        self.json2_probe = probe_json2(transport)
         self._rpc_protocol = "json2"
         self._jsonrpc_mode = False
         self._uid = int(uid)

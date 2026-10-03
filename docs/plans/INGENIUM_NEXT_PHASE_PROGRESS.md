@@ -563,3 +563,14 @@ Gates passed: compensating plan from change rows through the change-set pipeline
 Negative tests: `test_compensating_plan_unlink_res_users_refused_by_never_allowed`.
 Not done: live `/web/database` restore (named as tier 1 only; not for Online, Odoo.sh, or Odoo 20).
 Risks introduced: `data.unlink` is a catalog op for compensating created rows only; never-allowed still refuses `res.users` unlink via `classify_rpc`.
+
+## 2026-10-03 — JSON-2 production probe
+Track: T2
+Intent: Learn method parameters from the connected database on Online, Odoo.sh, Enterprise, and on-prem. A website at `/doc` is ignored. Live calls win.
+Model / band: implementation in this session. Pressure matches T2-J1 (10) for the live contract.
+Files: `packages/odoo-client/src/odoo_client/transport/json2.py`, `json2_probe.py`, `client.py`, `packages/odoo-client/tests/test_json2_transport.py`, `docs/verified-facts.md`.
+Commands and results: VERIFIED. pytest `packages/odoo-client/tests/test_json2_transport.py` — 29 passed in 0.16s.
+Gates passed: website `/doc` does not supply parameters; live `domain` / `attributes` / `vals_list` are kept; a 500 `Domain()` TypeError is a caller error and is not retryable; a pasted `/odoo` URL calls the host root.
+Negative tests: `test_domain_typeerror_500_is_a_caller_error_and_is_not_retryable`, `test_probe_live_parameters_win_when_doc_disagrees`.
+Not done: T2-J2 live `button_immediate_install` on a non-production 19 database. Not run against the operator Online database.
+Risks introduced: every JSON-2 connect runs the probe (one GET and three POSTs). `create` is an empty body and must stay that way so the probe does not insert a row.
