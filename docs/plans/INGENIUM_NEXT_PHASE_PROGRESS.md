@@ -518,6 +518,17 @@ Negative tests: `test_scrub_uncued_must_do_asserts_on_uncued_date` (uncued `Date
 Not done: delete `scrub_uncued_*` symbols entirely (one release assert-only per card); full battery / Mac §9 live grade; `test_continuous_invent_class` not re-run this card.
 Risks introduced: LLM paths that still emit uncued invent labels will raise at scrub assert until upstream gates catch them.
 
+## 2026-10-03 — T2-J1 live JSON-2
+Track: T2
+Intent: Check `/doc` and the three JSON-2 methods on the operator tip and mirror. Do not store the API key.
+Model / band: no worker. Live calls from gitignored `.env.json2`.
+Files: `docs/verified-facts.md`.
+Commands and results: PARTIALLY VERIFIED. Both hosts answered. `search_read`, `fields_get`, and `create` match `execute_kw_map.py` (`domain` plus kwargs, `attributes`, `vals_list`). Bad key is 401. A string domain is 500, not 400. `GET /doc` is the public website, so the `/doc` match is not verified. Server traceback path is `odoo/20.0`.
+Gates passed: live call shapes on tip and mirror. 4xx/5xx unit tests were already present and were not re-run.
+Negative tests: bad key 401; empty create 422; string domain 500.
+Not done: `/doc` does not document the methods on this website. T2-J2 live install is still open.
+Risks introduced: one probe contact was created on the tip and removed in the same check. The key file stayed gitignored.
+
 CLAIM 5A-06 2026-10-03T08:25:35Z files: apps/api/app/snapshot_gate.py and its tests. Freshness window 10 minutes. Cover BILLABLE. Do not create a second audit table.
 
 ## 2026-10-03 — 5A-06 snapshot freshness + BILLABLE

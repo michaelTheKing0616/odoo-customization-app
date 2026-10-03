@@ -34,9 +34,13 @@ Each bullet is tagged **`[verified]`** (supported by files in this repo at read 
 
 - **`[verified]`** HTTP JSON-2 transport module exists at `packages/odoo-client/src/odoo_client/transport/json2.py` (`Json2Transport`, docstring references `POST /json/2/<model>/<method>`).
 - **`[verified]`** `STATE.md` (2026-10-02) records local tip: `/doc` returned **404**; password login → XML-RPC ok; Bearer without API key → **401 Invalid apikey**.
-- **`[unverified]`** Live Odoo Online `/doc` availability and API-key JSON-2 smoke (`search_read` / `create` / `fields_get`)—listed in `STATE.md` as still operator work, not re-run for this file.
+- **`[verified]`** 2026-10-03 live calls on `https://aonb.odoo.com` (database `aonb`) and `https://aonb-mirror.odoo.com` (database `aonb-mirror`, described as a duplicate of the tip). No API key is stored in this file. A 500 traceback referenced `/home/odoo/src/odoo/20.0/`, so this build is 20.0, not a 19 tip.
+- **`[verified]`** `GET /json/2` returns **404** with message `Did you mean POST /json/2/<model>/<method>?`.
+- **`[verified]`** `POST /json/2/res.partner/search_read` with `domain`, `limit`, and `fields` returns **200** on both hosts. `POST /json/2/res.partner/fields_get` with `attributes` returns **200** on both hosts. `POST /json/2/res.partner/create` with an empty body returns **422** `missing a required argument: 'vals_list'` on both hosts. One `create` with `vals_list` on the tip returned **200**; that probe contact was then removed with `unlink`.
+- **`[verified]`** A Bearer token that is not an API key returns **401** `Invalid apikey` on both hosts. A `search_read` whose `domain` is a string returns **500** `Domain() invalid argument type`, not 400, on both hosts.
+- **`[unverified]`** `GET /doc` and `GET /doc/res.partner` return **200** HTML for the public website. Those pages do not name `search_read`, `fields_get`, or `json/2`. The parameter names above were taken from live calls and server errors, not from `/doc`.
 
-**Section status:** transport **`[verified]`** in repo; Online `/doc` smoke **`[unverified]`**.
+**Section status:** transport and these two hosts **`[verified]`** for the call shapes above. `/doc` as the API reference on this website is **`[unverified]`**.
 
 ---
 
