@@ -1250,3 +1250,8 @@ Not done: T8-OP-LOGIC. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-
 Track: T8 T8-OP-LOGIC. Worker [Prove logic operation risk rules](76259126-ba68-46a4-b79a-1058e693fd62). No push. L4 stays off.
 Intent: Code, email, SMS, and webhook server actions are R3. Outbound or mass automation is R3. Cron stays R3. An accounting, journal, or legal sequence is R4. The safe_eval checker rejects the named RT-25 patterns and does not run the snippet. Re-ran logic, schema, handler, and import-boundary tests: 52 passed. The version-branch count stayed 22. The full engine suite was not run.
 Not done: T8-OP-SEC. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P2-09 stay open. L4 stays off.
+
+## 2026-10-03 — T8-OP-SEC risk rules
+Track: T8 T8-OP-SEC. Worker [Prove security operation risk rules](ae3e8883-ba64-4571-9d51-0a10bf9f1705). No push. L4 stays off.
+Intent: A group that would imply admin is R4 and is not written. A group-less ACL is R4. Assigning admin, system, or service is R4. `user.unlink` stays out of the catalog. On Odoo 20, rule create and update compile to `ir.access` through the existing compiler. Re-ran security, Odoo 20 access, and import-boundary tests: 32 passed. The version-branch count stayed 22. The full engine suites were not run.
+Not done: T8-OP-SET. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P2-09 stay open. L4 stays off.

@@ -47,6 +47,69 @@ def _create_access_v20(port: OdooPort, params: dict[str, Any]) -> int | None:
     return created[-1] if created else None
 
 
+def _dispatch_rule(port: OdooPort, op_type: str, params: dict[str, Any]) -> int | None:
+    """rule.create and rule.update go through compile_changeset_rule.
+
+    Inputs: port, op type, and params. Major comes from ``major_of``.
+    Outputs: the created id, or the updated id. Odoo 20 writes ``ir.access``.
+    A compiled access row with no group is refused before the port is called.
+    Side effects: create or write on the port. No version comparison of its own.
+    """
+    from app.odoo20.access_compiler import (
+        AccessCompileError,
+        compile_changeset_rule,
+        major_of,
+    )
+
+    issues = handler_for(op_type).issues(params)
+    if issues:
+        raise DispatchError("; ".join(issues))
+    try:
+        compiled = compile_changeset_rule(major_of(port), params)
+    except AccessCompileError as exc:
+        raise DispatchError(str(exc)) from exc
+    prepared: list[tuple[str, dict[str, Any]]] = []
+    for item in compiled:
+        model = str(item.get("model") or "")
+        values = dict(item.get("values") or {})
+        if model == "ir.access" and not values.get("group"):
+            raise DispatchError("group-less access is refused")
+        if not values.get("model"):
+            raise DispatchError("missing model")
+        prepared.append((model, values))
+    if not prepared:
+        raise DispatchError(f"{op_type} did not compile")
+    if op_type == "rule.update":
+        ids = _rule_ids(params)
+        if not ids:
+            raise DispatchError("rule.update requires an id")
+        for model, values in prepared:
+            port.write(model, ids, values)
+        return ids[0]
+    last: int | None = None
+    for model, values in prepared:
+        last = port.create(model, values)
+    return last
+
+
+def _rule_ids(params: dict[str, Any]) -> list[int]:
+    raw = params.get("ids")
+    if isinstance(raw, list) and raw:
+        ids: list[int] = []
+        for item in raw:
+            if isinstance(item, bool) or not isinstance(item, int):
+                raise DispatchError("rule.update requires an id")
+            ids.append(item)
+        return ids
+    for key in ("id", "rule_id"):
+        item = params.get(key)
+        if isinstance(item, bool) or not isinstance(item, int):
+            continue
+        if item:
+            return [item]
+    return []
+
+
 def dispatch_op(
     port: OdooPort,
     op: dict[str, Any],
@@ -102,6 +165,8 @@ def dispatch_op(
                 "perm_read": True,
             },
         )
+    if op_type in {"rule.create", "rule.update"}:
+        return _dispatch_rule(port, op_type, params)
     if op_type == "module.install":
         module = str(params.get("module") or "")
         if not module:

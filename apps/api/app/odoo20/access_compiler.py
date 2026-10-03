@@ -138,6 +138,50 @@ def record_rule_for_compiler(rule: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def compile_changeset_rule(major: int, params: dict[str, Any]) -> list[dict[str, Any]]:
+    """Compile a changeset ``rule.create`` or ``rule.update``.
+
+    Inputs: Odoo major and rule params (``domain_force`` or ``domain``, plus
+    ``group`` / ``groups`` / ``group_ids``).
+    Outputs: compiler ops. On Odoo 20 a raw record rule is rewritten as an
+    access right with a domain and compiled to ``ir.access``. Earlier majors
+    stay on ``ir.rule``. ``kind`` is still refused on Odoo 20.
+    Side effects: none. Does not call Odoo. Reuses ``compile_access``.
+    """
+    body = dict(params)
+    mapped = record_rule_for_compiler(body)
+    try:
+        return compile_access(int(major), [], [mapped])
+    except AccessCompileError:
+        rights = _rule_as_access_rights(body, mapped)
+        return compile_access(int(major), rights, None)
+
+
+def _rule_as_access_rights(params: dict[str, Any], mapped: dict[str, Any]) -> list[dict[str, Any]]:
+    groups = _group_values(mapped.get("group")) or [None]
+    rights: list[dict[str, Any]] = []
+    for group in groups:
+        right: dict[str, Any] = {
+            "name": mapped.get("name"),
+            "model": mapped.get("model"),
+            "group": group,
+            "operation": params.get("operation") or "read",
+            "domain": mapped.get("domain"),
+        }
+        if "kind" in params:
+            right["kind"] = params.get("kind")
+        rights.append(right)
+    return rights
+
+
+def _group_values(group: Any) -> list[Any]:
+    if group in (None, False, ""):
+        return []
+    if isinstance(group, (list, tuple)):
+        return [item for item in group if item not in (None, False, "")]
+    return [group]
+
+
 def apply_compiled_access(
     create: Any,
     major: int,

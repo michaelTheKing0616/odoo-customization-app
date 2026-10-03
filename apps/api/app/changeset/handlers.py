@@ -6,6 +6,12 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from app.changeset.logic_ops import safe_eval_issues_in_params
+from app.changeset.security_ops import (
+    GROUP_MUST_NOT_IMPLY_ADMIN,
+    PRIVILEGED_ASSIGNMENT,
+    group_implies_admin,
+    privileged_assignment,
+)
 from app.changeset.ops import OP_CATALOG
 from app.changeset.protected_registry import protected_denial
 from app.changeset.schema_ops import (
@@ -80,6 +86,22 @@ def _view_inherit_issues(params: dict[str, Any]) -> Issues:
         if item not in issues:
             issues.append(item)
     return issues
+
+
+def _assign_issues(params: dict[str, Any]) -> Issues:
+    """Issues for ``user.groups.assign``.
+
+    Inputs: op params.
+    Outputs: the existing admin refusal when ``admin`` is set. System or
+    service assignment uses the shared privileged message. Otherwise the
+    missing ``user`` issue.
+    Side effects: none.
+    """
+    if params.get("admin"):
+        return ["admin group assignment is refused"]
+    if privileged_assignment(params):
+        return [PRIVILEGED_ASSIGNMENT]
+    return _need(params, "user")
 
 
 def _access_issues(params: dict[str, Any]) -> Issues:
@@ -160,7 +182,8 @@ _ISSUE_FNS: dict[str, IssueFn] = {
         ["group-less global rule needs an explicit global flag"] if not p.get("groups") and not p.get("global") else []
     ),
     "company.update": lambda p: ["lock dates are refused"] if p.get("lock_date") else [],
-    "user.groups.assign": lambda p: ["admin group assignment is refused"] if p.get("admin") else _need(p, "user"),
+    "group.create": lambda p: [GROUP_MUST_NOT_IMPLY_ADMIN] if group_implies_admin(p) else [],
+    "user.groups.assign": _assign_issues,
     "config_param.set": lambda p: ["protected parameter"] if p.get("key") in {
         "database.secret",
         "database.uuid",
@@ -196,6 +219,10 @@ class OpHandler:
             return "lock dates are prohibited"
         if self.op_type == "user.groups.assign" and body.get("admin"):
             return "admin group assignment is prohibited"
+        if self.op_type == "user.groups.assign" and privileged_assignment(body):
+            return PRIVILEGED_ASSIGNMENT
+        if self.op_type == "group.create" and group_implies_admin(body):
+            return GROUP_MUST_NOT_IMPLY_ADMIN
         if self.op_type.startswith("sequence.") and (body.get("accounting") or body.get("legal")):
             return "accounting sequences are prohibited"
         if self.op_type in {"access.create", "access.update"} and not body.get("group"):

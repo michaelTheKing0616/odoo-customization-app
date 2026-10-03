@@ -150,23 +150,35 @@ def test_dispatch_access_create_without_major_stays_on_ir_model_access() -> None
     assert port.calls[0][1] == "ir.model.access"
 
 
-def test_rule_create_has_no_dispatcher() -> None:
-    """rule.create has no dispatcher. This is not a new major-20 branch."""
+def test_rule_create_on_20_compiles_to_ir_access() -> None:
+    """rule.create reuses compile_access. This is not a new major-20 branch."""
     port = RecordingPort(major=20)
-    with pytest.raises(DispatchError, match="no dispatcher for rule.create"):
-        dispatch_op(
-            port,
+    created = dispatch_op(
+        port,
+        {
+            "type": "rule.create",
+            "params": {
+                "name": "own",
+                "model": "res.partner",
+                "domain_force": "[('id','=',1)]",
+                "groups": ["base.group_user"],
+            },
+        },
+    )
+    assert created == 1
+    assert port.calls == [
+        (
+            "create",
+            "ir.access",
             {
-                "type": "rule.create",
-                "params": {
-                    "name": "own",
-                    "model": "res.partner",
-                    "domain_force": "[('id','=',1)]",
-                    "groups": ["base.group_user"],
-                },
+                "name": "own",
+                "model": "res.partner",
+                "group": "base.group_user",
+                "operation": "read",
+                "domain": "[('id','=',1)]",
             },
         )
-    assert port.calls == []
+    ]
 
 
 def test_spec_apply_access_on_20_writes_ir_access_with_domain() -> None:
