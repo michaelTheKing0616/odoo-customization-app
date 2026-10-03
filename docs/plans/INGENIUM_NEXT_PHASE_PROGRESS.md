@@ -393,4 +393,16 @@ Files: `apps/api/app/sandbox.py` (`verbatim_sandbox_error_text`, `sandbox_job_er
 Commands: pytest `tests/test_option_a_prove_bar.py` + `tests/test_verbatim_sandbox_job_log.py`.
 Gates: known traceback present on job row; password/api_key absent after redaction.
 
+CLAIM T1-E1 2026-10-03T07:43:59Z files: .github/workflows/ci.yml, apps/api/pyproject.toml, apps/api/pytest.ini if that is where markers are registered, apps/api/tests/test_sandbox_prove_slow.py, and a fast test if schema-invalid output is not already rejected.
+
+## 2026-10-03 — T1-E1 CI split (PR-E)
+Track: T1
+Intent: Tier 1/2 schema grounding in blocking API unit; tier 3 sandbox prove in a separate slow job.
+Model / band: worker (Grok standard). Pressure 6. No commit.
+Files: `.github/workflows/ci.yml` (`api-unit` adds `test_ai_schema_client.py`, `test_generate_ir_closed_class.py`, `test_schema_invalid_module_output.py`; new job `api-sandbox-prove-slow`), `apps/api/pyproject.toml` + `apps/api/pytest.ini` (`slow` marker), `apps/api/tests/test_sandbox_prove_slow.py` (`slow` mark), `apps/api/tests/test_schema_invalid_module_output.py`.
+Commands: `cd apps/api && ../../.venv/bin/python -m pytest -q -p no:cacheprovider tests/test_schema_invalid_module_output.py` (plus tier 1/2 files locally if needed).
+Gates: fast suite excludes `test_sandbox_prove_slow.py`; slow job runs `pytest -m "sandbox and slow"`; `validate_draft_module_spec` rejects invalid model names in CI.
+Not done: Docker sandbox prove on GHA (slow job may skip when Docker unavailable).
+
+
 

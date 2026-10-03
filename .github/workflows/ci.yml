@@ -87,6 +87,21 @@ jobs:
           tests/test_trust9_beta_protocol.py
           tests/test_phase1_api.py::test_health
           tests/test_phase1_api.py::test_sandbox_smoke_zip_unit
+          tests/test_ai_schema_client.py
+          tests/test_generate_ir_closed_class.py
+          tests/test_schema_invalid_module_output.py
+
+  api-sandbox-prove-slow:
+    name: API sandbox prove (slow)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --all-packages
+      - name: Sandbox prove suite (tier 3)
+        run: uv run --directory apps/api pytest -q -m "sandbox and slow"
 
   trust-mutation-coverage:
     name: TRUST-6 mutation coverage floor

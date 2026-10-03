@@ -16,7 +16,7 @@ import pytest
 from app.sandbox import sandbox_docker_status
 
 
-pytestmark = [pytest.mark.sandbox, pytest.mark.no_app_db]
+pytestmark = [pytest.mark.sandbox, pytest.mark.slow, pytest.mark.no_app_db]
 
 
 def _authored_draft() -> dict:

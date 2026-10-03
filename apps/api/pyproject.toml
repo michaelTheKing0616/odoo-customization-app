@@ -55,6 +55,14 @@ dev = [
     "pytest-cov>=7.1.0",
 ]
 
+[tool.pytest.ini_options]
+markers = [
+    "integration: needs local Odoo 16–19 (+ app-db for apps/api)",
+    "no_app_db: unit tests that must not open app Postgres",
+    "sandbox: slow ephemeral Docker sandbox (PR-D/E prove); excluded from fast CI",
+    "slow: long-running sandbox prove suite; excluded from fast CI",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
 
