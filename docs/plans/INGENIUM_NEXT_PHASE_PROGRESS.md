@@ -1362,5 +1362,10 @@ Track: T8 T8-CLARIFY. Worker [Prove the clarification rules](01cfc562-371b-4216-
 Intent: The runtime asks when targets conflict, a safe default is missing, an R3 request is underspecified, sources conflict, or the topic is financial, HR, or legal. R0 and R1 proceed when assumptions are stated. A fact already answered is not asked again. Re-ran clarify and import-boundary tests: 38 passed. The version-branch count stayed 22. EV-AMB-01 through EV-AMB-08 were not scored.
 Not done: T8-CRITIC. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, GATE-P3-03, GATE-P3-06, GATE-P3-08, GATE-P3-10, GATE-P4-07, and GATE-P4-08 stay open. L4 stays off.
 
+## 2026-10-03 — T8-CRITIC cannot waive policy
+Track: T8 T8-CRITIC. Worker [Prove the critic cannot waive policy](18c01d2d-8b51-4b1b-90c3-ee88c4e35ecd). No push. L4 stays off.
+Intent: The checklist runs for Tier A when risk is R2 or higher, or when there are at least 5 ops. An approve verdict does not change the policy decision. R4 stays denied. The critic cannot lower risk, skip approval, or mark a plan verified. Re-ran critic and import-boundary tests: 37 passed. The version-branch count stayed 22. No live model was called.
+Not done: T8-MEM. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, GATE-P3-03, GATE-P3-06, GATE-P3-08, GATE-P3-10, GATE-P4-07, and GATE-P4-08 stay open. L4 stays off.
+
 ## 2026-10-03 — Harness queued
 Cards H1–H8 in docs/plans/next-phase/cards/HARNESS.md. PR eval stays cassette/property. No product code.
