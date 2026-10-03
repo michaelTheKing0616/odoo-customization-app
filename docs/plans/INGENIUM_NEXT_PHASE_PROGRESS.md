@@ -530,5 +530,15 @@ Negative tests: `test_production_destructive_two_hour_old_snapshot_refused`, `te
 Not done: `safety_gate.preflight` still only passes `snapshot_exists` — wire `created_at` / last write / BILLABLE risk on the caller (changeset executor not touched).
 Risks introduced: fail-closed when `created_at` is omitted on a gated production apply.
 
+## 2026-10-03 — 5A-07
+Track: 5A
+Intent: Re-measure the MCP write scan after BL-07.
+Model / band: no worker. Deterministic re-measure. Pressure 4.
+Files: none.
+Commands and results: VERIFIED. pytest `tests/test_no_mcp_write.py` and `tests/test_mcp_guard.py` — 5 passed in 6.31s.
+Gates passed: DoD 27 / 5A-07.
+Negative tests: planted MCP write still detected; `test_mcp_write_is_refused`.
+Not done: 5A-11 rollback tiers.
+Risks introduced: none.
 
-
+CLAIM 5A-11 2026-10-03T08:40:00Z files: compensating plan from change rows through the change-set pipeline. Do not raw-RPC the undo. Do not create a second audit table.
