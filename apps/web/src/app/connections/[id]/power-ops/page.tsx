@@ -21,7 +21,7 @@ import { Callout } from "@/components/ui/Callout";
 import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Input } from "@/components/ui/Input";
-import { Card, PageHeader } from "@/components/ui/layout-primitives";
+import { Card, EmptyState, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
 import { Textarea } from "@/components/ui/Textarea";
 
 const CONFIRM_PHRASE = "I understand the risks";
@@ -73,6 +73,7 @@ export default function PowerOpsPage() {
   const [result, setResult] = useState<PowerOpsRunOut | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [dryRunKey, setDryRunKey] = useState<string | null>(null);
+  const [listHydrated, setListHydrated] = useState(false);
 
   const major = connectionMajor(connection);
   const runKey = `${recipeId}|${model}|${domainText}`;
@@ -107,6 +108,7 @@ export default function PowerOpsPage() {
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      setListHydrated(false);
       try {
         const [r, c, conn] = await Promise.all([
           api.powerOpsRecipes(connectionId),
@@ -129,6 +131,8 @@ export default function PowerOpsPage() {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Failed to load Power Ops");
         }
+      } finally {
+        if (!cancelled) setListHydrated(true);
       }
     }
     void load();
@@ -289,27 +293,79 @@ export default function PowerOpsPage() {
         </Callout>
       ) : null}
 
-      <section className="mt-8 space-y-4">
+      <section className="mt-8 space-y-4" data-testid="power-ops-recipes">
         <h2 className="text-lg font-semibold text-ink">Recipes</h2>
-        {safeRecipes.length > 0 ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {safeRecipes.map((entry) => (
-              <RecipeCard key={entry.recipe.id} entry={entry} />
-            ))}
+        {!listHydrated ? (
+          <div className="grid gap-3 sm:grid-cols-2" data-testid="power-ops-recipes-loading">
+            <Skeleton className="h-28 w-full" />
+            <Skeleton className="h-28 w-full" />
           </div>
-        ) : null}
-        {dangerRecipes.length > 0 ? (
+        ) : recipes.length === 0 ? (
+          <EmptyState
+            title="No Power Ops recipes yet"
+            description="Re-probe the connection if you expected stock recipes on this Odoo major."
+            action={
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={probing}
+                onClick={() => {
+                  void (async () => {
+                    setProbing(true);
+                    setError(null);
+                    try {
+                      const probeResult = await api.probeConnection(connectionId);
+                      setConnection((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              server_version: probeResult.server_version,
+                              capabilities: probeResult.capabilities,
+                            }
+                          : prev,
+                      );
+                      const [r, c] = await Promise.all([
+                        api.powerOpsRecipes(connectionId),
+                        api.powerOpsCapabilities(connectionId),
+                      ]);
+                      setRecipes(r.recipes);
+                      setCaps(c);
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "Probe failed");
+                    } finally {
+                      setProbing(false);
+                    }
+                  })();
+                }}
+              >
+                Re-probe connection
+              </Button>
+            }
+          />
+        ) : (
           <>
-            <Callout variant="danger" title="Danger zone">
-              Destructive recipes — dry-run first, then confirm with phrase.
-            </Callout>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {dangerRecipes.map((entry) => (
-                <RecipeCard key={entry.recipe.id} entry={entry} />
-              ))}
-            </div>
+            {safeRecipes.length > 0 ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {safeRecipes.map((entry) => (
+                  <RecipeCard key={entry.recipe.id} entry={entry} />
+                ))}
+              </div>
+            ) : null}
+            {dangerRecipes.length > 0 ? (
+              <>
+                <Callout variant="danger" title="Danger zone">
+                  Destructive recipes — dry-run first, then confirm with phrase.
+                </Callout>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {dangerRecipes.map((entry) => (
+                    <RecipeCard key={entry.recipe.id} entry={entry} />
+                  ))}
+                </div>
+              </>
+            ) : null}
           </>
-        ) : null}
+        )}
       </section>
 
       {selectedBlocked && selectedBlockReason ? (

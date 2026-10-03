@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@/components/ui/Button";
+import { EmptyState, Skeleton } from "@/components/ui/layout-primitives";
 
 type Plan = {
   plan_hash: string;
@@ -12,16 +14,16 @@ type Plan = {
   changes: { type: string }[];
 };
 
-const EMPTY = "No plans are waiting. A change appears here only after the engine validates it.";
-
 export default function ApprovalsPage() {
   const [connectionId, setConnectionId] = useState("");
   const [plans, setPlans] = useState<Plan[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [inboxHydrated, setInboxHydrated] = useState(false);
 
   async function load() {
     setLoading(true);
+    setInboxHydrated(false);
     setError(null);
     try {
       const response = await fetch(`/api/inbox/plans?connection_id=${encodeURIComponent(connectionId)}`);
@@ -41,11 +43,12 @@ export default function ApprovalsPage() {
       setPlans(null);
     } finally {
       setLoading(false);
+      setInboxHydrated(true);
     }
   }
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-10">
+    <main className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-10" data-testid="approvals-inbox-page">
       <header className="flex flex-col gap-1">
         <h1 className="text-lg font-semibold text-ink">Approval inbox</h1>
         <p className="text-sm text-muted">
@@ -72,13 +75,28 @@ export default function ApprovalsPage() {
           Show plans
         </button>
       </form>
-      {loading ? <div className="motion-safe:animate-pulse h-24 rounded-md bg-muted" /> : null}
+      {loading ? (
+        <div className="space-y-2" data-testid="approvals-inbox-loading">
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+        </div>
+      ) : null}
       {error ? (
         <p className="rounded-md border border-danger bg-danger/10 px-3 py-2 text-sm text-ink" role="alert">
           {error}
         </p>
       ) : null}
-      {plans && plans.length === 0 ? <p className="text-sm text-muted">{EMPTY}</p> : null}
+      {inboxHydrated && plans && plans.length === 0 ? (
+        <EmptyState
+          title="No plans waiting for approval"
+          description="Validated engine plans for this connection id will appear here after you run a gated change."
+          action={
+            <Button type="button" variant="secondary" size="sm" onClick={() => void load()}>
+              Refresh inbox
+            </Button>
+          }
+        />
+      ) : null}
       <ul className="flex flex-col gap-3">
         {(plans ?? []).map((plan) => (
           <li key={plan.plan_hash} className="rounded-md border border-border bg-surface px-4 py-3">

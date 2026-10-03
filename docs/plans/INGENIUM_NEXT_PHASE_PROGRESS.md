@@ -908,3 +908,16 @@ Pages (5):
 - `apps/web/src/app/connections/[id]/live-demo-copilot/page.tsx` — answers/transcript `feedHydrated` + `EmptyState`
 Tests: `pnpm exec vitest run src/components/cron/CronJobsList.test.tsx` — **3 passed** (empty list + loading skeleton; no `Loading...` string).
 Not done: remaining operate routes (UI-F03 continues). L4 off. No commit.
+
+CLAIM UI-F03-D 2026-10-03T12:35:00Z files: next operate empty states. Do not redo batches A–C. Do not enable L4.
+
+Track: T7 UI-F03 (batch D). Worker only. No commit. No push. No Odoo host. L4 stays off.
+Intent: Next five operate routes replace ad-hoc empty list copy or in-flight-as-empty with kit Skeleton + EmptyState; hydrated flags set in `finally`.
+Pages (5):
+- `apps/web/src/app/connections/[id]/power-ops/page.tsx` — recipe grid `listHydrated` + skeleton + empty re-probe action
+- `apps/web/src/app/connections/[id]/website/page.tsx` + `apps/web/src/components/website/WebsiteEditor.tsx` — page list `listHydrated` / `pagesLoading`
+- `apps/web/src/app/connect/page.tsx` — saved connections `listHydrated` + empty scroll-to-form action
+- `apps/web/src/app/approvals/page.tsx` — plan inbox `inboxHydrated` + Skeleton + empty refresh action
+- `apps/web/src/app/connections/[id]/page.tsx` — promoted modules empty + loading skeleton on overview develop tab
+Tests: `pnpm exec vitest run src/components/website/WebsiteEditor.test.tsx` — **4 passed** (empty + loading skeleton; no `Loading...` string).
+Remaining: `rg -n 'Loading\.\.\.' apps/web/src/app` → **0** literal hits; operate routes without kit empty/loading (e.g. designer, studio, wizard, job, ingest, config, id-generator, reminders, expert) still open for UI-F03. L4 off. No commit.

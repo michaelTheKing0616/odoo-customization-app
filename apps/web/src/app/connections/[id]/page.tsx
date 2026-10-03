@@ -33,7 +33,7 @@ import { ModelTierInline } from "@/components/ModelTierInline";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Card, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
+import { Card, EmptyState, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
 import { Tabs } from "@/components/ui/Tabs";
 import { FirstRunCard } from "@/components/overview/FirstRunCard";
 import { InstanceFingerprintCard } from "@/components/overview/InstanceFingerprintCard";
@@ -886,7 +886,7 @@ export default function BrowserPage() {
 {section === "develop" ? (
         <>
         <InstanceFingerprintCard connectionId={connectionId} context="develop" />
-        <Card className="mt-8 p-5">
+        <Card id="overview-export-card" className="mt-8 p-5">
           <h2 className="text-xl font-semibold text-ink">Export, sandbox &amp; promote</h2>
           <p className="mt-1 text-sm text-muted">
             Package new <code className="font-mono text-accent">x_*</code> models and/or extensions to
@@ -1152,37 +1152,62 @@ export default function BrowserPage() {
           <p className="mt-1 text-sm text-muted">
             History of modules installed via promote. Uninstall requires confirmation.
           </p>
-          <ul className="mt-4 space-y-2 text-sm">
-            {promoted.map((p) => (
-              <li
-                key={p.id}
-                className="flex flex-wrap items-center justify-between gap-2 border border-border-subtle px-3 py-2"
-              >
-                <span>
-                  <span className="font-mono text-muted">{p.module_name}</span>{" "}
-                  <span className="text-muted">
-                    · {p.method} · {p.status}
-                  </span>
-                </span>
-                {p.status === "installed" && (
-                  <button
+          {loading ? (
+            <div className="mt-4 space-y-2" data-testid="overview-promoted-loading">
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+            </div>
+          ) : promoted.length === 0 ? (
+            <div className="mt-4" data-testid="overview-promoted-empty">
+              <EmptyState
+                title="No promoted modules yet"
+                description="Export and promote a sandbox-validated zip above to record install history on this connection."
+                action={
+                  <Button
                     type="button"
-                    disabled={exportBusy}
+                    variant="secondary"
+                    size="sm"
                     onClick={() => {
-                      setUninstallTarget(p.module_name);
-                      setUninstallPhrase("");
+                      document
+                        .getElementById("overview-export-card")
+                        ?.scrollIntoView({ behavior: "smooth" });
                     }}
-                    className="border border-danger/50 px-2 py-1 text-xs text-danger disabled:opacity-40"
                   >
-                    Uninstall
-                  </button>
-                )}
-              </li>
-            ))}
-            {promoted.length === 0 && (
-              <li className="text-muted">No promotions recorded yet.</li>
-            )}
-          </ul>
+                    Open export panel
+                  </Button>
+                }
+              />
+            </div>
+          ) : (
+            <ul className="mt-4 space-y-2 text-sm">
+              {promoted.map((p) => (
+                <li
+                  key={p.id}
+                  className="flex flex-wrap items-center justify-between gap-2 border border-border-subtle px-3 py-2"
+                >
+                  <span>
+                    <span className="font-mono text-muted">{p.module_name}</span>{" "}
+                    <span className="text-muted">
+                      · {p.method} · {p.status}
+                    </span>
+                  </span>
+                  {p.status === "installed" && (
+                    <button
+                      type="button"
+                      disabled={exportBusy}
+                      onClick={() => {
+                        setUninstallTarget(p.module_name);
+                        setUninstallPhrase("");
+                      }}
+                      className="border border-danger/50 px-2 py-1 text-xs text-danger disabled:opacity-40"
+                    >
+                      Uninstall
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
           {uninstallTarget && (
             <div className="mt-4 border border-warning/40 bg-warning-subtle p-4">
               <p className="text-sm text-warning-strong">

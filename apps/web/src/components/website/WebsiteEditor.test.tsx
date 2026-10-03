@@ -57,6 +57,31 @@ describe("WebsiteEditor", () => {
     });
   });
 
+  it("shows empty page list without Loading... copy", () => {
+    const onRefresh = vi.fn();
+    render(
+      <WebsiteEditor
+        connectionId="conn"
+        pages={[]}
+        pagesAvailable
+        pagesLoading={false}
+        onRefreshPages={onRefresh}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "No website pages found" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh page list" }));
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
+  });
+
+  it("shows skeleton while pages load without Loading... copy", () => {
+    render(
+      <WebsiteEditor connectionId="conn" pages={[]} pagesAvailable pagesLoading />,
+    );
+    expect(screen.getByTestId("website-page-list-loading")).toBeInTheDocument();
+    expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
+  });
+
   it("toggles publish state", async () => {
     render(
       <WebsiteEditor

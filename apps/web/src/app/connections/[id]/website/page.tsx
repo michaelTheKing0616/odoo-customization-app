@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
 import {
@@ -16,8 +16,10 @@ export default function WebsiteEditorPage() {
   const [available, setAvailable] = useState(true);
   const [reason, setReason] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [listHydrated, setListHydrated] = useState(false);
 
-  useEffect(() => {
+  const refreshPages = useCallback(() => {
+    setListHydrated(false);
     api
       .listWebsitePages(connectionId)
       .then((res) => {
@@ -25,8 +27,13 @@ export default function WebsiteEditorPage() {
         setReason(res.reason);
         setPages(res.pages ?? []);
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setListHydrated(true));
   }, [connectionId]);
+
+  useEffect(() => {
+    refreshPages();
+  }, [refreshPages]);
 
   if (error) {
     return (
@@ -43,6 +50,8 @@ export default function WebsiteEditorPage() {
         pages={pages}
         pagesAvailable={available}
         unavailableReason={reason}
+        pagesLoading={!listHydrated}
+        onRefreshPages={refreshPages}
       />
     </main>
   );

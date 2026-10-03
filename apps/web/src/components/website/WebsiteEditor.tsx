@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { Input } from "@/components/ui/Input";
 import { ChevronDown, ChevronUp } from "@/components/ui/icons";
-import { PageHeader } from "@/components/ui/layout-primitives";
+import { EmptyState, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 
@@ -41,6 +41,8 @@ type Props = {
   pages: WebsitePageSummary[];
   pagesAvailable: boolean;
   unavailableReason?: string | null;
+  pagesLoading?: boolean;
+  onRefreshPages?: () => void;
   /** E2E harness: skip network load */
   initialState?: PageState;
   onSaved?: (note: string) => void;
@@ -223,6 +225,8 @@ export function WebsiteEditor({
   pages,
   pagesAvailable,
   unavailableReason,
+  pagesLoading = false,
+  onRefreshPages,
   initialState,
   onSaved,
 }: Props) {
@@ -360,25 +364,44 @@ export function WebsiteEditor({
       ) : null}
 
       {pagesAvailable ? (
-        <ul className="space-y-1" data-testid="website-page-list">
-          {pages.map((p) => (
-            <li key={p.id}>
-              <button
-                type="button"
-                className={cn(
-                  "text-left text-sm underline-offset-2 hover:underline",
-                  state?.pageId === p.id ? "font-medium text-accent" : "text-accent",
-                )}
-                data-testid={`website-page-${p.id}`}
-                disabled={loadingPage === p.id}
-                onClick={() => loadPage(p.id)}
-              >
-                {p.name} {p.url ? `(${p.url})` : ""}
-                {p.is_published === false ? " · draft" : ""}
-              </button>
-            </li>
-          ))}
-        </ul>
+        pagesLoading ? (
+          <div className="space-y-2" data-testid="website-page-list-loading">
+            <Skeleton className="h-8 w-full max-w-md" />
+            <Skeleton className="h-8 w-full max-w-md" />
+          </div>
+        ) : pages.length === 0 ? (
+          <EmptyState
+            title="No website pages found"
+            description="Install the Website app on Odoo and publish at least one page to edit content here."
+            action={
+              onRefreshPages ? (
+                <Button type="button" variant="secondary" size="sm" onClick={onRefreshPages}>
+                  Refresh page list
+                </Button>
+              ) : undefined
+            }
+          />
+        ) : (
+          <ul className="space-y-1" data-testid="website-page-list">
+            {pages.map((p) => (
+              <li key={p.id}>
+                <button
+                  type="button"
+                  className={cn(
+                    "text-left text-sm underline-offset-2 hover:underline",
+                    state?.pageId === p.id ? "font-medium text-accent" : "text-accent",
+                  )}
+                  data-testid={`website-page-${p.id}`}
+                  disabled={loadingPage === p.id}
+                  onClick={() => loadPage(p.id)}
+                >
+                  {p.name} {p.url ? `(${p.url})` : ""}
+                  {p.is_published === false ? " · draft" : ""}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )
       ) : null}
 
       {state ? (

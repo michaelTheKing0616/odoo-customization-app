@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Input } from "@/components/ui/Input";
-import { Card, PageHeader } from "@/components/ui/layout-primitives";
+import { Card, EmptyState, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { reportApiError } from "@/lib/api-error";
 import { api, Connection } from "@/lib/api";
@@ -40,6 +40,7 @@ type Step = 1 | 2 | 3;
 
 export default function ConnectPage() {
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [listHydrated, setListHydrated] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -77,8 +78,13 @@ export default function ConnectPage() {
   };
 
   async function refresh() {
-    const rows = await api.listConnections();
-    setConnections(rows);
+    setListHydrated(false);
+    try {
+      const rows = await api.listConnections();
+      setConnections(rows);
+    } finally {
+      setListHydrated(true);
+    }
   }
 
   useEffect(() => {
@@ -303,7 +309,7 @@ export default function ConnectPage() {
         ) : null}
 
         <Card className="p-6">
-          <form onSubmit={onSubmit} className="space-y-4">
+          <form id="connect-form" onSubmit={onSubmit} className="space-y-4">
             <ConnectChecklist
               input={checklistInput}
               showCapabilities={step === 3}
@@ -405,12 +411,34 @@ export default function ConnectPage() {
           </form>
         </Card>
 
-        <section className="mt-12">
+        <section className="mt-12" data-testid="connect-saved-list">
           <h2 className="text-xl font-semibold text-ink">Saved connections</h2>
+          {!listHydrated ? (
+            <div className="mt-4 space-y-3" data-testid="connect-saved-loading">
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-24 w-full" />
+            </div>
+          ) : connections.length === 0 ? (
+            <div className="mt-4">
+              <EmptyState
+                title="No saved connections yet"
+                description="Complete the form above to verify and store your first Odoo connection."
+                action={
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() =>
+                      document.getElementById("connect-form")?.scrollIntoView({ behavior: "smooth" })
+                    }
+                  >
+                    Add a connection
+                  </Button>
+                }
+              />
+            </div>
+          ) : (
           <ul className="mt-4 space-y-3">
-            {connections.length === 0 && (
-              <li className="text-sm text-muted">None yet.</li>
-            )}
             {connections.map((c) => (
               <Card key={c.id} className="p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -513,6 +541,7 @@ export default function ConnectPage() {
               </Card>
             ))}
           </ul>
+          )}
         </section>
       </div>
 
