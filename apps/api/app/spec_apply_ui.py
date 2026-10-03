@@ -1662,6 +1662,89 @@ def _resolve_draft_model_name(client: OdooClient, raw: Any) -> str | None:
     return None
 
 
+def _emit_access_ops(
+    client: OdooClient,
+    major: int,
+    access_rights: list[dict[str, Any]],
+    record_rules: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    from app.odoo20.access_compiler import apply_compiled_access
+
+    return apply_compiled_access(
+        lambda model, values: client.execute_kw(model, "create", [values]),
+        major,
+        access_rights,
+        record_rules,
+    )
+
+
+def _apply_one_access_rule_v20(
+    client: OdooClient,
+    rule: dict[str, Any],
+    model: str,
+    name: str,
+    domain: Any,
+    result: UiApplyResult,
+) -> None:
+    """Major 20 access right: ir.access rows, including an optional domain."""
+    from app.odoo20.access_compiler import access_rights_from_perms
+
+    group = rule.get("group") or rule.get("group_xml_id") or "base.group_user"
+    rights = access_rights_from_perms(
+        name=name,
+        model=model,
+        group=group,
+        perms=rule,
+        domain=None if domain in (None, False, "") else str(domain),
+    )
+    if not rights:
+        result.warnings.append(f"Access rule {name!r} skipped: no permissions")
+        return
+    pending: list[dict[str, Any]] = []
+    for right in rights:
+        operation = right.get("operation") or "read"
+        existing = client.execute_kw(
+            "ir.access",
+            "search",
+            [[("name", "=", name), ("operation", "=", operation)]],
+            {"limit": 1},
+        )
+        if existing:
+            continue
+        pending.append(right)
+    if not pending:
+        return
+    ops = _emit_access_ops(client, 20, pending, None)
+    if ops:
+        result.access_rights_created += 1
+
+
+def _apply_one_record_rule_v20(
+    client: OdooClient,
+    rule: dict[str, Any],
+    model: str,
+    name: str,
+    domain: Any,
+    result: UiApplyResult,
+) -> None:
+    """Major 20 record rule: raise. Never an ir.access row, including base.group_user."""
+    from app.odoo20.access_compiler import (
+        AccessCompileError,
+        compile_access,
+        record_rule_for_compiler,
+    )
+
+    _ = client, result
+    payload = record_rule_for_compiler(rule)
+    payload["name"] = name
+    payload["model"] = model
+    payload["domain"] = str(domain)
+    compile_access(20, [], [payload])
+    raise AccessCompileError(
+        "Odoo 20 has no ir.rule. Rewrite the group record rule as an access right with a domain."
+    )
+
+
 def _apply_access_rules(
     client: OdooClient, spec: dict[str, Any], result: UiApplyResult
 ) -> None:
@@ -1684,6 +1767,11 @@ def _apply_access_rules(
         name = str(rule.get("name") or f"access_{model.replace('.', '_')}")
         domain = rule.get("domain_force") or rule.get("domain")
         try:
+            from app.odoo20.access_compiler import major_of
+
+            if major_of(client) >= 20:
+                _apply_one_access_rule_v20(client, rule, model, name, domain, result)
+                continue
             if domain not in (None, False, ""):
                 client.create_record_rule(
                     CreateRecordRuleRequest(
@@ -1765,6 +1853,11 @@ def _apply_draft_record_rules(
             result.warnings.append(f"Record rule {name!r} skipped: empty domain")
             continue
         try:
+            from app.odoo20.access_compiler import major_of
+
+            if major_of(client) >= 20:
+                _apply_one_record_rule_v20(client, rule, model, name, domain, result)
+                continue
             existing = client.list_record_rules(model=model, limit=50)
             if any(r.name == name for r in existing):
                 result.skipped.append(f"record_rule:{model}:{name}")

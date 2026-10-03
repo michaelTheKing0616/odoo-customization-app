@@ -3,6 +3,8 @@
 import zipfile
 from io import BytesIO
 
+import pytest
+
 from module_generator import (
     FieldSpec,
     ModelSpec,
@@ -280,6 +282,46 @@ def test_record_rules_xml_emitted() -> None:
     assert "ir.rule" in rules_xml
     assert "create_uid" in rules_xml
     assert "security/record_rules.xml" in files["demo_rules/__manifest__.py"]
+
+
+def test_record_rules_template_refused_when_odoo_major_is_20() -> None:
+    from module_generator import RecordRuleSpec
+
+    rule = RecordRuleSpec(
+        name="Own records",
+        model_xml_id="model_x_owned",
+        domain_force="[('create_uid', '=', user.id)]",
+        group_xml_ids=["base.group_user"],
+    )
+    models = [
+        ModelSpec(
+            model="x_owned",
+            description="Owned",
+            fields=[FieldSpec(name="x_name", ttype="char", string="Name")],
+        )
+    ]
+    with pytest.raises(ValueError, match="access right with a domain"):
+        render_module_files(
+            ModuleSpec(
+                technical_name="demo_rules_20",
+                display_name="Demo Rules 20",
+                install_mode="data",
+                odoo_major=20,
+                models=models,
+                record_rules=[rule],
+            )
+        )
+    files_19 = render_module_files(
+        ModuleSpec(
+            technical_name="demo_rules_19",
+            display_name="Demo Rules 19",
+            install_mode="data",
+            odoo_major=19,
+            models=models,
+            record_rules=[rule],
+        )
+    )
+    assert 'model="ir.rule"' in files_19["demo_rules_19/security/record_rules.xml"]
 
 
 def test_xml_escapes_adversarial_user_strings() -> None:

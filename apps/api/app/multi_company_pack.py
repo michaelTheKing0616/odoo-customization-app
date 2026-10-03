@@ -224,13 +224,42 @@ def apply_multi_company_live(
     client: OdooClient,
     models: list[str],
 ) -> dict[str, Any]:
-    """Live-metadata path: x_company_id + record rules (PCM-safe on custom models)."""
+    """Live-metadata path: x_company_id + record rules (PCM-safe on custom models).
+
+    Odoo 20 has no ir.rule. The company field may still be created. Row isolation
+    is not applied, and ``ok`` is false when that rule was requested.
+    """
+    from app.odoo20.access_compiler import major_of
+
     created_fields = 0
     created_rules = 0
     warnings: list[str] = []
+    isolation_not_applied = False
 
     for model in models:
         if not model.startswith("x_"):
+            continue
+        if major_of(client) >= 20:
+            try:
+                if not client.field_exists(model, COMPANY_FIELD_LIVE_NAME):
+                    client.create_field(
+                        CreateFieldRequest(
+                            model=model,
+                            name=COMPANY_FIELD_LIVE_NAME,
+                            field_description="Company",
+                            ttype=FieldType.MANY2ONE,
+                            relation="res.company",
+                            on_delete="restrict",
+                        )
+                    )
+                    created_fields += 1
+            except OdooClientError as exc:
+                warnings.append(f"{model}: {exc}")
+            isolation_not_applied = True
+            warnings.append(
+                f"{model}: company field may exist but row isolation was not applied "
+                "because Odoo 20 has no ir.rule."
+            )
             continue
         try:
             if not client.field_exists(model, COMPANY_FIELD_LIVE_NAME):
@@ -262,7 +291,7 @@ def apply_multi_company_live(
             warnings.append(f"{model}: {exc}")
 
     return {
-        "ok": True,
+        "ok": not isolation_not_applied,
         "models": models,
         "fields_created": created_fields,
         "rules_created": created_rules,

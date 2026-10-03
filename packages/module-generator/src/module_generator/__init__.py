@@ -994,6 +994,11 @@ def render_module_files(spec: ModuleSpec) -> dict[str, str]:
         data_files.append("security/ir.model.access.csv")
 
     if spec.record_rules:
+        # odoo_major is optional. Do not invent one: an unset major still emits ir.rule.
+        if spec.odoo_major is not None and int(spec.odoo_major) >= 20:
+            raise ValueError(
+                "Odoo 20 has no ir.rule. Rewrite the group record rule as an access right with a domain."
+            )
         files[f"{root}/security/record_rules.xml"] = env.get_template(
             "record_rules.xml.j2"
         ).render(spec=spec)

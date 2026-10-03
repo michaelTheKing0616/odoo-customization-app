@@ -36,6 +36,11 @@ def test_security_models_destructive() -> None:
     assert c.risk == "DESTRUCTIVE"
     assert c.forbidden is False
     assert c.bucket == "C"
+    for model in ("ir.access", "ir.model.access", "ir.rule", "res.groups"):
+        created = classify_rpc(model, "create", values={"name": "acl"})
+        assert created.risk == "DESTRUCTIVE"
+        assert created.forbidden is False
+        assert created.bucket == "C"
 
 
 def test_billable_depends_on_edition() -> None:

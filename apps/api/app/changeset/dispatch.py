@@ -21,6 +21,32 @@ class DispatchError(ValueError):
 _REFUSED = frozenset({"module.uninstall", "data.delete", "rpc.write"})
 
 
+def _create_access_v20(port: OdooPort, params: dict[str, Any]) -> int | None:
+    """access.create on major 20 goes through compile_access, never ir.rule."""
+    from app.odoo20.access_compiler import AccessCompileError, apply_compiled_access
+
+    right: dict[str, Any] = {
+        "name": params.get("name"),
+        "model": params.get("model"),
+        "group": params.get("group"),
+        "operation": params.get("operation") or "read",
+    }
+    if params.get("domain") not in (None, False, ""):
+        right["domain"] = params.get("domain")
+    if "kind" in params:
+        right["kind"] = params.get("kind")
+    created: list[int] = []
+
+    def _create(model: str, values: dict[str, Any]) -> None:
+        created.append(int(port.create(model, values)))
+
+    try:
+        apply_compiled_access(_create, 20, [right], None)
+    except AccessCompileError as exc:
+        raise DispatchError(str(exc)) from exc
+    return created[-1] if created else None
+
+
 def dispatch_op(
     port: OdooPort,
     op: dict[str, Any],
@@ -63,6 +89,10 @@ def dispatch_op(
     if op_type == "access.create":
         if not params.get("group"):
             raise DispatchError("group-less access is refused")
+        from app.odoo20.access_compiler import major_of
+
+        if major_of(port) >= 20:
+            return _create_access_v20(port, params)
         return port.create(
             "ir.model.access",
             {

@@ -220,6 +220,30 @@ def test_odoo_20_group_record_rule_is_refused() -> None:
         compile_access(20, [], [{"name": "own", "group": "base.group_user", "domain": "[]"}])
 
 
+def test_odoo_20_global_record_rule_is_not_dropped() -> None:
+    """A record rule with no group still raises. It is not an ir.access grant."""
+    with pytest.raises(AccessCompileError, match="access right with a domain"):
+        compile_access(
+            20,
+            [
+                {
+                    "name": "read job",
+                    "model": "x_job",
+                    "group": "base.group_user",
+                    "operation": "read",
+                    "domain": "[('id','=',1)]",
+                }
+            ],
+            [
+                {
+                    "name": "company",
+                    "model": "x_job",
+                    "domain": "['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]",
+                }
+            ],
+        )
+
+
 def test_odoo_20_refuses_computed_kind() -> None:
     with pytest.raises(AccessCompileError, match="kind"):
         compile_access(20, [{"name": "a", "model": "res.partner", "kind": "allow"}])

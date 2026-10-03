@@ -158,7 +158,9 @@ class OdooClient:
         return mod
 
     def _security_adapter(self):  # noqa: ANN201
-        if self.capabilities.major == 20:
+        # Match create_access_right (major >= 20). A later registered major
+        # must not fall through to execute_kw("ir.rule", "create").
+        if self.capabilities.major >= 20:
             from odoo_client.compat.adapters import security_v20 as mod
             return mod
         return None
@@ -642,9 +644,40 @@ class OdooClient:
         self, model: str, *, group_xml_id: str = "base.group_user"
     ) -> Any:
         """Ensure Internal User (base.group_user) has full CRUD on model."""
-        from odoo_client.security import CreateAccessRightRequest
+        from odoo_client.security import AccessRightInfo, CreateAccessRightRequest
 
         group_id = self.resolve_xml_id(group_xml_id)
+        if self.capabilities.major >= 20:
+            name = f"access_{model.replace('.', '_')}_user"
+            existing_v20 = self.execute_kw(
+                "ir.access",
+                "search",
+                [[("name", "=", name)]],
+                {"limit": 1},
+            )
+            if existing_v20:
+                return AccessRightInfo(
+                    id=int(existing_v20[0]),
+                    name=name,
+                    model=model,
+                    model_id=self._model_id(model),
+                    group_id=group_id,
+                    perm_read=True,
+                    perm_write=True,
+                    perm_create=True,
+                    perm_unlink=True,
+                )
+            return self.create_access_right(
+                CreateAccessRightRequest(
+                    model=model,
+                    name=name,
+                    group_id=group_id,
+                    perm_read=True,
+                    perm_write=True,
+                    perm_create=True,
+                    perm_unlink=True,
+                )
+            )
         existing = self.execute_kw(
             "ir.model.access",
             "search",
@@ -1858,9 +1891,113 @@ class OdooClient:
         )
         return {int(r["id"]): str(r["model"]) for r in rows}
 
+    def _ir_access_model_name(self, raw: Any) -> str:
+        if isinstance(raw, str):
+            return raw
+        if isinstance(raw, (list, tuple)) and len(raw) > 1:
+            return str(raw[1])
+        return ""
+
+    def _ir_access_group_id(self, raw: Any) -> int | None:
+        if raw in (None, False, ""):
+            return None
+        if isinstance(raw, bool):
+            return None
+        if isinstance(raw, int):
+            return raw
+        if isinstance(raw, (list, tuple)) and raw:
+            try:
+                return int(raw[0])
+            except (TypeError, ValueError):
+                return None
+        return None
+
+    def _access_right_from_ir_access_row(
+        self,
+        raw: dict[str, Any],
+        *,
+        model_ids: dict[str, int] | None = None,
+    ) -> Any:
+        from odoo_client.security import AccessRightInfo
+
+        tech = self._ir_access_model_name(raw.get("model"))
+        if model_ids is not None and tech in model_ids:
+            model_id = model_ids[tech]
+        elif tech:
+            model_id = self._model_id(tech)
+            if model_ids is not None:
+                model_ids[tech] = model_id
+        else:
+            model_id = 0
+        operation = str(raw.get("operation") or "")
+        return AccessRightInfo(
+            id=int(raw["id"]),
+            name=str(raw.get("name") or ""),
+            model=tech,
+            model_id=model_id,
+            group_id=self._ir_access_group_id(raw.get("group")),
+            perm_read=operation == "read",
+            perm_write=operation == "write",
+            perm_create=operation == "create",
+            perm_unlink=operation == "unlink",
+            active=bool(raw.get("active", True)),
+        )
+
+    def _list_access_rights_v20(
+        self, *, model: str | None, limit: int
+    ) -> list[Any]:
+        domain: list[Any] = []
+        if model:
+            domain.append(("model", "=", model))
+        rows = self.execute_kw(
+            "ir.access",
+            "search_read",
+            [domain],
+            {
+                "fields": ["id", "name", "model", "group", "operation", "active"],
+                "limit": limit,
+                "order": "id desc",
+            },
+        )
+        model_ids: dict[str, int] = {}
+        return [
+            self._access_right_from_ir_access_row(raw, model_ids=model_ids)
+            for raw in rows
+            if isinstance(raw, dict) and raw.get("id")
+        ]
+
+    def _ir_access_sibling_ids(self, access_id: int) -> list[int]:
+        """Every ir.access id that shares this row's name and model."""
+        rows = self.execute_kw(
+            "ir.access",
+            "read",
+            [[access_id]],
+            {"fields": ["id", "name", "model"]},
+        )
+        if not rows:
+            raise OdooClientError(f"Access right {access_id} not found")
+        raw = rows[0]
+        name = raw.get("name") or ""
+        model_value = raw.get("model")
+        if isinstance(model_value, (list, tuple)) and model_value:
+            model_key: Any = model_value[0]
+        else:
+            model_key = model_value
+        found = self.execute_kw(
+            "ir.access",
+            "search",
+            [[("name", "=", name), ("model", "=", model_key)]],
+        )
+        ids = [int(item) for item in (found or [])]
+        if int(access_id) not in ids:
+            ids.append(int(access_id))
+        return ids
+
     def list_access_rights(
         self, *, model: str | None = None, limit: int = 200
     ) -> list[Any]:
+        if self.capabilities.major >= 20:
+            return self._list_access_rights_v20(model=model, limit=limit)
         from odoo_client.security import AccessRightInfo, _coerce_m2o, _coerce_m2o_name
 
         domain: list[Any] = []
@@ -1918,6 +2055,8 @@ class OdooClient:
             if isinstance(request, CreateAccessRightRequest)
             else CreateAccessRightRequest.model_validate(request)
         )
+        if self.capabilities.major >= 20:
+            return self._create_access_right_v20(req)
         model_id = self._model_id(req.model)
         vals: dict[str, Any] = {
             "name": req.name,
@@ -1934,6 +2073,59 @@ class OdooClient:
         for row in self.list_access_rights(model=req.model, limit=50):
             if row.id == access_id:
                 return row
+        return AccessRightInfo(
+            id=int(access_id),
+            name=req.name,
+            model=req.model,
+            model_id=model_id,
+            group_id=req.group_id,
+            perm_read=req.perm_read,
+            perm_write=req.perm_write,
+            perm_create=req.perm_create,
+            perm_unlink=req.perm_unlink,
+            active=req.active,
+        )
+
+    def _create_access_right_v20(self, req: Any) -> Any:
+        """Compile perm flags to ir.access rows. Does not create ir.rule or write kind."""
+        from odoo_client.security import AccessRightInfo
+
+        security = self._security_adapter()
+        if security is None:
+            raise OdooClientError("Odoo 20 security adapter is missing")
+        rights: list[dict[str, Any]] = []
+        for operation, enabled in (
+            ("read", req.perm_read),
+            ("write", req.perm_write),
+            ("create", req.perm_create),
+            ("unlink", req.perm_unlink),
+        ):
+            if not enabled:
+                continue
+            rights.append(
+                {
+                    "name": req.name,
+                    "model": req.model,
+                    "group": req.group_id,
+                    "operation": operation,
+                }
+            )
+        if not rights:
+            raise OdooClientError("access right needs at least one permission")
+        ops = security.compile_access(rights)
+        model_id = self._model_id(req.model)
+        access_id: Any = None
+        for op in ops:
+            if op.get("model") != "ir.access":
+                raise security.IrRuleNotSupportedOnOdoo20(
+                    "Odoo 20 has no ir.rule. Rewrite the group record rule as an access right with a domain."
+                )
+            values = dict(op.get("values") or {})
+            if "kind" in values:
+                raise security.AccessCompileError("ir.access.kind is computed; do not write it")
+            access_id = self.execute_kw(str(op["model"]), "create", [values])
+        if access_id is None:
+            raise OdooClientError("access right needs at least one permission")
         return AccessRightInfo(
             id=int(access_id),
             name=req.name,
@@ -2054,6 +2246,28 @@ class OdooClient:
         )
 
     def get_access_right(self, access_id: int) -> Any:
+        if self.capabilities.major >= 20:
+            for row in self._list_access_rights_v20(model=None, limit=500):
+                if row.id == access_id:
+                    return row
+            raw_rows = self.execute_kw(
+                "ir.access",
+                "read",
+                [[access_id]],
+                {
+                    "fields": [
+                        "id",
+                        "name",
+                        "model",
+                        "group",
+                        "operation",
+                        "active",
+                    ]
+                },
+            )
+            if not raw_rows:
+                raise OdooClientError(f"Access right {access_id} not found")
+            return self._access_right_from_ir_access_row(raw_rows[0])
         rows = self.list_access_rights(limit=500)
         for row in rows:
             if row.id == access_id:
@@ -2121,10 +2335,37 @@ class OdooClient:
                 vals[key] = bool(value)
         if not vals:
             raise OdooClientError("update_access requires at least one attribute")
+        if self.capabilities.major >= 20:
+            return self._update_access_v20(access_id, vals)
         self.execute_kw("ir.model.access", "write", [[access_id], vals])
         return self.get_access_right(access_id)
 
+    def _update_access_v20(self, access_id: int, vals: dict[str, Any]) -> Any:
+        """Write every ir.access row that shares this right's name and model.
+
+        ``perm_*`` are not columns on ir.access. ``kind`` is computed and is never written.
+        """
+        ir_vals: dict[str, Any] = {}
+        if "name" in vals:
+            ir_vals["name"] = vals["name"]
+        if "group_id" in vals:
+            ir_vals["group"] = vals["group_id"]
+        if "active" in vals:
+            ir_vals["active"] = vals["active"]
+        if not ir_vals:
+            raise OdooClientError(
+                "update_access on Odoo 20 writes name, group, or active on every "
+                "ir.access row with the same name and model"
+            )
+        ids = self._ir_access_sibling_ids(access_id)
+        self.execute_kw("ir.access", "write", [ids, ir_vals])
+        return self.get_access_right(access_id)
+
     def delete_access(self, access_id: int) -> None:
+        if self.capabilities.major >= 20:
+            ids = self._ir_access_sibling_ids(access_id)
+            self.execute_kw("ir.access", "unlink", [ids])
+            return
         existing = self.execute_kw(
             "ir.model.access", "search", [[("id", "=", access_id)]], {"limit": 1}
         )

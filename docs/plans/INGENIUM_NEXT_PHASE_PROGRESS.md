@@ -721,3 +721,34 @@ Result: pytest `test_views_adapters_multimajor.py` + `test_automation_encoders_m
 Negative: `security_v20.create_record_rule` and client `create_record_rule` on major 20 raise `IrRuleNotSupportedOnOdoo20` before `execute_kw`. Cron vals omit `numbercall`. 16–19 pickers unchanged. Major 20 views use `views_v20` (`list`, not `tree`); major 19 stays on `views_v19`.
 Files: `automation_v20.py`, `security_v20.py`, `adapters/__init__.py`, `client.py` picker + `create_record_rule` / `create_cron`, new test file.
 Not done: O20-04 write-path wiring for all `ir.model.access` creates. L4 off. No aonb.odoo.com call.
+
+CLAIM O20-04 2026-10-03T10:20:00Z files: route major-20 access writes through the ir.access compiler. Do not enable L4. Do not call aonb.odoo.com.
+
+Track: O20. Card: O20-04. Worker only. No commit. No push. No Odoo host. L4 stays off.
+Intent: Major 20 access writes use the existing `compile_access` (`ir.access`, operation, optional domain). A record rule that names a group fails with "rewrite as an access right with a domain". ≤19 domain rights still compile to `ir.model.access` plus `ir.rule`. `rpc_classify` keeps `ir.access`, `ir.model.access`, `ir.rule`, and `res.groups` DESTRUCTIVE. No second compiler. The package cannot import `apps.api`; `OdooClient.create_access_right` on major 20 calls the O20-03 `security_v20.compile_access` wrapper (same field names). API paths call `app.odoo20.access_compiler`.
+Result: pytest compiler + access router + new write-path + `test_odoo20_automation_security_adapters.py` — **79 passed**.
+Write paths (`rg` creates, not mentions):
+- `OdooClient.create_access_right` — major 20 creates `ir.access` only. Refuses `ir.rule`.
+- `OdooClient.create_record_rule` — major 20 raises `IrRuleNotSupportedOnOdoo20` before `execute_kw`, including a group-named rule. No `ir.rule` create.
+- `OdooClient.ensure_default_model_access` — major 20 searches `ir.access`, then `create_access_right`. No `ir.rule` create.
+- `routers/access.py` `create_right` — delegates to `create_access_right`. No `ir.rule` create.
+- `routers/access.py` `create_rule` — delegates to `create_record_rule`. HTTP 400 with the rewrite message. No `ir.rule` create.
+- `spec_apply_ui._apply_access_rules` — major 20 compiles the right (domain stays on `ir.access`). ≤19 domain path still calls `create_record_rule`.
+- `spec_apply_ui._apply_draft_record_rules` — group rule on 20 raises `AccessCompileError` and creates nothing. Group-less rule creates nothing. ≤19 still calls `create_record_rule`.
+- `multi_company_pack.apply_multi_company_live` — major 20 compiles; the global rule has no group, so no `ir.rule` create.
+- `app_templates._maybe_multi_company_rules` — same as the live pack. No `ir.rule` create.
+- `changeset/dispatch.py` `access.create` — `port.major` or `capabilities.major` ≥ 20 compiles to `ir.access` (optional domain). Missing major stays `ir.model.access`. `kind` is refused. No `ir.rule` create.
+- `changeset` `rule.create` — still has no dispatcher (raises). It does not create `ir.rule` on 20.
+Not creates (left as they were): snapshot restore writes/unlinks `ir.model.access` and `ir.rule`; list/update/delete still name those models. `rpc_classify` was not lowered.
+Not done: O20-05 access screen. L4 off. No aonb.odoo.com call.
+
+REPAIR O20-04 2026-10-03T10:30:00Z reviewer FAIL. Do not enable L4. Do not call aonb.odoo.com.
+1. fixed: `compile_access` on major >= 20 raises `AccessCompileError` with the rewrite message for every record rule, with or without a group, and does not turn that rule into an `ir.access` grant. A domain-bearing access right still compiles to `ir.access` with operation and optional domain.
+2. fixed: on major 20, `apply_multi_company_live` and `_maybe_multi_company_rules` do not create `ir.rule`. `rules_created` stays 0. The live pack sets `ok` false. The warning says the company field may exist but row isolation was not applied because Odoo 20 has no `ir.rule`.
+3. fixed: `_apply_access_rules` and `_apply_draft_record_rules` record `AccessCompileError` on warnings and continue, so models and fields already applied are kept. A group record rule on 20 creates nothing and is not converted into `ir.access` rows for `base.group_user`. An access right may still become `ir.access`.
+4. fixed: `_apply_one_access_rule_v20` skips an operation only when an `ir.access` row with that name and that operation already exists.
+5. fixed: on major >= 20, `delete_access` and `update_access` affect every `ir.access` row with the same name and model. List, update, and delete do not use `ir.model.access` on major 20. A test removes all four operations under one name.
+6. fixed: `_security_adapter` uses major >= 20, matching `create_access_right`, so a future major does not fall through to `execute_kw("ir.rule", "create")`.
+7. fixed: the `rule.create` test asserts `DispatchError` "no dispatcher for rule.create" and that the fake port was not called. That is the existing missing dispatcher, not a new branch.
+8. fixed when `ModuleSpec.odoo_major` >= 20: module render raises the rewrite message and does not emit `record_rules.xml`. Residual: when `odoo_major` is unset, `record_rules.xml.j2` still emits `model="ir.rule"` because the generator does not invent a major. It is not a live RPC create.
+Pytest: `.venv/bin/python -m pytest -q -p no:cacheprovider` on the O20-04 write-path set — 86 passed. L4 stays off. No Odoo host call.

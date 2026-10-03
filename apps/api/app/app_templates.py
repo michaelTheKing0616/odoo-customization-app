@@ -332,8 +332,20 @@ def _maybe_multi_company_rules(
     models: list[str],
     result: ScaffoldResult,
 ) -> None:
-    """Add company record rules for live x_company_id (idempotent by name)."""
+    """Add company record rules for live x_company_id (idempotent by name).
+
+    On Odoo 20 the isolating rule cannot be created. The warning says the company
+    field may exist and that row isolation was not applied.
+    """
+    from app.odoo20.access_compiler import major_of
+
     for model in models:
+        if major_of(client) >= 20:
+            result.warnings.append(
+                f"{model}: company field may exist but row isolation was not applied "
+                "because Odoo 20 has no ir.rule."
+            )
+            continue
         if not client.field_exists(model, "x_company_id"):
             result.warnings.append(
                 f"Skip multi-company rule: {model}.x_company_id missing"
@@ -1036,6 +1048,11 @@ def run_scaffold(
         rc = int(mc.get("rules_created") or 0)
         if fc or rc:
             result.message += f" · multi-company: {fc} field(s), {rc} rule(s)"
+        elif mc.get("ok") is False:
+            result.message += (
+                " · company field may exist but row isolation was not applied "
+                "because Odoo 20 has no ir.rule."
+            )
         elif multi_company:
             result.message += " · multi-company (already configured)"
     return result

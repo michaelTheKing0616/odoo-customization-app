@@ -54,11 +54,11 @@ def compile_access(
                 },
             }
         )
-    for rule in rules:
-        if rule.get("group"):
-            raise AccessCompileError(
-                "Odoo 20 has no ir.rule. Rewrite the group record rule as an access right with a domain."
-            )
+    if rules:
+        # Same rule as access_compiler: never drop a global record rule.
+        raise AccessCompileError(
+            "Odoo 20 has no ir.rule. Rewrite the group record rule as an access right with a domain."
+        )
     return ops
 
 
