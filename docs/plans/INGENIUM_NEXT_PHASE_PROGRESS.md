@@ -163,6 +163,34 @@ Negative tests: unknown model `fields_get` returns `{}`.
 Not done: T1-A2 stale admit_and_apply.
 Risks introduced: none. Product client code was not edited.
 
+CLAIM T1-A2 2026-10-03T07:15:00Z files: apps/api/tests/test_ai_schema_client.py and, only if the admit path cannot be asserted from the test, the smallest call site the test must reach. Do not lengthen SCHEMA_CATALOG_TTL_S.
+
+## 2026-10-03 — T1-A2
+Track: T1
+Intent: A stale catalog denies the client and does not admit a field through admit_and_apply.
+Model / band: composer-2.5-fast worker (20f2072c-5528-4ee9-b0d3-fa3b5fb12b80); composer-2.5-fast tester (e445b82b-2902-4b0b-8743-a41049866dee). Pressure 4.
+Files: `apps/api/tests/test_ai_schema_client.py` (`test_admit_and_apply_stale_catalog_never_admits_stock_m2o_field`); `apps/api/app/ai_generate_ir.py` (`_stale_catalog_rejects_stock_field`).
+Commands and results: VERIFIED. pytest schema client + entrypoint + spine — 37 passed in 1.73s. `SCHEMA_CATALOG_TTL_S = 15 * 60` unchanged.
+Gates passed: stale factory deny; admit_and_apply rejects with `stale_or_missing_catalog_ts`.
+Negative tests: the new admit test is the rejection case.
+Not done: none on this card.
+Risks introduced: stock many2one invent is refused when the schema client is deny-on-stale, even if a cue would otherwise match.
+
+CLAIM T1-A3 2026-10-03T07:20:00Z files: progress log only. Re-measure, do not rebuild.
+
+## 2026-10-03 — T1-A3
+Track: T1
+Intent: Record that field_is_writable is already implemented and tested.
+Model / band: no worker. Deterministic re-measure. Pressure 4.
+Files: none. Test already in `apps/api/tests/test_ai_schema_client.py`.
+Commands and results: VERIFIED. `test_field_is_writable_rejects_readonly_related` — 1 passed in 0.02s.
+Gates passed: T1-A3 implemented and tested.
+Negative tests: the same test rejects a readonly related field.
+Not done: none.
+Risks introduced: none.
+
+
+
 
 
 

@@ -128,6 +128,61 @@ def test_factory_missing_loaded_at_denies() -> None:
     assert isinstance(client, DenySchemaClient)
 
 
+def test_admit_and_apply_stale_catalog_never_admits_stock_m2o_field() -> None:
+    """Stale Diagnosis catalog → deny client; stock M2O invent must not apply."""
+    from app.ai_generate_ir import Proposal, admit_and_apply
+
+    now = time.time()
+    draft = {
+        "_user_prompt": "Tickets with optional res.partner contact link",
+        "_ambition": "thin",
+        "_connection_catalog": {
+            "available_models": ["res.partner", "sale.order"],
+            "stock": [{"model": "res.partner"}],
+            "loaded_at": now - SCHEMA_CATALOG_TTL_S - 10,
+        },
+        "_schema_fields": {
+            "x_ticket": {
+                "x_partner_id": {
+                    "ttype": "many2one",
+                    "relation": "res.partner",
+                    "readonly": False,
+                }
+            }
+        },
+        "models": [
+            {
+                "model": "x_ticket",
+                "mode": "new",
+                "fields": [{"name": "x_name", "ttype": "char"}],
+            }
+        ],
+        "_generate_ir": {"admitted": []},
+    }
+    prop = Proposal(
+        kind="m2o",
+        name="x_partner_id",
+        payload={
+            "model": "x_ticket",
+            "ttype": "many2one",
+            "relation": "res.partner",
+            "string": "Contact",
+        },
+        source_cue="res.partner",
+        proposer="test",
+    )
+    ir, _notes = admit_and_apply(draft, [prop])
+    names = {f.get("name") for f in draft["models"][0]["fields"] if isinstance(f, dict)}
+    assert "x_partner_id" not in names
+    rejected = {
+        str(r.get("name")): str(r.get("reject_reason") or "")
+        for r in ir.rejected_proposals
+        if isinstance(r, dict) and r.get("name")
+    }
+    assert "x_partner_id" in rejected
+    assert rejected["x_partner_id"] == "stale_or_missing_catalog_ts"
+
+
 def test_catalog_relation_ok_with_field_map() -> None:
     now = time.time()
     client = CatalogSchemaClient(

@@ -362,6 +362,8 @@ def proposal_allowed(
     name_hit = bool(bare and any(bare in t or t in bare for t in tokens))
 
     if cue_hit or name_hit:
+        if _stale_catalog_rejects_stock_field(proposal, schema_client):
+            return False, "stale_or_missing_catalog_ts"
         if _stock_relation_reuse(proposal) and _schema_verifies_stock_m2o(
             proposal, schema_client
         ):
@@ -501,6 +503,20 @@ def _stock_relation_reuse(proposal: Proposal) -> bool:
     mid = str(proposal.payload.get("model") or "")
     # New x_* model invent is never (c)-only; host may be x_* with stock M2O.
     return bool(mid)
+
+
+def _stale_catalog_rejects_stock_field(proposal: Proposal, schema_client: Any | None) -> bool:
+    """Block stock M2O invent when the Diagnosis catalog snapshot is past TTL."""
+    if not _stock_relation_reuse(proposal):
+        return False
+    try:
+        from app.ai_schema_client import DenySchemaClient
+
+        if isinstance(schema_client, DenySchemaClient):
+            return schema_client.reason == "stale_or_missing_catalog_ts"
+    except Exception:  # noqa: BLE001
+        pass
+    return False
 
 
 def _existing_stock_field_reuse(proposal: Proposal, schema_client: Any) -> bool:
