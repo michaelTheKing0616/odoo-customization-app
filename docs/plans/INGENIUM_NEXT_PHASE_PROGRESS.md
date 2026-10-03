@@ -1152,6 +1152,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - The prompt transcript is in memory on the runtime and is not part of `export_state`. GATE-P4-07 is not closed. Compaction was not run against a live model.
 - EV-AMB-01 through EV-AMB-08 have no YAML scenario bodies. The clarification rules were tested without scoring those ids.
 - T8-P4-TIERA needs a live model. It is nightly only and is not a pull-request card. It has not been started.
+- Op conformance is not complete. 3 of 63 catalog ops have all twelve parts: `field.create`, `field.update`, and `field.delete`. 41 reversible ops have no inverse. 55 ops have no params schema. The suite locks that gap and does not stub the missing parts.
 - `docker/*` and `apps/api/tests/test_wave16_gen2.py` still use `ServerProxy` outside the XML-RPC product scan.
 - Recaptured token screenshots in `docs/vision-verify/tokens-light.png` and `tokens-dark.png` are unstaged. The CSS text did not change.
 
@@ -1372,6 +1373,11 @@ Not done: T8-MEM. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, GA
 Track: T8 T8-MEM. Worker [Prove pending memory confirmation](5014f649-fec8-417f-92a4-b987c2f336d1). No push. L4 stays off.
 Intent: `memory_propose` stores a pending tenant or database item until `confirm_memory`. A role note is refused and does not become a tenant fact. A tool call cannot write global knowledge. Episodic memory is not injected. Re-ran memory, tool, runtime, and import-boundary tests: 35 passed in the worker run; this follow-up re-ran memory, tools, runtime, and import-boundary: 22 plus 13 passed. The version-branch count stayed 22. Confirmed text is not fed into the live prompt.
 Not done: T8-S01. T8-P4-TIERA waits on a live model and is nightly only. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, GATE-P3-03, GATE-P3-06, GATE-P3-08, GATE-P3-10, GATE-P4-07, and GATE-P4-08 stay open. L4 stays off.
+
+## 2026-10-03 — T8-S01 op conformance
+Track: T8 T8-S01. Worker [Check every op for twelve parts](3ee9bfbd-a2cd-48b7-9b9f-75fa6493770a). No push. L4 stays off.
+Intent: The catalog has 63 ops. Three pass every part: `field.create`, `field.update`, and `field.delete`. Forty-one reversible ops have no inverse. Fifty-five ops have no params schema. An unknown op type fails closed. The suite locks that gap so a new hole fails the test. No inverse was stubbed. Re-ran the suite and import-boundary tests: 12 passed. The version-branch count stayed 22.
+Not done: T8-S02. The twelve-part gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
 
 ## 2026-10-03 — Harness queued
 Cards H1–H8 in docs/plans/next-phase/cards/HARNESS.md. PR eval stays cassette/property. No product code.
