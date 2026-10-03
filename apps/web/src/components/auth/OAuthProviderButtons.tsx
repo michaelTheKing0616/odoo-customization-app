@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 
 const LABELS: Record<string, string> = {
   google: "Continue with Google",
+  microsoft: "Continue with Microsoft",
   github: "Continue with GitHub",
 };
 

@@ -125,4 +125,40 @@ describe("ClarifyInterstitial diagnosis", () => {
     expect(payload.craft_smart_buttons || []).toEqual([]);
     cleanup();
   });
+
+  it("renders approved_craft toggles default off and includes them in confirm payload", () => {
+    const onAnswer = vi.fn();
+    render(
+      <ClarifyInterstitial
+        onAnswer={onAnswer}
+        clarification={{
+          kind: "diagnosis",
+          merge_key: "diagnosis",
+          question: "We'll build: Maintenance",
+          help: "Residual full_app.",
+          understanding: {
+            title: "Maintenance",
+            inherit_existing: false,
+            needs_module: false,
+            constraints: ["Tickets with Draft→Done"],
+          },
+        }}
+      />,
+    );
+    const panel = screen.getByTestId("studio-diagnosis-approved-craft");
+    expect(panel.textContent).toMatch(/Optional craft/i);
+    const moneyBtn = screen.getByTestId("studio-craft-toggle-money_slots");
+    expect(moneyBtn.getAttribute("aria-pressed")).toBe("false");
+    expect(moneyBtn.textContent).toMatch(/Off/i);
+    fireEvent.click(moneyBtn);
+    expect(moneyBtn.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByTestId("studio-diagnosis-confirm"));
+    const payload = onAnswer.mock.calls[0][3] as {
+      approved_craft?: Record<string, boolean>;
+    };
+    expect(payload.approved_craft?.money_slots).toBe(true);
+    expect(payload.approved_craft?.company_scoping).toBe(false);
+    expect(payload.approved_craft?.depth_seeds).toBe(false);
+    cleanup();
+  });
 });

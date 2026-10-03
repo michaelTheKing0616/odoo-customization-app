@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AppProviders } from "@/components/AppProviders";
 import { DragAutoScroll } from "@/components/DragAutoScroll";
+import { AppToaster } from "@/components/ui/AppToaster";
 import { ThemeScript } from "@/components/theme/ThemeScript";
 
 export const metadata: Metadata = {
@@ -27,6 +28,7 @@ export default function RootLayout({
         <AppProviders>
           <DragAutoScroll />
           {children}
+          <AppToaster />
         </AppProviders>
       </body>
     </html>

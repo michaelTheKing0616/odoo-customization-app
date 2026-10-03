@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type {
+  StudioApprovedCraft,
   StudioClarification,
   StudioCraftSmartButton,
   StudioUnderstanding,
@@ -35,6 +36,59 @@ const HOST_FALLBACK: { id: string; label: string }[] = [
   { id: "calendar.event", label: "Calendar" },
 ];
 
+const CRAFT_TOGGLE_DEFS: { key: keyof StudioApprovedCraft; label: string; help: string }[] = [
+  {
+    key: "company_scoping",
+    label: "Multi-company scoping",
+    help: "Add x_company_id on transactional models",
+  },
+  {
+    key: "money_slots",
+    label: "Currency / money fields",
+    help: "Currency companion when amounts exist without a money cue",
+  },
+  {
+    key: "purchase_link",
+    label: "Purchase order link",
+    help: "Wire a stock purchase.order M2O when useful",
+  },
+  {
+    key: "partner_links",
+    label: "Contact (partner) links",
+    help: "res.partner M2Os beyond brief cues",
+  },
+  {
+    key: "datetime_over_date",
+    label: "Prefer DateTime over Date",
+    help: "Use datetime fields instead of date when inventing schedule slots",
+  },
+  {
+    key: "depth_seeds",
+    label: "Depth seed models",
+    help: "Allow generic depth padding models when the brief is thin",
+  },
+];
+
+function emptyApprovedCraft(): StudioApprovedCraft {
+  return {
+    company_scoping: false,
+    money_slots: false,
+    purchase_link: false,
+    partner_links: false,
+    datetime_over_date: false,
+    depth_seeds: false,
+  };
+}
+
+function normalizeApprovedCraft(raw: StudioApprovedCraft | undefined): StudioApprovedCraft {
+  const base = emptyApprovedCraft();
+  if (!raw || typeof raw !== "object") return base;
+  for (const row of CRAFT_TOGGLE_DEFS) {
+    base[row.key] = Boolean(raw[row.key]);
+  }
+  return base;
+}
+
 function DiagnosisCard({
   clarification,
   busy,
@@ -64,6 +118,9 @@ function DiagnosisCard({
   const [craftKept, setCraftKept] = useState<StudioCraftSmartButton[]>(() =>
     seedCraft.filter((row) => row.default_on !== false),
   );
+  const [approvedCraft, setApprovedCraft] = useState<StudioApprovedCraft>(() =>
+    normalizeApprovedCraft(seed.approved_craft),
+  );
 
   useEffect(() => {
     const next = clarification.understanding || {};
@@ -80,6 +137,7 @@ function DiagnosisCard({
         ? next.craft_proposals
         : [];
     setCraftKept(proposals.filter((row) => row.default_on !== false));
+    setApprovedCraft(normalizeApprovedCraft(next.approved_craft));
   }, [clarification.understanding, clarification.craft_proposals]);
 
   const payload: DiagnosisPayload = useMemo(
@@ -92,9 +150,11 @@ function DiagnosisCard({
       gold_artifact_id: seed.gold_artifact_id,
       craft_smart_buttons: craftKept,
       craft_proposals: seedCraft,
+      approved_craft: approvedCraft,
       operator_note: operatorNote.trim() || undefined,
     }),
     [
+      approvedCraft,
       constraints,
       craftKept,
       goldLocked,
@@ -113,6 +173,10 @@ function DiagnosisCard({
     if (!row) return;
     setConstraints((prev) => (prev.includes(row) ? prev : [...prev, row].slice(0, 12)));
     setNewConstraint("");
+  }
+
+  function toggleCraft(key: keyof StudioApprovedCraft) {
+    setApprovedCraft((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
   return (
@@ -242,6 +306,38 @@ function DiagnosisCard({
             Add
           </button>
         </div>
+      </div>
+      <div className="diagnosis-field" data-testid="studio-diagnosis-approved-craft">
+        <span>Optional craft (off by default)</span>
+        <p className="clarify-help" style={{ marginTop: 4 }}>
+          Opt in only when you want Generate to invent these beyond brief cues.
+        </p>
+        <ul className="diagnosis-facts">
+          {CRAFT_TOGGLE_DEFS.map((row) => {
+            const on = Boolean(approvedCraft[row.key]);
+            return (
+              <li key={row.key} className="diagnosis-constraint-row">
+                <span>
+                  {row.label}
+                  <span className="clarify-help" style={{ display: "block", marginTop: 2 }}>
+                    {row.help}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${on ? "btn-brand" : "btn-secondary"}`}
+                  disabled={busy}
+                  aria-pressed={on}
+                  aria-label={`${row.label}: ${on ? "on" : "off"}`}
+                  data-testid={`studio-craft-toggle-${row.key}`}
+                  onClick={() => toggleCraft(row.key)}
+                >
+                  {on ? "On" : "Off"}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       </div>
       {seedCraft.length > 0 ? (
         <div className="diagnosis-field" data-testid="studio-diagnosis-nice-to-have">

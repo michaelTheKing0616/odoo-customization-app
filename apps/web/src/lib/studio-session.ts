@@ -19,6 +19,16 @@ export type StudioCraftSmartButton = {
   source?: string;
 };
 
+/** Operator craft opt-ins — all default false until Diagnosis toggles them on. */
+export type StudioApprovedCraft = {
+  company_scoping?: boolean;
+  money_slots?: boolean;
+  purchase_link?: boolean;
+  partner_links?: boolean;
+  datetime_over_date?: boolean;
+  depth_seeds?: boolean;
+};
+
 export type StudioUnderstanding = {
   title?: string;
   summary?: string;
@@ -32,6 +42,7 @@ export type StudioUnderstanding = {
   out_of_scope?: string[];
   craft_proposals?: StudioCraftSmartButton[];
   craft_smart_buttons?: StudioCraftSmartButton[];
+  approved_craft?: StudioApprovedCraft;
   source?: string;
   confidence?: string;
   operator_note?: string;
