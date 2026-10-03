@@ -8,6 +8,7 @@ import { OAuthProviderButtons } from "@/components/auth/OAuthProviderButtons";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { TotpCodeInput } from "@/components/auth/TotpCodeInput";
 import { Input } from "@/components/ui/Input";
 import { Card, PageHeader } from "@/components/ui/layout-primitives";
 
@@ -98,10 +99,11 @@ function LoginPageContent() {
           ) : null}
           <label className="block space-y-1 text-sm">
             <span>2FA code{oauthTotp ? "" : " (if enabled)"}</span>
-            <Input
+            <TotpCodeInput
               value={totpCode}
-              onChange={(e) => setTotpCode(e.target.value)}
+              onChange={setTotpCode}
               required={oauthTotp}
+              disabled={busy}
             />
           </label>
           <Button type="submit" disabled={busy}>

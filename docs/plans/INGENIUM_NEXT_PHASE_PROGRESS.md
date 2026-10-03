@@ -992,3 +992,9 @@ Intent: One constants module, interruptible Drawer and SheetMotion, ListLayout o
 Tests: `pnpm exec vitest run src/components/ui/motion/motion.test.tsx` — 6 passed, twice. The interrupt test starts closed, opens, samples x between 5 and 95, then closes and requires x to increase. The rendered reduced-motion case sets `data-motion-keys` to `opacity x` with `x: 0`.
 Browser on `/e2e/kit`: open samples moved translateX 448 → 287 → 102. Close started at 62, then 384 → 433, so the reverse continued from the in-progress offset. With reduced motion on, the open drawer’s transform was `none` while opacity faded (0.76). Approvals renders one `motion-list-layout`. The kit diff renders one. Drawer and SheetMotion are on the kit page.
 Not done: UI-F10 TOTP input. Expert and billing still use the existing Sheet. L4 off.
+
+## 2026-10-03 — UI-F10 TOTP one-time-code input
+Track: T7 UI-F10. Worker [Add TOTP one-time-code input](84f8cc05-2ce9-4ddb-a7b3-d18acf617532). No push. L4 stays off.
+Intent: Login 2FA uses `input-otp` 1.5.0. Paste of 6 digits sets the code. `autocomplete="one-time-code"`. No enrol page exists.
+Tests: `pnpm exec vitest run src/components/auth/TotpCodeInput.test.tsx` — 1 passed. Login page: the field is named “2FA code (if enabled)” and typing `123456` set the value to `123456`.
+Not done: UI-F11 virtualized tables. L4 off.
