@@ -778,3 +778,20 @@ Files: `packages/odoo-client/src/odoo_client/client.py`, `packages/odoo-client/t
 Pytest: `.venv/bin/python -m pytest -q -p no:cacheprovider packages/odoo-client/tests/test_odoo20_version_table.py packages/odoo-client/tests/test_json2_transport.py` — **70 passed, 32 skipped**.
 Major-20 hint sentence: `JSON-2 requires an API key (Settings → Users → Account Security → New API Key). To use a login password instead, set rpc_protocol=xmlrpc.`
 Not done: L4 off. No aonb.odoo.com call.
+
+CLAIM O20-08 2026-10-03T11:10:00Z files: no db-service backup on Odoo 20. Do not enable L4. Do not call aonb.odoo.com.
+
+Track: O20. Card: O20-08. Worker only. No commit. No push. No Odoo host. L4 stays off.
+Intent: Metadata snapshots stay on the existing RPC read path. A database-level backup on major 20 does not call `/web/database` or `dump_db`. The operator takes that backup on the host (Odoo Online, Odoo.sh, or the server). Odoo.sh and Odoo Online do not get a dump on any major. No new dump protocol.
+Pytest: `.venv/bin/python -m pytest -q -p no:cacheprovider apps/api/tests/test_snapshot_db_service.py apps/api/tests/test_snapshot_gate.py apps/api/tests/test_snapshots_scope.py apps/api/tests/test_snapshots_m4_remainders.py` — **37 passed**.
+Files: `apps/api/app/database_backup.py`, `apps/api/app/snapshots.py` (`snapshot_flow`), `apps/api/tests/test_snapshot_db_service.py`, `apps/api/tests/test_snapshot_gate.py` (freshness on 20 still 10 minutes).
+
+Former db-service mentions (`rg "/web/database|db\.dump|dump_db|ServerProxy"` in `apps/api/app` and `packages/odoo-client/src`). None of them called the removed service. On major 20:
+
+1. `packages/odoo-client/src/odoo_client/client.py` `OdooClient.__init__` — `ServerProxy` for `xmlrpc/2/common` and `xmlrpc/2/object` only. No `xmlrpc/2/db` and no `dump_db`. Unchanged on major 20.
+2. `apps/api/app/sandbox.py` `_sandbox_rpc` — comment that the return shape matches the old ServerProxy pair. It routes `execute_kw` through the object service. It does not open the db service on major 20.
+3. `apps/api/app/snapshot_gate.py` `require_production_snapshot` — a caller can set `require_web_database_backup`. On major 20 that flag is forced off and a metadata snapshot id is accepted. The gate never HTTP-calls `/web/database`. The 10-minute freshness window and the last-write check still apply (`test_odoo20_metadata_snapshot_keeps_ten_minute_freshness_window`).
+4. `apps/api/app/rollback_tiers.py` tier `database_snapshot` — records `requires: /web/database` with `live_restore: False` and `not_for` `odoo_20`, `odoo_online`, `odoo_sh`. It does not restore. Unchanged. On major 20 it still does not call the endpoint.
+5. No `dump_db` function and no `/web/database` HTTP client existed. `request_database_backup` (via `snapshot_flow(kind="database")`) is the database-level backup entry. On major 20 it returns the host-backup message and does not call the client. Odoo.sh and Odoo Online get that refusal on any major (`test_snapshot_refuses_on_odoo_sh_and_online`). A 20 fake that raises on `/web/database` is used for metadata `snapshot_view` and is never hit. ≤19 self-host also gets no new dump client.
+
+Not done: live production callers do not pass `odoo_major` into `require_production_snapshot`, so the major-20 branch is unreached there; the dump stays impossible because there is no dump client. `database_backup.py` uses `>= 20` and `snapshot_gate.py` uses `== 20`. L4 off. No aonb.odoo.com call. No Docker.

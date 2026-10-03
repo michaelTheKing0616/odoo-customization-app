@@ -773,3 +773,31 @@ def rollback_snapshot(
         return {"restored": "ir_cron", "id": cron_id}
 
     raise OdooClientError(f"Rollback not implemented for resource_type={row.resource_type}")
+
+
+def snapshot_flow(
+    *,
+    kind: str,
+    client: Any,
+    odoo_major: int | None = None,
+    hosting_hint: str | None = None,
+    metadata_snapshot: Any = None,
+) -> Any:
+    """Run a snapshot without calling the removed Odoo db service.
+
+    ``kind="metadata"`` calls the existing metadata helper (``snapshot_view``
+    and the other ``snapshot_*`` functions). Those helpers stay on ORM reads.
+    ``kind="database"`` returns the host-backup message and does not call
+    ``client``.
+    """
+    from app.database_backup import request_database_backup
+
+    if kind != "metadata":
+        return request_database_backup(
+            odoo_major=odoo_major,
+            hosting_hint=hosting_hint,
+            client=client,
+        )
+    if metadata_snapshot is None:
+        raise TypeError("A metadata snapshot callable is required")
+    return metadata_snapshot(client)

@@ -142,3 +142,13 @@ def test_odoo20_accepts_metadata_snapshot_without_web_database_backup() -> None:
         snapshot_kind="metadata",
         require_web_database_backup=True,
     )
+
+
+def test_odoo20_metadata_snapshot_keeps_ten_minute_freshness_window() -> None:
+    with pytest.raises(SnapshotRequired, match="10-minute freshness window"):
+        _ok(
+            odoo_major=20,
+            snapshot_kind="metadata",
+            require_web_database_backup=True,
+            snapshot_created_at=NOW - timedelta(minutes=10, seconds=1),
+        )
