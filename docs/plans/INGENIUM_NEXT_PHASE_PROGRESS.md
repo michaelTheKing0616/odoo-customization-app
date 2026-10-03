@@ -851,3 +851,12 @@ Change: `packages/odoo-client/src/odoo_client/compat/name_search.py` (`build_nam
 Call sites in `apps/api/app`: `data_import.py` only (``rpc_classify.py`` lists the method name, no RPC).
 Tests: `.venv/bin/python -m pytest -q -p no:cacheprovider packages/odoo-client/tests/test_name_search_compat.py` — **4 passed**.
 Not done: L4 off. No aonb.odoo.com. No commit.
+
+CLAIM O20-15 2026-10-03T12:10:00Z files: formatted_read_group on 19 and 20. Do not enable L4. Do not call aonb.odoo.com.
+
+Track: O20. Card: O20-15. Worker only. No commit. No push. No Odoo host. L4 stays off.
+Intent: grouped aggregate RPC uses ``read_group`` on 16–18 and ``formatted_read_group`` on 19–20 via ``difference("read_group", major)`` — legacy ``read_group`` is not sent on major 20.
+Change: `packages/odoo-client/src/odoo_client/compat/read_group.py` (`aggregate_rpc_method`, `build_aggregate_execute_kw`); `resolve_aggregate_rpc_method` in `client.py` `_dispatch_execute` and `Json2Transport.execute_kw`; JSON-2 mapper `_read_group_body` in `execute_kw_map.py`.
+Call sites in `apps/api/app`: none (allowlists only in `rpc_classify.py`, `mcp_guard.py`). Transport/client rewrite covers callers that still pass ``read_group`` on 19+.
+Tests: `.venv/bin/python -m pytest -q -p no:cacheprovider packages/odoo-client/tests/test_read_group_compat.py` — **6 passed**.
+Not done: L4 off. No aonb.odoo.com. No commit.

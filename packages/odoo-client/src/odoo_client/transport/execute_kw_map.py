@@ -53,6 +53,8 @@ def execute_kw_to_json2_body(
         return _ids_only_body(positional, named)
     if m == "name_search":
         return _name_search_body(positional, named, major=major)
+    if m in {"read_group", "formatted_read_group"}:
+        return _read_group_body(positional, named)
     if m == "update_list":
         # ir.module.module.update_list — no args
         if positional:
@@ -178,6 +180,24 @@ def _ids_only_body(positional: list[Any], named: dict[str, Any]) -> dict[str, An
             raise ValueError(f"ids-only method: unexpected extra args {positional[1:]!r}")
     if "ids" not in body:
         raise ValueError("ids-only method: ids required")
+    return body
+
+
+def _read_group_body(positional: list[Any], named: dict[str, Any]) -> dict[str, Any]:
+    """read_group / formatted_read_group(domain, fields, groupby, **kwargs)."""
+    body = dict(named)
+    if positional:
+        body["domain"] = positional[0]
+        if len(positional) > 1 and "fields" not in body:
+            body["fields"] = positional[1]
+        if len(positional) > 2 and "groupby" not in body:
+            body["groupby"] = positional[2]
+        if len(positional) > 3:
+            raise ValueError(
+                f"read_group: unexpected extra positional args {positional[3:]!r}"
+            )
+    if "domain" not in body:
+        raise ValueError("read_group: domain is required")
     return body
 
 

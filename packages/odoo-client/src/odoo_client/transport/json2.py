@@ -13,6 +13,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlparse, urlunparse
 from urllib.request import Request, urlopen
 
+from odoo_client.compat.read_group import resolve_aggregate_rpc_method
 from odoo_client.transport.execute_kw_map import execute_kw_to_json2_body
 
 logger = logging.getLogger(__name__)
@@ -184,6 +185,7 @@ class Json2Transport:
         args: list[Any] | None = None,
         kwargs: dict[str, Any] | None = None,
     ) -> Any:
+        method = resolve_aggregate_rpc_method(method, self.odoo_major)
         body = execute_kw_to_json2_body(method, args, kwargs, major=self.odoo_major)
         return self.call(model, method, body)
 

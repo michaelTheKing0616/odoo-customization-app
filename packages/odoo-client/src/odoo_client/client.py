@@ -16,6 +16,7 @@ from typing import Any, Literal
 from urllib.parse import urljoin
 
 from odoo_client.compat.capabilities import VersionCapabilities
+from odoo_client.compat.read_group import resolve_aggregate_rpc_method
 from odoo_client.compat.registry import for_major, parse_major
 from odoo_client.rpc_policy import builtin_forbidden, scrub_config_param_result
 from odoo_client.write_mode import is_rpc_blocked_in_observer
@@ -382,6 +383,7 @@ class OdooClient:
         args: list[Any] | None,
         kwargs: dict[str, Any] | None,
     ) -> Any:
+        method = resolve_aggregate_rpc_method(method, self.capabilities.major)
         if self._rpc_protocol == "json2" and self._json2 is not None:
             try:
                 return self._json2.execute_kw(model, method, args, kwargs)
