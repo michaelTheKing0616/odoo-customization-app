@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from odoo_client.schema_fingerprint import schema_fingerprint as hash_schema
+
 from app.blast_radius import assert_production_apply_records, changeset_record_count
 from app.changeset.ops import OP_CATALOG, get_op
 from app.changeset.policy import risk_of
@@ -73,6 +75,19 @@ def _gated_ops(changeset: list[dict[str, Any]], tenant: dict[str, Any] | None = 
     return gated
 
 
+def _schema_binding_matches(approved: str, live_schema: dict[str, Any] | None) -> bool:
+    """Whether the live schema slice still matches the approved fingerprint.
+
+    Inputs: the fingerprint bound at approval, and the schema slice at apply time.
+    Outputs: True only when ``live_schema`` is a dict and its fingerprint equals
+    ``approved``. A missing or non-dict slice is False.
+    Side effects: none. Does not call Odoo.
+    """
+    if not isinstance(live_schema, dict):
+        return False
+    return hash_schema(live_schema) == approved
+
+
 def apply(
     changeset: list[dict[str, Any]],
     *,
@@ -88,6 +103,8 @@ def apply(
     escalated: bool = False,
     expected_fingerprint: str | None = None,
     live_fingerprint: str | None = None,
+    schema_fingerprint: str | None = None,
+    live_schema: dict[str, Any] | None = None,
     tenant: dict[str, Any] | None = None,
     environment: str = "",
     write_mode: str = "",
@@ -106,6 +123,10 @@ def apply(
     protocol = _protocol()
     if approved_hash is not None and approved_hash != fp:
         raise protocol.BridgeError("approval_hash_mismatch")
+    if schema_fingerprint is not None and not _schema_binding_matches(
+        schema_fingerprint, live_schema
+    ):
+        raise protocol.BridgeError("schema_fingerprint_mismatch")
     if expected_fingerprint is not None and live_fingerprint != expected_fingerprint:
         raise protocol.BridgeError("stale_fingerprint")
     for op in changeset:

@@ -1400,5 +1400,10 @@ Track: T8 T8-S05. Worker [Prove only legal phase transitions](ac15a162-50fa-4eb2
 Intent: All 26 legal phase edges are allowed. A skip from INTAKE to EXECUTE is refused. The phase table was not changed. Re-ran the suite, the existing skip test, and import-boundary tests: 38 passed. The version-branch count stayed 22.
 Not done: T8-S06. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
 
+## 2026-10-04 — T8-S06 approval binding
+Track: T8 T8-S06. Worker [Prove approval is bound to the hash](f75781b1-2049-40f4-8db4-e35b2aff36e1). No push. L4 stays off.
+Intent: Apply refuses a changed plan hash or a changed schema fingerprint before a write. A matching pair may apply on the fake port. A bound fingerprint with no live schema fails closed. Re-ran the suite and import-boundary tests: 14 passed. The version-branch count stayed 22. No live approval ran.
+Not done: T8-S07. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
+
 ## 2026-10-03 — Harness queued
 Cards H1–H8 in docs/plans/next-phase/cards/HARNESS.md. PR eval stays cassette/property. No product code.
