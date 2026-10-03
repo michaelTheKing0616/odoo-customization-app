@@ -1141,6 +1141,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - GATE-P3-06 was not run. Neither mutmut nor cosmic-ray is installed. No mutation score was invented.
 - `plan_card.py` still expires every production card at 24 hours, including R0 and R1. Policy expiry for those two is 7 days.
 - `apply_blocked` is not called by the executor. A freeze is a decision flag until apply reads it.
+- Simulation staging is an in-memory clone. It is not an operator-owned neutralized database.
 - `docker/*` and `apps/api/tests/test_wave16_gen2.py` still use `ServerProxy` outside the XML-RPC product scan.
 - Recaptured token screenshots in `docs/vision-verify/tokens-light.png` and `tokens-dark.png` are unstaged. The CSS text did not change.
 
@@ -1291,6 +1292,11 @@ Not done: T8-VALID. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, 
 Track: T8 T8-VALID. Worker [Prove the nine validation stages](a629db01-4116-43dc-adf3-86e3a64fb448). No push. L4 stays off.
 Intent: All nine stages stay on the report even when shape fails. Params over 64 KB, nesting past depth 12, and the three prototype-pollution keys are refused. Repair stops after four rounds. Re-ran the engine and import-boundary tests: 34 passed. The version-branch count stayed 22.
 Not done: T8-SIM. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, and GATE-P3-06 stay open. L4 stays off.
+
+## 2026-10-03 — T8-SIM simulation modes
+Track: T8 T8-SIM. Worker [Prove the simulation modes](585d9931-4695-42a6-8077-28d1ff290d64). No push. L4 stays off.
+Intent: Static, Bridge dry-run, staging, and synthetic modes run in process. A failed simulation returns the plan to planning. Production apply without a recorded simulation is refused unless policy allows an R1 direct apply. A DDL op stays off the in-place path. The runtime `changeset_simulate` tool now calls that module. Re-ran simulation, runtime, and import-boundary tests: 30 passed. The version-branch count stayed 22. No live Odoo call.
+Not done: T8-EXEC. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, and GATE-P3-06 stay open. L4 stays off.
 
 ## 2026-10-03 — Harness queued
 Cards H1–H8 in docs/plans/next-phase/cards/HARNESS.md. PR eval stays cassette/property. No product code.

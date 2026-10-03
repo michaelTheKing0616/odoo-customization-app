@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from app.agent_runtime.phases import IllegalTransition
@@ -183,3 +185,18 @@ def test_r3_self_approval_is_refused() -> None:
     )
     assert result["applied"] is False
     assert result["error"] == "SELF_APPROVAL"
+
+
+def test_changeset_simulate_uses_the_in_process_simulator() -> None:
+    runtime = AgentRuntime()
+    state = runtime.start()
+    runtime.complete_phase(state, "DISCOVER")
+    runtime.complete_phase(state, "PLAN")
+    runtime.complete_phase(state, "VALIDATE")
+    runtime.complete_phase(state, "SIMULATE")
+    result = runtime.call_tool(state, "changeset_simulate", {})
+    payload = json.loads(result["untrusted_data"])
+    assert payload["writes"] == 0
+    assert payload["live"] is False
+    assert payload["phase"] in {"PLAN", "PRESENT"}
+    assert "recorded" in payload

@@ -14,6 +14,7 @@ from app.changeset.ops import OP_CATALOG, get_op
 from app.changeset.policy import risk_of
 from app.changeset.protected_registry import protected_denial, reset_detections
 from app.changeset.recovery import recover
+from app.changeset.simulate import guard_production_apply
 
 _JOURNAL: list[dict[str, Any]] = []
 _RESULTS_BY_FINGERPRINT: dict[str, dict[str, Any]] = {}
@@ -89,6 +90,7 @@ def apply(
 
     count = changeset_record_count(changeset) if record_count is None else int(record_count)
     assert_production_apply_records(count, environment=environment, write_mode=write_mode)
+    guard_production_apply(changeset, environment=environment)
 
     fp = changeset_fingerprint(changeset)
     protocol = _protocol()

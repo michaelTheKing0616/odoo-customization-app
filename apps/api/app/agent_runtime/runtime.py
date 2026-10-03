@@ -11,6 +11,7 @@ from app.agent_runtime.tools import ToolDenied, assert_tool_allowed, wrap_untrus
 from app.changeset.executor import apply as engine_apply
 from app.changeset.executor import changeset_fingerprint
 from app.changeset.policy import self_approval_allowed
+from app.changeset.simulate import simulate
 from app.changeset.validate import validate
 
 MAX_STEPS = 40
@@ -238,7 +239,15 @@ class AgentRuntime:
         if name == "changeset_validate":
             return validate(state.changeset, known_models=set(args.get("known_models") or []))
         if name == "changeset_simulate":
-            return {"ok": True, "mode": "static", "writes": 0}
+            report = simulate(list(state.changeset))
+            return {
+                "ok": report.passed,
+                "mode": "static",
+                "writes": 0,
+                "phase": report.phase,
+                "live": False,
+                "recorded": report.recorded,
+            }
         if name == "submit_changeset":
             return {"ok": True, "pending_approval": True, "writes": 0}
         if name == "describe_model":
