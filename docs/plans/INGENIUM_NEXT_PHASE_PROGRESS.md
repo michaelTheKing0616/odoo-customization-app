@@ -1075,3 +1075,8 @@ Not done: ADR-05. ADR-02 stays open until Tope accepts D8. L4 off.
 Track: T8 ADR-05. Worker [Record the open tools-shape ADR](1e741b7b-264c-4cee-a3df-a3ab6f7411ed). No push. L4 stays off.
 Intent: Leave union tools versus family tools undecided. GATE-P6-04 has not been run. The model still has no apply tool. Calls stay on the ADR-03 shape and the ADR-04 ladder.
 Not done: ADR-06. ADR-02 stays open until Tope accepts D8. L4 off.
+
+## 2026-10-03 — ADR-06 executor modes
+Track: T8 ADR-06. Worker [Record executor Mode T and Mode C](3c014fe0-ccd8-4496-a0ba-beda76e8bc43). No push. L4 stays off.
+Intent: Both modes exist. Mode T is one transaction, dry-run for non-DDL, native rollback then inverse, default 50 ops. Mode C is per-op, no dry-run, compensate in reverse, only reversible E or S and idempotent, default 15 ops, risk +1.
+Not done: ADR-07. ADR-02 stays open until Tope accepts D8. L4 off.
