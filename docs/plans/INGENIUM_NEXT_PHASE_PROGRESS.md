@@ -1126,6 +1126,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - Audit retention is not wired. ADR-11 locks the chain shape. Append and verify already exist. 24 months, 7 years for accounting kinds, and 7 days for raw LLM payloads are still open.
 - The KMS vendor is unchosen. ADR-12 keeps secrets on the existing `fernet_key`. No cloud KMS client.
 - The eval harness is not built. ADR-13 records the A/B/C bars. GATE-P4-04 and GATE-P6 are still open.
+- GATE-P0-03 is still open. The eight seed names exist only as catalog definitions in `apps/api/app/changeset/fixture_catalog.py`. Live fixtures on Odoo 17, 18, 19, and 20 were not brought up. The stand-in reset is not a live database reset.
 - `docker/*` and `apps/api/tests/test_wave16_gen2.py` still use `ServerProxy` outside the XML-RPC product scan.
 - Recaptured token screenshots in `docs/vision-verify/tokens-light.png` and `tokens-dark.png` are unstaged. The CSS text did not change.
 
@@ -1164,3 +1165,8 @@ Not done: ADR-14. L4 stays off.
 Track: T8 ADR-14. Worker [Correct the version ADR](661f85d0-4687-4928-b753-b727039b09b6). No push. L4 stays off.
 Intent: Community 20, 19, 18, and 17 stay GA. 16 stays experimental. Majors at or below 15 stay refused. `docker/docker-compose.odoo20.yml` publishes host Odoo on port 8073. `docker/run-odoo20-smoke.sh` prints the command and does not start containers. Live version-table probes stay skipped until `ODOO20_URL` is set.
 Not done: T8-P0-FIX. L4 stays off.
+
+## 2026-10-03 — T8-P0-FIX fixture catalog (partial)
+Track: T8 T8-P0-FIX. Worker [Add named fixture seeds](47369d57-dde6-406f-a67a-7b96ad3df8b4). No push. L4 stays off.
+Intent: Offline catalog with the eight seed names, 150 `messy_client` field definitions, nightly-only `huge`, and a stand-in reset under 60 seconds that refuses a customer URL. Re-ran `tests/test_fixture_catalog.py`: 6 passed. Live fixtures on 17, 18, 19, and 20 were not brought up. GATE-P0-03 stays open.
+Not done: T8-P0-LINT. The live fixture gate stays open. L4 stays off.
