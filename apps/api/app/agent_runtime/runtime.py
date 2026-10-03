@@ -8,6 +8,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.agent_runtime.memory import MemoryBook, MemoryItem
 from app.agent_runtime.phases import ENGINE_ONLY, PHASES, IllegalTransition, assert_transition
 from app.agent_runtime.prompt import AssembledContext, Exchange, PromptRejected, assemble_context
 from app.agent_runtime.tools import (
@@ -228,6 +229,7 @@ class AgentRuntime:
         self.grant = grant
         self.requester_ops = requester_ops
         self._transcripts: dict[int, list[Exchange]] = {}
+        self._memory: dict[int, MemoryBook] = {}
 
     def start(self) -> RunState:
         state = RunState()
@@ -253,6 +255,41 @@ class AgentRuntime:
                 raise PromptRejected(f"duplicate tool call id {tool.call_id}")
             seen.add(tool.call_id)
         bucket.append(stored)
+
+    def memory_book(self, state: RunState) -> MemoryBook:
+        """Return the in-process memory book for this run object.
+
+        Inputs: the run state.
+        Outputs: the book created for that object. A new run gets an empty
+        book. Working notes and pending proposals live here, not in
+        ``state.facts`` and not in the prompt budget string.
+        Side effects: stores the book on this runtime, keyed by the state
+        object. A restored run is a new object and starts with an empty
+        book. Nothing is written to disk or a database.
+        """
+        return self._memory.setdefault(id(state), MemoryBook())
+
+    def confirm_memory(self, state: RunState, item_id: str, *, confirmed_by: str) -> MemoryItem:
+        """Confirm one pending item. This is not a model tool.
+
+        Inputs: the run, the item id from ``memory_propose``, and the
+        human identity.
+        Outputs: the confirmed item. A role note cannot be confirmed.
+        Side effects: updates that item on the run book. Does not change
+        ``state.facts``. Does not write global knowledge. Does not call
+        a model. Does not count as a tool call.
+        """
+        return self.memory_book(state).confirm(item_id, confirmed_by=confirmed_by)
+
+    def record_working(self, state: RunState, text: str) -> MemoryItem:
+        """Record engine-trusted working memory. This is not a model tool.
+
+        Inputs: the run and the note text.
+        Outputs: a confirmed working item. It is not a tenant fact.
+        Side effects: appends the note on the run book. Does not call a
+        model. Does not write global knowledge.
+        """
+        return self.memory_book(state).record_working(text)
 
     def build_context(
         self,
@@ -464,7 +501,7 @@ class AgentRuntime:
         if name == "data_sample":
             return data_sample_result(args)
         if name == "memory_propose":
-            return memory_propose_result(args)
+            return memory_propose_result(args, self.memory_book(state))
         if name == "changeset_status":
             return {"phase": state.phase, "applied": state.applied, "status": state.status}
         if name == "verification_report_get":

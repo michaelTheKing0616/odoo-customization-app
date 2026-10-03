@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from app.agent_runtime.memory import MemoryBook
+
 DATA_SAMPLE_MAX_ROWS = 5
 ASK_USER_MAX_QUESTIONS = 3
 
@@ -182,15 +184,15 @@ def ask_user_result(args: dict[str, Any]) -> dict[str, Any]:
     return {"suspended": True, "questions": questions}
 
 
-def memory_propose_result(args: dict[str, Any]) -> dict[str, Any]:
-    """Return a pending memory proposal.
+def memory_propose_result(args: dict[str, Any], book: MemoryBook) -> dict[str, Any]:
+    """Create a pending memory item, or refuse a write the tool must not make.
 
-    Inputs: tool arguments. A confirmation flag in the arguments is ignored.
-    Outputs: ``status`` pending and ``confirmed`` false.
-    Side effects: none. Does not write memory and does not confirm the proposal.
+    Inputs: tool arguments and the run's memory book. ``confirmed`` and
+    ``status`` in the arguments are ignored.
+    Outputs: ``status`` pending and ``confirmed`` false, or ``status``
+    refused for a role note, a working-memory write, or global knowledge.
+    The proposal text is returned for the tool-result wrapper.
+    Side effects: appends one pending item when the proposal is allowed.
+    Does not confirm. Does not write global knowledge. Does not call a model.
     """
-    return {
-        "status": "pending",
-        "confirmed": False,
-        "proposal": args.get("proposal", args.get("text")),
-    }
+    return book.propose(args)

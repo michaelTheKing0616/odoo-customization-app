@@ -1121,7 +1121,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - The expert panel and billing still use `Sheet`, not the motion sheet.
 - Axe was not run for `/bots`, `/bots/rooms/[id]`, `/bots/[id]`, `/studio/dashboards`, `/bridge/connections`, or `/onboarding`. `/connections` only redirects.
 - Durable WAL is still in memory. `apps/api/alembic/versions/s9t0u1v2w3x4_journal_wal.py` declares `journal_entry`, `before_image`, and `apply_database_lock` and has not been applied. A process kill still loses the journal. GATE-P3-03 is not closed.
-- T8-MEM is still open. ADR-09 records the four memory classes. The code does not exist yet. `memory_propose` is not implemented.
+- T8-MEM records pending tenant memory until a human confirms it. A role note is refused. Confirmed tenant text is not fed into the live prompt. The 5% budget is still only the prompt layer.
 - The skill router is not built. ADR-10 records the package rules. No skill card has shipped the router.
 - Audit retention is not wired. ADR-11 locks the chain shape. Append and verify already exist. 24 months, 7 years for accounting kinds, and 7 days for raw LLM payloads are still open.
 - The KMS vendor is unchosen. ADR-12 keeps secrets on the existing `fernet_key`. No cloud KMS client.
@@ -1151,6 +1151,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - Three tool names sit beside the card list: `changeset_validate`, `changeset_simulate`, and `changeset_render`. The registered card set is 42 names and does not include an apply tool.
 - The prompt transcript is in memory on the runtime and is not part of `export_state`. GATE-P4-07 is not closed. Compaction was not run against a live model.
 - EV-AMB-01 through EV-AMB-08 have no YAML scenario bodies. The clarification rules were tested without scoring those ids.
+- T8-P4-TIERA needs a live model. It is nightly only and is not a pull-request card. It has not been started.
 - `docker/*` and `apps/api/tests/test_wave16_gen2.py` still use `ServerProxy` outside the XML-RPC product scan.
 - Recaptured token screenshots in `docs/vision-verify/tokens-light.png` and `tokens-dark.png` are unstaged. The CSS text did not change.
 
@@ -1366,6 +1367,11 @@ Not done: T8-CRITIC. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09,
 Track: T8 T8-CRITIC. Worker [Prove the critic cannot waive policy](18c01d2d-8b51-4b1b-90c3-ee88c4e35ecd). No push. L4 stays off.
 Intent: The checklist runs for Tier A when risk is R2 or higher, or when there are at least 5 ops. An approve verdict does not change the policy decision. R4 stays denied. The critic cannot lower risk, skip approval, or mark a plan verified. Re-ran critic and import-boundary tests: 37 passed. The version-branch count stayed 22. No live model was called.
 Not done: T8-MEM. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, GATE-P3-03, GATE-P3-06, GATE-P3-08, GATE-P3-10, GATE-P4-07, and GATE-P4-08 stay open. L4 stays off.
+
+## 2026-10-03 — T8-MEM pending confirmation
+Track: T8 T8-MEM. Worker [Prove pending memory confirmation](5014f649-fec8-417f-92a4-b987c2f336d1). No push. L4 stays off.
+Intent: `memory_propose` stores a pending tenant or database item until `confirm_memory`. A role note is refused and does not become a tenant fact. A tool call cannot write global knowledge. Episodic memory is not injected. Re-ran memory, tool, runtime, and import-boundary tests: 35 passed in the worker run; this follow-up re-ran memory, tools, runtime, and import-boundary: 22 plus 13 passed. The version-branch count stayed 22. Confirmed text is not fed into the live prompt.
+Not done: T8-S01. T8-P4-TIERA waits on a live model and is nightly only. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, GATE-P3-03, GATE-P3-06, GATE-P3-08, GATE-P3-10, GATE-P4-07, and GATE-P4-08 stay open. L4 stays off.
 
 ## 2026-10-03 — Harness queued
 Cards H1–H8 in docs/plans/next-phase/cards/HARNESS.md. PR eval stays cassette/property. No product code.
