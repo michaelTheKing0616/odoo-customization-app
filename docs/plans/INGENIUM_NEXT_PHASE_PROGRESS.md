@@ -457,4 +457,14 @@ Negative tests: n/a (live gate run).
 Not done: T1-F3 acceptance — one Option A module with `run_tests=True` and live `prove_status=proved` (card wording `install_ready`; repo stamp is `prove_status` per T1-D1/D2). Fix menu `web_icon` for Odoo 19 smoke modules or run Option A prove path separately.
 Risks introduced: gate script now depends on `uv` for both inline Python blocks (consistent with install block).
 
+## 2026-10-03 — T1-GATE
+Track: T1
+Intent: Re-check the gates that stay even if the code already exists.
+Model / band: no worker. Deterministic re-measure. Pressure 4.
+Files: none.
+Commands and results: VERIFIED. `test_maintenance_closed_ir_no_uncued_spray`, `test_generate_ir_sources_forbid_brief_maintenance_or_service_card_branch`, and `test_admit_and_apply_stale_catalog_never_admits_stock_m2o_field` — 3 passed in 0.45s. `git diff f155e2b..HEAD -- apps/api/app` has no `display_name ==` denylist.
+Gates passed: T1-GATE.
+Negative tests: the brief-branch scan and the stale-catalog admit test.
+Not done: T1-F3 sandbox install still fails on Odoo 19 menu web_icon. T1-RET waits on two recorded zero-scrub runs.
+Risks introduced: none.
 
