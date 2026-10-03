@@ -144,6 +144,8 @@ _protected = [Depends(require_app_auth), Depends(enforce_safety_gate)]
 app.include_router(auth.router, prefix="/api")
 app.include_router(accounts.router, prefix="/api", dependencies=[Depends(enforce_safety_gate)])
 app.include_router(billing.router, prefix="/api", dependencies=[Depends(enforce_safety_gate)])
+app.include_router(bridge.router, prefix="/api", dependencies=[Depends(enforce_safety_gate)])
+app.include_router(inbox.router, prefix="/api", dependencies=[Depends(enforce_safety_gate)])
 app.include_router(admin.router, prefix="/api", dependencies=[Depends(require_app_auth), Depends(enforce_safety_gate)])
 app.include_router(audit.router, prefix="/api", dependencies=_protected)
 app.include_router(jobs.router, prefix="/api", dependencies=_protected)
