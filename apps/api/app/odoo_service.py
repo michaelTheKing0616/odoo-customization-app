@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.crypto import CryptoError, decrypt_secret
 from app.db_models import OdooConnection
+from app.rpc_guard import refuse_if_forbidden
 from app.workspace_auth import current_workspace_auth, scoped_connection_query
 
 
@@ -45,6 +46,7 @@ def client_from_connection(
             write_mode=row.write_mode or "standard",
         )
     )
+    client.rpc_guard = refuse_if_forbidden
     client.connect()
     if watch_version and db is not None:
         from app.version_watch import observe_server_version

@@ -75,11 +75,43 @@ class SafetyGate:
         self.connection = connection
         self.workspace = workspace
 
-    def preflight(self, spec: SafetySpec) -> None:
+    def preflight(self, spec: SafetySpec, *, snapshot_id: str | None = None) -> None:
         if not spec.bypass_writes_paused:
             self._check_writes_paused()
         if spec.odoo_mutation:
             self._check_write_mode()
+        if self.connection is not None:
+            write_mode = getattr(self.connection, "write_mode", "standard") or "standard"
+            exists = False
+            if snapshot_id and write_mode == "production" and spec.risk in {"destructive", "code"}:
+                from app.db_models import MetadataSnapshot
+
+                row = (
+                    self.db.query(MetadataSnapshot)
+                    .filter(
+                        MetadataSnapshot.id == snapshot_id,
+                        MetadataSnapshot.connection_id == self.connection.id,
+                    )
+                    .first()
+                )
+                exists = row is not None
+            from app.snapshot_gate import SnapshotRequired, require_production_snapshot
+
+            try:
+                require_production_snapshot(
+                    write_mode=write_mode,
+                    risk=spec.risk,
+                    snapshot_id=snapshot_id,
+                    snapshot_exists=exists,
+                )
+            except SnapshotRequired as exc:
+                raise SafetyGateError(
+                    SafetyRefusal(
+                        code="snapshot_required",
+                        message=str(exc),
+                        options=["Create a snapshot, then retry with header X-Snapshot-Id"],
+                    )
+                ) from exc
 
     def _check_writes_paused(self) -> None:
         if self.workspace is not None and getattr(self.workspace, "writes_paused", False):

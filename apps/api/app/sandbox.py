@@ -9,15 +9,16 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import threading
 import time
-import xmlrpc.client
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 
 from app.zip_safety import safe_extract, validate_zip_bytes
 
@@ -70,7 +71,15 @@ class SandboxResult:
     log_tail: str = ""
     sandbox_url: str | None = None
     odoo_major: int | None = None
+    test_failures: list[str] = field(default_factory=list)
+    tests_ran: bool = False
 
+
+_TEST_FAIL_LINE_RE = re.compile(r"^(FAIL|ERROR):\s*(.+)$", re.IGNORECASE)
+_TEST_SUMMARY_FAIL_RE = re.compile(
+    r"(?i)(\d+)\s+failed(?:\s*,\s*(\d+)\s+error)?|"
+    r"FAILED\s*\(failures?=(\d+)(?:,\s*errors?=(\d+))?\)"
+)
 
 def _coerce_sandbox_major(major: int | str | None) -> int:
     """Accept 19, ``'19.0'``, ``'19.0+e'``; empty/unparseable → 19."""
@@ -313,35 +322,64 @@ def _init_db(odoo_major: int) -> None:
     _compose("start", "odoo", check=True, odoo_major=odoo_major)
 
 
-def _sandbox_rpc(expected_major: int = 19) -> tuple[int, xmlrpc.client.ServerProxy]:
-    common = xmlrpc.client.ServerProxy(f"{SANDBOX_URL}/xmlrpc/2/common", allow_none=True)
-    version = common.version()
-    server_version = str(version.get("server_version", ""))
-    if not server_version.startswith(str(expected_major)):
-        raise RuntimeError(
-            f"Sandbox not Odoo {expected_major}: server_version={server_version!r}"
+def _sandbox_client(expected_major: int = 19) -> Any:
+    """Connected ``OdooClient`` for the ephemeral sandbox (XML-RPC; admin password).
+
+    Forced ``rpc_protocol=xmlrpc`` so local Docker admin/admin keeps working —
+    External JSON-2 requires an API key and must not break sandbox installs.
+    """
+    from odoo_client import ConnectionConfig, OdooClient
+
+    client = OdooClient(
+        ConnectionConfig(
+            url=SANDBOX_URL,
+            db=SANDBOX_DB,
+            username=SANDBOX_USER,
+            password=SANDBOX_PASSWORD,
+            rpc_protocol="xmlrpc",
         )
-    uid = common.authenticate(SANDBOX_DB, SANDBOX_USER, SANDBOX_PASSWORD, {})
-    if not uid:
-        raise RuntimeError("Sandbox auth failed")
-    models = xmlrpc.client.ServerProxy(f"{SANDBOX_URL}/xmlrpc/2/object", allow_none=True)
-    return uid, models
+    )
+    client.connect()
+    if int(client.capabilities.major) != int(expected_major):
+        raise RuntimeError(
+            f"Sandbox not Odoo {expected_major}: major={client.capabilities.major!r}"
+        )
+    return client
+
+
+class _LegacyExecuteKwProxy:
+    """Compat shim for ``after_install(uid, models, major)`` hooks.
+
+    Historical hooks call ``models.execute_kw(db, uid, password, model, method, args, kw)``.
+    Route those through ``OdooClient.execute_kw`` without changing hook call sites.
+    """
+
+    def __init__(self, client: Any) -> None:
+        self._client = client
+
+    def execute_kw(
+        self,
+        _db: str,
+        _uid: int,
+        _password: str,
+        model: str,
+        method: str,
+        args: list[Any] | None = None,
+        kwargs: dict[str, Any] | None = None,
+    ) -> Any:
+        return self._client.execute_kw(model, method, args or [], kwargs or {})
+
+
+def _sandbox_rpc(expected_major: int = 19) -> tuple[int, _LegacyExecuteKwProxy]:
+    """Return ``(uid, models_proxy)`` — same shape as the old ServerProxy pair."""
+    client = _sandbox_client(expected_major)
+    return int(client.uid), _LegacyExecuteKwProxy(client)
 
 
 def _install_module_rpc(module_name: str, *, odoo_major: int) -> None:
-    uid, models = _sandbox_rpc(odoo_major)
-    models.execute_kw(
-        SANDBOX_DB,
-        uid,
-        SANDBOX_PASSWORD,
-        "ir.module.module",
-        "update_list",
-        [],
-    )
-    rows = models.execute_kw(
-        SANDBOX_DB,
-        uid,
-        SANDBOX_PASSWORD,
+    client = _sandbox_client(odoo_major)
+    client.execute_kw("ir.module.module", "update_list", [])
+    rows = client.execute_kw(
         "ir.module.module",
         "search_read",
         [[("name", "=", module_name)]],
@@ -351,18 +389,12 @@ def _install_module_rpc(module_name: str, *, odoo_major: int) -> None:
         raise RuntimeError(f"Module {module_name!r} not found after update_list")
     if rows[0]["state"] == "installed":
         return
-    models.execute_kw(
-        SANDBOX_DB,
-        uid,
-        SANDBOX_PASSWORD,
+    client.execute_kw(
         "ir.module.module",
         "button_immediate_install",
         [[rows[0]["id"]]],
     )
-    refreshed = models.execute_kw(
-        SANDBOX_DB,
-        uid,
-        SANDBOX_PASSWORD,
+    refreshed = client.execute_kw(
         "ir.module.module",
         "read",
         [[rows[0]["id"]]],
@@ -383,22 +415,12 @@ def _ensure_modules_installed(
     if not cleaned:
         return []
 
-    uid, models = _sandbox_rpc(odoo_major)
-    models.execute_kw(
-        SANDBOX_DB,
-        uid,
-        SANDBOX_PASSWORD,
-        "ir.module.module",
-        "update_list",
-        [],
-    )
+    client = _sandbox_client(odoo_major)
+    client.execute_kw("ir.module.module", "update_list", [])
 
     newly: list[str] = []
     for name in cleaned:
-        rows = models.execute_kw(
-            SANDBOX_DB,
-            uid,
-            SANDBOX_PASSWORD,
+        rows = client.execute_kw(
             "ir.module.module",
             "search_read",
             [[("name", "=", name)]],
@@ -408,18 +430,12 @@ def _ensure_modules_installed(
             raise RuntimeError(f"Extra module {name!r} not found after update_list")
         if rows[0]["state"] == "installed":
             continue
-        models.execute_kw(
-            SANDBOX_DB,
-            uid,
-            SANDBOX_PASSWORD,
+        client.execute_kw(
             "ir.module.module",
             "button_immediate_install",
             [[rows[0]["id"]]],
         )
-        refreshed = models.execute_kw(
-            SANDBOX_DB,
-            uid,
-            SANDBOX_PASSWORD,
+        refreshed = client.execute_kw(
             "ir.module.module",
             "read",
             [[rows[0]["id"]]],
@@ -439,6 +455,92 @@ def _resolve_extra_modules(extra_modules: list[str] | None) -> list[str]:
     return settings.sandbox_extra_module_list()
 
 
+def build_test_enable_argv(module: str, *, odoo_major: int = 19) -> list[str]:
+    """Argv for ``odoo … -u MODULE --test-enable --stop-after-init`` (PR-D).
+
+    ``odoo_major`` reserved for future flag drift; argv shape is shared 16–19 CE.
+    """
+    _ = odoo_major
+    technical = (module or "").strip()
+    if not technical:
+        raise ValueError("module name required for --test-enable")
+    return [
+        "odoo",
+        "--db_host=db",
+        "-r",
+        "odoo",
+        "-w",
+        "odoo",
+        "-d",
+        SANDBOX_DB,
+        "-u",
+        technical,
+        "--test-enable",
+        "--stop-after-init",
+    ]
+
+
+def parse_odoo_test_output(output: str) -> list[str]:
+    """Extract parseable FAIL/ERROR lines (and summary counts) from Odoo test logs."""
+    text = output or ""
+    failures: list[str] = []
+    seen: set[str] = set()
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        m = _TEST_FAIL_LINE_RE.match(line)
+        if m:
+            row = f"{m.group(1).upper()}: {m.group(2).strip()}"
+            key = row.lower()
+            if key not in seen:
+                seen.add(key)
+                failures.append(row)
+            continue
+        summary = _TEST_SUMMARY_FAIL_RE.search(line)
+        if summary:
+            failed = int(summary.group(1) or summary.group(3) or 0)
+            errors = int(summary.group(2) or summary.group(4) or 0)
+            if failed or errors:
+                row = f"SUMMARY: {failed} failed, {errors} error(s)"
+                key = row.lower()
+                if key not in seen:
+                    seen.add(key)
+                    failures.append(row)
+    return failures[:40]
+
+
+def _run_module_tests(
+    module: str,
+    *,
+    odoo_major: int,
+    job_id: str | None = None,
+) -> tuple[bool, str, list[str]]:
+    """Run ``--test-enable`` against the live sandbox DB. Returns (ok, log, failures)."""
+    argv = build_test_enable_argv(module, odoo_major=odoo_major)
+    # compose exec into the already-up odoo service (DB + addons volume mounted).
+    cp = _compose(
+        "exec",
+        "-T",
+        "odoo",
+        *argv,
+        check=False,
+        odoo_major=odoo_major,
+        job_id=job_id,
+    )
+    combined = "\n".join(
+        part for part in (cp.stdout or "", cp.stderr or "") if part
+    ).strip()
+    failures = parse_odoo_test_output(combined)
+    if cp.returncode != 0 and not failures:
+        failures = [
+            f"test-enable exited {cp.returncode} "
+            f"(no FAIL/ERROR lines parsed — see log_tail)"
+        ]
+    ok = cp.returncode == 0 and not failures
+    return ok, combined[-8000:], failures
+
+
 def run_sandbox_install(
     zip_bytes: bytes,
     *,
@@ -448,6 +550,7 @@ def run_sandbox_install(
     odoo_major: int | None = None,
     job_id: str | None = None,
     after_install: object | None = None,
+    run_tests: bool = False,
 ) -> SandboxResult:
     """Install zip in ephemeral sandbox. Serialized — only one run at a time.
 
@@ -459,6 +562,10 @@ def run_sandbox_install(
 
     ``after_install``: optional ``callable(uid, models, odoo_major)`` run while the
     sandbox is still up (Option A PDF/RPC smoke). Exceptions fail the run.
+
+    ``run_tests``: when True, after RPC install run ``odoo -u MODULE --test-enable
+    --stop-after-init`` (PR-D). Default False so fast CI / in-loop iteration stays
+    Docker-light; nightly / prove bar (PR-E) must pass with ``run_tests=True``.
     """
     from app.ai_structural_zip_gate import structural_zip_gate
 
@@ -512,6 +619,7 @@ def run_sandbox_install(
             odoo_major=major,
             job_id=job_id,
             after_install=after_install,
+            run_tests=run_tests,
         )
     finally:
         _sandbox_lock.release()
@@ -526,6 +634,7 @@ def _run_sandbox_install_unlocked(
     odoo_major: int = 19,
     job_id: str | None = None,
     after_install: object | None = None,
+    run_tests: bool = False,
 ) -> SandboxResult:
     global _active_sandbox_job_id
     from app.jobs import job_cancelled
@@ -578,18 +687,45 @@ def _run_sandbox_install_unlocked(
             after_install(uid, models, odoo_major)
             logs.append("after_install hook ok")
 
+        test_failures: list[str] = []
+        tests_ran = False
+        if run_tests:
+            tests_ran = True
+            test_ok, test_log, test_failures = _run_module_tests(
+                technical, odoo_major=odoo_major, job_id=job_id
+            )
+            if test_log:
+                logs.append(test_log[-2000:])
+            if not test_ok:
+                detail = "; ".join(test_failures[:5]) or "unknown test failure"
+                return SandboxResult(
+                    ok=False,
+                    module=technical,
+                    message=f"Sandbox tests failed for {technical}: {detail}",
+                    log_tail="\n".join(logs)[-4000:],
+                    sandbox_url=SANDBOX_URL if keep_alive else None,
+                    odoo_major=odoo_major,
+                    test_failures=test_failures,
+                    tests_ran=True,
+                )
+            logs.append(f"test-enable ok for {technical}")
+
         extra_msg = ""
         if extras:
             extra_msg = f" (preloaded {', '.join(extras)})"
+        test_msg = " + tests" if tests_ran else ""
         return SandboxResult(
             ok=True,
             module=technical,
             message=(
-                f"Sandbox (Odoo {odoo_major}) installed {technical} successfully{extra_msg}"
+                f"Sandbox (Odoo {odoo_major}) installed {technical} "
+                f"successfully{extra_msg}{test_msg}"
             ),
             log_tail="\n".join(logs)[-4000:],
             sandbox_url=SANDBOX_URL if keep_alive else None,
             odoo_major=odoo_major,
+            test_failures=[],
+            tests_ran=tests_ran,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("sandbox install failed")

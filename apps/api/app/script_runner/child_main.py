@@ -93,6 +93,12 @@ def main() -> int:
             write_mode=conn.get("write_mode", "standard"),
         )
     )
+    try:
+        from app.rpc_guard import refuse_if_forbidden
+
+        client.rpc_guard = refuse_if_forbidden
+    except ImportError:
+        pass  # child cwd may not include apps/api on sys.path
     client.connect()
     counter = _WriteCounter()
     odoo = CountingOdooClient(client, counter) if cfg.get("count_writes", True) else client

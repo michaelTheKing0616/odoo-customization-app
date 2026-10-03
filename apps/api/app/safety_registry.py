@@ -41,6 +41,10 @@ EXEMPT_ROUTE_KEYS: frozenset[str] = frozenset(
 
 ROUTE_OVERRIDES: dict[str, SafetySpec] = {
     "POST:/api/connections": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),
+    "POST:/api/bridge/contracts/validate": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),
+    "GET:/api/inbox/plans": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),
+    "POST:/api/inbox/plans": SafetySpec(risk="reversible", odoo_mutation=False, confirm="none"),
+    "POST:/api/inbox/plans/{plan_hash}/decide": SafetySpec(risk="reversible", odoo_mutation=False, confirm="none"),
     "PATCH:/api/connections/{connection_id}": SafetySpec(
         risk="read", odoo_mutation=False, confirm="none"
     ),

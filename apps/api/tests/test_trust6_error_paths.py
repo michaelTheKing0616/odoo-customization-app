@@ -88,6 +88,14 @@ def test_power_ops_continue_on_error_logs_failed_step() -> None:
                 "app.power_ops_recipes._exec_step",
                 side_effect=OdooClientError("boom"),
             ):
+                run_recipe(
+                    client,
+                    recipe_id="test.recipe",
+                    model="res.partner",
+                    ids=[101],
+                    dry_run=True,
+                    continue_on_error=True,
+                )
                 result = run_recipe(
                     client,
                     recipe_id="test.recipe",

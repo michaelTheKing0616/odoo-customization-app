@@ -433,6 +433,24 @@ def run_recipe(
 
     batch_size = max(1, min(int(batch_size or 40), 200))
 
+    from app.dry_run_ledger import DryRunRequired, enforce_dry_run
+
+    try:
+        enforce_dry_run(
+            "power_ops.run_recipe",
+            {
+                "recipe_id": recipe_id,
+                "model": model,
+                "domain": domain,
+                "ids": ids,
+                "batch_size": batch_size,
+                "continue_on_error": continue_on_error,
+            },
+            dry_run=dry_run,
+        )
+    except DryRunRequired as exc:
+        raise OdooClientError(str(exc)) from exc
+
     available, reason = probe_recipe(client, recipe, target_model)
     if not available:
         return PowerOpsResult(
@@ -560,14 +578,33 @@ def run_recipe(
 def _exec_step(
     client: OdooClient, model: str, step: RecipeStep, ids: list[int]
 ) -> None:
+    from app.rpc_classify import classify_rpc
+
+    edition = getattr(client, "edition", None) or "community"
+
+    def _guard(method: str, *, values: dict[str, Any] | None = None) -> None:
+        classification = classify_rpc(
+            model,
+            method,
+            ids=ids,
+            values=values,
+            edition=edition,
+        )
+        if classification.forbidden:
+            raise OdooClientError(f"forbidden RPC {model}.{method}")
+
     if step.kind == "method":
         if not step.method:
             raise OdooClientError("method step missing method name")
+        _guard(step.method)
         client.execute_kw(model, step.method, [ids])
     elif step.kind == "unlink":
+        _guard("unlink")
         client.execute_kw(model, "unlink", [ids])
     elif step.kind == "write":
-        client.execute_kw(model, "write", [ids, dict(step.values or {})])
+        values = dict(step.values or {})
+        _guard("write", values=values)
+        client.execute_kw(model, "write", [ids, values])
     else:
         raise OdooClientError(f"Unknown step kind {step.kind}")
 

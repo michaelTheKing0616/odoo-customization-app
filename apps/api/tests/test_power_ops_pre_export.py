@@ -69,6 +69,16 @@ def test_destructive_power_ops_creates_pre_export_artifact(client: TestClient) -
             logs=[],
         ),
     ):
+        preview = client.post(
+            f"/api/connections/{conn_id}/power-ops/run",
+            json={
+                "recipe_id": "mass_unlink",
+                "model": "x_test",
+                "ids": [1],
+                "dry_run": True,
+            },
+        )
+        assert preview.status_code == 200, preview.text
         res = client.post(
             f"/api/connections/{conn_id}/power-ops/run",
             json={

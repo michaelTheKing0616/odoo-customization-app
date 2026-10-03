@@ -56,6 +56,13 @@ def test_dry_run_journal_purge() -> None:
 
 def test_execute_journal_purge() -> None:
     client = _FakeClient()
+    preview = run_recipe(
+        client,  # type: ignore[arg-type]
+        recipe_id="purge_journal_entries",
+        dry_run=True,
+        ids=[11],
+    )
+    assert preview.dry_run
     result = run_recipe(
         client,  # type: ignore[arg-type]
         recipe_id="purge_journal_entries",

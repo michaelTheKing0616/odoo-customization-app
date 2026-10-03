@@ -76,6 +76,6 @@ def enforce_safety_gate(
 
     gate = SafetyGate(db, connection=connection, workspace=workspace)
     try:
-        gate.preflight(spec)
+        gate.preflight(spec, snapshot_id=request.headers.get("x-snapshot-id"))
     except SafetyGateError as exc:
         raise HTTPException(status_code=403, detail=exc.refusal.http_detail()) from exc
