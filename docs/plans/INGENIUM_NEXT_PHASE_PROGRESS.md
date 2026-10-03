@@ -671,3 +671,12 @@ Command: `.venv/bin/python -m pytest -q -p no:cacheprovider apps/api/tests/test_
 Acceptance: `test_fingerprint_drift_detected` mutates `FakeConfigPort.rows` after the plan exists; apply raises `plan_drift` with `call_count == 0`. Matching fingerprint still applies. Existing idempotent tests stay green. `write_mode=production` refused. No aonb call.
 Files: `config_as_code/apply.py` (`port_fingerprint`, `expected_fingerprint` → `plan_drift`), `tests/test_config_apply.py`.
 Not done: durable WAL (T8-EXEC). T1/T3/T4 drift oracles (5A-03 open delta). L4 off.
+
+CLAIM 5B-06 2026-10-03T09:50:00Z files: config importers load batch and fields_get validation. Fake port only. Do not enable L4. Do not call aonb.odoo.com.
+
+Track: 5B. Card: 5B-06. Worker only. No commit. No push. Fake port only. L4 stays off.
+Intent: CSV import validates every row against a caller-supplied `fields_get` before `port.load()`. Batch size 500. Context `tracking_disable`, `mail_create_nolog`, `mail_notrack`. Prefer `field/id`. Dates YYYY-MM-DD. NG phones → `+234…`. Blank cells are not dedupe keys. Partner merge, opening balances, and posting refused (destructive). `write_mode=production` refused.
+Command: `.venv/bin/python -m pytest -q -p no:cacheprovider apps/api/tests/test_importers.py apps/api/tests/test_config_apply.py` — **18 passed**.
+Acceptance: oracle names `test_phone_normalisation`, `test_duplicates_in_sample`, `test_template_from_fields`, `test_validate_bad_file`, `test_validate_good_file_and_load`, `test_selection_and_numeric_validation`, `test_blank_values_are_not_duplicates`. EV-DATA-03: 30 bad rows report all 30 and load none. 501 rows → two `load()` calls (500 + 1) with the three context flags on each.
+Files: `config_as_code/importers.py`, `tests/test_importers.py`.
+Not done: 5B-04 / O20-06 (not this card). Live Odoo import. L4 off. No aonb.odoo.com call.
