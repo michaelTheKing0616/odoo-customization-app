@@ -526,7 +526,7 @@ Files: `docs/verified-facts.md`.
 Commands and results: PARTIALLY VERIFIED. Both hosts answered. `search_read`, `fields_get`, and `create` match `execute_kw_map.py` (`domain` plus kwargs, `attributes`, `vals_list`). Bad key is 401. A string domain is 500, not 400. `GET /doc` is the public website, so the `/doc` match is not verified. Server traceback path is `odoo/20.0`.
 Gates passed: live call shapes on tip and mirror. 4xx/5xx unit tests were already present and were not re-run.
 Negative tests: bad key 401; empty create 422; string domain 500.
-Not done: `/doc` does not document the methods on this website. T2-J2 live install is still open.
+Not done: `/doc` does not document the methods on this website. T2-J2 is recorded later on a local Odoo 19 sandbox, not on the operator Online database.
 Risks introduced: one probe contact was created on the tip and removed in the same check. The key file stayed gitignored.
 
 CLAIM 5A-06 2026-10-03T08:25:35Z files: apps/api/app/snapshot_gate.py and its tests. Freshness window 10 minutes. Cover BILLABLE. Do not create a second audit table.
@@ -572,7 +572,7 @@ Files: `packages/odoo-client/src/odoo_client/transport/json2.py`, `json2_probe.p
 Commands and results: VERIFIED. pytest `packages/odoo-client/tests/test_json2_transport.py` — 29 passed in 0.16s.
 Gates passed: website `/doc` does not supply parameters; live `domain` / `attributes` / `vals_list` are kept; a 500 `Domain()` TypeError is a caller error and is not retryable; a pasted `/odoo` URL calls the host root.
 Negative tests: `test_domain_typeerror_500_is_a_caller_error_and_is_not_retryable`, `test_probe_live_parameters_win_when_doc_disagrees`.
-Not done: T2-J2 live `button_immediate_install` on a non-production 19 database. Not run against the operator Online database.
+Not done: the operator Online database was not used for install timing. T2-J2 is the following local Odoo 19 entry.
 
 CLAIM T2-J2 2026-10-03T09:19:00Z files: a local Odoo 19 sandbox timing of button_immediate_install via the frozen client, XML-RPC and JSON-2. Do not change the sandbox default. Do not call aonb.odoo.com. Do not promote.
 
@@ -584,7 +584,21 @@ Files: `packages/odoo-client/src/odoo_client/transport/production_probe.py`, `cl
 Commands and results: VERIFIED. pytest `packages/odoo-client/tests/test_json2_transport.py` — 31 passed.
 Gates passed: a 17 XML-RPC connect stores `production_probe` with major 17 and create shape `vals`. The probe calls `search_read` and `fields_get` only.
 Negative tests: `test_legacy_probe_learns_17_and_does_not_call_create`.
-Not done: T2-J2 sandbox timing is in progress separately.
+Not done: none for this probe. T2-J2 timings are in the following entry.
 Risks introduced: a legacy connect adds two read RPCs.
 
 Risks introduced: every JSON-2 connect runs the probe (one GET and three POSTs). `create` is an empty body and must stay that way so the probe does not insert a row.
+
+## 2026-10-03 — T2-J2 install port timing
+Track: T2. Worker only. No commit. No promote. Local ephemeral Odoo 19 Docker only (`:18069`, `sandbox_test`).
+Intent: Time `OdooClient.ensure_module_installed` (`button_immediate_install`) on the same stock module over XML-RPC and JSON-2. Do not change `_sandbox_client` (`rpc_protocol="xmlrpc"`).
+Model / band: implementation. Pressure 8.
+Files: this entry only. `apps/api/app/sandbox.py` not edited.
+Commands and results: VERIFIED on two sequential ephemeral sandboxes, module **board**.
+- XML-RPC (sandbox A, `_sandbox_client` + `ensure_module_installed`): **6.151 s**, state `installed`.
+- JSON-2 (sandbox B, second `OdooClient(rpc_protocol="json2")` + same frozen method): **4.053 s**, state `installed`.
+XML-RPC cannot mint the first admin API key: `res.users.apikeys._generate` → Fault 4 private method; `generate` → Fault 3 needs an existing key; `res.users.apikeys.description.make_key` → Fault 2 "This method can only be accessed over HTTP". Key was created on each sandbox via `/web/session/authenticate` + `identitycheck.run_check` (not printed). JSON-2 connect still runs the production probe (422 `res.partner/create` missing `vals_list` on this 19 image; connect still succeeded).
+Gates passed: install through the frozen interface on both transports; both durations recorded; sandbox default still XML-RPC.
+Negative tests: none new.
+Not done: Online / aonb not called. Sandbox default not moved to JSON-2.
+Risks introduced: none in product code.
