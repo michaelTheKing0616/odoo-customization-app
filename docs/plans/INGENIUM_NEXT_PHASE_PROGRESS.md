@@ -1428,4 +1428,7 @@ Track: T8 T8-S06. Worker [Prove approval is bound to the hash](f75781b1-2049-40f
 Intent: Apply refuses a changed plan hash or a changed schema fingerprint before a write. A matching pair may apply on the fake port. A bound fingerprint with no live schema fails closed. Re-ran the suite and import-boundary tests: 14 passed. The version-branch count stayed 22. No live approval ran.
 Not done: T8-S07. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
 
-CLAIM T8-S07 2026-10-04T00:39:00Z. Drift only. An out-of-band schema change marks the plan STALE and refuses apply. Read the existing stale-fingerprint test first and do not weaken it. Use a fake. Do not probe a live Odoo. Do not enable L4. Do not commit.
+## 2026-10-04 — T8-S07 stale schema
+Track: T8 T8-S07. Worker [Prove a stale plan cannot apply](101fd5cf-6357-46b9-9027-6ffcea8b5ac8). No push. L4 stays off.
+Intent: An out-of-band schema change after approval is STALE. Apply does not run. The run is not verified. A missing live slice fails closed and is not treated as current. Re-ran the drift suite and import-boundary tests: 12 passed. The version-branch count stayed 22. No live database was probed.
+Not done: T8-S08. The inverse gap stays open. T8-P4-TIERA waits on a live model. GATE-P3-06 stays open. L4 stays off.

@@ -88,6 +88,28 @@ def _schema_binding_matches(approved: str, live_schema: dict[str, Any] | None) -
     return hash_schema(live_schema) == approved
 
 
+def schema_drift_status(approved_fingerprint: str, live_schema: dict[str, Any] | None) -> str:
+    """Status of the schema slice after approval.
+
+    Inputs: the fingerprint bound at approval, and the schema slice seen at
+    apply time. The slice is a dict. It is not a database connection.
+    Outputs: ``STALE`` when the live slice is a dict and its fingerprint
+    differs from ``approved_fingerprint``. ``CURRENT`` when they match.
+    Side effects: none. Does not call Odoo and does not apply.
+    Raises BridgeError ``schema_fingerprint_mismatch`` when the approved
+    fingerprint is empty or the live slice is missing or not a dict.
+    Absence is not ``STALE`` and is not a successful apply.
+    """
+    protocol = _protocol()
+    if not isinstance(approved_fingerprint, str) or approved_fingerprint == "":
+        raise protocol.BridgeError("schema_fingerprint_mismatch")
+    if not isinstance(live_schema, dict):
+        raise protocol.BridgeError("schema_fingerprint_mismatch")
+    if hash_schema(live_schema) != approved_fingerprint:
+        return "STALE"
+    return "CURRENT"
+
+
 def apply(
     changeset: list[dict[str, Any]],
     *,
