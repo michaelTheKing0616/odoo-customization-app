@@ -9,9 +9,11 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from app.audit_chain import append_entry
 from app.client_ip import client_ip
 from app.db import SessionLocal
 from app.db_models import AuditLog
+from app.request_id import request_id_var
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -58,6 +60,19 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
                         detail_json=detail_json,
                     )
                     db.add(row)
+                    actor = getattr(request.state, "api_key_prefix", None) or "http"
+                    append_entry(
+                        db,
+                        actor=str(actor),
+                        kind="http_mutation",
+                        run_id=request_id_var.get(),
+                        payload={
+                            "method": request.method,
+                            "path": request.url.path[:500],
+                            "status_code": status_code,
+                            "duration_ms": duration_ms,
+                        },
+                    )
                     db.commit()
                 finally:
                     db.close()

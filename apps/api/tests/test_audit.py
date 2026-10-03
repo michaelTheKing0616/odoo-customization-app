@@ -16,7 +16,7 @@ os.environ.setdefault("AUTH_MODE", "off")
 os.environ.setdefault("RATE_LIMIT_PER_MINUTE", "0")
 
 from app.db import SessionLocal, init_db  # noqa: E402
-from app.db_models import AuditLog  # noqa: E402
+from app.db_models import AuditChainEntry, AuditLog  # noqa: E402
 from app.main import app  # noqa: E402
 from app.settings import settings  # noqa: E402
 
@@ -40,6 +40,17 @@ def test_mutating_request_writes_audit_row(client: TestClient, monkeypatch: pyte
     assert row is not None
     assert row.method == "POST"
     assert row.path.startswith("/api/connections")
+    chain = (
+        SessionLocal()
+        .query(AuditChainEntry)
+        .filter(AuditChainEntry.kind == "http_mutation")
+        .order_by(AuditChainEntry.ts.desc())
+        .first()
+    )
+    assert chain is not None
+    assert chain.prev_hash
+    assert len(chain.entry_hash) == 64
+    assert "password" not in (chain.payload_json or "")
 
 
 def test_get_skips_audit(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
