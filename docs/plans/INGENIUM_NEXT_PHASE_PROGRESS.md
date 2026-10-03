@@ -1041,3 +1041,9 @@ Track: T7 UI-SP-DESIGNER. Worker [Split the designer page into components](70ea1
 Intent: Move the designer page into `components/designer/` without changing the route or styles. The page is 105 lines and still default-exports `DesignerPage`. No new file is over 400 lines.
 Tests: `pnpm exec vitest run src/components/designer` — 55 passed. `e2e/designer-*.spec.ts` open `/e2e/designer` harnesses, not this route, and were not run.
 Not done: UI-SP-BULK. L4 off.
+
+## 2026-10-03 — UI-SP-BULK page split
+Track: T7 UI-SP-BULK. Worker [Split the bulk suite page](0d243f91-0c1a-4ed9-9407-2676f3c6d66d). No push. L4 stays off.
+Intent: Move the bulk suite page into `components/bulk/` without changing the route. The page is 67 lines and still default-exports `BulkSuitePage`. No new file is over 400 lines. Section headings stay on the page so the characterization test still matches.
+Tests: `uif-regression.test.ts`, `kit.test.tsx`, `DataTable.test.tsx` — 25 passed.
+Not done: UI-SP-OVERVIEW. L4 off.
