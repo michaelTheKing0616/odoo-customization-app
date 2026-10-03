@@ -371,6 +371,39 @@ def test_menus_and_actions_for_models() -> None:
     assert "x_ticket" in menus
     assert "views/menus.xml" in files["demo_menus/__manifest__.py"]
     assert '"application": True' in files["demo_menus/__manifest__.py"]
+    assert 'web_icon="base,static/description/icon.png"' in menus
+    assert "fa-th-large" not in menus
+
+
+def test_zip_safe_web_icon_coerces_font_awesome() -> None:
+    from module_generator import MenuSpec, SAFE_ZIP_WEB_ICON, zip_safe_web_icon
+
+    assert zip_safe_web_icon("fa-th-large,#714B67") == SAFE_ZIP_WEB_ICON
+    assert zip_safe_web_icon("fa-book,#714B67") == SAFE_ZIP_WEB_ICON
+    assert zip_safe_web_icon(SAFE_ZIP_WEB_ICON) == SAFE_ZIP_WEB_ICON
+    assert zip_safe_web_icon(None) is None
+
+    spec = ModuleSpec(
+        technical_name="demo_fa_icon",
+        display_name="Demo FA",
+        models=[
+            ModelSpec(
+                model="x_thing",
+                description="Thing",
+                fields=[FieldSpec(name="x_name", ttype="char", string="Name")],
+            )
+        ],
+        menus=[
+            MenuSpec(
+                name="Demo FA",
+                technical_name="root_demo_fa_icon",
+                web_icon="fa-th-large,#714B67",
+            )
+        ],
+    )
+    menus = render_module_files(spec)["demo_fa_icon/views/menus.xml"]
+    assert 'web_icon="base,static/description/icon.png"' in menus
+    assert "fa-th-large" not in menus
 
 
 def test_related_and_monetary_field_spec() -> None:

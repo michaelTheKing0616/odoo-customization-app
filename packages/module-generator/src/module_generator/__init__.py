@@ -11,6 +11,23 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
+# Odoo 19 `_compute_web_icon_data` treats Font Awesome `fa-*,#hex` as a file
+# path and aborts menuitem install (`Unsupported file: fa-th-large/#714B67`).
+SAFE_ZIP_WEB_ICON = "base,static/description/icon.png"
+
+
+def zip_safe_web_icon(icon: str | None) -> str | None:
+    """Coerce Font Awesome / path-like icons to a stock module file Odoo 19 accepts."""
+    raw = str(icon or "").strip()
+    if not raw:
+        return None
+    module = raw.split(",", 1)[0].strip().lower()
+    if module.startswith("fa-") or "/" in module or module.startswith("#"):
+        return SAFE_ZIP_WEB_ICON
+    if "," not in raw:
+        return SAFE_ZIP_WEB_ICON
+    return raw
+
 
 def _templates_dir() -> Path:
     here = Path(__file__).resolve().parent
@@ -831,7 +848,7 @@ class ModuleSpec:
             name=self.display_name,
             sequence=10,
             technical_name=f"root_{self.technical_name}",
-            web_icon="fa-th-large,#714B67",
+            web_icon=SAFE_ZIP_WEB_ICON,
         )
         self.menus.append(root)
         for i, model in enumerate(new_models):
@@ -877,6 +894,9 @@ def render_module_files(spec: ModuleSpec) -> dict[str, str]:
     spec.validate()
     spec.ensure_default_menus()
     spec.normalize_menu_xml_references()
+    for menu in spec.menus:
+        if menu.web_icon:
+            menu.web_icon = zip_safe_web_icon(menu.web_icon)
     # Default menus may introduce list,form actions — normalize again if major known.
     normalize_module_spec_list_views(spec)
     for model in spec.models:
@@ -1114,4 +1134,6 @@ __all__ = [
     "MODEL_TO_MODULE",
     "SKIP_FIELD_NAMES",
     "ODOO_FIELD_MAP",
+    "SAFE_ZIP_WEB_ICON",
+    "zip_safe_web_icon",
 ]

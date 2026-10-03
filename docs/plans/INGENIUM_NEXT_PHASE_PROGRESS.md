@@ -468,3 +468,17 @@ Negative tests: the brief-branch scan and the stale-catalog admit test.
 Not done: T1-F3 sandbox install still fails on Odoo 19 menu web_icon. T1-RET waits on two recorded zero-scrub runs.
 Risks introduced: none.
 
+## 2026-10-03 — T1-F3 (sandbox major gate 19, web_icon repair)
+Track: T1
+Intent: Make the smoke zip install on Odoo 19 Community. Do not promote. Do not commit `.cache`.
+Model / band: worker (Grok standard). Pressure 8.
+Files: `packages/module-generator/src/module_generator/__init__.py` (default + emit-time `web_icon` is `base,static/description/icon.png`; Font Awesome `fa-*,#hex` coerced). `packages/module-generator/tests/test_generator.py` (`test_zip_safe_web_icon_coerces_font_awesome` + default-menus assertion). This entry.
+Commands and results:
+- `uv run --directory apps/api python -m pytest -q -p no:cacheprovider ../../packages/module-generator/tests/test_generator.py::test_menus_and_actions_for_models ../../packages/module-generator/tests/test_generator.py::test_zip_safe_web_icon_coerces_font_awesome` → **2 passed in 0.14s**.
+- `./docker/run-sandbox-major-gate.sh 19` → **exit 0**. `SandboxResult(ok=True, module='sandbox_smoke_m19', message='Sandbox (Odoo 19) installed sandbox_smoke_m19 successfully', odoo_major=19, test_failures=[], tests_ran=False)`. Zip written 4539 bytes then cleaned (`keep_alive=False`).
+- Script still calls `run_sandbox_install` without `run_tests=True`. Smoke zip is not Option A (`option_a_authored` / gold template); it does not call `prove_option_a_in_sandbox`.
+Gates passed: Odoo 19 Community install of `sandbox_smoke_m19` (RPC install only).
+Negative tests: FA `fa-th-large,#714B67` is coerced; rendered `menus.xml` has no `fa-th-large`.
+Not done: T1-F3 acceptance — one Option A module with `run_tests=True` and live `prove_status=proved` (card wording `install_ready`). This gate script is smoke-install only; `tests_ran` stayed false.
+Risks introduced: generated zips lose distinctive FA home-grid icons and share the stock `base` icon. Live Apply already did this.
+
