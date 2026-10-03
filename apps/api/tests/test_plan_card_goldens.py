@@ -3,8 +3,8 @@
 T8-CARD floor: schema, UI, logic, security, settings, and data.
 GATE-P3-10 still needs a reviewed snapshot for every other catalog op.
 
-``expires_at`` is omitted. It follows the wall clock. Production cards
-still expire 24 hours for every risk. That leftover stays.
+``expires_at`` is omitted. It follows the wall clock and the policy expiry:
+production R2 and above is 24 hours; production R0 and R1, and staging, are 7 days.
 """
 
 from __future__ import annotations
@@ -223,3 +223,34 @@ def test_changing_an_assumption_changes_the_hash(path: Path) -> None:
         spec["changeset"],
         assumptions=revised,
     )
+
+
+def test_plan_card_expiry_follows_policy() -> None:
+    from datetime import datetime, timezone
+
+    low = render_plan_card(
+        [{"type": "mail_template.create", "params": {"name": "Note", "model": "res.partner"}}],
+        goal="template",
+        assumptions=["The model exists"],
+        environment="production",
+    )
+    high = render_plan_card(
+        [{"type": "data.delete", "params": {"model": "res.partner"}}],
+        goal="delete",
+        assumptions=["The rows are listed"],
+        environment="production",
+    )
+    staging = render_plan_card(
+        [{"type": "field.create", "params": {"model": "sale.order", "name": "x_note", "ttype": "char"}}],
+        goal="note",
+        assumptions=["The host exists"],
+        environment="staging",
+    )
+    now = datetime.now(timezone.utc)
+
+    def hours_until(card: dict[str, Any]) -> float:
+        return (datetime.fromisoformat(card["expires_at"]) - now).total_seconds() / 3600
+
+    assert hours_until(low) > 24 * 6
+    assert hours_until(staging) > 24 * 6
+    assert 23 < hours_until(high) < 25

@@ -9,7 +9,7 @@ from typing import Any
 
 from app.changeset.handlers import handler_for
 from app.changeset.ops import OP_CATALOG
-from app.changeset.policy import policy_decision, risk_of
+from app.changeset.policy import approval_expiry_hours, policy_decision, risk_of
 
 PLAN_CARD_SECTIONS = (
     "goal",
@@ -65,10 +65,9 @@ def render_plan_card(
     decision = policy_decision(max_risk, environment)
 
     env = environment.lower()
-    if env == "production":
-        expires = datetime.now(timezone.utc) + timedelta(hours=24)
-    else:
-        expires = datetime.now(timezone.utc) + timedelta(days=7)
+    expires = datetime.now(timezone.utc) + timedelta(
+        hours=approval_expiry_hours(max_risk, env)
+    )
 
     return {
         "goal": goal,

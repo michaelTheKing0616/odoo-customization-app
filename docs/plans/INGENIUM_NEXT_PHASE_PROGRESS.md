@@ -1107,6 +1107,31 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - Push: local only until a later explicit yes.
 
 ### Product leftovers
+
+Execution queue. A line leaves this list only when that item is finished. Items that need a live system or a decision already made stay blocked instead of being faked.
+
+In progress, code that can be finished without a live Odoo or a live model:
+1. Executor applies the freeze flag, runs verify, and refuses an elevate apply that has no domain owner.
+2. An unset module major does not emit `ir.rule`.
+3. Confirmed tenant memory is included in the prompt, inside the 5% budget.
+
+Closed this turn:
+- Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
+- `parse_tool_args` has a dedicated test for payloads over 256 KB.
+
+Blocked until something outside this repo exists. The product behavior stays the refuse or the off switch:
+- T2-J1 `/doc` text match. Sandbox default stays XML-RPC. Promote stays human.
+- L4 stays off until GATE-L4-08 evidence exists. The thresholds are confirmed.
+- Production R3 stays blocked until an operator-owned neutralized clone exists. A customer production database is not cloned.
+- GATE-P6-04 has not been run.
+- BL-08 commit plan still needs the second yes before those commits.
+- Live Odoo 20 probes stay skipped until `ODOO20_URL` is set.
+- GATE-P1-02 live cassettes. GATE-P1-04 and GATE-P1-06 live 200-call recordings.
+- T8-P4-TIERA needs a live model. Nightly only.
+- The KMS vendor stays unchosen. Fernet remains the envelope.
+- GATE-P3-06 needs mutmut or cosmic-ray, which are not installed.
+
+Still to finish in code:
 - T2-J1 `/doc` text match is not verified. Do not say JSON-2 is complete. Sandbox default stays XML-RPC. Promote stays human.
 - L4 stays off until GATE-L4-08 evidence exists. Thresholds are confirmed.
 - Production R3 stays blocked until an operator-owned neutralized clone exists for that tenant. Above R1 stays review-only.
@@ -1129,7 +1154,6 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - GATE-P0-03 is still open. The eight seed names exist only as catalog definitions in `apps/api/app/changeset/fixture_catalog.py`. Live fixtures on Odoo 17, 18, 19, and 20 were not brought up. The stand-in reset is not a live database reset.
 - GATE-P0-05 stays open. `apps/api/tests/test_import_boundary.py` locks 22 Odoo-version branches outside `compat/` in `apps/api/app`. A new hit fails the test. Those branches were not moved.
 - Missing call ids are still `call_{index:04d}`. The `call_<ulid>` form is not implemented. No ulid package was added.
-- `parse_tool_args` rejects payloads over 256 KB. That reject has no dedicated test.
 - GATE-P1-02 is not fully passed. Replay fixtures under `apps/api/tests/fixtures/llm_gateway/` are synthetic. Still needs an operator recording: C07, C08, C10, C11, C13, C14, C16, C17, C18, C19, and OpenAI C20.
 - The model registry stores no product model ids yet. The outside-file scan passes because that list is empty. An unknown id stays untiered with read-only caps.
 - GATE-P1-04 and GATE-P1-06 are proven with 200 scripted calls, not a live cassette. A recorded live 200-call cassette is still open.
@@ -1138,10 +1162,9 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - Version drift live nightly rows were not run. Unknown cells remain for kanban, `name_get`, company-dependent fields, selection storage, mail template syntax, and translations on 20.
 - Engine suite 1 and suite 2 were not run for the schema family. `model.create`, `model.scaffold`, `field.deprecate`, `selection.update`, and `constraint.sql` still have no inverse in the handler.
 - `domain_owner` is set on an elevate policy decision. Apply does not yet refuse when that person has not approved.
-- GATE-P3-06 was not run. Neither mutmut nor cosmic-ray is installed. No mutation score was invented.
-- `plan_card.py` still expires every production card at 24 hours, including R0 and R1. Policy expiry for those two is 7 days.
 - `apply_blocked` is not called by the executor. A freeze is a decision flag until apply reads it.
 - Simulation staging is an in-memory clone. It is not an operator-owned neutralized database.
+- GATE-P3-06 was not run. Neither mutmut nor cosmic-ray is installed. No mutation score was invented.
 - `verify` is not called by the executor. The checks run only when a caller invokes them.
 - Undo through validate, policy, and approval is not called by the executor.
 - Engine suite 2 round-trips 18 of 63 catalog ops. The other 45 have no handler inverse and were not stubbed.
@@ -1405,5 +1428,4 @@ Track: T8 T8-S06. Worker [Prove approval is bound to the hash](f75781b1-2049-40f
 Intent: Apply refuses a changed plan hash or a changed schema fingerprint before a write. A matching pair may apply on the fake port. A bound fingerprint with no live schema fails closed. Re-ran the suite and import-boundary tests: 14 passed. The version-branch count stayed 22. No live approval ran.
 Not done: T8-S07. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
 
-## 2026-10-03 — Harness queued
-Cards H1–H8 in docs/plans/next-phase/cards/HARNESS.md. PR eval stays cassette/property. No product code.
+CLAIM T8-S07 2026-10-04T00:39:00Z. Drift only. An out-of-band schema change marks the plan STALE and refuses apply. Read the existing stale-fingerprint test first and do not weaken it. Use a fake. Do not probe a live Odoo. Do not enable L4. Do not commit.

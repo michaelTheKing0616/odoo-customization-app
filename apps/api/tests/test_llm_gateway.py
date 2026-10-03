@@ -165,6 +165,15 @@ def test_depth_boundary_and_recursion_keep_the_raw_string() -> None:
     assert nan.value.raw == raw_nan
 
 
+def test_parse_tool_args_rejects_payloads_over_256_kb() -> None:
+    raw = '{"k":"' + ("a" * (256 * 1024)) + '"}'
+    assert len(raw.encode("utf-8")) > 256 * 1024
+    with pytest.raises(ArgsRejected) as caught:
+        parse_tool_args(raw)
+    assert caught.value.reason == "size"
+    assert caught.value.raw == raw
+
+
 def test_lowerers_walk_nested_items_and_unions() -> None:
     array_schema = {
         "type": "array",
