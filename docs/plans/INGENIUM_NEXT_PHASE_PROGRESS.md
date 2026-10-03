@@ -1138,6 +1138,9 @@ Older "Not done" lines that only name the next card are closed when that card ha
 - Version drift live nightly rows were not run. Unknown cells remain for kanban, `name_get`, company-dependent fields, selection storage, mail template syntax, and translations on 20.
 - Engine suite 1 and suite 2 were not run for the schema family. `model.create`, `model.scaffold`, `field.deprecate`, `selection.update`, and `constraint.sql` still have no inverse in the handler.
 - `domain_owner` is set on an elevate policy decision. Apply does not yet refuse when that person has not approved.
+- GATE-P3-06 was not run. Neither mutmut nor cosmic-ray is installed. No mutation score was invented.
+- `plan_card.py` still expires every production card at 24 hours, including R0 and R1. Policy expiry for those two is 7 days.
+- `apply_blocked` is not called by the executor. A freeze is a decision flag until apply reads it.
 - `docker/*` and `apps/api/tests/test_wave16_gen2.py` still use `ServerProxy` outside the XML-RPC product scan.
 - Recaptured token screenshots in `docs/vision-verify/tokens-light.png` and `tokens-dark.png` are unstaged. The CSS text did not change.
 
@@ -1277,3 +1280,9 @@ Not done: T8-RISK. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P2-0
 Track: T8 T8-RISK. Worker [Prove risk only goes up](b6758ea2-9bcf-4c10-8705-7a2d050ebd0c). No push. L4 stays off.
 Intent: Rows over 1000 or users over 10, outbound, production with no simulation, and Mode C each add one risk level. A raise stops at R4. Final risk stays at least the catalog risk. A caller-supplied risk does not lower it. Re-ran risk and import-boundary tests: 15 passed. The version-branch count stayed 22.
 Not done: T8-POLICY. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, and GATE-P2-09 stay open. L4 stays off.
+
+## 2026-10-03 — T8-POLICY approval matrix
+Track: T8 T8-POLICY. Worker [Prove the approval policy matrix](3e4b52b1-75e3-4af5-95e6-45c2aedc1481). No push. L4 stays off.
+Intent: The ten risk and environment cells are covered, plus freeze and expiry. Production R3 needs two approvers, a passed simulation, a backup, and an allowed window. The requester cannot approve their own R3. R4 is denied. L4 does not lower a production count. Re-ran the matrix and import-boundary tests: 22 passed. The version-branch count stayed 22. GATE-P3-06 was not run.
+Reviewer: expiry and freeze live on the policy decision. The executor does not call `apply_blocked`, and plan cards still use 24 hours for every production risk.
+Not done: T8-VALID. GATE-P0-03, GATE-P0-05, GATE-P1-02, GATE-P2-08, GATE-P2-09, and GATE-P3-06 stay open. L4 stays off.

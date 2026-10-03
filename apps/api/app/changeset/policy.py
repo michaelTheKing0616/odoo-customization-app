@@ -8,6 +8,10 @@ from app.changeset.ops import op_base_risk
 from app.changeset.protected_registry import protection_level, requires_domain_owner
 
 _RISK_ORDER = ("R0", "R1", "R2", "R3", "R4")
+# Staging R1 needs no human approval at L3 and L4. Production does not use this set.
+_STAGING_R1_OPEN_AUTONOMY = frozenset({"L3", "L4"})
+STAGING_APPROVAL_EXPIRY_HOURS = 7 * 24
+PRODUCTION_R2_APPROVAL_EXPIRY_HOURS = 24
 
 
 def _bump(risk: str, steps: int) -> str:
@@ -63,6 +67,46 @@ def risk_of(
     return _bump(base, bumps)
 
 
+def approval_expiry_hours(risk: str, environment: str) -> int:
+    """How long an approval stays valid.
+
+    Inputs: risk class R0–R4 and environment. Any environment other than staging
+    follows the production rule.
+    Output: 24 hours on production when risk is R2 or higher. 168 hours (7 days)
+    on staging, and on production for R0 and R1, where the 24-hour rule does not apply.
+    Side effects: none. Raises ValueError for an unknown risk class.
+    """
+    if risk not in _RISK_ORDER:
+        raise ValueError(f"unknown risk class: {risk}")
+    high = _RISK_ORDER.index(risk) >= _RISK_ORDER.index("R2")
+    if environment.lower() != "staging" and high:
+        return PRODUCTION_R2_APPROVAL_EXPIRY_HOURS
+    return STAGING_APPROVAL_EXPIRY_HOURS
+
+
+def approval_count_met(received: int, required: int) -> bool:
+    """Whether distinct approvers satisfy the required count.
+
+    Inputs: distinct approvers already recorded, and the count from the matrix.
+    Output: True when received >= required. An equal count is enough.
+    Side effects: none.
+    """
+    return received >= required
+
+
+def apply_blocked(decision: dict[str, bool | int], *, frozen: bool) -> bool:
+    """Whether apply must stop.
+
+    Inputs: a policy decision and whether a freeze window is active.
+    Output: True when a freeze is on, or the decision denies or does not allow.
+    A freeze blocks every apply, including a cell the matrix would otherwise allow.
+    Side effects: none.
+    """
+    if frozen:
+        return True
+    return bool(decision["deny"]) or not bool(decision["allow"])
+
+
 def policy_decision(
     risk: str,
     environment: str,
@@ -73,18 +117,32 @@ def policy_decision(
     """Who must approve.
 
     Inputs: risk class, environment, autonomy, and whether the target is protected:elevate.
-    Output: allow, approvers, needs_simulation, deny, and domain_owner.
+    Output: allow, approvers, needs_simulation, deny, domain_owner, needs_backup,
+    needs_window, and expiry_hours. L4 does not reduce a production approval.
     Side effects: none. An elevated target that is still allowed needs a domain-owner
-    approver. R4 stays denied, so a domain owner cannot unlock it.
+    approver. R4 stays denied, so a domain owner cannot unlock it. Production R3 also
+    needs a passed simulation, a backup, and an allowed window.
     """
 
-    def finish(allow: bool, approvers: int, needs_simulation: bool, deny: bool) -> dict[str, bool | int]:
+    def finish(
+        allow: bool,
+        approvers: int,
+        needs_simulation: bool,
+        deny: bool,
+        *,
+        needs_backup: bool = False,
+        needs_window: bool = False,
+    ) -> dict[str, bool | int]:
+        known = risk if risk in _RISK_ORDER else "R4"
         return {
             "allow": allow,
             "approvers": approvers,
             "needs_simulation": needs_simulation,
             "deny": deny,
             "domain_owner": bool(elevated) and not deny,
+            "needs_backup": needs_backup,
+            "needs_window": needs_window,
+            "expiry_hours": approval_expiry_hours(known, env),
         }
 
     env = environment.lower()
@@ -96,19 +154,19 @@ def policy_decision(
         if risk == "R0":
             return finish(True, 0, False, False)
         if risk == "R1":
-            approvers = 0 if autonomy in {"L3", "L4"} else 1
+            approvers = 0 if autonomy in _STAGING_R1_OPEN_AUTONOMY else 1
             return finish(True, approvers, False, False)
         if risk in {"R2", "R3"}:
             return finish(True, 1, False, False)
         return finish(False, 0, False, True)
 
-    # production (default)
+    # production (default). L4 stays off: no production auto-approve path.
     if risk == "R0":
         return finish(True, 0, False, False)
     if risk in {"R1", "R2"}:
         return finish(True, 1, True, False)
     if risk == "R3":
-        return finish(True, 2, True, False)
+        return finish(True, 2, True, False, needs_backup=True, needs_window=True)
     return finish(False, 0, False, True)
 
 
