@@ -795,7 +795,10 @@ def _parse_det_inherit(text: str, *, host: str | None) -> ConstraintAST:
         or re.search(r"(?i)\bprefer(?:red)?\s+for\s+delivery\s*\+", text)
     )
     if prefer_pair:
-        ast.fields.append(ConstraintField(label="Prefer for delivery", ttype="boolean"))
+        pm = _PREFER_FOR_DELIVERY_RE.search(text)
+        prefer_label = (pm.group(0).strip() if pm else "Prefer for delivery")
+        prefer_label = prefer_label[0].upper() + prefer_label[1:]
+        ast.fields.append(ConstraintField(label=prefer_label, ttype="boolean"))
         prefer_seen = True
         if _DELIVERY_NOTES_FIELD_RE.search(text):
             ast.fields.append(ConstraintField(label="Delivery notes", ttype="text"))
@@ -881,7 +884,15 @@ def _parse_det_inherit(text: str, *, host: str | None) -> ConstraintAST:
     if _REUSE_FIELDS_RE.search(text):
         ast.hints.append("Reuse existing fields")
     if _AUTOMATION_HINT_RE.search(text):
-        ast.hints.append("Automation: activity when Prefer for delivery is checked")
+        if prefer_seen or _PREFER_FOR_DELIVERY_RE.search(text):
+            ast.hints.append("Automation: activity when Prefer for delivery is checked")
+        else:
+            when_req = re.search(
+                r"(?i)(when\s+[^.]+\brequired\b[^.]*(?:before\s+\w+)?[^.]*)",
+                text,
+            )
+            if when_req:
+                ast.hints.append(when_req.group(1).strip(" ."))
         if not prefer_seen and _PREFER_FOR_DELIVERY_RE.search(text):
             # Ensure Prefer cue survives when fields already exist (no new checkbox invent).
             if not any("prefer" in (f.label or "").lower() for f in ast.fields):
