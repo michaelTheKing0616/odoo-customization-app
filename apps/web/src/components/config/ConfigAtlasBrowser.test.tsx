@@ -1,5 +1,6 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi, beforeEach } from "vitest";
+/** @vitest-environment jsdom */
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { ConfigAtlasBrowser } from "@/components/config/ConfigAtlasBrowser";
 
 vi.mock("@/lib/api", () => ({
@@ -20,6 +21,8 @@ vi.mock("@/lib/api", () => ({
   },
 }));
 
+afterEach(() => cleanup());
+
 describe("ConfigAtlasBrowser", () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -31,5 +34,14 @@ describe("ConfigAtlasBrowser", () => {
     expect(screen.getByTestId("atlas-class-filter")).toBeInTheDocument();
     expect(screen.getByText(/All eight atlas classes are complete/i)).toBeInTheDocument();
     expect(screen.getByText(/zero stub intents/i)).toBeInTheDocument();
+  });
+
+  it("shows empty recipes without Loading... copy after hydrate", async () => {
+    render(<ConfigAtlasBrowser connectionId="conn-1" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("config-atlas-recipes-empty")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: /reload recipes/i })).toBeInTheDocument();
+    expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
   });
 });

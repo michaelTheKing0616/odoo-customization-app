@@ -934,3 +934,15 @@ Pages (5):
 - `apps/web/src/app/connections/[id]/ingest/page.tsx` — **skipped** (upload/interview forms only until a job exists; no page-level empty collection)
 Tests: `pnpm exec vitest run src/components/draft-studio/DraftStudioReusePanel.test.tsx` (batch E primary); extended `JobAutopilotHandoffBar.test.tsx` for job promote targets.
 Not done: config, id-generator, reminders, expert, etc. L4 off. No commit.
+
+CLAIM UI-F03-F 2026-10-03T12:45:00Z files: config id-generator reminders expert empty states. Do not redo batches A–E. Do not enable L4.
+
+Track: T7 UI-F03 (batch F). Worker only. No commit. No push. No Odoo host. L4 stays off.
+Intent: Named operate routes use kit Skeleton + EmptyState on real list/feed areas; hydrated flags set in `finally` where fetches apply.
+Pages (4):
+- `apps/web/src/app/connections/[id]/config/page.tsx` + `ConfigAtlasBrowser` — atlas/recipes hydrate + expert sequences list
+- `apps/web/src/app/connections/[id]/id-generator/page.tsx` — preview assignments panel skeleton + empty preview action
+- `apps/web/src/app/connections/[id]/reminders/page.tsx` — **skipped** (create wizard form only; success card is not an empty collection)
+- `apps/web/src/app/connections/[id]/expert/page.tsx` + `IntentRouterPanel` — route matches feed skeleton + empty re-route action
+Tests: `pnpm exec vitest run src/components/config/ConfigAtlasBrowser.test.tsx` (batch F primary); extended `IntentRouterPanel.test.tsx` for empty matches.
+L4 off. No commit.

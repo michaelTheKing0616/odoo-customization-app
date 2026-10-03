@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Input } from "@/components/ui/Input";
-import { Card } from "@/components/ui/layout-primitives";
+import { Card, EmptyState, Skeleton } from "@/components/ui/layout-primitives";
 
 function riskVariant(risk: string): "default" | "info" | "warning" | "danger" | "success" {
   if (risk === "L0") return "success";
@@ -32,8 +32,11 @@ export function ConfigAtlasBrowser({ connectionId }: Props) {
   const [classFilter, setClassFilter] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [listHydrated, setListHydrated] = useState(false);
+  const [searchHydrated, setSearchHydrated] = useState(true);
 
   const refresh = useCallback(async () => {
+    setListHydrated(false);
     setBusy(true);
     setError(null);
     try {
@@ -48,6 +51,7 @@ export function ConfigAtlasBrowser({ connectionId }: Props) {
       setError(err instanceof Error ? err.message : "Atlas load failed");
     } finally {
       setBusy(false);
+      setListHydrated(true);
     }
   }, [connectionId, classFilter]);
 
@@ -56,6 +60,7 @@ export function ConfigAtlasBrowser({ connectionId }: Props) {
   }, [refresh]);
 
   const onSearch = useCallback(async () => {
+    setSearchHydrated(false);
     setBusy(true);
     setError(null);
     try {
@@ -68,6 +73,7 @@ export function ConfigAtlasBrowser({ connectionId }: Props) {
       setError(err instanceof Error ? err.message : "Search failed");
     } finally {
       setBusy(false);
+      setSearchHydrated(true);
     }
   }, [connectionId, q, classFilter]);
 
@@ -119,29 +125,62 @@ export function ConfigAtlasBrowser({ connectionId }: Props) {
         </Button>
       </div>
 
-      {hits ? (
-        <ul className="grid gap-3 sm:grid-cols-2">
-          {hits.map((h) => (
-            <li key={h.intent_id}>
-              <Card className="p-4">
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant={riskVariant(h.risk)}>{h.risk}</Badge>
-                  <Badge variant={statusVariant(h.status)}>{h.status}</Badge>
-                </div>
-                <p className="mt-2 font-medium text-ink">{h.title}</p>
-                <p className="text-xs text-muted">
-                  {h.class_title} · {h.intent_id}
-                  {h.recipe ? ` · recipe ${h.recipe}` : ""}
-                </p>
-                <p className="mt-1 text-xs text-muted">{h.blurb}</p>
-                <p className="mt-1 font-mono text-[11px] text-muted">{h.models.join(", ")}</p>
-              </Card>
-            </li>
-          ))}
-          {hits.length === 0 ? (
-            <li className="text-sm text-muted">No matches.</li>
-          ) : null}
-        </ul>
+      {!listHydrated ? (
+        <div className="space-y-3" data-testid="config-atlas-loading">
+          <Skeleton className="h-28 w-full" />
+          <Skeleton className="h-28 w-full" />
+        </div>
+      ) : hits ? (
+        !searchHydrated ? (
+          <div className="space-y-3" data-testid="config-atlas-search-loading">
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+          </div>
+        ) : hits.length === 0 ? (
+          <div data-testid="config-atlas-search-empty">
+            <EmptyState
+              title="No atlas intents matched"
+              description="Try a broader keyword or reset the class filter, then search again."
+              action={
+                <Button type="button" size="sm" variant="secondary" onClick={() => void refresh()}>
+                  Reset browse
+                </Button>
+              }
+            />
+          </div>
+        ) : (
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {hits.map((h) => (
+              <li key={h.intent_id}>
+                <Card className="p-4">
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant={riskVariant(h.risk)}>{h.risk}</Badge>
+                    <Badge variant={statusVariant(h.status)}>{h.status}</Badge>
+                  </div>
+                  <p className="mt-2 font-medium text-ink">{h.title}</p>
+                  <p className="text-xs text-muted">
+                    {h.class_title} · {h.intent_id}
+                    {h.recipe ? ` · recipe ${h.recipe}` : ""}
+                  </p>
+                  <p className="mt-1 text-xs text-muted">{h.blurb}</p>
+                  <p className="mt-1 font-mono text-[11px] text-muted">{h.models.join(", ")}</p>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        )
+      ) : classes.length === 0 ? (
+        <div data-testid="config-atlas-classes-empty">
+          <EmptyState
+            title="Config Atlas did not load"
+            description="Refresh the atlas catalog from Odoo, then browse intents by class again."
+            action={
+              <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => void refresh()}>
+                Reload atlas
+              </Button>
+            }
+          />
+        </div>
       ) : (
         <div className="space-y-6">
           {classes.map((c) => (
@@ -175,21 +214,37 @@ export function ConfigAtlasBrowser({ connectionId }: Props) {
 
       <section>
         <h3 className="mb-2 text-ui-title text-ink">Executable recipes</h3>
-        <ul className="grid gap-3 sm:grid-cols-2">
-          {recipes.map((r) => (
-            <li key={r.id}>
-              <Card className="p-3" data-testid={`batch-recipe-${r.id}`}>
-                <div className="flex flex-wrap gap-1">
-                  <Badge variant={riskVariant(r.risk)}>{r.risk}</Badge>
-                  <Badge variant={statusVariant(r.status)}>{r.status}</Badge>
-                </div>
-                <p className="mt-2 text-sm font-medium text-ink">{r.title}</p>
-                <p className="text-xs text-muted">{r.blurb}</p>
-                <p className="mt-1 font-mono text-[11px] text-muted">{r.id}</p>
-              </Card>
-            </li>
-          ))}
-        </ul>
+        {!listHydrated ? (
+          <Skeleton className="h-20 w-full" data-testid="config-atlas-recipes-loading" />
+        ) : recipes.length === 0 ? (
+          <div data-testid="config-atlas-recipes-empty">
+            <EmptyState
+              title="No executable recipes yet"
+              description="Reload the atlas when Batch OS recipes are available on this connection."
+              action={
+                <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => void refresh()}>
+                  Reload recipes
+                </Button>
+              }
+            />
+          </div>
+        ) : (
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {recipes.map((r) => (
+              <li key={r.id}>
+                <Card className="p-3" data-testid={`batch-recipe-${r.id}`}>
+                  <div className="flex flex-wrap gap-1">
+                    <Badge variant={riskVariant(r.risk)}>{r.risk}</Badge>
+                    <Badge variant={statusVariant(r.status)}>{r.status}</Badge>
+                  </div>
+                  <p className="mt-2 text-sm font-medium text-ink">{r.title}</p>
+                  <p className="text-xs text-muted">{r.blurb}</p>
+                  <p className="mt-1 font-mono text-[11px] text-muted">{r.id}</p>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </div>
   );

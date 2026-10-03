@@ -7,7 +7,8 @@ import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { Callout } from "@/components/ui/Callout";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
-import { PageHeader } from "@/components/ui/layout-primitives";
+import { EmptyState, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
+import { Button } from "@/components/ui/Button";
 import { Disclosure } from "@/components/ui/Disclosure";
 import { ConfigCommandCenter } from "@/components/config/ConfigCommandCenter";
 import { ConfigAtlasBrowser } from "@/components/config/ConfigAtlasBrowser";
@@ -87,6 +88,7 @@ export default function ConfigPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [listsHydrated, setListsHydrated] = useState(false);
   const [mailHealth, setMailHealth] = useState<{
     smtp_servers: number;
     alias_domains: number;
@@ -95,6 +97,8 @@ export default function ConfigPage() {
   } | null>(null);
 
   const refresh = useCallback(async () => {
+    setListsHydrated(false);
+    try {
     const [conn, cos, seqs, mails, acts, languages, papers, cronRows, sitePages, propsRes] =
       await Promise.all([
         api.getConnection(connectionId),
@@ -142,6 +146,9 @@ export default function ConfigPage() {
       .jobAutopilotFingerprint(connectionId)
       .then((out) => setMailHealth(out.fingerprint.mail ?? null))
       .catch(() => setMailHealth(null));
+    } finally {
+      setListsHydrated(true);
+    }
   }, [connectionId, seqQuery, lang, defaultModel]);
 
   useEffect(() => {
@@ -339,6 +346,24 @@ export default function ConfigPage() {
               Refresh
             </button>
           </div>
+          {!listsHydrated ? (
+            <div className="mt-4 space-y-2" data-testid="config-sequences-loading">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          ) : sequences.length === 0 ? (
+            <div className="mt-4" data-testid="config-sequences-empty">
+              <EmptyState
+                title="No ir.sequence rows yet"
+                description="Create a sequence above or refresh after numbering exists in Odoo."
+                action={
+                  <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={() => void refresh()}>
+                    Refresh sequences
+                  </Button>
+                }
+              />
+            </div>
+          ) : (
           <ul className="mt-4 max-h-64 space-y-2 overflow-auto text-sm">
             {sequences.map((s) => (
               <li key={s.id} className="flex flex-wrap items-center gap-2 border-t border-border-subtle py-2">
@@ -397,6 +422,7 @@ export default function ConfigPage() {
               </li>
             ))}
           </ul>
+          )}
         </section>
 
         <section className="mt-8 grid gap-6 lg:grid-cols-2">

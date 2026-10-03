@@ -18,7 +18,7 @@ import { DataTable, type DataTableColumn } from "@/components/ui/DataTable";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Input } from "@/components/ui/Input";
 import { Tabs } from "@/components/ui/Tabs";
-import { Card, PageHeader } from "@/components/ui/layout-primitives";
+import { Card, EmptyState, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
 
 const CONFIRM_PHRASE = "I understand the risks";
 
@@ -46,6 +46,8 @@ export default function IdGeneratorPage() {
   const [codeField, setCodeField] = useState("x_ref_code");
   const [recordIds, setRecordIds] = useState("");
   const [liveResult, setLiveResult] = useState<IdGeneratorRunOut | null>(null);
+  const [previewHydrated, setPreviewHydrated] = useState(true);
+  const [previewAttempted, setPreviewAttempted] = useState(false);
 
   const [prefix, setPrefix] = useState("INV");
   const [separator, setSeparator] = useState("-");
@@ -101,6 +103,7 @@ export default function IdGeneratorPage() {
       setError("Choose a CSV or XLSX file first.");
       return;
     }
+    setPreviewHydrated(false);
     setBusy(true);
     setError(null);
     try {
@@ -117,10 +120,12 @@ export default function IdGeneratorPage() {
       setCsvPreview(res);
       if (res.headers) setHeaders(res.headers);
       setNotice(res.message);
+      setPreviewAttempted(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "CSV preview failed");
     } finally {
       setBusy(false);
+      setPreviewHydrated(true);
     }
   }
 
@@ -192,6 +197,7 @@ export default function IdGeneratorPage() {
   }
 
   async function runLive(dryRun: boolean, phrase?: string) {
+    setPreviewHydrated(false);
     setBusy(true);
     setError(null);
     try {
@@ -206,6 +212,7 @@ export default function IdGeneratorPage() {
       });
       setLiveResult(res);
       setNotice(res.message);
+      setPreviewAttempted(true);
       setConfirmOpen(false);
       if (!dryRun && createSequence) {
         await api.idGeneratorCreateSequence(connectionId, { model, config });
@@ -220,8 +227,32 @@ export default function IdGeneratorPage() {
       }
     } finally {
       setBusy(false);
+      setPreviewHydrated(true);
     }
   }
+
+  const previewEmptyAction =
+    tab === "csv" ? (
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        disabled={busy || !file}
+        onClick={() => void previewCsv()}
+      >
+        Preview CSV
+      </Button>
+    ) : (
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        disabled={busy}
+        onClick={() => void runLive(true)}
+      >
+        Dry run live
+      </Button>
+    );
 
   return (
     <div className="mx-auto max-w-5xl" data-testid="id-generator-page">
@@ -396,9 +427,28 @@ export default function IdGeneratorPage() {
         </label>
       </Card>
 
-      {previewRows.length > 0 ? (
-        <Card className="mt-6 p-4">
-          <h2 className="text-lg font-semibold text-ink">Preview</h2>
+      <Card className="mt-6 p-4" data-testid="id-generator-preview-panel">
+        <h2 className="text-lg font-semibold text-ink">Preview</h2>
+        {!previewHydrated || busy ? (
+          <div className="mt-3 space-y-2" data-testid="id-generator-preview-loading">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        ) : previewRows.length === 0 ? (
+          <div className="mt-3" data-testid="id-generator-preview-empty">
+            <EmptyState
+              title={previewAttempted ? "No code changes in this preview" : "No preview yet"}
+              description={
+                previewAttempted
+                  ? "Widen the row filter or adjust prefix rules, then run preview again."
+                  : tab === "csv"
+                    ? "Upload a spreadsheet and run Preview to see generated reference codes."
+                    : "Run a live dry run to list proposed codes before apply."
+              }
+              action={previewEmptyAction}
+            />
+          </div>
+        ) : (
           <div className="mt-3">
             <DataTable
               columns={previewColumns}
@@ -406,8 +456,8 @@ export default function IdGeneratorPage() {
               rowKey={(r) => String(r.row_id)}
             />
           </div>
-        </Card>
-      ) : null}
+        )}
+      </Card>
 
       <ConfirmDialogV2
         open={confirmOpen}

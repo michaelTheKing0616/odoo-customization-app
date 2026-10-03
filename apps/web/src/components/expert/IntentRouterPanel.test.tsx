@@ -87,4 +87,30 @@ describe("IntentRouterPanel", () => {
     expect(screen.getByText(/does not send SMS/i)).toBeTruthy();
     expect(screen.queryByTestId("intent-route-go")).toBeNull();
   });
+
+  it("shows empty matches without Loading... after route completes", async () => {
+    vi.mocked(api.expertIntentRoute).mockResolvedValue({
+      prompt: "custom widget",
+      can_handle: "true",
+      message: "No strong match.",
+      matches: [],
+      alternatives: [],
+      ambiguous: false,
+      honesty: "Preview ≠ posted.",
+      source: "deterministic",
+      llm_used: false,
+    });
+
+    render(<IntentRouterPanel connectionId="c1" />);
+    fireEvent.change(screen.getByTestId("intent-router-input"), {
+      target: { value: "custom widget" },
+    });
+    fireEvent.click(screen.getByTestId("intent-router-submit"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("intent-router-matches-empty")).toBeTruthy();
+    });
+    expect(screen.getByRole("button", { name: /route again/i })).toBeTruthy();
+    expect(screen.queryByText("Loading...")).toBeNull();
+  });
 });

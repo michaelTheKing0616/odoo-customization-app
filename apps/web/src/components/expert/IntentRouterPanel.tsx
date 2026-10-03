@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Card } from "@/components/ui/layout-primitives";
+import { Card, EmptyState, Skeleton } from "@/components/ui/layout-primitives";
 import { Callout } from "@/components/ui/Callout";
 import { api, type IntentRouteMatch, type IntentRouteResult } from "@/lib/api";
 import { stashBuildSpineHandoff } from "@/lib/build-spine-handoff";
@@ -94,11 +94,13 @@ export function IntentRouterPanel({ connectionId }: IntentRouterPanelProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<IntentRouteResult | null>(null);
+  const [routeHydrated, setRouteHydrated] = useState(true);
 
   const run = useCallback(
     async (text?: string) => {
       const q = (text ?? prompt).trim();
       if (!q || busy) return;
+      setRouteHydrated(false);
       setBusy(true);
       setError(null);
       try {
@@ -110,6 +112,7 @@ export function IntentRouterPanel({ connectionId }: IntentRouterPanelProps) {
         setError(err instanceof Error ? err.message : "Intent route failed");
       } finally {
         setBusy(false);
+        setRouteHydrated(true);
       }
     },
     [busy, connectionId, prompt],
@@ -179,7 +182,14 @@ export function IntentRouterPanel({ connectionId }: IntentRouterPanelProps) {
         </Callout>
       ) : null}
 
-      {result ? (
+      {busy && !routeHydrated ? (
+        <div className="space-y-2" data-testid="intent-router-loading">
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+        </div>
+      ) : null}
+
+      {result && routeHydrated ? (
         <div className="space-y-3" data-testid="intent-router-results">
           {unsupported ? (
             <Callout
@@ -207,11 +217,36 @@ export function IntentRouterPanel({ connectionId }: IntentRouterPanelProps) {
                   Several features could fit — pick the best Go link below.
                 </p>
               ) : null}
-              <ul className="space-y-2" data-testid="intent-router-matches">
-                {matches.map((m) => (
-                  <MatchRow key={`${m.feature_id}-${m.deep_link}`} match={m} connectionId={connectionId} prompt={prompt} />
-                ))}
-              </ul>
+              {matches.length === 0 ? (
+                <div data-testid="intent-router-matches-empty">
+                  <EmptyState
+                    title="No shipped feature matched"
+                    description="Rephrase the goal or pick a starter chip, then route again."
+                    action={
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={busy || !prompt.trim()}
+                        onClick={() => void run()}
+                      >
+                        Route again
+                      </Button>
+                    }
+                  />
+                </div>
+              ) : (
+                <ul className="space-y-2" data-testid="intent-router-matches">
+                  {matches.map((m) => (
+                    <MatchRow
+                      key={`${m.feature_id}-${m.deep_link}`}
+                      match={m}
+                      connectionId={connectionId}
+                      prompt={prompt}
+                    />
+                  ))}
+                </ul>
+              )}
               {result.honesty ? (
                 <p className="text-[11px] text-muted" data-testid="intent-router-honesty">
                   {result.honesty}
