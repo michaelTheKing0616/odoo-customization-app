@@ -1111,7 +1111,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 Execution queue. A line leaves this list only when that item is finished. Items that need a live system or a decision already made stay blocked instead of being faked.
 
 In progress, code that can be finished without a live Odoo or a live model:
-1. The expert panel and billing use the motion sheet instead of `Sheet`. Open, close, and the existing actions stay the same.
+1. None running. The next open item that is not blocked on a live system is `cmdk` still pulling `@radix-ui/react-dialog`. No source file imports that package.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
@@ -1128,6 +1128,7 @@ Closed this turn:
 - The XML-RPC and JSON-2 sends go through the transport contract. Plain HTTP still sends for `127.0.0.1` and `localhost`. Any other host must be HTTPS with certificate checks on. A write does not follow a redirect.
 - Audit retention decides in process. A raw LLM side copy expires after 7 days. An accounting kind stays 7 years. Every other kind stays 24 months. The sweeper drops only the side copy. The chain row and `entry_hash` stay. No live database row was deleted.
 - The skill router loads at most three catalog skills. Executable code and a `SKILL.md` over 2500 tokens are refused. The returned grant is the overlap with the caller and is not a superset. `skill_load` uses that router. The recall eval is not run. No score was invented.
+- The expert panel and the billing upgrade sheet open through `SheetMotion`. Escape and the backdrop dismiss them. Titles and the existing actions stay.
 - `ConfirmDialogV2` renders through `DialogPanel`. Confirm stays disabled until the phrase matches. Cancel, Escape, and the backdrop dismiss unless the dialog is busy. The danger confirm style stays.
 
 Blocked until something outside this repo exists. The product behavior stays the refuse or the off switch:
@@ -1151,7 +1152,6 @@ Still to finish in code:
 - Live Odoo 20 version-table probes stay skipped until `ODOO20_URL` is set.
 - UI-F03 was not re-checked against every route in screen spec 13 marked "can be empty".
 - `cmdk` still depends on `@radix-ui/react-dialog`. No source file imports it.
-- The expert panel and billing still use `Sheet`, not the motion sheet.
 - Axe was not run for `/bots`, `/bots/rooms/[id]`, `/bots/[id]`, `/studio/dashboards`, `/bridge/connections`, or `/onboarding`. `/connections` only redirects.
 - Durable WAL is still in memory. `apps/api/alembic/versions/s9t0u1v2w3x4_journal_wal.py` declares `journal_entry`, `before_image`, and `apply_database_lock` and has not been applied. A process kill still loses the journal. GATE-P3-03 is not closed.
 - The KMS vendor is unchosen. ADR-12 keeps secrets on the existing `fernet_key`. No cloud KMS client.

@@ -19,6 +19,8 @@ export type MotionEdgeSurfaceProps = {
   onOpenChange: (open: boolean) => void;
   title?: string;
   description?: string;
+  /** Replaces the visible title block. Title and description stay available to screen readers. */
+  header?: ReactNode;
   side?: MotionSide;
   children: ReactNode;
   className?: string;
@@ -36,6 +38,7 @@ export function MotionEdgeSurface({
   onOpenChange,
   title,
   description,
+  header,
   side = "right",
   children,
   className,
@@ -96,8 +99,18 @@ export function MotionEdgeSurface({
       >
         <div className="flex items-start justify-between gap-3 border-b border-border-subtle px-4 py-3">
           <div className="min-w-0 flex-1">
-            {title ? <h2 className="text-md font-semibold text-ink">{title}</h2> : null}
-            {description ? <p className="mt-1 text-sm text-muted">{description}</p> : null}
+            {header ? (
+              <>
+                {title ? <h2 className="sr-only">{title}</h2> : null}
+                {description ? <p className="sr-only">{description}</p> : null}
+                {header}
+              </>
+            ) : (
+              <>
+                {title ? <h2 className="text-md font-semibold text-ink">{title}</h2> : null}
+                {description ? <p className="mt-1 text-sm text-muted">{description}</p> : null}
+              </>
+            )}
           </div>
           <button
             type="button"

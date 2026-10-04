@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Sheet } from "@/components/ui/Sheet";
+import { SheetMotion } from "@/components/ui/motion/SheetMotion";
 import { useShell } from "@/context/ShellContext";
 import { api } from "@/lib/api";
 import { buildExpertAskPayload, expertPrefillPrompt, isExpertSetupStackQuestion } from "@/lib/expert-prompt";
@@ -197,7 +197,7 @@ export function ExpertPanel() {
 
   return (
     <>
-      <Sheet
+      <SheetMotion
         open={expertOpen}
         onOpenChange={setExpertOpen}
         title="Odoo Expert"
@@ -237,7 +237,7 @@ export function ExpertPanel() {
             onSubmit={() => void sendQuestion(input)}
           />
         </div>
-      </Sheet>
+      </SheetMotion>
       <ConfirmDialogV2
         open={clearConfirmOpen}
         riskLevel="standard"

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
-import { Sheet } from "@/components/ui/Sheet";
+import { SheetMotion } from "@/components/ui/motion/SheetMotion";
 import { api, type BillingPlanRow } from "@/lib/api";
 import { useEntitlements } from "@/lib/useEntitlements";
 
@@ -97,7 +97,7 @@ export function UpgradeSheet({ open, onOpenChange, featureKey }: UpgradeSheetPro
   });
 
   return (
-    <Sheet
+    <SheetMotion
       open={open}
       onOpenChange={onOpenChange}
       title="Upgrade your plan"
@@ -178,6 +178,6 @@ export function UpgradeSheet({ open, onOpenChange, featureKey }: UpgradeSheetPro
           <Link href="/pricing">Compare all plans</Link>
         </Button>
       </div>
-    </Sheet>
+    </SheetMotion>
   );
 }
