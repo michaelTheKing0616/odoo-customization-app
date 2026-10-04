@@ -1112,12 +1112,13 @@ Execution queue. A line leaves this list only when that item is finished. Items 
 
 In progress, code that can be finished without a live Odoo or a live model:
 1. Executor applies the freeze flag, runs verify, and refuses an elevate apply that has no domain owner.
-2. Confirmed tenant memory is included in the prompt, inside the 5% budget.
+2. Snapshot preflight passes the connection's Odoo major. `snapshot_gate.py` uses `>= 20`, matching `database_backup.py`. A missing major does not take the Odoo 20 path.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
 - `parse_tool_args` has a dedicated test for payloads over 256 KB.
 - An unset module major does not emit `ir.rule`. Community 19 emits it when the major is 19, including the library and multi-company templates. Odoo 20 still refuses it.
+- Confirmed tenant and database facts are in the prompt memory layer, capped at 5% of the window. Pending items, role notes, episodic memory, and global knowledge stay out.
 
 Blocked until something outside this repo exists. The product behavior stays the refuse or the off switch:
 - T2-J1 `/doc` text match. Sandbox default stays XML-RPC. Promote stays human.
@@ -1145,7 +1146,6 @@ Still to finish in code:
 - The expert panel and billing still use `Sheet`, not the motion sheet.
 - Axe was not run for `/bots`, `/bots/rooms/[id]`, `/bots/[id]`, `/studio/dashboards`, `/bridge/connections`, or `/onboarding`. `/connections` only redirects.
 - Durable WAL is still in memory. `apps/api/alembic/versions/s9t0u1v2w3x4_journal_wal.py` declares `journal_entry`, `before_image`, and `apply_database_lock` and has not been applied. A process kill still loses the journal. GATE-P3-03 is not closed.
-- T8-MEM records pending tenant memory until a human confirms it. A role note is refused. Confirmed tenant text is not fed into the live prompt. The 5% budget is still only the prompt layer.
 - The skill router is not built. ADR-10 records the package rules. No skill card has shipped the router.
 - Audit retention is not wired. ADR-11 locks the chain shape. Append and verify already exist. 24 months, 7 years for accounting kinds, and 7 days for raw LLM payloads are still open.
 - The KMS vendor is unchosen. ADR-12 keeps secrets on the existing `fernet_key`. No cloud KMS client.
@@ -1432,4 +1432,7 @@ Track: T8 T8-S07. Worker [Prove a stale plan cannot apply](101fd5cf-6357-46b9-90
 Intent: An out-of-band schema change after approval is STALE. Apply does not run. The run is not verified. A missing live slice fails closed and is not treated as current. Re-ran the drift suite and import-boundary tests: 12 passed. The version-branch count stayed 22. No live database was probed.
 Not done: T8-S08. The inverse gap stays open. T8-P4-TIERA waits on a live model. GATE-P3-06 stays open. L4 stays off.
 
-CLAIM T8-S08 2026-10-04T00:43:00Z. Policy suite only. The approval matrix is already covered by tests/test_policy_matrix.py. Do not duplicate it. Do not install mutmut or cosmic-ray. Do not invent a mutation score. GATE-P3-06 stays unrun. A suite file may point at the existing matrix tests. Do not enable L4. Do not commit.
+## 2026-10-04 — T8-S08 policy suite
+Track: T8 T8-S08. Worker [Point the policy suite at the matrix](0be6677d-b5e7-46ba-a805-551a86bbf151). No push. L4 stays off.
+Intent: The suite calls the existing approval matrix. Production R4 is deny. Production R3 asks for two approvers. Freeze and expiry are checked. GATE-P3-06 is skipped because mutmut and cosmic-ray are not installed. No mutation score was recorded. Re-ran the suite with the memory, prompt, and import-boundary tests: 24 passed, 1 skipped. The version-branch count stayed 22.
+Not done: T8-S09. GATE-P3-06 stays open. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
