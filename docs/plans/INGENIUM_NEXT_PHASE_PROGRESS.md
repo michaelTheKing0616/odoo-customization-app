@@ -1111,7 +1111,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 Execution queue. A line leaves this list only when that item is finished. Items that need a live system or a decision already made stay blocked instead of being faked.
 
 In progress, code that can be finished without a live Odoo or a live model:
-1. T8-S10 validator fuzz. Point at the existing oversized, deep, and polluted checks. Do not weaken them. A confusable the validator does not fold stays listed, not marked passed.
+1. The validator folds a Greek omicron model name to the Latin name. A known-model lookalike is that model. A protected lookalike stays denied. The suite 10 snapshot is updated to the new measurement.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
@@ -1445,3 +1445,8 @@ Not done: T8-S10. GATE-P3-05 stays open. GATE-P3-06 stays open. The inverse gap 
 Track: T8 T8-S09 follow-up. Worker [Deny the two-hop ref and Greek omicron scaffold](226f3b6a-7c96-403f-9407-510ae5a8b0bf). No push. L4 stays off.
 Intent: A two-hop `$ref` that lands on `account.move` is RT-11 and is not journaled. A cycle or an unresolved hop is denied. A chain that ends on `sale.order` stays allowed. Greek omicron (U+03BF) folds to Latin o, so that scaffold is RT-10 and is not applied. GATE-P3-05 stays open. Re-ran the suite, the registry tests, and import-boundary tests: 28 passed. The version-branch count stayed 22.
 Not done: T8-S10. GATE-P3-05 stays open. GATE-P3-06 stays open. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
+
+## 2026-10-04 — T8-S10 validator fuzz
+Track: T8 T8-S10. Worker [Point the validator fuzz suite at existing checks](1aa166c2-690c-4d2b-b4fe-104a2b6217f4). No push. L4 stays off.
+Intent: The suite calls the existing validator for oversized params, depth past the limit, and prototype-pollution keys, and it runs the existing NaN and duplicate-key test. A mail-template payload deeper than the limit is rejected and is not applied. Greek omicron in a model name is not folded. That stays an open hole. Re-ran the suite, the changeset engine tests, and import-boundary tests: 38 passed. The version-branch count stayed 22.
+Not done: T8-S11. The validator still does not fold Greek omicron. GATE-P3-05 stays open. GATE-P3-06 stays open. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
