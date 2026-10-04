@@ -1111,7 +1111,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 Execution queue. A line leaves this list only when that item is finished. Items that need a live system or a decision already made stay blocked instead of being faked.
 
 In progress, code that can be finished without a live Odoo or a live model:
-1. T8-S11 crash injection at journal boundaries. A partial apply is not verified. GATE-P3-03 stays open because the journal is still in memory.
+1. T8-S12 unknown-outcome writes. An unknown write is NEEDS_HUMAN and is not retried. A live read-back against Odoo stays open.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
@@ -1456,3 +1456,8 @@ Not done: T8-S11. The validator still does not fold Greek omicron. GATE-P3-05 st
 Track: T8 T8-S10 follow-up. Worker [Fold Greek omicron model names in the validator](50e38b8a-e552-47a4-a579-7cb41e60b5c4). No push. L4 stays off.
 Intent: Grounding folds model names with the protected registry's existing confusable map. A Greek omicron lookalike of a known model passes as that Latin name. An `account.move` lookalike stays denied and is not journaled. An unknown name that does not fold to either stays rejected. Re-ran the validator suite, the protected suite, the engine tests, the registry tests, and import-boundary tests: 58 passed. The version-branch count stayed 22.
 Not done: T8-S11. GATE-P3-03 stays open. GATE-P3-05 stays open. GATE-P3-06 stays open. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
+
+## 2026-10-04 — T8-S11 crash injection
+Track: T8 T8-S11. Worker [Inject crashes at journal boundaries](29cc6661-c7f3-4cfe-b82e-cef93d50f841). No push. L4 stays off.
+Intent: A crash after INTENT and BEFORE, and a crash after a partial RESULT, are not verified. Mode T drops RESULT rows. Mode C compensates reversible ops backward. An irreversible Mode C op is refused before a journal row. The journal is still the in-process list. GATE-P3-03 stays open. Re-ran the crash suite, the atomicity suite, the WAL tests, and import-boundary tests: 28 passed. The version-branch count stayed 22.
+Not done: T8-S12. GATE-P3-03 stays open. GATE-P3-05 stays open. GATE-P3-06 stays open. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
