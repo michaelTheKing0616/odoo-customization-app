@@ -11,6 +11,8 @@ from typing import Any, Literal
 
 from sqlalchemy.orm import Session
 
+from odoo_client.compat import UnsupportedOdooMajorError, parse_major
+
 from app.account_models import Workspace
 from app.db_models import AuditLog, DryRunReceipt, MetadataSnapshot, OdooConnection
 from app.snapshot_gate import SnapshotRequired, require_production_snapshot
@@ -55,6 +57,25 @@ class SafetyGateError(Exception):
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _odoo_major_from_connection(connection: OdooConnection) -> int | None:
+    """Integer major from ``OdooConnection.server_version``, or None when unset.
+
+    The connection stores the probed version string (``19.0``, ``20.0+e``), not a
+    separate major column. A missing, blank, or unparseable value stays None so
+    the snapshot gate does not take the Odoo 20 metadata-only path.
+    """
+    raw = getattr(connection, "server_version", None)
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    try:
+        return parse_major(text)
+    except UnsupportedOdooMajorError:
+        return None
 
 
 def params_fingerprint(payload: dict[str, Any]) -> str:
@@ -118,6 +139,7 @@ class SafetyGate:
                     snapshot_connection_id=snapshot_connection_id,
                     connection_id=self.connection.id,
                     method=method,
+                    odoo_major=_odoo_major_from_connection(self.connection),
                     now=now,
                 )
             except SnapshotRequired as exc:

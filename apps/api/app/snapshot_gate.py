@@ -50,7 +50,7 @@ def require_production_snapshot(
     Gated risks: destructive, code, billable (any case). BILLABLE methods
     (button_install family, iap_*, *_iap_*, action_buy_*) are gated even when
     risk is not already named billable.
-    On Odoo 20 a metadata snapshot is enough; ``/web/database`` backup is not required.
+    On Odoo 20 and later a metadata snapshot is enough; ``/web/database`` backup is not required.
     """
     if write_mode != "production":
         return
@@ -63,13 +63,14 @@ def require_production_snapshot(
         )
     if connection_id is not None and snapshot_connection_id != connection_id:
         raise SnapshotRequired("Snapshot belongs to a different connection.")
-    # Odoo 20 removed the db service. A metadata_snapshots row is accepted;
-    # do not require /web/database backup even if a caller asks for one.
-    if odoo_major == 20:
+    # Odoo 20 and later removed the db service. A metadata_snapshots row is
+    # accepted; do not require /web/database backup even if a caller asks for one.
+    # None and any non-int stay off this path.
+    if isinstance(odoo_major, int) and odoo_major >= 20:
         require_web_database_backup = False
     if require_web_database_backup and snapshot_kind != "database":
         raise SnapshotRequired(
-            "A /web/database backup is required for this major; Odoo 20 accepts a metadata snapshot instead."
+            "A /web/database backup is required for this major; Odoo 20 and later accept a metadata snapshot instead."
         )
     if snapshot_created_at is None:
         raise SnapshotRequired(

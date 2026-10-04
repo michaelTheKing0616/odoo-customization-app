@@ -1111,7 +1111,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 Execution queue. A line leaves this list only when that item is finished. Items that need a live system or a decision already made stay blocked instead of being faked.
 
 In progress, code that can be finished without a live Odoo or a live model:
-1. Snapshot preflight passes the connection's Odoo major. `snapshot_gate.py` uses `>= 20`, matching `database_backup.py`. A missing major does not take the Odoo 20 path.
+1. The executor calls undo through validate, policy, and approval. A failed check does not write the inverse.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
@@ -1119,6 +1119,7 @@ Closed this turn:
 - An unset module major does not emit `ir.rule`. Community 19 emits it when the major is 19, including the library and multi-company templates. Odoo 20 still refuses it.
 - Confirmed tenant and database facts are in the prompt memory layer, capped at 5% of the window. Pending items, role notes, episodic memory, and global knowledge stay out.
 - Apply refuses a frozen change-set and an elevate change-set with no domain owner before any write. When an observation is supplied, verify runs after the in-memory apply: R2 and above rolls back, and below R2 the result is NEEDS_HUMAN. An apply with no observation still records the journal result.
+- Snapshot preflight passes the connection major from `server_version`. Major 20 and later accept a metadata snapshot. Major 19 still requires a `/web/database` backup when the caller asks. A missing major stays off the Odoo 20 path. Freshness and BILLABLE stay gated.
 
 Blocked until something outside this repo exists. The product behavior stays the refuse or the off switch:
 - T2-J1 `/doc` text match. Sandbox default stays XML-RPC. Promote stays human.
@@ -1138,7 +1139,6 @@ Still to finish in code:
 - Production R3 stays blocked until an operator-owned neutralized clone exists for that tenant. Above R1 stays review-only.
 - GATE-P6-04 has not been run. The tool shape is family lists.
 - BL-08 commit plan is not written yet. A second yes is required before those commits.
-- `safety_gate.preflight` does not pass `odoo_major`. `snapshot_gate.py` uses `== 20`. `database_backup.py` uses `>= 20`. Snapshot freshness (`created_at`, last write, BILLABLE) is not wired on that caller.
 - Live Odoo 20 version-table probes stay skipped until `ODOO20_URL` is set.
 - UI-F03 was not re-checked against every route in screen spec 13 marked "can be empty".
 - `ConfirmDialogV2` is still its own overlay, not `DialogPanel`.

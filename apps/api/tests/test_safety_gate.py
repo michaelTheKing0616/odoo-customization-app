@@ -125,6 +125,42 @@ def test_preflight_production_billable_method_without_fresh_snapshot_refused(db)
     assert exc.value.refusal.code == "snapshot_required"
 
 
+def test_preflight_passes_connection_server_version_major(monkeypatch) -> None:
+    seen: dict = {}
+
+    def _capture(**kwargs: object) -> None:
+        seen.update(kwargs)
+
+    monkeypatch.setattr("app.safety_gate.require_production_snapshot", _capture)
+    conn = _connection(server_version="21.0", write_mode="standard")
+    SafetyGate(None, connection=conn).preflight(SafetySpec(risk="destructive"))  # type: ignore[arg-type]
+    assert seen["odoo_major"] == 21
+
+
+def test_preflight_missing_server_version_passes_none(monkeypatch) -> None:
+    seen: dict = {}
+
+    def _capture(**kwargs: object) -> None:
+        seen.update(kwargs)
+
+    monkeypatch.setattr("app.safety_gate.require_production_snapshot", _capture)
+    conn = _connection(write_mode="standard")
+    SafetyGate(None, connection=conn).preflight(SafetySpec(risk="destructive"))  # type: ignore[arg-type]
+    assert seen["odoo_major"] is None
+
+
+def test_preflight_blank_server_version_passes_none(monkeypatch) -> None:
+    seen: dict = {}
+
+    def _capture(**kwargs: object) -> None:
+        seen.update(kwargs)
+
+    monkeypatch.setattr("app.safety_gate.require_production_snapshot", _capture)
+    conn = _connection(server_version="  ", write_mode="standard")
+    SafetyGate(None, connection=conn).preflight(SafetySpec(risk="destructive"))  # type: ignore[arg-type]
+    assert seen["odoo_major"] is None
+
+
 def test_preflight_observer_mode(db) -> None:
     conn = _connection(write_mode="observer")
     gate = SafetyGate(db, connection=conn)

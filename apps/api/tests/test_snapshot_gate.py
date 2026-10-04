@@ -152,3 +152,60 @@ def test_odoo20_metadata_snapshot_keeps_ten_minute_freshness_window() -> None:
             require_web_database_backup=True,
             snapshot_created_at=NOW - timedelta(minutes=10, seconds=1),
         )
+
+
+@pytest.mark.parametrize("major", [20, 21])
+def test_major_20_and_above_skip_web_database_backup(major: int) -> None:
+    _ok(
+        odoo_major=major,
+        snapshot_kind="metadata",
+        require_web_database_backup=True,
+    )
+
+
+def test_odoo19_requires_web_database_backup_when_caller_asks() -> None:
+    with pytest.raises(SnapshotRequired, match="/web/database"):
+        _ok(
+            odoo_major=19,
+            snapshot_kind="metadata",
+            require_web_database_backup=True,
+        )
+
+
+def test_odoo19_accepts_database_snapshot_when_caller_asks() -> None:
+    _ok(
+        odoo_major=19,
+        snapshot_kind="database",
+        require_web_database_backup=True,
+    )
+
+
+def test_missing_major_does_not_take_odoo_20_path() -> None:
+    with pytest.raises(SnapshotRequired, match="/web/database"):
+        _ok(
+            odoo_major=None,
+            snapshot_kind="metadata",
+            require_web_database_backup=True,
+        )
+
+
+def test_major_above_20_stale_snapshot_still_refused() -> None:
+    with pytest.raises(SnapshotRequired, match="10-minute freshness window"):
+        _ok(
+            odoo_major=21,
+            snapshot_kind="metadata",
+            require_web_database_backup=True,
+            snapshot_created_at=NOW - timedelta(minutes=10, seconds=1),
+        )
+
+
+def test_billable_method_stays_gated_above_major_20() -> None:
+    with pytest.raises(SnapshotRequired):
+        require_production_snapshot(
+            write_mode="production",
+            risk="reversible",
+            method="button_install",
+            snapshot_id=None,
+            snapshot_exists=False,
+            odoo_major=21,
+        )
