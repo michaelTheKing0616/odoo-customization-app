@@ -14,7 +14,7 @@ from typing import Any
 
 from app.changeset.ops import get_op, is_known_op
 from app.changeset.policy import risk_of
-from app.changeset.protected_registry import protected_denial
+from app.changeset.protected_registry import _norm, protected_denial
 
 MAX_OPS = 50
 MAX_PARAMS_BYTES = 64 * 1024
@@ -85,10 +85,13 @@ def validate(
     Inputs: a change-set, optional known model names, optional tenant.
     Outputs: valid, stages (always nine, in ``STAGE_NAMES`` order), impact,
     risks, and max_risk. An early failure does not skip later stage entries.
+    Grounding folds each model name with the protected registry norm before
+    comparing it to ``known_models``.
     Side effects: ``protected_denial`` may append a detection when an op hits
     the protected registry. The change-set is not modified.
     """
     known = set(known_models or ())
+    known_folded = {_norm(name) for name in known}
     stages: list[dict[str, Any]] = []
     halted = False
     impact: dict[str, Any] = {}
@@ -160,7 +163,7 @@ def validate(
             if not isinstance(model, str):
                 grounding_errors.append(f"op[{i}].params.model must be a string")
                 continue
-            if model not in known:
+            if _norm(model) not in known_folded:
                 hint = get_close_matches(model, sorted(known), n=3, cutoff=0.6)
                 msg = f"op[{i}].params.model {model!r} not in known_models"
                 if hint:

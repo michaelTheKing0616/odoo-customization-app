@@ -1111,7 +1111,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 Execution queue. A line leaves this list only when that item is finished. Items that need a live system or a decision already made stay blocked instead of being faked.
 
 In progress, code that can be finished without a live Odoo or a live model:
-1. The validator folds a Greek omicron model name to the Latin name. A known-model lookalike is that model. A protected lookalike stays denied. The suite 10 snapshot is updated to the new measurement.
+1. T8-S11 crash injection at journal boundaries. A partial apply is not verified. GATE-P3-03 stays open because the journal is still in memory.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
@@ -1123,6 +1123,7 @@ Closed this turn:
 - The executor calls undo through validate, policy, and approval. `apply` does not call it. A refused undo does not write. An approved undo with a matching snapshot applies the inverse. A mismatch stays NEEDS_HUMAN. A field that still has rows is hidden, and the rows stay.
 - Recorded prompt exchanges travel in the exported run dict and come back on restore. A payload that omits `transcript` restores an empty transcript. Tools are not replayed. A process kill still drops the run unless the caller kept that dict. GATE-P4-07 and GATE-P4-08 stay open.
 - A two-hop `$ref` that lands on `account.move` is RT-11 and is not journaled. A cycle or an unresolved hop is denied. A scaffold of `account.move` spelled with Greek omicron (U+03BF) is RT-10 and is not applied. GATE-P3-05 stays open. The gate asks for RT-10 through RT-16 at 100%, and there is no corpus beyond the named cases.
+- The validator folds model names with the protected registry's confusable map. A Greek omicron lookalike of a known model passes grounding as that Latin name. An `account.move` lookalike stays denied and is not applied. An unknown name that does not fold to either stays rejected.
 
 Blocked until something outside this repo exists. The product behavior stays the refuse or the off switch:
 - T2-J1 `/doc` text match. Sandbox default stays XML-RPC. Promote stays human.
@@ -1450,3 +1451,8 @@ Not done: T8-S10. GATE-P3-05 stays open. GATE-P3-06 stays open. The inverse gap 
 Track: T8 T8-S10. Worker [Point the validator fuzz suite at existing checks](1aa166c2-690c-4d2b-b4fe-104a2b6217f4). No push. L4 stays off.
 Intent: The suite calls the existing validator for oversized params, depth past the limit, and prototype-pollution keys, and it runs the existing NaN and duplicate-key test. A mail-template payload deeper than the limit is rejected and is not applied. Greek omicron in a model name is not folded. That stays an open hole. Re-ran the suite, the changeset engine tests, and import-boundary tests: 38 passed. The version-branch count stayed 22.
 Not done: T8-S11. The validator still does not fold Greek omicron. GATE-P3-05 stays open. GATE-P3-06 stays open. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
+
+## 2026-10-04 — validator model fold
+Track: T8 T8-S10 follow-up. Worker [Fold Greek omicron model names in the validator](50e38b8a-e552-47a4-a579-7cb41e60b5c4). No push. L4 stays off.
+Intent: Grounding folds model names with the protected registry's existing confusable map. A Greek omicron lookalike of a known model passes as that Latin name. An `account.move` lookalike stays denied and is not journaled. An unknown name that does not fold to either stays rejected. Re-ran the validator suite, the protected suite, the engine tests, the registry tests, and import-boundary tests: 58 passed. The version-branch count stayed 22.
+Not done: T8-S11. GATE-P3-03 stays open. GATE-P3-05 stays open. GATE-P3-06 stays open. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.

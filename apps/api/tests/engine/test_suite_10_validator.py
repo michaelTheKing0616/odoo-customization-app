@@ -7,9 +7,11 @@ already rejected by ``validate``. Those cases stay in
 functions. It does not reimplement the walker or the parser.
 
 A payload deeper than ``MAX_DEPTH`` is rejected by ``validate`` and is not
-applied. A Greek omicron (U+03BF) in a model name is not folded. That stays
-an open hole: the snapshot fails when a later change marks the fold done
-without measuring it again.
+applied. A Greek omicron (U+03BF) in a model name is folded with the protected
+registry norm. A known-model lookalike passes grounding as that Latin model.
+The snapshot fails if that fold disappears. A protected lookalike stays denied
+and is not applied. An unknown name that does not fold to a known or protected
+model stays rejected.
 
 This module does not call Odoo.
 """
@@ -23,7 +25,8 @@ from typing import Any
 
 import pytest
 
-from app.changeset.executor import get_journal, reset_journal
+from app.changeset.executor import _protocol, apply, get_journal, reset_journal
+from app.changeset.protected_registry import _norm, detections, protected_case, protected_denial
 from app.changeset.validate import MAX_DEPTH, validate
 from app.worker_bot import WorkerBot
 
@@ -38,15 +41,18 @@ _ENGINE_FUNCTIONS = (
 )
 _GATEWAY_FUNCTION = "test_malformed_nan_and_duplicate_keys_are_rejected"
 
-# Greek small letter omicron. ``validate`` compares model names as written.
+# Greek small letter omicron. ``validate`` folds it with the registry norm.
 _OMICRON = "\u03bf"
 _LATIN_MODEL = "x_order"
 _LOOKALIKE_MODEL = "x_" + _OMICRON + "rder"
+_PROTECTED_LATIN = "account.move"
+_PROTECTED_LOOKALIKE = "acc" + _OMICRON + "unt.move"
+_UNKNOWN_MODEL = "x_widget"
+_UNKNOWN_LOOKALIKE = "x_w" + _OMICRON + "dget"
 
-# Open hole, measured 2026-10-04. Not a pass. Folding this name fails the
-# lock until the snapshot is updated to the new measurement.
+# Measured 2026-10-04 after the registry fold. Removing the fold fails this lock.
 _OPEN_HOLES: dict[str, bool] = {
-    "greek_omicron_model_folded": False,
+    "greek_omicron_model_folded": True,
 }
 
 
@@ -200,14 +206,13 @@ def test_payload_deeper_than_max_depth_is_rejected_and_not_applied() -> None:
         reset_journal()
 
 
-def test_greek_omicron_model_fold_stays_an_open_hole() -> None:
-    """Lock the missing fold for a Greek omicron model name.
+def test_greek_omicron_model_fold_matches_the_measurement() -> None:
+    """A known-model lookalike passes grounding as the Latin model.
 
-    Measured 2026-10-04: ``validate`` accepts Latin ``x_order`` and rejects
-    the same name with U+03BF in place of ``o``. That rejection is the open
-    hole. It is not a claim that the name was folded. Changing the snapshot
-    without a matching measurement fails this test. Folding the name fails
-    it until the snapshot is updated.
+    Measured 2026-10-04: ``validate`` accepts Latin ``x_order`` and accepts
+    the same name with U+03BF in place of ``o``. The known set contains only
+    the Latin name. Changing the snapshot without a matching measurement
+    fails this test. Removing the fold fails it too.
 
     Inputs: the Latin model and the omicron lookalike.
     Outputs: none.
@@ -215,8 +220,68 @@ def test_greek_omicron_model_fold_stays_an_open_hole() -> None:
     """
     assert _LOOKALIKE_MODEL != _LATIN_MODEL
     assert _OMICRON in _LOOKALIKE_MODEL
+    assert _norm(_LOOKALIKE_MODEL) == _LATIN_MODEL
     assert _grounding_accepts(_LATIN_MODEL) is True
     observed = {"greek_omicron_model_folded": _grounding_accepts(_LOOKALIKE_MODEL)}
     assert observed == _OPEN_HOLES, (
         "greek omicron model fold changed; update _OPEN_HOLES to the new measurement"
     )
+
+
+def test_protected_omicron_lookalike_is_denied_and_not_applied() -> None:
+    """``account.move`` spelled with U+03BF stays denied and is not applied.
+
+    Inputs: one ``model.scaffold`` whose model is the protected lookalike.
+    ``known_models`` includes the Latin protected name.
+    Outputs: none.
+    Side effects: clears the in-memory journal. ``protected_case``,
+    ``protected_denial``, ``apply``, and ``validate`` run the real denial.
+    Does not call Odoo.
+    """
+    lookalike = {"type": "model.scaffold", "params": {"model": _PROTECTED_LOOKALIKE}}
+    assert _OMICRON in _PROTECTED_LOOKALIKE
+    assert _PROTECTED_LOOKALIKE != _PROTECTED_LATIN
+    assert _norm(_PROTECTED_LOOKALIKE) == _PROTECTED_LATIN
+    assert protected_case(lookalike) == "RT-10"
+    assert protected_denial(lookalike) == "protected_deny"
+
+    error = _protocol().BridgeError
+    reset_journal()
+    try:
+        with pytest.raises(error) as denied:
+            apply([lookalike], mode="T", port=None)
+        assert denied.value.code == "protected_deny"
+        assert get_journal() == []
+        assert detections()[-1]["alert"] == "policy_denied"
+        assert detections()[-1]["case"] == "RT-10"
+    finally:
+        reset_journal()
+
+    report = validate([lookalike], known_models={_PROTECTED_LATIN})
+    assert report["valid"] is False
+    static = next(stage for stage in report["stages"] if stage["name"] == "static")
+    assert static["passed"] is False
+    assert any("protected_deny" in item for item in static["errors"])
+
+
+def test_unknown_model_that_does_not_fold_stays_rejected() -> None:
+    """An unknown model that does not fold to a known or protected name is rejected.
+
+    Inputs: Latin ``x_widget`` and the same name with U+03BF. The known set is
+    Latin ``x_order``. Neither name is a protected model.
+    Outputs: none.
+    Side effects: none. Does not call Odoo.
+    """
+    assert _norm(_UNKNOWN_MODEL) == _UNKNOWN_MODEL
+    assert _norm(_UNKNOWN_LOOKALIKE) == "x_wodget"
+    assert _norm(_UNKNOWN_LOOKALIKE) not in {_LATIN_MODEL, _PROTECTED_LATIN}
+    for model in (_UNKNOWN_MODEL, _UNKNOWN_LOOKALIKE):
+        op = {"type": "field.create", "params": {"model": model, "name": "x_flag"}}
+        assert protected_case(op) is None
+        report = validate([op], known_models={_LATIN_MODEL})
+        assert report["valid"] is False
+        static = next(stage for stage in report["stages"] if stage["name"] == "static")
+        grounding = next(stage for stage in report["stages"] if stage["name"] == "grounding")
+        assert static["passed"] is True
+        assert grounding["passed"] is False
+        assert any("not in known_models" in item for item in grounding["errors"])
