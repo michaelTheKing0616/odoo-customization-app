@@ -8,12 +8,27 @@ from __future__ import annotations
 
 import json
 import logging
+import ssl
 from typing import Any
-from urllib.error import HTTPError, URLError
+from urllib.error import HTTPError
 from urllib.parse import urljoin, urlparse, urlunparse
-from urllib.request import Request, urlopen
+from urllib.request import (
+    HTTPRedirectHandler,
+    HTTPSHandler,
+    Request,
+    build_opener,
+    urlopen,
+)
 
 from odoo_client.compat.read_group import resolve_aggregate_rpc_method
+from odoo_client.rpc_transport_errors import OdooRpcError
+from odoo_client.transport.contract import (
+    REDIRECT_STATUSES,
+    PreparedCall,
+    RedirectHop,
+    TransportPolicyError,
+    run_send,
+)
 from odoo_client.transport.execute_kw_map import execute_kw_to_json2_body
 
 logger = logging.getLogger(__name__)
@@ -85,6 +100,84 @@ def _caller_fault(body: Any) -> bool:
     return message.startswith("Domain()") or "invalid argument type for domain" in message
 
 
+class _RedirectRefused(Exception):
+    """The opener saw a redirect and did not request the next URL."""
+
+    def __init__(self, status: int, location: str) -> None:
+        self.status = status
+        self.location = location
+        super().__init__(location)
+
+
+class _RefuseRedirect(HTTPRedirectHandler):
+    """Surface the redirect and do not call ``parent.open`` on the next URL."""
+
+    def http_error_302(self, req: Request, fp: Any, code: int, msg: str, headers: Any) -> None:
+        location = ""
+        if headers is not None:
+            location = headers.get("location") or headers.get("uri") or ""
+        try:
+            fp.read()
+        finally:
+            fp.close()
+        raise _RedirectRefused(int(code), str(location))
+
+    http_error_301 = http_error_303 = http_error_307 = http_error_308 = http_error_302
+
+
+def _verifying_context() -> ssl.SSLContext:
+    context = ssl.create_default_context()
+    if context.verify_mode != ssl.CERT_REQUIRED or not context.check_hostname:
+        raise TransportPolicyError("verify=false is refused")
+    return context
+
+
+def open_http(req: Request, timeout: float, *, allow_redirects: bool) -> Any:
+    """Open one request. A write passes ``allow_redirects=False`` and stops on 3xx."""
+    scheme = urlparse(req.full_url).scheme
+    context = _verifying_context() if scheme == "https" else None
+    if allow_redirects:
+        if context is None:
+            return urlopen(req, timeout=timeout)
+        return urlopen(req, timeout=timeout, context=context)
+    handlers: list[Any] = [_RefuseRedirect()]
+    if context is not None:
+        handlers.append(HTTPSHandler(context=context))
+    opener = build_opener(*handlers)
+    try:
+        return opener.open(req, timeout=timeout)
+    except _RedirectRefused as exc:
+        return RedirectHop(exc.status, exc.location)
+
+
+def _redirect_from_response(resp: Any) -> RedirectHop | None:
+    status = getattr(resp, "status", None)
+    if status is None:
+        status = getattr(resp, "code", None)
+    if status not in REDIRECT_STATUSES:
+        return None
+    headers = getattr(resp, "headers", None)
+    location = ""
+    if headers is not None and hasattr(headers, "get"):
+        location = headers.get("Location") or headers.get("location") or ""
+    if not location and hasattr(resp, "getheader"):
+        location = resp.getheader("Location") or ""
+    return RedirectHop(int(status), str(location))
+
+
+def _rpc_names(http_method: str, path: str, model: str | None, method: str | None) -> tuple[str, str]:
+    if method:
+        return model or "res.users", method
+    parts = [part for part in path.strip("/").split("/") if part]
+    if len(parts) >= 4 and parts[0] == "json" and parts[1] == "2":
+        return parts[2], parts[3]
+    # A GET such as ``/doc`` is an idempotent read. The contract classifies
+    # timeouts by RPC method name, so this uses a read-plane method.
+    if http_method.upper() == "GET":
+        return "ir.model", "fields_get"
+    return "ir.model", "execute"
+
+
 class Json2Transport:
     """Stateless External JSON-2 client for one base URL + API key."""
 
@@ -105,13 +198,25 @@ class Json2Transport:
         self.timeout = timeout
         self.odoo_major = odoo_major
 
+    def _database_key(self) -> str:
+        if isinstance(self.database, str) and self.database.strip():
+            return self.database.strip()
+        return urlparse(self.base_url).hostname or "sandbox"
+
     def request(
         self,
         method: str,
         path: str,
         body: dict[str, Any] | None = None,
+        *,
+        rpc_model: str | None = None,
+        rpc_method: str | None = None,
     ) -> tuple[int, str]:
-        """HTTP request that returns ``(status, text)`` for error responses too."""
+        """HTTP request that returns ``(status, text)`` for error responses too.
+
+        The bytes go out through the transport contract. A non-local host must
+        be HTTPS. A write does not follow a redirect.
+        """
         url = urljoin(self.base_url + "/", path.lstrip("/"))
         data = None if body is None else json.dumps(body).encode("utf-8")
         headers = {"Authorization": f"Bearer {self.api_key}", "Accept": "application/json, text/html"}
@@ -120,21 +225,23 @@ class Json2Transport:
         if self.send_db_header and self.database:
             headers["X-Odoo-Database"] = self.database
         req = Request(url, data=data, headers=headers, method=method)
+        model_name, rpc_name = _rpc_names(method, path, rpc_model, rpc_method)
+
+        def send(prepared: PreparedCall) -> tuple[int, str] | RedirectHop:
+            return self._read_response(req, prepared)
+
         try:
-            with urlopen(req, timeout=self.timeout) as resp:
-                raw = resp.read().decode("utf-8", errors="replace")
-                status = getattr(resp, "status", 200) or 200
-                return int(status), raw
-        except HTTPError as exc:
-            err_raw = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
-            logger.error(
-                "JSON-2 HTTP %s at %s body=%s",
-                exc.code,
-                url,
-                self._redact(err_raw[:500]),
+            result = run_send(
+                send,
+                database=self._database_key(),
+                model=model_name,
+                method=rpc_name,
+                url=url,
+                verify=True,
             )
-            return int(exc.code), err_raw
-        except URLError as exc:
+        except TransportPolicyError:
+            raise
+        except OdooRpcError as exc:
             raise Json2TransportError(
                 f"JSON-2 connection failed at {url}: {exc}",
                 status=None,
@@ -142,12 +249,49 @@ class Json2Transport:
                 url=url,
                 error_class="transport",
             ) from exc
+        if isinstance(result, RedirectHop):
+            raise Json2TransportError(
+                f"JSON-2 redirect refused ({result.status})",
+                status=result.status,
+                body={"location": result.location},
+                url=url,
+                error_class="transport",
+            )
+        status, raw = result
+        if status >= 400:
+            logger.error(
+                "JSON-2 HTTP %s at %s body=%s",
+                status,
+                url,
+                self._redact(raw[:500]),
+            )
+        return status, raw
+
+    def _read_response(self, req: Request, prepared: PreparedCall) -> tuple[int, str] | RedirectHop:
+        try:
+            opened = open_http(
+                req,
+                timeout=prepared.timeout,
+                allow_redirects=prepared.allow_redirects,
+            )
+        except HTTPError as exc:
+            err_raw = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+            return int(exc.code), err_raw
+        if isinstance(opened, RedirectHop):
+            return opened
+        with opened as resp:
+            hop = _redirect_from_response(resp)
+            if hop is not None:
+                return hop
+            raw = resp.read().decode("utf-8", errors="replace")
+            status = getattr(resp, "status", 200) or 200
+            return int(status), raw
 
     def call(self, model: str, method: str, body: dict[str, Any] | None = None) -> Any:
         """POST ``/json/2/<model>/<method>`` with a named JSON body."""
         path = f"json/2/{model}/{method}"
         url = urljoin(self.base_url + "/", path)
-        status, raw = self.request("POST", path, body)
+        status, raw = self.request("POST", path, body, rpc_model=model, rpc_method=method)
         if status >= 400:
             parsed: Any
             try:

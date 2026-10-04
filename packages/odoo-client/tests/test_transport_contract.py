@@ -134,6 +134,56 @@ def test_tls_is_required_and_verify_false_never_reaches_send() -> None:
         )
 
 
+def test_local_http_sandbox_sends_and_a_nonlocal_host_still_requires_tls() -> None:
+    seen: list[PreparedCall] = []
+
+    def send(prepared: PreparedCall) -> str:
+        seen.append(prepared)
+        return "ok"
+
+    gate = _gate(send)
+    local_urls = [
+        "http://127.0.0.1:8069/xmlrpc/2/object",
+        "http://localhost:8069/json/2/res.partner/search_read",
+        "http://LOCALHOST/xmlrpc/2/common",
+    ]
+    for url in local_urls:
+        assert gate.call(database="sandbox", model="sale.order", method="search_read", url=url) == "ok"
+    assert [row.url for row in seen] == local_urls
+    assert all(row.verify is True for row in seen)
+
+    def refuse(prepared: PreparedCall) -> str:
+        raise AssertionError(f"send was called for {prepared.url}")
+
+    blocked = _gate(refuse)
+    for url in ("http://odoo.example", "http://127.0.0.1.example", "http://localhost.evil"):
+        with pytest.raises(TransportPolicyError, match="TLS required"):
+            blocked.call(database="sandbox", model="sale.order", method="search_read", url=url)
+    with pytest.raises(TransportPolicyError, match="verify=false is refused"):
+        blocked.call(
+            database="sandbox",
+            model="sale.order",
+            method="search_read",
+            url="http://127.0.0.1:8069",
+            verify=False,
+        )
+
+    def redirect(prepared: PreparedCall) -> RedirectHop:
+        assert prepared.allow_redirects is False
+        assert prepared.verify is True
+        return RedirectHop(302, "http://127.0.0.1:9/evil")
+
+    with pytest.raises(WritePlaneRedirectError) as caught:
+        _gate(redirect).call(
+            database="sandbox",
+            model="sale.order",
+            method="create",
+            url="http://127.0.0.1:8069/xmlrpc/2/object",
+        )
+    assert caught.value.status == 302
+    assert caught.value.location == "http://127.0.0.1:9/evil"
+
+
 def test_write_redirect_is_not_followed() -> None:
     seen: list[str] = []
 

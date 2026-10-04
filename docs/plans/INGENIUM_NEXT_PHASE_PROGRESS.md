@@ -1111,7 +1111,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 Execution queue. A line leaves this list only when that item is finished. Items that need a live system or a decision already made stay blocked instead of being faked.
 
 In progress, code that can be finished without a live Odoo or a live model:
-1. Wrap the XML-RPC and JSON-2 adapters in the transport contract. Local HTTP sandboxes keep working. A local-http exception is tested. TLS stays required for a non-local host.
+1. Audit retention. Raw LLM payloads expire after 7 days. Accounting kinds stay 7 years. Everything else stays 24 months. The sweeper runs on the in-process chain. It does not delete a live database.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
@@ -1125,6 +1125,7 @@ Closed this turn:
 - A two-hop `$ref` that lands on `account.move` is RT-11 and is not journaled. A cycle or an unresolved hop is denied. A scaffold of `account.move` spelled with Greek omicron (U+03BF) is RT-10 and is not applied. GATE-P3-05 stays open. The gate asks for RT-10 through RT-16 at 100%, and there is no corpus beyond the named cases.
 - The validator folds model names with the protected registry's confusable map. A Greek omicron lookalike of a known model passes grounding as that Latin name. An `account.move` lookalike stays denied and is not applied. An unknown name that does not fold to either stays rejected.
 - A missing tool-call id is `call_` plus a 26-character Crockford ULID. A provider-supplied id stays as sent. Two mints in the same millisecond do not collide. No ulid package was added.
+- XML-RPC and JSON-2 sends go through the transport contract. Plain HTTP still sends for `127.0.0.1` and `localhost`. Any other host must be HTTPS with certificate checks on. A write does not follow a redirect.
 
 Blocked until something outside this repo exists. The product behavior stays the refuse or the off switch:
 - T2-J1 `/doc` text match. Sandbox default stays XML-RPC. Promote stays human.
@@ -1160,7 +1161,6 @@ Still to finish in code:
 - GATE-P1-02 is not fully passed. Replay fixtures under `apps/api/tests/fixtures/llm_gateway/` are synthetic. Still needs an operator recording: C07, C08, C10, C11, C13, C14, C16, C17, C18, C19, and OpenAI C20.
 - The model registry stores no product model ids yet. The outside-file scan passes because that list is empty. An unknown id stays untiered with read-only caps.
 - GATE-P1-04 and GATE-P1-06 are proven with 200 scripted calls, not a live cassette. A recorded live 200-call cassette is still open.
-- The transport contract in `packages/odoo-client/src/odoo_client/transport/contract.py` is proven on a fake send function. It is not wrapped around the XML-RPC or JSON-2 adapters. Local HTTP sandboxes are unchanged.
 - GATE-P2-08 and GATE-P2-09 are not fully passed. The seven bridge methods are proven on an in-memory fake. Apply, rollback, a real savepoint, the live kill switch, and staging neutralization have not run on Odoo.
 - Version drift live nightly rows were not run. Unknown cells remain for kanban, `name_get`, company-dependent fields, selection storage, mail template syntax, and translations on 20.
 - Engine suite 1 and suite 2 were not run for the schema family. `model.create`, `model.scaffold`, `field.deprecate`, `selection.update`, and `constraint.sql` still have no inverse in the handler.

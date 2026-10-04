@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import ssl
 from typing import Any
 from unittest.mock import patch
 from urllib.error import HTTPError
@@ -11,6 +12,7 @@ from io import BytesIO
 import pytest
 
 from odoo_client.models import ConnectionConfig
+from odoo_client.transport.contract import TransportPolicyError, WritePlaneRedirectError
 from odoo_client.transport.execute_kw_map import execute_kw_to_json2_body
 from odoo_client.transport.json2 import (
     Json2Transport,
@@ -107,7 +109,7 @@ class _FakeHTTPResponse:
 
 
 def test_json2_success_returns_raw_value_not_envelope() -> None:
-    transport = Json2Transport("http://odoo.test", "KEY")
+    transport = Json2Transport("https://odoo.test", "KEY")
     with patch(
         "odoo_client.transport.json2.urlopen",
         return_value=_FakeHTTPResponse([{"id": 1, "name": "A"}]),
@@ -126,7 +128,7 @@ def test_json2_success_returns_raw_value_not_envelope() -> None:
 
 
 def test_json2_does_not_send_db_header_by_default() -> None:
-    transport = Json2Transport("http://odoo.test", "KEY", database="mydb")
+    transport = Json2Transport("https://odoo.test", "KEY", database="mydb")
     with patch(
         "odoo_client.transport.json2.urlopen",
         return_value=_FakeHTTPResponse({}),
@@ -143,7 +145,7 @@ def test_json2_does_not_send_db_header_by_default() -> None:
 
 def test_json2_sends_db_header_when_enabled() -> None:
     transport = Json2Transport(
-        "http://odoo.test", "KEY", database="mydb", send_db_header=True
+        "https://odoo.test", "KEY", database="mydb", send_db_header=True
     )
     with patch(
         "odoo_client.transport.json2.urlopen",
@@ -172,7 +174,7 @@ def test_json2_http_errors_raise_with_full_body(status: int) -> None:
         hdrs=None,  # type: ignore[arg-type]
         fp=fp,
     )
-    transport = Json2Transport("http://odoo.test", "KEY")
+    transport = Json2Transport("https://odoo.test", "KEY")
     with patch("odoo_client.transport.json2.urlopen", side_effect=http_err):
         with pytest.raises(Json2TransportError) as caught:
             transport.call("res.partner", "search", {"domain": []})
@@ -182,13 +184,121 @@ def test_json2_http_errors_raise_with_full_body(status: int) -> None:
 
 
 def test_json2_execute_kw_uses_mapper() -> None:
-    transport = Json2Transport("http://odoo.test", "KEY")
+    transport = Json2Transport("https://odoo.test", "KEY")
     with patch.object(transport, "call", return_value=7) as call:
         out = transport.execute_kw("res.partner", "create", [{"name": "Z"}])
     assert out == 7
     call.assert_called_once_with(
         "res.partner", "create", {"vals_list": [{"name": "Z"}]}
     )
+
+
+class _Closed:
+    def __init__(self, status: int, payload: Any, headers: dict[str, str] | None = None) -> None:
+        self.status = status
+        self._payload = payload
+        self.headers = headers or {}
+
+    def read(self) -> bytes:
+        if isinstance(self._payload, (bytes, bytearray)):
+            return bytes(self._payload)
+        return json.dumps(self._payload).encode("utf-8")
+
+    def __enter__(self) -> _Closed:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
+
+
+@pytest.mark.parametrize("base_url", ["http://127.0.0.1:8069", "http://localhost:8069"])
+def test_json2_local_http_sandbox_sends(base_url: str) -> None:
+    seen: list[str] = []
+
+    def fake_urlopen(req: Any, timeout: float | None = None, context: Any = None) -> _Closed:
+        assert context is None
+        assert timeout == 30.0
+        seen.append(req.full_url)
+        return _Closed(200, [{"id": 1}])
+
+    transport = Json2Transport(base_url, "KEY", database="sandbox")
+    with patch("odoo_client.transport.json2.urlopen", fake_urlopen):
+        out = transport.call("res.partner", "search_read", {"domain": []})
+    assert out == [{"id": 1}]
+    assert seen == [f"{base_url}/json/2/res.partner/search_read"]
+
+
+def test_json2_nonlocal_http_does_not_send() -> None:
+    def fake_urlopen(req: Any, timeout: float | None = None, context: Any = None) -> _Closed:
+        raise AssertionError(f"send was called for {req.full_url}")
+
+    transport = Json2Transport("http://odoo.example", "KEY", database="db")
+    with patch("odoo_client.transport.json2.urlopen", fake_urlopen):
+        with pytest.raises(TransportPolicyError, match="TLS required"):
+            transport.call("res.partner", "search_read", {"domain": []})
+
+
+def test_json2_https_read_uses_a_verifying_context() -> None:
+    seen: dict[str, Any] = {}
+
+    def fake_urlopen(req: Any, timeout: float | None = None, context: Any = None) -> _Closed:
+        seen["timeout"] = timeout
+        seen["context"] = context
+        seen["url"] = req.full_url
+        return _Closed(200, [{"id": 1}])
+
+    transport = Json2Transport("https://odoo.example", "KEY", database="db")
+    with patch("odoo_client.transport.json2.urlopen", fake_urlopen):
+        assert transport.call("res.partner", "search_read", {"domain": []}) == [{"id": 1}]
+    assert seen["timeout"] == 30.0
+    assert seen["url"] == "https://odoo.example/json/2/res.partner/search_read"
+    assert seen["context"].verify_mode == ssl.CERT_REQUIRED
+    assert seen["context"].check_hostname is True
+
+
+def test_json2_write_does_not_follow_a_redirect() -> None:
+    requested: list[str] = []
+
+    def fake_urlopen(req: Any, timeout: float | None = None, context: Any = None) -> _Closed:
+        raise AssertionError(f"write followed redirects via urlopen for {req.full_url}")
+
+    class _Opener:
+        def open(self, req: Any, timeout: float | None = None) -> _Closed:
+            requested.append(req.full_url)
+            assert timeout == 120.0
+            return _Closed(302, b"", {"Location": "https://evil.example/json/2/res.partner/create"})
+
+    transport = Json2Transport("https://odoo.example", "KEY", database="db")
+    with patch("odoo_client.transport.json2.urlopen", fake_urlopen):
+        with patch("odoo_client.transport.json2.build_opener", return_value=_Opener()):
+            with pytest.raises(WritePlaneRedirectError) as caught:
+                transport.call("res.partner", "create", {"vals_list": [{"name": "A"}]})
+    assert caught.value.status == 302
+    assert caught.value.location == "https://evil.example/json/2/res.partner/create"
+    assert requested == ["https://odoo.example/json/2/res.partner/create"]
+
+
+def test_json2_redirect_handler_does_not_request_the_next_url() -> None:
+    from odoo_client.transport.json2 import _RedirectRefused, _RefuseRedirect
+
+    class _Body:
+        def read(self) -> bytes:
+            return b""
+
+        def close(self) -> None:
+            return None
+
+    handler = _RefuseRedirect()
+    with pytest.raises(_RedirectRefused) as caught:
+        handler.http_error_302(
+            None,
+            _Body(),
+            302,
+            "Found",
+            {"location": "https://evil.example/next"},
+        )
+    assert caught.value.status == 302
+    assert caught.value.location == "https://evil.example/next"
 
 
 # --- OdooClient dual-protocol selection --------------------------------------
@@ -221,7 +331,7 @@ def test_execute_kw_json2_path_does_not_touch_xmlrpc_object() -> None:
     client = OdooClient(_cfg(rpc_protocol="json2"))
     client._uid = 2
     client._rpc_protocol = "json2"
-    fake = Json2Transport("http://odoo.test", "KEY")
+    fake = Json2Transport("https://odoo.test", "KEY")
     client._json2 = fake
     with patch.object(fake, "execute_kw", return_value=[{"id": 1}]) as j2:
         with patch.object(client, "_object") as obj:
@@ -284,7 +394,7 @@ def test_probe_ignores_website_doc_and_keeps_live_parameters() -> None:
         _http_error(422, {"message": "missing a required argument: 'vals_list'"}),
     ]
     transport = Json2Transport("https://aonb.odoo.com/odoo", "secret-key")
-    with patch("odoo_client.transport.json2.urlopen", side_effect=responses):
+    with patch("odoo_client.transport.json2.open_http", side_effect=responses):
         probe = probe_json2(transport)
     assert transport.base_url == "https://aonb.odoo.com"
     assert probe["doc_route"] == "website"
@@ -304,7 +414,7 @@ def test_probe_live_parameters_win_when_doc_disagrees() -> None:
         _http_error(422, {"message": "missing a required argument: 'vals_list'"}),
     ]
     transport = Json2Transport("https://odoo.example", "secret-key")
-    with patch("odoo_client.transport.json2.urlopen", side_effect=responses):
+    with patch("odoo_client.transport.json2.open_http", side_effect=responses):
         probe = probe_json2(transport)
     assert probe["doc_route"] == "api"
     assert probe["parameters"]["fields_get"] == ["attributes"]

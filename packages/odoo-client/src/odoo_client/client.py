@@ -34,6 +34,7 @@ from odoo_client.models import (
 from odoo_client.transport.json2 import Json2Transport, Json2TransportError
 from odoo_client.transport.json2_probe import probe_json2
 from odoo_client.transport.production_probe import probe_legacy
+from odoo_client.transport.xmlrpc_adapter import contract_server_proxy
 
 
 class OdooClientError(Exception):
@@ -116,13 +117,13 @@ class OdooClient:
         # Default to 19 capabilities before connect; connect() refreshes from server.
         self.capabilities: VersionCapabilities = for_major(19)
         self._ir_fields_colnames: frozenset[str] | None = None
-        self._common = xmlrpc.client.ServerProxy(
+        self._common = contract_server_proxy(
             urljoin(config.url + "/", "xmlrpc/2/common"),
-            allow_none=True,
+            database=config.db,
         )
-        self._object = xmlrpc.client.ServerProxy(
+        self._object = contract_server_proxy(
             urljoin(config.url + "/", "xmlrpc/2/object"),
-            allow_none=True,
+            database=config.db,
         )
         self.rpc_guard = None
 

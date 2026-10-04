@@ -1,13 +1,13 @@
 """Transport contract enforced on a caller-supplied send function.
 
-The send function is a fake in tests and, later, an HTTP or XML-RPC adapter.
-This module does not open a socket. Local sandbox clients stay on plain HTTP
-until a card wires this gate in front of them.
+The send function is a fake in tests and the XML-RPC or JSON-2 adapter in
+production. This module does not open a socket.
 
 Limits, copied from the engine contract:
 - at most two calls in flight for one database
 - 30s on an idempotent read, 120s on anything else
-- TLS required; ``verify`` must be ``True``
+- TLS required for a non-local host; ``verify`` must be ``True``
+- plain HTTP is allowed only for a local sandbox (``127.0.0.1`` or ``localhost``)
 - a write does not follow a redirect
 - an idempotent read may retry a transport failure at most twice
 - a write retries only when ``retry_safe`` is set and the error is a deadlock
@@ -39,8 +39,11 @@ MAX_IN_FLIGHT_PER_DATABASE = 2
 MAX_WRITE_RETRIES = 2
 
 _REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+REDIRECT_STATUSES = _REDIRECT_STATUSES
+_LOCAL_SANDBOX_HOSTS = frozenset({"127.0.0.1", "localhost"})
 _READ_RETRYABLE = (Timeout, ApiUnavailable, ServerError, DeadlockDetected, ConcurrencyError)
 _WRITE_RETRYABLE = (DeadlockDetected, ConcurrencyError)
+_sender = threading.local()
 
 
 class TransportPolicyError(Exception):
@@ -85,13 +88,25 @@ def timeout_for(method: str) -> float:
     return WRITE_TIMEOUT_SECONDS
 
 
-def assert_tls(url: str, verify: object = True) -> None:
-    """Refuse a non-HTTPS URL and any ``verify`` value other than ``True``.
+def is_local_http_sandbox(url: str) -> bool:
+    """True for plain HTTP aimed only at ``127.0.0.1`` or ``localhost``."""
+    parsed = urlparse(url)
+    if parsed.scheme != "http":
+        return False
+    host = (parsed.hostname or "").lower().rstrip(".")
+    return host in _LOCAL_SANDBOX_HOSTS
 
-    ``verify=False`` and the string ``"false"`` both fail this check.
+
+def assert_tls(url: str, verify: object = True) -> None:
+    """Refuse a non-local URL that is not HTTPS, and any ``verify`` other than ``True``.
+
+    ``http://127.0.0.1`` and ``http://localhost`` are the local sandbox exception.
+    ``verify=False`` and the string ``"false"`` both fail, including on that exception.
     """
     if verify is not True:
         raise TransportPolicyError("verify=false is refused")
+    if is_local_http_sandbox(url):
+        return
     parsed = urlparse(url)
     if parsed.scheme != "https" or not parsed.hostname:
         raise TransportPolicyError("TLS required")
@@ -210,3 +225,42 @@ def _redirect_hop(result: Any) -> RedirectHop | None:
     if isinstance(result, RedirectHop) and result.status in _REDIRECT_STATUSES:
         return result
     return None
+
+
+def _dispatch_send(prepared: PreparedCall) -> Any:
+    send = getattr(_sender, "fn", None)
+    if send is None:
+        raise TransportPolicyError("transport send is missing")
+    return send(prepared)
+
+
+_GATE = TransportContract(_dispatch_send)
+
+
+def run_send(
+    send: Callable[[PreparedCall], Any],
+    *,
+    database: str,
+    model: str,
+    method: str,
+    url: str,
+    verify: object = True,
+    retry_safe: bool = False,
+) -> Any:
+    """Send one adapter call through the process-wide contract.
+
+    Side effect: invokes ``send`` once, or again when the contract retries.
+    This function does not open a socket.
+    """
+    _sender.fn = send
+    try:
+        return _GATE.call(
+            database=database,
+            model=model,
+            method=method,
+            url=url,
+            verify=verify,
+            retry_safe=retry_safe,
+        )
+    finally:
+        _sender.fn = None
