@@ -1111,7 +1111,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 Execution queue. A line leaves this list only when that item is finished. Items that need a live system or a decision already made stay blocked instead of being faked.
 
 In progress, code that can be finished without a live Odoo or a live model:
-1. T8-S17 provider conformance. Point at the existing C01–C20 gate cases. Do not invent a live cassette. GATE-P1-02 stays open for the missing operator recordings.
+1. T8-S18 SSRF, scrubber, cross-tenant, and IDOR. Point at the existing blocks. Do not open a live socket to a customer host. Do not weaken those tests.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
@@ -1486,3 +1486,8 @@ Not done: T8-S16. The inverse gap stays open. T8-P4-TIERA waits on a live model.
 Track: T8 T8-S16. Worker [Point the redaction suite at the existing scrub](41ef2e5d-bbec-4b97-85e6-903403a0a514). No push. L4 stays off.
 Intent: The suite calls the existing chain and scrub tests. A log line, a chain payload, and a trace that contain the fake secret `sk-test-redaction-marker` are stored only after scrubbing. The raw marker is absent. Storing the raw line is refused. Re-ran the redaction suite, the audit-chain tests, the gateway phase-1 tests, and import-boundary tests: 31 passed. The version-branch count stayed 22.
 Not done: T8-S17. GATE-P1-02 stays open. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
+
+## 2026-10-04 — T8-S17 provider conformance
+Track: T8 T8-S17. Worker [Point the conformance suite at the existing gate cases](43cb465a-af56-4c53-b0f4-dc95e51d3767). No push. L4 stays off.
+Intent: The suite calls the existing C01 through C20 gate test. It passes on synthetic fixtures. Live recordings are still missing for C07, C08, C10, C11, C13, C14, C16, C17, C18, C19, and OpenAI C20. Those ids are not marked passed. GATE-P1-02 stays open. Re-ran the conformance suite, the gateway phase-1 tests, and import-boundary tests: 28 passed. The version-branch count stayed 22.
+Not done: T8-S18. GATE-P1-02 stays open. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
