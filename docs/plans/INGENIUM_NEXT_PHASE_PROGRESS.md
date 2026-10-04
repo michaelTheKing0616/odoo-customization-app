@@ -1111,7 +1111,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 Execution queue. A line leaves this list only when that item is finished. Items that need a live system or a decision already made stay blocked instead of being faked.
 
 In progress, code that can be finished without a live Odoo or a live model:
-1. None running. The next open item that is not blocked on a live system is `cmdk` still pulling `@radix-ui/react-dialog`. No source file imports that package.
+1. Read-only version-drift cells on the Odoo 20 tip: kanban, `name_get`, company-dependent fields, selection storage, mail template syntax, and translations. No writes. No keys in the log.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
@@ -1130,6 +1130,7 @@ Closed this turn:
 - The skill router loads at most three catalog skills. Executable code and a `SKILL.md` over 2500 tokens are refused. The returned grant is the overlap with the caller and is not a superset. `skill_load` uses that router. The recall eval is not run. No score was invented.
 - The expert panel and the billing upgrade sheet open through `SheetMotion`. Escape and the backdrop dismiss them. Titles and the existing actions stay.
 - `ConfirmDialogV2` renders through `DialogPanel`. Confirm stays disabled until the phrase matches. Cancel, Escape, and the backdrop dismiss unless the dialog is busy. The danger confirm style stays.
+- Version-table rows V01 through V32 matched the Odoo 20 tip at `aonb.odoo.com`. The live test reads `.env.json2` and skips only when that file is absent. No key was written into the test.
 
 Blocked until something outside this repo exists. The product behavior stays the refuse or the off switch:
 - T2-J1 `/doc` text match. Sandbox default stays XML-RPC. Promote stays human.
@@ -1137,7 +1138,6 @@ Blocked until something outside this repo exists. The product behavior stays the
 - Production R3 stays blocked until an operator-owned neutralized clone exists. A customer production database is not cloned.
 - GATE-P6-04 has not been run.
 - BL-08 commit plan still needs the second yes before those commits.
-- Live Odoo 20 probes stay skipped until `ODOO20_URL` is set.
 - GATE-P1-02 live cassettes. GATE-P1-04 and GATE-P1-06 live 200-call recordings.
 - T8-P4-TIERA needs a live model. Nightly only.
 - The KMS vendor stays unchosen. Fernet remains the envelope.
@@ -1149,7 +1149,6 @@ Still to finish in code:
 - Production R3 stays blocked until an operator-owned neutralized clone exists for that tenant. Above R1 stays review-only.
 - GATE-P6-04 has not been run. The tool shape is family lists.
 - BL-08 commit plan is not written yet. A second yes is required before those commits.
-- Live Odoo 20 version-table probes stay skipped until `ODOO20_URL` is set.
 - UI-F03 was not re-checked against every route in screen spec 13 marked "can be empty".
 - `cmdk` still depends on `@radix-ui/react-dialog`. No source file imports it.
 - Axe was not run for `/bots`, `/bots/rooms/[id]`, `/bots/[id]`, `/studio/dashboards`, `/bridge/connections`, or `/onboarding`. `/connections` only redirects.
