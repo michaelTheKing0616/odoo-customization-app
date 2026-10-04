@@ -1111,7 +1111,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 Execution queue. A line leaves this list only when that item is finished. Items that need a live system or a decision already made stay blocked instead of being faked.
 
 In progress, code that can be finished without a live Odoo or a live model:
-1. T8-S18 SSRF, scrubber, cross-tenant, and IDOR. Point at the existing blocks. Do not open a live socket to a customer host. Do not weaken those tests.
+1. Missing call ids use `call_<ulid>` instead of `call_{index:04d}`. No new ulid package. Tests that lock `call_0000` are updated with the generator.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
@@ -1491,3 +1491,8 @@ Not done: T8-S17. GATE-P1-02 stays open. The inverse gap stays open. T8-P4-TIERA
 Track: T8 T8-S17. Worker [Point the conformance suite at the existing gate cases](43cb465a-af56-4c53-b0f4-dc95e51d3767). No push. L4 stays off.
 Intent: The suite calls the existing C01 through C20 gate test. It passes on synthetic fixtures. Live recordings are still missing for C07, C08, C10, C11, C13, C14, C16, C17, C18, C19, and OpenAI C20. Those ids are not marked passed. GATE-P1-02 stays open. Re-ran the conformance suite, the gateway phase-1 tests, and import-boundary tests: 28 passed. The version-branch count stayed 22.
 Not done: T8-S18. GATE-P1-02 stays open. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
+
+## 2026-10-04 — T8-S18 boundaries
+Track: T8 T8-S18. Worker [Point the last suite at SSRF and IDOR blocks](f71addde-f92d-4c54-9bf1-ad3d63a9d679). No push. L4 stays off.
+Intent: The suite calls the existing SSRF and cross-connection tests. A link-local URL is rejected before any request. Another connection's card is not found. A fake scrubber secret is absent from the stored text. GATE-P3-01 stays open. Eighteen suite files on disk are not that gate. Re-ran the boundary suite, the gateway phase-1 tests, the inbox tests, and import-boundary tests: 32 passed. The version-branch count stayed 22.
+Not done: the product leftovers that still need a live system or a decision stay open. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
