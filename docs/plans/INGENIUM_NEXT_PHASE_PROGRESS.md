@@ -1111,7 +1111,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 Execution queue. A line leaves this list only when that item is finished. Items that need a live system or a decision already made stay blocked instead of being faked.
 
 In progress, code that can be finished without a live Odoo or a live model:
-1. T8-S16 redaction. No secret in a log line, the audit chain, or a trace. Point at the existing scrub tests. Do not log a real secret.
+1. T8-S17 provider conformance. Point at the existing C01–C20 gate cases. Do not invent a live cassette. GATE-P1-02 stays open for the missing operator recordings.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
@@ -1481,3 +1481,8 @@ Not done: T8-S15. GATE-P2-08 and GATE-P2-09 stay open. The inverse gap stays ope
 Track: T8 T8-S15. Worker [Point the data-op suite at the existing caps](f7d88273-46b6-479f-99bf-947a411a8e3b). No push. L4 stays off.
 Intent: The suite calls the existing sample, row, and batch caps, and the R4 delete and uninstall refusals. A `data.delete` does not reach the port. A sample over 20 is refused. No live rows were deleted. Re-ran the data suite, the data-op tests, and import-boundary tests: 16 passed. The version-branch count stayed 22.
 Not done: T8-S16. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
+
+## 2026-10-04 — T8-S16 redaction
+Track: T8 T8-S16. Worker [Point the redaction suite at the existing scrub](41ef2e5d-bbec-4b97-85e6-903403a0a514). No push. L4 stays off.
+Intent: The suite calls the existing chain and scrub tests. A log line, a chain payload, and a trace that contain the fake secret `sk-test-redaction-marker` are stored only after scrubbing. The raw marker is absent. Storing the raw line is refused. Re-ran the redaction suite, the audit-chain tests, the gateway phase-1 tests, and import-boundary tests: 31 passed. The version-branch count stayed 22.
+Not done: T8-S17. GATE-P1-02 stays open. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
