@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import secrets
+import threading
+import time
 import unicodedata
 from typing import Any
 
@@ -98,8 +101,65 @@ def parse_tool_args(raw: str) -> dict[str, Any]:
     return value
 
 
+_CROCKFORD32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+_CALL_ID_PREFIX = "call_"
+_ULID_TIMESTAMP_BITS = 48
+_ULID_RANDOM_BITS = 80
+_ULID_RANDOM_MASK = (1 << _ULID_RANDOM_BITS) - 1
+_TIMESTAMP_MASK = (1 << _ULID_TIMESTAMP_BITS) - 1
+
+_mint_lock = threading.Lock()
+_last_timestamp_ms = -1
+_last_randomness = 0
+
+
+def _encode_crockford(value: int, length: int) -> str:
+    chars = ["0"] * length
+    for offset in range(length - 1, -1, -1):
+        chars[offset] = _CROCKFORD32[value & 31]
+        value >>= 5
+    return "".join(chars)
+
+
+def _encode_ulid(timestamp_ms: int, randomness: int) -> str:
+    """10 Crockford chars of millisecond time, then 16 chars of 80-bit randomness."""
+    return _encode_crockford(timestamp_ms & _TIMESTAMP_MASK, 10) + _encode_crockford(
+        randomness & _ULID_RANDOM_MASK, 16
+    )
+
+
+def is_minted_call_id(value: str) -> bool:
+    """True when ``value`` is ``call_`` plus 26 Crockford base32 characters."""
+    if len(value) != 31 or not value.startswith(_CALL_ID_PREFIX):
+        return False
+    return all(character in _CROCKFORD32 for character in value[len(_CALL_ID_PREFIX) :])
+
+
 def synthesize_call_id(index: int) -> str:
-    return f"call_{index:04d}"
+    """Mint ``call_`` plus a 26-character Crockford base32 ULID.
+
+    ``index`` stays in the signature for existing callers. It is not encoded.
+    A repeated millisecond increments the previous 80-bit random value so two
+    mints in that millisecond cannot collide.
+    """
+    _ = index
+    global _last_timestamp_ms, _last_randomness
+    with _mint_lock:
+        now = (time.time_ns() // 1_000_000) & _TIMESTAMP_MASK
+        if now > _last_timestamp_ms:
+            _last_timestamp_ms = now
+            _last_randomness = secrets.randbits(_ULID_RANDOM_BITS)
+        elif _last_randomness >= _ULID_RANDOM_MASK:
+            while now <= _last_timestamp_ms:
+                time.sleep(0.001)
+                now = (time.time_ns() // 1_000_000) & _TIMESTAMP_MASK
+            _last_timestamp_ms = now
+            _last_randomness = secrets.randbits(_ULID_RANDOM_BITS)
+        else:
+            _last_randomness += 1
+        timestamp_ms = _last_timestamp_ms
+        randomness = _last_randomness
+    return _CALL_ID_PREFIX + _encode_ulid(timestamp_ms, randomness)
 
 
 def partition_tool_calls(calls: Any, write_names: set[str]) -> tuple[tuple[str, ...], ...]:

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import ast
+import threading
 from pathlib import Path
 
 import pytest
 
 from app.llm_gateway.gateway import Gateway
-from app.llm_gateway.normalize import ArgsRejected, parse_tool_args, synthesize_call_id
+from app.llm_gateway.normalize import ArgsRejected, is_minted_call_id, parse_tool_args
 from app.llm_gateway.retries import MAX_ARG_REPAIRS, arg_repair_stopped, delay_ms, is_retryable, should_stop
 from app.llm_gateway.schema_lowering import canonical_issues, canonical_tool_issues, to_gemini, to_openai_strict
 from app.llm_gateway.scripted import ScriptedAdapter
@@ -63,12 +64,67 @@ def test_missing_call_id_is_synthesized_and_schema_failure_does_not_execute() ->
     assert gateway.complete({}).stop_reason == "end"
     good = gateway.complete({}, {"describe_model": SCHEMA})
     assert good.stop_reason == "tool_calls"
-    assert good.tool_calls[0].id == synthesize_call_id(20)
+    assert is_minted_call_id(good.tool_calls[0].id)
+    assert good.tool_calls[0].id != "call_0000"
     assert good.tool_calls[0].args == {"model": "sale.order"}
     bad = gateway.complete({}, {"describe_model": SCHEMA})
     assert bad.stop_reason == "malformed_tool_call"
     assert bad.tool_calls[0].args is None
+    assert is_minted_call_id(bad.tool_calls[0].id)
+    assert bad.tool_calls[0].id != good.tool_calls[0].id
     assert adapter.calls == 3
+
+
+_CROCKFORD32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+
+def _crockford_int(text: str) -> int:
+    value = 0
+    for character in text:
+        value = (value << 5) | _CROCKFORD32.index(character)
+    return value
+
+
+def test_same_millisecond_call_ids_do_not_collide(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.llm_gateway.normalize as normalize
+
+    frozen_ms = 1_700_000_000_000
+    monkeypatch.setattr(normalize.time, "time_ns", lambda: frozen_ms * 1_000_000)
+    monkeypatch.setattr(normalize, "_last_timestamp_ms", frozen_ms)
+    monkeypatch.setattr(normalize, "_last_randomness", 7)
+    minted = [normalize.synthesize_call_id(0) for _ in range(3)]
+    bodies = [call_id.removeprefix("call_") for call_id in minted]
+    assert [len(body) for body in bodies] == [26, 26, 26]
+    assert [_crockford_int(body[:10]) for body in bodies] == [frozen_ms, frozen_ms, frozen_ms]
+    assert [_crockford_int(body[10:]) for body in bodies] == [8, 9, 10]
+    assert all(is_minted_call_id(call_id) for call_id in minted)
+    assert all(call_id != "call_0000" for call_id in minted)
+    assert normalize._encode_crockford(1_469_918_176_385, 10) == "01ARYZ6S41"
+
+    found: list[str] = []
+    gate = threading.Lock()
+
+    def mint() -> None:
+        local = [normalize.synthesize_call_id(0) for _ in range(20)]
+        with gate:
+            found.extend(local)
+
+    threads = [threading.Thread(target=mint) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert len(found) == 80
+    assert len(set(found)) == 80
+    assert all(call_id[5:15] == minted[0][5:15] for call_id in found)
+
+    later_ms = frozen_ms + 5
+    monkeypatch.setattr(normalize.time, "time_ns", lambda: later_ms * 1_000_000)
+    stepped = normalize.synthesize_call_id(3)
+    assert is_minted_call_id(stepped)
+    assert _crockford_int(stepped[5:15]) == later_ms
+    assert stepped != "call_0003"
+    assert stepped not in minted
 
 
 def test_retry_policy_honors_retry_after_and_stops_on_auth() -> None:

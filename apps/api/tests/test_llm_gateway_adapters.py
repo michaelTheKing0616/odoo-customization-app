@@ -10,6 +10,7 @@ import pytest
 from app.llm_gateway.adapters.anthropic import anthropic_body, anthropic_error, parse_anthropic
 from app.llm_gateway.adapters.gemini import gemini_body, parse_gemini
 from app.llm_gateway.adapters.openai import openai_body, openai_error, parse_openai
+from app.llm_gateway.normalize import is_minted_call_id
 from app.llm_gateway.types import LLMError
 
 
@@ -115,7 +116,8 @@ def test_gemini_synthesizes_a_missing_call_id_and_maps_malformed() -> None:
             ]
         }
     )
-    assert parsed.tool_calls[0].id == "call_0000"
+    assert is_minted_call_id(parsed.tool_calls[0].id)
+    assert parsed.tool_calls[0].id != "call_0000"
     malformed = parse_gemini({"candidates": [{"finishReason": "MALFORMED_FUNCTION_CALL", "content": {"parts": []}}]})
     assert malformed.stop_reason == "malformed_tool_call"
 

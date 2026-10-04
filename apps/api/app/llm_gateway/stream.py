@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.llm_gateway.normalize import parse_tool_args
+from app.llm_gateway.normalize import parse_tool_args, synthesize_call_id
 from app.llm_gateway.types import LLMResponse, ToolCall
 
 IDLE_TIMEOUT_MS = 30_000
@@ -15,7 +15,7 @@ def events_from_step(step: dict[str, Any]) -> list[dict[str, str]]:
     for character in str(step.get("text") or ""):
         events.append({"kind": "text_delta", "text": character})
     for index, call in enumerate(step.get("tool_calls") or []):
-        call_id = str(call.get("id") or f"call_{index:04d}")
+        call_id = str(call.get("id") or "") or synthesize_call_id(index)
         name = str(call["name"])
         raw = str(call.get("raw_args") or "{}")
         events.append({"kind": "tool_call_start", "id": call_id, "name": name})

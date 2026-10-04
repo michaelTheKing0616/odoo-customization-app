@@ -15,6 +15,7 @@ from app.llm_gateway.conformance import run_conformance
 from app.llm_gateway.emulated import EmulatedRejected, parse_emulated_json
 from app.llm_gateway.fallback import Endpoint, call_with_fallback
 from app.llm_gateway.gateway import Gateway
+from app.llm_gateway.normalize import is_minted_call_id
 from app.llm_gateway.registry import TIER_C_CAPS, load_registry, lookup, model_ids_in_source
 from app.llm_gateway.scrub import scrub
 from app.llm_gateway.scripted import ScriptedAdapter
@@ -48,6 +49,22 @@ def test_stream_matches_complete_and_incomplete_json_is_not_executed() -> None:
     )
     assert partial.stop_reason == "malformed_tool_call"
     assert partial.tool_calls[0].args is None
+
+
+def test_stream_keeps_a_supplied_id_and_mints_a_ulid_when_missing() -> None:
+    events = events_from_step(
+        {
+            "tool_calls": [
+                {"id": "fc_1", "name": "describe_model", "raw_args": "{}"},
+                {"name": "describe_model", "raw_args": "{}"},
+            ]
+        }
+    )
+    ids = [event["id"] for event in events if event["kind"] == "tool_call_start"]
+    assert ids[0] == "fc_1"
+    assert is_minted_call_id(ids[1])
+    assert ids[1] != "call_0001"
+    assert ids[0] != ids[1]
 
 
 def test_scripted_stream_matches_complete_on_200_calls() -> None:
