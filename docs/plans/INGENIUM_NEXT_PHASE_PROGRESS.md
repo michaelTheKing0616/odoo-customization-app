@@ -1111,7 +1111,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 Execution queue. A line leaves this list only when that item is finished. Items that need a live system or a decision already made stay blocked instead of being faked.
 
 In progress, code that can be finished without a live Odoo or a live model:
-1. T8-S14 bridge suite. Dry-run checksum, DDL refused in place, and the kill switch on the in-process path. A live savepoint and a live kill switch stay open.
+1. T8-S15 data-op safety. Caps, samples, and delete at R4 on the in-process path. No live row delete.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
@@ -1471,3 +1471,8 @@ Not done: T8-S13. GATE-P3-03 stays open. GATE-P3-07 stays open. GATE-P3-05 stays
 Track: T8 T8-S13. Worker [Prove one apply holds the database lock](1bd9d415-3787-4439-8e59-f76e1c26041f). No push. L4 stays off.
 Intent: While one apply holds a database, a second apply on that database does not write. A different database can proceed. Releasing the lock lets the next apply write. The lock is in memory. The declared `apply_database_lock` table is not applied. Re-ran the lock suite, the WAL tests, and import-boundary tests: 22 passed. The version-branch count stayed 22.
 Not done: T8-S14. GATE-P3-03 stays open. GATE-P3-07 stays open. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
+
+## 2026-10-04 — T8-S14 bridge
+Track: T8 T8-S14. Worker [Point the bridge suite at the existing refusals](f7715ae7-73db-4493-b8b8-45e0fae0971a). No push. L4 stays off.
+Intent: A non-DDL dry-run leaves the in-memory checksum unchanged. An in-place DDL apply does not write. A killed bridge does not write. A live savepoint and a live kill switch have not run on Odoo. GATE-P2-08 and GATE-P2-09 stay open. Re-ran the bridge suite, the protocol tests, and import-boundary tests: 15 passed. The version-branch count stayed 22.
+Not done: T8-S15. GATE-P2-08 and GATE-P2-09 stay open. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
