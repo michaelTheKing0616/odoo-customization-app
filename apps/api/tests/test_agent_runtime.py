@@ -7,6 +7,7 @@ import json
 import pytest
 
 from app.agent_runtime.phases import IllegalTransition
+from app.agent_runtime.prompt import Exchange, ToolExchange
 from app.agent_runtime.runtime import AgentRuntime, LoopDetected, RunState
 from app.agent_runtime.tools import FORBIDDEN, PHASE_TOOLS, ToolDenied
 from app.changeset.executor import reset_journal
@@ -319,6 +320,78 @@ def test_exported_state_restores_without_replaying_tools_and_a_process_kill_lose
     assert fresh.phase == "INTAKE"
     assert fresh.changeset == []
     assert fresh.tool_calls == 0
+
+
+def test_recorded_exchange_is_in_context_after_export_and_restore() -> None:
+    """Recorded exchanges travel in the exported dict and back into context.
+
+    The runtime that uses the restored run binds those exchanges.
+    ``build_context`` then sees the same user text, assistant text, and
+    tool result. Tools are not replayed. A payload that omits ``transcript``
+    restores an empty transcript. Existing export keys stay required.
+    Nothing is written to disk or a database. A process kill still drops
+    the run unless the caller kept the dict.
+    """
+    runtime = AgentRuntime()
+    state = runtime.start()
+    runtime.record_exchange(
+        state,
+        Exchange(
+            user="where is the delivery date",
+            assistant="checking the model",
+            tools=(
+                ToolExchange(
+                    call_id="call_restore",
+                    name="schema_search",
+                    args={"query": "sale.order"},
+                    result={"marker": "delivery-date-marker"},
+                ),
+            ),
+            assumption="date is a stock field",
+            evidence_id="e-restore",
+        ),
+    )
+    assert state.tool_calls == 0
+    exported = json.loads(json.dumps(state.export_state()))
+    del state
+    del runtime
+
+    resumed = RunState.restore(exported)
+    exported["transcript"][0]["user"] = "changed-after-restore"
+    exported["transcript"][0]["tools"][0]["result"]["marker"] = "changed-marker"
+    context = AgentRuntime().build_context(
+        resumed,
+        window_tokens=4_000,
+        count_tokens=len,
+    )
+    rendered = json.dumps(context.messages)
+    assert "where is the delivery date" in rendered
+    assert "checking the model" in rendered
+    assert "delivery-date-marker" in rendered
+    assert "date is a stock field" in rendered
+    assert "e-restore" in rendered
+    assert "changed-after-restore" not in rendered
+    assert "changed-marker" not in rendered
+    assert context.kept_call_ids == ("call_restore",)
+    assert resumed.tool_calls == 0
+    assert resumed.phase == "INTAKE"
+
+    omitted = dict(exported)
+    del omitted["transcript"]
+    empty_run = RunState.restore(omitted)
+    empty_context = AgentRuntime().build_context(
+        empty_run,
+        window_tokens=4_000,
+        count_tokens=len,
+    )
+    assert empty_context.kept_turns == 0
+    assert "where is the delivery date" not in json.dumps(empty_context.messages)
+    assert empty_run.tool_calls == 0
+
+    missing_phase = dict(exported)
+    del missing_phase["phase"]
+    with pytest.raises(ValueError):
+        RunState.restore(missing_phase)
 
 
 def test_changeset_simulate_uses_the_in_process_simulator() -> None:

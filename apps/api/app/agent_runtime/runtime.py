@@ -10,7 +10,13 @@ from typing import Any
 
 from app.agent_runtime.memory import MemoryBook, MemoryItem
 from app.agent_runtime.phases import ENGINE_ONLY, PHASES, IllegalTransition, assert_transition
-from app.agent_runtime.prompt import AssembledContext, Exchange, PromptRejected, assemble_context
+from app.agent_runtime.prompt import (
+    AssembledContext,
+    Exchange,
+    PromptRejected,
+    ToolExchange,
+    assemble_context,
+)
 from app.agent_runtime.tools import (
     ToolDenied,
     ask_user_result,
@@ -46,6 +52,7 @@ class RunState:
     status: str = "running"
     loop_warnings: int = 0
     _tool_counts: dict[str, int] = field(default_factory=dict)
+    _transcript: list[Exchange] = field(default_factory=list)
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -65,7 +72,9 @@ class RunState:
         Inputs: this RunState.
         Outputs: phase, step, tool_calls, changeset, facts, plan_hash,
         approved_hash, applied, report, events, status, loop_warnings,
-        and tool_counts. Nested values are copies.
+        tool_counts, and transcript. The transcript is the recorded
+        exchanges. Nested values are copies. Pending memory, role notes,
+        episodic memory, and global knowledge are not included.
         Side effects: none. Nothing is written to disk or a database.
         A process kill still drops the run unless the caller kept this dict.
         """
@@ -83,17 +92,22 @@ class RunState:
             "status": self.status,
             "loop_warnings": self.loop_warnings,
             "tool_counts": dict(self._tool_counts),
+            "transcript": _transcript_to_payload(self._transcript),
         }
 
     @classmethod
     def restore(cls, payload: dict[str, Any]) -> RunState:
         """Rebuild a run from an exported state dict.
 
-        Inputs: the dict from export_state. Every key is required.
+        Inputs: the dict from export_state. Every existing export key is
+        required. ``transcript`` may be omitted; that restores an empty
+        transcript. A transcript list is copied onto the run as exchanges.
         Outputs: a new RunState. Nested lists are copies, so the payload
         and the restored run do not share objects.
         Side effects: none. Tools are not replayed. Nothing is written
-        to disk or a database.
+        to disk or a database. The runtime that later uses this run binds
+        the restored exchanges. A process kill still drops the run unless
+        the caller kept this dict.
         Raises ValueError when the payload is incomplete or the wrong shape.
         Raises IllegalTransition when phase is not in the machine.
         """
@@ -116,6 +130,7 @@ class RunState:
             if not isinstance(key, str):
                 raise ValueError("tool_counts keys must be strings")
             tool_counts[key] = _require_int(count, "tool_counts value")
+        transcript = _transcript_from_payload(payload)
         return cls(
             phase=phase,
             step=_require_int(payload["step"], "step"),
@@ -130,6 +145,7 @@ class RunState:
             status=_require_str(payload["status"], "status"),
             loop_warnings=_require_int(payload["loop_warnings"], "loop_warnings"),
             _tool_counts=tool_counts,
+            _transcript=transcript,
         )
 
 
@@ -183,6 +199,104 @@ def _copy_records(records: Any, *, label: str) -> list[dict[str, Any]]:
             raise ValueError(f"{label}[{index}] must be an object")
         copied.append(copy.deepcopy(record))
     return copied
+
+
+def _transcript_to_payload(exchanges: list[Exchange]) -> list[dict[str, Any]]:
+    """Copy recorded exchanges into plain objects.
+
+    Inputs: the run's exchange list.
+    Outputs: a new list of dicts. Tool args and results are copies.
+    Side effects: none.
+    """
+    copied: list[dict[str, Any]] = []
+    for exchange in exchanges:
+        copied.append(
+            {
+                "user": exchange.user,
+                "assistant": exchange.assistant,
+                "tools": [
+                    {
+                        "call_id": tool.call_id,
+                        "name": tool.name,
+                        "args": copy.deepcopy(tool.args),
+                        "result": copy.deepcopy(tool.result),
+                    }
+                    for tool in exchange.tools
+                ],
+                "assumption": exchange.assumption,
+                "evidence_id": exchange.evidence_id,
+            }
+        )
+    return copied
+
+
+def _transcript_from_payload(payload: Mapping[str, Any]) -> list[Exchange]:
+    """Read exchanges from an exported state dict.
+
+    Inputs: the export payload. A missing ``transcript`` key is an empty
+    list. A present key must be a list of exchange objects.
+    Outputs: new Exchange values. Tool args and results are copies.
+    Side effects: none. Tools are not called.
+    Raises ValueError when the transcript has the wrong shape.
+    """
+    if "transcript" not in payload:
+        return []
+    records = payload["transcript"]
+    if not isinstance(records, list):
+        raise ValueError("transcript must be a list")
+    exchanges: list[Exchange] = []
+    seen: set[str] = set()
+    for index, record in enumerate(records):
+        exchange = _exchange_from_record(record, index)
+        for tool in exchange.tools:
+            if tool.call_id in seen:
+                raise ValueError(f"duplicate tool call id {tool.call_id}")
+            seen.add(tool.call_id)
+        exchanges.append(exchange)
+    return exchanges
+
+
+def _exchange_from_record(record: Any, index: int) -> Exchange:
+    label = f"transcript[{index}]"
+    if not isinstance(record, dict):
+        raise ValueError(f"{label} must be an object")
+    tools_raw = record.get("tools")
+    if not isinstance(tools_raw, list):
+        raise ValueError(f"{label}.tools must be a list")
+    tools = [
+        _tool_from_record(tool, f"{label}.tools[{tool_index}]")
+        for tool_index, tool in enumerate(tools_raw)
+    ]
+    try:
+        return Exchange(
+            user=_require_str(record.get("user"), f"{label}.user"),
+            assistant=_require_str(record.get("assistant"), f"{label}.assistant"),
+            tools=tuple(tools),
+            assumption=_require_str(record.get("assumption"), f"{label}.assumption"),
+            evidence_id=_require_str(record.get("evidence_id"), f"{label}.evidence_id"),
+        )
+    except PromptRejected as exc:
+        raise ValueError(f"{label} {exc}") from exc
+
+
+def _tool_from_record(record: Any, label: str) -> ToolExchange:
+    if not isinstance(record, dict):
+        raise ValueError(f"{label} must be an object")
+    args = record.get("args")
+    result = record.get("result")
+    if not isinstance(args, dict):
+        raise ValueError(f"{label}.args must be an object")
+    if not isinstance(result, dict):
+        raise ValueError(f"{label}.result must be an object")
+    try:
+        return ToolExchange(
+            call_id=_require_str(record.get("call_id"), f"{label}.call_id"),
+            name=_require_str(record.get("name"), f"{label}.name"),
+            args=copy.deepcopy(args),
+            result=copy.deepcopy(result),
+        )
+    except PromptRejected as exc:
+        raise ValueError(f"{label} {exc}") from exc
 
 
 class BudgetExceeded(Exception):
@@ -255,14 +369,16 @@ class AgentRuntime:
 
         Inputs: the run state and one exchange.
         Outputs: none.
-        Side effects: stores a deep copy on this runtime, keyed by the state
-        object. The copy is not in ``export_state``. A restored run has an
-        empty transcript. Does not call a model and does not write to disk.
+        Side effects: stores a deep copy on this run. ``export_state``
+        includes that copy. The runtime that uses the run reads the same
+        list. Does not call a model and does not write to disk or a database.
+        A process kill still drops the run unless the caller kept the
+        exported dict.
         """
         if not isinstance(exchange, Exchange):
             raise TypeError("exchange must be an Exchange")
         stored = copy.deepcopy(exchange)
-        bucket = self._transcripts.setdefault(id(state), [])
+        bucket = self._bind_transcript(state)
         seen = {tool.call_id for item in bucket for tool in item.tools}
         for tool in stored.tools:
             if tool.call_id in seen:
@@ -329,16 +445,18 @@ class AgentRuntime:
 
         Inputs: run state, window size, and a local token counter. Layers and
         budgets are applied by ``assemble_context``. The transcript is the
-        one recorded with ``record_exchange`` for this state object. The
+        one recorded with ``record_exchange`` for this state object. After
+        restore, this runtime binds the exchanges carried on the run. The
         memory layer is confirmed tenant and database text from this run's
         book, then any caller-supplied memory string. Pending items, refused
         role notes, episodic memory, and global knowledge are omitted.
         Outputs: messages, the scrubbed cacheable prefix, and budget counts.
         The memory layer is fitted to 5 percent of the window.
-        Side effects: none. Does not mutate the run, the book, or the
-        transcript. Does not call a model provider.
+        Side effects: binds the run's exchange list onto this runtime.
+        Does not mutate the exchanges, the book, or the run fields.
+        Does not replay tools. Does not call a model provider.
         """
-        exchanges = tuple(self._transcripts.get(id(state), ()))
+        exchanges = tuple(self._bind_transcript(state))
         book = self._memory.get(id(state))
         book_text = book.prompt_text() if book is not None else ""
         return assemble_context(
@@ -456,6 +574,21 @@ class AgentRuntime:
         state.status = "verified" if verified else "verify_failed"
         state.events.append({"kind": "phase", "phase": "REPORT"})
         return {"ok": verified, "applied": verified, "result": result, "status": state.status}
+
+    def _bind_transcript(self, state: RunState) -> list[Exchange]:
+        """Attach this run's exchanges to the runtime that uses it.
+
+        Inputs: the run state. Recorded and restored exchanges already sit
+        on that object.
+        Outputs: the list ``build_context`` reads for this object.
+        Side effects: stores that list on this runtime, keyed by the state
+        object. Does not replay tools. Does not write to disk or a database.
+        """
+        bound = self._transcripts.get(id(state))
+        if bound is None:
+            bound = state._transcript
+            self._transcripts[id(state)] = bound
+        return bound
 
     def _guard(self, state: RunState) -> None:
         if state.status in {"aborted_loop", "cancelled"}:

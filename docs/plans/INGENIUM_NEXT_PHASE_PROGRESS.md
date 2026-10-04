@@ -1111,8 +1111,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 Execution queue. A line leaves this list only when that item is finished. Items that need a live system or a decision already made stay blocked instead of being faked.
 
 In progress, code that can be finished without a live Odoo or a live model:
-1. The recorded prompt transcript is included in exported run state and comes back on restore. A process kill still drops the run unless the caller kept that dict. GATE-P4-07 stays open.
-2. Close the two protected-registry holes suite 09 locked as open: a two-hop `$ref` on a field relation, and a scaffold of `account.move` spelled with Greek omicron (U+03BF). GATE-P3-05 stays open until both are denied and not applied.
+1. Close the two protected-registry holes suite 09 locked as open: a two-hop `$ref` on a field relation, and a scaffold of `account.move` spelled with Greek omicron (U+03BF). GATE-P3-05 stays open until both are denied and not applied.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
@@ -1122,6 +1121,7 @@ Closed this turn:
 - Apply refuses a frozen change-set and an elevate change-set with no domain owner before any write. When an observation is supplied, verify runs after the in-memory apply: R2 and above rolls back, and below R2 the result is NEEDS_HUMAN. An apply with no observation still records the journal result.
 - Snapshot preflight passes the connection major from `server_version`. Major 20 and later accept a metadata snapshot. Major 19 still requires a `/web/database` backup when the caller asks. A missing major stays off the Odoo 20 path. Freshness and BILLABLE stay gated.
 - The executor calls undo through validate, policy, and approval. `apply` does not call it. A refused undo does not write. An approved undo with a matching snapshot applies the inverse. A mismatch stays NEEDS_HUMAN. A field that still has rows is hidden, and the rows stay.
+- Recorded prompt exchanges travel in the exported run dict and come back on restore. A payload that omits `transcript` restores an empty transcript. Tools are not replayed. A process kill still drops the run unless the caller kept that dict. GATE-P4-07 and GATE-P4-08 stay open.
 
 Blocked until something outside this repo exists. The product behavior stays the refuse or the off switch:
 - T2-J1 `/doc` text match. Sandbox default stays XML-RPC. Promote stays human.
@@ -1170,7 +1170,7 @@ Still to finish in code:
 - Changeset coverage is under the bar: 89.59% line and 79.46% branch, measured on the changeset tests, not the full suite. No CI floor was added.
 - A process kill still loses a run. Resume restores an exported in-memory dict only. GATE-P4-08 is not a durable restart.
 - Three tool names sit beside the card list: `changeset_validate`, `changeset_simulate`, and `changeset_render`. The registered card set is 42 names and does not include an apply tool.
-- The prompt transcript is in memory on the runtime and is not part of `export_state`. GATE-P4-07 is not closed. Compaction was not run against a live model.
+- GATE-P4-07 is not closed. Compaction was not run against a live model.
 - EV-AMB-01 through EV-AMB-08 have no YAML scenario bodies. The clarification rules were tested without scoring those ids.
 - T8-P4-TIERA needs a live model. It is nightly only and is not a pull-request card. It has not been started.
 - Op conformance is not complete. 3 of 63 catalog ops have all twelve parts: `field.create`, `field.update`, and `field.delete`. 41 reversible ops have no inverse. 55 ops have no params schema. The suite locks that gap and does not stub the missing parts.
