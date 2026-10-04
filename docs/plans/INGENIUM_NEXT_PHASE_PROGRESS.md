@@ -1111,7 +1111,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 Execution queue. A line leaves this list only when that item is finished. Items that need a live system or a decision already made stay blocked instead of being faked.
 
 In progress, code that can be finished without a live Odoo or a live model:
-1. T8-S15 data-op safety. Caps, samples, and delete at R4 on the in-process path. No live row delete.
+1. T8-S16 redaction. No secret in a log line, the audit chain, or a trace. Point at the existing scrub tests. Do not log a real secret.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
@@ -1476,3 +1476,8 @@ Not done: T8-S14. GATE-P3-03 stays open. GATE-P3-07 stays open. The inverse gap 
 Track: T8 T8-S14. Worker [Point the bridge suite at the existing refusals](f7715ae7-73db-4493-b8b8-45e0fae0971a). No push. L4 stays off.
 Intent: A non-DDL dry-run leaves the in-memory checksum unchanged. An in-place DDL apply does not write. A killed bridge does not write. A live savepoint and a live kill switch have not run on Odoo. GATE-P2-08 and GATE-P2-09 stay open. Re-ran the bridge suite, the protocol tests, and import-boundary tests: 15 passed. The version-branch count stayed 22.
 Not done: T8-S15. GATE-P2-08 and GATE-P2-09 stay open. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
+
+## 2026-10-04 — T8-S15 data ops
+Track: T8 T8-S15. Worker [Point the data-op suite at the existing caps](f7d88273-46b6-479f-99bf-947a411a8e3b). No push. L4 stays off.
+Intent: The suite calls the existing sample, row, and batch caps, and the R4 delete and uninstall refusals. A `data.delete` does not reach the port. A sample over 20 is refused. No live rows were deleted. Re-ran the data suite, the data-op tests, and import-boundary tests: 16 passed. The version-branch count stayed 22.
+Not done: T8-S16. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
