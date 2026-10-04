@@ -14,6 +14,11 @@ type DialogProps = {
   footer?: React.ReactNode;
   className?: string;
   testId?: string;
+  dataRiskLevel?: string;
+  headerClassName?: string;
+  headerTestId?: string;
+  titleClassName?: string;
+  initialFocus?: React.ComponentProps<typeof Dialog.Popup>["initialFocus"];
 };
 
 function useReturnFocusOnClose(open: boolean) {
@@ -42,23 +47,44 @@ export function DialogPanel({
   footer,
   className,
   testId,
+  dataRiskLevel,
+  headerClassName,
+  headerTestId,
+  titleClassName,
+  initialFocus,
 }: DialogProps) {
   const previousFocusRef = useReturnFocusOnClose(open);
+  const callerSetsBorderColor = className
+    ?.split(/\s+/)
+    .some((token) => token.startsWith("border-"));
   return (
     <Dialog.Root open={open} onOpenChange={(nextOpen) => onOpenChange(nextOpen)}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
         <Dialog.Popup
           data-testid={testId ?? "dialog-panel"}
+          data-risk-level={dataRiskLevel}
           finalFocus={previousFocusRef}
+          initialFocus={initialFocus}
           className={cn(
-            "fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border-subtle bg-surface-raised p-5 shadow-overlay outline-none",
-            className,
+            "fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-surface-raised p-5 shadow-overlay outline-none",
+            callerSetsBorderColor ? className : cn("border-border-subtle", className),
           )}
         >
-          <div className="flex items-start justify-between gap-3">
+          <div
+            className={cn("flex items-start justify-between gap-3", headerClassName)}
+            data-testid={headerTestId}
+          >
             <div>
-              <Dialog.Title className="text-md font-semibold text-ink">{title}</Dialog.Title>
+              <Dialog.Title
+                className={
+                  titleClassName
+                    ? cn("font-semibold", titleClassName)
+                    : "text-md font-semibold text-ink"
+                }
+              >
+                {title}
+              </Dialog.Title>
               {description ? (
                 <Dialog.Description className="mt-1 text-sm text-muted">
                   {description}

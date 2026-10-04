@@ -1111,7 +1111,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 Execution queue. A line leaves this list only when that item is finished. Items that need a live system or a decision already made stay blocked instead of being faked.
 
 In progress, code that can be finished without a live Odoo or a live model:
-1. `ConfirmDialogV2` uses `DialogPanel`. Confirm and cancel stay the same.
+1. The expert panel and billing use the motion sheet instead of `Sheet`. Open, close, and the existing actions stay the same.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
@@ -1128,6 +1128,7 @@ Closed this turn:
 - The XML-RPC and JSON-2 sends go through the transport contract. Plain HTTP still sends for `127.0.0.1` and `localhost`. Any other host must be HTTPS with certificate checks on. A write does not follow a redirect.
 - Audit retention decides in process. A raw LLM side copy expires after 7 days. An accounting kind stays 7 years. Every other kind stays 24 months. The sweeper drops only the side copy. The chain row and `entry_hash` stay. No live database row was deleted.
 - The skill router loads at most three catalog skills. Executable code and a `SKILL.md` over 2500 tokens are refused. The returned grant is the overlap with the caller and is not a superset. `skill_load` uses that router. The recall eval is not run. No score was invented.
+- `ConfirmDialogV2` renders through `DialogPanel`. Confirm stays disabled until the phrase matches. Cancel, Escape, and the backdrop dismiss unless the dialog is busy. The danger confirm style stays.
 
 Blocked until something outside this repo exists. The product behavior stays the refuse or the off switch:
 - T2-J1 `/doc` text match. Sandbox default stays XML-RPC. Promote stays human.
@@ -1149,7 +1150,6 @@ Still to finish in code:
 - BL-08 commit plan is not written yet. A second yes is required before those commits.
 - Live Odoo 20 version-table probes stay skipped until `ODOO20_URL` is set.
 - UI-F03 was not re-checked against every route in screen spec 13 marked "can be empty".
-- `ConfirmDialogV2` is still its own overlay, not `DialogPanel`.
 - `cmdk` still depends on `@radix-ui/react-dialog`. No source file imports it.
 - The expert panel and billing still use `Sheet`, not the motion sheet.
 - Axe was not run for `/bots`, `/bots/rooms/[id]`, `/bots/[id]`, `/studio/dashboards`, `/bridge/connections`, or `/onboarding`. `/connections` only redirects.
