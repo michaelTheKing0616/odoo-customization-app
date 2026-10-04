@@ -1112,6 +1112,7 @@ Execution queue. A line leaves this list only when that item is finished. Items 
 
 In progress, code that can be finished without a live Odoo or a live model:
 1. The recorded prompt transcript is included in exported run state and comes back on restore. A process kill still drops the run unless the caller kept that dict. GATE-P4-07 stays open.
+2. Close the two protected-registry holes suite 09 locked as open: a two-hop `$ref` on a field relation, and a scaffold of `account.move` spelled with Greek omicron (U+03BF). GATE-P3-05 stays open until both are denied and not applied.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
@@ -1434,4 +1435,7 @@ Track: T8 T8-S08. Worker [Point the policy suite at the matrix](0be6677d-b5e7-46
 Intent: The suite calls the existing approval matrix. Production R4 is deny. Production R3 asks for two approvers. Freeze and expiry are checked. GATE-P3-06 is skipped because mutmut and cosmic-ray are not installed. No mutation score was recorded. Re-ran the suite with the memory, prompt, and import-boundary tests: 24 passed, 1 skipped. The version-branch count stayed 22.
 Not done: T8-S09. GATE-P3-06 stays open. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
 
-CLAIM T8-S09 2026-10-04T01:02:00Z. Protected-registry suite only. Point at tests/test_protected_registry.py. Do not duplicate the named RT cases. Do not stub a denial. Do not edit protected_core.yaml. A nested or confusable gap that the existing tests do not cover stays listed, not marked passed. Do not enable L4. Do not commit.
+## 2026-10-04 — T8-S09 protected registry
+Track: T8 T8-S09. Worker [Point the protected-registry suite at RT-10–16](7e22ace5-6ea8-481d-920a-cdd8583bc921). No push. L4 stays off.
+Intent: The suite points at the existing RT-10 through RT-16 tests. A protected scaffold or stored-compute field op is denied before a journal write. GATE-P3-05 stays open. A two-hop `$ref` on a field relation is still unclassified. A scaffold of `account.move` spelled with Greek omicron (U+03BF) is still applied. Re-ran the suite, the registry tests, and import-boundary tests: 28 passed. The version-branch count stayed 22.
+Not done: T8-S10. GATE-P3-05 stays open. GATE-P3-06 stays open. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
