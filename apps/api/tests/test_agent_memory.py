@@ -1,7 +1,8 @@
 """T8-MEM: pending proposals, human confirm, and RT-47 role notes.
 
-The prompt 5% memory budget is a caller-supplied string in
-``agent_runtime.prompt``. These tests do not treat that budget as a store.
+``build_context`` places confirmed tenant and database facts in the memory
+layer. Pending items, refused role notes, episodic memory, and global
+knowledge stay out. The layer is capped at 5 percent of the window.
 """
 
 from __future__ import annotations
@@ -211,3 +212,105 @@ def test_working_memory_is_engine_trusted_and_not_a_tenant_fact() -> None:
     assert role.value.code == "RT-47"
     assert book.confirmed_tenant_facts() == ()
     assert [item.text for item in book.items()] == ["Phase is DISCOVER."]
+
+
+def test_confirmed_fact_is_in_the_built_context_and_pending_is_not() -> None:
+    """Confirmed tenant and database text is in the memory layer.
+
+    A pending item, a refused role note, confirmed episodic memory, and
+    refused global knowledge are absent. A fact longer than the budget is
+    truncated, and the layer stays at or under 5 percent of the window.
+    """
+    runtime, state = _discover()
+    pending_text = "PENDING-LOT-POLICY is not confirmed."
+    tenant_text = "Warehouse uses lots."
+    database_text = "This database posts invoices in NGN."
+    episodic_text = "Saw the import fail once."
+    global_text = "Every tenant uses lots."
+    huge = "HUGE-CONFIRMED-FACT " + ("x" * 5_000)
+
+    pending = _body(
+        runtime.call_tool(
+            state,
+            "memory_propose",
+            {"proposal": pending_text, "memory_class": "tenant"},
+        )
+    )
+    tenant = _body(
+        runtime.call_tool(
+            state,
+            "memory_propose",
+            {"proposal": tenant_text, "memory_class": "tenant"},
+        )
+    )
+    database = _body(
+        runtime.call_tool(
+            state,
+            "memory_propose",
+            {"proposal": database_text, "scope": "database"},
+        )
+    )
+    episodic = _body(
+        runtime.call_tool(
+            state,
+            "memory_propose",
+            {"proposal": episodic_text, "memory_class": "episodic"},
+        )
+    )
+    role = _body(
+        runtime.call_tool(
+            state,
+            "memory_propose",
+            {"proposal": _ROLE_NOTE, "memory_class": "tenant"},
+        )
+    )
+    global_note = _body(
+        runtime.call_tool(
+            state,
+            "memory_propose",
+            {"proposal": global_text, "memory_class": "global"},
+        )
+    )
+    overflow = _body(
+        runtime.call_tool(
+            state,
+            "memory_propose",
+            {"proposal": huge, "memory_class": "tenant"},
+        )
+    )
+    assert pending["status"] == "pending"
+    assert role["status"] == "refused"
+    assert role["code"] == "RT-47"
+    assert global_note["status"] == "refused"
+    assert global_note["code"] == "GLOBAL_REQUIRES_PR_EVAL"
+
+    runtime.confirm_memory(state, tenant["item_id"], confirmed_by="u2")
+    runtime.confirm_memory(state, database["item_id"], confirmed_by="u2")
+    runtime.confirm_memory(state, episodic["item_id"], confirmed_by="u2")
+    runtime.confirm_memory(state, overflow["item_id"], confirmed_by="u2")
+    runtime.record_working(state, "Phase is DISCOVER.")
+
+    window = 4_000
+    context = runtime.build_context(
+        state,
+        window_tokens=window,
+        count_tokens=len,
+    )
+    rendered = json.dumps(context.messages)
+    memory_layer = next(
+        message["content"] for message in context.messages if message.get("layer") == "memory"
+    )
+    assert tenant_text in memory_layer
+    assert database_text in memory_layer
+    assert "tenant: " + tenant_text in memory_layer
+    assert "database: " + database_text in memory_layer
+    assert pending_text not in rendered
+    assert episodic_text not in rendered
+    assert _ROLE_NOTE not in rendered
+    assert global_text not in rendered
+    assert "Phase is DISCOVER." not in rendered
+    assert huge not in rendered
+    assert "HUGE-CONFIRMED-FACT" in memory_layer
+    assert tenant_text not in context.cached_prefix
+    assert context.memory_tokens <= window * 5 // 100
+    assert context.memory_tokens == len(memory_layer)

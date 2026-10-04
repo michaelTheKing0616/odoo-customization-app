@@ -7,10 +7,13 @@ Global knowledge is not written here. It enters through a pull request
 plus eval.
 Episodic memory is never auto-injected.
 
-The 5% memory budget in ``agent_runtime.prompt`` fits a caller-supplied
-string. That budget is not this book and it is not a global store.
+Confirmed tenant and database facts are the only items from this book
+that the runtime may place in the prompt memory layer. Pending items,
+episodic memory, and global knowledge stay out of that layer. The 5%
+budget in ``agent_runtime.prompt`` fits the string the runtime passes.
 
-This module does not call a model and does not open a network connection.
+This module does not call a model, does not call the prompt assembler,
+and does not open a network connection.
 """
 
 from __future__ import annotations
@@ -115,7 +118,8 @@ class MemoryBook:
     """In-process memory for one run. Not a global knowledge store.
 
     The book lives on the runtime that owns the run. It is not written to
-    disk, a database, or the prompt assembler.
+    disk or a database. ``prompt_text`` is the confirmed tenant and
+    database text the runtime reads when it builds the memory layer.
     """
 
     def __init__(self) -> None:
@@ -154,6 +158,20 @@ class MemoryBook:
             if item.memory_class in HUMAN_CONFIRMED and item.status == "confirmed" and item.confirmed
         )
 
+    def prompt_text(self) -> str:
+        """Render confirmed tenant and database facts for the prompt layer.
+
+        Inputs: none.
+        Outputs: one ``class: text`` line per confirmed tenant or database
+        fact, in book order. Empty when none are confirmed. Pending items,
+        working notes, episodic memory, global knowledge, and refused role
+        notes are omitted.
+        Side effects: none. Does not call the prompt assembler.
+        """
+        return "\n".join(
+            f"{item.memory_class}: {item.text}" for item in self.confirmed_tenant_facts()
+        )
+
     def eligible_for_memory_layer(self) -> tuple[MemoryItem, ...]:
         """Return engine working notes and confirmed tenant or database facts.
 
@@ -161,8 +179,9 @@ class MemoryBook:
         Outputs: trusted working items and human-confirmed tenant or
         database facts. Episodic items are omitted, including after confirm.
         Pending items are omitted.
-        Side effects: none. Does not call the prompt assembler. The 5%
-        budget in ``prompt.py`` is a separate caller-supplied string.
+        Side effects: none. Does not call the prompt assembler. The prompt
+        memory layer uses ``prompt_text``, which is confirmed tenant and
+        database facts only. Working notes returned here stay on the book.
         """
         selected: list[MemoryItem] = []
         for item in self._items:

@@ -214,6 +214,20 @@ def _looks_like_instruction(text: str) -> bool:
     return any(marker in low for marker in markers)
 
 
+def _combine_memory(book_text: str, supplied: str) -> str:
+    """Join confirmed book text with a caller-supplied memory string.
+
+    Inputs: confirmed tenant or database lines, and the optional caller
+    string. Either may be empty.
+    Outputs: book text, then the caller string, separated by a newline
+    when both are present. Empty when both are empty.
+    Side effects: none.
+    """
+    if book_text and supplied:
+        return f"{book_text}\n{supplied}"
+    return book_text or supplied
+
+
 class AgentRuntime:
     """Scripted or live models both enter through call_tool / complete_phase.
 
@@ -262,7 +276,9 @@ class AgentRuntime:
         Inputs: the run state.
         Outputs: the book created for that object. A new run gets an empty
         book. Working notes and pending proposals live here, not in
-        ``state.facts`` and not in the prompt budget string.
+        ``state.facts``. Confirmed tenant and database facts are read by
+        ``build_context``. Pending items, episodic memory, and global
+        knowledge are not.
         Side effects: stores the book on this runtime, keyed by the state
         object. A restored run is a new object and starts with an empty
         book. Nothing is written to disk or a database.
@@ -313,12 +329,18 @@ class AgentRuntime:
 
         Inputs: run state, window size, and a local token counter. Layers and
         budgets are applied by ``assemble_context``. The transcript is the
-        one recorded with ``record_exchange`` for this state object.
+        one recorded with ``record_exchange`` for this state object. The
+        memory layer is confirmed tenant and database text from this run's
+        book, then any caller-supplied memory string. Pending items, refused
+        role notes, episodic memory, and global knowledge are omitted.
         Outputs: messages, the scrubbed cacheable prefix, and budget counts.
-        Side effects: none. Does not mutate the run or the transcript.
-        Does not call a model provider.
+        The memory layer is fitted to 5 percent of the window.
+        Side effects: none. Does not mutate the run, the book, or the
+        transcript. Does not call a model provider.
         """
         exchanges = tuple(self._transcripts.get(id(state), ()))
+        book = self._memory.get(id(state))
+        book_text = book.prompt_text() if book is not None else ""
         return assemble_context(
             state,
             exchanges,
@@ -326,7 +348,7 @@ class AgentRuntime:
             count_tokens=count_tokens,
             tools=tools,
             skills=skills,
-            memory=memory,
+            memory=_combine_memory(book_text, memory),
             overlay=overlay,
             overlay_runtime_edited=overlay_runtime_edited,
             core_runtime_edited=core_runtime_edited,
