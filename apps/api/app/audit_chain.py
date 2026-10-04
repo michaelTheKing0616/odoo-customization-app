@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import calendar
 import hashlib
 import json
 import re
 import uuid
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -16,6 +18,15 @@ from sqlalchemy.orm import Session
 from app.db_models import AuditChainEntry
 
 GENESIS_PREV_HASH = "0" * 64
+
+# No caller emits these kinds yet. Retention reads only this pair.
+# Tests use these members; do not add a second copy of the names.
+RAW_LLM_KINDS: frozenset[str] = frozenset({"llm_raw_payload"})
+ACCOUNTING_KINDS: frozenset[str] = frozenset({"accounting"})
+
+RAW_LLM_RETENTION_DAYS = 7
+DEFAULT_RETENTION_MONTHS = 24
+ACCOUNTING_RETENTION_YEARS = 7
 
 _REDACT_KEY = re.compile(
     r"(?i)(pass|password|secret|token|api[_-]?key|smtp_pass|authorization|"
@@ -237,3 +248,112 @@ def verify_db(db: Session) -> tuple[bool, int | None]:
             }
         )
     return verify_chain(entries)
+
+
+def _as_utc(moment: datetime) -> datetime:
+    if moment.tzinfo is None:
+        return moment.replace(tzinfo=UTC)
+    return moment.astimezone(UTC)
+
+
+def _shift_months(moment: datetime, months: int) -> datetime:
+    """Add calendar months. The day clamps to the last day of the target month.
+
+    Inputs: a datetime and a non-negative month count.
+    Outputs: the shifted datetime, same clock time and tzinfo when the day exists.
+    Side effects: none.
+    """
+    if months < 0:
+        raise ValueError("months must be zero or positive")
+    month_index = (moment.month - 1) + months
+    year = moment.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(moment.day, calendar.monthrange(year, month)[1])
+    return moment.replace(year=year, month=month, day=day)
+
+
+def _retention_expires_at(kind: str, recorded_at: datetime) -> datetime:
+    """End of the side-copy window. The chain row itself does not expire."""
+    if kind in RAW_LLM_KINDS:
+        return recorded_at + timedelta(days=RAW_LLM_RETENTION_DAYS)
+    if kind in ACCOUNTING_KINDS:
+        return _shift_months(recorded_at, ACCOUNTING_RETENTION_YEARS * 12)
+    return _shift_months(recorded_at, DEFAULT_RETENTION_MONTHS)
+
+
+@dataclass(frozen=True)
+class RetentionDecision:
+    """Whether a side copy may be dropped. Never a decision to delete the chain row."""
+
+    kind: str
+    recorded_at: datetime
+    now: datetime
+    expires_at: datetime
+    eligible: bool
+
+
+def retention_decision(
+    *,
+    kind: str,
+    recorded_at: datetime,
+    now: datetime,
+) -> RetentionDecision:
+    """Decide if a side copy is past retention.
+
+    Raw-LLM kinds expire after 7 days. Accounting kinds stay 7 years.
+    Every other kind stays 24 calendar months. Eligible one second after
+    the window ends. The hashed chain row is not eligible for deletion.
+
+    Inputs: chain kind, when the row was recorded, and the sweep clock.
+    Outputs: a ``RetentionDecision``. ``eligible`` is true only for the side copy.
+    Side effects: none. Does not read or write a database.
+    """
+    if kind in RAW_LLM_KINDS and kind in ACCOUNTING_KINDS:
+        raise ValueError(f"kind {kind!r} is in both retention sets")
+    recorded = _as_utc(recorded_at)
+    current = _as_utc(now)
+    expires_at = _retention_expires_at(kind, recorded)
+    return RetentionDecision(
+        kind=kind,
+        recorded_at=recorded,
+        now=current,
+        expires_at=expires_at,
+        eligible=current >= expires_at + timedelta(seconds=1),
+    )
+
+
+@dataclass
+class InProcessChainRecord:
+    """One hash-chain entry plus a side copy that is not part of the hash.
+
+    ``entry`` is the ``verify_chain`` dict (payload and ``entry_hash`` included).
+    ``side_copy`` is the only field the sweeper may clear.
+    """
+
+    entry: dict[str, Any]
+    recorded_at: datetime
+    side_copy: dict[str, Any] | None = None
+
+
+def sweep_side_copies(records: list[InProcessChainRecord], *, now: datetime) -> int:
+    """Drop side copies whose retention window has elapsed.
+
+    Inputs: in-process records and the sweep clock.
+    Outputs: how many side copies were set to None.
+    Side effects: clears ``side_copy`` on eligible records. Does not change
+    ``entry``, its payload, or ``entry_hash``. Does not open a database and
+    does not delete a chain row.
+    """
+    dropped = 0
+    for record in records:
+        if record.side_copy is None:
+            continue
+        decision = retention_decision(
+            kind=str(record.entry["kind"]),
+            recorded_at=record.recorded_at,
+            now=now,
+        )
+        if decision.eligible:
+            record.side_copy = None
+            dropped += 1
+    return dropped

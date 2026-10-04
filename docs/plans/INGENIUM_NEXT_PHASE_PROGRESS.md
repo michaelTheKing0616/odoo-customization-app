@@ -1111,7 +1111,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 Execution queue. A line leaves this list only when that item is finished. Items that need a live system or a decision already made stay blocked instead of being faked.
 
 In progress, code that can be finished without a live Odoo or a live model:
-1. Audit retention. Raw LLM payloads expire after 7 days. Accounting kinds stay 7 years. Everything else stays 24 months. The sweeper runs on the in-process chain. It does not delete a live database.
+1. The skill router. At most 3 skills. A skill cannot contain executable code and cannot widen a grant. The recall eval stays open.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
@@ -1125,7 +1125,9 @@ Closed this turn:
 - A two-hop `$ref` that lands on `account.move` is RT-11 and is not journaled. A cycle or an unresolved hop is denied. A scaffold of `account.move` spelled with Greek omicron (U+03BF) is RT-10 and is not applied. GATE-P3-05 stays open. The gate asks for RT-10 through RT-16 at 100%, and there is no corpus beyond the named cases.
 - The validator folds model names with the protected registry's confusable map. A Greek omicron lookalike of a known model passes grounding as that Latin name. An `account.move` lookalike stays denied and is not applied. An unknown name that does not fold to either stays rejected.
 - A missing tool-call id is `call_` plus a 26-character Crockford ULID. A provider-supplied id stays as sent. Two mints in the same millisecond do not collide. No ulid package was added.
-- XML-RPC and JSON-2 sends go through the transport contract. Plain HTTP still sends for `127.0.0.1` and `localhost`. Any other host must be HTTPS with certificate checks on. A write does not follow a redirect.
+- The XML-RPC and JSON-2 sends go through the transport contract. Plain HTTP still sends for `127.0.0.1` and `localhost`. Any other host must be HTTPS with certificate checks on. A write does not follow a redirect.
+- Audit retention decides in process. A raw LLM side copy expires after 7 days. An accounting kind stays 7 years. Every other kind stays 24 months. The sweeper drops only the side copy. The chain row and `entry_hash` stay. No live database row was deleted.
+- Audit retention decides in process. A raw LLM side copy expires after 7 days. An accounting kind stays 7 years. Every other kind stays 24 months. The sweeper drops only the side copy. The chain row and `entry_hash` stay. No live database row was deleted.
 
 Blocked until something outside this repo exists. The product behavior stays the refuse or the off switch:
 - T2-J1 `/doc` text match. Sandbox default stays XML-RPC. Promote stays human.
@@ -1153,7 +1155,6 @@ Still to finish in code:
 - Axe was not run for `/bots`, `/bots/rooms/[id]`, `/bots/[id]`, `/studio/dashboards`, `/bridge/connections`, or `/onboarding`. `/connections` only redirects.
 - Durable WAL is still in memory. `apps/api/alembic/versions/s9t0u1v2w3x4_journal_wal.py` declares `journal_entry`, `before_image`, and `apply_database_lock` and has not been applied. A process kill still loses the journal. GATE-P3-03 is not closed.
 - The skill router is not built. ADR-10 records the package rules. No skill card has shipped the router.
-- Audit retention is not wired. ADR-11 locks the chain shape. Append and verify already exist. 24 months, 7 years for accounting kinds, and 7 days for raw LLM payloads are still open.
 - The KMS vendor is unchosen. ADR-12 keeps secrets on the existing `fernet_key`. No cloud KMS client.
 - The eval harness is not built. ADR-13 records the A/B/C bars. GATE-P4-04 and GATE-P6 are still open.
 - GATE-P0-03 is still open. The eight seed names exist only as catalog definitions in `apps/api/app/changeset/fixture_catalog.py`. Live fixtures on Odoo 17, 18, 19, and 20 were not brought up. The stand-in reset is not a live database reset.

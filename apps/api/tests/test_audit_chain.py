@@ -4,14 +4,20 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from app.audit_chain import (
+    ACCOUNTING_KINDS,
     GENESIS_PREV_HASH,
+    RAW_LLM_KINDS,
+    InProcessChainRecord,
     append_entry,
     chain_hash,
     redact_payload,
+    retention_decision,
+    sweep_side_copies,
     verify_chain,
     verify_db,
 )
@@ -108,6 +114,108 @@ def test_genesis_prev_is_zeros() -> None:
     ok2, bad2 = verify_chain([bad_prev])
     assert ok2 is False
     assert bad2 == 0
+
+
+def _side_record(
+    *,
+    kind: str,
+    recorded: datetime,
+    prev: str,
+    side_copy: dict,
+) -> InProcessChainRecord:
+    entry = _make_entry(
+        ts=recorded.isoformat(),
+        run_id=None,
+        actor="system",
+        kind=kind,
+        payload={"kept": True},
+        prev=prev,
+    )
+    return InProcessChainRecord(entry=entry, recorded_at=recorded, side_copy=side_copy)
+
+
+@pytest.mark.no_app_db
+def test_side_copy_retention_sweep_keeps_entry_hash() -> None:
+    """Raw LLM side copies expire at 7 days + 1s.
+
+    Accounting kinds are still kept at 24 months. Other kinds expire at
+    24 months + 1s. Sweeping clears only the side copy.
+    """
+    assert RAW_LLM_KINDS
+    assert ACCOUNTING_KINDS
+    assert RAW_LLM_KINDS.isdisjoint(ACCOUNTING_KINDS)
+    raw_kind = min(RAW_LLM_KINDS)
+    accounting_kind = min(ACCOUNTING_KINDS)
+    normal_kind = "http_mutation"
+    assert normal_kind not in RAW_LLM_KINDS
+    assert normal_kind not in ACCOUNTING_KINDS
+
+    recorded = datetime(2024, 1, 31, 15, 30, tzinfo=UTC)
+    seven_days_and_one = recorded + timedelta(days=7, seconds=1)
+    # 24 calendar months later, not 730 days (that lands a day earlier).
+    twenty_four_months = datetime(2026, 1, 31, 15, 30, tzinfo=UTC)
+    twenty_four_months_and_one = datetime(2026, 1, 31, 15, 30, 1, tzinfo=UTC)
+    day_before_anniversary = twenty_four_months - timedelta(days=1)
+    seven_years_and_one = datetime(2031, 1, 31, 15, 30, 1, tzinfo=UTC)
+
+    assert retention_decision(
+        kind=raw_kind, recorded_at=recorded, now=seven_days_and_one
+    ).eligible is True
+    assert retention_decision(
+        kind=accounting_kind, recorded_at=recorded, now=twenty_four_months
+    ).eligible is False
+    assert retention_decision(
+        kind=accounting_kind, recorded_at=recorded, now=twenty_four_months_and_one
+    ).eligible is False
+    assert retention_decision(
+        kind=normal_kind, recorded_at=recorded, now=day_before_anniversary
+    ).eligible is False
+    assert retention_decision(
+        kind=normal_kind, recorded_at=recorded, now=twenty_four_months_and_one
+    ).eligible is True
+    assert retention_decision(
+        kind=accounting_kind, recorded_at=recorded, now=seven_years_and_one
+    ).eligible is True
+
+    prev = GENESIS_PREV_HASH
+    records: list[InProcessChainRecord] = []
+    for kind, side in (
+        (raw_kind, {"raw_llm": "prompt text"}),
+        (accounting_kind, {"journal": "sale"}),
+        (normal_kind, {"detail": "http"}),
+    ):
+        record = _side_record(kind=kind, recorded=recorded, prev=prev, side_copy=side)
+        records.append(record)
+        prev = record.entry["entry_hash"]
+
+    hashes = [record.entry["entry_hash"] for record in records]
+    payloads = [dict(record.entry["payload"]) for record in records]
+    entries = [record.entry for record in records]
+
+    assert sweep_side_copies(records, now=seven_days_and_one) == 1
+    assert records[0].side_copy is None
+    assert records[1].side_copy == {"journal": "sale"}
+    assert records[2].side_copy == {"detail": "http"}
+
+    assert sweep_side_copies(records, now=twenty_four_months) == 0
+    assert records[1].side_copy is not None
+    assert records[2].side_copy is not None
+
+    assert sweep_side_copies(records, now=twenty_four_months_and_one) == 1
+    assert records[1].side_copy == {"journal": "sale"}
+    assert records[2].side_copy is None
+
+    assert sweep_side_copies(records, now=seven_years_and_one) == 1
+    assert records[1].side_copy is None
+
+    for record, entry_hash, payload, entry in zip(records, hashes, payloads, entries, strict=True):
+        assert record.entry is entry
+        assert record.entry["entry_hash"] == entry_hash
+        assert record.entry["payload"] == payload
+
+    ok, bad = verify_chain(entries)
+    assert ok is True
+    assert bad is None
 
 
 _INTEGRATION_URL = "postgresql+psycopg://odoo_custom:odoo_custom@127.0.0.1:5433/odoo_custom"
