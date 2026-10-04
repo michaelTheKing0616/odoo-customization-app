@@ -1111,7 +1111,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 Execution queue. A line leaves this list only when that item is finished. Items that need a live system or a decision already made stay blocked instead of being faked.
 
 In progress, code that can be finished without a live Odoo or a live model:
-1. T8-S12 unknown-outcome writes. An unknown write is NEEDS_HUMAN and is not retried. A live read-back against Odoo stays open.
+1. T8-S13 one apply per database. The lock is the in-process lock. The Alembic lock table is not applied.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
@@ -1461,3 +1461,8 @@ Not done: T8-S11. GATE-P3-03 stays open. GATE-P3-05 stays open. GATE-P3-06 stays
 Track: T8 T8-S11. Worker [Inject crashes at journal boundaries](29cc6661-c7f3-4cfe-b82e-cef93d50f841). No push. L4 stays off.
 Intent: A crash after INTENT and BEFORE, and a crash after a partial RESULT, are not verified. Mode T drops RESULT rows. Mode C compensates reversible ops backward. An irreversible Mode C op is refused before a journal row. The journal is still the in-process list. GATE-P3-03 stays open. Re-ran the crash suite, the atomicity suite, the WAL tests, and import-boundary tests: 28 passed. The version-branch count stayed 22.
 Not done: T8-S12. GATE-P3-03 stays open. GATE-P3-05 stays open. GATE-P3-06 stays open. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
+
+## 2026-10-04 — T8-S12 unknown outcome
+Track: T8 T8-S12. Worker [Prove an unknown write is not retried](65a48524-4dfb-4855-9d17-426fcf1fb1fc). No push. L4 stays off.
+Intent: An unknown write is NEEDS_HUMAN and is not verified. A second apply returns that decision and does not call the port again. There is no live read-back. GATE-P3-07 stays open. Re-ran the unknown suite, the WAL tests, the crash suite, and import-boundary tests: 28 passed. The version-branch count stayed 22.
+Not done: T8-S13. GATE-P3-03 stays open. GATE-P3-07 stays open. GATE-P3-05 stays open. GATE-P3-06 stays open. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
