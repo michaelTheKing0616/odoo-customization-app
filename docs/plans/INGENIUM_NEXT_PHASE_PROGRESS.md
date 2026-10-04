@@ -1111,7 +1111,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 Execution queue. A line leaves this list only when that item is finished. Items that need a live system or a decision already made stay blocked instead of being faked.
 
 In progress, code that can be finished without a live Odoo or a live model:
-1. The skill router. At most 3 skills. A skill cannot contain executable code and cannot widen a grant. The recall eval stays open.
+1. `ConfirmDialogV2` uses `DialogPanel`. Confirm and cancel stay the same.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
@@ -1127,7 +1127,7 @@ Closed this turn:
 - A missing tool-call id is `call_` plus a 26-character Crockford ULID. A provider-supplied id stays as sent. Two mints in the same millisecond do not collide. No ulid package was added.
 - The XML-RPC and JSON-2 sends go through the transport contract. Plain HTTP still sends for `127.0.0.1` and `localhost`. Any other host must be HTTPS with certificate checks on. A write does not follow a redirect.
 - Audit retention decides in process. A raw LLM side copy expires after 7 days. An accounting kind stays 7 years. Every other kind stays 24 months. The sweeper drops only the side copy. The chain row and `entry_hash` stay. No live database row was deleted.
-- Audit retention decides in process. A raw LLM side copy expires after 7 days. An accounting kind stays 7 years. Every other kind stays 24 months. The sweeper drops only the side copy. The chain row and `entry_hash` stay. No live database row was deleted.
+- The skill router loads at most three catalog skills. Executable code and a `SKILL.md` over 2500 tokens are refused. The returned grant is the overlap with the caller and is not a superset. `skill_load` uses that router. The recall eval is not run. No score was invented.
 
 Blocked until something outside this repo exists. The product behavior stays the refuse or the off switch:
 - T2-J1 `/doc` text match. Sandbox default stays XML-RPC. Promote stays human.
@@ -1154,9 +1154,8 @@ Still to finish in code:
 - The expert panel and billing still use `Sheet`, not the motion sheet.
 - Axe was not run for `/bots`, `/bots/rooms/[id]`, `/bots/[id]`, `/studio/dashboards`, `/bridge/connections`, or `/onboarding`. `/connections` only redirects.
 - Durable WAL is still in memory. `apps/api/alembic/versions/s9t0u1v2w3x4_journal_wal.py` declares `journal_entry`, `before_image`, and `apply_database_lock` and has not been applied. A process kill still loses the journal. GATE-P3-03 is not closed.
-- The skill router is not built. ADR-10 records the package rules. No skill card has shipped the router.
 - The KMS vendor is unchosen. ADR-12 keeps secrets on the existing `fernet_key`. No cloud KMS client.
-- The eval harness is not built. ADR-13 records the A/B/C bars. GATE-P4-04 and GATE-P6 are still open.
+- The eval harness is not built. ADR-13 records the A/B/C bars. GATE-P4-04 and GATE-P6 are still open. The skill recall eval is not run. No recall or precision score was invented.
 - GATE-P0-03 is still open. The eight seed names exist only as catalog definitions in `apps/api/app/changeset/fixture_catalog.py`. Live fixtures on Odoo 17, 18, 19, and 20 were not brought up. The stand-in reset is not a live database reset.
 - GATE-P0-05 stays open. `apps/api/tests/test_import_boundary.py` locks 22 Odoo-version branches outside `compat/` in `apps/api/app`. A new hit fails the test. Those branches were not moved.
 - GATE-P1-02 is not fully passed. Replay fixtures under `apps/api/tests/fixtures/llm_gateway/` are synthetic. Still needs an operator recording: C07, C08, C10, C11, C13, C14, C16, C17, C18, C19, and OpenAI C20.

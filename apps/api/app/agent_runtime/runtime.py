@@ -663,4 +663,18 @@ class AgentRuntime:
             return {"report": state.report, "applied": state.applied}
         if name == "propose_rollback":
             return {"ok": True, "kind": "rollback_draft", "applied": False}
+        if name == "skill_load":
+            if self.grant is None:
+                return {"ok": False, "code": "GRANT_REQUIRED", "loaded": []}
+            from app.skills.router import route_skills
+
+            phrase = str(args.get("phrase") or args.get("query") or "")
+            route = route_skills(phrase, self.grant)
+            return {
+                "ok": True,
+                "loaded": list(route.skill_ids),
+                "refused": list(route.refused),
+                "dropped": list(route.dropped),
+                "ops": sorted(route.grant.ops_allowed),
+            }
         return {"ok": True, "tool": name}
