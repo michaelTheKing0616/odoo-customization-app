@@ -1111,14 +1111,14 @@ Older "Not done" lines that only name the next card are closed when that card ha
 Execution queue. A line leaves this list only when that item is finished. Items that need a live system or a decision already made stay blocked instead of being faked.
 
 In progress, code that can be finished without a live Odoo or a live model:
-1. Executor applies the freeze flag, runs verify, and refuses an elevate apply that has no domain owner.
-2. Snapshot preflight passes the connection's Odoo major. `snapshot_gate.py` uses `>= 20`, matching `database_backup.py`. A missing major does not take the Odoo 20 path.
+1. Snapshot preflight passes the connection's Odoo major. `snapshot_gate.py` uses `>= 20`, matching `database_backup.py`. A missing major does not take the Odoo 20 path.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
 - `parse_tool_args` has a dedicated test for payloads over 256 KB.
 - An unset module major does not emit `ir.rule`. Community 19 emits it when the major is 19, including the library and multi-company templates. Odoo 20 still refuses it.
 - Confirmed tenant and database facts are in the prompt memory layer, capped at 5% of the window. Pending items, role notes, episodic memory, and global knowledge stay out.
+- Apply refuses a frozen change-set and an elevate change-set with no domain owner before any write. When an observation is supplied, verify runs after the in-memory apply: R2 and above rolls back, and below R2 the result is NEEDS_HUMAN. An apply with no observation still records the journal result.
 
 Blocked until something outside this repo exists. The product behavior stays the refuse or the off switch:
 - T2-J1 `/doc` text match. Sandbox default stays XML-RPC. Promote stays human.
@@ -1160,11 +1160,8 @@ Still to finish in code:
 - GATE-P2-08 and GATE-P2-09 are not fully passed. The seven bridge methods are proven on an in-memory fake. Apply, rollback, a real savepoint, the live kill switch, and staging neutralization have not run on Odoo.
 - Version drift live nightly rows were not run. Unknown cells remain for kanban, `name_get`, company-dependent fields, selection storage, mail template syntax, and translations on 20.
 - Engine suite 1 and suite 2 were not run for the schema family. `model.create`, `model.scaffold`, `field.deprecate`, `selection.update`, and `constraint.sql` still have no inverse in the handler.
-- `domain_owner` is set on an elevate policy decision. Apply does not yet refuse when that person has not approved.
-- `apply_blocked` is not called by the executor. A freeze is a decision flag until apply reads it.
 - Simulation staging is an in-memory clone. It is not an operator-owned neutralized database.
 - GATE-P3-06 was not run. Neither mutmut nor cosmic-ray is installed. No mutation score was invented.
-- `verify` is not called by the executor. The checks run only when a caller invokes them.
 - Undo through validate, policy, and approval is not called by the executor.
 - Engine suite 2 round-trips 18 of 63 catalog ops. The other 45 have no handler inverse and were not stubbed.
 - A second apply is proven only for the eight ops the executor can apply. The rest of the catalog is not claimed.
@@ -1436,3 +1433,5 @@ Not done: T8-S08. The inverse gap stays open. T8-P4-TIERA waits on a live model.
 Track: T8 T8-S08. Worker [Point the policy suite at the matrix](0be6677d-b5e7-46ba-a805-551a86bbf151). No push. L4 stays off.
 Intent: The suite calls the existing approval matrix. Production R4 is deny. Production R3 asks for two approvers. Freeze and expiry are checked. GATE-P3-06 is skipped because mutmut and cosmic-ray are not installed. No mutation score was recorded. Re-ran the suite with the memory, prompt, and import-boundary tests: 24 passed, 1 skipped. The version-branch count stayed 22.
 Not done: T8-S09. GATE-P3-06 stays open. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
+
+CLAIM T8-S09 2026-10-04T01:02:00Z. Protected-registry suite only. Point at tests/test_protected_registry.py. Do not duplicate the named RT cases. Do not stub a denial. Do not edit protected_core.yaml. A nested or confusable gap that the existing tests do not cover stays listed, not marked passed. Do not enable L4. Do not commit.

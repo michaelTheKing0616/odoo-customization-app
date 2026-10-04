@@ -1,7 +1,9 @@
 """In-memory journal executor (Mode T / Mode C).
 
-The bridge gate runs before any journal write. WAL rows still live in
-``_JOURNAL``. The Alembic revision ``s9t0u1v2w3x4`` declares ``journal_entry``,
+The bridge gate runs before any journal write. A freeze and a missing domain
+owner refuse before that write. After a successful in-memory apply, ``verify``
+reads the caller-supplied observation. WAL rows still live in ``_JOURNAL``.
+The Alembic revision ``s9t0u1v2w3x4`` declares ``journal_entry``,
 ``before_image``, and ``apply_database_lock``; this process does not write
 those tables. ``recover_stale_applying`` reads a journal list, not Postgres.
 """
@@ -11,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -19,10 +22,11 @@ from odoo_client.schema_fingerprint import schema_fingerprint as hash_schema
 
 from app.blast_radius import assert_production_apply_records, changeset_record_count
 from app.changeset.ops import OP_CATALOG, get_op
-from app.changeset.policy import risk_of
+from app.changeset.policy import apply_blocked, policy_decision, policy_for_op, risk_of
 from app.changeset.protected_registry import protected_denial, reset_detections
 from app.changeset.recovery import DatabaseApplyLock, recover
 from app.changeset.simulate import guard_production_apply
+from app.changeset.verify import verify
 
 _JOURNAL: list[dict[str, Any]] = []
 _RESULTS_BY_FINGERPRINT: dict[str, dict[str, Any]] = {}
@@ -88,6 +92,72 @@ def _schema_binding_matches(approved: str, live_schema: dict[str, Any] | None) -
     return hash_schema(live_schema) == approved
 
 
+def _has_domain_owner(approvers: list[Any] | None) -> bool:
+    """Whether the approver list includes a domain owner.
+
+    Inputs: approver records. ``None`` and an empty list do not.
+    A record counts when ``domain_owner`` is true or ``role`` is ``domain_owner``.
+    Outputs: True when at least one record qualifies.
+    Side effects: none.
+    """
+    if not approvers:
+        return False
+    for item in approvers:
+        if not isinstance(item, Mapping):
+            continue
+        if item.get("domain_owner") is True:
+            return True
+        if item.get("role") == "domain_owner":
+            return True
+    return False
+
+
+def _policy_decisions(
+    changeset: list[dict[str, Any]],
+    *,
+    environment: str,
+    tenant: dict[str, Any] | None,
+) -> list[dict[str, bool | int]]:
+    """Policy for each op, or one open decision when the change-set is empty.
+
+    Inputs: the change-set, environment, and optional tenant overlay.
+    A blank environment follows the production matrix.
+    Outputs: one decision per op.
+    Side effects: none. Does not call Odoo.
+    """
+    env = environment or "production"
+    if not changeset:
+        return [policy_decision("R0", env)]
+    return [policy_for_op(op, env, tenant=tenant, document=changeset) for op in changeset]
+
+
+def _refuse_blocked_apply(
+    changeset: list[dict[str, Any]],
+    *,
+    environment: str,
+    tenant: dict[str, Any] | None,
+    frozen: bool,
+    approvers: list[Any] | None,
+) -> None:
+    """Stop a frozen apply, a denied apply, or an elevate apply with no domain owner.
+
+    Inputs: the change-set and the policy inputs ``apply`` already has.
+    Outputs: none when the apply may continue to the journal.
+    Side effects: none. Raises BridgeError ``frozen`` when ``apply_blocked``
+    is true because a freeze is on. Raises ``apply_blocked`` when the decision
+    denies or does not allow. Raises ``domain_owner_required`` when policy
+    sets ``domain_owner`` and the approver list has no domain owner.
+    Does not journal, does not touch a port, and does not call Odoo.
+    """
+    protocol = _protocol()
+    decisions = _policy_decisions(changeset, environment=environment, tenant=tenant)
+    for decision in decisions:
+        if apply_blocked(decision, frozen=frozen):
+            raise protocol.BridgeError("frozen" if frozen else "apply_blocked")
+    if any(bool(decision.get("domain_owner")) for decision in decisions) and not _has_domain_owner(approvers):
+        raise protocol.BridgeError("domain_owner_required")
+
+
 def schema_drift_status(approved_fingerprint: str, live_schema: dict[str, Any] | None) -> str:
     """Status of the schema slice after approval.
 
@@ -133,7 +203,23 @@ def apply(
     record_count: int | None = None,
     odoo_database: str = "",
     apply_lock: DatabaseApplyLock | None = None,
+    frozen: bool = False,
+    approvers: list[Mapping[str, Any]] | None = None,
+    observation: Mapping[str, Any] | None = None,
+    model_success: bool | None = None,
 ) -> dict[str, Any]:
+    """Apply one change-set in memory.
+
+    Inputs: the change-set, mode T or C, and the existing bridge gates.
+    ``frozen`` is read by ``apply_blocked``. ``approvers`` is the list checked
+    when policy sets ``domain_owner``. ``observation`` is fake evidence for
+    ``verify`` after the in-memory writes succeed. ``model_success`` is passed
+    through and does not decide the outcome.
+    Outputs: the journal decision. A freeze or a missing domain owner raises
+    before any journal or port write.
+    Side effects: may append journal rows. Does not call Odoo and does not
+    render a live view.
+    """
     if mode not in {"T", "C"}:
         raise ValueError("mode must be T or C")
 
@@ -168,6 +254,13 @@ def apply(
         mode="apply",
         escalated=escalated,
     )
+    _refuse_blocked_apply(
+        changeset,
+        environment=environment,
+        tenant=tenant,
+        frozen=frozen,
+        approvers=list(approvers) if approvers is not None else None,
+    )
 
     lock_held = False
     active_lock: DatabaseApplyLock | None = None
@@ -199,6 +292,8 @@ def apply(
             port=port,
             fp=fp,
             odoo_database=odoo_database,
+            observation=observation,
+            model_success=model_success,
         )
     finally:
         if lock_held and active_lock is not None:
@@ -213,6 +308,8 @@ def _apply_journaled(
     port: Any | None,
     fp: str,
     odoo_database: str,
+    observation: Mapping[str, Any] | None = None,
+    model_success: bool | None = None,
 ) -> dict[str, Any]:
     if fp in _RESULTS_BY_FINGERPRINT:
         return dict(_RESULTS_BY_FINGERPRINT[fp])
@@ -306,8 +403,26 @@ def _apply_journaled(
         else:
             risk_bump = 1
 
-    if status == "APPLIED" and not any(entry.get("kind") == "UNKNOWN" and entry.get("run_id") == run_id for entry in _JOURNAL):
-        _JOURNAL.append({"kind": "VERIFIED", "run_id": run_id, "plan_hash": fp})
+    verification: dict[str, Any] | None = None
+    unknown = any(entry.get("kind") == "UNKNOWN" and entry.get("run_id") == run_id for entry in _JOURNAL)
+    if status == "APPLIED" and not unknown:
+        if observation is not None:
+            verification = verify(changeset, observation, model_success=model_success)
+            if verification["verified"]:
+                _JOURNAL.append({"kind": "VERIFIED", "run_id": run_id, "plan_hash": fp})
+            elif verification["rolled_back"]:
+                _strip_results_for_run(run_id)
+                for item in verification["compensations"]:
+                    _JOURNAL.append(
+                        {
+                            "kind": "COMPENSATE",
+                            "run_id": run_id,
+                            "index": item["index"],
+                            "type": item["type"],
+                        }
+                    )
+        else:
+            _JOURNAL.append({"kind": "VERIFIED", "run_id": run_id, "plan_hash": fp})
 
     decision = recover(
         [entry for entry in _JOURNAL if entry.get("run_id") in {None, run_id}],
@@ -325,6 +440,8 @@ def _apply_journaled(
         "applied_count": len(applied_indices) if status == "VERIFIED" else 0,
         "report": decision["report"],
     }
+    if verification is not None:
+        result["verification"] = verification
     _RESULTS_BY_FINGERPRINT[fp] = result
     return dict(result)
 
