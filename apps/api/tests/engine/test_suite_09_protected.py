@@ -4,8 +4,9 @@ RT-10 through RT-16 stay in ``tests/test_protected_registry.py``. This module
 checks those functions exist, then runs one fail-closed apply: a protected
 model in a scaffold or a field op is denied and is not journaled.
 
-GATE-P3-05 is not fully passed. Two holes the existing file does not cover
-stay open. See ``test_nested_ref_and_unmapped_confusable_stay_open``.
+GATE-P3-05 is not fully passed. A two-hop ``$ref`` and a Greek omicron
+lookalike are denied here. Reopening either one fails
+``test_nested_ref_and_greek_omicron_are_denied_and_not_applied``.
 This module does not call Odoo.
 """
 
@@ -33,8 +34,8 @@ _RT_FUNCTIONS = (
     "test_rt16_journal_sequence_alias_and_confusable",
 )
 
-# Greek small letter omicron. It looks like Latin "o" and is not in the fold map.
-_UNMAPPED_OMICRON = "\u03bf"
+# Greek small letter omicron. casefold leaves it as Greek; the fold map sends it to "o".
+_GREEK_OMICRON = "\u03bf"
 
 
 def _load_protected_registry_tests() -> ModuleType:
@@ -102,27 +103,24 @@ def test_protected_model_in_a_scaffold_or_field_op_is_denied_and_not_applied() -
         reset_journal()
 
 
-def test_nested_ref_and_unmapped_confusable_stay_open() -> None:
-    """Lock holes the existing registry file does not cover.
+def test_nested_ref_and_greek_omicron_are_denied_and_not_applied() -> None:
+    """A two-hop ``$ref`` and a Greek omicron scaffold are denied and not applied.
 
-    This is not a claim that GATE-P3-05 passed. Closing either hole fails
-    this test until the snapshot below is updated.
+    This is not a claim that GATE-P3-05 passed. A regression that leaves the
+    outer field op unclassified, or that applies the omicron scaffold, fails.
 
-    Nested ``$ref``: ``test_rt11_ref_to_a_protected_model`` only walks one hop.
-    A field op whose ``relation`` ``$ref`` points at another ``$ref``, which
-    points at ``account.move``, is not classified. The middle hop, checked on
-    its own, is still RT-11, so a document that contains that middle op is
-    still denied and is not applied.
+    The outer ``relation`` ``$ref`` points at another ``$ref``, which points at
+    ``account.move``. That outer field op is RT-11. A cycle, or a later hop
+    that does not resolve, is denied the same way. The middle hop, checked on
+    its own, stays RT-11. A two-hop chain that ends on ``sale.order`` stays open.
 
-    Confusable: ``test_rt16_journal_sequence_alias_and_confusable`` only locks
-    Cyrillic small letter a (U+0430), which the fold map already covers.
-    Greek small letter omicron (U+03BF) in ``account.move`` is not folded.
-    A scaffold of that name is not denied and is applied.
+    Greek small letter omicron (U+03BF) in ``account.move`` folds to Latin o.
+    A scaffold of that name is RT-10.
 
-    Inputs: the two-hop document and the omicron scaffold described above.
+    Inputs: the two-hop document, a cycle, an unresolved later hop, a benign
+    two-hop chain, and the omicron scaffold.
     Outputs: none.
-    Side effects: may append in-memory journal rows for the omicron scaffold,
-    then clears the journal. Does not call Odoo.
+    Side effects: clears the in-memory journal. Does not call Odoo.
     """
     two_hop = [
         {"type": "field.update", "params": {"model": "account.move", "name": "ref"}},
@@ -137,33 +135,77 @@ def test_nested_ref_and_unmapped_confusable_stay_open() -> None:
         },
     ]
     outer = two_hop[2]
-    assert protected_case(outer, document=two_hop) is None
-    assert protected_denial(outer, document=two_hop) is None
+    assert protected_case(outer, document=two_hop) == "RT-11"
+    assert protected_denial(outer, document=two_hop) == "protected_deny"
     assert protected_case(two_hop[1], document=two_hop) == "RT-11"
+
+    cycle = [
+        {"type": "field.update", "params": {"alias": {"$ref": "#/1/params/alias"}}},
+        {"type": "field.update", "params": {"alias": {"$ref": "#/0/params/alias"}}},
+        {
+            "type": "field.create",
+            "params": {
+                "model": "x_ticket",
+                "name": "x_move",
+                "relation": {"$ref": "#/1/params/alias"},
+            },
+        },
+    ]
+    assert protected_case(cycle[2], document=cycle) == "RT-11"
+    assert protected_denial(cycle[2], document=cycle) == "protected_deny"
+
+    dangling = [
+        {"type": "field.update", "params": {"name": "ref"}},
+        {"type": "field.update", "params": {"alias": {"$ref": "#/9/params/model"}}},
+        {
+            "type": "field.create",
+            "params": {
+                "model": "x_ticket",
+                "name": "x_move",
+                "relation": {"$ref": "#/1/params/alias"},
+            },
+        },
+    ]
+    assert protected_case(dangling[2], document=dangling) == "RT-11"
+    assert protected_denial(dangling[2], document=dangling) == "protected_deny"
+
+    benign = [
+        {"type": "field.update", "params": {"model": "sale.order", "name": "client_order_ref"}},
+        {"type": "field.update", "params": {"alias": {"$ref": "#/0/params/model"}}},
+        {
+            "type": "field.create",
+            "params": {
+                "model": "x_ticket",
+                "name": "x_move",
+                "relation": {"$ref": "#/1/params/alias"},
+            },
+        },
+    ]
+    assert protected_case(benign[2], document=benign) is None
 
     error = _protocol().BridgeError
     reset_journal()
     try:
-        with pytest.raises(error) as denied:
-            apply(two_hop, mode="T", port=None)
-        assert denied.value.code == "protected_deny"
-        assert get_journal() == []
+        for document in (two_hop, cycle, dangling):
+            reset_journal()
+            with pytest.raises(error) as denied:
+                apply(document, mode="T", port=None)
+            assert denied.value.code == "protected_deny"
+            assert get_journal() == []
 
-        # U+03BF is outside the fold map. The existing file never uses it.
         lookalike = {
             "type": "model.scaffold",
-            "params": {"model": f"acc{_UNMAPPED_OMICRON}unt.move"},
+            "params": {"model": f"acc{_GREEK_OMICRON}unt.move"},
         }
-        assert _UNMAPPED_OMICRON in str(lookalike["params"]["model"])
-        assert protected_case(lookalike) is None
-        assert protected_denial(lookalike) is None
+        assert _GREEK_OMICRON in str(lookalike["params"]["model"])
+        assert protected_case(lookalike) == "RT-10"
+        assert protected_denial(lookalike) == "protected_deny"
         reset_journal()
-        result = apply([lookalike], mode="T", port=None)
-        assert result["status"] == "VERIFIED"
-        assert any(
-            row.get("type") == "model.scaffold" and row.get("status") == "APPLIED"
-            for row in get_journal()
-        )
-        assert detections() == []
+        with pytest.raises(error) as denied_lookalike:
+            apply([lookalike], mode="T", port=None)
+        assert denied_lookalike.value.code == "protected_deny"
+        assert get_journal() == []
+        assert detections()[-1]["alert"] == "policy_denied"
+        assert detections()[-1]["case"] == "RT-10"
     finally:
         reset_journal()

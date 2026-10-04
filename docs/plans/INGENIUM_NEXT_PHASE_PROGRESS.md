@@ -1111,7 +1111,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 Execution queue. A line leaves this list only when that item is finished. Items that need a live system or a decision already made stay blocked instead of being faked.
 
 In progress, code that can be finished without a live Odoo or a live model:
-1. Close the two protected-registry holes suite 09 locked as open: a two-hop `$ref` on a field relation, and a scaffold of `account.move` spelled with Greek omicron (U+03BF). GATE-P3-05 stays open until both are denied and not applied.
+1. T8-S10 validator fuzz. Point at the existing oversized, deep, and polluted checks. Do not weaken them. A confusable the validator does not fold stays listed, not marked passed.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
@@ -1122,6 +1122,7 @@ Closed this turn:
 - Snapshot preflight passes the connection major from `server_version`. Major 20 and later accept a metadata snapshot. Major 19 still requires a `/web/database` backup when the caller asks. A missing major stays off the Odoo 20 path. Freshness and BILLABLE stay gated.
 - The executor calls undo through validate, policy, and approval. `apply` does not call it. A refused undo does not write. An approved undo with a matching snapshot applies the inverse. A mismatch stays NEEDS_HUMAN. A field that still has rows is hidden, and the rows stay.
 - Recorded prompt exchanges travel in the exported run dict and come back on restore. A payload that omits `transcript` restores an empty transcript. Tools are not replayed. A process kill still drops the run unless the caller kept that dict. GATE-P4-07 and GATE-P4-08 stay open.
+- A two-hop `$ref` that lands on `account.move` is RT-11 and is not journaled. A cycle or an unresolved hop is denied. A scaffold of `account.move` spelled with Greek omicron (U+03BF) is RT-10 and is not applied. GATE-P3-05 stays open. The gate asks for RT-10 through RT-16 at 100%, and there is no corpus beyond the named cases.
 
 Blocked until something outside this repo exists. The product behavior stays the refuse or the off switch:
 - T2-J1 `/doc` text match. Sandbox default stays XML-RPC. Promote stays human.
@@ -1438,4 +1439,9 @@ Not done: T8-S09. GATE-P3-06 stays open. The inverse gap stays open. T8-P4-TIERA
 ## 2026-10-04 — T8-S09 protected registry
 Track: T8 T8-S09. Worker [Point the protected-registry suite at RT-10–16](7e22ace5-6ea8-481d-920a-cdd8583bc921). No push. L4 stays off.
 Intent: The suite points at the existing RT-10 through RT-16 tests. A protected scaffold or stored-compute field op is denied before a journal write. GATE-P3-05 stays open. A two-hop `$ref` on a field relation is still unclassified. A scaffold of `account.move` spelled with Greek omicron (U+03BF) is still applied. Re-ran the suite, the registry tests, and import-boundary tests: 28 passed. The version-branch count stayed 22.
+Not done: T8-S10. GATE-P3-05 stays open. GATE-P3-06 stays open. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
+
+## 2026-10-04 — protected registry holes
+Track: T8 T8-S09 follow-up. Worker [Deny the two-hop ref and Greek omicron scaffold](226f3b6a-7c96-403f-9407-510ae5a8b0bf). No push. L4 stays off.
+Intent: A two-hop `$ref` that lands on `account.move` is RT-11 and is not journaled. A cycle or an unresolved hop is denied. A chain that ends on `sale.order` stays allowed. Greek omicron (U+03BF) folds to Latin o, so that scaffold is RT-10 and is not applied. GATE-P3-05 stays open. Re-ran the suite, the registry tests, and import-boundary tests: 28 passed. The version-branch count stayed 22.
 Not done: T8-S10. GATE-P3-05 stays open. GATE-P3-06 stays open. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.

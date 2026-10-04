@@ -138,6 +138,16 @@ _CONFUSABLES = str.maketrans(
         "х": "x",
         "і": "i",
         "ј": "j",
+        # Greek lookalikes. NFKC and casefold leave these as Greek, not Latin.
+        "\u03b1": "a",
+        "\u03b3": "y",
+        "\u03b9": "i",
+        "\u03bd": "v",
+        "\u03bf": "o",
+        "\u03c1": "p",
+        "\u03c3": "o",
+        "\u03c5": "u",
+        "\u03f3": "j",
     }
 )
 _DETECTIONS: list[dict[str, str]] = []
@@ -475,6 +485,35 @@ def _value_hits_model(value: Any, models: frozenset[str]) -> bool:
     return any(_hits_model(text, models) for text in texts)
 
 
+def _ref_hops_fail_closed(
+    pointer: str,
+    document: list[dict[str, Any]],
+    models: frozenset[str],
+    seen: set[str],
+) -> bool:
+    """Walk ``$ref`` hops until a concrete value, a repeated pointer, or a miss.
+
+    Inputs: one JSON pointer, the change-set it indexes, the deny-model set,
+    and the pointers already visited on this path.
+    Output: True when the chain names a protected model, repeats a pointer, or
+    does not resolve. False when the chain ends on a concrete value that does
+    not name a protected model.
+    Side effects: none. A cycle or an unresolved hop fails closed.
+    """
+    if pointer in seen:
+        return True
+    path = set(seen)
+    path.add(pointer)
+    walked = _walk_pointer(pointer, document)
+    if isinstance(walked, _Unresolved):
+        return True
+    hops: list[str] = []
+    _collect_refs(walked, hops)
+    if _value_hits_model(walked, models):
+        return True
+    return any(_ref_hops_fail_closed(hop, document, models, path) for hop in hops)
+
+
 def _leaf_case(op: dict[str, Any], models: frozenset[str]) -> str | None:
     op_type = str(op.get("type") or "")
     if op_type == _OVERFLOW:
@@ -512,10 +551,7 @@ def protected_case(
     _collect_refs(op, refs)
     ref_case = "RT-10" if str(op.get("type") or "") == "model.scaffold" else "RT-11"
     for ref in refs:
-        if _hits_model(ref, models):
-            return ref_case
-        resolved_ref = _walk_pointer(ref, doc)
-        if isinstance(resolved_ref, _Unresolved) or _value_hits_model(resolved_ref, models):
+        if _hits_model(ref, models) or _ref_hops_fail_closed(ref, doc, models, set()):
             return ref_case
     resolved = _resolve(op, doc)
     if _contains_overflow(resolved):
