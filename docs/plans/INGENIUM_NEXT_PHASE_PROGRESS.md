@@ -1111,7 +1111,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 Execution queue. A line leaves this list only when that item is finished. Items that need a live system or a decision already made stay blocked instead of being faked.
 
 In progress, code that can be finished without a live Odoo or a live model:
-1. The executor calls undo through validate, policy, and approval. A failed check does not write the inverse.
+1. The recorded prompt transcript is included in exported run state and comes back on restore. A process kill still drops the run unless the caller kept that dict. GATE-P4-07 stays open.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
@@ -1120,6 +1120,7 @@ Closed this turn:
 - Confirmed tenant and database facts are in the prompt memory layer, capped at 5% of the window. Pending items, role notes, episodic memory, and global knowledge stay out.
 - Apply refuses a frozen change-set and an elevate change-set with no domain owner before any write. When an observation is supplied, verify runs after the in-memory apply: R2 and above rolls back, and below R2 the result is NEEDS_HUMAN. An apply with no observation still records the journal result.
 - Snapshot preflight passes the connection major from `server_version`. Major 20 and later accept a metadata snapshot. Major 19 still requires a `/web/database` backup when the caller asks. A missing major stays off the Odoo 20 path. Freshness and BILLABLE stay gated.
+- The executor calls undo through validate, policy, and approval. `apply` does not call it. A refused undo does not write. An approved undo with a matching snapshot applies the inverse. A mismatch stays NEEDS_HUMAN. A field that still has rows is hidden, and the rows stay.
 
 Blocked until something outside this repo exists. The product behavior stays the refuse or the off switch:
 - T2-J1 `/doc` text match. Sandbox default stays XML-RPC. Promote stays human.
@@ -1162,7 +1163,6 @@ Still to finish in code:
 - Engine suite 1 and suite 2 were not run for the schema family. `model.create`, `model.scaffold`, `field.deprecate`, `selection.update`, and `constraint.sql` still have no inverse in the handler.
 - Simulation staging is an in-memory clone. It is not an operator-owned neutralized database.
 - GATE-P3-06 was not run. Neither mutmut nor cosmic-ray is installed. No mutation score was invented.
-- Undo through validate, policy, and approval is not called by the executor.
 - Engine suite 2 round-trips 18 of 63 catalog ops. The other 45 have no handler inverse and were not stubbed.
 - A second apply is proven only for the eight ops the executor can apply. The rest of the catalog is not claimed.
 - GATE-P3-10 is not fully passed. Six plan-card snapshots exist, one op per family. The rest of the catalog has no snapshot.

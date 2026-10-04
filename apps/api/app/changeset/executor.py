@@ -2,7 +2,8 @@
 
 The bridge gate runs before any journal write. A freeze and a missing domain
 owner refuse before that write. After a successful in-memory apply, ``verify``
-reads the caller-supplied observation. WAL rows still live in ``_JOURNAL``.
+reads the caller-supplied observation. ``undo`` calls change-set undo and
+returns that result. ``apply`` does not call it. WAL rows still live in ``_JOURNAL``.
 The Alembic revision ``s9t0u1v2w3x4`` declares ``journal_entry``,
 ``before_image``, and ``apply_database_lock``; this process does not write
 those tables. ``recover_stale_applying`` reads a journal list, not Postgres.
@@ -21,10 +22,12 @@ from typing import Any
 from odoo_client.schema_fingerprint import schema_fingerprint as hash_schema
 
 from app.blast_radius import assert_production_apply_records, changeset_record_count
+from app.changeset.inbox import Inbox
 from app.changeset.ops import OP_CATALOG, get_op
 from app.changeset.policy import apply_blocked, policy_decision, policy_for_op, risk_of
 from app.changeset.protected_registry import protected_denial, reset_detections
 from app.changeset.recovery import DatabaseApplyLock, recover
+from app.changeset.rollback import undo as rollback_undo
 from app.changeset.simulate import guard_production_apply
 from app.changeset.verify import verify
 
@@ -178,6 +181,52 @@ def schema_drift_status(approved_fingerprint: str, live_schema: dict[str, Any] |
     if hash_schema(live_schema) != approved_fingerprint:
         return "STALE"
     return "CURRENT"
+
+
+def undo(
+    changeset: list[dict[str, Any]],
+    *,
+    known_models: set[str] | frozenset[str],
+    environment: str,
+    requester_id: str,
+    connection_id: str,
+    store: dict[str, dict[str, Any]] | None = None,
+    field_rows: Mapping[str, int] | None = None,
+    approvals: list[dict[str, str]] | None = None,
+    inbox: Inbox | None = None,
+    expected_snapshot: Mapping[str, Any] | None = None,
+    observed_snapshot: Mapping[str, Any] | None = None,
+    goal: str = "Undo the change-set",
+    assumptions: list[str] | None = None,
+) -> dict[str, Any]:
+    """Call change-set undo and return its result.
+
+    Inputs: the applied change-set, known models, environment, requester,
+    connection, optional memory store, optional ``model:name`` row counts,
+    approval decisions, inbox, and the two MetaSnapshots to compare.
+    Outputs: the ``rollback.undo`` result. ``applied`` is True only after that
+    function writes the inverse. A snapshot mismatch stays ``NEEDS_HUMAN``.
+    A field that still has rows is a hide, and the result names the remaining
+    rows. The inverse change-set does not delete those rows.
+    Side effects: only those of ``rollback.undo``. A failed validate, policy,
+    or approval does not write the inverse. ``apply`` does not call this.
+    Does not call Odoo and does not open a socket.
+    """
+    return rollback_undo(
+        changeset,
+        known_models=known_models,
+        environment=environment,
+        requester_id=requester_id,
+        connection_id=connection_id,
+        store=store,
+        field_rows=field_rows,
+        approvals=approvals,
+        inbox=inbox,
+        expected_snapshot=expected_snapshot,
+        observed_snapshot=observed_snapshot,
+        goal=goal,
+        assumptions=assumptions,
+    )
 
 
 def apply(

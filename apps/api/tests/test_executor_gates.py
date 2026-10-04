@@ -6,7 +6,9 @@ import socket
 
 import pytest
 
-from app.changeset.executor import _protocol, apply, get_journal, reset_journal
+import app.changeset.executor as executor_module
+from app.changeset.executor import _protocol, apply, get_journal, reset_journal, undo
+from app.changeset.handlers import apply_memory
 from app.changeset.policy import apply_blocked, policy_for_op
 from app.changeset.verify import (
     REQUIRED_SMOKE,
@@ -162,6 +164,118 @@ def test_failed_verify_rolls_back_at_r2_and_needs_human_below(monkeypatch: pytes
     assert recorded_rollbacks()
     assert calls[0]["live"]["requester"]["live"] is False
     assert calls[1]["live"]["requester"]["live"] is False
+
+
+def test_executor_undo_refuses_without_writing_and_applies_an_approved_inverse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[dict]] = []
+    rollback_undo = executor_module.rollback_undo
+
+    def _spy(changeset: list[dict], **kwargs: object) -> dict:
+        calls.append(list(changeset))
+        return rollback_undo(changeset, **kwargs)
+
+    monkeypatch.setattr(executor_module, "rollback_undo", _spy)
+
+    op = {"type": "field.create", "params": {"model": "sale.order", "name": "x_note", "ttype": "char"}}
+    store: dict = {}
+    apply_memory(store, op)
+    key = "field.create:sale.order:x_note"
+    snapshot = {
+        "models": ["sale.order"],
+        "fields": [
+            {"name": "x_note", "model": "sale.order"},
+            {"name": "x_ref", "model": "sale.order"},
+        ],
+    }
+
+    def _undo(target: dict, approvals: list[dict[str, str]]) -> dict:
+        return undo(
+            [op],
+            known_models={"sale.order"},
+            environment="staging",
+            requester_id="requester",
+            connection_id="conn-fake",
+            store=target,
+            approvals=approvals,
+            expected_snapshot=snapshot,
+            observed_snapshot=snapshot,
+        )
+
+    invalid = undo(
+        [op],
+        known_models=set(),
+        environment="staging",
+        requester_id="requester",
+        connection_id="conn-fake",
+        store=store,
+        approvals=[{"approver_id": "requester", "decision": "approve"}],
+        expected_snapshot=snapshot,
+        observed_snapshot=snapshot,
+    )
+    assert invalid["status"] == "INVALID"
+    assert invalid["applied"] is False
+    assert invalid["pipeline"] == ["validate"]
+    assert store[key]["type"] == "field.create"
+
+    refused = _undo(store, [{"approver_id": "approver-a", "decision": "deny"}])
+    assert refused["status"] == "REJECTED"
+    assert refused["applied"] is False
+    assert refused["pipeline"] == ["validate", "policy", "approval"]
+    assert store[key]["type"] == "field.create"
+    assert store[key]["params"]["name"] == "x_note"
+
+    approved = _undo(store, [{"approver_id": "requester", "decision": "approve"}])
+    assert approved["status"] == "ROLLED_BACK"
+    assert approved["applied"] is True
+    assert approved["snapshot_match"] is True
+    assert approved["deletes_rows"] is False
+    assert all(change["type"] != "field.delete" for change in approved["changeset"])
+    assert store == {}
+
+    drifted = dict(snapshot)
+    drifted["fields"] = [{"model": "sale.order", "name": "x_other"}]
+    mismatch_store: dict = {}
+    apply_memory(mismatch_store, op)
+    mismatch = undo(
+        [op],
+        known_models={"sale.order"},
+        environment="staging",
+        requester_id="requester",
+        connection_id="conn-fake",
+        store=mismatch_store,
+        approvals=[{"approver_id": "requester", "decision": "approve"}],
+        expected_snapshot=snapshot,
+        observed_snapshot=drifted,
+    )
+    assert mismatch["status"] == "NEEDS_HUMAN"
+    assert mismatch["snapshot_match"] is False
+
+    filled: dict = {}
+    apply_memory(filled, op)
+    filled[key]["rows"] = [{"id": 1}, {"id": 2}]
+    hidden = undo(
+        [op],
+        known_models={"sale.order"},
+        environment="staging",
+        requester_id="requester",
+        connection_id="conn-fake",
+        store=filled,
+        field_rows={"sale.order:x_note": 2},
+        approvals=[{"approver_id": "requester", "decision": "approve"}],
+        expected_snapshot=snapshot,
+        observed_snapshot=snapshot,
+    )
+    assert hidden["status"] == "ROLLED_BACK"
+    assert hidden["changeset"][0]["type"] == "view.inherit.create"
+    assert hidden["changeset"][0]["type"] not in {"field.delete", "data.delete", "data.unlink"}
+    assert hidden["deletes_rows"] is False
+    assert hidden["remaining_rows"] == 2
+    assert filled[key]["hidden"] is True
+    assert filled[key]["rows"] == [{"id": 1}, {"id": 2}]
+    assert len(calls) == 5
+    assert all(call == [op] for call in calls)
 
 
 def test_missing_domain_owner_is_refused_before_any_write(monkeypatch: pytest.MonkeyPatch) -> None:
