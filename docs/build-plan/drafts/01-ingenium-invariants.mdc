@@ -1,0 +1,26 @@
+---
+description: Ingenium global invariants inherited by every card (full table docs/build-plan/02_INVARIANTS.md)
+alwaysApply: true
+---
+# Ingenium invariants (break one = card rejected)
+
+1. Git: read-only. No checkout, reset, stash, commit, rebase, push, or any history change without Tope's explicit yes.
+2. Formatters: only the repo's Prettier/ESLint/Ruff. Never reformat a file you are not changing.
+3. Databases: disposable `ingenium_*` only. Drop what you create. Never touch client or production DBs. Never wipe stacks you did not create. Never weaken `assert_isolated()` or the docker guard.
+4. Plain language: every owner-visible word follows the glossary (handover Appendix C). The jargon guard must pass.
+5. Preserve every feature: before removing or merging anything, list what it did and where it now lives. Retirements need Tope's yes.
+6. Ideas outside SPEC, CONFIG_SUITE_SPEC, BRIDGE_RUNNER_SPEC, FEATURE_AUDIT, or DESIGN_TOUCHES are proposals, not builds.
+7. Evidence or it did not happen: log date, command, result, and label in `apps/api/evals/v2/PROGRESS.md`.
+8. Never invent facts. Label inferences `[Inferred]`. Never upgrade a label without new evidence.
+9. FOSS only (MIT, BSD, Apache-2.0, ISC, MPL-2.0, LGPL dynamic, PostgreSQL). No ELv2, SSPL, BSL, Commons Clause, or unlicensed code.
+10. One change at a time, verified (unit, then live).
+11. Leave the machine as found. Stop only your own processes. Never take ports 3002, 8001, 8002, 8012, 5433, 5436, 8069-8073, or 11434.
+12. Clean-room: public ORM/RPC only. No direct SQL on client DBs. Never read Enterprise Studio source.
+13. AI proposes, code authorises. No model output reaches `execute_kw`, an install, or an exported module without a deterministic validator.
+14. Money guard and write gate: changed only by L3-routed cards with Elite design notes, locked oracle tests, and a separate L3 Reviewer.
+15. Honest data: every number on screen comes from the connected DB or is labelled "Example".
+16. `evals/v2/holdout_fresh/` stays sealed: never read its gold or tune against it.
+17. Never log or paste secrets or client PII (logs, packets, evidence, screenshots).
+18. Destructive or external actions (deletes, migrations, installs on non-disposable DBs, outbound sends, pushes) need Tope's explicit yes in the current message.
+
+Repo traps: `:8001` runs without `--reload`, so do not restart it. A bare `next build` overwrites dev `.next` (use your own `distDir`). Views use `<tree>` on 17 and `<list>` on 18+. No `attrs`. No positional xpath. Odoo 20 uses `ir.access` and has no `ir.rule`. AI calls go only through `app/ai_client`, with untrusted text in `fence_fields`. UI uses tokens only (no raw hex). Light-ish backgrounds get dark ink.

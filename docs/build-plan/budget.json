@@ -1,0 +1,54 @@
+{
+  "_doc": "Single source of truth for token budgets. Change weekly_allocation (or a class cap) here; every phase budget and card cap derives from it. plan_lint reads this file. Chosen by the planner 2026-10-21 (DEC-001, [Inferred]); the 3-card pilot replaces class caps with measured p90 x 1.2. Weekly spend = weekly_allocation x (1 - reserve_share), split between the active phases in proportion to phase_weights (Stage 2 fix: the old phase_shares summed to 1.28 and had no Phase 7). 'prep' is G2 readiness + Oracle sessions for the next phase.",
+  "unit": "cost-weighted tokens = uncached input + output + 0.1 x cache-read input, as summed from the Cursor usage view per role session",
+  "weekly_allocation": 40000000,
+  "reserve_share": 0.15,
+  "stop_at_share_of_card_cap": 0.8,
+  "max_active_phases": 2,
+  "phase_weights": {
+    "prep": 0.5,
+    "P0": 1.0,
+    "P1": 1.5,
+    "P2": 1.5,
+    "P3": 3.0,
+    "P4": 2.0,
+    "P5": 1.5,
+    "P6": 1.0,
+    "P7": 1.5
+  },
+  "classes": {
+    "XS": {
+      "worker": 60000,
+      "tester": 25000,
+      "reviewer": 20000
+    },
+    "S": {
+      "worker": 150000,
+      "tester": 60000,
+      "reviewer": 45000
+    },
+    "M": {
+      "worker": 400000,
+      "tester": 150000,
+      "reviewer": 120000
+    },
+    "L": {
+      "worker": 800000,
+      "tester": 300000,
+      "reviewer": 240000
+    },
+    "XL": {
+      "worker": 1500000,
+      "tester": 0,
+      "reviewer": 400000
+    }
+  },
+  "xl_only_for": [
+    "elite design cards (App Studio Pack, audits)"
+  ],
+  "live_llm_product_spend": {
+    "usd_cap": 15,
+    "call_cap": 200,
+    "decision": "DEC-027"
+  }
+}

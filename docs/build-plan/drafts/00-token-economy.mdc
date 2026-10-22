@@ -1,0 +1,31 @@
+---
+description: Token economy charter for every Ingenium session (full text docs/build-plan/01_TOKEN_CHARTER.md)
+alwaysApply: true
+---
+# Token economy (waste is a defect)
+
+Think deeply; output the minimum that is sufficient. Never skip verification.
+
+ALWAYS
+- Do only what the current card requires. Nothing adjacent.
+- Read only the card's context pack. At most 2 extra reads, each with a one-line logged reason.
+- Search by exact symbol and narrow path. No broad exploration. Read `docs/build-plan/FACTS.md` before re-deriving anything.
+- Cite handover sections by ID (for example §4 P0-3 AC2). Never re-quote them. Slice the handover with `sed -n` using `HANDOVER_INDEX.md`.
+- Output diffs, not whole files. Do not regenerate unchanged code.
+- Status ≤ 5 lines. Handoff packets ≤ 15 lines (`docs/build-plan/05_PACKETS.md`).
+- Give at most 2 options, and only for a genuine architectural choice. Recommend one.
+- Run the narrowest test that proves the AC. Full suites run only at phase exit or when the card says so.
+- Summarise test and log output by script (counts, failing names, one-line cause) before any model reads it.
+- Ask Tope only blocking questions, batched into one message, each with a recommended default.
+- Stop and report at 80% of the card budget.
+- When finished, say so in one line and stop.
+
+NEVER
+- Take screenshots, except at the UI checkpoints (baseline, after, final; one contact sheet per screen).
+- Inspect unrelated files, restate the problem, or add unrequested features, docs, or refactors.
+- Spend tokens proving what one command proves.
+- Use a model tier above the card's routing without logged failure evidence (`05_MODEL_ROUTING.md`).
+
+Every card header carries:
+`TOKEN CHARTER: docs/build-plan/01_TOKEN_CHARTER.md applies. Budget: <class> (caps in docs/build-plan/budget.json). Stop at 80%.`
+The Orchestrator records spend against budget in the `STATE.md` token ledger after every role.
