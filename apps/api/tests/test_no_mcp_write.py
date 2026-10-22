@@ -5,6 +5,10 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.no_app_db
+
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SCAN_ROOTS = (_REPO_ROOT / "apps", _REPO_ROOT / "packages")
 _SKIP_DIR_NAMES = frozenset(
