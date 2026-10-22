@@ -201,7 +201,8 @@ async function loadDistDir(env: Record<string, string>, phase: string): Promise<
     for (const key of keys) delete process.env[key];
     for (const [key, value] of Object.entries(env)) process.env[key] = value;
     vi.resetModules();
-    const imported = (await import("../../next.config.ts")) as {
+    // TS5097: this tsconfig rejects a ".ts" import specifier.
+    const imported = (await import("../../next.config")) as {
       default: NextConfigLike | NextConfigFactory;
     };
     const loaded = imported.default;
