@@ -6,7 +6,7 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { Callout } from "@/components/ui/Callout";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
-import { Card, PageHeader } from "@/components/ui/layout-primitives";
+import { Card, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
 
 export default function TrustSafetyPage() {
   const [markdown, setMarkdown] = useState<string | null>(null);
@@ -35,9 +35,24 @@ export default function TrustSafetyPage() {
         Complete the production readiness checklist on each connection Overview before unlocking
         production mode.
       </Callout>
-      <Card className="prose prose-sm mt-6 max-w-none p-6 dark:prose-invert">
-        {markdown ? <Markdown>{markdown}</Markdown> : <p className="text-muted">Loading…</p>}
-      </Card>
+      {markdown ? (
+        <Card className="prose prose-sm mt-6 max-w-none p-6 dark:prose-invert">
+          <Markdown>{markdown}</Markdown>
+        </Card>
+      ) : !error ? (
+        <Card className="mt-6 space-y-3 p-6" role="status" data-testid="trust-safety-loading">
+          <span className="sr-only">Loading the safety contract.</span>
+          <div className="space-y-3" aria-hidden>
+            <Skeleton className="h-6 w-48" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-11/12" />
+            <Skeleton className="h-4 w-4/5" />
+            <Skeleton className="mt-4 h-6 w-40" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-3/4" />
+          </div>
+        </Card>
+      ) : null}
     </div>
   );
 }

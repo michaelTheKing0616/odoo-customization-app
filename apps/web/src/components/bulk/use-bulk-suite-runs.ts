@@ -1,6 +1,10 @@
 "use client";
 
 import { api, ConfirmationRequiredError } from "@/lib/api";
+import { changeApi } from "@/lib/api/suite";
+
+/** A5: record types the shared Run sheet (suite > Change records > Edit a field) handles today. */
+export const RUN_SHEET_EDIT_MODELS = new Set(["sale.order", "purchase.order", "crm.lead", "res.partner", "product.template", "project.task"]);
 import { CONFIRM_PHRASE, parseSelection } from "./bulk-helpers";
 import type { BulkSuiteState } from "./use-bulk-suite-state";
 
@@ -71,6 +75,7 @@ export function useBulkSuiteRuns(s: BulkSuiteState) {
     }
     s.setBusy(true);
     s.setError(null);
+    const progress_run_id = s.beginProgressRun("bulk");
     try {
       const selection = parseSelection(s.selectionMode, s.domainText, s.idsText);
       const res = await api.bulkTransitionRun(connectionId, {
@@ -78,6 +83,7 @@ export function useBulkSuiteRuns(s: BulkSuiteState) {
         method: s.method.trim(),
         ...selection,
         dry_run: dryRun,
+        progress_run_id,
         ...(dryRun
           ? {}
           : { confirm_advanced: true, confirm_phrase: phrase || CONFIRM_PHRASE }),
@@ -109,9 +115,25 @@ export function useBulkSuiteRuns(s: BulkSuiteState) {
           throw new Error("values must be a JSON object");
         }
       } catch {
-        throw new Error('Invalid values JSON — e.g. {"x_name": "New title"}');
+        throw new Error('Invalid values JSON - e.g. {"x_name": "New title"}');
       }
       const selection = parseSelection(s.selectionMode, s.domainText, s.idsText);
+      const fieldNames = Object.keys(values);
+      if (!dryRun && fieldNames.length === 1 && RUN_SHEET_EDIT_MODELS.has(s.model.trim())) {
+        // A5: real writes go through the shared Run sheet (check, approval rule, money guard, undo).
+        const batch = await changeApi.create(connectionId, {
+          tool: "edit",
+          model: s.model.trim(),
+          name: `Edit ${fieldNames[0]} (from Bulk tools)`,
+          domain: selection.domain ?? [],
+          ids: selection.ids ?? [],
+          change: { field: fieldNames[0], value: values[fieldNames[0]] },
+        });
+        s.setConfirmOpen(false);
+        s.setNotice("Opening the Run sheet: check, approval and undo happen there.");
+        window.location.assign(`/connections/${connectionId}/suite/change/edit?batch=${encodeURIComponent(batch.id)}`);
+        return;
+      }
       const res = await api.bulkMassEdit(connectionId, {
         model: s.model.trim(),
         values,

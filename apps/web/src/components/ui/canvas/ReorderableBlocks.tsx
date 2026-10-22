@@ -4,6 +4,7 @@ import {
   useCallback,
   useRef,
   useState,
+  type DragEvent,
   type HTMLAttributes,
   type KeyboardEvent,
   type MouseEvent,
@@ -19,6 +20,16 @@ export type ReorderableBlockMeta = {
   isDragging: boolean;
   dropIndex: number | null;
   isDropTarget: boolean;
+};
+
+/**
+ * Optional HTML5 drop from outside this list (palette → canvas).
+ * Pointer reorder of existing items stays the only in-list drag path.
+ * A drop whose pointer is outside this canvas list is ignored.
+ */
+export type ReorderableExternalDrop = {
+  canAccept: (dt: DataTransfer) => boolean;
+  onDrop: (dt: DataTransfer, insertIndex: number) => void;
 };
 
 export type ReorderableBlocksProps<T> = {
@@ -48,6 +59,8 @@ export type ReorderableBlocksProps<T> = {
     "data-field-id"?: string;
     "data-testid"?: string;
   };
+  /** Palette / external HTML5 drop onto this canvas. */
+  externalDrop?: ReorderableExternalDrop;
 };
 
 export function pointInRect(
@@ -56,6 +69,64 @@ export function pointInRect(
   rect: Pick<DOMRect, "left" | "right" | "top" | "bottom">,
 ): boolean {
   return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+}
+
+const MAX_TILT_DEG = 3;
+
+/** 43: smoothed tilt from horizontal speed (px/ms), never past 3 degrees. */
+export function dragTilt(vx: number, prev: number): number {
+  const target = Math.max(-MAX_TILT_DEG, Math.min(MAX_TILT_DEG, vx * 6));
+  return Math.round((prev * 0.7 + target * 0.3) * 100) / 100;
+}
+
+function reducedMotion(): boolean {
+  return typeof window !== "undefined" && Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+}
+
+function liftDragged(el: HTMLElement, dx: number, dy: number, tilt: number, snapped: boolean) {
+  const lift = Math.min(1, Math.hypot(dx, dy) / 120);
+  el.style.position ||= "relative";
+  el.style.zIndex = "30";
+  el.style.transition = snapped ? "transform 80ms ease-out" : "box-shadow 160ms ease-out";
+  // 42: a 1px nudge in the snap direction when the slot changes.
+  const nudge = snapped ? Math.sign(dy) : 0;
+  el.style.transform = `translate(${dx}px, ${dy + nudge}px) rotate(${tilt}deg) scale(${1 + lift * 0.02})`;
+  el.style.boxShadow = `0 ${4 + lift * 14}px ${10 + lift * 26}px -8px rgb(15 17 21 / ${0.12 + lift * 0.14})`;
+}
+
+function settleDragged(el: HTMLElement) {
+  el.style.transition = "transform 220ms cubic-bezier(0.32,0.72,0,1), box-shadow 220ms ease-out";
+  el.style.transform = "";
+  el.style.boxShadow = "";
+  window.setTimeout(() => {
+    el.style.zIndex = "";
+    el.style.transition = "";
+  }, 240);
+}
+
+/** 42: brief guide-line flash on the slot the item just snapped to. */
+function flashSnap(list: HTMLElement, insert: number) {
+  const items = list.querySelectorAll<HTMLElement>("[data-reorder-item]");
+  const target = items[Math.min(insert, items.length - 1)];
+  if (!target) return;
+  target.dataset.snapFlash = insert >= items.length ? "after" : "before";
+  window.setTimeout(() => delete target.dataset.snapFlash, 180);
+}
+
+/** clientX/Y from a React drag event (prefer non-zero synthetic, else nativeEvent). */
+export function dragClientPoint(event: {
+  clientX: number;
+  clientY: number;
+  nativeEvent?: { clientX?: number; clientY?: number };
+}): { x: number; y: number } {
+  if (event.clientX !== 0 || event.clientY !== 0) {
+    return { x: event.clientX, y: event.clientY };
+  }
+  const native = event.nativeEvent;
+  if (native && ((native.clientX ?? 0) !== 0 || (native.clientY ?? 0) !== 0)) {
+    return { x: native.clientX ?? 0, y: native.clientY ?? 0 };
+  }
+  return { x: event.clientX, y: event.clientY };
 }
 
 export function insertIndexFromClientY(
@@ -139,6 +210,7 @@ export function ReorderableBlocks<T>({
   itemAs = "div",
   listProps,
   itemProps,
+  externalDrop,
 }: ReorderableBlocksProps<T>) {
   const listRef = useRef<HTMLElement | null>(null);
   const dragRef = useRef<{
@@ -148,6 +220,11 @@ export function ReorderableBlocks<T>({
     startX: number;
     startY: number;
     active: boolean;
+    el?: HTMLElement;
+    lastX?: number;
+    lastT?: number;
+    tilt?: number;
+    insert?: number;
   } | null>(null);
   const suppressClickRef = useRef(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -156,6 +233,8 @@ export function ReorderableBlocks<T>({
   const canReorder = !disabled && Boolean(onReorder || onMove);
 
   const resetDrag = useCallback(() => {
+    const el = dragRef.current?.el;
+    if (el && dragRef.current?.active) settleDragged(el);
     dragRef.current = null;
     setDraggingId(null);
     setDropIndex(null);
@@ -208,6 +287,10 @@ export function ReorderableBlocks<T>({
       startX: event.clientX,
       startY: event.clientY,
       active: false,
+      el: itemEl,
+      lastX: event.clientX,
+      lastT: event.timeStamp,
+      tilt: 0,
     };
     try {
       itemEl.setPointerCapture?.(event.pointerId);
@@ -230,6 +313,18 @@ export function ReorderableBlocks<T>({
     const list = listRef.current;
     if (!list) return;
     const insert = insertIndexFromClientY(event.clientY, itemRects(list));
+    const snapped = drag.insert !== undefined && drag.insert !== insert;
+    drag.insert = insert;
+    if (drag.el) {
+      // 43: weight. Tilt follows horizontal speed, capped at 3 degrees.
+      const dt = Math.max(1, event.timeStamp - (drag.lastT ?? event.timeStamp));
+      const vx = (event.clientX - (drag.lastX ?? event.clientX)) / dt;
+      drag.lastX = event.clientX;
+      drag.lastT = event.timeStamp;
+      drag.tilt = reducedMotion() ? 0 : dragTilt(vx, drag.tilt ?? 0);
+      liftDragged(drag.el, dx, dy, drag.tilt, snapped);
+    }
+    if (snapped) flashSnap(list, insert);
     setDropIndex(insert);
   }
 
@@ -279,13 +374,54 @@ export function ReorderableBlocks<T>({
     event.stopPropagation();
   }
 
+  function onListDragOver(event: DragEvent<HTMLElement>) {
+    listProps?.onDragOver?.(event);
+    if (event.defaultPrevented || !externalDrop) return;
+    const dt = event.dataTransfer;
+    if (!dt || !externalDrop.canAccept(dt)) return;
+    event.preventDefault();
+    dt.dropEffect = "copy";
+    const list = listRef.current;
+    if (!list) return;
+    const { y } = dragClientPoint(event);
+    setDropIndex(insertIndexFromClientY(y, itemRects(list)));
+  }
+
+  function onListDragLeave(event: DragEvent<HTMLElement>) {
+    listProps?.onDragLeave?.(event);
+    if (!externalDrop) return;
+    const list = listRef.current;
+    if (!list) return;
+    const related = event.relatedTarget;
+    if (related instanceof Node && list.contains(related)) return;
+    setDropIndex(null);
+  }
+
+  function onListDrop(event: DragEvent<HTMLElement>) {
+    listProps?.onDrop?.(event);
+    if (event.defaultPrevented || !externalDrop) return;
+    const dt = event.dataTransfer;
+    const list = listRef.current;
+    setDropIndex(null);
+    if (!dt || !list || !externalDrop.canAccept(dt)) return;
+    const { x, y } = dragClientPoint(event);
+    // When coordinates are intentionally non-zero, reject a drop outside this canvas.
+    // Drops on non-canvas nodes never reach this handler.
+    if ((x !== 0 || y !== 0) && !pointInRect(x, y, list.getBoundingClientRect())) {
+      return;
+    }
+    event.preventDefault();
+    const insert = insertIndexFromClientY(y, itemRects(list));
+    externalDrop.onDrop(dt, insert);
+  }
+
   const ListTag = as;
   const ItemTag = itemAs;
 
   return (
     <ListTag
       {...listProps}
-      ref={(node) => {
+      ref={(node: HTMLElement | null) => {
         listRef.current = node;
         const forwarded = listProps?.ref;
         if (typeof forwarded === "function") forwarded(node);
@@ -294,6 +430,9 @@ export function ReorderableBlocks<T>({
       className={cn(className, listProps?.className)}
       data-testid={listProps?.["data-testid"] ?? "reorderable-blocks"}
       data-reorder-canvas=""
+      onDragOver={onListDragOver}
+      onDragLeave={onListDragLeave}
+      onDrop={onListDrop}
     >
       {items.map((item, index) => {
         const id = getId(item);

@@ -54,6 +54,7 @@ export const bulkApi = {
       receipt_token?: string | null;
       continue_run_id?: string | null;
       disable_sample_first?: boolean;
+      progress_run_id?: string | null;
     },
   ) =>
     request<BulkRunOut>(`/api/connections/${id}/bulk/transitions/run`, {

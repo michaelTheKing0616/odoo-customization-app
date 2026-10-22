@@ -25,7 +25,7 @@ describe("JobAutopilotHandoffBar", () => {
         onDownloadPdf={vi.fn()}
       />,
     );
-    expect(screen.getByRole("link", { name: "ModuleSpec" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "App plan" })).toHaveAttribute(
       "href",
       "/connections/c1/modulespec",
     );
@@ -33,7 +33,9 @@ describe("JobAutopilotHandoffBar", () => {
     expect(screen.getByRole("link", { name: "App Studio" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Projects" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Expert" })).toBeNull();
-    expect(screen.getByTestId("job-promote-or-handoff").textContent).toMatch(/Promote to target/);
+    expect(screen.getByTestId("job-promote-or-handoff").textContent).toMatch(/Publish to target/);
+    expect(screen.getByTestId("job-promote-or-handoff").className).toMatch(/bg-accent|primary/);
+    expect(screen.getByTestId("job-promote-confirm-hint").textContent).toMatch(/confirm dialog/);
   });
 
   it("uses Handoff when there is no residual zip", () => {
@@ -104,6 +106,9 @@ describe("JobAutopilotHandoffBar", () => {
       />,
     );
     expect(screen.getByTestId("job-promote-targets-empty")).toBeInTheDocument();
+    expect(screen.getByTestId("job-promote-targets-empty").textContent).toMatch(/What:/);
+    expect(screen.getByTestId("job-promote-targets-empty").textContent).toMatch(/Why:/);
+    expect(screen.getByTestId("job-promote-targets-empty").textContent).toMatch(/Next:/);
     expect(screen.getByRole("link", { name: "Open Connect" })).toHaveAttribute("href", "/connect");
     expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
   });

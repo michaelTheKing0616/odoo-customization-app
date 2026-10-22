@@ -68,7 +68,7 @@ describe("Tooltip characterization", () => {
 
   describe("open delay", () => {
     beforeEach(() => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
+      vi.useFakeTimers();
     });
 
     it("opens only after a delay between 125 ms and 200 ms", async () => {
@@ -88,9 +88,7 @@ describe("Tooltip characterization", () => {
       expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
 
       await vi.advanceTimersByTimeAsync(1);
-      await waitFor(() => {
-        expect(screen.getByRole("tooltip")).toHaveTextContent("Helper text");
-      });
+      expect(screen.getByRole("tooltip")).toHaveTextContent("Helper text");
     });
   });
 });

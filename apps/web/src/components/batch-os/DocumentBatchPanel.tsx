@@ -93,7 +93,7 @@ export function DocumentBatchPanel({ connectionId }: Props) {
       });
       setJob(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Dry-run failed");
+      setError(err instanceof Error ? err.message : "Test run failed");
     } finally {
       setBusy(false);
     }
@@ -134,7 +134,7 @@ export function DocumentBatchPanel({ connectionId }: Props) {
   return (
     <div className="space-y-4" data-testid="document-batch-panel">
       <Callout variant="info" title="Preview ≠ posted">
-        Dry-run resolves partners/products/accounts via public RPC. Apply creates{" "}
+        Test run resolves partners/products/accounts via public RPC. Apply creates{" "}
         <strong>draft</strong> <code className="text-xs">account.move</code> rows.
         Optional post is L2 and needs confirm.
       </Callout>
@@ -203,7 +203,7 @@ export function DocumentBatchPanel({ connectionId }: Props) {
                 Map
               </Button>
               <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => void runDryRun()}>
-                Dry-run
+                Test run
               </Button>
             </div>
           </Card>

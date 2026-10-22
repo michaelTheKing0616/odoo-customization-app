@@ -4,7 +4,7 @@ import Link from "next/link";
 import { AskWhyButton } from "@/components/expert/AskWhyButton";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
-import { Card } from "@/components/ui/layout-primitives";
+import { Card, Skeleton } from "@/components/ui/layout-primitives";
 import type { AppTemplate, Connection, ScaffoldResult } from "@/lib/api";
 import {
   scaffoldApplyAllowed,
@@ -17,6 +17,8 @@ type DraftStudioTemplatesProps = {
   templates: AppTemplate[];
   selectedId?: string | null;
   result: ScaffoldResult | null;
+  /** Templates and capabilities still loading: skeleton cards, no locked flash. */
+  loading?: boolean;
   onOpenTemplate: (tpl: AppTemplate) => void;
   templateScaffoldOpts: (id: string) => { requireObjectWrite?: true };
 };
@@ -27,16 +29,51 @@ export function DraftStudioTemplates({
   templates,
   selectedId,
   result,
+  loading = false,
   onOpenTemplate,
   templateScaffoldOpts,
 }: DraftStudioTemplatesProps) {
+  const capabilitiesUnknown = !loading && Boolean(connection) && !connection?.capabilities;
   return (
-    <section className="mt-10 border-t border-border-subtle pt-8">
-      <h2 className="text-lg font-semibold text-ink">Ready-made templates</h2>
-      <p className="mt-1 text-sm text-muted">
-        Skip AI — one click scaffolds a full app (Library, CRM Lite, …) directly on this connection.
+    <section
+      className="draft-studio-templates"
+      aria-labelledby="draft-studio-templates-title"
+      data-testid="draft-studio-templates"
+    >
+      <h2 id="draft-studio-templates-title" className="draft-studio-section-title">
+        Ready-made templates
+      </h2>
+      <p className="draft-studio-section-lede">
+        Skip AI. One click scaffolds a full app (Library, CRM Lite, and more) directly on
+        this connection, after you confirm.
       </p>
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {capabilitiesUnknown && templates.length > 0 ? (
+        <p className="draft-studio-templates-locked" data-testid="templates-capabilities-unknown">
+          Templates stay locked until this connection is probed. Open Connect, re-probe
+          the connection, then come back to scaffold.{" "}
+          <Link href="/connect" className="font-medium text-ink underline underline-offset-2">
+            Open Connect
+          </Link>
+        </p>
+      ) : null}
+      {loading ? (
+        <div
+          className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+          role="status"
+          aria-label="Loading templates"
+          data-testid="templates-loading"
+        >
+          {Array.from({ length: 4 }, (_, i) => (
+            <Skeleton key={i} className="h-28 w-full" />
+          ))}
+        </div>
+      ) : null}
+      {!loading && templates.length === 0 ? (
+        <p className="draft-studio-quiet-note mt-3" data-testid="templates-empty">
+          No templates loaded for this connection. Describe the app above instead.
+        </p>
+      ) : null}
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" hidden={loading}>
         {templates.map((tpl) => {
           const active = selectedId === tpl.id;
           const opts = templateScaffoldOpts(tpl.id);
@@ -53,18 +90,17 @@ export function DraftStudioTemplates({
                 if (!canScaffold) return;
                 onOpenTemplate(tpl);
               }}
-              className={`rounded-md border p-4 text-left transition ${
-                !canScaffold
-                  ? "cursor-not-allowed border-border-subtle bg-surface-muted opacity-50"
-                  : active
-                    ? "border-accent bg-accent-subtle"
-                    : "border-border-subtle bg-surface-raised hover:bg-surface-muted"
+              aria-pressed={active}
+              className={`draft-studio-template${!canScaffold ? " is-locked" : ""}${
+                active ? " is-selected" : ""
               }`}
             >
-              <p className="text-lg font-semibold text-ink">{tpl.name}</p>
-              <p className="mt-1 font-mono text-xs text-accent">{tpl.id}</p>
-              <p className="mt-2 text-sm text-muted">{tpl.description}</p>
-              {blocked ? <p className="mt-2 text-xs text-warning">{blocked}</p> : null}
+              <span className="draft-studio-template-name">{tpl.name}</span>
+              <span className="draft-studio-template-id">{tpl.id}</span>
+              <span className="draft-studio-template-desc">{tpl.description}</span>
+              {blocked && !capabilitiesUnknown ? (
+                <span className="draft-studio-template-blocked">{blocked}</span>
+              ) : null}
             </button>
           );
         })}
@@ -94,7 +130,7 @@ export function DraftStudioTemplates({
               <span aria-hidden>{result.models.length > 0 ? "✓" : "○"}</span>
               <span>
                 Models created
-                {result.models.length > 0 ? ` (${result.models.length})` : " — none reported"}
+                {result.models.length > 0 ? ` (${result.models.length})` : " (none reported)"}
                 {result.models_skipped && result.models_skipped.length > 0
                   ? ` · skipped: ${result.models_skipped.join(", ")}`
                   : ""}
@@ -104,7 +140,7 @@ export function DraftStudioTemplates({
               <span aria-hidden>{(result.menus_created ?? 0) > 0 ? "✓" : "○"}</span>
               <span>
                 Menus created
-                {typeof result.menus_created === "number" ? ` (${result.menus_created})` : " — n/a"}
+                {typeof result.menus_created === "number" ? ` (${result.menus_created})` : " (n/a)"}
               </span>
             </li>
             <li className="flex items-start gap-2 rounded-md border border-border-subtle px-3 py-2">

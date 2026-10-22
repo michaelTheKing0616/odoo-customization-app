@@ -16,22 +16,38 @@ import { FirstWriteInterstitial } from "@/components/shell/FirstWriteInterstitia
 import { belowMinMajor, connectionMajor } from "@/lib/capabilities";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { BulkResultTable, type BulkRunResult } from "@/components/ui/BulkResultTable";
+import {
+  BulkResultTable,
+  type BulkRunResult,
+} from "@/components/ui/BulkResultTable";
 import { Callout } from "@/components/ui/Callout";
 import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Input } from "@/components/ui/Input";
-import { Card, EmptyState, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
+import { PageHeader, Skeleton } from "@/components/ui/layout-primitives";
 import { Textarea } from "@/components/ui/Textarea";
-
-const CONFIRM_PHRASE = "I understand the risks";
-
-function isDangerRecipe(recipe: PowerOpsRecipe): boolean {
-  const tags = (recipe.tags ?? []).map((t) => t.toLowerCase());
-  if (tags.some((t) => t.includes("danger") || t.includes("destructive"))) return true;
-  const id = recipe.id.toLowerCase();
-  return id.includes("purge") || id.includes("delete") || id.includes("unlink");
-}
+import { PowerOpsErrorNotice } from "@/components/power-ops/PowerOpsErrorNotice";
+import { PowerOpsResultCounts } from "@/components/power-ops/PowerOpsResultCounts";
+import { PowerOpsStageRail } from "@/components/power-ops/PowerOpsStageRail";
+import { PowerOpsStateGuide } from "@/components/power-ops/PowerOpsStateGuide";
+import { OperateStudioBar } from "@/components/operate/OperateStudioBar";
+import {
+  CONFIRM_PHRASE,
+  DRY_RUN_CTA,
+  PAGE_DESCRIPTION,
+  PAGE_TITLE,
+  PRIMARY_CTA,
+  blockedRecipeGuide,
+  emptyPowerOpsGuide,
+  idlePowerOpsGuide,
+  isDangerRecipe,
+  partialFailureGuide,
+  powerOpsHonestyGuide,
+  powerOpsStepFromState,
+  runUnlockReason,
+  sanitizePowerOpsCopy,
+  type PowerOpsErrorContext,
+} from "@/lib/powerOpsScreen";
+import "@/components/power-ops/power-ops-operate.css";
 
 function toBulkResult(
   result: PowerOpsRunOut,
@@ -64,11 +80,13 @@ export default function PowerOpsPage() {
   const [probing, setProbing] = useState(false);
   const [recipes, setRecipes] = useState<PowerOpsRecipe[]>([]);
   const [caps, setCaps] = useState<PowerOpsCapabilities | null>(null);
-  const [recipeId, setRecipeId] = useState("purge_journal_entries");
+  const [recipeId, setRecipeId] = useState("mass_archive");
   const [model, setModel] = useState("account.move");
   const [domainText, setDomainText] = useState("[]");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorContext, setErrorContext] =
+    useState<PowerOpsErrorContext>("load");
   const [notice, setNotice] = useState<string | null>(null);
   const [result, setResult] = useState<PowerOpsRunOut | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -86,13 +104,22 @@ export default function PowerOpsPage() {
       const blockedMajor = belowMinMajor(connection, r.min_major ?? 16);
       const probe = byId.get(r.id);
       const blockedModule = probe ? probe.available === false : false;
-      const blocked = blockedMajor || blockedModule;
-      const blockReason = blockedMajor
-        ? `needs ≥${r.min_major}`
-        : blockedModule
-          ? probe?.reason || "module unavailable"
-          : null;
-      return { recipe: r, blocked, blockReason, danger: isDangerRecipe(r) };
+      const locked = r.locked === true;
+      const blocked = locked || blockedMajor || blockedModule;
+      const blockReason = locked
+        ? "Switched off"
+        : blockedMajor
+          ? `needs ≥${r.min_major}`
+          : blockedModule
+            ? probe?.reason || "module unavailable"
+            : null;
+      return {
+        recipe: r,
+        blocked,
+        blockReason,
+        locked,
+        danger: isDangerRecipe(r),
+      };
     });
   }, [recipes, connection, caps]);
 
@@ -100,10 +127,30 @@ export default function PowerOpsPage() {
   const selected = selectedEntry?.recipe;
   const selectedBlocked = Boolean(selectedEntry?.blocked);
   const selectedBlockReason = selectedEntry?.blockReason;
+  const selectedDanger = Boolean(selectedEntry?.danger);
   const canExecute = dryRunKey === runKey && !selectedBlocked;
 
-  const safeRecipes = availableRecipes.filter((e) => !e.danger);
-  const dangerRecipes = availableRecipes.filter((e) => e.danger);
+  const lockedRecipes = availableRecipes.filter((e) => e.locked);
+  const safeRecipes = availableRecipes.filter((e) => !e.locked && !e.danger);
+  const dangerRecipes = availableRecipes.filter((e) => !e.locked && e.danger);
+
+  const step = powerOpsStepFromState({
+    recipeCount: recipes.length,
+    hasRecipe: Boolean(selected),
+    hasDryRun:
+      dryRunKey === runKey || Boolean(result?.dry_run && dryRunKey === runKey),
+    hasWriteResult: Boolean(result && !result.dry_run),
+  });
+
+  const unlockReason = runUnlockReason({ selectedBlocked, canExecute });
+  const failureGuide = result
+    ? partialFailureGuide({
+        processed: result.processed,
+        succeeded: result.succeeded,
+        failed: result.failed,
+        dryRun: result.dry_run,
+      })
+    : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -121,6 +168,7 @@ export default function PowerOpsPage() {
         setConnection(conn);
         const firstOk = r.recipes.find(
           (row) =>
+            !row.locked &&
             !(
               conn.capabilities?.major != null &&
               (row.min_major ?? 16) > conn.capabilities.major
@@ -129,7 +177,10 @@ export default function PowerOpsPage() {
         if (firstOk) setRecipeId(firstOk.id);
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load Power Ops");
+          setErrorContext("load");
+          setError(
+            err instanceof Error ? err.message : "Failed to load Power Ops",
+          );
         }
       } finally {
         if (!cancelled) setListHydrated(true);
@@ -152,8 +203,37 @@ export default function PowerOpsPage() {
     setDryRunKey(null);
   }, [model, domainText]);
 
+  async function reprobeAndReload() {
+    setProbing(true);
+    setError(null);
+    try {
+      const probeResult = await api.probeConnection(connectionId);
+      setConnection((prev) =>
+        prev
+          ? {
+              ...prev,
+              server_version: probeResult.server_version,
+              capabilities: probeResult.capabilities,
+            }
+          : prev,
+      );
+      const [r, c] = await Promise.all([
+        api.powerOpsRecipes(connectionId),
+        api.powerOpsCapabilities(connectionId),
+      ]);
+      setRecipes(r.recipes);
+      setCaps(c);
+    } catch (err) {
+      setErrorContext("probe");
+      setError(err instanceof Error ? err.message : "Probe failed");
+    } finally {
+      setProbing(false);
+    }
+  }
+
   async function run(dryRun: boolean, phrase?: string) {
     if (selectedBlocked) {
+      setErrorContext("blocked");
       setError(
         `Recipe requires Odoo ≥${selected?.min_major ?? "?"}; connected major is ${major ?? "unknown"}`,
       );
@@ -167,7 +247,8 @@ export default function PowerOpsPage() {
         domain = JSON.parse(domainText) as unknown[];
         if (!Array.isArray(domain)) throw new Error("domain must be a list");
       } catch {
-        throw new Error("Invalid domain JSON — use Odoo domain list, e.g. []");
+        setErrorContext("domain");
+        throw new Error("Invalid domain JSON - use Odoo domain list, e.g. []");
       }
       const res = await api.powerOpsRun(connectionId, {
         recipe_id: recipeId,
@@ -176,17 +257,22 @@ export default function PowerOpsPage() {
         dry_run: dryRun,
         ...(dryRun
           ? {}
-          : { confirm_advanced: true, confirm_phrase: phrase || CONFIRM_PHRASE }),
+          : {
+              confirm_advanced: true,
+              confirm_phrase: phrase || CONFIRM_PHRASE,
+            }),
       });
       setResult(res);
-      setNotice(res.message);
+      setNotice(sanitizePowerOpsCopy(res.message));
       if (dryRun) setDryRunKey(runKey);
       setConfirmOpen(false);
     } catch (err) {
       if (err instanceof ConfirmationRequiredError) {
         setConfirmOpen(true);
+        setErrorContext("run");
         setError(err.warning);
       } else {
+        setErrorContext(dryRun ? "dry_run" : "run");
         setError(err instanceof Error ? err.message : "Run failed");
       }
     } finally {
@@ -194,11 +280,7 @@ export default function PowerOpsPage() {
     }
   }
 
-  function RecipeCard({
-    entry,
-  }: {
-    entry: (typeof availableRecipes)[number];
-  }) {
+  function RecipeCard({ entry }: { entry: (typeof availableRecipes)[number] }) {
     const { recipe: r, blocked, blockReason, danger } = entry;
     const active = recipeId === r.id;
     return (
@@ -206,16 +288,14 @@ export default function PowerOpsPage() {
         type="button"
         disabled={blocked}
         onClick={() => setRecipeId(r.id)}
-        className={`w-full rounded-md border p-4 text-left transition ${
-          active
-            ? "border-accent bg-accent-subtle/30 ring-2 ring-accent"
-            : "border-border-subtle bg-surface hover:border-accent/50"
-        } ${blocked ? "cursor-not-allowed opacity-50" : ""}`}
+        className="po-recipe"
+        data-active={active ? "true" : "false"}
+        data-danger={danger ? "true" : "false"}
         data-testid={`power-ops-recipe-${r.id}`}
       >
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <p className="font-semibold text-ink">{r.name}</p>
-          <div className="flex flex-wrap gap-1">
+        <div className="po-recipe-head">
+          <p className="po-recipe-name">{sanitizePowerOpsCopy(r.name)}</p>
+          <div className="po-badge-row">
             {danger ? <Badge variant="danger">Danger zone</Badge> : null}
             {r.min_major != null ? (
               <Badge variant="info">Odoo ≥{r.min_major}</Badge>
@@ -225,9 +305,9 @@ export default function PowerOpsPage() {
             ) : null}
           </div>
         </div>
-        <p className="mt-2 text-sm text-muted">{r.description}</p>
-        {(r.tags?.length || r.requires_modules?.length) ? (
-          <p className="mt-2 flex flex-wrap gap-1">
+        <p className="po-recipe-desc">{sanitizePowerOpsCopy(r.description)}</p>
+        {r.tags?.length || r.requires_modules?.length ? (
+          <p className="po-badge-row mt-2">
             {r.tags?.map((t) => (
               <Badge key={t} variant="default">
                 {t}
@@ -245,11 +325,10 @@ export default function PowerOpsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl" data-testid="power-ops-page">
-      <PageHeader
-        title="Power Ops"
-        description="Multi-step bulk RPC recipes — the same class of power as Odoo.sh scripts, usable on Odoo Online when the API allows."
-      />
+    <div className="power-ops-operate" data-testid="power-ops-page">
+      <PageHeader title={PAGE_TITLE} description={PAGE_DESCRIPTION} />
+      <PowerOpsStageRail step={step} />
+
       <VersionAwarenessBanner capabilities={connection?.capabilities} />
       {connection ? <FirstWriteInterstitial connection={connection} /> : null}
       <CapabilityProbePanel
@@ -273,6 +352,7 @@ export default function PowerOpsPage() {
                   : prev,
               );
             } catch (err) {
+              setErrorContext("probe");
               setError(err instanceof Error ? err.message : "Probe failed");
             } finally {
               setProbing(false);
@@ -280,186 +360,324 @@ export default function PowerOpsPage() {
           })();
         }}
       />
-      {caps?.philosophy ? (
-        <Callout variant="info" title="Philosophy" className="mt-4">
-          {caps.philosophy}
-        </Callout>
-      ) : null}
 
-      {error ? <ErrorNotice message={error} className="mt-4" /> : null}
-      {notice ? (
-        <Callout variant="info" title="Notice" className="mt-4">
-          {notice}
-        </Callout>
-      ) : null}
+      <OperateStudioBar
+        className="mt-3"
+        testId="power-ops-honesty"
+        tone="warning"
+        title={powerOpsHonestyGuide().title}
+        why={powerOpsHonestyGuide().why}
+        next={powerOpsHonestyGuide().next}
+      />
 
-      <section className="mt-8 space-y-4" data-testid="power-ops-recipes">
-        <h2 className="text-lg font-semibold text-ink">Recipes</h2>
-        {!listHydrated ? (
-          <div className="grid gap-3 sm:grid-cols-2" data-testid="power-ops-recipes-loading">
-            <Skeleton className="h-28 w-full" />
-            <Skeleton className="h-28 w-full" />
-          </div>
-        ) : recipes.length === 0 ? (
-          <EmptyState
-            title="No Power Ops recipes yet"
-            description="Re-probe the connection if you expected stock recipes on this Odoo major."
-            action={
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                disabled={probing}
-                onClick={() => {
-                  void (async () => {
-                    setProbing(true);
-                    setError(null);
-                    try {
-                      const probeResult = await api.probeConnection(connectionId);
-                      setConnection((prev) =>
-                        prev
-                          ? {
-                              ...prev,
-                              server_version: probeResult.server_version,
-                              capabilities: probeResult.capabilities,
-                            }
-                          : prev,
-                      );
-                      const [r, c] = await Promise.all([
-                        api.powerOpsRecipes(connectionId),
-                        api.powerOpsCapabilities(connectionId),
-                      ]);
-                      setRecipes(r.recipes);
-                      setCaps(c);
-                    } catch (err) {
-                      setError(err instanceof Error ? err.message : "Probe failed");
-                    } finally {
-                      setProbing(false);
-                    }
-                  })();
-                }}
-              >
-                Re-probe connection
-              </Button>
+      <div className="po-desk" data-testid="power-ops-desk">
+        {caps?.philosophy ? (
+          <Callout
+            variant="info"
+            title="How this works"
+            className="mt-4"
+            testId="power-ops-philosophy"
+          >
+            {sanitizePowerOpsCopy(caps.philosophy)}
+          </Callout>
+        ) : null}
+
+        {error ? (
+          <PowerOpsErrorNotice
+            className="mt-4"
+            message={error}
+            context={errorContext}
+            onDismiss={() => setError(null)}
+            onRetry={
+              errorContext === "load" || errorContext === "probe"
+                ? () => void reprobeAndReload()
+                : errorContext === "dry_run"
+                  ? () => void run(true)
+                  : undefined
             }
           />
-        ) : (
-          <>
-            {safeRecipes.length > 0 ? (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {safeRecipes.map((entry) => (
-                  <RecipeCard key={entry.recipe.id} entry={entry} />
-                ))}
-              </div>
-            ) : null}
-            {dangerRecipes.length > 0 ? (
-              <>
-                <Callout variant="danger" title="Danger zone">
-                  Destructive recipes — dry-run first, then confirm with phrase.
-                </Callout>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {dangerRecipes.map((entry) => (
+        ) : null}
+        {notice ? (
+          <Callout
+            variant="info"
+            title="Notice"
+            className="mt-4"
+            testId="power-ops-notice"
+          >
+            {notice}
+          </Callout>
+        ) : null}
+
+        {busy ? (
+          <div
+            className="po-progress"
+            aria-busy="true"
+            data-testid="power-ops-progress"
+            role="status"
+          >
+            {confirmOpen ? "Running recipe…" : "Test-running recipe…"}
+          </div>
+        ) : null}
+
+        <section
+          className="po-panel"
+          data-testid="power-ops-recipes"
+          aria-labelledby="power-ops-recipes-title"
+        >
+          <h2 id="power-ops-recipes-title" className="po-panel-title">
+            Recipes
+          </h2>
+          <p className="po-panel-sub">
+            Safe recipes first. Danger-zone recipes need test run counts, then
+            the risk phrase.
+          </p>
+          {!listHydrated ? (
+            <div
+              className="po-recipe-grid"
+              data-testid="power-ops-recipes-loading"
+            >
+              <Skeleton className="h-28 w-full" />
+              <Skeleton className="h-28 w-full" />
+            </div>
+          ) : recipes.length === 0 ? (
+            <PowerOpsStateGuide
+              tone="accent"
+              testId="power-ops-empty-guide"
+              guide={emptyPowerOpsGuide()}
+              actions={
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={probing}
+                  onClick={() => void reprobeAndReload()}
+                >
+                  Re-probe connection
+                </Button>
+              }
+            />
+          ) : (
+            <>
+              {listHydrated && !result && dryRunKey !== runKey ? (
+                <PowerOpsStateGuide
+                  className="!mt-0 mb-3"
+                  tone="accent"
+                  testId="power-ops-idle-guide"
+                  guide={idlePowerOpsGuide()}
+                />
+              ) : null}
+              {safeRecipes.length > 0 ? (
+                <div className="po-recipe-grid">
+                  {safeRecipes.map((entry) => (
                     <RecipeCard key={entry.recipe.id} entry={entry} />
                   ))}
                 </div>
-              </>
-            ) : null}
-          </>
-        )}
-      </section>
+              ) : null}
+              {dangerRecipes.length > 0 ? (
+                <div
+                  className="po-danger-band"
+                  data-testid="power-ops-danger-zone"
+                >
+                  <p className="po-danger-band-title">Danger zone</p>
+                  <p className="po-danger-band-body">
+                    Destructive recipes. Test run first. Run recipe asks for the
+                    risk phrase.
+                  </p>
+                  <div className="po-recipe-grid">
+                    {dangerRecipes.map((entry) => (
+                      <RecipeCard key={entry.recipe.id} entry={entry} />
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {lockedRecipes.length > 0 ? (
+                <div className="po-locked-band" data-testid="power-ops-locked">
+                  <p className="po-danger-band-title">
+                    Switched off to keep your books safe
+                  </p>
+                  <p className="po-danger-band-body">
+                    {lockedRecipes[0].recipe.locked_reason ??
+                      "Ingenium does not change accounting entries or delete records in bulk."}
+                  </p>
+                  <ul className="po-locked-list">
+                    {lockedRecipes.map((e) => (
+                      <li
+                        key={e.recipe.id}
+                        data-testid={`power-ops-locked-${e.recipe.id}`}
+                      >
+                        <Badge variant="lock">Locked</Badge>{" "}
+                        {sanitizePowerOpsCopy(e.recipe.name)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </>
+          )}
+        </section>
 
-      {selectedBlocked && selectedBlockReason ? (
-        <Callout variant="warning" title="Recipe blocked" className="mt-4">
-          {selectedBlockReason.startsWith("needs")
-            ? `This recipe requires Odoo major ≥${selected?.min_major}. Connected major: ${major ?? "unknown (re-probe)"}.`
-            : selectedBlockReason}
-        </Callout>
-      ) : null}
+        {selectedBlocked && selectedBlockReason ? (
+          <PowerOpsStateGuide
+            tone="warning"
+            live
+            testId="power-ops-blocked-guide"
+            guide={blockedRecipeGuide({
+              blockReason: selectedBlockReason,
+              minMajor: selected?.min_major,
+              major,
+            })}
+          />
+        ) : null}
 
-      {selected ? (
-        <Card className="mt-6 space-y-4 p-6">
-          <h2 className="text-lg font-semibold text-ink">Run · {selected.name}</h2>
-          <ul className="list-disc space-y-1 pl-5 text-sm text-muted">
-            {selected.steps.map((s) => (
-              <li key={s.label}>
-                {s.label} ({s.kind}
-                {s.method ? `:${s.method}` : ""})
-              </li>
-            ))}
-          </ul>
-          <Input
-            label="Model"
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            className="font-mono text-sm"
-          />
-          <Textarea
-            label="Domain (JSON list)"
-            rows={3}
-            value={domainText}
-            onChange={(e) => setDomainText(e.target.value)}
-            className="font-mono text-xs"
-          />
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={busy || selectedBlocked}
-              loading={busy}
-              onClick={() => void run(true)}
-            >
-              Dry-run
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              disabled={busy || !canExecute}
-              title={
-                !canExecute && !selectedBlocked
-                  ? "Run dry-run first for this recipe, model, and domain"
-                  : undefined
-              }
-              onClick={() => setConfirmOpen(true)}
-            >
-              Execute
-            </Button>
-          </div>
-          {!canExecute && !selectedBlocked ? (
-            <p className="text-xs text-muted">
-              Execute unlocks after a successful dry-run with the same recipe, model, and domain.
+        {selected ? (
+          <section
+            className="po-panel"
+            aria-labelledby="power-ops-run-title"
+            data-testid="power-ops-run-panel"
+          >
+            <h2 id="power-ops-run-title" className="po-panel-title">
+              Run · {sanitizePowerOpsCopy(selected.name)}
+            </h2>
+            <p className="po-panel-sub">
+              {selectedDanger
+                ? "Destructive recipe. Confirm only after test run counts look right."
+                : "Configure model and domain, test run, then run."}
             </p>
-          ) : null}
-        </Card>
-      ) : null}
+            <ul className="po-steps">
+              {selected.steps.map((s) => (
+                <li key={s.label}>
+                  {sanitizePowerOpsCopy(s.label)} ({s.kind}
+                  {s.method ? `:${s.method}` : ""})
+                </li>
+              ))}
+            </ul>
+            {selected.risks?.length ? (
+              <Callout
+                variant="warning"
+                title="Recipe risks"
+                className="mb-3"
+                testId="power-ops-risks"
+              >
+                <ul className="list-disc space-y-1 pl-4 text-sm">
+                  {selected.risks.map((risk) => (
+                    <li key={risk}>{sanitizePowerOpsCopy(risk)}</li>
+                  ))}
+                </ul>
+              </Callout>
+            ) : null}
+            <Input
+              label="Model"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              className="font-mono text-sm"
+            />
+            <div className="mt-3">
+              <Textarea
+                label="Domain (JSON list)"
+                rows={3}
+                value={domainText}
+                onChange={(e) => setDomainText(e.target.value)}
+                className="font-mono text-xs"
+              />
+            </div>
+            <div className="po-actions">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={busy || selectedBlocked}
+                loading={busy && !confirmOpen}
+                onClick={() => void run(true)}
+                data-testid="power-ops-dry-run-btn"
+              >
+                {DRY_RUN_CTA}
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                disabled={busy || !canExecute}
+                title={unlockReason ?? undefined}
+                onClick={() => setConfirmOpen(true)}
+                data-testid="power-ops-run-btn"
+              >
+                {PRIMARY_CTA}
+              </Button>
+              {unlockReason ? (
+                <p className="po-primary-reason">{unlockReason}</p>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
 
-      {result && result.logs.length > 0 ? (
-        <Card className="mt-6 p-6">
-          <BulkResultTable result={toBulkResult(result, recipeId, model)} />
-        </Card>
-      ) : result ? (
-        <Card className="mt-6 p-4">
-          <p className="text-sm text-muted">{result.message}</p>
-        </Card>
-      ) : null}
+        {result ? (
+          <section
+            className="po-panel"
+            data-testid="power-ops-result-block"
+            aria-labelledby="power-ops-result-title"
+          >
+            <h2 id="power-ops-result-title" className="po-panel-title">
+              {result.dry_run ? "Test run result" : "Run result"}
+            </h2>
+            <p className="po-result-label" data-testid="power-ops-result-label">
+              {result.dry_run
+                ? "Test run result (no writes)"
+                : "Run result (writes applied)"}
+            </p>
+            <PowerOpsResultCounts
+              processed={result.processed}
+              succeeded={result.succeeded}
+              failed={result.failed}
+              dryRun={result.dry_run}
+            />
+            {failureGuide ? (
+              <PowerOpsStateGuide
+                tone="warning"
+                live
+                testId="power-ops-partial-guide"
+                guide={failureGuide}
+              />
+            ) : null}
+            {result.logs.length > 0 ? (
+              <div className="mt-4">
+                <BulkResultTable
+                  result={toBulkResult(result, recipeId, model)}
+                />
+              </div>
+            ) : result.message ? (
+              <p className="mt-3 text-sm text-muted">
+                {sanitizePowerOpsCopy(result.message)}
+              </p>
+            ) : null}
+          </section>
+        ) : null}
 
-      <ConfirmDialogV2
-        open={confirmOpen}
-        riskLevel="danger"
-        title="Execute Power Ops recipe"
-        warning={
-          selected
-            ? `This will run “${selected.name}” against live records. Dry-run first when unsure.`
-            : "Destructive bulk RPC on live data."
-        }
-        risks={[
-          "Bulk writes or deletes on live ERP data",
-          "Rollback may be incomplete for some operations",
-        ]}
-        phrase={CONFIRM_PHRASE}
-        busy={busy}
-        onCancel={() => setConfirmOpen(false)}
-        onConfirm={(typed) => void run(false, typed)}
-      />
+        <ConfirmDialogV2
+          open={confirmOpen}
+          riskLevel="danger"
+          title={`Run ${selected?.name ?? "Power Ops recipe"}`}
+          warning={
+            selected
+              ? `This will run "${sanitizePowerOpsCopy(selected.name)}" against live records. Test run first when unsure.`
+              : "Destructive bulk RPC on live data."
+          }
+          risks={
+            selected?.risks?.length
+              ? selected.risks.map(sanitizePowerOpsCopy)
+              : [
+                  "Bulk writes or deletes on live ERP data",
+                  "Rollback may be incomplete for some operations",
+                ]
+          }
+          blastRadius={[
+            `Recipe: ${selected?.id ?? recipeId}`,
+            `Model: ${model}`,
+            `Domain: ${domainText}`,
+          ]}
+          phrase={CONFIRM_PHRASE}
+          busy={busy}
+          onCancel={() => setConfirmOpen(false)}
+          onConfirm={(typed) => void run(false, typed)}
+        />
+      </div>
     </div>
   );
 }

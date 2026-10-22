@@ -26,6 +26,12 @@ import type {
 } from "@/components/designer/designer-model";
 import { resolveFieldLabel, uid } from "@/components/designer/designer-model";
 import { ReorderableBlocks, moveIndex } from "@/components/ui/canvas/ReorderableBlocks";
+import { ChevronDown, ChevronUp } from "@/components/ui/icons";
+import {
+  DesignerGrip,
+  DesignerPointerGhost,
+  useDesignerPointerGhost,
+} from "@/components/designer/DesignerPointerGhost";
 
 export type DesignerAdvancedStructureCanvasProps = {
   viewType: ViewType;
@@ -112,7 +118,7 @@ export type DesignerAdvancedStructureCanvasProps = {
   announceAction: (message: string, flashId?: string | null, toolbarKey?: string) => void;
 };
 
-/** Middle column of Advanced layout — form/list/search/kanban structure editors. */
+/** Middle column of Advanced layout: form, list, search and kanban structure editors. */
 export function DesignerAdvancedStructureCanvas({
   viewType,
   connection,
@@ -192,14 +198,19 @@ export function DesignerAdvancedStructureCanvas({
   removeFormField,
   announceAction,
 }: DesignerAdvancedStructureCanvasProps) {
+  const trackGhost = useDesignerPointerGhost();
   return (
-          <section className="border border-border-subtle bg-surface-muted/50 p-4" data-testid="designer-structure-editor">
+          <section className="designer-desk designer-structure-desk" data-testid="designer-structure-editor">
             <div className="mb-3">
-              <h2 className="text-sm font-semibold text-accent">
-                {viewType === "form" ? "Form layout (primary)" : "Layout editor"}
+              <h2 className="text-sm font-semibold text-[var(--dz-paper-ink)]">
+                {viewType === "form"
+                  ? "Form layout (primary)"
+                  : viewType === "list" || viewType === "kanban" || viewType === "search"
+                    ? `${viewType[0].toUpperCase()}${viewType.slice(1)} layout`
+                    : "Layout editor"}
               </h2>
               {viewType === "form" && (
-                <p className="mt-1 text-xs text-muted">
+                <p className="mt-1 max-w-[62ch] text-xs text-[var(--dz-paper-muted)]">
                   Add a group, then drag a field from the list on the left onto that group. The
                   page auto-scrolls when you drag near the edge.
                 </p>
@@ -211,24 +222,20 @@ export function DesignerAdvancedStructureCanvas({
                   <button
                     type="button"
                     onClick={addGroup}
-                    className={`border px-3 py-1 text-xs ${
-                      toolbarFlash === "group"
-                        ? "border-border-subtle bg-surface-muted text-ink"
-                        : "border-border-subtle text-muted"
+                    className={`designer-quiet-btn is-outline ${
+                      toolbarFlash === "group" ? "is-flashed" : ""
                     }`}
                   >
-                    {toolbarFlash === "group" ? "✓ Group added" : "+ Group"}
+                    {toolbarFlash === "group" ? "Group added" : "Add group"}
                   </button>
                   <button
                     type="button"
                     onClick={addNotebook}
-                    className={`border px-3 py-1 text-xs ${
-                      toolbarFlash === "notebook"
-                        ? "border-border-subtle bg-surface-muted text-ink"
-                        : "border-border-subtle text-muted"
+                    className={`designer-quiet-btn is-outline ${
+                      toolbarFlash === "notebook" ? "is-flashed" : ""
                     }`}
                   >
-                    {toolbarFlash === "notebook" ? "✓ Notebook added" : "+ Notebook"}
+                    {toolbarFlash === "notebook" ? "Notebook added" : "Add notebook"}
                   </button>
                   <button
                     type="button"
@@ -241,13 +248,11 @@ export function DesignerAdvancedStructureCanvas({
                       openBindDialog("header", "create_update");
                       announceAction("Opening header button binder…", null, "header");
                     }}
-                    className={`border px-3 py-1 text-xs disabled:opacity-40 ${
-                      toolbarFlash === "header"
-                        ? "border-border-subtle bg-surface-muted text-ink"
-                        : "border-border-subtle text-muted"
+                    className={`designer-quiet-btn is-outline ${
+                      toolbarFlash === "header" ? "is-flashed" : ""
                     }`}
                   >
-                    {toolbarFlash === "header" ? "✓ Header binder" : "+ Header button"}
+                    {toolbarFlash === "header" ? "Header binder opened" : "Add header button"}
                   </button>
                   <button
                     type="button"
@@ -260,13 +265,11 @@ export function DesignerAdvancedStructureCanvas({
                       openBindDialog("button_box", "create_smart");
                       announceAction("Opening smart button binder…", null, "smart");
                     }}
-                    className={`border px-3 py-1 text-xs disabled:opacity-40 ${
-                      toolbarFlash === "smart"
-                        ? "border-border-subtle bg-surface-muted text-ink"
-                        : "border-border-subtle text-muted"
+                    className={`designer-quiet-btn is-outline ${
+                      toolbarFlash === "smart" ? "is-flashed" : ""
                     }`}
                   >
-                    {toolbarFlash === "smart" ? "✓ Smart binder" : "+ Smart button"}
+                    {toolbarFlash === "smart" ? "Smart binder opened" : "Add smart button"}
                   </button>
                   <button
                     type="button"
@@ -274,13 +277,11 @@ export function DesignerAdvancedStructureCanvas({
                       addButtonToFirstGroup();
                       announceAction("Opening inline button binder…", null, "inline");
                     }}
-                    className={`border px-3 py-1 text-xs ${
-                      toolbarFlash === "inline"
-                        ? "border-border-subtle bg-surface-muted text-ink"
-                        : "border-border-subtle text-muted"
+                    className={`designer-quiet-btn is-outline ${
+                      toolbarFlash === "inline" ? "is-flashed" : ""
                     }`}
                   >
-                    {toolbarFlash === "inline" ? "✓ Inline binder" : "+ Inline button"}
+                    {toolbarFlash === "inline" ? "Inline binder opened" : "Add inline button"}
                   </button>
                 </>
               )}
@@ -288,7 +289,7 @@ export function DesignerAdvancedStructureCanvas({
 
             {viewType === "form" && (
               <div className="mb-4 space-y-3">
-                <div className="flex flex-wrap gap-4 border border-dashed border-border-subtle p-3 text-sm text-muted">
+                <div className="designer-structure-card designer-structure-flags">
                   <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -322,13 +323,13 @@ export function DesignerAdvancedStructureCanvas({
                     Can Duplicate
                   </label>
                 </div>
-                <div className="grid gap-3 border border-dashed border-border-subtle p-3 sm:grid-cols-2">
-                  <label className="text-xs text-muted">
+                <div className="designer-structure-card grid gap-3 sm:grid-cols-2">
+                  <label className="designer-structure-label block">
                     Statusbar field (selection)
                     <select
                       value={statusbarField}
                       onChange={(e) => setStatusbarField(e.target.value)}
-                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm"
+                      className="designer-structure-input mt-1 w-full font-mono"
                     >
                       <option value="">(none)</option>
                       {fields
@@ -340,75 +341,75 @@ export function DesignerAdvancedStructureCanvas({
                         ))}
                     </select>
                   </label>
-                  <label className="text-xs text-muted">
+                  <label className="designer-structure-label block">
                     statusbar_visible (comma-separated)
                     <input
                       value={statusbarVisible}
                       onChange={(e) => setStatusbarVisible(e.target.value)}
                       placeholder="draft,confirmed,done"
                       disabled={!statusbarField}
-                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 font-mono text-sm disabled:opacity-40"
+                      className="designer-structure-input mt-1 w-full font-mono disabled:opacity-40"
                     />
                   </label>
                 </div>
-                <div className="min-h-12 border border-dashed border-border-subtle p-3">
-                  <p className="mb-2 text-xs uppercase text-muted">Header buttons</p>
+                <div className="designer-structure-card">
+                  <p className="designer-structure-label mb-2">Header buttons</p>
                   <ul className="space-y-1">
                     {headerButtons.map((b) => (
                       <li
                         key={b.id}
-                        className="flex items-center justify-between bg-surface px-2 py-1.5 text-sm"
+                        className="designer-structure-row"
                       >
-                        <span className="text-ink">
+                        <span className="min-w-0 truncate">
                           {b.string}{" "}
-                          <span className="font-mono text-xs text-muted">
+                          <span className="font-mono text-xs text-[var(--dz-paper-muted)]">
                             type={b.type || "action"} name={b.name || "?"}
                           </span>
                         </span>
                         <button
                           type="button"
-                          className="text-xs text-danger"
+                          className="designer-quiet-btn is-danger"
                           onClick={() =>
                             setHeaderButtons((all) => all.filter((x) => x.id !== b.id))
                           }
                         >
-                          remove
+                          Remove
                         </button>
                       </li>
                     ))}
                     {headerButtons.length === 0 && (
-                      <li className="text-xs text-muted">
+                      <li className="designer-structure-empty">
                         Bound to real ir.actions.* via type=&quot;action&quot;.
                       </li>
                     )}
                   </ul>
                 </div>
-                <div className="min-h-12 border border-dashed border-border-subtle p-3">
-                  <p className="mb-2 text-xs uppercase text-muted">Smart button box</p>
+                <div className="designer-structure-card">
+                  <p className="designer-structure-label mb-2">Smart button box</p>
                   <ul className="space-y-1">
                     {buttonBox.map((b) => (
                       <li
                         key={b.id}
-                        className="flex items-center justify-between bg-surface px-2 py-1.5 text-sm"
+                        className="designer-structure-row"
                       >
-                        <span className="text-ink">
+                        <span className="min-w-0 truncate">
                           {b.string}{" "}
-                          <span className="font-mono text-xs text-muted">
+                          <span className="font-mono text-xs text-[var(--dz-paper-muted)]">
                             {b.icon || "fa-list"} · action {b.name || "?"}
                             {b.count_field ? ` · count ${b.count_field}` : ""}
                           </span>
                         </span>
                         <button
                           type="button"
-                          className="text-xs text-danger"
+                          className="designer-quiet-btn is-danger"
                           onClick={() => setButtonBox((all) => all.filter((x) => x.id !== b.id))}
                         >
-                          remove
+                          Remove
                         </button>
                       </li>
                     ))}
                     {buttonBox.length === 0 && (
-                      <li className="text-xs text-muted">
+                      <li className="designer-structure-empty">
                         Opens related records (window action + active_id domain).
                       </li>
                     )}
@@ -430,34 +431,34 @@ export function DesignerAdvancedStructureCanvas({
                         e.preventDefault();
                         dropOnGroup(child.id, e);
                       }}
-                      className={`mb-4 min-h-24 border border-dashed border-border-subtle p-3 ${
-                        canvasFlashId === child.id ? "ring-2 ring-accent" : ""
+                      className={`designer-structure-card is-drop-zone ${
+                        canvasFlashId === child.id ? "is-canvas-flash" : ""
                       }`}
                     >
                       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                        <label className="flex min-w-0 flex-1 items-center gap-2 text-xs uppercase text-muted">
+                        <label className="designer-structure-label flex min-w-0 flex-1 items-center gap-2">
                           Group
                           <input
                             value={child.string || ""}
                             onChange={(e) => renameGroup(child.id, e.target.value)}
-                            className="min-w-0 flex-1 border border-border-subtle bg-surface px-2 py-1 font-sans text-sm normal-case text-muted"
+                            className="designer-structure-input min-w-0 flex-1 font-sans font-normal tracking-normal"
                             placeholder="untitled"
                           />
                         </label>
                         <button
                           type="button"
-                          className="shrink-0 text-xs text-danger"
+                          className="designer-quiet-btn is-danger shrink-0"
                           onClick={() => removeFormChild(child.id)}
                         >
-                          remove group
+                          Remove group
                         </button>
                       </div>
                       <ul className="space-y-1">
                         {child.children.map((f) => (
                           <li
                             key={f.id}
-                            className={`flex items-center justify-between bg-surface px-2 py-1.5 text-sm ${
-                              selected?.fieldId === f.id ? "ring-1 ring-accent" : ""
+                            className={`designer-structure-row ${
+                              selected?.fieldId === f.id ? "is-selected" : ""
                             }`}
                           >
                             <button
@@ -472,30 +473,32 @@ export function DesignerAdvancedStructureCanvas({
                               }
                             >
                               {f.kind === "button" ? (
-                                <span className="text-ink">
-                                  Btn · {f.string}{" "}
-                                  <span className="font-mono text-xs text-muted">
+                                <span>
+                                  <span className="designer-row-kind">Button</span> {f.string}{" "}
+                                  <span className="font-mono text-xs text-[var(--dz-paper-muted)]">
                                     {f.type || "action"}:{f.name || "?"}
                                   </span>
                                 </span>
                               ) : (
                                 <>
-                                  <span className="font-mono text-muted">{f.name}</span>
-                                  {f.string ? ` — ${f.string}` : ""}
+                                  <span>{resolveFieldLabel(f.name, f.string, fields) || f.name}</span>
+                                  <span className="ml-2 font-mono text-xs text-[var(--dz-paper-muted)]">
+                                    {f.name}
+                                  </span>
                                 </>
                               )}
                             </button>
                             <button
                               type="button"
-                              className="text-xs text-danger"
+                              className="designer-quiet-btn is-danger"
                               onClick={() => removeFormField("group", child.id, f.id)}
                             >
-                              remove
+                              Remove
                             </button>
                           </li>
                         ))}
                         {child.children.length === 0 && (
-                          <li className="text-xs text-muted">Drop fields here</li>
+                          <li className="designer-structure-empty">Drop fields here</li>
                         )}
                       </ul>
                     </div>
@@ -506,26 +509,26 @@ export function DesignerAdvancedStructureCanvas({
                     key={child.id}
                     data-structure-id={child.id}
                     data-canvas-id={child.id}
-                    className={`mb-4 border border-border-subtle p-3 ${
-                      canvasFlashId === child.id ? "ring-2 ring-accent" : ""
+                    className={`designer-structure-card ${
+                      canvasFlashId === child.id ? "is-canvas-flash" : ""
                     }`}
                   >
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs uppercase text-muted">Notebook</p>
-                      <div className="flex gap-3">
+                      <p className="designer-structure-label">Notebook</p>
+                      <div className="flex gap-1">
                         <button
                           type="button"
-                          className="text-xs text-muted"
+                          className="designer-quiet-btn is-outline"
                           onClick={() => addPageToNotebook(child.id)}
                         >
-                          + Page
+                          Add page
                         </button>
                         <button
                           type="button"
-                          className="text-xs text-danger"
+                          className="designer-quiet-btn is-danger"
                           onClick={() => removeFormChild(child.id)}
                         >
-                          remove notebook
+                          Remove notebook
                         </button>
                       </div>
                     </div>
@@ -539,36 +542,36 @@ export function DesignerAdvancedStructureCanvas({
                           e.preventDefault();
                           dropOnPage(child.id, page.id, e);
                         }}
-                        className={`mb-3 min-h-20 border border-dashed border-border-subtle p-3 ${
-                          canvasFlashId === page.id ? "ring-2 ring-accent" : ""
+                        className={`designer-structure-card is-drop-zone mb-3 last:mb-0 ${
+                          canvasFlashId === page.id ? "is-canvas-flash" : ""
                         }`}
                       >
                         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                          <label className="flex min-w-0 flex-1 items-center gap-2 text-sm text-muted">
+                          <label className="designer-structure-label flex min-w-0 flex-1 items-center gap-2">
                             Page
                             <input
                               value={page.string}
                               onChange={(e) =>
                                 renameNotebookPage(child.id, page.id, e.target.value)
                               }
-                              className="min-w-0 flex-1 border border-border-subtle bg-surface px-2 py-1 font-mono text-sm"
+                              className="designer-structure-input min-w-0 flex-1 font-normal tracking-normal"
                               placeholder="Tab title"
                             />
                           </label>
                           <button
                             type="button"
-                            className="shrink-0 text-xs text-danger"
+                            className="designer-quiet-btn is-danger shrink-0"
                             onClick={() => removeNotebookPage(child.id, page.id)}
                           >
-                            remove page
+                            Remove page
                           </button>
                         </div>
                         <ul className="space-y-1">
                           {page.children.map((f) => (
                             <li
                               key={f.id}
-                              className={`flex items-center justify-between bg-surface px-2 py-1.5 text-sm ${
-                                selected?.fieldId === f.id ? "ring-1 ring-accent" : ""
+                              className={`designer-structure-row ${
+                                selected?.fieldId === f.id ? "is-selected" : ""
                               }`}
                             >
                               <button
@@ -586,13 +589,13 @@ export function DesignerAdvancedStructureCanvas({
                                 }
                               >
                                 {f.kind === "button" ? (
-                                  <span className="text-ink">Btn · {f.string}</span>
+                                  <span><span className="designer-row-kind">Button</span> {f.string}</span>
                                 ) : (
                                   <>
-                                    <span className="text-muted">
+                                    <span>
                                       {resolveFieldLabel(f.name, f.string, fields) || f.name}
                                     </span>
-                                    <span className="ml-2 font-mono text-xs text-muted">
+                                    <span className="ml-2 font-mono text-xs text-[var(--dz-paper-muted)]">
                                       {f.name}
                                     </span>
                                   </>
@@ -600,17 +603,17 @@ export function DesignerAdvancedStructureCanvas({
                               </button>
                               <button
                                 type="button"
-                                className="text-xs text-danger"
+                                className="designer-quiet-btn is-danger"
                                 onClick={() =>
                                   removeFormField("page", page.id, f.id, child.id)
                                 }
                               >
-                                remove
+                                Remove
                               </button>
                             </li>
                           ))}
                           {page.children.length === 0 && (
-                            <li className="text-xs text-muted">Drop fields here</li>
+                            <li className="designer-structure-empty">Drop fields here</li>
                           )}
                         </ul>
                       </div>
@@ -620,8 +623,8 @@ export function DesignerAdvancedStructureCanvas({
               })}
 
             {viewType === "list" && (
-              <div className="min-h-40 border border-dashed border-border-subtle p-3">
-                <div className="mb-3 flex flex-wrap gap-4 text-sm text-muted">
+              <div className="designer-structure-card min-h-40">
+                <div className="designer-structure-flags mb-4">
                   <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -664,53 +667,53 @@ export function DesignerAdvancedStructureCanvas({
                     sample data
                   </label>
                 </div>
-                <label className="mb-3 block text-xs text-muted">
+                <label className="designer-structure-label mb-3 block">
                   default_order (Sort By)
                   <input
                     value={listDefaultOrder}
                     onChange={(e) => setListDefaultOrder(e.target.value)}
                     placeholder="name asc, id desc"
-                    className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono"
+                    className="designer-structure-input mt-1 w-full font-mono font-normal tracking-normal"
                   />
                 </label>
                 <div className="mb-3 grid gap-2 sm:grid-cols-3">
-                  <label className="block text-xs text-muted">
+                  <label className="designer-structure-label block">
                     decoration-danger
                     <input
                       value={listDecorationDanger}
                       onChange={(e) => setListDecorationDanger(e.target.value)}
                       placeholder="not x_returned"
-                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono"
+                      className="designer-structure-input mt-1 w-full font-mono font-normal tracking-normal"
                     />
                   </label>
-                  <label className="block text-xs text-muted">
+                  <label className="designer-structure-label block">
                     decoration-info
                     <input
                       value={listDecorationInfo}
                       onChange={(e) => setListDecorationInfo(e.target.value)}
                       placeholder="x_priority == 'high'"
-                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono"
+                      className="designer-structure-input mt-1 w-full font-mono font-normal tracking-normal"
                     />
                   </label>
-                  <label className="block text-xs text-muted">
+                  <label className="designer-structure-label block">
                     decoration-muted
                     <input
                       value={listDecorationMuted}
                       onChange={(e) => setListDecorationMuted(e.target.value)}
                       placeholder="x_active == False"
-                      className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono"
+                      className="designer-structure-input mt-1 w-full font-mono font-normal tracking-normal"
                     />
                   </label>
                 </div>
-                <p className="mb-2 text-xs uppercase text-muted">
+                <p className="designer-structure-label mb-2">
                   List columns (click a field to add)
                 </p>
                 <ul className="space-y-1">
                   {listColumns.map((f, idx) => (
                     <li
                       key={f.id}
-                      className={`flex items-center justify-between bg-surface px-2 py-1.5 text-sm ${
-                        selected?.fieldId === f.id ? "ring-1 ring-accent" : ""
+                      className={`designer-structure-row ${
+                        selected?.fieldId === f.id ? "is-selected" : ""
                       }`}
                     >
                       <button
@@ -718,25 +721,25 @@ export function DesignerAdvancedStructureCanvas({
                         className="text-left"
                         onClick={() => setSelected({ scope: "list", fieldId: f.id })}
                       >
-                        {idx + 1}.{" "}
-                        <span className="font-mono text-muted">{f.name}</span>
+                        <span className="tabular-nums text-[var(--dz-paper-muted)]">{idx + 1}.</span>{" "}
+                        <span className="font-mono">{f.name}</span>
                       </button>
                       <button
                         type="button"
-                        className="text-xs text-danger"
+                        className="designer-quiet-btn is-danger"
                         onClick={() => {
                           setListColumns((cols) => cols.filter((c) => c.id !== f.id));
                           setSelected((sel) => (sel?.fieldId === f.id ? null : sel));
                         }}
                       >
-                        remove
+                        Remove
                       </button>
                     </li>
                   ))}
                 </ul>
                 {listColumns.length > 0 ? (
-                  <details className="mt-4 rounded border border-border-subtle bg-surface-muted/30 p-3" data-testid="designer-list-preview">
-                    <summary className="cursor-pointer text-sm font-semibold text-accent">
+                  <details className="designer-structure-card mt-4 mb-0" data-testid="designer-list-preview">
+                    <summary className="cursor-pointer text-sm font-semibold">
                       Odoo-style list preview
                     </summary>
                     <div className="mt-3">
@@ -766,13 +769,11 @@ export function DesignerAdvancedStructureCanvas({
             )}
 
             {viewType === "search" && (
-              <div className="min-h-40 border border-dashed border-border-subtle p-3">
-                <p className="mb-2 text-xs uppercase text-muted">
-                  Search fields (click a field to add)
-                </p>
+              <div className="designer-structure-card min-h-40">
+                <p className="designer-structure-label mb-2">Filters</p>
                 <button
                   type="button"
-                  className="mb-2 text-xs text-muted"
+                  className="designer-quiet-btn is-outline mb-3"
                   onClick={() =>
                     setSearchFilters((f) => [
                       ...f,
@@ -785,12 +786,12 @@ export function DesignerAdvancedStructureCanvas({
                     ])
                   }
                 >
-                  + Add search filter
+                  Add search filter
                 </button>
                 {searchFilters.length > 0 && (
-                  <ul className="mb-3 space-y-3 text-xs text-muted">
+                  <ul className="mb-3 space-y-2 text-xs">
                     {searchFilters.map((f) => (
-                      <li key={f.id} className="border border-border-subtle p-2">
+                      <li key={f.id} className="designer-structure-card mb-0 p-3">
                         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                           <input
                             value={f.string}
@@ -801,11 +802,11 @@ export function DesignerAdvancedStructureCanvas({
                                 ),
                               )
                             }
-                            className="min-w-[8rem] flex-1 border border-border-subtle bg-surface px-2 py-1"
+                            className="designer-structure-input min-w-[8rem] flex-1"
                           />
                           <button
                             type="button"
-                            className="text-muted"
+                            className="designer-quiet-btn"
                             onClick={() =>
                               setEditingFilterId((id) => (id === f.id ? null : f.id))
                             }
@@ -814,12 +815,12 @@ export function DesignerAdvancedStructureCanvas({
                           </button>
                           <button
                             type="button"
-                            className="text-danger"
+                            className="designer-quiet-btn is-danger"
                             onClick={() =>
                               setSearchFilters((all) => all.filter((x) => x.id !== f.id))
                             }
                           >
-                            remove
+                            Remove
                           </button>
                         </div>
                         {editingFilterId === f.id ? (
@@ -832,18 +833,18 @@ export function DesignerAdvancedStructureCanvas({
                             }
                           />
                         ) : (
-                          <span className="font-mono text-muted">{f.domain || "[]"}</span>
+                          <span className="font-mono text-[var(--dz-paper-muted)]">{f.domain || "[]"}</span>
                         )}
                       </li>
                     ))}
                   </ul>
                 )}
-                <div className="mb-3 border border-border-subtle p-2">
+                <div className="designer-structure-card mb-3 p-3">
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs uppercase text-muted">Group-by filters</p>
+                    <p className="designer-structure-label">Group-by filters</p>
                     <button
                       type="button"
-                      className="text-xs text-muted"
+                      className="designer-quiet-btn is-outline"
                       onClick={() =>
                         setSearchGroupByFilters((f) => [
                           ...f,
@@ -856,18 +857,18 @@ export function DesignerAdvancedStructureCanvas({
                         ])
                       }
                     >
-                      + Add group-by filter
+                      Add group-by filter
                     </button>
                   </div>
                   {searchGroupByFilters.length === 0 ? (
-                    <p className="text-xs text-muted">
+                    <p className="text-xs text-[var(--dz-paper-muted)]">
                       No group-by filters. Context example:{" "}
-                      <code className="text-muted">{"{'group_by': 'x_stage'}"}</code>
+                      <code className="font-mono">{"{'group_by': 'x_stage'}"}</code>
                     </p>
                   ) : (
-                    <ul className="space-y-2 text-xs text-muted">
+                    <ul className="space-y-2 text-xs text-[var(--dz-paper-muted)]">
                       {searchGroupByFilters.map((f) => (
-                        <li key={f.id} className="grid gap-2 border border-border-subtle p-2 sm:grid-cols-3">
+                        <li key={f.id} className="grid gap-2 rounded-md bg-[var(--dz-lane)] p-2 sm:grid-cols-3">
                           <label className="block">
                             name
                             <input
@@ -879,7 +880,7 @@ export function DesignerAdvancedStructureCanvas({
                                   ),
                                 )
                               }
-                              className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono"
+                              className="designer-structure-input mt-1 w-full font-mono font-normal tracking-normal"
                             />
                           </label>
                           <label className="block">
@@ -893,7 +894,7 @@ export function DesignerAdvancedStructureCanvas({
                                   ),
                                 )
                               }
-                              className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1"
+                              className="designer-structure-input mt-1 w-full font-normal tracking-normal"
                             />
                           </label>
                           <label className="block">
@@ -910,31 +911,34 @@ export function DesignerAdvancedStructureCanvas({
                                 )
                               }
                               placeholder="{'group_by': 'field'}"
-                              className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono"
+                              className="designer-structure-input mt-1 w-full font-mono font-normal tracking-normal"
                             />
                           </label>
                           <button
                             type="button"
-                            className="justify-self-start text-danger sm:col-span-3"
+                            className="designer-quiet-btn is-danger justify-self-start sm:col-span-3"
                             onClick={() =>
                               setSearchGroupByFilters((all) =>
                                 all.filter((x) => x.id !== f.id),
                               )
                             }
                           >
-                            remove
+                            Remove
                           </button>
                         </li>
                       ))}
                     </ul>
                   )}
                 </div>
+                <p className="designer-structure-label mb-2">
+                  Search fields (click a field to add)
+                </p>
                 <ul className="space-y-1">
                   {searchFields.map((f, idx) => (
                     <li
                       key={f.id}
-                      className={`flex items-center justify-between bg-surface px-2 py-1.5 text-sm ${
-                        selected?.fieldId === f.id ? "ring-1 ring-accent" : ""
+                      className={`designer-structure-row ${
+                        selected?.fieldId === f.id ? "is-selected" : ""
                       }`}
                     >
                       <button
@@ -942,18 +946,18 @@ export function DesignerAdvancedStructureCanvas({
                         className="text-left"
                         onClick={() => setSelected({ scope: "search", fieldId: f.id })}
                       >
-                        {idx + 1}.{" "}
-                        <span className="font-mono text-muted">{f.name}</span>
+                        <span className="tabular-nums text-[var(--dz-paper-muted)]">{idx + 1}.</span>{" "}
+                        <span className="font-mono">{f.name}</span>
                       </button>
                       <button
                         type="button"
-                        className="text-xs text-danger"
+                        className="designer-quiet-btn is-danger"
                         onClick={() => {
                           setSearchFields((cols) => cols.filter((c) => c.id !== f.id));
                           setSelected((sel) => (sel?.fieldId === f.id ? null : sel));
                         }}
                       >
-                        remove
+                        Remove
                       </button>
                     </li>
                   ))}
@@ -962,8 +966,8 @@ export function DesignerAdvancedStructureCanvas({
             )}
 
             {viewType === "kanban" && (
-              <div className="min-h-40 space-y-3">
-                <div className="flex flex-wrap gap-4 border border-dashed border-border-subtle p-3 text-sm text-muted">
+              <div className="min-h-40 space-y-4">
+                <div className="designer-structure-card designer-structure-flags">
                   <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -1019,12 +1023,12 @@ export function DesignerAdvancedStructureCanvas({
                     onDropFieldName={(fieldName) => addKanbanField(fieldName)}
                   />
                 )}
-                <div className="border border-border-subtle bg-surface p-3">
-                  <p className="mb-2 text-xs uppercase tracking-wide text-muted">
+                <div className="designer-structure-card mb-0">
+                  <p className="designer-structure-label mb-2 flex flex-wrap items-center gap-2">
                     Card field order
                     {kanbanGroupBy ? (
-                      <span className="ml-2 rounded bg-accent px-1.5 py-0.5 text-[10px] normal-case text-white">
-                        group by {kanbanGroupBy}
+                      <span className="designer-chip font-normal tracking-normal">
+                        Grouped by <code className="font-mono">{kanbanGroupBy}</code>
                       </span>
                     ) : null}
                   </p>
@@ -1039,20 +1043,29 @@ export function DesignerAdvancedStructureCanvas({
                     }}
                     className="space-y-1"
                     empty={
-                      <li className="text-xs text-muted">
+                      <li className="designer-structure-empty">
                         Click or drop fields from the palette to build the card.
                       </li>
                     }
                     itemProps={(f) => ({
-                      className: `flex items-center justify-between gap-2 px-2 py-1.5 text-sm ${
+                      "data-reorderable": "",
+                      onPointerMove: trackGhost,
+                      className: `designer-structure-row relative ${
                         selected?.scope === "kanban" && selected.fieldId === f.id
-                          ? "bg-surface-muted ring-1 ring-accent"
-                          : "bg-surface"
+                          ? "is-selected"
+                          : ""
                       }`,
                     })}
                   >
-                    {(f, idx) => (
+                    {(f, idx, meta) => (
                       <>
+                        {meta.isDropTarget ? (
+                          <span className="designer-drop-line" aria-hidden />
+                        ) : null}
+                        {meta.dropIndex === kanbanFields.length &&
+                        idx === kanbanFields.length - 1 ? (
+                          <span className="designer-drop-line is-after" aria-hidden />
+                        ) : null}
                         <button
                           type="button"
                           className="min-w-0 flex-1 text-left"
@@ -1060,38 +1073,38 @@ export function DesignerAdvancedStructureCanvas({
                             setSelected({ scope: "kanban", fieldId: f.id })
                           }
                         >
-                          <span className="text-muted">{idx + 1}.</span>{" "}
-                          <span className="font-mono text-muted">{f.name}</span>
+                          <span className="tabular-nums text-[var(--dz-paper-muted)]">{idx + 1}.</span>{" "}
+                          <span className="font-mono">{f.name}</span>
                           {f.string ? (
-                            <span className="ml-2 text-xs text-muted">
+                            <span className="ml-2 text-xs text-[var(--dz-paper-muted)]">
                               {f.string}
                             </span>
                           ) : null}
                         </button>
-                        <span className="flex shrink-0 items-center gap-2">
+                        <span className="designer-row-tools flex shrink-0 items-center gap-0.5">
                           <button
                             type="button"
-                            className="text-xs text-muted disabled:opacity-30"
+                            className="designer-row-tool"
                             disabled={idx === 0}
                             aria-label={`Move ${f.name} up`}
                             onPointerDown={(e) => e.stopPropagation()}
                             onClick={() => moveKanbanField(f.id, -1)}
                           >
-                            ↑
+                            <ChevronUp className="h-3.5 w-3.5" aria-hidden />
                           </button>
                           <button
                             type="button"
-                            className="text-xs text-muted disabled:opacity-30"
+                            className="designer-row-tool"
                             disabled={idx >= kanbanFields.length - 1}
                             aria-label={`Move ${f.name} down`}
                             onPointerDown={(e) => e.stopPropagation()}
                             onClick={() => moveKanbanField(f.id, 1)}
                           >
-                            ↓
+                            <ChevronDown className="h-3.5 w-3.5" aria-hidden />
                           </button>
                           <button
                             type="button"
-                            className="text-xs text-danger"
+                            className="designer-quiet-btn is-danger"
                             onPointerDown={(e) => e.stopPropagation()}
                             onClick={() => {
                               setKanbanFields((cols) =>
@@ -1104,9 +1117,13 @@ export function DesignerAdvancedStructureCanvas({
                               );
                             }}
                           >
-                            remove
+                            Remove
                           </button>
                         </span>
+                        <DesignerGrip />
+                        {meta.isDragging ? (
+                          <DesignerPointerGhost label={f.string || f.name} name={f.name} />
+                        ) : null}
                       </>
                     )}
                   </ReorderableBlocks>

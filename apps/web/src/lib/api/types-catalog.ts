@@ -253,8 +253,9 @@ export type CodeStudioGateResponse = {
 export type CodeStudioValidateResult = {
   ok: boolean;
   syntax_ok: boolean;
-  warnings: { code: string; message: string }[];
+  warnings: { code: string; message: string; line?: string }[];
   error?: string | null;
+  line?: number | null;
 };
 
 export type CodeStudioTestRunResult = {
@@ -266,6 +267,18 @@ export type CodeStudioTestRunResult = {
   field_diff: { field: string; before: unknown; after: unknown }[];
   before?: Record<string, unknown> | null;
   after?: Record<string, unknown> | null;
+  snapshot_id?: string | null;
+  rule?: string | null;
+};
+
+export type CodeStudioOptionAResult = {
+  ok: boolean;
+  installed: boolean;
+  promoted: boolean;
+  technical_name: string;
+  filename: string;
+  content_base64: string;
+  note: string;
 };
 
 export type CodeStudioBindResult = {

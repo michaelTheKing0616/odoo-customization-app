@@ -104,8 +104,8 @@ export default function ModuleSpecPageInner() {
             const modelCount = Array.isArray(parsed.models) ? parsed.models.length : 0;
             setNotice(
               modelCount > 0
-                ? `Restored ModuleSpec from this browser session (${modelCount} model(s)).`
-                : "Restored session draft — but it has 0 models. Go back to Draft Studio, re-draft, then Open ModuleSpec again.",
+                ? `Restored app plan from this browser session (${modelCount} models).`
+                : "Restored session draft — but it has 0 models. Go back to Draft Studio, re-draft, then Open the app plan again.",
             );
           }
         } catch {
@@ -152,12 +152,12 @@ export default function ModuleSpecPageInner() {
         await api.updateProject(connectionId, projectId, {
           spec_json: spec as Record<string, unknown>,
         });
-        setNotice("Project ModuleSpec saved.");
+        setNotice("Project app plan saved.");
         setBaseline(cloneModuleSpec(spec));
         setSavedOnce(true);
       } else {
         const created = await api.createProject(connectionId, {
-          name: String(spec.display_name || "ModuleSpec draft"),
+          name: String(spec.display_name || "App plan draft"),
           template_id: null,
           spec_json: spec as Record<string, unknown>,
         });
@@ -352,7 +352,7 @@ export default function ModuleSpecPageInner() {
         return;
       }
       downloadZipBase64(String(spec.technical_name || res.module || "custom_module"), res.zip_base64);
-      setNotice("Module zip downloaded. Sandbox-prove before promote — promote stays human.");
+      setNotice("Module zip downloaded. Sandbox-prove before publish — promote stays human.");
       setFailed(false);
     } catch (err) {
       setFailed(true);
@@ -488,12 +488,12 @@ export default function ModuleSpecPageInner() {
       <ConfirmDialogV2
         open={genConfirmOpen}
         riskLevel="danger"
-        title="Generate UI from ModuleSpec"
+        title="Generate UI from app plan"
         warning="Creates models, fields, views, menus, and smart buttons on this live Odoo connection."
         risks={[
           "Live metadata writes on custom x_* models",
-          "Smart buttons use inherit views (stock forms like Contacts stay intact)",
-          "Prefer sandbox first",
+          "Smart buttons use extension views (built-in forms like Contacts stay intact)",
+          "Try a test copy first",
           "Automations remain review-only",
         ]}
         phrase={CONFIRM_PHRASE}
@@ -508,7 +508,7 @@ export default function ModuleSpecPageInner() {
         warning="Creates sample records on this live Odoo so Operations / smart buttons are not empty."
         risks={[
           "Writes data rows on custom x_* models (named Walkthrough …)",
-          "Prefer sandbox first",
+          "Try a test copy first",
         ]}
         phrase={CONFIRM_PHRASE}
         busy={busy === "walkthrough"}

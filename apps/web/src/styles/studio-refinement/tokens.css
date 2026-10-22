@@ -12,19 +12,19 @@
   --text-muted: var(--subtle);
 
   --border: var(--border-subtle);
-  --border-strong: var(--border-strong);
+  /* --border-strong, --on-accent, --on-brand inherit from globals/tokens.css.
+     Redeclaring them as var(--self) is a cycle: the value becomes invalid, borders
+     vanish and button text falls back to ink. */
 
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
   --bg-accent: var(--accent-subtle);
   --text-accent: var(--accent);
   --border-accent: color-mix(in srgb, var(--accent) 45%, transparent);
-  --on-accent: var(--on-accent);
   --color-on-accent: var(--on-accent);
 
   --color-brand: var(--brand);
   --color-brand-hover: var(--brand-hover);
-  --on-brand: var(--on-brand);
 
   --text-danger: var(--danger);
   --border-danger: color-mix(in srgb, var(--danger) 35%, transparent);
@@ -41,6 +41,18 @@
   --space-md: 12px;
   --space-lg: 16px;
   --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+
+  /* Motion: one curve family for the Studio cluster (playbook §6.2, UI-F09 constants). */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --press-scale: 0.97;
+  --duration-press: 160ms;
+  --duration-state: 150ms;
+
+  /* Focus: 2px accent outline with offset, visible on every surface (playbook §7). */
+  --focus-outline: 2px solid var(--accent);
+  --focus-offset: 2px;
 
   --font-sans: var(--font-sans-stack);
   --font-size-xs: 12px;
@@ -54,5 +66,11 @@
   font-family: var(--font-sans);
   font-size: var(--font-size-base);
   line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.studio-refinement ::selection {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 

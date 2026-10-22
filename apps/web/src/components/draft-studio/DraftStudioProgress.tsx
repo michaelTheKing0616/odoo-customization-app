@@ -9,15 +9,17 @@ type DraftStudioProgressProps = {
 export function DraftStudioProgress({ label }: DraftStudioProgressProps) {
   return (
     <div
-      className="studio-progress-screen"
+      className="studio-progress-screen draft-studio-progress"
       data-testid="draft-studio-progress"
+      role="status"
+      aria-live="polite"
     >
       <InfinityLoop aria-hidden />
       <p className="studio-progress-label" data-testid="generation-phase">
         {label}
       </p>
       <p className="studio-progress-detail">
-        Completeness is not Cert. Promote stays human. You can leave this page — the job keeps running.
+        Nothing writes to Odoo while this runs. You can leave; the job keeps running.
       </p>
       <div className="progress-bar-track" aria-hidden>
         <div className="progress-bar-fill" />

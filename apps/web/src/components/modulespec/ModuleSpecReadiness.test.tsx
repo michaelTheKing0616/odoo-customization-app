@@ -21,7 +21,7 @@ describe("ModuleSpecReadiness", () => {
       /blocking issue/,
     );
     expect(screen.getByTestId("modulespec-readiness-body").textContent).toMatch(
-      /Completeness is ModuleSpec hygiene/,
+      /Completeness is app plan hygiene/,
     );
     fireEvent.click(screen.getByTestId("modulespec-validate"));
     expect(onValidate).toHaveBeenCalledTimes(1);

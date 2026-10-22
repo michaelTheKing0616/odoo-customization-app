@@ -21,7 +21,7 @@ const STATE_COPY: Record<
   published: {
     label: "Published",
     variant: "success",
-    hint: "Matches the last inherit save. Session undo is empty — restore a published checkpoint to revert Odoo.",
+    hint: "Matches the last inherit save. To revert Odoo, roll back to the published checkpoint.",
   },
   draft: {
     label: "Draft",
@@ -95,13 +95,16 @@ export function DesignerSessionBar({
 
   return (
     <div
-      className="flex flex-wrap items-center gap-2 rounded-md border border-border-subtle bg-surface-raised px-3 py-2 shadow-subtle"
+      className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-md border border-border-subtle bg-surface-raised px-3 py-2 shadow-subtle"
       data-testid="designer-session-bar"
     >
-      <span data-testid="designer-publish-state">
+      <span data-testid="designer-publish-state" className="inline-flex shrink-0">
         <Badge variant={copy.variant}>{copy.label}</Badge>
       </span>
-      <p className="mr-auto max-w-xl text-xs text-muted" data-testid="designer-session-hint">
+      <p
+        className="mr-auto min-w-0 max-w-[46ch] text-xs leading-snug text-muted"
+        data-testid="designer-session-hint"
+      >
         {copy.hint}
       </p>
       <Tooltip label={undoTitle}>

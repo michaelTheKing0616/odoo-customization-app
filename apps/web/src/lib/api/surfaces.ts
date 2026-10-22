@@ -1,4 +1,5 @@
-import { request, fetchApi, requestForm } from "./client";
+import { request, fetchApi, requestForm, formatDetailMessage } from "./client";
+import type { QwebViewBlock } from "@/components/qweb-views/qwebViewBlocks";
 import type { ReportRenderProbeOut } from "./types-bulk";
 import type { MenuNode, WindowActionRow } from "./types-catalog";
 
@@ -133,6 +134,99 @@ export const surfacesApi = {
       `/api/connections/${id}/menus-builder/actions/${actionId}`,
       { method: "PATCH", body: JSON.stringify(body) },
     ),
+  listQwebViews: (
+    id: string,
+    opts?: { model?: string; key_prefix?: string; exclude_report_bound?: boolean; limit?: number },
+  ) => {
+    const params = new URLSearchParams();
+    if (opts?.model) params.set("model", opts.model);
+    if (opts?.key_prefix) params.set("key_prefix", opts.key_prefix);
+    if (opts?.exclude_report_bound != null)
+      params.set("exclude_report_bound", String(opts.exclude_report_bound));
+    if (opts?.limit != null) params.set("limit", String(opts.limit));
+    const q = params.toString();
+    return request<
+      Array<{
+        id: number;
+        name: string;
+        key: string | null;
+        model: string | null;
+        inherit_id: number | null;
+        inherit_name: string | null;
+        mode: string | null;
+        priority: number | null;
+        report_bound: boolean;
+        report_name: string | null;
+      }>
+    >(`/api/connections/${id}/qweb-views${q ? `?${q}` : ""}`);
+  },
+  getQwebView: (id: string, viewId: number) =>
+    request<{
+      id: number;
+      name: string;
+      key: string | null;
+      model: string | null;
+      inherit_id: number | null;
+      inherit_name: string | null;
+      mode: string | null;
+      priority: number | null;
+      report_bound: boolean;
+      report_name: string | null;
+      arch: string | null;
+      blocks: QwebViewBlock[] | null;
+      blocks_parseable: boolean;
+      existing_t_call_targets: string[];
+    }>(`/api/connections/${id}/qweb-views/${viewId}`),
+  createQwebView: (
+    id: string,
+    body: {
+      name: string;
+      key: string;
+      model?: string;
+      wrap_external_layout?: boolean;
+      blocks?: unknown[];
+      arch?: string;
+    },
+  ) =>
+    request<{
+      id: number;
+      name: string;
+      key: string | null;
+      model: string | null;
+      arch: string | null;
+      blocks: Array<Record<string, unknown>> | null;
+      blocks_parseable: boolean;
+      existing_t_call_targets: string[];
+    }>(`/api/connections/${id}/qweb-views`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  saveQwebView: (
+    id: string,
+    viewId: number,
+    body: {
+      arch?: string;
+      blocks?: unknown[];
+      strategy?: "inherit" | "overwrite";
+      inherit_xpath?: string;
+      inherit_position?: string;
+      existing_t_call_targets?: string[];
+      confirm_advanced?: boolean;
+      confirm_phrase?: string | null;
+      child_name?: string;
+    },
+  ) =>
+    request<{
+      id: number;
+      name: string;
+      key: string | null;
+      snapshot_id: string | null;
+      strategy: string;
+      arch_len: number;
+    }>(`/api/connections/${id}/qweb-views/${viewId}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
   listReports: (id: string, model?: string) =>
     request<
       Array<{
@@ -166,6 +260,8 @@ export const surfacesApi = {
       report_key: string;
       arch?: string | null;
       paperformat_id?: number | null;
+      /** PDF-04 grounded design — empty blocks refused server-side. */
+      spec?: Record<string, unknown> | null;
     },
   ) =>
     request<{ id: number; name: string; report_name: string | null }>(

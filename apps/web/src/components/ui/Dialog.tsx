@@ -60,7 +60,7 @@ export function DialogPanel({
   return (
     <Dialog.Root open={open} onOpenChange={(nextOpen) => onOpenChange(nextOpen)}>
       <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/40" />
+        <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/30 backdrop-saturate-50 backdrop-blur-[2px]" />
         <Dialog.Popup
           data-testid={testId ?? "dialog-panel"}
           data-risk-level={dataRiskLevel}

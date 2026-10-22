@@ -2,19 +2,26 @@
 
 import { Callout } from "@/components/ui/Callout";
 import { SCORE_BARS } from "@/lib/copy-guide";
-import type { JobAutopilotGate } from "@/lib/job-autopilot-journey";
+import {
+  jobAutopilotOnlineHonesty,
+  type JobAutopilotGate,
+} from "@/lib/job-autopilot-journey";
 
 type JobAutopilotHonestyBannersProps = {
   gate: JobAutopilotGate;
   showOverviewNote?: boolean;
   contractNote?: string | null;
+  /** Odoo Online: never imply live Python module install. */
+  isOdooOnline?: boolean;
 };
 
 export function JobAutopilotHonestyBanners({
   gate,
   showOverviewNote,
   contractNote,
+  isOdooOnline,
 }: JobAutopilotHonestyBannersProps) {
+  const online = isOdooOnline ? jobAutopilotOnlineHonesty() : null;
   return (
     <div className="studio-banner-stack">
       <Callout
@@ -40,6 +47,13 @@ export function JobAutopilotHonestyBanners({
           </p>
         ) : null}
       </Callout>
+      {online ? (
+        <Callout variant="warning" title={online.title} testId="job-autopilot-online-honesty">
+          <p className="text-sm" data-testid="job-autopilot-online-body">
+            {online.body}
+          </p>
+        </Callout>
+      ) : null}
       {showOverviewNote ? (
         <Callout variant="info" title="Overview checklist is not this job">
           <p className="text-sm">

@@ -11,6 +11,7 @@ import {
   type ModelRow,
   type SecurityPreviewOut,
 } from "@/lib/api";
+import { newProgressRunId } from "@/lib/progress/run-id";
 import type { BulkConfirmMode } from "./bulk-helpers";
 
 export function useBulkSuiteState(connectionId: string) {
@@ -27,6 +28,7 @@ export function useBulkSuiteState(connectionId: string) {
   const [domainText, setDomainText] = useState("[]");
   const [idsText, setIdsText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [progressRunId, setProgressRunId] = useState<string | null>(null);
   const [discoverBusy, setDiscoverBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -125,6 +127,16 @@ export function useBulkSuiteState(connectionId: string) {
     };
   }, [connectionId]);
 
+  function beginProgressRun(prefix = "bulk") {
+    const id = newProgressRunId(prefix);
+    setProgressRunId(id);
+    return id;
+  }
+
+  function clearProgressRunId() {
+    setProgressRunId(null);
+  }
+
   return {
     connectionId,
     showRecipes,
@@ -146,6 +158,9 @@ export function useBulkSuiteState(connectionId: string) {
     setIdsText,
     busy,
     setBusy,
+    progressRunId,
+    beginProgressRun,
+    clearProgressRunId,
     discoverBusy,
     setDiscoverBusy,
     error,

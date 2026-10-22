@@ -27,7 +27,7 @@ describe("ProjectDiffPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Already live" }));
     expect(screen.getByText("Models already live")).toBeTruthy();
     expect(screen.queryByText("x_name type mismatch")).toBeNull();
-    expect(screen.getByTestId("project-diff-panel").textContent).toMatch(/Promote stays human/);
+    expect(screen.getByTestId("project-diff-panel").textContent).toMatch(/Publishing stays a step you confirm/);
     expect(screen.getByTestId("project-diff-panel").textContent).not.toMatch(/!/);
   });
 });

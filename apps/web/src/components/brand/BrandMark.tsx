@@ -1,5 +1,6 @@
 "use client";
 
+import type React from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -13,17 +14,21 @@ type Props = {
   size?: number;
   priority?: boolean;
   /**
-   * auto — white on dark chrome, dark mono on light (default).
-   * white — always white (known-dark surfaces).
-   * mono — always dark ink (known-light surfaces).
-   * color — legacy color mark (avoid for chrome; washes out on dark).
+   * auto — colour Keystone for light/dark chrome (default).
+   * white — on-dark colour mark (known-dark surfaces).
+   * mono — basalt mono mark (known-light surfaces).
+   * color — dark-chrome colour mark (legacy alias).
    */
   variant?: "auto" | "white" | "mono" | "color";
 };
 
 const MARK = {
-  color: "/brand/ingenium-mark.png",
+  light: "/brand/ingenium-mark-light.png",
+  dark: "/brand/ingenium-mark.png",
   mono: "/brand/ingenium-mark-mono.png",
+  smallLight: "/brand/ingenium-mark-small-color.svg",
+  smallDark: "/brand/ingenium-mark-small-on-dark.svg",
+  smallMono: "/brand/ingenium-mark-small-black.svg",
 } as const;
 
 function readDomTheme(): "light" | "dark" {
@@ -31,10 +36,58 @@ function readDomTheme(): "light" | "dark" {
   return document.documentElement.classList.contains("dark") ? "dark" : "light";
 }
 
+function resolveMark(
+  variant: NonNullable<Props["variant"]>,
+  resolved: "light" | "dark",
+  size: number,
+): { src: string; mode: "light" | "white" | "mono" | "color"; wantWhite: boolean } {
+  const small = size < 32;
+
+  if (variant === "mono") {
+    return {
+      src: small ? MARK.smallMono : MARK.mono,
+      mode: "mono",
+      wantWhite: false,
+    };
+  }
+  if (variant === "white") {
+    return {
+      src: small ? MARK.smallDark : MARK.dark,
+      mode: "white",
+      wantWhite: true,
+    };
+  }
+  if (variant === "color") {
+    return {
+      src: small ? MARK.smallDark : MARK.dark,
+      mode: "color",
+      wantWhite: false,
+    };
+  }
+  // auto — full-colour Keystone in both themes (no invert).
+  if (resolved === "dark") {
+    return {
+      src: small ? MARK.smallDark : MARK.dark,
+      mode: "white",
+      wantWhite: true,
+    };
+  }
+  return {
+    src: small ? MARK.smallLight : MARK.light,
+    mode: "light",
+    wantWhite: false,
+  };
+}
+
 /**
- * Ingenium product mark.
- * Dark backgrounds need a white mark — the color PNG washes out on navy/dark chrome.
+ * Ingenium product mark (Keystone v2).
+ * Light chrome → mark-light; dark chrome → mark (on-dark). Below 32px → small SVG.
  */
+/** Make every on-screen logo do a short keystone settle (e.g. after a publish). */
+export function celebrateKeystone() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("ingenium:keystone"));
+}
+
 export function BrandMark({
   href = "/",
   withWordmark = true,
@@ -49,31 +102,43 @@ export function BrandMark({
     setDomTheme(readDomTheme());
   }, [themeCtx?.resolved]);
 
+  const [wobble, setWobble] = useState(false);
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const on = () => {
+      setWobble(true);
+      t = setTimeout(() => setWobble(false), 900);
+    };
+    window.addEventListener("ingenium:keystone", on);
+    return () => {
+      window.removeEventListener("ingenium:keystone", on);
+      if (t) clearTimeout(t);
+    };
+  }, []);
+
   const resolved = themeCtx?.resolved ?? domTheme;
-  const wantWhite =
-    variant === "white" || (variant === "auto" && resolved === "dark");
-  const useColor = variant === "color";
-  const src = useColor ? MARK.color : MARK.mono;
-  const mode = useColor ? "color" : wantWhite ? "white" : "mono";
+  const { src, mode, wantWhite } = resolveMark(variant, resolved, size);
+  const isSvg = src.endsWith(".svg");
 
   const inner = (
     <span
       className={cn("inline-flex items-center gap-2", className)}
       data-brand-variant={mode}
     >
+      <span className="relative inline-flex">
       <Image
         src={src}
         alt="Ingenium"
         width={size}
         height={size}
         priority={priority}
-        className={cn(
-          "rounded-sm object-contain",
-          // Mono asset is dark ink; invert to white for dark chrome.
-          wantWhite && "brightness-0 invert",
-        )}
+        unoptimized={isSvg}
+        className={cn("rounded-sm object-contain", wobble && "keystone-wobble")}
         data-testid="brand-mark-image"
       />
+      {/* Touch 71: a dozen fine stone-dust particles fall from the keystone, once (0.6 s). */}
+      {wobble ? <span className="stone-dust" aria-hidden data-testid="stone-dust">{Array.from({ length: 12 }, (_, i) => <i key={i} style={{ ["--i" as string]: i } as React.CSSProperties} />)}</span> : null}
+      </span>
       {withWordmark ? (
         <span
           className={cn(

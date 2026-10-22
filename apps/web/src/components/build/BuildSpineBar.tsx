@@ -146,7 +146,7 @@ export function BuildSpineBar({
             <Link href={`/connections/${connectionId}/job`}>Job Autopilot</Link>
           </Button>
           <Button asChild variant="ghost" size="sm">
-            <Link href={`/connections/${connectionId}/designer`}>Prefer / Designer</Link>
+            <Link href={`/connections/${connectionId}/designer`}>View Designer</Link>
           </Button>
         </div>
       ) : null}

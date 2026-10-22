@@ -46,7 +46,7 @@ export function ModuleSpecExtrasPanel({ smartButtons, automations }: ModuleSpecE
       <section>
         <h3 className="text-sm font-semibold text-ink">Automations</h3>
         <p className="mt-1 text-xs text-muted">
-          Review-only on Generate UI. Open Automations to create live rules. Python stays Option A.
+          Review-only on Generate UI. Open Automations to create live rules. Python stays on the custom-code path.
         </p>
         {automations.length === 0 ? (
           <p className="mt-3 text-sm text-muted">None in this spec.</p>

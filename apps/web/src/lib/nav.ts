@@ -2,6 +2,7 @@ import type { IconComponent } from "@/components/ui/icons";
 import {
   IconAccess,
   IconApprovals,
+  IconClient,
   IconAutomations,
   IconBulk,
   IconCodeStudio,
@@ -21,6 +22,8 @@ import {
   IconProjects,
   IconReminders,
   IconReports,
+  IconMailTemplates,
+  IconQwebViews,
   IconSandbox,
   IconScriptRunner,
   IconSnapshots,
@@ -65,34 +68,34 @@ export const NAV_GROUPS: {
 }[] = [
   {
     id: "overview",
-    label: "Overview",
-    tooltip: "Connection home, health, and instance metadata",
+    label: "Home",
+    tooltip: "This database: health, versions and what needs you",
   },
   {
     id: "build",
     label: "Build",
-    tooltip: "Models, views, menus, automations, and access",
+    tooltip: "Models and fields, screens, menus, website, automations, access, documents and emails",
   },
   {
     id: "ai",
-    label: "AI Studio",
-    tooltip: "One Build entry — App Studio / Draft / Autopilot modes (chips). Projects + Expert route in.",
+    label: "AI",
+    tooltip: "Ask, App Studio, Autopilot, Expert and the Live Demo Co-Pilot",
   },
   {
     id: "data",
     label: "Data",
-    tooltip: "Import records and generate external IDs",
+    tooltip: "Bring data in, edit records, numbering",
   },
   {
     id: "operate",
-    label: "Operations",
-    tooltip: "Bulk tools, cron, housekeeping, and scripts",
+    label: "Run & look after",
+    tooltip: "Bulk jobs, scheduled jobs, clean-up and scripts",
     hubPath: "operations",
   },
   {
     id: "govern",
-    label: "Safety & History",
-    tooltip: "Snapshots, journal, and governance",
+    label: "History & safety",
+    tooltip: "Every change, with undo, approvals and safety rules",
   },
 ];
 
@@ -103,6 +106,14 @@ export const NAV_ITEMS: NavItem[] = [
     href: (id) => `/connections/${id}`,
     group: "overview",
     icon: IconConnection,
+    shipped: true,
+  },
+  {
+    id: "client-command",
+    label: "Client",
+    href: (id) => `/connections/${id}/client`,
+    group: "overview",
+    icon: IconClient,
     shipped: true,
   },
   {
@@ -159,7 +170,7 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     id: "approvals",
-    label: "Approvals",
+    label: "Odoo approval rules",
     href: (id) => `/connections/${id}/approvals`,
     group: "build",
     icon: IconApprovals,
@@ -171,6 +182,22 @@ export const NAV_ITEMS: NavItem[] = [
     href: (id) => `/connections/${id}/reports`,
     group: "build",
     icon: IconReports,
+    shipped: true,
+  },
+  {
+    id: "mail-templates",
+    label: "Mail templates",
+    href: (id) => `/connections/${id}/mail-templates`,
+    group: "build",
+    icon: IconMailTemplates,
+    shipped: true,
+  },
+  {
+    id: "qweb-views",
+    label: "QWeb views",
+    href: (id) => `/connections/${id}/qweb-views`,
+    group: "build",
+    icon: IconQwebViews,
     shipped: true,
   },
   {
@@ -218,7 +245,7 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     id: "modulespec",
-    label: "ModuleSpec",
+    label: "App plan",
     href: (id) => `/connections/${id}/modulespec`,
     group: "ai",
     icon: IconModels,
@@ -246,7 +273,7 @@ export const NAV_ITEMS: NavItem[] = [
     id: "live-demo-copilot",
     label: "Live Demo Co-Pilot",
     href: (id) => `/connections/${id}/live-demo-copilot`,
-    group: "operate",
+    group: "ai",
     icon: IconOdooExpert,
     shipped: true,
     // First among Operations items below; hub card + expanded ops group for discoverability
@@ -318,7 +345,7 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     id: "journal",
-    label: "Snapshots & Journal",
+    label: "History",
     href: (id) => `/connections/${id}/journal`,
     group: "govern",
     icon: IconSnapshots,

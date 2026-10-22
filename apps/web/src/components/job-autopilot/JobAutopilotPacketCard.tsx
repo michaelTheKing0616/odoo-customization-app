@@ -3,6 +3,7 @@
 import { Card } from "@/components/ui/layout-primitives";
 import type { JobPacket } from "@/lib/api";
 import { isStockOnlyPacket } from "@/lib/job-autopilot-journey";
+import { JobAutopilotRecipeRail } from "./JobAutopilotRecipeRail";
 
 type JobAutopilotPacketCardProps = {
   packet: JobPacket;
@@ -16,11 +17,14 @@ export function JobAutopilotPacketCard({
   sandbox,
 }: JobAutopilotPacketCardProps) {
   const stockOnly = isStockOnlyPacket(packet);
+  const kind = (connectionKind || "").toLowerCase();
+  const onlineKind = kind.includes("online") || kind.includes("saas");
   return (
-    <Card className="p-5" data-testid="job-packet-card">
-      <h2 className="text-lg font-semibold text-ink">Job packet</h2>
-      <p className="mt-1 text-sm text-muted">
+    <Card className="job-packet-card p-5" data-testid="job-packet-card">
+      <h2 className="text-lg font-semibold tracking-tight text-ink">Job packet</h2>
+      <p className="mt-1 max-w-[65ch] text-sm text-muted text-pretty">
         Stock-first plan. Custom <code>x_*</code> is residual only. This is not a ModuleSpec.
+        A complete draft is not the same as certified, and neither means Autopilot-ready.
       </p>
       {packet.structured_brief ? (
         <pre
@@ -49,10 +53,10 @@ export function JobAutopilotPacketCard({
           <dd>{packet.connectors?.length ? packet.connectors.join(" → ") : "None detected"}</dd>
         </div>
         <div>
-          <dt>Custom residual</dt>
+          <dt>Custom code</dt>
           <dd>
             {stockOnly
-              ? "None — stock and data only"
+              ? "None: stock and data only"
               : packet.custom_residuals.map((r) => `${r.model} (${r.key})`).join(", ")}
           </dd>
         </div>
@@ -69,10 +73,16 @@ export function JobAutopilotPacketCard({
           </div>
         ) : null}
       </dl>
+      <div className="mt-4">
+        <JobAutopilotRecipeRail detected={packet.connectors} showAllWhenEmpty />
+      </div>
       {connectionKind ? (
-        <p className="mt-3 text-xs text-muted">
+        <p className="mt-3 text-xs text-muted" data-testid="job-packet-connection-kind">
           Connection: {connectionKind}
           {sandbox ? " · unattended sandbox" : " · run will need confirm"}
+          {onlineKind
+            ? ". Odoo Online never gets a live Python module install from Autopilot."
+            : ""}
         </p>
       ) : null}
       {packet.decision_record.length ? (

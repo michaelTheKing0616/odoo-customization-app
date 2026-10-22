@@ -2,7 +2,6 @@
 
 import { FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
 
 type ModelPickerProps = {
   model: string;
@@ -11,18 +10,24 @@ type ModelPickerProps = {
   busy?: boolean;
 };
 
+/** Compact technical-name picker: one field, one secondary Load. */
 export function AccessModelPicker({ model, onModelChange, onLoad, busy }: ModelPickerProps) {
   return (
-    <form onSubmit={onLoad} className="space-y-2" data-testid="access-model-picker">
-      <Input
-        label="Model"
-        value={model}
-        onChange={(e) => onModelChange(e.target.value)}
-        className="font-mono"
-        hint="Technical name. Load to list ACL lines and record rules for that model."
-      />
-      <Button type="submit" variant="secondary" size="sm" disabled={busy} loading={busy}>
-        Load model
+    <form onSubmit={onLoad} className="flex items-end gap-2" data-testid="access-model-picker">
+      <label className="ax-field" style={{ flex: "1 1 auto" }}>
+        <span className="ax-field-label">Model</span>
+        <input
+          className="ax-input is-mono"
+          value={model}
+          onChange={(e) => onModelChange(e.target.value)}
+          placeholder="res.partner"
+          spellCheck={false}
+          autoCapitalize="off"
+          data-testid="access-model-input"
+        />
+      </label>
+      <Button type="submit" variant="secondary" disabled={busy} loading={busy}>
+        Load
       </Button>
     </form>
   );

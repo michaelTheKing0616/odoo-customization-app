@@ -30,9 +30,9 @@ export function ModuleSpecHandoffBar({
     <Card className="p-5" data-testid="modulespec-handoff-bar">
       <h2 className="text-lg font-semibold text-ink">Open related surfaces</h2>
       <p className="mt-1 text-sm text-muted">
-        ModuleSpec is the IR. Draft Studio authors it. Projects version the draft.
+        The app plan is the structured description of your app. Draft Studio authors it. Projects version the draft.
         View Designer edits live forms. Job Autopilot is the sandbox done-bar — not Completeness 10.0.
-        Promote stays human.
+        Publishing stays a step you confirm.
       </p>
       <div className="job-handoff-bar mt-4">
         <Button asChild variant="ghost" size="sm">

@@ -6,11 +6,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { OAuthProviderButtons } from "@/components/auth/OAuthProviderButtons";
 import { Button } from "@/components/ui/Button";
-import { Callout } from "@/components/ui/Callout";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { TotpCodeInput } from "@/components/auth/TotpCodeInput";
 import { Input } from "@/components/ui/Input";
 import { Card, PageHeader } from "@/components/ui/layout-primitives";
+import { isCompleteTotpCode, totpCodeError } from "@/lib/auth/totp";
 
 export default function LoginPage() {
   return (
@@ -34,6 +34,7 @@ function LoginPageContent() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
+  const [codeError, setCodeError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(
     oauthError ? `Sign-in could not be completed (${oauthError}).` : null,
   );
@@ -47,6 +48,11 @@ function LoginPageContent() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    const invalidCode = totpCodeError(totpCode, oauthTotp);
+    if (invalidCode) {
+      setCodeError(invalidCode);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -77,7 +83,7 @@ function LoginPageContent() {
             : "Access your Ingenium workspace."
         }
       />
-      <Card>
+      <Card className="space-y-5 p-5">
         <form className="space-y-4" onSubmit={onSubmit}>
           {error ? <ErrorNotice message={error} /> : null}
           {!oauthTotp ? (
@@ -97,29 +103,49 @@ function LoginPageContent() {
               </label>
             </>
           ) : null}
-          <label className="block space-y-1 text-sm">
-            <span>2FA code{oauthTotp ? "" : " (if enabled)"}</span>
-            <TotpCodeInput
-              value={totpCode}
-              onChange={setTotpCode}
-              required={oauthTotp}
-              disabled={busy}
-            />
-          </label>
-          <Button type="submit" disabled={busy}>
+          <TotpCodeInput
+            label="Two-factor code"
+            description={
+              oauthTotp
+                ? "The 6 digits shown in your authenticator app."
+                : "Only if two-factor sign-in is on for your account. Leave blank otherwise."
+            }
+            value={totpCode}
+            onChange={(next) => {
+              setTotpCode(next);
+              setCodeError(null);
+            }}
+            error={codeError}
+            required={oauthTotp}
+            busy={busy}
+            autoFocus={oauthTotp}
+          />
+          <Button
+            type="submit"
+            variant="primary"
+            className="w-full"
+            disabled={busy || (oauthTotp && !isCompleteTotpCode(totpCode))}
+          >
             {busy ? "Signing in…" : oauthTotp ? "Complete sign-in" : "Sign in"}
           </Button>
         </form>
         {!oauthTotp ? <OAuthProviderButtons /> : null}
-        <Callout variant="info" title="New here?" className="mt-4">
-          <Link href="/signup" className="underline">
-            Create an account
-          </Link>
-          {" · "}
-          <Link href="/reset-password" className="underline">
-            Forgot password
-          </Link>
-        </Callout>
+        {!oauthTotp ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border-subtle pt-4 text-sm text-muted">
+            <p>
+              New here?{" "}
+              <Link href="/signup" className="text-ink underline underline-offset-2 hover:text-accent">
+                Create an account
+              </Link>
+            </p>
+            <Link
+              href="/reset-password"
+              className="text-ink underline underline-offset-2 hover:text-accent"
+            >
+              Forgot your password?
+            </Link>
+          </div>
+        ) : null}
       </Card>
     </div>
   );

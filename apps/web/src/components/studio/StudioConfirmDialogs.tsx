@@ -13,31 +13,31 @@ export function StudioConfirmDialogs(vm: StudioPageModel) {
         warning="Installs Community Invoicing (account) on this live Odoo so Accounting Settings exist. Sandbox prove did not do that."
         risks={[
           "Installs the stock account module and its depends",
-          "Does not install CBN — Promote the zip after this",
-          "Settings → search Currency remains an Enterprise tease until Promote",
+          "Does not install CBN. Publish the zip after this",
+          "Settings → search Currency remains an Enterprise tease until you publish",
         ]}
         phrase={CONFIRM_PHRASE}
         busy={vm.busy === "install-host"}
         riskLevel="danger"
-        snapshotNote="Prefer a sandbox connection before production."
+        snapshotNote="Try a test copy before changing production."
         onCancel={() => vm.setInstallOpen(false)}
         onConfirm={(phrase) => void vm.installGoldHostModule(phrase)}
       />
       <ConfirmDialogV2
         open={vm.promoteOpen}
-        title="Promote validated module"
+        title="Publish validated module"
         warning="Installs the sandbox-validated Python module on this live Odoo connection. The ephemeral sandbox is already gone."
         risks={
           vm.authoredOptionA
             ? [
                 "Adds Python/XML on stock models (for example sale.order markup)",
-                "Does not create a new home-grid tile — inspect the stock Sales form",
-                "Never invents account.tax — WHT must use an existing tax xmlid",
+                "Does not create a new home-grid tile. Inspect the stock Sales form",
+                "Never invents account.tax. WHT must use an existing tax xmlid",
                 "Only promote after sandbox validation passed (2 hour token)",
               ]
             : [
                 "Adds Python, views, and cron jobs (CBN writes stock res.currency.rate)",
-                "Does not create a new app tile — inspect Accounting Settings after",
+                "Does not create a new app tile. Inspect Accounting Settings after",
                 "Uninstall may not fully reverse rates or cron",
                 "Only promote after sandbox validation passed (2 hour token)",
               ]
@@ -45,7 +45,7 @@ export function StudioConfirmDialogs(vm: StudioPageModel) {
         phrase={CONFIRM_PHRASE}
         busy={vm.busy === "promote"}
         riskLevel="danger"
-        snapshotNote="Prefer a sandbox connection before production. Promote stays human."
+        snapshotNote="Try a test copy before changing production. Publishing stays a step you confirm."
         onCancel={() => vm.setPromoteOpen(false)}
         onConfirm={(phrase) => void vm.promoteGoldModule(phrase)}
       />
@@ -62,17 +62,17 @@ export function StudioConfirmDialogs(vm: StudioPageModel) {
             ? [
                 `Adds fields on the stock ${vm.hostFormName} form via RPC`,
                 "Does not create a new home-grid tile",
-                "Prefer a sandbox connection before production",
+                "Try a test copy before changing production",
                 ...(vm.isOdooOnline
-                  ? ["Odoo Online: no custom Python module install — metadata apply only"]
+                  ? ["Odoo Online: no custom Python module install, metadata apply only"]
                   : []),
               ]
             : [
                 "Creates ir.model / fields / views / menus via RPC",
                 "May rewrite primary form arches for custom x_* models",
-                "Prefer a sandbox connection before production",
+                "Try a test copy before changing production",
                 ...(vm.isOdooOnline
-                  ? ["Odoo Online: no custom Python module install — metadata apply only"]
+                  ? ["Odoo Online: no custom Python module install, metadata apply only"]
                   : []),
               ]
         }

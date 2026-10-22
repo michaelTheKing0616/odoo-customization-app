@@ -33,9 +33,22 @@ export function isEnterpriseEdition(caps: CapabilityMatrix | null | undefined): 
   return (caps?.edition ?? "").toLowerCase() === "enterprise";
 }
 
-/** Grid/planning views are EE-gated in product — arch helpers exist but UI locks without EE. */
+/** Only a probed, confirmed Community edition locks Enterprise-only UI. */
+export function isConfirmedCommunity(caps: CapabilityMatrix | null | undefined): boolean {
+  return (caps?.edition ?? "").toLowerCase() === "community";
+}
+
+/** Probed but edition not detected (anything other than community/enterprise). */
+export function isEditionUnknown(caps: CapabilityMatrix | null | undefined): boolean {
+  return Boolean(caps) && !isEnterpriseEdition(caps) && !isConfirmedCommunity(caps);
+}
+
+/**
+ * Grid/planning views are EE-gated in product. Locked only on confirmed Community;
+ * unknown edition stays enabled with a soft note (see DesignerStudioToolbar).
+ */
 export function gridViewAllowed(connection: Connection | null | undefined): boolean {
-  return mutationAllowed(connection) && isEnterpriseEdition(connection?.capabilities);
+  return mutationAllowed(connection) && !isConfirmedCommunity(connection?.capabilities);
 }
 
 export function isExperimentalMajor(caps: CapabilityMatrix | null | undefined): boolean {

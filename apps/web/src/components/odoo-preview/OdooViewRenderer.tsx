@@ -6,7 +6,7 @@ import type {
   PreviewListView,
   PreviewViewSchema,
 } from "@/lib/draft-form-preview";
-import { OdooFormView } from "./OdooFormView";
+import { OdooFormView, type PreviewDeferredIntegration } from "./OdooFormView";
 import { OdooKanbanView } from "./OdooKanbanView";
 import { OdooListView } from "./OdooListView";
 
@@ -14,12 +14,14 @@ type OdooViewRendererProps = {
   schema: PreviewViewSchema;
   flashFieldId?: string | null;
   highlightedFieldIds?: string[];
+  deferredIntegrations?: PreviewDeferredIntegration[];
 };
 
 export function OdooViewRenderer({
   schema,
   flashFieldId,
   highlightedFieldIds,
+  deferredIntegrations,
 }: OdooViewRendererProps) {
   switch (schema.type) {
     case "form":
@@ -28,6 +30,7 @@ export function OdooViewRenderer({
           view={schema as PreviewFormView}
           flashFieldId={flashFieldId}
           highlightedFieldIds={highlightedFieldIds}
+          deferredIntegrations={deferredIntegrations}
         />
       );
     case "list":

@@ -1,0 +1,343 @@
+/* Studio-bar leap: basalt chrome via OperateStudioChrome; honesty in bar. */
+/* ============================================================
+   UI-S-16 Odoo approval rules: operate-mode craft
+   Basalt chrome, teal = primary/selection, amber = pending only.
+   Cinnabar never appears (keystone only). No purple / orange CTAs.
+   ============================================================ */
+
+.approvals-operate {
+  --ap-radius: 12px;
+  --ap-radius-sm: 8px;
+  --ap-hair: var(--border-subtle);
+  --ap-hair-strong: var(--border-strong);
+  --ap-basalt: #1a1c21;
+  --ap-limestone: #f3f4f6;
+  --ap-row-hover: color-mix(in oklab, var(--accent) 5%, var(--surface-raised));
+  --ap-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ap-press: 160ms;
+  --ap-state: 150ms;
+  font-variant-numeric: tabular-nums;
+  max-width: 100%;
+  overflow-x: clip;
+  box-sizing: border-box;
+}
+
+html.dark .approvals-operate,
+.dark .approvals-operate {
+  --ap-basalt: #f3f4f6;
+  --ap-limestone: #1a1c21;
+}
+
+.approvals-operate h1,
+.approvals-operate h2,
+.approvals-operate h3 {
+  text-wrap: balance;
+  letter-spacing: -0.015em;
+}
+
+.approvals-operate p {
+  text-wrap: pretty;
+}
+
+.approvals-operate .ap-lead {
+  margin-top: 8px;
+  max-width: 72ch;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.approvals-operate .ap-honesty {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.approvals-operate .ap-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  max-width: 100%;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--ap-basalt);
+  color: var(--ap-limestone);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.approvals-operate .ap-chip[data-tone="quiet"] {
+  background: transparent;
+  color: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--ap-hair-strong);
+}
+
+.approvals-operate .ap-chip[data-tone="accent"] {
+  background: color-mix(in oklab, var(--accent) 14%, var(--surface-raised));
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 35%, transparent);
+}
+
+.approvals-operate .ap-inbox-note {
+  margin-top: 10px;
+  max-width: 72ch;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--subtle, var(--muted));
+}
+
+.approvals-operate .ap-inbox-note a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* What / why / next guide */
+
+.approvals-operate .ap-guide {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--ap-hair);
+  border-radius: var(--ap-radius);
+  background: color-mix(in oklab, var(--ink) 2%, var(--surface-raised));
+  position: relative;
+}
+
+.approvals-operate .ap-guide::before {
+  content: "";
+  position: absolute;
+  inset: 10px auto 10px 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: color-mix(in oklab, var(--ink) 18%, transparent);
+}
+
+.approvals-operate .ap-guide[data-tone="warning"] {
+  background: color-mix(in oklab, #f59e0b 10%, var(--surface-raised));
+}
+.approvals-operate .ap-guide[data-tone="warning"]::before {
+  background: #b45309;
+}
+.approvals-operate .ap-guide[data-tone="danger"] {
+  background: color-mix(in oklab, var(--danger) 8%, var(--surface-raised));
+}
+.approvals-operate .ap-guide[data-tone="danger"]::before {
+  background: var(--danger);
+}
+.approvals-operate .ap-guide[data-tone="accent"] {
+  background: color-mix(in oklab, var(--accent) 8%, var(--surface-raised));
+}
+.approvals-operate .ap-guide[data-tone="accent"]::before {
+  background: var(--accent);
+}
+
+.approvals-operate .ap-guide-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.approvals-operate .ap-guide-rows {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.approvals-operate .ap-guide-rows dt {
+  color: var(--subtle);
+  font-weight: 500;
+}
+
+.approvals-operate .ap-guide-rows dd {
+  margin: 0;
+  color: var(--muted);
+}
+
+.approvals-operate .ap-guide-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+/* Tabs strip */
+
+.approvals-operate .ap-tabs {
+  margin-top: 16px;
+}
+
+/* Composer panel */
+
+.approvals-operate .ap-composer {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid var(--ap-hair);
+  border-radius: var(--ap-radius);
+  background: var(--surface-raised);
+}
+
+.approvals-operate .ap-composer-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.approvals-operate .ap-composer-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.approvals-operate .ap-composer-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+@media (min-width: 720px) {
+  .approvals-operate .ap-composer-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.approvals-operate .ap-composer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  align-items: center;
+}
+
+/* Inset hairline list */
+
+.approvals-operate .ap-section {
+  margin-top: 24px;
+}
+
+.approvals-operate .ap-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.approvals-operate .ap-list-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.approvals-operate .ap-search {
+  height: var(--row-h, 36px);
+  width: 100%;
+  margin-top: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--ap-hair);
+  background: var(--surface);
+  padding: 0 12px;
+  font-size: 13px;
+  color: var(--ink);
+  outline: none;
+}
+
+.approvals-operate .ap-search:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.approvals-operate .ap-list {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--ap-hair);
+  border-radius: var(--ap-radius);
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+
+.approvals-operate .ap-list > li + li {
+  border-top: 1px solid color-mix(in oklab, var(--ap-hair) 75%, transparent);
+}
+
+.approvals-operate .ap-list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  min-height: 56px;
+  padding: 12px 14px;
+  transition: background-color var(--ap-state) ease;
+}
+
+.approvals-operate .ap-list-row:hover {
+  background: var(--ap-row-hover);
+}
+
+.approvals-operate .ap-list-name {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.approvals-operate .ap-list-meta {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
+.approvals-operate .ap-list-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.approvals-operate .ap-inline-input {
+  width: 88px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--ap-hair);
+  background: var(--surface);
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--ink);
+  outline: none;
+}
+
+.approvals-operate .ap-inline-input:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.approvals-operate .ap-notice {
+  margin-top: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .approvals-operate .ap-list-row {
+    transition: none;
+  }
+}
+
+
+.approvals-operate.op-studio-shell {
+  max-width: 56rem;
+}
+.approvals-operate .op-paper {
+  gap: 14px;
+}
+.approvals-operate .ap-honesty {
+  display: none; /* folded into studio bar */
+}

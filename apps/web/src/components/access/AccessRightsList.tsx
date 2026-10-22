@@ -1,13 +1,12 @@
 "use client";
 
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card, EmptyState, Skeleton } from "@/components/ui/layout-primitives";
-import { IconAccess } from "@/components/ui/icons";
-import { EMPTY_STATES } from "@/lib/copy-guide";
-import { crudLetters, filterByQuery } from "@/lib/accessForm";
+import { Skeleton } from "@/components/ui/layout-primitives";
+import { AccessCrudLetters } from "@/components/access/AccessCrudLetters";
+import { AccessStateGuide } from "@/components/access/AccessStateGuide";
+import { filterByQuery } from "@/lib/accessForm";
+import { accessEmptyGuide } from "@/lib/accessScreen";
 import type { AccessRightRow } from "@/lib/api";
-import { cn } from "@/lib/cn";
 
 type AccessRightsListProps = {
   rows: AccessRightRow[];
@@ -17,6 +16,10 @@ type AccessRightsListProps = {
   onQueryChange: (query: string) => void;
   onSelect: (row: AccessRightRow) => void;
   onCreate: () => void;
+  /** Model name for the empty-state copy. */
+  model?: string;
+  /** Section title, e.g. "ir.access rows" on Odoo 20. */
+  title?: string;
 };
 
 export function AccessRightsList({
@@ -27,52 +30,66 @@ export function AccessRightsList({
   onQueryChange,
   onSelect,
   onCreate,
+  model,
+  title = "Access lines",
 }: AccessRightsListProps) {
   const filtered = filterByQuery(rows, query, (row) => `${row.name} ${row.group_name ?? ""}`);
 
   return (
-    <div className="space-y-3" data-testid="access-rights-list">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-ui-title font-semibold text-ink">Access rights</h2>
-        <Button type="button" variant="secondary" size="sm" onClick={onCreate} data-testid="access-new-right">
-          New access
+    <div className="grid gap-3" data-testid="access-rights-list">
+      <div className="ax-list-head">
+        <h2 className="ax-list-title">{title}</h2>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={onCreate}
+          data-testid="access-new-right"
+        >
+          New line
         </Button>
       </div>
-      <input
-        value={query}
-        onChange={(e) => onQueryChange(e.target.value)}
-        placeholder="Filter by name or group"
-        aria-label="Filter access rights"
-        data-testid="access-rights-filter"
-        className="h-row w-full rounded-md border border-border-subtle bg-surface px-3 text-ui-body text-ink outline-none placeholder:text-muted focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
-      />
+      {rows.length > 0 || query ? (
+        <input
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          placeholder="Filter by name or group"
+          aria-label="Filter access rights"
+          data-testid="access-rights-filter"
+          className="ax-search"
+        />
+      ) : null}
       {loading ? (
-        <div className="space-y-2" data-testid="access-rights-loading">
+        <div className="grid gap-2" data-testid="access-rights-loading">
           <Skeleton className="h-14 w-full" />
           <Skeleton className="h-14 w-full" />
         </div>
       ) : filtered.length === 0 ? (
-        <EmptyState
-          icon={<IconAccess className="h-5 w-5" />}
-          title={rows.length === 0 ? "No access lines yet" : "No matching access lines"}
-          description={
+        <AccessStateGuide
+          testId="access-rights-empty"
+          guide={
             rows.length === 0
-              ? EMPTY_STATES.access
-              : "Try a different filter, or create a new access line."
+              ? accessEmptyGuide("lines", model?.trim() || "this model")
+              : {
+                  title: `No access line matches “${query}”`,
+                  why: "The filter checks line names and group names only.",
+                  next: "Clear the filter, or create a new line.",
+                }
           }
-          action={
-            <Button type="button" variant="primary" size="sm" onClick={onCreate}>
+          actions={
+            <Button type="button" variant="secondary" size="sm" onClick={onCreate}>
               Create access
             </Button>
           }
         />
       ) : (
-        <ul className="space-y-2">
+        <ul className="ax-list">
           {filtered.map((row) => {
             const selected = selectedId === row.id;
+            const global = row.group_id == null;
             return (
               <li key={row.id}>
-                <Card
+                <div
                   role="button"
                   tabIndex={0}
                   aria-pressed={selected}
@@ -84,23 +101,21 @@ export function AccessRightsList({
                       onSelect(row);
                     }
                   }}
-                  className={cn(
-                    "cursor-pointer p-3 transition-colors hover:bg-surface-muted",
-                    selected && "border-accent bg-accent-subtle",
-                  )}
+                  className="ax-list-row"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-ink">{row.name}</p>
-                      <p className="mt-0.5 truncate text-xs text-muted">
-                        {row.group_name ?? "All users"}
-                      </p>
-                    </div>
-                    <Badge variant={row.group_id ? "default" : "warning"}>
-                      {crudLetters(row)}
-                    </Badge>
+                  <div className="min-w-0">
+                    <p className="ax-list-name">{row.name}</p>
+                    <p className="ax-list-meta">
+                      {global ? (
+                        <span className="ax-tag" style={{ marginRight: 6 }}>
+                          Global
+                        </span>
+                      ) : null}
+                      {row.group_name ?? "All users"}
+                    </p>
                   </div>
-                </Card>
+                  <AccessCrudLetters value={row} testId={`access-right-crud-${row.id}`} />
+                </div>
               </li>
             );
           })}

@@ -8,7 +8,6 @@ import {
   EXPERT_STARTER_PROMPTS,
   expertHonestyLegend,
   expertOverviewBody,
-  expertOverviewKicker,
   expertOverviewTitle,
 } from "@/lib/expert-journey";
 import { BuildSpineBar } from "@/components/build/BuildSpineBar";
@@ -36,16 +35,15 @@ export function ExpertOverviewCard({
 
   return (
     <Card className="expert-overview-card mb-6 p-5" data-testid="expert-overview-card">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-muted">
-        {expertOverviewKicker()}
-        {connectionName ? ` · ${connectionName}` : ""}
-      </p>
-      <h2 className="mt-1 text-lg font-semibold tracking-tight text-ink">{expertOverviewTitle()}</h2>
+      <h2 className="expert-overview-title">
+        {expertOverviewTitle()}
+        {connectionName ? <span className="expert-overview-conn">{connectionName}</span> : null}
+      </h2>
       <p className="mt-1 text-sm text-muted">{expertOverviewBody()}</p>
       <p className="expert-honesty-line mt-3" data-testid="expert-overview-honesty">
         {EXPERT_HONESTY_LINE}
       </p>
-      <ul className="mt-3 space-y-0.5 text-[11px] text-muted" data-testid="expert-overview-legend">
+      <ul className="expert-honesty-legend mt-2" data-testid="expert-overview-legend">
         {expertHonestyLegend().map((line) => (
           <li key={line}>{line}</li>
         ))}
@@ -66,7 +64,6 @@ export function ExpertOverviewCard({
           type="button"
           variant="primary"
           size="sm"
-          className="text-white"
           onClick={() => shell?.openExpert()}
         >
           Open Expert

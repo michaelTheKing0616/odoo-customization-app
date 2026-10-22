@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type {
+  StudioAppDesign,
   StudioApprovedCraft,
   StudioClarification,
   StudioCraftSmartButton,
@@ -9,6 +10,8 @@ import type {
 } from "@/lib/studio-session";
 import { SuggestionChip } from "./SuggestionChip";
 import { StudioBusyLabel } from "./StudioBusyLabel";
+import { AppDesignPanel } from "./AppDesignPanel";
+import { InstallStepCard } from "./InstallStepCard";
 
 export type DiagnosisPayload = StudioUnderstanding & { operator_note?: string };
 
@@ -22,6 +25,17 @@ type ClarifyInterstitialProps = {
     understanding?: DiagnosisPayload,
   ) => void;
   onDismiss?: () => void;
+  /** Run the diagnosis again (used when the AI design did not come through). */
+  onRetryDesign?: () => void;
+  /** S11: install the apps the design is built on, then re-check. */
+  onInstallApps?: () => Promise<void>;
+  /** The connection is read-only (observer): the install step shows that up front. */
+  connectionReadOnly?: boolean;
+  connectionId?: string;
+  isOdooOnline?: boolean;
+  odooUrl?: string;
+  /** Agent mode re-design (playback edits). */
+  sessionId?: string;
 };
 
 const HOST_FALLBACK: { id: string; label: string }[] = [
@@ -64,10 +78,42 @@ const CRAFT_TOGGLE_DEFS: { key: keyof StudioApprovedCraft; label: string; help: 
   },
   {
     key: "depth_seeds",
-    label: "Extra models when brief is thin",
-    help: "Adds extra supporting models to pad a thin brief — optional filler, not requirements from your prompt.",
+    label: "Extra supporting records",
+    help: "Your brief is short, so App Studio can suggest a few supporting records. They are extras, not things you asked for.",
   },
 ];
+
+type CraftKey = keyof StudioApprovedCraft;
+
+/** Only offer an extra when it applies to this brief and design. */
+export function relevantCraftKeys(
+  design: StudioAppDesign | null,
+  text: string,
+): CraftKey[] {
+  const t = text.toLowerCase();
+  const models = design?.new_models ?? [];
+  const fields = models.flatMap((m) => m.fields ?? []);
+  const keys: CraftKey[] = [];
+  // Multi-company in the brief is a requirement: the design adds the company field, so it is
+  // never offered here as an optional extra that could be left off.
+  const money = fields.some(
+    (f) =>
+      ["float", "monetary"].includes(String(f.ttype)) &&
+      /revenue|value|amount|price|cost|fee|budget/i.test(`${f.name} ${f.string ?? ""}`),
+  );
+  const currency = fields.some(
+    (f) => String(f.ttype) === "monetary" || /currency/i.test(`${f.name} ${f.relation ?? ""}`),
+  );
+  if (money && !currency) keys.push("money_slots");
+  if (/\bpurchas|\bvendor|\bsupplier|procure/.test(t)) keys.push("purchase_link");
+  if (models.length > 0 && !fields.some((f) => f.relation === "res.partner")) {
+    keys.push("partner_links");
+  }
+  if (/appointment|booking|schedul|time slot|shift|\bslots?\b/.test(t)) keys.push("datetime_over_date");
+  const shortBrief = t.trim().split(/\s+/).length < 120;
+  if (models.length < 3 && shortBrief) keys.push("depth_seeds");
+  return keys;
+}
 
 function emptyApprovedCraft(): StudioApprovedCraft {
   return {
@@ -93,11 +139,23 @@ function DiagnosisCard({
   clarification,
   busy,
   onAnswer,
+  onRetryDesign,
+  onInstallApps,
+  connectionReadOnly,
+  connectionId,
+  isOdooOnline,
+  odooUrl,
+  sessionId,
 }: {
   clarification: StudioClarification;
   busy?: boolean;
   onAnswer: ClarifyInterstitialProps["onAnswer"];
-}) {
+} & Pick<
+  ClarifyInterstitialProps,
+  "onRetryDesign" | "onInstallApps" | "connectionReadOnly" | "connectionId" | "isOdooOnline" | "odooUrl" | "sessionId"
+>) {
+  const step = clarification.install_step;
+  const installStep = step && (step.apps?.length || step.refresh) ? step : null;
   const seed = clarification.understanding || {};
   const goldLocked = Boolean(seed.gold_artifact_id);
   const hosts = clarification.host_choices?.length ? clarification.host_choices : HOST_FALLBACK;
@@ -110,6 +168,19 @@ function DiagnosisCard({
   );
   const [newConstraint, setNewConstraint] = useState("");
   const [operatorNote, setOperatorNote] = useState("");
+  const seedDesign: StudioAppDesign | null =
+    clarification.app_design || seed.app_design || null;
+  const [design, setDesign] = useState<StudioAppDesign | null>(seedDesign);
+  const [designEdited, setDesignEdited] = useState(false);
+  const craftRows = useMemo(() => {
+    const keys = relevantCraftKeys(
+      design,
+      [seed.title, seed.summary, design?.purpose, clarification.help, ...(seed.constraints ?? [])]
+        .filter(Boolean)
+        .join(" "),
+    );
+    return CRAFT_TOGGLE_DEFS.filter((row) => keys.includes(row.key));
+  }, [design, seed.title, seed.summary, seed.constraints, clarification.help]);
   const seedCraft: StudioCraftSmartButton[] = Array.isArray(clarification.craft_proposals)
     ? clarification.craft_proposals
     : Array.isArray(seed.craft_proposals)
@@ -138,7 +209,9 @@ function DiagnosisCard({
         : [];
     setCraftKept(proposals.filter((row) => row.default_on !== false));
     setApprovedCraft(normalizeApprovedCraft(next.approved_craft));
-  }, [clarification.understanding, clarification.craft_proposals]);
+    setDesign(clarification.app_design || next.app_design || null);
+    setDesignEdited(false);
+  }, [clarification.understanding, clarification.craft_proposals, clarification.app_design]);
 
   const payload: DiagnosisPayload = useMemo(
     () => ({
@@ -152,9 +225,13 @@ function DiagnosisCard({
       craft_proposals: seedCraft,
       approved_craft: approvedCraft,
       operator_note: operatorNote.trim() || undefined,
+      // Only an edited design is sent back; the server re-validates it.
+      ...(design && designEdited ? { app_design: design } : {}),
     }),
     [
       approvedCraft,
+      design,
+      designEdited,
       constraints,
       craftKept,
       goldLocked,
@@ -168,6 +245,8 @@ function DiagnosisCard({
     ],
   );
 
+  const needsHostChoice = inheritExisting && !goldLocked && !hostModel;
+
   function addConstraint() {
     const row = newConstraint.trim();
     if (!row) return;
@@ -180,8 +259,21 @@ function DiagnosisCard({
   }
 
   return (
-    <div className="card clarify-card" data-testid="studio-diagnosis">
-      <p className="clarify-kicker">Diagnosis — edit if this is wrong</p>
+    <section
+      className="card clarify-card clarify-card--diagnosis"
+      data-testid="studio-diagnosis"
+      aria-labelledby="studio-diagnosis-title"
+    >
+      <h2 id="studio-diagnosis-title" className="clarify-title">
+        Check the diagnosis
+      </h2>
+      <p className="clarify-help clarify-lead">
+        Here&apos;s what App Studio understood from your brief. Edit anything that looks wrong,
+        then generate the form preview.
+      </p>
+      {clarification.help ? (
+        <p className="clarify-help clarify-help--context">{clarification.help}</p>
+      ) : null}
       <label className="diagnosis-field">
         <span>Name</span>
         <input
@@ -210,8 +302,7 @@ function DiagnosisCard({
         </div>
         {inheritExisting ? (
           <select
-            className="input"
-            style={{ marginTop: 8 }}
+            className="input diagnosis-follow"
             value={hostModel}
             disabled={busy}
             aria-label="Stock form"
@@ -225,7 +316,7 @@ function DiagnosisCard({
             ))}
           </select>
         ) : (
-          <p className="clarify-help" style={{ marginTop: 8 }}>
+          <p className="clarify-help diagnosis-follow">
             A new kind of record on the home screen.
           </p>
         )}
@@ -234,33 +325,37 @@ function DiagnosisCard({
         <span>How it is delivered</span>
         <div className="studio-chip-row">
           <SuggestionChip
-            label="Option A module"
+            label="Custom-code module"
             selected={needsModule}
             disabled={busy || goldLocked}
             onClick={() => setNeedsModule(true)}
           />
           <SuggestionChip
-            label="Live fields only"
+            label="Built here, no custom code"
             selected={!needsModule}
             disabled={busy || goldLocked}
             onClick={() => setNeedsModule(false)}
           />
         </div>
         {goldLocked ? (
-          <p className="clarify-help" style={{ marginTop: 8 }}>
-            Gold template {seed.gold_artifact_id} stays a module — zip → sandbox → Promote.
+          <p className="clarify-help diagnosis-follow">
+            Gold template {seed.gold_artifact_id} stays a module: download the zip, prove it in a
+            sandbox, then Promote.
           </p>
         ) : needsModule ? (
-          <p className="clarify-help" style={{ marginTop: 8 }}>
-            Python/QWeb — not Install this app.
+          <p className="clarify-help diagnosis-follow">
+            Built as Python and QWeb code, so it ships through Promote, not Install this app.
           </p>
         ) : inheritExisting ? (
-          <p className="clarify-help" style={{ marginTop: 8 }}>
-            Metadata on the form people already use.
+          <p className="clarify-help diagnosis-follow">
+            New fields on the form people already use.
           </p>
         ) : (
-          <p className="clarify-help" style={{ marginTop: 8 }}>
-            Live metadata for a new home-screen app tile — not an inherit on Employees.
+          <p className="clarify-help diagnosis-follow">
+            Fields, views and menus built directly in your database.
+            {design?.python_needed?.length
+              ? " Pieces that need custom code are listed under Custom code and go through the custom-code path."
+              : ""}
           </p>
         )}
       </div>
@@ -282,7 +377,7 @@ function DiagnosisCard({
             </li>
           ))}
         </ul>
-        <div className="chat-input-row" style={{ marginTop: 8 }}>
+        <div className="diagnosis-add-row">
           <input
             className="input"
             value={newConstraint}
@@ -307,25 +402,26 @@ function DiagnosisCard({
           </button>
         </div>
       </div>
+      {craftRows.length > 0 ? (
       <div className="diagnosis-field" data-testid="studio-diagnosis-approved-craft">
-        <span>Optional craft (off by default)</span>
-        <p className="clarify-help" style={{ marginTop: 4 }}>
-          Opt in only when you want Generate to invent these beyond brief cues.
+        <span>Optional extras (off by default)</span>
+        <p className="clarify-help diagnosis-follow--tight">
+          Turn one on only if you want Generate to add it even though your brief didn&apos;t ask.
         </p>
         <ul className="diagnosis-facts">
-          {CRAFT_TOGGLE_DEFS.map((row) => {
+          {craftRows.map((row) => {
             const on = Boolean(approvedCraft[row.key]);
             return (
               <li key={row.key} className="diagnosis-constraint-row">
                 <span>
                   {row.label}
-                  <span className="clarify-help" style={{ display: "block", marginTop: 2 }}>
+                  <span className="clarify-help diagnosis-row-help">
                     {row.help}
                   </span>
                 </span>
                 <button
                   type="button"
-                  className={`btn btn-sm ${on ? "btn-brand" : "btn-secondary"}`}
+                  className={`btn btn-sm btn-secondary btn-toggle${on ? " is-on" : ""}`}
                   disabled={busy}
                   aria-pressed={on}
                   aria-label={`${row.label}: ${on ? "on" : "off"}`}
@@ -339,15 +435,17 @@ function DiagnosisCard({
           })}
         </ul>
       </div>
+      ) : null}
       {seedCraft.length > 0 ? (
         <div className="diagnosis-field" data-testid="studio-diagnosis-nice-to-have">
           <span>Nice to have</span>
-          <p className="clarify-help" style={{ marginTop: 4 }}>
-            Optional smart buttons on stock forms — remove before confirm if you do not want them.
+          <p className="clarify-help diagnosis-follow--tight">
+            Optional smart buttons on stock forms. Remove any you don&apos;t want before you
+            generate.
           </p>
           <ul className="diagnosis-facts">
             {craftKept.map((row) => {
-              const chip = row.chip_label || `«${row.label}» on ${row.on_model}`;
+              const chip = row.chip_label || `"${row.label}" on ${row.on_model}`;
               return (
                 <li key={row.id || `${row.on_model}:${row.relation_field}`} className="diagnosis-constraint-row">
                   <span>{chip}</span>
@@ -374,9 +472,33 @@ function DiagnosisCard({
             })}
           </ul>
           {craftKept.length === 0 ? (
-            <p className="clarify-help">All optional craft buttons removed.</p>
+            <p className="clarify-help">All optional smart buttons removed.</p>
           ) : null}
         </div>
+      ) : null}
+      {design && ((seedDesign?.new_models?.length ?? 0) > 1 || Boolean((design as { playback?: unknown }).playback)) ? (
+        <AppDesignPanel
+          sessionId={sessionId}
+          design={design}
+          busy={busy}
+          summary={seed.summary}
+          onRetryDesign={onRetryDesign}
+          connectionId={connectionId}
+          isOdooOnline={isOdooOnline}
+          odooUrl={odooUrl}
+          onChange={(next) => {
+            setDesign(next);
+            setDesignEdited(true);
+          }}
+        />
+      ) : null}
+      {installStep ? (
+        <InstallStepCard
+          step={installStep}
+          busy={busy}
+          onInstall={onInstallApps}
+          readOnly={connectionReadOnly}
+        />
       ) : null}
       <label className="diagnosis-field">
         <span>Anything to correct</span>
@@ -384,26 +506,34 @@ function DiagnosisCard({
           className="textarea"
           rows={2}
           disabled={busy}
-          placeholder="e.g. inherit purchase.order, not Sales — WHT is 5%"
+          placeholder="For example: put it on Purchase orders, not Sales. WHT is 5%."
           value={operatorNote}
           onChange={(e) => setOperatorNote(e.target.value)}
         />
       </label>
-      <div className="studio-chip-row" style={{ marginTop: 16 }}>
+      <div className="clarify-actions">
         <button
           type="button"
-          className="btn btn-brand btn-sm"
-          disabled={busy || (inheritExisting && !goldLocked && !hostModel)}
+          className="btn btn-primary"
+          disabled={busy || needsHostChoice || Boolean(installStep)}
+          aria-describedby={
+            installStep
+              ? "studio-diagnosis-install-hint"
+              : needsHostChoice
+                ? "studio-diagnosis-host-hint"
+                : undefined
+          }
           data-testid="studio-diagnosis-confirm"
           onClick={() =>
+            // Answer text is the server-matched confirm phrase (understand.py); label above is UI only.
             onAnswer(clarification.merge_key, "confirm", "Yes — build this", payload)
           }
         >
-          {busy ? <StudioBusyLabel>Building…</StudioBusyLabel> : "Yes — build this"}
+          {busy ? <StudioBusyLabel>Generating…</StudioBusyLabel> : "Generate"}
         </button>
         <button
           type="button"
-          className="btn btn-secondary btn-sm"
+          className="btn btn-secondary"
           disabled={busy}
           data-testid="studio-diagnosis-reject"
           onClick={() =>
@@ -412,8 +542,22 @@ function DiagnosisCard({
         >
           Start over
         </button>
+        {installStep ? (
+          <p
+            id="studio-diagnosis-install-hint"
+            className="clarify-actions-hint"
+            data-testid="studio-diagnosis-install-hint"
+          >
+            {installStep.blocked_message}
+          </p>
+        ) : null}
+        {needsHostChoice ? (
+          <p id="studio-diagnosis-host-hint" className="clarify-actions-hint">
+            Choose the form this belongs on to generate.
+          </p>
+        ) : null}
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -422,18 +566,36 @@ export function ClarifyInterstitial({
   busy,
   onAnswer,
   onDismiss,
+  ...props
 }: ClarifyInterstitialProps) {
   const [freeText, setFreeText] = useState("");
   const mergeKey = clarification.merge_key;
   if (clarification.kind === "diagnosis" || mergeKey === "diagnosis") {
-    return <DiagnosisCard clarification={clarification} busy={busy} onAnswer={onAnswer} />;
+    return <DiagnosisCard
+        clarification={clarification}
+        busy={busy}
+        onAnswer={onAnswer}
+        onRetryDesign={props.onRetryDesign}
+        onInstallApps={props.onInstallApps}
+        connectionReadOnly={props.connectionReadOnly}
+        connectionId={props.connectionId}
+        isOdooOnline={props.isOdooOnline}
+        odooUrl={props.odooUrl}
+        sessionId={props.sessionId}
+      />;
   }
 
   return (
-    <div className="card clarify-card" data-testid="studio-clarify">
-      <p className="clarify-kicker">One quick check</p>
-      <p className="clarify-question">{clarification.question}</p>
+    <section className="card clarify-card" data-testid="studio-clarify" aria-labelledby="studio-clarify-q">
+      <h2 id="studio-clarify-q" className="clarify-question">
+        {clarification.question}
+      </h2>
       {clarification.help ? <p className="clarify-help">{clarification.help}</p> : null}
+      {clarification.understood ? (
+        <p className="clarify-help clarify-help--context" data-testid="clarify-understood">
+          <strong>Here&apos;s what I understood:</strong> {clarification.understood}
+        </p>
+      ) : null}
       <div className="studio-chip-row">
         {(clarification.options || []).map((opt) => (
           <SuggestionChip
@@ -447,15 +609,16 @@ export function ClarifyInterstitial({
       <textarea
         className="textarea"
         rows={2}
+        aria-label="Answer in your own words"
         placeholder="Or type it in your own words…"
         value={freeText}
         onChange={(e) => setFreeText(e.target.value)}
         disabled={busy}
       />
-      <div className="studio-chip-row" style={{ marginTop: 12 }}>
+      <div className="clarify-actions">
         <button
           type="button"
-          className="btn btn-primary btn-sm"
+          className="btn btn-primary"
           disabled={busy || !freeText.trim()}
           onClick={() => onAnswer(mergeKey, "free_text", freeText.trim())}
         >
@@ -464,7 +627,7 @@ export function ClarifyInterstitial({
         {onDismiss && clarification.default_id ? (
           <button
             type="button"
-            className="btn btn-secondary btn-sm"
+            className="btn btn-secondary"
             disabled={busy}
             onClick={() => {
               onDismiss();
@@ -475,6 +638,6 @@ export function ClarifyInterstitial({
           </button>
         ) : null}
       </div>
-    </div>
+    </section>
   );
 }

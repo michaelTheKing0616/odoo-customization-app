@@ -69,4 +69,24 @@ describe("AccessRightsList", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create access" }));
     expect(onCreate).toHaveBeenCalledTimes(1);
   });
+
+  it("empty state explains what, why and next without a second teal primary", () => {
+    render(
+      <AccessRightsList
+        rows={[]}
+        model="x_visitor_log"
+        selectedId={null}
+        query=""
+        onQueryChange={vi.fn()}
+        onSelect={vi.fn()}
+        onCreate={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("access-rights-empty-title")).toHaveTextContent(
+      "No access lines on x_visitor_log",
+    );
+    expect(screen.getByTestId("access-rights-empty-why")).toHaveTextContent("superuser");
+    expect(screen.getByTestId("access-rights-empty-next")).toHaveTextContent("matrix");
+    expect(screen.getByRole("button", { name: "Create access" }).className).not.toMatch(/bg-accent/);
+  });
 });

@@ -3,6 +3,7 @@
 import { api } from "@/lib/api";
 import { CONFIRM_PHRASE } from "./config-types";
 import type { ConfigPageModel } from "./use-config-page";
+import { Term } from "@/components/ui/Term";
 
 export function ConfigScheduledI18n({ vm }: { vm: ConfigPageModel }) {
   const {
@@ -31,7 +32,7 @@ export function ConfigScheduledI18n({ vm }: { vm: ConfigPageModel }) {
   return (
     <>
         <section className="mt-8 rounded-md border border-border-subtle bg-surface p-5">
-          <h2 className="text-ui-title">Scheduled actions</h2>
+          <h2 className="text-ui-title"><Term tech="ir.cron">Scheduled actions</Term></h2>
           <p className="mt-1 text-xs text-muted">
             Deactivate requires confirm phrase <code>{CONFIRM_PHRASE}</code>
           </p>
@@ -87,10 +88,10 @@ export function ConfigScheduledI18n({ vm }: { vm: ConfigPageModel }) {
             Website &amp; properties
           </h2>
           <p className="mt-2 text-sm text-muted">
-            Website: {websiteNote ?? "—"}
+            Website: {websiteNote ?? "-"}
           </p>
           <p className="mt-1 text-sm text-muted">
-            ir.property: {propertyNote ?? "—"}
+            ir.property: {propertyNote ?? "-"}
           </p>
         </section>
 
@@ -100,7 +101,7 @@ export function ConfigScheduledI18n({ vm }: { vm: ConfigPageModel }) {
           </h2>
           <p className="mt-1 text-xs text-muted">
             Lang-scoped field labels + root menu names (Odoo 19 context lang=). Confirm phrase
-            not required for label writes — still prefer sandbox first.
+            not required for label writes - still prefer sandbox first.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <input
@@ -181,7 +182,7 @@ export function ConfigScheduledI18n({ vm }: { vm: ConfigPageModel }) {
               }}
               className="border border-border-subtle px-3 text-sm"
             >
-              Dry-run
+              Test run
             </button>
             <button
               type="button"
@@ -259,7 +260,7 @@ export function ConfigScheduledI18n({ vm }: { vm: ConfigPageModel }) {
                   const spec = JSON.parse(specJson) as Record<string, unknown>;
                   const csv = await api.exportSpecTranslationsCsv(connectionId, spec, lang);
                   setTranslationCsv(csv);
-                  setNotice(`Exported ModuleSpec labels for ${lang}`);
+                  setNotice(`Exported app plan labels for ${lang}`);
                 } catch (err) {
                   setError(err instanceof Error ? err.message : "Spec export failed");
                 } finally {
@@ -281,7 +282,7 @@ export function ConfigScheduledI18n({ vm }: { vm: ConfigPageModel }) {
                     dry_run: true,
                   });
                   setNotice(
-                    `Spec import dry-run: ${res.updated} would update, ${res.skipped} skipped`,
+                    `Spec import test run: ${res.updated} would update, ${res.skipped} skipped`,
                   );
                 } catch (err) {
                   setError(err instanceof Error ? err.message : "Spec import failed");

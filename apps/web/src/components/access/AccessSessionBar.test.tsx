@@ -20,7 +20,7 @@ describe("AccessSessionBar", () => {
     );
     expect(screen.getByTestId("access-session-state")).toHaveTextContent("Unsaved");
     expect(screen.getByTestId("access-session-hint")).toHaveTextContent(
-      "stays local until you create it on Odoo",
+      "stays local until you save it to Odoo",
     );
     fireEvent.click(screen.getByTestId("access-discard"));
     expect(onDiscard).toHaveBeenCalledTimes(1);

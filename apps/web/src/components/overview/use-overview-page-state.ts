@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   api,
   Connection,
@@ -78,10 +78,9 @@ export function useOverviewPageState(connectionId: string) {
       setLoading(true);
       setError(null);
       try {
-        const [conn, mods, modsAll, promo, installed] = await Promise.all([
+        // Models/apps counts now come from the live snapshot (LiveDatabaseSection); no listModels/listModules(apps) here.
+        const [conn, promo, installed] = await Promise.all([
           api.getConnection(connectionId),
-          api.listModules(connectionId, true),
-          api.listModels(connectionId),
           api.listPromotedModules(connectionId),
           api.listModules(connectionId, {
             applicationsOnly: false,
@@ -93,33 +92,8 @@ export function useOverviewPageState(connectionId: string) {
         if (conn) {
           api.getMigrationAssist(connectionId).then(setMigrationAssist).catch(() => null);
         }
-        setModules(mods);
-        setModels(modsAll);
         setPromoted(promo);
         setInstalledModules(installed);
-        if (modsAll.some((m) => m.model === "res.partner")) {
-          setSelectedModel("res.partner");
-        } else if (modsAll[0]) {
-          setSelectedModel(modsAll[0].model);
-        }
-        if (modsAll.some((m) => m.model === "x_lib_book")) {
-          try {
-            const stats = await api.libraryStats(connectionId);
-            if (!cancelled && stats.available) {
-              setLibraryStats({
-                available: true,
-                books: stats.books,
-                loans: stats.loans,
-                active_loans: stats.active_loans,
-                overdue_loans: stats.overdue_loans,
-              });
-            }
-          } catch {
-            // Stats are optional — ignore if RPC fails
-          }
-        } else if (!cancelled) {
-          setLibraryStats(null);
-        }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Failed to load");
@@ -134,30 +108,21 @@ export function useOverviewPageState(connectionId: string) {
     };
   }, [connectionId]);
 
-  useEffect(() => {
-    if (tab !== "fields" && tab !== "views") return;
-    let cancelled = false;
-    async function loadDetail() {
-      setError(null);
-      try {
-        if (tab === "fields") {
-          const rows = await api.listFields(connectionId, selectedModel);
-          if (!cancelled) setFields(rows);
-        } else {
-          const rows = await api.listViews(connectionId, selectedModel);
-          if (!cancelled) setViews(rows);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load detail");
-        }
-      }
+  /** Library playbook stats, loaded only when the live snapshot shows the x_lib_book model. */
+  const loadLibraryStats = useCallback(async () => {
+    try {
+      const stats = await api.libraryStats(connectionId);
+      setLibraryStats(stats.available ? {
+        available: true,
+        books: stats.books,
+        loans: stats.loans,
+        active_loans: stats.active_loans,
+        overdue_loans: stats.overdue_loans,
+      } : null);
+    } catch {
+      // Stats are optional; ignore if RPC fails
     }
-    loadDetail();
-    return () => {
-      cancelled = true;
-    };
-  }, [connectionId, selectedModel, tab]);
+  }, [connectionId]);
 
   const filteredModels = useMemo(() => {
     const q = modelQuery.trim().toLowerCase();
@@ -257,6 +222,7 @@ export function useOverviewPageState(connectionId: string) {
     shStagingSuggestion,
     setShStagingSuggestion,
     libraryStats,
+    loadLibraryStats,
     probing,
     setProbing,
     filteredModels,

@@ -157,7 +157,7 @@
   white-space: nowrap;
 }
 .odoo-widget-o2m-table th {
-  background: var(--odoo-bg-subtle, #f8f9fa);
+  background: var(--odoo-bg-subtle, var(--surface-muted));
   font-weight: 600;
   color: var(--odoo-muted, #714b67);
 }

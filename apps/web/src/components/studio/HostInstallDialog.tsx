@@ -59,7 +59,7 @@ export function HostInstallPanel({
             data-testid={`studio-host-install-${offer.module}`}
           >
             <div
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent-hover"
               aria-hidden
             >
               <Package className="h-5 w-5" />
@@ -67,7 +67,7 @@ export function HostInstallPanel({
             <div className="min-w-0 flex-1">
               <p className="m-0 font-semibold text-ink">{offer.label} is not on this connection</p>
               <p className="mt-1 text-[13px] leading-snug text-muted">
-                Needed so this Option A module can inherit{" "}
+                Needed so this custom-code module can extend{" "}
                 {offer.models.map((model) => (
                   <Badge key={model} variant="lock" className="mx-0.5 font-mono">
                     {model}
@@ -97,7 +97,7 @@ export function HostInstallPanel({
           if (!open && !busy) setActive(null);
         }}
         title={active ? `Install ${active.label} on this connection` : "Install stock app"}
-        description="Stock Community app — not your Option A zip. Completeness ≠ Cert. Promote stays human."
+        description="This is a stock Community app, not your custom-code zip. A complete draft is not the same as certified. Publishing stays a step you confirm."
         testId="studio-host-install-dialog"
         className="max-w-xl"
         footer={
@@ -148,23 +148,23 @@ export function HostInstallPanel({
             </div>
             <p className="text-sm text-ink">
               {active.message ||
-                `Those models live in the stock ${active.label} app (${active.module}). This connection does not have them yet, so the authoring gate cannot inherit the host form.`}
+                `Those models live in the stock ${active.label} app (${active.module}). This connection does not have them yet, so the authoring gate cannot extend the existing form.`}
             </p>
             <ol className="space-y-2 rounded-md border border-border-subtle bg-surface-muted px-4 py-3 text-sm text-ink">
               <li>
                 <span className="font-medium">1. Install {active.label}</span>
                 <span className="text-muted">
-                  {" "}
-                  — stock <code className="font-mono">{active.module}</code>, plus its Community depends.
+                  {": "}
+                  stock <code className="font-mono">{active.module}</code>, plus its Community depends.
                 </span>
               </li>
               <li>
                 <span className="font-medium">2. Re-check the authoring gate</span>
-                <span className="text-muted"> — no LLM rewrite; zip stays locked until it passes.</span>
+                <span className="text-muted">. No AI rewrite; the zip stays locked until it passes.</span>
               </li>
               <li>
-                <span className="font-medium">3. Zip → sandbox → Promote</span>
-                <span className="text-muted"> — do not click Install this app. Promote stays human.</span>
+                <span className="font-medium">3. Download the zip, prove it in a sandbox, then Promote</span>
+                <span className="text-muted">. Do not click Install this app. Publishing stays a step you confirm.</span>
               </li>
             </ol>
             <label className="block text-sm">

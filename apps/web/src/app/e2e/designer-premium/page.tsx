@@ -50,7 +50,8 @@ export default function DesignerPremiumHarnessPage() {
       <main className="min-h-screen bg-background text-ink" data-testid="designer-premium-harness">
         <DesignerStudioShell
           testId="designer-premium-studio"
-          className="mx-0 mt-0 min-h-screen"
+          flush
+          className="min-h-screen"
           title="View designer"
           description="E2E mock · Tracks A–D chrome. Inherit save. Session undo is not Odoo rollback. Promote stays human."
           sessionBar={

@@ -20,7 +20,7 @@ describe("ExpertComposer", () => {
     );
     expect(screen.getByTestId("expert-input")).toHaveValue("What is xpath inherit?");
     expect(screen.getByTestId("expert-error-paste")).toBeTruthy();
-    expect(screen.getByText(/never auto-promotes/)).toBeTruthy();
+    expect(screen.getByText(/never publishes on its own/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Ask Expert" }));
     expect(onSubmit).toHaveBeenCalledOnce();
   });

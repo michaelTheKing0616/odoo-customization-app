@@ -20,6 +20,14 @@ import { Skeleton } from "@/components/ui/layout-primitives";
 
 export const DEFAULT_VIRTUALIZE_THRESHOLD = 50;
 const VIEWPORT_HEIGHT = 360;
+/** The column header row counts toward `aria-rowcount` and takes `aria-rowindex` 1. */
+const HEADER_ROW_COUNT = 1;
+const TABLE_CLASS = "group min-w-full table-fixed text-sm";
+/** The scroll frame clips the table's own focus ring, so the frame shows the shared `--focus-ring` instead. */
+const FRAME_CLASS =
+  "overflow-auto rounded-md border border-border-subtle has-[table:focus-visible]:shadow-[var(--focus-ring)]";
+const ROW_CLASS =
+  "border-t border-border-subtle hover:bg-surface-muted group-focus-within:data-active:bg-accent-subtle group-focus-within:data-active:[&>td:first-child]:shadow-[inset_2px_0_0_var(--color-accent)]";
 
 export type DataTableColumn<T> = {
   id: string;
@@ -54,6 +62,8 @@ type DataTableVirtuosoContext<T> = {
   activeKey: string | null;
   getRowKey: (row: T) => string;
   onActivateIndex: (index: number) => void;
+  rowCount: number;
+  onTableKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
 };
 
 export function sortDataTableRows<T>(
@@ -92,6 +102,17 @@ export function stepActiveRowIndex(
   return Math.max(0, current - 1);
 }
 
+/** Total `aria-rowcount` (header included), or undefined while loading/empty so it never undercounts placeholder rows. */
+export function dataTableAriaRowCount(dataRowCount: number, loading?: boolean): number | undefined {
+  if (loading || dataRowCount === 0) return undefined;
+  return dataRowCount + HEADER_ROW_COUNT;
+}
+
+/** 1-based `aria-rowindex` for the data row at `index` in the sorted rows. */
+export function dataTableAriaRowIndex(index: number): number {
+  return index + HEADER_ROW_COUNT + 1;
+}
+
 function rowDomId(key: string): string {
   return `data-table-row-${key}`;
 }
@@ -104,19 +125,29 @@ function stripBlockDisplay(style?: CSSProperties): CSSProperties | undefined {
 }
 
 const virtuosoComponents: TableComponents<unknown, DataTableVirtuosoContext<unknown>> = {
-  Table: ({ style, children }) => (
-    <table className="min-w-full table-fixed text-sm" style={style}>
+  Table: ({ style, children, context }) => (
+    <table
+      className={TABLE_CLASS}
+      style={style}
+      tabIndex={0}
+      role="grid"
+      aria-rowcount={dataTableAriaRowCount(context.rowCount)}
+      aria-activedescendant={context.activeKey ? rowDomId(context.activeKey) : undefined}
+      onKeyDown={context.onTableKeyDown}
+    >
       {children}
     </table>
   ),
-  TableHead: forwardRef(({ style, children }, ref) => (
+  TableHead: forwardRef(function TableHead({ style, children }, ref) {
+    return (
     <thead ref={ref} className="sticky top-0 z-10 bg-surface-muted" style={style}>
       {children}
     </thead>
-  )),
-  TableBody: forwardRef(({ style, context: _context, ...props }, ref) => (
-    <tbody {...props} ref={ref} style={stripBlockDisplay(style)} />
-  )),
+    );
+  }),
+  TableBody: forwardRef(function TableBody({ style, context: _context, ...props }, ref) {
+    return <tbody {...props} ref={ref} style={stripBlockDisplay(style)} />;
+  }),
   FillerRow: ({ height, context }) => (
     <tr aria-hidden>
       <td colSpan={context.colCount} style={{ height, padding: 0, border: 0 }} />
@@ -131,7 +162,8 @@ const virtuosoComponents: TableComponents<unknown, DataTableVirtuosoContext<unkn
         id={rowDomId(key)}
         data-active={active ? "true" : undefined}
         aria-selected={active}
-        className="border-t border-border-subtle hover:bg-surface-muted"
+        aria-rowindex={dataTableAriaRowIndex(props["data-index"])}
+        className={ROW_CLASS}
         onClick={() => context.onActivateIndex(props["data-item-index"])}
       />
     );
@@ -154,7 +186,7 @@ function HeaderRow<T>({
   onSort: (id: string) => void;
 }) {
   return (
-    <tr>
+    <tr aria-rowindex={HEADER_ROW_COUNT}>
       {selectable ? (
         <th className="w-10 px-2 py-2">
           <input
@@ -169,6 +201,15 @@ function HeaderRow<T>({
         <th
           key={col.id}
           className={cn("px-3 py-2 text-left font-medium text-ink", col.className)}
+          aria-sort={
+            !col.sortValue
+              ? undefined
+              : sort?.id === col.id
+                ? sort.dir === "asc"
+                  ? "ascending"
+                  : "descending"
+                : "none"
+          }
         >
           {col.sortValue ? (
             <button
@@ -278,8 +319,10 @@ export function DataTable<T>({
       activeKey,
       getRowKey: rowKey,
       onActivateIndex: setActiveIndex,
+      rowCount: sortedRows.length,
+      onTableKeyDown: handleTableKeyDown,
     }),
-    [activeKey, colCount, rowKey],
+    [activeKey, colCount, rowKey, sortedRows.length, handleTableKeyDown],
   );
 
   const header = (
@@ -349,14 +392,8 @@ export function DataTable<T>({
           fixedHeaderContent={() => header}
           itemContent={(_index, row) => renderCells(row)}
           style={{ height: VIEWPORT_HEIGHT }}
-          className="overflow-auto rounded-md border border-border-subtle"
+          className={FRAME_CLASS}
           data-testid="data-table-scroll"
-          tabIndex={0}
-          role="grid"
-          aria-rowcount={sortedRows.length}
-          aria-activedescendant={activeKey ? rowDomId(activeKey) : undefined}
-          onKeyDown={handleTableKeyDown}
-          fixedItemHeight={rh}
           defaultItemHeight={rh}
           initialItemCount={Math.min(
             sortedRows.length,
@@ -364,15 +401,15 @@ export function DataTable<T>({
           )}
         />
       ) : (
-        <div
-          className="overflow-auto rounded-md border border-border-subtle"
-          tabIndex={0}
-          role="grid"
-          aria-rowcount={sortedRows.length}
-          aria-activedescendant={activeKey ? rowDomId(activeKey) : undefined}
-          onKeyDown={handleTableKeyDown}
-        >
-          <table className="min-w-full table-fixed text-sm">
+        <div className={FRAME_CLASS}>
+          <table
+            className={TABLE_CLASS}
+            tabIndex={0}
+            role="grid"
+            aria-rowcount={dataTableAriaRowCount(sortedRows.length, loading)}
+            aria-activedescendant={activeKey ? rowDomId(activeKey) : undefined}
+            onKeyDown={handleTableKeyDown}
+          >
             <thead className="sticky top-0 z-10 bg-surface-muted">{header}</thead>
             <tbody>
               {loading
@@ -401,7 +438,8 @@ export function DataTable<T>({
                       id={rowDomId(key)}
                       data-active={active ? "true" : undefined}
                       aria-selected={active}
-                      className="border-t border-border-subtle hover:bg-surface-muted"
+                      aria-rowindex={dataTableAriaRowIndex(index)}
+                      className={ROW_CLASS}
                       onClick={() => setActiveIndex(index)}
                     >
                       {renderCells(row)}

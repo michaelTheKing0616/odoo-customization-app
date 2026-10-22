@@ -20,7 +20,7 @@ export function ModuleSpecHonestyBanners({
   return (
     <div className="studio-banner-stack" data-testid="modulespec-honesty-banners">
       {stockReuse ? (
-        <Callout variant="info" title="Stock reuse — no custom ModuleSpec" testId="modulespec-stock-reuse">
+        <Callout variant="info" title="Using built-in apps — no custom app plan" testId="modulespec-stock-reuse">
           <p>
             Empty models is the correct IR when stock Community apps already cover the brief.
             Open Job Autopilot for sandbox install and RPC smoke. Do not Generate UI.

@@ -100,7 +100,7 @@ describe("ConfirmDialogV2", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open confirm" }));
     await screen.findByRole("dialog", { name: "Delete model" });
-    const backdrop = document.querySelector('[class*="bg-black/40"]');
+    const backdrop = document.querySelector('[class*="bg-black/30"]');
     expect(backdrop).not.toBeNull();
     fireEvent.click(backdrop!);
     expect(onCancel).toHaveBeenCalledTimes(2);
@@ -130,7 +130,7 @@ describe("ConfirmDialogV2", () => {
 
     const dialog = screen.getByRole("dialog", { name: "Delete model" });
     fireEvent.keyDown(dialog, { key: "Escape", code: "Escape", bubbles: true });
-    const backdrop = document.querySelector('[class*="bg-black/40"]');
+    const backdrop = document.querySelector('[class*="bg-black/30"]');
     expect(backdrop).not.toBeNull();
     fireEvent.click(backdrop!);
 

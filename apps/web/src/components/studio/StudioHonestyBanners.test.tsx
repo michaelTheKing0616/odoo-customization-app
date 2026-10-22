@@ -57,10 +57,17 @@ describe("StudioHonestyBanners", () => {
         }}
       />,
     );
-    expect(screen.getByText("Preview only — not in Odoo yet").parentElement?.textContent).toMatch(
+    expect(screen.getByTestId("studio-preview-only").textContent).toMatch(
       /Tickets is a submenu/,
     );
     expect(screen.getByTestId("studio-grammar-card").textContent).toMatch(/Helpdesk document/);
+    // One quiet line holds both the preview notice and the "what will exist" disclosure.
+    const line = screen.getByTestId("studio-preview-line");
+    expect(line.contains(screen.getByTestId("studio-preview-only"))).toBe(true);
+    expect(line.contains(screen.getByTestId("studio-grammar-card"))).toBe(true);
+    expect(screen.getByTestId("studio-grammar-card").tagName).toBe("DETAILS");
+    expect(line.textContent).toMatch(/Nothing changes in Odoo until you click Install this app/);
+    expect(document.body.textContent).not.toMatch(/Not in Odoo yet|What will exist in Odoo|\u2014/);
     expect(screen.getByTestId("studio-surface-gate").textContent).toMatch(/Not ready to install/);
     expect(screen.queryByTestId("studio-surface-repair-expert")).toBeNull();
     expect(screen.getByTestId("studio-operator-surface").textContent).toMatch(/home grid/);
@@ -126,7 +133,7 @@ describe("StudioHonestyBanners", () => {
       />,
     );
     expect(screen.getByTestId("studio-contract-blocker").textContent).toMatch(
-      /Generate \/ Studio gates blocked/,
+      /Install is blocked until these checks pass/,
     );
     expect(screen.getByTestId("studio-contract-repairs").textContent).toMatch(/Checklist\/Parts/);
     fireEvent.click(screen.getByTestId("studio-contract-repair-expert"));
@@ -149,7 +156,7 @@ describe("StudioHonestyBanners", () => {
       />,
     );
     expect(screen.getByTestId("studio-operator-surface").textContent).toMatch(
-      /extends Sales order via an Option A module/,
+      /extends Sales order via a custom-code module/,
     );
     expect(screen.getByTestId("studio-operator-surface").textContent).not.toMatch(
       /residual app/,

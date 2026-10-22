@@ -24,10 +24,8 @@ import {
   mutationBlockedReason,
 } from "@/lib/capabilities";
 import { Button } from "@/components/ui/Button";
-import { Callout } from "@/components/ui/Callout";
-import { PageHeader } from "@/components/ui/layout-primitives";
+import { OperateStudioChrome } from "@/components/operate-studio/OperateStudioChrome";
 import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Disclosure } from "@/components/ui/Disclosure";
 import { reportApiError } from "@/lib/api-error";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
@@ -51,7 +49,22 @@ import {
   accessScreenBranch,
   shouldOfferRecordRuleCreate,
 } from "@/lib/accessMajor";
-import { Odoo20AccessNote } from "@/components/access/Odoo20AccessNote";
+import {
+  accessErrorGuide,
+  accessHonestyGuide,
+  accessSessionBadge,
+  accessVersionFrame,
+  accessWriteGate,
+  groupLabel,
+  normalizeMatrix,
+  sanitizeAccessCopy,
+  type AccessTab,
+  type MatrixChange,
+} from "@/lib/accessScreen";
+import { AccessStateGuide } from "@/components/access/AccessStateGuide";
+import { AccessVersionStrip } from "@/components/access/AccessVersionStrip";
+import { AccessWorkspaceTabs } from "@/components/access/AccessWorkspaceTabs";
+import "@/components/access/access-operate.css";
 import { AccessComposer } from "@/components/access/AccessComposer";
 import { AccessDetail } from "@/components/access/AccessDetail";
 import { AccessExtras } from "@/components/access/AccessExtras";
@@ -64,6 +77,7 @@ import { AccessSnapshots } from "@/components/access/AccessSnapshots";
 import { RecordRuleComposer } from "@/components/access/RecordRuleComposer";
 import { RecordRuleDetail } from "@/components/access/RecordRuleDetail";
 import { RecordRulesList } from "@/components/access/RecordRulesList";
+import { ConnectionTeamGrantsPanel } from "@/components/access/ConnectionTeamGrantsPanel";
 
 type PendingDelete =
   | { kind: "access"; id: number; name: string }
@@ -97,6 +111,8 @@ export default function AccessPage() {
   const [matrixModels, setMatrixModels] = useState(DEFAULT_ACCESS_MODEL);
   const [matrix, setMatrix] = useState<AccessMatrixOut | null>(null);
   const [matrixBusy, setMatrixBusy] = useState(false);
+  const [matrixSaving, setMatrixSaving] = useState(false);
+  const [tab, setTab] = useState<AccessTab>("matrix");
   const [mcGuidance, setMcGuidance] = useState<{ title: string; body: string } | null>(null);
   const [docsGate, setDocsGate] = useState<{
     available: boolean;
@@ -142,14 +158,38 @@ export default function AccessPage() {
     [connectionId],
   );
 
+  const loadMatrix = useCallback(
+    async (models: string[], opts?: { quiet?: boolean }) => {
+      if (models.length === 0) return;
+      setMatrixBusy(true);
+      if (!opts?.quiet) setError(null);
+      try {
+        const data = normalizeMatrix(await api.accessMatrix(connectionId, models));
+        setMatrix(data);
+      } catch (err) {
+        if (!opts?.quiet) {
+          reportApiError(err, setError, { fallback: "Matrix load failed", toast: true });
+        }
+      } finally {
+        setMatrixBusy(false);
+      }
+    },
+    [connectionId],
+  );
+
   useEffect(() => {
-    setListLoading(true);
-    refresh(DEFAULT_ACCESS_MODEL)
-      .catch((err: Error) => setError(err.message))
-      .finally(() => {
-        setListLoading(false);
-        setListHydrated(true);
-      });
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("model")) {
+      // The ?model= effect below owns the first load.
+    } else {
+      setListLoading(true);
+      refresh(DEFAULT_ACCESS_MODEL)
+        .then(() => loadMatrix([DEFAULT_ACCESS_MODEL], { quiet: true }))
+        .catch((err: Error) => setError(err.message))
+        .finally(() => {
+          setListLoading(false);
+          setListHydrated(true);
+        });
+    }
     api.getMultiCompanyGuidance(connectionId).then(setMcGuidance).catch(() => {});
     api
       .getDocumentsGate(connectionId)
@@ -159,7 +199,7 @@ export default function AccessPage() {
       .getDocumentsFolderMap(connectionId)
       .then((m) => setDocsMapping(m.mapping))
       .catch(() => {});
-  }, [refresh, connectionId]);
+  }, [refresh, loadMatrix, connectionId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -169,12 +209,13 @@ export default function AccessPage() {
     setMatrixModels(fromQuery);
     setListLoading(true);
     refresh(fromQuery)
+      .then(() => loadMatrix(parseModelList(fromQuery), { quiet: true }))
       .catch((err: Error) => setError(err.message))
       .finally(() => {
         setListLoading(false);
         setListHydrated(true);
       });
-  }, [refresh]);
+  }, [refresh, loadMatrix]);
 
   async function onLoadModel(e: FormEvent) {
     e.preventDefault();
@@ -259,71 +300,47 @@ export default function AccessPage() {
     }
   }
 
-  async function loadMatrix() {
-    setMatrixBusy(true);
+  /** Primary action: save the staged rights. Sequential so a failure stops cleanly. */
+  async function saveMatrix(changes: MatrixChange[]): Promise<boolean> {
+    if (accessWriteGate(connection, connectionId).mode !== "inline" || changes.length === 0) {
+      return false;
+    }
+    setMatrixSaving(true);
     setError(null);
+    setNotice(null);
+    const groupsForNames = matrix?.groups ?? groups;
+    let done = 0;
     try {
-      const data = await api.accessMatrix(connectionId, parseModelList(matrixModels));
-      setMatrix(data);
-      setNotice(`Matrix loaded for ${data.models.length} model(s)`);
+      for (const change of changes) {
+        if (change.accessId) {
+          await api.updateAccessRight(connectionId, change.accessId, change.patch);
+        } else {
+          await api.createAccessRight(connectionId, {
+            model: change.model,
+            name: `${change.model} / ${groupLabel(groupsForNames, change.groupId)}`,
+            group_id: change.groupId,
+            ...change.after,
+          });
+        }
+        done += 1;
+      }
+      setNotice(
+        `Saved ${changes.length} ${changes.length === 1 ? "right" : "rights"} to Odoo. A snapshot was taken first.`,
+      );
+      setSavedOnce(true);
+      await loadMatrix(parseModelList(matrixModels), { quiet: true });
+      await refresh(model).catch(() => undefined);
+      return true;
     } catch (err) {
-      reportApiError(err, setError, { fallback: "Matrix load failed", toast: true });
+      reportApiError(err, setError, { fallback: "Save failed", toast: true });
+      if (done > 0) {
+        setNotice(`Saved ${done} of ${changes.length} rights before Odoo stopped. Review the matrix.`);
+        await loadMatrix(parseModelList(matrixModels), { quiet: true });
+      }
+      return false;
     } finally {
-      setMatrixBusy(false);
+      setMatrixSaving(false);
     }
-  }
-
-  async function toggleMatrixPerm(
-    cell: AccessMatrixOut["cells"][number],
-    groupId: number | null,
-    key: "perm_read" | "perm_write" | "perm_create" | "perm_unlink",
-  ) {
-    setMatrixBusy(true);
-    setError(null);
-    try {
-      const next = !cell[key];
-      if (cell.access_id) {
-        await api.updateAccessRight(connectionId, cell.access_id, { [key]: next });
-      } else {
-        await api.createAccessRight(connectionId, {
-          model: cell.model,
-          name: `${cell.model} / group ${groupId ?? "all"}`,
-          group_id: groupId,
-          perm_read: key === "perm_read" ? next : false,
-          perm_write: key === "perm_write" ? next : false,
-          perm_create: key === "perm_create" ? next : false,
-          perm_unlink: key === "perm_unlink" ? next : false,
-        });
-      }
-      await loadMatrix();
-      await refresh(model);
-    } catch (err) {
-      reportApiError(err, setError, { fallback: "Update failed", toast: true });
-      setMatrixBusy(false);
-    }
-  }
-
-  function cellFor(
-    modelName: string,
-    groupId: number | null,
-  ): AccessMatrixOut["cells"][number] {
-    const found = matrix?.cells.find(
-      (c) =>
-        c.model === modelName && (c.group_id ?? null) === groupId && c.active !== false,
-    );
-    return (
-      found ?? {
-        model: modelName,
-        group_id: groupId,
-        access_id: null,
-        name: null,
-        perm_read: false,
-        perm_write: false,
-        perm_create: false,
-        perm_unlink: false,
-        active: true,
-      }
-    );
   }
 
   async function onRollback(snapshotId: string) {
@@ -340,10 +357,14 @@ export default function AccessPage() {
     }
   }
 
-  const canMutate = mutationAllowed(connection);
-  const mutateBlocked = mutationBlockedReason(connection);
-  const canAdvanced = advancedMutationAllowed(connection);
-  const advancedBlocked = advancedMutationBlockedReason(connection);
+  const gate = accessWriteGate(connection, connectionId);
+  const inline = gate.mode === "inline";
+  const planHref = gate.mode === "plan" ? gate.planHref : null;
+  const canMutate = mutationAllowed(connection) && inline;
+  const mutateBlocked = mutationBlockedReason(connection) ?? (inline ? null : gate.title);
+  const canAdvanced = advancedMutationAllowed(connection) && inline;
+  const advancedBlocked = advancedMutationBlockedReason(connection) ?? (inline ? null : gate.title);
+  const deleteOnlyBlocked = inline ? advancedMutationBlockedReason(connection) : null;
 
   const selectedAccess = rights.find((r) => r.id === selectedAccessId) ?? null;
   const selectedRule = rules.find((r) => r.id === selectedRuleId) ?? null;
@@ -351,38 +372,185 @@ export default function AccessPage() {
   const ruleDirty = isComposerDirty(ruleForm, ruleBaseline);
   const major = connectionMajor(connection);
   const accessBranch = accessScreenBranch(major);
+  const frame = accessVersionFrame(major);
+  const activeTab: AccessTab = frame.tabs.includes(tab) ? tab : "matrix";
   const composingAccess = pane === "new-access";
   const composingRule = pane === "new-rule" && accessBranch.offerRecordRuleCreate;
   const sessionState = composerSessionState({
     dirty: composingAccess ? accessDirty : composingRule ? ruleDirty : false,
     savedOnce,
   });
+  const errorGuide = error ? accessErrorGuide(error, model) : null;
 
-  return (
-    <div className="mx-auto max-w-6xl" data-testid="access-page">
-      <PageHeader
-        title="Access"
-        description={`${connection?.name ?? connectionId} · Access rights, group grants, and record-rule domains.`}
-        actions={
-          <>
-            <Button variant="secondary" size="sm" asChild>
-              <Link href={designerHref(connectionId, model)} data-testid="access-designer-link">
-                Open in View Designer
-              </Link>
-            </Button>
-            <ExplainThisButton
-              question={`Explain access rights and record rules for model ${model}`}
-              label="Explain access"
-            />
-          </>
+  function selectTab(next: AccessTab) {
+    setTab(next);
+    setNotice(null);
+    if (next === "rules" && pane !== "rule") {
+      setSelectedAccessId(null);
+      setPane("new-rule");
+    }
+    if (next === "lines" && pane !== "access") {
+      setSelectedRuleId(null);
+      setPane("new-access");
+    }
+  }
+
+  const modelPicker = (
+    <AccessModelPicker model={model} onModelChange={setModel} onLoad={onLoadModel} busy={busy} />
+  );
+
+  const accessDetailPane =
+    pane === "access" && selectedAccess ? (
+      <AccessDetail
+        key={selectedAccess.id}
+        connectionId={connectionId}
+        row={selectedAccess}
+        groups={groups}
+        busy={busy}
+        canMutate={canMutate}
+        canDelete={canAdvanced}
+        mutateBlocked={mutateBlocked}
+        deleteBlocked={advancedBlocked}
+        planHref={planHref}
+        onSave={async (patch) => {
+          setBusy(true);
+          setError(null);
+          try {
+            await api.updateAccessRight(connectionId, selectedAccess.id, patch);
+            setNotice(`Saved access #${selectedAccess.id} to Odoo.`);
+            await refresh(model);
+            await loadMatrix(parseModelList(matrixModels), { quiet: true });
+          } catch (err) {
+            reportApiError(err, setError, { fallback: "Save failed", toast: true });
+          } finally {
+            setBusy(false);
+          }
+        }}
+        onDelete={() =>
+          setPendingDelete({
+            kind: "access",
+            id: selectedAccess.id,
+            name: selectedAccess.name,
+          })
         }
       />
-      <p className="mt-2 text-sm text-muted">
-        Access lines grant CRUD. Record rules filter which rows a group can see or change. Global
-        grants (no group) affect every user — confirm before you delete.
-      </p>
+    ) : (
+      <>
+        <AccessSessionBar
+          sessionState={sessionState}
+          busy={busy}
+          canDiscard={accessDirty}
+          submitLabel={planHref ? "Plan card" : "Save right"}
+          onDiscard={() => {
+            setAccessForm(accessBaseline);
+            setSelectedAccessId(null);
+          }}
+        />
+        <AccessComposer
+          model={model}
+          form={accessForm}
+          groups={groups}
+          onChange={patchAccess}
+          onSubmit={onCreateAccess}
+          busy={busy}
+          canSubmit={canMutate}
+          submitBlockedReason={mutateBlocked}
+          planHref={planHref}
+        />
+      </>
+    );
+
+  const ruleDetailPane =
+    pane === "rule" && selectedRule ? (
+      <RecordRuleDetail
+        key={selectedRule.id}
+        connectionId={connectionId}
+        row={selectedRule}
+        groups={groups}
+        busy={busy}
+        canMutate={canMutate}
+        canDelete={canAdvanced}
+        mutateBlocked={mutateBlocked}
+        deleteBlocked={advancedBlocked}
+        planHref={planHref}
+        onSave={async (patch) => {
+          setBusy(true);
+          setError(null);
+          try {
+            await api.updateRecordRule(connectionId, selectedRule.id, patch);
+            setNotice(`Saved rule #${selectedRule.id} to Odoo.`);
+            await refresh(model);
+          } catch (err) {
+            reportApiError(err, setError, { fallback: "Save failed", toast: true });
+          } finally {
+            setBusy(false);
+          }
+        }}
+        onDelete={() =>
+          setPendingDelete({
+            kind: "rule",
+            id: selectedRule.id,
+            name: selectedRule.name,
+          })
+        }
+      />
+    ) : (
+      <>
+        <AccessSessionBar
+          sessionState={sessionState}
+          busy={busy}
+          canDiscard={ruleDirty}
+          submitLabel={planHref ? "Plan card" : "Save rule"}
+          onDiscard={() => {
+            setRuleForm(ruleBaseline);
+            setSelectedRuleId(null);
+          }}
+        />
+        <RecordRuleComposer
+          model={model}
+          form={ruleForm}
+          groups={groups}
+          onChange={patchRule}
+          onSubmit={onCreateRule}
+          busy={busy}
+          canSubmit={canMutate}
+          submitBlockedReason={mutateBlocked}
+          planHref={planHref}
+        />
+      </>
+    );
+
+  const accessMode = gate?.mode ?? "inline";
+  const honesty = accessHonestyGuide({ mode: accessMode });
+
+  return (
+    <OperateStudioChrome
+      testIdPrefix="access"
+      pageTestId="access-page"
+      kicker={connection?.name ?? connectionId}
+      title="Access"
+      subtitle="Who can read, write, create and delete each model."
+      badge={accessSessionBadge({ mode: accessMode, unsaved: false })}
+      honesty={honesty}
+      sanitize={sanitizeAccessCopy}
+      shellClassName="access-operate"
+      className="p-4 sm:p-6"
+      titleActions={
+        <>
+          <ExplainThisButton
+            question={`Explain access rights and record rules for model ${model}`}
+            label="Explain access"
+          />
+          <Button variant="secondary" size="sm" asChild>
+            <Link href={designerHref(connectionId, model)} data-testid="access-designer-link">
+              Open in View Designer
+            </Link>
+          </Button>
+        </>
+      }
+    >
+      <AccessVersionStrip frame={frame} gate={gate} />
       <VersionAwarenessBanner capabilities={connection?.capabilities} className="mt-4" />
-      <Odoo20AccessNote major={major} />
       <CapabilityProbePanel
         capabilities={connection?.capabilities}
         defaultOpen={false}
@@ -411,209 +579,150 @@ export default function AccessPage() {
           })();
         }}
       />
-      {mutateBlocked ? (
-        <Callout variant="warning" title="Mutations blocked" className="mt-4">
-          {mutateBlocked}
-        </Callout>
+      {gate.mode !== "inline" && listHydrated ? (
+        <AccessStateGuide
+          guide={gate}
+          tone={gate.mode === "plan" ? "warning" : "neutral"}
+          testId="access-gate"
+          className="mt-4"
+        />
       ) : null}
-      {!mutateBlocked && advancedBlocked ? (
-        <Callout variant="warning" title="Advanced mutations" className="mt-4">
-          {advancedBlocked}
-        </Callout>
+      {deleteOnlyBlocked ? (
+        <AccessStateGuide
+          guide={{
+            title: "Deletes are off on this Odoo",
+            why: deleteOnlyBlocked,
+            next: "Saves still work. Delete lines from a GA Odoo major.",
+          }}
+          testId="access-delete-gate"
+          className="mt-4"
+        />
       ) : null}
-
-      {error ? (
-        <ErrorNotice message={error} className="mt-4" onRetry={() => void refresh(model)} />
+      {errorGuide ? (
+        <AccessStateGuide
+          guide={errorGuide}
+          tone="danger"
+          live
+          testId="access-error"
+          className="mt-4"
+          actions={
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              data-testid="access-error-retry"
+              onClick={() => {
+                setError(null);
+                setListLoading(true);
+                void refresh(model)
+                  .then(() => loadMatrix(parseModelList(matrixModels), { quiet: true }))
+                  .catch((err: Error) => setError(err.message))
+                  .finally(() => setListLoading(false));
+              }}
+            >
+              Retry
+            </Button>
+          }
+        />
       ) : null}
       {notice ? (
-        <Callout variant="info" title="Notice" className="mt-4">
+        <p className="ax-notice" role="status" data-testid="access-notice">
           {notice}
-        </Callout>
+        </p>
       ) : null}
 
-      <ListComposerShell
-        list={
-          <div className="space-y-6">
-          <AccessModelPicker
-            model={model}
-            onModelChange={setModel}
-            onLoad={onLoadModel}
-            busy={busy}
+      <AccessWorkspaceTabs
+        tabs={frame.tabs}
+        value={activeTab}
+        onChange={selectTab}
+        counts={{ lines: rights.length, rules: rules.length }}
+      >
+        {activeTab === "matrix" ? (
+          <AccessMatrixPanel
+            frame={frame}
+            gate={gate}
+            modelsInput={matrixModels}
+            onModelsInput={setMatrixModels}
+            matrix={matrix}
+            loading={matrixBusy}
+            saving={matrixSaving}
+            onLoad={() => void loadMatrix(parseModelList(matrixModels))}
+            onSave={saveMatrix}
           />
-          <AccessRightsList
-            rows={rights}
-            loading={!listHydrated || listLoading}
-            selectedId={selectedAccessId}
-            query={rightsQuery}
-            onQueryChange={setRightsQuery}
-            onSelect={(row) => {
-              setSelectedAccessId(row.id);
-              setSelectedRuleId(null);
-              setPane("access");
-              setNotice(null);
-            }}
-            onCreate={() => {
-              setSelectedAccessId(null);
-              setSelectedRuleId(null);
-              setPane("new-access");
-              setNotice(null);
-            }}
+        ) : activeTab === "rules" && accessBranch.offerRecordRuleCreate ? (
+          <ListComposerShell
+            className="!mt-0"
+            list={
+              <div className="grid gap-6">
+                {modelPicker}
+                <RecordRulesList
+                  rows={rules}
+                  model={model}
+                  loading={!listHydrated || listLoading}
+                  selectedId={selectedRuleId}
+                  query={rulesQuery}
+                  onQueryChange={setRulesQuery}
+                  onSelect={(row) => {
+                    setSelectedRuleId(row.id);
+                    setSelectedAccessId(null);
+                    setPane("rule");
+                    setNotice(null);
+                  }}
+                  onCreate={() => {
+                    setSelectedRuleId(null);
+                    setSelectedAccessId(null);
+                    setPane("new-rule");
+                    setNotice(null);
+                  }}
+                />
+              </div>
+            }
+            detail={ruleDetailPane}
           />
-          {accessBranch.offerRecordRuleCreate ? (
-            <RecordRulesList
-              rows={rules}
-              loading={!listHydrated || listLoading}
-              selectedId={selectedRuleId}
-              query={rulesQuery}
-              onQueryChange={setRulesQuery}
-              onSelect={(row) => {
-                setSelectedRuleId(row.id);
-                setSelectedAccessId(null);
-                setPane("rule");
-                setNotice(null);
-              }}
-              onCreate={() => {
-                setSelectedRuleId(null);
-                setSelectedAccessId(null);
-                setPane("new-rule");
-                setNotice(null);
-              }}
-            />
-          ) : null}
-          <AccessSnapshots
-            connectionId={connectionId}
-            snapshots={snapshots}
-            busy={busy}
-            onRollback={onRollback}
+        ) : (
+          <ListComposerShell
+            className="!mt-0"
+            list={
+              <div className="grid gap-6">
+                {modelPicker}
+                <AccessRightsList
+                  rows={rights}
+                  model={model}
+                  title={frame.combined ? "ir.access rows" : "Access lines"}
+                  loading={!listHydrated || listLoading}
+                  selectedId={selectedAccessId}
+                  query={rightsQuery}
+                  onQueryChange={setRightsQuery}
+                  onSelect={(row) => {
+                    setSelectedAccessId(row.id);
+                    setSelectedRuleId(null);
+                    setPane("access");
+                    setNotice(null);
+                  }}
+                  onCreate={() => {
+                    setSelectedAccessId(null);
+                    setSelectedRuleId(null);
+                    setPane("new-access");
+                    setNotice(null);
+                  }}
+                />
+                <AccessSnapshots
+                  connectionId={connectionId}
+                  snapshots={snapshots}
+                  busy={busy}
+                  onRollback={onRollback}
+                />
+              </div>
+            }
+            detail={accessDetailPane}
           />
-          </div>
-        }
-        detail={
-          pane === "access" && selectedAccess ? (
-            <AccessDetail
-              key={selectedAccess.id}
-              connectionId={connectionId}
-              row={selectedAccess}
-              groups={groups}
-              busy={busy}
-              canMutate={canMutate}
-              canDelete={canAdvanced}
-              mutateBlocked={mutateBlocked}
-              deleteBlocked={advancedBlocked}
-              onSave={async (patch) => {
-                setBusy(true);
-                setError(null);
-                try {
-                  await api.updateAccessRight(connectionId, selectedAccess.id, patch);
-                  setNotice(`Updated access #${selectedAccess.id}`);
-                  await refresh(model);
-                } catch (err) {
-                  reportApiError(err, setError, { fallback: "Update failed", toast: true });
-                } finally {
-                  setBusy(false);
-                }
-              }}
-              onDelete={() =>
-                setPendingDelete({
-                  kind: "access",
-                  id: selectedAccess.id,
-                  name: selectedAccess.name,
-                })
-              }
-            />
-          ) : pane === "rule" && selectedRule && accessBranch.offerRecordRuleCreate ? (
-            <RecordRuleDetail
-              key={selectedRule.id}
-              connectionId={connectionId}
-              row={selectedRule}
-              groups={groups}
-              busy={busy}
-              canMutate={canMutate}
-              canDelete={canAdvanced}
-              mutateBlocked={mutateBlocked}
-              deleteBlocked={advancedBlocked}
-              onSave={async (patch) => {
-                setBusy(true);
-                setError(null);
-                try {
-                  await api.updateRecordRule(connectionId, selectedRule.id, patch);
-                  setNotice(`Updated rule #${selectedRule.id}`);
-                  await refresh(model);
-                } catch (err) {
-                  reportApiError(err, setError, { fallback: "Update failed", toast: true });
-                } finally {
-                  setBusy(false);
-                }
-              }}
-              onDelete={() =>
-                setPendingDelete({
-                  kind: "rule",
-                  id: selectedRule.id,
-                  name: selectedRule.name,
-                })
-              }
-            />
-          ) : composingRule ? (
-            <>
-              <AccessSessionBar
-                sessionState={sessionState}
-                busy={busy}
-                canDiscard={ruleDirty}
-                submitLabel="Create rule"
-                onDiscard={() => {
-                  setRuleForm(ruleBaseline);
-                  setSelectedRuleId(null);
-                }}
-              />
-              <RecordRuleComposer
-                model={model}
-                form={ruleForm}
-                groups={groups}
-                onChange={patchRule}
-                onSubmit={onCreateRule}
-                busy={busy}
-                canSubmit={canMutate}
-                submitBlockedReason={mutateBlocked}
-              />
-            </>
-          ) : (
-            <>
-              <AccessSessionBar
-                sessionState={sessionState}
-                busy={busy}
-                canDiscard={accessDirty}
-                submitLabel="Create access"
-                onDiscard={() => {
-                  setAccessForm(accessBaseline);
-                  setSelectedAccessId(null);
-                }}
-              />
-              <AccessComposer
-                model={model}
-                form={accessForm}
-                groups={groups}
-                onChange={patchAccess}
-                onSubmit={onCreateAccess}
-                busy={busy}
-                canSubmit={canMutate}
-                submitBlockedReason={mutateBlocked}
-              />
-            </>
-          )
-        }
-      />
+        )}
+      </AccessWorkspaceTabs>
 
-      <Disclosure title="Access matrix" className="mt-8" testId="access-matrix-disclosure">
-        <AccessMatrixPanel
-          modelsInput={matrixModels}
-          onModelsInput={setMatrixModels}
-          matrix={matrix}
-          busy={matrixBusy}
-          canMutate={canMutate}
-          mutateBlocked={mutateBlocked}
-          onLoad={() => void loadMatrix()}
-          onToggle={toggleMatrixPerm}
-          cellFor={cellFor}
+      <Disclosure title="Client access grants" className="mt-10" testId="connection-team-grants-disclosure">
+        <ConnectionTeamGrantsPanel
+          connectionId={connectionId}
+          connectionName={connection?.name}
         />
       </Disclosure>
 
@@ -630,6 +739,11 @@ export default function AccessPage() {
           onDocsFolderId={setDocsFolderId}
           onApplyMultiCompany={() => {
             setError(null);
+            if (!inline) {
+              // The live pack writes a global ir.rule: same R3 gate as every access write.
+              setNotice(`${gate.title}. ${gate.next}`);
+              return;
+            }
             setLivePackOpen(true);
           }}
           onLoadFolders={async () => {
@@ -767,6 +881,6 @@ export default function AccessPage() {
           }
         }}
       />
-    </div>
+    </OperateStudioChrome>
   );
 }

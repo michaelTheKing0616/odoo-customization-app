@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { api, ClarificationRequiredError } from "@/lib/api";
 import {
   rememberStudioSession,
@@ -8,6 +9,7 @@ import {
   type StudioUnderstanding,
 } from "@/lib/studio-session";
 import type { StudioState } from "./use-studio-state";
+import { effectiveAiStep } from "./brief-wants-ai";
 
 export function useStudioBrief(
   connectionId: string,
@@ -35,8 +37,8 @@ export function useStudioBrief(
     try {
       const created = await api.createStudioSession({
         connection_id: connectionId.trim(),
-        prompt: prompt.trim(),
-        flash_ast_enrich: flashAstEnrich,
+        prompt: prompt.trim() || String(session?.prompt_original || "").trim(),
+        flash_ast_enrich: effectiveAiStep(flashAstEnrich, prompt),
       });
       setSession(created);
       rememberStudioSession(connectionId, created.id);
@@ -108,5 +110,40 @@ export function useStudioBrief(
     }
   }
 
-  return { startSession, submitClarify };
+  /** GND-MOD: answer the stock-app install step. Throws a one-sentence Error on install failure. */
+  async function resolveStockApp(decision: "install" | "decline") {
+    if (!session) return;
+    setError(null);
+    const updated = await api.decideStudioStockApp(session.id, decision);
+    if (updated.stopped) {
+      toast(updated.message || "Stopped. This request was not built.");
+      startOver();
+      return;
+    }
+    setSession(updated);
+    if (!updated.pending_clarification && updated.status === "ready") {
+      try {
+        const gen = await api.generateStudioSession(updated.id);
+        setSession(gen);
+      } catch (genErr) {
+        if (genErr instanceof ClarificationRequiredError) {
+          setSession(sessionWithClarification(updated, genErr.clarification));
+          return;
+        }
+        setError(genErr instanceof Error ? genErr.message : "Generation failed");
+      }
+    }
+  }
+
+  /** S11: install the apps the design is built on, then show the re-checked diagnosis. */
+  async function installApps() {
+    if (!session) return;
+    setError(null);
+    const updated = await api.installStudioApps(session.id);
+    const errors = updated.install_errors ?? [];
+    setSession(updated);
+    if (errors.length) throw new Error(errors[0]);
+  }
+
+  return { startSession, submitClarify, resolveStockApp, installApps };
 }

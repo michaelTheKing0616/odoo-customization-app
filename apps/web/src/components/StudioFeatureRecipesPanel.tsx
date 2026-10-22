@@ -46,7 +46,7 @@ export function StudioFeatureRecipesPanel({ className = "" }: Props) {
     <div className={`text-sm ${className}`} data-testid="studio-feature-recipes-panel">
       <p className="text-xs font-medium text-muted">Studio feature recipes (public ORM)</p>
       <p className="mt-0.5 text-ui-meta text-muted">
-        How each Studio-doc suggested feature maps to Builder / Designer / Option A — honesty
+        How each Studio-doc suggested feature maps to Builder / Designer / custom code — honesty
         statuses, not a Studio clone.
       </p>
       {loading && <InlineWait />}

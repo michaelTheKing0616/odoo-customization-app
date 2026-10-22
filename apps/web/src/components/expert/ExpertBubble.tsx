@@ -1,18 +1,40 @@
 "use client";
 
+import { usePathname } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
 import { IconExpert } from "@/components/ui/icons";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useShell } from "@/context/ShellContext";
 import { cn } from "@/lib/cn";
+import { isExpertDestinationPath } from "@/lib/expert-journey";
+
+/** The two prompts every page gets; anything else is specific to this page or model. */
+const GENERIC_PROMPT_IDS = new Set(["modules", "security"]);
+
+/** Touch 110: true only when Expert has a prompt specific to this page (not the generic pair). */
+export function hasPageTip(prompts: { id: string }[] | undefined): boolean {
+  return Boolean(prompts?.some((p) => !GENERIC_PROMPT_IDS.has(p.id)));
+}
 
 type Props = {
   className?: string;
 };
 
 export function ExpertBubble({ className }: Props) {
-  const { expertOpen, openExpert } = useShell();
+  const { expertOpen, openExpert, uiContext } = useShell();
+  const pathname = usePathname();
+  const tips = useQuery({
+    queryKey: ["expert-page-tip", pathname, uiContext.model],
+    queryFn: () => api.expertSuggestedPrompts({ route: pathname, model: uiContext.model }),
+    enabled: !expertOpen,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const tip = hasPageTip(tips.data);
 
-  if (expertOpen) return null;
+  // On the Expert page the conversation is already on screen; a launcher would open a duplicate.
+  if (expertOpen || isExpertDestinationPath(pathname)) return null;
 
   return (
     <div
@@ -24,11 +46,11 @@ export function ExpertBubble({ className }: Props) {
       <p className="expert-launcher-hint pointer-events-none hidden sm:block" aria-hidden>
         Odoo Expert
       </p>
-      <Tooltip label="Open Odoo Expert — grounded answers, never auto-promotes">
+      <Tooltip label="Open Odoo Expert. Grounded answers, never auto-promotes.">
         <button
           type="button"
           data-testid="open-expert"
-          aria-label="Open Odoo Expert"
+          aria-label={tip ? "Open Odoo Expert (has a tip for this page)" : "Open Odoo Expert"}
           onClick={() => openExpert()}
           className={cn(
             "expert-launcher pointer-events-auto group relative flex h-12 w-12 items-center justify-center rounded-full",
@@ -38,6 +60,7 @@ export function ExpertBubble({ className }: Props) {
           )}
         >
           <IconExpert className="relative h-5 w-5 transition-transform group-hover:scale-110" />
+          {tip ? <span className="expert-tip-dot" data-testid="expert-tip-dot" aria-hidden /> : null}
         </button>
       </Tooltip>
     </div>

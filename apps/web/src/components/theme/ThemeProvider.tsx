@@ -1,8 +1,9 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { isLagosNight } from "@/lib/lagosSun";
 
-type Theme = "light" | "dark" | "system";
+export type Theme = "light" | "dark" | "system" | "sunset";
 
 type ThemeContextValue = {
   theme: Theme;
@@ -19,6 +20,7 @@ function resolveTheme(theme: Theme): "light" | "dark" {
   if (theme === "light") return "light";
   if (theme === "dark") return "dark";
   if (typeof window === "undefined") return "light";
+  if (theme === "sunset") return isLagosNight() ? "dark" : "light";
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
@@ -28,7 +30,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
-    if (stored === "light" || stored === "dark" || stored === "system") {
+    if (stored === "light" || stored === "dark" || stored === "system" || stored === "sunset") {
       setThemeState(stored);
     }
   }, []);
@@ -41,19 +43,35 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [theme]);
 
   useEffect(() => {
+    const apply = () => {
+      const next = resolveTheme(theme);
+      setResolved(next);
+      document.documentElement.classList.toggle("dark", next === "dark");
+    };
+    if (theme === "sunset") {
+      const t = window.setInterval(apply, 60_000);
+      return () => window.clearInterval(t);
+    }
     if (theme !== "system") return;
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const onChange = () => setResolved(resolveTheme("system"));
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
   }, [theme]);
 
-  const setTheme = useCallback((value: Theme) => setThemeState(value), []);
+  // Touch 118: theme change spreads via a view transition (CSS turns it into a fade under reduced motion).
+  const withReveal = (fn: () => void) => {
+    const d = typeof document !== "undefined" ? (document as Document & { startViewTransition?: (cb: () => void) => unknown }) : null;
+    if (d?.startViewTransition) d.startViewTransition(fn);
+    else fn();
+  };
+  const setTheme = useCallback((value: Theme) => withReveal(() => setThemeState(value)), []);
   const toggle = useCallback(() => {
-    setThemeState((prev) => {
-      const current = resolveTheme(prev);
-      return current === "dark" ? "light" : "dark";
-    });
+    withReveal(() =>
+      setThemeState((prev) => {
+        const current = resolveTheme(prev);
+        return current === "dark" ? "light" : "dark";
+      }),
+    );
   }, []);
 
   const value = useMemo(
@@ -72,5 +90,10 @@ export function useTheme() {
 
 /** Returns null outside ThemeProvider — for chrome that also mounts on marketing pages. */
 export function useThemeOptional() {
+  return useContext(ThemeContext);
+}
+
+/** Same as useTheme, but null outside a provider (isolated renders). */
+export function useThemeMaybe() {
   return useContext(ThemeContext);
 }

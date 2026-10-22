@@ -1,4 +1,4 @@
-/** Draft Studio journey stages — chrome only, not the generator. Distinct from App Studio. */
+/** Draft Studio journey stages: chrome only, not the generator. Distinct from App Studio. */
 
 import { actionErrorTitle } from "./action-error-title";
 
@@ -55,15 +55,15 @@ export function draftStudioJourneyFromState(opts: {
 
 export function draftStudioJourneyHint(state: DraftStudioJourneyState): string {
   if (state.failed) {
-    return "Draft did not finish. Retry enrichment, or create the draft again. Promote stays human.";
+    return "Draft did not finish. Retry enrichment, or generate the draft again. Publishing stays a step you confirm.";
   }
   switch (state.id) {
     case "prompt":
-      return "Describe a field, a feature, or a full app. Create draft builds a ModuleSpec — nothing writes to Odoo yet.";
+      return "Describe a field, a feature, or a full app. Generating the draft builds an app plan. Nothing writes to Odoo yet.";
     case "enrich":
-      return "Quality pass is running. Completeness is not Cert. Promote stays human.";
+      return "Quality pass is running. Completeness is not Cert. Publishing stays a step you confirm.";
     case "review":
-      return "Scorecard is ModuleSpec hygiene, not go-live. Apply writes live metadata. Zip, sandbox, then Promote.";
+      return "Scorecard is app plan hygiene, not go-live. Apply writes live metadata. Zip, sandbox, then publish.";
     case "apply":
       return "Live on this connection. Open in Odoo, or View Designer for the primary form.";
   }
@@ -89,7 +89,7 @@ export const DRAFT_STUDIO_ERROR_STEPS = {
   zip: "Zip export failed",
   sandbox: "Sandbox validate failed",
   repair: "AI repair did not apply",
-  promote: "Promote failed",
+  promote: "Publish failed",
   apply: "Apply failed",
   scaffold: "Scaffold failed",
 } as const;
@@ -154,6 +154,16 @@ export function goLiveReadyFromDraft(
   return Boolean(doneBarFromDraft(draft)?.go_live_ready);
 }
 
+
+/** Present real hygiene scores without fake-decimal theater (7 not 7.0; keep 7.2). */
+export function formatHygieneScore(score: number): string {
+  const rounded = Math.round(score * 10) / 10;
+  if (Math.abs(rounded - Math.round(rounded)) < 0.05) {
+    return String(Math.round(rounded));
+  }
+  return rounded.toFixed(1);
+}
+
 export function scorecardHeadline(opts: {
   score?: number;
   stockReuse?: boolean;
@@ -164,9 +174,9 @@ export function scorecardHeadline(opts: {
   const cert = opts.certTier ? ` · Cert: ${opts.certTier}` : "";
   if (typeof opts.score !== "number") return opts.stockReuse ? "Stock coverage" : "Scorecard";
   if (opts.stockReuse) {
-    return `Stock coverage — empty ModuleSpec (hygiene ${opts.score.toFixed(1)}/10)${cert}`;
+    return `Stock coverage: empty app plan (hygiene ${formatHygieneScore(opts.score)}/10)${cert}`;
   }
-  return `Completeness: ${opts.score.toFixed(1)}/10${
+  return `Completeness: ${formatHygieneScore(opts.score)}/10${
     opts.validatorsGreen ? " · validators green" : ""
   }${opts.goLiveReady ? " · sandbox proven" : ""}${cert}`;
 }
@@ -180,18 +190,18 @@ export function scorecardBodyCopy(opts: {
 }): string | null {
   if (opts.hasFindings) return null;
   if (opts.stockReuse) {
-    return "Empty spec is correct. Open Job Autopilot for sandbox install and quote→invoice RPC smoke. Completeness ≠ Cert ≠ Autopilot. Promote stays human.";
+    return "Empty spec is correct. Open Job Autopilot for sandbox install and quote→invoice RPC smoke. A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm.";
   }
   if (opts.certShipReady && opts.goLiveReady) {
-    return "Sandbox proven + Certification Production/Gold — ready for human promote.";
+    return "Sandbox proven + Certification Production/Gold. Ready for human promote.";
   }
   if (opts.certShipReady) {
-    return "Certification Production/Gold — review before promote.";
+    return "Certification Production/Gold. Review before publish.";
   }
   if (typeof opts.score === "number" && opts.score >= 9.5 && !opts.certShipReady) {
-    return "High completeness — not shippable until Certification ≥ Production.";
+    return "High completeness, not shippable until Certification ≥ Production.";
   }
-  return "No major findings — ready for review.";
+  return "No major findings. Ready for review.";
 }
 
 export function createDraftHint(opts: {
@@ -203,19 +213,19 @@ export function createDraftHint(opts: {
   isFullAppGrain?: boolean;
 }): string {
   if (opts.hasDraft) {
-    return "The JSON is the ModuleSpec. Apply to Odoo writes models, forms, and the menu tree. Open ModuleSpec or View Designer to edit.";
+    return "The JSON is the app plan. Apply to Odoo writes models, forms, and the menu tree. Open app plan or View Designer to edit.";
   }
   if (opts.promptLength < 3) {
-    return "Type what you need (a field, a feature, or a full app), then click Create draft.";
+    return "Type what you need (a field, a feature, or a full app), then generate the draft.";
   }
   if (opts.needsConnectReview && !opts.connectReady) {
-    return "Component / field pack: click Review connect points, approve the host model, then Create draft.";
+    return "Component or field pack: Review connect points, approve the existing form, then generate the draft.";
   }
   if (opts.overlapPending) {
-    return "Resolve overlap findings above (Use, Extend, or Build anyway), then Create draft.";
+    return "Resolve overlap findings above (Use, Extend, or Build anyway), then generate the draft.";
   }
   if (opts.isFullAppGrain) {
-    return "Full app detected — click Create draft. Stock first; custom models only for the residual. Nothing touches Odoo until Apply.";
+    return "Full app detected. Stock apps first, custom models only for the residual. Nothing touches Odoo until Apply.";
   }
-  return "Click Create draft — we implement on the host app (inherit + fields + view), not a second ERP.";
+  return "Ingenium builds on the host app (inherit, fields, view), not a second ERP. Nothing writes to Odoo until Apply.";
 }

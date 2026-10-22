@@ -52,7 +52,7 @@ export function DesignerPageExtras({
             </li>
             <li>
               Buttons bind to real <code>ir.actions.server</code> /{" "}
-              <code>ir.actions.act_window</code> (type=action). Python object methods need Option A.
+              <code>ir.actions.act_window</code> (type=action). Python object methods need custom code.
             </li>
             <li>
               Prefer <strong>Open in Odoo</strong> for truth; iframe preview is best-effort via

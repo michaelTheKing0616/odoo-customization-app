@@ -29,26 +29,27 @@ export function NicheWidgetPalette({
 }) {
   if (widgets.length === 0 && colorPalette.length === 0) return null;
   return (
-    <div className="odoo-sheet mt-2 max-h-56 overflow-auto p-2" data-testid="niche-widget-palette">
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--odoo-muted)]">
-        §15 widgets
-      </p>
-      <ul className="space-y-1">
+    <div className="designer-palette-group mt-5" data-testid="niche-widget-palette">
+      <h3 className="designer-palette-heading">
+        <span>Odoo widgets</span>
+        <span className="designer-palette-count">{widgets.length}</span>
+      </h3>
+      <ul className="space-y-px">
         {widgets.map((w) => (
           <li key={w.id}>
             <button
               type="button"
-              className="w-full border border-[var(--odoo-border)] bg-surface px-2 py-1 text-left text-xs hover:bg-brand-subtle"
+              className="designer-palette-item w-full cursor-pointer text-start"
               onClick={() => onPick(w)}
             >
-              <span className="font-mono text-[var(--odoo-primary)]">{w.id}</span>
-              <span className="ml-2 text-[var(--odoo-muted)]">{w.label}</span>
+              <span className="designer-palette-label">{w.label}</span>
+              <span className="designer-palette-name">{w.id}</span>
             </button>
           </li>
         ))}
       </ul>
       {colorPalette.length > 0 ? (
-        <p className="mt-2 text-[10px] text-[var(--odoo-muted)]">
+        <p className="mt-2 px-0.5 text-[11px] leading-snug text-subtle">
           Color indices: {colorPalette.map((c) => c.name).join(", ")}
         </p>
       ) : null}

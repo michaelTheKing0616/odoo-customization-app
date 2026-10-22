@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
+import { StageProgress } from "@/components/progress/StageProgress";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Card, EmptyState, Skeleton } from "@/components/ui/layout-primitives";
+import { Card, EmptyState } from "@/components/ui/layout-primitives";
+import { newProgressRunId } from "@/lib/progress/run-id";
 import { Callout } from "@/components/ui/Callout";
 import { api, type IntentRouteMatch, type IntentRouteResult } from "@/lib/api";
 import { stashBuildSpineHandoff } from "@/lib/build-spine-handoff";
@@ -12,8 +14,11 @@ import { resolveBuildModeLocal } from "@/lib/build-spine";
 
 type IntentRouterPanelProps = {
   connectionId: string;
+  /** `rail` is the compact side-rail form on the Expert page (4 starters, tighter type). */
+  variant?: "card" | "rail";
 };
 
+/** Routing prompts sent as-is; the chip shows them in sentence case. */
 const STARTERS = [
   "upload 200 journal entries",
   "bulk create customers",
@@ -24,6 +29,10 @@ const STARTERS = [
   "settings board",
   "build a visitor log app",
 ];
+
+function sentenceCase(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
 
 function MatchRow({
   match,
@@ -66,35 +75,37 @@ function MatchRow({
     }
   }
   return (
-    <li
-      className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3 sm:flex-row sm:items-center sm:justify-between"
-      data-testid="intent-route-match"
-    >
+    <li className="intent-match" data-testid="intent-route-match">
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-ink">{match.title}</p>
-        <p className="mt-0.5 text-xs text-muted">{match.why}</p>
-        <p className="mt-1 font-mono text-[11px] text-accent">{match.deep_link}</p>
-        <p className="mt-0.5 text-[11px] text-muted">
-          Confidence {pct}%
-          {match.recipe ? ` · ${match.recipe}` : ""}
-          {match.can_handle === "partial" ? " · partial" : ""}
+        <p className="intent-match-title">{match.title}</p>
+        <p className="intent-match-why">{match.why}</p>
+        <p className="intent-match-meta">
+          <span className="intent-match-path" title={match.deep_link}>
+            {match.deep_link}
+          </span>
+          <span>
+            Confidence <span className="tabular-nums">{pct}%</span>
+            {match.recipe ? ` · ${match.recipe}` : ""}
+            {match.can_handle === "partial" ? " · partial" : ""}
+          </span>
         </p>
       </div>
-      <Button asChild variant="primary" size="sm" data-testid="intent-route-go">
-        <Link href={match.deep_link} onClick={onGo}>
-          Go
+      <Button asChild variant="secondary" size="sm" data-testid="intent-route-go">
+        <Link href={match.deep_link} onClick={onGo} aria-label={`Open ${match.title}`}>
+          Open
         </Link>
       </Button>
     </li>
   );
 }
 
-export function IntentRouterPanel({ connectionId }: IntentRouterPanelProps) {
+export function IntentRouterPanel({ connectionId, variant = "card" }: IntentRouterPanelProps) {
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<IntentRouteResult | null>(null);
   const [routeHydrated, setRouteHydrated] = useState(true);
+  const [progressRunId, setProgressRunId] = useState<string | null>(null);
 
   const run = useCallback(
     async (text?: string) => {
@@ -103,8 +114,14 @@ export function IntentRouterPanel({ connectionId }: IntentRouterPanelProps) {
       setRouteHydrated(false);
       setBusy(true);
       setError(null);
+      const runId = newProgressRunId("intent");
+      setProgressRunId(runId);
       try {
-        const out = await api.expertIntentRoute(connectionId, { prompt: q, limit: 5 });
+        const out = await api.expertIntentRoute(connectionId, {
+          prompt: q,
+          limit: 5,
+          progress_run_id: runId,
+        });
         setResult(out);
         if (text) setPrompt(text);
       } catch (err) {
@@ -113,6 +130,7 @@ export function IntentRouterPanel({ connectionId }: IntentRouterPanelProps) {
       } finally {
         setBusy(false);
         setRouteHydrated(true);
+        setProgressRunId(null);
       }
     },
     [busy, connectionId, prompt],
@@ -120,24 +138,23 @@ export function IntentRouterPanel({ connectionId }: IntentRouterPanelProps) {
 
   const unsupported = result?.can_handle === "false";
   const matches = [...(result?.matches || []), ...(result?.alternatives || [])];
+  const starters = variant === "rail" ? STARTERS.slice(0, 4) : STARTERS;
 
   return (
-    <Card className="mb-6 space-y-4 p-5" data-testid="intent-router-panel">
+    <Card
+      className={variant === "rail" ? "intent-router intent-router--rail" : "intent-router mb-6"}
+      data-testid="intent-router-panel"
+    >
       <div>
-        <p className="text-[11px] font-medium uppercase tracking-wide text-muted">
-          Intent → feature
-        </p>
-        <h2 className="mt-1 text-lg font-semibold tracking-tight text-ink">
-          What do you want to do?
-        </h2>
-        <p className="mt-1 text-sm text-muted">
-          Describe a goal in plain language. ingenium routes you to a shipped feature — or says
-          honestly if it cannot handle it. Preview ≠ posted.
+        <h2 className="intent-router-title">What do you want to do?</h2>
+        <p className="intent-router-body">
+          Describe a goal. Expert points you to the ingenium screen that does it, or says plainly
+          that it can&apos;t. Nothing is written from here.
         </p>
       </div>
 
       <form
-        className="flex flex-col gap-2 sm:flex-row"
+        className="intent-router-form"
         onSubmit={(e) => {
           e.preventDefault();
           void run();
@@ -146,14 +163,14 @@ export function IntentRouterPanel({ connectionId }: IntentRouterPanelProps) {
         <Input
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="e.g. upload 200 journal entries, bulk create customers…"
+          placeholder="Upload 200 journal entries…"
           aria-label="What do you want to do?"
           data-testid="intent-router-input"
-          className="flex-1"
+          className="min-w-0 flex-1"
         />
         <Button
           type="submit"
-          variant="primary"
+          variant="secondary"
           disabled={busy || !prompt.trim()}
           data-testid="intent-router-submit"
         >
@@ -161,36 +178,39 @@ export function IntentRouterPanel({ connectionId }: IntentRouterPanelProps) {
         </Button>
       </form>
 
-      <div className="flex flex-wrap gap-2" data-testid="intent-router-starters">
-        {STARTERS.map((s) => (
-          <Button
-            key={s}
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => void run(s)}
-            disabled={busy}
-          >
-            {s}
-          </Button>
+      <ul className="intent-router-starters" data-testid="intent-router-starters" aria-label="Example goals">
+        {starters.map((s) => (
+          <li key={s}>
+            <button
+              type="button"
+              className="intent-starter"
+              onClick={() => void run(s)}
+              disabled={busy}
+            >
+              {sentenceCase(s)}
+            </button>
+          </li>
         ))}
-      </div>
+      </ul>
 
       {error ? (
-        <Callout variant="danger" title="Route failed">
-          {error}
+        <Callout variant="danger" title="Could not route this goal" testId="intent-router-error">
+          <p>{error}</p>
+          <p className="mt-1">Try again, or ask the question in the Expert conversation.</p>
         </Callout>
       ) : null}
 
       {busy && !routeHydrated ? (
-        <div className="space-y-2" data-testid="intent-router-loading">
-          <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-16 w-full" />
-        </div>
+        <StageProgress
+          runId={progressRunId}
+          active
+          fallbackLabel="Routing your goal…"
+          onStop={() => setBusy(false)}
+        />
       ) : null}
 
       {result && routeHydrated ? (
-        <div className="space-y-3" data-testid="intent-router-results">
+        <div className="intent-router-results" data-testid="intent-router-results">
           {unsupported ? (
             <Callout
               variant="warning"
@@ -199,29 +219,30 @@ export function IntentRouterPanel({ connectionId }: IntentRouterPanelProps) {
             >
               <p>{result.message}</p>
               {result.honesty ? (
-                <p className="mt-2 text-xs text-muted">{result.honesty}</p>
+                <p className="mt-2 text-xs">{result.honesty}</p>
               ) : null}
             </Callout>
           ) : (
             <>
-              <p className="text-sm text-ink" data-testid="intent-router-message">
+              <p className="intent-router-message" data-testid="intent-router-message">
                 {result.message}
               </p>
               {result.can_handle === "partial" ? (
                 <Callout variant="warning" title="Partial match" testId="intent-router-partial">
-                  Closest shipped features are listed — confirm before proceeding. Preview ≠ posted.
+                  These are the closest shipped features. Check the fit before you continue.
+                  Preview is not posted.
                 </Callout>
               ) : null}
               {result.ambiguous ? (
-                <p className="text-xs text-muted" data-testid="intent-router-ambiguous">
-                  Several features could fit — pick the best Go link below.
+                <p className="intent-router-note" data-testid="intent-router-ambiguous">
+                  Several features could fit. Open the one that matches your goal.
                 </p>
               ) : null}
               {matches.length === 0 ? (
                 <div data-testid="intent-router-matches-empty">
                   <EmptyState
                     title="No shipped feature matched"
-                    description="Rephrase the goal or pick a starter chip, then route again."
+                    description="Rephrase the goal or pick an example, then route again."
                     action={
                       <Button
                         type="button"
@@ -236,7 +257,7 @@ export function IntentRouterPanel({ connectionId }: IntentRouterPanelProps) {
                   />
                 </div>
               ) : (
-                <ul className="space-y-2" data-testid="intent-router-matches">
+                <ul className="intent-match-list" data-testid="intent-router-matches">
                   {matches.map((m) => (
                     <MatchRow
                       key={`${m.feature_id}-${m.deep_link}`}
@@ -248,7 +269,7 @@ export function IntentRouterPanel({ connectionId }: IntentRouterPanelProps) {
                 </ul>
               )}
               {result.honesty ? (
-                <p className="text-[11px] text-muted" data-testid="intent-router-honesty">
+                <p className="intent-router-note" data-testid="intent-router-honesty">
                   {result.honesty}
                 </p>
               ) : null}

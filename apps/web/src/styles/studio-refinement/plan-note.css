@@ -1,0 +1,80 @@
+/* App Studio integration plan note: one quiet line, amber dot only for left out / Option A. */
+.studio-plan-note {
+  max-width: 1180px;
+  margin: 0 auto var(--space-md, 12px);
+  border: 1px solid var(--border-subtle, #e5e7eb);
+  border-radius: 6px;
+  background: var(--surface, #fff);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink, #1f2937);
+}
+.studio-plan-note-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 600;
+}
+.studio-plan-note-summary::-webkit-details-marker {
+  display: none;
+}
+.studio-plan-note-summary::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  opacity: 0.5;
+}
+.studio-plan-note[open] .studio-plan-note-summary::after {
+  transform: rotate(-135deg);
+}
+.studio-plan-note-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: #0f766e;
+}
+.studio-plan-note[data-tone="amber"] .studio-plan-note-dot {
+  background: #d97706;
+}
+.studio-plan-note-list {
+  margin: 0;
+  padding: 0 12px 10px 28px;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+.studio-plan-note-list li {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 8px;
+  color: var(--text-secondary, #4b5563);
+}
+.studio-plan-note-key {
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-secondary, #6b7280);
+  padding-top: 1px;
+}
+.studio-plan-note-list li[data-status="left_out"] .studio-plan-note-key,
+.studio-plan-note-list li[data-status="option_a"] .studio-plan-note-key {
+  color: #b45309;
+}
+@media (max-width: 560px) {
+  .studio-plan-note-list {
+    padding-left: 12px;
+  }
+  .studio-plan-note-list li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}

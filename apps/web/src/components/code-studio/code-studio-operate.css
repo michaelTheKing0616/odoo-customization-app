@@ -1,0 +1,940 @@
+/* Studio-bar leap: basalt chrome via OperateStudioChrome; honesty in bar. */
+/* ============================================================
+   UI-S-18 Code Studio: operate-mode editor (scoped .code-studio-operate)
+   Basalt chrome. Teal = the one primary (Validate), selection and focus.
+   Green = passed. Amber = changed / blocked rule. Red = syntax error or failed run.
+   Cinnabar never appears here (keystone only).
+   Motion values mirror components/ui/motion/constants.ts (UI-F09).
+   ============================================================ */
+
+.code-studio-operate {
+  --cs-radius: 12px;
+  --cs-radius-sm: 8px;
+  --cs-hair: var(--border-subtle);
+  --cs-hair-strong: var(--border-strong);
+  --cs-basalt: #1a1c21;
+  --cs-basalt-raised: #24272e;
+  --cs-limestone: #f3f4f6;
+  --cs-limestone-muted: #b3b8c2;
+  --cs-ease-out: cubic-bezier(0.23, 1, 0.32, 1); /* EASE_ENTER_EXIT */
+  --cs-press-ms: 130ms; /* DURATION.pressMs */
+  --cs-state-ms: 150ms; /* DURATION.saveConfirmMs */
+  --cs-hover-ms: 80ms; /* DURATION.rowHoverMs */
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.code-studio-operate > * {
+  min-width: 0;
+}
+
+/* PageHeader brings its own mb-6; the grid gap owns spacing here. */
+.code-studio-operate > div:first-child {
+  margin-bottom: 0;
+}
+
+.code-studio-operate h1,
+.code-studio-operate h2,
+.code-studio-operate h3 {
+  text-wrap: balance;
+  letter-spacing: -0.015em;
+}
+
+.code-studio-operate p {
+  text-wrap: pretty;
+}
+
+.code-studio-operate .cs-code {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.92em;
+  color: var(--ink);
+}
+
+/* ---------------- Ground-rule chips ---------------- */
+
+.code-studio-operate .cs-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.code-studio-operate .cs-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--cs-basalt);
+  color: var(--cs-limestone);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.code-studio-operate .cs-chip[data-tone="quiet"] {
+  background: transparent;
+  color: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--cs-hair-strong);
+}
+
+html.dark .code-studio-operate .cs-chip:not([data-tone]),
+.dark .code-studio-operate .cs-chip:not([data-tone]) {
+  background: var(--cs-limestone);
+  color: var(--cs-basalt);
+}
+
+/* ---------------- Honesty: the two limits ---------------- */
+
+.code-studio-operate .cs-honesty {
+  display: grid;
+  gap: 12px;
+}
+
+@media (min-width: 900px) {
+  .code-studio-operate .cs-honesty {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    align-items: stretch;
+  }
+}
+
+.code-studio-operate .cs-limit {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid var(--cs-hair);
+  border-radius: var(--cs-radius);
+  background: var(--surface-raised);
+}
+
+.code-studio-operate .cs-limit-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.code-studio-operate .cs-limit-body {
+  margin: 0;
+  max-width: 68ch;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.code-studio-operate .cs-limit-option-a {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  border-color: color-mix(in oklab, var(--cs-basalt) 55%, var(--cs-hair));
+}
+
+.code-studio-operate .cs-limit-band {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--cs-basalt);
+  color: var(--cs-limestone);
+}
+
+.code-studio-operate .cs-limit-band .cs-limit-title {
+  color: var(--cs-limestone);
+}
+
+.code-studio-operate .cs-band-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--cs-limestone) 14%, transparent);
+  color: var(--cs-limestone);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.code-studio-operate .cs-limit-inner {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px 16px;
+}
+
+.code-studio-operate .cs-limit-option-a .cs-limit-body {
+  color: var(--ink);
+}
+
+.code-studio-operate .cs-steps {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+@media (min-width: 640px) {
+  .code-studio-operate .cs-steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+
+.code-studio-operate .cs-steps > li {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.code-studio-operate .cs-steps strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.code-studio-operate .cs-step-no {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--cs-basalt);
+  color: var(--cs-limestone);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+html.dark .code-studio-operate .cs-step-no,
+.dark .code-studio-operate .cs-step-no {
+  background: var(--cs-limestone);
+  color: var(--cs-basalt);
+}
+
+/* Dark: invert the Option A band so the warning stays the loudest surface on the page. */
+html.dark .code-studio-operate .cs-limit-option-a,
+.dark .code-studio-operate .cs-limit-option-a {
+  border-color: color-mix(in oklab, var(--cs-limestone) 40%, transparent);
+}
+
+html.dark .code-studio-operate .cs-limit-band,
+.dark .code-studio-operate .cs-limit-band {
+  background: var(--cs-limestone);
+  color: var(--cs-basalt);
+}
+
+html.dark .code-studio-operate .cs-limit-band .cs-limit-title,
+.dark .code-studio-operate .cs-limit-band .cs-limit-title {
+  color: var(--cs-basalt);
+}
+
+html.dark .code-studio-operate .cs-band-tag,
+.dark .code-studio-operate .cs-band-tag {
+  background: var(--cs-basalt);
+  color: var(--cs-limestone);
+}
+
+/* ---------------- Notice + gating ---------------- */
+
+.code-studio-operate .cs-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--cs-radius-sm);
+  background: var(--success-subtle);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.code-studio-operate .cs-notice svg {
+  margin-top: 2px;
+  color: var(--success);
+}
+
+.code-studio-operate .cs-gating {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+}
+
+.code-studio-operate .cs-gating > :first-child {
+  width: 100%;
+}
+
+.code-studio-operate .cs-loading {
+  display: grid;
+  gap: 12px;
+}
+
+.code-studio-operate .cs-loading-grid {
+  display: grid;
+  gap: 16px;
+}
+
+@media (min-width: 1024px) {
+  .code-studio-operate .cs-loading-grid {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  }
+}
+
+/* ---------------- Path selector ---------------- */
+
+.code-studio-operate .cs-path {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.code-studio-operate .cs-path-legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.code-studio-operate .cs-path-options {
+  display: grid;
+  gap: 8px;
+}
+
+@media (min-width: 640px) {
+  .code-studio-operate .cs-path-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.code-studio-operate .cs-path-option {
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  min-height: 44px;
+  padding: 12px 14px;
+  border: 1px solid var(--cs-hair);
+  border-radius: var(--cs-radius-sm);
+  background: var(--surface-raised);
+  cursor: pointer;
+  transition:
+    border-color var(--cs-state-ms) ease,
+    background-color var(--cs-state-ms) ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .code-studio-operate .cs-path-option:hover {
+    border-color: var(--cs-hair-strong);
+  }
+}
+
+.code-studio-operate .cs-path-option[data-checked="true"] {
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 6%, var(--surface-raised));
+}
+
+.code-studio-operate .cs-path-option input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+
+.code-studio-operate .cs-path-option:has(input:focus-visible) {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 24%, transparent);
+}
+
+.code-studio-operate .cs-path-text {
+  display: grid;
+  gap: 2px;
+}
+
+.code-studio-operate .cs-path-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.code-studio-operate .cs-path-desc {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* ---------------- Gate rail ---------------- */
+
+.code-studio-operate .cs-rail {
+  display: grid;
+  gap: 10px;
+}
+
+.code-studio-operate .cs-rail-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 900px) {
+  .code-studio-operate .cs-rail-list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.code-studio-operate .cs-rail-step {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border-radius: var(--cs-radius-sm);
+  box-shadow: inset 0 0 0 1px var(--cs-hair);
+  background: var(--surface-raised);
+  transition:
+    box-shadow var(--cs-state-ms) ease,
+    background-color var(--cs-state-ms) ease;
+}
+
+.code-studio-operate .cs-rail-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px var(--cs-hair-strong);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.code-studio-operate .cs-rail-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.code-studio-operate .cs-rail-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.code-studio-operate .cs-rail-detail {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.code-studio-operate .cs-rail-step[data-state="done"] .cs-rail-mark {
+  background: var(--success);
+  box-shadow: none;
+  color: var(--on-success);
+}
+
+.code-studio-operate .cs-rail-step[data-state="current"] {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+  background: color-mix(in oklab, var(--accent) 5%, var(--surface-raised));
+}
+
+.code-studio-operate .cs-rail-step[data-state="current"] .cs-rail-mark {
+  background: var(--accent);
+  box-shadow: none;
+  color: var(--on-accent);
+}
+
+.code-studio-operate .cs-rail-step[data-state="blocked"] {
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--danger) 45%, transparent);
+}
+
+.code-studio-operate .cs-rail-step[data-state="blocked"] .cs-rail-mark {
+  background: var(--danger);
+  box-shadow: none;
+  color: var(--on-danger);
+}
+
+.code-studio-operate .cs-rail-step[data-state="todo"] .cs-rail-label {
+  color: var(--muted);
+}
+
+.code-studio-operate .cs-rail-step[data-state="optional"] .cs-rail-mark {
+  box-shadow: inset 0 0 0 1px var(--cs-hair-strong);
+  border: 1px dashed transparent;
+}
+
+.code-studio-operate .cs-rail-summary {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* ---------------- Main grid ---------------- */
+
+.code-studio-operate .cs-grid {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (min-width: 1024px) {
+  .code-studio-operate .cs-grid {
+    grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+    gap: 24px;
+  }
+}
+
+.code-studio-operate .cs-section-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* ---------------- Editor ---------------- */
+
+.code-studio-operate .cs-editor {
+  display: grid;
+  min-width: 0;
+  border: 1px solid var(--cs-hair);
+  border-radius: var(--cs-radius);
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+
+.code-studio-operate .cs-editor-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 12px 8px 16px;
+  background: var(--cs-basalt);
+  color: var(--cs-limestone);
+}
+
+html.dark .code-studio-operate .cs-editor-bar,
+.dark .code-studio-operate .cs-editor-bar {
+  background: #111317;
+  box-shadow: inset 0 -1px 0 var(--cs-hair-strong);
+}
+
+.code-studio-operate .cs-file {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+.code-studio-operate .cs-file-name {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.code-studio-operate .cs-file-meta {
+  font-size: 12px;
+  color: var(--cs-limestone-muted);
+}
+
+.code-studio-operate .cs-gate-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--cs-limestone) 12%, transparent);
+  color: var(--cs-limestone);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background-color var(--cs-state-ms) ease, color var(--cs-state-ms) ease;
+}
+
+.code-studio-operate .cs-gate-pill::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.7;
+}
+
+.code-studio-operate .cs-gate-pill[data-status="passed"] {
+  background: color-mix(in oklab, #34d399 22%, transparent);
+  color: #a7f3d0;
+}
+
+.code-studio-operate .cs-gate-pill[data-status="stale"],
+.code-studio-operate .cs-gate-pill[data-status="blocked"] {
+  background: color-mix(in oklab, #fbbf24 22%, transparent);
+  color: #fde68a;
+}
+
+.code-studio-operate .cs-gate-pill[data-status="syntax"] {
+  background: color-mix(in oklab, #f87171 24%, transparent);
+  color: #fecaca;
+}
+
+.code-studio-operate .cs-editor-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 12px 16px 0;
+}
+
+.code-studio-operate .cs-editor-tool-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.code-studio-operate .cs-editor-body {
+  padding: 12px 16px 0;
+  min-width: 0;
+}
+
+/* Read as an editor even for a two-line body. */
+.code-studio-operate .cs-editor-body .python-line-editor {
+  min-height: 15rem;
+  max-height: 32rem;
+}
+
+.code-studio-operate .cs-actionbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 14px 16px 0;
+}
+
+.code-studio-operate .cs-hint {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--subtle);
+}
+
+.code-studio-operate .cs-hint > span {
+  margin-left: 2px;
+}
+
+@media (min-width: 640px) {
+  .code-studio-operate .cs-hint {
+    margin-left: auto;
+  }
+}
+
+/* No hardware keyboard hint on touch-only devices. */
+@media (hover: none) and (pointer: coarse) {
+  .code-studio-operate .cs-hint {
+    display: none;
+  }
+}
+
+.code-studio-operate .cs-idle {
+  margin: 0;
+  max-width: 68ch;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.code-studio-operate .cs-press {
+  transition:
+    transform var(--cs-press-ms) var(--cs-ease-out),
+    background-color var(--cs-state-ms) ease,
+    border-color var(--cs-state-ms) ease;
+}
+
+.code-studio-operate .cs-press:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.code-studio-operate .cs-press:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.code-studio-operate .cs-block-reason {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.code-studio-operate .cs-block-reason svg {
+  margin-top: 2px;
+  color: var(--subtle);
+}
+
+.code-studio-operate .cs-editor > .cs-block-reason {
+  padding: 10px 16px 0;
+}
+
+.code-studio-operate .cs-results {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.code-studio-operate .cs-results:empty {
+  padding: 0 0 16px;
+}
+
+.code-studio-operate .cs-test {
+  display: grid;
+  gap: 8px;
+}
+
+.code-studio-operate .cs-muted-line {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ---------------- Result panels ---------------- */
+
+.code-studio-operate .cs-result {
+  --cs-tone: var(--success);
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px 12px 16px;
+  border-radius: var(--cs-radius-sm);
+  background: color-mix(in oklab, var(--cs-tone) 8%, var(--surface-raised));
+  box-shadow: inset 3px 0 0 var(--cs-tone);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.code-studio-operate .cs-result[data-tone="blocked"],
+.code-studio-operate .cs-result[data-tone="stale"] {
+  --cs-tone: var(--warning);
+}
+
+.code-studio-operate .cs-result[data-tone="error"] {
+  --cs-tone: var(--danger);
+}
+
+.code-studio-operate .cs-result-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.code-studio-operate .cs-result-title svg {
+  color: var(--cs-tone);
+}
+
+.code-studio-operate .cs-result-body {
+  display: grid;
+  gap: 6px;
+  padding-left: 24px;
+}
+
+.code-studio-operate .cs-result-body p {
+  margin: 0;
+}
+
+.code-studio-operate .cs-next {
+  color: var(--ink);
+}
+
+.code-studio-operate .cs-snapshot {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.code-studio-operate .cs-rule-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.code-studio-operate .cs-rule-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+.code-studio-operate .cs-rule-line {
+  font-size: 12px;
+  color: var(--subtle);
+}
+
+/* ---------------- Side panels ---------------- */
+
+.code-studio-operate .cs-side {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.code-studio-operate .cs-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--cs-hair);
+  border-radius: var(--cs-radius);
+  background: var(--surface-raised);
+}
+
+.code-studio-operate .cs-panel-lede {
+  margin: -6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.code-studio-operate .cs-panel-lede-strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.code-studio-operate .cs-fields {
+  display: grid;
+  gap: 12px;
+}
+
+.code-studio-operate .cs-checklist {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--cs-radius-sm);
+  background: var(--surface-muted);
+  list-style: none;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.code-studio-operate .cs-check {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.code-studio-operate .cs-check-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1.5px var(--cs-hair-strong);
+}
+
+.code-studio-operate .cs-check[data-ok="true"] {
+  color: var(--ink);
+}
+
+.code-studio-operate .cs-check[data-ok="true"] .cs-check-mark {
+  background: var(--success);
+  box-shadow: none;
+  color: var(--on-success);
+}
+
+.code-studio-operate .cs-check[data-ok="failed"] {
+  color: var(--ink);
+}
+
+.code-studio-operate .cs-check[data-ok="failed"] .cs-check-mark {
+  background: var(--danger);
+  box-shadow: none;
+  color: var(--on-danger);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.code-studio-operate .cs-check[data-ok="optional"] .cs-check-mark {
+  box-shadow: none;
+  border: 1.5px dashed var(--cs-hair-strong);
+}
+
+.code-studio-operate .cs-symbols {
+  display: grid;
+  margin: 0;
+  border-top: 1px solid var(--cs-hair);
+}
+
+.code-studio-operate .cs-symbol {
+  display: grid;
+  grid-template-columns: minmax(84px, auto) minmax(0, 1fr);
+  gap: 4px 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--cs-hair);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.code-studio-operate .cs-symbol:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.code-studio-operate .cs-symbol dt .cs-code {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.code-studio-operate .cs-symbol dd {
+  margin: 0;
+  color: var(--muted);
+}
+
+/* ---------------- Reduced motion ---------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .code-studio-operate .cs-press:active:not(:disabled) {
+    transform: none;
+  }
+  .code-studio-operate .cs-press,
+  .code-studio-operate .cs-rail-step,
+  .code-studio-operate .cs-path-option,
+  .code-studio-operate .cs-gate-pill {
+    transition-duration: 0.01ms;
+  }
+}
+
+
+.code-studio-operate.op-studio-shell {
+  max-width: 72rem;
+}
+.code-studio-operate .op-paper {
+  gap: 14px;
+}

@@ -89,7 +89,7 @@ export function OrderBatchPanel({ connectionId }: Props) {
       });
       setJob(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Dry-run failed");
+      setError(err instanceof Error ? err.message : "Test run failed");
     } finally {
       setBusy(false);
     }
@@ -130,7 +130,7 @@ export function OrderBatchPanel({ connectionId }: Props) {
   return (
     <div className="space-y-4" data-testid="order-batch-panel">
       <Callout variant="info" title="Preview ≠ confirmed">
-        Dry-run resolves partners/products via public RPC. Apply creates{" "}
+        Test run resolves partners/products via public RPC. Apply creates{" "}
         <strong>draft</strong> <code className="text-xs">sale.order</code> /{" "}
         <code className="text-xs">purchase.order</code> rows. Never auto-confirms.
       </Callout>
@@ -199,7 +199,7 @@ export function OrderBatchPanel({ connectionId }: Props) {
                 Map
               </Button>
               <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => void runDryRun()}>
-                Dry-run
+                Test run
               </Button>
             </div>
           </Card>

@@ -45,14 +45,14 @@ export default function PricingPage() {
           <div className="inline-flex rounded-lg border border-border-subtle p-1">
             <button
               type="button"
-              className={`rounded-md px-3 py-1 text-sm ${!annual ? "bg-accent text-white" : "text-muted"}`}
+              className={`rounded-md px-3 py-1 text-sm ${!annual ? "bg-accent text-on-accent" : "text-muted"}`}
               onClick={() => setAnnual(false)}
             >
               Monthly
             </button>
             <button
               type="button"
-              className={`rounded-md px-3 py-1 text-sm ${annual ? "bg-accent text-white" : "text-muted"}`}
+              className={`rounded-md px-3 py-1 text-sm ${annual ? "bg-accent text-on-accent" : "text-muted"}`}
               onClick={() => setAnnual(true)}
             >
               Annual (2 months free)

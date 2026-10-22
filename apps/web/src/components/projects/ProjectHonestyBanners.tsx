@@ -32,7 +32,7 @@ export function ProjectHonestyBanners({
         </ul>
       </Callout>
       {mutateBlocked ? (
-        <Callout variant="warning" title="Mutations blocked" testId="projects-mutate-blocked">
+        <Callout variant="warning" title="Changes are switched off" testId="projects-mutate-blocked">
           <p>{mutateBlocked}</p>
         </Callout>
       ) : null}

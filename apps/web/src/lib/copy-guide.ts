@@ -12,9 +12,9 @@ export const EMPTY_STATES = {
   snapshots:
     "Snapshots are restore points taken before risky changes. They appear here automatically — or take one now.",
   draftStudio:
-    "Talk in plain language at any grain — a field on invoices, a feature under Sales, or a full practice app. Stock Odoo first; custom models only for the residual. Nothing touches Odoo until you Apply.",
+    "Talk in plain language at any grain: a field on invoices, a feature under Sales, or a full practice app. Stock Odoo first; custom models only for the residual. Nothing touches Odoo until you Apply.",
   jobAutopilot:
-    "Drop a brief and client files. Autopilot installs stock Odoo apps on a sandbox, customizes only the residual, loads data after a dry-run, then RPC-smokes quote→confirm→invoice (and Purchase/POS/CRM probes when those apps are in the packet). After smoke, download the Config Packet and apply the delta on the client connection with confirm — Autopilot itself still refuses production. Completeness 10.0 is not this bar.",
+    "Drop a brief and client files. Autopilot installs stock Odoo apps on a sandbox, customizes only the residual, loads data after a test run, then RPC-smokes quote→confirm→invoice (and Purchase/POS/CRM probes when those apps are in the packet). After smoke, download the config summary and apply the delta on the client connection with confirm — Autopilot itself still refuses production. Completeness 10.0 is not this bar.",
   bulkSuite:
     "Run permitted operations across hundreds of records at once — every record is checked by Odoo's own rules. Pick a model to start.",
   expert:
@@ -22,9 +22,9 @@ export const EMPTY_STATES = {
   journal:
     "Snapshots are restore points taken before risky changes. They appear here automatically — or take one now.",
   projects:
-    "Create a draft from a template or start blank, then review vs live and apply on a sandbox. Completeness is not go-live. Promote stays human.",
+    "Create a draft from a template or start blank, then review vs live and apply on a sandbox. Completeness checks structure; it is not go-live. Publishing stays a step you confirm.",
   moduleSpec:
-    "Load a Draft Studio handoff, import a zip, or add an x_ model. Completeness is hygiene — not Certification or Autopilot.",
+    "Load a Draft Studio handoff, import a zip, or add an x_ model. Completeness is hygiene, not Certification or Autopilot.",
 } as const;
 
 export const REVERSIBILITY = {
@@ -36,11 +36,11 @@ export const REVERSIBILITY = {
 /** Three independent bars — never fuse Completeness with Certification or Autopilot. */
 export const SCORE_BARS = {
   completeness:
-    "Completeness is ModuleSpec hygiene (fields, views, ACL) — not go-live.",
+    "Completeness is app plan hygiene (fields, views, ACL), not go-live.",
   certification:
-    "Certification is the ship bar. Option A (PDF/QR/Pay/Python) stays Reject until sandbox prove.",
+    "Certification is the ship bar. Custom code (PDF/QR/Pay/Python) stays Reject until a test-copy prove.",
   autopilot:
-    "Autopilot done-bar is RPC process smoke on the Job page — separate from Completeness and Cert. Promote stays human.",
+    "Autopilot done-bar is RPC process smoke on the Job page, separate from Completeness and Cert. Publishing stays a step you confirm.",
   expertFix:
-    "Expert closer repairs this JSON hygiene. It does not run Option A sandbox smoke or Autopilot, and will not raise Certification to Production.",
+    "Expert closer repairs this JSON hygiene. It does not run a custom-code test-copy smoke or Autopilot, and will not raise Certification to Production.",
 } as const;

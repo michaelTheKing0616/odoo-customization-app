@@ -1,0 +1,642 @@
+/* ============================================================
+   UI-CONNECT / UI-S-08 Connect — App Studio / Designer craft bar
+   Paper-as-object on quiet pasteboard. One teal primary.
+   Amber only when risk is real (Observer / auth failure).
+   No stacked what/why/next banner template. No purple / orange CTAs.
+   Cinnabar never on buttons. Playbook + ingenium-v2 + premier density.
+   ============================================================ */
+
+.connect-operate {
+  --cn-radius: 16px;
+  --cn-radius-sm: 10px;
+  --cn-hair: color-mix(in oklab, var(--border-subtle) 80%, transparent);
+  --cn-basalt: #1a1c21;
+  --cn-limestone: #f3f4f6;
+  --cn-paper: color-mix(in oklab, #f7f5f0 55%, var(--surface-raised));
+  --cn-desk: color-mix(in oklab, var(--ink) 3.5%, var(--surface));
+  --cn-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --cn-state: 150ms;
+  --cn-press: 160ms;
+  --cn-caution: #b45309;
+  --cn-caution-subtle: color-mix(in oklab, #f59e0b 12%, var(--cn-paper));
+  --cn-shadow:
+    0 0 0 1px color-mix(in oklab, var(--ink) 6%, transparent),
+    0 1px 2px -1px color-mix(in oklab, var(--ink) 6%, transparent),
+    0 18px 40px -24px color-mix(in oklab, var(--ink) 22%, transparent);
+  font-variant-numeric: tabular-nums;
+  max-width: 44rem;
+  margin-inline: auto;
+  overflow-x: clip;
+  box-sizing: border-box;
+  -webkit-font-smoothing: antialiased;
+}
+
+html.dark .connect-operate,
+.dark .connect-operate {
+  --cn-basalt: #f3f4f6;
+  --cn-limestone: #1a1c21;
+  --cn-paper: color-mix(in oklab, var(--surface-raised) 92%, #1a1c21);
+  --cn-desk: color-mix(in oklab, var(--ink) 4%, var(--surface));
+  --cn-caution: #f59e0b;
+  --cn-caution-subtle: color-mix(in oklab, #f59e0b 14%, var(--cn-paper));
+  --cn-shadow:
+    0 0 0 1px color-mix(in oklab, #fff 8%, transparent),
+    0 1px 2px -1px color-mix(in oklab, #000 40%, transparent),
+    0 22px 48px -28px color-mix(in oklab, #000 55%, transparent);
+}
+
+.connect-operate-desk {
+  min-height: 100dvh;
+  background:
+    radial-gradient(
+      120% 80% at 50% -10%,
+      color-mix(in oklab, var(--accent) 6%, transparent),
+      transparent 55%
+    ),
+    var(--cn-desk);
+  padding: 28px 16px 64px;
+}
+
+@media (min-width: 640px) {
+  .connect-operate-desk {
+    padding: 40px 24px 80px;
+  }
+}
+
+.connect-operate .cn-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.connect-operate .cn-topbar-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 13px;
+}
+
+.connect-operate .cn-topbar-links a {
+  color: var(--muted);
+  text-decoration: none;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  padding: 0 2px;
+  transition: color var(--cn-state) var(--cn-ease-out);
+}
+.connect-operate .cn-topbar-links a:hover {
+  color: var(--ink);
+}
+.connect-operate .cn-topbar-links a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Hero brief — App Studio premier density */
+.connect-operate .cn-hero {
+  max-width: 36rem;
+  margin-bottom: 28px;
+}
+
+.connect-operate .cn-hero h1 {
+  margin: 0;
+  font-size: clamp(1.75rem, 3.2vw, 2.375rem);
+  letter-spacing: -0.03em;
+  line-height: 1.12;
+  font-weight: 600;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.connect-operate .cn-hero p {
+  margin: 12px 0 0;
+  max-width: 34rem;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+/* Quiet stage dots (not firmware pills) */
+.connect-operate .cn-stages {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+}
+
+.connect-operate .cn-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+}
+
+.connect-operate .cn-stage[data-state="current"] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.connect-operate .cn-stage[data-state="done"] {
+  color: var(--ink);
+}
+
+.connect-operate .cn-stage-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--ink) 14%, transparent);
+  transition: background-color var(--cn-state) var(--cn-ease-out),
+    transform var(--cn-state) var(--cn-ease-out);
+}
+
+.connect-operate .cn-stage[data-state="current"] .cn-stage-dot {
+  background: var(--accent);
+  transform: scale(1.15);
+}
+
+.connect-operate .cn-stage[data-state="done"] .cn-stage-dot {
+  background: var(--success);
+}
+
+.connect-operate .cn-stage-sep {
+  width: 20px;
+  height: 1px;
+  background: var(--cn-hair);
+  flex: 0 0 auto;
+}
+
+/* Paper sheet — the object */
+.connect-operate .cn-paper {
+  background: var(--cn-paper);
+  border-radius: var(--cn-radius);
+  box-shadow: var(--cn-shadow);
+  padding: 22px 20px 20px;
+  position: relative;
+}
+
+@media (min-width: 640px) {
+  .connect-operate .cn-paper {
+    padding: 28px 28px 24px;
+  }
+}
+
+.connect-operate .cn-paper::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 1px 0 color-mix(in oklab, #fff 55%, transparent);
+}
+
+html.dark .connect-operate .cn-paper::before,
+.dark .connect-operate .cn-paper::before {
+  box-shadow: inset 0 1px 0 color-mix(in oklab, #fff 8%, transparent);
+}
+
+/* Observer chip — real risk, one line, not a twin banner */
+.connect-operate .cn-observer {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 10px 12px;
+  border-radius: var(--cn-radius-sm);
+  background: var(--cn-caution-subtle);
+  border: 1px solid color-mix(in oklab, var(--cn-caution) 22%, transparent);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.connect-operate .cn-observer-mark {
+  width: 6px;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--cn-caution);
+  flex: 0 0 auto;
+}
+
+.connect-operate .cn-secret-tip {
+  margin: -4px 0 14px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.connect-operate .cn-field-grid {
+  display: grid;
+  gap: 14px;
+}
+
+@media (min-width: 640px) {
+  .connect-operate .cn-field-grid.cn-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px 16px;
+  }
+}
+
+/* Inputs denser inside paper */
+.connect-operate .cn-paper input {
+  background: color-mix(in oklab, var(--surface) 70%, transparent);
+  min-height: 40px;
+  font-size: 16px; /* stop iOS zoom */
+  transition: border-color var(--cn-state) ease,
+    box-shadow var(--cn-state) var(--cn-ease-out),
+    background-color var(--cn-state) ease;
+}
+
+@media (min-width: 640px) {
+  .connect-operate .cn-paper input {
+    font-size: 14px;
+  }
+}
+
+.connect-operate .cn-paper input:focus-visible {
+  background: var(--surface);
+}
+
+.connect-operate .cn-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--cn-hair);
+}
+
+.connect-operate .cn-actions-hint {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+  max-width: 22rem;
+}
+
+.connect-operate .cn-actions .btn-primary,
+.connect-operate .cn-actions button[data-testid="connect-add-btn"] {
+  min-height: 44px;
+  min-width: 11rem;
+  border-radius: 10px;
+}
+
+.connect-operate .cn-actions button:active:not(:disabled) {
+  transform: scale(0.97);
+  transition: transform var(--cn-press) var(--cn-ease-out);
+}
+
+/* Probe progress — inside paper, not a Callout stack */
+.connect-operate .cn-probe {
+  margin: 16px 0 0;
+  padding: 14px 14px 12px;
+  border-radius: var(--cn-radius-sm);
+  background: color-mix(in oklab, var(--accent) 7%, transparent);
+  border: 1px solid color-mix(in oklab, var(--accent) 22%, transparent);
+}
+
+.connect-operate .cn-probe-label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.connect-operate .cn-probe-track {
+  margin-top: 10px;
+  height: 3px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--accent) 16%, transparent);
+  overflow: hidden;
+}
+
+.connect-operate .cn-probe-fill {
+  height: 100%;
+  width: 40%;
+  border-radius: inherit;
+  background: var(--accent);
+  animation: cn-probe-slide 1.4s var(--cn-ease-out) infinite;
+}
+
+.connect-operate .cn-probe-stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.connect-operate .cn-probe-stages li[data-state="current"] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.connect-operate .cn-probe-stages li[data-state="done"] {
+  color: var(--ink);
+}
+
+@keyframes cn-probe-slide {
+  0% { transform: translateX(-40%); }
+  100% { transform: translateX(280%); }
+}
+
+/* Error / success panels — only when state demands */
+.connect-operate .cn-panel-state {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: var(--cn-radius-sm);
+  border: 1px solid var(--cn-hair);
+  background: color-mix(in oklab, var(--ink) 2%, transparent);
+}
+
+.connect-operate .cn-panel-state[data-tone="danger"] {
+  background: color-mix(in oklab, var(--danger) 7%, transparent);
+  border-color: color-mix(in oklab, var(--danger) 28%, transparent);
+}
+
+.connect-operate .cn-panel-state[data-tone="success"] {
+  background: color-mix(in oklab, var(--success) 8%, transparent);
+  border-color: color-mix(in oklab, var(--success) 28%, transparent);
+}
+
+.connect-operate .cn-panel-state-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+
+.connect-operate .cn-panel-state-body {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.connect-operate .cn-panel-state-next {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.connect-operate .cn-panel-state-next strong {
+  font-weight: 600;
+}
+
+/* Checklist denser, less card-in-card */
+.connect-operate [data-testid="connect-checklist"] {
+  border: 1px solid var(--cn-hair) !important;
+  box-shadow: none !important;
+  background: color-mix(in oklab, var(--ink) 2%, transparent) !important;
+  border-radius: var(--cn-radius-sm) !important;
+  padding: 12px 14px !important;
+}
+
+.connect-operate [data-testid="connect-api-key-guide"] {
+  border-radius: var(--cn-radius-sm) !important;
+  box-shadow: none !important;
+}
+
+/* Saved connections — secondary paper, dense rows */
+.connect-operate .cn-saved {
+  margin-top: 28px;
+}
+
+.connect-operate .cn-saved-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.connect-operate .cn-saved-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+
+.connect-operate .cn-saved-head p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.connect-operate .cn-saved-paper {
+  background: var(--cn-paper);
+  border-radius: var(--cn-radius);
+  box-shadow: var(--cn-shadow);
+  overflow: hidden;
+}
+
+.connect-operate .cn-saved-empty {
+  padding: 28px 22px;
+  text-align: left;
+}
+
+.connect-operate .cn-saved-empty h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.connect-operate .cn-saved-empty p {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+  max-width: 36ch;
+}
+
+.connect-operate .cn-row {
+  padding: 16px 18px;
+  border-top: 1px solid var(--cn-hair);
+  transition: background-color var(--cn-state) ease;
+}
+
+.connect-operate .cn-row:first-child {
+  border-top: 0;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .connect-operate .cn-row:hover {
+    background: color-mix(in oklab, var(--accent) 4%, transparent);
+  }
+}
+
+.connect-operate .cn-row-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.connect-operate .cn-row-title p {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.connect-operate .cn-row-meta {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
+.connect-operate .cn-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.connect-operate .cn-success-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.connect-operate .cn-success-list {
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.connect-operate .cn-success-list li {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.connect-operate .cn-success-list li span:first-child {
+  color: var(--accent);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.connect-operate .cn-success-list strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connect-operate .cn-probe-fill {
+    animation: none;
+    width: 60%;
+  }
+  .connect-operate .cn-actions button:active:not(:disabled) {
+    transform: none;
+  }
+  .connect-operate .cn-stage-dot {
+    transition: none;
+  }
+}
+
+/* ----- Density polish: flatten nested checklist / guide cards ----- */
+.connect-operate [data-testid="connect-checklist"] ol {
+  display: grid;
+  gap: 6px;
+}
+
+.connect-operate [data-testid="connect-checklist"] li {
+  border: 0 !important;
+  background: transparent !important;
+  padding: 4px 0 !important;
+  border-radius: 0 !important;
+}
+
+.connect-operate [data-testid="connect-checklist"] li[data-done="true"] {
+  opacity: 0.92;
+}
+
+.connect-operate [data-testid="connect-api-key-guide"] ol > li {
+  border: 0 !important;
+  border-bottom: 1px solid var(--cn-hair) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  padding: 10px 0 !important;
+}
+
+.connect-operate [data-testid="connect-api-key-guide"] ol > li:last-child {
+  border-bottom: 0 !important;
+}
+
+.connect-operate [data-testid="connect-host-capabilities"] {
+  display: none; /* mid-form host Callout demoted; summary surfaces capabilities after save */
+}
+
+/* Checklist as quiet progress, not a nested card */
+.connect-operate [data-testid="connect-checklist"] {
+  border: 0 !important;
+  background: transparent !important;
+  padding: 0 0 4px !important;
+  margin-bottom: 4px;
+  box-shadow: none !important;
+}
+.connect-operate [data-testid="connect-checklist"] > div:first-child p.text-xs {
+  display: none; /* drop "Live guide for Online…" helper under paper */
+}
+.connect-operate [data-testid="connect-api-key-guide"] {
+  border-color: var(--cn-hair) !important;
+  background: color-mix(in oklab, var(--ink) 2%, transparent) !important;
+}
+.connect-operate [data-testid="connect-api-key-guide"][class*="warning"],
+.connect-operate [data-testid="connect-api-key-guide"].border-warning\/40 {
+  /* keep Online emphasis via existing classes; tone via caution when open */
+}
+
+.cn-health {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.cn-health::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--warning, currentColor);
+}
+.cn-health[data-ok="true"]::before { background: var(--success, currentColor); }
+
+.cn-hosting { border: 0; padding: 0; margin: 0 0 12px; }
+.cn-hosting legend { font-size: 13px; font-weight: 500; color: var(--ink); margin-bottom: 6px; }
+.cn-hosting-options { display: inline-flex; gap: 4px; padding: 3px; border-radius: 10px; background: var(--surface-sunken, var(--surface)); border: 1px solid var(--border-subtle, var(--border)); }
+.cn-hosting-options button {
+  padding: 6px 12px; border-radius: 7px; font-size: 13px; color: var(--muted);
+  transition: background-color var(--dur-fast) var(--ease-out-strong), color var(--dur-fast) var(--ease-out-strong);
+}
+.cn-hosting-options button[data-active="true"] { background: var(--surface-raised); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
+.cn-hosting-options button:focus-visible { outline: 2px solid var(--accent7); outline-offset: 1px; }
+.cn-hosting-note { font-size: 12px; color: var(--muted); margin: 0 0 6px; }

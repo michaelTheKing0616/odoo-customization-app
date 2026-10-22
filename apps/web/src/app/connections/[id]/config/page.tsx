@@ -5,7 +5,6 @@ import { api } from "@/lib/api";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { Callout } from "@/components/ui/Callout";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { PageHeader } from "@/components/ui/layout-primitives";
 import { Disclosure } from "@/components/ui/Disclosure";
 import { ConfigCommandCenter } from "@/components/config/ConfigCommandCenter";
@@ -13,9 +12,16 @@ import { ConfigAtlasBrowser } from "@/components/config/ConfigAtlasBrowser";
 import { ConfigCompanySequences } from "@/components/config/ConfigCompanySequences";
 import { ConfigMailPaperDefaults } from "@/components/config/ConfigMailPaperDefaults";
 import { ConfigScheduledI18n } from "@/components/config/ConfigScheduledI18n";
+import { ConfigErrorNotice } from "@/components/config/ConfigErrorNotice";
 import { CONFIRM_PHRASE } from "@/components/config/config-types";
 import { useConfigPage } from "@/components/config/use-config-page";
 import { InstanceFingerprintCard } from "@/components/overview/InstanceFingerprintCard";
+import {
+  PAGE_DESCRIPTION,
+  PAGE_TITLE,
+  sanitizeConfigCopy,
+} from "@/lib/configScreen";
+import "@/components/config/config-operate.css";
 
 export default function ConfigPage() {
   const params = useParams<{ id: string }>();
@@ -23,26 +29,33 @@ export default function ConfigPage() {
   const vm = useConfigPage(connectionId);
 
   return (
-    <div className="mx-auto max-w-5xl" data-testid="config-page">
-      <PageHeader
-        title="Instance Config"
-        description="Recipe Command Center · Day-1 · numbering · apps · expert controls"
-      />
+    <div className="config-operate" data-testid="config-page">
+      <PageHeader title={PAGE_TITLE} description={PAGE_DESCRIPTION} />
       <VersionAwarenessBanner capabilities={vm.connection?.capabilities} />
 
       <InstanceFingerprintCard connectionId={connectionId} context="config" />
 
       <ConfigCommandCenter connectionId={connectionId} />
-      <div className="mt-10" data-testid="config-atlas-section">
-        <h2 className="mb-3 text-ui-display font-semibold text-ink">Config Atlas</h2>
+
+      <div className="cfg-atlas" data-testid="config-atlas-section">
+        <h2 className="cfg-panel-title">Config Atlas</h2>
+        <p className="cfg-panel-sub">
+          Browse intents by class. Preview is not posted or confirmed. L3 lock dates need confirm.
+        </p>
         <ConfigAtlasBrowser connectionId={connectionId} />
       </div>
 
-
-      {vm.error ? <ErrorNotice message={vm.error} className="mt-4" /> : null}
+      {vm.error ? (
+        <ConfigErrorNotice
+          className="mt-4"
+          message={vm.error}
+          context="load"
+          onDismiss={() => vm.setError(null)}
+        />
+      ) : null}
       {vm.notice ? (
         <Callout variant="info" title="Notice" className="mt-4">
-          {vm.notice}
+          {sanitizeConfigCopy(vm.notice)}
         </Callout>
       ) : null}
 
@@ -55,8 +68,10 @@ export default function ConfigPage() {
         >
           {vm.mailHealth.ok
             ? `${vm.mailHealth.smtp_servers} outgoing mail server(s), ${vm.mailHealth.alias_domains} alias domain(s). Passwords stay in Odoo.`
-            : vm.mailHealth.warnings[0] ||
-              "No outgoing mail server. Paste SMTP in Odoo — this app never stores the password."}
+            : sanitizeConfigCopy(
+                vm.mailHealth.warnings[0] ||
+                  "No outgoing mail server. Paste SMTP in Odoo - this app never stores the password.",
+              )}
         </Callout>
       ) : null}
 

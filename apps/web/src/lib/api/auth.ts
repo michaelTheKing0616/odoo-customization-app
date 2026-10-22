@@ -62,6 +62,15 @@ export type ApiKeyRow = {
   last_used_at: string | null;
 };
 
+export type ConnectionGrantRow = {
+  id: string;
+  connection_id: string;
+  user_id: string;
+  email: string;
+  role: string;
+  created_at: string | null;
+};
+
 export const authApi = {
   authStatus: () => request<AuthStatus>("/api/auth/status"),
   accountSignup: (body: { email: string; password: string; workspace_name?: string }) =>
@@ -147,4 +156,21 @@ export const authApi = {
     request<void>(`/api/auth/keys/${keyId}`, { method: "DELETE" }),
   listAuditLogs: (limit = 100) =>
     request<AuditLogRow[]>(`/api/audit/logs?limit=${limit}`),
+  listConnectionGrants: (connectionId: string) =>
+    request<ConnectionGrantRow[]>(
+      `/api/accounts/connection-grants?connection_id=${encodeURIComponent(connectionId)}`,
+    ),
+  createConnectionGrant: (body: {
+    connection_id: string;
+    email: string;
+    role: "client_approver" | "client_viewer";
+  }) =>
+    request<{ id: string; role: string; connection_id: string }>(
+      "/api/accounts/connection-grants",
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  deleteConnectionGrant: (grantId: string) =>
+    request<void>(`/api/accounts/connection-grants/${encodeURIComponent(grantId)}`, {
+      method: "DELETE",
+    }),
 };

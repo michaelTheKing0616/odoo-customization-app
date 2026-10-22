@@ -2,7 +2,11 @@
 
 import type { ReactNode } from "react";
 
-/** Right-rail property inspector shell for Designer (Odoo-familiar). */
+/**
+ * Right-rail property inspector shell for Designer (Odoo-familiar).
+ * UI-S-12: renders inside the basalt rail; the drawer-in is the one animated
+ * surface in the designer (≤300ms, reduced motion fades only).
+ */
 
 export function PropsInspector({
   title,
@@ -12,9 +16,9 @@ export function PropsInspector({
   children: ReactNode;
 }) {
   return (
-    <aside className="odoo-sheet p-3">
-      <h3 className="text-sm font-semibold text-[var(--odoo-primary)]">{title}</h3>
-      <div className="mt-2 space-y-2 text-sm">{children}</div>
-    </aside>
+    <section className="designer-drawer-in" data-testid="designer-props-inspector">
+      <h3 className="designer-props-inspector-title">{title}</h3>
+      <div className="mt-3 space-y-3 text-sm">{children}</div>
+    </section>
   );
 }

@@ -16,7 +16,7 @@ describe("DraftStudioStageRail", () => {
       /Completeness is not Cert/,
     );
     expect(screen.getByTestId("draft-studio-stage-hint").textContent).toMatch(
-      /Promote stays human/,
+      /Publishing stays a step you confirm/,
     );
   });
 

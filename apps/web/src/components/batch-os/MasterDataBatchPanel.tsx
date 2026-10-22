@@ -111,7 +111,7 @@ export function MasterDataBatchPanel({ connectionId, initialKind = "partners" }:
       });
       setJob(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Dry-run failed");
+      setError(err instanceof Error ? err.message : "Test run failed");
     } finally {
       setBusy(false);
     }
@@ -152,7 +152,7 @@ export function MasterDataBatchPanel({ connectionId, initialKind = "partners" }:
   return (
     <div className="space-y-4" data-testid="master-data-batch-panel">
       <Callout variant="info" title="Preview ≠ written">
-        Dry-run proposes create/update via public RPC. Apply writes{" "}
+        Test run proposes create/update via public RPC. Apply writes{" "}
         <code className="text-xs">res.partner</code> /{" "}
         <code className="text-xs">product.template</code>. Dedup by VAT/email/ref/name
         (partners) or code/barcode/name (products).
@@ -268,13 +268,13 @@ export function MasterDataBatchPanel({ connectionId, initialKind = "partners" }:
                 onClick={() => void runDryRun()}
                 data-testid="master-data-dry-run"
               >
-                Dry-run
+                Test run
               </Button>
             </div>
           </Card>
 
           <Callout variant="warning" title="Preview ≠ written" data-testid="master-data-honesty">
-            {job.honesty || "Dry-run never writes partners/products."}
+            {job.honesty || "Test run never writes partners/products."}
           </Callout>
 
           {job.phase === "dry_run" || job.phase === "applied" ? (

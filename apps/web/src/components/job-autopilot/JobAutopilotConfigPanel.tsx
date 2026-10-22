@@ -2,7 +2,7 @@
 
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/layout-primitives";
+import { Card, EmptyState } from "@/components/ui/layout-primitives";
 import type { ConfigPacket, ConfigPacketDiff, InstanceFingerprint } from "@/lib/api";
 import type { JobAutopilotBusy } from "@/lib/job-autopilot-journey";
 import { checklistOpenHref } from "@/lib/odoo-urls";
@@ -34,16 +34,18 @@ export function JobAutopilotConfigPanel({
 }: JobAutopilotConfigPanelProps) {
   const checklist = configDiff?.checklist || configPacket?.checklist || [];
   return (
-    <Card className="p-5" data-testid="job-config-packet">
-      <h2 className="text-lg font-semibold text-ink">Config Packet — client replay</h2>
-      <p className="mt-1 text-sm text-muted">
-        Autopilot never writes production. After sandbox smoke, fingerprint the client —
-        a receipt of that DB — then dry-run and apply with the confirm phrase. SMTP and
-        payment keys stay a paste-in-Odoo checklist.
+    <Card className="job-config-card p-5" data-testid="job-config-packet">
+      <h2 className="text-lg font-semibold tracking-tight text-ink">
+        Config Packet: client replay
+      </h2>
+      <p className="mt-1 max-w-[65ch] text-sm text-muted text-pretty">
+        Autopilot never writes production. After sandbox smoke, fingerprint the client (a
+        receipt of that DB), then test run and apply with the confirm phrase. SMTP and
+        payment keys stay a paste-in-Odoo checklist. This is not a live Python install.
       </p>
       {configPacket ? (
         <>
-          <p className="mt-3 text-sm">
+          <p className="mt-3 text-sm tabular-nums">
             sha256 {configPacket.sha256} · recipe v{configPacket.recipe_version} ·{" "}
             {configPacket.modules.length} module(s) · {configPacket.users.length} user(s)
           </p>
@@ -84,7 +86,12 @@ export function JobAutopilotConfigPanel({
           </ul>
         </>
       ) : (
-        <p className="mt-3 text-sm text-muted">Run Autopilot on the sandbox to emit a packet.</p>
+        <div className="mt-4" data-testid="job-config-empty">
+          <EmptyState
+            title="No config summary yet"
+            description="What: a replayable stock config receipt from the sandbox run. Why: so client DBs get modules, journals, and allowlisted Settings without Autopilot writing production. Next: Run Autopilot on the sandbox, then fingerprint and test run here."
+          />
+        </div>
       )}
       {fingerprint ? (
         <p className="mt-3 text-xs text-muted">
@@ -93,7 +100,7 @@ export function JobAutopilotConfigPanel({
           users.
         </p>
       ) : null}
-      {configDiff ? <p className="mt-2 text-sm">Dry-run: {configDiff.message}</p> : null}
+      {configDiff ? <p className="mt-2 text-sm">Test run: {configDiff.message}</p> : null}
       <div className="mt-4 flex flex-wrap gap-2">
         <Button
           type="button"
@@ -120,12 +127,14 @@ export function JobAutopilotConfigPanel({
           loading={busy === "dryrun"}
           onClick={onDryRun}
         >
-          Dry-run packet
+          Test run packet
         </Button>
         <Button
           type="button"
+          variant="secondary"
           disabled={busy !== null || !configPacket}
           onClick={onApply}
+          data-testid="job-apply-packet"
         >
           Apply packet to target
         </Button>
@@ -133,6 +142,12 @@ export function JobAutopilotConfigPanel({
           Download packet JSON
         </Button>
       </div>
+      {configPacket ? (
+        <p className="mt-2 text-xs text-muted">
+          Apply opens a confirm dialog. Secrets are never written. Promote and Apply stay
+          human.
+        </p>
+      ) : null}
     </Card>
   );
 }

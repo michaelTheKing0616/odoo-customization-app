@@ -74,7 +74,7 @@ export function parseSelection(
       if (!Array.isArray(domain)) throw new Error("domain must be a list");
       return { domain };
     } catch {
-      throw new Error("Invalid domain JSON — use Odoo domain list, e.g. []");
+      throw new Error("Invalid domain JSON - use Odoo domain list, e.g. []");
     }
   }
   const ids = idsText

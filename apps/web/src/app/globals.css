@@ -3,7 +3,9 @@
 @import "../styles/globals/density.css";
 @import "../styles/globals/theme.css";
 @import "../styles/globals/base.css";
+@import "../styles/globals/touches.css";
 @import "../styles/globals/odoo-form.css";
+@import "../styles/globals/odoo-form-preview.css";
 @import "../styles/globals/widgets.css";
 @import "../styles/globals/code-block.css";
 @import "../styles/globals/loaders.css";

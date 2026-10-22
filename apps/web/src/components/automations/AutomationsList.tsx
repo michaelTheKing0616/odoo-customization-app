@@ -2,12 +2,10 @@
 
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card, EmptyState, Skeleton } from "@/components/ui/layout-primitives";
-import { IconAutomations } from "@/components/ui/icons";
-import { EMPTY_STATES } from "@/lib/copy-guide";
-import { triggerLabel } from "@/lib/automationForm";
+import { Skeleton } from "@/components/ui/layout-primitives";
+import { automationsEmptyGuide, triggerLabel, type AutomationStarter } from "@/lib/automationForm";
 import type { AutomationRow } from "@/lib/api";
-import { cn } from "@/lib/cn";
+import { AutomationsStateGuide } from "./AutomationsStateGuide";
 
 type AutomationsListProps = {
   rows: AutomationRow[];
@@ -18,6 +16,8 @@ type AutomationsListProps = {
   onQueryChange: (query: string) => void;
   onSelect: (row: AutomationRow) => void;
   onCreate: () => void;
+  starters?: AutomationStarter[];
+  onStarter?: (s: AutomationStarter) => void;
 };
 
 export function AutomationsList({
@@ -29,62 +29,85 @@ export function AutomationsList({
   onQueryChange,
   onSelect,
   onCreate,
+  starters = [],
+  onStarter,
 }: AutomationsListProps) {
   const filtered = rows.filter((row) => {
     if (modelFilter && row.model !== modelFilter) return false;
     const hay = `${row.name} ${row.model} ${row.trigger}`.toLowerCase();
     return hay.includes(query.trim().toLowerCase());
   });
+  const emptyGuide = automationsEmptyGuide(rows.length > 0 || Boolean(query.trim()), query.trim());
 
   return (
     <div className="space-y-3" data-testid="automations-list">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-ui-title font-semibold text-ink">Rules</h2>
-        <Button type="button" variant="secondary" size="sm" onClick={onCreate}>
+      <div className="au-list-head">
+        <h2 className="au-list-title">Rules</h2>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={onCreate}
+          data-testid="automations-new"
+        >
           New automation
         </Button>
       </div>
-      <input
-        value={query}
-        onChange={(e) => onQueryChange(e.target.value)}
-        placeholder="Filter by name or model"
-        aria-label="Filter automations"
-        data-testid="automations-list-filter"
-        className="h-row w-full rounded-md border border-border-subtle bg-surface px-3 text-ui-body text-ink outline-none placeholder:text-muted focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
-      />
+      {rows.length > 0 || query ? (
+        <input
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          placeholder="Filter by name or model"
+          aria-label="Filter automations"
+          data-testid="automations-list-filter"
+          className="au-search"
+        />
+      ) : null}
       {modelFilter ? (
-        <p className="text-xs text-muted" data-testid="automations-model-filter">
+        <p className="text-ui-meta text-muted" data-testid="automations-model-filter">
           Showing {modelFilter}
         </p>
       ) : null}
       {loading ? (
         <div className="space-y-2" data-testid="automations-list-loading">
-          <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-14 w-full" />
+          <Skeleton className="h-14 w-full" />
+          <Skeleton className="h-14 w-full" />
         </div>
       ) : filtered.length === 0 ? (
-        <EmptyState
-          icon={<IconAutomations className="h-5 w-5" />}
-          title={rows.length === 0 ? "No automations yet" : "No matching rules"}
-          description={
-            rows.length === 0
-              ? EMPTY_STATES.automations
-              : "Try a different filter, or create a new automation."
-          }
-          action={
-            <Button type="button" variant="primary" size="sm" onClick={onCreate}>
+        <AutomationsStateGuide
+          testId="automations-empty"
+          guide={emptyGuide}
+          actions={
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={onCreate}
+              data-testid="automations-empty-create"
+            >
               Create automation
             </Button>
           }
-        />
+        >
+          {!rows.length && !query.trim() && onStarter && starters.length ? (
+            <div className="au-starters" data-testid="automations-starters">
+              <p className="text-ui-meta text-muted">Or start from your own data:</p>
+              {starters.map((st) => (
+                <Button key={st.model + st.trigger} type="button" variant="secondary" size="sm" onClick={() => onStarter(st)}>
+                  {st.label}
+                </Button>
+              ))}
+            </div>
+          ) : null}
+        </AutomationsStateGuide>
       ) : (
-        <ul className="space-y-2">
+        <ul className="au-list">
           {filtered.map((row) => {
             const selected = selectedId === row.id;
             return (
               <li key={row.id}>
-                <Card
+                <div
                   role="button"
                   tabIndex={0}
                   aria-pressed={selected}
@@ -96,24 +119,17 @@ export function AutomationsList({
                       onSelect(row);
                     }
                   }}
-                  className={cn(
-                    "cursor-pointer p-3 transition-colors hover:bg-surface-muted",
-                    selected && "border-accent bg-accent-subtle",
-                  )}
+                  className="au-list-row"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-ink">{row.name}</p>
-                      <p className="mt-0.5 truncate font-mono text-[11px] text-muted">
-                        {row.model}
-                      </p>
-                    </div>
-                    <Badge variant={row.active ? "success" : "default"}>
-                      {row.active ? "Active" : "Inactive"}
-                    </Badge>
+                  <div className="min-w-0">
+                    <p className="au-list-name">{row.name}</p>
+                    <p className="au-list-meta is-mono">{row.model}</p>
+                    <p className="au-list-meta">{triggerLabel(row.trigger)}</p>
                   </div>
-                  <p className="mt-2 text-xs text-muted">{triggerLabel(row.trigger)}</p>
-                </Card>
+                  <Badge variant={row.active ? "success" : "default"}>
+                    {row.active ? "Active" : "Inactive"}
+                  </Badge>
+                </div>
               </li>
             );
           })}

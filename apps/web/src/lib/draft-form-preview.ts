@@ -12,6 +12,8 @@ export type PreviewField = {
   relation?: string | null;
   /** Embedded list columns (checklist item+done / parts product+qty) */
   relationColumns?: Array<{ name: string; string: string; ttype?: string }> | null;
+  /** Marked when the relation's app was left out or deferred (integration_plan). */
+  deferred?: "left_out" | "deferred" | null;
 };
 
 export type PreviewGroup = {
@@ -178,6 +180,13 @@ function normalizeGroup(raw: unknown, index: number): PreviewGroup | null {
       selection: Array.isArray(fr.selection)
         ? (fr.selection as Array<{ value: string; label: string }>)
         : null,
+      // Keep relation info so many2one/one2many render as Odoo does (and deferred marks work).
+      relation: fr.relation != null ? String(fr.relation) : fr.comodel_name != null ? String(fr.comodel_name) : null,
+      relationColumns: Array.isArray(fr.relationColumns)
+        ? (fr.relationColumns as PreviewField["relationColumns"])
+        : Array.isArray(fr.relation_columns)
+          ? (fr.relation_columns as PreviewField["relationColumns"])
+          : null,
     });
   });
   return {
@@ -269,6 +278,13 @@ export function normalizeFormPreview(raw: unknown): PreviewFormView | null {
               name,
               string: String(fr.string || name),
               ttype: fr.ttype ? String(fr.ttype) : "char",
+              required: Boolean(fr.required),
+              relation: fr.relation != null ? String(fr.relation) : null,
+              relationColumns: Array.isArray(fr.relationColumns)
+                ? (fr.relationColumns as PreviewField["relationColumns"])
+                : Array.isArray(fr.relation_columns)
+                  ? (fr.relation_columns as PreviewField["relationColumns"])
+                  : null,
             });
           });
         }
@@ -302,7 +318,7 @@ export function normalizeFormPreview(raw: unknown): PreviewFormView | null {
     groups,
     notebooks,
     chatter: rec.chatter === "stub" ? "stub" : "hidden",
-    alerts: Array.isArray((raw as any).alerts) ? ((raw as any).alerts as PreviewFormAlert[]) : [],
+    alerts: Array.isArray(rec.alerts) ? (rec.alerts as PreviewFormAlert[]) : [],
     groupLayout: rec.groupLayout === "two-column" ? "two-column" : "stack",
   };
 }
@@ -484,8 +500,8 @@ function offersFromFindings(findings: AuthoringFinding[]): HostInstallOffer[] {
   return [...grouped.values()].map((offer) => ({
     ...offer,
     message:
-      `This Option A module inherits ${offer.models.join(", ")}. Those models come from the stock ${offer.label} app (${offer.module}). ` +
-      "Install it on this connection so the authoring gate can verify the inherit. That does not install this custom zip — Promote stays human.",
+      `This custom-code module extends ${offer.models.join(", ")}. Those models come from the stock ${offer.label} app (${offer.module}). ` +
+      "Install it on this connection so the authoring gate can verify the inherit. That does not install this custom zip — Publishing stays a step you confirm.",
   }));
 }
 

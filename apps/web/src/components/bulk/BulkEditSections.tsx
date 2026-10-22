@@ -1,37 +1,38 @@
+import { Button } from "@/components/ui/Button";
+import { DRY_RUN_CTA } from "@/lib/bulkSuiteScreen";
 import type { BulkSuitePageModel } from "./use-bulk-suite-page";
 
 export function BulkMassEditSection({ vm }: { vm: BulkSuitePageModel }) {
   return (
     <>
-      <p className="text-sm text-[var(--odoo-muted)]">
-        One write per batch — validates field types and protected-module policy before apply.
+      <p className="bu-panel-sub">
+        One write per batch. Validates field types and protected-module policy before apply.
       </p>
-      <label className="block text-sm">
+      <label className="bu-field">
         Values (JSON object)
         <textarea
-          className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-xs"
           rows={3}
           value={vm.valuesText}
           onChange={(e) => vm.setValuesText(e.target.value)}
         />
       </label>
-      <div className="flex flex-wrap gap-2">
-        <button
+      <div className="bu-actions">
+        <Button
           type="button"
-          className="odoo-btn-secondary"
+          variant="secondary"
           disabled={vm.busy}
           onClick={() => void vm.runMassEdit(true)}
         >
-          Dry run preview
-        </button>
-        <button
+          {DRY_RUN_CTA} preview
+        </Button>
+        <Button
           type="button"
-          className="odoo-btn-primary"
+          variant="primary"
           disabled={vm.busy}
           onClick={() => void vm.runMassEdit(false)}
         >
           Apply mass edit
-        </button>
+        </Button>
       </div>
     </>
   );
@@ -40,26 +41,25 @@ export function BulkMassEditSection({ vm }: { vm: BulkSuitePageModel }) {
 export function BulkDedupeSection({ vm }: { vm: BulkSuitePageModel }) {
   return (
     <>
-      <p className="text-sm text-[var(--odoo-muted)]">
+      <p className="bu-panel-sub">
         Scan by field(s), pick a winner per group, relink inbound FKs, then archive losers.
       </p>
-      {vm.scanResult?.partner_merge_available && (
-        <p className="text-sm text-[var(--odoo-warning)]">
-          Odoo partner merge wizard is available — prefer it for res.partner on this instance.
+      {vm.scanResult?.partner_merge_available ? (
+        <p className="bu-safe" data-tone="danger" data-testid="bulk-partner-merge-hint">
+          Odoo partner merge wizard is available. Prefer it for res.partner on this instance.
         </p>
-      )}
-      <label className="block text-sm">
+      ) : null}
+      <label className="bu-field">
         Match fields (comma separated)
         <input
-          className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-sm"
+          className="font-mono"
           value={vm.matchFieldsText}
           onChange={(e) => vm.setMatchFieldsText(e.target.value)}
         />
       </label>
-      <label className="block text-sm">
+      <label className="bu-field">
         Mode
         <select
-          className="mt-1 border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
           value={vm.dedupeMode}
           onChange={(e) => vm.setDedupeMode(e.target.value as "exact" | "fuzzy")}
         >
@@ -67,20 +67,16 @@ export function BulkDedupeSection({ vm }: { vm: BulkSuitePageModel }) {
           <option value="fuzzy">Fuzzy (normalized / single-field clustering)</option>
         </select>
       </label>
-      <button
-        type="button"
-        className="odoo-btn-secondary"
-        disabled={vm.busy}
-        onClick={() => void vm.scanDedupe()}
-      >
-        Scan duplicates
-      </button>
-      {vm.scanResult && vm.scanResult.groups.length > 0 && (
-        <div className="space-y-3 text-sm">
-          <label className="block">
+      <div className="bu-actions">
+        <Button type="button" variant="secondary" disabled={vm.busy} onClick={() => void vm.scanDedupe()}>
+          Scan duplicates
+        </Button>
+      </div>
+      {vm.scanResult && vm.scanResult.groups.length > 0 ? (
+        <div className="mt-3 space-y-3 text-sm">
+          <label className="bu-field">
             Duplicate group
             <select
-              className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
               value={vm.selectedGroupIdx}
               onChange={(e) => {
                 const idx = Number(e.target.value);
@@ -96,11 +92,11 @@ export function BulkDedupeSection({ vm }: { vm: BulkSuitePageModel }) {
               ))}
             </select>
           </label>
-          {vm.selectedGroup && (
+          {vm.selectedGroup ? (
             <fieldset className="space-y-2">
-              <legend>Winner record</legend>
+              <legend className="font-medium text-ink">Winner record</legend>
               {vm.selectedGroup.records.map((rec) => (
-                <label key={rec.id} className="flex items-center gap-2">
+                <label key={rec.id} className="bu-inline">
                   <input
                     type="radio"
                     name="dedupe-winner"
@@ -108,33 +104,32 @@ export function BulkDedupeSection({ vm }: { vm: BulkSuitePageModel }) {
                     onChange={() => vm.setWinnerId(rec.id)}
                   />
                   <span>
-                    {rec.display_name} (#{rec.id}) —{" "}
-                    {JSON.stringify(rec.preview)}
+                    {rec.display_name} (#{rec.id}) - {JSON.stringify(rec.preview)}
                   </span>
                 </label>
               ))}
             </fieldset>
-          )}
-          <div className="flex flex-wrap gap-2">
-            <button
+          ) : null}
+          <div className="bu-actions">
+            <Button
               type="button"
-              className="odoo-btn-secondary"
+              variant="secondary"
               disabled={vm.busy || vm.winnerId == null}
               onClick={() => void vm.mergeDedupe(true)}
             >
-              Dry run merge
-            </button>
-            <button
+              {DRY_RUN_CTA} merge
+            </Button>
+            <Button
               type="button"
-              className="odoo-btn-primary"
+              variant="primary"
               disabled={vm.busy || vm.winnerId == null}
               onClick={() => void vm.mergeDedupe(false)}
             >
               Merge group
-            </button>
+            </Button>
           </div>
         </div>
-      )}
+      ) : null}
     </>
   );
 }
@@ -142,17 +137,14 @@ export function BulkDedupeSection({ vm }: { vm: BulkSuitePageModel }) {
 export function BulkActivitiesSection({ vm }: { vm: BulkSuitePageModel }) {
   return (
     <>
-      <p className="text-sm text-[var(--odoo-muted)]">
+      <p className="bu-panel-sub">
         Schedule mail.activity rows on the selected model records (requires mail.activity.mixin).
       </p>
-      {vm.activityProbe && (
-        <p className="text-xs text-[var(--odoo-muted)]">{vm.activityProbe}</p>
-      )}
-      <div className="grid gap-3 md:grid-cols-2">
-        <label className="block text-sm">
+      {vm.activityProbe ? <p className="bu-safe">{vm.activityProbe}</p> : null}
+      <div className="bu-field-grid bu-cols-2">
+        <label className="bu-field">
           Activity type
           <select
-            className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
             value={vm.activityTypeId}
             onChange={(e) => vm.setActivityTypeId(e.target.value)}
           >
@@ -163,34 +155,32 @@ export function BulkActivitiesSection({ vm }: { vm: BulkSuitePageModel }) {
             ))}
           </select>
         </label>
-        <label className="block text-sm">
+        <label className="bu-field">
           Deadline (YYYY-MM-DD)
           <input
-            className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
             value={vm.activityDeadline}
             onChange={(e) => vm.setActivityDeadline(e.target.value)}
-            placeholder="2026-08-10"
+            placeholder="2026-10-10"
           />
         </label>
-        <label className="block text-sm md:col-span-2">
+        <label className="bu-field" style={{ gridColumn: "1 / -1" }}>
           Summary
           <input
-            className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
             value={vm.activitySummary}
             onChange={(e) => vm.setActivitySummary(e.target.value)}
           />
         </label>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <button type="button" className="odoo-btn-secondary" disabled={vm.busy} onClick={() => void vm.probeActivities()}>
+      <div className="bu-actions">
+        <Button type="button" variant="secondary" disabled={vm.busy} onClick={() => void vm.probeActivities()}>
           Probe model
-        </button>
-        <button type="button" className="odoo-btn-secondary" disabled={vm.busy} onClick={() => void vm.runActivities(true)}>
-          Dry run
-        </button>
-        <button type="button" className="odoo-btn-primary" disabled={vm.busy} onClick={() => void vm.runActivities(false)}>
+        </Button>
+        <Button type="button" variant="secondary" disabled={vm.busy} onClick={() => void vm.runActivities(true)}>
+          {DRY_RUN_CTA}
+        </Button>
+        <Button type="button" variant="primary" disabled={vm.busy} onClick={() => void vm.runActivities(false)}>
           Schedule
-        </button>
+        </Button>
       </div>
     </>
   );

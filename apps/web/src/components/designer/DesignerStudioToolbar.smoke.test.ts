@@ -10,12 +10,17 @@ describe("DesignerStudioToolbar extract hygiene", () => {
     expect(src).toContain("gridViewAllowed");
   });
 
-  it("page delegates toolbar to DesignerStudioToolbar", () => {
-    const page = readFileSync(
-      resolve(__dirname, "../../app/connections/[id]/designer/page.tsx"),
+  it("classic page retired: redirects to the current designer, which mounts ViewDesignerShell", () => {
+    const classic = readFileSync(
+      resolve(__dirname, "../../app/connections/[id]/designer/classic/page.tsx"),
       "utf8",
     );
-    expect(page).toContain("<DesignerStudioToolbar");
-    expect(page).not.toContain('data-testid="designer-studio-toolbar"');
+    expect(classic).toContain("redirect(");
+    expect(classic).toContain("/designer");
+    const current = readFileSync(
+      resolve(__dirname, "../../app/connections/[id]/view-designer/page.tsx"),
+      "utf8",
+    );
+    expect(current).toContain("<ViewDesignerShell");
   });
 });

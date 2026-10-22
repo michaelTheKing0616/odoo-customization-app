@@ -33,7 +33,16 @@ export function ConfigMailPaperDefaults({ vm }: { vm: ConfigPageModel }) {
     <>
         <section className="mt-8 grid gap-6 lg:grid-cols-2">
           <div className="rounded-md border border-border-subtle bg-surface p-5">
-            <h2 className="text-ui-title">Mail templates</h2>
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="text-ui-title">Mail templates</h2>
+              <a
+                href={`/connections/${connectionId}/mail-templates`}
+                className="text-xs font-medium text-accent underline-offset-2 hover:underline"
+                data-testid="config-mail-studio-link"
+              >
+                Open studio
+              </a>
+            </div>
             <form
               className="mt-3 space-y-2"
               onSubmit={async (e) => {
@@ -138,7 +147,7 @@ export function ConfigMailPaperDefaults({ vm }: { vm: ConfigPageModel }) {
               {activityTypes.map((a) => (
                 <li key={a.id}>
                   #{a.id} {a.name}
-                  {a.summary ? ` — ${a.summary}` : ""}
+                  {a.summary ? ` - ${a.summary}` : ""}
                 </li>
               ))}
             </ul>

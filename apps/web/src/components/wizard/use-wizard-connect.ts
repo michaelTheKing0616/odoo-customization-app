@@ -164,14 +164,14 @@ export function useWizardConnect({
       raw = await file.text();
     }
     if (!raw) {
-      setError("Paste ModuleSpec JSON or choose a .json file.");
+      setError("Paste app-plan JSON or choose a .json file.");
       return;
     }
     let parsed: Record<string, unknown>;
     try {
       parsed = JSON.parse(raw) as Record<string, unknown>;
     } catch {
-      setError("Invalid JSON — expected a ModuleSpec object with a models array.");
+      setError("That JSON is not an app plan. Paste an object with a models array.");
       return;
     }
     if (!Array.isArray(parsed.models) || parsed.models.length === 0) {
@@ -189,7 +189,7 @@ export function useWizardConnect({
       setAiWarnings(res.warnings ?? []);
       setAiNote(
         res.note ??
-          "JSON loaded — review below, then Apply to Odoo (live prep + reuse wiring applied).",
+          "JSON loaded. Review it below, then Apply to Odoo (live prep and reuse wiring applied).",
       );
       setGenUiResult(null);
       setValidateLiveResult(null);

@@ -146,20 +146,20 @@ export function moduleSpecJourneyFromState(opts: {
 
 export function moduleSpecJourneyHint(state: ModuleSpecJourneyState): string {
   if (state.failed && state.id === "validate") {
-    return "Validation found issues. Fix the spec, then validate again. Completeness is not go-live. Promote stays human.";
+    return "Validation found issues. Fix the spec, then validate again. Completeness checks structure; it is not go-live. Publishing stays a step you confirm.";
   }
   if (state.failed && state.id === "apply") {
-    return "Apply did not finish. Prefer sandbox first. Completeness ≠ Cert ≠ Autopilot. Promote stays human.";
+    return "Apply did not finish. Try a test copy first. A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm.";
   }
   switch (state.id) {
     case "load":
       return "Open a Draft Studio handoff, import a zip, or start a blank spec. Completeness is hygiene, not Certification.";
     case "edit":
-      return "Edit models, fields, views, menus, and access as a workbench. JSON is an escape hatch. Completeness ≠ Cert ≠ Autopilot.";
+      return "Edit models, fields, views, menus, and access as a workbench. JSON is an escape hatch. A complete draft is not the same as certified, and neither means Autopilot-ready.";
     case "validate":
-      return "Validate against this Odoo before Generate UI. Completeness is not Certification. Promote stays human.";
+      return "Validate against this Odoo before Generate UI. Completeness is not Certification. Publishing stays a step you confirm.";
     case "apply":
-      return "Generate UI writes live metadata. Zip and sandbox before promote. Completeness ≠ Cert ≠ Autopilot. Promote stays human.";
+      return "Generate UI writes live metadata. Zip and sandbox before publish. A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm.";
   }
 }
 
@@ -173,7 +173,7 @@ export function moduleSpecHeaderDescription(
   if (connectionName) {
     return `${connectionName} · load, edit, validate, then apply. Completeness is not go-live`;
   }
-  return "Structured IR for models, views, menus, and access. Validate, then apply. Promote stays human.";
+  return "Structured app plan for models, views, menus, and access. Validate, then apply. Publishing stays a step you confirm.";
 }
 
 export const MODULESPEC_ERROR_STEPS = {
@@ -186,7 +186,7 @@ export const MODULESPEC_ERROR_STEPS = {
   walkthrough: "Walkthrough seed failed",
   save: "Save failed",
   repair: "AI repair did not apply",
-  load: "Could not load ModuleSpec",
+  load: "Could not load app plan",
 } as const;
 
 export type ModuleSpecErrorStep = keyof typeof MODULESPEC_ERROR_STEPS;
@@ -198,7 +198,7 @@ export function moduleSpecErrorTitle(
   return actionErrorTitle(
     stepOrMessage,
     MODULESPEC_ERROR_STEPS,
-    "ModuleSpec request failed",
+    "App plan request failed",
     message,
   );
 }
@@ -234,7 +234,7 @@ export function completenessNote(spec: ModuleSpecDoc): string | null {
   if (typeof card?.score_0_10 !== "number") return null;
   const cert = certificationFromSpec(spec)?.tier;
   const certBit = cert ? ` Cert on this draft is ${cert} — not this bar.` : "";
-  return `Completeness ${card.score_0_10.toFixed(1)}/10 is ModuleSpec hygiene, not go-live.${certBit}`;
+  return `Completeness ${card.score_0_10.toFixed(1)}/10 is app plan hygiene, not go-live.${certBit}`;
 }
 
 function modelHasNamedFields(model: ModuleSpecModel): boolean {
@@ -285,7 +285,7 @@ export function localReadiness(spec: ModuleSpecDoc): LocalReadinessReport {
       id: "models",
       label: "Models",
       status: "skip",
-      message: "Empty ModuleSpec is correct for stock reuse. Open Job Autopilot — do not Generate UI.",
+      message: "Empty app plan is correct for stock reuse. Open Job Autopilot — do not Generate UI.",
     });
   } else if (summary.models === 0) {
     items.push({
@@ -299,14 +299,14 @@ export function localReadiness(spec: ModuleSpecDoc): LocalReadinessReport {
       id: "models",
       label: "Models",
       status: "fail",
-      message: `${unnamedModels.length} model(s) are missing a technical name.`,
+      message: `${unnamedModels.length} models are missing a technical name.`,
     });
   } else {
     items.push({
       id: "models",
       label: "Models",
       status: "pass",
-      message: `${summary.models} model(s), ${summary.fields} field(s).`,
+      message: `${summary.models} models, ${summary.fields} field(s).`,
     });
   }
 
@@ -315,14 +315,14 @@ export function localReadiness(spec: ModuleSpecDoc): LocalReadinessReport {
       id: "fields",
       label: "Fields",
       status: "warn",
-      message: `${hollowModels.length} model(s) have no named fields.`,
+      message: `${hollowModels.length} models have no named fields.`,
     });
   } else if (summary.fields > 0) {
     items.push({
       id: "fields",
       label: "Fields",
       status: "pass",
-      message: `${summary.fields} field(s) across ${summary.models} model(s).`,
+      message: `${summary.fields} field(s) across ${summary.models} models.`,
     });
   }
 
@@ -354,7 +354,7 @@ export function localReadiness(spec: ModuleSpecDoc): LocalReadinessReport {
       id: "views",
       label: "Views",
       status: "warn",
-      message: `${modelsMissingViews.length} custom model(s) have no view yet.`,
+      message: `${modelsMissingViews.length} custom models have no view yet.`,
     });
   } else if (summary.views > 0) {
     items.push({
@@ -402,7 +402,7 @@ export function localReadiness(spec: ModuleSpecDoc): LocalReadinessReport {
       id: "custom_code",
       label: "Custom code",
       status: "warn",
-      message: `${summary.customCode} block(s) skip live Generate UI. Export zip, sandbox, then promote.`,
+      message: `${summary.customCode} block(s) skip live Generate UI. Export zip, sandbox, then publish.`,
     });
   }
 
@@ -429,7 +429,7 @@ export function readinessHeadline(opts: {
   summary: ModuleSpecSummary;
 }): string {
   if (opts.stockReuse) {
-    return "Stock reuse — empty ModuleSpec is correct";
+    return "Stock reuse — empty app plan is correct";
   }
   if (opts.failCount > 0) {
     return `${opts.failCount} blocking issue${opts.failCount === 1 ? "" : "s"} before apply`;
@@ -440,7 +440,7 @@ export function readinessHeadline(opts: {
   if (opts.summary.models === 0) {
     return "Load a spec to begin";
   }
-  return `Ready to validate · ${opts.summary.models} model(s), ${opts.summary.fields} field(s)`;
+  return `Ready to validate · ${opts.summary.models} models, ${opts.summary.fields} field(s)`;
 }
 
 export function readinessBody(opts: {
@@ -450,18 +450,18 @@ export function readinessBody(opts: {
   customCode: number;
 }): string {
   if (opts.stockReuse) {
-    return "Do not Generate UI. Job Autopilot is the done-bar for stock coverage. Completeness ≠ Cert ≠ Autopilot. Promote stays human.";
+    return "Do not Generate UI. Job Autopilot is the done-bar for stock coverage. A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm.";
   }
   if (opts.failCount > 0) {
-    return "Fix blocking issues, then validate on this Odoo. Completeness is ModuleSpec hygiene — not Certification or Autopilot.";
+    return "Fix blocking issues, then validate on this Odoo. Completeness is app plan hygiene — not Certification or Autopilot.";
   }
   if (opts.customCode > 0) {
-    return "Live Generate UI writes metadata only. Custom Python/XML needs zip → sandbox → promote. Completeness ≠ Cert ≠ Autopilot.";
+    return "Live Generate UI writes metadata only. Custom Python/XML needs zip → sandbox → promote. A complete draft is not the same as certified, and neither means Autopilot-ready.";
   }
   if (opts.warnCount > 0) {
-    return "Warnings do not block validate. Completeness is not go-live. Promote stays human.";
+    return "Warnings do not block validate. Completeness checks structure; it is not go-live. Publishing stays a step you confirm.";
   }
-  return "Validate against this connection, then Generate UI or export a zip. Completeness ≠ Cert ≠ Autopilot. Promote stays human.";
+  return "Validate against this connection, then Generate UI or export a zip. A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm.";
 }
 
 export function liveValidationHeadline(result: ValidateLiveResult | null): string | null {

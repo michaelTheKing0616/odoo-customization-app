@@ -24,9 +24,9 @@ describe("expert-journey", () => {
       expertSessionHint({ contextEnabled: true, contextLabel: "res.partner" }),
       ...expertHonestyLegend(),
     ].join(" ");
-    expect(blobs).toMatch(/Completeness ≠ Cert ≠ Autopilot/);
-    expect(blobs).toMatch(/never auto-promote/i);
-    expect(blobs).not.toMatch(/will auto-promote/i);
+    expect(blobs).toMatch(/A complete draft is not the same as certified, and neither means Autopilot-ready/);
+    expect(blobs).toMatch(/never publishes on its own|publish on its own/i);
+    expect(blobs).not.toMatch(/will auto-promote|will auto-publish/i);
     expect(blobs).not.toMatch(/Expert will promote/i);
   });
 
@@ -78,7 +78,7 @@ describe("expert-journey", () => {
   it("keeps starter prompts as inbound questions, not apply/promote actions", () => {
     expect(EXPERT_STARTER_PROMPTS.length).toBeGreaterThan(0);
     const joined = EXPERT_STARTER_PROMPTS.map((p) => `${p.label} ${p.question}`).join(" ");
-    expect(joined.toLowerCase()).not.toMatch(/auto-promote|generate ui|apply now/);
+    expect(joined.toLowerCase()).not.toMatch(/auto-promote|auto-publish|generate ui|apply now/);
   });
 });
 

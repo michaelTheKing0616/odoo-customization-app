@@ -6,12 +6,35 @@
   margin-top: var(--space-md);
 }
 
+/* Indeterminate: no fake percentage. The stage label carries the real progress (T4-PROG). */
 .studio-refinement .progress-bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--color-brand), var(--color-accent));
-  border-radius: 2px;
-  transition: width 0.4s ease;
   width: 40%;
+  background: var(--color-accent);
+  border-radius: 2px;
+  animation: studio-progress-shuttle 1.4s linear infinite;
+}
+
+@keyframes studio-progress-shuttle {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+@keyframes studio-progress-breathe {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-refinement .progress-bar-fill {
+    width: 100%;
+    animation: studio-progress-breathe 2s ease-in-out infinite;
+  }
 }
 
 .studio-refinement .field-highlight {
@@ -68,7 +91,20 @@
   border-top: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface-2) 92%, transparent);
   backdrop-filter: blur(8px);
-  padding-bottom: 4px;
+  padding-bottom: var(--space-xs);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .studio-refinement .chat-composer {
+    background: var(--surface-2);
+    backdrop-filter: none;
+  }
+}
+
+.studio-refinement .chat-send:not(:disabled) {
+  border-color: var(--border-accent);
+  color: var(--text-accent);
+  font-weight: 600;
 }
 
 .studio-refinement .chat-composer-sticky {
@@ -88,9 +124,19 @@
 }
 
 .studio-refinement .chat-composer-hint {
-  margin: 0 var(--space-md) 8px;
-  font-size: 11px;
-  color: var(--text-muted);
+  margin: 0 var(--space-md) var(--space-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+@media (max-width: 767px) {
+  .studio-refinement .chat-composer-input {
+    font-size: 16px;
+  }
+
+  .studio-refinement .chat-composer-hint {
+    display: none;
+  }
 }
 
 .studio-refinement .studio-refine-chips {
@@ -99,7 +145,7 @@
 }
 
 .studio-refinement .studio-canvas-progress {
-  margin-top: var(--space-xl);
+  margin-top: var(--space-lg);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   overflow: hidden;
@@ -121,16 +167,54 @@
 }
 
 .studio-refinement .studio-canvas-ghost-sheet {
-  height: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  min-height: 220px;
+  padding: var(--space-xl);
   border-radius: 8px;
   background: var(--surface-2);
   border: 1px solid var(--border);
+}
+
+.studio-refinement .studio-canvas-ghost-row {
+  height: 12px;
+  width: 72%;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.studio-refinement .studio-canvas-ghost-row.is-short {
+  width: 44%;
+}
+
+.studio-refinement .studio-canvas-progress-body {
+  padding: var(--space-lg) var(--space-xl) var(--space-xl);
+}
+
+.studio-refinement .studio-canvas-progress-body .stage-progress-label {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.studio-refinement .studio-canvas-progress-note {
+  margin: var(--space-md) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.studio-refinement .studio-generation-failed {
+  margin-top: var(--space-lg);
 }
 
 .studio-refinement .review-footer {
   grid-column: 1 / -1;
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
   gap: var(--space-sm);
   padding: var(--space-md) var(--space-lg);
@@ -138,10 +222,80 @@
   background: var(--surface-2);
 }
 
+.studio-refinement .review-footer-note {
+  flex: 1 1 18rem;
+  margin: 0 auto 0 0;
+  max-width: 60ch;
+  font-size: var(--font-size-xs);
+  line-height: 1.45;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
 .studio-refinement .clarify-card {
-  max-width: 560px;
+  max-width: 600px;
   margin: var(--space-xl) auto 0;
+  padding: var(--space-xl);
   text-align: left;
+}
+
+.studio-refinement .clarify-title {
+  margin: 0 0 var(--space-xs);
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+.studio-refinement .clarify-help--context {
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-control);
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+
+.studio-refinement .clarify-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-xl);
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--border);
+}
+
+.studio-refinement .clarify-actions-hint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.studio-refinement .diagnosis-follow {
+  margin-top: var(--space-sm);
+  margin-bottom: 0;
+}
+
+.studio-refinement .diagnosis-follow--tight {
+  margin-top: var(--space-xs);
+}
+
+.studio-refinement .diagnosis-row-help {
+  display: block;
+  margin: 2px 0 0;
+  font-size: var(--font-size-xs);
+}
+
+.studio-refinement .diagnosis-add-row {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.studio-refinement .diagnosis-add-row .input {
+  flex: 1;
+  min-width: 0;
 }
 
 .studio-refinement .clarify-kicker {
@@ -152,9 +306,12 @@
 }
 
 .studio-refinement .clarify-question {
-  font-size: var(--font-size-md);
+  font-size: var(--font-size-lg);
   font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
   margin: 0 0 var(--space-sm);
+  text-wrap: balance;
 }
 
 .studio-refinement .clarify-help {
@@ -174,9 +331,14 @@
 .studio-refinement .diagnosis-field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: var(--space-md);
+  gap: var(--space-sm);
+  margin-top: var(--space-xl);
   font-size: var(--font-size-sm);
+}
+
+.studio-refinement .diagnosis-field .studio-chip-row {
+  justify-content: flex-start;
+  margin: 0;
 }
 
 .studio-refinement .diagnosis-field > span:first-child {
@@ -185,11 +347,16 @@
   font-size: var(--font-size-xs);
 }
 
+.studio-refinement .diagnosis-facts:empty {
+  display: none;
+}
+
 .studio-refinement .diagnosis-constraint-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-md);
+  padding-block: var(--space-xs);
 }
 
 .studio-refinement .studio-callout {
@@ -240,8 +407,34 @@
 
 .studio-refinement .studio-mobile-tabs {
   display: none;
-  justify-content: flex-start;
-  margin: 0;
+  gap: var(--space-xs);
+  padding: var(--space-xs);
+  border-radius: 999px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  width: fit-content;
+}
+
+.studio-refinement .studio-mobile-tab {
+  min-height: 40px;
+  padding: 0 var(--space-lg);
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-state) ease,
+    color var(--duration-state) ease;
+}
+
+.studio-refinement .studio-mobile-tab.is-selected {
+  background: var(--surface-2);
+  color: var(--text-primary);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--text-primary) 10%, transparent);
 }
 
 @media (max-width: 767px) {
@@ -272,3 +465,551 @@
   }
 }
 
+
+/* ============================================================
+   Review workspace: the form is paper on a quiet desk.
+   Reference pack 2026-10-05: Canva PDF (05) page on pasteboard,
+   Retool/Webflow (08/02) dot stage, Notion (04) hairlines, beating
+   Odoo Studio's flat boxed form (11). Scoped to the App Studio
+   preview frame so Designer / Draft Studio keep their own canvas.
+   ============================================================ */
+
+.studio-refinement .review-layout {
+  box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
+}
+
+/* Linear-grade toolbar: 44px, one line, small type. */
+.studio-refinement .review-layout-header .panel-header {
+  min-height: 44px;
+  padding: 4px var(--space-sm) 4px var(--space-lg);
+  background: var(--surface-2);
+  gap: var(--space-md);
+}
+
+.studio-refinement .review-layout-header .breadcrumb {
+  min-width: 0;
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.studio-refinement .review-layout-header .studio-preview-toolbar .btn {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: var(--font-size-xs);
+}
+
+/* Pasteboard: neutral desk with a faint 16px dot grid. */
+/* Quiet desk; the Odoo form preview carries its own grey backdrop. */
+.studio-refinement .review-preview-pane {
+  background-color: var(--surface-1);
+  padding: var(--space-xl) var(--space-lg) var(--space-2xl);
+}
+
+.studio-refinement .studio-preview-frame {
+  max-width: 1180px;
+  margin-inline: auto;
+  gap: 0;
+}
+
+/* The scope wrapper and Odoo chrome sit on the desk, not in a box. */
+.studio-refinement .studio-preview-frame .odoo-shell {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+/* Honesty line stays, as a quiet caption above the page. */
+.studio-refinement .studio-preview-frame .odoo-preview-banner {
+  margin: 0 0 var(--space-md);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+}
+
+.studio-refinement .studio-preview-frame .odoo-control-panel {
+  padding: 0 0 var(--space-sm);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.studio-refinement .studio-preview-frame .odoo-form-canvas {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.studio-refinement .studio-preview-frame .odoo-form-header {
+  padding: 0 0 var(--space-md);
+  background: transparent;
+  border: 0;
+}
+
+.studio-refinement .studio-preview-frame .odoo-form-workspace {
+  padding: 0;
+  background: transparent;
+}
+
+/* The page: edges always visible, layered soft shadow, generous margins. */
+.studio-refinement .studio-preview-frame .odoo-form-sheet {
+  max-width: none;
+  padding: var(--space-2xl) 40px var(--space-xl);
+  border: 1px solid rgb(0 0 0 / 7%);
+  border-radius: 6px;
+  box-shadow:
+    0 1px 1px rgb(0 0 0 / 4%),
+    0 2px 6px -2px rgb(0 0 0 / 6%),
+    0 20px 40px -24px rgb(0 0 0 / 22%);
+}
+
+/* Fields read like Odoo 17: underline values, no boxed inputs, one hairline per row. */
+.studio-refinement .studio-preview-frame .odoo-field-row {
+  border-bottom: 0;
+  min-height: 2.25rem;
+  padding: 0.25rem 0;
+}
+
+.studio-refinement .studio-preview-frame .odoo-field-value {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--odoo-border) 90%, transparent);
+  border-radius: 0;
+  padding: 0.2rem 0.1rem;
+}
+
+/* New fields: a hairline accent underline and a whisper of tint, not a filled box. */
+.studio-refinement .studio-preview-frame .odoo-field-row.is-extension .odoo-field-value,
+.studio-refinement .studio-preview-frame .odoo-field-value.field-highlight {
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  border-bottom-color: var(--accent);
+  box-shadow: none;
+}
+
+.studio-refinement .studio-preview-frame .odoo-chatter-stub {
+  margin-top: var(--space-xl);
+  padding: var(--space-lg) 0 0;
+  background: transparent;
+}
+
+/* Refine pane: Linear-density header. */
+.studio-refinement .studio-chat-toolbar {
+  min-height: 44px;
+}
+
+.studio-refinement .studio-chat-toolbar .studio-chat-toolbar-label {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Info honesty banners: neutral surface + hairline, the icon carries the colour.
+   Warnings and blockers keep their tint because they need action. */
+.studio-refinement .studio-banner-stack {
+  gap: var(--space-sm);
+}
+
+.studio-refinement .studio-banner-stack > .bg-info-subtle {
+  background: var(--surface-2);
+  border-color: var(--border);
+  padding: var(--space-md) var(--space-lg);
+}
+
+.studio-refinement .studio-banner-stack > .bg-info-subtle svg {
+  color: var(--info, var(--accent));
+}
+
+@media (max-width: 767px) {
+  .studio-refinement .review-preview-pane {
+    padding: var(--space-lg) var(--space-md) var(--space-xl);
+  }
+
+  .studio-refinement .studio-preview-frame .odoo-form-sheet {
+    padding: var(--space-lg);
+  }
+
+  .studio-refinement .review-layout-header .panel-header {
+    padding-left: var(--space-md);
+  }
+}
+
+/* ===== Draft Studio elite pass (Draft-scoped; do not bleed into App Studio) ===== */
+/* Soften every info Callout under Draft Studio (nested stacks + scorecard), keep success/warning tint. */
+.studio-refinement[data-testid="draft-studio"] .bg-info-subtle:not(.studio-callout-success-tone) {
+  background: var(--surface-2);
+  border-color: var(--border);
+  padding: var(--space-md) var(--space-lg);
+}
+
+.studio-refinement[data-testid="draft-studio"] .bg-info-subtle:not(.studio-callout-success-tone) svg {
+  color: var(--info, var(--accent));
+}
+
+.studio-refinement[data-testid="draft-studio"] .draft-studio-ia-banner {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-2);
+  padding: var(--space-md) var(--space-lg);
+}
+
+.studio-refinement[data-testid="draft-studio"] .draft-studio-ia-banner-body {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.studio-refinement[data-testid="draft-studio"] button:focus-visible,
+.studio-refinement[data-testid="draft-studio"] a:focus-visible,
+.studio-refinement[data-testid="draft-studio"] [role="button"]:focus-visible,
+.studio-refinement[data-testid="draft-studio"] summary:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-offset);
+}
+
+@media (pointer: coarse) {
+  .studio-refinement[data-testid="draft-studio"] [data-testid="draft-studio-apply-bar"] a,
+  .studio-refinement[data-testid="draft-studio"] [data-testid="draft-studio-apply-bar"] button,
+  .studio-refinement[data-testid="draft-studio"] [data-testid="create-draft"],
+  .studio-refinement[data-testid="draft-studio"] [data-testid="apply-to-odoo"],
+  .studio-refinement[data-testid="draft-studio"] [data-testid="open-job-autopilot"] {
+    min-height: 44px;
+  }
+
+  .studio-refinement[data-testid="draft-studio"] .chip {
+    min-height: 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-refinement[data-testid="draft-studio"] * {
+    scroll-behavior: auto;
+  }
+}
+
+/* ===== Draft Studio premiere leap ===== */
+/* Conversational brief: Claude/Stitch density, not admin worksheet. */
+.studio-refinement[data-testid="draft-studio"] .draft-studio-brief {
+  max-width: 42rem;
+  margin: 0 auto var(--space-2xl);
+  padding: min(6vh, 2.5rem) 0 var(--space-xl);
+}
+
+.studio-refinement[data-testid="draft-studio"] .draft-studio-brief-title {
+  margin: 0 0 var(--space-sm);
+  font-size: clamp(1.5rem, 2.6vw, 2rem);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  color: var(--text-primary);
+  text-wrap: balance;
+}
+
+.studio-refinement[data-testid="draft-studio"] .draft-studio-brief-subtitle {
+  margin: 0 0 var(--space-xl);
+  max-width: 48ch;
+  font-size: var(--font-size-md);
+  line-height: 1.55;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.studio-refinement[data-testid="draft-studio"] .draft-studio-composer .studio-prompt-actions {
+  border-top: 1px solid var(--border);
+  justify-content: flex-start;
+}
+
+.studio-refinement[data-testid="draft-studio"] .draft-studio-soft-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+  padding: var(--space-md) var(--space-lg);
+}
+
+.studio-refinement[data-testid="draft-studio"] .draft-studio-soft-panel-title {
+  margin: 0 0 var(--space-xs);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.studio-refinement[data-testid="draft-studio"] .draft-studio-soft-panel-body {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.studio-refinement[data-testid="draft-studio"] .draft-studio-action-dock {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.studio-refinement[data-testid="draft-studio"] .draft-studio-action-dock-label {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.studio-refinement[data-testid="draft-studio"] .draft-studio-action-dock-secondary {
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border);
+}
+
+/* Diagnosis scorecard: razor hierarchy, three bars never fused. */
+.studio-refinement[data-testid="draft-studio"] .draft-studio-diagnosis {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+  padding: var(--space-lg) var(--space-xl);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--text-primary) 5%, transparent);
+}
+
+.studio-refinement[data-testid="draft-studio"] .draft-studio-diagnosis-header {
+  margin-bottom: var(--space-md);
+}
+
+.studio-refinement[data-testid="draft-studio"] .draft-studio-diagnosis-kicker {
+  margin: 0 0 var(--space-xs);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.studio-refinement[data-testid="draft-studio"] .draft-studio-diagnosis-title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  color: var(--text-primary);
+  text-wrap: balance;
+  font-variant-numeric: tabular-nums;
+}
+
+.studio-refinement[data-testid="draft-studio"] .draft-studio-diagnosis-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.studio-refinement[data-testid="draft-studio"] .draft-studio-diagnosis-dims {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.studio-refinement[data-testid="draft-studio"] .draft-studio-score-bars {
+  list-style: none;
+  margin: var(--space-sm) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.studio-refinement[data-testid="draft-studio"] .draft-studio-score-bars > li {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr;
+  gap: var(--space-sm);
+  align-items: start;
+  padding: var(--space-sm) 0;
+  border-top: 1px solid var(--border);
+}
+
+.studio-refinement[data-testid="draft-studio"] .draft-studio-score-bar-label {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.studio-refinement[data-testid="draft-studio"] .draft-studio-score-bar-copy {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  line-height: 1.45;
+  text-wrap: pretty;
+}
+
+.studio-refinement[data-testid="draft-studio"] .draft-studio-progress .studio-progress-label {
+  letter-spacing: -0.02em;
+}
+
+@media (max-width: 639px) {
+  .studio-refinement[data-testid="draft-studio"] .draft-studio-score-bars > li {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .studio-refinement[data-testid="draft-studio"] .draft-studio-brief {
+    padding-top: var(--space-xl);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-refinement[data-testid="draft-studio"] .draft-studio-composer {
+    transition: none;
+  }
+}
+
+/* App design (diagnosis step 2B) — basalt surfaces, one teal accent */
+.studio-refinement .app-design-source {
+  margin-left: var(--space-sm);
+  font-style: normal;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.studio-refinement .app-design-purpose { margin: 0; }
+.studio-refinement .app-design-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--space-md);
+}
+.studio-refinement .app-design-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-1);
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+.studio-refinement .app-design-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+.studio-refinement .app-design-card-label { flex: 1; min-width: 0; font-weight: 600; }
+.studio-refinement .app-design-badge {
+  font-size: var(--font-size-xs);
+  color: var(--text-accent);
+  background: var(--bg-accent);
+  border-radius: 999px;
+  padding: 2px var(--space-sm);
+}
+.studio-refinement .app-design-why {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.45;
+}
+.studio-refinement .app-design-fields {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.studio-refinement .app-design-field {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  font-size: var(--font-size-xs);
+}
+.studio-refinement .app-design-field code,
+.studio-refinement .app-design-relations code {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+.studio-refinement .app-design-x {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 var(--space-xs);
+}
+.studio-refinement .app-design-x:hover { color: var(--text-danger); }
+.studio-refinement .app-design-x:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+.studio-refinement .app-design-integrations {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+.studio-refinement .app-design-integration {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+.studio-refinement .app-design-chip {
+  font-size: var(--font-size-xs);
+  border: 1px solid var(--border-success);
+  background: var(--bg-success);
+  border-radius: 999px;
+  padding: 2px var(--space-sm);
+}
+.studio-refinement .app-design-chip--deferred { border-color: var(--border-warning); background: var(--bg-warning); }
+.studio-refinement .app-design-chip--off { border-color: var(--border); background: transparent; color: var(--text-muted); }
+.studio-refinement .app-design-note { margin: 0; }
+.studio-refinement .app-design-muted { color: var(--text-muted); }
+.studio-refinement .app-design-lane-note { margin: var(--space-xs) 0 0; }
+.studio-refinement .app-design-badge--suggested {
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-accent);
+}
+.studio-refinement .app-design-suggested-note { color: var(--text-muted); }
+
+/* Brief checklist: Left out / We weren't sure. Playbook laws 5 (space is grouping, 4pt scale),
+   8 (every state), 7.Focus (visible ring), 7.Buttons (one primary per view: Put back is secondary).
+   Uses the app tokens; the ingenium-v2 cinnabar is keystone-only, so no new accent here. */
+.studio-refinement .checklist-group { display: grid; gap: 8px; }
+.studio-refinement .checklist-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.studio-refinement .checklist-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: 8px;
+  background: var(--surface-raised); font-size: var(--font-size-sm); line-height: 1.5;
+}
+.studio-refinement .checklist-row-text { display: grid; gap: 2px; min-width: 0; }
+.studio-refinement .checklist-choice { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
+.studio-refinement .checklist-choice input { margin-top: 4px; }
+.studio-refinement .checklist-quote { color: var(--text-muted, inherit); opacity: 0.8; overflow-wrap: anywhere; }
+.studio-refinement .checklist-action { flex-shrink: 0; white-space: nowrap; }
+.studio-refinement .checklist-action:focus-visible,
+.studio-refinement .checklist-choice input:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+@media (max-width: 480px) { .studio-refinement .checklist-row { flex-direction: column; align-items: stretch; } }
+
+.checklist-tag {
+  flex: none;
+  align-self: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid var(--border, currentColor);
+  color: var(--text-muted, inherit);
+}
+.checklist-tag-warn {
+  color: var(--warning, inherit);
+  border-color: var(--warning, currentColor);
+}
+
+/* App Studio design preview: screen tabs + hand-off to View Designer. */
+.app-design-preview-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2, 8px); margin-block-end: var(--space-2, 8px); }
+.app-design-preview-bar [role="tablist"] { display: flex; flex-wrap: wrap; gap: var(--space-1, 4px); }
+.studio-install-step { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2, 8px); padding: var(--space-2, 8px) var(--space-3, 12px); border: 1px solid var(--border-strong); border-radius: var(--radius-md, 8px); }
+.studio-install-step ul { display: flex; flex-wrap: wrap; gap: var(--space-1, 4px); margin: 0; padding: 0; list-style: none; }

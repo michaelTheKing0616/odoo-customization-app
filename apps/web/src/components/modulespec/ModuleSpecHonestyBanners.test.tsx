@@ -10,13 +10,13 @@ describe("ModuleSpecHonestyBanners", () => {
     render(
       <ModuleSpecHonestyBanners
         stockReuse
-        completenessNote="Completeness 10.0/10 is ModuleSpec hygiene, not go-live."
+        completenessNote="Completeness 10.0/10 is app plan hygiene, not go-live."
       />,
     );
     expect(screen.getByTestId("modulespec-stock-reuse").textContent).toMatch(/Job Autopilot/);
     expect(screen.getByTestId("modulespec-stock-reuse").textContent).toMatch(/Do not Generate UI/);
     expect(screen.getByTestId("modulespec-score-bars-legend").textContent).toMatch(
-      /Completeness is ModuleSpec hygiene/,
+      /Completeness is app plan hygiene/,
     );
     expect(screen.getByTestId("modulespec-completeness-note").textContent).toMatch(/not go-live/);
   });

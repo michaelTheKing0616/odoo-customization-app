@@ -1,68 +1,1902 @@
-/* View Designer Studio shell + DnD affordances */
-.designer-studio-shell .designer-session-bar,
-.designer-studio-header [data-testid="designer-session-bar"] {
-  margin-top: 0;
+/* ==========================================================================
+   View Designer (UI-S-12): look and feel.
+   Reference pack: /workspace/design-research/ingenium-canvas-2026-10-05.
+   - Webflow (02) / Framer (01): basalt chrome around a bright canvas, tight
+     inspector hairlines.
+   - Canva PDF (05): the form is a card on a quiet pasteboard, edges always
+     visible. Same language as PDF-06 ReportCanvas (paper on desk), but a
+     card, not fake A4.
+   - Retool (08): faint 16px dot grid so alignment reads while dragging.
+   - Notion (04): muted grays, one teal accent. Cinnabar never appears here
+     (brand guide v2: keystone only, never a UI colour).
+   Beats Odoo Studio (11): no purple editor chrome, no flat boxed form with
+   zero pasteboard, real hover/selection/drag affordances.
+   Motion: only the inspector drawer animates. The canvas never animates
+   layout. Drag feedback is transform/opacity only and interruptible.
+   ========================================================================== */
+
+.designer-studio-shell {
+  --dz-basalt: var(--canvas-basalt);
+  --dz-limestone: var(--canvas-limestone);
+  --dz-desk: var(--canvas-desk);
+  --dz-desk-dot: var(--canvas-desk-dot);
+  --dz-paper: var(--canvas-paper);
+  --dz-paper-ink: var(--canvas-paper-ink);
+  --dz-paper-muted: var(--canvas-paper-muted);
+  --dz-paper-edge: var(--canvas-paper-edge);
+  --dz-paper-rule: var(--canvas-paper-rule);
+  --dz-paper-lift: var(--canvas-paper-lift);
+  --dz-lane: var(--canvas-lane);
+  --dz-select: var(--canvas-select);
+  --dz-select-tint: var(--canvas-select-tint);
+  --dz-hover-edge: var(--canvas-hover-edge);
+  --dz-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --dz-ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --dz-fast: 120ms;
+  --dz-drawer: 240ms;
+  --dz-radius-card: 10px;
+  --dz-radius-row: 6px;
+  /* Status on paper. Amber, not orange: nothing near cinnabar (#cf4527)
+     appears in the editor, so the keystone stays the only warm red. */
+  --dz-warn: var(--canvas-warn);
+  --dz-danger: var(--canvas-danger);
+  /* Drag ghost is always basalt, in both themes. */
+  --dz-ghost-dot: var(--canvas-ghost-dot);
+  --dz-ghost-meta: var(--canvas-ghost-meta);
 }
 
-.designer-drag-ghost {
-  position: absolute;
-  left: -1000px;
-  top: 0;
-  z-index: 50;
-  border: 1px solid var(--odoo-border);
-  border-radius: 6px;
-  background: var(--surface-raised);
+html.dark .designer-studio-shell {
+  --dz-desk: var(--canvas-desk);
+  --dz-desk-dot: var(--canvas-desk-dot);
+  --dz-paper: var(--canvas-paper);
+  --dz-paper-ink: var(--canvas-paper-ink);
+  --dz-paper-muted: var(--canvas-paper-muted);
+  --dz-paper-edge: var(--canvas-paper-edge);
+  --dz-paper-rule: var(--canvas-paper-rule);
+  --dz-paper-lift: var(--canvas-paper-lift);
+  --dz-lane: var(--canvas-lane);
+  --dz-select: var(--canvas-select);
+  --dz-select-tint: var(--canvas-select-tint);
+  --dz-hover-edge: var(--canvas-hover-edge);
+  --dz-warn: var(--canvas-warn);
+  --dz-danger: var(--canvas-danger);
+}
+
+/* --------------------------------------------------------------------------
+   Basalt chrome: header, canvas bar, tools rail. The element also carries
+   the app's `.dark` token scope so every token-driven child (Button, Badge,
+   Tabs, inspector) renders on dark; the overrides below swap zinc for the
+   brand basalt/limestone pair and keep teal legible on dark.
+   -------------------------------------------------------------------------- */
+.designer-chrome {
+  --n1: #1a1c21;
+  --n2: #212329;
+  --n3: #2b2e35;
+  --surface: #1a1c21;
+  --surface-raised: #212329;
+  --surface-overlay: #2b2e35;
+  --surface-muted: #24262c;
+  --background: #1a1c21;
+  --ink: #f3f4f6;
+  --foreground: #f3f4f6;
+  --muted: #b3b8c2;
+  --subtle: #8b919c;
+  --border-subtle: rgb(243 244 246 / 0.08);
+  --border-strong: var(--chrome-border-strong);
+  /* Teal on dark: bright fill with basalt text (≈9:1), bright text for links. */
+  --accent: #2dd4bf;
+  --accent-hover: #5eead4;
+  --accent-subtle: rgb(45 212 191 / 0.14);
+  --on-accent: #1a1c21;
+  --focus-ring: 0 0 0 2px #1a1c21, 0 0 0 4px #2dd4bf;
+  --odoo-primary: #5eead4;
+  --odoo-border: rgb(243 244 246 / 0.08);
+  --odoo-muted: #b3b8c2;
+  --odoo-sheet: #212329;
+  --odoo-sheet-fg: #f3f4f6;
+  --shadow-subtle: none;
+  /* Status on basalt: tinted chips and quiet notices, never a saturated band.
+     Warning is amber (≈45°), well away from the cinnabar keystone (≈11°).
+     Hues stay one meaning each: amber warns, blue informs, red blocks. */
+  --warning: #fbbf24;
+  --warning-strong: #fcd34d;
+  --warning-subtle: rgb(251 191 36 / 0.12);
+  --info: #93c5fd;
+  --info-strong: #bfdbfe;
+  --info-subtle: rgb(147 197 253 / 0.08);
+  --danger-subtle: rgb(248 113 113 / 0.12);
+  --success-subtle: rgb(52 211 153 / 0.12);
+
+  background: var(--surface);
   color: var(--ink);
-  font-size: 12px;
+  color-scheme: dark;
+}
+
+.designer-chrome ::selection {
+  background: rgb(45 212 191 / 0.28);
+}
+
+.designer-studio-header {
+  border-bottom: 1px solid rgb(0 0 0 / 0.5);
+}
+
+.designer-titlebar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  min-height: 48px;
+}
+
+.designer-title {
+  font-size: 15px;
   font-weight: 600;
-  padding: 0.35rem 0.65rem;
-  box-shadow: var(--shadow-raised);
-  pointer-events: none;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+.designer-subtitle {
+  margin-top: 2px;
+  max-width: 60ch;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--subtle);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Session strip sits inline in the title bar (no card inside chrome). */
+.designer-chrome [data-testid="designer-session-bar"] {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+/* Toolbar: one control strip, 32px controls, hairline fields. */
+.designer-toolbar-row {
+  border-top: 1px solid var(--border-subtle);
+  padding-block: 10px;
+}
+
+.designer-chrome .designer-toolbar {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  gap: 8px 12px;
+}
+
+.designer-chrome .designer-toolbar label > span:first-child {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--subtle);
+}
+
+.designer-chrome .designer-toolbar :is(input:not([type="checkbox"]):not([type="radio"]), select) {
+  height: 32px;
+  margin-top: 4px;
+  padding-block: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: rgb(0 0 0 / 0.18);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.designer-chrome .designer-toolbar :is(input, select):hover {
+  border-color: rgb(243 244 246 / 0.28);
+}
+
+.designer-chrome .designer-toolbar :is(input, select):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+
+.designer-chrome .designer-toolbar :is(input, select):disabled {
+  opacity: 0.6;
+}
+
+.designer-toolbar .designer-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding-inline: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: transform var(--dz-fast) var(--dz-ease-out);
+}
+
+.designer-toolbar .designer-tool-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.designer-toolbar .designer-tool-btn.is-danger {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  color: var(--danger);
+}
+
+.designer-toolbar .designer-save-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding-inline: 16px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: transform var(--dz-fast) var(--dz-ease-out);
+}
+
+.designer-toolbar .designer-save-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .designer-toolbar .designer-tool-btn:not(:disabled):hover {
+    background: rgb(243 244 246 / 0.06);
+    color: var(--ink);
+  }
+
+  .designer-toolbar .designer-save-btn:not(:disabled):hover {
+    background: var(--accent-hover);
+  }
+}
+
+.designer-toolbar :is(.designer-tool-btn, .designer-save-btn):not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.designer-toolbar :is(.designer-tool-btn, .designer-save-btn):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+.designer-chrome .designer-toolbar details {
+  border-color: var(--border-subtle);
+  background: rgb(0 0 0 / 0.14);
+}
+
+/* Notices keep their semantic tint but lose the second card frame. */
+.designer-notices {
+  padding-bottom: 12px;
+}
+
+/* --------------------------------------------------------------------------
+   Canvas bar (live / layout switch)
+   -------------------------------------------------------------------------- */
+.designer-canvas-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-height: 44px;
+  padding: 6px 12px;
+  border-bottom: 1px solid rgb(0 0 0 / 0.45);
+}
+
+.designer-segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: rgb(0 0 0 / 0.28);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+}
+
+.designer-segmented > button {
+  height: 28px;
+  padding-inline: 12px;
+  border-radius: 6px;
+  color: var(--subtle);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.designer-segmented > button[aria-pressed="true"] {
+  background: var(--surface-overlay);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(243 244 246 / 0.06);
+}
+
+.designer-segmented > button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .designer-segmented > button:not(:disabled):not([aria-pressed="true"]):hover {
+    color: var(--ink);
+  }
+}
+
+.designer-segmented > button:focus-visible,
+.designer-bar-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+
+.designer-bar-status {
+  min-width: 0;
+  font-size: 12px;
+  color: var(--subtle);
+}
+
+.designer-bar-status.is-warning {
+  color: var(--warning);
+}
+
+.designer-bar-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding-inline: 10px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .designer-bar-link:hover {
+    background: rgb(243 244 246 / 0.06);
+    color: var(--ink);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   The desk (pasteboard) and the form card
+   -------------------------------------------------------------------------- */
+/* The canvas column is the desk: one dot grid from the canvas bar to the
+   bottom of the viewport, so short views never leave a blank band. */
+.designer-studio-canvas,
+.designer-desk {
+  background-color: var(--dz-desk);
+  background-image: radial-gradient(circle at 1px 1px, var(--dz-desk-dot) 1px, transparent 0);
+  background-size: 16px 16px;
+}
+
+.designer-studio-canvas .designer-desk {
+  background: transparent;
+}
+
+.designer-desk {
+  --odoo-sheet: var(--dz-paper);
+  --odoo-sheet-fg: var(--dz-paper-ink);
+  --odoo-border: var(--dz-paper-rule);
+  --odoo-muted: var(--dz-paper-muted);
+  --odoo-canvas: transparent;
+
+  padding: 32px 24px 48px;
+}
+
+.designer-desk-inner {
+  max-width: 60rem;
+  margin-inline: auto;
+}
+
+/* Scope wrappers sit on the desk, not in a white box. */
+.designer-desk .odoo-shell {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+/* The honesty line stays, as a quiet caption above the card. */
+.designer-desk .odoo-preview-banner {
+  margin: 0 0 12px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--dz-paper-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+html.dark .designer-desk .odoo-preview-banner {
+  color: #8b919c;
+}
+
+.designer-desk .odoo-control-panel {
+  padding: 0 0 12px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+/* The card: edges always visible, layered lift, nothing animates. */
+.designer-desk :is(.odoo-form-canvas, .odoo-kanban-canvas) {
+  overflow: hidden;
+  border: 1px solid var(--dz-paper-edge);
+  border-radius: var(--dz-radius-card);
+  background: var(--dz-paper);
+  box-shadow: var(--dz-paper-lift);
+  color: var(--dz-paper-ink);
+  transition: none;
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .designer-desk :is(.odoo-form-canvas, .odoo-kanban-canvas) {
+    border-color: var(--dz-hover-edge);
+    box-shadow: none;
+  }
+}
+
+.designer-desk .odoo-form-canvas .odoo-form-header,
+.designer-kanban-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-height: 48px;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--dz-paper-rule);
+  background: transparent;
+}
+
+.designer-desk .odoo-form-workspace {
+  padding: 0;
+  background: transparent;
+}
+
+.designer-desk .odoo-form-sheet {
+  max-width: none;
+  padding: 24px 32px 28px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.designer-desk .odoo-button-box {
+  justify-content: flex-end;
+  margin-bottom: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.designer-desk .odoo-stat-button {
+  border-color: var(--dz-paper-rule);
+  border-radius: 6px;
+  background: transparent;
+}
+
+.designer-desk .odoo-btn-primary,
+.designer-desk .odoo-btn-secondary {
+  border-radius: 6px;
+  padding: 5px 12px;
+}
+
+/* The preview primary is the customer's Odoo colour (or teal), light or dark.
+   Pick near-white or basalt text from its lightness so the label always
+   reads; browsers without relative colour keep white. */
+.designer-desk .odoo-btn-primary {
+  color: #fcfcfb;
+  color: oklch(from var(--odoo-primary) clamp(0.22, (0.66 - l) * 100, 0.99) 0 0);
+}
+
+.designer-desk .odoo-statusbar-stage {
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+
+.designer-desk .odoo-form-grid-2col {
+  gap: 8px 40px;
+}
+
+/* The Odoo sheet stays white in both themes (it previews Odoo), so paper text inside it keeps
+   Odoo's ink instead of flipping with the dark theme (stage 3 contrast: 1.1:1 and 2.25:1 before). */
+.ofp-sheet {
+  --dz-paper-ink: var(--ofp-text);
+  --dz-paper-muted: var(--ofp-muted);
+}
+
+.designer-desk .odoo-field-group-title {
+  margin-bottom: 6px;
+  padding-inline-start: 2px;
+  color: var(--dz-paper-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+/* Field rows: Odoo 17 underline values, no boxed inputs. */
+.designer-desk .odoo-field-row {
+  min-height: 36px;
+  padding: 4px 6px;
+  border-bottom: 0;
+  border-radius: var(--dz-radius-row);
+}
+
+.designer-desk .odoo-field-label {
+  color: var(--dz-paper-muted);
+  font-size: 13px;
+}
+
+.designer-desk .odoo-field-value {
+  padding: 3px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--dz-paper-rule);
+  border-radius: 0;
+  background: transparent;
+  color: var(--dz-paper-ink);
+}
+
+.designer-desk .odoo-field-row.is-extension .odoo-field-value,
+.designer-desk .odoo-field-value.field-highlight {
+  background: transparent;
+  border-bottom-color: var(--dz-select);
+  box-shadow: none;
+}
+
+.designer-desk .odoo-chatter-stub {
+  margin-top: 28px;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--dz-paper-rule);
+  background: transparent;
+}
+
+.designer-desk .odoo-chatter-composer-input {
+  border-color: var(--dz-paper-rule);
+  border-radius: 6px;
+  background: transparent;
+}
+
+/* Notebook: Odoo underline tabs inside the card. */
+.designer-notebook {
+  margin-top: 24px;
+}
+
+.designer-notebook-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 1px solid var(--dz-paper-rule);
+}
+
+.designer-notebook-tab {
+  position: relative;
+  margin-bottom: -1px;
+  padding: 8px 12px;
+  border-bottom: 2px solid transparent;
+  color: var(--dz-paper-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.designer-notebook-tab[aria-pressed="true"] {
+  border-bottom-color: var(--dz-paper-ink);
+  color: var(--dz-paper-ink);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .designer-notebook-tab:not([aria-pressed="true"]):hover {
+    color: var(--dz-paper-ink);
+  }
+}
+
+.designer-notebook-tab:focus-visible {
+  outline: 2px solid var(--dz-select);
+  outline-offset: -2px;
+  box-shadow: none;
+}
+
+.designer-notebook-page {
+  padding-top: 12px;
+}
+
+/* Structure flash after an add: an instant ring, never a layout animation. */
+.designer-desk .is-canvas-flash {
+  border-radius: var(--dz-radius-row);
+  outline: 2px solid var(--dz-select);
+  outline-offset: 4px;
+}
+
+.designer-desk .designer-structure-card.is-canvas-flash {
+  border-radius: var(--dz-radius-card);
+  outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   Selection, hover, drag. Shared by the form card and the kanban card.
+   -------------------------------------------------------------------------- */
+.designer-drop-list {
+  position: relative;
+  border-radius: var(--dz-radius-row);
 }
 
 .designer-drop-list.is-over {
-  border-radius: 4px;
-  outline: 2px dashed color-mix(in srgb, var(--odoo-primary) 45%, var(--odoo-border));
-  outline-offset: 2px;
-  background: color-mix(in srgb, var(--odoo-primary) 8%, var(--surface));
+  outline: 1px dashed color-mix(in srgb, var(--dz-select) 55%, transparent);
+  outline-offset: 4px;
+  background: var(--dz-select-tint);
 }
 
+.designer-drop-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px dashed var(--dz-hover-edge);
+  border-radius: var(--dz-radius-row);
+  color: var(--dz-paper-muted);
+  font-size: 12px;
+}
+
+/* Insertion marker: absolute, so rows never shift while you drag. */
 .designer-drop-line {
+  position: absolute;
+  inset-inline: 4px;
+  top: -2px;
+  z-index: 2;
   display: block;
   height: 2px;
-  margin: 2px 0;
-  background: var(--odoo-primary);
   border-radius: 999px;
+  background: var(--dz-select);
+  pointer-events: none;
+}
+
+.designer-drop-line::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: -4px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--dz-select);
+  border-radius: 999px;
+  background: var(--dz-paper);
+}
+
+.designer-drop-line.is-after {
+  top: auto;
+  bottom: -2px;
 }
 
 .designer-canvas-field {
-  border-radius: 3px;
+  position: relative;
+  border-radius: var(--dz-radius-row);
 }
 
-.designer-canvas-field.is-selected .odoo-field-row,
-.designer-canvas-field.is-flash .odoo-field-row {
-  background: color-mix(in srgb, var(--odoo-primary) 8%, var(--surface));
+.designer-canvas-field > .odoo-field-row,
+.designer-canvas-field .designer-row-body {
+  transition:
+    transform var(--dz-fast) var(--dz-ease-out),
+    opacity var(--dz-fast) var(--dz-ease-out);
 }
 
-.designer-canvas-field[draggable="true"] {
+@media (hover: hover) and (pointer: fine) {
+  .designer-canvas-field:hover > .odoo-field-row,
+  .designer-kanban-field:hover {
+    box-shadow: inset 0 0 0 1px var(--dz-hover-edge);
+  }
+}
+
+.designer-canvas-field.is-selected > .odoo-field-row,
+.designer-canvas-field.is-flash > .odoo-field-row {
+  background: var(--dz-select-tint);
+  box-shadow: inset 0 0 0 1.5px var(--dz-select);
+}
+
+.designer-canvas-field .odoo-field-row:focus-visible,
+.designer-kanban-field :focus-visible {
+  outline: 2px solid var(--dz-select);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+/* Grip: the drag handle. Rows are buttons (select on click), and
+   ReorderableBlocks ignores pointer-downs on nested controls, so the grip is a
+   plain span that owns the drag. 20px hit area, 2x3 dots, only where reorder
+   is live. */
+.designer-grip {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: -22px;
+  z-index: 1;
+  display: flex;
+  width: 20px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
   cursor: grab;
+  opacity: 0;
+  touch-action: none;
+  transition: opacity var(--dz-fast) var(--dz-ease-out);
 }
 
-.designer-canvas-field[draggable="true"]:active {
+.designer-grip::before {
+  content: "";
+  width: 6px;
+  height: 10px;
+  background-image: radial-gradient(circle, var(--dz-paper-muted) 1px, transparent 1.2px);
+  background-size: 3px 3.5px;
+}
+
+.designer-kanban-field .designer-grip {
+  inset-inline-start: -18px;
+  width: 16px;
+}
+
+.designer-structure-row[data-reorderable] {
+  padding-inline-start: 26px;
+}
+
+.designer-structure-row .designer-grip {
+  inset-inline-start: 4px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  :is(.designer-canvas-field, .designer-kanban-field, .designer-structure-row):hover
+    > .designer-grip {
+    opacity: 0.75;
+  }
+
+  .designer-grip:hover {
+    background: var(--dz-lane);
+    opacity: 1;
+  }
+}
+
+@media (hover: none) {
+  .designer-grip {
+    opacity: 0.6;
+  }
+}
+
+:is(.designer-canvas-field, .designer-kanban-field, .designer-structure-row):is(
+    .is-selected,
+    :focus-within
+  )
+  > .designer-grip {
+  opacity: 0.75;
+}
+
+.designer-studio-shell:has([data-dragging="true"]) {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+[data-dragging="true"] > .designer-grip {
+  cursor: grabbing;
+  opacity: 1;
+}
+
+/* The row being dragged lifts in place; the ghost follows the pointer. */
+.designer-canvas-field[data-dragging="true"] > .odoo-field-row,
+.designer-kanban-field[data-dragging="true"] .designer-row-body {
+  transform: scale(0.985);
+  opacity: 0.45;
+}
+
+.designer-structure-row[data-dragging="true"] {
+  transform: scale(0.985);
+  opacity: 0.45;
+}
+
+.designer-canvas-field[data-dragging="true"],
+.designer-kanban-field[data-dragging="true"],
+.designer-structure-row[data-dragging="true"] {
   cursor: grabbing;
 }
 
-.designer-tools-tabs [data-testid="tabs"] {
+.designer-pointer-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 18rem;
+  padding: 6px 12px 6px 10px;
+  border-radius: 8px;
+  background: var(--dz-basalt);
+  color: var(--dz-limestone);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.2),
+    0 12px 28px -10px rgb(26 28 33 / 0.55);
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.designer-pointer-ghost[data-positioned="true"] {
+  opacity: 1;
+}
+
+.designer-pointer-ghost::before,
+.designer-drag-ghost::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--dz-ghost-dot);
+}
+
+.designer-pointer-ghost .designer-ghost-name {
+  overflow: hidden;
+  color: var(--dz-ghost-meta);
+  font-family: var(--font-mono-stack);
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+
+/* Palette drag image (native HTML5). Parked off-screen with a transform. */
+.designer-drag-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 50;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 10px;
+  border-radius: 8px;
+  background: var(--dz-basalt);
+  color: var(--dz-limestone);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  transform: translate3d(-200vw, 0, 0);
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   Kanban card preview
+   -------------------------------------------------------------------------- */
+.designer-kanban-title {
+  color: var(--dz-paper-ink);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.designer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding-inline: 10px;
+  border: 1px solid var(--dz-paper-rule);
+  border-radius: 999px;
+  color: var(--dz-paper-muted);
+  font-size: 12px;
+}
+
+.designer-chip code {
+  color: var(--dz-paper-ink);
+  font-family: var(--font-mono-stack);
+  font-size: 11px;
+}
+
+.designer-kanban-board {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  padding: 20px 24px 24px;
+}
+
+.designer-kanban-lane {
+  flex: 1 1 0;
+  min-width: 15rem;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--dz-lane);
+}
+
+.designer-kanban-lane-title {
+  margin: 2px 4px 10px;
+  color: var(--dz-paper-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.designer-kanban-card {
+  padding: 8px;
+  border: 1px solid var(--dz-paper-edge);
+  border-radius: 8px;
+  background: var(--dz-paper);
+  box-shadow:
+    0 1px 1px rgb(26 28 33 / 0.04),
+    0 4px 10px -6px rgb(26 28 33 / 0.18);
+}
+
+.designer-kanban-card.is-ghost {
+  margin-top: 8px;
+  border-style: dashed;
+  background: transparent;
+  box-shadow: none;
+  color: var(--dz-paper-muted);
+  font-size: 12px;
+}
+
+.designer-kanban-field {
+  position: relative;
+  border-radius: var(--dz-radius-row);
+}
+
+.designer-kanban-field.is-selected {
+  background: var(--dz-select-tint);
+  box-shadow: inset 0 0 0 1.5px var(--dz-select);
+}
+
+.designer-row-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+}
+
+.designer-row-label {
+  overflow: hidden;
+  color: var(--dz-paper-ink);
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.designer-row-name {
+  overflow: hidden;
+  color: var(--dz-paper-muted);
+  font-family: var(--font-mono-stack);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.designer-row-sample {
+  margin-top: 4px;
+  color: var(--dz-paper-muted);
+  font-size: 12px;
+}
+
+/* Secondary step controls: present for keyboard and screen readers, quiet
+   until the row is hovered or focused. Drag and arrow keys stay primary. */
+.designer-row-tools {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--dz-fast) var(--dz-ease-out);
+}
+
+.designer-kanban-field:hover .designer-row-tools,
+.designer-kanban-field:focus-within .designer-row-tools,
+.designer-kanban-field.is-selected .designer-row-tools,
+.designer-structure-row:hover .designer-row-tools,
+.designer-structure-row:focus-within .designer-row-tools,
+.designer-structure-row.is-selected .designer-row-tools {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .designer-row-tools {
+    opacity: 1;
+  }
+}
+
+.designer-row-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--dz-paper-muted);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.designer-row-tool:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .designer-row-tool:not(:disabled):hover {
+    background: var(--dz-lane);
+    color: var(--dz-paper-ink);
+  }
+
+  .designer-row-tool.is-danger:not(:disabled):hover {
+    color: var(--danger);
+  }
+}
+
+.designer-row-tool:focus-visible {
+  outline: 2px solid var(--dz-select);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+
+.designer-card-foot {
+  padding: 10px 24px 14px;
+  border-top: 1px solid var(--dz-paper-rule);
+  color: var(--dz-paper-muted);
+  font-size: 12px;
+}
+
+/* Real Odoo kanban board in the structure canvas (OdooKanbanView). */
+.designer-desk .odoo-kanban-canvas.p-3 {
+  padding: 20px 24px 24px;
+}
+
+.designer-desk .odoo-kanban-column {
+  border: 0;
+  border-radius: 8px;
+  background: var(--dz-lane);
+}
+
+.designer-desk .odoo-kanban-column-title {
+  border-bottom: 0;
+  letter-spacing: 0.02em;
+}
+
+.designer-desk .odoo-kanban-card,
+.designer-desk .designer-kanban-card {
+  border-left-width: 1px;
+}
+
+.designer-desk .odoo-kanban-card {
+  border-color: var(--dz-paper-edge);
+  border-radius: 8px;
+  background: var(--dz-paper);
+}
+
+/* --------------------------------------------------------------------------
+   Canvas state strip: XML invalid, inherit conflict, preview stale.
+   Lives on the desk above the card so the problem sits next to the canvas.
+   -------------------------------------------------------------------------- */
+.designer-canvas-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 16px;
+  width: 100%;
+  margin: 0 auto 16px;
+  max-width: 60rem;
+  padding: 12px 14px;
+  border: 1px solid var(--dz-paper-edge);
+  border-radius: 8px;
+  background: var(--dz-paper);
+  box-shadow: 0 1px 2px rgb(26 28 33 / 0.06);
+  color: var(--dz-paper-ink);
+}
+
+.designer-canvas-state::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--dz-paper-muted);
+}
+
+.designer-canvas-state[data-tone="danger"] {
+  border-color: color-mix(in oklab, var(--dz-danger) 22%, var(--dz-paper-edge));
+  background: color-mix(in oklab, var(--dz-danger) 3%, var(--dz-paper));
+}
+
+.designer-canvas-state[data-tone="warning"] {
+  border-color: color-mix(in oklab, var(--dz-warn) 30%, var(--dz-paper-edge));
+  background: color-mix(in oklab, var(--dz-warn) 5%, var(--dz-paper));
+}
+
+.designer-canvas-state[data-tone="danger"]::before {
+  background: var(--dz-danger);
+}
+
+.designer-canvas-state[data-tone="warning"]::before {
+  background: var(--dz-warn);
+}
+
+.designer-canvas-state-body {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.designer-canvas-state-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.designer-canvas-state-text {
+  margin-top: 2px;
+  color: var(--dz-paper-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.designer-canvas-state-text code {
+  color: var(--dz-paper-ink);
+  font-family: var(--font-mono-stack);
+  font-size: 12px;
+}
+
+/* Odoo's exact words (or the failing locator) under our plain sentence. */
+.designer-canvas-state-code {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.designer-canvas-state-code-label {
+  flex: none;
+  color: var(--dz-paper-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.designer-canvas-state-code code {
+  min-width: 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--dz-lane);
+  color: var(--dz-paper-ink);
+  font-family: var(--font-mono-stack);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.designer-canvas-state-action {
+  flex: none;
+  height: 28px;
+  padding-inline: 12px;
+  border: 1px solid var(--dz-hover-edge);
+  border-radius: 6px;
+  color: var(--dz-paper-ink);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: transform var(--dz-fast) var(--dz-ease-out);
+}
+
+.designer-canvas-state-action:active {
+  transform: scale(0.97);
+}
+
+.designer-canvas-state-action:focus-visible {
+  outline: 2px solid var(--dz-select);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .designer-canvas-state-action:hover {
+    background: var(--dz-lane);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Tools rail (dark inspector) + field palette
+   -------------------------------------------------------------------------- */
+.designer-studio-rail {
+  border-color: rgb(0 0 0 / 0.5);
+}
+
+.designer-tools-tabs [data-testid="tabs"],
+.designer-tools-tabs {
   display: flex;
   min-height: 0;
   flex: 1;
   flex-direction: column;
 }
 
+/* One line of tabs, however many the page passes in. Five tabs fit the
+   22.5rem rail at 12px; anything more scrolls sideways instead of wrapping
+   into a second row. */
+.designer-tools-tabs [role="tablist"] {
+  flex-wrap: nowrap;
+  gap: 2px;
+  margin-inline: -12px;
+  padding: 0 8px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.designer-tools-tabs [role="tablist"]::-webkit-scrollbar {
+  display: none;
+}
+
+.designer-tools-tabs [role="tab"] {
+  flex: none;
+  height: 40px;
+  padding-inline: 8px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--subtle);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.designer-tools-tabs [role="tab"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  box-shadow: none;
+}
+
+.designer-tools-tabs [role="tab"][aria-selected="true"] {
+  background: transparent;
+  color: var(--ink);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .designer-tools-tabs [role="tab"]:not([aria-selected="true"]):hover {
+    color: var(--ink);
+  }
+}
+
 .designer-tools-tabs [role="tabpanel"] {
   min-height: 0;
   flex: 1;
   overflow: auto;
+  padding-top: 16px;
 }
 
+.designer-palette-search {
+  width: 100%;
+  height: 32px;
+  padding-inline: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: rgb(0 0 0 / 0.2);
+  color: var(--ink);
+  font-size: 13px;
+}
 
+.designer-palette-search::placeholder {
+  color: var(--subtle);
+}
+
+.designer-palette-search:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+
+.designer-palette-group + .designer-palette-group {
+  margin-top: 16px;
+}
+
+.designer-palette-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 2px 6px;
+  color: var(--subtle);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.designer-palette-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.designer-palette-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 32px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: grab;
+  user-select: none;
+}
+
+.designer-palette-item:active {
+  cursor: grabbing;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .designer-palette-item:hover {
+    background: color-mix(in srgb, var(--ink) 6%, transparent);
+    box-shadow: inset 0 0 0 1px var(--border-subtle);
+  }
+}
+
+.designer-palette-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+
+.designer-palette-label {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.designer-palette-name {
+  overflow: hidden;
+  color: var(--odoo-primary);
+  font-family: var(--font-mono-stack);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.designer-palette-type {
+  margin-inline-start: auto;
+  flex: none;
+  color: var(--subtle);
+  font-family: var(--font-mono-stack);
+  font-size: 11px;
+}
+
+/* Inspector drawer: the one animated surface (≤300ms, ease-drawer). */
+.designer-drawer-in {
+  animation: designer-drawer-in var(--dz-drawer) var(--dz-ease-drawer) both;
+}
+
+@keyframes designer-drawer-in {
+  from {
+    opacity: 0;
+    transform: translate3d(12px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes designer-drawer-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.designer-props-inspector-title {
+  color: var(--subtle);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+/* Inspector summary: label first, technical name second, then hairline rows
+   (Webflow/Framer right panel: small type, tight rhythm, one accent). */
+.designer-inspector-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.designer-inspector-label {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.designer-inspector-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: -8px;
+  color: var(--subtle);
+  font-size: 12px;
+}
+
+.designer-inspector-meta code {
+  color: var(--accent);
+  font-family: var(--font-mono-stack);
+  font-size: 12px;
+}
+
+.designer-inspector-meta span {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgb(243 244 246 / 0.06);
+  font-family: var(--font-mono-stack);
+  font-size: 11px;
+}
+
+.designer-inspector-list {
+  margin: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.designer-inspector-list > div {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.designer-inspector-list dt {
+  color: var(--subtle);
+}
+
+.designer-inspector-list dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.designer-inspector-hint {
+  color: var(--subtle);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.designer-inspector-hint kbd {
+  border-color: var(--border-strong);
+  background: rgb(0 0 0 / 0.25);
+  color: var(--ink);
+}
+
+/* --------------------------------------------------------------------------
+   Advanced structure canvas (both structure canvases share the desk)
+   -------------------------------------------------------------------------- */
+.designer-structure-desk {
+  border-radius: var(--dz-radius-card);
+}
+
+.designer-structure-card {
+  margin-bottom: 16px;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--dz-paper-edge);
+  border-radius: var(--dz-radius-card);
+  background: var(--dz-paper);
+  box-shadow: 0 1px 1px rgb(26 28 33 / 0.04), 0 6px 16px -12px rgb(26 28 33 / 0.25);
+  color: var(--dz-paper-ink);
+}
+
+.designer-structure-card.is-drop-zone {
+  min-height: 6rem;
+}
+
+.designer-structure-card .designer-structure-card {
+  box-shadow: none;
+}
+
+.designer-structure-label {
+  color: var(--dz-paper-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.designer-structure-input {
+  height: 32px;
+  padding-inline: 10px;
+  font-weight: 400;
+  letter-spacing: 0;
+  border: 1px solid var(--dz-paper-rule);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dz-paper-ink);
+  font-size: 13px;
+}
+
+.designer-structure-input:focus-visible {
+  outline: 2px solid var(--dz-select);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+
+.designer-structure-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+  padding: 4px 6px 4px 10px;
+  border-radius: var(--dz-radius-row);
+  background: var(--dz-lane);
+  font-size: 13px;
+}
+
+.designer-structure-row.is-selected {
+  background: var(--dz-select-tint);
+  box-shadow: inset 0 0 0 1.5px var(--dz-select);
+}
+
+/* Destructive row actions stay quiet until the row is hovered, focused or
+   selected (touch: always shown). Keeps rows from reading as a wall of
+   "Remove" the way Studio's boxed lists do. */
+.designer-structure-row > .designer-quiet-btn.is-danger,
+.designer-structure-row .designer-row-tools .designer-quiet-btn.is-danger {
+  opacity: 0;
+  transition:
+    opacity var(--dz-fast) var(--dz-ease-out),
+    transform var(--dz-fast) var(--dz-ease-out),
+    background-color var(--dz-fast) var(--dz-ease-out),
+    color var(--dz-fast) var(--dz-ease-out);
+}
+
+.designer-structure-row:is(:hover, :focus-within, .is-selected) > .designer-quiet-btn.is-danger,
+.designer-structure-row:is(:hover, :focus-within, .is-selected)
+  .designer-row-tools
+  .designer-quiet-btn.is-danger {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .designer-structure-row > .designer-quiet-btn.is-danger,
+  .designer-structure-row .designer-row-tools .designer-quiet-btn.is-danger {
+    opacity: 1;
+  }
+}
+
+.designer-structure-row > button:first-child {
+  min-width: 0;
+  flex: 1;
+  text-align: start;
+}
+
+.designer-structure-row > button:first-child:focus-visible {
+  outline: 2px solid var(--dz-select);
+  outline-offset: 2px;
+  border-radius: 4px;
+  box-shadow: none;
+}
+
+.designer-quiet-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding-inline: 10px;
+  border-radius: 6px;
+  color: var(--dz-paper-muted);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    transform var(--dz-fast) var(--dz-ease-out),
+    background-color var(--dz-fast) var(--dz-ease-out),
+    color var(--dz-fast) var(--dz-ease-out);
+}
+
+.designer-quiet-btn.is-outline {
+  border: 1px solid var(--dz-hover-edge);
+  color: var(--dz-paper-ink);
+}
+
+.designer-quiet-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .designer-quiet-btn:not(:disabled):hover {
+    background: var(--dz-lane);
+    color: var(--dz-paper-ink);
+  }
+
+  .designer-quiet-btn.is-danger:not(:disabled):hover {
+    color: var(--danger);
+  }
+}
+
+.designer-quiet-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.designer-quiet-btn:focus-visible {
+  outline: 2px solid var(--dz-select);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+
+.designer-structure-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  color: var(--dz-paper-ink);
+  font-size: 13px;
+}
+
+.designer-structure-desk input[type="checkbox"] {
+  accent-color: var(--dz-select);
+}
+
+.designer-quiet-btn.is-flashed {
+  border-color: var(--dz-select);
+  background: var(--dz-select-tint);
+  color: var(--dz-select);
+}
+
+.designer-desk .odoo-form-canvas:focus-visible {
+  outline: 2px solid var(--dz-select);
+  outline-offset: 3px;
+}
+
+.designer-structure-empty {
+  padding: 10px 12px;
+  border: 1px dashed var(--dz-hover-edge);
+  border-radius: var(--dz-radius-row);
+  color: var(--dz-paper-muted);
+  font-size: 12px;
+}
+
+/* --------------------------------------------------------------------------
+   List canvas (OdooListView on the desk): same card, quiet table, the
+   decoration rules read as a legend with a swatch per tone.
+   -------------------------------------------------------------------------- */
+.designer-desk .odoo-list-title {
+  color: var(--dz-paper-ink);
+  font-size: 14px;
+  letter-spacing: -0.01em;
+}
+
+.designer-desk .odoo-list-viewtag {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--dz-paper-rule);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dz-paper-muted);
+  font-family: var(--font-mono-stack);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.designer-desk .odoo-list-body {
+  padding: 16px 24px 24px;
+}
+
+.designer-desk .odoo-list-legend {
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.designer-desk .odoo-list-legend-item {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: var(--dz-radius-row);
+  background: var(--dz-lane);
+}
+
+.designer-desk .odoo-list-legend-item::before {
+  content: "";
+  grid-row: span 2;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--dz-paper-muted);
+}
+
+.designer-desk .odoo-list-legend-item[data-tone="danger"]::before {
+  background: var(--dz-danger);
+}
+
+.designer-desk .odoo-list-legend-item[data-tone="info"]::before {
+  background: var(--info);
+}
+
+.designer-desk .odoo-list-legend-name {
+  color: var(--dz-paper-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.designer-desk .odoo-list-legend-expr {
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--dz-paper-ink);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.designer-desk .odoo-list-frame {
+  border-color: var(--dz-paper-rule);
+  border-radius: 8px;
+  background: transparent;
+}
+
+.designer-desk .odoo-list-table thead {
+  background: var(--dz-lane);
+  color: var(--dz-paper-muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.designer-desk .odoo-list-table th {
+  font-weight: 600;
+}
+
+.designer-desk .odoo-list-table :is(th, td) {
+  padding: 10px 12px;
+  border-bottom-color: var(--dz-paper-rule);
+}
+
+.designer-desk .odoo-list-table td {
+  color: var(--dz-paper-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.designer-desk .odoo-list-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* Odoo colours the text for decoration-danger; a faint wash helps it read. */
+.designer-desk .odoo-list-row-danger {
+  background: color-mix(in oklab, var(--dz-danger) 6%, var(--dz-paper));
+}
+
+.designer-desk .odoo-list-row-danger td {
+  color: color-mix(in oklab, var(--dz-danger) 85%, var(--dz-paper-ink));
+}
+
+.designer-desk .odoo-list-row-muted td {
+  color: var(--dz-paper-muted);
+}
+
+/* --------------------------------------------------------------------------
+   Live frame: paper edge and lift like the card; a stale preview is tagged
+   on the frame itself as well as in the strip above it.
+   -------------------------------------------------------------------------- */
+.designer-live-wrap {
+  position: relative;
+  display: flex;
+  min-height: 32rem;
+  flex: 1;
+}
+
+.designer-live-stale-tag {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px 0 8px;
+  border-radius: 999px;
+  background: var(--dz-basalt);
+  color: var(--dz-limestone);
+  font-size: 11px;
+  font-weight: 500;
+  pointer-events: none;
+  box-shadow: 0 6px 16px -8px rgb(26 28 33 / 0.5);
+}
+
+.designer-live-stale-tag::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--dz-ghost-meta);
+}
+
+/* Kind tag inside structure rows ("Button"), instead of "Btn ·" prefixes. */
+.designer-row-kind {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  margin-inline-end: 4px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--dz-lane);
+  color: var(--dz-paper-muted);
+  font-size: 11px;
+  font-weight: 500;
+  vertical-align: 1px;
+}
+
+/* --------------------------------------------------------------------------
+   Narrow
+   -------------------------------------------------------------------------- */
+@media (max-width: 767px) {
+  .designer-desk {
+    padding: 16px 12px 24px;
+  }
+
+  .designer-desk .odoo-form-canvas .odoo-form-header,
+  .designer-kanban-head {
+    padding: 10px 16px;
+  }
+
+  .designer-desk .odoo-form-sheet {
+    padding: 16px;
+  }
+
+  .designer-kanban-board {
+    padding: 16px;
+  }
+
+  .designer-card-foot {
+    padding-inline: 16px;
+  }
+
+  .designer-desk .odoo-field-row {
+    grid-template-columns: 7.5rem minmax(0, 1fr);
+  }
+
+  .designer-subtitle {
+    white-space: normal;
+  }
+
+  .designer-desk .odoo-list-body {
+    padding: 12px 16px 16px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Reduced motion: gentler, not zero. Drag tracking stays 1:1.
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .designer-drawer-in {
+    animation: designer-drawer-fade 120ms linear both;
+  }
+
+  .designer-canvas-field > .odoo-field-row,
+  .designer-canvas-field .designer-row-body,
+  .designer-toolbar :is(.designer-tool-btn, .designer-save-btn),
+  .designer-quiet-btn,
+  .designer-canvas-state-action {
+    transition: opacity 120ms linear;
+  }
+
+  .designer-canvas-field[data-dragging="true"] > .odoo-field-row,
+  .designer-kanban-field[data-dragging="true"] .designer-row-body,
+  .designer-structure-row[data-dragging="true"] {
+    transform: none;
+  }
+
+  .designer-toolbar :is(.designer-tool-btn, .designer-save-btn):not(:disabled):active,
+  .designer-quiet-btn:not(:disabled):active,
+  .designer-canvas-state-action:active {
+    transform: none;
+  }
+}

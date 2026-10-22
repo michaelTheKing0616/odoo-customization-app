@@ -1,6 +1,5 @@
 "use client";
 
-import { Callout } from "@/components/ui/Callout";
 import { Disclosure } from "@/components/ui/Disclosure";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -8,6 +7,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import type { ActivityTypeRow } from "@/lib/api";
 import {
   ADVANCED_ACTION_KINDS,
+  coerceToOptionA,
   type AutomationComposerForm,
 } from "@/lib/automationForm";
 
@@ -31,23 +31,10 @@ export function AutomationActionFields({
   activityTypes,
   mailTemplates,
 }: Props) {
-  const kind = form.action_kind;
+  const kind = coerceToOptionA(form.action_kind);
 
   return (
     <div className="space-y-4">
-      {kind === "python_module" ? (
-        <Callout variant="warning" title="Option A — exports as a module">
-          Python runs only after module export, sandbox test, and explicit promote. It is
-          not applied live from this screen.
-        </Callout>
-      ) : null}
-      {ADVANCED_ACTION_KINDS.has(kind) ? (
-        <Callout variant="warning" title="Advanced action">
-          Creating this rule requires an Odoo-style confirmation. Prefer a safe action
-          when it covers the job.
-        </Callout>
-      ) : null}
-
       {kind === "update_field" ? (
         <>
           <Input
@@ -154,7 +141,7 @@ export function AutomationActionFields({
               })
             }
             options={[
-              { value: "", label: "None — use subject and body" },
+              { value: "", label: "None (use subject and body)" },
               ...mailTemplates.map((t) => ({
                 value: String(t.id),
                 label: `#${t.id} · ${t.name}${t.subject ? ` (${t.subject})` : ""}`,
@@ -206,6 +193,7 @@ export function AutomationActionFields({
             onChange={(e) => onChange({ webhook_url: e.target.value })}
             className="font-mono text-sm"
             placeholder="https://example.com/hooks/odoo"
+            data-testid="automations-webhook-url"
           />
           <Input
             label="Payload fields"
@@ -296,18 +284,17 @@ export function AutomationActionFields({
         </>
       ) : null}
 
-      {kind === "python_module" || kind === "code_live" ? (
+      {kind === "python_module" ? (
         <>
-          {kind === "python_module" ? (
-            <Input
-              label="Module technical name"
-              required
-              value={form.module_technical_name}
-              onChange={(e) => onChange({ module_technical_name: e.target.value })}
-              className="font-mono text-sm"
-              pattern="[a-z][a-z0-9_]*"
-            />
-          ) : null}
+          <Input
+            label="Module technical name"
+            required
+            value={form.module_technical_name}
+            onChange={(e) => onChange({ module_technical_name: e.target.value })}
+            className="font-mono text-sm"
+            pattern="[a-z][a-z0-9_]*"
+            data-testid="automations-module-name"
+          />
           <Textarea
             label="Python code"
             required
@@ -315,15 +302,17 @@ export function AutomationActionFields({
             value={form.python_code}
             onChange={(e) => onChange({ python_code: e.target.value })}
             className="font-mono text-xs"
+            data-testid="automations-python-code"
+            hint="Ships inside the module as state=code. Not executed live from this screen."
           />
         </>
       ) : null}
 
       {kind === "python_module" || ADVANCED_ACTION_KINDS.has(kind) ? null : (
         <Disclosure title="Need Python or a webhook instead?">
-          <p className="text-sm text-muted">
-            Switch the action above to Export Python module (sandbox, then promote) or an
-            advanced kind. Live Python is never the default path.
+          <p className="text-ui-body text-muted">
+            Switch the action above to Export Python module (custom code: test copy, then publish)
+            or Call webhook (confirm). Live Python is never offered.
           </p>
         </Disclosure>
       )}

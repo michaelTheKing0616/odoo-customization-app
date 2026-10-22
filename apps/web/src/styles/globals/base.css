@@ -4,7 +4,9 @@
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    /* 137: gentler, not none. Movement snaps; colour and opacity still fade briefly. */
+    transition-property: opacity, color, background-color, border-color, outline-color, fill, stroke, filter !important;
+    transition-duration: 160ms !important;
   }
 }
 
@@ -19,3 +21,26 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+
+/* Overview drill-down arrival cue: tint shows at once, holds briefly, fades with ease-out. */
+@keyframes overview-arrive {
+  0%, 20% { box-shadow: inset 0 0 0 100vmax var(--accent-subtle); }
+  100% { box-shadow: inset 0 0 0 100vmax transparent; }
+}
+.overview-arrive { animation: overview-arrive 1s cubic-bezier(0.23, 1, 0.32, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .overview-arrive { animation: none; }
+}
+
+@layer base {
+/* Design touches 12/17/18: title face, tracking, balanced wrapping. */
+h1, h2, .font-display { font-family: var(--font-display); letter-spacing: var(--tracking-title); text-wrap: balance; }
+h3, h4 { letter-spacing: var(--tracking-heading); text-wrap: balance; }
+p, li, figcaption { text-wrap: pretty; }
+/* Touch 13/14: technical names + references. */
+code, kbd, samp, .tech-name, .ref-id { font-family: var(--font-mono); font-feature-settings: "zero" 1; }
+.tabular { font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-press: 0ms; --dur-fast: 0ms; --dur-base: 0ms; --dur-slow: 0ms; --dur-lock-in: 0ms; }
+}
+}

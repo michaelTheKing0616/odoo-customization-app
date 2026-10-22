@@ -73,3 +73,51 @@ describe("DraftStudioHonestyBanners", () => {
     expect(screen.getByTestId("retry-ai-enrichment-btn")).toBeTruthy();
   });
 });
+
+describe("DraftStudioHonestyBanners clarify and Online honesty", () => {
+  const clarify = {
+    clarifyQuestion: "Where should inspections live?",
+    clarifyOptions: [
+      { id: "tasks", label: "On project tasks" },
+      { id: "standalone", label: "As a standalone app" },
+    ],
+    clarifyDefaultId: "tasks",
+  };
+
+  it("asks one question with a suggested answer and regenerates on answer", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    const onAnswerClarify = vi.fn();
+    render(<DraftStudioHonestyBanners {...base} {...clarify} onAnswerClarify={onAnswerClarify} />);
+    const card = screen.getByTestId("generation-clarify");
+    expect(card.querySelectorAll("h3")).toHaveLength(1);
+    expect(card.textContent).toMatch(/Suggested/);
+    const radios = card.querySelectorAll<HTMLInputElement>('input[type="radio"]');
+    expect(radios).toHaveLength(2);
+    expect(radios[0].checked).toBe(true);
+    fireEvent.click(radios[1]);
+    fireEvent.click(screen.getByTestId("clarify-answer"));
+    expect(onAnswerClarify).toHaveBeenCalledWith("As a standalone app");
+  });
+
+  it("falls back to a read-only list when no answer handler is wired", () => {
+    render(<DraftStudioHonestyBanners {...base} {...clarify} />);
+    expect(screen.queryByTestId("clarify-answer")).toBeNull();
+    expect(screen.getByTestId("generation-clarify").textContent).toMatch(/On project tasks/);
+  });
+
+  it("turns Option A sandbox prove off on Odoo Online with a visible reason", () => {
+    render(
+      <DraftStudioHonestyBanners
+        {...base}
+        authoredOptionA
+        isOdooOnline
+        capabilityPrimaryOptionA
+        optionALines={["Python compute on x_inspection.score"]}
+      />,
+    );
+    expect(screen.getByTestId("option-a-prove")).toBeDisabled();
+    expect(screen.getByTestId("option-a-prove-online").textContent).toMatch(
+      /not available on Odoo Online/,
+    );
+  });
+});

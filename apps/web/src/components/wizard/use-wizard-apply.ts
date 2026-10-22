@@ -88,7 +88,7 @@ export function useWizardApply({
         res.zip_base64,
       );
       setAiNote(
-        "Module zip downloaded. Sandbox-prove before promote — promote stays human.",
+        "Module zip downloaded. Sandbox-prove it before you publish. Publishing stays a step you confirm.",
       );
     } catch (err) {
       reportApiError(err, setError, { fallback: "Zip export failed", toast: true });
@@ -107,7 +107,7 @@ export function useWizardApply({
       setEliteLintOk(lint.ok && failing.length === 0);
       setEliteLintNote(
         failing.length
-          ? `${failing.length} Python block(s) need fixes before promote.`
+          ? `${failing.length} Python block(s) need fixes before publish.`
           : "Custom Python blocks lint clean.",
       );
     } catch (err) {
@@ -132,7 +132,7 @@ export function useWizardApply({
       setEliteLintOk(lint.ok && failing.length === 0);
       if (failing.length) {
         setEliteLintNote(
-          `Lint: ${failing.length} block(s) with issues — fix or regenerate before sandbox.`,
+          `Lint: ${failing.length} block(s) with issues. Fix or regenerate before sandbox.`,
         );
       }
       const gate = await api.eliteModuleGate(connectionId, spec);
@@ -184,7 +184,7 @@ export function useWizardApply({
       setElitePromoteConfirmOpen(false);
       setEliteNote(res.message || `Promoted ${tech} to this connection.`);
     } catch (err) {
-      reportApiError(err, setError, { fallback: "Promote failed", toast: true });
+      reportApiError(err, setError, { fallback: "Publish failed", toast: true });
     } finally {
       setEliteBusy(false);
     }
@@ -217,11 +217,11 @@ export function useWizardApply({
       const sb = Number(res.smart_buttons || 0);
       const hostHint =
         sb > 0
-          ? " Check linked apps’ smart-button row (e.g. Contacts) — see «Where this app shows up»."
+          ? " Check linked apps’ smart-button row (for example Contacts). See «Where this app shows up»."
           : "";
       setAiNote(
         appUrl
-          ? `${res.message} · ${sb} smart button(s). Open the app in Odoo to walk Operations → Inventory → People — you do not pick models one by one.${hostHint}`
+          ? `${res.message} · ${sb} smart button(s). Open the app in Odoo to walk Operations, Inventory, and People. You do not pick models one by one.${hostHint}`
           : `${res.message} · ${sb} smart button(s). Open Odoo’s app switcher and click this app.${hostHint}`,
       );
       if (res.warnings?.length) setAiWarnings(res.warnings);
@@ -270,7 +270,7 @@ export function useWizardApply({
     if (!aiDraft) return;
     const modelCount = Array.isArray(aiDraft.models) ? aiDraft.models.length : 0;
     if (modelCount === 0) {
-      setError("Draft has 0 models — create the draft again before opening ModuleSpec.");
+      setError("This draft has no models. Generate the draft again before opening app plan.");
       return;
     }
     try {
@@ -296,7 +296,7 @@ export function useWizardApply({
         setGenUiConfirmOpen(true);
       } else {
         setError(
-          `${validation.message} — fix the draft or confirm override in the dialog.`,
+          `${validation.message}. Fix the draft, or confirm the override in the dialog.`,
         );
         setGenUiConfirmOpen(true);
         setSkipValidateLive(false);

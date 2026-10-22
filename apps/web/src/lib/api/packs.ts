@@ -124,7 +124,7 @@ export const packsApi = {
   /** Intent → feature router (Expert home + Batch OS alias). */
   expertIntentRoute: (
     id: string,
-    body: { prompt: string; limit?: number },
+    body: { prompt: string; limit?: number; progress_run_id?: string },
   ) =>
     request<IntentRouteResult>(`/api/connections/${id}/expert/route`, {
       method: "POST",

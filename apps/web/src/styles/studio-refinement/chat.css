@@ -1,16 +1,16 @@
 .studio-refinement .chat-thread {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px var(--space-md) 8px;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg) var(--space-sm);
   overflow-y: auto;
   flex: 1;
   scroll-behavior: smooth;
 }
 
 .studio-refinement .chat-bubble {
-  max-width: 88%;
-  padding: 8px 12px;
+  max-width: min(88%, 60ch);
+  padding: var(--space-sm) var(--space-md);
   border-radius: 12px;
   font-size: var(--font-size-sm);
   line-height: 1.5;
@@ -19,7 +19,7 @@
 }
 
 .studio-refinement .chat-bubble-enter {
-  animation: studio-bubble-in 160ms ease-out both;
+  animation: studio-bubble-in 160ms var(--ease-out) both;
 }
 
 .studio-refinement .chat-bubble-assistant {
@@ -105,7 +105,7 @@
   height: 1.1em;
   flex: 0 0 auto;
   color: currentColor;
-  animation: loading-ui-spokes-spin var(--duration, 1s) linear infinite;
+  animation: kl-appear 160ms ease-out 1s both; /* touch 1: hidden for the first second */
 }
 
 .studio-refinement .studio-btn-busy {

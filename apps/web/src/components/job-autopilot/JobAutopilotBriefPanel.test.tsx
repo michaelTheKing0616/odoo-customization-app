@@ -26,4 +26,41 @@ describe("JobAutopilotBriefPanel", () => {
       /refuses write_mode=production/,
     );
   });
+
+  it("shows what/why/next empty guide and one primary Run CTA", () => {
+    render(
+      <JobAutopilotBriefPanel
+        prompt=""
+        files={[]}
+        busy={null}
+        runBlocked={false}
+        onPromptChange={vi.fn()}
+        onFilesChange={vi.fn()}
+        onPlan={vi.fn()}
+        onRun={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("job-brief-empty").textContent).toMatch(/What:/);
+    expect(screen.getByTestId("job-brief-empty").textContent).toMatch(/Why:/);
+    expect(screen.getByTestId("job-brief-empty").textContent).toMatch(/Next:/);
+    const run = screen.getByTestId("job-run-autopilot");
+    expect(run.className).toMatch(/bg-accent|primary/);
+  });
 });
+
+  it("demotes Run Autopilot when Promote owns the primary CTA", () => {
+    render(
+      <JobAutopilotBriefPanel
+        prompt="Bakery in NG"
+        files={[]}
+        busy={null}
+        runBlocked={false}
+        runIsPrimary={false}
+        onPromptChange={vi.fn()}
+        onFilesChange={vi.fn()}
+        onPlan={vi.fn()}
+        onRun={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("job-run-autopilot").className).not.toMatch(/bg-accent/);
+  });

@@ -3,12 +3,12 @@ import type { ExpertAskResponse } from "@/lib/api";
 
 /** Completeness / Cert / Autopilot stay independent. Expert never writes or promotes. */
 export const EXPERT_HONESTY_LINE =
-  "Completeness ≠ Cert ≠ Autopilot. Expert never auto-promotes.";
+  "A complete draft is not the same as certified, and neither means Autopilot-ready. Expert never publishes on its own.";
 
 export const EXPERT_HONESTY_LEGEND = [
-  "Completeness is hygiene on drafts — not a shippable score.",
+  "Completeness is hygiene on drafts, not a shippable score.",
   "Certification is a separate bar. Expert does not certify an instance.",
-  "Autopilot is Job Autopilot. Expert is a copilot: it answers, it does not apply or promote.",
+  "Autopilot is Job Autopilot. Expert is a copilot: it answers, it does not apply or publish.",
 ] as const;
 
 export function expertHonestyLegend(): string[] {
@@ -17,7 +17,7 @@ export function expertHonestyLegend(): string[] {
 
 export function expertHeaderDescription(connectionName?: string | null): string {
   const base =
-    "Grounded answers with citations. Expert does not apply, certify, or auto-promote.";
+    "Grounded answers with citations. Expert does not apply, certify, or publish on its own.";
   const name = (connectionName || "").trim();
   return name ? `${name} · ${base}` : base;
 }
@@ -27,20 +27,20 @@ export function expertEmptyTitle(): string {
 }
 
 export function expertEmptyBody(): string {
-  return "Expert cites docs and instance metadata when it can, and says so when it cannot. It is a copilot — not Job Autopilot, and not promote.";
+  return "Answers cite Odoo docs and this connection's metadata, and say so when a source is missing. Expert is a copilot, not Job Autopilot, and it does not publish.";
 }
 
 export function expertComposerPlaceholder(): string {
-  return "Ask about this model, a view inherit, ACL, or paste an error…";
+  return "Ask about a model, a view inherit, an ACL, or paste an error…";
 }
 
 export function expertSessionHint(opts: {
   contextEnabled: boolean;
   contextLabel: string | null;
 }): string {
-  if (!opts.contextEnabled) return "Page context off";
+  if (!opts.contextEnabled) return "Not shared";
   if (opts.contextLabel) return `Using ${opts.contextLabel}`;
-  return "Page context on";
+  return "Nothing to share on this page";
 }
 
 export function formatExpertContextLabel(
@@ -52,7 +52,10 @@ export function formatExpertContextLabel(
   if (uiContext.model) parts.push(uiContext.model);
   if (uiContext.field) parts.push(uiContext.field);
   if (uiContext.draftSummary) parts.push("draft");
-  if (uiContext.route) parts.push(uiContext.route.split("/").pop() ?? "");
+  // On the Expert page itself the route segment ("expert") says nothing useful.
+  if (uiContext.route && !isExpertDestinationPath(uiContext.route)) {
+    parts.push(uiContext.route.split("/").pop() ?? "");
+  }
   const unique = [...new Set(parts.filter(Boolean))];
   return unique.length ? unique.join(" · ") : null;
 }
@@ -79,18 +82,18 @@ export function expertOverviewTitle(): string {
 }
 
 export function expertOverviewBody(): string {
-  return "A grounded copilot for this connection. It cites sources, diagnoses errors, and explains models — it never applies ModuleSpec, certifies, or auto-promotes.";
+  return "A grounded copilot for this connection. It cites sources, diagnoses errors, and explains models. It never applies an app plan, certifies, or publishes on its own.";
 }
 
 export const EXPERT_STARTER_PROMPTS: ReadonlyArray<{ id: string; label: string; question: string }> = [
   {
     id: "xpath",
-    label: "XPath inherit",
+    label: "Form extension (XPath)",
     question: "How does xpath inherit extend a form without replacing the primary arch?",
   },
   {
     id: "acl",
-    label: "AccessError",
+    label: "AccessError on x_ model",
     question: "What usually causes an AccessError when writing a custom x_ model?",
   },
   {
@@ -112,6 +115,11 @@ export function splitUserTurnForDisplay(content: string): {
   const match = content.split(/\n\nError log:\n/i);
   if (match.length < 2) return { question: content, errorLog: null };
   return { question: match[0] ?? content, errorLog: match.slice(1).join("\n\nError log:\n") };
+}
+
+/** True on /connections/[id]/expert, where the conversation renders inline and the drawer stands down. */
+export function isExpertDestinationPath(pathname: string | null | undefined): boolean {
+  return /^\/connections\/[^/]+\/expert\/?$/.test(pathname ?? "");
 }
 
 /** Dedicated Expert destination route (not the overview ?expert=1 shim). */

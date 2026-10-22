@@ -60,21 +60,14 @@ export function DraftStudioReusePanel({
   onRejectInstallable,
 }: DraftStudioReusePanelProps) {
   return (
-    <div className="mt-4" data-testid="stock-model-picker">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted">
-        Reuse existing Odoo models
-      </p>
-      <p className="mt-1 text-xs text-muted">
-        Link stock Odoo models instead of inventing duplicates. Catalog is every
+    <div className="draft-studio-reuse" data-testid="stock-model-picker">
+      <p className="draft-studio-reuse-help">
+        Link stock Odoo models instead of inventing duplicates. The catalog lists every
         non-custom model on this connection
         {reuseCatalog.length
           ? ` (${reuseCatalog.length.toLocaleString()} models)`
-          : reuseCatalogStatus === "loading"
-            ? ""
-            : ""}
-        — not the full unused CE Apps list. After Job Autopilot or Install &amp;
-        reuse, refresh so newly installed apps appear. Install &amp; reuse shows
-        after the draft when a suggested app is not yet installed.
+          : ""}
+        . Refresh after Job Autopilot or Install &amp; reuse so new apps appear.
       </p>
       <div className="mt-2 flex flex-wrap gap-2">
         {REUSE_SUGGESTIONS.map((m) => {
@@ -87,6 +80,7 @@ export function DraftStudioReusePanel({
               onClick={() => onToggleReuse(m)}
               className={`chip font-mono ${on ? "is-selected" : ""}`}
               title={label || m}
+              aria-pressed={on}
             >
               {on ? "✓ " : ""}
               {label ? `${label} (${m})` : m}
@@ -176,8 +170,8 @@ export function DraftStudioReusePanel({
             })
           )}
         </div>
-        {reuseCatalogError ? (
-          <div className="flex flex-wrap items-center gap-2">
+        {reuseCatalogError && filteredReuseCatalog.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2" data-testid="reuse-catalog-error">
             <p className="text-xs text-muted">{reuseCatalogError}</p>
             <Button
               type="button"
@@ -192,7 +186,7 @@ export function DraftStudioReusePanel({
         ) : null}
         {reuseSearch.trim() === "" && reuseCatalog.length > 120 ? (
           <p className="text-xs text-muted">
-            Showing first 120 — type to search all{" "}
+            Showing first 120. Type to search all{" "}
             {reuseCatalog.length.toLocaleString()} stock models on this
             instance.
           </p>
@@ -212,7 +206,7 @@ export function DraftStudioReusePanel({
           <p className="text-xs text-muted">
             Backend confirmed these stock models during apply-readiness because the
             apps are already installed. Install &amp; reuse is not offered in that
-            case. Apply adds link-only M2O fields — it does not post orders,
+            case. Apply adds link-only M2O fields. It does not post orders,
             invoices, or stock moves.
           </p>
           <ul className="space-y-1 text-xs">
@@ -240,7 +234,7 @@ export function DraftStudioReusePanel({
             <div key={String(d.model)} className="rounded border border-border-subtle p-2">
               <p className="font-mono text-xs text-ink">{d.model}</p>
               <p className="mt-1 text-xs text-muted">
-                Suggested — {d.reason}
+                Suggested: {d.reason}
                 {d.link_only ? " (link-only)" : ""}
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -276,7 +270,7 @@ export function DraftStudioReusePanel({
         >
           <p className="text-xs font-medium text-ink">Installable Odoo apps</p>
           <p className="text-xs text-muted">
-            Install one app at a time — the others stay listed until you Install or
+            Install one app at a time. The others stay listed until you Install or
             generate custom. Installing does not clear sibling suggestions.
           </p>
           {installableReuseSuggestions.map((d) => (
@@ -284,7 +278,7 @@ export function DraftStudioReusePanel({
               <p className="font-mono text-xs text-ink">{d.model}</p>
               <p className="mt-1 text-xs text-muted">
                 Install <span className="font-mono">{d.module ?? "?"}</span> and reuse, or
-                generate a custom model — {d.reason}
+                generate a custom model: {d.reason}
                 {d.link_only ? " (link-only)" : ""}
               </p>
               <div className="mt-2 flex flex-wrap gap-2">

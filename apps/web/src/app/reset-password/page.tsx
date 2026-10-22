@@ -91,7 +91,7 @@ export default function ResetPasswordPage() {
   return (
     <div className="mx-auto max-w-md space-y-6 p-6">
       <PageHeader title="Reset password" description="We'll email you a reset link or set a new password." />
-      <Suspense fallback={<Card><p className="text-sm text-muted-foreground">Loading…</p></Card>}>
+      <Suspense fallback={<Card><p className="text-sm text-muted-foreground">Checking your reset link…</p></Card>}>
         <ResetPasswordContent />
       </Suspense>
     </div>

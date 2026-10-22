@@ -67,8 +67,8 @@ export function StudioOpenInOdoo({
         data-testid={testId}
         title={
           fieldPack
-            ? `Opens ${hostFormName} in Odoo — look under the stock app (Sales / Invoicing), not a new app tile.`
-            : `Opens ${liveAppName} in Odoo — look on the home grid, not Apps.`
+            ? `Opens ${hostFormName} in Odoo. Look under the stock app (Sales or Invoicing), not a new app tile.`
+            : `Opens ${liveAppName} in Odoo. Look on the home grid, not Apps.`
         }
       >
         Open in Odoo
@@ -84,7 +84,7 @@ export function StudioOpenInOdoo({
       title={
         fieldPack
           ? `Apply or Promote first. Then open ${hostFormName} in Odoo to see the change.`
-          : "Apply this app first. The canvas is a preview — Odoo has no new menu until you apply."
+          : "Apply this app first. The canvas is a preview, and Odoo has no new menu until you apply."
       }
     >
       Open in Odoo

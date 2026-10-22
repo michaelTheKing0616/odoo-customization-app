@@ -16,6 +16,7 @@ describe("JournalBatchPanel smoke", () => {
   it("renders honesty banner", () => {
     render(<JournalBatchPanel connectionId="conn-1" />);
     expect(screen.getByTestId("journal-batch-panel")).toBeInTheDocument();
-    expect(screen.getByText(/Preview ≠ posted/i)).toBeInTheDocument();
+    expect(screen.getByTestId("journal-batch-honesty")).toBeInTheDocument();
+    expect(screen.getByTestId("journal-batch-honesty")).toHaveTextContent(/Preview is not posted/i);
   });
 });

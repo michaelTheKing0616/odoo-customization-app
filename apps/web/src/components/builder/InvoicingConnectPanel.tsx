@@ -155,7 +155,7 @@ export function InvoicingConnectPanel({
       });
       sessionStorage.setItem(draftKey, JSON.stringify(res.merged));
       setModuleSpec(JSON.stringify(res.merged, null, 2));
-      setNotice("Merged invoicing fragment into ModuleSpec session draft — open ModuleSpec editor to export.");
+      setNotice("Merged invoicing fragment into app plan session draft — open app plan editor to export.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Merge failed");
     } finally {

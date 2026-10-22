@@ -6,7 +6,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
-import { PageHeader } from "@/components/ui/layout-primitives";
+import { OperateStudioChrome } from "@/components/operate-studio/OperateStudioChrome";
 import { CapabilityProbePanel } from "@/components/CapabilityProbePanel";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import { GatingCallout } from "@/components/GatingCallout";
@@ -32,6 +32,8 @@ import {
   ADVANCED_CONFIRM_COPY,
   CONFIRM_PHRASE,
   actionKindAvailable,
+  coerceToOptionA,
+  automationStarters,
   composerSessionState,
   defaultComposerForm,
   designerHref,
@@ -48,6 +50,14 @@ import { AutomationsList } from "@/components/automations/AutomationsList";
 import { AutomationSessionBar } from "@/components/automations/AutomationSessionBar";
 import { ListComposerShell } from "@/components/ui/ListComposerShell";
 import { AutomationSnapshots } from "@/components/automations/AutomationSnapshots";
+import {
+  PAGE_DESCRIPTION,
+  PAGE_TITLE,
+  automationsHonestyGuide,
+  automationsSessionBadge,
+  sanitizeAutomationsCopy,
+} from "@/lib/automationsScreen";
+import "@/components/automations/automations-operate.css";
 
 function isModuleExport(v: AutomationRow | ModuleExport): v is ModuleExport {
   return "content_base64" in v;
@@ -231,7 +241,7 @@ export default function AutomationsPage() {
           form.trigger === "on_time" ? form.trg_date_range_type : undefined,
         trg_date_range_mode:
           form.trigger === "on_time" ? form.trg_date_range_mode : undefined,
-        action_kind: form.action_kind,
+        action_kind: coerceToOptionA(form.action_kind),
         field_name:
           form.action_kind === "update_field" || form.action_kind === "related_write"
             ? form.field_name
@@ -325,11 +335,11 @@ export default function AutomationsPage() {
             : [
                 "Runs with the connected Odoo user's privileges",
                 "Side effects may not be fully undoable",
-                "Prefer Option A (module zip + sandbox) when possible",
+                "Prefer custom code (module zip plus a test copy) when possible",
               ],
           err.confirm_phrase || CONFIRM_PHRASE,
         );
-        setError("Advanced confirmation required — review risks and type the phrase.");
+        setError("Advanced confirmation required. Review risks and type the phrase.");
       } else {
         reportApiError(err, setError, { fallback: "Create failed", toast: true });
       }
@@ -340,8 +350,12 @@ export default function AutomationsPage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (ADVANCED_ACTION_KINDS.has(form.action_kind)) {
-      const copy = ADVANCED_CONFIRM_COPY[form.action_kind] ?? {
+    const kind = coerceToOptionA(form.action_kind);
+    if (kind !== form.action_kind) {
+      setForm((f) => ({ ...f, action_kind: kind }));
+    }
+    if (ADVANCED_ACTION_KINDS.has(kind)) {
+      const copy = ADVANCED_CONFIRM_COPY[kind] ?? {
         warning: "This advanced automation requires confirmation.",
         risks: [
           "Runs with the connected Odoo user's privileges",
@@ -444,10 +458,11 @@ export default function AutomationsPage() {
   const selected = rows.find((r) => r.id === selectedId) ?? null;
   const dirty = isComposerDirty(form, baseline);
   const sessionState = composerSessionState({ dirty, savedOnce });
+  const effectiveKind = coerceToOptionA(form.action_kind);
   const submitHint =
-    form.action_kind === "python_module"
+    effectiveKind === "python_module"
       ? "Generate module zip"
-      : ADVANCED_ACTION_KINDS.has(form.action_kind)
+      : ADVANCED_ACTION_KINDS.has(effectiveKind)
         ? "Create advanced automation"
         : "Create automation";
 
@@ -463,31 +478,41 @@ export default function AutomationsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl" data-testid="automations-page">
-      <PageHeader
-        title="Automations"
-        description={`${connection?.name ?? connectionId} · Model, trigger, apply-on, then a safe action. Python stays Option A unless you confirm live code.`}
-        actions={
-          <>
-            <Button variant="secondary" size="sm" asChild>
-              <Link
-                href={designerHref(connectionId, selected?.model || form.model)}
-                data-testid="automations-designer-link"
-              >
-                Open in View Designer
-              </Link>
-            </Button>
-            <ExplainThisButton
-              question={`Explain automations for model ${form.model}`}
-              label="Explain automations"
-            />
-          </>
-        }
-      />
-      <p className="mt-2 text-sm text-muted">
-        Form buttons live in View Designer. This screen is the model-level twin — same model
+    <OperateStudioChrome
+      testIdPrefix="automations"
+      pageTestId="automations-page"
+      kicker={connection?.name ?? connectionId}
+      title={PAGE_TITLE}
+      subtitle={PAGE_DESCRIPTION}
+      badge={automationsSessionBadge({ unsaved: false })}
+      honesty={automationsHonestyGuide()}
+      sanitize={sanitizeAutomationsCopy}
+      shellClassName="automations-operate"
+      className="p-4 sm:p-6"
+      titleActions={
+        <>
+          <Button variant="secondary" size="sm" asChild>
+            <Link
+              href={designerHref(connectionId, selected?.model || form.model)}
+              data-testid="automations-designer-link"
+            >
+              Open in View Designer
+            </Link>
+          </Button>
+          <ExplainThisButton
+            question={`Explain automations for model ${form.model}`}
+            label="Explain automations"
+          />
+        </>
+      }
+    >
+      <p className="au-lead">
+        Form buttons live in View Designer. This screen is the model-level twin: same model
         query, same public ORM.
       </p>
+      <span className="sr-only" data-testid="automations-honesty">
+        Python needs custom code. Publishing to Odoo stays a step you confirm.
+      </span>
       <VersionAwarenessBanner capabilities={connection?.capabilities} className="mt-4" />
       <CapabilityProbePanel
         capabilities={connection?.capabilities}
@@ -575,6 +600,12 @@ export default function AutomationsPage() {
               setNotice(null);
             }}
             onCreate={startNew}
+            starters={automationStarters(models)}
+            onStarter={(st) => {
+              startNew();
+              patchForm({ name: st.name, model: st.model, trigger: st.trigger, filter_domain: st.filter_domain });
+              setNotice("Starter loaded into the composer. Nothing is saved until you Create.");
+            }}
           />
           <AutomationSnapshots
             connectionId={connectionId}
@@ -695,6 +726,6 @@ export default function AutomationsPage() {
         onCancel={() => setConfirmMode(null)}
         onConfirm={proceedConfirm}
       />
-    </div>
+    </OperateStudioChrome>
   );
 }

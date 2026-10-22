@@ -25,6 +25,17 @@ type UpgradeSheetProps = {
   featureKey?: string;
 };
 
+const OPERATE_NOTE = "Operate tools (bulk, health checks, snapshots) stay available on every plan.";
+
+/**
+ * Sheet description — a pure function of ``featureKey`` so the server render and
+ * the first client render always match (no storage/URL/window reads here).
+ */
+export function upgradeSheetDescription(featureKey?: string | null): string {
+  if (!featureKey) return `Pick a plan. ${OPERATE_NOTE}`;
+  return `Unlock ${FEATURE_LABELS[featureKey] ?? featureKey}. ${OPERATE_NOTE}`;
+}
+
 export function UpgradeSheet({ open, onOpenChange, featureKey }: UpgradeSheetProps) {
   const { data: entitlements } = useEntitlements();
   const [plans, setPlans] = useState<BillingPlanRow[]>([]);
@@ -101,7 +112,7 @@ export function UpgradeSheet({ open, onOpenChange, featureKey }: UpgradeSheetPro
       open={open}
       onOpenChange={onOpenChange}
       title="Upgrade your plan"
-      description={`Unlock ${featureLabel}. Operate tools (bulk, health checks, snapshots) stay available on every plan.`}
+      description={upgradeSheetDescription(featureKey)}
       testId="upgrade-sheet"
     >
       <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
@@ -109,9 +120,9 @@ export function UpgradeSheet({ open, onOpenChange, featureKey }: UpgradeSheetPro
           <Callout variant="info" title="Current plan">
             {entitlements.plan_id}
             {entitlements.active_project_limit != null
-              ? ` · ${entitlements.active_projects}/${entitlements.active_project_limit} active projects`
+              ? `, ${entitlements.active_projects} of ${entitlements.active_project_limit} active projects`
               : null}
-            {entitlements.extra_project_slots > 0 ? ` · +${entitlements.extra_project_slots} purchased slots` : null}
+            {entitlements.extra_project_slots > 0 ? `, ${entitlements.extra_project_slots} purchased slots` : null}
           </Callout>
         ) : null}
 
@@ -121,7 +132,7 @@ export function UpgradeSheet({ open, onOpenChange, featureKey }: UpgradeSheetPro
           <div className="rounded-lg border border-border-subtle p-4" data-testid="extra-slots-panel">
             <p className="font-semibold text-ink">Add active-project slots</p>
             <p className="mt-1 text-sm text-muted">
-              ${slotAddonUsd}/mo per slot on your current plan — no tier change required.
+              ${slotAddonUsd} a month per slot on your current plan. No tier change required.
             </p>
             <div className="mt-3 flex items-center gap-2">
               <label className="text-sm text-muted" htmlFor="slot-qty">

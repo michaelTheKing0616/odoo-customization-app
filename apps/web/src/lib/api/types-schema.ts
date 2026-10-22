@@ -14,6 +14,9 @@ export type Connection = {
   writes_paused?: boolean;
   /** odoo.sh / online vs self-hosted — used for Online capability callouts. */
   hosting?: string | null;
+  group_label?: string | null;
+  /** Saved "This is a test copy" flag; null/undefined = never set (older connections). */
+  is_test_copy?: boolean | null;
   created_at: string | null;
   updated_at: string | null;
   capabilities?: CapabilityMatrix | null;

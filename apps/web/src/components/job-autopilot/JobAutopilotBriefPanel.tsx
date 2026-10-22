@@ -11,6 +11,8 @@ type JobAutopilotBriefPanelProps = {
   busy: JobAutopilotBusy;
   runBlocked: boolean;
   runBlockedReason?: string;
+  /** False when Promote/Handoff owns the page primary CTA. */
+  runIsPrimary?: boolean;
   onPromptChange: (value: string) => void;
   onFilesChange: (files: File[]) => void;
   onPlan: () => void;
@@ -23,27 +25,43 @@ export function JobAutopilotBriefPanel({
   busy,
   runBlocked,
   runBlockedReason,
+  runIsPrimary = true,
   onPromptChange,
   onFilesChange,
   onPlan,
   onRun,
 }: JobAutopilotBriefPanelProps) {
+  const empty = !prompt.trim();
   return (
-    <Card className="p-5" data-testid="job-autopilot-brief">
-      <h2 className="text-lg font-semibold text-ink">Job brief</h2>
-      <p className="mt-1 text-sm text-muted">
+    <Card className="job-brief-card p-5" data-testid="job-autopilot-brief">
+      <h2 className="text-lg font-semibold tracking-tight text-ink">Job brief</h2>
+      <p className="mt-1 max-w-[65ch] text-sm text-muted text-pretty">
         Who you are, what to sell or stock or invoice, country, and any residual stock
-        apps do not cover. Opening this page from a stock-first Draft Studio result fills
+        apps do not cover. Opening this page from a built-in-apps-first Draft Studio result fills
         the brief. Nothing installs until you run Autopilot on a sandbox.
       </p>
-      <Textarea
-        className="mt-3"
-        value={prompt}
-        onChange={(e) => onPromptChange(e.target.value)}
-        rows={6}
-        data-testid="job-brief"
-        placeholder="Recording studio in Lagos. Clients book sessions. We invoice in naira. Contacts CSV attached."
-      />
+      <div className="job-brief-composer mt-4">
+        <Textarea
+          className="job-brief-textarea"
+          value={prompt}
+          onChange={(e) => onPromptChange(e.target.value)}
+          rows={6}
+          data-testid="job-brief"
+          placeholder="Recording studio in Lagos. Clients book sessions. We invoice in naira. Contacts CSV attached."
+        />
+      </div>
+      {empty ? (
+        <div className="job-empty-guide mt-3" data-testid="job-brief-empty">
+          <p className="job-empty-what">What: a plain-language job for a sandbox.</p>
+          <p className="job-empty-why">
+            Why: Autopilot plans stock Community apps first, then residual x_* only.
+          </p>
+          <p className="job-empty-next">
+            Next: describe the job, optionally attach CSV/XLSX/PDF, then Plan packet or
+            Run Autopilot.
+          </p>
+        </div>
+      ) : null}
       <div className="mt-4">
         <label className="block text-sm font-medium text-ink" htmlFor="job-files">
           Client files
@@ -54,6 +72,7 @@ export function JobAutopilotBriefPanel({
           multiple
           className="mt-1 block w-full text-sm text-ink"
           onChange={(e) => onFilesChange(Array.from(e.target.files ?? []))}
+          data-testid="job-files"
         />
         {files.length ? (
           <p className="mt-1 text-xs text-muted">{files.length} file(s) selected</p>
@@ -61,7 +80,7 @@ export function JobAutopilotBriefPanel({
           <p className="mt-1 text-xs text-muted">CSV, XLSX, or PDF. Optional for packet planning.</p>
         )}
       </div>
-      <div className="mt-4 flex flex-wrap items-center gap-2">
+      <div className="job-brief-actions mt-4 flex flex-wrap items-center gap-2">
         <Button
           type="button"
           variant="secondary"
@@ -74,8 +93,8 @@ export function JobAutopilotBriefPanel({
         </Button>
         <Button
           type="button"
-          variant={runBlocked ? "secondary" : "primary"}
-          className={runBlocked ? undefined : "text-white"}
+          variant={runBlocked || !runIsPrimary ? "secondary" : "primary"}
+          className={runBlocked || !runIsPrimary ? undefined : "text-white"}
           disabled={busy !== null || runBlocked}
           loading={busy === "run"}
           onClick={onRun}
@@ -92,8 +111,9 @@ export function JobAutopilotBriefPanel({
         </p>
       ) : (
         <p className="mt-2 text-xs text-muted">
-          Plan packet is read-only. Run Autopilot installs stock apps on a sandbox, then
-          RPC-smokes the named process.
+          Plan packet is read-only. Run Autopilot is the primary action: installs stock
+          apps on a test copy, then smoke-tests the named process. A complete draft is not the same as certified, and neither means
+          Autopilot.
         </p>
       )}
     </Card>

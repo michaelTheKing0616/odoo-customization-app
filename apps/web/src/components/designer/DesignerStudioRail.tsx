@@ -114,7 +114,7 @@ export function DesignerStudioRail(props: DesignerStudioRailProps) {
           id: "fields",
           label: "Fields",
           content: (
-            <div className="space-y-3">
+            <div>
               <FieldPalette
                 fields={fields.map((f) => ({
                   name: f.name,
@@ -137,7 +137,7 @@ export function DesignerStudioRail(props: DesignerStudioRailProps) {
           id: "properties",
           label: "Properties",
           content: (
-            <div data-testid="designer-props-rail">
+            <div className="designer-drawer-in" data-testid="designer-props-rail">
               {fieldInspector}
             </div>
           ),
@@ -146,39 +146,49 @@ export function DesignerStudioRail(props: DesignerStudioRailProps) {
           id: "structure",
           label: "Structure",
           content: (
-            <div className="space-y-3 text-sm">
-              <p className="text-xs text-muted">
-                Add groups and pages here. Drag fields onto the layout canvas — not gray
-                boxes. Power layout controls stay in Advanced.
+            <div className="space-y-4 text-sm">
+              <p className="text-xs leading-relaxed text-muted">
+                Add groups and pages here, then drag fields onto the layout canvas. Power
+                layout controls live in Advanced.
               </p>
               {viewType === "form" ? (
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={addGroup}
-                    className="rounded-md border border-border-subtle px-3 py-1.5 text-xs text-ink"
+                    className="h-8 rounded-md border border-border-strong px-3 text-xs font-medium text-ink hover:bg-surface-overlay active:scale-[0.97]"
                   >
-                    + Group
+                    Add group
                   </button>
                   <button
                     type="button"
                     onClick={addNotebook}
-                    className="rounded-md border border-border-subtle px-3 py-1.5 text-xs text-ink"
+                    className="h-8 rounded-md border border-border-strong px-3 text-xs font-medium text-ink hover:bg-surface-overlay active:scale-[0.97]"
                   >
-                    + Notebook
+                    Add notebook
                   </button>
                 </div>
               ) : null}
-              <ul className="space-y-1 text-xs text-muted">
+              <ul className="space-y-px text-xs">
                 {formChildren.map((child) => (
-                  <li key={child.id} className="rounded border border-border-subtle px-2 py-1">
-                    {child.kind === "group"
-                      ? `Group · ${child.string || "untitled"}`
-                      : `Notebook · ${child.pages.length} pages`}
+                  <li
+                    key={child.id}
+                    className="flex min-h-8 items-center justify-between gap-3 rounded-md px-2 hover:bg-surface-raised"
+                  >
+                    <span className="truncate text-ink">
+                      {child.kind === "group"
+                        ? child.string || "Untitled group"
+                        : "Notebook"}
+                    </span>
+                    <span className="shrink-0 text-subtle">
+                      {child.kind === "group"
+                        ? "Group"
+                        : `${child.pages.length} ${child.pages.length === 1 ? "page" : "pages"}`}
+                    </span>
                   </li>
                 ))}
                 {formChildren.length === 0 ? (
-                  <li>No groups yet. Add a group, then drop fields on the canvas.</li>
+                  <li className="text-muted">No groups yet. Add a group, then drop fields on the canvas.</li>
                 ) : null}
               </ul>
             </div>
@@ -201,13 +211,13 @@ export function DesignerStudioRail(props: DesignerStudioRailProps) {
                 setNotice(
                   viewId
                     ? `Overlay saved inherit view #${viewId}. Preview reloaded.`
-                    : "Overlay saved — preview reloaded.",
+                    : "Overlay saved. Preview reloaded.",
                 );
                 void refreshSnapshots();
               }}
             />
           ) : (
-            <p className="text-xs text-muted">
+            <p className="text-xs leading-relaxed text-muted">
               Load a model to edit the live preview with overlay operations.
             </p>
           ),
@@ -217,9 +227,9 @@ export function DesignerStudioRail(props: DesignerStudioRailProps) {
           label: "Advanced",
           content: (
             <div className="space-y-3" data-testid="designer-advanced-rail">
-              <p className="text-xs text-muted">
-                XPath inherit and arch override. Default Save is inherit. Completeness ≠ Cert ≠
-                Autopilot.
+              <p className="text-xs leading-relaxed text-muted">
+                XPath inherit and arch override. Save writes an inherit view unless you set an
+                override here. A complete draft is not the same as certified, and neither means Autopilot-ready.
               </p>
               <XPathInheritPanel
                 expr={xpathExpr}
@@ -254,7 +264,7 @@ export function DesignerStudioRail(props: DesignerStudioRailProps) {
                 onSave={() => void onSaveXpathInherit()}
                 onClearOverride={() => {
                   setArchOverride(null);
-                  setNotice("Cleared arch override — Save uses canvas spec again.");
+                  setNotice("Cleared the arch override. Save uses the canvas spec again.");
                 }}
               />
             </div>

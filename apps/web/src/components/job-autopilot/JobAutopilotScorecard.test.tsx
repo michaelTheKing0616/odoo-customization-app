@@ -26,6 +26,8 @@ describe("JobAutopilotScorecard", () => {
         }}
         promoteReady
         stockOnly
+        connectorsDetected={["payments", "messaging"]}
+        connectorsResult={{ ran: ["payments"], failed: [], skipped_ids: [] }}
       />,
     );
     expect(screen.getByTestId("job-scorecard-chip").textContent).toMatch(
@@ -33,7 +35,7 @@ describe("JobAutopilotScorecard", () => {
     );
     expect(screen.getByTestId("job-scorecard-chip").textContent).toMatch(/smoke passed/);
     expect(screen.getByTestId("job-scorecard-legend").textContent).toMatch(
-      /Completeness is ModuleSpec hygiene/,
+      /Completeness is app plan hygiene/,
     );
     expect(screen.getByTestId("job-scorecard-legend").textContent).toMatch(
       /Certification is the ship bar/,
@@ -43,6 +45,7 @@ describe("JobAutopilotScorecard", () => {
     expect(screen.getByTestId("job-score-overall").textContent).toMatch(
       /not Completeness, not Cert/,
     );
+    expect(screen.getByTestId("job-recipe-rail")).toBeTruthy();
   });
 
   it("tells the operator not to promote when smoke failed", () => {

@@ -84,7 +84,7 @@ export function ModuleSpecApplyBar({
         disabled={working || !hasModels || !canApply || stockReuse}
         title={
           stockReuse
-            ? "No custom ModuleSpec to apply — use Job Autopilot"
+            ? "No custom app plan to apply — use Job Autopilot"
             : (applyBlocked ?? undefined)
         }
         loading={busy === "apply"}

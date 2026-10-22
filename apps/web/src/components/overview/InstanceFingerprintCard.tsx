@@ -15,7 +15,7 @@ type Props = {
 
 const COPY: Record<InstanceFingerprintContext, string> = {
   overview:
-    "A read-only snapshot of this Odoo database — installed apps, chart of accounts, users, mail, and lock dates. Take one before Job Autopilot or a Config Packet, or when comparing sandbox to a client. It never writes to Odoo.",
+    "A read-only snapshot of this Odoo database — installed apps, chart of accounts, users, mail, and lock dates. Take one before Job Autopilot or a config summary, or when comparing sandbox to a client. It never writes to Odoo.",
   config:
     "You're about to change or replay settings. Fingerprint first so you have a receipt of this database's shape — apps, CoA, users, mail, and locks. Read-only; it does not write to Odoo.",
   develop:

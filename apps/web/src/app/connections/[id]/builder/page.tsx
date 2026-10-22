@@ -525,7 +525,7 @@ export default function BuilderPage() {
     <div className="mx-auto max-w-6xl" data-testid="builder-page">
       <PageHeader
         title="Models and fields"
-        description={`${connection ? `${connection.name} · ${connection.server_version ?? ""}` : connectionId} · live metadata on this Odoo instance. Prefer a sandbox before production writes.`}
+        description={`${connection ? `${connection.name} · ${connection.server_version ?? ""}` : connectionId} · live metadata on this Odoo instance. Try a test copy before changing production.`}
         actions={
           <>
             <Button variant="secondary" size="sm" asChild>
@@ -768,7 +768,7 @@ export default function BuilderPage() {
         open={confirmMutateOpen}
         riskLevel="danger"
         title="Mutate parent view arch"
-        warning="Mutating parent view arch overwrites existing module XML. Prefer inherit (default) for interop with installed modules."
+        warning="Mutating parent view arch overwrites existing module XML. Use an extension view (the default) so installed apps keep working together."
         risks={[
           "Parent ir.ui.view arch is rewritten in place",
           "Module upgrades may conflict or overwrite your change",

@@ -17,7 +17,7 @@ const DESCRIPTIONS: Record<string, string> = {
   legal_tax_deflection:
     "This is operational guidance, not legal, tax, or accounting advice.",
   low_retrieval:
-    "Few knowledge matches — treat the answer as a starting point, not a spec.",
+    "Few knowledge matches. Treat the answer as a starting point, not a spec.",
   pcm_consistent_refusal:
     "Protected Community modules stay read/link-only. Expert will not suggest mutating them.",
   instance_caveats:
@@ -29,7 +29,7 @@ const DESCRIPTIONS: Record<string, string> = {
   inferred_stack:
     "The module list is inferred from your question. Expert does not auto-install or auto-promote.",
   access:
-    "Usually missing ir.model.access or a record rule — not a cue to bypass security.",
+    "Usually a missing ir.model.access row or record rule. Not a cue to bypass security.",
 };
 
 export function formatExpertCautionFlag(flag: string): string | null {
@@ -52,7 +52,7 @@ export function expertCautionDescription(flag: string): string | null {
   }
   if (DESCRIPTIONS[flag]) return DESCRIPTIONS[flag];
   if (flag.startsWith("rule_based_")) {
-    return "Guidance from a deterministic rule. Completeness ≠ Cert ≠ Autopilot.";
+    return "Guidance from a deterministic rule. A complete draft is not the same as certified, and neither means Autopilot-ready.";
   }
   return null;
 }

@@ -5,8 +5,6 @@ import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/layout-primitives";
 import { StudioStageRail } from "./StudioStageRail";
 import type { StudioJourneyState } from "@/lib/studio-journey";
-import { BuildSpineBar } from "@/components/build/BuildSpineBar";
-import { useBuildSpineHandoff } from "@/lib/use-build-spine-handoff";
 
 type StudioShellProps = {
   connectionId: string;
@@ -25,13 +23,12 @@ export function StudioShell({
   onStartNew,
   children,
 }: StudioShellProps) {
-  const handoff = useBuildSpineHandoff(connectionId);
   return (
     <div className="studio-refinement" data-testid="studio-page">
       <div className={`studio-page${canvas ? " is-canvas" : ""}`}>
         <PageHeader
           title="App Studio"
-          description="Describe the work. Review a form. Apply only when you mean it."
+          description="Describe a change in plain words, check the form preview, then apply it to Odoo when you're ready."
           actions={
             <>
               {hasSession && onStartNew ? (
@@ -46,6 +43,13 @@ export function StudioShell({
                 </Button>
               ) : null}
               <Link
+                href={`/connections/${connectionId}/wireframe`}
+                className="text-ui-body text-muted hover:text-ink"
+                data-testid="studio-wireframe-link"
+              >
+                Upload sketch
+              </Link>
+              <Link
                 href={`/connections/${connectionId}/wizard`}
                 className="text-ui-body text-muted hover:text-ink"
                 data-testid="studio-power-worksheet"
@@ -56,14 +60,6 @@ export function StudioShell({
           }
         />
         <StudioStageRail journey={journey} />
-        <div className="mb-4">
-          <BuildSpineBar
-            connectionId={connectionId}
-            activeMode="option_a"
-            handoff={handoff}
-            compact
-          />
-        </div>
         {children}
       </div>
     </div>

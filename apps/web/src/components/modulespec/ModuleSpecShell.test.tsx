@@ -13,7 +13,7 @@ describe("ModuleSpecShell", () => {
       </ModuleSpecShell>,
     );
     expect(screen.getByTestId("modulespec-page")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "ModuleSpec" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "App plan" })).toBeTruthy();
     expect(screen.getByText(/Lab 19/)).toBeTruthy();
     expect(screen.getByRole("link", { name: "Draft Studio" })).toHaveAttribute(
       "href",

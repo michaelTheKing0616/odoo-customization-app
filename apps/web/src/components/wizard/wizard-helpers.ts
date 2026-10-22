@@ -46,7 +46,7 @@ export const FALLBACK_TEMPLATES: AppTemplate[] = [
     id: "car_rental",
     name: "Car Rental",
     description:
-      "Fleet, Contacts, contracts, rates, damages & maintenance — invoices stay stock.",
+      "Fleet, Contacts, contracts, rates, damages, and maintenance. Invoices stay stock.",
   },
   {
     id: "crm_lite",

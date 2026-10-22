@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/layout-primitives";
 import { Select } from "@/components/ui/Select";
 import type { GroupRow } from "@/lib/api";
+import { Term } from "@/components/ui/Term";
 
 type AccessExtrasProps = {
   model: string;
@@ -39,7 +40,7 @@ export function AccessExtras({
       <Card className="p-5" data-testid="access-groups">
         <h2 className="text-sm font-semibold text-ink">Security groups</h2>
         <p className="mt-1 text-xs text-muted">
-          Groups loaded from this instance. Use them in access lines and record rules — this list
+          Groups loaded from this instance. Use them in access lines and <Term tech="ir.rule">record rules</Term>. This list
           is read-only.
         </p>
         <ul className="mt-3 max-h-40 space-y-1 overflow-auto text-sm">
@@ -89,7 +90,7 @@ export function AccessExtras({
           {docsGate?.available
             ? "Map custom models to a Documents folder (Enterprise documents module)."
             : (docsGate?.message ??
-              "Documents module not available — config is stored but attach automation is suggestion-only.")}
+              "Documents is not installed. The folder map is stored, and attach automation stays a suggestion.")}
         </p>
         <div className="mt-3 flex flex-wrap items-end gap-2">
           <Button

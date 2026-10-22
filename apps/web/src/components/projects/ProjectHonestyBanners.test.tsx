@@ -15,9 +15,9 @@ describe("ProjectHonestyBanners", () => {
       />,
     );
     expect(screen.getByTestId("projects-sandbox-gate").textContent).toMatch(/Generate UI/);
-    expect(screen.getByTestId("projects-glossary").textContent).toMatch(/Promote stays human/);
+    expect(screen.getByTestId("projects-glossary").textContent).toMatch(/Publishing stays a step you confirm/);
     expect(screen.getByTestId("projects-score-bars-legend").textContent).toMatch(
-      /Completeness is ModuleSpec hygiene/,
+      /Completeness is app plan hygiene/,
     );
     expect(screen.getByTestId("projects-slot-note").textContent).toMatch(/archive/);
   });
@@ -26,7 +26,7 @@ describe("ProjectHonestyBanners", () => {
     render(
       <ProjectHonestyBanners gate={projectsHonestyGate({ writeMode: "production" })} />,
     );
-    expect(screen.getByTestId("projects-production-gate").textContent).toMatch(/Prefer a sandbox/);
-    expect(screen.getByTestId("projects-production-gate").textContent).toMatch(/Promote stays human/);
+    expect(screen.getByTestId("projects-production-gate").textContent).toMatch(/Try a test copy/);
+    expect(screen.getByTestId("projects-production-gate").textContent).toMatch(/Publishing stays a step you confirm/);
   });
 });

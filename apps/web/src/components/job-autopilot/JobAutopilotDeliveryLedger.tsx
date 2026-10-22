@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/Badge";
+import { Dumbbell } from "@/components/ui/craft";
 import { Card } from "@/components/ui/layout-primitives";
 import type { JobAutopilotResult } from "@/lib/api";
 
@@ -77,7 +78,7 @@ export function JobAutopilotDeliveryLedger({ result }: JobAutopilotDeliveryLedge
         ) : null}
         {custom ? (
           <section>
-            <h3 className="text-sm font-medium text-ink">Custom residual</h3>
+            <h3 className="text-sm font-medium text-ink">Custom code</h3>
             <p className="mt-1 text-muted">
               {custom.skipped
                 ? custom.reason || "Skipped."
@@ -89,6 +90,9 @@ export function JobAutopilotDeliveryLedger({ result }: JobAutopilotDeliveryLedge
             {custom.expert_score_after != null ? (
               <p className="mt-1">
                 Expert-fix {custom.expert_score_before ?? "?"} → {custom.expert_score_after}
+                {typeof custom.expert_score_before === "number" ? (
+                  <> <Dumbbell before={custom.expert_score_before} after={custom.expert_score_after} max={100} label="Expert score" /></>
+                ) : null}
               </p>
             ) : null}
           </section>

@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useId } from "react";
 import { Button } from "@/components/ui/Button";
+import {
+  applyBlockedReason,
+  generateBlockedReason,
+  wizardPrimaryAction,
+} from "@/lib/wizard-ui";
 
 type DraftStudioApplyBarProps = {
   canDraft: boolean;
@@ -23,6 +29,8 @@ type DraftStudioApplyBarProps = {
   designerModel: string | null;
   jobAutopilotHref: string;
   applied: boolean;
+  /** Prompt length, so the disabled reason can say what is missing. Optional for harnesses. */
+  promptLength?: number;
   onCreateDraft: () => void;
   onApply: () => void;
   onDownloadZip: () => void;
@@ -30,6 +38,11 @@ type DraftStudioApplyBarProps = {
   onStashJobBrief: () => void;
 };
 
+/**
+ * Stage-aware action bar. Prompt stage: one filled action, "Generate the draft".
+ * Review stage: one filled action (Apply, module zip, or Job Autopilot), the rest
+ * secondary. A disabled primary always says why, in visible text.
+ */
 export function DraftStudioApplyBar({
   canDraft,
   canApply,
@@ -50,95 +63,156 @@ export function DraftStudioApplyBar({
   designerModel,
   jobAutopilotHref,
   applied,
+  promptLength,
   onCreateDraft,
   onApply,
   onDownloadZip,
   onOpenModuleSpec,
   onStashJobBrief,
 }: DraftStudioApplyBarProps) {
+  const reasonId = useId();
+  const primary = wizardPrimaryAction({ hasDraft, stockReuse, refuseClone, moduleDelivery });
+
+  if (!hasDraft) {
+    const reason = canDraft
+      ? null
+      : generateBlockedReason({
+          promptLength: promptLength ?? (overlapPending || needsConnectReview ? 3 : 0),
+          aiBusy,
+          overlapPending,
+          needsConnectReview,
+          connectApproved,
+        });
+    return (
+      <div
+        className="draft-studio-apply-bar"
+        data-testid="draft-studio-apply-bar"
+        data-stage="prompt"
+      >
+        <div className="draft-studio-apply-row">
+          <Button
+            type="button"
+            variant="primary"
+            className="draft-studio-primary-cta"
+            disabled={aiBusy || !canDraft}
+            loading={aiBusy}
+            aria-describedby={reason ? reasonId : undefined}
+            onClick={onCreateDraft}
+            data-testid="create-draft"
+          >
+            Generate the draft
+          </Button>
+        </div>
+        {reason ? (
+          <p id={reasonId} className="draft-studio-apply-reason" data-testid="create-draft-reason">
+            {reason}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  const applyDisabled =
+    busy || !canApply || !finisherComplete || refuseClone || stockReuse;
+  const applyReason = applyBlockedReason({
+    hasDraft,
+    busy,
+    canApply,
+    finisherComplete,
+    refuseClone,
+    stockReuse,
+    generateUiBlocked,
+  });
+  const showModuleActions = !refuseClone && !stockReuse;
+
   return (
-    <div className="flex flex-wrap gap-2" data-testid="draft-studio-apply-bar">
-      <Button
-        type="button"
-        variant="primary"
-        disabled={aiBusy || !canDraft}
-        loading={aiBusy}
-        title={
-          overlapPending
-            ? "Resolve overlap findings first (Build anyway, Use, or Extend)"
-            : needsConnectReview && !connectApproved
-              ? "Review and approve connect points first"
-              : undefined
-        }
-        onClick={onCreateDraft}
-        data-testid="create-draft"
-      >
-        1. Create draft
-      </Button>
-      <Button
-        type="button"
-        variant={hasDraft && !moduleDelivery && !refuseClone && !stockReuse ? "primary" : "secondary"}
-        disabled={
-          !hasDraft || busy || !canApply || !finisherComplete || refuseClone || stockReuse
-        }
-        title={
-          stockReuse
-            ? "No custom ModuleSpec to apply — use Job Autopilot"
-            : !finisherComplete
-              ? "Wait for the Apps-store finisher (quality score) before applying"
-              : (generateUiBlocked ?? undefined)
-        }
-        onClick={onApply}
-        data-testid="apply-to-odoo"
-      >
-        {applied ? "Apply again" : "2. Apply to Odoo"}
-      </Button>
-      {stockReuse ? (
-        <Link
-          href={jobAutopilotHref}
-          className="inline-flex items-center justify-center rounded-md bg-ink px-3 py-2 text-sm font-medium text-white"
-          data-testid="open-job-autopilot"
-          onClick={onStashJobBrief}
-        >
-          Open Job Autopilot
-        </Link>
-      ) : null}
-      {hasDraft && !refuseClone && !stockReuse ? (
+    <div className="draft-studio-apply-bar" data-testid="draft-studio-apply-bar" data-stage="review">
+      <div className="draft-studio-apply-row">
         <Button
           type="button"
-          variant={moduleDelivery ? "primary" : "secondary"}
-          disabled={zipBusy || !finisherComplete || zipLocked}
-          loading={zipBusy}
-          data-testid="download-module-zip"
-          title={zipLocked ? "Authoring gate has not passed — zip stays locked" : undefined}
-          onClick={onDownloadZip}
+          variant="secondary"
+          disabled={aiBusy || !canDraft}
+          loading={aiBusy}
+          title={
+            overlapPending
+              ? "Resolve overlap findings first (Build anyway, Use, or Extend)"
+              : needsConnectReview && !connectApproved
+                ? "Review and approve connect points first"
+                : "Replaces this draft. Nothing writes to Odoo."
+          }
+          onClick={onCreateDraft}
+          data-testid="create-draft"
         >
-          {moduleDelivery ? "Download module zip" : "Download zip"}
+          Regenerate the draft
         </Button>
-      ) : null}
-      <Button
-        type="button"
-        variant="secondary"
-        disabled={!hasDraft || stockReuse}
-        data-testid="open-modulespec"
-        onClick={onOpenModuleSpec}
-      >
-        Open ModuleSpec
-      </Button>
-      {hasDraft && !refuseClone && !stockReuse ? (
-        <Button variant="secondary" asChild>
-          <Link
-            href={designerHref}
-            data-testid="open-view-designer"
-            title={
-              designerModel
-                ? `Opens View Designer on ${designerModel}. Apply to Odoo first so the form exists on this connection.`
-                : "Opens View Designer. Apply to Odoo first so views exist on this connection."
-            }
+        {showModuleActions ? (
+          <Button
+            type="button"
+            variant="secondary"
+            data-testid="open-modulespec"
+            onClick={onOpenModuleSpec}
           >
-            Open View Designer
-          </Link>
-        </Button>
+            Open ModuleSpec
+          </Button>
+        ) : null}
+        {showModuleActions ? (
+          <Button variant="secondary" asChild>
+            <Link
+              href={designerHref}
+              data-testid="open-view-designer"
+              title={
+                designerModel
+                  ? `Opens View Designer on ${designerModel}. Apply to Odoo first so the form exists on this connection.`
+                  : "Opens View Designer. Apply to Odoo first so views exist on this connection."
+              }
+            >
+              Open View Designer
+            </Link>
+          </Button>
+        ) : null}
+        {showModuleActions ? (
+          <Button
+            type="button"
+            variant={primary === "zip" ? "primary" : "secondary"}
+            disabled={zipBusy || !finisherComplete || zipLocked}
+            loading={zipBusy}
+            data-testid="download-module-zip"
+            title={zipLocked ? "Authoring gate has not passed. Zip stays locked" : undefined}
+            onClick={onDownloadZip}
+          >
+            {moduleDelivery ? "Download module zip" : "Download zip"}
+          </Button>
+        ) : null}
+        {showModuleActions ? (
+          <Button
+            type="button"
+            variant={primary === "apply" && !applied ? "primary" : "secondary"}
+            className={primary === "apply" && !applied ? "draft-studio-primary-cta" : undefined}
+            disabled={applyDisabled}
+            aria-describedby={applyReason ? reasonId : undefined}
+            title={applyReason ?? undefined}
+            onClick={onApply}
+            data-testid="apply-to-odoo"
+          >
+            {applied ? "Apply again" : "Apply to Odoo"}
+          </Button>
+        ) : null}
+        {stockReuse ? (
+          <Button asChild variant="primary" className="draft-studio-primary-cta">
+            <Link
+              href={jobAutopilotHref}
+              data-testid="open-job-autopilot"
+              onClick={onStashJobBrief}
+            >
+              Open Job Autopilot
+            </Link>
+          </Button>
+        ) : null}
+      </div>
+      {applyReason ? (
+        <p id={reasonId} className="draft-studio-apply-reason" data-testid="apply-to-odoo-reason">
+          {applyReason}
+        </p>
       ) : null}
     </div>
   );

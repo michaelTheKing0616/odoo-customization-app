@@ -16,7 +16,7 @@ export function ModuleSpecStageRail({ journey }: ModuleSpecStageRailProps) {
   return (
     <nav
       className="studio-stage-rail"
-      aria-label="ModuleSpec stages"
+      aria-label="App plan stages"
       data-testid="modulespec-stage-rail"
     >
       <ol className="studio-stage-list" data-testid="modulespec-steps">

@@ -1,11 +1,20 @@
 "use client";
 
 import { ReorderableBlocks } from "@/components/ui/canvas/ReorderableBlocks";
+import {
+  DesignerGrip,
+  DesignerPointerGhost,
+  useDesignerPointerGhost,
+} from "@/components/designer/DesignerPointerGhost";
+import { ChevronDown, ChevronUp, X } from "@/components/ui/icons";
+import { cn } from "@/lib/cn";
 
 /**
  * Odoo-familiar kanban card preview for the View Designer.
- * Structural preview — Open-in-Odoo remains authoritative.
- * Labels (nolabel) are not in our kanban arch helpers yet — values only.
+ * Structural preview: Open in Odoo remains authoritative.
+ * Labels (nolabel) are not in our kanban arch helpers yet, values only.
+ * UI-S-12: board is a card on the desk; drag (UI-F13) and arrow keys reorder,
+ * the step buttons are secondary and stay quiet until hover or focus.
  */
 
 export type KanbanCardField = {
@@ -35,38 +44,30 @@ export function KanbanCardPreview({
   onRemoveField,
   onDropFieldName,
 }: KanbanCardPreviewProps) {
+  const trackGhost = useDesignerPointerGhost();
+  const reorderable = Boolean(onMoveField);
   const columns = groupBy
     ? [
-        { key: "a", label: `${groupBy} · A` },
-        { key: "b", label: `${groupBy} · B` },
+        { key: "a", label: "Column A" },
+        { key: "b", label: "Column B" },
       ]
     : [{ key: "all", label: "All records" }];
 
   return (
-    <div
-      className="odoo-kanban-canvas overflow-hidden shadow-sm"
-      data-testid="kanban-card-preview"
-    >
-      <div className="odoo-form-header flex flex-wrap items-center gap-2">
-        <span className="text-sm font-semibold text-[var(--odoo-primary)]">
-          {title}
-        </span>
+    <div className="odoo-kanban-canvas overflow-hidden shadow-sm" data-testid="kanban-card-preview">
+      <div className="designer-kanban-head">
+        <span className="designer-kanban-title">{title}</span>
         {groupBy ? (
-          <span
-            className="rounded bg-[var(--odoo-primary)] px-2 py-0.5 text-xs text-white"
-            data-testid="kanban-groupby-chip"
-          >
-            Group by · {groupBy}
+          <span className="designer-chip" data-testid="kanban-groupby-chip">
+            Grouped by <code>{groupBy}</code>
           </span>
         ) : (
-          <span className="rounded border border-[var(--odoo-border)] bg-surface px-2 py-0.5 text-xs text-[var(--odoo-muted)]">
-            No group-by
-          </span>
+          <span className="designer-chip">Not grouped</span>
         )}
       </div>
 
       <div
-        className="flex gap-3 overflow-x-auto p-3"
+        className="designer-kanban-board"
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
@@ -74,108 +75,99 @@ export function KanbanCardPreview({
           if (name && onDropFieldName) onDropFieldName(name);
         }}
       >
-        {columns.map((col) => (
-          <div
-            key={col.key}
-            className="min-w-[14rem] flex-1 rounded border border-[var(--odoo-border)] bg-surface-muted/60"
-          >
-            <div className="border-b border-[var(--odoo-border)] px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--odoo-muted)]">
-              {col.label}
-            </div>
-            <div className="space-y-2 p-2">
-              <div className="odoo-kanban-card border border-[var(--odoo-border)] bg-surface p-2 shadow-sm">
-                {fields.length === 0 ? (
-                  <p className="text-xs text-[var(--odoo-muted)]">
-                    Drop fields here to build the card
-                  </p>
-                ) : (
-                  <ReorderableBlocks
-                    as="ul"
-                    itemAs="li"
-                    items={fields}
-                    getId={(f) => f.id}
-                    disabled={!onMoveField}
-                    onMove={onMoveField}
-                    className="space-y-1.5"
-                    itemProps={(f) => ({
-                      className: `rounded border px-2 py-1.5 ${
-                        selectedFieldId === f.id
-                          ? "border-[var(--odoo-primary)] bg-brand-subtle"
-                          : "border-transparent hover:border-[var(--odoo-border)]"
-                      }`,
-                    })}
-                  >
-                    {(f, idx) => (
-                      <div className="flex items-start justify-between gap-2">
+        {columns.map((col, colIndex) => (
+          <div key={col.key} className="designer-kanban-lane">
+            <div className="designer-kanban-lane-title">{col.label}</div>
+            <div className="designer-kanban-card">
+              {fields.length === 0 ? (
+                <p className="designer-drop-empty">Drop fields here to build the card</p>
+              ) : (
+                <ReorderableBlocks
+                  as="ul"
+                  itemAs="li"
+                  items={fields}
+                  getId={(f) => f.id}
+                  disabled={!onMoveField}
+                  onMove={onMoveField}
+                  className="relative space-y-0.5"
+                  itemProps={(f) => ({
+                    ...(reorderable ? { "data-reorderable": "" } : {}),
+                    onPointerMove: reorderable ? trackGhost : undefined,
+                    "aria-label": `${f.string || f.name} (${f.name})`,
+                    className: cn(
+                      "designer-kanban-field",
+                      selectedFieldId === f.id && "is-selected",
+                    ),
+                  })}
+                >
+                  {(f, idx, meta) => (
+                    <>
+                      {meta.isDropTarget ? <span className="designer-drop-line" aria-hidden /> : null}
+                      {meta.dropIndex === fields.length && idx === fields.length - 1 ? (
+                        <span className="designer-drop-line is-after" aria-hidden />
+                      ) : null}
+                      <div className="designer-row-body">
                         <button
                           type="button"
-                          className="min-w-0 flex-1 text-left"
+                          className="min-w-0 flex-1 text-start"
                           onClick={() => onSelectField?.(f.id)}
                         >
-                          <div className="truncate text-sm font-medium text-[var(--odoo-sheet-fg)]">
-                            {f.string || f.name}
-                          </div>
-                          <div className="truncate font-mono text-[10px] text-[var(--odoo-muted)]">
-                            {f.name}
-                          </div>
-                          {idx === 0 && (
-                            <div className="mt-1 text-[11px] text-[var(--odoo-muted)]">
-                              Sample value
-                            </div>
-                          )}
+                          <div className="designer-row-label">{f.string || f.name}</div>
+                          <div className="designer-row-name">{f.name}</div>
+                          {idx === 0 && <div className="designer-row-sample">Sample value</div>}
                         </button>
-                        <span className="flex shrink-0 flex-col gap-0.5">
+                        <span className="designer-row-tools">
                           <button
                             type="button"
-                            className="text-xs text-[var(--odoo-primary)] disabled:opacity-30"
+                            className="designer-row-tool"
                             disabled={idx === 0}
                             aria-label={`Move ${f.name} up`}
                             onPointerDown={(e) => e.stopPropagation()}
                             onClick={() => onMoveField?.(f.id, -1)}
                           >
-                            ↑
+                            <ChevronUp className="h-3.5 w-3.5" aria-hidden />
                           </button>
                           <button
                             type="button"
-                            className="text-xs text-[var(--odoo-primary)] disabled:opacity-30"
+                            className="designer-row-tool"
                             disabled={idx >= fields.length - 1}
                             aria-label={`Move ${f.name} down`}
                             onPointerDown={(e) => e.stopPropagation()}
                             onClick={() => onMoveField?.(f.id, 1)}
                           >
-                            ↓
+                            <ChevronDown className="h-3.5 w-3.5" aria-hidden />
                           </button>
                           {onRemoveField && (
                             <button
                               type="button"
-                              className="text-[10px] text-[var(--odoo-danger)]"
+                              className="designer-row-tool is-danger"
                               aria-label={`Remove ${f.name}`}
                               onPointerDown={(e) => e.stopPropagation()}
                               onClick={() => onRemoveField(f.id)}
                             >
-                              ×
+                              <X className="h-3.5 w-3.5" aria-hidden />
                             </button>
                           )}
                         </span>
                       </div>
-                    )}
-                  </ReorderableBlocks>
-                )}
-              </div>
-              {col.key === columns[0]?.key && fields.length > 0 && (
-                <div className="odoo-kanban-card border border-dashed border-[var(--odoo-border)] bg-surface/70 p-2 opacity-60">
-                  <div className="text-xs text-[var(--odoo-muted)]">
-                    + more cards…
-                  </div>
-                </div>
+                      {reorderable ? <DesignerGrip /> : null}
+                      {meta.isDragging ? (
+                        <DesignerPointerGhost label={f.string || f.name} name={f.name} />
+                      ) : null}
+                    </>
+                  )}
+                </ReorderableBlocks>
               )}
             </div>
+            {colIndex === 0 && fields.length > 0 && (
+              <div className="designer-kanban-card is-ghost">More cards in this column</div>
+            )}
           </div>
         ))}
       </div>
 
-      <div className="border-t border-[var(--odoo-border)] bg-surface-muted px-3 py-2 text-[11px] text-[var(--odoo-muted)]">
-        Card field order matches saved kanban arch. Open in Odoo is authoritative.
+      <div className="designer-card-foot">
+        Card field order matches the saved kanban arch. Open in Odoo is authoritative.
       </div>
     </div>
   );

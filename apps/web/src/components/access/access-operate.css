@@ -1,0 +1,933 @@
+/* Studio-bar leap: basalt chrome via OperateStudioChrome; honesty in bar. */
+/* ============================================================
+   UI-S-19 Access: operate-mode matrix craft (scoped .access-operate)
+   Basalt chrome, teal = action/selection/granted, amber = staged,
+   red = destructive only. Cinnabar never appears here (keystone only).
+   ============================================================ */
+
+.access-operate {
+  --ax-radius: 12px;
+  --ax-radius-sm: 8px;
+  --ax-hair: var(--border-subtle);
+  --ax-hair-strong: var(--border-strong);
+  --ax-basalt: #1a1c21;
+  --ax-limestone: #f3f4f6;
+  --ax-staged: #b45309;
+  --ax-staged-subtle: color-mix(in oklab, #f59e0b 14%, var(--surface-raised));
+  --ax-danger-subtle: color-mix(in oklab, var(--danger) 9%, var(--surface-raised));
+  --ax-row-hover: color-mix(in oklab, var(--accent) 5%, var(--surface-raised));
+  --ax-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ax-press: 160ms;
+  --ax-state: 150ms;
+  font-variant-numeric: tabular-nums;
+}
+
+html.dark .access-operate,
+.dark .access-operate {
+  --ax-staged: #f59e0b;
+  --ax-staged-subtle: color-mix(in oklab, #f59e0b 16%, var(--surface-raised));
+}
+
+.access-operate h1,
+.access-operate h2,
+.access-operate h3 {
+  text-wrap: balance;
+  letter-spacing: -0.015em;
+}
+
+.access-operate p {
+  text-wrap: pretty;
+}
+
+/* ---------------- Version strip ---------------- */
+
+.access-operate .ax-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px 24px;
+  margin-top: 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--ax-hair);
+  border-radius: var(--ax-radius);
+  background: color-mix(in oklab, var(--ink) 2.5%, var(--surface-raised));
+}
+
+.access-operate .ax-strip-lead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.access-operate .ax-version-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--ax-basalt);
+  color: var(--ax-limestone);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+html.dark .access-operate .ax-version-chip,
+.dark .access-operate .ax-version-chip {
+  background: var(--ax-limestone);
+  color: var(--ax-basalt);
+}
+
+.access-operate .ax-version-chip[data-known="false"] {
+  background: transparent;
+  color: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--ax-hair-strong);
+}
+
+.access-operate .ax-model-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px var(--ax-hair);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.access-operate .ax-model-plus {
+  color: var(--subtle);
+  font-size: 12px;
+}
+
+.access-operate .ax-strip-summary {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+  max-width: 78ch;
+}
+
+.access-operate .ax-gate-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px var(--ax-hair);
+  background: var(--surface-raised);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.access-operate .ax-gate-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--subtle);
+}
+
+.access-operate .ax-gate-chip[data-mode="inline"] .ax-gate-dot {
+  background: var(--accent);
+}
+.access-operate .ax-gate-chip[data-mode="plan"] .ax-gate-dot {
+  background: var(--ax-staged);
+}
+
+@media (max-width: 640px) {
+  .access-operate .ax-strip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .access-operate .ax-gate-chip {
+    justify-self: start;
+  }
+}
+
+/* ---------------- What / why / next guide ---------------- */
+
+.access-operate .ax-guide {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px 14px 19px;
+  border-radius: var(--ax-radius-sm);
+  background: color-mix(in oklab, var(--ink) 3%, var(--surface-raised));
+}
+
+.access-operate .ax-guide::before {
+  content: "";
+  position: absolute;
+  inset: 10px auto 10px 0;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--ax-hair-strong);
+}
+
+.access-operate .ax-guide[data-tone="warning"] {
+  background: var(--ax-staged-subtle);
+}
+.access-operate .ax-guide[data-tone="warning"]::before {
+  background: var(--ax-staged);
+}
+.access-operate .ax-guide[data-tone="danger"] {
+  background: var(--ax-danger-subtle);
+}
+.access-operate .ax-guide[data-tone="danger"]::before {
+  background: var(--danger);
+}
+.access-operate .ax-guide[data-tone="accent"] {
+  background: color-mix(in oklab, var(--accent) 7%, var(--surface-raised));
+}
+.access-operate .ax-guide[data-tone="accent"]::before {
+  background: var(--accent);
+}
+
+.access-operate .ax-guide-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.access-operate .ax-guide-rows {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.access-operate .ax-guide-rows dt {
+  color: var(--subtle);
+  font-weight: 500;
+}
+
+.access-operate .ax-guide-rows dd {
+  margin: 0;
+  color: var(--muted);
+}
+
+.access-operate .ax-guide-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* ---------------- Segmented workspace tabs ---------------- */
+
+.access-operate .ax-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--surface-muted);
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.access-operate .ax-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  white-space: nowrap;
+  transition:
+    background-color var(--ax-state) ease,
+    color var(--ax-state) ease,
+    transform var(--ax-press) var(--ax-ease-out);
+}
+
+.access-operate .ax-tab:hover {
+  color: var(--ink);
+}
+
+.access-operate .ax-tab:active {
+  transform: scale(0.97);
+}
+
+.access-operate .ax-tab[aria-selected="true"] {
+  background: var(--surface-raised);
+  color: var(--ink);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--ink) 6%, transparent),
+    0 1px 2px -1px color-mix(in oklab, var(--ink) 10%, transparent);
+}
+
+.access-operate .ax-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.access-operate .ax-tab-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--ink) 7%, transparent);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+
+/* ---------------- Matrix ---------------- */
+
+.access-operate .ax-matrix {
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--ax-hair);
+  border-radius: var(--ax-radius);
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+
+.access-operate .ax-matrix-head {
+  display: grid;
+  gap: 16px;
+  padding: 16px 16px 14px;
+}
+
+.access-operate .ax-matrix-titlerow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.access-operate .ax-matrix-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.access-operate .ax-matrix-hint {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.access-operate .ax-matrix-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+}
+
+.access-operate .ax-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.access-operate .ax-field-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.access-operate .ax-input {
+  height: 36px;
+  width: 100%;
+  padding: 0 10px;
+  border-radius: var(--ax-radius-sm);
+  border: 1px solid var(--ax-hair);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  outline: none;
+  transition: border-color var(--ax-state) ease;
+}
+
+.access-operate .ax-input.is-mono {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
+.access-operate .ax-input:hover {
+  border-color: var(--ax-hair-strong);
+}
+
+.access-operate .ax-input:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 20%, transparent);
+}
+
+@media (max-width: 640px) {
+  .access-operate .ax-input {
+    font-size: 16px; /* no iOS zoom */
+  }
+}
+
+.access-operate .ax-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.access-operate .ax-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.access-operate .ax-legend kbd {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.access-operate .ax-matrix-scroll {
+  position: relative;
+  overflow: auto;
+  border-top: 1px solid var(--ax-hair);
+  max-height: min(70vh, 720px);
+  overscroll-behavior-x: contain;
+}
+
+.access-operate .ax-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+}
+
+.access-operate .ax-table thead th {
+  position: sticky;
+  z-index: 2;
+  background: var(--surface-raised);
+  font-weight: 500;
+  color: var(--muted);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.access-operate .ax-table thead tr:first-child th {
+  top: 0;
+  height: 36px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--ax-hair);
+}
+
+.access-operate .ax-table thead tr:nth-child(2) th {
+  top: 36px;
+  height: 26px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--subtle);
+  border-bottom: 1px solid var(--ax-hair);
+}
+
+.access-operate .ax-table .ax-corner {
+  left: 0;
+  z-index: 3;
+  text-align: left;
+  padding-left: 16px;
+  font-size: 12px;
+}
+
+.access-operate .ax-table .ax-model-th {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+  border-left: 1px solid var(--ax-hair);
+}
+
+.access-operate .ax-table .ax-perm-th.is-first,
+.access-operate .ax-table td.is-first {
+  border-left: 1px solid var(--ax-hair);
+}
+
+.access-operate .ax-table tbody th[scope="row"] {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 220px;
+  max-width: 300px;
+  padding: 8px 16px;
+  background: var(--surface-raised);
+  text-align: left;
+  font-weight: 400;
+  box-shadow: inset -1px 0 0 var(--ax-hair);
+}
+
+.access-operate .ax-table tbody tr + tr > * {
+  border-top: 1px solid color-mix(in oklab, var(--ax-hair) 70%, transparent);
+}
+
+.access-operate .ax-table tbody tr:hover > * {
+  background: var(--ax-row-hover);
+}
+
+.access-operate .ax-group-cat {
+  display: block;
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.access-operate .ax-group-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.access-operate .ax-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ax-staged);
+  background: var(--ax-staged-subtle);
+}
+
+.access-operate .ax-tag[data-tone="muted"] {
+  color: var(--muted);
+  background: color-mix(in oklab, var(--ink) 6%, transparent);
+}
+
+.access-operate .ax-table td {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  text-align: center;
+  vertical-align: middle;
+}
+
+@media (max-width: 640px) {
+  .access-operate .ax-table tbody th[scope="row"] {
+    min-width: 148px;
+    max-width: 168px;
+    padding: 8px 12px;
+  }
+  .access-operate .ax-table .ax-corner {
+    padding-left: 12px;
+  }
+}
+
+/* The pip: 32px hit target, 16px mark. */
+.access-operate .ax-pip {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    background-color var(--ax-state) ease,
+    transform var(--ax-press) var(--ax-ease-out);
+}
+
+.access-operate .ax-pip:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--accent) 10%, transparent);
+}
+
+.access-operate .ax-pip:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.access-operate .ax-pip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
+.access-operate .ax-pip:disabled {
+  cursor: not-allowed;
+}
+
+.access-operate .ax-pip-mark {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1.5px var(--ax-hair-strong);
+  background: transparent;
+  transition:
+    background-color var(--ax-state) ease,
+    box-shadow var(--ax-state) ease;
+}
+
+.access-operate .ax-pip[aria-pressed="true"] .ax-pip-mark {
+  background: var(--accent);
+  box-shadow: none;
+}
+
+/* check drawn with borders; transform only */
+.access-operate .ax-pip[aria-pressed="true"] .ax-pip-mark::after {
+  content: "";
+  position: absolute;
+  left: 5.5px;
+  top: 2.5px;
+  width: 5px;
+  height: 9px;
+  border: solid var(--on-accent);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.access-operate .ax-pip:disabled .ax-pip-mark {
+  opacity: 0.5;
+}
+
+.access-operate .ax-pip:disabled[aria-pressed="true"] .ax-pip-mark {
+  opacity: 0.62;
+}
+
+/* staged: amber halo + corner dot, both states */
+.access-operate .ax-pip[data-staged="true"] .ax-pip-mark {
+  box-shadow:
+    0 0 0 2px var(--surface-raised),
+    0 0 0 3.5px var(--ax-staged);
+}
+
+.access-operate .ax-pip[data-staged="true"][aria-pressed="false"] .ax-pip-mark {
+  box-shadow:
+    inset 0 0 0 1.5px var(--ax-staged),
+    0 0 0 2px var(--surface-raised),
+    0 0 0 3.5px var(--ax-staged);
+  background: var(--ax-staged-subtle);
+}
+
+.access-operate td[data-staged="true"] {
+  background: color-mix(in oklab, #f59e0b 7%, transparent);
+}
+
+.access-operate .ax-matrix-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--ax-hair);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ---------------- Save bar ---------------- */
+
+.access-operate .ax-savebar {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px 16px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--ax-hair);
+  background: color-mix(in oklab, var(--surface-raised) 94%, transparent);
+  backdrop-filter: saturate(160%) blur(10px);
+}
+
+.access-operate .ax-savebar[data-dirty="true"] {
+  box-shadow: inset 0 2px 0 var(--ax-staged);
+}
+
+.access-operate .ax-savebar-status {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.access-operate .ax-savebar-count {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.access-operate .ax-savebar-detail {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.access-operate .ax-savebar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 640px) {
+  .access-operate .ax-savebar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .access-operate .ax-savebar-actions {
+    justify-content: stretch;
+  }
+  .access-operate .ax-savebar-actions > * {
+    flex: 1 1 auto;
+  }
+}
+
+/* ---------------- Secondary rails ---------------- */
+
+.access-operate .ax-section-label {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .access-operate .ax-pip,
+  .access-operate .ax-tab,
+  .access-operate .ax-pip-mark {
+    transition-duration: 0ms;
+  }
+  .access-operate .ax-pip:active:not(:disabled),
+  .access-operate .ax-tab:active {
+    transform: none;
+  }
+}
+
+/* ---------------- Inset lists (access lines, record rules) ---------------- */
+
+.access-operate .ax-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.access-operate .ax-list-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.access-operate .ax-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--ax-hair);
+  border-radius: var(--ax-radius);
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+
+.access-operate .ax-list > li + li {
+  border-top: 1px solid color-mix(in oklab, var(--ax-hair) 75%, transparent);
+}
+
+.access-operate .ax-list-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px 14px 10px 16px;
+  cursor: pointer;
+  outline: none;
+  transition: background-color var(--ax-state) ease;
+}
+
+.access-operate .ax-list-row:hover {
+  background: var(--ax-row-hover);
+}
+
+.access-operate .ax-list-row:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.access-operate .ax-list-row[aria-pressed="true"] {
+  background: color-mix(in oklab, var(--accent) 8%, var(--surface-raised));
+}
+
+.access-operate .ax-list-row[aria-pressed="true"]::before {
+  content: "";
+  position: absolute;
+  inset: 8px auto 8px 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+}
+
+.access-operate .ax-list-name {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.access-operate .ax-list-meta {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.access-operate .ax-list-meta.is-mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+}
+
+.access-operate .ax-crud {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.access-operate .ax-crud span {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--subtle);
+  box-shadow: inset 0 0 0 1px var(--ax-hair);
+}
+
+.access-operate .ax-crud span[data-on="true"] {
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 10%, transparent);
+  box-shadow: none;
+}
+
+.access-operate .ax-search {
+  height: 36px;
+  width: 100%;
+  padding: 0 12px;
+  border-radius: var(--ax-radius-sm);
+  border: 1px solid var(--ax-hair);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  outline: none;
+}
+
+.access-operate .ax-search:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 20%, transparent);
+}
+
+@media (max-width: 640px) {
+  .access-operate .ax-search {
+    font-size: 16px;
+  }
+}
+
+/* ---------------- Composer / detail panel ---------------- */
+
+.access-operate .ax-panel {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--ax-hair);
+  border-radius: var(--ax-radius);
+  background: var(--surface-raised);
+}
+
+.access-operate .ax-panel-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink);
+}
+
+.access-operate .ax-panel-sub {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.access-operate .ax-panel-id {
+  margin: 2px 0 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  color: var(--subtle);
+}
+
+.access-operate .ax-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.access-operate .ax-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.access-operate .ax-notice::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+
+.access-operate.op-studio-shell {
+  max-width: 72rem;
+}
+.access-operate .op-paper {
+  gap: 14px;
+}

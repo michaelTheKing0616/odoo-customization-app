@@ -58,8 +58,8 @@ export function useStudioOptionA(
       setCalloutTitle("Module zip downloaded");
       setApplyNote(
         authoredOptionA
-          ? "Downloaded the Option A zip. Next: Sandbox install & smoke (proof only), then Promote. Do not click Install this app."
-          : "Downloaded the Option A zip. Next: Sandbox install & smoke (proof only), then Promote onto this connection. Open Accounting Settings is this Odoo — not the ephemeral sandbox.",
+          ? "Downloaded the custom-code zip. Next: install and smoke-test on a test copy (proof only), then publish. Do not click Install this app."
+          : "Downloaded the custom-code zip. Next: install and smoke-test on a test copy (proof only), then publish onto this connection. Open Accounting Settings is this Odoo — not the temporary test copy.",
       );
     } catch (err) {
       failStudio("zip", err instanceof Error ? err.message : "Zip export failed");
@@ -91,8 +91,8 @@ export function useStudioOptionA(
         setApplyNote(
           res.message ||
             (res.promote_ready
-              ? "Ephemeral sandbox passed and was torn down. Promote installs the zip on THIS connection. Then open Accounting Settings (not App Studio Open in Odoo)."
-              : "Sandbox install passed. Promote stays human — this connection’s Odoo is where you inspect CBN, not :18069."),
+              ? "Ephemeral sandbox passed and was torn down. Publish installs the zip on this connection. Then open Accounting Settings (not App Studio Open in Odoo)."
+              : "Sandbox install passed. Publishing stays a step you confirm — this connection’s Odoo is where you inspect CBN, not :18069."),
         );
       } else {
         const sandboxMsg = (res.sandbox as { message?: string } | undefined)?.message;
@@ -149,17 +149,23 @@ export function useStudioOptionA(
         setCalloutTitle("Sandbox proved after AI repair");
         setApplyNote(
           res.message ||
-            "AI repair + sandbox passed. Promote stays human. Do not click Install this app.",
+            "AI repair + sandbox passed. Publishing stays a step you confirm. Do not click Install this app.",
         );
         return;
       }
       const sandboxMsg = (res.sandbox as { message?: string } | undefined)?.message;
-      const msg =
-        res.feedback_repair?.message ||
-        res.message ||
+      const repairMsg = res.feedback_repair?.message;
+      // After a patch + sandbox retry, the top-level message is the new sandbox Fault.
+      // Show that, not the upbeat "AI patched the module" repair note.
+      const sandboxFault =
         sandboxMsg ||
-        "AI repair did not clear the sandbox Fault";
-      if (sandboxMsg) setLastSandboxFault(sandboxMsg);
+        (res.feedback_repair?.applied && res.message && res.message !== repairMsg
+          ? res.message
+          : undefined);
+      const msg = sandboxFault
+        ? `The AI patch applied, but the sandbox still fails: ${sandboxFault}`
+        : repairMsg || res.message || "AI repair did not clear the sandbox Fault";
+      if (sandboxFault) setLastSandboxFault(sandboxFault);
       failStudio("repair", msg);
       if (res.feedback_repair?.applied) {
         setCalloutTitle("AI patched the module");
@@ -192,7 +198,7 @@ export function useStudioOptionA(
       });
       setPromoteOpen(false);
       setGoldPromoted(true);
-      setCalloutTitle("Promoted to this connection");
+      setCalloutTitle("Published to this connection");
       const host =
         inheritHostModelFromDraft(spec) ||
         inheritHostModelFromDraft(session?.artifact ?? null) ||
@@ -270,7 +276,7 @@ export function useStudioOptionA(
         );
       }
     } catch (err) {
-      reportApiError(err, setError, { fallback: "Promote failed", toast: true });
+      reportApiError(err, setError, { fallback: "Publish failed", toast: true });
     } finally {
       setBusy(null);
     }
@@ -293,7 +299,7 @@ export function useStudioOptionA(
       setCalloutTitle("Invoicing installed on this connection");
       setApplyNote(
         row.host_ready
-          ? "Invoicing (account) is on this connection. Promote the CBN zip next, then Open Accounting Settings."
+          ? "Invoicing (account) is on this connection. Publish the CBN zip next, then Open Accounting Settings."
           : row.message || res.message,
       );
     } catch (err) {
@@ -319,7 +325,7 @@ export function useStudioOptionA(
         verified.message ||
           (verified.ok
             ? "Authoring gate passed — zip and sandbox unlocked. Do not click Install this app."
-            : "Authoring gate still has findings. Zip stays locked. Promote stays human."),
+            : "Authoring gate still has findings. Zip stays locked. Publishing stays a step you confirm."),
       );
     } catch (err) {
       reportApiError(err, setError, {
@@ -353,7 +359,7 @@ export function useStudioOptionA(
       setCalloutTitle(`${offer.label} installed on this connection`);
       setApplyNote(
         verified.ok
-          ? `${offer.label} (${offer.module}) is on this connection. Authoring gate passed — zip and sandbox unlocked. Do not click Install this app. Promote stays human.`
+          ? `${offer.label} (${offer.module}) is on this connection. Authoring gate passed — zip and sandbox unlocked. Do not click Install this app. Publishing stays a step you confirm.`
           : verified.message ||
             `${offer.label} is installed. The authoring gate still has findings. Zip stays locked.`,
       );

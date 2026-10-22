@@ -1,0 +1,53 @@
+@import "../operate/operate-studio-bar.css";
+/* UI-S-33 Housekeeping Studio-bar leap */
+.housekeeping-operate {
+  --hk-desk: #e8e9ec;
+  --hk-desk-dot: rgb(26 28 33 / 0.09);
+  --hk-paper: #fcfcfb;
+  --hk-paper-edge: rgb(26 28 33 / 0.08);
+  --hk-paper-lift:
+    0 1px 1px rgb(26 28 33 / 0.04),
+    0 2px 6px -2px rgb(26 28 33 / 0.06),
+    0 18px 36px -24px rgb(26 28 33 / 0.28);
+  font-variant-numeric: tabular-nums;
+  overflow-x: clip;
+}
+
+html.dark .housekeeping-operate,
+.dark .housekeeping-operate {
+  --hk-desk: #12141a;
+  --hk-desk-dot: rgb(243 244 246 / 0.06);
+  --hk-paper: #1f2127;
+  --hk-paper-edge: rgb(243 244 246 / 0.09);
+  --hk-paper-lift:
+    inset 0 1px 0 rgb(243 244 246 / 0.04),
+    0 18px 36px -20px rgb(0 0 0 / 0.65);
+}
+
+.housekeeping-operate .hk-desk {
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  background-color: var(--hk-desk);
+  background-image: radial-gradient(var(--hk-desk-dot) 1px, transparent 1px);
+  background-size: 16px 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.housekeeping-operate .hk-desk > .rounded-lg,
+.housekeeping-operate .hk-desk > [class*="Card"],
+.housekeeping-operate .hk-desk > .border {
+  /* Card paper lift when Desktop Card uses border classes */
+}
+
+.housekeeping-operate .hk-desk [data-testid$="-card"],
+.housekeeping-operate .hk-desk [data-testid="housekeeping-orphan-card"],
+.housekeeping-operate .hk-desk [data-testid="housekeeping-duplicate-card"],
+.housekeeping-operate .hk-desk [data-testid="housekeeping-large-card"],
+.housekeeping-operate .hk-desk [data-testid="housekeeping-recompute-card"],
+.housekeeping-operate .hk-desk [data-testid="housekeeping-clean-card"] {
+  background: var(--hk-paper);
+  border-color: var(--hk-paper-edge);
+  box-shadow: var(--hk-paper-lift);
+}

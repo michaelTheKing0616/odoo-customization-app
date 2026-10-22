@@ -46,7 +46,7 @@ export function classifyJobAutopilotResume(
 
 export function jobProgressHonestyLine(): string {
   return (
-    "Completeness ≠ Cert ≠ Autopilot. Promote stays human. You can leave this page. " +
+    "A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm. You can leave this page. " +
     "Returning here resumes this job if it is still running, or opens the last result."
   );
 }

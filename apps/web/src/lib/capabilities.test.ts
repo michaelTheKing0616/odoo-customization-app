@@ -15,6 +15,8 @@ import {
   defaultWindowViewMode,
   gridViewAllowed,
   injectStrategyCapabilityId,
+  isConfirmedCommunity,
+  isEditionUnknown,
   isEnterpriseEdition,
   isExperimentalMajor,
   mutationAllowed,
@@ -230,6 +232,15 @@ describe("edition / experimental helpers", () => {
     expect(gridViewAllowed(ce)).toBe(false);
     const ent = mockGaMajor(19, { edition: "enterprise" });
     expect(gridViewAllowed(ent)).toBe(true);
+  });
+
+  it("gridViewAllowed does not lock on unknown edition (soft note instead)", () => {
+    const unk = mockGaMajor(19, { edition: "unknown" });
+    expect(gridViewAllowed(unk)).toBe(true);
+    expect(isEditionUnknown(unk?.capabilities)).toBe(true);
+    expect(isConfirmedCommunity(unk?.capabilities)).toBe(false);
+    const ce = mockGaMajor(19, { edition: "community" });
+    expect(isConfirmedCommunity(ce?.capabilities)).toBe(true);
   });
 });
 

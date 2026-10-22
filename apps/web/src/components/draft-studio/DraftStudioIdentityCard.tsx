@@ -2,6 +2,7 @@
 
 import { Card } from "@/components/ui/layout-primitives";
 import { Input } from "@/components/ui/Input";
+import { Term } from "@/components/ui/Term";
 
 type DraftStudioIdentityCardProps = {
   displayName: string;
@@ -21,9 +22,12 @@ export function DraftStudioIdentityCard({
   onMultiCompany,
 }: DraftStudioIdentityCardProps) {
   return (
-    <details className="draft-studio-disclosure mb-6">
-      <summary className="cursor-pointer text-sm font-medium text-ink">
-        Scaffold identity
+    <details className="draft-studio-disclosure draft-studio-identity" data-testid="draft-studio-identity">
+      <summary>
+        <span>Scaffold identity</span>
+        <span className="draft-studio-disclosure-meta">
+          {multiCompany ? "Multi-company" : displayName.trim() ? displayName.trim() : "Optional"}
+        </span>
       </summary>
       <Card className="mt-3 space-y-4 p-5">
         <Input
@@ -50,7 +54,7 @@ export function DraftStudioIdentityCard({
           <span>
             <span className="font-medium">Multi-company aware</span>
             <span className="mt-0.5 block text-xs text-muted">
-              Adds company field + record rules for template scaffold, Generate UI, and library export.
+              Adds company field + <Term tech="ir.rule">record rules</Term> for template scaffold, Generate UI, and library export.
             </span>
           </span>
         </label>

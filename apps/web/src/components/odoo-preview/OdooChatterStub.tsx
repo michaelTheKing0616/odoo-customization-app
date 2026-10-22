@@ -1,48 +1,56 @@
 "use client";
 
+import { PaperclipIcon, UserIcon } from "./OdooIcons";
+
 type OdooChatterStubProps = {
-  /** Compact = single message row; full = composer + sample thread. */
+  /** Compact = top bar only; full = top bar, composer and a Today log line. */
   density?: "compact" | "full";
 };
 
+/** Odoo chatter: Send message / Log note / Activities, followers, Today log. Preview only. */
 export function OdooChatterStub({ density = "full" }: OdooChatterStubProps) {
   return (
-    <div className="odoo-chatter-stub" data-testid="odoo-chatter-stub">
-      <div className="odoo-chatter-tabs" role="tablist" aria-label="Chatter">
-        <button type="button" className="odoo-chatter-tab is-active" role="tab" aria-selected>
-          Send message
-        </button>
-        <button type="button" className="odoo-chatter-tab" role="tab" aria-selected={false}>
-          Log note
-        </button>
-        <button type="button" className="odoo-chatter-tab" role="tab" aria-selected={false}>
-          Activities
-        </button>
-      </div>
-      <div className="odoo-chatter-composer">
-        <div className="odoo-chatter-avatar" aria-hidden>
-          A
+    <aside className="ofp-chatter" data-testid="odoo-chatter-stub" aria-label="Chatter preview">
+      <div className="ofp-chatter-top">
+        <div className="ofp-chatter-actions">
+          <span className="ofp-btn ofp-btn-primary ofp-btn-sm">Send message</span>
+          <span className="ofp-btn ofp-btn-secondary ofp-btn-sm">Log note</span>
+          <span className="ofp-btn ofp-btn-secondary ofp-btn-sm">Activities</span>
         </div>
-        <div className="odoo-chatter-composer-input">
-          Write a message… (preview only — live chatter needs mail.thread)
+        <div className="ofp-chatter-meta">
+          <PaperclipIcon />
+          <span className="ofp-chatter-followers">
+            <UserIcon />1
+          </span>
+          <span className="ofp-chatter-follow">Following</span>
         </div>
       </div>
       {density === "full" ? (
-        <ul className="odoo-chatter-thread">
-          <li className="odoo-chatter-message">
-            <div className="odoo-chatter-avatar" aria-hidden>
-              S
-            </div>
-            <div>
-              <div className="odoo-chatter-meta">
-                <strong>System</strong>
-                <span>just now</span>
+        <>
+          <div className="ofp-chatter-composer">
+            <span className="ofp-avatar" aria-hidden>
+              A
+            </span>
+            <span className="ofp-chatter-input">Write a message...</span>
+          </div>
+          <div className="ofp-chatter-day">
+            <span>Today</span>
+          </div>
+          <div className="ofp-chatter-msg">
+            <span className="ofp-avatar ofp-avatar--muted" aria-hidden>
+              M
+            </span>
+            <div className="ofp-chatter-msg-body">
+              <div className="ofp-chatter-msg-head">
+                <strong>Mitchell Admin</strong>
+                <span>now</span>
               </div>
-              <p>Record created. Messages and activities appear here after mail mixin.</p>
+              <p>Record created</p>
             </div>
-          </li>
-        </ul>
+          </div>
+          <p className="ofp-chatter-note">Preview only. Live messages need the mail mixin on the model.</p>
+        </>
       ) : null}
-    </div>
+    </aside>
   );
 }

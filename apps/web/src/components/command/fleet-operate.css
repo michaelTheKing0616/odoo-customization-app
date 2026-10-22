@@ -1,0 +1,476 @@
+/* ============================================================
+   UI-S-51 Fleet command: paper-desk command center (.fleet-operate)
+   Limestone pasteboard + paper sheet. Basalt type. One teal primary.
+   Honesty = quiet caption. Situational callouts only for empty/error/partial/loading.
+   Premium tiles: large tabular counts, basalt label, intentional hierarchy.
+   Cinnabar never in UI. Playbook §0 + ingenium-v2.
+   ============================================================ */
+
+.fleet-operate {
+  --fc-radius: 14px;
+  --fc-radius-sm: 10px;
+  --fc-hair: var(--border-subtle);
+  --fc-hair-strong: var(--border-strong);
+  --fc-basalt: #1a1c21;
+  --fc-limestone: #f3f4f6;
+  --fc-pasteboard: color-mix(in oklab, var(--ink) 4.5%, var(--surface, #f7f7f8));
+  --fc-paper: var(--surface-raised, #fff);
+  --fc-paper-shadow:
+    0 0 0 1px color-mix(in oklab, var(--ink) 6%, transparent),
+    0 1px 2px color-mix(in oklab, var(--ink) 4%, transparent),
+    0 12px 28px -16px color-mix(in oklab, var(--ink) 22%, transparent);
+  --fc-row-hover: color-mix(in oklab, var(--accent) 6%, var(--fc-paper));
+  --fc-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --fc-state: 150ms;
+  --fc-staged: #b45309;
+  --fc-staged-subtle: color-mix(in oklab, #f59e0b 12%, var(--fc-paper));
+  font-variant-numeric: tabular-nums;
+  max-width: 56rem;
+  margin-inline: auto;
+  overflow-x: clip;
+  box-sizing: border-box;
+  padding: 20px 16px 32px;
+  background: var(--fc-pasteboard);
+  min-height: 100%;
+}
+
+html.dark .fleet-operate,
+.dark .fleet-operate {
+  --fc-basalt: #f3f4f6;
+  --fc-limestone: #1a1c21;
+  --fc-pasteboard: color-mix(in oklab, var(--ink) 8%, var(--surface, #12141a));
+  --fc-paper: color-mix(in oklab, var(--ink) 3%, var(--surface-raised, #1a1c21));
+  --fc-staged: #f59e0b;
+  --fc-staged-subtle: color-mix(in oklab, #f59e0b 14%, var(--fc-paper));
+}
+
+.fleet-operate *,
+.fleet-operate *::before,
+.fleet-operate *::after {
+  box-sizing: border-box;
+}
+
+.fleet-operate h1,
+.fleet-operate h2,
+.fleet-operate h3 {
+  text-wrap: balance;
+  letter-spacing: -0.02em;
+}
+
+.fleet-operate p {
+  text-wrap: pretty;
+}
+
+.fleet-operate .fc-desk {
+  display: grid;
+}
+
+.fleet-operate .fc-sheet {
+  background: var(--fc-paper);
+  border-radius: var(--fc-radius);
+  box-shadow: var(--fc-paper-shadow);
+  padding: 28px 28px 24px;
+  display: grid;
+  gap: 20px;
+}
+
+/* Masthead */
+
+.fleet-operate .fc-masthead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px 24px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--fc-hair);
+}
+
+.fleet-operate .fc-mast-copy {
+  min-width: 0;
+  flex: 1 1 18rem;
+  display: grid;
+  gap: 8px;
+}
+
+.fleet-operate .fc-title {
+  margin: 0;
+  font-size: clamp(1.625rem, 2.4vw, 2rem);
+  font-weight: 650;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  color: var(--fc-basalt);
+}
+
+.fleet-operate .fc-lead {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+  max-width: 62ch;
+}
+
+.fleet-operate .fc-lead-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.fleet-operate .fc-lead-body,
+.fleet-operate .fc-lead-next {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.fleet-operate .fc-lead-next {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.fleet-operate .fc-mast-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+/* Stage rail: quiet segmented track */
+
+.fleet-operate .fc-rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  list-style: none;
+  padding: 4px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--ink) 3.5%, transparent);
+  width: fit-content;
+  max-width: 100%;
+}
+
+.fleet-operate .fc-rail-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 4px 12px 4px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  transition:
+    background-color var(--fc-state) var(--fc-ease-out),
+    border-color var(--fc-state) var(--fc-ease-out),
+    color var(--fc-state) var(--fc-ease-out);
+}
+
+.fleet-operate .fc-rail-step[data-state="done"] {
+  color: var(--ink);
+}
+
+.fleet-operate .fc-rail-step[data-state="current"] {
+  color: var(--accent);
+  background: var(--fc-paper);
+  border-color: color-mix(in oklab, var(--accent) 28%, transparent);
+  box-shadow: 0 1px 2px color-mix(in oklab, var(--ink) 6%, transparent);
+  font-weight: 600;
+}
+
+.fleet-operate .fc-rail-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--ink) 8%, transparent);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.fleet-operate .fc-rail-step[data-state="current"] .fc-rail-index {
+  background: var(--accent);
+  color: var(--on-accent, #fff);
+}
+
+.fleet-operate .fc-rail-step[data-state="done"] .fc-rail-index {
+  background: color-mix(in oklab, var(--success) 85%, var(--ink));
+  color: #fff;
+}
+
+/* Quiet honesty caption */
+
+.fleet-operate .fc-caption {
+  display: grid;
+  gap: 2px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+}
+
+.fleet-operate .fc-caption-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.fleet-operate .fc-caption-body {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+  max-width: 72ch;
+}
+
+/* Situational callout */
+
+.fleet-operate .fc-guide {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--fc-hair);
+  border-radius: var(--fc-radius-sm);
+  background: color-mix(in oklab, var(--ink) 2%, var(--fc-paper));
+  position: relative;
+}
+
+.fleet-operate .fc-guide::before {
+  content: "";
+  position: absolute;
+  inset: 10px auto 10px 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: color-mix(in oklab, var(--ink) 18%, transparent);
+}
+
+.fleet-operate .fc-guide[data-tone="warning"] {
+  background: var(--fc-staged-subtle);
+}
+.fleet-operate .fc-guide[data-tone="warning"]::before {
+  background: var(--fc-staged);
+}
+.fleet-operate .fc-guide[data-tone="danger"] {
+  background: color-mix(in oklab, var(--danger) 8%, var(--fc-paper));
+}
+.fleet-operate .fc-guide[data-tone="danger"]::before {
+  background: var(--danger);
+}
+.fleet-operate .fc-guide[data-tone="accent"] {
+  background: color-mix(in oklab, var(--accent) 8%, var(--fc-paper));
+}
+.fleet-operate .fc-guide[data-tone="accent"]::before {
+  background: var(--accent);
+}
+
+.fleet-operate .fc-guide-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.fleet-operate .fc-guide-rows {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.fleet-operate .fc-guide-rows dt {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.fleet-operate .fc-guide-rows dd {
+  margin: 0;
+  color: var(--ink);
+}
+
+.fleet-operate .fc-guide-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* Premium command tiles */
+
+.fleet-operate .fc-tile-grid {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.fleet-operate .fc-tile {
+  display: flex;
+  min-height: 9rem;
+  flex-direction: column;
+  padding: 16px 16px 14px;
+  border-radius: var(--fc-radius-sm);
+  border: 1px solid var(--fc-hair);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--ink) 2.2%, var(--fc-paper)) 0%,
+      var(--fc-paper) 42%
+    );
+  color: inherit;
+  text-decoration: none;
+  position: relative;
+  overflow: hidden;
+  transition:
+    background-color var(--fc-state) var(--fc-ease-out),
+    border-color var(--fc-state) var(--fc-ease-out),
+    box-shadow var(--fc-state) var(--fc-ease-out),
+    transform var(--fc-state) var(--fc-ease-out);
+}
+
+.fleet-operate .fc-tile::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: color-mix(in oklab, var(--fc-basalt) 28%, transparent);
+}
+
+.fleet-operate .fc-tile[data-phase="ready"][data-hot="true"]::before {
+  background: var(--accent);
+}
+
+.fleet-operate .fc-tile[data-phase="error"]::before {
+  background: var(--danger);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .fleet-operate .fc-tile:hover {
+    background: var(--fc-row-hover);
+    border-color: color-mix(in oklab, var(--accent) 35%, var(--fc-hair));
+    box-shadow: 0 10px 24px -18px color-mix(in oklab, var(--ink) 35%, transparent);
+    transform: translateY(-1px);
+  }
+}
+
+.fleet-operate .fc-tile:active {
+  transform: scale(0.985);
+}
+
+.fleet-operate .fc-tile:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.fleet-operate .fc-tile-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fleet-operate .fc-tile-title {
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--fc-basalt);
+}
+
+.fleet-operate .fc-tile-chip {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--ink) 5%, transparent);
+}
+
+.fleet-operate .fc-tile[data-hot="true"] .fc-tile-chip {
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 12%, transparent);
+}
+
+.fleet-operate .fc-tile-detail {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+  max-width: 36ch;
+}
+
+.fleet-operate .fc-tile-foot {
+  margin-top: auto;
+  padding-top: 16px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.fleet-operate .fc-tile-count {
+  margin: 0;
+  font-size: clamp(1.75rem, 3vw, 2.125rem);
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  color: var(--fc-basalt);
+  font-variant-numeric: tabular-nums;
+}
+
+.fleet-operate .fc-tile-empty {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.fleet-operate .fc-tile-error {
+  display: grid;
+  gap: 8px;
+}
+
+.fleet-operate .fc-tile-error p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fleet-operate .fc-rail-step,
+  .fleet-operate .fc-tile {
+    transition: none;
+  }
+  .fleet-operate .fc-tile:active,
+  .fleet-operate .fc-tile:hover {
+    transform: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .fleet-operate {
+    padding: 12px 10px 24px;
+  }
+  .fleet-operate .fc-sheet {
+    padding: 20px 16px 18px;
+    gap: 16px;
+  }
+  .fleet-operate .fc-tile-grid {
+    grid-template-columns: 1fr;
+  }
+  .fleet-operate .fc-rail {
+    width: 100%;
+  }
+}

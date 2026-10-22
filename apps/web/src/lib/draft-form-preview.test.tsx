@@ -389,7 +389,7 @@ describe("DraftOdooPreview + OdooViewRenderer", () => {
       />,
     );
     const empty = screen.getByTestId("draft-odoo-preview-empty");
-    expect(empty.textContent).toMatch(/Option A module/i);
+    expect(empty.textContent).toMatch(/custom-code module/i);
     expect(empty.textContent).not.toMatch(/Start a new app/i);
     cleanup();
   });

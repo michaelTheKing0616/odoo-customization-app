@@ -14,6 +14,7 @@ import {
   projectDiffStats,
   type ProjectDiffFilter,
 } from "@/lib/projects-journey";
+import { Term } from "@/components/ui/Term";
 
 type ProjectDiffPanelProps = {
   diff: ProjectDiffOut;
@@ -75,8 +76,8 @@ export function ProjectDiffPanel({ diff }: ProjectDiffPanelProps) {
       </dl>
 
       <p className="mt-3 text-xs text-muted">
-        GitHub-PR-style review: summary stats, then side-by-side model/field diffs. Views, menus, and
-        ACL stay in ModuleSpec Generate UI. Apply/Promote stay human.
+        A summary first, then each <Term tech="ir.model">record type</Term> and field side by side with live. Screens, menus and
+        <Term tech="ir.model.access">access rights</Term> are reviewed in the App plan. Publishing stays a step you confirm.
       </p>
 
       <Tabs

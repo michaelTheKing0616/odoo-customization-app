@@ -53,10 +53,14 @@ describe("IntentRouterPanel", () => {
     await waitFor(() => {
       expect(screen.getByTestId("intent-router-results")).toBeTruthy();
     });
-    expect(api.expertIntentRoute).toHaveBeenCalledWith("c1", {
-      prompt: "upload 200 journal entries",
-      limit: 5,
-    });
+    expect(api.expertIntentRoute).toHaveBeenCalledWith(
+      "c1",
+      expect.objectContaining({
+        prompt: "upload 200 journal entries",
+        limit: 5,
+        progress_run_id: expect.stringMatching(/^intent-/),
+      }),
+    );
     const go = screen.getByTestId("intent-route-go");
     expect(go).toHaveAttribute("href", "/connections/c1/journal?tab=batch");
     expect(screen.getByText("Journal batch")).toBeTruthy();

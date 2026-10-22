@@ -22,29 +22,38 @@ export function ExpertContextBar({
 }: ExpertContextBarProps) {
   return (
     <div className="expert-context-bar" data-testid="expert-context-bar">
-      <div className="flex min-w-0 flex-1 items-center gap-2 text-xs">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={contextEnabled}
+        className="expert-context-switch"
+        onClick={onToggleContext}
+        data-testid="expert-context-toggle"
+      >
+        <span className="expert-switch-track" aria-hidden>
+          <span className="expert-switch-thumb" />
+        </span>
+        <span className="expert-context-switch-label">Page context</span>
+      </button>
+      <span
+        className="expert-context-value"
+        data-testid={contextLabel ? "expert-context-label" : "expert-session-hint"}
+        title={contextLabel ?? undefined}
+      >
         {contextLabel ? (
-          <span className="truncate text-muted">
-            Using context: <span className="font-medium text-ink">{contextLabel}</span>
-          </span>
+          <>
+            <span className="sr-only">Using </span>
+            {contextLabel}
+          </>
         ) : (
-          <span className="truncate text-muted" data-testid="expert-session-hint">
-            {expertSessionHint({ contextEnabled, contextLabel })}
-          </span>
+          expertSessionHint({ contextEnabled, contextLabel })
         )}
-        <button
-          type="button"
-          className="shrink-0 text-accent hover:underline"
-          onClick={onToggleContext}
-          data-testid="expert-context-toggle"
-        >
-          {contextEnabled ? "Turn off" : "Turn on"}
-        </button>
-      </div>
+      </span>
       <Button
         type="button"
         variant="ghost"
         size="sm"
+        className="expert-context-clear"
         disabled={!canClear || busy}
         data-testid="expert-clear-history"
         onClick={onClear}

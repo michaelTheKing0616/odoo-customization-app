@@ -1,14 +1,25 @@
 "use client";
 
 import { Button } from "@/components/ui/Button";
-import { EmptyState, Skeleton } from "@/components/ui/layout-primitives";
+import { Skeleton } from "@/components/ui/layout-primitives";
 import type { CronRowOut } from "@/lib/api";
+import {
+  DISABLE_CTA,
+  ENABLE_CTA,
+  emptyCronGuide,
+  formatCronNextRun,
+  intervalLabel,
+  type CronIntervalType,
+} from "@/lib/cronManagerScreen";
+import { CronStateGuide } from "./CronStateGuide";
 
 export function CronJobsList({
   rows,
   loading,
   selected,
   busy,
+  timeZone,
+  zoneLabel,
   onToggleSelected,
   onToggleActive,
   onRefresh,
@@ -17,6 +28,8 @@ export function CronJobsList({
   loading?: boolean;
   selected: Set<number>;
   busy: boolean;
+  timeZone: string;
+  zoneLabel: string;
   onToggleSelected: (id: number) => void;
   onToggleActive: (row: CronRowOut) => void;
   onRefresh: () => void;
@@ -33,10 +46,11 @@ export function CronJobsList({
 
   if (!rows.length) {
     return (
-      <EmptyState
-        title="No scheduled actions match"
-        description="Broaden the filter or create a cron below to schedule server actions on this connection."
-        action={
+      <CronStateGuide
+        testId="cron-empty-guide"
+        tone="accent"
+        guide={emptyCronGuide()}
+        actions={
           <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={onRefresh}>
             Refresh list
           </Button>
@@ -46,46 +60,63 @@ export function CronJobsList({
   }
 
   return (
-    <div className="overflow-x-auto" data-testid="cron-jobs-list">
-      <table className="w-full text-left text-sm">
+    <div className="cr-table-wrap" data-testid="cron-jobs-list">
+      <table className="cr-table">
         <thead>
-          <tr className="border-b border-[var(--odoo-border)] text-[var(--odoo-muted)]">
-            <th className="py-2 pr-2">Pick</th>
-            <th className="py-2 pr-2">Description</th>
-            <th className="py-2 pr-2">Model</th>
-            <th className="py-2 pr-2">Active</th>
+          <tr>
+            <th scope="col">Pick</th>
+            <th scope="col">Description</th>
+            <th scope="col">Model</th>
+            <th scope="col">Schedule</th>
+            <th scope="col">Next run</th>
+            <th scope="col">Active</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.id} className="border-b border-[var(--odoo-border)]/60">
-              <td className="py-2 pr-2 align-top">
-                <input
-                  type="checkbox"
-                  checked={selected.has(row.id)}
-                  onChange={() => onToggleSelected(row.id)}
-                />
-              </td>
-              <td className="py-2 pr-2 align-top">
-                <div className="font-medium">{row.name}</div>
-                <div className="text-xs text-[var(--odoo-muted)]">{row.description}</div>
-                {row.nextcall ? (
-                  <div className="text-xs text-[var(--odoo-muted)]">Next: {row.nextcall}</div>
-                ) : null}
-              </td>
-              <td className="py-2 pr-2 align-top font-mono text-xs">{row.model_name || "—"}</td>
-              <td className="py-2 pr-2 align-top">
-                <button
-                  type="button"
-                  className="text-xs underline"
-                  disabled={busy}
-                  onClick={() => onToggleActive(row)}
-                >
-                  {row.active ? "Active" : "Inactive"}
-                </button>
-              </td>
-            </tr>
-          ))}
+          {rows.map((row) => {
+            const interval =
+              row.interval_number != null && row.interval_type
+                ? intervalLabel(row.interval_number, row.interval_type as CronIntervalType)
+                : null;
+            const nextLabel = formatCronNextRun(row.nextcall, timeZone);
+            return (
+              <tr key={row.id} data-testid={`cron-row-${row.id}`}>
+                <td>
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-[var(--accent)]"
+                    checked={selected.has(row.id)}
+                    onChange={() => onToggleSelected(row.id)}
+                    aria-label={`Select ${row.name}`}
+                    disabled={busy}
+                  />
+                </td>
+                <td>
+                  <div className="cr-row-name">{row.name}</div>
+                  {row.description ? <div className="cr-row-meta">{row.description}</div> : null}
+                </td>
+                <td className="font-mono text-xs">{row.model_name || "-"}</td>
+                <td className="text-xs text-[var(--muted)]">{interval || "-"}</td>
+                <td>
+                  <div className="tabular-nums text-xs text-ink">{nextLabel}</div>
+                  <div className="cr-row-meta">{zoneLabel}</div>
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    className="cr-status"
+                    data-active={row.active ? "true" : "false"}
+                    data-testid={`cron-toggle-${row.id}`}
+                    disabled={busy}
+                    onClick={() => onToggleActive(row)}
+                    aria-pressed={row.active}
+                  >
+                    {row.active ? DISABLE_CTA : ENABLE_CTA}
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

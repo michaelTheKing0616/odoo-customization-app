@@ -43,17 +43,17 @@ export function ProjectCreateCard({
           required
           value={name}
           onChange={(event) => onNameChange(event.target.value)}
-          hint="Shown on the release board and in ModuleSpec."
+          hint="Shown on the release board and in app plan."
         />
         <Select
           label="Template"
           options={[
-            { value: "library", label: "Library — portable ModuleSpec" },
+            { value: "library", label: "Library — portable app plan" },
             { value: "", label: "Blank" },
           ]}
           value={templateId}
           onChange={(event) => onTemplateChange(event.target.value)}
-          hint="Library seeds book and loan models. Blank starts empty for ModuleSpec."
+          hint="Library seeds book and loan models. Blank starts empty for app plan."
         />
         <Button
           type="submit"

@@ -1,25 +1,26 @@
+import { Button } from "@/components/ui/Button";
+import { DRY_RUN_CTA } from "@/lib/bulkSuiteScreen";
 import type { BulkSuitePageModel } from "./use-bulk-suite-page";
 
 export function BulkSecuritySection({ vm }: { vm: BulkSuitePageModel }) {
   return (
     <>
-      <p className="text-sm text-[var(--odoo-muted)]">
-        Preview group membership changes first — implied groups are warned, never edited.
+      <p className="bu-panel-sub">
+        Preview group membership changes first. Implied groups are warned, never edited.
       </p>
-      <div className="grid gap-3 md:grid-cols-2">
-        <label className="block text-sm">
+      <div className="bu-field-grid bu-cols-2">
+        <label className="bu-field">
           User ids
           <input
-            className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-sm"
+            className="font-mono"
             value={vm.securityUserIds}
             onChange={(e) => vm.setSecurityUserIds(e.target.value)}
             placeholder="2, 5"
           />
         </label>
-        <label className="block text-sm">
+        <label className="bu-field">
           Mode
           <select
-            className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
             value={vm.securityMode}
             onChange={(e) =>
               vm.setSecurityMode(e.target.value as "add" | "remove" | "offboard")
@@ -30,19 +31,19 @@ export function BulkSecuritySection({ vm }: { vm: BulkSuitePageModel }) {
             <option value="offboard">Offboard (strip non-base groups)</option>
           </select>
         </label>
-        {vm.securityMode !== "offboard" && (
-          <label className="block text-sm md:col-span-2">
+        {vm.securityMode !== "offboard" ? (
+          <label className="bu-field" style={{ gridColumn: "1 / -1" }}>
             Group ids
             <input
-              className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-sm"
+              className="font-mono"
               value={vm.securityGroupIds}
               onChange={(e) => vm.setSecurityGroupIds(e.target.value)}
               placeholder="8, 12"
             />
           </label>
-        )}
-        {vm.securityMode === "offboard" && (
-          <label className="flex items-center gap-2 text-sm md:col-span-2">
+        ) : null}
+        {vm.securityMode === "offboard" ? (
+          <label className="bu-inline" style={{ gridColumn: "1 / -1" }}>
             <input
               type="checkbox"
               checked={vm.securityOffboardDeactivate}
@@ -50,44 +51,56 @@ export function BulkSecuritySection({ vm }: { vm: BulkSuitePageModel }) {
             />
             Also deactivate users
           </label>
-        )}
+        ) : null}
       </div>
-      <div className="flex flex-wrap gap-2">
-        <button type="button" className="odoo-btn-secondary" disabled={vm.busy} onClick={() => void vm.previewSecurity()}>
+      <div className="bu-actions">
+        <Button type="button" variant="secondary" disabled={vm.busy} onClick={() => void vm.previewSecurity()}>
           Preview diff
-        </button>
-        <button type="button" className="odoo-btn-secondary" disabled={vm.busy || !vm.securityPreview} onClick={() => void vm.applySecurity(true)}>
-          Dry run apply
-        </button>
-        <button type="button" className="odoo-btn-primary" disabled={vm.busy || !vm.securityPreview} onClick={() => void vm.applySecurity(false)}>
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={vm.busy || !vm.securityPreview}
+          onClick={() => void vm.applySecurity(true)}
+        >
+          {DRY_RUN_CTA} apply
+        </Button>
+        <Button
+          type="button"
+          variant="primary"
+          disabled={vm.busy || !vm.securityPreview}
+          onClick={() => void vm.applySecurity(false)}
+        >
           Apply
-        </button>
+        </Button>
       </div>
-      {vm.securityPreview && (
-        <div className="rounded border border-[var(--odoo-border)] p-3 text-sm">
-          <p className="font-medium">{vm.securityPreview.message}</p>
+      {vm.securityPreview ? (
+        <div className="bu-table-wrap mt-3" data-testid="bulk-security-preview">
+          <p className="px-3 pt-3 text-sm font-medium text-ink">{vm.securityPreview.message}</p>
           {vm.securityPreview.users.map((u) => (
-            <div key={u.user_id} className="mt-2 border-t border-[var(--odoo-border)]/60 pt-2">
-              <div>{u.user_name} (#{u.user_id})</div>
-              {u.add_groups.length > 0 && (
-                <div className="text-xs text-[var(--odoo-muted)]">
+            <div key={u.user_id} className="border-t border-border-subtle px-3 py-2 text-sm">
+              <div>
+                {u.user_name} (#{u.user_id})
+              </div>
+              {u.add_groups.length > 0 ? (
+                <div className="text-xs text-muted">
                   Add: {u.add_groups.map((g) => g.name).join(", ")}
                 </div>
-              )}
-              {u.remove_groups.length > 0 && (
-                <div className="text-xs text-[var(--odoo-muted)]">
+              ) : null}
+              {u.remove_groups.length > 0 ? (
+                <div className="text-xs text-muted">
                   Remove: {u.remove_groups.map((g) => g.name).join(", ")}
                 </div>
-              )}
+              ) : null}
               {u.implied_warnings.map((w) => (
-                <div key={w} className="text-xs text-amber-800">
+                <div key={w} className="bu-safe" data-tone="danger">
                   {w}
                 </div>
               ))}
             </div>
           ))}
         </div>
-      )}
+      ) : null}
     </>
   );
 }
@@ -95,22 +108,21 @@ export function BulkSecuritySection({ vm }: { vm: BulkSuitePageModel }) {
 export function BulkPortalSection({ vm }: { vm: BulkSuitePageModel }) {
   return (
     <>
-      <p className="text-sm text-[var(--odoo-muted)]">
-        Grant or revoke portal access for partners — missing email fails per partner, not the batch.
+      <p className="bu-panel-sub">
+        Grant or revoke portal access for partners. Missing email fails per partner, not the batch.
       </p>
-      <label className="block text-sm">
+      <label className="bu-field">
         Partner ids
         <input
-          className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-sm"
+          className="font-mono"
           value={vm.portalPartnerIds}
           onChange={(e) => vm.setPortalPartnerIds(e.target.value)}
           placeholder="14, 18"
         />
       </label>
-      <label className="block text-sm">
+      <label className="bu-field">
         Action
         <select
-          className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
           value={vm.portalAction}
           onChange={(e) => vm.setPortalAction(e.target.value as "grant" | "revoke")}
         >
@@ -118,13 +130,13 @@ export function BulkPortalSection({ vm }: { vm: BulkSuitePageModel }) {
           <option value="revoke">Revoke portal</option>
         </select>
       </label>
-      <div className="flex flex-wrap gap-2">
-        <button type="button" className="odoo-btn-secondary" disabled={vm.busy} onClick={() => void vm.runPortal(true)}>
-          Dry run
-        </button>
-        <button type="button" className="odoo-btn-primary" disabled={vm.busy} onClick={() => void vm.runPortal(false)}>
+      <div className="bu-actions">
+        <Button type="button" variant="secondary" disabled={vm.busy} onClick={() => void vm.runPortal(true)}>
+          {DRY_RUN_CTA}
+        </Button>
+        <Button type="button" variant="primary" disabled={vm.busy} onClick={() => void vm.runPortal(false)}>
           Execute
-        </button>
+        </Button>
       </div>
     </>
   );
@@ -133,43 +145,38 @@ export function BulkPortalSection({ vm }: { vm: BulkSuitePageModel }) {
 export function BulkSendMessageSection({ vm }: { vm: BulkSuitePageModel }) {
   return (
     <>
-      <p className="text-sm text-[var(--odoo-muted)]">
-        Post one threaded message per record via message_post — not Odoo mass-mail composer.
+      <p className="bu-panel-sub">
+        Post one threaded message per record via message_post. Not Odoo mass-mail composer.
         Target records with ids or domain above.
       </p>
-      <label className="block text-sm">
+      <label className="bu-field">
         Subject
-        <input
-          className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
-          value={vm.sendSubject}
-          onChange={(e) => vm.setSendSubject(e.target.value)}
-        />
+        <input value={vm.sendSubject} onChange={(e) => vm.setSendSubject(e.target.value)} />
       </label>
-      <label className="block text-sm">
+      <label className="bu-field">
         Body (HTML)
         <textarea
-          className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-sm"
           rows={3}
           value={vm.sendBody}
           onChange={(e) => vm.setSendBody(e.target.value)}
         />
       </label>
-      <label className="block text-sm">
+      <label className="bu-field">
         Mail template id (optional)
         <input
-          className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-sm"
+          className="font-mono"
           value={vm.sendTemplateId}
           onChange={(e) => vm.setSendTemplateId(e.target.value)}
           placeholder="12"
         />
       </label>
-      <div className="flex flex-wrap gap-2">
-        <button type="button" className="odoo-btn-secondary" disabled={vm.busy} onClick={() => void vm.runSendMessage(true)}>
-          Dry run
-        </button>
-        <button type="button" className="odoo-btn-primary" disabled={vm.busy} onClick={() => void vm.runSendMessage(false)}>
+      <div className="bu-actions">
+        <Button type="button" variant="secondary" disabled={vm.busy} onClick={() => void vm.runSendMessage(true)}>
+          {DRY_RUN_CTA}
+        </Button>
+        <Button type="button" variant="primary" disabled={vm.busy} onClick={() => void vm.runSendMessage(false)}>
           Send
-        </button>
+        </Button>
       </div>
     </>
   );

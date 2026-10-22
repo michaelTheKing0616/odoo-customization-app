@@ -55,8 +55,8 @@ export function useWizardExpert({
       setNlPrompt(row.prompt || nlPrompt);
       setAiNote(
         expertShouldRepair(row.draft)
-          ? `Restored saved snapshot: ${row.summary}. This is not Expert review — click “Ask the Expert to review and fix” only if JSON findings remain.`
-          : `Restored saved snapshot: ${row.summary}. No JSON gaps to repair — Expert will leave this spec unchanged.`,
+          ? `Restored saved snapshot: ${row.summary}. This is not Expert review. Use “Ask the Expert to review and fix” only if JSON findings remain.`
+          : `Restored saved snapshot: ${row.summary}. No JSON gaps to repair, so the Expert will leave this spec unchanged.`,
       );
     } catch (err) {
       reportApiError(err, setError, { fallback: "Failed to restore cached draft" });
@@ -71,7 +71,7 @@ export function useWizardExpert({
     setOptionAProveBusy(true);
     setOptionAProveNote(null);
     setAiBusy(true);
-    setAiBusyLabel("Sandbox install & Option A smoke…");
+    setAiBusyLabel("Sandbox install and custom-code smoke test…");
     try {
       const res = await api.proveOptionA(connectionId, { spec: aiDraft });
       if (res.draft) {
@@ -86,7 +86,7 @@ export function useWizardExpert({
             );
       if (res.ok) {
         setOptionAProveNote(
-          `Sandbox smoke passed. Score ${score}/10. go_live_ready=${Boolean(res.go_live_ready)} — promote stays human.`,
+          `Sandbox smoke passed. Score ${score}/10. go_live_ready=${Boolean(res.go_live_ready)}. Publishing stays a step you confirm.`,
         );
       } else {
         const msg =
@@ -96,7 +96,7 @@ export function useWizardExpert({
         setOptionAProveNote(`${msg} (score capped until smoke passes)`);
       }
     } catch (err) {
-      reportApiError(err, setError, { fallback: "Option A sandbox prove failed" });
+      reportApiError(err, setError, { fallback: "Custom-code test-copy check failed" });
     } finally {
       setOptionAProveBusy(false);
       setAiBusy(false);

@@ -12,7 +12,7 @@ describe("StudioStageRail", () => {
     expect(rail.querySelector('[data-stage="generate"]')?.className).toMatch(/is-current/);
     expect(rail.querySelector('[data-stage="brief"]')?.className).toMatch(/is-done/);
     expect(screen.getByTestId("studio-stage-hint").textContent).toMatch(/Completeness is not Cert/);
-    expect(screen.getByTestId("studio-stage-hint").textContent).toMatch(/Promote stays human/);
+    expect(screen.getByTestId("studio-stage-hint").textContent).toMatch(/Publishing stays a step you confirm/);
   });
 
   it("advances to Apply after the draft is live", () => {

@@ -5,11 +5,11 @@ import { StudioBusyLabel } from "@/components/studio/StudioBusyLabel";
 
 describe("App Studio loaders", () => {
   it("shows the infinity loop on the generating screen", () => {
-    render(<StudioProgress label="Authoring Option A module" detail="Sales markup" />);
+    render(<StudioProgress label="Authoring custom-code module" detail="Sales markup" />);
     const screenRoot = screen.getByTestId("studio-progress");
     expect(screenRoot.querySelector(".studio-loader-infinity")).not.toBeNull();
     expect(screenRoot.querySelector(".spinner")).toBeNull();
-    expect(screen.getByText("Authoring Option A module")).toBeTruthy();
+    expect(screen.getByText("Authoring custom-code module")).toBeTruthy();
     cleanup();
   });
 

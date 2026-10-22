@@ -1,3 +1,5 @@
+import { SlowHint } from "@/components/ui/craft";
+
 export default function ConnectionLoading() {
   return (
     <div className="flex flex-col gap-4 p-6">
@@ -15,6 +17,7 @@ export default function ConnectionLoading() {
           aria-hidden
         />
       </div>
+      <SlowHint />
       <p className="sr-only">Loading connection</p>
     </div>
   );

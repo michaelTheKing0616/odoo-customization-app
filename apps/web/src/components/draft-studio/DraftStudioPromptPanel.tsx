@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { Callout } from "@/components/ui/Callout";
-import { Card } from "@/components/ui/layout-primitives";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
@@ -10,6 +9,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import { DraftStudioReusePanel } from "./DraftStudioReusePanel";
 import { DraftStudioApplyBar } from "./DraftStudioApplyBar";
 import { createDraftHint } from "@/lib/draft-studio-journey";
+import { providerSuffix } from "@/lib/wizard-ui";
 import { stashPromptForStudio } from "@/lib/studio-session";
 import type { ReuseModelRow } from "@/lib/api";
 import type { ReuseDecisionChip } from "@/lib/reuse-chips";
@@ -128,62 +128,134 @@ export function DraftStudioPromptPanel({
     overlapPending: overlapFindings.length > 0 && !overlapResolved,
     isFullAppGrain,
   });
+  const reuseNeedsDecision =
+    reuse.inferredReuseSuggestions.length > 0 || reuse.installableReuseSuggestions.length > 0;
+  const reuseSelectedCount = reuse.reuseModels.length;
 
   return (
     <div className="space-y-6">
-      {gallery.length > 0 ? (
-        <Card className="p-5">
-          <h2 className="text-lg font-semibold text-ink">Component gallery</h2>
-          <p className="mt-1 text-xs text-muted">
-            Reusable slices that attach to stock or custom hosts.
-          </p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {gallery.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => onSelectGallery(c)}
-                className={`rounded-md border p-3 text-left text-sm transition ${
-                  selectedGalleryId === c.id
-                    ? "border-accent bg-accent-subtle"
-                    : "border-border-subtle hover:bg-surface-muted"
-                }`}
-              >
-                <span className="font-semibold text-ink">{c.name}</span>
-                <span className="mt-1 block text-xs text-muted">{c.description}</span>
-                <span className="mt-1 block font-mono text-[10px] text-accent">
-                  Host: {c.host_slot}
-                </span>
-              </button>
-            ))}
-          </div>
-        </Card>
-      ) : null}
-
-      <Card className="p-5">
-        <h2 className="text-lg font-semibold text-ink">What should we implement?</h2>
-        <p className="mt-1 text-sm text-muted">
-          Same bar as a senior Odoo team: a field pack on a stock form, a feature under an
-          existing app, or a full residual workspace. AI drafts a{" "}
-          <strong className="font-medium text-ink">ModuleSpec</strong> (
-          {aiEnabled ? `${aiProviderLabel} on` : "AI off"}
-          {ollamaDetail ? ` · ${ollamaDetail}` : ""}
-          ). Nothing is written to Odoo until you click{" "}
-          <strong className="font-medium text-ink">Apply to Odoo</strong>.
+      <section
+        className="draft-studio-brief"
+        data-testid="draft-studio-brief"
+        aria-labelledby="draft-studio-brief-title"
+      >
+        <h2 id="draft-studio-brief-title" className="draft-studio-brief-title">
+          What should we implement?
+        </h2>
+        <p className="draft-studio-brief-subtitle" id="draft-studio-brief-help">
+          A field on a built-in form, a feature under an existing app, or a full custom app
+          workspace. Ingenium drafts a ModuleSpec{providerSuffix(aiEnabled, aiProviderLabel)}.
+          Nothing writes to Odoo until you Apply.
         </p>
-        <Textarea
-          className="mt-3"
-          data-testid="draft-nl-prompt"
-          value={nlPrompt}
-          onChange={(e) => onPromptChange(e.target.value)}
-          rows={3}
-          placeholder="Add SLA due date on invoices — or a law-firm practice with matters, time, and stock quotations…"
-        />
+        {ollamaDetail ? (
+          <p className="draft-studio-provider-note" data-testid="draft-provider-note">
+            AI provider: {ollamaDetail}
+          </p>
+        ) : null}
+        <div className="studio-prompt-composer draft-studio-composer">
+          <label htmlFor="draft-nl-prompt" className="sr-only">
+            Describe what to implement
+          </label>
+          <Textarea
+            id="draft-nl-prompt"
+            className="resize-none text-left studio-prompt-textarea"
+            data-testid="draft-nl-prompt"
+            value={nlPrompt}
+            onChange={(e) => onPromptChange(e.target.value)}
+            rows={4}
+            aria-describedby="draft-studio-brief-help draft-studio-brief-status"
+            placeholder="Add an SLA due date on invoices, or a law-firm practice with matters, time, and stock quotations."
+          />
+          <div className="studio-prompt-actions">
+            <p
+              className="studio-prompt-shortcut"
+              id="draft-studio-brief-status"
+              aria-live="polite"
+            >
+              {nlPrompt.trim().length < 3
+                ? "A sentence or two is enough to start."
+                : hint}
+            </p>
+          </div>
+        </div>
+
+        <div className="draft-studio-options" data-testid="draft-studio-options">
+          <div className="draft-studio-options-grain">
+            <Select
+              label="Grain override"
+              options={[
+                { value: "", label: "Auto-detect" },
+                { value: "field_pack", label: "Field pack" },
+                { value: "feature_slice", label: "Feature under an existing app" },
+                { value: "full_app", label: "Full app" },
+              ]}
+              value={grainOverride}
+              onChange={(e) => onGrainChange(e.target.value)}
+            />
+            {grainLabel ? <Badge variant="info">Detected: {grainLabel}</Badge> : null}
+          </div>
+          <button
+            type="button"
+            className="draft-studio-options-toggle"
+            onClick={onToggleJson}
+            aria-expanded={jsonPasteOpen}
+            aria-controls="draft-json-import"
+            data-testid="toggle-json-import"
+          >
+            {jsonPasteOpen ? "Hide app-plan JSON" : "Or paste app-plan JSON"}
+          </button>
+        </div>
+
+        {jsonPasteOpen ? (
+          <div className="draft-studio-soft-panel mt-3 space-y-2" id="draft-json-import">
+            <p className="text-xs text-muted">
+              Bring your own draft JSON. We run apply-readiness (reuse wiring, live
+              field naming, promo math) and load it here. Then click Apply to Odoo.
+            </p>
+            <Textarea
+              value={jsonPaste}
+              onChange={(e) => onJsonChange(e.target.value)}
+              rows={6}
+              className="font-mono text-xs"
+              placeholder='{"technical_name":"my_app","models":[...]}'
+              aria-label="App plan JSON"
+              data-testid="json-paste-input"
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                loading={jsonBusy}
+                disabled={busy}
+                onClick={onLoadJson}
+                data-testid="load-json-draft"
+              >
+                Load JSON draft
+              </Button>
+              <label className="draft-studio-file-button">
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  className="sr-only"
+                  data-testid="json-file-input"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) onUploadJson(file);
+                    e.target.value = "";
+                  }}
+                />
+                <span>Upload .json file</span>
+              </label>
+            </div>
+          </div>
+        ) : null}
+
         {showStudioBridge ? (
           <Callout
             variant="warning"
             title="Intent needs confirmation"
-            className="mt-3"
+            className="mt-4"
             testId="wizard-studio-bridge"
           >
             <p className="text-sm">
@@ -202,91 +274,22 @@ export function DraftStudioPromptPanel({
           </Callout>
         ) : null}
 
-        <div className="mt-4 rounded-md border border-border-subtle bg-surface-muted p-3">
-          <button
-            type="button"
-            className="flex w-full items-center justify-between text-left text-sm font-medium text-ink"
-            onClick={onToggleJson}
-            data-testid="toggle-json-import"
-          >
-            <span>Or paste ModuleSpec JSON</span>
-            <span className="text-xs text-muted">{jsonPasteOpen ? "Hide" : "Show"}</span>
-          </button>
-          {jsonPasteOpen ? (
-            <div className="mt-3 space-y-2">
-              <p className="text-xs text-muted">
-                Bring your own draft JSON — we run apply-readiness (reuse wiring, live
-                field naming, promo math) and load it here. Then click Apply to Odoo.
-              </p>
-              <Textarea
-                value={jsonPaste}
-                onChange={(e) => onJsonChange(e.target.value)}
-                rows={6}
-                className="font-mono text-xs"
-                placeholder='{"technical_name":"my_app","models":[...]}'
-                data-testid="json-paste-input"
-              />
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  loading={jsonBusy}
-                  disabled={busy}
-                  onClick={onLoadJson}
-                  data-testid="load-json-draft"
-                >
-                  Load JSON draft
-                </Button>
-                <label className="inline-flex cursor-pointer items-center">
-                  <input
-                    type="file"
-                    accept=".json,application/json"
-                    className="sr-only"
-                    data-testid="json-file-input"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) onUploadJson(file);
-                      e.target.value = "";
-                    }}
-                  />
-                  <span className="inline-flex h-8 items-center rounded-md border border-border-subtle px-3 text-xs text-ink hover:bg-surface-raised">
-                    Upload .json file
-                  </span>
-                </label>
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Select
-            label="Grain override"
-            options={[
-              { value: "", label: "Auto-detect" },
-              { value: "field_pack", label: "Field pack" },
-              { value: "feature_slice", label: "Component / feature slice" },
-              { value: "full_app", label: "Full app" },
-            ]}
-            value={grainOverride}
-            onChange={(e) => onGrainChange(e.target.value)}
-          />
-          {grainLabel ? <Badge variant="info">Detected: {grainLabel}</Badge> : null}
-        </div>
-
         {overlapFindings.length > 0 ? (
           <section
-            className="mt-4 space-y-3 rounded-md border border-border-subtle bg-surface-muted p-4"
+            className="draft-studio-gate mt-4"
             data-testid="overlap-findings"
+            aria-labelledby="overlap-findings-title"
           >
-            <h3 className="text-sm font-semibold text-ink">Already exists on this instance</h3>
-            <p className="text-xs text-muted">
-              Review before drafting — choose how to proceed for each finding.
+            <h3 id="overlap-findings-title" className="draft-studio-gate-title">
+              Already exists on this instance
+            </h3>
+            <p className="draft-studio-gate-body">
+              Choose how to proceed for each finding before you generate.
             </p>
-            <ul className="space-y-3">
+            <ul className="draft-studio-gate-list">
               {overlapFindings.map((f) => (
-                <li key={f.id} className="border-b border-border-subtle pb-3 text-sm">
-                  <p className="font-medium">{f.title}</p>
+                <li key={f.id}>
+                  <p className="font-medium text-ink">{f.title}</p>
                   <p className="mt-1 text-xs text-muted">{f.evidence}</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {f.deep_link ? (
@@ -321,28 +324,32 @@ export function DraftStudioPromptPanel({
 
         {connectPoints && needsConnectReview ? (
           <section
-            className="mt-4 rounded-md border border-border-subtle bg-surface-muted p-4"
+            className="draft-studio-gate mt-4"
             data-testid="connect-points-review"
+            aria-labelledby="connect-points-title"
           >
-            <h3 className="text-sm font-semibold text-ink">Connect points (review before draft)</h3>
-            <p className="mt-1 text-xs text-muted">
-              Confirm host model and form placement. Edit below, then approve before drafting.
+            <h3 id="connect-points-title" className="draft-studio-gate-title">
+              Connect points (review before draft)
+            </h3>
+            <p className="draft-studio-gate-body">
+              Confirm the existing form and where fields go. Edit below, then approve before
+              generating.
             </p>
-            <div className="mt-2 grid gap-2 text-xs sm:grid-cols-2">
-              <label>
-                Host model
+            <div className="mt-3 grid gap-3 text-xs sm:grid-cols-2">
+              <label className="draft-studio-field">
+                <span>Host model</span>
                 <input
                   value={String(connectPoints.host_model ?? "")}
                   onChange={(e) => onConnectField("host_model", e.target.value)}
-                  className="mt-1 w-full rounded border border-border-subtle bg-surface px-2 py-1 font-mono"
+                  className="draft-studio-field-input font-mono"
                 />
               </label>
-              <label>
-                Form xpath
+              <label className="draft-studio-field">
+                <span>Form xpath</span>
                 <input
                   value={String(connectPoints.form_xpath ?? "//sheet")}
                   onChange={(e) => onConnectField("form_xpath", e.target.value)}
-                  className="mt-1 w-full rounded border border-border-subtle bg-surface px-2 py-1 font-mono"
+                  className="draft-studio-field-input font-mono"
                 />
               </label>
             </div>
@@ -358,7 +365,7 @@ export function DraftStudioPromptPanel({
             <div className="mt-3 flex flex-wrap gap-2">
               <Button
                 type="button"
-                variant="primary"
+                variant="secondary"
                 size="sm"
                 disabled={connectPointsApproved}
                 onClick={onApproveConnect}
@@ -367,7 +374,7 @@ export function DraftStudioPromptPanel({
               </Button>
               <Button
                 type="button"
-                variant="secondary"
+                variant="ghost"
                 size="sm"
                 loading={connectReviewBusy}
                 onClick={onReviewConnect}
@@ -378,59 +385,103 @@ export function DraftStudioPromptPanel({
           </section>
         ) : null}
 
-        <DraftStudioReusePanel {...reuse} />
-
-        {showActions ? (
-        <div className="mt-4 space-y-3 rounded-md border border-border-subtle bg-surface-muted p-4">
-          <p className="text-sm font-medium text-ink">What to click</p>
-          <div className="flex flex-wrap items-center gap-2">
-            {needsConnectReview ? (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                disabled={connectReviewBusy || nlPrompt.trim().length < 3}
-                loading={connectReviewBusy}
-                onClick={onReviewConnect}
-                data-testid="review-connect-points"
-              >
-                Review connect points
-              </Button>
-            ) : null}
-            <DraftStudioApplyBar {...applyBar} />
-          </div>
-          <p className="text-xs text-muted">{hint}</p>
-          <div className="flex flex-wrap gap-2 border-t border-border-subtle pt-3">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              loading={overlapBusy}
-              disabled={nlPrompt.trim().length < 3}
-              onClick={onCheckOverlap}
-              data-testid="check-overlap"
-            >
-              Check overlap
-            </Button>
-            <Button type="button" variant="ghost" size="sm" onClick={onClear}>
-              Clear
-            </Button>
-          </div>
-        </div>
-        ) : null}
         {needsConnectReview && !connectPointsApproved ? (
-          <Callout variant="info" title="Component grain" className="mt-3">
-            This prompt looks like a feature slice or field pack — review connect points and
-            approve before creating the draft.
+          <Callout variant="info" title="Component grain" className="mt-4">
+            This prompt looks like a feature slice or field pack. Review connect points and
+            approve before generating the draft.
           </Callout>
         ) : null}
-        {connectPoints && !needsConnectReview ? (
-          <section className="mt-4 rounded-md border border-border-subtle bg-surface p-4">
-            <h3 className="text-sm font-semibold text-muted">Connect points</h3>
-            <p className="mt-1 text-xs text-muted">Full-app draft — connect points not required.</p>
-          </section>
+
+        {showActions ? (
+          <div className="draft-studio-action-dock mt-4" data-testid="draft-studio-action-dock">
+            <div className="draft-studio-action-dock-primary">
+              {needsConnectReview ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={connectReviewBusy || nlPrompt.trim().length < 3}
+                  loading={connectReviewBusy}
+                  onClick={onReviewConnect}
+                  data-testid="review-connect-points"
+                >
+                  Review connect points
+                </Button>
+              ) : null}
+              <DraftStudioApplyBar {...applyBar} promptLength={nlPrompt.trim().length} />
+            </div>
+            <div className="draft-studio-action-dock-secondary">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                loading={overlapBusy}
+                disabled={nlPrompt.trim().length < 3}
+                onClick={onCheckOverlap}
+                data-testid="check-overlap"
+              >
+                Check overlap
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={!nlPrompt.trim() && !hasDraft}
+                onClick={onClear}
+              >
+                Clear
+              </Button>
+            </div>
+          </div>
         ) : null}
-      </Card>
+
+        {connectPoints && !needsConnectReview ? (
+          <p className="draft-studio-quiet-note mt-3">
+            Full-app draft. Connect points are not required.
+          </p>
+        ) : null}
+
+        <details
+          className="draft-studio-disclosure draft-studio-reuse-disclosure mt-6"
+          open={reuseNeedsDecision || undefined}
+          data-testid="draft-studio-reuse-disclosure"
+        >
+          <summary>
+            <span>Reuse existing Odoo models</span>
+            <span className="draft-studio-disclosure-meta">
+              {reuseSelectedCount > 0 ? `${reuseSelectedCount} selected` : "Optional"}
+            </span>
+          </summary>
+          <DraftStudioReusePanel {...reuse} />
+        </details>
+
+        {gallery.length > 0 ? (
+          <details className="draft-studio-disclosure mt-3" data-testid="draft-studio-gallery">
+            <summary>
+              <span>Start from a component</span>
+              <span className="draft-studio-disclosure-meta">{gallery.length}</span>
+            </summary>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {gallery.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => onSelectGallery(c)}
+                  aria-pressed={selectedGalleryId === c.id}
+                  className={`draft-studio-gallery-item${
+                    selectedGalleryId === c.id ? " is-selected" : ""
+                  }`}
+                >
+                  <span className="font-semibold text-ink">{c.name}</span>
+                  <span className="mt-1 block text-xs text-muted">{c.description}</span>
+                  <span className="mt-1 block font-mono text-[11px] text-muted">
+                    Host: {c.host_slot}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </details>
+        ) : null}
+      </section>
     </div>
   );
 }

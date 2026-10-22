@@ -1,0 +1,80 @@
+/* Shared Operate Studio-bar (UI-S-30..33 leap). One dense bar, not banner-stack. */
+.operate-studio-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px 12px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--ink) 4%, transparent),
+    0 1px 2px -1px color-mix(in oklab, var(--ink) 6%, transparent);
+}
+
+.operate-studio-bar[data-tone="warning"] {
+  border-color: color-mix(in oklab, #b45309 28%, var(--border-subtle));
+  background: color-mix(in oklab, #f59e0b 10%, var(--surface-raised));
+}
+
+.operate-studio-bar[data-tone="accent"] {
+  border-color: color-mix(in oklab, var(--accent) 28%, var(--border-subtle));
+  background: color-mix(in oklab, var(--accent) 7%, var(--surface-raised));
+}
+
+.operate-studio-bar[data-tone="danger"] {
+  border-color: color-mix(in oklab, var(--danger) 28%, var(--border-subtle));
+  background: color-mix(in oklab, var(--danger) 7%, var(--surface-raised));
+}
+
+.operate-studio-bar-badge {
+  flex: 0 0 auto;
+  padding-top: 1px;
+}
+
+.operate-studio-bar-copy {
+  flex: 1 1 16rem;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.operate-studio-bar-title {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.operate-studio-bar-why,
+.operate-studio-bar-next {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+.operate-studio-bar-next-label {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.operate-studio-bar-actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .operate-studio-bar {
+    transition: none;
+  }
+}

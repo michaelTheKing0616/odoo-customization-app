@@ -59,16 +59,16 @@ export function expertCloserHint(draft: unknown): string {
     return "Expert closer repairs JSON hygiene. It does not install Community apps or run Autopilot smoke. Use Job Autopilot as the done-bar.";
   }
   if (isRefuseCloneDraft(rec)) {
-    return "This request was refused — Expert will not generate a clone.";
+    return "This request was refused. The Expert will not generate a clone.";
   }
   if (rec?._component) {
-    return "This is inherit-and-wire on a stock form. Next step is Apply — Expert closer is for full-app drafts with JSON gaps.";
+    return "This is inherit-and-wire on a stock form. Next step is Apply. Expert closer is for full-app drafts with JSON gaps.";
   }
   if (isOptionAAuthoredDraft(rec) && !optionAAuthoringPassed(rec)) {
-    return "LLM-authored Python/QWeb is gated. Expert closer does not unlock zip — fix authoring findings, then sandbox-prove. Promote stays human.";
+    return "LLM-authored Python and QWeb are gated. Expert closer does not unlock the zip: fix authoring findings, then sandbox-prove. Publishing stays a step you confirm.";
   }
   if (rec?._capability_primary_option_a) {
-    return "Option A primary: score stays capped (~7) until Sandbox install & smoke. Expert closer does not raise Certification.";
+    return "Custom-code primary: score stays capped (~7) until Sandbox install & smoke. Expert closer does not raise Certification.";
   }
   if (!expertShouldRepair(rec)) {
     return "No JSON gaps to repair. Expert will leave this spec unchanged.";
@@ -147,7 +147,7 @@ export function unfinishedDraftBanner(
       ? "This is a live preview. Wait for the quality score before applying."
       : studio
         ? "This draft is missing a quality score. Start a new app — do not Apply yet."
-        : "This draft is missing a quality score. Click Create draft again — do not Apply yet.",
+        : "This draft is missing a quality score. Generate the draft again before you Apply.",
     testId: "draft-finisher-incomplete",
   };
 }

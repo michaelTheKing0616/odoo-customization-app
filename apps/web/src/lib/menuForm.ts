@@ -3,7 +3,7 @@ import type { MenuNode, WindowActionRow } from "@/lib/api";
 export const CONFIRM_PHRASE = "I understand the risks";
 
 export const MENUS_REPORTS_CAVEAT =
-  "Menus / QWeb reports are experimental on Odoo 16 — verify in Open-in-Odoo after create.";
+  "Menus and QWeb reports are experimental on Odoo 16. Open the result in Odoo after you create it.";
 
 export const DEFAULT_ROOT_ICON = "base,static/description/icon.png";
 
@@ -137,7 +137,7 @@ export function parentSelectOptions(
       .filter((m) => !blocked.has(m.id))
       .map((m) => ({
         value: String(m.id),
-        label: m.parent_name ? `${m.name} · under ${m.parent_name}` : `${m.name} (#${m.id})`,
+        label: m.parent_name ? `${m.name} (under ${m.parent_name})` : `${m.name} (#${m.id})`,
       })),
   ];
 }

@@ -20,8 +20,8 @@ export function ProjectHandoffBar({
     <Card className="p-5" data-testid="projects-handoff-bar">
       <h2 className="text-lg font-semibold text-ink">Open related surfaces</h2>
       <p className="mt-1 text-sm text-muted">
-        Projects is versioned draft history. ModuleSpec is the IR. View Designer edits live forms.
-        Snapshots live in the change journal. Promote stays human.
+        Projects is versioned draft history. The app plan is the structured description of your app. View Designer edits live forms.
+        Snapshots live in the change journal. Publishing stays a step you confirm.
       </p>
       <div className="job-handoff-bar mt-4">
         {projectId ? (
@@ -32,7 +32,7 @@ export function ProjectHandoffBar({
           </Button>
         ) : (
           <Button asChild variant="ghost" size="sm">
-            <Link href={`/connections/${connectionId}/modulespec`}>ModuleSpec</Link>
+            <Link href={`/connections/${connectionId}/modulespec`}>App plan</Link>
           </Button>
         )}
         <Button asChild variant="ghost" size="sm">

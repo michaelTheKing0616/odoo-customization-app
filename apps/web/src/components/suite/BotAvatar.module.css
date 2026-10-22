@@ -1,0 +1,33 @@
+/* Keystone-family bot avatars (SPEC 20.2, brand/ingenium-v2). Colours come from globals/tokens.css
+   (--bot-tile / --bot-arch / --bot-keystone); cinnabar is the keystone only, same in light and dark. */
+.avatar {
+  --ks-tile: var(--bot-tile);
+  --ks-arch: var(--bot-arch);
+  --ks-keystone: var(--bot-keystone);
+  position: relative; display: inline-grid; place-items: center; flex: none; inline-size: var(--ks-size); block-size: var(--ks-size);
+}
+.avatar svg { inline-size: 100%; block-size: 100%; display: block; }
+.tile { fill: var(--ks-tile); }
+.arch { fill: var(--ks-arch); }
+.keystone { fill: var(--ks-keystone); transform-box: fill-box; transform-origin: center; }
+.glyph { fill: none; stroke: var(--ks-arch); stroke-width: 14; stroke-linecap: round; stroke-linejoin: round; }
+.glyphFill { fill: var(--ks-arch); }
+.badge { position: absolute; inset-block-end: -2px; inset-inline-end: -2px; inline-size: 42%; block-size: 42%; min-inline-size: 8px; min-block-size: 8px;
+  border-radius: 50%; display: grid; place-items: center; box-shadow: 0 0 0 2px var(--surface); }
+.badge svg { inline-size: 70%; block-size: 70%; stroke: var(--on-accent, var(--surface)); fill: none; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
+.avatar[data-state="done"] .badge { background: var(--success); }
+.avatar[data-state="needs_you"] .badge { background: var(--warning); }
+.avatar[data-state="thinking"] .badge, .avatar[data-state="working"] .badge { background: var(--accent); }
+/* 104: needs you = a fine cinnabar outline on the tile. Working = stones fill bottom-up. */
+.avatar[data-state="needs_you"] .tile { stroke: var(--brand-cinnabar, #CF4527); stroke-width: 8; }
+.archFill { fill: var(--ks-keystone); opacity: .35; clip-path: inset(0 0 0 0); }
+.label { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (prefers-reduced-motion: no-preference) {
+  /* Thinking: the keystone lifts and settles, the arch waits for it. */
+  .avatar[data-state="thinking"] .keystone { animation: ksLift 1.4s ease-in-out infinite; }
+  .avatar[data-state="working"] .archFill { animation: ksFill 1.6s ease-in-out infinite; }
+  .avatar[data-state="done"] .keystone { animation: ksSettle 320ms ease-out 1; }
+}
+@keyframes ksLift { 0%, 100% { transform: translateY(-10%) scale(1); } 50% { transform: translateY(-16%) scale(1.04); } }
+@keyframes ksSettle { 0% { transform: translateY(-12%); } 70% { transform: translateY(2%); } 100% { transform: translateY(0); } }
+@keyframes ksFill { 0% { clip-path: inset(100% 0 0 0); } 80%, 100% { clip-path: inset(0 0 0 0); } }

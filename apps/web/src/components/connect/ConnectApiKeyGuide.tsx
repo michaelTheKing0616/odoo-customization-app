@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { Callout } from "@/components/ui/Callout";
 import {
   apiKeyGuideSteps,
   shouldEmphasizeApiKeyGuide,
@@ -28,10 +27,11 @@ type Props = {
  */
 export function ConnectApiKeyGuide({ url, hosting, errorMessage, className }: Props) {
   const emphasize = shouldEmphasizeApiKeyGuide(hosting, errorMessage);
-  const [open, setOpen] = useState(emphasize);
+  // Keep steps collapsed by default (paper density). Open only after an auth-style failure.
+  const [open, setOpen] = useState(false);
   useEffect(() => {
-    if (emphasize) setOpen(true);
-  }, [emphasize]);
+    if (emphasize && errorMessage) setOpen(true);
+  }, [emphasize, errorMessage]);
   const steps = useMemo(() => apiKeyGuideSteps(hosting), [hosting]);
   const openUrl = odooApiKeyGuideUrl(url);
   const docsUrl = odooApiKeyDocsUrl();
@@ -61,13 +61,9 @@ export function ConnectApiKeyGuide({ url, hosting, errorMessage, className }: Pr
               : "Create an Odoo API key (optional but safer)"}
           </h3>
           <p className="mt-1 text-xs text-muted">
-            This is an <span className="font-medium text-ink">Odoo external RPC</span> API key
-            (XML-RPC / JSON-RPC) so Ingenium can talk to your database —{" "}
-            <span className="font-medium text-ink">not</span> a Cursor MCP / Model Context Protocol
-            key. If Odoo offers RPC vs MCP (or similar), pick <span className="font-medium text-ink">RPC / external API</span>.
-            The key is created <span className="font-medium text-ink">inside Odoo</span>; we open
-            Odoo for you and you paste it back. Replacing an expired key on this same connection
-            keeps your drafts and Studio work.
+            Ingenium uses an Odoo API key to read and change your database. You create the key
+            inside Odoo; we open Odoo for you and you paste it back. Replacing a key keeps your
+            drafts and Studio work.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -95,7 +91,7 @@ export function ConnectApiKeyGuide({ url, hosting, errorMessage, className }: Pr
 
       {!openUrl ? (
         <p className="mt-2 text-xs text-muted">
-          Enter a valid Odoo URL first — then this button opens that instance.
+          Enter a valid Odoo URL first - then this button opens that instance.
         </p>
       ) : null}
 
@@ -108,7 +104,7 @@ export function ConnectApiKeyGuide({ url, hosting, errorMessage, className }: Pr
               data-testid={`connect-api-key-step-${i + 1}`}
             >
               <span
-                className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent/15 text-[11px] font-semibold text-accent"
+                className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent/15 text-[11px] font-semibold text-accent-hover"
                 aria-hidden
               >
                 {i + 1}
@@ -122,16 +118,6 @@ export function ConnectApiKeyGuide({ url, hosting, errorMessage, className }: Pr
         </ol>
       ) : null}
 
-      {emphasize && errorMessage ? (
-        <Callout
-          variant="warning"
-          title="Auth failed — try an API key"
-          className="mt-3"
-          testId="connect-api-key-auth-nudge"
-        >
-          Paste the new Odoo RPC API key into the secret field above (not a Cursor MCP key; leave the website password out), then save again.
-        </Callout>
-      ) : null}
 
       <p className="mt-3 text-xs text-muted">
         Official reference:{" "}
@@ -141,7 +127,7 @@ export function ConnectApiKeyGuide({ url, hosting, errorMessage, className }: Pr
           rel="noopener noreferrer"
           className="text-accent underline-offset-2 hover:underline"
         >
-          Odoo External API — API keys
+          Odoo External API - API keys
         </a>
         .
       </p>

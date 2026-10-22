@@ -31,32 +31,12 @@ export function DraftStudioShell({
   return (
     <div className="studio-refinement" data-testid="draft-studio">
       <div className={`studio-page${canvas ? " is-canvas" : ""}`}>
-        <div
-          className="mb-3 rounded-md border border-border-subtle bg-surface px-3 py-2 text-sm text-muted"
-          data-testid="draft-studio-ia-banner"
-        >
-          Draft Studio is now a power worksheet of{" "}
-          <Link
-            href={`/connections/${connectionId}/studio`}
-            className="font-medium text-ink underline underline-offset-2"
-          >
-            App Studio
-          </Link>
-          . Existing drafts stay safe — prefer App Studio for new work, or{" "}
-          <Link
-            href={`/connections/${connectionId}/projects`}
-            className="font-medium text-ink underline underline-offset-2"
-          >
-            Projects
-          </Link>{" "}
-          to track them.
-        </div>
         <PageHeader
           title="Draft Studio"
           description={
             connectionName
-              ? `${connectionName} · describe a field, a feature, or a full app — then apply it to Odoo`
-              : "Describe a field, a feature, or a full app. Review the scorecard. Apply only when you mean it."
+              ? `${connectionName} · draft an app plan, review the scorecard, apply when you mean it`
+              : "Draft an app plan. Review draft completeness, quality checks, and Autopilot separately. Apply when you mean it."
           }
           actions={
             <>
@@ -73,22 +53,54 @@ export function DraftStudioShell({
               ) : null}
               <Link
                 href={`/connections/${connectionId}/studio`}
-                className="text-sm text-muted hover:text-ink"
+                className="draft-studio-header-link"
               >
                 App Studio
               </Link>
             </>
           }
         />
-        <DraftStudioStageRail journey={journey} />
-        <div className="mb-4">
-          <BuildSpineBar
-            connectionId={connectionId}
-            activeMode="residual_app"
-            handoff={handoff}
-            compact
-          />
+        <div
+          className="draft-studio-ia-banner"
+          data-testid="draft-studio-ia-banner"
+        >
+          <p className="draft-studio-ia-banner-body">
+            Draft Studio is a power worksheet of{" "}
+            <Link
+              href={`/connections/${connectionId}/studio`}
+              className="font-medium text-ink underline underline-offset-2"
+            >
+              App Studio
+            </Link>
+            . Existing drafts stay safe. Prefer App Studio for new work, or{" "}
+            <Link
+              href={`/connections/${connectionId}/projects`}
+              className="font-medium text-ink underline underline-offset-2"
+            >
+              Projects
+            </Link>{" "}
+            to track them.
+          </p>
         </div>
+        <DraftStudioStageRail journey={journey} />
+        <details
+          className="draft-studio-disclosure draft-studio-spine"
+          open={handoff ? true : undefined}
+          data-testid="draft-studio-spine"
+        >
+          <summary>
+            <span>Switch build mode</span>
+            <span className="draft-studio-disclosure-meta">Residual app</span>
+          </summary>
+          <div className="mt-3">
+            <BuildSpineBar
+              connectionId={connectionId}
+              activeMode="residual_app"
+              handoff={handoff}
+              compact
+            />
+          </div>
+        </details>
         {children}
       </div>
     </div>

@@ -125,7 +125,7 @@ export function ModuleSpecEditor({
 
   return (
     <div className="border border-border-subtle bg-surface-muted/40" data-testid="modulespec-editor">
-      <div className="ms-section-nav" role="tablist" aria-label="ModuleSpec sections">
+      <div className="ms-section-nav" role="tablist" aria-label="App plan sections">
         {MODULESPEC_SECTIONS.map((row) => (
           <button
             key={row.id}

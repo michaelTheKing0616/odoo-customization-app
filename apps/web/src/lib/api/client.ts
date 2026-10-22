@@ -113,7 +113,7 @@ export class FeatureGatedError extends Error {
   }
 }
 
-function formatDetailMessage(detail: unknown): string {
+export function formatDetailMessage(detail: unknown): string {
   if (typeof detail === "string") {
     const trimmed = detail.trim();
     // Bare FastAPI/proxy statusText — never useful as an App Studio banner body.
@@ -121,7 +121,7 @@ function formatDetailMessage(detail: unknown): string {
       return (
         "The API returned an unexpected error. Confirm uvicorn is running on :8001 " +
         "without a stale process, hard-refresh App Studio, then try again. " +
-        "If this is Option A authoring, check Gemini quota or set AI_ASSIST=ollama."
+        "If this is custom-code authoring, check Gemini quota or set AI_ASSIST=ollama."
       );
     }
     return trimmed;
@@ -259,10 +259,13 @@ export async function request<T>(path: string, init?: ApiRequestInit): Promise<T
     ) {
       throw new FeatureGatedError(detail as { message?: string; feature_key?: string; plan_id?: string });
     }
-    throw new Error(
-      res.status === 404
-        ? `${formatDetailMessage(detail) || "Not Found"} (${(init?.method || "GET").toUpperCase()} ${path})`
-        : formatDetailMessage(detail) || `Request failed (${res.status})`,
+    throw Object.assign(
+      new Error(
+        res.status === 404
+          ? `${formatDetailMessage(detail) || "Not Found"} (${(init?.method || "GET").toUpperCase()} ${path})`
+          : formatDetailMessage(detail) || `Request failed (${res.status})`,
+      ),
+      { status: res.status, detail },
     );
   }
   if (res.status === 204) {

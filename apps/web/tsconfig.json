@@ -31,9 +31,22 @@
   "include": [
     "**/*.ts",
     "**/*.tsx",
+    ".next-e2e/types/**/*.ts",
+    ".next-uiconnect/types/**/*.ts",
+    ".next-uis26leap/types/**/*.ts",
+    ".next-uis2951/types/**/*.ts",
+    ".next-uis30b/types/**/*.ts",
+    ".next-uis30leap/types/**/*.ts",
+    ".next-uis35/types/**/*.ts",
+    ".next-uis36/types/**/*.ts",
+    ".next-uis37/types/**/*.ts",
+    ".next-uis38/types/**/*.ts",
+    ".next-uis41/types/**/*.ts",
+    ".next-uis42/types/**/*.ts",
+    ".next-uis50/types/**/*.ts",
+    ".next-vd34/types/**/*.ts",
     ".next/types/**/*.ts",
-    "next-env.d.ts",
-    ".next-e2e/types/**/*.ts"
+    "next-env.d.ts"
   ],
   "exclude": [
     "node_modules"

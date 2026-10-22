@@ -7,10 +7,10 @@ import {
 
 const HINTS: Record<ComposerSessionState, string> = {
   unsaved:
-    "This grant stays local until you create it on Odoo. Existing snapshots are unchanged.",
+    "This right stays local until you save it to Odoo. Existing snapshots are unchanged.",
   saved:
-    "Last create wrote this grant to Odoo and took a snapshot. Start another, or open a row from the list.",
-  draft: "Name the access line or record rule, pick a group, then grant permissions.",
+    "Saved to Odoo after a snapshot. Start another, or open a line from the list.",
+  draft: "Name it, pick a group, then tick the operations it may run.",
 };
 
 type AccessSessionBarProps = {

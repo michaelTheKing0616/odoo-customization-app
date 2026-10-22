@@ -18,7 +18,7 @@
 
 .studio-refinement .studio-prompt-screen--hero {
   max-width: 640px;
-  padding: min(12vh, 4.5rem) 0 2.5rem;
+  padding: min(10vh, 4rem) 0 var(--space-3xl);
 }
 
 .studio-refinement .studio-prompt-kicker {
@@ -38,9 +38,11 @@
 }
 
 .studio-refinement .studio-prompt-screen--hero .studio-prompt-title {
-  font-size: clamp(1.375rem, 2.4vw, 1.75rem);
-  letter-spacing: -0.035em;
-  line-height: 1.25;
+  font-size: clamp(1.5rem, 2.6vw, 2rem);
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  margin-bottom: var(--space-sm);
+  text-wrap: balance;
 }
 
 .studio-refinement .studio-prompt-subtitle {
@@ -50,20 +52,30 @@
 }
 
 .studio-refinement .studio-prompt-screen--hero .studio-prompt-subtitle {
-  max-width: 36rem;
-  margin-left: auto;
-  margin-right: auto;
-  margin-bottom: 1.25rem;
+  max-width: 34rem;
+  margin-inline: auto;
+  margin-bottom: var(--space-xl);
+  font-size: var(--font-size-md);
   line-height: 1.55;
+  text-wrap: pretty;
 }
 
 .studio-refinement .studio-prompt-composer {
   text-align: left;
-  border: 1px solid var(--border);
-  border-radius: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
   background: var(--surface-2);
-  padding: 12px 12px 14px;
-  box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 65%, transparent);
+  padding: var(--space-md);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--text-primary) 6%, transparent);
+  transition:
+    border-color var(--duration-state) ease,
+    box-shadow var(--duration-state) ease;
+}
+
+/* The textarea drops its own ring, so the composer carries focus (playbook §7 Focus). */
+.studio-refinement .studio-prompt-composer:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--bg-accent);
 }
 
 .studio-refinement .studio-prompt-textarea {
@@ -71,19 +83,98 @@
   border: none !important;
   background: transparent !important;
   box-shadow: none !important;
-  min-height: 5.5rem;
-  font-size: var(--font-size-md);
+  min-height: 6rem;
+  padding: var(--space-xs) var(--space-xs) 0;
+  font-size: 16px;
   line-height: 1.5;
 }
 
 .studio-refinement .studio-prompt-composer .studio-chip-row {
   justify-content: flex-start;
-  margin: 8px 0 12px;
+  margin: var(--space-sm) 0 var(--space-lg);
+}
+
+.studio-refinement .studio-prompt-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border);
+}
+
+.studio-refinement .studio-prompt-shortcut {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  min-width: 0;
 }
 
 .studio-refinement .studio-prompt-cta {
-  width: 100%;
   justify-content: center;
+  min-width: 10rem;
+}
+
+.studio-refinement .studio-flash-enrich-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  margin: 0 0 var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-control);
+  background: var(--surface-1);
+  cursor: pointer;
+}
+
+.studio-refinement .studio-flash-enrich-toggle input {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: var(--color-accent);
+}
+
+.studio-refinement .studio-flash-enrich-toggle input:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-offset);
+}
+
+.studio-refinement .studio-flash-enrich-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.studio-refinement .studio-flash-enrich-label {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.studio-refinement .studio-flash-enrich-hint {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+@media (max-width: 479px) {
+  .studio-refinement .studio-prompt-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .studio-refinement .studio-prompt-cta {
+    width: 100%;
+  }
+
+  .studio-refinement .studio-prompt-shortcut {
+    text-align: center;
+  }
+}
+
+.studio-refinement .studio-spine {
+  margin-bottom: var(--space-xl);
 }
 
 .studio-refinement .studio-chip-row {
@@ -152,12 +243,34 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 999px;
   border: 1px solid var(--border-strong);
-  font-size: 10px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
   line-height: 1;
+}
+
+@media (max-width: 639px) {
+  .studio-refinement .studio-stage-list {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    mask-image: linear-gradient(to right, #000 85%, transparent);
+  }
+
+  .studio-refinement .studio-stage-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .studio-refinement .studio-stage-item {
+    flex: 0 0 auto;
+  }
+
+  .studio-refinement .studio-stage-item:not(:last-child)::after {
+    width: 12px;
+  }
 }
 
 .studio-refinement .studio-stage-item.is-done {
@@ -175,19 +288,25 @@
 }
 
 .studio-refinement .studio-stage-item.is-current .studio-stage-index {
-  background: var(--color-brand);
-  border-color: var(--color-brand);
-  color: var(--on-brand);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--on-accent);
+}
+
+.studio-refinement .studio-stage-item.is-current .studio-stage-label {
+  font-weight: 600;
 }
 
 .studio-refinement .studio-stage-item.is-failed .studio-stage-index {
   background: var(--text-danger);
   border-color: var(--text-danger);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .studio-refinement .studio-stage-hint {
-  margin: 8px 0 0;
+  margin: var(--space-sm) 0 0;
+  max-width: 72ch;
+  text-wrap: pretty;
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
   line-height: 1.45;
@@ -211,8 +330,16 @@
 .studio-refinement .studio-review {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-md);
   margin-top: var(--space-lg);
+}
+
+.studio-refinement .studio-review {
+  gap: var(--space-xl);
+}
+
+.studio-refinement .studio-banner-stack:empty {
+  display: none;
 }
 
 .studio-refinement .studio-finding-list {
@@ -264,8 +391,8 @@
 .studio-refinement .studio-option-a-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
+  gap: var(--space-sm);
+  margin-top: var(--space-lg);
   align-items: center;
 }
 
@@ -286,14 +413,28 @@
 
 .studio-refinement .studio-preview-empty {
   margin: 0;
+  padding: var(--space-xl);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-card);
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
+  line-height: 1.5;
+  max-width: 60ch;
+  text-wrap: pretty;
 }
 
 .studio-refinement .studio-preview-toolbar {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
   align-items: center;
+  justify-content: flex-end;
+}
+
+.studio-refinement .studio-preview-toolbar .btn {
+  min-height: 32px;
+  padding: 6px 12px;
+  font-size: var(--font-size-sm);
 }
 
 .studio-refinement .review-layout-header {

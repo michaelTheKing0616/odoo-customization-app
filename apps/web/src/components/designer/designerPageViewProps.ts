@@ -10,6 +10,11 @@ import {
 import type { useDesignerCanvasMutations } from "@/components/designer/useDesignerCanvasMutations";
 import type { useDesignerPersist } from "@/components/designer/useDesignerPersist";
 import type { DesignerPageModel } from "@/components/designer/useDesignerPageModel";
+import {
+  classifyDesignerError,
+  isPreviewStale,
+  type DesignerCanvasState,
+} from "@/components/designer/designerCanvasState";
 
 type Mutations = ReturnType<typeof useDesignerCanvasMutations>;
 type Persist = ReturnType<typeof useDesignerPersist>;
@@ -221,8 +226,33 @@ export function designerStructuralProps(
   };
 }
 
+/** UI-S-12: one canvas state at a time. Save errors outrank a stale preview. */
+export function designerCanvasStateFor(m: DesignerPageModel): DesignerCanvasState | null {
+  const errorState = classifyDesignerError(m.error);
+  if (errorState) {
+    return {
+      ...errorState,
+      action: { label: "Open Advanced", onClick: () => m.setRailTab("advanced") },
+    };
+  }
+  if (
+    isPreviewStale({
+      mode: m.canvasMode,
+      liveAvailable: Boolean(m.proxyPreviewUrl) && !m.liveFailed,
+      dirty: m.history.dirty,
+    })
+  ) {
+    return {
+      kind: "preview-stale",
+      action: { label: "Show layout canvas", onClick: () => m.setCanvasMode("structure") },
+    };
+  }
+  return null;
+}
+
 export function designerLiveCanvasHandlers(m: DesignerPageModel) {
   return {
+    canvasState: designerCanvasStateFor(m),
     mode: m.canvasMode,
     onModeChange: m.setCanvasMode,
     liveUrl: m.proxyPreviewUrl,

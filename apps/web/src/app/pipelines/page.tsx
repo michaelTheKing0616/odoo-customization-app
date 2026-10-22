@@ -15,12 +15,12 @@ import { Callout } from "@/components/ui/Callout";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Card, PageHeader } from "@/components/ui/layout-primitives";
+import { Card, EmptyState, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
 
 const CONFIRM_PHRASE = "I understand the risks";
 
 const MATCHING_MAJOR_SANDBOX =
-  "Sandbox hop uses matching-major ephemeral Docker on :18069 — align staging/prod majors before promote.";
+  "Sandbox hop uses matching-major ephemeral Docker on :18069 — align staging/prod majors before publish.";
 
 const HOPS = [
   { id: "sandbox" as const, step: 1, label: "Sandbox", desc: "Ephemeral Docker gate" },
@@ -64,6 +64,7 @@ export default function PipelinesPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [listHydrated, setListHydrated] = useState(false);
 
   const refresh = useCallback(async () => {
     const [conns, pipes] = await Promise.all([
@@ -80,7 +81,9 @@ export default function PipelinesPage() {
   }, []);
 
   useEffect(() => {
-    refresh().catch((err: Error) => setError(err.message));
+    refresh()
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setListHydrated(true));
   }, [refresh]);
 
   useEffect(() => {
@@ -129,7 +132,7 @@ export default function PipelinesPage() {
         setPendingHop(hop);
         setError(err.warning);
       } else {
-        setError(err instanceof Error ? err.message : "Promote failed");
+        setError(err instanceof Error ? err.message : "Publish failed");
       }
     } finally {
       setBusy(false);
@@ -161,14 +164,14 @@ export default function PipelinesPage() {
     <div className="mx-auto max-w-5xl" data-testid="pipelines-page">
       <PageHeader
         title="Multi-env promote"
-        description="Sandbox (ephemeral) → staging connection → prod connection. Same zip sha256 required across hops."
+        description="Test copy → staging → live. The same package is used at every step."
       />
       <VersionAwarenessBanner
         capabilities={focusConnection?.capabilities}
         caveat={pipelineCaveat}
       />
       {promoteBlocked ? (
-        <Callout variant="warning" title="Promote blocked" className="mt-4">
+        <Callout variant="warning" title="Publish blocked" className="mt-4">
           {promoteBlocked}
         </Callout>
       ) : null}
@@ -200,6 +203,7 @@ export default function PipelinesPage() {
         >
           <h2 className="text-xl font-semibold text-ink">New pipeline</h2>
           <Input
+            id="pipeline-name"
             label="Name"
             required
             value={form.name}
@@ -234,27 +238,54 @@ export default function PipelinesPage() {
 
       <section className="mt-8">
         <h2 className="text-xl font-semibold text-ink">Pipelines</h2>
-        <ul className="mt-3 space-y-2">
-          {pipelines.map((p) => (
-            <li key={p.id}>
-              <button
-                type="button"
-                onClick={() => setSelectedId(p.id)}
-                className={`w-full rounded-md border px-3 py-2 text-left text-sm ${
-                  selectedId === p.id
-                    ? "border-accent bg-accent-subtle/20"
-                    : "border-border-subtle bg-surface"
-                }`}
-              >
-                <span className="font-medium text-ink">{p.name}</span>
-                <span className="mt-1 block text-xs text-muted">
-                  staging={connName(p.staging_connection_id)} · prod=
-                  {connName(p.prod_connection_id)}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        {!listHydrated ? (
+          <div className="mt-3" role="status" data-testid="pipelines-list-loading">
+            <span className="sr-only">Loading pipelines.</span>
+            <div className="space-y-2" aria-hidden>
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+            </div>
+          </div>
+        ) : pipelines.length === 0 && !error ? (
+          <div className="mt-3">
+            <EmptyState
+              title="No pipelines yet"
+              description="Pipelines you create appear here with their staging and prod connections."
+              action={
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => document.getElementById("pipeline-name")?.focus()}
+                >
+                  Name a pipeline
+                </Button>
+              }
+            />
+          </div>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {pipelines.map((p) => (
+              <li key={p.id}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedId(p.id)}
+                  className={`w-full rounded-md border px-3 py-2 text-left text-sm ${
+                    selectedId === p.id
+                      ? "border-accent bg-accent-subtle/20"
+                      : "border-border-subtle bg-surface"
+                  }`}
+                >
+                  <span className="font-medium text-ink">{p.name}</span>
+                  <span className="mt-1 block text-xs text-muted">
+                    staging={connName(p.staging_connection_id)} · prod=
+                    {connName(p.prod_connection_id)}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
 
         {selectedPipeline ? (
           <div className="mt-6 space-y-4">

@@ -1,0 +1,9 @@
+{
+  "fixture": "x_ticket_browser clean form",
+  "module": "x_ticket_browser",
+  "views_checked": 1,
+  "false_positives": 0,
+  "false_positive_rate": 0.0,
+  "measured_from": "clean fixture via structural_zip_gate",
+  "defect_class_not_raised": "view_arch_unparseable"
+}

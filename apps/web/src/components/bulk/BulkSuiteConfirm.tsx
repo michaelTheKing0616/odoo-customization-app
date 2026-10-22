@@ -25,7 +25,7 @@ export function BulkSuiteConfirm({ vm }: { vm: BulkSuitePageModel }) {
       }
       warning={
         vm.confirmMode === "mass_edit"
-          ? `This will write field values on live ${vm.model} records. Dry-run first when unsure.`
+          ? `This will write field values on live ${vm.model} records. Test run first when unsure.`
           : vm.confirmMode === "dedupe_merge"
             ? `Merge ${vm.loserIds.length} duplicate(s) into winner #${vm.winnerId ?? "?"} on ${vm.model}.`
             : vm.confirmMode === "activities"
@@ -37,7 +37,7 @@ export function BulkSuiteConfirm({ vm }: { vm: BulkSuitePageModel }) {
                   : vm.confirmMode === "send_message"
                     ? `Post threaded messages on live ${vm.model} records.`
                     : vm.selectedButton
-                    ? `This will call ${vm.method} on live ${vm.model} records. Dry-run first when unsure.`
+                    ? `This will call ${vm.method} on live ${vm.model} records. Test run first when unsure.`
                     : "Bulk workflow transition on live ERP data."
       }
       risks={
@@ -48,7 +48,7 @@ export function BulkSuiteConfirm({ vm }: { vm: BulkSuitePageModel }) {
             ]
           : vm.confirmMode === "dedupe_merge"
             ? [
-                "Partially reversible — snapshot stored but manual recovery may be needed",
+                "Partially reversible - snapshot stored but manual recovery may be needed",
                 "Inbound FK rows and chatter are rewritten; losers archived by default",
               ]
             : vm.confirmMode === "activities"
@@ -68,11 +68,11 @@ export function BulkSuiteConfirm({ vm }: { vm: BulkSuitePageModel }) {
                     ]
                   : vm.confirmMode === "send_message"
                     ? [
-                        "One message_post per record — not mass-mail composer",
+                        "One message_post per record - not mass-mail composer",
                         "Template renders per record when mail_template_id is set",
                       ]
                     : [
-                      "Runs as the connected Odoo user — side effects may include mail, stock, or accounting",
+                      "Runs as the connected Odoo user - side effects may include mail, stock, or accounting",
                       "Successful rows are not auto-undone if some records fail",
                     ]
       }

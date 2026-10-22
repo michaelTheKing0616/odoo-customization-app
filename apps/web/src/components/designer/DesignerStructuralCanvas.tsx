@@ -236,7 +236,7 @@ export function DesignerStructuralCanvas(props: DesignerStructuralCanvasProps) {
             })),
           }}
         />
-        <div className="mt-4">
+        <div className="mt-6">
           <KanbanCardPreview
             title={title || model}
             groupBy={kanbanGroupBy || null}
@@ -272,9 +272,12 @@ export function DesignerStructuralCanvas(props: DesignerStructuralCanvasProps) {
         : viewType === "kanban"
           ? kanbanStructuralCanvas
           : (
-            <div className="rounded-md border border-border-subtle bg-surface p-4 text-sm text-muted">
-              Layout canvas for {viewType} uses the Structure tab. Live Odoo remains
-              the authoritative preview.
+            <div className="designer-structure-card text-sm" data-testid="designer-structure-fallback">
+              <p className="font-medium">Layout canvas covers form, list and kanban</p>
+              <p className="mt-1 text-[var(--dz-paper-muted)]">
+                Edit the {viewType} view from the Structure tab. Live Odoo stays the authoritative
+                preview.
+              </p>
             </div>
           )
   );

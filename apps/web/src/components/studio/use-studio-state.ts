@@ -8,7 +8,7 @@ import type { GoldHostStatus } from "./StudioOptionAPanel";
 
 export function useStudioState() {
   const [prompt, setPrompt] = useState("");
-  const [flashAstEnrich, setFlashAstEnrich] = useState(false);
+  const [flashAstEnrich, setFlashAstEnrich] = useState<boolean | null>(null);
   const [flashAstEnrichHelp, setFlashAstEnrichHelp] = useState(
     "On: optional Flash AST fill (same path as AI_INTENT_LLM). Off: deterministic floor only.",
   );

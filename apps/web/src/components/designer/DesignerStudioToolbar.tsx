@@ -6,7 +6,8 @@ import type { Connection, FieldRow } from "@/lib/api";
 import {
   connectionSupports,
   gridViewAllowed,
-  isEnterpriseEdition,
+  isConfirmedCommunity,
+  isEditionUnknown,
   mutationAllowed,
   mutationBlockedReason,
 } from "@/lib/capabilities";
@@ -141,7 +142,7 @@ export function DesignerStudioToolbar(p: DesignerStudioToolbarProps) {
 
 
   return (
-    <Card className="flex flex-wrap items-end gap-3 p-3" data-testid="designer-studio-toolbar">
+    <Card className="designer-toolbar flex flex-wrap items-end gap-3 p-3" data-testid="designer-studio-toolbar">
       <label className="text-sm">
         <span className="text-muted">Model</span>
         <input
@@ -157,7 +158,7 @@ export function DesignerStudioToolbar(p: DesignerStudioToolbarProps) {
       <button
         type="button"
         onClick={() => model && loadModelFields(model)}
-        className="h-10 border border-border-subtle px-4 text-sm text-muted"
+        className="designer-tool-btn"
       >
         Load fields
       </button>
@@ -165,7 +166,7 @@ export function DesignerStudioToolbar(p: DesignerStudioToolbarProps) {
         type="button"
         disabled={busy || !model}
         onClick={loadExistingView}
-        className="h-10 border border-border-subtle px-4 text-sm text-muted disabled:opacity-60"
+        className="designer-tool-btn"
       >
         Load existing view
       </button>
@@ -231,10 +232,12 @@ export function DesignerStudioToolbar(p: DesignerStudioToolbarProps) {
           <option value="grid" disabled={!gridViewAllowed(connection)}>
             grid
             {!gridViewAllowed(connection)
-              ? !isEnterpriseEdition(connection?.capabilities)
+              ? isConfirmedCommunity(connection?.capabilities)
                 ? " (Enterprise edition)"
                 : " (probe connection)"
-              : ""}
+              : isEditionUnknown(connection?.capabilities)
+                ? " (Enterprise only, edition not detected)"
+                : ""}
           </option>
         </select>
         {!mutationAllowed(connection) && (
@@ -760,21 +763,13 @@ export function DesignerStudioToolbar(p: DesignerStudioToolbarProps) {
           <option value="overwrite">Overwrite primary</option>
         </select>
       </label>
-      <button
-        type="button"
-        disabled={busy || !model}
-        onClick={() => void onSave()}
-        className="h-10 bg-accent px-5 text-sm font-semibold text-on-accent disabled:opacity-60"
-      >
-        {busy ? "Saving…" : archOverride ? "Save arch override" : "Save to Odoo"}
-      </button>
       {!model.startsWith("x_") && viewType === "form" ? (
         <>
           <button
             type="button"
             disabled={busy || !model}
             onClick={() => void onRepairDuplicateChrome()}
-            className="h-10 border border-border-subtle px-4 text-sm text-muted disabled:opacity-40"
+            className="designer-tool-btn"
             data-testid="designer-fix-duplicate-chrome"
             title="Rewrites account.move.designer.form (etc.) from full form replace to additive x_* only"
           >
@@ -784,7 +779,7 @@ export function DesignerStudioToolbar(p: DesignerStudioToolbarProps) {
             type="button"
             disabled={busy || !model}
             onClick={() => setConfirmUnlinkInheritOpen(true)}
-            className="h-10 border border-danger/50 px-4 text-sm text-danger disabled:opacity-40"
+            className="designer-tool-btn is-danger"
             data-testid="designer-unlink-inherit"
             title="Deletes {model}.designer.form inherit — restores stock toolbar/tabs"
           >
@@ -805,9 +800,18 @@ export function DesignerStudioToolbar(p: DesignerStudioToolbarProps) {
             setError(err instanceof Error ? err.message : "Polish failed");
           } finally { setBusy(false); }
         }}
-        className="h-10 border border-border-subtle px-4 text-sm text-muted disabled:opacity-40"
+        className="designer-tool-btn"
       >
         Polish form layout
+      </button>
+      <button
+        type="button"
+        disabled={busy || !model}
+        onClick={() => void onSave()}
+        className="designer-save-btn ml-auto"
+        data-testid="designer-save"
+      >
+        {busy ? "Saving…" : archOverride ? "Save arch override" : "Save to Odoo"}
       </button>
     </Card>
   );

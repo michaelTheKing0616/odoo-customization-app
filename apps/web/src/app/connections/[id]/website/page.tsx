@@ -7,6 +7,7 @@ import {
   WebsiteEditor,
   type WebsitePageSummary,
 } from "@/components/website/WebsiteEditor";
+import { formatWebsiteError } from "@/components/website/websiteError";
 import { api } from "@/lib/api";
 
 export default function WebsiteEditorPage() {
@@ -20,6 +21,7 @@ export default function WebsiteEditorPage() {
 
   const refreshPages = useCallback(() => {
     setListHydrated(false);
+    setError(null);
     api
       .listWebsitePages(connectionId)
       .then((res) => {
@@ -36,9 +38,30 @@ export default function WebsiteEditorPage() {
   }, [refreshPages]);
 
   if (error) {
+    const parts = formatWebsiteError(error);
     return (
-      <main className="p-6 text-sm text-danger" data-testid="website-editor-page">
-        {error}
+      <main className="mx-auto max-w-5xl p-6" data-testid="website-editor-page">
+        <div
+          className="rounded-md border border-danger/30 bg-danger-subtle p-4 text-sm"
+          role="alert"
+          data-testid="website-error"
+        >
+          <p className="font-semibold" data-testid="website-error-what">
+            {parts.what}
+          </p>
+          <p className="mt-2 text-xs font-medium uppercase tracking-wide text-muted">
+            Why
+          </p>
+          <p className="mt-1 text-muted" data-testid="website-error-why">
+            {parts.why}
+          </p>
+          <p className="mt-2 text-xs font-medium uppercase tracking-wide text-muted">
+            Next
+          </p>
+          <p className="mt-1 text-muted" data-testid="website-error-next">
+            {parts.next}
+          </p>
+        </div>
       </main>
     );
   }

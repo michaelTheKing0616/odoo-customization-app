@@ -1,0 +1,377 @@
+/**
+ * DOC-WEBSITE — page chrome around the website paper canvas.
+ * Same desk family as Reports / Mail (Canva pasteboard). Basalt ink, teal accent.
+ */
+
+.page {
+  --site-desk: #e6e6e8;
+  --site-ink: var(--ink, #1a1c21);
+  --site-muted: var(--muted, #71717a);
+  --site-hairline: color-mix(in srgb, var(--ink, #1a1c21) 10%, transparent);
+  --site-accent: var(--accent, #0f766e);
+  --site-paper: #f7f3eb;
+}
+
+:global(html.dark) .page {
+  --site-desk: #18181b;
+}
+
+.workbench {
+  display: grid;
+  gap: 0;
+  border: 1px solid var(--site-hairline);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--site-desk);
+  box-shadow:
+    0 1px 2px rgba(26, 28, 33, 0.04),
+    0 18px 40px -24px rgba(26, 28, 33, 0.18);
+}
+
+@media (min-width: 1024px) {
+  .workbench {
+    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+  }
+}
+
+.listPane {
+  display: flex;
+  flex-direction: column;
+  max-height: 40rem;
+  background: color-mix(in srgb, #f4f4f5 88%, #fff);
+  border-inline-end: 1px solid var(--site-hairline);
+}
+
+:global(html.dark) .listPane {
+  background: color-mix(in srgb, #18181b 90%, #000);
+}
+
+.listHead {
+  padding: 0.875rem 1rem 0.75rem;
+  border-bottom: 1px solid var(--site-hairline);
+}
+
+.listHeadLabel {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--site-muted);
+}
+
+.listHeadMeta {
+  margin-top: 0.125rem;
+  font-size: 0.75rem;
+  color: var(--site-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.listBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.375rem;
+}
+
+.listRow {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.625rem 0.75rem;
+  border-radius: 8px;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--site-muted);
+  transition: background-color 120ms ease-out, color 120ms ease-out,
+    border-color 120ms ease-out;
+  cursor: pointer;
+}
+
+.listRow:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--surface-raised, #fff) 55%, transparent);
+  color: var(--site-ink);
+}
+
+.listRow:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.listRowActive {
+  background: color-mix(in srgb, var(--surface-raised, #fff) 82%, transparent);
+  color: var(--site-ink);
+  border-left-color: var(--site-accent);
+}
+
+.listRowTitle {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 550;
+  letter-spacing: -0.01em;
+  color: var(--site-ink);
+  text-wrap: balance;
+}
+
+.listRowMeta {
+  display: block;
+  margin-top: 0.125rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.625rem;
+  line-height: 1.35;
+  color: var(--site-muted);
+}
+
+.editorPane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: transparent;
+}
+
+.editorToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  border-bottom: 1px solid var(--site-hairline);
+  background: color-mix(in srgb, var(--surface, #fff) 78%, transparent);
+}
+
+.editorToolbarTitle {
+  margin-inline-end: auto;
+  min-width: 0;
+}
+
+.editorToolbarName {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--site-ink);
+  text-wrap: balance;
+}
+
+.editorToolbarUrl {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.6875rem;
+  color: var(--site-muted);
+}
+
+.editorBody {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.75rem;
+}
+
+.editorFooter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  border-top: 1px solid var(--site-hairline);
+  background: color-mix(in srgb, var(--surface, #fff) 78%, transparent);
+}
+
+.emptyDesk {
+  margin: 0.75rem;
+  border: 1px dashed var(--site-hairline);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-raised, #fff) 40%, transparent);
+}
+
+/* Paper pasteboard — website page width, cream sheet (Canva family). */
+.stage {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  width: 100%;
+  padding: 1.25rem 1rem 1.75rem;
+  background: var(--site-desk, #e6e6e8);
+  border-radius: 10px;
+}
+
+:global(html.dark) .stage {
+  --site-desk: #141416;
+}
+
+.paper {
+  --site-paper-ink: #1c1917;
+  --site-paper-muted: #57534e;
+  --site-paper-rule: color-mix(in srgb, var(--site-paper-ink) 14%, transparent);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 40rem);
+  min-height: 18rem;
+  background-color: var(--site-paper, #f7f3eb);
+  color: var(--site-paper-ink);
+  border: 1px solid var(--site-paper-rule);
+  border-radius: 0;
+  box-shadow:
+    0 1px 2px rgba(28, 25, 23, 0.04),
+    0 12px 28px -8px rgba(28, 25, 23, 0.14),
+    0 28px 48px -20px rgba(28, 25, 23, 0.1);
+  transition: none;
+  animation: none;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .paper {
+    box-shadow: 0 1px 0 rgba(28, 25, 23, 0.08);
+  }
+}
+
+.paperHeader {
+  padding: 0.85rem 1.1rem 0.7rem;
+  border-bottom: 1px solid var(--site-paper-rule);
+  background: color-mix(in srgb, var(--site-paper-ink) 3.5%, var(--site-paper, #f7f3eb));
+}
+
+.paperMetaLabel {
+  font-size: 0.625rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--site-paper-muted);
+}
+
+.paperTitle {
+  margin-top: 0.2rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--site-paper-ink);
+  text-wrap: balance;
+}
+
+.paperUrl {
+  margin-top: 0.35rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.6875rem;
+  color: var(--site-paper-muted);
+}
+
+.paperBody {
+  flex: 1 1 auto;
+  padding: 1.1rem 1.15rem 1.35rem;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--site-paper-ink);
+}
+
+.paperBody :global(h1),
+.paperBody :global(h2),
+.paperBody :global(h3) {
+  margin: 0 0 0.55rem;
+  letter-spacing: -0.02em;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.paperBody :global(h1) { font-size: 1.35rem; }
+.paperBody :global(h2) { font-size: 1.1rem; }
+.paperBody :global(h3) { font-size: 1rem; }
+
+.paperBody :global(p) {
+  margin: 0 0 0.65rem;
+}
+
+.paperBody :global(a) {
+  color: #0f766e;
+  text-underline-offset: 2px;
+}
+
+.paperBody :global(img) {
+  max-width: 100%;
+  max-height: 8rem;
+  object-fit: contain;
+  border-radius: 4px;
+  border: 1px solid var(--site-paper-rule);
+}
+
+.lockedChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.45rem;
+  margin: 0.25rem 0;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--site-paper-ink) 6%, transparent);
+  color: var(--site-paper-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.6875rem;
+}
+
+.blocksPanel {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.blockCard {
+  border: 1px solid var(--site-hairline);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-raised, #fff) 82%, transparent);
+  padding: 0.75rem;
+}
+
+.blockKind {
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--site-muted);
+}
+
+.lockedXml {
+  margin: 0.35rem 0 0;
+  max-height: 6rem;
+  overflow: auto;
+  padding: 0.5rem 0.6rem;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--site-ink) 4%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  color: var(--site-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.errorCard {
+  border: 1px solid color-mix(in srgb, var(--danger, #b91c1c) 28%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--danger, #b91c1c) 6%, transparent);
+  padding: 0.875rem 1rem;
+}
+
+.errorWhat {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--site-ink);
+  text-wrap: balance;
+}
+
+.errorRow {
+  margin-top: 0.55rem;
+}
+
+.errorLabel {
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--site-muted);
+}
+
+.errorText {
+  margin-top: 0.15rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--site-ink);
+  text-wrap: pretty;
+}

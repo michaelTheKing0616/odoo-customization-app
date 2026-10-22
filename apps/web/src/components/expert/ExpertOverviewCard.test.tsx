@@ -13,7 +13,7 @@ describe("ExpertOverviewCard", () => {
     );
     expect(screen.getByTestId("expert-overview-card")).toBeTruthy();
     expect(screen.getByTestId("expert-overview-honesty").textContent).toMatch(
-      /Completeness ≠ Cert ≠ Autopilot/,
+      /A complete draft is not the same as certified, and neither means Autopilot-ready/,
     );
     expect(screen.getByRole("link", { name: "Draft Studio" })).toHaveAttribute(
       "href",
@@ -23,16 +23,12 @@ describe("ExpertOverviewCard", () => {
       "href",
       "/connections/c1/designer",
     );
-    expect(screen.getByRole("link", { name: "Projects" })).toHaveAttribute(
-      "href",
-      "/connections/c1/projects",
-    );
     expect(screen.getByRole("link", { name: "Job Autopilot" })).toHaveAttribute(
       "href",
       "/connections/c1/job",
     );
-    fireEvent.click(screen.getByRole("button", { name: "XPath inherit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Form extension (XPath)" }));
     expect(onAsk).toHaveBeenCalledOnce();
-    expect(screen.getByTestId("expert-overview-card").textContent).toMatch(/never applies ModuleSpec/);
+    expect(screen.getByTestId("expert-overview-card").textContent).toMatch(/never applies an app plan/);
   });
 });

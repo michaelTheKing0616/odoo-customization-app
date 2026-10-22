@@ -1,0 +1,131 @@
+/* ============================================================
+   UI-S-28 Universal ingest: Studio-bar visual leap (scoped .ingest-operate)
+   Eyes on Designer chrome + App Studio density. Honesty in OperateStudioBar
+   (not banner-stack). Paper desk for upload/plan. Teal = Commit / current step.
+   Amber = gaps / confirm type only. Cinnabar never on buttons.
+   Playbook §0 + ingenium-v2. Claude/Stitch class density.
+   ============================================================ */
+
+.ingest-operate {
+  --ig-radius: 12px;
+  --ig-radius-sm: 8px;
+  --ig-hair: var(--border-subtle);
+  --ig-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ig-state: 150ms;
+  font-variant-numeric: tabular-nums;
+  max-width: 56rem;
+  margin-inline: auto;
+  overflow-x: clip;
+  box-sizing: border-box;
+}
+
+.ingest-operate.op-studio-shell {
+  max-width: 56rem;
+}
+
+.ingest-operate .op-paper {
+  gap: 14px;
+}
+
+.ingest-operate h1,
+.ingest-operate h2,
+.ingest-operate h3 {
+  text-wrap: balance;
+  letter-spacing: -0.02em;
+}
+
+.ingest-operate p {
+  text-wrap: pretty;
+}
+
+/* Connected rail tokens (also restyled by .op-studio when nested) */
+.ingest-operate .ig-rail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0;
+  margin: 0;
+  list-style: none;
+  padding: 0;
+}
+
+.ingest-operate .ig-rail-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 4px 0 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ingest-operate .ig-rail-step:not(:last-child)::after {
+  content: "";
+  display: inline-block;
+  width: 18px;
+  height: 1px;
+  margin-inline: 6px 4px;
+  background: var(--border-subtle);
+}
+
+.ingest-operate .ig-rail-step[data-state="done"] {
+  color: var(--ink);
+}
+
+.ingest-operate .ig-rail-step[data-state="current"] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.ingest-operate .ig-rail-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 700;
+  color: inherit;
+}
+
+.ingest-operate .ig-rail-step[data-state="current"] .ig-rail-index {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent, #fff);
+}
+
+.ingest-operate .ig-panel {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.ingest-operate .ig-panel-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+
+.ingest-operate .ig-panel-sub {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.ingest-operate .ig-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}

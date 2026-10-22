@@ -11,8 +11,8 @@ describe("ExpertHeader", () => {
     expect(screen.getByTestId("expert-header")).toBeTruthy();
     expect(screen.getByTestId("expert-header-description").textContent).toMatch(/Lab 19/);
     expect(screen.getByTestId("expert-honesty-line").textContent).toMatch(
-      /Completeness ≠ Cert ≠ Autopilot/,
+      /A complete draft is not the same as certified, and neither means Autopilot-ready/,
     );
-    expect(screen.getByTestId("expert-honesty-line").textContent).toMatch(/never auto-promotes/);
+    expect(screen.getByTestId("expert-honesty-line").textContent).toMatch(/never publishes on its own/);
   });
 });

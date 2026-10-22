@@ -38,17 +38,17 @@ export function studioJourneyFromPhase(opts: {
 
 export function studioJourneyHint(state: StudioJourneyState): string {
   if (state.failed) {
-    return "Generation did not finish. Retry, or start a new app. Promote stays human.";
+    return "Generation did not finish. Retry, or start a new app. Publishing stays a step you confirm.";
   }
   switch (state.id) {
     case "brief":
       return "Describe the work in everyday words. Nothing is installed until you apply.";
     case "clarify":
-      return "Lock the diagnosis before generate. Yes — build this commits the IR.";
+      return "Check the diagnosis, then press Generate. Generate locks it in.";
     case "generate":
-      return "Building a draft. Completeness is not Cert. Promote stays human.";
+      return "Building a draft. Completeness is not Cert. Publishing stays a step you confirm.";
     case "review":
-      return "Preview and refine. Apply writes live metadata. Option A stays zip, sandbox, then Promote.";
+      return "Preview and refine. Apply writes live metadata. Custom code stays zip, test copy, then publish.";
     case "apply":
       return "Live on this connection. Open in Odoo, or View Designer for the primary form.";
   }
@@ -108,7 +108,7 @@ export const STUDIO_ERROR_STEPS = {
   zip: "Zip export failed",
   sandbox: "Sandbox prove failed",
   repair: "AI repair did not apply",
-  promote: "Promote failed",
+  promote: "Publish failed",
   install: "Install failed",
   session: "Could not load session",
   apply: "Apply failed",

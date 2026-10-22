@@ -1,0 +1,257 @@
+/**
+ * PDF-06 / UI-S-17 — page chrome around the paper canvas.
+ * Quiet desk, hairlines, Linear/Framer operate density. No admin-table chrome.
+ * Paper itself stays in ReportCanvas.module.css (cream sheet, no shadow).
+ */
+
+.page {
+  --reports-desk: #e6e6e8; /* Canva pasteboard */
+  --reports-ink: var(--ink, #1a1c21);
+  --reports-muted: var(--muted, #71717a);
+  --reports-hairline: color-mix(in srgb, var(--ink, #1a1c21) 10%, transparent);
+  --reports-accent: var(--accent, #0f766e);
+}
+
+:global(html.dark) .page {
+  --reports-desk: #18181b;
+}
+
+.workbench {
+  display: grid;
+  gap: 0;
+  border: 1px solid var(--reports-hairline);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--reports-desk);
+  /* Floating editor frame on the page (Canva chrome around paper) */
+  box-shadow:
+    0 1px 2px rgba(26, 28, 33, 0.04),
+    0 18px 40px -24px rgba(26, 28, 33, 0.18);
+}
+
+@media (min-width: 1024px) {
+  .workbench {
+    grid-template-columns: minmax(240px, 272px) minmax(0, 1fr);
+  }
+}
+
+.listPane {
+  display: flex;
+  flex-direction: column;
+  max-height: 36rem;
+  background: color-mix(in srgb, #f4f4f5 88%, #fff);
+  border-inline-end: 1px solid var(--reports-hairline);
+}
+
+:global(html.dark) .listPane {
+  background: color-mix(in srgb, #18181b 90%, #000);
+}
+
+.listHead {
+  padding: 0.875rem 1rem 0.75rem;
+  border-bottom: 1px solid var(--reports-hairline);
+}
+
+.listHeadLabel {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--reports-muted);
+}
+
+.listHeadMeta {
+  margin-top: 0.125rem;
+  font-size: 0.75rem;
+  color: var(--reports-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.listBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.375rem;
+}
+
+.listRow {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.625rem 0.75rem;
+  border-radius: 8px;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--reports-muted);
+  transition: background-color 120ms ease-out, color 120ms ease-out,
+    border-color 120ms ease-out;
+}
+
+.listRow:hover {
+  background: color-mix(in srgb, var(--surface-raised, #fff) 55%, transparent);
+  color: var(--reports-ink);
+}
+
+.listRowActive {
+  background: color-mix(in srgb, var(--surface-raised, #fff) 82%, transparent);
+  color: var(--reports-ink);
+  border-left-color: var(--reports-accent);
+}
+
+.listRowTitle {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 550;
+  letter-spacing: -0.01em;
+  color: var(--reports-ink);
+  text-wrap: balance;
+}
+
+.listRowMeta {
+  display: block;
+  margin-top: 0.125rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.625rem;
+  line-height: 1.35;
+  color: var(--reports-muted);
+}
+
+.editorPane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: transparent;
+}
+
+.editorToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  border-bottom: 1px solid var(--reports-hairline);
+  background: color-mix(in srgb, var(--surface, #fff) 78%, transparent);
+}
+
+.tabs {
+  display: inline-flex;
+  gap: 0;
+  margin-inline-end: auto;
+}
+
+.tab {
+  position: relative;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--reports-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  transition: color 120ms ease-out, background-color 120ms ease-out;
+}
+
+.tab:hover {
+  color: var(--reports-ink);
+  background: color-mix(in srgb, var(--surface-raised, #fff) 50%, transparent);
+}
+
+.tabActive {
+  color: var(--reports-ink);
+}
+
+.tabActive::after {
+  content: "";
+  position: absolute;
+  left: 0.625rem;
+  right: 0.625rem;
+  bottom: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--reports-accent);
+}
+
+.editorBody {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.75rem;
+}
+
+.editorFooter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  border-top: 1px solid var(--reports-hairline);
+  background: color-mix(in srgb, var(--surface, #fff) 78%, transparent);
+}
+
+.inheritChip {
+  margin-inline-start: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.625rem;
+  color: var(--reports-muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer {
+  border: 1px solid var(--reports-hairline);
+  border-radius: 12px;
+  background: var(--surface-raised, #fff);
+  padding: 1.25rem 1.25rem 1rem;
+}
+
+.composerTitle {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--reports-ink);
+  text-wrap: balance;
+}
+
+.composerHint {
+  margin-top: 0.25rem;
+  max-width: 52ch;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--reports-muted);
+  text-wrap: pretty;
+}
+
+.combined {
+  border: 1px solid var(--reports-hairline);
+  border-radius: 12px;
+  background: var(--surface-raised, #fff);
+  padding: 1.125rem 1.25rem;
+}
+
+.emptyDesk {
+  margin: 0.75rem;
+  border: 1px dashed var(--reports-hairline);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-raised, #fff) 40%, transparent);
+}
+
+.codeArea {
+  width: 100%;
+  min-height: 18rem;
+  margin-top: 0.5rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--reports-hairline);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-raised, #fff) 70%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: var(--reports-ink);
+  resize: vertical;
+}
+
+.codeArea:disabled {
+  opacity: 0.4;
+}

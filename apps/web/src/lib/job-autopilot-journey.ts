@@ -1,10 +1,10 @@
-/** Job Autopilot journey — chrome only, not the executor. */
+/** Job Autopilot journey: chrome only, not the executor. */
 
 export const JOB_AUTOPILOT_STAGES = [
   { id: "brief", label: "Brief" },
   { id: "run", label: "Run" },
   { id: "scorecard", label: "Scorecard" },
-  { id: "promote", label: "Promote" },
+  { id: "promote", label: "Publish" },
 ] as const;
 
 export type JobAutopilotJourneyId = (typeof JOB_AUTOPILOT_STAGES)[number]["id"];
@@ -66,17 +66,17 @@ export function jobAutopilotJourneyFromState(opts: {
 
 export function jobAutopilotJourneyHint(state: JobAutopilotJourneyState): string {
   if (state.failed && state.id === "run") {
-    return "Autopilot did not finish. Fix the brief or run again on a sandbox. Promote stays human.";
+    return "Autopilot did not finish. Fix the brief or run again on a sandbox. Publishing stays a step you confirm.";
   }
   switch (state.id) {
     case "brief":
-      return "Describe the job. Plan packet is read-only. Autopilot writes a sandbox only. Completeness is not Cert.";
+      return "Describe the job. Plan summary is read-only. Autopilot writes a sandbox only. Completeness is not Cert.";
     case "run":
-      return "Installing stock apps, residual x_* only, then RPC smoke. Completeness ≠ Cert ≠ Autopilot. Promote stays human.";
+      return "Installing stock apps, residual x_* only, then RPC smoke. A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm.";
     case "scorecard":
-      return "Implementation-job scorecard is the Autopilot done-bar — not ModuleSpec 10.0. Review smoke, then hand off.";
+      return "Implementation-job scorecard is the Autopilot done-bar, not app plan 10.0. Review smoke, then hand off.";
     case "promote":
-      return "Promote stays human. Autopilot never writes production. Download the report, or apply the Config Packet on a target.";
+      return "Publishing stays a step you confirm. Autopilot never writes production. Download the report, or apply the config summary on a target.";
   }
 }
 
@@ -91,7 +91,7 @@ export function jobAutopilotGate(opts: {
       variant: "danger",
       title: "Production refused",
       body:
-        "Job Autopilot refuses write_mode=production. Clone a sandbox, run Autopilot there, then Promote with a human confirm. Completeness ≠ Cert ≠ Autopilot.",
+        "Job Autopilot refuses write_mode=production. Clone a sandbox, run Autopilot there, then publish with a human confirm. A complete draft is not the same as certified, and neither means Autopilot-ready.",
       runBlocked: true,
       reason: "production",
     };
@@ -111,7 +111,7 @@ export function jobAutopilotGate(opts: {
       variant: "info",
       title: "Sandbox-only delivery",
       body:
-        "Stock Community apps first. Custom x_* is residual only. Done-bar is RPC process smoke on this sandbox — not ModuleSpec completeness. Promote stays human.",
+        "Stock Community apps first. Custom x_* is residual only. Done-bar is RPC process smoke on this sandbox, not app plan completeness. Publishing stays a step you confirm.",
       runBlocked: false,
       reason: "sandbox",
     };
@@ -120,7 +120,7 @@ export function jobAutopilotGate(opts: {
     variant: "warning",
     title: "Not an unattended sandbox",
     body:
-      "This connection is not a local sandbox. Run will ask for confirm. Production Autopilot stays refused. Promote stays a separate human step.",
+      "This connection is not a local sandbox. Run will ask for confirm. Production Autopilot stays refused. Publishing stays a separate step you confirm.",
     runBlocked: false,
     reason: "staging",
   };
@@ -159,10 +159,10 @@ export function jobScorecardBody(opts: {
 }): string | null {
   if (opts.hasFindings) return null;
   if (opts.stockOnly && opts.smokeOk) {
-    return "Stock-only job. Completeness ≠ Cert ≠ Autopilot. This sandbox is the delivery — Promote stays human.";
+    return "Built-in apps only job. A complete draft is not the same as certified, and neither means Autopilot-ready. This sandbox is the delivery. Publishing stays a step you confirm.";
   }
   if (opts.smokeOk && opts.promoteReady) {
-    return "RPC smoke passed. Implementation-job score is not ModuleSpec 10.0. Promote stays human.";
+    return "RPC smoke passed. Implementation-job score is not app plan 10.0. Publishing stays a step you confirm.";
   }
   if (opts.smokeOk === false) {
     return "Smoke did not pass. Do not promote. Completeness 10.0 is not this bar.";
@@ -220,7 +220,7 @@ export function jobAutopilotErrorTitle(message: string | null | undefined): stri
   if (/production/i.test(text)) return "Production refused";
   if (/observer/i.test(text)) return "Observer cannot run Autopilot";
   if (/packet|plan/i.test(text)) return "Packet planning failed";
-  if (/promot/i.test(text)) return "Promote failed";
+  if (/promot/i.test(text)) return "Publish failed";
   if (/smoke/i.test(text)) return "Process smoke failed";
   if (/sandbox|install/i.test(text)) return "Sandbox run failed";
   return "Job Autopilot request failed";
@@ -248,9 +248,9 @@ export function jobProgressLabel(opts: {
     case "fingerprint":
       return "Fingerprinting target";
     case "dryrun":
-      return "Dry-running packet";
+      return "Test-running the packet";
     case "applypacket":
-      return "Applying Config Packet";
+      return "Applying config summary";
     case "settings":
       return "Capturing settings";
     default:
@@ -276,7 +276,7 @@ export function jobAutopilotHeaderDescription(
   if (mode === "production") {
     return connectionName
       ? `${connectionName} · Autopilot refuses production. Run on a sandbox.`
-      : "Autopilot refuses production. Clone a sandbox, then Promote.";
+      : "Autopilot refuses production. Clone a sandbox, then publish.";
   }
   if (mode === "observer") {
     return connectionName
@@ -284,17 +284,130 @@ export function jobAutopilotHeaderDescription(
       : "Observer cannot install or apply. Use a sandbox.";
   }
   if (connectionName) {
-    return `${connectionName} · sandbox-only — stock first, residual x_*, human promote`;
+    return `${connectionName} · sandbox-only: stock first, residual x_*, human promote`;
   }
-  return "Plan a sandbox job. Run stock-first install and RPC smoke. Promote stays human.";
+  return "Plan a sandbox job. Run built-in apps first install and RPC smoke. Publishing stays a step you confirm.";
 }
 
 export function jobAutopilotProductionRefuseMessage(): string {
-  return "Autopilot refuses write_mode=production. Clone a sandbox, run Autopilot there, then Promote.";
+  return "Autopilot refuses write_mode=production. Clone a sandbox, run Autopilot there, then publish.";
 }
 
 export function jobAutopilotObserverRefuseMessage(): string {
   return "Observer connections cannot install or apply. Switch write_mode to standard on a sandbox.";
+}
+
+
+/** Connector recipe order (UI-S-22 stepper). Matches backend CONNECTOR_ORDER. */
+export const JOB_CONNECTOR_RECIPE = [
+  { id: "payments", label: "Payments" },
+  { id: "inbound_orders", label: "Inbound orders" },
+  { id: "messaging", label: "Messaging" },
+  { id: "hardware", label: "Hardware" },
+  { id: "statutory_payroll", label: "Statutory" },
+] as const;
+
+export type JobConnectorRecipeId = (typeof JOB_CONNECTOR_RECIPE)[number]["id"];
+
+export function jobConnectorRecipeSteps(detected?: string[] | null): Array<{
+  id: string;
+  label: string;
+  active: boolean;
+}> {
+  const set = new Set((detected || []).map((id) => id.toLowerCase()));
+  return JOB_CONNECTOR_RECIPE.map((row) => ({
+    id: row.id,
+    label: row.label,
+    active: set.has(row.id),
+  }));
+}
+
+export function jobConnectorStepState(
+  id: string,
+  connectors?: {
+    ran?: string[];
+    failed?: string[];
+    skipped_ids?: string[];
+    steps?: Array<{ name: string; ok: boolean }>;
+  } | null,
+): "done" | "failed" | "skipped" | "queued" | "idle" {
+  if (!connectors) return "idle";
+  const ran = new Set((connectors.ran || []).map((x) => x.toLowerCase()));
+  const failed = new Set((connectors.failed || []).map((x) => x.toLowerCase()));
+  const skipped = new Set((connectors.skipped_ids || []).map((x) => x.toLowerCase()));
+  const key = id.toLowerCase();
+  if (failed.has(key)) return "failed";
+  if (ran.has(key)) return "done";
+  if (skipped.has(key)) return "skipped";
+  const probe = (connectors.steps || []).find((s) => s.name.toLowerCase().includes(key.replace(/_/g, " ")) || s.name.toLowerCase() === key);
+  if (probe) return probe.ok ? "done" : "failed";
+  return "queued";
+}
+
+export function jobAutopilotOnlineHonesty(): { title: string; body: string } {
+  return {
+    title: "Odoo Online: no live Python install",
+    body:
+      "Autopilot never installs custom Python modules on Odoo Online. Plan the packet here, run stock bootstrap and RPC smoke on a sandbox (Community or Odoo.sh), then Publishing stays a step you confirm. Metadata and config summary replay are the Online path.",
+  };
+}
+
+export type JobAutopilotErrorGuide = {
+  what: string;
+  why: string;
+  next: string;
+};
+
+export function jobAutopilotErrorGuide(message: string | null | undefined): JobAutopilotErrorGuide | null {
+  const text = (message || "").trim();
+  if (!text) return null;
+  if (/production/i.test(text)) {
+    return {
+      what: "Autopilot refused this connection.",
+      why: "write_mode=production is never a write target for Autopilot.",
+      next: "Clone or connect a sandbox, run Autopilot there, then use you publish.",
+    };
+  }
+  if (/observer/i.test(text)) {
+    return {
+      what: "Observer cannot run Autopilot.",
+      why: "Observer mode cannot install modules or apply metadata.",
+      next: "Switch write_mode to standard on a sandbox, then Run Autopilot.",
+    };
+  }
+  if (/online|saas|python/i.test(text)) {
+    return {
+      what: "This host cannot take a live Python module install.",
+      why: "Odoo Online blocks custom Python module install from Ingenium.",
+      next: "Use a Community sandbox or Odoo.sh for Autopilot install and smoke.",
+    };
+  }
+  if (/promot/i.test(text)) {
+    return {
+      what: "Promote did not finish.",
+      why: "Promote is a separate human step onto another connection.",
+      next: "Confirm the target connection, type the confirm phrase, and try again.",
+    };
+  }
+  if (/smoke/i.test(text)) {
+    return {
+      what: "Process smoke failed.",
+      why: "The named RPC process did not pass on this sandbox.",
+      next: "Read the smoke steps, fix the brief or stock apps, then Run Autopilot again. Do not promote.",
+    };
+  }
+  if (/packet|plan/i.test(text)) {
+    return {
+      what: "Packet planning failed.",
+      why: "The brief or files could not build a built-in apps first plan.",
+      next: "Tighten the brief (who, what, country), attach CSV/XLSX if needed, then Plan summary again.",
+    };
+  }
+  return {
+    what: "Job Autopilot request failed.",
+    why: text.slice(0, 160),
+    next: "Fix the brief or connection, then Plan summary or Run Autopilot on a sandbox.",
+  };
 }
 
 export function isStockOnlyPacket(packet: {

@@ -3,8 +3,15 @@
 @import "./studio-refinement/primitives.css";
 @import "./studio-refinement/chat.css";
 @import "./studio-refinement/review.css";
+@import "./studio-refinement/plan-note.css";
 @import "./studio-refinement/history.css";
 @import "./studio-refinement/job.css";
 @import "./studio-refinement/modulespec.css";
 @import "./studio-refinement/projects.css";
 @import "./studio-refinement/expert.css";
+@import "./studio-refinement/wizard.css";
+
+@import "./studio-refinement/premier.css";
+
+/* premier leap: force turbopack css refresh */
+@import "./studio-refinement/review-rail.css";

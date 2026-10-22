@@ -8,6 +8,7 @@ import {
   goLiveReadyFromDraft,
   scorecardBodyCopy,
   scorecardFromDraft,
+  formatHygieneScore,
   scorecardHeadline,
 } from "./draft-studio-journey";
 
@@ -36,9 +37,9 @@ describe("draftStudioJourneyFromState", () => {
 describe("draftStudioJourneyHint", () => {
   it("keeps Completeness / Cert / Promote honesty on enrich and review", () => {
     expect(draftStudioJourneyHint({ id: "enrich" })).toMatch(/Completeness is not Cert/i);
-    expect(draftStudioJourneyHint({ id: "enrich" })).toMatch(/Promote stays human/i);
+    expect(draftStudioJourneyHint({ id: "enrich" })).toMatch(/Publishing stays a step you confirm/i);
     expect(draftStudioJourneyHint({ id: "review" })).toMatch(/hygiene/i);
-    expect(draftStudioJourneyHint({ id: "review" })).toMatch(/Promote/i);
+    expect(draftStudioJourneyHint({ id: "review" })).toMatch(/publish/i);
     expect(draftStudioJourneyHint({ id: "apply" })).toMatch(/View Designer/i);
     expect(draftStudioJourneyHint({ id: "prompt" })).toMatch(/nothing writes to Odoo/i);
   });
@@ -62,6 +63,16 @@ describe("draftNeedsRegenerate", () => {
   });
 });
 
+
+describe("formatHygieneScore", () => {
+  it("keeps real decimals and drops .0 theater", () => {
+    expect(formatHygieneScore(7.2)).toBe("7.2");
+    expect(formatHygieneScore(8.5)).toBe("8.5");
+    expect(formatHygieneScore(10)).toBe("10");
+    expect(formatHygieneScore(7.0)).toBe("7");
+  });
+});
+
 describe("scorecardHeadline", () => {
   it("never fuses Completeness with Certification or Autopilot", () => {
     expect(
@@ -78,7 +89,7 @@ describe("scorecardHeadline", () => {
 
 describe("scorecardBodyCopy", () => {
   it("keeps empty-spec honesty for stock reuse", () => {
-    expect(scorecardBodyCopy({ stockReuse: true })).toMatch(/Completeness ≠ Cert ≠ Autopilot/);
+    expect(scorecardBodyCopy({ stockReuse: true })).toMatch(/A complete draft is not the same as certified, and neither means Autopilot-ready/);
     expect(scorecardBodyCopy({ certShipReady: true, goLiveReady: true })).toMatch(
       /human promote/,
     );

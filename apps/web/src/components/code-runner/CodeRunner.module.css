@@ -1,0 +1,37 @@
+.shell { display: grid; grid-template-rows: auto auto 1fr auto; block-size: calc(100vh - 64px); min-block-size: 480px; background: var(--surface); color: var(--ink); font-size: var(--text-sm); }
+.bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-block-end: 1px solid var(--border-subtle); }
+.title { font-size: var(--text-md); font-weight: 600; margin: 0; }
+.spacer { flex: 1; }
+.muted { color: var(--muted); }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--n6); border-radius: var(--r-sm); background: var(--surface); color: inherit; font: inherit; cursor: pointer; }
+.btn[aria-pressed="true"] { background: var(--accent-subtle); border-color: var(--accent); }
+.btn:focus-visible, .tab:focus-visible, .cmdItem:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: 2px; }
+.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.select { padding: 4px 8px; border: 1px solid var(--n6); border-radius: var(--r-sm); background: var(--surface); color: inherit; font: inherit; }
+.tabs { display: flex; gap: 2px; padding: 0 8px; border-block-end: 1px solid var(--border-subtle); overflow-x: auto; }
+.tab { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 0; background: none; color: var(--muted); font: inherit; cursor: pointer; border-block-end: 2px solid transparent; }
+.tab[aria-selected="true"] { color: var(--ink); border-block-end-color: var(--accent); }
+.close { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 2px; font: inherit; }
+.work { display: grid; grid-template-columns: 1fr auto; min-block-size: 0; }
+.editors { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; min-block-size: 0; }
+.editors > div { min-inline-size: 0; border-inline-end: 1px solid var(--border-subtle); }
+.side { inline-size: 460px; border-inline-start: 1px solid var(--border-subtle); padding: 12px; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+.side h3 { margin: 0; font-size: var(--text-sm); font-weight: 600; }
+.status { display: flex; gap: 12px; align-items: center; padding: 4px 12px; border-block-start: 1px solid var(--border-subtle); font-size: var(--text-xs); color: var(--muted); }
+.issue { display: block; inline-size: 100%; text-align: start; border: 0; background: none; color: inherit; font: inherit; padding: 4px 0; cursor: pointer; }
+.issue[data-sev="error"] { color: var(--danger-strong); }
+.issue[data-sev="warning"] { color: var(--warning-strong); }
+.input { inline-size: 100%; padding: 6px 8px; border: 1px solid var(--n6); border-radius: var(--r-sm); background: var(--surface); color: inherit; font: inherit; box-sizing: border-box; }
+.note { padding: 8px; border-radius: var(--r-sm); background: var(--surface-muted); }
+.warn { padding: 8px; border-radius: var(--r-sm); background: var(--warning-subtle); color: var(--warning-strong); }
+.table { inline-size: 100%; border-collapse: collapse; font-size: var(--text-xs); }
+.table th, .table td { padding: 3px 4px; border-block-end: 1px solid var(--border-subtle); text-align: start; }
+.table tr[data-differs="true"] td:first-child { box-shadow: inset 2px 0 0 var(--warning); }
+.cmdBackdrop { position: fixed; inset: 0; background: color-mix(in srgb, var(--ink) 25%, transparent); display: grid; place-items: start center; padding-block-start: 12vh; z-index: 50; }
+.cmd { inline-size: min(560px, 92vw); background: var(--surface-overlay, var(--surface)); border-radius: var(--r-md); box-shadow: var(--shadow-overlay); overflow: hidden; }
+.cmd input { inline-size: 100%; padding: 12px; border: 0; border-block-end: 1px solid var(--border-subtle); background: none; color: inherit; font: inherit; box-sizing: border-box; }
+.cmd ul { list-style: none; margin: 0; padding: 4px; max-block-size: 50vh; overflow: auto; }
+.cmdItem { display: flex; justify-content: space-between; inline-size: 100%; padding: 8px 10px; border: 0; border-radius: var(--r-sm); background: none; color: inherit; font: inherit; cursor: pointer; text-align: start; }
+.cmdItem[data-active="true"] { background: var(--accent-subtle); }
+.kbd { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); }
+@media (prefers-reduced-motion: no-preference) { .tab, .btn { transition: background var(--motion-fast) ease; } }

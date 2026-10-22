@@ -1,6 +1,8 @@
 "use client";
 
+import { RelativeTime } from "@/components/ui/craft";
 import Link from "next/link";
+import { useId, useState } from "react";
 import { Callout } from "@/components/ui/Callout";
 import { Button } from "@/components/ui/Button";
 import { HostInstallPanel } from "@/components/studio/HostInstallDialog";
@@ -10,6 +12,7 @@ import type { AuthoringFinding } from "@/lib/draft-form-preview";
 import type { OperatorSurface } from "@/lib/operator-surface";
 import type { ProtectedModuleRefusal } from "@/lib/api";
 import { operatorSurfaceHasPlacement } from "@/lib/operator-surface";
+import { WIZARD_ONLINE_PROVE_REASON } from "@/lib/wizard-ui";
 
 type ClarifyOption = { id: string; label: string };
 
@@ -66,6 +69,8 @@ type DraftStudioHonestyBannersProps = {
   onProveOptionA: () => void;
   onRestoreSnapshot: (id: string) => void;
   onLoadWalkthrough: () => void;
+  /** Answer the generator's one question and regenerate. Omit to show the question read-only. */
+  onAnswerClarify?: (answer: string) => void;
 };
 
 export function DraftStudioHonestyBanners({
@@ -116,6 +121,7 @@ export function DraftStudioHonestyBanners({
   onProveOptionA,
   onRestoreSnapshot,
   onLoadWalkthrough,
+  onAnswerClarify,
 }: DraftStudioHonestyBannersProps) {
   return (
     <div className="studio-banner-stack">
@@ -155,7 +161,7 @@ export function DraftStudioHonestyBanners({
                 </a>
               </Button>
               <span className="text-xs text-muted">
-                Opens the app root. Use Operations, Inventory, and People — not a
+                Opens the app root. Use Operations, Inventory, and People, not a
                 per-model list.
               </span>
               <Button
@@ -186,7 +192,7 @@ export function DraftStudioHonestyBanners({
                   onClick={() => onRestoreSnapshot(c.id)}
                 >
                   {c.summary}
-                  {c.updated_at ? ` · ${new Date(c.updated_at).toLocaleString()}` : ""}
+                  {c.updated_at ? <> · <RelativeTime value={c.updated_at} /></> : ""}
                 </button>
               </li>
             ))}
@@ -243,7 +249,7 @@ export function DraftStudioHonestyBanners({
       {refuseClone ? (
         <Callout
           variant="warning"
-          title="Not generated — Apps Store clone refused"
+          title="Not generated. Apps Store clone refused"
           testId="generation-refuse-clone"
         >
           <p className="text-sm">
@@ -310,7 +316,7 @@ export function DraftStudioHonestyBanners({
                 ))}
               </ul>
               <p className="mt-1 text-xs text-muted">
-                These stay as form fields — not duplicate smart buttons next to the
+                These stay as form fields, not duplicate smart buttons next to the
                 many2one.
               </p>
             </div>
@@ -331,8 +337,8 @@ export function DraftStudioHonestyBanners({
             ))}
           </ul>
           <p className="mt-2 text-sm text-muted">
-            Empty models/views is the correct ModuleSpec — stock already covers cashiers,
-            quotations, and invoices. Completeness 10.0 is hygiene on an empty spec, not
+            Empty models/views is the correct ModuleSpec. Stock already covers cashiers,
+            quotations, and invoices. Completeness 10 is hygiene on an empty spec, not
             a shippable custom app.
           </p>
           <Link
@@ -345,22 +351,19 @@ export function DraftStudioHonestyBanners({
         </Callout>
       ) : null}
       {clarifyQuestion ? (
-        <Callout variant="warning" title="One question" testId="generation-clarify">
-          <p className="text-sm">{clarifyQuestion}</p>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
-            {(clarifyOptions || []).map((opt) => (
-              <li key={opt.id}>
-                {opt.label}
-                {clarifyDefaultId === opt.id ? " (default)" : ""}
-              </li>
-            ))}
-          </ul>
-        </Callout>
+        <ClarifyQuestionCard
+          question={clarifyQuestion}
+          options={clarifyOptions || []}
+          defaultId={clarifyDefaultId}
+          busy={aiBusy}
+          canAnswer={canDraft}
+          onAnswer={onAnswerClarify}
+        />
       ) : null}
       {draftNeedsRegenerate && !llmStatusBanner && !stockReuse ? (
         <Callout variant="warning" title="Generic placeholders in this draft">
           <p className="text-sm">
-            The AI model timed out — generic placeholders filled the gaps. Regenerate for
+            The AI model timed out. Generic placeholders filled the gaps. Regenerate for
             domain-specific results.
           </p>
           <Button
@@ -391,7 +394,7 @@ export function DraftStudioHonestyBanners({
           variant={authoringPassed ? "info" : "warning"}
           title={
             authoringPassed
-              ? "Authoring gate passed — zip and sandbox unlocked"
+              ? "Authoring gate passed. Zip and sandbox unlocked"
               : "LLM-authored module locked until the gate passes"
           }
           testId="option-a-authoring-gate"
@@ -399,7 +402,7 @@ export function DraftStudioHonestyBanners({
           <p className="text-sm">
             Completeness is not this bar. Zip download and sandbox install stay
             disabled until lint, policy (no invented taxes, no SSRF, no secrets),
-            and a dry structural zip pass. Promote stays human.
+            and a dry structural zip pass. Publishing stays a step you confirm.
           </p>
           {hostInstallOffers.length > 0 ? (
             <HostInstallPanel
@@ -430,17 +433,17 @@ export function DraftStudioHonestyBanners({
           variant={goLiveReady ? "info" : "warning"}
           title={
             goLiveReady
-              ? "Option A sandbox proven — promote stays human"
+              ? "Custom-code test copy proven. Publishing stays a step you confirm"
               : capabilityPrimaryOptionA
-                ? "Option A required — not a form-field pack"
-                : "Option A surfaces in this draft"
+                ? "Custom code required. Not a form-field pack"
+                : "Custom-code surfaces in this draft"
           }
           testId="option-a-gaps"
         >
           <p className="text-sm">
             {capabilityPrimaryOptionA
-              ? "This prompt needs a QWeb/PDF module (sandbox → promote). The draft zip scaffolds Pay now + QR. Live Apply only lands Char stubs — run Sandbox install & smoke to lift the scorecap."
-              : "Some requested surfaces need an installable module. Live Apply still works for metadata; finish Option A separately."}
+              ? "This prompt needs a QWeb/PDF module (sandbox → promote). The draft zip scaffolds Pay now + QR. Live Apply only lands Char stubs. Run Sandbox install & smoke to lift the scorecap."
+              : "Some requested surfaces need an installable module. Live Apply still works for metadata; finish custom code separately."}
           </p>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
             {optionALines.slice(0, 8).map((line, i) => (
@@ -452,15 +455,26 @@ export function DraftStudioHonestyBanners({
               <Button
                 type="button"
                 size="sm"
-                disabled={aiBusy || optionAProveBusy || zipLocked}
+                variant="secondary"
+                disabled={aiBusy || optionAProveBusy || zipLocked || isOdooOnline}
                 data-testid="option-a-prove"
                 title={
-                  zipLocked ? "Authoring gate has not passed — sandbox stays locked" : undefined
+                  isOdooOnline
+                    ? WIZARD_ONLINE_PROVE_REASON
+                    : zipLocked
+                      ? "Authoring gate has not passed. Sandbox stays locked"
+                      : undefined
                 }
                 onClick={onProveOptionA}
               >
                 {optionAProveBusy ? "Sandbox smoke…" : "Sandbox install & smoke"}
               </Button>
+              {isOdooOnline ? (
+                <p className="text-xs text-muted" data-testid="option-a-prove-online">
+                  {WIZARD_ONLINE_PROVE_REASON}. Download the module zip and prove it on
+                  Odoo.sh or a self-hosted sandbox.
+                </p>
+              ) : null}
               {optionAProveNote ? (
                 <p className="text-xs text-muted" data-testid="option-a-prove-note">
                   {optionAProveNote}
@@ -479,7 +493,7 @@ export function DraftStudioHonestyBanners({
                 href={`/connections/${connectionId}/automations`}
                 className="mt-2 inline-block text-sm text-accent underline"
               >
-                Configure equation compute (advanced — confirm before apply)
+                Configure equation compute (advanced: confirm before apply)
               </Link>
             </Callout>
           ))}
@@ -502,5 +516,91 @@ export function DraftStudioHonestyBanners({
         </div>
       ) : null}
     </div>
+  );
+}
+
+type ClarifyQuestionCardProps = {
+  question: string;
+  options: ClarifyOption[];
+  defaultId?: string;
+  busy: boolean;
+  canAnswer: boolean;
+  onAnswer?: (answer: string) => void;
+};
+
+/** The generator asks one question at a time. Answering regenerates the draft only. */
+function ClarifyQuestionCard({
+  question,
+  options,
+  defaultId,
+  busy,
+  canAnswer,
+  onAnswer,
+}: ClarifyQuestionCardProps) {
+  const headingId = useId();
+  const [choice, setChoice] = useState<string>(
+    defaultId && options.some((o) => o.id === defaultId) ? defaultId : (options[0]?.id ?? ""),
+  );
+  const chosen = options.find((o) => o.id === choice);
+  const interactive = Boolean(onAnswer) && options.length > 0;
+  return (
+    <section
+      className="draft-studio-clarify"
+      data-testid="generation-clarify"
+      aria-labelledby={headingId}
+    >
+      <h3 id={headingId} className="draft-studio-clarify-question">
+        {question}
+      </h3>
+      {interactive ? (
+        <fieldset className="draft-studio-clarify-options">
+          <legend className="sr-only">{question}</legend>
+          {options.map((opt) => (
+            <label key={opt.id} className="draft-studio-clarify-option">
+              <input
+                type="radio"
+                name={`${headingId}-answer`}
+                value={opt.id}
+                checked={choice === opt.id}
+                onChange={() => setChoice(opt.id)}
+              />
+              <span>
+                {opt.label}
+                {defaultId === opt.id ? (
+                  <span className="draft-studio-clarify-default"> Suggested</span>
+                ) : null}
+              </span>
+            </label>
+          ))}
+        </fieldset>
+      ) : (
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+          {options.map((opt) => (
+            <li key={opt.id}>
+              {opt.label}
+              {defaultId === opt.id ? " (default)" : ""}
+            </li>
+          ))}
+        </ul>
+      )}
+      {interactive ? (
+        <div className="draft-studio-clarify-actions">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={busy || !canAnswer || !chosen}
+            loading={busy}
+            data-testid="clarify-answer"
+            onClick={() => chosen && onAnswer?.(chosen.label)}
+          >
+            Answer and regenerate
+          </Button>
+          <p className="draft-studio-clarify-hint">
+            Regenerating replaces this draft. Nothing writes to Odoo.
+          </p>
+        </div>
+      ) : null}
+    </section>
   );
 }

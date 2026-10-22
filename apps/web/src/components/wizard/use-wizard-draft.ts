@@ -127,8 +127,8 @@ export function useWizardDraft({
           setAiNote(
             typeof enrichScore === "number"
               ? clean
-                ? `AI enrichment complete — draft quality ${enrichScore.toFixed(1)}/10. Retry is disabled until hygiene gaps return.`
-                : `AI enrichment complete — draft quality ${enrichScore.toFixed(1)}/10. Retry stays on for remaining hygiene (e.g. create-gated fields).`
+                ? `AI enrichment complete. Draft quality ${enrichScore.toFixed(1)}/10. Retry is disabled until hygiene gaps return.`
+                : `AI enrichment complete. Draft quality ${enrichScore.toFixed(1)}/10. Retry stays on for remaining hygiene (e.g. create-gated fields).`
               : outcome.note,
           );
         } else if (outcome.kind === "partial") {
@@ -150,8 +150,8 @@ export function useWizardDraft({
         setAiNote(
           typeof enrichScore === "number"
             ? clean
-              ? `AI enrichment complete — draft quality ${enrichScore.toFixed(1)}/10. Retry is disabled until hygiene gaps return.`
-              : `AI enrichment complete — draft quality ${enrichScore.toFixed(1)}/10. Retry stays on for remaining hygiene (e.g. create-gated fields).`
+              ? `AI enrichment complete. Draft quality ${enrichScore.toFixed(1)}/10. Retry is disabled until hygiene gaps return.`
+              : `AI enrichment complete. Draft quality ${enrichScore.toFixed(1)}/10. Retry stays on for remaining hygiene (e.g. create-gated fields).`
             : "AI enrichment merged into existing draft.",
         );
       }
@@ -194,14 +194,17 @@ export function useWizardDraft({
     reuseOverride?: string[];
     rejectedOverride?: string[];
     busyLabel?: string;
+    /** Use this prompt instead of state (state updates land after this call starts). */
+    promptOverride?: string;
   }) {
     if (!canDraftModule) return;
+    const prompt = (opts?.promptOverride ?? nlPrompt).trim();
     const effectiveRejected = opts?.rejectedOverride ?? rejectedInferredReuse;
     const effectiveReuse = (opts?.reuseOverride ?? reuseModels).filter(
       (m) => !effectiveRejected.includes(m),
     );
     setAiBusy(true);
-    setAiBusyLabel(opts?.busyLabel ?? "Creating draft…");
+    setAiBusyLabel(opts?.busyLabel ?? "Generating the draft…");
     setError(null);
     setAiNote(null);
     setAiWarnings([]);
@@ -209,7 +212,7 @@ export function useWizardDraft({
     setGenUiResult(null);
     let recoveredPartial: Record<string, unknown> | null = null;
     try {
-      const res = await api.draftModuleFromPrompt(nlPrompt.trim(), {
+      const res = await api.draftModuleFromPrompt(prompt, {
         connection_id: connectionId,
         reuse_models: effectiveReuse,
         rejected_reuse_models: effectiveRejected,
@@ -248,7 +251,7 @@ export function useWizardDraft({
         }
       } else {
         setAiDraft(res.draft);
-        setAiNote(res.note ?? "Draft only — does not apply.");
+        setAiNote(res.note ?? "Draft only. Nothing writes to Odoo.");
         setAiWarnings(res.warnings ?? []);
         setAiRefusals(res.refusals ?? []);
         if (res.grain_label) setGrainLabel(res.grain_label);
@@ -263,13 +266,13 @@ export function useWizardDraft({
       const recovered = pickRecoverableDraft(
         recoveredPartial,
         listed || [],
-        nlPrompt.trim(),
+        prompt,
       );
       if (recovered) {
         setAiDraft(recovered);
         setAiNote(
           "Draft recovered from a saved snapshot after the job timed out. " +
-            "The JSON below is the last saved pack — not an empty failure. " +
+            "The JSON below is the last saved pack, not an empty failure. " +
             "Retry AI enrichment to wake AI, re-run missed steps, and complete residual " +
             "fields from your brief if AI stays down.",
         );

@@ -14,22 +14,30 @@ import {
 } from "@/lib/api";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Callout } from "@/components/ui/Callout";
 import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Input } from "@/components/ui/Input";
-import { Card } from "@/components/ui/layout-primitives";
-
-const CONFIRM_PHRASE = "I understand the risks";
-
-type PanelId =
-  | "home"
-  | "day1"
-  | "numbering"
-  | "apps-pack"
-  | "settings-board"
-  | "multi-company"
-  | "master-packs";
+import { ConfigErrorNotice } from "@/components/config/ConfigErrorNotice";
+import { ConfigStageRail } from "@/components/config/ConfigStageRail";
+import { ConfigStateGuide } from "@/components/config/ConfigStateGuide";
+import {
+  APPLY_CTA,
+  CONFIRM_PHRASE,
+  DRY_RUN_CTA,
+  PRIMARY_CTA,
+  applyKeyForPanel,
+  applyUnlockReason,
+  appliedConfigGuide,
+  configHonestyGuide,
+  configStepFromState,
+  emptyConfigGuide,
+  idleConfigGuide,
+  planHonestyLabel,
+  primaryCtaForPanel,
+  sanitizeConfigCopy,
+  type ConfigErrorContext,
+  type ConfigPanelId,
+} from "@/lib/configScreen";
+import { Term } from "@/components/ui/Term";
 
 type PendingApply = {
   label: string;
@@ -38,72 +46,85 @@ type PendingApply = {
 
 function PlanPreview({ plan }: { plan: RecipePlanOut | null }) {
   if (!plan) return null;
+  const dry = Boolean(plan.dry_run);
   return (
-    <Callout
-      variant="info"
-      title={plan.dry_run ? "Dry-run plan" : "Applied"}
-      className="mt-4"
-      testId="recipe-plan-preview"
-    >
-      <p className="text-sm">
-        {plan.message || (plan.dry_run ? "Review steps, then Apply." : "Done.")}
+    <div className="mt-4" data-testid="recipe-plan-preview" data-dry-run={dry ? "true" : "false"}>
+      <p className="cfg-result-label" data-testid="config-result-label">
+        {planHonestyLabel(dry)}
+      </p>
+      <p className="cfg-lead" style={{ marginTop: 8 }}>
+        {sanitizeConfigCopy(
+          plan.message || (dry ? "Review steps, then Apply." : "Done."),
+        )}
       </p>
       {plan.warnings?.length ? (
         <ul className="mt-2 list-disc pl-4 text-xs text-muted">
           {plan.warnings.map((w) => (
-            <li key={w}>{w}</li>
+            <li key={w}>{sanitizeConfigCopy(w)}</li>
           ))}
         </ul>
       ) : null}
-      <ul className="mt-3 space-y-1 text-xs text-muted">
+      <ul className="cfg-plan-steps">
         {plan.steps.map((s, i) => (
           <li key={`${s.op}-${s.target}-${i}`}>
-            <span className="font-mono text-ink">{s.op}</span> · {s.target} — {s.detail}
+            <span className="font-mono text-ink">{s.op}</span>
+            {" · "}
+            {s.target}
+            {" - "}
+            {sanitizeConfigCopy(s.detail)}
           </li>
         ))}
       </ul>
       {plan.applied?.length ? (
         <p className="mt-2 text-xs text-ink">{plan.applied.join(" · ")}</p>
       ) : null}
-    </Callout>
+    </div>
   );
 }
 
-function JobCard({ card, onOpen }: { card: RecipeCard; onOpen: () => void }) {
+function JobCard({
+  card,
+  onOpen,
+  openLabel = "Open",
+}: {
+  card: RecipeCard;
+  onOpen: () => void;
+  openLabel?: string;
+}) {
   const phaseVariant =
     card.phase === "p0" ? "success" : card.phase === "p1" ? "info" : "default";
   return (
-    <Card
-      className="flex flex-col gap-3 p-4 transition hover:border-accent/40"
-      data-testid={`recipe-card-${card.id}`}
-    >
+    <div className="cfg-recipe" data-testid={`recipe-card-${card.id}`}>
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-ui-title text-ink">{card.title}</p>
-          <p className="mt-1 text-sm text-muted">{card.blurb}</p>
+          <p className="cfg-recipe-name">{sanitizeConfigCopy(card.title)}</p>
+          <p className="cfg-recipe-desc">{sanitizeConfigCopy(card.blurb)}</p>
         </div>
         <Badge variant={phaseVariant as "success" | "info" | "default"}>
           {card.phase.toUpperCase()}
         </Badge>
       </div>
-      <div className="mt-auto flex items-center justify-between gap-2">
-        <span className="text-xs text-muted">{card.clicks}</span>
-        <Button type="button" size="sm" variant="primary" onClick={onOpen}>
-          Open
+      <div className="cfg-recipe-foot">
+        <span className="text-xs text-muted">{sanitizeConfigCopy(card.clicks)}</span>
+        <Button type="button" size="sm" variant="secondary" onClick={onOpen}>
+          {openLabel}
         </Button>
       </div>
-    </Card>
+    </div>
   );
 }
 
 export function ConfigCommandCenter({ connectionId }: { connectionId: string }) {
   const [cards, setCards] = useState<RecipeCard[]>([]);
-  const [panel, setPanel] = useState<PanelId>("home");
+  const [panel, setPanel] = useState<ConfigPanelId>("home");
   const [error, setError] = useState<string | null>(null);
+  const [errorContext, setErrorContext] = useState<ConfigErrorContext>("load");
   const [busy, setBusy] = useState(false);
+  const [listHydrated, setListHydrated] = useState(false);
   const [plan, setPlan] = useState<RecipePlanOut | null>(null);
   const [pending, setPending] = useState<PendingApply | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [dryRunKey, setDryRunKey] = useState<string | null>(null);
 
   const [day1, setDay1] = useState({
     name: "",
@@ -124,12 +145,57 @@ export function ConfigCommandCenter({ connectionId }: { connectionId: string }) 
   const [masterPacks, setMasterPacks] = useState<MasterPackItem[]>([]);
   const [masterId, setMasterId] = useState("uom_basic");
 
+  const fingerprint = useMemo(() => {
+    switch (panel) {
+      case "day1":
+        return [
+          day1.name,
+          day1.currency_code,
+          day1.country_code,
+          day1.language_code,
+          day1.email,
+          day1.phone,
+        ].join("|");
+      case "numbering":
+        return [...numberingKeys].sort().join(",");
+      case "apps-pack":
+        return selectedPack;
+      case "settings-board":
+        return Object.entries(settingsDraft)
+          .map(([k, v]) => `${k}=${v}`)
+          .sort()
+          .join("&");
+      case "multi-company":
+        return [mc.name, mc.currency_code, mc.country_code].join("|");
+      case "master-packs":
+        return masterId;
+      default:
+        return "";
+    }
+  }, [panel, day1, numberingKeys, selectedPack, settingsDraft, mc, masterId]);
+
+  const applyKey = applyKeyForPanel(panel, fingerprint);
+  const canApply = dryRunKey === applyKey && Boolean(plan?.dry_run);
+  const hasWriteResult = Boolean(plan && !plan.dry_run);
+  const step = configStepFromState({
+    panel,
+    recipeCount: cards.length,
+    hasDryRun: canApply || (Boolean(plan?.dry_run) && dryRunKey === applyKey),
+    hasWriteResult,
+  });
+  const unlockReason = applyUnlockReason({ canApply, panel });
+  const primaryLabel = primaryCtaForPanel(panel);
+
   const loadHome = useCallback(async () => {
+    setListHydrated(false);
+    setErrorContext("load");
     try {
       setCards(await api.listConfigRecipes(connectionId));
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setListHydrated(true);
     }
   }, [connectionId]);
 
@@ -138,10 +204,12 @@ export function ConfigCommandCenter({ connectionId }: { connectionId: string }) 
   }, [loadHome]);
 
   const openPanel = useCallback(
-    async (id: PanelId) => {
+    async (id: ConfigPanelId) => {
       setPanel(id);
       setPlan(null);
+      setDryRunKey(null);
       setError(null);
+      setErrorContext("panel");
       try {
         if (id === "numbering") {
           const cat = await api.numberingCatalog(connectionId);
@@ -176,12 +244,25 @@ export function ConfigCommandCenter({ connectionId }: { connectionId: string }) 
     [connectionId],
   );
 
-  const runConfirmed = useCallback(
-    async (label: string, run: (confirmed: boolean) => Promise<RecipePlanOut>) => {
+  const runPlan = useCallback(
+    async (
+      label: string,
+      dryRun: boolean,
+      run: (confirmed: boolean) => Promise<RecipePlanOut>,
+      context: ConfigErrorContext = dryRun ? "dry_run" : "apply",
+    ) => {
       setBusy(true);
       setError(null);
+      setErrorContext(context);
       try {
+        if (dryRun) {
+          const next = await run(false);
+          setPlan(next);
+          setDryRunKey(applyKey);
+          return;
+        }
         setPlan(await run(false));
+        setDryRunKey(applyKey);
       } catch (err) {
         if (err instanceof ConfirmationRequiredError) {
           setPending({ label, run });
@@ -193,23 +274,25 @@ export function ConfigCommandCenter({ connectionId }: { connectionId: string }) 
         setBusy(false);
       }
     },
-    [],
+    [applyKey],
   );
 
   const onConfirmApply = useCallback(async () => {
     if (!pending) return;
     setBusy(true);
     setError(null);
+    setErrorContext(panel === "settings-board" ? "settings" : "apply");
     try {
       setPlan(await pending.run(true));
       setConfirmOpen(false);
       setPending(null);
+      setDryRunKey(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
-  }, [pending]);
+  }, [pending, panel]);
 
   const filteredSettingsKeys = useMemo(() => {
     const keys = settings?.allowlist ?? [];
@@ -237,97 +320,175 @@ export function ConfigCommandCenter({ connectionId }: { connectionId: string }) 
       onClick={() => {
         setPanel("home");
         setPlan(null);
+        setDryRunKey(null);
+        setError(null);
       }}
     >
-      ← Command Center
+      Back to Command Center
     </Button>
   );
 
+  const applyActions = (opts: {
+    canDryRun: boolean;
+    dryRun: () => void;
+    apply: () => void;
+    applyTestId?: string;
+  }) => (
+    <div className="cfg-actions">
+      <Button
+        type="button"
+        variant="secondary"
+        disabled={busy || !opts.canDryRun}
+        onClick={opts.dryRun}
+        data-testid="config-dry-run-btn"
+      >
+        {DRY_RUN_CTA}
+      </Button>
+      <Button
+        type="button"
+        variant="primary"
+        disabled={busy || !canApply}
+        onClick={opts.apply}
+        data-testid={opts.applyTestId || "config-apply-btn"}
+      >
+        {primaryLabel}
+      </Button>
+      {unlockReason ? (
+        <p className="cfg-primary-reason" data-testid="config-unlock-reason">
+          {unlockReason}
+        </p>
+      ) : null}
+    </div>
+  );
+
   const linkCard = (card: RecipeCard, href: string, label: string) => (
-    <Card
-      key={card.id}
-      className="flex flex-col gap-3 p-4"
-      data-testid={`recipe-card-${card.id}`}
-    >
+    <div key={card.id} className="cfg-recipe" data-testid={`recipe-card-${card.id}`}>
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-ui-title text-ink">{card.title}</p>
-          <p className="mt-1 text-sm text-muted">{card.blurb}</p>
+          <p className="cfg-recipe-name">{sanitizeConfigCopy(card.title)}</p>
+          <p className="cfg-recipe-desc">{sanitizeConfigCopy(card.blurb)}</p>
         </div>
         <Badge variant="info">P1</Badge>
       </div>
-      <div className="mt-auto flex items-center justify-between gap-2">
-        <span className="text-xs text-muted">{card.clicks}</span>
+      <div className="cfg-recipe-foot">
+        <span className="text-xs text-muted">{sanitizeConfigCopy(card.clicks)}</span>
         <Link
           href={href}
-          className="inline-flex h-8 items-center rounded-md bg-accent px-3 text-xs font-semibold text-white"
+          className="inline-flex h-8 items-center rounded-md border border-border-subtle bg-surface-raised px-3 text-xs font-semibold text-ink hover:border-accent/40"
         >
           {label}
         </Link>
       </div>
-    </Card>
+    </div>
   );
 
   return (
     <div className="mt-6" data-testid="config-command-center">
-      {error ? <ErrorNotice message={error} className="mb-4" /> : null}
+      <ConfigStageRail step={step} />
+
+      <ConfigStateGuide
+        className="mt-4"
+        tone="warning"
+        testId="config-honesty"
+        guide={configHonestyGuide()}
+      />
+
+      {error ? (
+        <ConfigErrorNotice
+          className="mt-4"
+          message={error}
+          context={errorContext}
+          onDismiss={() => setError(null)}
+          onRetry={() => {
+            if (panel === "home") void loadHome();
+            else void openPanel(panel);
+          }}
+        />
+      ) : null}
+
+      {busy ? (
+        <div className="cfg-progress" aria-busy="true" data-testid="config-progress" aria-live="polite">
+          Working on {panel === "home" ? "recipes" : primaryLabel.toLowerCase()}…
+        </div>
+      ) : null}
 
       {panel === "home" ? (
         <>
-          <div className="mb-4">
-            <h2 className="text-ui-title text-ink">Config Command Center</h2>
-            <p className="mt-1 text-sm text-muted">
-              Recipe-led setup — Day-1, numbering, apps, import, and bulk in a few clicks.
+          <div className="mb-4 mt-4">
+            <h2 className="cfg-panel-title">Config Command Center</h2>
+            <p className="cfg-panel-sub">
+              Recipe-led setup: Day-1, <Term tech="ir.sequence">numbering</Term>, apps, import, and bulk in a few clicks.
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {cards.map((card) => {
-              if (card.id === "import-seeds") {
-                return linkCard(
-                  card,
-                  `/connections/${connectionId}/import?gallery=1`,
-                  "Open Import",
-                );
+          {listHydrated && cards.length === 0 ? (
+            <ConfigStateGuide
+              tone="accent"
+              testId="config-empty-guide"
+              guide={emptyConfigGuide()}
+              actions={
+                <Button type="button" size="sm" variant="secondary" onClick={() => void loadHome()}>
+                  Reload recipes
+                </Button>
               }
-              if (card.id === "bulk-recipes") {
-                return linkCard(
-                  card,
-                  `/connections/${connectionId}/bulk-suite?recipes=1`,
-                  "Open Bulk",
+            />
+          ) : null}
+          {listHydrated && cards.length > 0 ? (
+            <ConfigStateGuide tone="accent" testId="config-idle-guide" guide={idleConfigGuide()} />
+          ) : null}
+          {!listHydrated ? (
+            <div className="cfg-progress mt-4" aria-busy="true" data-testid="config-recipes-loading">
+              Loading recipes…
+            </div>
+          ) : (
+            <div className="cfg-recipe-grid mt-4">
+              {cards.map((card) => {
+                if (card.id === "import-seeds") {
+                  return linkCard(
+                    card,
+                    `/connections/${connectionId}/import?gallery=1`,
+                    "Open Import",
+                  );
+                }
+                if (card.id === "bulk-recipes") {
+                  return linkCard(
+                    card,
+                    `/connections/${connectionId}/bulk-suite?recipes=1`,
+                    "Open Bulk",
+                  );
+                }
+                const map: Record<string, ConfigPanelId> = {
+                  day1: "day1",
+                  numbering: "numbering",
+                  "apps-pack": "apps-pack",
+                  "settings-board": "settings-board",
+                  "multi-company": "multi-company",
+                  "master-packs": "master-packs",
+                };
+                return (
+                  <JobCard
+                    key={card.id}
+                    card={card}
+                    onOpen={() => void openPanel(map[card.id] ?? "home")}
+                  />
                 );
-              }
-              const map: Record<string, PanelId> = {
-                day1: "day1",
-                numbering: "numbering",
-                "apps-pack": "apps-pack",
-                "settings-board": "settings-board",
-                "multi-company": "multi-company",
-                "master-packs": "master-packs",
-              };
-              return (
-                <JobCard
-                  key={card.id}
-                  card={card}
-                  onOpen={() => void openPanel(map[card.id] ?? "home")}
-                />
-              );
-            })}
-          </div>
+              })}
+            </div>
+          )}
         </>
       ) : null}
 
       {panel === "day1" ? (
-        <section data-testid="day1-panel">
+        <section className="cfg-panel" data-testid="day1-panel">
           {back}
-          <h2 className="mt-3 text-ui-title">Day-1 setup</h2>
-          <p className="mt-1 text-sm text-muted">
-            Company name, currency, country, language — dry-run then apply.
+          <h2 className="cfg-panel-title mt-3">Day-1 setup</h2>
+          <p className="cfg-panel-sub">
+            Company name, currency, country, language. Test run then {APPLY_CTA}.
           </p>
           <form
             className="mt-4 grid gap-3 sm:grid-cols-2"
             onSubmit={(e: FormEvent) => {
               e.preventDefault();
-              void runConfirmed("Day-1 setup", (confirmed) =>
+              void runPlan("Day-1 setup", true, (confirmed) =>
                 api.runDay1Setup(connectionId, {
                   name: day1.name,
                   currency_code: day1.currency_code,
@@ -362,16 +523,25 @@ export function ConfigCommandCenter({ connectionId }: { connectionId: string }) 
                 />
               </label>
             ))}
-            <div className="flex flex-wrap gap-2 sm:col-span-2">
-              <Button type="submit" variant="secondary" disabled={busy || !day1.name.trim()}>
-                Dry-run
-              </Button>
-              <Button
-                type="button"
-                variant="primary"
-                disabled={busy || !day1.name.trim()}
-                onClick={() =>
-                  void runConfirmed("Day-1 setup", (confirmed) =>
+            <div className="sm:col-span-2">
+              {applyActions({
+                canDryRun: Boolean(day1.name.trim()),
+                dryRun: () =>
+                  void runPlan("Day-1 setup", true, (confirmed) =>
+                    api.runDay1Setup(connectionId, {
+                      name: day1.name,
+                      currency_code: day1.currency_code,
+                      country_code: day1.country_code || null,
+                      language_code: day1.language_code || null,
+                      email: day1.email || null,
+                      phone: day1.phone || null,
+                      dry_run: !confirmed,
+                      confirm_advanced: confirmed,
+                      confirm_phrase: confirmed ? CONFIRM_PHRASE : null,
+                    }),
+                  ),
+                apply: () =>
+                  void runPlan("Day-1 setup", false, (confirmed) =>
                     api.runDay1Setup(connectionId, {
                       name: day1.name,
                       currency_code: day1.currency_code,
@@ -383,28 +553,33 @@ export function ConfigCommandCenter({ connectionId }: { connectionId: string }) 
                       confirm_advanced: confirmed,
                       confirm_phrase: confirmed ? CONFIRM_PHRASE : null,
                     }),
-                  )
-                }
-              >
-                Apply
-              </Button>
+                  ),
+              })}
             </div>
           </form>
           <PlanPreview plan={plan} />
+          {hasWriteResult ? (
+            <ConfigStateGuide
+              className="mt-4"
+              tone="accent"
+              testId="config-applied-guide"
+              guide={appliedConfigGuide("Day-1 setup")}
+            />
+          ) : null}
         </section>
       ) : null}
 
       {panel === "numbering" ? (
-        <section data-testid="numbering-panel">
+        <section className="cfg-panel" data-testid="numbering-panel">
           {back}
-          <h2 className="mt-3 text-ui-title">Document numbering</h2>
-          <p className="mt-1 text-sm text-muted">SO / INV / PO / payment prefixes as one pack.</p>
+          <h2 className="cfg-panel-title mt-3">Document <Term tech="ir.sequence">numbering</Term></h2>
+          <p className="cfg-panel-sub">SO / INV / PO / payment prefixes as one pack.</p>
           <ul className="mt-4 space-y-2">
             {numberingCatalog.map((item) => {
               const checked = numberingKeys.includes(item.key);
               return (
                 <li key={item.key}>
-                  <label className="flex items-start gap-3 rounded-md border border-border-subtle bg-surface p-3 text-sm">
+                  <label className="cfg-check-row">
                     <input
                       type="checkbox"
                       checked={checked}
@@ -427,127 +602,93 @@ export function ConfigCommandCenter({ connectionId }: { connectionId: string }) 
               );
             })}
           </ul>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={busy || !numberingKeys.length}
-              onClick={() =>
-                void runConfirmed("Numbering pack", (confirmed) =>
-                  api.runNumberingPack(connectionId, {
-                    keys: numberingKeys,
-                    dry_run: true,
-                    confirm_advanced: confirmed,
-                    confirm_phrase: confirmed ? CONFIRM_PHRASE : null,
-                  }),
-                )
-              }
-            >
-              Dry-run
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              disabled={busy || !numberingKeys.length}
-              onClick={() =>
-                void runConfirmed("Numbering pack", (confirmed) =>
-                  api.runNumberingPack(connectionId, {
-                    keys: numberingKeys,
-                    dry_run: false,
-                    confirm_advanced: confirmed,
-                    confirm_phrase: confirmed ? CONFIRM_PHRASE : null,
-                  }),
-                )
-              }
-            >
-              Apply pack
-            </Button>
-          </div>
+          {applyActions({
+            canDryRun: numberingKeys.length > 0,
+            dryRun: () =>
+              void runPlan("Numbering pack", true, (confirmed) =>
+                api.runNumberingPack(connectionId, {
+                  keys: numberingKeys,
+                  dry_run: true,
+                  confirm_advanced: confirmed,
+                  confirm_phrase: confirmed ? CONFIRM_PHRASE : null,
+                }),
+              ),
+            apply: () =>
+              void runPlan("Numbering pack", false, (confirmed) =>
+                api.runNumberingPack(connectionId, {
+                  keys: numberingKeys,
+                  dry_run: false,
+                  confirm_advanced: confirmed,
+                  confirm_phrase: confirmed ? CONFIRM_PHRASE : null,
+                }),
+              ),
+          })}
           <PlanPreview plan={plan} />
         </section>
       ) : null}
 
       {panel === "apps-pack" ? (
-        <section data-testid="apps-pack-panel">
+        <section className="cfg-panel" data-testid="apps-pack-panel">
           {back}
-          <h2 className="mt-3 text-ui-title">Apps pack installer</h2>
-          <p className="mt-1 text-sm text-muted">
-            Install a curated module set with dependency preview.
-          </p>
+          <h2 className="cfg-panel-title mt-3">Apps pack installer</h2>
+          <p className="cfg-panel-sub">Install a curated module set with dependency preview.</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {appsPacks.map((p) => (
               <button
                 key={p.id}
                 type="button"
                 onClick={() => setSelectedPack(p.id)}
-                className={`rounded-md border p-4 text-left text-sm transition ${
-                  selectedPack === p.id
-                    ? "border-accent bg-accent/5"
-                    : "border-border-subtle bg-surface hover:border-accent/40"
-                }`}
+                className="cfg-pack"
+                data-active={selectedPack === p.id ? "true" : "false"}
               >
-                <p className="font-medium text-ink">{p.title}</p>
-                <p className="mt-1 text-xs text-muted">{p.blurb}</p>
+                <p className="cfg-recipe-name">{sanitizeConfigCopy(p.title)}</p>
+                <p className="cfg-recipe-desc">{sanitizeConfigCopy(p.blurb)}</p>
                 <p className="mt-2 font-mono text-xs text-muted">{p.modules.join(", ")}</p>
               </button>
             ))}
           </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={busy || !selectedPack}
-              onClick={() =>
-                void runConfirmed("Apps pack", (confirmed) =>
-                  api.runAppsPack(connectionId, {
-                    pack_id: selectedPack,
-                    dry_run: true,
-                    confirm_advanced: confirmed,
-                    confirm_phrase: confirmed ? CONFIRM_PHRASE : null,
-                  }),
-                )
-              }
-            >
-              Preview deps
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              disabled={busy || !selectedPack}
-              onClick={() =>
-                void runConfirmed("Apps pack", (confirmed) =>
-                  api.runAppsPack(connectionId, {
-                    pack_id: selectedPack,
-                    dry_run: false,
-                    confirm_advanced: confirmed,
-                    confirm_phrase: confirmed ? CONFIRM_PHRASE : null,
-                  }),
-                )
-              }
-            >
-              Install pack
-            </Button>
-          </div>
+          {applyActions({
+            canDryRun: Boolean(selectedPack),
+            dryRun: () =>
+              void runPlan("Apps pack", true, (confirmed) =>
+                api.runAppsPack(connectionId, {
+                  pack_id: selectedPack,
+                  dry_run: true,
+                  confirm_advanced: confirmed,
+                  confirm_phrase: confirmed ? CONFIRM_PHRASE : null,
+                }),
+              ),
+            apply: () =>
+              void runPlan("Apps pack", false, (confirmed) =>
+                api.runAppsPack(connectionId, {
+                  pack_id: selectedPack,
+                  dry_run: false,
+                  confirm_advanced: confirmed,
+                  confirm_phrase: confirmed ? CONFIRM_PHRASE : null,
+                }),
+              ),
+          })}
           <PlanPreview plan={plan} />
         </section>
       ) : null}
 
       {panel === "settings-board" ? (
-        <section data-testid="settings-board-panel">
+        <section className="cfg-panel" data-testid="settings-board-panel">
           {back}
-          <h2 className="mt-3 text-ui-title">Settings board</h2>
-          <p className="mt-1 text-sm text-muted">
-            Allowlisted res.config.settings — search, edit, dry-run, apply.
+          <h2 className="cfg-panel-title mt-3">Settings board</h2>
+          <p className="cfg-panel-sub">
+            Allowlisted res.config.settings. Search, edit, test run, then {PRIMARY_CTA}.
           </p>
           <Input
             className="mt-4 max-w-md"
-            placeholder="Filter settings…"
+            placeholder="Filter settings..."
             value={settingsQuery}
             onChange={(e) => setSettingsQuery(e.target.value)}
+            data-testid="config-settings-filter"
           />
-          <div className="mt-4 max-h-80 space-y-2 overflow-auto rounded-md border border-border-subtle p-3">
+          <div className="cfg-settings-list">
             {filteredSettingsKeys.map((key) => (
-              <label key={key} className="flex items-center justify-between gap-3 text-sm">
+              <label key={key} className="cfg-settings-row">
                 <span className="font-mono text-xs text-ink">{key}</span>
                 <Input
                   className="max-w-[12rem]"
@@ -562,58 +703,60 @@ export function ConfigCommandCenter({ connectionId }: { connectionId: string }) 
               <p className="text-xs text-muted">No allowlisted settings matched.</p>
             ) : null}
           </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={busy}
-              onClick={() =>
-                void runConfirmed("Settings board", (confirmed) =>
+          {applyActions({
+            canDryRun: true,
+            dryRun: () =>
+              void runPlan(
+                "Settings board",
+                true,
+                (confirmed) =>
                   api.patchSettingsBoard(connectionId, {
                     values: parseDraftValues(),
                     dry_run: true,
                     confirm_advanced: confirmed,
                     confirm_phrase: confirmed ? CONFIRM_PHRASE : null,
                   }),
-                )
-              }
-            >
-              Dry-run
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              disabled={busy}
-              onClick={() =>
-                void runConfirmed("Settings board", (confirmed) =>
+                "settings",
+              ),
+            apply: () =>
+              void runPlan(
+                "Settings board",
+                false,
+                (confirmed) =>
                   api.patchSettingsBoard(connectionId, {
                     values: parseDraftValues(),
                     dry_run: false,
                     confirm_advanced: confirmed,
                     confirm_phrase: confirmed ? CONFIRM_PHRASE : null,
                   }),
-                )
-              }
-            >
-              Apply settings
-            </Button>
-          </div>
+                "settings",
+              ),
+            applyTestId: "config-save-setting-btn",
+          })}
           <PlanPreview plan={plan} />
+          {hasWriteResult ? (
+            <ConfigStateGuide
+              className="mt-4"
+              tone="accent"
+              testId="config-applied-guide"
+              guide={appliedConfigGuide("Settings")}
+            />
+          ) : null}
         </section>
       ) : null}
 
       {panel === "multi-company" ? (
-        <section data-testid="multi-company-panel">
+        <section className="cfg-panel" data-testid="multi-company-panel">
           {back}
-          <h2 className="mt-3 text-ui-title">Add company</h2>
-          <p className="mt-1 text-sm text-muted">
+          <h2 className="cfg-panel-title mt-3">Add company</h2>
+          <p className="cfg-panel-sub">
             Create an additional res.company (users still need access).
           </p>
           <form
             className="mt-4 grid max-w-lg gap-3"
             onSubmit={(e) => {
               e.preventDefault();
-              void runConfirmed("Multi-company", (confirmed) =>
+              void runPlan("Multi-company", true, (confirmed) =>
                 api.runMultiCompany(connectionId, {
                   name: mc.name,
                   currency_code: mc.currency_code,
@@ -650,95 +793,78 @@ export function ConfigCommandCenter({ connectionId }: { connectionId: string }) 
                 onChange={(e) => setMc({ ...mc, country_code: e.target.value })}
               />
             </label>
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit" variant="secondary" disabled={busy || !mc.name.trim()}>
-                Dry-run
-              </Button>
-              <Button
-                type="button"
-                variant="primary"
-                disabled={busy || !mc.name.trim()}
-                onClick={() =>
-                  void runConfirmed("Multi-company", (confirmed) =>
-                    api.runMultiCompany(connectionId, {
-                      name: mc.name,
-                      currency_code: mc.currency_code,
-                      country_code: mc.country_code || null,
-                      dry_run: false,
-                      confirm_advanced: confirmed,
-                      confirm_phrase: confirmed ? CONFIRM_PHRASE : null,
-                    }),
-                  )
-                }
-              >
-                Create company
-              </Button>
-            </div>
+            {applyActions({
+              canDryRun: Boolean(mc.name.trim()),
+              dryRun: () =>
+                void runPlan("Multi-company", true, (confirmed) =>
+                  api.runMultiCompany(connectionId, {
+                    name: mc.name,
+                    currency_code: mc.currency_code,
+                    country_code: mc.country_code || null,
+                    dry_run: true,
+                    confirm_advanced: confirmed,
+                    confirm_phrase: confirmed ? CONFIRM_PHRASE : null,
+                  }),
+                ),
+              apply: () =>
+                void runPlan("Multi-company", false, (confirmed) =>
+                  api.runMultiCompany(connectionId, {
+                    name: mc.name,
+                    currency_code: mc.currency_code,
+                    country_code: mc.country_code || null,
+                    dry_run: false,
+                    confirm_advanced: confirmed,
+                    confirm_phrase: confirmed ? CONFIRM_PHRASE : null,
+                  }),
+                ),
+            })}
           </form>
           <PlanPreview plan={plan} />
         </section>
       ) : null}
 
       {panel === "master-packs" ? (
-        <section data-testid="master-packs-panel">
+        <section className="cfg-panel" data-testid="master-packs-panel">
           {back}
-          <h2 className="mt-3 text-ui-title">Master data packs</h2>
-          <p className="mt-1 text-sm text-muted">UoM categories and fiscal position stubs.</p>
+          <h2 className="cfg-panel-title mt-3">Master data packs</h2>
+          <p className="cfg-panel-sub">UoM categories and fiscal position stubs.</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {masterPacks.map((p) => (
               <button
                 key={p.id}
                 type="button"
                 onClick={() => setMasterId(p.id)}
-                className={`rounded-md border p-4 text-left text-sm ${
-                  masterId === p.id
-                    ? "border-accent bg-accent/5"
-                    : "border-border-subtle bg-surface"
-                }`}
+                className="cfg-pack"
+                data-active={masterId === p.id ? "true" : "false"}
               >
-                <p className="font-medium text-ink">{p.title}</p>
+                <p className="cfg-recipe-name">{sanitizeConfigCopy(p.title)}</p>
                 <p className="mt-1 font-mono text-xs text-muted">
                   {(p.categories || p.positions || []).join(", ")}
                 </p>
               </button>
             ))}
           </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={busy}
-              onClick={() =>
-                void runConfirmed("Master pack", (confirmed) =>
-                  api.runMasterPack(connectionId, {
-                    pack_id: masterId,
-                    dry_run: true,
-                    confirm_advanced: confirmed,
-                    confirm_phrase: confirmed ? CONFIRM_PHRASE : null,
-                  }),
-                )
-              }
-            >
-              Dry-run
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              disabled={busy}
-              onClick={() =>
-                void runConfirmed("Master pack", (confirmed) =>
-                  api.runMasterPack(connectionId, {
-                    pack_id: masterId,
-                    dry_run: false,
-                    confirm_advanced: confirmed,
-                    confirm_phrase: confirmed ? CONFIRM_PHRASE : null,
-                  }),
-                )
-              }
-            >
-              Apply pack
-            </Button>
-          </div>
+          {applyActions({
+            canDryRun: Boolean(masterId),
+            dryRun: () =>
+              void runPlan("Master pack", true, (confirmed) =>
+                api.runMasterPack(connectionId, {
+                  pack_id: masterId,
+                  dry_run: true,
+                  confirm_advanced: confirmed,
+                  confirm_phrase: confirmed ? CONFIRM_PHRASE : null,
+                }),
+              ),
+            apply: () =>
+              void runPlan("Master pack", false, (confirmed) =>
+                api.runMasterPack(connectionId, {
+                  pack_id: masterId,
+                  dry_run: false,
+                  confirm_advanced: confirmed,
+                  confirm_phrase: confirmed ? CONFIRM_PHRASE : null,
+                }),
+              ),
+          })}
           <PlanPreview plan={plan} />
         </section>
       ) : null}
@@ -746,10 +872,11 @@ export function ConfigCommandCenter({ connectionId }: { connectionId: string }) 
       <ConfirmDialogV2
         open={confirmOpen}
         title={pending ? `Confirm: ${pending.label}` : "Confirm write"}
-        warning="This writes to the live Odoo database. Type the confirmation phrase to continue."
+        warning="This writes to the live Odoo database. Type the confirmation phrase to continue. Test run never writes; this step does."
         risks={[
           "Changes apply on the connected Odoo instance",
           "Some steps may be hard to reverse without a snapshot",
+          "Successful steps are not auto-undone",
         ]}
         phrase={CONFIRM_PHRASE}
         riskLevel="danger"

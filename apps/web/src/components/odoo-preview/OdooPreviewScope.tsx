@@ -23,7 +23,7 @@ export function OdooPreviewScope({
     >
       {showBanner ? (
         <p className="odoo-preview-banner" data-testid="odoo-preview-banner">
-          Structural preview — Open in Odoo for authoritative layout.
+          Structural preview. Open in Odoo for the authoritative layout.
         </p>
       ) : null}
       {children}

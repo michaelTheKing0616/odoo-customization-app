@@ -3,8 +3,13 @@ import {
   deliveryReportMarkdown,
   hasResidualModuleSpec,
   isStockOnlyPacket,
+  JOB_CONNECTOR_RECIPE,
+  jobAutopilotErrorGuide,
   jobAutopilotErrorTitle,
   jobAutopilotGate,
+  jobAutopilotOnlineHonesty,
+  jobConnectorRecipeSteps,
+  jobConnectorStepState,
   jobAutopilotHeaderDescription,
   jobAutopilotJourneyFromState,
   jobAutopilotJourneyHint,
@@ -52,11 +57,11 @@ describe("jobAutopilotJourneyHint", () => {
   it("keeps Completeness / Cert / Autopilot honesty and human promote", () => {
     expect(jobAutopilotJourneyHint({ id: "brief" })).toMatch(/sandbox only/i);
     expect(jobAutopilotJourneyHint({ id: "brief" })).toMatch(/Completeness is not Cert/i);
-    expect(jobAutopilotJourneyHint({ id: "run" })).toMatch(/Completeness ≠ Cert ≠ Autopilot/);
-    expect(jobAutopilotJourneyHint({ id: "run" })).toMatch(/Promote stays human/);
-    expect(jobAutopilotJourneyHint({ id: "scorecard" })).toMatch(/not ModuleSpec 10\.0/);
+    expect(jobAutopilotJourneyHint({ id: "run" })).toMatch(/A complete draft is not the same as certified, and neither means Autopilot-ready/);
+    expect(jobAutopilotJourneyHint({ id: "run" })).toMatch(/Publishing stays a step you confirm/);
+    expect(jobAutopilotJourneyHint({ id: "scorecard" })).toMatch(/not app plan 10\.0/);
     expect(jobAutopilotJourneyHint({ id: "promote" })).toMatch(/never writes production/);
-    expect(jobAutopilotJourneyHint({ id: "run", failed: true })).toMatch(/Promote stays human/);
+    expect(jobAutopilotJourneyHint({ id: "run", failed: true })).toMatch(/Publishing stays a step you confirm/);
   });
 });
 
@@ -67,7 +72,7 @@ describe("jobAutopilotGate", () => {
     expect(production.reason).toBe("production");
     expect(production.variant).toBe("danger");
     expect(production.body).toMatch(/refuses write_mode=production/);
-    expect(production.body).toMatch(/Completeness ≠ Cert ≠ Autopilot/);
+    expect(production.body).toMatch(/A complete draft is not the same as certified, and neither means Autopilot-ready/);
 
     const observer = jobAutopilotGate({ writeMode: "observer" });
     expect(observer.runBlocked).toBe(true);
@@ -112,10 +117,10 @@ describe("jobScorecardHeadline", () => {
 describe("jobScorecardBody", () => {
   it("keeps stock-only and failed-smoke honesty", () => {
     expect(jobScorecardBody({ stockOnly: true, smokeOk: true })).toMatch(
-      /Completeness ≠ Cert ≠ Autopilot/,
+      /A complete draft is not the same as certified, and neither means Autopilot-ready/,
     );
     expect(jobScorecardBody({ smokeOk: false })).toMatch(/Do not promote/);
-    expect(jobScorecardBody({ smokeOk: true, promoteReady: true })).toMatch(/Promote stays human/);
+    expect(jobScorecardBody({ smokeOk: true, promoteReady: true })).toMatch(/Publishing stays a step you confirm/);
     expect(jobScorecardBody({ hasFindings: true })).toBeNull();
   });
 });
@@ -186,8 +191,31 @@ describe("copy helpers", () => {
     expect(jobAutopilotHeaderDescription("Client production", "production")).not.toMatch(
       /sandbox-only —/,
     );
-    expect(jobAutopilotHeaderDescription()).toMatch(/Promote stays human/);
+    expect(jobAutopilotHeaderDescription()).toMatch(/Publishing stays a step you confirm/);
     expect(jobAutopilotProductionRefuseMessage()).toMatch(/refuses write_mode=production/);
     expect(jobAutopilotObserverRefuseMessage()).toMatch(/Observer/);
+  });
+});
+
+
+describe("job connector recipe and Online honesty", () => {
+  it("keeps payments → inbound → messaging → hardware → statutory order", () => {
+    expect(JOB_CONNECTOR_RECIPE.map((r) => r.id)).toEqual([
+      "payments",
+      "inbound_orders",
+      "messaging",
+      "hardware",
+      "statutory_payroll",
+    ]);
+    const steps = jobConnectorRecipeSteps(["messaging", "payments"]);
+    expect(steps.filter((s) => s.active).map((s) => s.id)).toEqual(["payments", "messaging"]);
+    expect(jobConnectorStepState("payments", { ran: ["payments"], failed: [] })).toBe("done");
+    expect(jobConnectorStepState("messaging", { ran: [], failed: ["messaging"] })).toBe("failed");
+    const online = jobAutopilotOnlineHonesty();
+    expect(online.body).toMatch(/never installs custom Python/);
+    expect(online.body).not.toMatch(/\u2014/);
+    const guide = jobAutopilotErrorGuide("Autopilot refuses write_mode=production");
+    expect(guide?.what).toMatch(/refused/i);
+    expect(guide?.next).toMatch(/sandbox/i);
   });
 });

@@ -61,13 +61,13 @@ describe("connect-checklist", () => {
 
   it("API key copy distinguishes Odoo RPC from Cursor MCP", () => {
     const online = credentialFieldCopy("online").hint;
-    expect(online).toMatch(/XML-RPC|JSON-RPC|external RPC/i);
+    expect(online).toMatch(/XML-RPC|JSON-RPC|external RPC|Odoo's API|API sign-in/i);
     expect(online).toMatch(/not a Cursor MCP|not.*Cursor MCP/i);
     expect(online).toMatch(/Model Context Protocol/i);
     const steps = apiKeyGuideSteps("online");
     const last = steps[steps.length - 1]?.body || "";
-    expect(last).toMatch(/XML-RPC|JSON-RPC|external.?RPC/i);
-    expect(last).toMatch(/not a Cursor MCP/i);
+    // MCP warning lives once, in the "RPC vs MCP" step, not repeated here.
+    expect(last).not.toMatch(/MCP/i);
     const rpcStep = steps.find((s) => /RPC vs MCP/i.test(s.title));
     expect(rpcStep?.body).toMatch(/RPC|external API/i);
     expect(rpcStep?.body).toMatch(/Do not pick MCP|not.*MCP/i);

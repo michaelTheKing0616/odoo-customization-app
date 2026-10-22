@@ -14,11 +14,18 @@ export const connectionsApi = {
     username: string;
     password: string;
     verify?: boolean;
+    hosting?: "online" | "odoo_sh" | "self_hosted";
+    group_label?: string;
+    is_test_copy?: boolean;
   }) =>
     request<Connection>("/api/connections", {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  liveCheck: (id: string) =>
+    request<{ rows: Array<{ key: string; label: string; ok: boolean | null; detail: string }>; hosting: string }>(
+      `/api/connections/${id}/live-check`,
+    ),
   updateConnection: (
     id: string,
     body: {
@@ -28,6 +35,7 @@ export const connectionsApi = {
       username?: string;
       password?: string;
       verify?: boolean;
+      is_test_copy?: boolean;
     },
   ) =>
     request<Connection>(`/api/connections/${id}`, {

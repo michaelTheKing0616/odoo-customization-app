@@ -32,7 +32,7 @@ export function ModuleSpecShell({
     <div className="studio-refinement" data-testid="modulespec-page">
       <div className="studio-page is-canvas">
         <PageHeader
-          title="ModuleSpec"
+          title="App plan"
           description={moduleSpecHeaderDescription(connectionName, projectName)}
           actions={
             <>

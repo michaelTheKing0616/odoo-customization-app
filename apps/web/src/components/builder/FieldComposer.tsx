@@ -396,7 +396,7 @@ export function FieldComposer({
               {form.inject_strategy === "mutate" &&
               connectionSupports(connection, "view_inject_mutate") ? (
                 <Callout variant="warning" title="Mutate overwrites parent view arch">
-                  Requires advanced confirm on create. Prefer inherit for module upgrades.
+                  Requires advanced confirm on create. Use an extension view for module upgrades.
                 </Callout>
               ) : null}
             </div>

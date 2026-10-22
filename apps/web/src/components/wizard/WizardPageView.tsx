@@ -1,12 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
-import { Skeleton } from "@/components/ui/layout-primitives";
+import { Callout } from "@/components/ui/Callout";
 import { DraftStudioApplyBar } from "@/components/draft-studio/DraftStudioApplyBar";
 import { DraftStudioHonestyBanners } from "@/components/draft-studio/DraftStudioHonestyBanners";
 import { DraftStudioIdentityCard } from "@/components/draft-studio/DraftStudioIdentityCard";
+import {
+  DraftStudioMobileTabs,
+  type DraftStudioMobileTab,
+} from "@/components/draft-studio/DraftStudioMobileTabs";
 import { DraftStudioPreviewPane } from "@/components/draft-studio/DraftStudioPreviewPane";
 import { DraftStudioProgress } from "@/components/draft-studio/DraftStudioProgress";
 import { DraftStudioPromptPanel } from "@/components/draft-studio/DraftStudioPromptPanel";
@@ -15,10 +19,13 @@ import { DraftStudioScorecard } from "@/components/draft-studio/DraftStudioScore
 import { DraftStudioShell } from "@/components/draft-studio/DraftStudioShell";
 import { DraftStudioTemplates } from "@/components/draft-studio/DraftStudioTemplates";
 import { visibleDraftWarnings } from "@/lib/draft-job-outcome";
+import { WIZARD_ONLINE_HONESTY } from "@/lib/wizard-ui";
+import { WizardErrorNotice } from "./WizardErrorNotice";
 import { downloadEliteZipBase64, templateScaffoldOpts } from "./wizard-helpers";
 import type { WizardPageModel } from "./use-wizard-page";
 
 export function WizardPageView(vm: WizardPageModel) {
+  const [mobileTab, setMobileTab] = useState<DraftStudioMobileTab>("preview");
   const promptPanel = (
     <DraftStudioPromptPanel
       connectionId={vm.connectionId}
@@ -98,17 +105,28 @@ export function WizardPageView(vm: WizardPageModel) {
       hasDraft={Boolean(vm.aiDraft)}
       onStartNew={vm.startNewDraft}
     >
-      <VersionAwarenessBanner capabilities={vm.connection?.capabilities} />
-      {vm.loading ? (
-        <div className="mt-4 space-y-2">
-          <Skeleton className="h-8 w-full" />
-          <Skeleton className="h-24 w-full" />
-        </div>
-      ) : null}
-      {vm.error ? <ErrorNotice message={vm.error} className="mt-4" /> : null}
-
+      <div className="draft-studio-notices">
+        <VersionAwarenessBanner capabilities={vm.connection?.capabilities} />
+        {vm.isOdooOnline ? (
+          <Callout
+            variant="warning"
+            title={WIZARD_ONLINE_HONESTY.title}
+            testId="wizard-online-honesty"
+          >
+            {WIZARD_ONLINE_HONESTY.body}
+          </Callout>
+        ) : null}
+        {vm.error ? (
+          <WizardErrorNotice
+            message={vm.error}
+            hasDraft={Boolean(vm.aiDraft)}
+            onDismiss={() => vm.setError(null)}
+          />
+        ) : null}
+      </div>
       {vm.journey.id === "prompt" ? (
         <>
+          {promptPanel}
           <DraftStudioIdentityCard
             displayName={vm.displayName}
             technicalPrefix={vm.technicalPrefix}
@@ -117,13 +135,13 @@ export function WizardPageView(vm: WizardPageModel) {
             onTechnicalPrefix={vm.setTechnicalPrefix}
             onMultiCompany={vm.setMultiCompany}
           />
-          {promptPanel}
           <DraftStudioTemplates
             connectionId={vm.connectionId}
             connection={vm.connection}
             templates={vm.templates}
             selectedId={vm.selected?.id}
             result={vm.result}
+            loading={vm.loading}
             onOpenTemplate={vm.openConfirm}
             templateScaffoldOpts={templateScaffoldOpts}
           />
@@ -131,7 +149,7 @@ export function WizardPageView(vm: WizardPageModel) {
       ) : null}
 
       {vm.journey.id === "enrich" ? (
-        <DraftStudioProgress label={vm.aiBusyLabel || "Creating draft…"} />
+        <DraftStudioProgress label={vm.aiBusyLabel || "Generating the draft…"} />
       ) : null}
 
       {(vm.journey.id === "review" || vm.journey.id === "apply") && vm.aiDraft ? (
@@ -188,8 +206,11 @@ export function WizardPageView(vm: WizardPageModel) {
             onProveOptionA={() => void vm.proveOptionASandbox()}
             onRestoreSnapshot={(id) => void vm.restoreDraftFromCache(id)}
             onLoadWalkthrough={() => vm.setWalkthroughConfirmOpen(true)}
+            onAnswerClarify={(answer) => vm.answerClarification(answer)}
           />
+          <DraftStudioMobileTabs value={mobileTab} onChange={setMobileTab} />
           <DraftStudioReviewLayout
+            mobileTab={mobileTab}
             header={
               <div className="panel-header">
                 <div className="breadcrumb">
@@ -234,6 +255,8 @@ export function WizardPageView(vm: WizardPageModel) {
                 expertReviewFindings={vm.expertReviewFindings}
                 finisherComplete={vm.finisherComplete}
                 draftSummary={vm.draftSummary}
+                isOdooOnline={Boolean(vm.isOdooOnline)}
+                jobAutopilotHref={vm.jobAutopilotHref}
                 onExpertFix={() => void vm.askExpertReviewDraft(true)}
                 onLint={() => void vm.refreshEliteLint()}
                 onValidate={() => void vm.onEliteValidateModule()}
@@ -246,7 +269,7 @@ export function WizardPageView(vm: WizardPageModel) {
                 }
                 onAskExpert={() =>
                   vm.openExpert({
-                    question: `Review this draft module spec for production readiness: ${vm.draftSummary ?? "module"}. What should I verify before promote?`,
+                    question: `Review this draft module spec for production readiness: ${vm.draftSummary ?? "module"}. What should I verify before publish?`,
                     freshThread: true,
                   })
                 }
@@ -254,9 +277,10 @@ export function WizardPageView(vm: WizardPageModel) {
             }
             footer={<DraftStudioApplyBar {...vm.applyBarProps} />}
           />
-          <details className="draft-studio-disclosure mt-6">
-            <summary className="cursor-pointer text-sm font-medium text-muted">
-              Adjust prompt
+          <details className="draft-studio-disclosure draft-studio-adjust" data-testid="draft-studio-adjust">
+            <summary>
+              <span>Adjust the prompt</span>
+              <span className="draft-studio-disclosure-meta">Reuse, grain, JSON</span>
             </summary>
             <div className="mt-3">{promptPanel}</div>
           </details>
@@ -284,16 +308,16 @@ export function WizardPageView(vm: WizardPageModel) {
       <ConfirmDialogV2 riskLevel="danger"
         open={vm.genUiConfirmOpen}
         title="Apply draft to Odoo"
-        warning="Applies the ModuleSpec draft: models, fields, views, menus, and smart buttons on this live Odoo connection."
+        warning="Applies the App plan draft: models, fields, views, menus, and smart buttons on this live Odoo connection."
         risks={[
           "Creates ir.model / fields / views / menus",
           "May rewrite primary form arches for custom x_* models (statusbars)",
-          "Smart buttons use inherit views — stock forms like Contacts stay intact",
-          "Automations in the draft are listed only — create them on Automations page",
-          "Prefer a sandbox connection before production",
+          "Smart buttons use extension views, so built-in forms like Contacts stay intact",
+          "Automations in the draft are listed only. Create them on the Automations page",
+          "Try a test copy before changing production",
           ...(vm.validateLiveResult && !vm.validateLiveResult.ok
             ? [
-                `Validate-live: ${vm.validateLiveResult.fail_count} failure(s) — override only if you accept broken metadata risk`,
+                `Validate-live: ${vm.validateLiveResult.fail_count} failure(s). Override only if you accept broken metadata risk`,
               ]
             : []),
         ]}
@@ -310,7 +334,7 @@ export function WizardPageView(vm: WizardPageModel) {
       />
       <ConfirmDialogV2 riskLevel="danger"
         open={vm.elitePromoteConfirmOpen}
-        title="Promote validated module"
+        title="Publish validated module"
         warning="Installs the sandbox-validated Python module on this live Odoo connection."
         risks={[
           "Adds models, fields, views, Python code, reports, and cron jobs",
@@ -330,7 +354,7 @@ export function WizardPageView(vm: WizardPageModel) {
           "Writes data rows on custom x_* models (named Walkthrough …)",
           "Links site, party, job, booking, and equipment lines when those models exist",
           "Reuses the first Contact / Employee / Currency if the spec points at them",
-          "Prefer a sandbox connection before production",
+          "Try a test copy before changing production",
         ]}
         phrase={vm.confirmPhrase}
         busy={vm.busy}

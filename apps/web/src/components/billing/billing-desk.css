@@ -1,0 +1,628 @@
+/* ============================================================
+   UI-S-42 Billing: a statement on a quiet desk (scoped .billing-desk)
+   Basalt ink on limestone desk, plan sheet as paper. Teal = Manage plan only,
+   plus focus and the slot meter. Amber / red only on real money or access risk.
+   Cinnabar never appears (keystone only). No purple, no orange CTAs.
+   Playbook section 0 laws 3-9, 4pt rhythm, Studio cluster curve family.
+   ============================================================ */
+
+.billing-desk {
+  --bd-ink: var(--ink);
+  --bd-muted: var(--muted);
+  --bd-subtle: var(--subtle);
+  --bd-desk: color-mix(in oklab, var(--surface-muted) 70%, var(--surface));
+  --bd-paper: var(--surface-raised);
+  --bd-hair: var(--border-subtle);
+  --bd-hair-soft: color-mix(in oklab, var(--border-subtle) 60%, transparent);
+  --bd-radius: 14px;
+  --bd-radius-sm: 8px;
+  --bd-ease: cubic-bezier(0.23, 1, 0.32, 1);
+  --bd-accent-text: var(--accent);
+  --bd-caution: #b45309;
+  --bd-caution-bg: color-mix(in oklab, #f59e0b 12%, var(--bd-paper));
+  --bd-caution-line: color-mix(in oklab, #f59e0b 38%, var(--bd-hair));
+  --bd-danger-bg: color-mix(in oklab, var(--danger) 7%, var(--bd-paper));
+  --bd-danger-line: color-mix(in oklab, var(--danger) 30%, var(--bd-hair));
+  --bd-success-bg: color-mix(in oklab, var(--success) 8%, var(--bd-paper));
+  --bd-success-line: color-mix(in oklab, var(--success) 30%, var(--bd-hair));
+  --bd-shadow-paper:
+    0 0 0 1px color-mix(in oklab, #1a1c21 6%, transparent),
+    0 1px 2px -1px color-mix(in oklab, #1a1c21 10%, transparent),
+    0 12px 32px -18px color-mix(in oklab, #1a1c21 30%, transparent);
+
+  min-height: 100%;
+  box-sizing: border-box;
+  padding: 32px 32px 64px;
+  background: var(--bd-desk);
+  color: var(--bd-ink);
+  font-variant-numeric: tabular-nums;
+  overflow-x: clip;
+  -webkit-font-smoothing: antialiased;
+}
+
+html.dark .billing-desk,
+.dark .billing-desk {
+  --bd-accent-text: var(--accent4);
+  --bd-desk: var(--surface);
+  --bd-paper: var(--surface-raised);
+  --bd-caution: #f59e0b;
+  --bd-caution-bg: color-mix(in oklab, #f59e0b 12%, var(--bd-paper));
+  --bd-shadow-paper:
+    0 0 0 1px color-mix(in oklab, #f3f4f6 8%, transparent),
+    0 16px 40px -24px rgb(0 0 0 / 60%);
+}
+
+.billing-desk > * {
+  max-width: 72rem;
+  margin-inline: auto;
+}
+
+.billing-desk ::selection {
+  background: color-mix(in oklab, var(--accent) 22%, transparent);
+}
+
+.billing-desk h1,
+.billing-desk h2,
+.billing-desk h3 {
+  text-wrap: balance;
+  margin: 0;
+}
+
+.billing-desk p {
+  text-wrap: pretty;
+  margin: 0;
+}
+
+.billing-desk code {
+  font-family: var(--font-mono-stack, ui-monospace, monospace);
+  font-size: 12px;
+}
+
+/* Press feedback, gated hover, never transition: all */
+.billing-desk button {
+  transition:
+    color 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease,
+    transform 160ms var(--bd-ease);
+}
+.billing-desk button:not(:disabled):active {
+  transform: scale(0.97);
+}
+.billing-desk button:focus-visible,
+.billing-desk a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.billing-desk .bd-btn-icon {
+  width: 14px;
+  height: 14px;
+  margin-inline-start: 2px;
+  opacity: 0.85;
+}
+
+/* Harness frame: lets the desk fill the viewport when there is no app shell. */
+.bd-harness {
+  display: grid;
+  min-height: 100dvh;
+}
+
+/* Header */
+
+.billing-desk .bd-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px 32px;
+  margin-bottom: 24px;
+}
+
+.billing-desk .bd-head-copy {
+  min-width: 0;
+  max-width: 60ch;
+}
+
+.billing-desk .bd-title {
+  font-size: 28px;
+  line-height: 1.1;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+}
+
+.billing-desk .bd-lead {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--bd-muted);
+}
+
+.billing-desk .bd-head-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.billing-desk .bd-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--bd-hair);
+  background: var(--bd-paper);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bd-ink);
+}
+.billing-desk .bd-chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--bd-subtle);
+}
+.billing-desk .bd-chip[data-tone="success"] .bd-chip-dot { background: var(--success); }
+.billing-desk .bd-chip[data-tone="warning"] .bd-chip-dot { background: var(--bd-caution); }
+.billing-desk .bd-chip[data-tone="danger"] {
+  border-color: var(--bd-danger-line);
+  background: var(--bd-danger-bg);
+  color: var(--danger-strong, var(--danger));
+}
+.billing-desk .bd-chip[data-tone="danger"] .bd-chip-dot { background: var(--danger); }
+
+.billing-desk .bd-ws {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 8px 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--bd-hair);
+  background: transparent;
+  color: var(--bd-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.billing-desk .bd-ws code { color: var(--bd-ink); }
+.billing-desk .bd-ws-label { color: var(--bd-subtle); }
+.billing-desk .bd-ws-icon {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+}
+.billing-desk .bd-ws-icon svg { width: 13px; height: 13px; }
+.billing-desk .bd-ws-icon[data-copied] { color: var(--success); }
+@media (hover: hover) and (pointer: fine) {
+  .billing-desk .bd-ws:hover { background: var(--bd-paper); color: var(--bd-ink); }
+}
+
+/* Notes: only when something is actually at stake */
+
+.billing-desk .bd-note {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 4px 12px;
+  margin-bottom: 12px;
+  padding: 12px 12px 12px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--bd-hair);
+  background: var(--bd-paper);
+}
+.billing-desk .bd-note[data-tone="warning"] { background: var(--bd-caution-bg); border-color: var(--bd-caution-line); }
+.billing-desk .bd-note[data-tone="warning"] .bd-note-icon { color: var(--bd-caution); }
+.billing-desk .bd-note[data-tone="danger"] { background: var(--bd-danger-bg); border-color: var(--bd-danger-line); }
+.billing-desk .bd-note[data-tone="danger"] .bd-note-icon { color: var(--danger); }
+.billing-desk .bd-note[data-tone="success"] { background: var(--bd-success-bg); border-color: var(--bd-success-line); }
+.billing-desk .bd-note[data-tone="success"] .bd-note-icon { color: var(--success); }
+
+.billing-desk .bd-note-icon { width: 18px; height: 18px; margin-top: 1px; }
+.billing-desk .bd-note-title { font-size: 14px; font-weight: 600; line-height: 1.4; }
+.billing-desk .bd-note-text { margin-top: 2px; font-size: 13px; line-height: 1.5; color: var(--bd-muted); max-width: 88ch; }
+.billing-desk .bd-note-action { align-self: center; white-space: nowrap; }
+
+@starting-style {
+  .billing-desk .bd-note { opacity: 0; transform: translateY(-4px); }
+}
+.billing-desk .bd-note {
+  transition: opacity 200ms var(--bd-ease), transform 200ms var(--bd-ease);
+}
+
+/* Grid: sheet + receipt on top, entitlements beside a stacked rail */
+
+.billing-desk .bd-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+/* Narrow: the two columns dissolve so the receipt follows the plan sheet. */
+.billing-desk .bd-main,
+.billing-desk .bd-rail {
+  display: contents;
+}
+.billing-desk .bd-sheet { order: 1; }
+.billing-desk .bd-charge { order: 2; }
+.billing-desk .bd-includes { order: 3; }
+.billing-desk .bd-downgrade { order: 4; }
+.billing-desk .bd-payment { order: 5; }
+.billing-desk .bd-plans { order: 6; }
+
+@media (min-width: 1024px) {
+  .billing-desk .bd-grid {
+    grid-template-columns: minmax(0, 1fr) 320px;
+    column-gap: 24px;
+  }
+  .billing-desk .bd-main,
+  .billing-desk .bd-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+  }
+}
+
+/* Paper and panels: elevation declared once */
+
+.billing-desk .bd-paper {
+  border-radius: var(--bd-radius);
+  background: var(--bd-paper);
+  box-shadow: var(--bd-shadow-paper);
+}
+
+.billing-desk .bd-panel {
+  border-radius: var(--bd-radius);
+  border: 1px solid var(--bd-hair);
+  background: color-mix(in oklab, var(--bd-paper) 70%, var(--bd-desk));
+  padding: 16px 20px 20px;
+}
+
+.billing-desk .bd-h2 { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; }
+.billing-desk .bd-h3 { font-size: 13px; font-weight: 600; line-height: 1.3; }
+.billing-desk .bd-panel-head { margin-bottom: 12px; }
+.billing-desk .bd-panel-sub { margin-top: 4px; font-size: 13px; line-height: 1.5; color: var(--bd-muted); }
+.billing-desk .bd-fine { margin-top: 12px; font-size: 12px; line-height: 1.5; color: var(--bd-subtle); }
+
+.billing-desk .bd-link {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--bd-accent-text);
+  text-decoration: none;
+  text-underline-offset: 3px;
+  border-radius: 4px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .billing-desk .bd-link:hover { text-decoration: underline; }
+}
+
+/* Plan sheet */
+
+.billing-desk .bd-sheet { padding: 24px 24px 20px; min-width: 0; }
+
+.billing-desk .bd-sheet-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 24px;
+}
+
+.billing-desk .bd-plan-name {
+  font-size: 32px;
+  line-height: 1.05;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+}
+
+.billing-desk .bd-plan-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--bd-muted);
+}
+.billing-desk .bd-plan-sub code {
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--bd-ink) 5%, transparent);
+  color: var(--bd-ink);
+}
+
+.billing-desk .bd-price { display: grid; justify-items: end; gap: 2px; text-align: end; }
+.billing-desk .bd-price-amount {
+  font-size: 32px;
+  line-height: 1.05;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+.billing-desk .bd-price-amount--muted { color: var(--bd-subtle); font-size: 20px; }
+.billing-desk .bd-price-unit { font-size: 12px; color: var(--bd-muted); }
+
+.billing-desk .bd-ledger {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 24px 0 0;
+  border-block: 1px solid var(--bd-hair);
+}
+.billing-desk .bd-ledger-cell {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  padding: 14px 16px 14px 0;
+  min-width: 0;
+}
+.billing-desk .bd-ledger-cell + .bd-ledger-cell {
+  padding-inline-start: 16px;
+  border-inline-start: 1px solid var(--bd-hair-soft);
+}
+.billing-desk .bd-ledger dt { font-size: 12px; color: var(--bd-subtle); font-weight: 500; }
+.billing-desk .bd-ledger dd { margin: 0; font-size: 14px; font-weight: 600; color: var(--bd-ink); }
+.billing-desk .bd-ledger dd.bd-ledger-sub { font-size: 12px; font-weight: 400; color: var(--bd-muted); line-height: 1.45; }
+
+.billing-desk .bd-meter { margin-top: 20px; }
+.billing-desk .bd-meter-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-bottom: 8px;
+}
+.billing-desk .bd-meter-label { font-size: 12px; font-weight: 500; color: var(--bd-subtle); }
+.billing-desk .bd-meter-value { font-size: 13px; font-weight: 600; display: inline-flex; gap: 8px; flex-wrap: wrap; }
+.billing-desk .bd-meter-extra { font-weight: 400; color: var(--bd-muted); }
+.billing-desk .bd-meter-track {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--bd-ink) 7%, transparent);
+  overflow: hidden;
+}
+.billing-desk .bd-meter-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--accent);
+  transform-origin: left center;
+  transition: transform 300ms var(--bd-ease);
+}
+@starting-style {
+  .billing-desk .bd-meter-fill { transform: scaleX(0) !important; }
+}
+.billing-desk .bd-meter[data-at-limit] .bd-meter-fill { background: var(--bd-caution); }
+.billing-desk .bd-meter-hint { margin-top: 8px; font-size: 12px; color: var(--bd-caution); font-weight: 500; }
+.billing-desk .bd-meter-free { font-size: 13px; color: var(--bd-muted); }
+
+.billing-desk .bd-actions {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px dashed var(--bd-hair);
+}
+.billing-desk .bd-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.billing-desk .bd-actions-row .bd-link { margin-inline-start: auto; }
+.billing-desk .bd-actions-row button { white-space: nowrap; }
+.billing-desk .bd-hint { margin-top: 10px; font-size: 12px; line-height: 1.5; color: var(--bd-muted); max-width: 64ch; }
+
+/* Chooser (unfolds inside the sheet) */
+
+.billing-desk .bd-chooser {
+  margin-top: 20px;
+  padding: 16px;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--bd-ink) 2.5%, var(--bd-paper));
+  border: 1px solid var(--bd-hair);
+  transition: opacity 200ms var(--bd-ease), transform 200ms var(--bd-ease);
+  scroll-margin-block: 24px;
+}
+@starting-style {
+  .billing-desk .bd-chooser { opacity: 0; transform: translateY(-6px); }
+}
+.billing-desk .bd-chooser-head { margin-bottom: 8px; }
+.billing-desk .bd-chooser-sub { margin-top: 2px; font-size: 12px; color: var(--bd-muted); }
+.billing-desk .bd-chooser-list { list-style: none; margin: 0; padding: 0; }
+.billing-desk .bd-chooser-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px 20px;
+  padding: 12px 0;
+  border-top: 1px solid var(--bd-hair-soft);
+}
+.billing-desk .bd-chooser-row:first-child { border-top: 0; }
+.billing-desk .bd-chooser-name { display: grid; gap: 2px; font-size: 14px; font-weight: 600; min-width: 0; }
+.billing-desk .bd-chooser-delta { font-size: 12px; font-weight: 400; color: var(--bd-muted); }
+.billing-desk .bd-chooser-price { display: grid; justify-items: end; font-size: 15px; font-weight: 600; }
+.billing-desk .bd-chooser-unit { font-size: 11px; font-weight: 400; color: var(--bd-subtle); }
+.billing-desk .bd-chooser-row[data-current] { background: transparent; }
+
+/* Inline errors sit next to the action that caused them */
+
+.billing-desk .bd-inline-error {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--bd-danger-line);
+  background: var(--bd-danger-bg);
+}
+.billing-desk .bd-inline-error-title { font-size: 13px; font-weight: 600; color: var(--bd-ink); }
+.billing-desk .bd-inline-error-text { margin-top: 2px; font-size: 12px; line-height: 1.5; color: var(--bd-muted); }
+.billing-desk .bd-inline-error-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+
+.billing-desk .bd-load-error { display: grid; gap: 2px; padding: 4px 0; }
+
+.billing-desk .bd-sheet-empty { padding: 4px 0; }
+
+/* Receipt */
+
+.billing-desk .bd-charge { padding: 20px; display: flex; flex-direction: column; }
+.billing-desk .bd-kicker-title { font-size: 12px; font-weight: 500; color: var(--bd-subtle); }
+.billing-desk .bd-charge-total {
+  margin-top: 6px;
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+.billing-desk .bd-charge-total[data-muted] { color: var(--bd-subtle); }
+.billing-desk .bd-charge-date { margin-top: 4px; font-size: 13px; color: var(--bd-muted); }
+.billing-desk .bd-lines { margin: 16px 0 0; padding-top: 12px; border-top: 1px dashed var(--bd-hair); display: grid; gap: 8px; }
+.billing-desk .bd-line { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.billing-desk .bd-line dt { color: var(--bd-muted); min-width: 0; }
+.billing-desk .bd-line dd { margin: 0; font-weight: 500; white-space: nowrap; }
+.billing-desk .bd-line--total { padding-top: 8px; border-top: 1px solid var(--bd-hair-soft); }
+.billing-desk .bd-line--total dt { color: var(--bd-ink); font-weight: 600; }
+.billing-desk .bd-line--total dd { font-weight: 650; }
+.billing-desk .bd-charge .bd-fine { margin-top: auto; padding-top: 16px; }
+
+/* Entitlements table */
+
+.billing-desk .bd-includes { min-width: 0; }
+.billing-desk .bd-table-wrap { overflow-x: auto; margin-inline: -4px; }
+.billing-desk .bd-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.billing-desk .bd-table th,
+.billing-desk .bd-table td {
+  padding: 10px 4px;
+  text-align: start;
+  border-bottom: 1px solid var(--bd-hair-soft);
+  vertical-align: top;
+}
+.billing-desk .bd-table thead th {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bd-ink);
+  border-bottom-color: var(--bd-hair);
+  white-space: nowrap;
+}
+.billing-desk .bd-table tbody th { font-weight: 500; color: var(--bd-ink); }
+.billing-desk .bd-table tbody td { color: var(--bd-subtle); width: 30%; }
+.billing-desk .bd-table tbody td[data-included] { color: var(--bd-ink); }
+.billing-desk .bd-table tbody td[data-gain] { color: var(--bd-accent-text); font-weight: 600; }
+.billing-desk .bd-table tbody tr:last-child th,
+.billing-desk .bd-table tbody tr:last-child td { border-bottom: 0; }
+.billing-desk .bd-table tbody tr { transition: background-color 80ms ease; }
+@media (hover: hover) and (pointer: fine) {
+  .billing-desk .bd-table tbody tr:hover { background: color-mix(in oklab, var(--bd-ink) 3%, transparent); }
+}
+.billing-desk .bd-th-tag {
+  margin-inline-start: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--bd-muted);
+  background: color-mix(in oklab, var(--bd-ink) 6%, transparent);
+}
+.billing-desk .bd-th-sub { display: block; margin-top: 2px; font-size: 11px; font-weight: 400; color: var(--bd-subtle); }
+.billing-desk .bd-gain { display: inline-block; width: 12px; font-weight: 700; }
+
+/* Downgrade */
+
+.billing-desk .bd-loss-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.billing-desk .bd-loss-list li {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  column-gap: 8px;
+  font-size: 13px;
+}
+.billing-desk .bd-loss-sign { color: var(--bd-subtle); font-weight: 700; }
+.billing-desk .bd-loss-label { color: var(--bd-ink); font-weight: 500; }
+.billing-desk .bd-loss-change { grid-column: 2; font-size: 12px; color: var(--bd-muted); }
+.billing-desk .bd-loss-list li.bd-loss-more { display: block; font-size: 12px; color: var(--bd-muted); padding-inline-start: 20px; }
+
+/* Payment */
+
+.billing-desk .bd-pay-btn { margin-top: 12px; }
+
+/* Plans ladder */
+
+.billing-desk .bd-ladder { list-style: none; margin: 10px 0 0; padding: 0; }
+.billing-desk .bd-ladder li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--bd-hair-soft);
+  font-size: 13px;
+}
+.billing-desk .bd-ladder li:first-child { border-top: 0; }
+.billing-desk .bd-ladder li[data-current] .bd-ladder-name { font-weight: 600; color: var(--bd-ink); }
+.billing-desk .bd-ladder-name { display: inline-flex; align-items: center; gap: 8px; color: var(--bd-muted); }
+.billing-desk .bd-ladder-tag {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--bd-accent-text);
+  background: color-mix(in oklab, var(--accent) 12%, transparent);
+}
+.billing-desk .bd-ladder-price { font-weight: 600; color: var(--bd-ink); }
+.billing-desk .bd-ladder-unit { margin-inline-start: 2px; font-weight: 400; color: var(--bd-subtle); font-size: 12px; }
+
+/* Skeletons */
+
+.billing-desk .bd-skel-stack { display: grid; gap: 14px; }
+.billing-desk .bd-skel-row { display: flex; justify-content: space-between; gap: 16px; }
+
+/* Narrow */
+
+@media (max-width: 640px) {
+  .billing-desk { padding: 20px 16px 48px; }
+  .billing-desk .bd-title { font-size: 24px; }
+  .billing-desk .bd-sheet { padding: 20px 16px 16px; }
+  .billing-desk .bd-plan-name,
+  .billing-desk .bd-price-amount { font-size: 28px; }
+  .billing-desk .bd-price { justify-items: start; text-align: start; }
+  .billing-desk .bd-ledger { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .billing-desk .bd-ledger-cell { padding: 12px 12px 12px 0; }
+  .billing-desk .bd-ledger-cell:first-child {
+    grid-column: 1 / -1;
+    padding-inline-end: 0;
+    border-bottom: 1px solid var(--bd-hair-soft);
+  }
+  .billing-desk .bd-ledger-cell + .bd-ledger-cell { padding-inline-start: 0; border-inline-start: 0; }
+  .billing-desk .bd-ledger-cell:nth-child(3) {
+    padding-inline-start: 12px;
+    border-inline-start: 1px solid var(--bd-hair-soft);
+  }
+  .billing-desk .bd-actions-row .bd-link { margin-inline-start: 0; }
+  .billing-desk .bd-chooser-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .billing-desk .bd-chooser-row > button { grid-column: 1 / -1; justify-self: start; }
+  .billing-desk .bd-note { grid-template-columns: 20px minmax(0, 1fr); }
+  .billing-desk .bd-note-action { grid-column: 2; justify-self: start; }
+  .billing-desk .bd-panel { padding: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .billing-desk button,
+  .billing-desk .bd-meter-fill,
+  .billing-desk .bd-table tbody tr {
+    transition: none;
+  }
+  .billing-desk button:not(:disabled):active { transform: none; }
+  .billing-desk .bd-note,
+  .billing-desk .bd-chooser {
+    transition: opacity 150ms linear;
+  }
+  @starting-style {
+    .billing-desk .bd-note,
+    .billing-desk .bd-chooser { transform: none; }
+  }
+}

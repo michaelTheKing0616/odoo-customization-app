@@ -90,7 +90,7 @@ export function JournalBatchPanel({ connectionId }: Props) {
       });
       setJob(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Dry-run failed");
+      setError(err instanceof Error ? err.message : "Test run failed");
     } finally {
       setBusy(false);
     }
@@ -130,10 +130,10 @@ export function JournalBatchPanel({ connectionId }: Props) {
 
   return (
     <div className="space-y-4" data-testid="journal-batch-panel">
-      <Callout variant="info" title="Preview ≠ posted">
-        Dry-run checks balance and resolves accounts via public RPC. Apply creates{" "}
+      <Callout variant="info" title="Preview is not posted" testId="journal-batch-honesty">
+        Test run checks balance and resolves accounts via public RPC. Apply creates{" "}
         <strong>draft</strong> <code className="text-xs">account.move</code> rows.
-        Optional post is L2 and needs confirm.
+        Optional post is L2 and needs the risk phrase. Preview is not posted.
       </Callout>
 
       {error ? <ErrorNotice message={error} /> : null}
@@ -149,9 +149,10 @@ export function JournalBatchPanel({ connectionId }: Props) {
         <Button
           type="button"
           size="sm"
-          variant="primary"
+          variant="secondary"
           disabled={busy || !file}
           onClick={() => void onUpload()}
+          data-testid="journal-batch-intake"
         >
           Intake
         </Button>
@@ -185,7 +186,7 @@ export function JournalBatchPanel({ connectionId }: Props) {
                       setColumnMap((prev) => ({ ...prev, [h]: e.target.value }))
                     }
                   >
-                    <option value="">— skip —</option>
+                    <option value="">(skip)</option>
                     {TARGETS.map((t) => (
                       <option key={t} value={t}>
                         {t}
@@ -200,7 +201,7 @@ export function JournalBatchPanel({ connectionId }: Props) {
                 Map
               </Button>
               <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => void runDryRun()}>
-                Dry-run
+                Test run
               </Button>
             </div>
           </Card>

@@ -13,7 +13,7 @@ describe("ModuleSpecStageRail", () => {
     expect(rail.querySelector('[data-stage="load"]')?.className).toMatch(/is-done/);
     expect(screen.getByTestId("modulespec-steps")).toBeTruthy();
     expect(screen.getByTestId("modulespec-stage-hint").textContent).toMatch(
-      /Completeness ≠ Cert ≠ Autopilot/,
+      /A complete draft is not the same as certified, and neither means Autopilot-ready/,
     );
     expect(screen.getByTestId("modulespec-stage-hint").textContent).toMatch(/escape hatch/);
   });
@@ -23,6 +23,6 @@ describe("ModuleSpecStageRail", () => {
     expect(
       screen.getByTestId("modulespec-stage-rail").querySelector('[data-stage="apply"]'),
     ).toHaveAttribute("aria-current", "step");
-    expect(screen.getByTestId("modulespec-stage-hint").textContent).toMatch(/Promote stays human/);
+    expect(screen.getByTestId("modulespec-stage-hint").textContent).toMatch(/Publishing stays a step you confirm/);
   });
 });

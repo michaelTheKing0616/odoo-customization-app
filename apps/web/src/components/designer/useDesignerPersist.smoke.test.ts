@@ -11,12 +11,17 @@ describe("useDesignerPersist extract hygiene", () => {
     expect(src).toContain("function onSessionUndo");
   });
 
-  it("page uses the hook instead of inline onSave", () => {
-    const page = readFileSync(
-      resolve(__dirname, "../../app/connections/[id]/designer/page.tsx"),
+  it("classic page retired: redirects to the current designer, which mounts ViewDesignerShell", () => {
+    const classic = readFileSync(
+      resolve(__dirname, "../../app/connections/[id]/designer/classic/page.tsx"),
       "utf8",
     );
-    expect(page).toContain("useDesignerPersist({");
-    expect(page).not.toContain("async function onSave(");
+    expect(classic).toContain("redirect(");
+    expect(classic).toContain("/designer");
+    const current = readFileSync(
+      resolve(__dirname, "../../app/connections/[id]/view-designer/page.tsx"),
+      "utf8",
+    );
+    expect(current).toContain("<ViewDesignerShell");
   });
 });

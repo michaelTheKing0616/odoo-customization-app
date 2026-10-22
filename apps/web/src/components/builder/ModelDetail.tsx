@@ -1,5 +1,6 @@
 "use client";
 
+import { Term } from "@/components/ui/Term";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/layout-primitives";
@@ -79,7 +80,7 @@ export function ModelDetail({
               {custom ? "Custom model" : "Existing model"}
             </p>
             <h2 className="text-base font-semibold text-ink">{modelLabel || model}</h2>
-            <p className="mt-0.5 font-mono text-[11px] text-muted">{model}</p>
+            <p className="mt-0.5 font-mono text-[11px] text-muted"><Term tech={model}>{model}</Term></p>
             <div className="mt-2">
               <ModelTierInline connectionId={connectionId} model={model} />
             </div>

@@ -9,6 +9,7 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { automationsHref } from "@/lib/automationForm";
 import { api } from "@/lib/api";
 import type { DesignerPageModel } from "@/components/designer/useDesignerPageModel";
+import { classifyDesignerError } from "@/components/designer/designerCanvasState";
 
 export function DesignerPageNotices({ m }: { m: DesignerPageModel }) {
   return (
@@ -54,7 +55,10 @@ export function DesignerPageNotices({ m }: { m: DesignerPageModel }) {
           })();
         }}
       />
-      {m.error ? <ErrorNotice message={m.error} className="mt-2" /> : null}
+      {/* XML and inherit errors render on the canvas (UI-S-12), next to the view they break. */}
+      {m.error && !classifyDesignerError(m.error) ? (
+        <ErrorNotice message={m.error} className="mt-2" />
+      ) : null}
       {m.notice ? (
         <Callout variant="info" title="Notice" className="mt-2">
           {m.notice}

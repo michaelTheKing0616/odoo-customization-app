@@ -45,7 +45,7 @@ export default function VerifyPage() {
   return (
     <div className="mx-auto max-w-md space-y-6 p-6">
       <PageHeader title="Verify email" />
-      <Suspense fallback={<Card><p className="text-sm text-muted-foreground">Loading…</p></Card>}>
+      <Suspense fallback={<Card><p className="text-sm text-muted-foreground">Checking your link…</p></Card>}>
         <VerifyContent />
       </Suspense>
     </div>

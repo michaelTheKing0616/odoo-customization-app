@@ -147,20 +147,20 @@ export function projectsJourneyFromState(opts: {
 
 export function projectsJourneyHint(state: ProjectsJourneyState): string {
   if (state.failed && state.id === "review") {
-    return "Review vs live did not finish. Check the connection, then try again. Completeness is not go-live. Promote stays human.";
+    return "Review vs live did not finish. Check the connection, then try again. Completeness checks structure; it is not go-live. Publishing stays a step you confirm.";
   }
   if (state.failed && state.id === "apply") {
-    return "Apply did not finish. Prefer a sandbox. Completeness ≠ Cert ≠ Autopilot. Promote stays human.";
+    return "Apply did not finish. Try a test copy. A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm.";
   }
   switch (state.id) {
     case "browse":
       return "Pick a draft or create one. Projects are versioned customization history — not a table dump. Completeness is hygiene, not Certification.";
     case "inspect":
-      return "Open the ModuleSpec, then Review vs live before Apply. Snapshot and Rollback live on this board. Completeness ≠ Cert ≠ Autopilot.";
+      return "Open the app plan, then Review vs live before Apply. Snapshot and Rollback live on this board. A complete draft is not the same as certified, and neither means Autopilot-ready.";
     case "review":
-      return "Diff is draft vs live models and fields. Conflicts need a human. Views and menus stay in ModuleSpec Generate UI. Promote stays human.";
+      return "Diff is draft vs live models and fields. Conflicts need a human. Views and menus stay in app plan Generate UI. Publishing stays a step you confirm.";
     case "apply":
-      return "Apply creates missing models and fields. Prefer a sandbox. Snapshot restores definitions when Odoo allows. Promote stays human.";
+      return "Apply creates missing models and fields. Try a test copy. Snapshot restores definitions when Odoo allows. Publishing stays a step you confirm.";
   }
 }
 
@@ -174,7 +174,7 @@ export function projectsHeaderDescription(
   if (connectionName) {
     return `${connectionName} · versioned drafts, diff vs live, snapshot, and rollback`;
   }
-  return "Versioned customization history. Draft, review vs live, then apply. Promote stays human.";
+  return "Versioned customization history. Draft, review vs live, then apply. Publishing stays a step you confirm.";
 }
 
 export function projectsSessionState(project: ProjectRow | null | undefined): ProjectsSessionState {
@@ -187,11 +187,11 @@ export function projectsSessionState(project: ProjectRow | null | undefined): Pr
 export function projectsSessionHint(state: ProjectsSessionState): string {
   switch (state) {
     case "archived":
-      return "Archived drafts keep history readable and free an active slot. Un-archive before Apply. Promote stays human.";
+      return "Archived drafts keep history readable and free an active slot. Un-archive before Apply. Publishing stays a step you confirm.";
     case "applied":
       return "Last Apply wrote models and fields on this connection. Review vs live again, or restore a snapshot when Odoo allows.";
     case "draft":
-      return "Nothing writes to Odoo until Apply. Review vs live, then confirm. Completeness is not go-live.";
+      return "Nothing writes to Odoo until Apply. Review vs live, then confirm. Completeness checks structure; it is not go-live.";
   }
 }
 
@@ -201,7 +201,7 @@ export function sessionSubmitHint(opts: {
   canApply?: boolean;
 }): string {
   if (opts.sessionState === "archived") return "Un-archive to Apply. History stays on this board.";
-  if (opts.sessionState === "applied") return "Review vs live, or open ModuleSpec to continue.";
+  if (opts.sessionState === "applied") return "Review vs live, or open app plan to continue.";
   if (opts.hasDiff && opts.canApply) return "Review the diff, then Apply on a sandbox.";
   if (opts.hasDiff) return "Diff is ready. Fix Apply gates before writing Odoo.";
   return "Review vs live before Apply.";
@@ -309,7 +309,7 @@ export function projectsHonestyGate(opts: {
     return {
       variant: "danger",
       title: "Production connection",
-      body: "Prefer a sandbox. Apply still needs a human confirm and creates models and fields on this database. Completeness ≠ Cert ≠ Autopilot. Promote stays human.",
+      body: "Try a test copy. Apply still needs a human confirm and creates models and fields on this database. A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm.",
       reason: "production",
     };
   }
@@ -317,7 +317,7 @@ export function projectsHonestyGate(opts: {
     return {
       variant: "warning",
       title: "Observer connection",
-      body: "Observer is for inspection. Switch write_mode to standard on a sandbox before Apply. Promote stays human.",
+      body: "Observer is for inspection. Switch write_mode to standard on a sandbox before Apply. Publishing stays a step you confirm.",
       reason: "observer",
     };
   }
@@ -325,14 +325,14 @@ export function projectsHonestyGate(opts: {
     return {
       variant: "info",
       title: "Sandbox apply",
-      body: "This looks like a local sandbox. Apply creates missing models and fields only. Views, menus, and ACL stay in ModuleSpec Generate UI. Promote stays human.",
+      body: "This looks like a local sandbox. Apply creates missing models and fields only. Views, menus, and Access rights stay in app-plan Generate UI. Publishing stays a step you confirm.",
       reason: "sandbox",
     };
   }
   return {
     variant: "warning",
     title: "Not a local sandbox",
-    body: "Apply writes this connection. Prefer a sandbox first. Snapshot restores views and automations when Odoo allows; created columns are only partially recoverable. Promote stays human.",
+    body: "Apply writes this connection. Try a test copy first. Snapshot restores views and automations when Odoo allows; created columns are only partially recoverable. Publishing stays a step you confirm.",
     reason: "staging",
   };
 }
@@ -342,7 +342,7 @@ export function applyRisks(): string[] {
     "Creates ir.model / ir.model.fields on the live target",
     "v1 Apply does not create views, menus, or ACL from the draft",
     "Dropped columns and created x_ models are only partially recoverable",
-    "Prefer a sandbox connection. Promote stays human",
+    "Try a test copy connection. Publishing stays a step you confirm",
   ];
 }
 
@@ -385,15 +385,15 @@ export function honestyLegend(): string[] {
 
 export function glossaryLines(): string[] {
   return [
-    "Draft is the saved ModuleSpec on this board — not a live Odoo write.",
-    "Apply creates missing models and fields. Generate UI in ModuleSpec writes views and menus.",
-    "Promote stays human. Sandbox first. Completeness is not Certification or Autopilot.",
+    "Draft is the saved app plan on this board — not a live Odoo write.",
+    "Apply creates missing models and fields. Generate UI in app plan writes views and menus.",
+    "Publishing stays a step you confirm. Sandbox first. Completeness is not Certification or Autopilot.",
     "Snapshot is a restore point. Rollback restores definitions when Odoo allows; columns are partial.",
   ];
 }
 
 export function glossaryStrip(): string {
-  return "Draft · Apply · Promote · Snapshot · Rollback · Sandbox. Promote stays human.";
+  return "Draft · Apply · Promote · Snapshot · Rollback · Sandbox. Publishing stays a step you confirm.";
 }
 
 export function countLabel(count: number, singular: string, plural = `${singular}s`): string {

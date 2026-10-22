@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { UpgradeSheet } from "./UpgradeSheet";
+import { UpgradeSheet, upgradeSheetDescription } from "./UpgradeSheet";
 
 vi.mock("next/link", () => ({
   default: ({
@@ -72,6 +72,15 @@ function expectUpgradeClosed() {
 }
 
 describe("UpgradeSheet", () => {
+  it("description is deterministic from featureKey (SSR == first client render)", () => {
+    const pick = "Pick a plan. Operate tools (bulk, health checks, snapshots) stay available on every plan.";
+    expect(upgradeSheetDescription(undefined)).toBe(pick);
+    expect(upgradeSheetDescription(null)).toBe(pick);
+    expect(upgradeSheetDescription("")).toBe(pick);
+    expect(upgradeSheetDescription(undefined)).toBe(upgradeSheetDescription(undefined));
+    expect(upgradeSheetDescription("designer")).toMatch(/^Unlock View designer\./);
+  });
+
   it("opens and closes, and Escape and the backdrop dismiss it", async () => {
     render(<UpgradeHarness />);
     expectUpgradeClosed();

@@ -3,6 +3,7 @@
 import type { AutomationActionKind, Connection } from "@/lib/api";
 import { connectionSupports } from "@/lib/capabilities";
 import { cn } from "@/lib/cn";
+import { coerceToOptionA } from "@/lib/automationForm";
 
 type Props = {
   connection: Connection | null | undefined;
@@ -30,7 +31,7 @@ function safeOptions(connection: Connection | null | undefined): KindOption[] {
       value: "related_write",
       label: connectionSupports(connection, "related_write_dotted_path")
         ? "Update linked record"
-        : "Update linked record — unavailable on this Odoo",
+        : "Update linked record (unavailable on this Odoo)",
       disabled: !connectionSupports(connection, "related_write_dotted_path"),
     },
     { value: "create_activity", label: "Schedule activity" },
@@ -48,14 +49,13 @@ const ADVANCED_OPTIONS: KindOption[] = [
   { value: "sms", label: "Send SMS (confirm)" },
   { value: "followers", label: "Add followers (confirm)" },
   { value: "remove_followers", label: "Remove followers (confirm)" },
-  { value: "code_live", label: "Run Python live (confirm)" },
 ];
 
 const OPTION_A: KindOption[] = [
-  { value: "python_module", label: "Export Python module (not live)" },
+  { value: "python_module", label: "Export Python module (custom code)" },
 ];
 
-/** Automations “Then” action kind select — gates update_path caps fail-closed. */
+/** Automations action kind select. Live Python is never listed; use Option A. */
 export function AutomationActionKindSelect({
   connection,
   value,
@@ -64,14 +64,15 @@ export function AutomationActionKindSelect({
   id,
   "data-testid": testId = "automation-action-kind",
 }: Props) {
+  const selected = coerceToOptionA(value);
   return (
     <select
       id={id}
       data-testid={testId}
-      value={value}
-      onChange={(e) => onChange(e.target.value as AutomationActionKind)}
+      value={selected}
+      onChange={(e) => onChange(coerceToOptionA(e.target.value as AutomationActionKind))}
       className={cn(
-        "h-9 w-full rounded-md border border-border-subtle bg-surface px-3 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2",
+        "h-row w-full rounded-md border border-border-subtle bg-surface px-3 text-ui-body text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2",
         className,
       )}
     >
@@ -89,7 +90,7 @@ export function AutomationActionKindSelect({
           </option>
         ))}
       </optgroup>
-      <optgroup label="Option A">
+      <optgroup label="Custom code">
         {OPTION_A.map((opt) => (
           <option key={opt.value} value={opt.value}>
             {opt.label}

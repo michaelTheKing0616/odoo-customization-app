@@ -17,7 +17,7 @@ export function StudioBusyLabel({ children, className }: StudioBusyLabelProps) {
 }
 
 export function InlineWait({
-  children = "Loading…",
+  children = "Reading from Odoo…",
   className,
 }: {
   children?: ReactNode;

@@ -30,7 +30,7 @@ describe("ProjectHandoffBar", () => {
       "href",
       "/connections/c1/wizard",
     );
-    expect(screen.getByTestId("projects-handoff-bar").textContent).toMatch(/Promote stays human/);
+    expect(screen.getByTestId("projects-handoff-bar").textContent).toMatch(/Publishing stays a step you confirm/);
     expect(screen.queryByRole("link", { name: "Odoo Expert" })).toBeNull();
   });
 });

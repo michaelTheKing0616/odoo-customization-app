@@ -57,7 +57,7 @@ export function ConnectChecklist({ input, className, showCapabilities }: Props) 
               className={cn(
                 "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold",
                 step.done
-                  ? "bg-success text-white"
+                  ? "bg-success text-on-success"
                   : "bg-muted/30 text-muted",
               )}
               aria-hidden
@@ -71,7 +71,7 @@ export function ConnectChecklist({ input, className, showCapabilities }: Props) 
           </li>
         ))}
       </ol>
-      {showCapabilities || completed >= 4 ? (
+      {showCapabilities ? (
         <Callout
           variant="info"
           title={

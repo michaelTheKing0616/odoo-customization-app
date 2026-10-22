@@ -4,12 +4,21 @@ import { useMemo } from "react";
 import { Tooltip } from "@/components/ui/Tooltip";
 import type { ExpertCitation } from "@/lib/api";
 
+export function citationTooltip(citation: ExpertCitation): string {
+  return [citation.source, citation.version, citation.breadcrumb].filter(Boolean).join(" · ");
+}
+
 export function CitationChip({ citation, index }: { citation: ExpertCitation; index?: number }) {
   const label = index ?? citation.source_index;
   return (
-    <Tooltip label={`${citation.source} · ${citation.version} — ${citation.breadcrumb}`}>
-      <sup className="expert-cite-chip cursor-help" data-testid="expert-citation-chip">
-        [{label}]
+    <Tooltip label={citationTooltip(citation)}>
+      <sup
+        className="expert-cite-chip"
+        tabIndex={0}
+        aria-label={`Source ${label}: ${citationTooltip(citation)}`}
+        data-testid="expert-citation-chip"
+      >
+        {label}
       </sup>
     </Tooltip>
   );
@@ -35,12 +44,14 @@ export function ExpertSources({ citations }: ExpertSourcesProps) {
       <ol className="expert-source-list">
         {rows.map((c) => (
           <li key={c.chunk_id} className="expert-source-row">
-            <CitationChip citation={c} />
-            <span className="min-w-0 truncate">
-              <span className="font-medium text-ink">{c.source}</span>
-              <span className="text-muted">
+            <span className="expert-source-index" aria-hidden>
+              {c.source_index}
+            </span>
+            <span className="min-w-0">
+              <span className="expert-source-name">{c.source}</span>
+              <span className="expert-source-meta">
                 {" "}
-                · {c.version} — {c.breadcrumb}
+                {c.version} · {c.breadcrumb}
               </span>
             </span>
           </li>

@@ -27,7 +27,7 @@ afterEach(() => {
 describe("app route states", () => {
   it("renders root not-found copy and home link", () => {
     render(<NotFound />);
-    expect(screen.getByRole("heading", { name: /find this page failed/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /this page isn.t here/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /go home/i })).toHaveAttribute("href", "/");
   });
 

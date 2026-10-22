@@ -4,8 +4,10 @@ import {
   composerSessionState,
   defaultComposerForm,
   designerHref,
+  coerceToOptionA,
   firstAvailableSafeActionKind,
   isComposerDirty,
+  parseAutomationPrompt,
   parseFieldValueLines,
   parseIdList,
   parseNameList,
@@ -87,5 +89,37 @@ describe("automationForm capability fallback", () => {
 
   it("fail-closes to create_activity when capabilities are unknown", () => {
     expect(firstAvailableSafeActionKind(null)).toBe("create_activity");
+  });
+});
+
+
+describe("automationForm Option A and prompt", () => {
+  it("coerces code_live onto python_module", () => {
+    expect(coerceToOptionA("code_live")).toBe("python_module");
+    expect(coerceToOptionA("webhook")).toBe("webhook");
+  });
+
+  it("parses a plain-language rule into composer hints", () => {
+    const hints = parseAutomationPrompt(
+      "On create of x_visitor_log, set x_checked_in to true",
+    );
+    expect(hints.model).toBe("x_visitor_log");
+    expect(hints.trigger).toBe("on_create");
+    expect(hints.action_kind).toBe("update_field");
+    expect(hints.name).toMatch(/On create/i);
+  });
+
+  it("routes Python / state=code wording to Option A, never code_live", () => {
+    const hints = parseAutomationPrompt(
+      "Compute fine with python for record in records on x_lib_loan state=code",
+    );
+    expect(hints.action_kind).toBe("python_module");
+    expect(hints.model).toBe("x_lib_loan");
+  });
+
+  it("flags webhook prompts as advanced webhook", () => {
+    expect(parseAutomationPrompt("POST to https://hooks.example/odoo").action_kind).toBe(
+      "webhook",
+    );
   });
 });

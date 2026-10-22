@@ -8,6 +8,9 @@ export type PowerOpsRecipe = {
   requires_modules: string[];
   tags?: string[];
   min_major?: number;
+  /** Money guard: refused server-side; never selectable. */
+  locked?: boolean;
+  locked_reason?: string | null;
   steps: Array<{ kind: string; method?: string | null; label: string }>;
 };
 

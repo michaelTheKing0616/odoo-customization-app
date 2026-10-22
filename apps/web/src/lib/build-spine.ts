@@ -48,34 +48,34 @@ export const BUILD_MODE_META: Record<
   { label: string; surface: "studio" | "wizard" | "job" | "designer"; blurb: string }
 > = {
   prefer_pack: {
-    label: "Prefer pack",
+    label: "Field pack",
     surface: "designer",
-    blurb: "Inherit-only field pack on a stock host — not a new Apps tile.",
+    blurb: "Adds fields on an existing form — not a new Apps tile.",
   },
   residual_app: {
-    label: "Residual app",
+    label: "Custom app",
     surface: "studio",
-    blurb: "New x_* residual / full app — identity lock; never Prefer-reshape.",
+    blurb: "New custom app — keeps its own identity; not reshaped into a field pack.",
   },
   option_a: {
-    label: "Option A",
+    label: "Custom code",
     surface: "studio",
-    blurb: "Installable module — sandbox prove, human Promote.",
+    blurb: "Installable module — prove on a test copy, then publish.",
   },
   stock_autopilot: {
-    label: "Stock Autopilot",
+    label: "Built-in Autopilot",
     surface: "job",
-    blurb: "Stock-first Job Autopilot — no custom residual invent.",
+    blurb: "Job Autopilot using built-in apps first — no custom code invent.",
   },
   report_layout: {
     label: "Report layout",
     surface: "studio",
-    blurb: "QWeb / document layout — not Contacts Prefer delivery-notes.",
+    blurb: "QWeb / document layout — not a Contacts field-pack delivery.",
   },
   connector: {
     label: "Connector",
     surface: "studio",
-    blurb: "FX / HTTP provider — gold Option A or external connector lane.",
+    blurb: "FX / HTTP provider — gold custom code or an external connector path.",
   },
 };
 
@@ -145,4 +145,4 @@ export function defaultChips(connectionId: string, active: BuildMode): BuildSpin
 }
 
 export const BUILD_SPINE_HONESTY =
-  "One Build entry — App Studio, Draft Studio, and Job Autopilot share brief + stamps. Completeness ≠ Cert ≠ Autopilot. Promote stays human.";
+  "One Build entry — App Studio, Draft Studio, and Job Autopilot share brief + stamps. A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm.";

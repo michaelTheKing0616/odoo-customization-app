@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
+import { FrameMeta } from "@/components/frame/FrameMeta";
 
 type DesignerStudioShellProps = {
   title?: string;
@@ -13,12 +14,16 @@ type DesignerStudioShellProps = {
   rail: ReactNode;
   extras?: ReactNode;
   className?: string;
+  /** Skip the page-padding bleed (standalone harnesses with no app layout padding). */
+  flush?: boolean;
   testId?: string;
 };
 
 /**
- * Studio mental model: session chrome on top, live/structural canvas in the
- * center, modification tools on the right. Full-bleed inside AppShell padding.
+ * Studio mental model (Webflow 3-pane, UI-S-12): basalt chrome on top and on
+ * the right, the canvas desk in the middle. The chrome carries the app's
+ * `.dark` token scope plus `.designer-chrome` (basalt/limestone), so every
+ * token-driven child renders on dark without per-component forks.
  */
 export function DesignerStudioShell({
   title = "View designer",
@@ -30,45 +35,52 @@ export function DesignerStudioShell({
   rail,
   extras,
   className,
+  flush = false,
   testId = "designer-page",
 }: DesignerStudioShellProps) {
   return (
     <div
       className={cn(
-        "designer-studio-shell -mx-4 -mt-4 mb-0 flex min-h-[calc(100vh-4.5rem)] flex-col bg-background md:-mx-6 md:-mt-6",
+        "designer-studio-shell mb-0 flex min-h-[calc(100dvh-4.5rem)] flex-col bg-background",
+        !flush && "-mx-4 -mt-4 md:-mx-6 md:-mt-6",
         className,
       )}
       data-testid={testId}
     >
       <header
-        className="shrink-0 border-b border-border-subtle bg-surface-raised px-4 py-3 md:px-6"
+        className="designer-chrome designer-studio-header dark shrink-0 px-4 md:px-5"
         data-testid="designer-studio-header"
       >
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted">
-              Customize
-            </p>
-            <h1 className="text-lg font-semibold tracking-tight text-ink">{title}</h1>
+        <div className="designer-titlebar">
+          <div className="min-w-0 flex-1 basis-56">
+            <FrameMeta />
+            <h1 className="designer-title">{title}</h1>
             {description ? (
-              <p className="mt-0.5 max-w-3xl text-sm text-muted">{description}</p>
+              <p className="designer-subtitle" title={description}>
+                {description}
+              </p>
             ) : null}
           </div>
+          <div className="min-w-0 max-w-full">{sessionBar}</div>
         </div>
-        <div className="mt-3">{sessionBar}</div>
-        {toolbar ? <div className="mt-3">{toolbar}</div> : null}
-        {notices ? <div className="mt-3 space-y-2">{notices}</div> : null}
+        {toolbar ? <div className="designer-toolbar-row">{toolbar}</div> : null}
+        {notices ? <div className="designer-notices space-y-2">{notices}</div> : null}
       </header>
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row" data-testid="designer-studio-body">
+      <div
+        className="flex min-h-0 flex-1 flex-col lg:min-h-[36rem] lg:flex-row"
+        data-testid="designer-studio-body"
+      >
         <section
           className="designer-studio-canvas min-h-[28rem] min-w-0 flex-1 overflow-auto"
           data-testid="designer-studio-canvas"
+          aria-label="Canvas"
         >
           {canvas}
         </section>
         <aside
-          className="designer-studio-rail flex w-full shrink-0 flex-col overflow-auto border-t border-border-subtle bg-surface-raised lg:w-[22.5rem] lg:border-l lg:border-t-0"
+          className="designer-chrome designer-studio-rail dark flex w-full shrink-0 flex-col overflow-auto border-t lg:sticky lg:top-0 lg:max-h-dvh lg:w-[22.5rem] lg:self-stretch lg:border-l lg:border-t-0"
           data-testid="designer-tools-rail"
+          aria-label="Modification tools"
         >
           {rail}
         </aside>

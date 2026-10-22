@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
-import { Card } from "@/components/ui/layout-primitives";
+import { ExternalLink } from "@/components/ui/icons";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { CrudPermitsControl } from "@/components/security/CrudPermitsControl";
@@ -19,6 +20,8 @@ type AccessComposerProps = {
   busy?: boolean;
   canSubmit?: boolean;
   submitBlockedReason?: string | null;
+  /** Production R3: link to the plan card instead of an inline save. */
+  planHref?: string | null;
 };
 
 export function AccessComposer({
@@ -30,17 +33,15 @@ export function AccessComposer({
   busy,
   canSubmit = true,
   submitBlockedReason,
+  planHref,
 }: AccessComposerProps) {
   return (
     <form onSubmit={onSubmit} className="space-y-4" data-testid="access-composer">
-      <Card className="space-y-4 p-5">
+      <div className="ax-panel">
         <div>
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted">
-            New access right
-          </p>
-          <h2 className="text-base font-semibold text-ink">Grant CRUD on {model}</h2>
-          <p className="mt-1 text-sm text-muted">
-            Creates an ir.model.access line. Prefer a named group over a global grant.
+          <h2 className="ax-panel-title">New access line on {model}</h2>
+          <p className="ax-panel-sub">
+            Pick a group and the operations it may run. Prefer a named group over a global line.
           </p>
         </div>
         {isGlobalAccess(form.group_id) ? (
@@ -66,23 +67,34 @@ export function AccessComposer({
           ]}
           value={form.group_id}
           onChange={(e) => onChange({ group_id: e.target.value })}
-          hint="Studio-style ACL is group-scoped. All users is the global line."
+          hint="All users makes a global line that every user inherits."
         />
         <div>
           <p className="mb-2 text-sm font-medium text-ink">Permissions</p>
           <CrudPermitsControl value={form} onChange={onChange} />
         </div>
-        <Button
-          type="submit"
-          variant="primary"
-          disabled={busy || !canSubmit || !form.name.trim()}
-          title={submitBlockedReason ?? undefined}
-          loading={busy}
-          data-testid="access-create"
-        >
-          Create access
-        </Button>
-      </Card>
+        <div className="ax-panel-actions">
+          {planHref ? (
+            <Button variant="primary" asChild>
+              <Link href={planHref} data-testid="access-create-plan-link">
+                Open plan card
+                <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+              </Link>
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={busy || !canSubmit || !form.name.trim()}
+              title={submitBlockedReason ?? undefined}
+              loading={busy}
+              data-testid="access-create"
+            >
+              Save right
+            </Button>
+          )}
+        </div>
+      </div>
     </form>
   );
 }

@@ -5,10 +5,14 @@ export default defineConfig({
   esbuild: {
     jsx: "automatic",
   },
+  // Tests never need Tailwind: an inline empty PostCSS config stops Vite loading the app's
+  // string-form plugin list (which it rejects) when a page imports a plain .css file.
+  css: { postcss: { plugins: [] } },
   test: {
     environment: "happy-dom",
     include: ["src/**/*.test.{ts,tsx}"],
     setupFiles: ["./vitest.setup.ts"],
+    css: false,
     environmentMatchGlobs: [
       ["src/lib/api.test.ts", "node"],
       ["src/lib/odoo-urls.test.ts", "node"],
@@ -20,8 +24,15 @@ export default defineConfig({
     ],
   },
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
+    alias: [
+      {
+        find: /^(.+)\.module\.css$/,
+        replacement: path.resolve(__dirname, "./vitest.css-module-stub.js"),
+      },
+      {
+        find: "@",
+        replacement: path.resolve(__dirname, "./src"),
+      },
+    ],
   },
 });

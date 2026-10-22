@@ -78,8 +78,8 @@ export function useWizardReuse({
       )?.score_0_10;
       setAiNote(
         typeof reuseScore === "number"
-          ? `Reuse plan updated — draft quality ${reuseScore.toFixed(1)}/10 (apply-readiness applied).`
-          : "Reuse plan updated — apply-readiness passes applied.",
+          ? `Reuse plan updated. Draft quality ${reuseScore.toFixed(1)}/10 (apply-readiness applied).`
+          : "Reuse plan updated. Apply-readiness passes applied.",
       );
     } catch (err) {
       reportApiError(err, setError, { fallback: "Reuse apply failed", toast: true });
@@ -108,7 +108,7 @@ export function useWizardReuse({
       reuseOverride: nextReuse,
       rejectedOverride: nextRejected,
       busyLabel:
-        "Regenerating with custom models — local Ollama may take several minutes…",
+        "Regenerating with custom models. Local Ollama may take several minutes…",
     });
   }
 
@@ -159,7 +159,7 @@ export function useWizardReuse({
       }
       setAiNote(
         moduleName
-          ? `Installed ${moduleName} and reused ${model}. Other installable apps remain below — Install each you need.`
+          ? `Installed ${moduleName} and reused ${model}. Other installable apps remain below. Install each one you need.`
           : `Reuse plan updated for ${model}. Other suggestions remain available.`,
       );
     } catch (err) {
@@ -194,14 +194,14 @@ export function useWizardReuse({
       if (verified.draft) setAiDraft(verified.draft);
       setAiNote(
         verified.ok
-          ? `${offer.label} is on this connection. Authoring gate passed — zip and sandbox unlocked. Promote stays human.`
+          ? `${offer.label} is on this connection. Authoring gate passed. Zip and sandbox unlocked. Publishing stays a step you confirm.`
           : verified.message ||
             `${offer.label} is installed. The authoring gate still has findings.`,
       );
     } catch (err) {
       if (sent && isApiNotFound(err)) {
         setAiNote(
-          `${offer.label} was sent to this Odoo. Authoring re-check returned 404 — kill/restart uvicorn on :8001 without --reload, then refresh and re-check the gate. Do not Live Install the zip.`,
+          `${offer.label} was sent to this Odoo. Authoring re-check returned 404. Restart uvicorn on :8001 without --reload, then refresh and re-check the gate. Do not Live Install the zip.`,
         );
         return;
       }
@@ -226,7 +226,7 @@ export function useWizardReuse({
       reuseOverride: nextReuse,
       rejectedOverride: nextRejected,
       busyLabel:
-        "Regenerating with custom models — local Ollama may take several minutes…",
+        "Regenerating with custom models. Local Ollama may take several minutes…",
     });
   }
 

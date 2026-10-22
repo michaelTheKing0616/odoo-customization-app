@@ -1,5 +1,7 @@
 "use client";
 
+import type { api } from "@/lib/api";
+
 import { useCallback, useEffect } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import {
@@ -13,7 +15,7 @@ import type { ViewType } from "@/components/designer/designer-model";
 import { odooViewUrl, pickStandaloneWindowAction, sameOriginPreviewUrl } from "@/lib/odoo-urls";
 export type DesignerPageBootstrapDeps = {
   connectionId: string;
-  api: any;
+  api: typeof api;
   viewType: ViewType;
   model: string;
   setModel: (v: string) => void;

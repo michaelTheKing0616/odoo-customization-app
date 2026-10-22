@@ -1,9 +1,11 @@
 "use client";
 
+import { stakesFor, stakesLine } from "@/lib/stakes";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { DialogPanel } from "@/components/ui/Dialog";
 import { cn } from "@/lib/cn";
+import { useConfirmTarget } from "@/components/ui/useConfirmTarget";
 
 const DEFAULT_PHRASE = "I understand the risks";
 
@@ -50,6 +52,20 @@ export function ConfirmDialogV2({
 
   const canConfirm = typed === phrase && !busy;
 
+  // Touch 88: Cmd/Ctrl+Enter confirms the main action (still only once the phrase matches).
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && canConfirm) {
+        e.preventDefault();
+        onConfirm(phrase);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, canConfirm, onConfirm, phrase]);
+
+  const target = useConfirmTarget(open);
   return (
     <DialogPanel
       open={open}
@@ -85,6 +101,8 @@ export function ConfirmDialogV2({
             variant={danger ? "danger" : "primary"}
             size="md"
             data-testid="confirm-dialog-v2-confirm"
+            data-shortcut="⌘↵"
+            title="Cmd or Ctrl + Enter"
             disabled={!canConfirm}
             loading={busy}
             onClick={() => onConfirm(phrase)}
@@ -95,6 +113,16 @@ export function ConfirmDialogV2({
       }
     >
       <div className="space-y-3">
+        {target ? (
+          <p className="text-sm" data-testid="confirm-dialog-v2-target">
+            On <span className="font-semibold text-ink">{target.name}</span>{" "}
+            <span className={cn("rounded px-1.5 py-0.5 text-xs font-medium", target.environment === "Live" ? "bg-danger-subtle text-danger" : "bg-surface-muted text-muted")}>{target.certain ? target.environment : `Probably ${target.environment === "Live" ? "live" : "a test copy"}`}</span>
+          </p>
+        ) : null}
+        {target ? (() => {
+          const st = stakesFor({ danger, environment: target.environment, certain: target.certain });
+          return <p className={cn("text-sm", st === "high" ? "font-medium text-ink" : "text-muted")} data-testid="confirm-dialog-v2-stakes" data-stakes={st}>{stakesLine(st)}</p>;
+        })() : null}
         <p className="text-sm text-muted">{warning}</p>
 
         {blastRadius && blastRadius.length > 0 ? (

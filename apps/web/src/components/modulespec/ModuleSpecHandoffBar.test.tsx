@@ -32,7 +32,7 @@ describe("ModuleSpecHandoffBar", () => {
       "href",
       "/connections/c1/projects?project=p1",
     );
-    expect(screen.getByTestId("modulespec-handoff-bar").textContent).toMatch(/Promote stays human/);
+    expect(screen.getByTestId("modulespec-handoff-bar").textContent).toMatch(/Publishing stays a step you confirm/);
     expect(screen.queryByRole("link", { name: "Expert" })).toBeNull();
   });
 });

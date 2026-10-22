@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { JobAutopilotShell } from "./JobAutopilotShell";
 
@@ -20,14 +20,16 @@ describe("JobAutopilotShell", () => {
     expect(screen.getByRole("heading", { name: "Job Autopilot" })).toBeTruthy();
     expect(screen.getByText(/Lab 19/)).toBeTruthy();
     expect(screen.getByText(/sandbox-only/)).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Draft Studio" })).toHaveAttribute(
+    const cluster = screen.getByLabelText("Studio cluster");
+    expect(within(cluster).getByRole("link", { name: "Draft Studio" })).toHaveAttribute(
       "href",
       "/connections/c1/wizard",
     );
-    expect(screen.getByRole("link", { name: "App Studio" })).toHaveAttribute(
+    expect(within(cluster).getByRole("link", { name: "App Studio" })).toHaveAttribute(
       "href",
       "/connections/c1/studio",
     );
+    expect(within(cluster).getByText("Job Autopilot")).toHaveAttribute("aria-current", "page");
     expect(screen.getByTestId("job-autopilot-steps")).toBeTruthy();
     expect(screen.queryByRole("link", { name: "ModuleSpec" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Projects" })).toBeNull();
@@ -46,6 +48,6 @@ describe("JobAutopilotShell", () => {
       </JobAutopilotShell>,
     );
     expect(screen.getByText(/refuses production/)).toBeTruthy();
-    expect(screen.queryByText(/sandbox-only —/)).toBeNull();
+    expect(screen.queryByText(/sandbox-only:/)).toBeNull();
   });
 });

@@ -1,0 +1,973 @@
+{
+ "app_name": "Customer Health & Retention Intelligence",
+ "purpose": "Score B2B customer health and act before churn.",
+ "new_models": [
+  {
+   "name": "x_health_score",
+   "label": "Customer Health Score",
+   "description": "",
+   "why": "Current score per customer.",
+   "fields": [
+    {
+     "name": "x_name",
+     "ttype": "char",
+     "string": "Name",
+     "required": true,
+     "selection": [],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_partner_id",
+     "ttype": "many2one",
+     "string": "Customer",
+     "required": true,
+     "selection": [],
+     "relation": "res.partner",
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_score",
+     "ttype": "float",
+     "string": "Score",
+     "required": false,
+     "selection": [],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_health_status",
+     "ttype": "selection",
+     "string": "Health Status",
+     "required": false,
+     "selection": [
+      [
+       "healthy",
+       "Healthy"
+      ],
+      [
+       "stable",
+       "Stable"
+      ],
+      [
+       "at_risk",
+       "At Risk"
+      ],
+      [
+       "critical",
+       "Critical"
+      ]
+     ],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_history_ids",
+     "ttype": "one2many",
+     "string": "History",
+     "required": false,
+     "selection": [],
+     "relation": "x_health_score_history",
+     "inverse_name": "x_health_score_id",
+     "help": ""
+    }
+   ],
+   "views": [
+    "kanban",
+    "list",
+    "form",
+    "graph"
+   ],
+   "is_config": false
+  },
+  {
+   "name": "x_health_score_history",
+   "label": "Health Score History",
+   "description": "",
+   "why": "Holds Health Score History records the brief asks for.",
+   "fields": [
+    {
+     "name": "x_name",
+     "ttype": "char",
+     "string": "Name",
+     "required": true,
+     "selection": [],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_health_score_id",
+     "ttype": "many2one",
+     "string": "Health Score",
+     "required": false,
+     "selection": [],
+     "relation": "x_health_score",
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_partner_id",
+     "ttype": "many2one",
+     "string": "Customer",
+     "required": false,
+     "selection": [],
+     "relation": "res.partner",
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_score",
+     "ttype": "float",
+     "string": "Score",
+     "required": false,
+     "selection": [],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_previous_score",
+     "ttype": "float",
+     "string": "Previous Score",
+     "required": false,
+     "selection": [],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_factors",
+     "ttype": "text",
+     "string": "Major Factors",
+     "required": false,
+     "selection": [],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    }
+   ],
+   "views": [
+    "list",
+    "form"
+   ],
+   "is_config": false
+  },
+  {
+   "name": "x_health_rule",
+   "label": "Health Score Rule",
+   "description": "",
+   "why": "Holds Health Score Rule records the brief asks for.",
+   "fields": [
+    {
+     "name": "x_name",
+     "ttype": "char",
+     "string": "Name",
+     "required": true,
+     "selection": [],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_operator",
+     "ttype": "selection",
+     "string": "Operator",
+     "required": false,
+     "selection": [
+      [
+       "gt",
+       ">"
+      ],
+      [
+       "lt",
+       "<"
+      ],
+      [
+       "eq",
+       "="
+      ]
+     ],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_threshold",
+     "ttype": "float",
+     "string": "Threshold",
+     "required": false,
+     "selection": [],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_points",
+     "ttype": "integer",
+     "string": "Points",
+     "required": false,
+     "selection": [],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_active",
+     "ttype": "boolean",
+     "string": "Active",
+     "required": false,
+     "selection": [],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    }
+   ],
+   "views": [
+    "list",
+    "form"
+   ],
+   "is_config": true
+  },
+  {
+   "name": "x_customer_risk",
+   "label": "Customer Risk",
+   "description": "",
+   "why": "Holds Customer Risk records the brief asks for.",
+   "fields": [
+    {
+     "name": "x_name",
+     "ttype": "char",
+     "string": "Name",
+     "required": true,
+     "selection": [],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_partner_id",
+     "ttype": "many2one",
+     "string": "Customer",
+     "required": false,
+     "selection": [],
+     "relation": "res.partner",
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_risk_type",
+     "ttype": "selection",
+     "string": "Risk Type",
+     "required": false,
+     "selection": [
+      [
+       "churn",
+       "Churn"
+      ],
+      [
+       "payment",
+       "Payment"
+      ],
+      [
+       "renewal",
+       "Renewal"
+      ]
+     ],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_severity",
+     "ttype": "selection",
+     "string": "Severity",
+     "required": false,
+     "selection": [
+      [
+       "low",
+       "Low"
+      ],
+      [
+       "medium",
+       "Medium"
+      ],
+      [
+       "high",
+       "High"
+      ],
+      [
+       "critical",
+       "Critical"
+      ]
+     ],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_state",
+     "ttype": "selection",
+     "string": "Status",
+     "required": false,
+     "selection": [
+      [
+       "open",
+       "Open"
+      ],
+      [
+       "monitoring",
+       "Monitoring"
+      ],
+      [
+       "resolved",
+       "Resolved"
+      ],
+      [
+       "dismissed",
+       "Dismissed"
+      ]
+     ],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_owner_id",
+     "ttype": "many2one",
+     "string": "Owner",
+     "required": false,
+     "selection": [],
+     "relation": "res.users",
+     "inverse_name": null,
+     "help": ""
+    }
+   ],
+   "views": [
+    "list",
+    "kanban",
+    "form"
+   ],
+   "is_config": false
+  },
+  {
+   "name": "x_success_plan",
+   "label": "Customer Success Plan",
+   "description": "",
+   "why": "Holds Customer Success Plan records the brief asks for.",
+   "fields": [
+    {
+     "name": "x_name",
+     "ttype": "char",
+     "string": "Name",
+     "required": true,
+     "selection": [],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_partner_id",
+     "ttype": "many2one",
+     "string": "Customer",
+     "required": false,
+     "selection": [],
+     "relation": "res.partner",
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_milestone_ids",
+     "ttype": "one2many",
+     "string": "Milestones",
+     "required": false,
+     "selection": [],
+     "relation": "x_success_milestone",
+     "inverse_name": "x_plan_id",
+     "help": ""
+    },
+    {
+     "name": "x_project_id",
+     "ttype": "many2one",
+     "string": "Project",
+     "required": false,
+     "selection": [],
+     "relation": "project.project",
+     "inverse_name": null,
+     "help": ""
+    }
+   ],
+   "views": [
+    "list",
+    "form"
+   ],
+   "is_config": false
+  },
+  {
+   "name": "x_success_milestone",
+   "label": "Success Plan Milestone",
+   "description": "",
+   "why": "Holds Success Plan Milestone records the brief asks for.",
+   "fields": [
+    {
+     "name": "x_name",
+     "ttype": "char",
+     "string": "Name",
+     "required": true,
+     "selection": [],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_plan_id",
+     "ttype": "many2one",
+     "string": "Plan",
+     "required": false,
+     "selection": [],
+     "relation": "x_success_plan",
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_target_date",
+     "ttype": "date",
+     "string": "Target Date",
+     "required": false,
+     "selection": [],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_done",
+     "ttype": "boolean",
+     "string": "Done",
+     "required": false,
+     "selection": [],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    }
+   ],
+   "views": [
+    "list",
+    "form"
+   ],
+   "is_config": false
+  },
+  {
+   "name": "x_renewal",
+   "label": "Renewal",
+   "description": "",
+   "why": "Holds Renewal records the brief asks for.",
+   "fields": [
+    {
+     "name": "x_name",
+     "ttype": "char",
+     "string": "Name",
+     "required": true,
+     "selection": [],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_partner_id",
+     "ttype": "many2one",
+     "string": "Customer",
+     "required": false,
+     "selection": [],
+     "relation": "res.partner",
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_sale_order_id",
+     "ttype": "many2one",
+     "string": "Subscription",
+     "required": false,
+     "selection": [],
+     "relation": "sale.order",
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_renewal_date",
+     "ttype": "date",
+     "string": "Renewal Date",
+     "required": false,
+     "selection": [],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_contract_value",
+     "ttype": "monetary",
+     "string": "Contract Value",
+     "required": false,
+     "selection": [],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    }
+   ],
+   "views": [
+    "list",
+    "form"
+   ],
+   "is_config": false
+  },
+  {
+   "name": "x_expansion_recommendation",
+   "label": "Expansion Recommendation",
+   "description": "",
+   "why": "Holds Expansion Recommendation records the brief asks for.",
+   "fields": [
+    {
+     "name": "x_name",
+     "ttype": "char",
+     "string": "Name",
+     "required": true,
+     "selection": [],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_partner_id",
+     "ttype": "many2one",
+     "string": "Customer",
+     "required": false,
+     "selection": [],
+     "relation": "res.partner",
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_lead_id",
+     "ttype": "many2one",
+     "string": "CRM Opportunity",
+     "required": false,
+     "selection": [],
+     "relation": "crm.lead",
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_reason",
+     "ttype": "text",
+     "string": "Why",
+     "required": false,
+     "selection": [],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    }
+   ],
+   "views": [
+    "list",
+    "form"
+   ],
+   "is_config": false
+  },
+  {
+   "name": "x_health_config",
+   "label": "Health Configuration",
+   "description": "",
+   "why": "Holds Health Configuration records the brief asks for.",
+   "fields": [
+    {
+     "name": "x_name",
+     "ttype": "char",
+     "string": "Name",
+     "required": true,
+     "selection": [],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_frequency",
+     "ttype": "selection",
+     "string": "Calculation Frequency",
+     "required": false,
+     "selection": [
+      [
+       "daily",
+       "Daily"
+      ],
+      [
+       "weekly",
+       "Weekly"
+      ]
+     ],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_renewal_warning_days",
+     "ttype": "integer",
+     "string": "Renewal Warning (days)",
+     "required": false,
+     "selection": [],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    }
+   ],
+   "views": [
+    "list",
+    "form"
+   ],
+   "is_config": true
+  }
+ ],
+ "stock_extensions": [
+  {
+   "model": "res.partner",
+   "fields": [
+    {
+     "name": "x_health_score",
+     "ttype": "float",
+     "string": "Health Score",
+     "required": false,
+     "selection": [],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_health_status",
+     "ttype": "selection",
+     "string": "Health Status",
+     "required": false,
+     "selection": [
+      [
+       "healthy",
+       "Healthy"
+      ],
+      [
+       "stable",
+       "Stable"
+      ],
+      [
+       "at_risk",
+       "At Risk"
+      ],
+      [
+       "critical",
+       "Critical"
+      ]
+     ],
+     "relation": null,
+     "inverse_name": null,
+     "help": ""
+    },
+    {
+     "name": "x_risk_ids",
+     "ttype": "one2many",
+     "string": "Risks",
+     "required": false,
+     "selection": [],
+     "relation": "x_customer_risk",
+     "inverse_name": "x_partner_id",
+     "help": ""
+    }
+   ],
+   "reason": "Current health on the contact form."
+  }
+ ],
+ "integrations": [
+  {
+   "app": "CRM",
+   "module": "crm",
+   "models": [
+    "crm.lead"
+   ],
+   "required": false,
+   "installed": true,
+   "status": "available",
+   "note": ""
+  },
+  {
+   "app": "Sales",
+   "module": "sale",
+   "models": [
+    "sale.order"
+   ],
+   "required": false,
+   "installed": true,
+   "status": "available",
+   "note": ""
+  },
+  {
+   "app": "Invoicing",
+   "module": "account",
+   "models": [
+    "account.move"
+   ],
+   "required": false,
+   "installed": true,
+   "status": "available",
+   "note": ""
+  },
+  {
+   "app": "Helpdesk",
+   "module": "helpdesk",
+   "models": [
+    "helpdesk.ticket"
+   ],
+   "required": false,
+   "installed": false,
+   "status": "deferred",
+   "note": "Helpdesk is not installed, so its links are left out for now. Install Helpdesk, then refine this app to add them."
+  },
+  {
+   "app": "Project",
+   "module": "project",
+   "models": [
+    "project.project"
+   ],
+   "required": false,
+   "installed": true,
+   "status": "available",
+   "note": ""
+  }
+ ],
+ "security_groups": [
+  {
+   "name": "CS User",
+   "implied": [],
+   "access": {
+    "x_customer_risk": "rwc",
+    "x_health_score": "r"
+   }
+  },
+  {
+   "name": "CS Manager",
+   "implied": [
+    "CS User"
+   ],
+   "access": {
+    "x_health_score": "rwcd",
+    "x_health_score_history": "rwcd",
+    "x_health_rule": "rwcd",
+    "x_customer_risk": "rwcd",
+    "x_success_plan": "rwcd",
+    "x_success_milestone": "rwcd",
+    "x_renewal": "rwcd",
+    "x_expansion_recommendation": "rwcd",
+    "x_health_config": "rwcd"
+   }
+  },
+  {
+   "name": "Sales Manager",
+   "implied": [],
+   "access": {
+    "x_health_score": "r",
+    "x_health_score_history": "r",
+    "x_health_rule": "r",
+    "x_customer_risk": "r",
+    "x_success_plan": "r",
+    "x_success_milestone": "r",
+    "x_renewal": "r",
+    "x_expansion_recommendation": "r",
+    "x_health_config": "r"
+   }
+  },
+  {
+   "name": "Admin",
+   "implied": [
+    "CS Manager"
+   ],
+   "access": {
+    "x_health_score": "rwcd",
+    "x_health_score_history": "rwcd",
+    "x_health_rule": "rwcd",
+    "x_customer_risk": "rwcd",
+    "x_success_plan": "rwcd",
+    "x_success_milestone": "rwcd",
+    "x_renewal": "rwcd",
+    "x_expansion_recommendation": "rwcd",
+    "x_health_config": "rwcd"
+   }
+  }
+ ],
+ "menus": [
+  "Customer Health & Retention Intelligence",
+  "Customer Health & Retention Intelligence / Customer Health Scores",
+  "Customer Health & Retention Intelligence / Health Score Histories",
+  "Customer Health & Retention Intelligence / Configuration / Health Score Rules",
+  "Customer Health & Retention Intelligence / Customer Risks",
+  "Customer Health & Retention Intelligence / Customer Success Plans",
+  "Customer Health & Retention Intelligence / Success Plan Milestones",
+  "Customer Health & Retention Intelligence / Renewals",
+  "Customer Health & Retention Intelligence / Expansion Recommendations",
+  "Customer Health & Retention Intelligence / Configuration / Health Configurations"
+ ],
+ "python_needed": [
+  {
+   "key": "computed_health_score",
+   "label": "Computed health score",
+   "kind": "computed",
+   "models": [
+    "x_health_score"
+   ],
+   "reason": "",
+   "delivery_lane": "module_sh_or_self",
+   "delivery_lane_copy": "Module lane: Odoo.sh or self-host. Sandbox prove first; human Promote.",
+   "artifact_kind": "option_a_module",
+   "artifact_kind_copy": "Option A installable module \u2014 Python/QWeb/OWL under gates.",
+   "online_blocked": "true",
+   "lane_note": "Pieces that need custom Python go to the Option A lane: authored as an installable module, proved in a sandbox, then promoted by a human on Odoo.sh or a self-hosted server. They cannot install on Odoo Online; the rest of the app is built as metadata here."
+  },
+  {
+   "key": "rules_engine_evaluation",
+   "label": "Rules engine evaluation",
+   "kind": "rules",
+   "models": [
+    "x_health_rule"
+   ],
+   "reason": "",
+   "delivery_lane": "module_sh_or_self",
+   "delivery_lane_copy": "Module lane: Odoo.sh or self-host. Sandbox prove first; human Promote.",
+   "artifact_kind": "option_a_module",
+   "artifact_kind_copy": "Option A installable module \u2014 Python/QWeb/OWL under gates.",
+   "online_blocked": "true",
+   "lane_note": "Pieces that need custom Python go to the Option A lane: authored as an installable module, proved in a sandbox, then promoted by a human on Odoo.sh or a self-hosted server. They cannot install on Odoo Online; the rest of the app is built as metadata here."
+  },
+  {
+   "key": "nightly_recompute_cron",
+   "label": "Nightly recompute cron",
+   "kind": "cron",
+   "models": [],
+   "reason": "",
+   "delivery_lane": "module_sh_or_self",
+   "delivery_lane_copy": "Module lane: Odoo.sh or self-host. Sandbox prove first; human Promote.",
+   "artifact_kind": "option_a_module",
+   "artifact_kind_copy": "Option A installable module \u2014 Python/QWeb/OWL under gates.",
+   "online_blocked": "true",
+   "lane_note": "Pieces that need custom Python go to the Option A lane: authored as an installable module, proved in a sandbox, then promoted by a human on Odoo.sh or a self-hosted server. They cannot install on Odoo Online; the rest of the app is built as metadata here."
+  }
+ ],
+ "relations": [
+  {
+   "model": "x_health_score",
+   "field": "x_partner_id",
+   "type": "many2one",
+   "target": "res.partner",
+   "inverse": ""
+  },
+  {
+   "model": "x_health_score",
+   "field": "x_history_ids",
+   "type": "one2many",
+   "target": "x_health_score_history",
+   "inverse": "x_health_score_id"
+  },
+  {
+   "model": "x_health_score_history",
+   "field": "x_health_score_id",
+   "type": "many2one",
+   "target": "x_health_score",
+   "inverse": ""
+  },
+  {
+   "model": "x_health_score_history",
+   "field": "x_partner_id",
+   "type": "many2one",
+   "target": "res.partner",
+   "inverse": ""
+  },
+  {
+   "model": "x_customer_risk",
+   "field": "x_partner_id",
+   "type": "many2one",
+   "target": "res.partner",
+   "inverse": ""
+  },
+  {
+   "model": "x_customer_risk",
+   "field": "x_owner_id",
+   "type": "many2one",
+   "target": "res.users",
+   "inverse": ""
+  },
+  {
+   "model": "x_success_plan",
+   "field": "x_partner_id",
+   "type": "many2one",
+   "target": "res.partner",
+   "inverse": ""
+  },
+  {
+   "model": "x_success_plan",
+   "field": "x_milestone_ids",
+   "type": "one2many",
+   "target": "x_success_milestone",
+   "inverse": "x_plan_id"
+  },
+  {
+   "model": "x_success_plan",
+   "field": "x_project_id",
+   "type": "many2one",
+   "target": "project.project",
+   "inverse": ""
+  },
+  {
+   "model": "x_success_milestone",
+   "field": "x_plan_id",
+   "type": "many2one",
+   "target": "x_success_plan",
+   "inverse": ""
+  },
+  {
+   "model": "x_renewal",
+   "field": "x_partner_id",
+   "type": "many2one",
+   "target": "res.partner",
+   "inverse": ""
+  },
+  {
+   "model": "x_renewal",
+   "field": "x_sale_order_id",
+   "type": "many2one",
+   "target": "sale.order",
+   "inverse": ""
+  },
+  {
+   "model": "x_expansion_recommendation",
+   "field": "x_partner_id",
+   "type": "many2one",
+   "target": "res.partner",
+   "inverse": ""
+  },
+  {
+   "model": "x_expansion_recommendation",
+   "field": "x_lead_id",
+   "type": "many2one",
+   "target": "crm.lead",
+   "inverse": ""
+  },
+  {
+   "model": "res.partner",
+   "field": "x_risk_ids",
+   "type": "one2many",
+   "target": "x_customer_risk",
+   "inverse": "x_partner_id"
+  }
+ ],
+ "model_budget": 12,
+ "source": "llm",
+ "notes": [
+  "x_renewal.x_ticket_id links helpdesk.ticket; Helpdesk is not installed, moved to the optional integration."
+ ],
+ "repair_issues": []
+}

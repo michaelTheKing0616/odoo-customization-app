@@ -31,6 +31,9 @@ export function DraftStudioPreviewPane({
     ? (draft.models as Array<{ model?: string; description?: string }>)
     : [];
   const grain = typeof draft.grain === "string" ? draft.grain : "";
+  const rec = draft.stock_app_recommendation as { app?: unknown; message?: unknown } | undefined;
+  const recommend =
+    rec && typeof rec.app === "string" && typeof rec.message === "string" ? { app: rec.app, message: rec.message } : null;
   const connect = draft.connect_points as
     | { host_label?: string; host_model?: string }
     | undefined;
@@ -49,7 +52,7 @@ export function DraftStudioPreviewPane({
       {optionASettings ? (
         <Callout
           variant="info"
-          title={`Option A settings · ${optionASettings.model}`}
+          title={`custom code settings · ${optionASettings.model}`}
           testId="option-a-settings-pane"
         >
           <p className="text-sm text-muted">
@@ -60,7 +63,7 @@ export function DraftStudioPreviewPane({
             {optionASettings.fields.map((f) => (
               <li key={f.name}>
                 <span className="font-mono text-xs">{f.name}</span>
-                {f.string ? ` — ${f.string}` : ""}
+                {f.string ? `: ${f.string}` : ""}
                 {f.help ? <span className="text-muted"> ({f.help})</span> : null}
               </li>
             ))}
@@ -75,14 +78,14 @@ export function DraftStudioPreviewPane({
           </span>
           <span className="text-muted">
             {" "}
-            ({String(connect?.host_model || "?")}) — custom models only if the prompt asked
+            ({String(connect?.host_model || "?")}). Custom models only if the prompt asked
             for a register or checklist. Nothing writes to Odoo until Apply.
           </span>
         </p>
       ) : stockReuse ? (
         <p className="text-sm text-ink" data-testid="stock-reuse-surface">
-          {stockApps.length ? stockApps.map((app) => app.label).join(" · ") : "Named Community apps"}{" "}
-          — no custom models, views, or smart buttons. Use Job Autopilot.
+          {stockApps.length ? stockApps.map((app) => app.label).join(" · ") : "Named Community apps"}
+          . No custom models, views, or smart buttons. Use Job Autopilot.
         </p>
       ) : (
         <p className="text-xs text-muted">
@@ -92,6 +95,11 @@ export function DraftStudioPreviewPane({
           {typeof draft.domain_pack === "string" ? ` · pack: ${draft.domain_pack}` : ""}
         </p>
       )}
+      {recommend ? (
+        <Callout variant="info" title={`Use stock ${recommend.app}`} testId="stock-app-recommendation">
+          {recommend.message} Install it from Odoo Apps first, then build only what it doesn&apos;t cover.
+        </Callout>
+      ) : null}
       {models.length > 0 ? (
         <ul className="space-y-1 text-sm" data-testid="draft-model-review">
           {models.map((m) => (

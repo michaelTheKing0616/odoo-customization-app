@@ -18,8 +18,7 @@ import {
 } from "@/lib/capabilities";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
-import { PageHeader } from "@/components/ui/layout-primitives";
+import { OperateStudioChrome } from "@/components/operate-studio/OperateStudioChrome";
 import { reportApiError } from "@/lib/api-error";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
 import {
@@ -31,14 +30,27 @@ import {
   defaultMenuForm,
   designerHref,
   isComposerDirty,
+  wouldCreateCycle,
   type MenuComposerForm,
 } from "@/lib/menuForm";
+import { applyDraftParent, menusErrorGuide, type MenusErrorContext } from "@/lib/menuTree";
 import { MenuComposer } from "@/components/menus/MenuComposer";
 import { MenuDetail } from "@/components/menus/MenuDetail";
 import { MenuSessionBar } from "@/components/menus/MenuSessionBar";
 import { MenuSnapshots } from "@/components/menus/MenuSnapshots";
+import { MenusStateGuide } from "@/components/menus/MenusStateGuide";
 import { MenusTree } from "@/components/menus/MenusTree";
 import { ListComposerShell } from "@/components/ui/ListComposerShell";
+import {
+  PAGE_DESCRIPTION,
+  PAGE_TITLE,
+  menusHonestyGuide,
+  menusSessionBadge,
+  sanitizeMenusCopy,
+} from "@/lib/menusScreen";
+import "@/components/menus/menus-operate.css";
+
+type DraftParent = { menuId: number; value: string };
 
 export default function MenusBuilderPage() {
   const params = useParams<{ id: string }>();
@@ -53,12 +65,14 @@ export default function MenusBuilderPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [listQuery, setListQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [errorContext, setErrorContext] = useState<MenusErrorContext>("load");
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [listHydrated, setListHydrated] = useState(false);
   const [listLoading, setListLoading] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [savedOnce, setSavedOnce] = useState(false);
+  const [draftParent, setDraftParent] = useState<DraftParent | null>(null);
 
   const viewMode = defaultWindowViewMode(connection);
   const [form, setForm] = useState<MenuComposerForm>(() => defaultMenuForm(viewMode));
@@ -71,6 +85,11 @@ export default function MenusBuilderPage() {
 
   const patchForm = useCallback((next: Partial<MenuComposerForm>) => {
     setForm((f) => ({ ...f, ...next }));
+  }, []);
+
+  const fail = useCallback((context: MenusErrorContext, message: string | null) => {
+    setErrorContext(context);
+    setError(message);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -86,22 +105,27 @@ export default function MenusBuilderPage() {
     setSnapshots(snaps);
   }, [connectionId]);
 
-  useEffect(() => {
-    api
-      .getConnection(connectionId)
-      .then(setConnection)
-      .catch((err: Error) => setError(err.message));
-  }, [connectionId]);
-
-  useEffect(() => {
+  const reload = useCallback(() => {
     setListLoading(true);
-    refresh()
-      .catch((err: Error) => setError(err.message))
+    setError(null);
+    return refresh()
+      .catch((err: Error) => fail("load", err.message))
       .finally(() => {
         setListLoading(false);
         setListHydrated(true);
       });
-  }, [refresh]);
+  }, [refresh, fail]);
+
+  useEffect(() => {
+    api
+      .getConnection(connectionId)
+      .then(setConnection)
+      .catch((err: Error) => fail("load", err.message));
+  }, [connectionId, fail]);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
 
   useEffect(() => {
     const next = defaultWindowViewMode(connection);
@@ -134,14 +158,31 @@ export default function MenusBuilderPage() {
   const sessionState = composerSessionState({ dirty, savedOnce });
   const bound = selected ? boundAction(actions, selected.action_id) : null;
 
+  /** The tree shows a staged parent change in place, marked as unsaved. */
+  const stagedMove = useMemo(() => {
+    if (!draftParent) return null;
+    const parentId = draftParent.value ? Number(draftParent.value) : null;
+    if (wouldCreateCycle(menus, draftParent.menuId, parentId)) return null;
+    return { menuId: draftParent.menuId, parentId };
+  }, [draftParent, menus]);
+  const treeMenus = useMemo(() => applyDraftParent(menus, stagedMove), [menus, stagedMove]);
+
+  function selectMenu(id: number | null) {
+    setSelectedId(id);
+    setNotice(null);
+    setDraftParent((d) => (d && d.menuId === id ? d : null));
+  }
+
   function discardComposer() {
     setForm(baseline);
     setSelectedId(null);
   }
 
   function startNew() {
-    setSelectedId(null);
-    setNotice(null);
+    selectMenu(null);
+    if (typeof document !== "undefined") {
+      window.requestAnimationFrame(() => document.getElementById("menu-new-label")?.focus());
+    }
   }
 
   async function createMenu(e: FormEvent) {
@@ -167,7 +208,7 @@ export default function MenusBuilderPage() {
         action_id: actionId,
         group_ids: form.group_ids,
       });
-      setNotice(`Created menu #${created.id}`);
+      setNotice(`Created “${created.name || form.name.trim()}” on Odoo as menu #${created.id}.`);
       setSavedOnce(true);
       const next = { ...form, name: "", action_name: "" };
       setForm(next);
@@ -175,7 +216,7 @@ export default function MenusBuilderPage() {
       await refresh();
       setSelectedId(created.id);
     } catch (err) {
-      reportApiError(err, setError, { fallback: "Create failed", toast: true });
+      reportApiError(err, (m) => fail("create", m), { fallback: "Create failed", toast: true });
     } finally {
       setBusy(false);
     }
@@ -186,40 +227,51 @@ export default function MenusBuilderPage() {
     setError(null);
     try {
       const res = await api.rollbackSnapshot(connectionId, snapshotId);
-      setNotice(`Restored ${res.restored} #${res.id}`);
+      setNotice(`Restored ${res.restored} #${res.id} from the snapshot.`);
       await refresh();
     } catch (err) {
-      reportApiError(err, setError, { fallback: "Rollback failed", toast: true });
+      reportApiError(err, (m) => fail("restore", m), { fallback: "Rollback failed", toast: true });
     } finally {
       setBusy(false);
     }
   }
 
+  const guide = error ? menusErrorGuide(errorContext, error) : null;
+
+  const honesty = menusHonestyGuide();
+
   return (
-    <div className="mx-auto max-w-6xl" data-testid="menus-page">
-      <PageHeader
-        title="Menus"
-        description={`${connection?.name ?? connectionId} · Tree, parent, sequence, action binding, and visibility groups.`}
-        actions={
-          <>
-            <Button variant="secondary" size="sm" asChild>
-              <Link
-                href={designerHref(connectionId, bound?.res_model || form.action_model)}
-                data-testid="menus-designer-link"
-              >
-                Open in View Designer
-              </Link>
-            </Button>
-            <ExplainThisButton
-              question={`Explain ir.ui.menu and window actions for ${form.action_model || "this instance"}`}
-              label="Explain menus"
-            />
-          </>
-        }
-      />
-      <p className="mt-2 text-sm text-muted">
-        Root menus need a file-path icon on Odoo 19. Bind a standalone window action so the item
-        opens a model — related-button actions that need active_id stay off this tree.
+    <OperateStudioChrome
+      testIdPrefix="menus"
+      pageTestId="menus-page"
+      kicker={connection?.name ?? connectionId}
+      title={PAGE_TITLE}
+      subtitle={PAGE_DESCRIPTION}
+      badge={menusSessionBadge({ unsaved: false, empty: false })}
+      honesty={honesty}
+      sanitize={sanitizeMenusCopy}
+      shellClassName="menus-operate"
+      className="p-4 sm:p-6"
+      titleActions={
+        <>
+          <Button variant="secondary" size="sm" asChild>
+            <Link
+              href={designerHref(connectionId, bound?.res_model || form.action_model)}
+              data-testid="menus-designer-link"
+            >
+              Open in View Designer
+            </Link>
+          </Button>
+          <ExplainThisButton
+            question={`Explain ir.ui.menu and window actions for ${form.action_model || "this instance"}`}
+            label="Explain menus"
+          />
+        </>
+      }
+    >
+      <p className="mn-intro">
+        Top-level menus need an icon file path on Odoo 19. Bind a standalone window action so each
+        item opens a model. Smart-button actions that need active_id stay off this tree.
       </p>
       <VersionAwarenessBanner
         capabilities={connection?.capabilities}
@@ -247,7 +299,7 @@ export default function MenusBuilderPage() {
                   : prev,
               );
             } catch (err) {
-              setError(err instanceof Error ? err.message : "Probe failed");
+              fail("probe", err instanceof Error ? err.message : "Probe failed");
             } finally {
               setProbing(false);
             }
@@ -256,41 +308,65 @@ export default function MenusBuilderPage() {
       />
 
       {mutateBlocked ? (
-        <Callout variant="warning" title="Mutations blocked" className="mt-4">
+        <Callout variant="warning" title="Changes are switched off" className="mt-4">
           {mutateBlocked}
         </Callout>
       ) : null}
 
-      {error ? (
-        <ErrorNotice message={error} className="mt-4" onRetry={() => void refresh()} />
+      {guide ? (
+        <MenusStateGuide
+          guide={guide}
+          tone="danger"
+          live
+          className="mt-4"
+          testId="menus-error"
+          actions={
+            errorContext === "load" ? (
+              <Button type="button" variant="secondary" size="sm" onClick={() => void reload()}>
+                Try again
+              </Button>
+            ) : (
+              <Button type="button" variant="ghost" size="sm" onClick={() => setError(null)}>
+                Dismiss
+              </Button>
+            )
+          }
+        />
       ) : null}
       {notice ? (
-        <Callout variant="info" title="Notice" className="mt-4">
+        <p className="mn-notice" role="status" data-testid="menus-notice">
           {notice}
-        </Callout>
+        </p>
       ) : null}
 
       <ListComposerShell
         list={
           <>
-          <MenusTree
-            menus={menus}
-            loading={!listHydrated || listLoading}
-            selectedId={selectedId}
-            query={listQuery}
-            onQueryChange={setListQuery}
-            onSelect={(menu) => {
-              setSelectedId(menu.id);
-              setNotice(null);
-            }}
-            onCreate={startNew}
-          />
-          <MenuSnapshots
-            connectionId={connectionId}
-            snapshots={snapshots}
-            busy={busy}
-            onRollback={onRollback}
-          />
+            <MenusTree
+              menus={treeMenus}
+              actions={actions}
+              loading={!listHydrated || listLoading}
+              selectedId={selectedId}
+              query={listQuery}
+              onQueryChange={setListQuery}
+              onSelect={(menu) => selectMenu(menu.id)}
+              onCreate={startNew}
+              onMove={(menu, parentId) => {
+                setSelectedId(menu.id);
+                setNotice(null);
+                setDraftParent({ menuId: menu.id, value: parentId == null ? "" : String(parentId) });
+              }}
+              canMove={canMutate}
+              moveBlockedReason={mutateBlocked}
+              stagedMenuId={stagedMove?.menuId ?? null}
+              unavailable={Boolean(error) && errorContext === "load"}
+            />
+            <MenuSnapshots
+              connectionId={connectionId}
+              snapshots={snapshots}
+              busy={busy}
+              onRollback={onRollback}
+            />
           </>
         }
         detail={
@@ -307,6 +383,17 @@ export default function MenusBuilderPage() {
               canDelete={canAdvanced}
               mutateBlocked={mutateBlocked}
               deleteBlocked={advancedBlocked}
+              parentValue={
+                draftParent?.menuId === selected.id
+                  ? draftParent.value
+                  : selected.parent_id != null
+                    ? String(selected.parent_id)
+                    : ""
+              }
+              onParentChange={(value) => {
+                const original = selected.parent_id != null ? String(selected.parent_id) : "";
+                setDraftParent(value === original ? null : { menuId: selected.id, value });
+              }}
               onSave={async (patch) => {
                 setBusy(true);
                 setError(null);
@@ -320,11 +407,13 @@ export default function MenusBuilderPage() {
                     clear_action: patch.clear_action,
                     group_ids: patch.group_ids,
                     clear_groups: patch.clear_groups,
+                    ...(patch.web_icon ? { web_icon: patch.web_icon } : {}),
                   });
-                  setNotice(`Updated menu #${selected.id}`);
+                  setNotice(`Saved “${patch.name}” to Odoo.`);
+                  setDraftParent(null);
                   await refresh();
                 } catch (err) {
-                  reportApiError(err, setError, { fallback: "Update failed", toast: true });
+                  reportApiError(err, (m) => fail("save", m), { fallback: "Update failed", toast: true });
                 } finally {
                   setBusy(false);
                 }
@@ -341,10 +430,10 @@ export default function MenusBuilderPage() {
                   await api.updateBuilderMenu(connectionId, selected.id, {
                     action_id: created.id,
                   });
-                  setNotice(`Bound action #${created.id}`);
+                  setNotice(`Created action #${created.id} and bound it to “${selected.name}”.`);
                   await refresh();
                 } catch (err) {
-                  reportApiError(err, setError, { fallback: "Action create failed", toast: true });
+                  reportApiError(err, (m) => fail("bind", m), { fallback: "Action create failed", toast: true });
                 } finally {
                   setBusy(false);
                 }
@@ -352,26 +441,27 @@ export default function MenusBuilderPage() {
               onDelete={() => setConfirmDelete(true)}
             />
           ) : (
-            <>
-              <MenuSessionBar
-                sessionState={sessionState}
-                busy={busy}
-                canDiscard={dirty}
-                submitLabel="Create menu"
-                onDiscard={discardComposer}
-              />
-              <MenuComposer
-                form={form}
-                menus={menus}
-                actions={actions}
-                groups={groups}
-                onChange={patchForm}
-                onSubmit={createMenu}
-                busy={busy}
-                canSubmit={canMutate}
-                submitBlockedReason={mutateBlocked}
-              />
-            </>
+            <MenuComposer
+              form={form}
+              menus={menus}
+              actions={actions}
+              groups={groups}
+              onChange={patchForm}
+              onSubmit={createMenu}
+              busy={busy}
+              canSubmit={canMutate}
+              submitBlockedReason={mutateBlocked}
+              sessionBar={
+                <MenuSessionBar
+                  className="mn-session-inline"
+                  sessionState={sessionState}
+                  busy={busy}
+                  canDiscard={dirty}
+                  submitLabel="Create menu"
+                  onDiscard={discardComposer}
+                />
+              }
+            />
           )
         }
       />
@@ -380,7 +470,7 @@ export default function MenusBuilderPage() {
         open={confirmDelete}
         riskLevel="danger"
         title="Delete menu"
-        warning="Removes this menu from the Odoo app switcher / navbar."
+        warning="Removes this menu from Odoo's app switcher and navbar."
         risks={MENU_DELETE_RISKS}
         phrase={CONFIRM_PHRASE}
         snapshotNote="A snapshot is taken so the menu definition can be restored when Odoo allows it."
@@ -396,18 +486,19 @@ export default function MenusBuilderPage() {
             });
             setConfirmDelete(false);
             setSelectedId(null);
+            setDraftParent(null);
             setNotice(
-              `Deleted menu #${selected.id}` +
-                (res.snapshot_id ? ` · snapshot ${res.snapshot_id.slice(0, 8)}…` : ""),
+              `Deleted “${selected.name}”.` +
+                (res.snapshot_id ? ` Snapshot ${res.snapshot_id.slice(0, 8)} can restore it.` : ""),
             );
             await refresh();
           } catch (err) {
-            reportApiError(err, setError, { fallback: "Delete failed", toast: true });
+            reportApiError(err, (m) => fail("delete", m), { fallback: "Delete failed", toast: true });
           } finally {
             setBusy(false);
           }
         }}
       />
-    </div>
+    </OperateStudioChrome>
   );
 }

@@ -28,6 +28,7 @@ import { useWizardReuse } from "./use-wizard-reuse";
 import { useWizardScaffold } from "./use-wizard-scaffold";
 import { useWizardState } from "./use-wizard-state";
 import { deriveWizardFields } from "./wizard-derived";
+import { composeClarifiedPrompt } from "@/lib/wizard-ui";
 
 export function useWizardPage(connectionId: string) {
   const { openExpert } = useShell();
@@ -290,6 +291,17 @@ export function useWizardPage(connectionId: string) {
     onStashJobBrief: () => stashBriefForJobAutopilot(),
   };
 
+  /** One clarifying question at a time: fold the answer into the brief and regenerate. */
+  function answerClarification(answer: string) {
+    const question = derived.generationEngine?.needs_clarification?.question ?? "";
+    const next = composeClarifiedPrompt(s.nlPrompt, question, answer);
+    s.setNlPrompt(next);
+    void draft.onDraftFromPrompt({
+      promptOverride: next,
+      busyLabel: "Regenerating with your answer…",
+    });
+  }
+
   const reuseProps = {
     reuseModels: s.reuseModels,
     reuseCatalog: s.reuseCatalog,
@@ -322,6 +334,7 @@ export function useWizardPage(connectionId: string) {
     reuseProps,
     openExpert,
     stashBriefForJobAutopilot,
+    answerClarification,
     ...connect,
     ...draft,
     ...expert,

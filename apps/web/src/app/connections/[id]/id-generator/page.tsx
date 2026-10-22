@@ -15,21 +15,45 @@ import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { DataTable, type DataTableColumn } from "@/components/ui/DataTable";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Input } from "@/components/ui/Input";
 import { Tabs } from "@/components/ui/Tabs";
-import { Card, EmptyState, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
-
-const CONFIRM_PHRASE = "I understand the risks";
+import { PageHeader, Skeleton } from "@/components/ui/layout-primitives";
+import { IdGeneratorResultCounts } from "@/components/id-generator/IdGeneratorResultCounts";
+import { IdGeneratorStageRail } from "@/components/id-generator/IdGeneratorStageRail";
+import { IdGeneratorStateGuide } from "@/components/id-generator/IdGeneratorStateGuide";
+import {
+  APPLY_CTA,
+  CONFIRM_PHRASE,
+  DRY_RUN_CTA,
+  PAGE_DESCRIPTION,
+  PAGE_TITLE,
+  PREVIEW_CTA,
+  PRIMARY_CTA,
+  applyBlockedReason,
+  downloadBlockedReason,
+  emptyCellDisplay,
+  emptyIdGenGuide,
+  formatCodeExample,
+  idGenErrorGuide,
+  idGenHonestyGuide,
+  idGenStepFromState,
+  previewCountsGuide,
+  sanitizeIdGenCopy,
+  sequenceHonestyGuide,
+  type IdGenErrorContext,
+  type IdGenMode,
+} from "@/lib/idGeneratorScreen";
+import "@/components/id-generator/id-generator-operate.css";
 
 export default function IdGeneratorPage() {
   const params = useParams<{ id: string }>();
   const connectionId = params.id;
 
   const [connection, setConnection] = useState<Connection | null>(null);
-  const [tab, setTab] = useState<"csv" | "live">("csv");
+  const [tab, setTab] = useState<IdGenMode>("csv");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errorContext, setErrorContext] = useState<IdGenErrorContext | null>(null);
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -40,6 +64,7 @@ export default function IdGeneratorPage() {
   const [codeColumn, setCodeColumn] = useState("code");
   const [changedOnly, setChangedOnly] = useState(true);
   const [csvPreview, setCsvPreview] = useState<IdGeneratorPreviewOut | null>(null);
+  const [csvDownloaded, setCsvDownloaded] = useState(false);
 
   const [model, setModel] = useState("x_blk_wf_item");
   const [nameField, setNameField] = useState("x_name");
@@ -67,6 +92,11 @@ export default function IdGeneratorPage() {
     [prefix, separator, padding, initialsLength, skipIfPresent],
   );
 
+  const sampleCode = useMemo(
+    () => formatCodeExample({ prefix, separator, padding, initialsLength }),
+    [prefix, separator, padding, initialsLength],
+  );
+
   const previewRows: IdGeneratorAssignmentOut[] = useMemo(() => {
     const list = tab === "csv" ? csvPreview?.assignments ?? [] : liveResult?.assignments ?? [];
     return changedOnly ? list.filter((r) => r.changed) : list;
@@ -82,30 +112,66 @@ export default function IdGeneratorPage() {
     {
       id: "old",
       header: "Old",
-      accessor: (r) => <span className="font-mono">{r.existing_code || "—"}</span>,
+      accessor: (r) => <span className="font-mono">{emptyCellDisplay(r.existing_code)}</span>,
     },
     {
       id: "new",
       header: "New",
-      accessor: (r) => <span className="font-mono">{r.new_code || "—"}</span>,
+      accessor: (r) => <span className="font-mono">{emptyCellDisplay(r.new_code)}</span>,
     },
   ];
+
+  const hasSource =
+    tab === "csv" ? Boolean(file) : Boolean(model.trim() && nameField.trim() && codeField.trim());
+  const hasPreview = tab === "csv" ? Boolean(csvPreview) : Boolean(liveResult);
+  const delivered =
+    tab === "csv" ? csvDownloaded : Boolean(liveResult && liveResult.dry_run === false);
+  const step = idGenStepFromState({ mode: tab, hasSource, hasPreview, delivered });
+
+  const downloadReason = downloadBlockedReason({
+    mode: tab,
+    hasCsvPreview: Boolean(csvPreview),
+    busy,
+  });
+  const applyReason = applyBlockedReason({
+    mode: tab,
+    busy,
+    hasDryRun: Boolean(liveResult?.dry_run || (liveResult && liveResult.dry_run === false)),
+  });
+
+  const honesty = idGenHonestyGuide();
+  const sequenceGuide = sequenceHonestyGuide(createSequence);
+  const errorGuide =
+    errorContext && errorDetail !== null
+      ? idGenErrorGuide(errorContext, errorDetail)
+      : errorContext
+        ? idGenErrorGuide(errorContext)
+        : null;
 
   useEffect(() => {
     api
       .getConnection(connectionId)
       .then(setConnection)
-      .catch((err: Error) => setError(err.message));
+      .catch((err: Error) => {
+        setErrorContext("load");
+        setErrorDetail(err.message);
+      });
   }, [connectionId]);
+
+  function clearError() {
+    setErrorContext(null);
+    setErrorDetail(null);
+  }
 
   async function previewCsv() {
     if (!file) {
-      setError("Choose a CSV or XLSX file first.");
+      setErrorContext("csv_preview");
+      setErrorDetail("Choose a CSV or XLSX file first.");
       return;
     }
     setPreviewHydrated(false);
     setBusy(true);
-    setError(null);
+    clearError();
     try {
       const res = await api.idGeneratorCsvPreview(connectionId, file, {
         name_column: nameColumn,
@@ -118,11 +184,13 @@ export default function IdGeneratorPage() {
         changed_only: changedOnly,
       });
       setCsvPreview(res);
+      setCsvDownloaded(false);
       if (res.headers) setHeaders(res.headers);
-      setNotice(res.message);
+      setNotice(sanitizeIdGenCopy(res.message));
       setPreviewAttempted(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "CSV preview failed");
+      setErrorContext("csv_preview");
+      setErrorDetail(err instanceof Error ? err.message : "CSV preview failed");
     } finally {
       setBusy(false);
       setPreviewHydrated(true);
@@ -131,11 +199,12 @@ export default function IdGeneratorPage() {
 
   async function downloadCsv() {
     if (!headers.length || !rows.length || !csvPreview) {
-      setError("Preview CSV first (upload file with stored rows in session).");
+      setErrorContext("csv_download");
+      setErrorDetail("Preview CSV first so the download includes new codes.");
       return;
     }
     setBusy(true);
-    setError(null);
+    clearError();
     try {
       const blob = await api.idGeneratorCsvDownload(connectionId, {
         headers,
@@ -150,9 +219,11 @@ export default function IdGeneratorPage() {
       a.download = "id-generator-updated.csv";
       a.click();
       URL.revokeObjectURL(url);
-      setNotice("Downloaded updated CSV.");
+      setCsvDownloaded(true);
+      setNotice("Downloaded updated CSV. No Odoo writes.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "CSV download failed");
+      setErrorContext("csv_download");
+      setErrorDetail(err instanceof Error ? err.message : "CSV download failed");
     } finally {
       setBusy(false);
     }
@@ -161,6 +232,7 @@ export default function IdGeneratorPage() {
   async function onFileChange(f: File | null) {
     setFile(f);
     setCsvPreview(null);
+    setCsvDownloaded(false);
     if (!f) return;
     try {
       const parsed = await api.idGeneratorCsvPreview(connectionId, f, {
@@ -199,7 +271,7 @@ export default function IdGeneratorPage() {
   async function runLive(dryRun: boolean, phrase?: string) {
     setPreviewHydrated(false);
     setBusy(true);
-    setError(null);
+    clearError();
     try {
       const res = await api.idGeneratorLive(connectionId, {
         model,
@@ -211,19 +283,31 @@ export default function IdGeneratorPage() {
         ...(dryRun ? {} : { confirm_advanced: true, confirm_phrase: phrase || CONFIRM_PHRASE }),
       });
       setLiveResult(res);
-      setNotice(res.message);
+      setNotice(sanitizeIdGenCopy(res.message));
       setPreviewAttempted(true);
       setConfirmOpen(false);
       if (!dryRun && createSequence) {
-        await api.idGeneratorCreateSequence(connectionId, { model, config });
-        setNotice(`${res.message} · ir.sequence bridge updated.`);
+        try {
+          await api.idGeneratorCreateSequence(connectionId, { model, config });
+          setNotice(
+            `${sanitizeIdGenCopy(res.message)} Sequence bridge updated after Apply (separate write).`,
+          );
+        } catch (seqErr) {
+          setErrorContext("sequence");
+          setErrorDetail(seqErr instanceof Error ? seqErr.message : "Sequence bridge failed");
+          setNotice(
+            `${sanitizeIdGenCopy(res.message)} Codes applied; sequence bridge failed (see error).`,
+          );
+        }
       }
     } catch (err) {
       if (err instanceof ConfirmationRequiredError) {
         setConfirmOpen(true);
-        setError(err.warning);
+        setErrorContext("live_apply");
+        setErrorDetail(err.warning);
       } else {
-        setError(err instanceof Error ? err.message : "Live ID generator failed");
+        setErrorContext(dryRun ? "live_dry_run" : "live_apply");
+        setErrorDetail(err instanceof Error ? err.message : "Live ID generator failed");
       }
     } finally {
       setBusy(false);
@@ -231,243 +315,384 @@ export default function IdGeneratorPage() {
     }
   }
 
-  const previewEmptyAction =
-    tab === "csv" ? (
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
-        disabled={busy || !file}
-        onClick={() => void previewCsv()}
-      >
-        Preview CSV
-      </Button>
-    ) : (
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
-        disabled={busy}
-        onClick={() => void runLive(true)}
-      >
-        Dry run live
-      </Button>
-    );
+  const countsSource =
+    tab === "csv"
+      ? csvPreview
+        ? {
+            total: csvPreview.total,
+            changed: csvPreview.changed,
+            skipped: csvPreview.skipped,
+            dryRun: true as boolean | undefined,
+          }
+        : null
+      : liveResult
+        ? {
+            total: liveResult.total,
+            changed: liveResult.changed,
+            skipped: liveResult.skipped,
+            succeeded: liveResult.succeeded,
+            failed: liveResult.failed,
+            dryRun: liveResult.dry_run,
+          }
+        : null;
+
+  const countsGuide = countsSource
+    ? previewCountsGuide({
+        total: countsSource.total,
+        changed: countsSource.changed,
+        skipped: countsSource.skipped,
+        dryRun: countsSource.dryRun,
+        mode: tab,
+      })
+    : null;
 
   return (
-    <div className="mx-auto max-w-5xl" data-testid="id-generator-page">
-      <PageHeader
-        title="ID Generator"
-        description="PREFIX / INITIALS / NUMBER reference codes with semantic initials, collision disambiguation, and skip-if-present default."
-      />
+    <div className="idgen-operate" data-testid="id-generator-page">
+      <PageHeader title={PAGE_TITLE} description={PAGE_DESCRIPTION} />
+      <p className="ig-lead">
+        {PRIMARY_CTA} is the primary action. Live Apply stays behind test run and the risk phrase.
+      </p>
+      <div className="ig-sample-code" data-testid="id-generator-sample-code">
+        <span data-label="Sample">Sample</span>
+        <span>{sampleCode}</span>
+      </div>
+
       <VersionAwarenessBanner capabilities={connection?.capabilities} />
 
-      {error ? <ErrorNotice message={error} className="mt-4" /> : null}
+      <IdGeneratorStateGuide
+        testId="id-generator-honesty"
+        tone="accent"
+        guide={honesty}
+      />
+
+      <IdGeneratorStageRail step={step} />
+
+      {errorGuide ? (
+        <IdGeneratorStateGuide
+          testId="id-generator-error"
+          tone="danger"
+          live
+          guide={errorGuide}
+          className="mt-4"
+        />
+      ) : null}
       {notice ? (
-        <Callout variant="info" title="Notice" className="mt-4">
+        <Callout variant="info" title="Notice" className="mt-4" testId="id-generator-notice">
           {notice}
         </Callout>
       ) : null}
 
       <Tabs
-        className="mt-6"
+        className="ig-mode-tabs"
         value={tab}
-        onValueChange={(v) => setTab(v as "csv" | "live")}
+        onValueChange={(v) => setTab(v as IdGenMode)}
         items={[
           {
             value: "csv",
             label: "CSV",
             content: (
-              <Card className="mt-4 space-y-3 p-4">
-                <label className="block text-sm text-ink">
+              <section className="ig-panel" aria-labelledby="idgen-csv-title">
+                <h2 id="idgen-csv-title" className="ig-panel-title">
+                  Spreadsheet source
+                </h2>
+                <p className="ig-panel-sub">
+                  Preview proposes codes in-browser via the API. Download writes a file only, never Odoo.
+                </p>
+                <label className="ig-file-label">
                   CSV / XLSX file
                   <input
                     type="file"
-                    className="mt-1 block text-sm"
                     accept=".csv,.xlsx,.xlsm"
+                    data-testid="id-generator-file"
                     onChange={(e) => void onFileChange(e.target.files?.[0] ?? null)}
                   />
                 </label>
-                <Input
-                  label="Name column"
-                  value={nameColumn}
-                  onChange={(e) => setNameColumn(e.target.value)}
-                  className="font-mono text-sm"
-                />
-                <Input
-                  label="Code column (optional)"
-                  value={codeColumn}
-                  onChange={(e) => setCodeColumn(e.target.value)}
-                  className="font-mono text-sm"
-                />
-                <div className="flex flex-wrap gap-2">
+                <div className="ig-grid ig-grid-2 mt-3">
+                  <Input
+                    label="Name column"
+                    value={nameColumn}
+                    onChange={(e) => setNameColumn(e.target.value)}
+                    className="font-mono text-sm"
+                  />
+                  <Input
+                    label="Code column (optional)"
+                    value={codeColumn}
+                    onChange={(e) => setCodeColumn(e.target.value)}
+                    className="font-mono text-sm"
+                  />
+                </div>
+                <div className="ig-actions">
                   <Button
                     type="button"
                     variant="secondary"
-                    disabled={busy}
-                    loading={busy}
+                    disabled={busy || !file}
+                    loading={busy && tab === "csv"}
                     onClick={() => void previewCsv()}
+                    data-testid="id-generator-preview-csv"
                   >
-                    Preview
+                    {PREVIEW_CTA}
                   </Button>
                   <Button
                     type="button"
                     variant="primary"
-                    disabled={busy || !csvPreview}
+                    disabled={Boolean(downloadReason)}
                     onClick={() => void downloadCsv()}
+                    data-testid="id-generator-download"
                   >
-                    Download updated CSV
+                    {PRIMARY_CTA}
                   </Button>
+                  {downloadReason ? (
+                    <span className="ig-primary-reason" data-testid="id-generator-download-reason">
+                      {downloadReason}
+                    </span>
+                  ) : null}
                 </div>
-              </Card>
+              </section>
             ),
           },
           {
             value: "live",
             label: "Live",
             content: (
-              <Card className="mt-4 space-y-3 p-4">
-                <Input
-                  label="Model"
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  className="font-mono text-sm"
-                />
-                <Input
-                  label="Name field"
-                  value={nameField}
-                  onChange={(e) => setNameField(e.target.value)}
-                  className="font-mono text-sm"
-                />
-                <Input
-                  label="Code field"
-                  value={codeField}
-                  onChange={(e) => setCodeField(e.target.value)}
-                  className="font-mono text-sm"
-                />
-                <Input
-                  label="Record ids (optional)"
-                  value={recordIds}
-                  onChange={(e) => setRecordIds(e.target.value)}
-                  placeholder="1, 2, 3"
-                  className="font-mono text-sm"
-                />
-                <label className="flex items-center gap-2 text-sm text-ink">
+              <section className="ig-panel" aria-labelledby="idgen-live-title">
+                <h2 id="idgen-live-title" className="ig-panel-title">
+                  Live Odoo target
+                </h2>
+                <p className="ig-panel-sub">
+                  Test run lists proposed codes with no writes. Apply needs the risk phrase. Sequence bridge is optional and separate.
+                </p>
+                <div className="ig-grid ig-grid-2">
+                  <Input
+                    label="Model"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    className="font-mono text-sm"
+                  />
+                  <Input
+                    label="Name field"
+                    value={nameField}
+                    onChange={(e) => setNameField(e.target.value)}
+                    className="font-mono text-sm"
+                  />
+                  <Input
+                    label="Code field"
+                    value={codeField}
+                    onChange={(e) => setCodeField(e.target.value)}
+                    className="font-mono text-sm"
+                  />
+                  <Input
+                    label="Record ids (optional)"
+                    value={recordIds}
+                    onChange={(e) => setRecordIds(e.target.value)}
+                    placeholder="1, 2, 3"
+                    className="font-mono text-sm"
+                  />
+                </div>
+                <label className="ig-check mt-3">
                   <input
                     type="checkbox"
                     checked={createSequence}
                     onChange={(e) => setCreateSequence(e.target.checked)}
+                    data-testid="id-generator-sequence-toggle"
                   />
-                  Create/update ir.sequence bridge after live apply
+                  <span>Also create or update ir.sequence after Apply (separate write)</span>
                 </label>
-                <div className="flex flex-wrap gap-2">
+                <IdGeneratorStateGuide
+                  testId="id-generator-sequence-guide"
+                  tone={createSequence ? "warning" : "neutral"}
+                  guide={sequenceGuide}
+                  className="mt-3"
+                />
+                <div className="ig-actions">
                   <Button
                     type="button"
                     variant="secondary"
                     disabled={busy}
                     onClick={() => void runLive(true)}
+                    data-testid="id-generator-dry-run"
                   >
-                    Dry run
+                    {DRY_RUN_CTA}
                   </Button>
                   <Button
                     type="button"
-                    variant="primary"
-                    disabled={busy}
+                    variant="secondary"
+                    disabled={Boolean(applyReason)}
                     onClick={() => void runLive(false)}
+                    data-testid="id-generator-apply"
                   >
-                    Apply codes
+                    {APPLY_CTA}
                   </Button>
+                  {applyReason ? (
+                    <span className="ig-primary-reason" data-testid="id-generator-apply-reason">
+                      {applyReason}
+                    </span>
+                  ) : (
+                    <span className="ig-primary-reason" data-testid="id-generator-apply-hint">
+                      {PRIMARY_CTA} stays on the CSV tab. Apply writes only after test run and the risk phrase.
+                    </span>
+                  )}
                 </div>
-              </Card>
+              </section>
             ),
           },
         ]}
       />
 
-      <Card className="mt-6 grid gap-3 p-4 sm:grid-cols-2">
-        <Input
-          label="Prefix"
-          value={prefix}
-          onChange={(e) => setPrefix(e.target.value.toUpperCase())}
-          className="font-mono text-sm"
-        />
-        <Input
-          label="Separator"
-          value={separator}
-          onChange={(e) => setSeparator(e.target.value)}
-          className="font-mono text-sm"
-        />
-        <Input
-          label="Number padding"
-          type="number"
-          value={String(padding)}
-          onChange={(e) => setPadding(Number(e.target.value))}
-        />
-        <Input
-          label="Initials length"
-          type="number"
-          value={String(initialsLength)}
-          onChange={(e) => setInitialsLength(Number(e.target.value))}
-        />
-        <label className="flex items-center gap-2 text-sm text-ink sm:col-span-2">
+      <section className="ig-panel" aria-labelledby="idgen-rules-title">
+        <h2 id="idgen-rules-title" className="ig-panel-title">
+          Code rules
+        </h2>
+        <p className="ig-panel-sub">
+          Same rules feed CSV preview, live test run, Apply, and an optional sequence bridge.
+        </p>
+        <div className="ig-grid ig-grid-2">
+          <Input
+            label="Prefix"
+            value={prefix}
+            onChange={(e) => setPrefix(e.target.value.toUpperCase())}
+            className="font-mono text-sm"
+          />
+          <Input
+            label="Separator"
+            value={separator}
+            onChange={(e) => setSeparator(e.target.value)}
+            className="font-mono text-sm"
+          />
+          <Input
+            label="Number padding"
+            type="number"
+            value={String(padding)}
+            onChange={(e) => setPadding(Number(e.target.value))}
+          />
+          <Input
+            label="Initials length"
+            type="number"
+            value={String(initialsLength)}
+            onChange={(e) => setInitialsLength(Number(e.target.value))}
+          />
+        </div>
+        <label className="ig-check mt-3">
           <input
             type="checkbox"
             checked={skipIfPresent}
             onChange={(e) => setSkipIfPresent(e.target.checked)}
           />
-          Skip rows that already have a code (default ON)
+          <span>Skip rows that already have a code (default on)</span>
         </label>
-        <label className="flex items-center gap-2 text-sm text-ink sm:col-span-2">
+        <label className="ig-check mt-2">
           <input
             type="checkbox"
             checked={changedOnly}
             onChange={(e) => setChangedOnly(e.target.checked)}
           />
-          Preview changed rows only
+          <span>Show changed rows only in the preview table</span>
         </label>
-      </Card>
+      </section>
 
-      <Card className="mt-6 p-4" data-testid="id-generator-preview-panel">
-        <h2 className="text-lg font-semibold text-ink">Preview</h2>
-        {!previewHydrated || busy ? (
-          <div className="mt-3 space-y-2" data-testid="id-generator-preview-loading">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
+      <section className="ig-panel" aria-labelledby="idgen-preview-title" data-testid="id-generator-preview-panel">
+        <h2 id="idgen-preview-title" className="ig-panel-title">
+          Preview
+        </h2>
+        <p className="ig-panel-sub">
+          {tab === "csv"
+            ? "CSV preview and download never write Odoo."
+            : liveResult?.dry_run === false
+              ? "Live Apply result (writes applied for changed rows)."
+              : "Live test run lists proposed codes with no writes."}
+        </p>
+
+        {busy || !previewHydrated ? (
+          <div className="ig-progress" aria-busy="true" data-testid="id-generator-preview-loading" role="status">
+            Working on {tab === "csv" ? "CSV preview" : "live run"}…
+            <div className="mt-2 w-full space-y-2">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
           </div>
-        ) : previewRows.length === 0 ? (
+        ) : null}
+
+        {countsSource && countsGuide && previewHydrated && !busy ? (
+          <>
+            <IdGeneratorStateGuide
+              testId="id-generator-counts-guide"
+              tone={countsSource.dryRun === false ? "warning" : "accent"}
+              guide={countsGuide}
+            />
+            <IdGeneratorResultCounts
+              total={countsSource.total}
+              changed={countsSource.changed}
+              skipped={countsSource.skipped}
+              succeeded={"succeeded" in countsSource ? countsSource.succeeded : undefined}
+              failed={"failed" in countsSource ? countsSource.failed : undefined}
+              dryRun={countsSource.dryRun !== false}
+            />
+          </>
+        ) : null}
+
+        {!busy && previewHydrated && previewRows.length === 0 ? (
           <div className="mt-3" data-testid="id-generator-preview-empty">
-            <EmptyState
-              title={previewAttempted ? "No code changes in this preview" : "No preview yet"}
-              description={
+            <IdGeneratorStateGuide
+              testId="id-generator-empty-guide"
+              tone="accent"
+              guide={
                 previewAttempted
-                  ? "Widen the row filter or adjust prefix rules, then run preview again."
-                  : tab === "csv"
-                    ? "Upload a spreadsheet and run Preview to see generated reference codes."
-                    : "Run a live dry run to list proposed codes before apply."
+                  ? {
+                      title: "No code changes in this preview",
+                      why: "Every row was skipped or already matched the rules (skip-if-present or changed-only filter).",
+                      next: "Widen the row filter, clear skip-if-present, or adjust prefix rules, then run preview again.",
+                    }
+                  : emptyIdGenGuide(tab)
               }
-              action={previewEmptyAction}
+              actions={
+                tab === "csv" ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={busy || !file}
+                    onClick={() => void previewCsv()}
+                  >
+                    {PREVIEW_CTA}
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => void runLive(true)}
+                  >
+                    {DRY_RUN_CTA}
+                  </Button>
+                )
+              }
             />
           </div>
-        ) : (
-          <div className="mt-3">
+        ) : null}
+
+        {!busy && previewHydrated && previewRows.length > 0 ? (
+          <div className="ig-preview-wrap mt-3">
             <DataTable
               columns={previewColumns}
               rows={previewRows}
               rowKey={(r) => String(r.row_id)}
             />
           </div>
-        )}
-      </Card>
+        ) : null}
+      </section>
 
       <ConfirmDialogV2
         open={confirmOpen}
         riskLevel="danger"
         phrase={CONFIRM_PHRASE}
         title="Confirm live ID assignment"
-        warning={`Write generated codes on live ${model} records.`}
+        warning={`Write generated codes on live ${model} records. Test run listed proposals only; this step writes.`}
         risks={[
           "Only empty code fields are updated when skip-if-present is enabled",
           "Existing valid codes are not renumbered by default",
+          createSequence
+            ? "ir.sequence bridge will also be created or updated after Apply"
+            : "ir.sequence bridge stays unchanged unless you enable it",
         ]}
         busy={busy}
         onCancel={() => setConfirmOpen(false)}

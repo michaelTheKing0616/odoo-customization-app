@@ -5,19 +5,14 @@ import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { TooltipProvider } from "@/components/ui/Tooltip";
 import { QueryProvider } from "@/providers/QueryProvider";
 import ConnectionLayoutInner from "./layout-inner";
+import ConnectionLoading from "./loading";
 
 export default function ConnectionLayout({ children }: { children: React.ReactNode }) {
   return (
     <QueryProvider>
       <ThemeProvider>
         <TooltipProvider>
-          <Suspense
-            fallback={
-              <div className="flex min-h-screen items-center justify-center text-muted">
-                Loading shell…
-              </div>
-            }
-          >
+          <Suspense fallback={<ConnectionLoading />}>
             <ConnectionLayoutInner>{children}</ConnectionLayoutInner>
           </Suspense>
         </TooltipProvider>

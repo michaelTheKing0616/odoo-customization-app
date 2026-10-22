@@ -188,7 +188,7 @@ export function useOverviewActions(connectionId: string, s: OverviewPageState) {
 
   async function onPromote() {
     if (!s.validationId || !s.validatedZip) {
-      s.setError("Run sandbox successfully before promote");
+      s.setError("Run sandbox successfully before publish");
       return;
     }
     if (s.confirmPhrase.trim() !== "I understand the risks") {
@@ -214,7 +214,7 @@ export function useOverviewActions(connectionId: string, s: OverviewPageState) {
       s.setConfirmPhrase("");
       await refreshPromoted();
     } catch (err) {
-      s.setError(err instanceof Error ? err.message : "Promote failed");
+      s.setError(err instanceof Error ? err.message : "Publish failed");
     } finally {
       s.setExportBusy(false);
     }

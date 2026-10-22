@@ -24,14 +24,16 @@ export default defineConfig({
   ],
   webServer: {
     // Prefer production server for e2e — avoids Next file-watcher EMFILE issues.
+    // The command names INGENIUM_DIST_DIR so this build does not write `.next`.
     // PLAYWRIGHT_E2E_BUILD skips output:standalone so `next start` works (see next.config.ts).
-    command: `PLAYWRIGHT_E2E_BUILD=1 pnpm exec next build && pnpm exec next start -H 127.0.0.1 -p ${webPort}`,
+    command: `INGENIUM_DIST_DIR=.next-e2e PLAYWRIGHT_E2E_BUILD=1 pnpm exec next build && INGENIUM_DIST_DIR=.next-e2e PLAYWRIGHT_E2E_BUILD=1 pnpm exec next start -H 127.0.0.1 -p ${webPort}`,
     cwd: ".",
     url: `${baseURL}/e2e/overlay`,
     reuseExistingServer: !isCI,
     timeout: 300_000,
     env: {
       ...process.env,
+      INGENIUM_DIST_DIR: ".next-e2e",
       PLAYWRIGHT_E2E_BUILD: "1",
       NEXT_PUBLIC_E2E: "1",
       NEXT_PUBLIC_API_URL:

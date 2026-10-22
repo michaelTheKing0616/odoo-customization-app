@@ -22,7 +22,7 @@ describe("JobAutopilotHonestyBanners", () => {
       /refuses write_mode=production/,
     );
     expect(screen.getByTestId("job-score-bars-legend").textContent).toMatch(
-      /Completeness is ModuleSpec hygiene/,
+      /Completeness is app plan hygiene/,
     );
     expect(screen.getByTestId("job-score-bars-legend").textContent).toMatch(
       /Autopilot done-bar/,
@@ -44,5 +44,21 @@ describe("JobAutopilotHonestyBanners", () => {
       /RPC process smoke/,
     );
     expect(screen.getByText(/Overview checklist is not this job/)).toBeTruthy();
+  });
+
+  it("never implies live Python install on Odoo Online", () => {
+    render(
+      <JobAutopilotHonestyBanners
+        gate={jobAutopilotGate({ writeMode: "standard", sandbox: false })}
+        isOdooOnline
+      />,
+    );
+    expect(screen.getByTestId("job-autopilot-online-honesty")).toBeTruthy();
+    expect(screen.getByTestId("job-autopilot-online-body").textContent).toMatch(
+      /never installs custom Python/,
+    );
+    expect(screen.getByTestId("job-autopilot-online-body").textContent).not.toMatch(
+      /install.*Online.*Python module from here successfully/i,
+    );
   });
 });

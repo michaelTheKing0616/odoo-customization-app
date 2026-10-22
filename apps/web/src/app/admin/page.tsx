@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { Card, PageHeader } from "@/components/ui/layout-primitives";
+import { Card, EmptyState, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
 import { DataTable, type DataTableColumn } from "@/components/ui/DataTable";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Badge } from "@/components/ui/Badge";
@@ -44,6 +44,43 @@ async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+function AdminTableSlot({
+  testId,
+  label,
+  hydrated,
+  failed,
+  isEmpty,
+  emptyTitle,
+  emptyDescription,
+  children,
+}: {
+  testId: string;
+  label: string;
+  hydrated: boolean;
+  failed: boolean;
+  isEmpty: boolean;
+  emptyTitle: string;
+  emptyDescription: string;
+  children: React.ReactNode;
+}) {
+  if (!hydrated) {
+    return (
+      <div role="status" data-testid={`${testId}-loading`}>
+        <span className="sr-only">{`Loading ${label}.`}</span>
+        <div className="space-y-2" aria-hidden>
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-8 w-full" />
+        </div>
+      </div>
+    );
+  }
+  if (isEmpty) {
+    return failed ? null : <EmptyState title={emptyTitle} description={emptyDescription} />;
+  }
+  return <>{children}</>;
+}
+
 export default function AdminPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [workspaces, setWorkspaces] = useState<WorkspaceRow[]>([]);
@@ -51,6 +88,7 @@ export default function AdminPage() {
   const [criteria, setCriteria] = useState<GaCriteria | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
 
   async function refresh() {
     setError(null);
@@ -67,7 +105,9 @@ export default function AdminPage() {
   }
 
   useEffect(() => {
-    refresh().catch((err) => setError(err instanceof Error ? err.message : "Failed to load admin"));
+    refresh()
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load admin"))
+      .finally(() => setHydrated(true));
   }, []);
 
   async function toggleBeta(ws: WorkspaceRow) {
@@ -177,7 +217,7 @@ export default function AdminPage() {
     <div className="space-y-6 p-6" data-testid="admin-console">
       <PageHeader
         title="Admin console"
-        description="Superadmin workspace management and TRUST-9 beta evidence."
+        description="Manage workspaces and review beta results."
       />
       {error ? <ErrorNotice message={error} /> : null}
       {criteria ? (
@@ -195,27 +235,45 @@ export default function AdminPage() {
       ) : null}
       <Card className="p-4">
         <h2 className="mb-3 text-lg font-semibold text-ink">Users</h2>
-        {users.length === 0 ? (
-          <p className="text-sm text-muted">No users loaded.</p>
-        ) : (
+        <AdminTableSlot
+          testId="admin-users"
+          label="users"
+          hydrated={hydrated}
+          failed={Boolean(error)}
+          isEmpty={users.length === 0}
+          emptyTitle="No users yet"
+          emptyDescription="Accounts appear here after someone signs up, with their verification status."
+        >
           <DataTable columns={userColumns} rows={users} rowKey={(r) => r.id} />
-        )}
+        </AdminTableSlot>
       </Card>
       <Card className="p-4">
         <h2 className="mb-3 text-lg font-semibold text-ink">Workspaces</h2>
-        {workspaces.length === 0 ? (
-          <p className="text-sm text-muted">No workspaces loaded.</p>
-        ) : (
+        <AdminTableSlot
+          testId="admin-workspaces"
+          label="workspaces"
+          hydrated={hydrated}
+          failed={Boolean(error)}
+          isEmpty={workspaces.length === 0}
+          emptyTitle="No workspaces yet"
+          emptyDescription="Workspaces appear here once a user creates one, with beta partner and write-pause controls."
+        >
           <DataTable columns={wsColumns} rows={workspaces} rowKey={(r) => r.id} />
-        )}
+        </AdminTableSlot>
       </Card>
       <Card className="p-4">
         <h2 className="mb-3 text-lg font-semibold text-ink">Trust telemetry</h2>
-        {telemetry.length === 0 ? (
-          <p className="text-sm text-muted">No telemetry loaded.</p>
-        ) : (
+        <AdminTableSlot
+          testId="admin-telemetry"
+          label="trust telemetry"
+          hydrated={hydrated}
+          failed={Boolean(error)}
+          isEmpty={telemetry.length === 0}
+          emptyTitle="No workspaces to report on"
+          emptyDescription="Each workspace appears here with its bulk runs, refusals, aborts, and restores, starting at zero."
+        >
           <DataTable columns={telColumns} rows={telemetry} rowKey={(r) => r.workspace_id} />
-        )}
+        </AdminTableSlot>
       </Card>
     </div>
   );

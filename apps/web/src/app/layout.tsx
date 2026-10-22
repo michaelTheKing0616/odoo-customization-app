@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
+import "@fontsource-variable/geist";
+import "@fontsource-variable/geist-mono";
+import "@fontsource-variable/libre-franklin";
 import "./globals.css";
 import { AppProviders } from "@/components/AppProviders";
+import { GoToKeys } from "@/components/ui/craft";
 import { DragAutoScroll } from "@/components/DragAutoScroll";
 import { AppToaster } from "@/components/ui/AppToaster";
 import { ThemeScript } from "@/components/theme/ThemeScript";
@@ -27,6 +31,7 @@ export default function RootLayout({
       >
         <AppProviders>
           <DragAutoScroll />
+          <GoToKeys />
           {children}
           <AppToaster />
         </AppProviders>

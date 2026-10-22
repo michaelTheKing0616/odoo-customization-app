@@ -1,0 +1,364 @@
+/**
+ * PDF-01 / PDF-06 — Premium paper canvas (Canva/Affinity pasteboard).
+ * Cream sheet on a quiet gray desk. Soft ambient lift (live ref 05-canva).
+ * No page transitions. Paper className must not include the word "shadow".
+ */
+
+.stage {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  width: 100%;
+  padding: 1.5rem 1.25rem 2.25rem;
+  /* Canva pasteboard — mid gray, not admin white */
+  background: var(--report-desk, #e6e6e8);
+}
+
+:global(html.dark) .stage {
+  --report-desk: #141416;
+}
+
+.paper {
+  /* Physical sheet — always paper-colored */
+  --report-paper: #f7f3eb;
+  --report-ink: #1c1917;
+  --report-ink-muted: #57534e;
+  --report-rule: color-mix(in srgb, var(--report-ink) 14%, transparent);
+  --report-band: color-mix(in srgb, var(--report-ink) 4%, var(--report-paper));
+  --report-select: #0f766e;
+  --report-margin-top: 40mm;
+  --report-margin-right: 7mm;
+  --report-margin-bottom: 32mm;
+  --report-margin-left: 7mm;
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 42rem);
+  /* A4 default; overridden inline from paper format */
+  aspect-ratio: 210 / 297;
+  background-color: var(--report-paper);
+  color: var(--report-ink);
+  border: 1px solid var(--report-rule);
+  border-radius: 0;
+  /* Soft paper-on-desk lift (Canva PDF editor). Not a Tailwind shadow-* class. */
+  box-shadow:
+    0 1px 2px rgba(28, 25, 23, 0.04),
+    0 12px 28px -8px rgba(28, 25, 23, 0.14),
+    0 28px 48px -20px rgba(28, 25, 23, 0.1);
+  /* Paper must not animate — reduced motion or otherwise */
+  transition: none;
+  animation: none;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .paper {
+    box-shadow: 0 1px 0 rgba(28, 25, 23, 0.08);
+  }
+}
+
+.headerBand,
+.footerBand {
+  flex: 0 0 auto;
+  padding: 0.4rem 0.85rem;
+  background: var(--report-band);
+  border-color: var(--report-rule);
+  color: var(--report-ink-muted);
+  font-size: 0.625rem; /* 10px — quiet meta */
+  line-height: 1.35;
+  letter-spacing: 0.02em;
+  font-weight: 400;
+}
+
+.headerBand {
+  border-bottom: 1px solid var(--report-rule);
+}
+
+.footerBand {
+  border-top: 1px solid var(--report-rule);
+  margin-top: auto;
+}
+
+.pageBody {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* Scale mm margins to the on-screen sheet via % of paper height/width.
+     Inline style sets the concrete padding from the selected paper format. */
+  padding-top: var(--report-pad-top);
+  padding-right: var(--report-pad-right);
+  padding-bottom: var(--report-pad-bottom);
+  padding-left: var(--report-pad-left);
+  overflow: auto;
+}
+
+.blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-height: 8rem;
+}
+
+.block {
+  position: relative;
+  margin: 0;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+  outline: none;
+  transition: none;
+}
+
+.block:hover {
+  border-color: var(--report-rule);
+}
+
+.blockSelected {
+  border-color: var(--report-select);
+  background: color-mix(in srgb, var(--report-select) 6%, transparent);
+}
+
+.block:focus-visible {
+  border-color: var(--report-select);
+  outline: 2px solid color-mix(in srgb, var(--report-select) 55%, transparent);
+  outline-offset: 1px;
+}
+
+/* Type scale — print-aware, body 10–11pt */
+.titleDisplay {
+  margin: 0;
+  font-size: 18pt;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--report-ink);
+  text-wrap: balance;
+}
+
+.sectionHeading {
+  margin: 0.35rem 0 0;
+  font-size: 11.5pt;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--report-ink);
+  text-wrap: balance;
+}
+
+.body {
+  margin: 0;
+  font-size: 10.5pt;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--report-ink);
+  text-wrap: pretty;
+}
+
+.muted {
+  color: var(--report-ink-muted);
+}
+
+.label {
+  color: var(--report-ink-muted);
+  font-size: 10pt;
+}
+
+.fieldToken {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9.5pt;
+  color: var(--report-ink);
+}
+
+.amount {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.hairline {
+  border: 0;
+  border-top: 1px solid var(--report-rule);
+  margin: 0.4rem 0;
+}
+
+.pageBreak {
+  margin: 0.5rem 0;
+  text-align: center;
+  font-size: 9pt;
+  color: var(--report-ink-muted);
+  border-top: 1px dashed var(--report-rule);
+  border-bottom: 1px dashed var(--report-rule);
+  padding: 0.35rem 0;
+}
+
+.logoSlot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.25rem;
+  min-width: 5.5rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px dashed var(--report-rule);
+  color: var(--report-ink-muted);
+  font-size: 9pt;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10pt;
+  line-height: 1.4;
+}
+
+.table th {
+  text-align: start;
+  font-weight: 500;
+  color: var(--report-ink-muted);
+  border-bottom: 1px solid var(--report-rule);
+  padding: 0.25rem 0.35rem;
+  font-size: 9pt;
+  letter-spacing: 0.01em;
+}
+
+.table th.amountCol,
+.table td.amountCol {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.table td {
+  padding: 0.35rem 0.35rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--report-rule) 70%, transparent);
+  color: var(--report-ink);
+  vertical-align: top;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  min-height: 10rem;
+  text-align: center;
+  padding: 1.5rem 1rem;
+}
+
+.emptySentence {
+  margin: 0;
+  font-size: 10.5pt;
+  line-height: 1.5;
+  color: var(--report-ink-muted);
+  max-width: 22rem;
+  text-wrap: pretty;
+}
+
+.emptyAction {
+  appearance: none;
+  border: 1px solid var(--report-ink);
+  background: transparent;
+  color: var(--report-ink);
+  font-size: 10pt;
+  font-weight: 500;
+  line-height: 1.2;
+  padding: 0.4rem 0.85rem;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.emptyAction:hover {
+  background: color-mix(in srgb, var(--report-ink) 6%, transparent);
+}
+
+.emptyAction:focus-visible {
+  outline: 2px solid var(--report-select);
+  outline-offset: 2px;
+}
+
+.emptyAction:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.moveControls {
+  position: absolute;
+  top: 0;
+  inset-inline-end: 0;
+  display: none;
+  gap: 0.15rem;
+}
+
+.block:hover .moveControls,
+.block:focus-within .moveControls {
+  display: flex;
+}
+
+.moveBtn {
+  appearance: none;
+  border: 1px solid var(--report-rule);
+  background: var(--report-paper);
+  color: var(--report-ink-muted);
+  font-size: 0.65rem;
+  line-height: 1;
+  padding: 0.15rem 0.3rem;
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.moveBtn:hover {
+  color: var(--report-ink);
+  border-color: var(--report-ink-muted);
+}
+
+.moveBtn:focus-visible {
+  outline: 2px solid var(--report-select);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .paper,
+  .block,
+  .emptyAction,
+  .moveBtn {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* PDF-07 — Table Inspector reflections on paper */
+.table tfoot td {
+  border-bottom: 0;
+  border-top: 1px solid var(--report-ink-muted);
+  padding-top: 0.4rem;
+  font-weight: 600;
+  color: var(--report-ink);
+}
+
+.totalsRow td {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.blockSelected .table th[data-col-index] {
+  cursor: pointer;
+}
+
+.blockSelected .table th[data-col-index]:hover {
+  color: var(--report-ink);
+}
+
+.activeCol {
+  background: color-mix(in srgb, var(--report-select) 7%, transparent);
+}
+
+.table thead th.activeCol {
+  color: var(--report-select);
+  box-shadow: inset 0 -2px 0 var(--report-select);
+}

@@ -60,8 +60,8 @@ export function RefineHistoryPopover({
         aria-haspopup="dialog"
         title={
           items.length
-            ? `Refine history (${items.length}) — Undo uses restore/oops; click a phrase to reuse it`
-            : "Refine history — no changes yet"
+            ? `Refine history (${items.length}). Undo restores the previous version; click a phrase to reuse it`
+            : "Refine history: no changes yet"
         }
         data-testid="refine-history"
         onClick={() => setOpen((v) => !v)}

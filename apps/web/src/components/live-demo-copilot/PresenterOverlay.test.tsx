@@ -30,6 +30,8 @@ describe("PresenterOverlay", () => {
   it("shows empty waiting state", () => {
     render(<PresenterOverlay answers={[]} showShareGuidance={false} />);
     expect(screen.getByTestId("presenter-empty")).toHaveTextContent(/Waiting for Odoo questions/);
+    expect(screen.getByTestId("presenter-empty")).toHaveTextContent(/Keep this window off the shared screen/);
+    expect(screen.getByTestId("presenter-empty")).toHaveTextContent(/Why/);
     expect(screen.getByTestId("presenter-not-for-share")).toHaveTextContent(/Not for screen share/);
   });
 
@@ -59,7 +61,7 @@ describe("PresenterOverlay", () => {
             id: "a2",
             question: "Will this upgrade safely?",
             confidence: "low",
-            confidence_flag: "Not fully certain — worth confirming before stating this to the client.",
+            confidence_flag: "Not fully certain - worth confirming before stating this to the client.",
             bullets: ["Depends on custom modules"],
           }),
         ]}

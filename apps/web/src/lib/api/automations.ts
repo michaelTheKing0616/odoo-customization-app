@@ -1,6 +1,6 @@
 import { request } from "./client";
 import type { AutomationActionKind } from "./types-actions";
-import type { ActivityTypeRow, AutomationRow, CodeStudioBindResult, CodeStudioGateResponse, CodeStudioTestRunResult, CodeStudioValidateResult, ModuleExport, SnapshotRow } from "./types-catalog";
+import type { ActivityTypeRow, AutomationRow, CodeStudioBindResult, CodeStudioGateResponse, CodeStudioOptionAResult, CodeStudioTestRunResult, CodeStudioValidateResult, ModuleExport, SnapshotRow } from "./types-catalog";
 import type { AutomationsGateResponse } from "./types-gating";
 import type { ApprovalButton, ApprovalEntry, ApprovalRule, ApprovalStep, ApprovalsGateResponse, AutomationTriggersResponse, HealthCheckRun, HealthCheckTrigger, ProcessGateResponse, ProcessRequestRow, ProcessTypeRow } from "./types-schema";
 
@@ -40,6 +40,34 @@ export const automationsApi = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  exportCodeStudioOptionA: (
+    id: string,
+    body: {
+      name: string; model: string; code: string; technical_name?: string | null;
+      /** Modules the built-in model comes from, so the extension installs after them. */
+      depends?: string[] | null;
+      /** Package as an imported models/ file (an _inherit extension of a built-in model). */
+      as_extension?: boolean;
+    },
+  ) =>
+    request<CodeStudioOptionAResult>(`/api/connections/${id}/code-studio/option-a`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getExtensionScaffold: (
+    id: string,
+    body: {
+      model: string;
+      kind: "selection_options" | "computed_field" | "behaviour";
+      field_name?: string | null;
+      label?: string | null;
+      options?: { value: string; label: string }[] | null;
+    },
+  ) =>
+    request<{ code: string; depends: string[]; technical_name: string }>(
+      `/api/connections/${id}/code-studio/extension-scaffold`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
   bindCodeStudio: (
     id: string,
     body: {
@@ -224,6 +252,11 @@ export const automationsApi = {
       `/api/connections/${id}/automations/${automationId}`,
       { method: "DELETE", body: JSON.stringify(body) },
     ),
+  /** A4: one History — snapshots and real bulk runs, newest first, with filters. */
+  history: (id: string, params: { page?: string; record_type?: string; q?: string } = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]).toString();
+    return request<{ entries: HistoryEntry[]; pages: string[] }>(`/api/connections/${id}/history${qs ? `?${qs}` : ""}`);
+  },
   listSnapshots: (id: string) =>
     request<SnapshotRow[]>(`/api/connections/${id}/snapshots`),
   getLatestHealthCheck: (id: string) =>
@@ -242,4 +275,16 @@ export const automationsApi = {
       `/api/connections/${id}/snapshots/${snapshotId}/rollback`,
       { method: "POST" },
     ),
+};
+
+export type HistoryEntry = {
+  id: string;
+  kind: "snapshot" | "bulk_run";
+  page: string;
+  resource_type: string;
+  record_type: string | null;
+  label: string;
+  at: string | null;
+  undo: { snapshot_id: string; partial: boolean } | null;
+  receipt: Record<string, unknown>;
 };

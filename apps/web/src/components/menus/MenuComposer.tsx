@@ -1,8 +1,7 @@
 "use client";
 
-import { FormEvent } from "react";
+import { FormEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/layout-primitives";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { GroupPicker } from "@/components/security/GroupPicker";
@@ -19,6 +18,8 @@ type MenuComposerProps = {
   busy?: boolean;
   canSubmit?: boolean;
   submitBlockedReason?: string | null;
+  /** Session chrome (Draft / Unsaved / Saved plus Discard) shown beside the submit button. */
+  sessionBar?: ReactNode;
 };
 
 export function MenuComposer({
@@ -31,134 +32,191 @@ export function MenuComposer({
   busy,
   canSubmit = true,
   submitBlockedReason,
+  sessionBar,
 }: MenuComposerProps) {
   const isRoot = !form.parent_id;
+  const needsModel = form.action_mode === "create" && !form.action_model.trim();
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4" data-testid="menus-composer">
-      <Card className="space-y-4 p-5">
-        <div>
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted">New menu</p>
-          <h2 className="text-base font-semibold text-ink">Create a menu item</h2>
-          <p className="mt-1 text-sm text-muted">
-            Root items become app tiles. Children nest under a parent. Bind a window action so
-            Open-in-Odoo has somewhere to go.
+    <form
+      onSubmit={onSubmit}
+      className="mn-panel"
+      data-testid="menus-composer"
+      aria-labelledby="menus-composer-title"
+    >
+      <header className="mn-panel-head">
+        <div className="min-w-0">
+          <p className="mn-crumbs">New menu</p>
+          <h2 className="mn-panel-title" id="menus-composer-title">
+            Create a menu item
+          </h2>
+          <p className="mn-panel-sub">
+            Top-level items become app tiles. Children nest under a parent. Bind a window action so
+            the item opens something.
           </p>
         </div>
+      </header>
+
+      <fieldset className="mn-section">
+        <legend className="mn-section-title">Placement</legend>
         <Input
+          id="menu-new-label"
           label="Label"
           required
           value={form.name}
           onChange={(e) => onChange({ name: e.target.value })}
-          placeholder="Visitor log"
-          hint="Shown in the Odoo app switcher or navbar."
+          placeholder="Visitor log…"
+          hint="Shown in Odoo's app switcher or navbar."
         />
-        <Select
-          label="Parent"
-          options={parentSelectOptions(menus)}
-          value={form.parent_id}
-          onChange={(e) => onChange({ parent_id: e.target.value })}
-          hint="Empty parent creates a root app menu."
-        />
-        <Input
-          label="Sequence"
-          type="number"
-          value={String(form.sequence)}
-          onChange={(e) => onChange({ sequence: Number(e.target.value) })}
-          hint="Lower numbers appear first among siblings."
-        />
+        <div className="mn-grid-2">
+          <Select
+            id="menu-new-parent"
+            label="Parent"
+            options={parentSelectOptions(menus)}
+            value={form.parent_id}
+            onChange={(e) => onChange({ parent_id: e.target.value })}
+            hint="Root app makes it a top-level tile."
+          />
+          <Input
+            id="menu-new-sequence"
+            label="Sequence"
+            type="number"
+            inputMode="numeric"
+            value={String(form.sequence)}
+            onChange={(e) => onChange({ sequence: Number(e.target.value) })}
+            hint="Lower comes first."
+          />
+        </div>
         {isRoot ? (
           <Input
-            label="Root icon"
+            id="menu-new-icon"
+            label="App icon path"
             value={form.web_icon}
             onChange={(e) => onChange({ web_icon: e.target.value })}
             className="font-mono"
-            hint="Odoo 19 needs a module file path. Font Awesome fa-* strings are rejected."
+            spellCheck={false}
+            autoComplete="off"
+            hint="Odoo 19 needs a module file path such as base,static/description/icon.png. It rejects fa-* icon names."
           />
         ) : null}
+      </fieldset>
 
-        <fieldset className="space-y-3 rounded-md border border-border-subtle p-3">
-          <legend className="px-1 text-sm font-medium text-ink">Window action</legend>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant={form.action_mode === "existing" ? "primary" : "secondary"}
-              onClick={() => onChange({ action_mode: "existing" })}
-            >
-              Bind existing
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={form.action_mode === "create" ? "primary" : "secondary"}
-              onClick={() => onChange({ action_mode: "create" })}
-            >
-              Create action
-            </Button>
-          </div>
-          {form.action_mode === "existing" ? (
-            <Select
-              label="Action"
-              options={[
-                { value: "", label: "No action yet" },
-                ...actions.map((a) => ({
-                  value: String(a.id),
-                  label: `#${a.id} ${a.name}${a.res_model ? ` (${a.res_model})` : ""}`,
-                })),
-              ]}
-              value={form.action_id}
-              onChange={(e) => onChange({ action_id: e.target.value })}
-              hint="Standalone window actions first. Related-button actions that need active_id stay off the menu."
+      <fieldset className="mn-section">
+        <legend className="mn-section-title">What it opens</legend>
+        <div className="mn-seg" role="radiogroup" aria-label="Window action source">
+          <label>
+            <input
+              type="radio"
+              name="menu-action-mode"
+              value="existing"
+              checked={form.action_mode === "existing"}
+              onChange={() => onChange({ action_mode: "existing" })}
+              data-testid="menus-action-mode-existing"
             />
-          ) : (
-            <div className="space-y-3">
+            Use an existing action
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="menu-action-mode"
+              value="create"
+              checked={form.action_mode === "create"}
+              onChange={() => onChange({ action_mode: "create" })}
+              data-testid="menus-action-mode-create"
+            />
+            Create a new action
+          </label>
+        </div>
+        {form.action_mode === "existing" ? (
+          <Select
+            id="menu-new-action"
+            label="Window action"
+            options={[
+              { value: "", label: "No action yet" },
+              ...actions.map((a) => ({
+                value: String(a.id),
+                label: `#${a.id} ${a.name}${a.res_model ? ` (${a.res_model})` : ""}`,
+              })),
+            ]}
+            value={form.action_id}
+            onChange={(e) => onChange({ action_id: e.target.value })}
+            hint="Standalone window actions only. Smart-button actions that need active_id stay in the View Designer."
+          />
+        ) : (
+          <>
+            <Input
+              id="menu-new-action-name"
+              label="Action name"
+              value={form.action_name}
+              onChange={(e) => onChange({ action_name: e.target.value })}
+              placeholder={form.name ? `${form.name} list` : "Open records…"}
+              hint="Left empty, it becomes the label plus “list”."
+            />
+            <div className="mn-grid-2">
               <Input
-                label="Action name"
-                required
-                value={form.action_name}
-                onChange={(e) => onChange({ action_name: e.target.value })}
-                placeholder={form.name ? `${form.name} list` : "Open records"}
-              />
-              <Input
+                id="menu-new-action-model"
                 label="Model"
                 required
                 value={form.action_model}
                 onChange={(e) => onChange({ action_model: e.target.value })}
                 className="font-mono"
-                placeholder="x_visitor_log"
-                hint="Technical model this menu opens."
+                placeholder="x_visitor_log…"
+                spellCheck={false}
+                autoComplete="off"
+                hint="Technical name of the model this menu opens."
               />
               <Input
+                id="menu-new-action-mode"
                 label="View mode"
                 value={form.action_view_mode}
                 onChange={(e) => onChange({ action_view_mode: e.target.value })}
                 className="font-mono"
+                spellCheck={false}
+                autoComplete="off"
               />
             </div>
-          )}
-        </fieldset>
+          </>
+        )}
+      </fieldset>
 
+      <fieldset className="mn-section">
+        <legend className="mn-section-title">Who sees it</legend>
         <GroupPicker
           groups={groups}
           value={form.group_ids}
           onChange={(group_ids) => onChange({ group_ids })}
           label="Visibility groups"
-          hint="Empty means every user who can reach the bound action. Restrict when this is a dedicated app tile."
+          hint="Empty means everyone who can open the action sees it. Restrict it for a dedicated app tile."
           noneLabel="Visible to all users"
+          testId="menus-composer-groups"
         />
+      </fieldset>
 
-        <Button
-          type="submit"
-          variant="primary"
-          disabled={busy || !canSubmit || !form.name.trim()}
-          title={submitBlockedReason ?? undefined}
-          loading={busy}
-          data-testid="menus-create"
-        >
-          Create menu
-        </Button>
-      </Card>
+      <div className="mn-savebar" data-testid="menus-composer-savebar">
+        <div className="mn-savebar-status">
+          {sessionBar}
+          {!canSubmit && submitBlockedReason ? (
+            <p className="mn-savebar-detail" data-testid="menus-create-blocked">
+              {submitBlockedReason}
+            </p>
+          ) : needsModel ? (
+            <p className="mn-savebar-detail">Add the model the new action opens.</p>
+          ) : null}
+        </div>
+        <div className="mn-savebar-actions">
+          <Button
+            type="submit"
+            variant="primary"
+            size="sm"
+            disabled={busy || !canSubmit || !form.name.trim() || needsModel}
+            title={submitBlockedReason ?? undefined}
+            loading={busy}
+            data-testid="menus-create"
+          >
+            Create menu
+          </Button>
+        </div>
+      </div>
     </form>
   );
 }

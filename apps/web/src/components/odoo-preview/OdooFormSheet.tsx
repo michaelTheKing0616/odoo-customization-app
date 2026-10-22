@@ -6,10 +6,11 @@ type OdooFormSheetProps = {
   children: ReactNode;
 };
 
+/** White sheet on the grey form backdrop (Odoo o_form_sheet_bg / o_form_sheet). */
 export function OdooFormSheet({ children }: OdooFormSheetProps) {
   return (
-    <div className="odoo-form-workspace">
-      <div className="odoo-form-sheet" data-testid="odoo-form-sheet">
+    <div className="ofp-sheet-bg">
+      <div className="ofp-sheet" data-testid="odoo-form-sheet">
         {children}
       </div>
     </div>

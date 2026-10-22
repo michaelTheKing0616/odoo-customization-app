@@ -1,0 +1,976 @@
+/* ==========================================================================
+   Odoo form preview (App Studio Generate, Builder). Mirrors Odoo 17/18 form
+   anatomy: control panel, header (buttons left, arrow stages right), white
+   sheet on a grey backdrop, oe_title, button box, two inner groups, notebook,
+   chatter. Ingenium accents: one teal primary, no purple, amber only for
+   left out / deferred. Self-contained `ofp-` namespace so studio desk
+   overrides on legacy .odoo-* classes cannot flatten it.
+   ========================================================================== */
+
+:root {
+  --ofp-font: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ofp-text: #1f2937;
+  --ofp-label: #374151;
+  --ofp-muted: #6b7280;
+  --ofp-faint: #9ca3af;
+  --ofp-border: #dee2e6;
+  --ofp-border-soft: #eceef1;
+  --ofp-backdrop: #f3f4f6;
+  --ofp-sheet: #ffffff;
+  --ofp-primary: #0f766e;
+  --ofp-primary-hover: #115e59;
+  --ofp-primary-tint: #e6f3f1;
+  --ofp-primary-wash: #f2f9f8;
+  --ofp-required: #f7fbfa;
+  --ofp-amber: #b45309;
+  --ofp-amber-tint: #fffbeb;
+  --ofp-amber-line: #f2c46d;
+}
+
+.ofp,
+.ofp-cp,
+.ofp-header,
+.ofp-sheet-bg,
+.ofp-chatter {
+  --ofp-font: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ofp-text: #1f2937;
+  --ofp-label: #374151;
+  --ofp-muted: #6b7280;
+  --ofp-faint: #9ca3af;
+  --ofp-border: #dee2e6;
+  --ofp-border-soft: #eceef1;
+  --ofp-backdrop: #f3f4f6;
+  --ofp-sheet: #ffffff;
+  --ofp-primary: #0f766e;
+  --ofp-primary-hover: #115e59;
+  --ofp-primary-tint: #e6f3f1;
+  --ofp-primary-wash: #f2f9f8;
+  --ofp-required: #f7fbfa;
+  --ofp-amber: #b45309;
+  --ofp-amber-tint: #fffbeb;
+  --ofp-amber-line: #f2c46d;
+  font-family: var(--ofp-font);
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ofp-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+.ofp-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+/* ---------- Buttons ---------- */
+.ofp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font: 500 13px/1 var(--ofp-font);
+  white-space: nowrap;
+  cursor: default;
+}
+.ofp-btn-sm {
+  min-height: 26px;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+.ofp-btn-primary {
+  background: var(--ofp-primary);
+  border-color: var(--ofp-primary);
+  color: #fff;
+}
+.ofp-btn-primary:disabled {
+  opacity: 1;
+}
+.ofp-btn-secondary {
+  background: #fff;
+  border-color: var(--ofp-border);
+  color: var(--ofp-text);
+}
+
+/* ---------- Control panel ---------- */
+.ofp-cp {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 16px;
+  background: #fff;
+  border: 1px solid var(--ofp-border);
+  border-bottom-color: var(--ofp-border-soft);
+  border-radius: 6px 6px 0 0;
+}
+.ofp-cp-left,
+.ofp-cp-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.ofp-cp-left {
+  flex: 1 1 auto;
+}
+.ofp-breadcrumb {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 15px;
+  white-space: nowrap;
+}
+.ofp-breadcrumb-part {
+  display: inline-flex;
+  min-width: 0;
+}
+.ofp-breadcrumb-sep {
+  margin: 0 6px;
+  color: var(--ofp-faint);
+}
+.ofp-breadcrumb-link {
+  color: var(--ofp-primary);
+}
+.ofp-breadcrumb-current {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  color: var(--ofp-text);
+}
+.ofp-cp-gear {
+  display: inline-flex;
+  color: var(--ofp-muted);
+}
+.ofp-pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--ofp-muted);
+  font-size: 13px;
+}
+.ofp-pager-value {
+  margin-right: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.ofp-pager-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--ofp-border);
+  border-radius: 4px;
+  background: #fff;
+}
+.ofp-cp-search {
+  min-width: 180px;
+  padding: 5px 10px;
+  border: 1px solid var(--ofp-border);
+  border-radius: 4px;
+  color: var(--ofp-faint);
+}
+.ofp-switcher {
+  display: inline-flex;
+  border: 1px solid var(--ofp-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.ofp-switch {
+  padding: 4px 10px;
+  border: 0;
+  background: #fff;
+  color: var(--ofp-muted);
+  font: 500 12.5px/1.4 var(--ofp-font);
+  cursor: pointer;
+}
+.ofp-switch + .ofp-switch {
+  border-left: 1px solid var(--ofp-border);
+}
+.ofp-switch.is-active {
+  background: var(--ofp-primary-tint);
+  color: var(--ofp-primary-hover);
+}
+.ofp-switch:focus-visible,
+.ofp-tab:focus-visible {
+  outline: 2px solid var(--ofp-primary);
+  outline-offset: -2px;
+}
+
+/* ---------- Form frame: grey backdrop, sheet + chatter ---------- */
+.ofp {
+  container: ofp / inline-size;
+  background: var(--ofp-backdrop);
+  border: 1px solid var(--ofp-border);
+  border-top: 0;
+  border-radius: 0 0 6px 6px;
+}
+.ofp-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.ofp-main {
+  min-width: 0;
+}
+
+/* Header row: action buttons left, stages right. */
+.ofp-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 10px 16px;
+}
+.ofp-header-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Arrow stages, Odoo o_arrow_button shape. */
+.ofp-statusbar {
+  display: flex;
+  flex-wrap: wrap;
+  margin-left: auto;
+  row-gap: 4px;
+}
+.ofp-stage {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 14px 0 20px;
+  margin-left: -6px;
+  background: #fff;
+  color: var(--ofp-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 0 100%, 10px 50%);
+  filter: drop-shadow(0 0 0 var(--ofp-border));
+  box-shadow: inset 0 1px 0 var(--ofp-border), inset 0 -1px 0 var(--ofp-border);
+}
+.ofp-stage:first-child {
+  margin-left: 0;
+  padding-left: 14px;
+  border-left: 1px solid var(--ofp-border);
+  border-radius: 4px 0 0 4px;
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 0 100%);
+}
+.ofp-stage.is-active {
+  background: var(--ofp-primary-tint);
+  color: var(--ofp-primary-hover);
+  font-weight: 650;
+  box-shadow: inset 0 1px 0 #b9ddd8, inset 0 -1px 0 #b9ddd8;
+}
+
+/* Sheet */
+.ofp-sheet-bg {
+  padding: 0 16px 24px;
+}
+.ofp-sheet {
+  position: relative;
+  max-width: 1140px;
+  margin: 0 auto;
+  --ofp-sheet-px: 40px;
+  padding: 24px var(--ofp-sheet-px) 32px;
+  background: var(--ofp-sheet);
+  border: 1px solid var(--ofp-border);
+  border-radius: 4px;
+  box-shadow: 0 5px 20px -15px rgb(0 0 0 / 30%);
+}
+
+/* Alerts (Odoo alert bar at the top of the sheet) */
+.ofp-alert {
+  margin: -8px -16px 16px;
+  padding: 8px 12px;
+  border: 1px solid var(--ofp-border);
+  border-left-width: 3px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.ofp-alert--info {
+  border-left-color: var(--ofp-primary);
+  background: var(--ofp-primary-wash);
+}
+.ofp-alert--warning {
+  border-left-color: var(--ofp-amber-line);
+  background: var(--ofp-amber-tint);
+}
+.ofp-alert--danger {
+  border-left-color: #dc2626;
+  background: #fef2f2;
+}
+
+/* Button box (smart buttons), top right */
+/* Odoo's oe_button_box: flush with the sheet top, inset from its edges, buttons
+   share hairlines and shrink, then wrap, when the sheet narrows. */
+.ofp-button-box {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin: -24px calc(-1 * var(--ofp-sheet-px)) 16px;
+  padding: 0 calc(var(--ofp-sheet-px) / 2);
+  border-bottom: 1px solid var(--ofp-border-soft);
+}
+.ofp-stat {
+  display: flex;
+  flex: 0 1 140px;
+  align-items: center;
+  gap: 8px;
+  min-width: 112px;
+  padding: 8px 12px;
+  border-left: 1px solid var(--ofp-border-soft);
+  color: var(--ofp-muted);
+}
+.ofp-stat:last-child {
+  border-right: 1px solid var(--ofp-border-soft);
+}
+.ofp-stat-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--ofp-primary);
+}
+.ofp-stat-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  min-width: 0;
+}
+.ofp-stat-value {
+  color: var(--ofp-primary);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.ofp-stat-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+
+/* oe_title */
+.ofp-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+.ofp-title-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ofp-title-label {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--ofp-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.ofp-title-input {
+  margin: 0;
+  padding: 2px 0 4px;
+  border-bottom: 1px solid var(--ofp-border);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.ofp-title-input.is-required {
+  background: var(--ofp-required);
+}
+.ofp-title-static {
+  border-bottom-color: transparent;
+}
+.ofp-title-placeholder {
+  color: #c4c8ce;
+  font-weight: 500;
+}
+.ofp-avatar-box {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 90px;
+  height: 90px;
+  border: 1px solid var(--ofp-border);
+  border-radius: 4px;
+  background: #f8f9fa;
+  color: var(--ofp-faint);
+  font-size: 12px;
+}
+
+/* Groups: two inner groups side by side */
+.ofp-groups {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0 48px;
+}
+.ofp-group {
+  min-width: 0;
+}
+.ofp-group-title {
+  margin: 8px 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--ofp-border);
+  color: var(--ofp-text);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.ofp-group-body {
+  display: flex;
+  flex-direction: column;
+}
+.ofp-empty {
+  margin: 6px 0;
+  color: var(--ofp-faint);
+  font-size: 12.5px;
+}
+
+/* Field row: label left, value right (Odoo o_td_label / o_field_widget) */
+.ofp-field {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(96px, 36%) minmax(0, 1fr);
+  gap: 0 16px;
+  align-items: start;
+  padding: 3px 0;
+  min-height: 34px;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: inherit;
+}
+.ofp-field--wide {
+  grid-template-columns: minmax(0, 1fr);
+  padding-top: 8px;
+}
+.ofp-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 4px;
+  padding-top: 5px;
+  min-width: 0;
+  color: var(--ofp-label);
+  font-weight: 600;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.ofp-label-text {
+  min-width: 0;
+}
+.ofp-required {
+  color: var(--ofp-primary);
+  font-weight: 700;
+}
+.ofp-type-hint {
+  flex-basis: 100%;
+  height: 0;
+  overflow: hidden;
+  color: var(--ofp-faint);
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0;
+}
+.ofp-field:hover .ofp-type-hint {
+  height: auto;
+  opacity: 1;
+}
+.ofp-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Underline inputs */
+.ofp-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 28px;
+  padding: 4px 2px;
+  border-bottom: 1px solid var(--ofp-border);
+  color: var(--ofp-text);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ofp-input-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ofp-field:hover .ofp-input {
+  border-bottom-color: #9aa3ad;
+}
+.ofp-field.is-required .ofp-input {
+  background: var(--ofp-required);
+}
+.ofp-caret,
+.ofp-date-icon {
+  color: var(--ofp-muted);
+}
+.ofp-m2o-open {
+  color: var(--ofp-primary);
+  opacity: 0.55;
+}
+.ofp-field:hover .ofp-m2o-open {
+  opacity: 1;
+}
+.ofp-input--num .ofp-input-text {
+  font-variant-numeric: tabular-nums;
+}
+.ofp-currency {
+  margin-right: 4px;
+  color: var(--ofp-muted);
+}
+.ofp-input--text {
+  align-items: flex-start;
+  min-height: 48px;
+  white-space: normal;
+  color: var(--ofp-muted);
+}
+.ofp-input--tags {
+  gap: 4px;
+}
+.ofp-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--ofp-primary-tint);
+  color: var(--ofp-primary-hover);
+  font-size: 12px;
+  font-weight: 500;
+}
+.ofp-tag[data-tone="2"] {
+  background: #eef0f3;
+  color: #374151;
+}
+.ofp-bool {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+}
+.ofp-checkbox {
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  border: 1px solid #adb5bd;
+  border-radius: 3px;
+  background: #fff;
+}
+.ofp-toggle {
+  position: relative;
+  display: inline-block;
+  width: 30px;
+  height: 17px;
+  border-radius: 999px;
+  background: #ced4da;
+}
+.ofp-toggle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+/* Html mini editor */
+.ofp-html {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  border: 1px solid var(--ofp-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.ofp-html-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--ofp-border-soft);
+  background: #f8f9fa;
+  color: var(--ofp-muted);
+  font-size: 12px;
+}
+.ofp-html-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--ofp-border);
+}
+.ofp-html-body {
+  min-height: 64px;
+  padding: 8px 10px;
+  color: var(--ofp-faint);
+}
+
+/* One2many list */
+.ofp-o2m {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+.ofp-o2m-scroll {
+  display: block;
+  overflow-x: auto;
+}
+.ofp-o2m-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.ofp-o2m-table th {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--ofp-border);
+  color: var(--ofp-text);
+  font-weight: 650;
+  text-align: left;
+  white-space: nowrap;
+}
+.ofp-o2m-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--ofp-border-soft);
+  color: var(--ofp-text);
+  white-space: nowrap;
+}
+.ofp-o2m-table tr.is-faded td {
+  color: var(--ofp-faint);
+}
+.ofp-o2m-table [data-ttype="float"],
+.ofp-o2m-table [data-ttype="integer"],
+.ofp-o2m-table [data-ttype="monetary"] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.ofp-o2m-add {
+  padding: 7px 8px;
+  color: var(--ofp-primary);
+  font-weight: 500;
+}
+
+/* Notebook */
+.ofp-notebook {
+  margin-top: 24px;
+}
+.ofp-tabs {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--ofp-border);
+  scrollbar-width: none;
+}
+.ofp-tab {
+  position: relative;
+  padding: 8px 14px;
+  border: 0;
+  background: none;
+  color: var(--ofp-muted);
+  font: 500 13px/1.3 var(--ofp-font);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ofp-tab::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: transparent;
+}
+.ofp-tab:hover {
+  color: var(--ofp-text);
+}
+.ofp-tab.is-active {
+  color: var(--ofp-text);
+  font-weight: 650;
+}
+.ofp-tab.is-active::after {
+  background: var(--ofp-primary);
+}
+.ofp-tab-panel {
+  padding: 12px 0 0;
+}
+
+/* Extensions (new x_ fields) and flash: a teal hairline, not a box */
+.ofp-field.is-extension .ofp-input,
+.ofp-value.field-highlight .ofp-input,
+.ofp-title-input.field-highlight {
+  border-bottom-color: var(--ofp-primary);
+  box-shadow: inset 0 -1px 0 var(--ofp-primary);
+}
+
+/* Left out / deferred: dashed ghost + amber badge */
+.ofp-deferred {
+  margin-top: 24px;
+}
+.ofp-field.is-deferred .ofp-input,
+.ofp-ghost {
+  border-bottom-style: dashed;
+  border-bottom-color: var(--ofp-amber-line);
+  background: transparent;
+  color: var(--ofp-faint);
+}
+.ofp-ghost {
+  min-height: 28px;
+}
+.ofp-field.is-deferred .ofp-label {
+  color: var(--ofp-muted);
+}
+.ofp-deferred-badge {
+  flex: none;
+  padding: 1px 8px;
+  border: 1px solid var(--ofp-amber-line);
+  border-radius: 999px;
+  background: var(--ofp-amber-tint);
+  color: var(--ofp-amber);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ofp-deferred-badge[data-status="deferred"] {
+  border-color: var(--ofp-border);
+  background: #f8f9fa;
+  color: var(--ofp-muted);
+}
+
+/* Chatter */
+.ofp-chatter {
+  min-width: 0;
+  padding: 12px 16px 20px;
+  border-top: 1px solid var(--ofp-border);
+  background: #fff;
+}
+.ofp-chatter-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ofp-chatter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ofp-chatter-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--ofp-muted);
+  font-size: 12.5px;
+}
+.ofp-chatter-followers {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.ofp-chatter-follow {
+  color: var(--ofp-primary);
+  font-weight: 500;
+}
+.ofp-chatter-composer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+.ofp-chatter-input {
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid var(--ofp-border);
+  border-radius: 4px;
+  color: var(--ofp-faint);
+}
+.ofp-avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  background: var(--ofp-primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 650;
+}
+.ofp-avatar--muted {
+  background: #6b7280;
+}
+.ofp-chatter-day {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 10px;
+  color: var(--ofp-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.ofp-chatter-day::before,
+.ofp-chatter-day::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--ofp-border-soft);
+}
+.ofp-chatter-msg {
+  display: flex;
+  gap: 10px;
+}
+.ofp-chatter-msg-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 13px;
+}
+.ofp-chatter-msg-head span {
+  color: var(--ofp-faint);
+  font-size: 12px;
+}
+.ofp-chatter-msg-body p {
+  margin: 2px 0 0;
+  color: var(--ofp-label);
+}
+.ofp-chatter-note {
+  margin: 14px 0 0;
+  color: var(--ofp-faint);
+  font-size: 11.5px;
+}
+
+/* ---------- Container-driven responsiveness ---------- */
+/* Two-column groups follow the sheet column, so they hold with chatter on the right. */
+.ofp-main {
+  container: ofp-main / inline-size;
+}
+
+@container ofp-main (max-width: 760px) {
+  .ofp-sheet {
+    --ofp-sheet-px: 28px;
+  }
+}
+
+@container ofp-main (min-width: 520px) {
+  .ofp-groups.is-two-column {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ofp-groups.is-two-column > .ofp-group:has(.ofp-field--wide):last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+}
+
+@container ofp (min-width: 860px) {
+  .ofp[data-chatter="on"] .ofp-body,
+  .ofp-body:has(> .ofp-chatter) {
+    grid-template-columns: minmax(0, 1fr) clamp(280px, 30%, 360px);
+  }
+  .ofp-body > .ofp-chatter {
+    border-top: 0;
+    border-left: 1px solid var(--ofp-border);
+    border-radius: 0 0 6px 0;
+  }
+}
+
+@container ofp (max-width: 560px) {
+  .ofp-header {
+    padding: 8px 10px;
+  }
+  .ofp-statusbar {
+    margin-left: 0;
+  }
+  .ofp-sheet-bg {
+    padding: 0 0 16px;
+  }
+  .ofp-sheet {
+    --ofp-sheet-px: 16px;
+    padding: 16px var(--ofp-sheet-px) 24px;
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
+  }
+  .ofp-button-box {
+    margin: -16px calc(-1 * var(--ofp-sheet-px)) 12px;
+    justify-content: flex-start;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+  .ofp-alert {
+    margin: -4px -4px 12px;
+  }
+  .ofp-title-input {
+    font-size: 22px;
+  }
+  .ofp-avatar-box {
+    width: 64px;
+    height: 64px;
+  }
+  .ofp-field {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 4px 0 6px;
+  }
+  .ofp-label {
+    padding-top: 2px;
+    font-size: 12.5px;
+  }
+}
+
+@media (max-width: 560px) {
+  .ofp-cp {
+    padding: 8px 10px;
+  }
+  .ofp-breadcrumb {
+    font-size: 14px;
+  }
+}
+
+/* ---------- Motion (opt-in only) ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  .ofp-input,
+  .ofp-m2o-open,
+  .ofp-tab,
+  .ofp-tab::after,
+  .ofp-type-hint {
+    transition:
+      border-color 140ms ease,
+      opacity 140ms ease,
+      color 140ms ease,
+      background-color 140ms ease;
+  }
+  .ofp-tab-panel {
+    animation: ofp-panel-in 180ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+}
+
+@keyframes ofp-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

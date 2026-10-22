@@ -23,9 +23,16 @@ describe("BarcodeScanner", () => {
       configurable: true,
     });
 
-    render(<BarcodeScanner onScan={onScan} />);
+    // jsdom has no media playback or MediaStream; stub both as a real browser would accept them.
+    Object.defineProperty(HTMLMediaElement.prototype, "srcObject", { set() {}, get() { return null; }, configurable: true });
+    Object.defineProperty(HTMLMediaElement.prototype, "play", { value: vi.fn().mockResolvedValue(undefined), configurable: true });
+
+    const onError = vi.fn();
+    render(<BarcodeScanner onScan={onScan} onError={onError} />);
     fireEvent.click(screen.getByRole("button", { name: /start camera/i }));
 
-    await waitFor(() => expect(onScan).toHaveBeenCalledWith("SCAN-001"));
+    await waitFor(() => expect(onScan.mock.calls.length + onError.mock.calls.length).toBeGreaterThan(0));
+    expect(onError.mock.calls).toEqual([]);
+    expect(onScan).toHaveBeenCalledWith("SCAN-001");
   });
 });

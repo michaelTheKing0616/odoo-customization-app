@@ -1,10 +1,10 @@
 "use client";
 
 import { ClarifyInterstitial } from "./ClarifyInterstitial";
+import { StockAppInstallCard } from "./StockAppInstallCard";
 import { StudioBriefScreen } from "./StudioBriefScreen";
-import { StudioBusyLabel } from "./StudioBusyLabel";
 import { StudioConfirmDialogs } from "./StudioConfirmDialogs";
-import { StudioProgress } from "./StudioProgress";
+import { StudioGeneratingCanvas, StudioGenerationFailed } from "./StudioGenerationStates";
 import { StudioReviewSection } from "./StudioReviewSection";
 import { StudioShell } from "./StudioShell";
 import { Callout } from "@/components/ui/Callout";
@@ -13,6 +13,7 @@ import { api } from "@/lib/api";
 import { diagnoseWithExpert } from "@/lib/expert-diagnostics";
 import { studioErrorTitle, progressLabelFromJob } from "@/lib/studio-journey";
 import type { StudioPageModel } from "./use-studio-page";
+import { effectiveAiStep } from "./brief-wants-ai";
 
 export function StudioPageView(vm: StudioPageModel) {
   const error = vm.error;
@@ -47,8 +48,9 @@ export function StudioPageView(vm: StudioPageModel) {
 
       {vm.isOdooOnline ? (
         <Callout variant="warning" title="Odoo Online connection" className="mb-4">
-          Metadata apply works when RPC allows — same caps as the wizard. Custom Python
-          modules and full Job Autopilot sandbox are not available on Online.
+          Fields, views, and menus apply over RPC where Odoo Online allows it, with the same
+          limits as the Worksheet. Custom Python modules and the Job Autopilot sandbox are not
+          available on Online.
         </Callout>
       ) : null}
 
@@ -58,7 +60,7 @@ export function StudioPageView(vm: StudioPageModel) {
           busy={vm.busy !== null}
           onPromptChange={vm.setPrompt}
           onStart={() => void vm.startSession()}
-          flashAstEnrich={vm.flashAstEnrich}
+          flashAstEnrich={effectiveAiStep(vm.flashAstEnrich, vm.prompt)}
           flashAstEnrichHelp={vm.flashAstEnrichHelp}
           onFlashAstEnrichChange={(value) => {
             vm.setFlashAstEnrich(value);
@@ -73,52 +75,48 @@ export function StudioPageView(vm: StudioPageModel) {
         />
       ) : null}
 
-      {vm.session && vm.phase === "clarify" && vm.clarification ? (
+      {vm.session && vm.phase === "clarify" && vm.clarification?.kind === "stock_app_install" ? (
+        <StockAppInstallCard
+          clarification={vm.clarification}
+          onInstall={() => vm.resolveStockApp("install")}
+          onDecline={() => vm.resolveStockApp("decline")}
+        />
+      ) : null}
+
+      {vm.session &&
+      vm.phase === "clarify" &&
+      vm.clarification &&
+      vm.clarification.kind !== "stock_app_install" ? (
         <ClarifyInterstitial
           clarification={vm.clarification}
           busy={vm.busy !== null}
           onAnswer={(mk, id, text, understanding) =>
             void vm.submitClarify(mk, id, text, understanding)
           }
+          onRetryDesign={() => void vm.startSession()}
+          onInstallApps={() => vm.installApps()}
+          connectionReadOnly={vm.connection?.write_mode === "observer"}
+          connectionId={vm.connectionId ?? undefined}
+          isOdooOnline={vm.isOdooOnline}
+          odooUrl={vm.odooUrl}
+          sessionId={vm.session.id}
         />
       ) : null}
 
       {vm.session && vm.phase === "generating" && !vm.error ? (
-        <div className="studio-canvas-progress">
-          <div className="studio-canvas-ghost" aria-hidden>
-            <div className="studio-canvas-ghost-bar" />
-            <div className="studio-canvas-ghost-sheet" />
-          </div>
-          <StudioProgress
-            label={progressLabelFromJob(vm.job)}
-            detail={vm.session.prompt_resolved?.slice(0, 160)}
-          />
-        </div>
+        <StudioGeneratingCanvas
+          runId={vm.session.job_id ?? null}
+          fallbackLabel={progressLabelFromJob(vm.job)}
+        />
       ) : null}
 
       {vm.session && (vm.phase === "failed" || (vm.phase === "generating" && vm.error)) ? (
-        <Callout
-          variant="danger"
-          title="Generation failed"
-          className="mt-6"
-          actions={
-            <>
-              <button
-                type="button"
-                className="btn btn-brand btn-sm"
-                disabled={vm.busy === "generate"}
-                onClick={() => void vm.retryGeneration()}
-              >
-                {vm.busy === "generate" ? <StudioBusyLabel>Retrying…</StudioBusyLabel> : "Try again"}
-              </button>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={vm.startOver}>
-                Start over
-              </button>
-            </>
-          }
-        >
-          {vm.job?.error || vm.error || "The draft job did not complete."}
-        </Callout>
+        <StudioGenerationFailed
+          message={vm.job?.error || vm.error}
+          retrying={vm.busy === "generate"}
+          onRetry={() => void vm.retryGeneration()}
+          onStartOver={vm.startOver}
+        />
       ) : null}
 
       {vm.session && vm.phase === "review" ? <StudioReviewSection {...vm} /> : null}

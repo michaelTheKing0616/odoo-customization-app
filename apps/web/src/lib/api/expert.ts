@@ -8,6 +8,8 @@ export type LiveDemoCopilotDisclosure = {
   bullets: string[];
   opt_out: string;
   retention_default: string;
+  /** Q7: delivery routes; only the private panel is on by default, others are opt-in per meeting when available. */
+  delivery?: { id: string; label: string; available: boolean; default: boolean }[];
 };
 
 export type LiveDemoBotStatus = {
@@ -108,6 +110,15 @@ export const expertApi = {
       method: "POST",
       body: "{}",
     }),
+  liveDemoCopilotAfterMeeting: (sessionId: string) =>
+    request<{
+      summary: string;
+      qa: Array<{ question: string; asked_by?: string; answer: string[]; confidence?: string }>;
+      to_confirm: string[];
+      starter_plan: Array<{ step: number; app: string; why: string }>;
+      follow_up_email: { subject: string; body: string; sent: false };
+      note: string;
+    }>(`/api/live-demo-copilot/sessions/${sessionId}/after-meeting`),
   liveDemoCopilotRefreshStatus: (sessionId: string) =>
     request<LiveDemoCopilotSession>(
       `/api/live-demo-copilot/sessions/${sessionId}/refresh-status`,
@@ -125,6 +136,11 @@ export const expertApi = {
   liveDemoCopilotAnswers: (sessionId: string) =>
     request<{ session_id: string; answers: LiveDemoAnswer[] }>(
       `/api/live-demo-copilot/sessions/${sessionId}/answers`,
+    ),
+  liveDemoCopilotRefreshAnswer: (sessionId: string, answerId: string) =>
+    request<LiveDemoAnswer>(
+      `/api/live-demo-copilot/sessions/${sessionId}/answers/${answerId}/refresh`,
+      { method: "POST", body: "{}" },
     ),
   liveDemoCopilotSetPresenterSpeakers: (sessionId: string, presenter_speakers: string[]) =>
     request<LiveDemoCopilotSession>(
@@ -144,11 +160,14 @@ export const expertApi = {
     connection_id?: string;
     ui_context?: Record<string, unknown>;
     conversation?: Array<{ role: string; content: string }>;
-  }) =>
+    progress_run_id?: string;
+  }, opts?: { fresh?: boolean }) =>
     request<ExpertAskResponse>("/api/expert/ask", {
       method: "POST",
       body: JSON.stringify(body),
       timeoutMs: 660_000,
+      // "Fresh answer": the API skips the AI cache for this request.
+      ...(opts?.fresh ? { headers: { "X-Ingenium-Fresh": "1" } } : {}),
     }),
   expertReviewDraft: (body: {
     draft: Record<string, unknown>;

@@ -19,7 +19,10 @@ import { DesignerSessionBar } from "@/components/designer/DesignerSessionBar";
 import { PropsInspector } from "@/components/designer/PropsInspector";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import { TooltipProvider } from "@/components/ui/Tooltip";
+import { Kbd } from "@/components/ui/layout-primitives";
 import type { CapabilityMatrix, Connection } from "@/lib/api";
+import { moveIndex } from "@/components/ui/canvas/ReorderableBlocks";
+import type { DesignerCanvasState } from "@/components/designer/designerCanvasState";
 
 type ViewMode =
   | "form"
@@ -158,10 +161,38 @@ function parseMode(raw: string | null): ViewMode {
   return "form";
 }
 
+/** `?state=` previews the UI-S-12 canvas states with realistic Odoo messages. */
+function parseCanvasState(raw: string | null): DesignerCanvasState | null {
+  switch (raw) {
+    case "xml-invalid":
+      return {
+        kind: "xml-invalid",
+        line: 14,
+        reason: "Opening and ending tag mismatch: group line 9 and form.",
+        action: { label: "Open Advanced", onClick: () => undefined },
+      };
+    case "inherit-conflict":
+      return {
+        kind: "inherit-conflict",
+        locator: "//field[@name='x_partner_id']",
+        reason: "Element '<xpath expr=\"//field[@name='x_partner_id']\">' cannot be located in parent view",
+        action: { label: "Open Advanced", onClick: () => undefined },
+      };
+    case "preview-stale":
+      return {
+        kind: "preview-stale",
+        action: { label: "Show layout canvas", onClick: () => undefined },
+      };
+    default:
+      return null;
+  }
+}
+
 function DesignerHarnessInner() {
   const enabled = process.env.NEXT_PUBLIC_E2E === "1";
   const searchParams = useSearchParams();
   const mode = parseMode(searchParams.get("mode"));
+  const canvasState = parseCanvasState(searchParams.get("state"));
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(() =>
     mode === "form" ? "f1" : mode === "list" ? "c2" : "k2",
   );
@@ -204,16 +235,40 @@ function DesignerHarnessInner() {
     return <p>E2E harness disabled</p>;
   }
 
+  const selectedType = selectedMeta
+    ? SAMPLE_PALETTE.find((f) => f.name === selectedMeta.name)?.ttype ?? "char"
+    : null;
+
   const propertiesPanel = (
     <PropsInspector title="Field properties">
       {selectedMeta ? (
-        <div className="space-y-3 text-sm text-ink">
-          <p className="font-mono text-accent">{selectedMeta.name}</p>
-          <p className="text-xs text-muted">{selectedMeta.string || "No label"}</p>
+        <div className="designer-inspector-summary" data-testid="harness-field-summary">
+          <p className="designer-inspector-label">{selectedMeta.string || "No label"}</p>
+          <p className="designer-inspector-meta">
+            <code>{selectedMeta.name}</code>
+            <span>{selectedType}</span>
+          </p>
+          <dl className="designer-inspector-list">
+            <div>
+              <dt>Label</dt>
+              <dd>{selectedMeta.string || "Uses the field label"}</dd>
+            </div>
+            <div>
+              <dt>Widget</dt>
+              <dd>Default for {selectedType}</dd>
+            </div>
+            <div>
+              <dt>Saved as</dt>
+              <dd>Inherit view on {model}</dd>
+            </div>
+          </dl>
+          <p className="designer-inspector-hint">
+            Press <Kbd>↑</Kbd> <Kbd>↓</Kbd> to move the selected field, or drag its grip.
+          </p>
         </div>
       ) : (
         <p className="text-xs text-muted">
-          Select a field on the canvas, or drag from the palette.
+          Select a field on the canvas, or drag one in from Fields.
         </p>
       )}
     </PropsInspector>
@@ -224,7 +279,8 @@ function DesignerHarnessInner() {
     <main className="min-h-screen bg-background text-ink" data-testid="designer-harness" data-mode={mode}>
       <DesignerStudioShell
         testId="designer-studio-harness"
-        className="mx-0 mt-0 min-h-screen"
+        flush
+        className="min-h-screen"
         title="View designer"
         description={`${MOCK_CONNECTION.name} · drag fields onto the canvas · saves inherit views`}
         sessionBar={
@@ -242,7 +298,7 @@ function DesignerHarnessInner() {
           </div>
         }
         toolbar={
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="designer-toolbar flex flex-wrap items-end gap-3">
             <label className="text-sm">
               <span className="text-muted">Model</span>
               <input
@@ -279,7 +335,7 @@ function DesignerHarnessInner() {
                 </select>
               </label>
             )}
-            <button type="button" className="h-10 bg-accent px-5 text-sm font-semibold text-on-accent">
+            <button type="button" className="designer-save-btn ml-auto">
               Save to Odoo
             </button>
           </div>
@@ -294,6 +350,7 @@ function DesignerHarnessInner() {
                 liveUrl={null}
                 iframeRef={iframeRef}
                 iframeKey={1}
+                canvasState={canvasState}
                 structural={
                   <OdooPreviewScope showBanner previewVars={MOCK_PREVIEW_VARS}>
                     <FormCanvas
@@ -340,6 +397,22 @@ function DesignerHarnessInner() {
                           })),
                         );
                       }}
+                      onReorderField={(fieldId, groupId, index) => {
+                        setFormGroups((groups) =>
+                          groups.map((g) =>
+                            g.id === groupId
+                              ? {
+                                  ...g,
+                                  fields: moveIndex(
+                                    g.fields,
+                                    g.fields.findIndex((f) => f.id === fieldId),
+                                    index,
+                                  ),
+                                }
+                              : g,
+                          ),
+                        );
+                      }}
                       onDropFieldName={(groupId, fieldName, index) => {
                         setFormGroups((groups) =>
                           groups.map((g) => {
@@ -369,6 +442,7 @@ function DesignerHarnessInner() {
                 liveUrl={null}
                 iframeRef={iframeRef}
                 iframeKey={1}
+                canvasState={canvasState}
                 structural={
                   <OdooPreviewScope showBanner={false} previewVars={MOCK_PREVIEW_VARS}>
                     <OdooListView
@@ -400,6 +474,7 @@ function DesignerHarnessInner() {
                 liveUrl={null}
                 iframeRef={iframeRef}
                 iframeKey={1}
+                canvasState={canvasState}
                 structural={
                   <PreviewThemeScope previewVars={MOCK_PREVIEW_VARS}>
                     <KanbanCardPreview

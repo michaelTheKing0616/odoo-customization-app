@@ -57,12 +57,12 @@ export function StudioChatThread({
       {reviewTurns.length === 0 ? (
         <div data-testid="studio-refine-feed-empty">
           <EmptyState
-            title="No refinements yet"
-            description="Describe a change below and the preview form will update on the left."
+            title="What should change?"
+            description="Try a short sentence: rename a field, make it required, or move it. The form on the right updates to match."
             action={
               onFocusComposer ? (
                 <Button type="button" variant="secondary" size="sm" onClick={onFocusComposer}>
-                  Focus refine box
+                  Write a change
                 </Button>
               ) : undefined
             }
@@ -97,7 +97,7 @@ export function StudioChatThread({
                 className="studio-bubble-undo"
                 disabled={refineBusy}
                 data-testid="refine-chat-undo"
-                title="Undo this change (sends “oops”)"
+                title="Undo this change (sends oops)"
                 onClick={() => onUndo(undoInstruction)}
               >
                 Undo

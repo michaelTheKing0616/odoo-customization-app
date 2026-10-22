@@ -27,6 +27,7 @@ import {
   rememberJobAutopilot,
 } from "@/lib/job-autopilot-resume";
 import { odooMenuUrl, odooRecordUrl, isLocalSandboxUrl } from "@/lib/odoo-urls";
+import { detectHostingKind } from "@/lib/odoo-hosting";
 import { useSyncShellContext } from "@/lib/use-sync-shell-context";
 import { JobAutopilotShell } from "@/components/job-autopilot/JobAutopilotShell";
 import { JobAutopilotHonestyBanners } from "@/components/job-autopilot/JobAutopilotHonestyBanners";
@@ -42,6 +43,7 @@ import {
   deliveryReportMarkdown,
   hasResidualModuleSpec,
   isStockOnlyPacket,
+  jobAutopilotErrorGuide,
   jobAutopilotErrorTitle,
   jobAutopilotGate,
   jobAutopilotJourneyFromState,
@@ -165,7 +167,7 @@ export default function JobAutopilotPage() {
       return handed;
     });
     if (filled) {
-      setNotice("Brief carried from Draft Studio. Review, then Plan packet / Run Autopilot.");
+      setNotice("Brief carried from Draft Studio. Review, then Plan summary / Run Autopilot.");
     }
   }, [connectionId]);
 
@@ -178,6 +180,9 @@ export default function JobAutopilotPage() {
   const production = connection?.write_mode === "production";
   const observer = connection?.write_mode === "observer";
   const localSandbox = Boolean(connection?.url && isLocalSandboxUrl(connection.url));
+  const isOdooOnline = Boolean(
+    connection?.url && detectHostingKind(connection.url) === "online",
+  );
   const gate = jobAutopilotGate({
     writeMode: connection?.write_mode,
     sandbox,
@@ -409,7 +414,7 @@ export default function JobAutopilotPage() {
     const zip = residualZipBase64(result);
     if (!zip) {
       setNotice(
-        "Stock-only (or no module zip): this sandbox is the delivery. Autopilot will not write production. Download the UAT report; clone or configure prod yourself.",
+        "Built-in apps only (or no module zip): this sandbox is the delivery. Autopilot will not write production. Download the UAT report; clone or configure prod yourself.",
       );
       setPromoteOpen(false);
       return;
@@ -428,7 +433,7 @@ export default function JobAutopilotPage() {
         confirm_advanced: true,
         confirm_phrase: phrase,
       });
-      setNotice(out.message || (out.ok ? "Promoted to target." : "Promote did not succeed."));
+      setNotice(out.message || (out.ok ? "Published to the target." : "Promote did not succeed."));
       if (!out.ok) setError(out.refuse_reason || out.message);
     } catch (err) {
       if (err instanceof ConfirmationRequiredError) {
@@ -519,7 +524,7 @@ export default function JobAutopilotPage() {
 
   async function runConfigDryRun() {
     if (!configPacket) {
-      setError("Run Autopilot on the sandbox first so a Config Packet exists.");
+      setError("Run Autopilot on the sandbox first so a config summary exists.");
       return;
     }
     setBusy("dryrun");
@@ -594,10 +599,24 @@ export default function JobAutopilotPage() {
         gate={gate}
         showOverviewNote={localSandbox && !production}
         contractNote={contract?.note}
+        isOdooOnline={isOdooOnline}
       />
 
       {error ? (
-        <ErrorNotice message={error} title={jobAutopilotErrorTitle(error)} />
+        <div className="job-error-block" data-testid="job-autopilot-error-block">
+          <ErrorNotice message={error} title={jobAutopilotErrorTitle(error)} />
+          {(() => {
+            const guide = jobAutopilotErrorGuide(error);
+            if (!guide) return null;
+            return (
+              <div className="job-empty-guide mt-2" data-testid="job-error-guide">
+                <p className="job-empty-what">{guide.what}</p>
+                <p className="job-empty-why">{guide.why}</p>
+                <p className="job-empty-next">{guide.next}</p>
+              </div>
+            );
+          })()}
+        </div>
       ) : null}
       {notice ? (
         <p className="text-sm text-muted" data-testid="job-autopilot-notice">
@@ -619,6 +638,7 @@ export default function JobAutopilotPage() {
             busy={busy}
             runBlocked={runBlocked}
             runBlockedReason={gate.runBlocked ? gate.body : undefined}
+            runIsPrimary={!result?.promote_ready}
             onPromptChange={setPrompt}
             onFilesChange={setFiles}
             onPlan={() => void planPacket()}
@@ -642,6 +662,10 @@ export default function JobAutopilotPage() {
                 promoteReady={result.promote_ready}
                 stockOnly={isStockOnlyPacket(result.packet)}
                 retryCount={result.retry_count}
+                connectorsDetected={result.packet?.connectors}
+                connectorsResult={
+                  result.connectors && !result.connectors.skipped ? result.connectors : null
+                }
               />
               <JobAutopilotDeliveryLedger result={result} />
             </>
@@ -684,7 +708,7 @@ export default function JobAutopilotPage() {
         open={confirmOpen}
         title="Run Autopilot on this connection"
         warning={pendingConfirm?.warning || "This is not a local sandbox. Confirm to install and apply."}
-        risks={pendingConfirm?.risks?.length ? pendingConfirm.risks : ["Installs modules", "May apply custom residual", "May commit ingest"]}
+        risks={pendingConfirm?.risks?.length ? pendingConfirm.risks : ["Installs modules", "May apply custom code", "May commit ingest"]}
         phrase={pendingConfirm?.phrase || CONFIRM_PHRASE}
         onCancel={() => setConfirmOpen(false)}
         onConfirm={(phrase) => {
@@ -696,11 +720,11 @@ export default function JobAutopilotPage() {
 
       <ConfirmDialogV2
         open={promoteOpen}
-        title="Promote stays human"
+        title="Publishing stays a step you confirm"
         warning={
           residualZipBase64(result)
-            ? "Promote installs the sandbox zip onto the TARGET connection. Autopilot never runs on production."
-            : "This job has no module zip (stock-only or export skipped). The sandbox is the delivery. Do not run Autopilot on production."
+            ? "Publish installs the test-copy zip onto the target connection. Autopilot never runs on production."
+            : "This job has no module zip (built-in apps only or export skipped). The sandbox is the delivery. Do not run Autopilot on production."
         }
         risks={
           residualZipBase64(result)
@@ -725,7 +749,7 @@ export default function JobAutopilotPage() {
 
       <ConfirmDialogV2
         open={applyPacketOpen}
-        title="Apply Config Packet"
+        title="Apply config summary"
         warning={
           pendingConfirm?.warning ||
           "Applies stock configuration (modules, journals, warehouse, allowlisted Settings, users) onto the TARGET connection. This is not Job Autopilot. Secrets are never written."

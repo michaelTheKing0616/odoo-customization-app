@@ -67,7 +67,7 @@ export function Combobox({
             />
             <Command.List className="max-h-48 overflow-auto p-1">
               {loading ? (
-                <div className="px-3 py-2 text-sm text-muted">Loading…</div>
+                <div className="px-3 py-2 text-sm text-muted">Finding matches…</div>
               ) : null}
               {!loading && filtered.length === 0 ? (
                 <div className="px-3 py-2 text-sm text-muted">{emptyLabel}</div>

@@ -20,6 +20,8 @@ type MenuSessionBarProps = {
   canDiscard?: boolean;
   submitLabel: string;
   onDiscard: () => void;
+  /** Override the shell; the composer footer uses an inline variant. */
+  className?: string;
 };
 
 export function MenuSessionBar({
@@ -28,6 +30,7 @@ export function MenuSessionBar({
   canDiscard,
   submitLabel,
   onDiscard,
+  className,
 }: MenuSessionBarProps) {
   return (
     <ComposerSessionBar
@@ -38,6 +41,7 @@ export function MenuSessionBar({
       submitLabel={submitLabel}
       onDiscard={onDiscard}
       testIdPrefix="menus"
+      className={className}
     />
   );
 }

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Markdown from "react-markdown";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { ExternalLink } from "@/components/ui/icons";
+import { ChevronRight, Copy } from "@/components/ui/icons";
 import { api, type ExpertAskResponse } from "@/lib/api";
 import { expertGroundingLabel, linkifyCitationMarkers } from "@/lib/expert-journey";
 import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
@@ -25,10 +25,12 @@ function CopyAnswerButton({ text }: { text: string }) {
       variant="ghost"
       size="sm"
       type="button"
+      className="expert-copy-btn"
       onClick={() => void copy()}
       data-testid="expert-copy-answer"
     >
-      {copied ? "Copied" : "Copy"}
+      <Copy className="h-3.5 w-3.5" aria-hidden />
+      <span aria-live="polite">{copied ? "Copied" : "Copy"}</span>
     </Button>
   );
 }
@@ -124,11 +126,7 @@ function ExpertAnswerMarkdown({
               return <CitationChip citation={citation} index={idx} />;
             }
           }
-          return (
-            <a href={href} className="text-accent hover:underline">
-              {children}
-            </a>
-          );
+          return <a href={href}>{children}</a>;
         },
       }}
     >
@@ -152,27 +150,23 @@ export function ExpertAnswerCard({
 }: ExpertAnswerCardProps) {
   const grounding = expertGroundingLabel(response);
   const canLogToChatter = Boolean(chatterModel && chatterResId && chatterResId > 0);
+  const sourceCount = new Set((response.citations ?? []).map((c) => c.chunk_id)).size;
 
   return (
     <div className="expert-answer-card">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+      <div className="expert-answer-meta">
         <div className="flex flex-wrap items-center gap-1.5">
           {grounding ? <Badge variant={grounding.variant}>{grounding.label}</Badge> : null}
+          {sourceCount > 0 ? (
+            <span className="expert-answer-count">
+              {sourceCount} {sourceCount === 1 ? "source" : "sources"}
+            </span>
+          ) : null}
         </div>
         <CopyAnswerButton text={response.answer_markdown} />
       </div>
       <ExpertCautionFlags flags={response.caution_flags ?? []} />
-      {canLogToChatter ? (
-        <div className="mb-2">
-          <LogToChatterButton
-            connectionId={connectionId}
-            model={chatterModel!}
-            resId={chatterResId!}
-            body={response.answer_markdown}
-          />
-        </div>
-      ) : null}
-      <div className="prose prose-sm max-w-none dark:prose-invert" data-testid="expert-answer">
+      <div className="expert-answer" data-testid="expert-answer">
         <ExpertAnswerMarkdown
           markdown={response.answer_markdown}
           citations={response.citations ?? []}
@@ -181,16 +175,29 @@ export function ExpertAnswerCard({
       <ExpertSources citations={response.citations ?? []} />
       {response.suggested_tools?.length ? (
         <div className="expert-tool-links" data-testid="expert-suggested-tools">
-          {response.suggested_tools.map((tool) => (
-            <a
-              key={tool.id ?? tool.label}
-              href={tool.deep_link ?? "#"}
-              className="flex items-center gap-1 text-xs text-accent hover:underline"
-            >
-              <ExternalLink className="h-3 w-3" />
-              {tool.label ?? tool.id}
-            </a>
-          ))}
+          <p className="expert-sources-label">Open in</p>
+          <div className="flex flex-wrap gap-2">
+            {response.suggested_tools.map((tool) => (
+              <a
+                key={tool.id ?? tool.label}
+                href={tool.deep_link ?? "#"}
+                className="expert-tool-link"
+              >
+                {tool.label ?? tool.id}
+                <ChevronRight className="h-3 w-3" aria-hidden />
+              </a>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {canLogToChatter ? (
+        <div className="expert-answer-actions">
+          <LogToChatterButton
+            connectionId={connectionId}
+            model={chatterModel!}
+            resId={chatterResId!}
+            body={response.answer_markdown}
+          />
         </div>
       ) : null}
     </div>

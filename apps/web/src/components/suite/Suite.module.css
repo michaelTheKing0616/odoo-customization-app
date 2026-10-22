@@ -1,0 +1,110 @@
+/* Configuration Suite stage 1: structure only (spec 15). Tokens from tokens.css; teal is the single accent. */
+.shell { --suite-title: 1.25rem; --suite-ui: 0.8125rem; --suite-meta: 0.75rem; --suite-table: 0.875rem; --suite-control-border: var(--n6); display: grid; grid-template-rows: 48px 1fr; min-block-size: 100%; background: var(--surface); color: var(--ink); }
+.top { display: flex; align-items: center; gap: 12px; padding-inline: 16px; border-block-end: 1px solid var(--border-subtle); font-size: var(--text-sm); }
+.passport { display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px; border: 1px solid var(--border-subtle); border-radius: var(--r-sm); background: none; color: inherit; font: inherit; cursor: pointer; }
+.passport:focus-visible, .railLink:focus-visible, .linkBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.muted { color: var(--muted); }
+.spacer { flex: 1; }
+.writes { display: inline-flex; align-items: center; gap: 6px; }
+.writes[data-on="true"] svg { color: var(--accent); }
+.body { display: grid; grid-template-columns: 232px 1fr; min-block-size: 0; }
+.rail { display: flex; flex-direction: column; gap: 2px; padding: 12px 8px; border-inline-end: 1px solid var(--border-subtle); }
+.railLink { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--r-sm); color: inherit; text-decoration: none; font-size: var(--text-sm); }
+.railLink[aria-current="page"] { background: var(--accent-subtle); box-shadow: inset 2px 0 0 var(--accent); }
+.railSub { padding-inline-start: 34px; font-size: var(--text-xs); }
+.railLink svg { inline-size: 16px; block-size: 16px; flex: none; }
+.tray { margin-block-start: auto; padding-block-start: 12px; border-block-start: 1px solid var(--border-subtle); font-size: var(--text-xs); }
+.tray ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+.main { padding: 24px 32px; min-inline-size: 0; overflow: auto; }
+.head { display: flex; align-items: flex-start; gap: 12px; margin-block-end: 16px; }
+.head h1 { font-size: var(--suite-title); line-height: 1.4; font-weight: 600; margin: 0; }
+.head p { margin: 4px 0 0; font-size: var(--suite-ui); color: var(--muted); }
+.section { margin-block-end: 24px; }
+.section h2 { font-size: var(--text-md); font-weight: 600; margin: 0 0 8px; }
+.card { border: 1px solid var(--border-subtle); border-radius: var(--r-md); padding: 16px; background: var(--surface-raised); }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.table { inline-size: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+.table th, .table td { text-align: start; padding: 6px 8px; border-block-end: 1px solid var(--border-subtle); vertical-align: top; }
+.table th { font-weight: 600; color: var(--muted); font-size: var(--text-xs); }
+.waves { display: grid; gap: 12px; }
+.wave { border: 1px solid var(--border-subtle); border-radius: var(--r-md); padding: 12px; }
+.wave h3 { margin: 0 0 8px; font-size: var(--text-sm); font-weight: 600; }
+.step { display: grid; grid-template-columns: 20px 1fr auto; gap: 8px; align-items: start; padding: 6px 0; border-block-start: 1px solid var(--border-subtle); font-size: var(--text-sm); }
+.step:first-of-type { border-block-start: 0; }
+.step svg { inline-size: 16px; block-size: 16px; margin-block-start: 2px; }
+.step[data-state="failed"] svg, .step[data-verdict="blocked"] svg { color: var(--danger); }
+.step[data-state="done"] svg, .step[data-verdict="ready"] svg { color: var(--success); }
+.step[data-verdict="needs_input"] svg, .step[data-verdict="waiting"] svg { color: var(--warning); }
+.tag { font-size: var(--text-xs); color: var(--muted); border: 1px solid var(--border-subtle); border-radius: var(--r-sm); padding: 0 6px; white-space: nowrap; }
+.linkBtn { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }
+.indent1 { padding-inline-start: 16px; } .indent2 { padding-inline-start: 32px; } .indent3 { padding-inline-start: 48px; }
+@media (max-width: 767px) {
+  .body { grid-template-columns: 1fr; }
+  .rail { flex-direction: row; overflow-x: auto; border-inline-end: 0; border-block-end: 1px solid var(--border-subtle); }
+  .railSub, .tray { display: none; }
+  .main { padding: 16px; }
+}
+@media (prefers-reduced-motion: no-preference) { .railLink { transition: background-color 120ms ease-out; } }
+.top { position: relative; }
+.popover { position: absolute; inset-block-start: 52px; inset-inline-start: 16px; z-index: 20; min-inline-size: 360px; box-shadow: var(--shadow-raised); border-radius: var(--r-md); }
+.status { display: flex; gap: 8px; align-items: flex-start; font-size: var(--text-sm); margin: 0; }
+.status svg { inline-size: 16px; block-size: 16px; flex: none; margin-block-start: 2px; }
+.status[data-tone="danger"] svg { color: var(--danger); }
+.status[data-tone="warning"] svg { color: var(--warning); }
+.status[data-tone="success"] svg { color: var(--success); }
+.grow { flex: 1; min-inline-size: 0; }
+.flush { margin: 0; }
+.mutedLine { margin: 4px 0 0; color: var(--muted); }
+
+/* Stage 3 visual system (spec 12, states spec 10). Only tokens; teal stays the single accent.
+   --suite-control-border is n6: 4.83:1 on light surface-raised, 3.67:1 on dark (border-strong measured 2.56 / 2.29). */
+.table { font-size: var(--suite-table); }
+.table td, .tray, .status, .tag, .num { font-variant-numeric: tabular-nums; }
+.table tbody tr:hover { background: var(--surface-muted); }
+.status[data-tone="info"] svg { color: var(--info); }
+.status[data-tone="busy"] svg { color: var(--accent); }
+.main :where(input:not([type="radio"]):not([type="checkbox"]), select, textarea) {
+  font: inherit; font-size: var(--suite-ui); color: var(--ink); background: var(--surface-raised);
+  border: 1px solid var(--suite-control-border); border-radius: var(--r-sm); padding: 4px 8px; min-block-size: 32px;
+}
+.main :where(input, select, textarea, button):focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: 2px; }
+.main :where(input, select, textarea):disabled { background: var(--surface-muted); color: var(--muted); cursor: not-allowed; }
+.main :where(input, select, textarea)[aria-invalid="true"] { border-color: var(--danger); box-shadow: inset 0 0 0 1px var(--danger); }
+.card[data-interactive="true"] { cursor: pointer; }
+.card[data-interactive="true"]:hover { border-color: var(--suite-control-border); }
+.card[data-interactive="true"]:active { background: var(--surface-muted); }
+.card[data-selected="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.railLink:hover { background: var(--surface-muted); }
+.linkBtn:hover { color: var(--accent-hover); }
+.linkBtn:disabled { color: var(--muted); cursor: not-allowed; text-decoration: none; }
+.empty { display: grid; gap: 8px; justify-items: start; padding: 24px; border: 1px dashed var(--suite-control-border); border-radius: var(--r-md); color: var(--muted); font-size: var(--suite-ui); }
+.empty strong { color: var(--ink); font-weight: 600; }
+.errorBox { border: 1px solid var(--danger); border-radius: var(--r-md); padding: 12px 16px; background: var(--danger-subtle); }
+.skeleton { display: block; block-size: 12px; border-radius: var(--r-sm); background: var(--surface-muted); }
+.skeleton + .skeleton { margin-block-start: 8px; }
+.meta { font-size: var(--suite-meta); color: var(--muted); }
+.hero { border-radius: var(--r-lg); }
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton { animation: suitePulse 1.2s ease-in-out infinite; }
+  .card[data-interactive="true"], .table tbody tr { transition: background-color var(--motion-fast), border-color var(--motion-fast); }
+}
+@keyframes suitePulse { 50% { opacity: 0.5; } }
+.plainList { list-style: none; margin: 0; padding: 0; }
+
+/* Stage 4 motion + a11y: results arrive with a short fade (state change, occasional), links get a visible focus,
+   and high-contrast users get solid borders. Product UI stays under 200ms, ease-out, opacity/transform only. */
+.main a:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: 2px; border-radius: 2px; }
+@media (prefers-reduced-motion: no-preference) {
+  .status, .section { transition: opacity 160ms cubic-bezier(0.23, 1, 0.32, 1), transform 160ms cubic-bezier(0.23, 1, 0.32, 1); }
+  @starting-style { .status { opacity: 0; transform: translateY(2px); } .section { opacity: 0; } }
+}
+@media (prefers-reduced-motion: reduce) {
+  .status, .section { transition: opacity 120ms ease-out; }
+  @starting-style { .status, .section { opacity: 0; } }
+}
+@media (prefers-contrast: more) {
+  .wave, .table, .card { border-color: currentColor; }
+  .status[data-tone] svg { color: currentColor; }
+}

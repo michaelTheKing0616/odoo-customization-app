@@ -8,6 +8,7 @@ import {
   jobScorecardBody,
   jobScorecardHeadline,
 } from "@/lib/job-autopilot-journey";
+import { JobAutopilotRecipeRail } from "./JobAutopilotRecipeRail";
 
 type Smoke = {
   ok: boolean;
@@ -16,12 +17,21 @@ type Smoke = {
   message: string;
 };
 
+type ConnectorsResult = {
+  ran?: string[];
+  failed?: string[];
+  skipped_ids?: string[];
+  steps?: Array<{ name: string; ok: boolean }>;
+} | null;
+
 type JobAutopilotScorecardProps = {
   scorecard?: JobScorecard | null;
   smoke?: Smoke | null;
   promoteReady?: boolean;
   stockOnly?: boolean;
   retryCount?: number;
+  connectorsDetected?: string[] | null;
+  connectorsResult?: ConnectorsResult;
 };
 
 function meterWidth(value: number): string {
@@ -34,6 +44,8 @@ export function JobAutopilotScorecard({
   promoteReady,
   stockOnly,
   retryCount,
+  connectorsDetected,
+  connectorsResult,
 }: JobAutopilotScorecardProps) {
   if (!scorecard && !smoke) return null;
   const findings = scorecard?.findings ?? [];
@@ -68,7 +80,9 @@ export function JobAutopilotScorecard({
       {scorecard ? (
         <div className="job-score-overall mt-3" data-testid="job-score-overall">
           <span className="job-score-overall-value">{scorecard.overall.toFixed(1)}</span>
-          <span className="text-xs text-muted">/10 implementation-job — not Completeness, not Cert</span>
+          <span className="text-xs text-muted">
+            /10 implementation-job (not Completeness, not Cert)
+          </span>
         </div>
       ) : null}
       {meters.length ? (
@@ -77,7 +91,7 @@ export function JobAutopilotScorecard({
             <div key={row.id} className="job-score-meter">
               <div className="job-score-meter-label">
                 <span>{row.label}</span>
-                <span>{row.value.toFixed(1)}</span>
+                <span className="tabular-nums">{row.value.toFixed(1)}</span>
               </div>
               <div className="job-score-meter-track" aria-hidden>
                 <div className="job-score-meter-fill" style={{ width: meterWidth(row.value) }} />
@@ -102,6 +116,15 @@ export function JobAutopilotScorecard({
         </ul>
       ) : body ? (
         <p className="mt-2 text-sm">{body}</p>
+      ) : null}
+      {connectorsDetected?.length || connectorsResult ? (
+        <div className="mt-4">
+          <JobAutopilotRecipeRail
+            detected={connectorsDetected}
+            connectors={connectorsResult}
+            showAllWhenEmpty={Boolean(connectorsDetected?.length)}
+          />
+        </div>
       ) : null}
       {smoke ? (
         <div className="job-smoke-strip mt-4" data-testid="job-smoke-strip">

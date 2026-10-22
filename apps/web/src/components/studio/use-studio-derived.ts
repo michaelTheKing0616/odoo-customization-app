@@ -1,5 +1,6 @@
 "use client";
 
+import { isOdooOnlineUrl } from "@/lib/odoo-online-url";
 import { useMemo } from "react";
 import type { Connection } from "@/lib/api";
 import {
@@ -77,7 +78,9 @@ export function useStudioDerived(input: {
   );
   const canApply = scaffoldApplyAllowed(connection, draftOpts);
   const applyBlocked = scaffoldApplyBlockedReason(connection, draftOpts);
-  const isOdooOnline = connection?.hosting === "online";
+  const odooUrl = String((connection as { url?: string } | null | undefined)?.url || "");
+  // Hosting is not always stored on the connection; an *.odoo.com address is Odoo Online.
+  const isOdooOnline = connection?.hosting === "online" || isOdooOnlineUrl(odooUrl);
 
   const phase = useMemo(() => studioPhaseFromSession(session), [session]);
   const contractMatchesCanvas = artifactMatchesLockedContract(
@@ -248,6 +251,7 @@ export function useStudioDerived(input: {
     canApply,
     applyBlocked,
     isOdooOnline,
+    odooUrl,
     phase,
     contractMatchesCanvas,
     preview,

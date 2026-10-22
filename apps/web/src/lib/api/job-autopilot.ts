@@ -140,12 +140,16 @@ export const jobAutopilotApi = {
       Array<{
         id: string;
         status: string;
+        script_hash?: string;
         script_content: string;
         stdout: string | null;
         stderr: string | null;
         write_counts: Record<string, unknown>;
+        write_count?: number;
         error: string | null;
+        snapshot_id?: string | null;
         created_at: string | null;
+        finished_at?: string | null;
       }>
     >(`/api/connections/${connectionId}/script-runner/runs`),
   runScript: (

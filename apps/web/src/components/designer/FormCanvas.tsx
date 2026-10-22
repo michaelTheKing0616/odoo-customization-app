@@ -7,6 +7,11 @@ import {
   readPaletteFieldName,
 } from "@/lib/designer-dnd";
 import { ReorderableBlocks } from "@/components/ui/canvas/ReorderableBlocks";
+import {
+  DesignerGrip,
+  DesignerPointerGhost,
+  useDesignerPointerGhost,
+} from "@/components/designer/DesignerPointerGhost";
 import { OdooButtonBox } from "@/components/odoo-preview/OdooButtonBox";
 import { OdooChatterStub } from "@/components/odoo-preview/OdooChatterStub";
 import { OdooField } from "@/components/odoo-preview/OdooField";
@@ -16,7 +21,9 @@ import { cn } from "@/lib/cn";
 
 /**
  * Interactive Odoo-looking form canvas for View Designer.
- * Structural preview — Open-in-Odoo / live iframe remains authoritative.
+ * Structural preview: Open in Odoo / the live iframe remain authoritative.
+ * UI-S-12: the form is a card on the designer desk (styles/globals/designer.css).
+ * Nothing here animates layout; drag feedback is transform/opacity only.
  */
 
 export type CanvasField = {
@@ -129,6 +136,8 @@ function DroppableFieldList({
 }) {
   const listRef = useRef<HTMLElement | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
+  const trackGhost = useDesignerPointerGhost();
+  const reorderable = Boolean(onCanvasReorder);
 
   function itemEls(): HTMLElement[] {
     if (!listRef.current) return [];
@@ -166,11 +175,13 @@ function DroppableFieldList({
       }
       className={cn("designer-drop-list relative min-h-[2.5rem]", dropIndex !== null && "is-over")}
       empty={
-        dropIndex === null ? (
-          <p className="px-1 py-3 text-xs text-[var(--odoo-muted)]">Drop a field here</p>
+        dropIndex === null ? <p className="designer-drop-empty">Drop a field here</p> : null
+      }
+      footer={
+        dropIndex === items.length && items.length > 0 ? (
+          <span className="designer-drop-line is-after" aria-hidden />
         ) : null
       }
-      footer={dropIndex === items.length ? <span className="designer-drop-line" aria-hidden /> : null}
       listProps={{
         ref: listRef,
         "data-testid": "canvas-drop-list",
@@ -184,7 +195,9 @@ function DroppableFieldList({
         "data-canvas-field": "",
         "data-field-id": f.id,
         "data-testid": `canvas-field-${f.name}`,
+        ...(reorderable ? { "data-reorderable": "" } : {}),
         tabIndex: -1,
+        onPointerMove: reorderable ? trackGhost : undefined,
         className: cn(
           "designer-canvas-field relative",
           selectedFieldId === f.id && "is-selected",
@@ -198,6 +211,9 @@ function DroppableFieldList({
           {dropIndex === idx || meta.isDropTarget ? (
             <span className="designer-drop-line" aria-hidden />
           ) : null}
+          {meta.dropIndex === items.length && idx === items.length - 1 && dropIndex === null ? (
+            <span className="designer-drop-line is-after" aria-hidden />
+          ) : null}
           <OdooField
             field={{
               id: f.id,
@@ -210,6 +226,8 @@ function DroppableFieldList({
             highlighted={selectedFieldId === f.id}
             onClick={() => onSelectField?.(f.id)}
           />
+          {reorderable ? <DesignerGrip testId="canvas-grip" /> : null}
+          {meta.isDragging ? <DesignerPointerGhost label={f.string || f.name} name={f.name} /> : null}
         </>
       )}
     </ReorderableBlocks>
@@ -286,10 +304,7 @@ export function FormCanvas({
             <div
               key={g.id}
               data-canvas-id={g.id}
-              className={cn(
-                "odoo-field-group rounded-sm border border-transparent p-1 transition",
-                flashId === g.id && "ring-2 ring-[var(--odoo-primary)]",
-              )}
+              className={cn("odoo-field-group", flashId === g.id && "is-canvas-flash")}
             >
               <div className="odoo-field-group-title">{g.string || "Group"}</div>
               <DroppableFieldList
@@ -317,21 +332,17 @@ export function FormCanvas({
               key={nb.id}
               data-canvas-id={nb.id}
               className={cn(
-                "odoo-notebook mt-4 border border-[var(--odoo-border)] bg-surface transition",
-                flashId === nb.id && "ring-2 ring-[var(--odoo-primary)]",
+                "odoo-notebook designer-notebook",
+                flashId === nb.id && "is-canvas-flash",
               )}
             >
-              <div className="flex flex-wrap border-b border-[var(--odoo-border)] bg-[color-mix(in_srgb,var(--odoo-canvas)_50%,var(--surface))]">
+              <div className="designer-notebook-tabs" role="group" aria-label="Notebook pages">
                 {nb.pages.map((page) => (
                   <button
                     key={page.id}
                     type="button"
-                    className={cn(
-                      "border-r border-[var(--odoo-border)] px-3 py-1.5 text-xs font-semibold",
-                      page.id === activePage?.id
-                        ? "bg-surface text-[var(--odoo-primary)]"
-                        : "text-[var(--odoo-muted)]",
-                    )}
+                    className="designer-notebook-tab"
+                    aria-pressed={page.id === activePage?.id}
                     onClick={() =>
                       setActivePages((prev) => ({ ...prev, [nb.id]: page.id }))
                     }
@@ -344,8 +355,8 @@ export function FormCanvas({
                 <div
                   data-canvas-id={activePage.id}
                   className={cn(
-                    "p-2",
-                    flashId === activePage.id && "ring-2 ring-inset ring-[var(--odoo-primary)]",
+                    "designer-notebook-page",
+                    flashId === activePage.id && "is-canvas-flash",
                   )}
                 >
                   <DroppableFieldList
@@ -370,7 +381,7 @@ export function FormCanvas({
         })}
 
         {groups.length === 0 && notebooks.length === 0 && (
-          <p className="text-xs text-[var(--odoo-muted)]">
+          <p className="designer-drop-empty">
             Add a group or notebook, then drop fields from the palette.
           </p>
         )}

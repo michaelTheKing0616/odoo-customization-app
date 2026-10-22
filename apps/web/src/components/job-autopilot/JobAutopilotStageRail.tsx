@@ -1,5 +1,6 @@
 "use client";
 
+import { VoussoirProgress } from "@/components/ui/craft";
 import { cn } from "@/lib/cn";
 import {
   JOB_AUTOPILOT_STAGES,
@@ -19,6 +20,11 @@ export function JobAutopilotStageRail({ journey }: JobAutopilotStageRailProps) {
       aria-label="Job Autopilot stages"
       data-testid="job-autopilot-stage-rail"
     >
+      <VoussoirProgress
+        done={journey.promoteReady ? JOB_AUTOPILOT_STAGES.length : Math.max(0, currentIndex)}
+        total={JOB_AUTOPILOT_STAGES.length}
+        label="Job Autopilot progress"
+      />
       <ol className="studio-stage-list" data-testid="job-autopilot-steps">
         {JOB_AUTOPILOT_STAGES.map((stage, index) => {
           const done = index < currentIndex || (journey.promoteReady && stage.id === "promote");

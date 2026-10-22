@@ -183,7 +183,7 @@ function stripLeadingArticles(label: string): string {
 }
 
 function humanPlacementLabel(name: string, raw: string): string {
-  let label = stripLeadingArticles((raw || "").trim());
+  const label = stripLeadingArticles((raw || "").trim());
   if (label && !isJunkPlacementLabel(name, label) && !/^x_/i.test(label)) return label;
   const leaf = name.replace(/^x_studio_/i, "x_").replace(/^x_/, "").replace(/_/g, " ").trim();
   if (!leaf || BAN_ALONE_SLUGS.has(leaf) || leaf === "res") return "";

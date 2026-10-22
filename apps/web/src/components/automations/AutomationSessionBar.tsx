@@ -10,7 +10,7 @@ const HINTS: Record<ComposerSessionState, string> = {
     "This rule stays local until you create it on Odoo. Existing snapshots are unchanged.",
   saved:
     "Last create wrote this rule to Odoo and took a snapshot. Start another, or open a rule from the list.",
-  draft: "Name the rule, pick a model and trigger, then choose a safe action.",
+  draft: "Name the rule, pick a model and trigger, then choose a safe action. Python stays on the custom-code path.",
 };
 
 type AutomationSessionBarProps = {

@@ -1,0 +1,567 @@
+/* ============================================================
+   UI-S-34 Reminders: Studio-bar visual leap
+   Eyes on UI-S-12 Designer chrome + UI-S-20-premier density.
+   Basalt studio header, one session honesty strip (no twin-banner),
+   paper desk for the compose sheet. Teal = Create the reminder /
+   current step. Amber = schedule caution only. Cinnabar never on buttons.
+   Playbook §0 + ingenium-v2. Claude/Stitch class density.
+   ============================================================ */
+
+.reminders-operate {
+  --rm-radius: 12px;
+  --rm-radius-sm: 8px;
+  --rm-hair: var(--border-subtle);
+  --rm-basalt: #1a1c21;
+  --rm-limestone: #f3f4f6;
+  --rm-desk: #e4e5e8;
+  --rm-desk-dot: rgb(26 28 33 / 0.1);
+  --rm-paper: #fcfcfb;
+  --rm-paper-lift:
+    0 1px 1px rgb(26 28 33 / 0.04),
+    0 2px 6px -2px rgb(26 28 33 / 0.06),
+    0 24px 48px -28px rgb(26 28 33 / 0.28);
+  --rm-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --rm-state: 150ms;
+  --rm-caution: #b45309;
+  --rm-caution-subtle: color-mix(in oklab, #f59e0b 14%, var(--surface-raised));
+  --rm-chrome-ink: #f3f4f6;
+  --rm-chrome-muted: #b3b8c2;
+  --rm-chrome-subtle: #8b919c;
+  --rm-chrome-border: rgb(243 244 246 / 0.1);
+  --rm-chrome-accent: #2dd4bf;
+  font-variant-numeric: tabular-nums;
+  max-width: 52rem;
+  margin-inline: auto;
+  overflow-x: clip;
+  box-sizing: border-box;
+  display: grid;
+  gap: 0;
+}
+
+html.dark .reminders-operate,
+.dark .reminders-operate {
+  --rm-basalt: #0e0f12;
+  --rm-limestone: #f3f4f6;
+  --rm-desk: #0e0f12;
+  --rm-desk-dot: rgb(243 244 246 / 0.06);
+  --rm-paper: #1f2127;
+  --rm-paper-lift:
+    inset 0 1px 0 rgb(243 244 246 / 0.04),
+    0 24px 48px -24px rgb(0 0 0 / 0.65);
+  --rm-caution: #f59e0b;
+  --rm-caution-subtle: color-mix(in oklab, #f59e0b 16%, var(--surface-raised));
+}
+
+.reminders-operate *,
+.reminders-operate *::before,
+.reminders-operate *::after {
+  box-sizing: border-box;
+}
+
+.reminders-operate h1,
+.reminders-operate h2,
+.reminders-operate h3 {
+  text-wrap: balance;
+  letter-spacing: -0.02em;
+}
+
+.reminders-operate p {
+  text-wrap: pretty;
+}
+
+/* ---------- Basalt studio chrome ---------- */
+
+.reminders-operate .rm-studio {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px 16px;
+  border-radius: 14px 14px 0 0;
+  background: var(--rm-basalt);
+  color: var(--rm-chrome-ink);
+  color-scheme: dark;
+  border: 1px solid rgb(0 0 0 / 0.45);
+  border-bottom: 0;
+}
+
+.reminders-operate .rm-titlebar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+
+.reminders-operate .rm-title-block {
+  min-width: 0;
+  flex: 1 1 14rem;
+}
+
+.reminders-operate .rm-kicker {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--rm-chrome-subtle);
+}
+
+.reminders-operate .rm-title {
+  margin: 0;
+  font-size: clamp(1.125rem, 2.2vw, 1.375rem);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+  color: var(--rm-chrome-ink);
+}
+
+.reminders-operate .rm-subtitle {
+  margin: 4px 0 0;
+  max-width: 52ch;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--rm-chrome-muted);
+}
+
+.reminders-operate .rm-studio-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px 14px;
+  width: 100%;
+  padding-top: 10px;
+  border-top: 1px solid var(--rm-chrome-border);
+}
+
+.reminders-operate .rm-studio-badge {
+  flex: 0 0 auto;
+  padding-top: 2px;
+}
+
+.reminders-operate .rm-studio-honesty {
+  flex: 1 1 18rem;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.reminders-operate .rm-studio-honesty-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: #fbbf24;
+  line-height: 1.35;
+}
+
+.reminders-operate .rm-studio-honesty-why,
+.reminders-operate .rm-studio-honesty-next,
+.reminders-operate .rm-studio-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--rm-chrome-muted);
+}
+
+.reminders-operate .rm-studio-k {
+  font-weight: 600;
+  color: var(--rm-chrome-subtle);
+}
+
+.reminders-operate .rm-studio-actions {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+/* Step rail on chrome: connected Studio nodes, not twin pill cards */
+.reminders-operate .rm-rail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0;
+  margin: 0;
+  list-style: none;
+  padding: 0;
+}
+
+.reminders-operate .rm-rail-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 4px 0 0;
+  border: 0;
+  background: transparent;
+  color: var(--rm-chrome-subtle);
+  font-size: 12px;
+  font-weight: 500;
+  transition: color var(--rm-state) var(--rm-ease-out);
+}
+
+.reminders-operate .rm-rail-step:not(:last-child)::after {
+  content: "";
+  display: inline-block;
+  width: 18px;
+  height: 1px;
+  margin-inline: 6px 4px;
+  background: var(--rm-chrome-border);
+}
+
+.reminders-operate .rm-rail-step[data-state="done"] {
+  color: var(--rm-chrome-muted);
+}
+
+.reminders-operate .rm-rail-step[data-state="current"] {
+  color: var(--rm-chrome-accent);
+  font-weight: 600;
+}
+
+.reminders-operate .rm-rail-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid var(--rm-chrome-border);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 700;
+  color: inherit;
+}
+
+.reminders-operate .rm-rail-step[data-state="current"] .rm-rail-index {
+  background: var(--rm-chrome-accent);
+  border-color: var(--rm-chrome-accent);
+  color: var(--rm-basalt);
+}
+
+.reminders-operate .rm-rail-step[data-state="done"] .rm-rail-index {
+  background: color-mix(in oklab, #34d399 55%, transparent);
+  border-color: transparent;
+  color: var(--rm-basalt);
+}
+
+/* ---------- Paper desk ---------- */
+
+.reminders-operate .rm-desk {
+  padding: 18px 16px 20px;
+  background:
+    radial-gradient(circle, var(--rm-desk-dot) 1px, transparent 1px) 0 0 / 16px 16px,
+    var(--rm-desk);
+  border: 1px solid color-mix(in oklab, var(--rm-basalt) 18%, transparent);
+  border-top: 0;
+  border-radius: 0 0 14px 14px;
+  display: grid;
+  gap: 14px;
+}
+
+.reminders-operate .rm-paper {
+  padding: 16px 16px 18px;
+  border-radius: var(--rm-radius);
+  background: var(--rm-paper);
+  border: 1px solid color-mix(in oklab, var(--rm-basalt) 10%, transparent);
+  box-shadow: var(--rm-paper-lift);
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* Compact brief (empty what/why/next) — not a second honesty banner */
+.reminders-operate .rm-brief {
+  display: grid;
+  gap: 6px;
+  padding: 0 0 12px;
+  border-bottom: 1px solid color-mix(in oklab, var(--rm-basalt) 8%, transparent);
+}
+
+.reminders-operate .rm-brief-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+
+.reminders-operate .rm-brief-rows {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 2px 10px;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.reminders-operate .rm-brief-rows dt {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.reminders-operate .rm-brief-rows dd {
+  margin: 0;
+  color: var(--ink);
+}
+
+/* Situational guides (error / created / confirm) — single, never twin with honesty */
+.reminders-operate .rm-guide {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--rm-hair);
+  border-radius: var(--rm-radius-sm);
+  background: color-mix(in oklab, var(--ink) 2%, var(--rm-paper));
+  position: relative;
+}
+
+.reminders-operate .rm-guide::before {
+  content: "";
+  position: absolute;
+  inset: 8px auto 8px 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: color-mix(in oklab, var(--ink) 18%, transparent);
+}
+
+.reminders-operate .rm-guide[data-tone="warning"] {
+  background: var(--rm-caution-subtle);
+}
+.reminders-operate .rm-guide[data-tone="warning"]::before {
+  background: var(--rm-caution);
+}
+.reminders-operate .rm-guide[data-tone="danger"] {
+  background: color-mix(in oklab, var(--danger) 8%, var(--rm-paper));
+}
+.reminders-operate .rm-guide[data-tone="danger"]::before {
+  background: var(--danger);
+}
+.reminders-operate .rm-guide[data-tone="accent"] {
+  background: color-mix(in oklab, var(--accent) 7%, var(--rm-paper));
+}
+.reminders-operate .rm-guide[data-tone="accent"]::before {
+  background: var(--accent);
+}
+.reminders-operate .rm-guide[data-tone="success"] {
+  background: color-mix(in oklab, var(--success) 8%, var(--rm-paper));
+}
+.reminders-operate .rm-guide[data-tone="success"]::before {
+  background: var(--success);
+}
+
+.reminders-operate .rm-guide-title {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+
+.reminders-operate .rm-guide-rows {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 3px 10px;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.reminders-operate .rm-guide-rows dt {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.reminders-operate .rm-guide-rows dd {
+  margin: 0;
+  color: var(--ink);
+}
+
+.reminders-operate .rm-guide-actions {
+  margin-top: 4px;
+}
+
+/* Compose panel — flush inside paper, no nested ghost card */
+.reminders-operate .rm-panel {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.reminders-operate .rm-panel-title {
+  margin: 0 0 2px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+
+.reminders-operate .rm-panel-sub {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.reminders-operate .rm-field-grid {
+  display: grid;
+  gap: 12px;
+}
+
+@media (min-width: 640px) {
+  .reminders-operate .rm-field-grid.rm-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.reminders-operate .rm-field {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.reminders-operate .rm-field > input,
+.reminders-operate .rm-field > select,
+.reminders-operate .rm-field > textarea {
+  display: block;
+  width: 100%;
+  margin-top: 5px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in oklab, var(--rm-basalt) 12%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--rm-paper) 70%, white);
+  color: var(--ink);
+  font-size: 13px;
+  box-shadow: 0 1px 0 rgb(26 28 33 / 0.03);
+}
+
+html.dark .reminders-operate .rm-field > input,
+html.dark .reminders-operate .rm-field > select,
+html.dark .reminders-operate .rm-field > textarea,
+.dark .reminders-operate .rm-field > input,
+.dark .reminders-operate .rm-field > select,
+.dark .reminders-operate .rm-field > textarea {
+  background: color-mix(in oklab, var(--rm-paper) 88%, black);
+}
+
+.reminders-operate .rm-field > input.font-mono,
+.reminders-operate .rm-field > select.font-mono {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+}
+
+.reminders-operate .rm-field > input:focus-visible,
+.reminders-operate .rm-field > select:focus-visible,
+.reminders-operate .rm-field > textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-color: color-mix(in oklab, var(--accent) 45%, transparent);
+}
+
+.reminders-operate .rm-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.reminders-operate .rm-check input {
+  margin-top: 3px;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.reminders-operate .rm-check-hint {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.reminders-operate .rm-schedule {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in oklab, var(--accent) 28%, var(--rm-hair));
+  background: color-mix(in oklab, var(--accent) 7%, var(--rm-paper));
+}
+
+.reminders-operate .rm-schedule[data-enabled="false"] {
+  background: var(--rm-caution-subtle);
+  border-color: color-mix(in oklab, var(--rm-caution) 30%, var(--rm-hair));
+}
+
+.reminders-operate .rm-schedule-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.reminders-operate .rm-schedule-value {
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.reminders-operate .rm-schedule-detail {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.reminders-operate .rm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in oklab, var(--rm-basalt) 8%, transparent);
+}
+
+.reminders-operate .rm-result {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  display: grid;
+  gap: 10px;
+}
+
+.reminders-operate .rm-ids {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.reminders-operate .rm-ids code {
+  color: var(--ink);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+}
+
+.reminders-operate .rm-progress {
+  padding: 10px 14px;
+  border-radius: var(--rm-radius-sm);
+  border: 1px solid color-mix(in oklab, var(--accent) 30%, var(--rm-hair));
+  background: color-mix(in oklab, var(--accent) 8%, var(--rm-paper));
+  font-size: 13px;
+  color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reminders-operate .rm-rail-step {
+    transition: none;
+  }
+}

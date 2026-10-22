@@ -1,64 +1,96 @@
 import { BulkResultTable } from "@/components/ui/BulkResultTable";
-import { Card } from "@/components/ui/layout-primitives";
+import { partialFailureGuide } from "@/lib/bulkSuiteScreen";
+import { BulkResultCounts } from "./BulkResultCounts";
+import { BulkStateGuide } from "./BulkStateGuide";
 import { bulkRunToTable } from "./bulk-helpers";
 import type { BulkSuitePageModel } from "./use-bulk-suite-page";
 
 export function BulkResultsSection({ vm }: { vm: BulkSuitePageModel }) {
   if (!vm.result) return null;
   const result = vm.result;
+  const failureGuide = partialFailureGuide({
+    total: result.total,
+    succeeded: result.succeeded,
+    failed: result.failed,
+    model: result.model,
+  });
 
   return (
-    <Card className="mt-6 overflow-x-auto p-4">
-      <h2 className="text-lg font-semibold text-ink">Results</h2>
+    <section className="bu-panel" data-testid="bulk-results-panel" aria-labelledby="bulk-results-title">
+      <h2 id="bulk-results-title" className="bu-panel-title">
+        Results
+      </h2>
+      <p className="bu-panel-sub">
+        {result.dry_run ? "Test run counts. No records were written." : "Per-row outcomes for the last run."}
+      </p>
+
+      <BulkResultCounts
+        total={result.total}
+        succeeded={result.succeeded}
+        failed={result.failed}
+        dryRun={Boolean(result.dry_run)}
+      />
+
+      {failureGuide ? (
+        <BulkStateGuide
+          className="!mt-3"
+          tone="warning"
+          live
+          testId="bulk-partial-guide"
+          guide={failureGuide}
+        />
+      ) : null}
+
       {result.preview && result.preview.length > 0 ? (
-        <table className="mt-3 w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-border-subtle">
-              <th className="py-1 pr-2">Id</th>
-              <th className="py-1 pr-2">Record</th>
-              <th className="py-1 pr-2">Before</th>
-              <th className="py-1">After</th>
-            </tr>
-          </thead>
-          <tbody>
-            {result.preview.map((row) => (
-              <tr key={row.id} className="border-b border-border-subtle/50">
-                <td className="py-1 pr-2 font-mono">{row.id}</td>
-                <td className="py-1 pr-2">{row.display_name}</td>
-                <td className="py-1 pr-2 font-mono text-xs">
-                  {JSON.stringify(row.before)}
-                </td>
-                <td className="py-1 font-mono text-xs">{JSON.stringify(row.after)}</td>
+        <div className="bu-table-wrap">
+          <table className="bu-table">
+            <thead>
+              <tr>
+                <th scope="col">Id</th>
+                <th scope="col">Record</th>
+                <th scope="col">Before</th>
+                <th scope="col">After</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {result.preview.map((row) => (
+                <tr key={row.id}>
+                  <td className="font-mono">{row.id}</td>
+                  <td>{row.display_name}</td>
+                  <td className="font-mono text-xs">{JSON.stringify(row.before)}</td>
+                  <td className="font-mono text-xs">{JSON.stringify(row.after)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : null}
+
       {result.relinks && result.relinks.length > 0 ? (
-        <table className="mt-3 w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-border-subtle">
-              <th className="py-1 pr-2">Model</th>
-              <th className="py-1 pr-2">Field</th>
-              <th className="py-1 pr-2">Type</th>
-              <th className="py-1">Rows relinked</th>
-            </tr>
-          </thead>
-          <tbody>
-            {result.relinks.map((row) => (
-              <tr
-                key={`${row.model}.${row.field}`}
-                className="border-b border-border-subtle/50"
-              >
-                <td className="py-1 pr-2 font-mono">{row.model}</td>
-                <td className="py-1 pr-2 font-mono">{row.field}</td>
-                <td className="py-1 pr-2">{row.ttype}</td>
-                <td className="py-1">{row.count}</td>
+        <div className="bu-table-wrap">
+          <table className="bu-table">
+            <thead>
+              <tr>
+                <th scope="col">Model</th>
+                <th scope="col">Field</th>
+                <th scope="col">Type</th>
+                <th scope="col">Rows relinked</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {result.relinks.map((row) => (
+                <tr key={`${row.model}.${row.field}`}>
+                  <td className="font-mono">{row.model}</td>
+                  <td className="font-mono">{row.field}</td>
+                  <td>{row.ttype}</td>
+                  <td>{row.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : null}
+
       <div className="mt-4">
         <BulkResultTable
           result={bulkRunToTable(result)}
@@ -79,6 +111,6 @@ export function BulkResultsSection({ vm }: { vm: BulkSuitePageModel }) {
           </p>
         ) : null}
       </div>
-    </Card>
+    </section>
   );
 }

@@ -6,10 +6,27 @@
   border-radius: var(--radius-control);
   border: 1px solid transparent;
   cursor: pointer;
-  transition: background-color 0.15s ease, transform 0.05s ease;
+  transition:
+    background-color var(--duration-state) ease,
+    border-color var(--duration-state) ease,
+    box-shadow var(--duration-state) ease,
+    transform var(--duration-press) var(--ease-out);
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  line-height: 1.25;
+  white-space: nowrap;
+  text-decoration: none;
+  touch-action: manipulation;
+}
+
+.studio-refinement .btn:focus-visible,
+.studio-refinement .chip:focus-visible,
+.studio-refinement .studio-mobile-tab:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-offset);
 }
 
 .studio-refinement .btn:disabled {
@@ -18,7 +35,7 @@
 }
 
 .studio-refinement .btn:active:not(:disabled) {
-  transform: scale(0.98);
+  transform: scale(var(--press-scale));
 }
 
 .studio-refinement .btn-secondary {
@@ -27,8 +44,18 @@
   color: var(--text-primary);
 }
 
-.studio-refinement .btn-secondary:hover:not(:disabled) {
-  background: var(--surface-1);
+@media (hover: hover) and (pointer: fine) {
+  .studio-refinement .btn-secondary:hover:not(:disabled) {
+    background: var(--surface-1);
+  }
+}
+
+/* Toggle on: accent tint, not a second filled colour (one accent, one meaning). */
+.studio-refinement .btn-toggle.is-on {
+  background: var(--bg-accent);
+  border-color: var(--border-accent);
+  color: var(--text-accent);
+  font-weight: 600;
 }
 
 .studio-refinement .btn-primary {
@@ -38,9 +65,11 @@
   font-weight: 600;
 }
 
-.studio-refinement .btn-primary:hover:not(:disabled) {
-  background: var(--color-accent-hover);
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-accent) 32%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .studio-refinement .btn-primary:hover:not(:disabled) {
+    background: var(--color-accent-hover);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--color-accent) 32%, transparent);
+  }
 }
 
 .studio-refinement .btn-brand {
@@ -56,8 +85,9 @@
 }
 
 .studio-refinement .btn-sm {
-  font-size: var(--font-size-xs);
-  padding: 5px 12px;
+  font-size: var(--font-size-sm);
+  padding: 6px 12px;
+  min-height: 32px;
 }
 
 .studio-refinement .btn-icon {
@@ -69,18 +99,55 @@
 
 .studio-refinement .chip {
   font-family: inherit;
-  font-size: var(--font-size-xs);
-  padding: 4px 10px;
+  font-size: var(--font-size-sm);
+  line-height: 1.3;
+  min-height: 32px;
+  max-width: 100%;
+  padding: 6px 12px;
   border-radius: 999px;
   border: 1px solid var(--border-strong);
   background: transparent;
   color: var(--text-primary);
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  touch-action: manipulation;
+  transition:
+    background-color var(--duration-state) ease,
+    border-color var(--duration-state) ease,
+    color var(--duration-state) ease,
+    transform var(--duration-press) var(--ease-out);
 }
 
-.studio-refinement .chip:hover:not(:disabled) {
-  background: var(--surface-1);
+.studio-refinement .chip:active:not(:disabled) {
+  transform: scale(var(--press-scale));
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .studio-refinement .chip:hover:not(:disabled) {
+    background: var(--surface-1);
+    border-color: color-mix(in srgb, var(--border-strong) 60%, var(--text-secondary));
+  }
+}
+
+/* Touch: 44px targets for buttons, 40px for chips (playbook §4 Targets). */
+@media (pointer: coarse) {
+  .studio-refinement .btn {
+    min-height: 44px;
+  }
+
+  .studio-refinement .chip,
+  .studio-refinement .btn-sm {
+    min-height: 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-refinement .btn:active:not(:disabled),
+  .studio-refinement .chip:active:not(:disabled) {
+    transform: none;
+  }
 }
 
 .studio-refinement .chip:disabled {
@@ -107,7 +174,17 @@
   padding: 10px 14px;
   width: 100%;
   box-sizing: border-box;
-  transition: border-color 0.15s ease;
+  transition:
+    border-color var(--duration-state) ease,
+    box-shadow var(--duration-state) ease;
+}
+
+/* iOS zooms the page on inputs under 16px. */
+@media (max-width: 767px) {
+  .studio-refinement .input,
+  .studio-refinement .textarea {
+    font-size: 16px;
+  }
 }
 
 .studio-refinement .textarea {
@@ -115,6 +192,8 @@
   min-height: 80px;
 }
 
+.studio-refinement .input:focus-visible,
+.studio-refinement .textarea:focus-visible,
 .studio-refinement .input:focus,
 .studio-refinement .textarea:focus {
   outline: none;

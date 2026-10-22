@@ -30,11 +30,11 @@ export const SANDBOX_DEPLOY_PHASES: SandboxDeployPhase[] = [
   {
     id: "validate",
     label: "Validate",
-    hint: "Checks pass — ready window before promote",
+    hint: "Checks pass — ready window before publish",
   },
   {
     id: "promote",
-    label: "Promote",
+    label: "Publish",
     hint: "Human confirm only — never auto-promote",
   },
 ];

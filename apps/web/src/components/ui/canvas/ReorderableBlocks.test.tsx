@@ -6,6 +6,7 @@ import {
   ReorderableBlocks,
   moveIndex,
   moveIndexById,
+  pointInRect,
 } from "./ReorderableBlocks";
 
 afterEach(() => {
@@ -46,6 +47,23 @@ function layoutCanvas() {
     stubRect(item, { x: 0, y: index * 40, w: 200, h: 40 });
   });
   return { canvas, items };
+}
+
+function dispatchDrop(
+  target: Element,
+  dataTransfer: Record<string, unknown>,
+  clientX: number,
+  clientY: number,
+) {
+  const event = new Event("drop", { bubbles: true, cancelable: true }) as Event & {
+    clientX: number;
+    clientY: number;
+    dataTransfer: unknown;
+  };
+  Object.defineProperty(event, "clientX", { value: clientX });
+  Object.defineProperty(event, "clientY", { value: clientY });
+  Object.defineProperty(event, "dataTransfer", { value: dataTransfer });
+  target.dispatchEvent(event);
 }
 
 function Harness({
@@ -128,5 +146,130 @@ describe("ReorderableBlocks", () => {
 
     expect(onReorder).toHaveBeenCalled();
     expect(screen.getByTestId("order").textContent).not.toBe("a,b,c");
+  });
+
+  it("drop outside the canvas inserts nothing via onMove path", () => {
+    const onMove = vi.fn();
+    function MoveOnly() {
+      const [items, setItems] = useState(INITIAL);
+      return (
+        <div>
+          <ReorderableBlocks
+            items={items}
+            getId={(item) => item.id}
+            onMove={(id, dir) => {
+              onMove(id, dir);
+              setItems((prev) => moveIndexById(prev, id, dir));
+            }}
+          >
+            {(item) => <span>{item.label}</span>}
+          </ReorderableBlocks>
+          <div data-testid="order">{items.map((item) => item.id).join(",")}</div>
+        </div>
+      );
+    }
+    render(<MoveOnly />);
+    const { items } = layoutCanvas();
+
+    fireEvent.pointerDown(items[1], {
+      button: 0,
+      pointerId: 2,
+      clientX: 20,
+      clientY: 60,
+    });
+    fireEvent.pointerMove(items[1], { pointerId: 2, clientX: 20, clientY: 100 });
+    // Release far outside the 200×120 canvas.
+    fireEvent.pointerUp(items[1], { pointerId: 2, clientX: -50, clientY: -50 });
+
+    expect(onMove).not.toHaveBeenCalled();
+    expect(screen.getByTestId("order").textContent).toBe("a,b,c");
+  });
+
+  it("pointInRect rejects coordinates outside the canvas bounds", () => {
+    const rect = { left: 0, right: 200, top: 0, bottom: 120 };
+    expect(pointInRect(20, 20, rect)).toBe(true);
+    expect(pointInRect(400, 400, rect)).toBe(false);
+    expect(pointInRect(-1, 10, rect)).toBe(false);
+  });
+
+  it("accepts an external (palette) drop at the pointer insert index", () => {
+    const onExternal = vi.fn();
+    const canAccept = (dt: DataTransfer) => {
+      const types = Array.from(dt.types || []);
+      return types.includes("text/odoo-report-block") || Boolean(dt.getData("text/odoo-report-block"));
+    };
+    render(
+      <ReorderableBlocks
+        items={INITIAL}
+        getId={(item) => item.id}
+        externalDrop={{
+          canAccept,
+          onDrop: (dt, insertIndex) => {
+            onExternal(dt.getData("text/odoo-report-block"), insertIndex);
+          },
+        }}
+      >
+        {(item) => <span>{item.label}</span>}
+      </ReorderableBlocks>,
+    );
+    const { canvas, items } = layoutCanvas();
+    stubRect(canvas, { x: 0, y: 0, w: 200, h: 120 });
+    items.forEach((item, index) => {
+      stubRect(item, { x: 0, y: index * 40, w: 200, h: 40 });
+    });
+
+    const dataTransfer = {
+      types: ["text/odoo-report-block"],
+      dropEffect: "copy",
+      effectAllowed: "copy",
+      getData: (type: string) => (type === "text/odoo-report-block" ? "heading" : ""),
+      setData: vi.fn(),
+    };
+
+    // clientY 50 → midpoint of item 1 (y=40..80) → insert index 1
+    dispatchDrop(canvas, dataTransfer, 20, 50);
+    expect(onExternal).toHaveBeenCalledWith("heading", 1);
+  });
+
+  it("rejects an external drop whose pointer is outside the canvas", () => {
+    const onExternal = vi.fn();
+    const canAccept = (dt: DataTransfer) => {
+      const types = Array.from(dt.types || []);
+      return types.includes("text/odoo-report-block") || Boolean(dt.getData("text/odoo-report-block"));
+    };
+    render(
+      <div>
+        <ReorderableBlocks
+          items={INITIAL}
+          getId={(item) => item.id}
+          externalDrop={{
+            canAccept,
+            onDrop: (dt, insertIndex) => {
+              onExternal(dt.getData("text/odoo-report-block"), insertIndex);
+            },
+          }}
+        >
+          {(item) => <span>{item.label}</span>}
+        </ReorderableBlocks>
+        <div data-testid="outside-canvas">outside</div>
+      </div>,
+    );
+    layoutCanvas();
+
+    const dataTransfer = {
+      types: ["text/odoo-report-block"],
+      dropEffect: "copy",
+      effectAllowed: "copy",
+      getData: () => "heading",
+      setData: vi.fn(),
+    };
+
+    // Drop on a node that is not the canvas — must not insert.
+    dispatchDrop(screen.getByTestId("outside-canvas"), dataTransfer, 900, 900);
+    expect(onExternal).not.toHaveBeenCalled();
+
+    // Drop on the canvas with outside coordinates is also rejected.
+    dispatchDrop(screen.getByTestId("reorderable-blocks"), dataTransfer, 900, 900);
+    expect(onExternal).not.toHaveBeenCalled();
   });
 });

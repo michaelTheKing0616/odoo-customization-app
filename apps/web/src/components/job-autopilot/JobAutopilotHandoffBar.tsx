@@ -41,12 +41,14 @@ export function JobAutopilotHandoffBar({
   onDownloadReport,
   onDownloadPdf,
 }: JobAutopilotHandoffBarProps) {
+  const promoteIsPrimary = promoteReady && hasResult;
   return (
-    <Card className="p-5" data-testid="job-handoff-bar">
-      <h2 className="text-lg font-semibold text-ink">Promote and handoff</h2>
-      <p className="mt-1 text-sm text-muted">
-        Autopilot never writes production. Promote stays a human step onto another
-        connection. Stock-only jobs hand off the sandbox itself.
+    <Card className="job-handoff-card p-5" data-testid="job-handoff-bar">
+      <h2 className="text-lg font-semibold tracking-tight text-ink">Promote and handoff</h2>
+      <p className="mt-1 max-w-[65ch] text-sm text-muted text-pretty">
+        Autopilot never writes production. Publishing stays a step you confirm onto another
+        connection. Built-in-apps-only jobs hand off the test copy itself. A complete draft is not the same as certified, and neither means
+        Autopilot.
       </p>
       {!targetsHydrated ? (
         <div className="mt-4 space-y-2" data-testid="job-promote-targets-loading">
@@ -56,7 +58,7 @@ export function JobAutopilotHandoffBar({
         <div className="mt-4" data-testid="job-promote-targets-empty">
           <EmptyState
             title="No other connections to promote to"
-            description="Add another Odoo connection under Connect, then pick it here for human promote."
+            description="What: publishing needs a second Odoo connection. Why: Autopilot never writes this sandbox onto itself or onto production. Next: add another connection under Connect, then pick it here."
             action={
               <Button type="button" variant="secondary" size="sm" asChild>
                 <Link href="/connect">Open Connect</Link>
@@ -83,22 +85,23 @@ export function JobAutopilotHandoffBar({
         </label>
       )}
       <div className="job-handoff-bar mt-4">
+        <Button
+          type="button"
+          variant={promoteIsPrimary ? "primary" : "secondary"}
+          className={promoteIsPrimary ? "text-white" : undefined}
+          disabled={!promoteReady || busy !== null}
+          onClick={onPromote}
+          data-testid="job-promote-or-handoff"
+        >
+          {hasResidualZip ? "Publish to target" : "Handoff"}
+        </Button>
         {sandboxUrl ? (
-          <Button asChild>
+          <Button asChild variant="secondary">
             <a href={sandboxUrl} target="_blank" rel="noreferrer">
               {sandboxLabel}
             </a>
           </Button>
         ) : null}
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={!promoteReady || busy !== null}
-          onClick={onPromote}
-          data-testid="job-promote-or-handoff"
-        >
-          {hasResidualZip ? "Promote to target" : "Handoff"}
-        </Button>
         <Button type="button" variant="ghost" disabled={!hasResult} onClick={onDownloadReport}>
           Download markdown
         </Button>
@@ -119,10 +122,15 @@ export function JobAutopilotHandoffBar({
         </Button>
         {showModuleSpec ? (
           <Button asChild variant="ghost">
-            <Link href={`/connections/${connectionId}/modulespec`}>ModuleSpec</Link>
+            <Link href={`/connections/${connectionId}/modulespec`}>App plan</Link>
           </Button>
         ) : null}
       </div>
+      {promoteReady ? (
+        <p className="mt-2 text-xs text-muted" data-testid="job-promote-confirm-hint">
+          Promote opens a confirm dialog. Type the phrase before any target write.
+        </p>
+      ) : null}
     </Card>
   );
 }

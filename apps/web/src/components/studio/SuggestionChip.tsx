@@ -13,7 +13,8 @@ export function SuggestionChip({ label, onClick, disabled, selected }: Suggestio
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`chip ${selected ? "is-selected" : ""}`}
+      aria-pressed={selected === undefined ? undefined : selected}
+      className={`chip${selected ? " is-selected" : ""}`}
       title={label}
     >
       {label}

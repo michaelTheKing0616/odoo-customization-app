@@ -323,7 +323,7 @@ export function useStudioSession(
         const prefs = await api.getStudioPrefs(connectionId.trim());
         if (cancelled) return;
         // null = follow env → default UI off (honest: no Flash unless operator asks)
-        setFlashAstEnrich(Boolean(prefs.flash_ast_enrich));
+        setFlashAstEnrich(typeof prefs.flash_ast_enrich === "boolean" ? prefs.flash_ast_enrich : null);
         if (prefs.flash_ast_enrich_help) setFlashAstEnrichHelp(prefs.flash_ast_enrich_help);
       } catch {
         /* prefs are optional — keep product default off */

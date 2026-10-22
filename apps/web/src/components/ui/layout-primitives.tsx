@@ -1,3 +1,5 @@
+import { FrameMeta } from "@/components/frame/FrameMeta";
+import { ArchDrawing } from "@/components/brand/ArchDrawing";
 import { cn } from "@/lib/cn";
 
 export function Card({
@@ -28,8 +30,9 @@ export function PageHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+    <div className="studio-bar-dark mb-6 flex flex-wrap items-start justify-between gap-4">
       <div>
+        <FrameMeta />
         <h1 className="text-ui-display font-semibold text-ink">{title}</h1>
         {description ? <p className="mt-1 text-ui-body text-muted">{description}</p> : null}
       </div>
@@ -68,7 +71,7 @@ export function Kbd({ children }: { children: React.ReactNode }) {
 }
 
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cn("animate-pulse rounded-md bg-surface-muted", className)} />;
+  return <div className={cn("shimmer-15 rounded-md bg-surface-muted", className)} />;
 }
 
 export function EmptyState({
@@ -84,7 +87,7 @@ export function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-md border border-dashed border-border-subtle px-6 py-12 text-center">
-      {icon ? <div className="mb-3 text-muted">{icon}</div> : null}
+      {icon ? <div className="mb-3 text-muted">{icon}</div> : <ArchDrawing width={96} className="mb-3" />}
       <h3 className="text-ui-title font-medium text-ink">{title}</h3>
       <p className="mt-2 max-w-md text-ui-body text-muted">{description}</p>
       {action ? <div className="mt-4">{action}</div> : null}

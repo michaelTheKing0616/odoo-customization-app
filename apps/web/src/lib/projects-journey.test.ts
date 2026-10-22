@@ -109,11 +109,11 @@ describe("projectsJourneyFromState", () => {
 describe("projectsJourneyHint", () => {
   it("keeps Completeness / Cert / Autopilot honesty and human promote", () => {
     expect(projectsJourneyHint({ id: "browse" })).toMatch(/hygiene/);
-    expect(projectsJourneyHint({ id: "inspect" })).toMatch(/Completeness ≠ Cert ≠ Autopilot/);
-    expect(projectsJourneyHint({ id: "review" })).toMatch(/Promote stays human/);
-    expect(projectsJourneyHint({ id: "apply" })).toMatch(/Promote stays human/);
-    expect(projectsJourneyHint({ id: "apply" })).toMatch(/sandbox/i);
-    expect(projectsJourneyHint({ id: "review", failed: true })).toMatch(/Promote stays human/);
+    expect(projectsJourneyHint({ id: "inspect" })).toMatch(/A complete draft is not the same as certified, and neither means Autopilot-ready/);
+    expect(projectsJourneyHint({ id: "review" })).toMatch(/Publishing stays a step you confirm/);
+    expect(projectsJourneyHint({ id: "apply" })).toMatch(/Publishing stays a step you confirm/);
+    expect(projectsJourneyHint({ id: "apply" })).toMatch(/test copy/i);
+    expect(projectsJourneyHint({ id: "review", failed: true })).toMatch(/Publishing stays a step you confirm/);
   });
 });
 
@@ -197,7 +197,7 @@ describe("honesty and glossary", () => {
     const production = projectsHonestyGate({ writeMode: "production" });
     expect(production.reason).toBe("production");
     expect(production.variant).toBe("danger");
-    expect(production.body).toMatch(/Promote stays human/);
+    expect(production.body).toMatch(/Publishing stays a step you confirm/);
 
     const sandbox = projectsHonestyGate({ writeMode: "standard", localSandboxUrl: true });
     expect(sandbox.reason).toBe("sandbox");
@@ -206,7 +206,7 @@ describe("honesty and glossary", () => {
     expect(projectsHonestyGate({ writeMode: "observer" }).reason).toBe("observer");
     expect(applyRisks().join(" ")).toMatch(/partially recoverable/);
     expect(applySnapshotNote()).toMatch(/partially recoverable/);
-    expect(glossaryLines().join(" ")).toMatch(/Promote stays human/);
+    expect(glossaryLines().join(" ")).toMatch(/Publishing stays a step you confirm/);
     expect(glossaryStrip()).toMatch(/Draft · Apply · Promote/);
     expect(countLabel(1, "model")).toBe("1 model");
     expect(countLabel(2, "field")).toBe("2 fields");

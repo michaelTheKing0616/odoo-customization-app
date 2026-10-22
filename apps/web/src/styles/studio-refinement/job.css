@@ -134,3 +134,245 @@
   align-items: center;
 }
 
+
+/* ============================================================
+   Job Autopilot elite pass (UI-S-22)
+   Match App Studio + Draft Studio cluster craft.
+   Basalt chrome, one teal accent, cinnabar keystone only.
+   ============================================================ */
+
+.studio-refinement .job-cluster-nav {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-1);
+}
+
+.studio-refinement .job-cluster-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition:
+    background-color var(--duration-state) ease,
+    color var(--duration-state) ease;
+}
+
+.studio-refinement .job-cluster-link.is-current {
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--text-primary) 6%, transparent);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .studio-refinement a.job-cluster-link:hover {
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+  }
+}
+
+.studio-refinement .job-brief-composer {
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 70%, transparent);
+  background: var(--surface-2);
+  padding: var(--space-md) var(--space-md) var(--space-sm);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, var(--text-primary) 4%, transparent),
+    0 12px 32px -20px color-mix(in srgb, var(--text-primary) 16%, transparent);
+  transition:
+    border-color var(--duration-state) ease,
+    box-shadow var(--duration-state) ease;
+}
+
+.studio-refinement .job-brief-composer:focus-within {
+  border-color: var(--color-accent);
+  box-shadow:
+    0 0 0 3px var(--bg-accent),
+    0 12px 32px -20px color-mix(in srgb, var(--text-primary) 12%, transparent);
+}
+
+.studio-refinement .job-brief-textarea,
+.studio-refinement .job-brief-composer textarea {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  min-height: 7rem;
+  font-size: 1.0625rem;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.studio-refinement .job-brief-textarea:focus,
+.studio-refinement .job-brief-textarea:focus-visible,
+.studio-refinement .job-brief-composer textarea:focus,
+.studio-refinement .job-brief-composer textarea:focus-visible {
+  outline: none;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.studio-refinement .job-empty-guide {
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-card);
+  border: 1px dashed color-mix(in srgb, var(--border-strong) 80%, transparent);
+  background: var(--surface-1);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.studio-refinement .job-empty-what,
+.studio-refinement .job-empty-why,
+.studio-refinement .job-empty-next {
+  margin: 0;
+}
+
+.studio-refinement .job-empty-why,
+.studio-refinement .job-empty-next {
+  margin-top: 4px;
+}
+
+.studio-refinement .job-empty-what {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.studio-refinement .job-recipe-rail {
+  margin: 0;
+  padding: var(--space-md) var(--space-lg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-1);
+}
+
+.studio-refinement .job-recipe-rail-title {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.studio-refinement .job-recipe-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.studio-refinement .job-recipe-step {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 6.5rem;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.studio-refinement .job-recipe-step.is-active,
+.studio-refinement .job-recipe-step.is-queued {
+  border-color: var(--border-accent);
+  color: var(--text-accent);
+  background: var(--bg-accent);
+}
+
+.studio-refinement .job-recipe-step.is-done {
+  border-color: var(--border-success);
+  background: var(--bg-success);
+  color: var(--text-primary);
+}
+
+.studio-refinement .job-recipe-step.is-failed {
+  border-color: var(--border-danger);
+  color: var(--text-danger);
+}
+
+.studio-refinement .job-recipe-step.is-skipped {
+  opacity: 0.72;
+}
+
+.studio-refinement .job-recipe-label {
+  font-weight: 600;
+  color: inherit;
+}
+
+.studio-refinement .job-recipe-state {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.studio-refinement .job-recipe-hint {
+  margin: var(--space-sm) 0 0;
+  max-width: 72ch;
+  font-size: var(--font-size-xs);
+  line-height: 1.45;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.studio-refinement .job-brief-card,
+.studio-refinement .job-packet-card,
+.studio-refinement .job-handoff-card,
+.studio-refinement .job-config-card {
+  border-radius: 14px;
+}
+
+.studio-refinement .job-score-overall-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.studio-refinement .job-error-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+@media (max-width: 639px) {
+  .studio-refinement .job-packet-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .studio-refinement .job-score-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .studio-refinement .job-recipe-list {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    mask-image: linear-gradient(to right, #000 88%, transparent);
+  }
+
+  .studio-refinement .job-recipe-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .studio-refinement .job-recipe-step {
+    flex: 0 0 auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-refinement .job-brief-composer,
+  .studio-refinement .job-cluster-link {
+    transition: none;
+  }
+}

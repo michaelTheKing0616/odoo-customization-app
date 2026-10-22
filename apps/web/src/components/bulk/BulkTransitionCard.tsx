@@ -1,72 +1,108 @@
-import { Card } from "@/components/ui/layout-primitives";
+import { Button } from "@/components/ui/Button";
+import {
+  DISCOVER_CTA,
+  DRY_RUN_CTA,
+  PRIMARY_CTA,
+  blastRadiusFromState,
+  runBlockedReason,
+} from "@/lib/bulkSuiteScreen";
+import { BulkBlastRadius } from "./BulkBlastRadius";
 import type { BulkSuitePageModel } from "./use-bulk-suite-page";
 
 export function BulkTransitionCard({ vm }: { vm: BulkSuitePageModel }) {
-  return (
-    <Card className="mt-6 space-y-4 p-4">
-      <label className="block text-sm">
-        Model
-        <input
-          id="bulk-suite-model"
-          className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-sm"
-          value={vm.model}
-          onChange={(e) => vm.setModel(e.target.value)}
-          list="bulk-suite-models"
-        />
-        <datalist id="bulk-suite-models">
-          {vm.filteredModels.map((m) => (
-            <option key={m.model} value={m.model}>
-              {m.name}
-            </option>
-          ))}
-        </datalist>
-      </label>
-      <label className="block text-sm">
-        Filter models
-        <input
-          className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 text-sm"
-          value={vm.modelQuery}
-          onChange={(e) => vm.setModelQuery(e.target.value)}
-          placeholder="Search technical or label name"
-        />
-      </label>
-      <button
-        type="button"
-        className="odoo-btn-secondary"
-        disabled={vm.discoverBusy || !vm.model.trim()}
-        onClick={() => void vm.discover()}
-      >
-        {vm.discoverBusy ? "Discovering…" : "Discover transitions"}
-      </button>
+  const blast = blastRadiusFromState({
+    model: vm.model,
+    selectionMode: vm.selectionMode,
+    idsText: vm.idsText,
+    resultTotal: vm.result?.total,
+    resultFailed: vm.result?.failed,
+    dryRunResult: vm.result?.dry_run,
+  });
+  const blockReason = runBlockedReason({
+    busy: vm.busy,
+    method: vm.method,
+    bulkSafe: vm.selectedButton ? vm.selectedButton.bulk_safe : null,
+    selectionMode: vm.selectionMode,
+    idsText: vm.idsText,
+    domainText: vm.domainText,
+  });
 
-      {vm.buttons.length > 0 && (
-        <label className="block text-sm">
+  return (
+    <section className="bu-panel" data-testid="bulk-transition-panel" aria-labelledby="bulk-transition-title">
+      <h2 id="bulk-transition-title" className="bu-panel-title">
+        Workflow transition
+      </h2>
+      <p className="bu-panel-sub">
+        Discover object buttons on the primary form view, select records, Test run the blast radius, then{" "}
+        {PRIMARY_CTA}.
+      </p>
+
+      <div className="bu-field-grid bu-cols-2">
+        <label className="bu-field">
+          Model
+          <input
+            id="bulk-suite-model"
+            className="font-mono"
+            value={vm.model}
+            onChange={(e) => vm.setModel(e.target.value)}
+            list="bulk-suite-models"
+          />
+          <datalist id="bulk-suite-models">
+            {vm.filteredModels.map((m) => (
+              <option key={m.model} value={m.model}>
+                {m.name}
+              </option>
+            ))}
+          </datalist>
+        </label>
+        <label className="bu-field">
+          Filter models
+          <input
+            value={vm.modelQuery}
+            onChange={(e) => vm.setModelQuery(e.target.value)}
+            placeholder="Search technical or label name"
+          />
+        </label>
+      </div>
+
+      <div className="bu-actions">
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={vm.discoverBusy || !vm.model.trim()}
+          loading={vm.discoverBusy}
+          onClick={() => void vm.discover()}
+        >
+          {vm.discoverBusy ? "Discovering…" : DISCOVER_CTA}
+        </Button>
+      </div>
+
+      {vm.buttons.length > 0 ? (
+        <label className="bu-field mt-3">
           Transition method
-          <select
-            className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5"
-            value={vm.method}
-            onChange={(e) => vm.setMethod(e.target.value)}
-          >
+          <select value={vm.method} onChange={(e) => vm.setMethod(e.target.value)}>
             {vm.buttons.map((b) => (
               <option key={b.name} value={b.name}>
-                {b.bulk_safe ? "" : "⚠ "}
+                {b.bulk_safe ? "" : "! "}
                 {b.label} ({b.name})
               </option>
             ))}
           </select>
         </label>
-      )}
-      {vm.selectedButton && (
+      ) : null}
+      {vm.selectedButton ? (
         <p
-          className={`text-sm ${vm.selectedButton.bulk_safe ? "text-[var(--odoo-muted)]" : "text-[var(--odoo-danger)]"}`}
+          className="bu-safe"
+          data-tone={vm.selectedButton.bulk_safe ? undefined : "danger"}
+          data-testid="bulk-safe-hint"
         >
-          {vm.selectedButton.bulk_safe ? "Bulk-safe" : "Not bulk-safe"} — {vm.selectedButton.reason}
+          {vm.selectedButton.bulk_safe ? "Bulk-safe" : "Not bulk-safe"} - {vm.selectedButton.reason}
         </p>
-      )}
+      ) : null}
 
-      <fieldset className="space-y-2 text-sm">
-        <legend className="font-medium">Record selection</legend>
-        <label className="mr-4 inline-flex items-center gap-2">
+      <fieldset className="mt-3 space-y-2 text-sm">
+        <legend className="font-medium text-ink">Record selection</legend>
+        <label className="bu-inline mr-4">
           <input
             type="radio"
             checked={vm.selectionMode === "domain"}
@@ -74,7 +110,7 @@ export function BulkTransitionCard({ vm }: { vm: BulkSuitePageModel }) {
           />
           Domain
         </label>
-        <label className="inline-flex items-center gap-2">
+        <label className="bu-inline">
           <input
             type="radio"
             checked={vm.selectionMode === "ids"}
@@ -85,44 +121,53 @@ export function BulkTransitionCard({ vm }: { vm: BulkSuitePageModel }) {
       </fieldset>
 
       {vm.selectionMode === "domain" ? (
-        <label className="block text-sm">
+        <label className="bu-field mt-2">
           Domain (JSON list, cap 1000)
           <textarea
-            className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-xs"
             rows={3}
             value={vm.domainText}
             onChange={(e) => vm.setDomainText(e.target.value)}
           />
         </label>
       ) : (
-        <label className="block text-sm">
+        <label className="bu-field mt-2">
           Record ids (comma or space separated)
           <input
-            className="mt-1 w-full border border-[var(--odoo-border)] bg-surface px-2 py-1.5 font-mono text-sm"
+            className="font-mono"
             value={vm.idsText}
             onChange={(e) => vm.setIdsText(e.target.value)}
           />
         </label>
       )}
 
-      <div className="flex flex-wrap gap-2 pt-2">
-        <button
+      <BulkBlastRadius blast={blast} />
+
+      <div className="bu-actions">
+        <Button
           type="button"
-          className="odoo-btn-secondary"
+          variant="secondary"
           disabled={vm.busy || !vm.method}
+          loading={vm.busy}
           onClick={() => void vm.run(true)}
         >
-          Dry run
-        </button>
-        <button
+          {DRY_RUN_CTA}
+        </Button>
+        <Button
           type="button"
-          className="odoo-btn-primary"
-          disabled={vm.busy || !vm.method || (vm.selectedButton ? !vm.selectedButton.bulk_safe : false)}
+          variant="primary"
+          disabled={vm.busy || Boolean(blockReason)}
+          loading={vm.busy}
+          data-testid="bulk-run-primary"
           onClick={() => void vm.run(false)}
         >
-          Execute
-        </button>
+          {PRIMARY_CTA}
+        </Button>
+        {blockReason ? <p className="bu-primary-reason">{blockReason}</p> : (
+          <p className="bu-primary-reason">
+            Test run first so the blast radius is visible before any write.
+          </p>
+        )}
       </div>
-    </Card>
+    </section>
   );
 }

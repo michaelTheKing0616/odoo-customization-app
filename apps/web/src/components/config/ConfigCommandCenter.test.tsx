@@ -25,6 +25,10 @@ vi.mock("@/lib/api", () => ({
   ConfirmationRequiredError: class ConfirmationRequiredError extends Error {},
 }));
 
+vi.mock("@/lib/expert-diagnostics", () => ({
+  diagnoseWithExpert: vi.fn(),
+}));
+
 import { ConfigCommandCenter } from "./ConfigCommandCenter";
 
 afterEach(() => {
@@ -78,11 +82,13 @@ beforeEach(() => {
 });
 
 describe("ConfigCommandCenter", () => {
-  it("renders recipe cards from catalog", async () => {
+  it("renders recipe cards, honesty, and stage rail", async () => {
     render(<ConfigCommandCenter connectionId="conn-1" />);
     await waitFor(() => {
       expect(screen.getByTestId("config-command-center")).toBeTruthy();
     });
+    expect(screen.getByTestId("config-honesty")).toBeTruthy();
+    expect(screen.getByTestId("config-stage-rail")).toBeTruthy();
     expect(screen.getByTestId("recipe-card-day1").textContent).toMatch(/Day-1/);
     expect(screen.getByTestId("recipe-card-numbering")).toBeTruthy();
     expect(screen.getByTestId("recipe-card-import-seeds")).toBeTruthy();
@@ -90,16 +96,19 @@ describe("ConfigCommandCenter", () => {
     expect(listConfigRecipes).toHaveBeenCalledWith("conn-1");
   });
 
-  it("opens Day-1 panel and dry-runs", async () => {
+  it("opens Day-1 panel, dry-runs, unlocks Apply, labels no writes", async () => {
     render(<ConfigCommandCenter connectionId="conn-1" />);
     await waitFor(() => screen.getByTestId("recipe-card-day1"));
     fireEvent.click(screen.getByTestId("recipe-card-day1").querySelector("button")!);
     await waitFor(() => screen.getByTestId("day1-panel"));
     await waitFor(() => expect(screen.getByDisplayValue("My Company")).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: /^Dry-run$/i }));
+    expect(screen.getByTestId("config-apply-btn")).toBeDisabled();
+    fireEvent.click(screen.getByTestId("config-dry-run-btn"));
     await waitFor(() => {
       expect(runDay1Setup).toHaveBeenCalled();
       expect(screen.getByTestId("recipe-plan-preview").textContent).toMatch(/Dry-run/i);
+      expect(screen.getByTestId("config-result-label").textContent).toMatch(/no writes/i);
     });
+    await waitFor(() => expect(screen.getByTestId("config-apply-btn")).not.toBeDisabled());
   });
 });

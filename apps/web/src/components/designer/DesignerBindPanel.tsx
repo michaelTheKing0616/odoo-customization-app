@@ -7,6 +7,7 @@ import {
 } from "@/lib/capabilities";
 import type { BindDialogMode, ButtonPlacement } from "@/components/designer/designer-model";
 import { parseSelectionOptions } from "@/components/designer/designer-model";
+import { Term } from "@/components/ui/Term";
 
 export type BindableAction = {
   id: number;
@@ -431,8 +432,8 @@ export function DesignerBindPanel({
               )}
             </div>
             <p className="mt-2 text-xs text-muted">
-              Uses type=&quot;action&quot; + action id. Python methods (type=object) need Option A
-              modules. Code/webhook server actions stay blocked here. Form-bound mail/activity
+              Uses type=&quot;action&quot; + action id. Python methods (type=object) need custom code
+              modules. Code/webhook <Term tech="ir.actions.server">server actions</Term> stay blocked here. Form-bound mail/activity
               live here; model automations live under Automations.
             </p>
             <div className="mt-3 flex gap-2">

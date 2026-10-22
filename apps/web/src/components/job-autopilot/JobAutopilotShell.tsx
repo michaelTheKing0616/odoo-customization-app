@@ -33,20 +33,23 @@ export function JobAutopilotShell({
           title="Job Autopilot"
           description={jobAutopilotHeaderDescription(connectionName, writeMode)}
           actions={
-            <>
-              <Link
-                href={`/connections/${connectionId}/wizard`}
-                className="text-sm text-muted hover:text-ink"
-              >
-                Draft Studio
-              </Link>
+            <nav className="job-cluster-nav" aria-label="Studio cluster">
               <Link
                 href={`/connections/${connectionId}/studio`}
-                className="text-sm text-muted hover:text-ink"
+                className="job-cluster-link"
               >
                 App Studio
               </Link>
-            </>
+              <Link
+                href={`/connections/${connectionId}/wizard`}
+                className="job-cluster-link"
+              >
+                Draft Studio
+              </Link>
+              <span className="job-cluster-link is-current" aria-current="page">
+                Job Autopilot
+              </span>
+            </nav>
           }
         />
         <JobAutopilotStageRail journey={journey} />

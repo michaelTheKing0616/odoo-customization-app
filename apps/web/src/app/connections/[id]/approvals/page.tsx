@@ -1,13 +1,18 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import { ApprovalProcessesPanel } from "@/components/approvals/ApprovalProcessesPanel";
+import { ApprovalRuleComposer } from "@/components/approvals/ApprovalRuleComposer";
+import { ApprovalRulesList } from "@/components/approvals/ApprovalRulesList";
+import { ApprovalEntriesList } from "@/components/approvals/ApprovalEntriesList";
+import { ApprovalsStateGuide } from "@/components/approvals/ApprovalsStateGuide";
 import { Callout } from "@/components/ui/Callout";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Button } from "@/components/ui/Button";
-import { Card, EmptyState, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
+import { OperateStudioChrome } from "@/components/operate-studio/OperateStudioChrome";
+import { Tabs } from "@/components/ui/Tabs";
 import {
   api,
   ApprovalButton,
@@ -16,11 +21,28 @@ import {
   ApprovalsGateResponse,
   Connection,
 } from "@/lib/api";
+import {
+  INBOX_HINT,
+  PAGE_DESCRIPTION,
+  PAGE_TITLE,
+  approvalsErrorGuide,
+  approvalsHonestyGuide,
+  approvalsSessionBadge,
+  defaultApprovalRuleForm,
+  engineChipLabel,
+  engineHint,
+  parseRecordId,
+  parseUserId,
+  sanitizeApprovalsCopy,
+  type ApprovalRuleForm,
+  type ApprovalsTab,
+} from "@/lib/approvalScreen";
+import "@/components/approvals/approvals-operate.css";
 
 export default function ApprovalsPage() {
   const params = useParams<{ id: string }>();
   const connectionId = params.id;
-  const [tab, setTab] = useState<"buttons" | "processes">("buttons");
+  const [tab, setTab] = useState<ApprovalsTab>("buttons");
 
   const [connection, setConnection] = useState<Connection | null>(null);
   const [gate, setGate] = useState<ApprovalsGateResponse | null>(null);
@@ -28,15 +50,12 @@ export default function ApprovalsPage() {
   const [entries, setEntries] = useState<ApprovalEntry[]>([]);
   const [buttons, setButtons] = useState<ApprovalButton[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [errorContext, setErrorContext] = useState<"load" | "deploy" | "check" | "resolve">("load");
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [listHydrated, setListHydrated] = useState(false);
-
-  const [model, setModel] = useState("res.partner");
-  const [name, setName] = useState("Button approval");
-  const [buttonMethod, setButtonMethod] = useState("");
-  const [approverUserId, setApproverUserId] = useState("2");
-  const [testRecordId, setTestRecordId] = useState("1");
+  const [listQuery, setListQuery] = useState("");
+  const [form, setForm] = useState<ApprovalRuleForm>(() => defaultApprovalRuleForm());
 
   const refresh = useCallback(async () => {
     const [conn, g, r, e] = await Promise.all([
@@ -54,48 +73,53 @@ export default function ApprovalsPage() {
   useEffect(() => {
     setListHydrated(false);
     refresh()
-      .catch((err: Error) => setError(err.message))
+      .catch((err: Error) => {
+        setErrorContext("load");
+        setError(err.message);
+      })
       .finally(() => setListHydrated(true));
   }, [refresh]);
 
   async function loadButtons() {
     setError(null);
     try {
-      const rows = await api.listApprovalButtons(connectionId, model.trim());
+      const rows = await api.listApprovalButtons(connectionId, form.model.trim());
       setButtons(rows);
-      if (rows.length > 0 && !buttonMethod) {
-        setButtonMethod(rows[0].name);
+      if (rows.length > 0 && !form.buttonMethod) {
+        setForm((f) => ({ ...f, buttonMethod: rows[0].name }));
       }
     } catch (err) {
+      setErrorContext("load");
       setError(err instanceof Error ? err.message : "Button discovery failed");
     }
   }
 
-  async function onCreate(e: FormEvent) {
+  async function onDeploy(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
-      const selected = buttons.find((b) => b.name === buttonMethod);
+      const selected = buttons.find((b) => b.name === form.buttonMethod);
       await api.createApprovalRule(connectionId, {
-        name,
-        target_model: model.trim(),
-        button_method: buttonMethod,
-        button_label: selected?.label ?? buttonMethod,
+        name: form.name,
+        target_model: form.model.trim(),
+        button_method: form.buttonMethod,
+        button_label: selected?.label ?? form.buttonMethod,
         engine: gate?.engine === "studio" ? "studio" : "community",
         steps: [
           {
             order: 1,
-            approver_user_ids: [Number.parseInt(approverUserId, 10) || 2],
+            approver_user_ids: [parseUserId(form.approverUserId)],
             exclusive: false,
           },
         ],
       });
-      setNotice("Approval rule created.");
+      setNotice("Odoo approval rule deployed.");
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Create failed");
+      setErrorContext("deploy");
+      setError(err instanceof Error ? err.message : "Deploy failed");
     } finally {
       setBusy(false);
     }
@@ -108,12 +132,13 @@ export default function ApprovalsPage() {
       const res = await api.checkApprovalAction(
         connectionId,
         ruleId,
-        Number.parseInt(testRecordId, 10) || 1,
-        Number.parseInt(approverUserId, 10) || 2,
+        parseRecordId(form.testRecordId),
+        parseUserId(form.approverUserId),
       );
       setNotice(res.allowed ? res.message : `Blocked: ${res.message}`);
       await refresh();
     } catch (err) {
+      setErrorContext("check");
       setError(err instanceof Error ? err.message : "Check failed");
     } finally {
       setBusy(false);
@@ -125,240 +150,137 @@ export default function ApprovalsPage() {
     setError(null);
     try {
       await api.approveApprovalEntry(connectionId, entryId, {
-        actor_user_id: Number.parseInt(approverUserId, 10) || 2,
+        actor_user_id: parseUserId(form.approverUserId),
         approve,
       });
       setNotice(approve ? "Entry approved." : "Entry rejected.");
       await refresh();
     } catch (err) {
+      setErrorContext("resolve");
       setError(err instanceof Error ? err.message : "Resolve failed");
     } finally {
       setBusy(false);
     }
   }
 
-  return (
-    <div className="mx-auto max-w-5xl" data-testid="approvals-page">
-      <PageHeader
-        title="Approvals"
-        description="Button gating (CMP-5) and standalone approval processes (CMP-10)"
-      />
-      <div className="mt-4 flex gap-4 border-b border-border-subtle pb-2 text-sm">
-        <button
-          type="button"
-          onClick={() => setTab("buttons")}
-          className={
-            tab === "buttons"
-              ? "rounded-md bg-accent-subtle px-3 py-1.5 text-ink"
-              : "px-3 py-1.5 text-muted"
-          }
-        >
-          Button approvals
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("processes")}
-          className={
-            tab === "processes"
-              ? "rounded-md bg-accent-subtle px-3 py-1.5 text-ink"
-              : "px-3 py-1.5 text-muted"
-          }
-        >
-          Approval processes
-        </button>
-      </div>
-      <VersionAwarenessBanner capabilities={connection?.capabilities} className="mt-4" />
+  const buttonsPane = (
+    <>
+      <p className="ap-lead">
+        Studio-style button gating. Uses Community rules by default; Enterprise Studio when
+        detected.
+      </p>
 
-        {tab === "processes" ? (
-          <ApprovalProcessesPanel connectionId={connectionId} connection={connection} />
-        ) : (
-          <>
-        <p className="mt-3 text-sm text-muted">
-          Studio-style button gating — uses Community rules by default; Enterprise Studio when detected.
-        </p>
-
-        {error ? <ErrorNotice message={error} className="mt-4" /> : null}
-        {notice ? (
-          <Callout variant="info" title="Notice" className="mt-4">
-            {notice}
-          </Callout>
-        ) : null}
-
-        <Card className="mt-8 p-4" id="approval-new-rule">
-          <h2 className="text-xl font-semibold text-ink">
-            New rule
-          </h2>
-          <form onSubmit={(e) => void onCreate(e)} className="mt-4 space-y-3 text-sm">
-            <label className="block">
-              <span className="text-muted">Model</span>
-              <input
-                className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-2 py-1.5 text-ink"
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-              />
-            </label>
-            <button
-              type="button"
-              onClick={() => void loadButtons()}
-              className="rounded-md border border-border-subtle px-3 py-1 text-xs text-muted"
-            >
-              Discover buttons
-            </button>
-            <label className="block">
-              <span className="text-muted">Button method</span>
-              <select
-                className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-2 py-1.5 text-ink"
-                value={buttonMethod}
-                onChange={(e) => setButtonMethod(e.target.value)}
+      {error ? (
+        <div className="mt-4">
+          <ApprovalsStateGuide
+            tone="danger"
+            live
+            testId="approvals-error"
+            guide={{
+              ...approvalsErrorGuide(errorContext),
+              why: error,
+            }}
+            actions={
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setError(null);
+                  setListHydrated(false);
+                  void refresh()
+                    .catch((err: Error) => {
+                      setErrorContext("load");
+                      setError(err.message);
+                    })
+                    .finally(() => setListHydrated(true));
+                }}
               >
-                <option value="">Select…</option>
-                {buttons.map((b) => (
-                  <option key={b.name} value={b.name}>
-                    {b.label || b.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block">
-              <span className="text-muted">Rule name</span>
-              <input
-                className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-2 py-1.5 text-ink"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </label>
-            <label className="block">
-              <span className="text-muted">Approver user id</span>
-              <input
-                className="mt-1 w-full rounded-md border border-border-subtle bg-surface-raised px-2 py-1.5 text-ink"
-                value={approverUserId}
-                onChange={(e) => setApproverUserId(e.target.value)}
-              />
-            </label>
-            <button
-              type="submit"
-              disabled={busy || !buttonMethod}
-              className="border border-accent px-3 py-1.5 text-xs text-muted disabled:opacity-40"
-            >
-              Create rule
-            </button>
-          </form>
-        </Card>
+                Retry
+              </Button>
+            }
+          />
+        </div>
+      ) : null}
+      {notice ? (
+        <Callout variant="info" title="Notice" className="mt-4" testId="approvals-notice">
+          {notice}
+        </Callout>
+      ) : null}
 
-        <section className="mt-8" data-testid="approval-rules-section">
-          <h2 className="text-ui-title text-ink">Rules</h2>
-          {!listHydrated ? (
-            <div className="mt-4 space-y-2" data-testid="approval-rules-loading">
-              <Skeleton className="h-20 w-full" />
-              <Skeleton className="h-20 w-full" />
-            </div>
-          ) : rules.length === 0 ? (
-            <div className="mt-4">
-              <EmptyState
-                title="No Odoo approval rules yet"
-                description="Discover form buttons on a model, then save a rule that gates the button click."
-                action={
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() =>
-                      document.getElementById("approval-new-rule")?.scrollIntoView({ behavior: "smooth" })
-                    }
-                  >
-                    Open new rule form
-                  </Button>
-                }
-              />
-            </div>
-          ) : (
-            <ul className="mt-4 space-y-3">
-              {rules.map((r) => (
-                <li key={r.id} className="rounded-md border border-border-subtle bg-surface p-4 text-sm">
-                  <p className="font-medium text-ink">
-                    {r.name}{" "}
-                    <span className="text-xs text-muted">
-                      ({r.engine}) · {r.target_model}.{r.button_method}
-                    </span>
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <input
-                      className="w-24 rounded-md border border-border-subtle bg-surface-raised px-2 py-1 text-xs text-ink"
-                      value={testRecordId}
-                      onChange={(e) => setTestRecordId(e.target.value)}
-                      aria-label="Test record id"
-                    />
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void simulateCheck(r.id)}
-                      className="border border-border-subtle px-2 py-1 text-xs text-muted"
-                    >
-                      Simulate click
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+      <ApprovalRuleComposer
+        form={form}
+        buttons={buttons}
+        busy={busy}
+        onChange={(next) => setForm((f) => ({ ...f, ...next }))}
+        onDiscover={() => void loadButtons()}
+        onDeploy={(e) => void onDeploy(e)}
+      />
 
-        <section className="mt-10" data-testid="approval-entries-section">
-          <h2 className="text-ui-title text-ink">
-            Entries / audit
-          </h2>
-          {!listHydrated ? (
-            <div className="mt-4 space-y-2" data-testid="approval-entries-loading">
-              <Skeleton className="h-16 w-full" />
-              <Skeleton className="h-16 w-full" />
-            </div>
-          ) : entries.length === 0 ? (
-            <div className="mt-4">
-              <EmptyState
-                title="No approval entries yet"
-                description="Entries appear here after someone triggers a gated button or an approver acts on a request."
-                action={
-                  <Button type="button" variant="secondary" size="sm" onClick={() => void refresh()}>
-                    Refresh entries
-                  </Button>
-                }
-              />
-            </div>
-          ) : (
-            <ul className="mt-4 space-y-2 text-sm">
-              {entries.map((e) => (
-                <li key={e.id} className="rounded-md border border-border-subtle bg-surface p-3">
-                  <p className="text-ink">
-                    {e.record_model} #{e.record_id} · step {e.step_order} · {e.status}
-                  </p>
-                  <p className="text-xs text-muted">{e.message}</p>
-                  {e.status === "pending" && (
-                    <div className="mt-2 flex gap-2">
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void approveEntry(e.id, true)}
-                        className="border border-accent px-2 py-1 text-xs text-muted"
-                      >
-                        Approve
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void approveEntry(e.id, false)}
-                        className="border border-border-subtle px-2 py-1 text-xs text-muted"
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-          </>
-        )}
-    </div>
+      <ApprovalRulesList
+        rules={rules}
+        loading={!listHydrated}
+        busy={busy}
+        query={listQuery}
+        testRecordId={form.testRecordId}
+        onQueryChange={setListQuery}
+        onTestRecordIdChange={(value) => setForm((f) => ({ ...f, testRecordId: value }))}
+        onSimulate={(ruleId) => void simulateCheck(ruleId)}
+        onOpenComposer={() =>
+          document.getElementById("approval-new-rule")?.scrollIntoView({ behavior: "smooth" })
+        }
+      />
+
+      <ApprovalEntriesList
+        entries={entries}
+        loading={!listHydrated}
+        busy={busy}
+        onRefresh={() => void refresh()}
+        onResolve={(entryId, approve) => void approveEntry(entryId, approve)}
+      />
+    </>
+  );
+
+  return (
+    <OperateStudioChrome
+      testIdPrefix="approvals"
+      pageTestId="approvals-page"
+      kicker={connection?.name ?? connectionId}
+      title={PAGE_TITLE}
+      subtitle={PAGE_DESCRIPTION}
+      badge={approvalsSessionBadge(gate)}
+      honesty={approvalsHonestyGuide(gate)}
+      sanitize={sanitizeApprovalsCopy}
+      shellClassName="approvals-operate"
+      className="p-4 sm:p-6"
+      titleActions={
+        <Link href="/approvals" data-testid="approvals-inbox-link" className="text-xs text-[var(--op-chrome-muted)] underline-offset-2 hover:underline">
+          Open Approval inbox
+        </Link>
+      }
+    >
+      <p className="ap-inbox-note">{INBOX_HINT}</p>
+      {/* legacy test id: honesty lives in the studio bar */}
+      <span className="sr-only" data-testid="approvals-honesty">
+        {engineChipLabel(gate)} · {engineHint(gate)}
+      </span>
+      <VersionAwarenessBanner capabilities={connection?.capabilities} />
+      <div className="ap-tabs">
+        <Tabs
+          value={tab}
+          onValueChange={(v) => setTab(v as ApprovalsTab)}
+          items={[
+            { value: "buttons", label: "Button rules", content: buttonsPane },
+            {
+              value: "processes",
+              label: "Approval processes",
+              content: (
+                <ApprovalProcessesPanel connectionId={connectionId} connection={connection} />
+              ),
+            },
+          ]}
+        />
+      </div>
+    </OperateStudioChrome>
   );
 }

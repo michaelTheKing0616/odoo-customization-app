@@ -96,10 +96,13 @@ export function suggestDbFromUrl(url: string): string | null {
 
 export function hostingHint(kind: HostingKind): string | null {
   if (kind === "online") {
-    return "Odoo Online detected — use https://<db>.odoo.com (no /odoo path), database = subdomain, and an API key from Settings → Users → API Keys.";
+    return "Odoo Online detected. Use https://<name>.odoo.com without /odoo. The database is the <name> part. Sign in with an API key from your Odoo profile, Account Security.";
+  }
+  if (kind === "self_hosted") {
+    return "Self-hosted. Use the address you open Odoo with, for example http://127.0.0.1:8069. Make sure Ingenium can reach it from the internet.";
   }
   if (kind === "odoo_sh") {
-    return "Odoo.sh detected — use the project URL root (no /odoo). Branch/staging URLs still speak XML-RPC/JSON-RPC at the root.";
+    return "Odoo.sh detected. Use the project address without /odoo. Staging and branch addresses work the same way.";
   }
   return null;
 }
@@ -126,3 +129,9 @@ export function odooApiKeyDocsUrl(majorHint?: number | null): string {
   return `https://www.odoo.com/documentation/${major}.0/developer/reference/external_api.html#api-keys`;
 }
 
+
+export const HOSTING_CHOICES: Array<{ kind: Exclude<HostingKind, "unknown">; label: string; example: string }> = [
+  { kind: "online", label: "Odoo Online", example: "https://mycompany.odoo.com" },
+  { kind: "odoo_sh", label: "Odoo.sh", example: "https://mycompany.odoo.sh" },
+  { kind: "self_hosted", label: "My own server", example: "https://odoo.mycompany.com" },
+];

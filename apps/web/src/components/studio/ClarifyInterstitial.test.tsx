@@ -1,6 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import { ClarifyInterstitial } from "@/components/studio/ClarifyInterstitial";
+import { ClarifyInterstitial, relevantCraftKeys } from "@/components/studio/ClarifyInterstitial";
+
+afterEach(() => cleanup());
 
 describe("ClarifyInterstitial diagnosis", () => {
   it("lets the operator edit host and lock that diagnosis", () => {
@@ -11,7 +13,7 @@ describe("ClarifyInterstitial diagnosis", () => {
           kind: "diagnosis",
           merge_key: "diagnosis",
           question: "We'll build: Sales markup",
-          help: "Option A on the stock Sales form.",
+          help: "Custom code on the built-in Sales form.",
           host_choices: [
             { id: "sale.order", label: "Sales" },
             { id: "purchase.order", label: "Purchase" },
@@ -30,7 +32,7 @@ describe("ClarifyInterstitial diagnosis", () => {
       />,
     );
     const card = screen.getByTestId("studio-diagnosis");
-    expect(card.textContent).toMatch(/edit if this is wrong/i);
+    expect(card.textContent).toMatch(/edit anything that looks wrong/i);
     fireEvent.change(screen.getByLabelText("Diagnosis title"), {
       target: { value: "PO markup" },
     });
@@ -43,10 +45,9 @@ describe("ClarifyInterstitial diagnosis", () => {
     expect(payload.title).toBe("PO markup");
     expect(payload.host_model).toBe("purchase.order");
     expect(screen.queryByTestId("studio-clarify")).toBeNull();
-    cleanup();
   });
 
-  it("full_app residual seeds New app tile + Live fields only", () => {
+  it("full_app residual seeds New app tile + Built here, no custom code", () => {
     const onAnswer = vi.fn();
     render(
       <ClarifyInterstitial
@@ -69,9 +70,8 @@ describe("ClarifyInterstitial diagnosis", () => {
       />,
     );
     expect(screen.getByText("New app tile")).toBeTruthy();
-    expect(screen.getByText("Live fields only")).toBeTruthy();
+    expect(screen.getByText("Built here, no custom code")).toBeTruthy();
     expect(screen.queryByLabelText("Stock form")).toBeNull();
-    cleanup();
   });
 
   it("shows Nice-to-have craft chips and omits removed ones from confirm payload", () => {
@@ -122,7 +122,26 @@ describe("ClarifyInterstitial diagnosis", () => {
       craft_smart_buttons?: { on_model?: string }[];
     };
     expect(payload.craft_smart_buttons || []).toEqual([]);
-    cleanup();
+  });
+
+  it("offers extras only when they apply to the brief", () => {
+    const design = {
+      app_name: "Health",
+      new_models: [1, 2, 3].map((n) => ({
+        name: `x_m${n}`,
+        label: `M${n}`,
+        fields: [
+          { name: "x_customer_id", ttype: "many2one", relation: "res.partner" },
+          { name: "x_revenue", ttype: "float", string: "Revenue" },
+        ],
+      })),
+    } as unknown as Parameters<typeof relevantCraftKeys>[0];
+    expect(relevantCraftKeys(design, "customer health")).toEqual(["money_slots"]);
+    // Multi-company is a requirement the design builds, never an optional extra.
+    expect(relevantCraftKeys(design, "multi-company purchase from vendors")).toEqual([
+      "money_slots",
+      "purchase_link",
+    ]);
   });
 
   it("renders every approved_craft toggle unchecked by default", () => {
@@ -143,20 +162,12 @@ describe("ClarifyInterstitial diagnosis", () => {
         }}
       />,
     );
-    const keys = [
-      "company_scoping",
-      "money_slots",
-      "purchase_link",
-      "partner_links",
-      "datetime_over_date",
-      "depth_seeds",
-    ] as const;
-    for (const key of keys) {
-      const btn = screen.getByTestId(`studio-craft-toggle-${key}`);
-      expect(btn.getAttribute("aria-pressed")).toBe("false");
-      expect(btn.textContent).toMatch(/Off/i);
-    }
-    cleanup();
+    // A thin brief with no design only offers the extras that apply to it.
+    expect(screen.queryByTestId("studio-craft-toggle-company_scoping")).toBeNull();
+    expect(screen.queryByTestId("studio-craft-toggle-purchase_link")).toBeNull();
+    const btn = screen.getByTestId("studio-craft-toggle-depth_seeds");
+    expect(btn.getAttribute("aria-pressed")).toBe("false");
+    expect(btn.textContent).toMatch(/Off/i);
   });
 
   it("renders approved_craft toggles default off and includes them in confirm payload", () => {
@@ -179,8 +190,8 @@ describe("ClarifyInterstitial diagnosis", () => {
       />,
     );
     const panel = screen.getByTestId("studio-diagnosis-approved-craft");
-    expect(panel.textContent).toMatch(/Optional craft/i);
-    const moneyBtn = screen.getByTestId("studio-craft-toggle-money_slots");
+    expect(panel.textContent).toMatch(/Optional extras/i);
+    const moneyBtn = screen.getByTestId("studio-craft-toggle-depth_seeds");
     expect(moneyBtn.getAttribute("aria-pressed")).toBe("false");
     expect(moneyBtn.textContent).toMatch(/Off/i);
     fireEvent.click(moneyBtn);
@@ -189,9 +200,8 @@ describe("ClarifyInterstitial diagnosis", () => {
     const payload = onAnswer.mock.calls[0][3] as {
       approved_craft?: Record<string, boolean>;
     };
-    expect(payload.approved_craft?.money_slots).toBe(true);
+    expect(payload.approved_craft?.depth_seeds).toBe(true);
     expect(payload.approved_craft?.company_scoping).toBe(false);
-    expect(payload.approved_craft?.depth_seeds).toBe(false);
-    cleanup();
+    expect(payload.approved_craft?.money_slots).toBe(false);
   });
 });

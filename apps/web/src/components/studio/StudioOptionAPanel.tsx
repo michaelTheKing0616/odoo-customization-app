@@ -47,7 +47,7 @@ type StudioOptionAPanelProps = {
   onRetryAuthoring: () => void;
   onReverify: () => void;
   onInstallHost: (offer: HostInstallOffer, phrase: string) => void;
-  /** After authored Promote — deep-link to the inherit host (sale.order), not a new Apps tile. */
+  /** After authored Promote: deep-link to the inherit host (sale.order), not a new Apps tile. */
   openInOdooHref?: string | null;
   openInOdooLabel?: string;
 };
@@ -83,19 +83,39 @@ export function StudioOptionAPanel({
 }: StudioOptionAPanelProps) {
   if (!goldOptionA && !authoredOptionA) return null;
 
+  // One filled button per panel: the next step in zip → sandbox → Promote. Others stay secondary.
+  const goldNext = goldNeedsInvoicing
+    ? "gold-install"
+    : goldCanPromote && !goldPromoted
+      ? "gold-promote"
+      : !goldPromoted
+        ? "gold-prove"
+        : null;
+  const authoredNext = authoringRetryable
+    ? "auth-retry"
+    : !authoringPassed
+      ? "auth-reverify"
+      : goldCanPromote && !goldPromoted
+        ? "auth-promote"
+        : !goldPromoted
+          ? "auth-prove"
+          : null;
+  const stepClass = (key: string) =>
+    `btn btn-sm ${key === goldNext || key === authoredNext ? "btn-primary" : "btn-secondary"}`;
+
   return (
     <>
       {goldOptionA ? (
         <div className="studio-option-a" data-testid="studio-gold-option-a">
-          <p className="studio-option-a-kicker">Option A</p>
+          <p className="studio-option-a-kicker">Custom code</p>
           <h3 className="studio-option-a-title">
-            Gold{goldId ? ` — ${goldId}` : ""} (not a new app)
+            Gold{goldId ? `: ${goldId}` : ""} (not a new app)
           </h3>
           <p className="studio-option-a-body">
             {goldHonesty ||
               "Community has no ECB Service dropdown. This zip adds Central Bank of Nigeria and writes stock res.currency.rate."}{" "}
-            <strong>Start new app</strong> if you are still looking at Purchase Requests —
-            do not Install this onto that form.
+            <strong>Start new app</strong> if you are still looking at Purchase Requests. Do
+            not Install this onto that form.
           </p>
           {goldSettings?.fields?.length ? (
             <ul className="studio-finding-list">
@@ -122,7 +142,7 @@ export function StudioOptionAPanel({
             {goldNeedsInvoicing ? (
               <button
                 type="button"
-                className="btn btn-primary btn-sm"
+                className={stepClass("gold-install")}
                 disabled={Boolean(busy) || isOdooOnline}
                 data-testid="studio-gold-install-invoicing"
                 onClick={onInstallInvoicing}
@@ -136,7 +156,7 @@ export function StudioOptionAPanel({
             ) : null}
             <button
               type="button"
-              className="btn btn-primary btn-sm"
+              className={stepClass("gold-zip")}
               disabled={Boolean(busy)}
               onClick={onDownloadZip}
             >
@@ -144,7 +164,7 @@ export function StudioOptionAPanel({
             </button>
             <button
               type="button"
-              className="btn btn-secondary btn-sm"
+              className={stepClass("gold-prove")}
               disabled={Boolean(busy) || isOdooOnline}
               title={isOdooOnline ? "Sandbox prove is not available on Odoo Online" : undefined}
               onClick={onProveSandbox}
@@ -157,12 +177,12 @@ export function StudioOptionAPanel({
             </button>
             <button
               type="button"
-              className="btn btn-primary btn-sm"
+              className={stepClass("gold-promote")}
               disabled={Boolean(busy) || !goldCanPromote}
               data-testid="studio-gold-promote"
               title={
                 isOdooOnline
-                  ? "Promote is not available on Odoo Online"
+                  ? "Publish is not available on Odoo Online"
                   : goldCanPromote
                     ? "Install the sandbox-validated zip on this connection (pulls Invoicing if needed)"
                     : "Run Sandbox install & smoke first (validation lasts 2 hours)"
@@ -172,9 +192,9 @@ export function StudioOptionAPanel({
               {busy === "promote" ? (
                 <StudioBusyLabel>Promoting…</StudioBusyLabel>
               ) : goldPromoted ? (
-                "Promote again"
+                "Publish again"
               ) : (
-                "Promote to this connection"
+                "Publish to this connection"
               )}
             </button>
             {goldCanOpenSettings && goldInspect ? (
@@ -196,7 +216,7 @@ export function StudioOptionAPanel({
                 data-testid="studio-gold-open-odoo"
                 title={
                   goldHost?.message ||
-                  "Promote first. Then Invoicing → Configuration → Settings — not Settings → Currency."
+                  "Promote first. Then Invoicing → Configuration → Settings, not Settings → Currency."
                 }
               >
                 Open Accounting Settings
@@ -214,22 +234,22 @@ export function StudioOptionAPanel({
 
       {authoredOptionA ? (
         <div className="studio-option-a" data-testid="studio-authored-option-a">
-          <p className="studio-option-a-kicker">Option A</p>
+          <p className="studio-option-a-kicker">Custom code</p>
           <h3 className="studio-option-a-title">
             {authoringPassed
-              ? "Module — zip and sandbox unlocked"
+              ? "Module: zip and sandbox unlocked"
               : "Module (not a new app)"}
           </h3>
           <p className="studio-option-a-body">
             {goldHonesty ||
-              "This extends a stock form (for example Sales) with Python — markup %, WHT on markup only, sales not purchases. Live Install cannot land that code."}{" "}
+              "This extends a stock form (for example Sales) with Python: markup %, WHT on markup only, sales not purchases. Live Install cannot land that code."}{" "}
             {authoringRetryable ? (
               busy === "generate"
-                ? "Repairing incomplete JSON automatically — diagnosis stays locked."
+                ? "Repairing incomplete JSON automatically. The diagnosis stays locked."
                 : leftoverAuthoringFindings.some((row) =>
                       /quota|timed out|rate limit|ollama/i.test(String(row.message || "")),
                     )
-                  ? "Authoring could not finish (often Gemini free-tier quota, then a slow local fallback). Zip stays locked — use Retry authoring after quota resets or when Ollama is warm. Do not click Install this app."
+                  ? "Authoring could not finish (often Gemini free-tier quota, then a slow local fallback). Zip stays locked. Use Retry authoring after quota resets or when Ollama is warm. Do not click Install this app."
                   : "Authoring did not finish, so zip stayed locked. Retry authoring if this is still here after a moment. Do not click Install this app."
             ) : (
               <>
@@ -266,7 +286,7 @@ export function StudioOptionAPanel({
             {authoringRetryable ? (
               <button
                 type="button"
-                className="btn btn-brand btn-sm"
+                className={stepClass("auth-retry")}
                 disabled={Boolean(busy)}
                 data-testid="studio-retry-authoring"
                 onClick={onRetryAuthoring}
@@ -281,7 +301,7 @@ export function StudioOptionAPanel({
             {!authoringPassed && !authoringRetryable ? (
               <button
                 type="button"
-                className="btn btn-brand btn-sm"
+                className={stepClass("auth-reverify")}
                 disabled={Boolean(busy)}
                 data-testid="studio-reverify-authoring"
                 onClick={onReverify}
@@ -295,12 +315,12 @@ export function StudioOptionAPanel({
             ) : null}
             <button
               type="button"
-              className="btn btn-primary btn-sm"
+              className={stepClass("auth-zip")}
               disabled={Boolean(busy) || !authoringPassed}
               title={
                 authoringPassed
                   ? undefined
-                  : "Authoring gate has not passed — zip stays locked"
+                  : "Authoring gate has not passed, so the zip stays locked"
               }
               onClick={onDownloadZip}
             >
@@ -308,14 +328,14 @@ export function StudioOptionAPanel({
             </button>
             <button
               type="button"
-              className="btn btn-secondary btn-sm"
+              className={stepClass("auth-prove")}
               disabled={Boolean(busy) || isOdooOnline || !authoringPassed}
               title={
                 isOdooOnline
                   ? "Sandbox prove is not available on Odoo Online"
                   : authoringPassed
                     ? undefined
-                    : "Authoring gate has not passed — sandbox stays locked"
+                    : "Authoring gate has not passed, so the sandbox stays locked"
               }
               onClick={onProveSandbox}
             >
@@ -328,7 +348,7 @@ export function StudioOptionAPanel({
             {authoringPassed && onRepairWithAi ? (
               <button
                 type="button"
-                className="btn btn-brand btn-sm"
+                className={stepClass("auth-repair")}
                 disabled={Boolean(busy) || isOdooOnline}
                 data-testid="studio-repair-with-ai"
                 title={
@@ -347,11 +367,11 @@ export function StudioOptionAPanel({
             ) : null}
             <button
               type="button"
-              className="btn btn-primary btn-sm"
+              className={stepClass("auth-promote")}
               disabled={Boolean(busy) || !goldCanPromote}
               title={
                 isOdooOnline
-                  ? "Promote is not available on Odoo Online"
+                  ? "Publish is not available on Odoo Online"
                   : goldCanPromote
                     ? "Install the sandbox-validated zip on this connection"
                     : "Run Sandbox install & smoke first (validation lasts 2 hours)"
@@ -361,9 +381,9 @@ export function StudioOptionAPanel({
               {busy === "promote" ? (
                 <StudioBusyLabel>Promoting…</StudioBusyLabel>
               ) : goldPromoted ? (
-                "Promote again"
+                "Publish again"
               ) : (
-                "Promote to this connection"
+                "Publish to this connection"
               )}
             </button>
             {goldPromoted && openInOdooHref ? (
@@ -373,7 +393,7 @@ export function StudioOptionAPanel({
                 rel="noopener noreferrer"
                 className="btn btn-secondary btn-sm"
                 data-testid="studio-authored-open-odoo"
-                title="Opens the stock host form on this connection — not a new Apps tile."
+                title="Opens the stock host form on this connection, not a new Apps tile."
               >
                 {openInOdooLabel}
               </a>
@@ -383,7 +403,7 @@ export function StudioOptionAPanel({
                 className="btn btn-secondary btn-sm"
                 disabled
                 data-testid="studio-authored-open-odoo"
-                title="Promote stamped no host model — hard-refresh or open Sales → Quotations in Odoo."
+                title="Publish found no existing form to attach to. Hard-refresh, or open Sales → Quotations in Odoo."
               >
                 Open in Odoo
               </button>

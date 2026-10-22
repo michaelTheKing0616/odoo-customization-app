@@ -60,12 +60,12 @@ export function successNoteForDraft(draft: Record<string, unknown> | null): stri
     return "Draft Studio used the domain pack. Click Retry AI enrichment to tailor when a model is available.";
   }
   if (engine?.gold_artifact_id) {
-    return "Gold Option A template selected. Review the settings, download the module zip, then sandbox-prove. Promote stays human.";
+    return "Gold custom-code template selected. Review the settings, download the module zip, then sandbox-prove. Publishing stays a step you confirm.";
   }
   if (engine?.capability === "option_a_authored") {
     const auth = draft?._option_a_authoring as { status?: string } | undefined;
     if (auth?.status === "pass") {
-      return "LLM-authored module passed the gate. Download zip and sandbox-prove. Promote stays human.";
+      return "LLM-authored module passed the gate. Download zip and sandbox-prove. Publishing stays a step you confirm.";
     }
     return "LLM-authored module is blocked until the authoring gate passes. Zip and sandbox stay locked.";
   }

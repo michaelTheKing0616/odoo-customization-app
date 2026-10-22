@@ -1,0 +1,459 @@
+/**
+ * PDF-07 — Table Inspector. Matches PDF-06 designer chrome: hairline
+ * borders (ink @ 10%), quiet 11px meta, one teal selection accent shared with
+ * the paper canvas. No transitions on layout; reduced-motion safe.
+ */
+
+.inspector {
+  --ti-ink: var(--ink, #1a1c21);
+  --ti-rule: color-mix(in srgb, var(--ti-ink) 10%, transparent);
+  --ti-rule-strong: color-mix(in srgb, var(--ti-ink) 18%, transparent);
+  --ti-muted: var(--muted, color-mix(in srgb, var(--ti-ink) 58%, transparent));
+  --ti-surface: var(--surface-raised, #fff);
+  /* App accent for chrome; the paper keeps its own teal selection. */
+  --ti-select: var(--accent, #0f766e);
+
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  font-size: 0.75rem;
+  color: var(--ti-ink);
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--ti-muted);
+}
+
+.title {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+.titleMeta {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.625rem;
+  font-weight: 400;
+  color: var(--ti-muted);
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 0.15rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--ti-muted);
+}
+
+.count {
+  font-variant-numeric: tabular-nums;
+  min-width: 1.1rem;
+  padding: 0 0.3rem;
+  border: 1px solid var(--ti-rule);
+  border-radius: 999px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+/* Width budget: one hairline bar, a segment per column. */
+.budget {
+  display: flex;
+  gap: 2px;
+  height: 4px;
+}
+
+.budgetSeg {
+  flex: 1 1 0;
+  min-width: 3px;
+  border-radius: 2px;
+  background: var(--ti-rule-strong);
+}
+
+.budgetSegOn {
+  background: var(--ti-select);
+}
+
+.budget[data-over="true"] .budgetSeg {
+  background: color-mix(in srgb, #b45309 55%, transparent);
+}
+
+.columnList {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ti-rule);
+  border-radius: 6px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--ti-surface) 70%, transparent);
+}
+
+.columnRow {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto 18px;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.45rem;
+  border-top: 1px solid var(--ti-rule);
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+
+.columnRow:first-child {
+  border-top: 0;
+}
+
+.columnRow:hover {
+  background: color-mix(in srgb, var(--ti-ink) 3%, transparent);
+}
+
+.columnRowOn {
+  background: color-mix(in srgb, var(--ti-select) 7%, transparent);
+  box-shadow: inset 2px 0 0 var(--ti-select);
+}
+
+.columnRow:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--ti-select) 55%, transparent);
+  outline-offset: -2px;
+}
+
+.columnRow[data-dragging="true"] {
+  opacity: 0.55;
+}
+
+.grip {
+  display: inline-flex;
+  color: var(--ti-muted);
+  cursor: grab;
+}
+
+.colText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.colLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.colField {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.625rem;
+  color: var(--ti-muted);
+}
+
+.orphan {
+  margin-left: 0.3rem;
+  font-family: inherit;
+  color: #b42318;
+}
+
+.badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  padding: 0 0.25rem;
+  border: 1px solid var(--ti-rule);
+  border-radius: 4px;
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ti-muted);
+}
+
+.badgeSum {
+  color: var(--ti-select);
+  border-color: color-mix(in srgb, var(--ti-select) 35%, transparent);
+}
+
+.glyph {
+  fill: currentColor;
+}
+
+.remove {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ti-muted);
+  font-size: 0.875rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.remove:hover {
+  color: #b42318;
+  background: color-mix(in srgb, #b42318 8%, transparent);
+}
+
+.remove:focus-visible {
+  outline: 2px solid var(--ti-select);
+  outline-offset: 1px;
+}
+
+.addColumn {
+  appearance: none;
+  align-self: flex-start;
+  border: 1px dashed var(--ti-rule-strong);
+  border-radius: 6px;
+  background: transparent;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.75rem;
+  color: var(--ti-ink);
+  cursor: pointer;
+}
+
+.addColumn:hover {
+  border-style: solid;
+  background: color-mix(in srgb, var(--ti-ink) 3%, transparent);
+}
+
+.addColumn:focus-visible {
+  outline: 2px solid var(--ti-select);
+  outline-offset: 1px;
+}
+
+.editor,
+.totals {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.6rem;
+  border: 1px solid var(--ti-rule);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ti-surface) 55%, transparent);
+}
+
+.editorTitle {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.fieldHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.fieldLabel {
+  display: block;
+  font-size: 0.6875rem;
+  color: var(--ti-muted);
+}
+
+.fieldMeta {
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ti-muted);
+}
+
+.textInput,
+.numberInput {
+  width: 100%;
+  border: 1px solid var(--ti-rule-strong);
+  border-radius: 6px;
+  background: var(--surface, #fff);
+  color: var(--ti-ink);
+  padding: 0.3rem 0.45rem;
+  font-size: 0.75rem;
+}
+
+.textInput:focus-visible,
+.numberInput:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--ti-select) 55%, transparent);
+  outline-offset: 0;
+  border-color: var(--ti-select);
+}
+
+.numberInput {
+  font-variant-numeric: tabular-nums;
+  padding-right: 1.6rem;
+}
+
+.numberInput[aria-invalid="true"] {
+  border-color: #b42318;
+}
+
+.inlineInput {
+  position: relative;
+  display: block;
+}
+
+.suffix {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.6875rem;
+  color: var(--ti-muted);
+  pointer-events: none;
+}
+
+/* Segmented control — one rounded track, hairline dividers. */
+.segmented {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid var(--ti-rule);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--ti-ink) 4%, transparent);
+}
+
+.segment {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.5rem;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ti-muted);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.segment:hover {
+  color: var(--ti-ink);
+}
+
+.segmentOn {
+  background: var(--surface, #fff);
+  color: var(--ti-ink);
+  box-shadow: 0 0 0 1px var(--ti-rule-strong);
+}
+
+.segment:focus-visible {
+  outline: 2px solid var(--ti-select);
+  outline-offset: 0;
+}
+
+.segment:disabled,
+.switch:disabled,
+.addColumn:disabled,
+.remove:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.switchRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.switch {
+  appearance: none;
+  flex: 0 0 auto;
+  position: relative;
+  width: 28px;
+  height: 16px;
+  margin-top: 1px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ti-rule-strong);
+  cursor: pointer;
+}
+
+.switchOn {
+  background: var(--ti-select);
+}
+
+.knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.15);
+}
+
+.switchOn .knob {
+  left: 14px;
+}
+
+.switch:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--ti-select) 55%, transparent);
+  outline-offset: 2px;
+}
+
+.hint {
+  display: block;
+  margin: 0.1rem 0 0;
+  font-size: 0.625rem;
+  line-height: 1.35;
+  color: var(--ti-muted);
+  text-wrap: pretty;
+}
+
+.warn {
+  margin: 0;
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  color: #b45309;
+  text-wrap: pretty;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inspector * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

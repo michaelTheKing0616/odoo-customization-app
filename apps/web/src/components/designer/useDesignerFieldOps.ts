@@ -1,5 +1,7 @@
 "use client";
 
+import type { api } from "@/lib/api";
+
 import type { Dispatch, SetStateAction } from "react";
 import type { Connection, FieldRow } from "@/lib/api";
 import { ConfirmationRequiredError } from "@/lib/api";
@@ -24,7 +26,7 @@ export type DesignerFieldOpsDeps = {
   connectionId: string;
   connection: Connection | null;
   viewType: ViewType;
-  api: any;
+  api: typeof api;
   fields: FieldRow[];
   setFields: Dispatch<SetStateAction<FieldRow[]>>;
   setFieldsModel: (v: string) => void;

@@ -40,7 +40,7 @@ export function DesignerDangerConfirms({
         riskLevel="danger"
         open={confirmOverwriteOpen}
         title="Overwrite primary view"
-        warning={`Mutate the live primary arch for ${model || "this model"} (not an inherit child). Prefer inherit when modules extend this view.`}
+        warning={`Mutate the live primary arch for ${model || "this model"} (not an extension view). Use an extension view when other apps extend this form.`}
         risks={[
           "Can break stock xpath inherits (e.g. Contacts)",
           "Module upgrades may conflict",
@@ -80,7 +80,7 @@ export function DesignerDangerConfirms({
         riskLevel="danger"
         open={confirmMutateOpen}
         title="Mutate parent view arch"
-        warning="Mutating parent view arch overwrites existing module XML. Prefer inherit (default) for interop with installed modules."
+        warning="Mutating parent view arch overwrites existing module XML. Use an extension view (the default) so installed apps keep working together."
         risks={[
           "Parent ir.ui.view arch is rewritten in place",
           "Module upgrades may conflict or overwrite your change",

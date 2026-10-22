@@ -1,55 +1,81 @@
 "use client";
 
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
-import { Button } from "@/components/ui/Button";
-import { Callout } from "@/components/ui/Callout";
-import { Card, PageHeader } from "@/components/ui/layout-primitives";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
-import { StatusPill } from "@/components/ui/StatusPill";
-import { api } from "@/lib/api";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { BillingDesk, type BillingActionError, type BillingView } from "@/components/billing/BillingDesk";
+import { UpgradeSheet } from "@/components/billing/UpgradeSheet";
+import { Skeleton } from "@/components/ui/layout-primitives";
+import { api, type BillingPlansCatalog } from "@/lib/api";
+import type { LostFeature } from "@/lib/billingScreen";
 import { useEntitlements } from "@/lib/useEntitlements";
-import { useUpgrade } from "@/lib/upgrade-context";
+import "@/components/billing/billing-desk.css";
 
-function daysUntil(iso: string | null): number | null {
-  if (!iso) return null;
-  const ms = new Date(iso).getTime() - Date.now();
-  return Math.ceil(ms / (86400000));
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error && err.message ? err.message : fallback;
 }
 
 function BillingContent() {
   const params = useSearchParams();
-  const { data, refresh, loading } = useEntitlements();
-  const { openUpgrade } = useUpgrade();
-  const [error, setError] = useState<string | null>(null);
-  const [portalBusy, setPortalBusy] = useState(false);
-  const [lostFeatures, setLostFeatures] = useState<Array<{ feature_key: string; from: string; to: string }>>([]);
+  const { data, refresh, loading, error: planError, signedOut } = useEntitlements();
+  const [catalog, setCatalog] = useState<BillingPlansCatalog | null>(null);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [lostFeatures, setLostFeatures] = useState<LostFeature[]>([]);
+  const [actionError, setActionError] = useState<BillingActionError | null>(null);
+  const [portalBusy, setPortalBusy] = useState<"plan" | "billing" | null>(null);
+  const [checkoutBusy, setCheckoutBusy] = useState<string | null>(null);
+  const [slotSheetOpen, setSlotSheetOpen] = useState(false);
 
-  const trialDays = daysUntil(data?.trial_ends_at ?? null);
-  const showTrialBanner = trialDays != null && trialDays <= 3 && trialDays >= 0;
+  // List prices are public; a failure leaves money as "Unavailable" rather than guessed.
+  useEffect(() => {
+    let live = true;
+    Promise.resolve()
+      .then(() => api.billingPlans())
+      .then((c) => live && setCatalog(c ?? null))
+      .catch(() => live && setCatalog(null))
+      .finally(() => live && setCatalogLoading(false));
+    return () => {
+      live = false;
+    };
+  }, []);
 
   useEffect(() => {
-    if (data?.plan_id && data.plan_id !== "free_solo") {
-      api.billingPlanDiff(data.plan_id, "free_solo").then((r) => setLostFeatures(r.lost_features)).catch(() => setLostFeatures([]));
+    const planId = data?.plan_id;
+    if (!planId || planId === "free_solo" || planId === "internal") {
+      setLostFeatures([]);
+      return;
     }
+    let live = true;
+    Promise.resolve()
+      .then(() => api.billingPlanDiff(planId, "free_solo"))
+      .then((r) => live && setLostFeatures(r?.lost_features ?? []))
+      .catch(() => live && setLostFeatures([]));
+    return () => {
+      live = false;
+    };
   }, [data?.plan_id]);
 
-  async function openPortal() {
-    setPortalBusy(true);
-    setError(null);
+  const upgraded = Boolean(params.get("upgraded"));
+  const slots = Boolean(params.get("slots"));
+  useEffect(() => {
+    if (upgraded || slots) void refresh();
+  }, [upgraded, slots, refresh]);
+
+  const openPortal = useCallback(async (source: "plan" | "billing") => {
+    setPortalBusy(source);
+    setActionError(null);
     try {
       const res = await api.stripePortal();
       window.location.href = res.portal_url;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Portal unavailable");
+      setActionError({ context: "portal", source, message: errorMessage(err, "Portal unavailable") });
     } finally {
-      setPortalBusy(false);
+      setPortalBusy(null);
     }
-  }
+  }, []);
 
-  async function checkout(planId: string) {
-    setError(null);
+  const checkout = useCallback(async (planId: string) => {
+    setCheckoutBusy(planId);
+    setActionError(null);
     try {
       const origin = window.location.origin;
       const res = await api.stripeCheckout({
@@ -60,94 +86,54 @@ function BillingContent() {
       });
       if (res.checkout_url) window.location.href = res.checkout_url;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Checkout failed");
+      setActionError({ context: "checkout", source: "plan", message: errorMessage(err, "Checkout failed") });
+    } finally {
+      setCheckoutBusy(null);
     }
-  }
+  }, []);
 
-  useEffect(() => {
-    if (params.get("upgraded")) refresh();
-  }, [params, refresh]);
+  const view: BillingView = loading ? "loading" : data ? "ready" : planError && !signedOut ? "error" : "empty";
 
   return (
-    <div className="space-y-6 p-6">
-      <PageHeader title="Billing" description="Plan, seats, and invoices via Stripe customer portal." />
-
-      {params.get("upgraded") ? (
-        <Callout variant="info" title="Thanks — your plan update may take a moment to sync." />
-      ) : null}
-
-      {showTrialBanner ? (
-        <Callout variant="warning" title={`Trial ends in ${trialDays} day${trialDays === 1 ? "" : "s"}`}>
-          Add a payment method before trial ends to keep Business features.
-        </Callout>
-      ) : null}
-
-      {error ? <ErrorNotice message={error} /> : null}
-
-      <Card className="space-y-3 p-5">
-        {loading ? (
-          <p className="text-sm text-muted">Loading…</p>
-        ) : data ? (
-          <>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-lg font-semibold text-ink">{data.plan_id}</span>
-              {data.plan_id === "internal" ? <StatusPill kind="experimental" /> : null}
-              <span className="text-sm text-muted">({data.subscription_status})</span>
-            </div>
-            {data.active_project_limit != null ? (
-              <p className="text-sm text-muted">
-                Active projects: {data.active_projects} / {data.active_project_limit}
-              </p>
-            ) : null}
-            <div className="flex flex-wrap gap-2 pt-2">
-              <Button variant="primary" onClick={() => checkout("pro")}>
-                Upgrade to Pro
-              </Button>
-              <Button variant="secondary" onClick={() => openUpgrade("active_projects_limit")}>
-                Add project slot
-              </Button>
-              <Button variant="ghost" disabled={portalBusy} onClick={openPortal}>
-                {portalBusy ? "Opening…" : "Manage billing"}
-              </Button>
-            </div>
-          </>
-        ) : (
-          <p className="text-sm text-muted">
-            Sign in with <Link href="/login" className="text-accent underline">accounts mode</Link> to view billing.
-          </p>
-        )}
-      </Card>
-
-      <Card className="p-5">
-        <h2 className="font-semibold text-ink">Downgrade</h2>
-        <p className="mt-2 text-sm text-muted">
-          Downgrading re-gates build features (designer, automations, export). Operate tools stay available. Your
-          connections and project history remain.
-        </p>
-        {lostFeatures.length > 0 ? (
-          <ul className="mt-3 list-inside list-disc text-sm text-muted">
-            {lostFeatures.slice(0, 8).map((f) => (
-              <li key={f.feature_key}>
-                {f.feature_key}: {f.from} → {f.to}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        <Button variant="ghost" className="mt-3" onClick={openPortal}>
-          Change plan in portal
-        </Button>
-      </Card>
-
-      <Link href="/pricing" className="text-sm text-accent hover:underline">
-        Compare plans
-      </Link>
-    </div>
+    <>
+      <BillingDesk
+        view={view}
+        data={data}
+        catalog={catalog}
+        catalogLoading={catalogLoading}
+        lostFeatures={lostFeatures}
+        loadError={planError}
+        returned={{ upgraded, slots }}
+        actionError={actionError}
+        portalBusy={portalBusy}
+        checkoutBusy={checkoutBusy}
+        onManagePlan={() => void openPortal("plan")}
+        onManageBilling={() => void openPortal("billing")}
+        onCheckout={(id) => void checkout(id)}
+        onAddSlot={() => setSlotSheetOpen(true)}
+        onRetry={() => void refresh()}
+        onRefresh={() => void refresh()}
+        onDismissError={() => setActionError(null)}
+      />
+      <UpgradeSheet open={slotSheetOpen} onOpenChange={setSlotSheetOpen} featureKey="active_projects_limit" />
+    </>
   );
 }
 
 export default function BillingSettingsPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-muted">Loading billing…</div>}>
+    <Suspense
+      fallback={
+        <div className="billing-desk" role="status" data-testid="billing-page-loading">
+          <span className="sr-only">Loading billing.</span>
+          <div className="bd-skel-stack" aria-hidden>
+            <Skeleton className="h-8 w-32" />
+            <Skeleton className="h-48 w-full" />
+            <Skeleton className="h-64 w-full" />
+          </div>
+        </div>
+      }
+    >
       <BillingContent />
     </Suspense>
   );

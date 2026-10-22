@@ -1,6 +1,6 @@
 "use client";
 
-import type { RefObject } from "react";
+import { useEffect, type RefObject } from "react";
 import { Spokes } from "@/components/loading-ui/spokes";
 import { SuggestionChip } from "./SuggestionChip";
 
@@ -25,6 +25,15 @@ export function StudioRefineComposer({
   onChange,
   onSubmit,
 }: StudioRefineComposerProps) {
+  const canSend = !busy && value.trim().length >= 3;
+
+  useEffect(() => {
+    const el = composerRef?.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, 40), 160)}px`;
+  }, [value, composerRef]);
+
   return (
     <div className="chat-composer chat-composer-sticky">
       {chips.length ? (
@@ -47,15 +56,16 @@ export function StudioRefineComposer({
           data-testid="studio-refine-composer"
           placeholder={
             fieldPack
-              ? `Describe a change — e.g. make ${hostFormName.toLowerCase()} fields required`
-              : "Describe a change — e.g. remove the priority field"
+              ? `Try “make the ${hostFormName.toLowerCase()} fields required”`
+              : "Try “remove the priority field”"
           }
           value={value}
           onChange={(e) => onChange(e.target.value)}
           disabled={busy}
-          aria-label="Refine instruction"
+          aria-label="Describe a change"
+          aria-describedby="studio-refine-hint"
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && value.trim().length >= 3) {
+            if (e.key === "Enter" && !e.shiftKey && canSend) {
               e.preventDefault();
               onSubmit();
             }
@@ -63,15 +73,21 @@ export function StudioRefineComposer({
         />
         <button
           type="button"
-          className="btn btn-primary btn-sm"
-          aria-label="Send refinement"
-          disabled={busy || value.trim().length < 3}
+          className={`btn btn-sm chat-send${canSend ? " btn-primary" : " btn-secondary"}`}
+          aria-label="Send change"
+          disabled={!canSend}
           onClick={() => onSubmit()}
         >
           {busy ? <Spokes className="studio-loader-spokes" aria-hidden /> : "Send"}
         </button>
       </div>
-      <p className="chat-composer-hint">Enter to send · Shift+Enter for a new line</p>
+      <p className="chat-composer-hint" id="studio-refine-hint">
+        {busy
+          ? "Updating the preview…"
+          : canSend
+            ? "Enter to send. Shift + Enter adds a new line."
+            : "Type at least a few words to send a change."}
+      </p>
     </div>
   );
 }

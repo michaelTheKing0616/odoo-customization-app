@@ -46,6 +46,20 @@ describe("AutomationActionKindSelect", () => {
       "disabled",
     );
     expect(select.querySelector('optgroup[label="Safe"]')).toBeTruthy();
-    expect(select.querySelector('optgroup[label="Option A"]')).toBeTruthy();
+    expect(select.querySelector('optgroup[label="Custom code"]')).toBeTruthy();
+  });
+
+  it("never lists code_live; Option A is the Python path", () => {
+    render(
+      <AutomationActionKindSelect
+        connection={conn(["object_write_update_path", "object_create_crud_model"])}
+        value="code_live"
+        onChange={() => undefined}
+      />,
+    );
+    const select = screen.getByTestId("automation-action-kind") as HTMLSelectElement;
+    expect(select.querySelector('option[value="code_live"]')).toBeNull();
+    expect(select.querySelector('option[value="python_module"]')).toBeTruthy();
+    expect(select.value).toBe("python_module");
   });
 });

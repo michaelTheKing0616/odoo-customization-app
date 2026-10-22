@@ -8,9 +8,9 @@ const LABELS: Record<string, string> = {
   object_write_update_path: "Update field (object_write)",
   object_create_crud_model: "Create record (object_create)",
   base_automation_safe_triggers: "Safe automation triggers",
-  view_inject_inherit: "View inject via inherit",
+  view_inject_inherit: "View inject via extension",
   view_inject_mutate: "View inject via mutate (advanced)",
-  smart_button_inherit_box: "Smart buttons (button_box inherit)",
+  smart_button_inherit_box: "Smart buttons (button box extension)",
   list_as_list_type: "List views as type=list",
   list_tree_fallback: "List↔tree view type fallback",
 };

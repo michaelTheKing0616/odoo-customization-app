@@ -13,10 +13,10 @@ describe("JobAutopilotStageRail", () => {
     expect(rail.querySelector('[data-stage="brief"]')?.className).toMatch(/is-done/);
     expect(screen.getByTestId("job-autopilot-steps")).toBeTruthy();
     expect(screen.getByTestId("job-autopilot-stage-hint").textContent).toMatch(
-      /Completeness ≠ Cert ≠ Autopilot/,
+      /A complete draft is not the same as certified, and neither means Autopilot-ready/,
     );
     expect(screen.getByTestId("job-autopilot-stage-hint").textContent).toMatch(
-      /Promote stays human/,
+      /Publishing stays a step you confirm/,
     );
   });
 

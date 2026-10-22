@@ -41,6 +41,7 @@ describe("nav IA (UIF-2)", () => {
       "wizard",
       "job-autopilot",
       "projects",
+      "live-demo-copilot",
     ]);
   });
 
@@ -54,13 +55,9 @@ describe("nav IA (UIF-2)", () => {
     }
   });
 
-  it("places Live Demo Co-Pilot first under Operations and keeps it sidebar-visible", () => {
+  it("places Live Demo Co-Pilot in the AI group (FEATURE_AUDIT 16.5) and keeps it sidebar-visible", () => {
     const item = NAV_ITEMS.find((n) => n.id === "live-demo-copilot");
-    expect(item?.group).toBe("operate");
+    expect(item?.group).toBe("ai");
     expect(item?.sidebar).not.toBe(false);
-    const operateSidebar = NAV_ITEMS.filter(
-      (n) => n.group === "operate" && n.shipped !== false && n.sidebar !== false,
-    );
-    expect(operateSidebar[0]?.id).toBe("live-demo-copilot");
   });
 });

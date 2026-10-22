@@ -1,5 +1,7 @@
 "use client";
 
+import type { api } from "@/lib/api";
+
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { Connection, FieldRow } from "@/lib/api";
 import { ConfirmationRequiredError } from "@/lib/api";
@@ -53,7 +55,7 @@ export type DesignerPersistDeps = {
   refreshSnapshots: () => void | Promise<void>;
   loadExistingView: () => void | Promise<void>;
   announceAction: (message: string, flashId?: string | null, toolbarKey?: string) => void;
-  api: any;
+  api: typeof api;
 };
 
 export function useDesignerPersist(deps: DesignerPersistDeps) {

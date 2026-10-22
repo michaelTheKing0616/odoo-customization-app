@@ -26,8 +26,8 @@ describe("studioJourneyFromPhase", () => {
 describe("studioJourneyHint", () => {
   it("keeps Completeness / Cert / Promote honesty on generate and review", () => {
     expect(studioJourneyHint({ id: "generate" })).toMatch(/Completeness is not Cert/i);
-    expect(studioJourneyHint({ id: "generate" })).toMatch(/Promote stays human/i);
-    expect(studioJourneyHint({ id: "review" })).toMatch(/sandbox/i);
+    expect(studioJourneyHint({ id: "generate" })).toMatch(/Publishing stays a step you confirm/i);
+    expect(studioJourneyHint({ id: "review" })).toMatch(/test copy/i);
     expect(studioJourneyHint({ id: "apply" })).toMatch(/View Designer/i);
   });
 });
@@ -40,12 +40,12 @@ describe("progressLabelFromJob", () => {
         kind: "ai_draft",
         connection_id: null,
         status: "running",
-        result: { step_label: "Stage B · Authoring Option A module" },
+        result: { step_label: "Stage B · Authoring custom-code module" },
         error: null,
         created_at: null,
         finished_at: null,
       }),
-    ).toMatch(/Authoring Option A module/);
+    ).toMatch(/Authoring custom-code module/);
   });
 
   it("falls back to queued / building copy", () => {

@@ -10,7 +10,7 @@ describe("SandboxDeployStages", () => {
     render(<SandboxDeployStages currentIndex={1} />);
     expect(screen.getByTestId("sandbox-deploy-stages")).toBeInTheDocument();
     expect(screen.getByText("Package")).toBeInTheDocument();
-    expect(screen.getByText("Promote")).toBeInTheDocument();
+    expect(screen.getByText("Publish")).toBeInTheDocument();
   });
 });
 

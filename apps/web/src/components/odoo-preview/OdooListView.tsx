@@ -16,33 +16,36 @@ export function OdooListView({ view }: OdooListViewProps) {
   return (
     <div className="odoo-form-canvas overflow-hidden shadow-sm" data-testid="odoo-list-view">
       <div className="odoo-form-header flex flex-wrap items-center gap-2">
-        <span className="text-sm font-semibold text-[var(--odoo-primary)]">{view.title}</span>
-        <span className="odoo-btn-secondary">list</span>
+        <span className="odoo-list-title text-sm font-semibold text-[var(--odoo-primary)]">{view.title}</span>
+        <span className="odoo-btn-secondary odoo-list-viewtag">list</span>
       </div>
-      <div className="p-3">
+      <div className="odoo-list-body p-3">
         {view.decorations ? (
-          <div className="mb-3 grid gap-2 text-xs text-[var(--odoo-muted)] sm:grid-cols-3">
+          <div
+            className="odoo-list-legend mb-3 grid gap-2 text-xs text-[var(--odoo-muted)] sm:grid-cols-3"
+            data-testid="odoo-list-legend"
+          >
             {view.decorations.danger ? (
-              <div>
-                decoration-danger
-                <div className="mt-1 font-mono">{view.decorations.danger}</div>
+              <div className="odoo-list-legend-item" data-tone="danger">
+                <span className="odoo-list-legend-name">decoration-danger</span>
+                <div className="odoo-list-legend-expr mt-1 font-mono">{view.decorations.danger}</div>
               </div>
             ) : null}
             {view.decorations.info ? (
-              <div>
-                decoration-info
-                <div className="mt-1 font-mono">{view.decorations.info}</div>
+              <div className="odoo-list-legend-item" data-tone="info">
+                <span className="odoo-list-legend-name">decoration-info</span>
+                <div className="odoo-list-legend-expr mt-1 font-mono">{view.decorations.info}</div>
               </div>
             ) : null}
             {view.decorations.muted ? (
-              <div>
-                decoration-muted
-                <div className="mt-1 font-mono">{view.decorations.muted}</div>
+              <div className="odoo-list-legend-item" data-tone="muted">
+                <span className="odoo-list-legend-name">decoration-muted</span>
+                <div className="odoo-list-legend-expr mt-1 font-mono">{view.decorations.muted}</div>
               </div>
             ) : null}
           </div>
         ) : null}
-        <div className="overflow-x-auto border border-[var(--odoo-border)] bg-surface">
+        <div className="odoo-list-frame overflow-x-auto border border-[var(--odoo-border)] bg-surface">
           <table className="odoo-list-table" data-testid="list-preview-table">
             <thead>
               <tr>

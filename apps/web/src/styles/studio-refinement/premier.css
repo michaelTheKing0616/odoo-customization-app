@@ -1,0 +1,578 @@
+/* ============================================================
+   App Studio premier leap (UI-S-20-premier)
+   Chat product class: Claude / ChatGPT / Stitch feel.
+   Scoped to .studio-refinement App Studio surfaces only.
+   Playbook: §0 laws 3–9, §3 type, §4 space, §6 motion ≤300ms,
+   §9 kill eyebrows / em dashes / orange chrome.
+   ============================================================ */
+
+/* ----- Typographic confidence (brief) ----- */
+.studio-refinement .studio-prompt-screen--hero {
+  max-width: 720px;
+  padding: min(12vh, 5rem) 0 var(--space-3xl);
+  text-align: left;
+  margin-inline: auto;
+}
+
+.studio-refinement .studio-prompt-screen--hero .studio-prompt-title {
+  font-size: clamp(1.75rem, 3.2vw, 2.375rem);
+  letter-spacing: -0.03em;
+  line-height: 1.12;
+  font-weight: 600;
+  margin-bottom: var(--space-md);
+}
+
+.studio-refinement .studio-prompt-screen--hero .studio-prompt-subtitle {
+  max-width: 36rem;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  margin-inline: 0;
+  margin-bottom: var(--space-2xl);
+}
+
+/* Huge calm composer — one surface, soft neutrals, one accent on focus */
+.studio-refinement .studio-prompt-composer {
+  border-radius: 20px;
+  border-color: color-mix(in srgb, var(--border-strong) 70%, transparent);
+  padding: var(--space-lg) var(--space-lg) var(--space-md);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, var(--text-primary) 4%, transparent),
+    0 12px 32px -20px color-mix(in srgb, var(--text-primary) 18%, transparent);
+  background: var(--surface-2);
+}
+
+.studio-refinement .studio-prompt-composer:focus-within {
+  border-color: var(--color-accent);
+  box-shadow:
+    0 0 0 3px var(--bg-accent),
+    0 12px 32px -20px color-mix(in srgb, var(--text-primary) 14%, transparent);
+}
+
+.studio-refinement .studio-prompt-textarea {
+  min-height: 7.5rem;
+  padding: var(--space-sm) var(--space-sm) 0;
+  font-size: 1.0625rem;
+  line-height: 1.55;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  resize: none;
+  overflow-y: auto;
+  color: var(--text-primary);
+}
+
+.studio-refinement .studio-prompt-textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+.studio-refinement .studio-prompt-textarea:focus,
+.studio-refinement .studio-prompt-textarea:focus-visible {
+  outline: none;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+.studio-refinement .studio-prompt-starters {
+  margin: var(--space-md) 0 var(--space-lg);
+}
+
+.studio-refinement .studio-prompt-actions {
+  padding-top: var(--space-md);
+  gap: var(--space-lg);
+}
+
+.studio-refinement .studio-prompt-shortcut {
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.studio-refinement .studio-prompt-cta {
+  min-width: 11rem;
+  min-height: 44px;
+  border-radius: 10px;
+}
+
+/* Kill leftover eyebrow pattern if any slip in */
+.studio-refinement .studio-prompt-kicker {
+  display: none;
+}
+
+/* Quiet build switcher inside App Studio chrome only (shared component untouched).
+   Stage rail already carries journey; mode chips feel like firmware chrome on a chat product. */
+.studio-refinement .studio-spine {
+  margin-bottom: 0;
+}
+
+.studio-refinement .studio-spine [data-testid="build-spine-bar"] {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0 !important;
+}
+
+.studio-refinement .studio-spine [data-testid="build-spine-bar"] > div:first-child > p:first-child,
+.studio-refinement .studio-spine [data-testid="build-spine-bar"] .uppercase,
+.studio-refinement .studio-spine [data-testid="build-spine-surfaces"],
+.studio-refinement .studio-spine [data-testid="build-spine-chips"] {
+  display: none !important;
+}
+
+.studio-refinement .studio-spine [data-testid="build-spine-stamps"] {
+  opacity: 0.75;
+  margin: 0 0 var(--space-md);
+  text-align: left !important;
+  max-width: none !important;
+  font-size: var(--font-size-xs);
+}
+
+/* ----- Journey: chat primary + equal artifact pane ----- */
+.studio-refinement .review-layout {
+  grid-template-columns: minmax(300px, 1fr) minmax(0, 1fr);
+  min-height: min(74vh, 860px);
+  border-radius: 16px;
+  border-color: color-mix(in srgb, var(--border) 90%, transparent);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 3%),
+    0 16px 40px -28px rgb(0 0 0 / 18%);
+  overflow: hidden;
+}
+
+.studio-refinement .review-chat-pane {
+  order: 1;
+  min-height: 420px;
+  border-right: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.studio-refinement .review-preview-pane {
+  order: 2;
+  border-right: none;
+  border-left: none;
+}
+
+.studio-refinement .review-layout-header {
+  order: 0;
+}
+
+.studio-refinement .review-footer {
+  order: 3;
+}
+
+.studio-refinement .breadcrumb-sep {
+  color: var(--text-muted);
+  margin-inline: 2px;
+}
+
+/* Chat toolbar: one calm label */
+.studio-refinement .studio-chat-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  min-height: 48px;
+  padding: 0 var(--space-lg);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.studio-refinement .studio-chat-toolbar-label {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+/* Composer: ChatGPT-class sticky input */
+.studio-refinement .chat-composer {
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-2) 94%, transparent);
+  backdrop-filter: blur(10px);
+  padding: var(--space-sm) 0 var(--space-sm);
+}
+
+.studio-refinement .chat-input-row {
+  align-items: flex-end;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+}
+
+.studio-refinement .chat-composer-input {
+  min-height: 2.75rem;
+  max-height: 10rem;
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 15px;
+  line-height: 1.5;
+  border-color: var(--border-strong);
+  background: var(--surface-1);
+  overflow-y: auto;
+}
+
+.studio-refinement .chat-composer-input:focus,
+.studio-refinement .chat-composer-input:focus-visible {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--bg-accent);
+  background: var(--surface-2);
+}
+
+.studio-refinement .chat-send {
+  min-width: 4.5rem;
+  min-height: 2.75rem;
+  border-radius: 12px;
+}
+
+.studio-refinement .chat-send.btn-primary:not(:disabled) {
+  border-color: transparent;
+  color: var(--on-accent);
+}
+
+.studio-refinement .chat-composer-hint {
+  margin: 0 var(--space-lg) var(--space-xs);
+}
+
+/* Bubbles: softer, less chrome */
+.studio-refinement .chat-bubble {
+  border-radius: 16px;
+  padding: 10px 14px;
+  font-size: var(--font-size-sm);
+  line-height: 1.55;
+}
+
+.studio-refinement .chat-bubble-assistant {
+  border-color: transparent;
+  background: var(--surface-1);
+}
+
+.studio-refinement .chat-bubble-user {
+  border-radius: 16px;
+  border-bottom-right-radius: 6px;
+}
+
+/* ----- Diagnosis: editorial, not firmware ----- */
+.studio-refinement .clarify-card--diagnosis {
+  max-width: 640px;
+  margin-top: var(--space-2xl);
+  padding: var(--space-2xl) var(--space-xl) var(--space-xl);
+  border-radius: 16px;
+  border-color: color-mix(in srgb, var(--border) 85%, transparent);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 3%),
+    0 18px 40px -28px rgb(0 0 0 / 16%);
+}
+
+.studio-refinement .clarify-card--diagnosis .clarify-title {
+  font-size: clamp(1.35rem, 2.2vw, 1.75rem);
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  margin-bottom: var(--space-sm);
+}
+
+.studio-refinement .clarify-card--diagnosis .clarify-lead {
+  font-size: var(--font-size-md);
+  line-height: 1.55;
+  max-width: 48ch;
+  margin-bottom: var(--space-xl);
+  text-wrap: pretty;
+}
+
+.studio-refinement .clarify-card--diagnosis .diagnosis-field {
+  margin-top: var(--space-xl);
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--border);
+  gap: var(--space-md);
+}
+
+.studio-refinement .clarify-card--diagnosis .diagnosis-field:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.studio-refinement .clarify-card--diagnosis .diagnosis-field > span:first-child,
+.studio-refinement .clarify-card--diagnosis .diagnosis-field > span:first-of-type {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  color: var(--text-secondary);
+}
+
+.studio-refinement .clarify-card--diagnosis .clarify-actions {
+  margin-top: var(--space-2xl);
+  padding-top: var(--space-xl);
+}
+
+.studio-refinement .clarify-card--diagnosis .clarify-actions .btn-primary {
+  min-width: 8.5rem;
+  min-height: 44px;
+}
+
+/* ----- Generating: Stitch-grade paper skeleton ----- */
+.studio-refinement .studio-canvas-progress {
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
+}
+
+.studio-refinement .studio-canvas-ghost {
+  padding: var(--space-2xl) var(--space-xl);
+  background-color: var(--surface-1);
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    color-mix(in srgb, var(--text-primary) 9%, transparent) 1px,
+    transparent 0
+  );
+  background-size: 16px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.studio-refinement .studio-canvas-ghost-desk {
+  max-width: 720px;
+  margin-inline: auto;
+}
+
+.studio-refinement .studio-canvas-ghost-page {
+  padding: var(--space-xl) 36px var(--space-lg);
+  border-radius: 6px;
+  background: var(--surface-2);
+  border: 1px solid rgb(0 0 0 / 7%);
+  box-shadow:
+    0 1px 1px rgb(0 0 0 / 4%),
+    0 2px 6px -2px rgb(0 0 0 / 6%),
+    0 20px 40px -24px rgb(0 0 0 / 20%);
+}
+
+.studio-refinement .studio-canvas-ghost-bar {
+  height: 18px;
+  width: 36%;
+  border-radius: 4px;
+  margin-bottom: var(--space-xl);
+  background: color-mix(in srgb, var(--border) 80%, transparent);
+  animation: studio-skeleton-pulse 1.6s var(--ease-out) infinite;
+}
+
+.studio-refinement .studio-canvas-ghost-sheet {
+  gap: var(--space-lg);
+  min-height: 200px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.studio-refinement .studio-canvas-ghost-row {
+  height: 11px;
+  width: 78%;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--border) 75%, transparent);
+  animation: studio-skeleton-pulse 1.6s var(--ease-out) infinite;
+}
+
+.studio-refinement .studio-canvas-ghost-row.is-mid {
+  width: 58%;
+  animation-delay: 80ms;
+}
+
+.studio-refinement .studio-canvas-ghost-row.is-short {
+  width: 42%;
+  animation-delay: 140ms;
+}
+
+@keyframes studio-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.studio-refinement .studio-canvas-progress-body {
+  padding: var(--space-xl) var(--space-2xl) var(--space-2xl);
+}
+
+.studio-refinement .studio-canvas-progress-note {
+  max-width: 42ch;
+  text-wrap: pretty;
+}
+
+/* ----- Failed: editorial recovery card ----- */
+.studio-refinement .studio-generation-failed {
+  max-width: 560px;
+  margin: var(--space-2xl) auto 0;
+  padding: var(--space-2xl) var(--space-xl);
+  border-radius: 16px;
+  border-color: color-mix(in srgb, var(--danger) 28%, var(--border));
+  background: color-mix(in srgb, var(--danger) 4%, var(--surface-2));
+}
+
+.studio-refinement .studio-generation-failed-title {
+  margin: 0 0 var(--space-sm);
+  font-size: clamp(1.25rem, 2vw, 1.5rem);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+  color: var(--text-primary);
+  text-wrap: balance;
+}
+
+.studio-refinement .studio-generation-failed-body {
+  margin: 0;
+  font-size: var(--font-size-md);
+  line-height: 1.55;
+  color: var(--text-primary);
+  text-wrap: pretty;
+}
+
+.studio-refinement .studio-generation-failed-hint {
+  margin: var(--space-md) 0 0;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.studio-refinement .studio-generation-failed-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-top: var(--space-xl);
+  padding-top: var(--space-lg);
+  border-top: 1px solid color-mix(in srgb, var(--danger) 16%, var(--border));
+}
+
+/* ----- Mobile tabs: immaculate segmented control ----- */
+.studio-refinement .studio-mobile-tabs {
+  margin: 0 auto var(--space-md);
+  padding: 3px;
+  width: 100%;
+  max-width: 20rem;
+  justify-content: stretch;
+}
+
+.studio-refinement .studio-mobile-tab {
+  flex: 1 1 0;
+  min-height: 44px;
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  transition:
+    background-color var(--duration-state) var(--ease-out),
+    color var(--duration-state) var(--ease-out),
+    box-shadow var(--duration-state) var(--ease-out);
+}
+
+.studio-refinement .studio-mobile-tab.is-selected {
+  background: var(--surface-2);
+  color: var(--text-primary);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, var(--text-primary) 8%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+/* Orange chrome out of App Studio loaders (accent only) */
+.studio-refinement .spinner {
+  border-top-color: var(--color-accent);
+}
+
+.studio-refinement .studio-loader-infinity {
+  color: var(--color-accent);
+}
+
+
+/* Never paint App Studio primaries with brand orange */
+.studio-refinement .btn-brand,
+.studio-refinement a.btn-brand,
+.studio-refinement button.btn-brand {
+  background: var(--color-accent) !important;
+  border-color: transparent !important;
+  color: var(--on-accent) !important;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-accent) 28%, transparent) !important;
+}
+
+.studio-refinement .btn-brand:hover:not(:disabled) {
+  background: var(--color-accent-hover) !important;
+}
+
+/* Deepen paper-on-desk artifact */
+.studio-refinement .review-preview-pane {
+  padding: var(--space-2xl) var(--space-xl) var(--space-3xl);
+}
+
+.studio-refinement .studio-preview-frame .odoo-form-sheet {
+  background: color-mix(in srgb, var(--surface-2) 92%, #f7f5f0);
+  box-shadow:
+    0 1px 1px rgb(0 0 0 / 4%),
+    0 4px 12px -4px rgb(0 0 0 / 8%),
+    0 24px 48px -28px rgb(0 0 0 / 28%);
+}
+
+@media (max-width: 1023px) {
+  .studio-refinement .review-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .studio-refinement .review-chat-pane {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .studio-refinement .review-preview-pane {
+    max-height: 52vh;
+  }
+}
+
+@media (max-width: 767px) {
+  .studio-refinement .studio-prompt-screen--hero {
+    padding-top: var(--space-2xl);
+  }
+
+  .studio-refinement .studio-prompt-composer {
+    border-radius: 16px;
+    padding: var(--space-md);
+  }
+
+  .studio-refinement .studio-prompt-textarea {
+    font-size: 16px;
+    min-height: 6.5rem;
+  }
+
+  .studio-refinement .chat-composer-input {
+    font-size: 16px;
+  }
+
+  .studio-refinement .clarify-card--diagnosis {
+    margin-inline: 0;
+    padding: var(--space-xl) var(--space-lg);
+    border-radius: 14px;
+  }
+
+  .studio-refinement .review-layout.show-preview .review-chat-pane {
+    display: none;
+  }
+
+  .studio-refinement .review-layout.show-chat .review-preview-pane {
+    display: none;
+  }
+
+  .studio-refinement .review-layout.show-chat .review-chat-pane {
+    border-bottom: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-refinement .studio-canvas-ghost-bar,
+  .studio-refinement .studio-canvas-ghost-row {
+    animation: none;
+  }
+
+  .studio-refinement .studio-mobile-tab,
+  .studio-refinement .chat-composer-input,
+  .studio-refinement .studio-prompt-composer {
+    transition: none;
+  }
+}

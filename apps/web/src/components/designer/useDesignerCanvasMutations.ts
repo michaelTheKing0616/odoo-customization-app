@@ -1,5 +1,7 @@
 "use client";
 
+import type { api } from "@/lib/api";
+
 import type { Dispatch, DragEvent, SetStateAction } from "react";
 import type { ActivityTypeRow, Connection, FieldRow, MailTemplateRow } from "@/lib/api";
 import type { BindableAction } from "@/components/designer/DesignerBindPanel";
@@ -81,7 +83,7 @@ export type DesignerCanvasMutationsDeps = {
   setBindActivityTypeId: Dispatch<SetStateAction<number | "">>;
   setMailTemplates: Dispatch<SetStateAction<MailTemplateRow[]>>;
   setBindMailTemplateId: Dispatch<SetStateAction<number | "">>;
-  api: any;
+  api: typeof api;
   announceAction: (message: string, flashId?: string | null, toolbarKey?: string) => void;
 };
 
@@ -312,7 +314,7 @@ export function useDesignerCanvasMutations(deps: DesignerCanvasMutationsDeps) {
       },
     ]);
     announceAction(
-      "Added notebook (tab strip) on the canvas below. Prefer “+ Page” on this notebook for another tab — not another notebook.",
+      "Added a notebook (tab strip) on the canvas below. For another tab, use Add page on this notebook instead of adding a second notebook.",
       id,
       "notebook",
     );

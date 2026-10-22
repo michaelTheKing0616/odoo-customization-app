@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/layout-primitives";
 import { IconAccess } from "@/components/ui/icons";
 import type { ModuleSpecAccessRule } from "@/lib/modulespec-types";
+import { Term } from "@/components/ui/Term";
 
 type ModuleSpecSecurityPanelProps = {
   rules: ModuleSpecAccessRule[];
@@ -43,7 +44,7 @@ export function ModuleSpecSecurityPanel({
   return (
     <div className="space-y-3" data-testid="modulespec-security">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-ink">Access rules</h3>
+        <h3 className="text-sm font-semibold text-ink"><Term tech="ir.model.access">Access rules</Term></h3>
         {!readOnly ? (
           <Button type="button" variant="secondary" size="sm" onClick={addRule}>
             Add access rule

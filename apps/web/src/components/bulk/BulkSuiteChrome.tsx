@@ -1,78 +1,133 @@
+import type { ReactNode } from "react";
 import { Callout } from "@/components/ui/Callout";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
-import { EmptyState, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
+import { Skeleton } from "@/components/ui/layout-primitives";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
 import { FirstWriteInterstitial } from "@/components/shell/FirstWriteInterstitial";
-import { EMPTY_STATES } from "@/lib/copy-guide";
+import {
+  PAGE_DESCRIPTION,
+  PAGE_TITLE,
+  bulkHonestyGuide,
+  emptyBulkGuide,
+  sanitizeBulkCopy,
+  type BulkErrorContext,
+} from "@/lib/bulkSuiteScreen";
+import { OperateStudioBar } from "@/components/operate/OperateStudioBar";
 import { BulkRecipeChips } from "./BulkRecipeChips";
+import { BulkErrorNotice } from "./BulkErrorNotice";
+import { BulkOpRail } from "./BulkOpRail";
+import { BulkStateGuide } from "./BulkStateGuide";
 import type { BulkSuitePageModel } from "./use-bulk-suite-page";
+import type { BulkStepIndex } from "@/lib/bulkSuiteScreen";
+import { FrameMeta } from "@/components/frame/FrameMeta";
 
-export function BulkSuiteChrome({ vm }: { vm: BulkSuitePageModel }) {
+export function BulkSuiteChrome({
+  vm,
+  step,
+  errorContext = "run",
+  children,
+}: {
+  vm: BulkSuitePageModel;
+  step: BulkStepIndex;
+  errorContext?: BulkErrorContext;
+  children?: ReactNode;
+}) {
+  const showEmpty = vm.pageHydrated && !vm.result && !vm.busy && !vm.error;
+  const honesty = bulkHonestyGuide();
+
   return (
-    <>
-      <PageHeader
-        title="Bulk Suite"
-        description="Discover form-view workflow buttons per model and run them in bulk with dry-run first. Runs as the connected Odoo user — partial failures are reported per record."
-      />
-      <VersionAwarenessBanner capabilities={vm.connection?.capabilities} />
+    <div className="bu-pasteboard">
+      <article className="bu-sheet">
+        <header className="bu-masthead studio-bar-dark">
+          <div className="bu-mast-copy">
+            <FrameMeta />
+            <h1 className="bu-title">{PAGE_TITLE}</h1>
+            <p className="bu-lead">{sanitizeBulkCopy(PAGE_DESCRIPTION)}</p>
+          </div>
+        </header>
 
-      <Callout variant="info" title="Invoices & bills" className="mt-4" testId="bulk-suite-document-batch-link">
-        CSV/XLSX invoice & bill intake lives on{" "}
-        <a
-          className="font-medium text-ink underline underline-offset-2"
-          href={`/connections/${vm.connectionId}/journal?tab=invoices`}
+        <VersionAwarenessBanner capabilities={vm.connection?.capabilities} />
+        <BulkOpRail step={step} />
+
+        {/* Write risk is imminent on this desk: one compact studio bar, not twin Callouts. */}
+        <OperateStudioBar
+          testId="bulk-honesty-guide"
+          tone="warning"
+          title={honesty.title}
+          why={honesty.why}
+          next={honesty.next}
+        />
+
+        <nav
+          className="bu-link-row"
+          data-testid="bulk-suite-cross-links"
+          aria-label="Related batch tools"
         >
-          Snapshots & Journal → Invoices & bills
-        </a>
-        . Same Batch OS runner as Journal batch — dry-run first; preview ≠ posted.
-      </Callout>
+          <a
+            className="bu-cross-link"
+            data-testid="bulk-suite-document-batch-link"
+            href={`/connections/${vm.connectionId}/journal?tab=invoices`}
+          >
+            <span className="bu-cross-link-title">Invoices and bills</span>
+            <span className="bu-cross-link-body">
+              CSV/XLSX intake on Snapshots and Journal. Test run first; preview is not posted.
+            </span>
+          </a>
+          <a
+            className="bu-cross-link"
+            data-testid="bulk-suite-master-data-link"
+            href={`/connections/${vm.connectionId}/journal?tab=master`}
+          >
+            <span className="bu-cross-link-title">Master data batch</span>
+            <span className="bu-cross-link-body">
+              Partners and products CSV on Snapshots and Journal. Map, test run, then apply.
+            </span>
+          </a>
+        </nav>
 
-      <Callout variant="info" title="Master data batch" className="mt-4" testId="bulk-suite-master-data-link">
-        Partners & products CSV →{" "}
-        <a
-          className="font-medium text-ink underline underline-offset-2"
-          href={`/connections/${vm.connectionId}/journal?tab=master`}
-        >
-          Snapshots & Journal → Master data
-        </a>
-        . Same Batch OS runner — map → dry-run → apply; preview ≠ written.
-      </Callout>
-
-
-      {(vm.showRecipes || true) ? (
         <BulkRecipeChips onPick={vm.applyRecipe} />
-      ) : null}
 
-      {vm.connection ? <FirstWriteInterstitial connection={vm.connection} /> : null}
+        {vm.connection ? <FirstWriteInterstitial connection={vm.connection} /> : null}
 
-      {vm.error ? <ErrorNotice message={vm.error} className="mt-4" /> : null}
-      {vm.notice ? (
-        <Callout variant="info" title="Notice" className="mt-4">
-          {vm.notice}
-        </Callout>
-      ) : null}
+        {vm.error ? (
+          <BulkErrorNotice
+            message={vm.error}
+            context={errorContext}
+            onDismiss={() => vm.setError(null)}
+          />
+        ) : null}
+        {vm.notice ? (
+          <Callout variant="info" title="Notice" testId="bulk-suite-notice">
+            {vm.notice}
+          </Callout>
+        ) : null}
 
-      {!vm.pageHydrated ? (
-        <div className="mt-6" data-testid="bulk-suite-hero-loading">
-          <Skeleton className="h-32 w-full" />
-        </div>
-      ) : !vm.result && !vm.busy ? (
-        <div className="mt-6">
-          <EmptyState
-            title="Bulk operations"
-            description={EMPTY_STATES.bulkSuite}
-            action={
+        {!vm.pageHydrated ? (
+          <div data-testid="bulk-suite-hero-loading">
+            <Skeleton className="h-32 w-full" />
+          </div>
+        ) : null}
+
+        {showEmpty ? (
+          <BulkStateGuide
+            testId="bulk-empty-guide"
+            tone="accent"
+            guide={emptyBulkGuide()}
+            actions={
               <button
                 type="button"
-                className="odoo-btn-secondary text-sm"
+                className="bu-recipe"
                 onClick={() => document.getElementById("bulk-suite-model")?.focus()}
               >
                 Choose a model
               </button>
             }
           />
+        ) : null}
+
+        <div className="bu-work" data-testid="bulk-suite-desk">
+          {children}
         </div>
-      ) : null}
-    </>
+      </article>
+    </div>
   );
 }

@@ -11,91 +11,41 @@ import {
   ImageImportPreviewOut,
 } from "@/lib/api";
 import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
-import { DataTable, type DataTableColumn } from "@/components/ui/DataTable";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Input } from "@/components/ui/Input";
-import { Card, EmptyState, PageHeader, Skeleton } from "@/components/ui/layout-primitives";
+import { Select } from "@/components/ui/Select";
 import { VersionAwarenessBanner } from "@/components/VersionAwarenessBanner";
+import { ImportErrorNotice } from "@/components/import/ImportErrorNotice";
+import { ImportResultCounts } from "@/components/import/ImportResultCounts";
+import { ImportStageRail } from "@/components/import/ImportStageRail";
+import { ImportStateGuide } from "@/components/import/ImportStateGuide";
+import { SeedPackPicker } from "@/components/import/SeedPackPicker";
+import { OperateStudioChrome } from "@/components/operate-studio/OperateStudioChrome";
+import {
+  CONFIRM_PHRASE,
+  DRY_RUN_CTA,
+  PAGE_DESCRIPTION,
+  PAGE_TITLE,
+  PARSE_CTA,
+  PRIMARY_CTA,
+  commitBlockedReason,
+  countStripFromResult,
+  dryRunBlockedReason,
+  emptyImportGuide,
+  importHonestyGuide,
+  importSessionBadge,
+  importSessionHint,
+  importStepFromState,
+  mappingEmptyGuide,
+  partialFailureGuide,
+  sanitizeImportCopy,
+  unmappedColumns,
+  type ImportErrorContext,
+} from "@/lib/importScreen";
+import "@/components/import/import-operate.css";
 
-const CONFIRM_PHRASE = "I understand the risks";
-
-function SeedPackPicker({
-  connectionId,
-  onPick,
-}: {
-  connectionId: string;
-  onPick: (model: string, csv: string) => void;
-}) {
-  const [packs, setPacks] = useState<
-    Array<{ id: string; name: string; description: string; models: string[] }> | null
-  >(null);
-  const [error, setError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
-
-  useEffect(() => {
-    setPacks(null);
-    setError(null);
-    api
-      .listSeedPacks(connectionId)
-      .then(setPacks)
-      .catch((err: Error) => setError(err.message));
-  }, [connectionId, reloadKey]);
-
-  if (error) return <p className="text-xs text-danger">{error}</p>;
-  if (packs === null) {
-    return (
-      <div className="grid gap-3 sm:grid-cols-2" data-testid="seed-packs-loading">
-        <Skeleton className="h-28 w-full" />
-        <Skeleton className="h-28 w-full" />
-      </div>
-    );
-  }
-  if (packs.length === 0) {
-    return (
-      <EmptyState
-        title="No seed packs on this connection"
-        description="Upload a CSV below, or ask your admin to enable demo seed packs for this instance."
-        action={
-          <Button type="button" variant="secondary" size="sm" onClick={() => setReloadKey((k) => k + 1)}>
-            Reload packs
-          </Button>
-        }
-      />
-    );
-  }
-
-  return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      {packs.map((p) => (
-        <Card key={p.id} className="p-3 text-sm">
-          <p className="font-medium text-ink">{p.name}</p>
-          <p className="text-xs text-muted">{p.description}</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {p.models.map((m) => (
-              <Button
-                key={m}
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="font-mono text-xs"
-                onClick={async () => {
-                  const detail = await api.getSeedPack(connectionId, p.id);
-                  const entry = detail.models.find((x) => x.model === m);
-                  if (entry) onPick(entry.model, entry.csv);
-                }}
-              >
-                {m}
-              </Button>
-            ))}
-          </div>
-        </Card>
-      ))}
-    </div>
-  );
-}
+type BusyKind = null | "preview" | "dry_run" | "commit" | "image_preview" | "image_commit" | "template";
 
 export default function DataImportPage() {
   const params = useParams<{ id: string }>();
@@ -111,8 +61,9 @@ export default function DataImportPage() {
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [mode, setMode] = useState<"create" | "upsert">("create");
   const [matchFields, setMatchFields] = useState("email");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<BusyKind>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorContext, setErrorContext] = useState<ImportErrorContext>("load");
   const [notice, setNotice] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<DataImportCommitOut | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -129,17 +80,38 @@ export default function DataImportPage() {
     api
       .getConnection(connectionId)
       .then(setConnection)
-      .catch((err: Error) => setError(err.message));
+      .catch((err: Error) => {
+        setErrorContext("load");
+        setError(err.message);
+      });
   }, [connectionId]);
 
   const sample = useMemo(() => rows.slice(0, 5), [rows]);
+  const importStep = importStepFromState({ rowCount: rows.length, lastResult });
+  const gaps = useMemo(() => unmappedColumns(mapping, headers), [mapping, headers]);
+  const commitReason = commitBlockedReason({
+    rowCount: rows.length,
+    busy: busy !== null,
+    headers,
+    mapping,
+  });
+  const dryRunReason = dryRunBlockedReason({
+    rowCount: rows.length,
+    busy: busy !== null,
+    headers,
+    mapping,
+  });
+  const countStrip = lastResult ? countStripFromResult(lastResult) : null;
+  const failureGuide = countStrip ? partialFailureGuide(countStrip) : null;
+  const imgStrip = imgResult ? countStripFromResult(imgResult) : null;
 
   async function onPreview() {
     if (!file) {
+      setErrorContext("preview");
       setError("Choose a CSV or XLSX file first");
       return;
     }
-    setBusy(true);
+    setBusy("preview");
     setError(null);
     setNotice(null);
     try {
@@ -148,21 +120,27 @@ export default function DataImportPage() {
       setRows(preview.sample_rows);
       setMapping(preview.suggested_mapping);
       if (preview.suggested_model) setModel(preview.suggested_model);
-      setNotice(`Parsed ${preview.row_count} row(s). Review mapping, then Dry-run.`);
+      setNotice(
+        sanitizeImportCopy(
+          `Parsed ${preview.row_count} row(s). Review mapping, then ${DRY_RUN_CTA}.`,
+        ),
+      );
       setLastResult(null);
     } catch (err) {
+      setErrorContext("preview");
       setError(err instanceof Error ? err.message : "Preview failed");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
   async function runCommit(dryRun: boolean, phrase?: string) {
     if (!rows.length) {
+      setErrorContext(dryRun ? "dry_run" : "commit");
       setError("Parse a file first");
       return;
     }
-    setBusy(true);
+    setBusy(dryRun ? "dry_run" : "commit");
     setError(null);
     try {
       const res = await api.dataImportCommit(connectionId, {
@@ -183,48 +161,68 @@ export default function DataImportPage() {
           : { confirm_advanced: true, confirm_phrase: phrase || CONFIRM_PHRASE }),
       });
       setLastResult(res);
-      setNotice(res.message);
+      setNotice(sanitizeImportCopy(res.message));
       setConfirmOpen(false);
     } catch (err) {
       if (err instanceof ConfirmationRequiredError) {
         setConfirmOpen(true);
-        setError(err.warning);
+        setError(null);
       } else {
+        setErrorContext(dryRun ? "dry_run" : "commit");
         setError(err instanceof Error ? err.message : "Commit failed");
       }
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
   async function downloadTemplate() {
-    const t = await api.dataImportTemplate(connectionId, model);
-    const blob = new Blob([t.csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = t.filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    setBusy("template");
+    setError(null);
+    try {
+      const t = await api.dataImportTemplate(connectionId, model);
+      const blob = new Blob([t.csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = t.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setErrorContext("template");
+      setError(err instanceof Error ? err.message : "Could not download template");
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function downloadUsersTemplate() {
-    const t = await api.usersCsvTemplate(connectionId);
-    const blob = new Blob([t.csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = t.filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    setBusy("template");
+    setError(null);
+    try {
+      const t = await api.usersCsvTemplate(connectionId);
+      const blob = new Blob([t.csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = t.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setErrorContext("template");
+      setError(err instanceof Error ? err.message : "Could not download users.csv");
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function onImagePreview() {
     if (!imgManifest || !imgZip) {
+      setErrorContext("image_preview");
       setError("Choose manifest CSV and images ZIP");
       return;
     }
-    setBusy(true);
+    setBusy("image_preview");
     setError(null);
     setNotice(null);
     try {
@@ -233,20 +231,26 @@ export default function DataImportPage() {
       setImgMatchField(preview.match_field);
       setImgField(preview.image_field);
       setImgResult(null);
-      setNotice(`Image manifest: ${preview.row_count} row(s). ${preview.warnings.join(" ")}`.trim());
+      setNotice(
+        sanitizeImportCopy(
+          `Image manifest: ${preview.row_count} row(s). ${preview.warnings.join(" ")}`.trim(),
+        ),
+      );
     } catch (err) {
+      setErrorContext("image_preview");
       setError(err instanceof Error ? err.message : "Image preview failed");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
   async function runImageCommit(dryRun: boolean, phrase?: string) {
     if (!imgManifest || !imgZip) {
+      setErrorContext("image_commit");
       setError("Choose manifest CSV and images ZIP");
       return;
     }
-    setBusy(true);
+    setBusy(dryRun ? "image_preview" : "image_commit");
     setError(null);
     try {
       const res = await api.imageImportCommit(connectionId, {
@@ -261,327 +265,483 @@ export default function DataImportPage() {
           : { confirm_advanced: true, confirm_phrase: phrase || CONFIRM_PHRASE }),
       });
       setImgResult(res);
-      setNotice(res.message);
+      setNotice(sanitizeImportCopy(res.message));
       setImgConfirmOpen(false);
     } catch (err) {
       if (err instanceof ConfirmationRequiredError) {
         setImgConfirmOpen(true);
-        setError(err.warning);
+        setError(null);
       } else {
+        setErrorContext("image_commit");
         setError(err instanceof Error ? err.message : "Image import failed");
       }
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
-  const importStep =
-    rows.length === 0 ? 1 : !lastResult ? 2 : lastResult.dry_run ? 3 : 4;
-  const steps = ["Upload", "Map", "Validate", "Commit"];
+  function downloadErrorCsv() {
+    if (!lastResult?.error_csv) return;
+    const blob = new Blob([lastResult.error_csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "import_errors.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const isBusy = busy !== null;
+  const progressLabel =
+    busy === "preview"
+      ? "Parsing file…"
+      : busy === "dry_run"
+        ? "Running dry-run…"
+        : busy === "commit"
+          ? "Committing rows…"
+          : busy === "image_preview"
+            ? "Previewing images…"
+            : busy === "image_commit"
+              ? "Committing images…"
+              : busy === "template"
+                ? "Preparing download…"
+                : null;
+
+  const honesty = lastResult ? null : importHonestyGuide();
+  const sessionHint = importSessionHint({ lastResult });
 
   return (
-    <div className="mx-auto max-w-5xl" data-testid="import-page">
-      <PageHeader
-        title="Bulk data import"
-        description="Upload CSV/XLSX → map columns → dry-run → create or upsert. Writes require the risk phrase."
-      />
+    <>
+    <OperateStudioChrome
+      testIdPrefix="import"
+      pageTestId="import-page"
+      kicker={connection?.name ?? connectionId}
+      title={PAGE_TITLE}
+      subtitle={PAGE_DESCRIPTION}
+      badge={importSessionBadge(importStep)}
+      honesty={honesty}
+      hint={sessionHint}
+      sanitize={sanitizeImportCopy}
+      rail={<ImportStageRail step={importStep} />}
+      shellClassName="import-operate"
+      className="p-4 sm:p-6"
+    >
       <VersionAwarenessBanner capabilities={connection?.capabilities} />
-
-      <ol className="mt-6 flex flex-wrap gap-2">
-        {steps.map((label, i) => (
-          <li key={label}>
-            <Badge variant={importStep === i + 1 ? "info" : importStep > i + 1 ? "success" : "default"}>
-              {i + 1}. {label}
-            </Badge>
-          </li>
-        ))}
-      </ol>
-
-      {error ? <ErrorNotice message={error} className="mt-4" /> : null}
-      {notice ? (
-        <Callout variant="info" title="Notice" className="mt-4">
+{error ? (
+        <ImportErrorNotice
+          className="mt-4"
+          message={error}
+          context={errorContext}
+          onDismiss={() => setError(null)}
+        />
+      ) : null}
+      {notice && !error ? (
+        <Callout variant="info" title="Status" className="mt-4" testId="import-notice">
           {notice}
         </Callout>
       ) : null}
 
-        <Card className="mt-6 space-y-4 p-4">
-          <h2 className="text-sm font-semibold text-ink">Industry seed packs</h2>
-          <div data-testid="import-seed-gallery" className={showGallery ? "rounded-md border border-accent/40 bg-accent/5 p-4" : undefined}>
-            <SeedPackPicker
+      {progressLabel ? (
+        <div className="im-progress" aria-busy="true" data-testid="import-progress" role="status">
+          {progressLabel}
+        </div>
+      ) : null}
+
+      {rows.length === 0 && !error ? (
+        <ImportStateGuide
+          density="brief"
+          testId="import-empty-guide"
+          guide={emptyImportGuide()}
+        />
+      ) : null}
+
+      <section className="im-panel" data-testid="import-seed-panel" aria-labelledby="import-seed-title">
+        <h2 id="import-seed-title" className="im-panel-title">
+          Industry seed packs
+        </h2>
+        <p className="im-panel-sub">Optional starter CSVs for common models on this connection.</p>
+        <div
+          data-testid="import-seed-gallery"
+          className={showGallery ? "rounded-md border border-accent/40 bg-accent/5 p-3" : undefined}
+        >
+          <SeedPackPicker
             connectionId={connectionId}
             onPick={(m, csv) => {
               setModel(m);
               const blob = new Blob([csv], { type: "text/csv" });
-              const file = new File([blob], `${m.replace(/\./g, "_")}_seed.csv`, {
+              const next = new File([blob], `${m.replace(/\./g, "_")}_seed.csv`, {
                 type: "text/csv",
               });
-              setFile(file);
-              setNotice(`Loaded seed for ${m} — click Parse to preview`);
+              setFile(next);
+              setNotice(sanitizeImportCopy(`Loaded seed for ${m}. Click ${PARSE_CTA} to preview.`));
             }}
           />
-            </div>
-        </Card>
+        </div>
+      </section>
 
-        <Card className="mt-6 space-y-4 p-4">
-          <label className="block text-sm">
-            Target model
-            <input
-              className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1.5 text-ink"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              placeholder="res.partner"
-            />
-          </label>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => void downloadTemplate()}
-              className="border border-accent px-3 py-1.5 text-sm text-accent"
-            >
-              Download template
-            </button>
-            <button
-              type="button"
-              onClick={() => void downloadUsersTemplate()}
-              className="border border-accent px-3 py-1.5 text-sm text-accent"
-            >
-              Download users.csv
-            </button>
+      <section className="im-panel" data-testid="import-upload-panel" aria-labelledby="import-upload-title">
+        <h2 id="import-upload-title" className="im-panel-title">
+          Upload and map
+        </h2>
+        <p className="im-panel-sub">
+          Target an Odoo model, parse the sheet, map columns, test run the counts, then {PRIMARY_CTA}.
+        </p>
+
+        <Input
+          label="Target model"
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+          placeholder="res.partner"
+          className="font-mono"
+        />
+
+        <div className="im-toolbar mt-3">
+          <Button type="button" variant="secondary" size="sm" disabled={isBusy} onClick={() => void downloadTemplate()}>
+            Download template
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={isBusy}
+            onClick={() => void downloadUsersTemplate()}
+          >
+            Download users.csv
+          </Button>
+          <label className="im-file-label">
+            CSV or XLSX
             <input
               type="file"
               accept=".csv,.xlsx,.xlsm,.txt"
+              data-testid="import-file-input"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="text-sm"
             />
-            <button
-              type="button"
-              disabled={busy || !file}
-              onClick={() => void onPreview()}
-              className="bg-accent px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-            >
-              Parse file
-            </button>
-          </div>
+          </label>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={isBusy || !file}
+            loading={busy === "preview"}
+            data-testid="import-parse-btn"
+            onClick={() => void onPreview()}
+          >
+            {PARSE_CTA}
+          </Button>
+        </div>
 
-          {headers.length > 0 && (
-            <>
-              <div className="flex flex-wrap gap-4 text-sm">
-                <label>
-                  Mode{" "}
-                  <select
-                    value={mode}
-                    onChange={(e) => setMode(e.target.value as "create" | "upsert")}
-                    className="border border-border-subtle bg-surface px-2 py-1"
-                  >
-                    <option value="create">create</option>
-                    <option value="upsert">upsert</option>
-                  </select>
-                </label>
-                {mode === "upsert" && (
-                  <label>
-                    Match fields (comma){" "}
-                    <input
-                      value={matchFields}
-                      onChange={(e) => setMatchFields(e.target.value)}
-                      className="border border-border-subtle bg-surface px-2 py-1"
-                    />
-                  </label>
-                )}
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-border-subtle">
-                      <th className="py-1">CSV column</th>
-                      <th className="py-1">Odoo field</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {headers.map((h) => (
-                      <tr key={h} className="border-b border-border-subtle/60">
-                        <td className="py-1 font-mono text-xs">{h}</td>
-                        <td className="py-1">
-                          <input
-                            className="w-full border border-border-subtle bg-surface px-2 py-1 font-mono text-xs"
-                            value={mapping[h] ?? ""}
-                            onChange={(e) =>
-                              setMapping((m) => ({ ...m, [h]: e.target.value }))
-                            }
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <p className="text-xs text-[var(--odoo-muted)]">
-                {rows.length} row(s) loaded. Sample:
-              </p>
-              <pre className="max-h-40 overflow-auto bg-surface-muted p-2 text-xs text-ink">
-                {JSON.stringify(sample, null, 2)}
-              </pre>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void runCommit(true)}
-                  className="border border-accent px-3 py-1.5 text-sm text-accent disabled:opacity-50"
-                >
-                  Dry-run
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setConfirmOpen(true)}
-                  className="bg-[var(--odoo-danger)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-                >
-                  Commit writes
-                </button>
-              </div>
-            </>
-          )}
-
-          {notice && <p className="text-sm text-[var(--odoo-success)]">{notice}</p>}
-          {error && <p className="text-sm text-[var(--odoo-danger)]">{error}</p>}
-          {lastResult && (
-            <div className="text-sm">
-              <p>
-                created={lastResult.created} updated={lastResult.updated} failed=
-                {lastResult.failed} skipped={lastResult.skipped}
-              </p>
-              {lastResult.error_csv && (
-                <button
-                  type="button"
-                  className="mt-2 text-accent underline"
-                  onClick={() => {
-                    const blob = new Blob([lastResult.error_csv!], {
-                      type: "text/csv",
-                    });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = "import_errors.csv";
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  }}
-                >
-                  Download error CSV
-                </button>
-              )}
+        {headers.length > 0 ? (
+          <>
+            <div className="im-mode-row">
+              <Select
+                label="Mode"
+                value={mode}
+                onChange={(e) => setMode(e.target.value as "create" | "upsert")}
+                options={[
+                  { value: "create", label: "Create" },
+                  { value: "upsert", label: "Upsert" },
+                ]}
+              />
+              {mode === "upsert" ? (
+                <Input
+                  label="Match fields (comma)"
+                  value={matchFields}
+                  onChange={(e) => setMatchFields(e.target.value)}
+                  className="font-mono"
+                />
+              ) : null}
             </div>
-          )}
-        </Card>
 
-        <Card className="mt-6 space-y-4 p-4" data-testid="image-import-panel">
-          <h2 className="text-sm font-semibold text-ink">Bulk image import</h2>
-          <p className="text-xs text-[var(--odoo-muted)]">
-            CSV manifest (<code>match,name,filename</code>) + ZIP of images → writes base64 to an
-            image/binary field. Images are downscaled server-side (max {1920}px, 5MB guard).
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <label className="text-xs">
-              Manifest CSV
-              <input
-                type="file"
-                accept=".csv,.txt"
-                className="mt-1 block text-sm"
-                onChange={(e) => setImgManifest(e.target.files?.[0] ?? null)}
-              />
-            </label>
-            <label className="text-xs">
-              Images ZIP
-              <input
-                type="file"
-                accept=".zip"
-                className="mt-1 block text-sm"
-                onChange={(e) => setImgZip(e.target.files?.[0] ?? null)}
-              />
-            </label>
-            <button
-              type="button"
-              disabled={busy || !imgManifest || !imgZip}
-              onClick={() => void onImagePreview()}
-              className="self-end border border-accent px-3 py-1.5 text-sm text-accent disabled:opacity-50"
-            >
-              Preview manifest
-            </button>
-          </div>
-          {imgPreview && (
-            <>
-              <div className="grid gap-2 sm:grid-cols-2 text-sm">
-                <label>
-                  Match field
-                  <input
-                    value={imgMatchField}
-                    onChange={(e) => setImgMatchField(e.target.value)}
-                    className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono text-xs"
-                  />
-                </label>
-                <label>
-                  Image field
-                  <input
-                    value={imgField}
-                    onChange={(e) => setImgField(e.target.value)}
-                    placeholder={imgPreview.image_field}
-                    className="mt-1 w-full border border-border-subtle bg-surface px-2 py-1 font-mono text-xs"
-                  />
-                </label>
-              </div>
-              <pre className="max-h-32 overflow-auto bg-surface-muted p-2 text-xs text-ink">
-                {JSON.stringify(imgPreview.sample_rows, null, 2)}
-              </pre>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void runImageCommit(true)}
-                  className="border border-accent px-3 py-1.5 text-sm text-accent disabled:opacity-50"
-                >
-                  Dry-run images
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setImgConfirmOpen(true)}
-                  className="bg-[var(--odoo-danger)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-                >
-                  Commit image writes
-                </button>
-              </div>
-            </>
-          )}
-          {imgResult && (
-            <div className="overflow-x-auto text-sm" data-testid="image-import-results">
-              <p>
-                updated={imgResult.updated} failed={imgResult.failed} skipped={imgResult.skipped}
-              </p>
-              <table className="mt-2 w-full text-left text-xs">
+            {gaps.length === headers.length ? (
+              <ImportStateGuide className="!mt-3" testId="import-mapping-guide" guide={mappingEmptyGuide()} />
+            ) : null}
+
+            <div className="im-map-wrap" data-testid="import-mapping-table">
+              <table className="im-map-table">
                 <thead>
-                  <tr className="border-b border-border-subtle">
-                    <th className="py-1">#</th>
-                    <th className="py-1">match</th>
-                    <th className="py-1">file</th>
-                    <th className="py-1">ok</th>
-                    <th className="py-1">error</th>
+                  <tr>
+                    <th scope="col">CSV column</th>
+                    <th scope="col">Odoo field</th>
+                    <th scope="col">Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {imgResult.results.map((r) => (
-                    <tr key={r.row_index} className="border-b border-border-subtle/60">
-                      <td className="py-1">{r.row_index}</td>
-                      <td className="py-1 font-mono">{r.match_value}</td>
-                      <td className="py-1 font-mono">{r.filename}</td>
-                      <td className="py-1">{r.ok ? "yes" : "no"}</td>
-                      <td className="py-1 text-[var(--odoo-danger)]">{r.error ?? ""}</td>
+                  {headers.map((h) => {
+                    const gap = !(mapping[h] || "").trim();
+                    return (
+                      <tr key={h} data-gap={gap ? "true" : "false"}>
+                        <td className="font-mono text-xs">{h}</td>
+                        <td>
+                          <input
+                            aria-label={`Map ${h} to Odoo field`}
+                            value={mapping[h] ?? ""}
+                            onChange={(e) => setMapping((m) => ({ ...m, [h]: e.target.value }))}
+                          />
+                        </td>
+                        <td>
+                          {gap ? <span className="im-gap-chip">Unmapped</span> : <span className="text-xs text-muted">Ready</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <p className="mt-3 text-xs text-muted" data-testid="import-row-count">
+              {rows.length} row(s) loaded. Sample (first 5):
+            </p>
+            <div className="im-sample" data-testid="import-sample-table">
+              <table>
+                <thead>
+                  <tr>
+                    {headers.map((h) => (
+                      <th key={h}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sample.map((row, i) => (
+                    <tr key={i}>
+                      {headers.map((h) => (
+                        <td key={h} title={row[h] ?? ""}>
+                          {row[h] ?? ""}
+                        </td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          )}
-        </Card>
 
-      <ConfirmDialogV2
+            <div className="im-actions">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={isBusy || Boolean(dryRunReason)}
+                loading={busy === "dry_run"}
+                data-testid="import-dry-run-btn"
+                aria-describedby={dryRunReason ? "import-dry-run-reason" : undefined}
+                onClick={() => void runCommit(true)}
+              >
+                {DRY_RUN_CTA}
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                disabled={isBusy || Boolean(commitReason)}
+                loading={busy === "commit"}
+                data-testid="import-commit-btn"
+                aria-describedby={commitReason ? "import-commit-reason" : undefined}
+                onClick={() => setConfirmOpen(true)}
+              >
+                {PRIMARY_CTA}
+              </Button>
+              {commitReason ? (
+                <p id="import-commit-reason" className="im-primary-reason" data-testid="import-commit-reason">
+                  {commitReason}
+                </p>
+              ) : dryRunReason ? (
+                <p id="import-dry-run-reason" className="im-primary-reason" data-testid="import-dry-run-reason">
+                  {dryRunReason}
+                </p>
+              ) : (
+                <p className="im-primary-reason">Test run first to see create, update, skip, and error counts.</p>
+              )}
+            </div>
+          </>
+        ) : null}
+
+        {countStrip ? (
+          <div className="mt-4" data-testid="import-result-block">
+            <p className="text-sm font-medium text-ink">
+              {countStrip.dryRun ? "Test run counts" : "Commit counts"}
+            </p>
+            <ImportResultCounts strip={countStrip} />
+            {countStrip.message ? (
+              <p className="mt-2 text-sm text-muted" data-testid="import-result-message">
+                {sanitizeImportCopy(countStrip.message)}
+              </p>
+            ) : null}
+            {failureGuide ? (
+              <ImportStateGuide
+                className="!mt-3"
+                tone="warning"
+                live
+                testId="import-partial-guide"
+                guide={failureGuide}
+                actions={
+                  countStrip.hasErrorCsv ? (
+                    <Button type="button" variant="secondary" size="sm" onClick={downloadErrorCsv}>
+                      Download error CSV
+                    </Button>
+                  ) : null
+                }
+              />
+            ) : countStrip.hasErrorCsv ? (
+              <div className="im-guide-actions mt-3">
+                <Button type="button" variant="secondary" size="sm" onClick={downloadErrorCsv}>
+                  Download error CSV
+                </Button>
+              </div>
+            ) : null}
+            {lastResult && lastResult.results.length > 0 ? (
+              <div className="im-result-rows" data-testid="import-row-results">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">#</th>
+                      <th scope="col">Action</th>
+                      <th scope="col">Record</th>
+                      <th scope="col">Ok</th>
+                      <th scope="col">Error</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lastResult.results.slice(0, 50).map((r) => (
+                      <tr key={r.row_index} data-ok={r.ok ? "true" : "false"}>
+                        <td>{r.row_index}</td>
+                        <td className="font-mono">{r.action ?? ""}</td>
+                        <td className="font-mono">{r.record_id ?? ""}</td>
+                        <td>{r.ok ? "yes" : "no"}</td>
+                        <td className="text-danger">{r.error ?? ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
+
+      <details className="im-fold" data-testid="image-import-panel">
+        <summary>Bulk image import</summary>
+        <div className="im-fold-body">
+          <p className="im-panel-sub">
+            CSV manifest (<code>match,name,filename</code>) plus a ZIP of images writes base64 to an
+            image or binary field. Images are downscaled server-side (max 1920px, 5MB guard).
+          </p>
+          <div className="im-toolbar">
+            <label className="im-file-label">
+              Manifest CSV
+              <input
+                type="file"
+                accept=".csv,.txt"
+                data-testid="import-image-manifest"
+                onChange={(e) => setImgManifest(e.target.files?.[0] ?? null)}
+              />
+            </label>
+            <label className="im-file-label">
+              Images ZIP
+              <input
+                type="file"
+                accept=".zip"
+                data-testid="import-image-zip"
+                onChange={(e) => setImgZip(e.target.files?.[0] ?? null)}
+              />
+            </label>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={isBusy || !imgManifest || !imgZip}
+              onClick={() => void onImagePreview()}
+            >
+              Preview manifest
+            </Button>
+          </div>
+          {imgPreview ? (
+            <>
+              <div className="im-mode-row">
+                <Input
+                  label="Match field"
+                  value={imgMatchField}
+                  onChange={(e) => setImgMatchField(e.target.value)}
+                  className="font-mono"
+                />
+                <Input
+                  label="Image field"
+                  value={imgField}
+                  onChange={(e) => setImgField(e.target.value)}
+                  placeholder={imgPreview.image_field}
+                  className="font-mono"
+                />
+              </div>
+              <div className="im-sample" data-testid="import-image-sample">
+                <table>
+                  <thead>
+                    <tr>
+                      {Object.keys(imgPreview.sample_rows[0] ?? { match: "", filename: "" }).map((h) => (
+                        <th key={h}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {imgPreview.sample_rows.slice(0, 5).map((row, i) => (
+                      <tr key={i}>
+                        {Object.keys(row).map((h) => (
+                          <td key={h}>{row[h]}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="im-actions">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={isBusy}
+                  onClick={() => void runImageCommit(true)}
+                >
+                  Test run images
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  disabled={isBusy}
+                  data-testid="import-image-commit-btn"
+                  onClick={() => setImgConfirmOpen(true)}
+                >
+                  Commit images
+                </Button>
+              </div>
+            </>
+          ) : null}
+          {imgStrip ? (
+            <div className="mt-4" data-testid="image-import-results">
+              <ImportResultCounts strip={imgStrip} testId="import-image-counts" />
+              <div className="im-result-rows">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">#</th>
+                      <th scope="col">Match</th>
+                      <th scope="col">File</th>
+                      <th scope="col">Ok</th>
+                      <th scope="col">Error</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {imgResult!.results.map((r) => (
+                      <tr key={r.row_index} data-ok={r.ok ? "true" : "false"}>
+                        <td>{r.row_index}</td>
+                        <td className="font-mono">{r.match_value}</td>
+                        <td className="font-mono">{r.filename}</td>
+                        <td>{r.ok ? "yes" : "no"}</td>
+                        <td className="text-danger">{r.error ?? ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </details>
+
+    </OperateStudioChrome>
+
+    <ConfirmDialogV2
         open={confirmOpen}
         riskLevel="danger"
         title="Commit bulk import"
@@ -592,7 +752,7 @@ export default function DataImportPage() {
           "Partial success is not auto-rolled back",
         ]}
         phrase={CONFIRM_PHRASE}
-        busy={busy}
+        busy={busy === "commit"}
         onCancel={() => setConfirmOpen(false)}
         onConfirm={(phrase) => void runCommit(false, phrase)}
       />
@@ -602,15 +762,15 @@ export default function DataImportPage() {
         title="Commit bulk image import"
         warning={`Write images to ${model} on this live Odoo connection.`}
         risks={[
-          "Overwrites binary/image data on matched records",
+          "Overwrites binary or image data on matched records",
           "Wrong match field can attach images to incorrect records",
           "Partial success is not auto-rolled back",
         ]}
         phrase={CONFIRM_PHRASE}
-        busy={busy}
+        busy={busy === "image_commit"}
         onCancel={() => setImgConfirmOpen(false)}
         onConfirm={(phrase) => void runImageCommit(false, phrase)}
       />
-    </div>
+    </>
   );
 }

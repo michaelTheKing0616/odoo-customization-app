@@ -29,6 +29,121 @@ export type StudioApprovedCraft = {
   depth_seeds?: boolean;
 };
 
+export type StudioDesignField = {
+  name: string;
+  ttype: string;
+  string?: string;
+  required?: boolean;
+  relation?: string | null;
+  inverse_name?: string | null;
+  selection?: string[][];
+};
+
+export type StudioDesignModel = {
+  name: string;
+  label: string;
+  description?: string;
+  why?: string;
+  fields: StudioDesignField[];
+  views?: string[];
+  is_config?: boolean;
+  /** AI-proposed supporting model, not named in the brief. */
+  suggested?: boolean;
+};
+
+export type StudioDesignIntegration = {
+  app: string;
+  module: string;
+  models?: string[];
+  required?: boolean;
+  installed?: boolean | null;
+  status?: "available" | "deferred" | "unchecked" | string;
+  note?: string;
+};
+
+export type StudioDesignPythonPiece = {
+  key?: string;
+  label: string;
+  models?: string[];
+  reason?: string;
+  online_blocked?: boolean | string;
+  lane_note?: string;
+  requirement_id?: string;
+  evidence?: { quote?: string; start?: number; end?: number };
+};
+
+export type StudioAutomation = {
+  requirement_id: string;
+  label: string;
+  target_model: string;
+  trigger?: string;
+  mechanism?: string;
+  automation?: { when?: string; action?: string; date_field?: string; offset_days?: number; summary?: string };
+  evidence?: { quote?: string; start?: number; end?: number };
+};
+
+export type StudioIntentRequirement = {
+  id: string;
+  kind: string;
+  subject: string;
+  decision: "metadata" | "stock_automation" | "option_a" | "clarify" | "declined" | string;
+  origin?: "stated" | "inferred" | string;
+  evidence?: { quote?: string; start?: number; end?: number };
+  trigger?: string;
+  target_model?: string;
+  downgrade_reason?: string;
+  why_metadata_cannot_do_it?: string;
+  metadata_alternative?: string;
+  question?: string;
+  confidence?: string;
+};
+
+export type StudioCriticFinding = {
+  id: string;
+  kind: string;
+  subject: string;
+  evidence?: { quote?: string; start?: number; end?: number };
+  detail?: string;
+  question?: string;
+  severity?: string;
+};
+
+export type StudioAppDesign = {
+  /** Built-in Odoo apps the brief points to, offered with Install. */
+  stock_suggestions?: { module: string; name: string; why: string; quote?: string; installed?: boolean; enterprise_only?: boolean; available?: boolean }[];
+  /** Choices App Studio made for you; the person can change each one. */
+  assumptions?: { text: string; requirement_id?: string; alternatives?: string[]; chosen?: string }[];
+  /** Things the brief asks for that this app leaves out. */
+  out_of_scope?: string[];
+  /** Parts the brief said not to build (or not now). Put back re-adds them. */
+  left_out?: { id: string; item: string; quote: string; status?: string; message?: string; put_back?: boolean }[];
+  /** Parts App Studio was unsure about: built by default, untick to leave out. */
+  checklist_choices?: { id: string; item: string; quote: string; restatement?: string; why?: string; ticked?: boolean }[];
+  stock_checks?: { id?: string; item: string; label: string; choice: "stock" | "custom"; install?: string; custom_without_reason?: boolean }[];
+  integration_routes?: { service: string; route: "stock" | "webhook" | "bridge" | "decline"; label: string; reason?: string; module?: string }[];
+  app_name: string;
+  purpose?: string;
+  new_models: StudioDesignModel[];
+  stock_extensions?: { model: string; fields: StudioDesignField[]; reason?: string }[];
+  integrations?: StudioDesignIntegration[];
+  security_groups?: { name: string; implied?: string[]; access?: Record<string, string> }[];
+  python_needed?: StudioDesignPythonPiece[];
+  relations?: { model: string; field: string; type: string; target: string; inverse?: string }[];
+  menus?: string[];
+  source?: "llm" | "llm_repaired" | "outline" | string;
+  /** Plain reason the AI design did not come through (outline only). */
+  fallback_reason?: string;
+  notes?: string[];
+  intent_contract?: StudioIntentRequirement[];
+  critic_findings?: StudioCriticFinding[];
+  automations?: StudioAutomation[];
+  /** Diagnosis-screen edit: automation requirement ids the operator removed. */
+  automations_off?: string[];  
+  /** Diagnosis-screen edit: integration modules the operator turned off. */
+  integrations_off?: string[];
+  [key: string]: unknown;
+};
+
 export type StudioUnderstanding = {
   title?: string;
   summary?: string;
@@ -46,20 +161,61 @@ export type StudioUnderstanding = {
   source?: string;
   confidence?: string;
   operator_note?: string;
+  app_design?: StudioAppDesign | null;
+};
+
+export type StudioStockAppProposal = {
+  module: string;
+  app_label: string;
+  model: string;
+  noun: string;
+  installable: boolean;
+  question: string;
+  reason: string;
+  install_label: string;
+  decline_label: string;
+};
+
+export type StudioInstallStepApp = {
+  module: string;
+  label: string;
+  why: string;
+  models: string[];
+  installable: boolean;
+};
+
+/** S11: apps the design is built on that must be installed before Build/Apply. */
+export type StudioInstallStep = {
+  title: string;
+  message: string;
+  apps: StudioInstallStepApp[];
+  can_install: boolean;
+  install_label: string;
+  blocked_message: string;
+  /** The connection is read-only: Install is disabled and the guidance is shown up front. */
+  read_only?: boolean;
+  read_only_message?: string;
+  /** Apps are installed; the design still needs its refresh on the real fields. */
+  refresh?: boolean;
 };
 
 export type StudioClarification = {
   id?: string;
   kind?: string;
+  stock_app?: StudioStockAppProposal;
+  install_step?: StudioInstallStep | null;
   merge_key: string;
   question: string;
   help?: string;
+  /** Plain restatement of the brief, shown before a question. */
+  understood?: string;
   options?: StudioClarificationOption[];
   default_id?: string;
   understanding?: StudioUnderstanding;
   host_choices?: StudioClarificationOption[];
   nice_to_have?: string[];
   craft_proposals?: StudioCraftSmartButton[];
+  app_design?: StudioAppDesign | null;
 };
 
 export type StudioTurn = {
@@ -93,6 +249,8 @@ export type StudioSession = {
   root_menu_id?: number | null;
   open_action_id?: number | null;
   host_model?: string | null;
+  /** Optional-integration plan from create/generate (see lib/integration-plan). */
+  integration_plan?: unknown;
   assessment?: {
     clear?: boolean;
     triggers?: string[];
@@ -368,4 +526,3 @@ export function artifactMatchesLockedContract(
   if (shown.length >= 4 && locked.includes(shown)) return true;
   return false;
 }
-

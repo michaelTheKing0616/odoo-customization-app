@@ -1,8 +1,10 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/Button";
+import { PlanChips } from "@/components/marketing/PlanChips";
 import { Card } from "@/components/ui/layout-primitives";
 import { StatusPill } from "@/components/ui/StatusPill";
+import { LogoConstruction } from "@/components/brand/LogoConstruction";
 import { BrandMark } from "@/components/brand/BrandMark";
 
 const features = [
@@ -42,7 +44,10 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-background">
       <div className="mx-auto flex min-h-screen max-w-5xl flex-col justify-center px-6 py-16 sm:px-10">
-        <BrandMark size={40} priority className="mb-2" />
+        <span className="mb-2 inline-flex items-center gap-2" data-testid="home-mark">
+          <LogoConstruction size={40} />
+          <span className="font-[family-name:var(--font-display)] text-sm font-semibold tracking-wide lowercase text-ink" aria-hidden>ingenium</span>
+        </span>
         <h1 className="mt-4 max-w-2xl font-[family-name:var(--font-display)] text-4xl leading-tight text-ink sm:text-5xl">
           No-code Odoo customization for Community — without Enterprise Studio.
         </h1>
@@ -81,10 +86,7 @@ export default function Home() {
         </div>
 
         <div className="mt-8 flex flex-wrap gap-2 text-xs text-muted">
-          <span className="rounded-full border border-border-subtle px-3 py-1">Free solo</span>
-          <span className="rounded-full border border-border-subtle px-3 py-1">Pro $39/mo</span>
-          <span className="rounded-full border border-border-subtle px-3 py-1">Business $149/mo</span>
-          <span className="rounded-full border border-border-subtle px-3 py-1">Agency $399/mo</span>
+          <PlanChips />
         </div>
 
         <section className="mt-16" aria-labelledby="product-screenshots">

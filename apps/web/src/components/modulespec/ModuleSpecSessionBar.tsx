@@ -12,12 +12,12 @@ const STATE_COPY: Record<
   unsaved: {
     label: "Unsaved",
     variant: "warning",
-    hint: "Edits stay in this browser until you save the project or Generate UI. Completeness is not go-live.",
+    hint: "Edits stay in this browser until you save the project or Generate UI. Completeness checks structure; it is not go-live.",
   },
   saved: {
     label: "Saved",
     variant: "success",
-    hint: "Last save is the baseline. Validate, then Generate UI or export a zip. Promote stays human.",
+    hint: "Last save is the baseline. Validate, then Generate UI or export a zip. Publishing stays a step you confirm.",
   },
   draft: {
     label: "Draft",

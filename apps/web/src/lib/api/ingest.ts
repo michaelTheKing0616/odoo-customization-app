@@ -1,4 +1,4 @@
-import { request, fetchApi, requestForm } from "./client";
+import { request, fetchApi, requestForm, formatDetailMessage } from "./client";
 import type { DataImportCommitOut, DataImportPreviewOut, IdGeneratorAssignmentOut, IdGeneratorPreviewOut, IdGeneratorRunOut, ImageImportCommitOut, ImageImportPreviewOut, IngestJobOut } from "./types-ingest";
 
 export const ingestApi = {

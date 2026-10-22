@@ -28,10 +28,10 @@ export function DesignerToolsRail({
 }: DesignerToolsRailProps) {
   const visible = tabs.filter((tab) => !tab.hidden);
   return (
-    <div className={cn("flex min-h-0 flex-1 flex-col p-3", className)} data-testid="designer-tools-rail-inner">
-      <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted">
-        Modification tools
-      </p>
+    <div
+      className={cn("flex min-h-0 flex-1 flex-col px-3 pb-4", className)}
+      data-testid="designer-tools-rail-inner"
+    >
       <Tabs
         className="designer-tools-tabs min-h-0 flex-1"
         value={value}

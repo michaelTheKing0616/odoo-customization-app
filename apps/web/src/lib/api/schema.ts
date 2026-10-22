@@ -31,17 +31,25 @@ export const schemaApi = {
       `/api/connections/${id}/modules/installed${qs ? `?${qs}` : ""}`,
     );
   },
-  installCommunityModule: (id: string, moduleName: string) =>
-    request<{
+  /** Live installs need the same body previewed first (dry-run ledger), then sent for real. */
+  installCommunityModule: async (id: string, moduleName: string) => {
+    const url = `/api/connections/${id}/modules/install-community`;
+    await request<unknown>(url, {
+      method: "POST",
+      body: JSON.stringify({ module_name: moduleName, dry_run: true }),
+      timeoutMs: 60_000,
+    });
+    return request<{
       ok: boolean;
       module: string;
       module_state?: string | null;
       message: string;
-    }>(`/api/connections/${id}/modules/install-community`, {
+    }>(url, {
       method: "POST",
-      body: JSON.stringify({ module_name: moduleName }),
+      body: JSON.stringify({ module_name: moduleName, dry_run: false }),
       timeoutMs: 300_000,
-    }),
+    });
+  },
   listModels: (id: string, customOnly = false, limit = 2000) =>
     request<ModelRow[]>(
       `/api/connections/${id}/models?custom_only=${customOnly}&limit=${limit}`,
@@ -102,6 +110,11 @@ export const schemaApi = {
     ),
   listFields: (id: string, model: string) =>
     request<FieldRow[]>(`/api/connections/${id}/models/${encodeURIComponent(model)}/fields`),
+  /** Q2 touch 56: share of records with each field filled (counts only). */
+  fieldFill: (id: string, model: string, fields: string[]) =>
+    request<{ model: string; total: number; fill: Record<string, number | null> }>(
+      `/api/connections/${id}/models/${encodeURIComponent(model)}/fill?fields=${encodeURIComponent(fields.slice(0, 40).join(","))}`,
+    ),
   listViews: (id: string, model: string) =>
     request<ViewRow[]>(`/api/connections/${id}/models/${encodeURIComponent(model)}/views`),
   createModel: (

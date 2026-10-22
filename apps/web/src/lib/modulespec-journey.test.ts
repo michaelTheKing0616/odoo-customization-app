@@ -59,11 +59,11 @@ describe("moduleSpecJourneyHint", () => {
   it("keeps Completeness / Cert / Autopilot honesty and human promote", () => {
     expect(moduleSpecJourneyHint({ id: "load" })).toMatch(/hygiene/);
     expect(moduleSpecJourneyHint({ id: "edit" })).toMatch(/escape hatch/);
-    expect(moduleSpecJourneyHint({ id: "edit" })).toMatch(/Completeness ≠ Cert ≠ Autopilot/);
+    expect(moduleSpecJourneyHint({ id: "edit" })).toMatch(/A complete draft is not the same as certified, and neither means Autopilot-ready/);
     expect(moduleSpecJourneyHint({ id: "validate" })).toMatch(/not Certification/);
-    expect(moduleSpecJourneyHint({ id: "validate" })).toMatch(/Promote stays human/);
-    expect(moduleSpecJourneyHint({ id: "apply" })).toMatch(/Promote stays human/);
-    expect(moduleSpecJourneyHint({ id: "validate", failed: true })).toMatch(/Promote stays human/);
+    expect(moduleSpecJourneyHint({ id: "validate" })).toMatch(/Publishing stays a step you confirm/);
+    expect(moduleSpecJourneyHint({ id: "apply" })).toMatch(/Publishing stays a step you confirm/);
+    expect(moduleSpecJourneyHint({ id: "validate", failed: true })).toMatch(/Publishing stays a step you confirm/);
   });
 });
 
@@ -107,7 +107,7 @@ describe("localReadiness", () => {
     expect(report.items.find((row) => row.id === "models")?.status).toBe("skip");
     expect(report.headline).toMatch(/Stock reuse/);
     expect(report.body).toMatch(/Job Autopilot/);
-    expect(report.body).toMatch(/Completeness ≠ Cert ≠ Autopilot/);
+    expect(report.body).toMatch(/A complete draft is not the same as certified, and neither means Autopilot-ready/);
   });
 
   it("passes a filled visitor spec with honest warnings only when slices are missing", () => {
@@ -116,7 +116,7 @@ describe("localReadiness", () => {
     expect(report.failCount).toBe(0);
     expect(report.items.find((row) => row.id === "models")?.status).toBe("pass");
     expect(report.headline).toMatch(/Ready to validate/);
-    expect(report.body).toMatch(/Promote stays human/);
+    expect(report.body).toMatch(/Publishing stays a step you confirm/);
   });
 });
 
@@ -143,7 +143,7 @@ describe("helpers", () => {
   });
 
   it("labels errors and completeness without fusing Cert", () => {
-    expect(moduleSpecErrorTitle("Lint found issues in custom code blocks.")).toBe("Lint found issues");
+    expect(moduleSpecErrorTitle("lint", "Lint found issues in custom code blocks.")).toBe("Lint found issues");
     expect(moduleSpecErrorTitle("Generate UI failed")).toBe("Generate UI failed");
     expect(moduleSpecHeaderDescription("Lab 19")).toMatch(/Lab 19/);
     expect(

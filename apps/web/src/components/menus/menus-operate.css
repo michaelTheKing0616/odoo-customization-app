@@ -1,0 +1,990 @@
+/* Studio-bar leap: basalt chrome via OperateStudioChrome; honesty in bar. */
+/* ============================================================
+   UI-S-13 Menus: operate-mode tree editor (scoped .menus-operate)
+   Basalt chrome, teal = selection / valid drop / primary, amber = unsaved,
+   red = refused drop or destructive. Cinnabar never appears here (keystone only).
+   Motion values mirror components/ui/motion/constants.ts (UI-F09).
+   ============================================================ */
+
+.menus-operate {
+  --mn-radius: 12px;
+  --mn-radius-sm: 8px;
+  --mn-hair: var(--border-subtle);
+  --mn-hair-strong: var(--border-strong);
+  --mn-guide: color-mix(in oklab, var(--ink) 12%, transparent);
+  --mn-row-hover: color-mix(in oklab, var(--accent) 5%, var(--surface-raised));
+  --mn-selected: color-mix(in oklab, var(--accent) 9%, var(--surface-raised));
+  --mn-indent: 20px;
+  --mn-accent-text: var(--accent-strong, var(--accent)); /* teal text that clears 4.5:1 */
+  --mn-ease-out: cubic-bezier(0.23, 1, 0.32, 1); /* EASE_ENTER_EXIT */
+  --mn-row-hover-ms: 80ms; /* DURATION.rowHoverMs */
+  --mn-save-ms: 150ms; /* DURATION.saveConfirmMs */
+  --mn-press-ms: 130ms; /* DURATION.pressMs */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dark: the strong teal sinks on basalt, so text uses the base accent (axe 4.5:1). */
+html.dark .menus-operate,
+.dark .menus-operate {
+  --mn-accent-text: var(--accent);
+}
+
+.menus-operate h1,
+.menus-operate h2,
+.menus-operate h3 {
+  text-wrap: balance;
+  letter-spacing: -0.015em;
+}
+
+.menus-operate p {
+  text-wrap: pretty;
+}
+
+.menus-operate .mn-intro {
+  margin: 8px 0 0;
+  max-width: 72ch;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+@media (min-width: 1024px) {
+  .menus-operate .list-composer-shell {
+    grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+/* ---------------- Tree panel ---------------- */
+
+.menus-operate .mn-tree {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.menus-operate .mn-tree-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.menus-operate .mn-tree-title {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.menus-operate .mn-count {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--subtle);
+}
+
+.menus-operate .mn-search {
+  height: 36px;
+  width: 100%;
+  padding: 0 12px;
+  border-radius: var(--mn-radius-sm);
+  border: 1px solid var(--mn-hair);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  outline: none;
+  transition: border-color var(--mn-save-ms) ease;
+}
+
+.menus-operate .mn-search::placeholder {
+  color: var(--subtle);
+}
+
+.menus-operate .mn-search:hover {
+  border-color: var(--mn-hair-strong);
+}
+
+.menus-operate .mn-search:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 20%, transparent);
+}
+
+.menus-operate .mn-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.menus-operate .mn-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* Touch screens have no arrow keys; keep only the re-parent hint there. */
+@media (hover: none) and (pointer: coarse) {
+  .menus-operate .mn-legend-key {
+    display: none !important;
+  }
+}
+
+.menus-operate .mn-legend kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px var(--mn-hair-strong);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.menus-operate .mn-list-box {
+  border: 1px solid var(--mn-hair);
+  border-radius: var(--mn-radius);
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+
+.menus-operate .mn-tree-list {
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  max-height: min(64vh, 640px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  outline: none;
+}
+
+.menus-operate .mn-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 4px 12px 4px calc(6px + (var(--mn-level, 1) - 1) * var(--mn-indent));
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  scroll-margin-block: 8px;
+  /* one 1px guide per ancestor level, aligned under each parent's chevron */
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--mn-guide) 0 1px,
+    transparent 1px var(--mn-indent)
+  );
+  background-size: calc((var(--mn-level, 1) - 1) * var(--mn-indent)) 100%;
+  background-position: 17px 0;
+  background-repeat: no-repeat;
+  transition: background-color var(--mn-row-hover-ms) ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .menus-operate .mn-row:hover {
+    background-color: var(--mn-row-hover);
+  }
+}
+
+.menus-operate .mn-row:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.menus-operate .mn-row[aria-selected="true"] {
+  background-color: var(--mn-selected);
+}
+
+.menus-operate .mn-row[aria-selected="true"]::before {
+  content: "";
+  position: absolute;
+  inset: 8px auto 8px 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+}
+
+.menus-operate .mn-chev {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .menus-operate .mn-chev[data-has-children="true"]:hover {
+    background: color-mix(in oklab, var(--ink) 7%, transparent);
+    color: var(--ink);
+  }
+}
+
+.menus-operate .mn-chev svg {
+  width: 14px;
+  height: 14px;
+}
+
+.menus-operate .mn-row[aria-expanded="true"] .mn-chev svg {
+  transform: rotate(90deg);
+}
+
+.menus-operate .mn-grip {
+  display: inline-grid;
+  place-items: center;
+  color: var(--subtle);
+  opacity: 0;
+  transition: opacity var(--mn-row-hover-ms) ease;
+}
+
+.menus-operate .mn-grip svg {
+  width: 14px;
+  height: 14px;
+}
+
+.menus-operate .mn-row:hover .mn-grip,
+.menus-operate .mn-row:focus-visible .mn-grip,
+.menus-operate .mn-row[aria-selected="true"] .mn-grip {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .menus-operate .mn-grip {
+    opacity: 1;
+  }
+}
+
+.menus-operate .mn-row[data-draggable="false"] .mn-grip {
+  visibility: hidden;
+}
+
+.menus-operate .mn-row-main {
+  min-width: 0;
+}
+
+.menus-operate .mn-row-name {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menus-operate .mn-row[data-level="1"] .mn-row-name {
+  font-weight: 600;
+}
+
+.menus-operate .mn-row-meta {
+  margin: 1px 0 0;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  color: var(--subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menus-operate .mn-drop-reason {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 500;
+  white-space: normal;
+}
+
+.menus-operate .mn-row[data-drop="refused"] .mn-drop-reason {
+  color: var(--danger-strong, var(--danger));
+}
+
+.menus-operate .mn-row[data-drop="ok"] .mn-drop-reason {
+  color: var(--mn-accent-text);
+}
+
+.menus-operate .mn-row[data-drop="same"] .mn-drop-reason {
+  color: var(--muted);
+}
+
+/* Drag states: tint only, no layout motion. */
+.menus-operate .mn-row[data-dragging="true"] {
+  opacity: 0.45;
+}
+
+.menus-operate .mn-row[data-drop="ok"] {
+  background-color: color-mix(in oklab, var(--accent) 11%, var(--surface-raised));
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.menus-operate .mn-row[data-drop="refused"] {
+  background-color: var(--danger-subtle);
+  box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--danger) 70%, transparent);
+  cursor: not-allowed;
+}
+
+.menus-operate .mn-row[data-drop="same"] {
+  box-shadow: inset 0 0 0 1px var(--mn-hair-strong);
+}
+
+/* ---------------- Chips ---------------- */
+
+.menus-operate .mn-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 132px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px var(--mn-hair);
+  background: var(--surface-raised);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menus-operate .mn-chip[data-tone="muted"] {
+  font-family: inherit;
+  color: var(--subtle);
+  box-shadow: inset 0 0 0 1px var(--mn-hair);
+  background: transparent;
+}
+
+.menus-operate .mn-chip[data-tone="warn"] {
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--warning-strong);
+  background: var(--warning-subtle);
+  box-shadow: none;
+}
+
+.menus-operate .mn-chip[data-tone="accent"] {
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--mn-accent-text);
+  background: color-mix(in oklab, var(--accent) 10%, transparent);
+  box-shadow: none;
+}
+
+.menus-operate .mn-row-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* ---------------- Top-level drop zone (pointer only) ---------------- */
+
+.menus-operate .mn-rootzone {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  margin: 4px 8px;
+  padding: 0 12px;
+  border-radius: var(--mn-radius-sm);
+  border: 1px dashed var(--mn-hair-strong);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  transition: background-color var(--mn-row-hover-ms) ease;
+}
+
+.menus-operate .mn-rootzone[data-drop="ok"] {
+  border-style: solid;
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 10%, var(--surface-raised));
+  color: var(--ink);
+}
+
+.menus-operate .mn-rootzone[data-drop="same"] {
+  border-style: solid;
+}
+
+/* ---------------- What / why / next guide ---------------- */
+
+.menus-operate .mn-guide {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--mn-radius-sm);
+  border: 1px solid var(--mn-hair);
+  background: color-mix(in oklab, var(--ink) 2.5%, var(--surface-raised));
+}
+
+.menus-operate .mn-guide[data-tone="danger"] {
+  border-color: color-mix(in oklab, var(--danger) 24%, var(--mn-hair));
+  background: color-mix(in oklab, var(--danger) 4%, var(--surface-raised));
+}
+
+.menus-operate .mn-guide[data-tone="warning"] {
+  border-color: color-mix(in oklab, var(--warning) 35%, var(--mn-hair));
+  background: color-mix(in oklab, var(--warning) 7%, var(--surface-raised));
+}
+
+.menus-operate .mn-guide-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  color: var(--muted);
+}
+
+.menus-operate .mn-guide[data-tone="danger"] .mn-guide-icon {
+  color: var(--danger-strong, var(--danger));
+}
+
+.menus-operate .mn-guide[data-tone="warning"] .mn-guide-icon {
+  color: var(--warning-strong);
+}
+
+.menus-operate .mn-guide-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.menus-operate .mn-guide-head .mn-guide-title {
+  flex: 1 1 auto;
+}
+
+.menus-operate .mn-guide-title {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+.menus-operate .mn-guide-rows {
+  display: grid;
+  padding-left: 24px;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 4px 10px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.menus-operate .mn-guide-rows dt {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.menus-operate .mn-guide-rows dd {
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.menus-operate .mn-guide-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.menus-operate .mn-guide-close {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+
+.menus-operate .mn-guide-close:hover {
+  background: color-mix(in oklab, var(--ink) 7%, transparent);
+  color: var(--ink);
+}
+
+.menus-operate .mn-guide-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.menus-operate .mn-guide-close svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ---------------- Detail and composer panel ---------------- */
+
+.menus-operate .mn-panel {
+  display: grid;
+  border: 1px solid var(--mn-hair);
+  border-radius: var(--mn-radius);
+  background: var(--surface-raised);
+  min-width: 0;
+}
+
+.menus-operate .mn-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 16px;
+  padding: 18px 20px 16px;
+  border-bottom: 1px solid var(--mn-hair);
+}
+
+.menus-operate .mn-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  margin: 0 0 4px;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.menus-operate .mn-crumbs li + li::before {
+  content: "/";
+  margin-right: 6px;
+  color: var(--subtle);
+}
+
+.menus-operate .mn-panel-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.menus-operate .mn-panel-sub {
+  margin: 4px 0 0;
+  max-width: 64ch;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.menus-operate .mn-panel-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.menus-operate .mn-section {
+  display: grid;
+  gap: 14px;
+  padding: 18px 20px;
+  border: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.menus-operate .mn-section + .mn-section {
+  border-top: 1px solid var(--mn-hair);
+}
+
+.menus-operate .mn-section-title {
+  float: left; /* keeps the legend inside the fieldset padding and in the grid flow */
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.menus-operate .mn-section-hint {
+  margin: -8px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.menus-operate .mn-grid-2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px;
+  gap: 14px;
+}
+
+@media (max-width: 640px) {
+  .menus-operate .mn-grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .menus-operate .mn-section input,
+  .menus-operate .mn-section select,
+  .menus-operate .mn-search {
+    font-size: 16px; /* no iOS zoom */
+  }
+}
+
+.menus-operate .mn-moved {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--mn-radius-sm);
+  background: var(--warning-subtle);
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.menus-operate .mn-moved strong {
+  font-weight: 600;
+}
+
+/* Segmented radio (window action mode) */
+.menus-operate .mn-seg {
+  justify-self: start;
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--surface-muted);
+  max-width: 100%;
+}
+
+.menus-operate .mn-seg label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background-color var(--mn-save-ms) ease,
+    color var(--mn-save-ms) ease;
+}
+
+.menus-operate .mn-seg input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.menus-operate .mn-seg label:has(input:checked) {
+  background: var(--surface-raised);
+  color: var(--ink);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--ink) 6%, transparent),
+    0 1px 2px -1px color-mix(in oklab, var(--ink) 10%, transparent);
+}
+
+.menus-operate .mn-seg label:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Disclosure for the secondary "new action" flow */
+.menus-operate .mn-disclosure > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  list-style: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  border-radius: 6px;
+}
+
+.menus-operate .mn-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.menus-operate .mn-disclosure > summary svg {
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
+
+.menus-operate .mn-disclosure[open] > summary svg {
+  transform: rotate(90deg);
+}
+
+.menus-operate .mn-disclosure > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.menus-operate .mn-disclosure-body {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+/* Sticky save bar inside the detail panel */
+.menus-operate .mn-savebar {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--mn-hair);
+  border-radius: 0 0 var(--mn-radius) var(--mn-radius);
+  background: color-mix(in oklab, var(--surface-raised) 94%, transparent);
+  backdrop-filter: saturate(160%) blur(10px);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .menus-operate .mn-savebar {
+    background: var(--surface-raised);
+    backdrop-filter: none;
+  }
+}
+
+.menus-operate .mn-savebar[data-dirty="true"] {
+  box-shadow: inset 0 2px 0 var(--warning);
+}
+
+.menus-operate .mn-savebar-status {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.menus-operate .mn-savebar-count {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.menus-operate .mn-savebar-detail {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.menus-operate .mn-savebar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* Panels stack under the tree below lg; a sticky bar would float over the tree there. */
+@media (max-width: 1023px) {
+  .menus-operate .mn-savebar {
+    position: static;
+  }
+}
+
+@media (max-width: 640px) {
+  .menus-operate .mn-savebar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .menus-operate .mn-savebar-actions > * {
+    flex: 1 1 auto;
+  }
+}
+
+.menus-operate .mn-danger-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--mn-hair);
+  border-radius: var(--mn-radius);
+  background: var(--surface-raised);
+}
+
+.menus-operate .mn-danger-row p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.menus-operate .mn-danger-row strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.menus-operate .mn-danger-btn {
+  color: var(--danger-strong, var(--danger));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--danger) 35%, transparent);
+}
+
+/* ---------------- Snapshots inset list ---------------- */
+
+.menus-operate .mn-snapshots {
+  display: grid;
+  gap: 10px;
+  margin-top: 28px;
+}
+
+.menus-operate .mn-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--mn-hair);
+  border-radius: var(--mn-radius);
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+
+.menus-operate .mn-list > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 8px 12px 8px 14px;
+}
+
+.menus-operate .mn-list > li + li {
+  border-top: 1px solid color-mix(in oklab, var(--mn-hair) 75%, transparent);
+}
+
+.menus-operate .mn-list-name {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menus-operate .mn-list-meta {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.menus-operate .mn-quiet {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.menus-operate .mn-quiet a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ---------------- Notices ---------------- */
+
+.menus-operate .mn-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.menus-operate .mn-notice::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.menus-operate .mn-skeleton-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 64px;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 12px;
+}
+
+.menus-operate .sr-only-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menus-operate .mn-row,
+  .menus-operate .mn-grip,
+  .menus-operate .mn-search,
+  .menus-operate .mn-seg label,
+  .menus-operate .mn-rootzone {
+    transition-duration: 0ms;
+  }
+}
+
+/* Session chrome folded into the composer footer */
+.menus-operate .mn-session-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+.menus-operate .mn-session-inline [data-testid="menus-session-hint"] {
+  flex: 1 1 220px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.menus-operate .mn-session-inline [data-testid="menus-session-submit-hint"] {
+  display: none;
+}
+
+/* Inline links inside quiet copy: underline carries the affordance, colour follows the text for contrast. */
+.menus-operate .mn-inline-link {
+  color: inherit;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+.menus-operate .mn-inline-link:hover {
+  color: var(--ink);
+}
+.menus-operate .mn-inline-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+
+.menus-operate.op-studio-shell {
+  max-width: 72rem;
+}
+.menus-operate .op-paper {
+  gap: 14px;
+}

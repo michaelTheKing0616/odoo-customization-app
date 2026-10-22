@@ -40,36 +40,36 @@ export function credentialFieldCopy(kind: HostingKind): {
     return {
       label: "API key (preferred) or password",
       hint:
-        "This secret is for Odoo external RPC (XML-RPC / JSON-RPC) so Ingenium can talk to your database — not a Cursor MCP server key or Model Context Protocol connector. Online often rejects the website login password for RPC; create an API key under Preferences → Account Security → New API Key.",
+        "This secret is for Odoo's API so Ingenium can talk to your database - not a Cursor MCP server key or Model Context Protocol connector. Online often rejects the website login password for RPC; create an API key under Preferences → Account Security → New API Key.",
     };
   }
   if (kind === "odoo_sh") {
     return {
       label: "Password or API key",
       hint:
-        "Odoo external RPC credential (XML-RPC / JSON-RPC) for Ingenium — not a Cursor MCP connector. Login password usually works on Odoo.sh; an API key is safer for automation.",
+        "Odoo API sign-in for Ingenium - not a Cursor MCP connector. Login password usually works on Odoo.sh; an API key is safer for automation.",
     };
   }
   return {
     label: "Password or API key",
     hint:
-      "Odoo external RPC credential (XML-RPC / JSON-RPC) for Ingenium — not a Cursor MCP connector. On-prem / Community: login password is usually enough; prefer an API key for production.",
+      "Odoo API sign-in for Ingenium - not a Cursor MCP connector. On-prem / Community: login password is usually enough; prefer an API key for production.",
   };
 }
 
 export function hostCapabilityBullets(kind: HostingKind): string[] {
   if (kind === "online") {
     return [
-      "Views, fields, automations, and Config recipes via public ORM — supported.",
-      "Custom Python modules cannot be installed on Online — use Odoo.sh or on-prem for that.",
-      "Prefer Odoo API keys for XML-RPC/JSON-RPC (not Cursor MCP); strip /odoo from browser URLs.",
+      "Views, fields, automations, and Config recipes via public ORM - supported.",
+      "Custom Python modules cannot be installed on Online - use Odoo.sh or on-prem for that.",
+      "Prefer Odoo API keys for Odoo's API (not Cursor MCP); strip /odoo from browser URLs.",
     ];
   }
   if (kind === "odoo_sh") {
     return [
       "Full RPC customization path plus Git-based module deploy.",
-      "Use staging branches before promote to production.",
-      "Password or Odoo API key both work for XML-RPC/JSON-RPC (not Cursor MCP).",
+      "Use staging branches before publish to production.",
+      "Password or Odoo API key both work for Odoo's API (not Cursor MCP).",
     ];
   }
   if (kind === "self_hosted") {
@@ -81,7 +81,7 @@ export function hostCapabilityBullets(kind: HostingKind): string[] {
   }
   return [
     "We will detect hosting after you enter a URL.",
-    "Supported majors are probed at connect — we do not hard-ceiling on a single Odoo version.",
+    "Supported majors are probed at connect - we do not hard-ceiling on a single Odoo version.",
   ];
 }
 
@@ -105,11 +105,11 @@ export function buildConnectChecklist(input: ConnectChecklistInput): {
   const secretDetail =
     kind === "online"
       ? secretOk
-        ? "RPC secret entered — Online works best with an Odoo API key if password auth is denied."
-        : "Create an Odoo API key for external RPC (Preferences → Account Security). Not a Cursor MCP key — website password often fails for Online RPC."
+        ? "RPC secret entered - Online works best with an Odoo API key if password auth is denied."
+        : "Create an Odoo API key for external RPC (Preferences → Account Security). Not a Cursor MCP key - website password often fails for Online RPC."
       : secretOk
-        ? "RPC secret entered — Odoo password or API key is fine (not Cursor MCP)."
-        : "Enter your Odoo login password or an Odoo API key for XML-RPC/JSON-RPC (not a Cursor MCP connector).";
+        ? "RPC secret entered - Odoo password or API key is fine (not Cursor MCP)."
+        : "Enter your Odoo login password or an Odoo API key for Odoo's API (not a Cursor MCP connector).";
 
   const steps: ChecklistStep[] = [
     {
@@ -144,7 +144,7 @@ export function buildConnectChecklist(input: ConnectChecklistInput): {
           : "Enter the PostgreSQL / Odoo database name."
         : dbMatchesSuggest
           ? `Database “${input.dbName.trim()}”`
-          : `You entered “${input.dbName.trim()}” — Online subdomain suggests “${suggested}”.`,
+          : `You entered “${input.dbName.trim()}” - Online subdomain suggests “${suggested}”.`,
       done: dbOk,
       emphasis: dbOk && !dbMatchesSuggest ? "warn" : "default",
     },
@@ -167,7 +167,7 @@ export function buildConnectChecklist(input: ConnectChecklistInput): {
       id: "verify",
       label: "Verify & save",
       detail: verified
-        ? "Probe succeeded — connection is ready."
+        ? "Probe succeeded - connection is ready."
         : "Save connection to probe version, edition, and capabilities.",
       done: verified,
     },
@@ -188,16 +188,16 @@ export function formatAuthFailureHint(kind: HostingKind, message: string): strin
   if (!authish) return message;
   if (kind === "online") {
     return (
-      `${message} — On Odoo Online, create an Odoo API key for external RPC (XML-RPC / JSON-RPC) under Preferences → Account Security, then paste it here. ` +
+      `${message} - On Odoo Online, create an Odoo API key for Odoo's API under Preferences → Account Security, then paste it here. ` +
       "This is not a Cursor MCP / Model Context Protocol connector key. Website passwords are often rejected for RPC (especially with 2FA)."
     );
   }
   if (kind === "odoo_sh") {
     return (
-      `${message} — Check database name and user. Odoo password or API key works for XML-RPC/JSON-RPC on Odoo.sh (not Cursor MCP).`
+      `${message} - Check database name and user. Odoo password or API key works for Odoo's API on Odoo.sh (not Cursor MCP).`
     );
   }
-  return `${message} — Confirm database, user, and Odoo password or API key for external RPC (not a Cursor MCP key).`;
+  return `${message} - Confirm database, user, and Odoo password or API key for external RPC (not a Cursor MCP key).`;
 }
 
 export type ApiKeyGuideStep = {
@@ -205,7 +205,7 @@ export type ApiKeyGuideStep = {
   body: string;
 };
 
-/** Numbered walkthrough — key is created on Odoo; Ingenium only receives it. */
+/** Numbered walkthrough - key is created on Odoo; Ingenium only receives it. */
 export function apiKeyGuideSteps(kind: HostingKind): ApiKeyGuideStep[] {
   const where =
     kind === "online"
@@ -224,15 +224,15 @@ export function apiKeyGuideSteps(kind: HostingKind): ApiKeyGuideStep[] {
     },
     {
       title: "Account Security → New API Key",
-      body: "Open the Account Security tab → New API Key. Name it e.g. “Ingenium”. If Odoo asks you to confirm your login password or 2FA, do that — those extra steps are normal.",
+      body: "Open the Account Security tab → New API Key. Name it e.g. “Ingenium”. If Odoo asks you to confirm your login password or 2FA, do that - those extra steps are normal.",
     },
     {
       title: "If Odoo asks RPC vs MCP (or similar)",
-      body: "Choose the option for external API / RPC (XML-RPC or JSON-RPC) so Ingenium can call your database. Do not pick MCP, Model Context Protocol, AI, or Cursor — those are a different kind of connector and will not work here.",
+      body: "Choose the option for external API so Ingenium can call your database. Do not pick MCP, Model Context Protocol, AI, or Cursor - those are a different kind of connector and will not work here.",
     },
     {
       title: "Copy once → paste here",
-      body: "Odoo shows the key only once. Copy it, return to Ingenium, and paste it into the secret field on this same connection. This Odoo external-RPC key (XML-RPC/JSON-RPC) is not a Cursor MCP key. Rotating an expired key and saving again keeps your App Studio drafts, projects, and history — only the secret changes.",
+      body: "Odoo shows the key only once. Copy it, return to Ingenium, and paste it into the secret field on this same connection. Replacing a key keeps your App Studio drafts and history.",
     },
   ];
 }

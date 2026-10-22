@@ -1,0 +1,179 @@
+/* Review workspace: preview gets the width, Refine is a narrow rail. */
+
+.studio-refinement .review-chat-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.studio-refinement .review-rail-bar {
+  display: none;
+}
+
+/* One quiet line instead of stacked preview callouts. */
+.studio-refinement .studio-preview-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0 0 var(--space-md);
+  padding: 2px 2px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.studio-refinement .studio-preview-line-icon {
+  flex: none;
+  align-self: center;
+  color: var(--text-muted);
+}
+
+.studio-refinement .studio-preview-line strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.studio-refinement .studio-preview-line-more > summary {
+  cursor: pointer;
+  color: #0f766e;
+  font-weight: 500;
+  list-style: none;
+}
+
+.studio-refinement .studio-preview-line-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.studio-refinement .studio-preview-line-more > summary::after {
+  content: " +";
+}
+
+.studio-refinement .studio-preview-line-more[open] > summary::after {
+  content: " \2212";
+}
+
+.studio-refinement .studio-preview-line-more[open] {
+  flex-basis: 100%;
+  padding-left: 24px;
+}
+
+.studio-refinement .studio-preview-line-more[open] > span {
+  display: block;
+  margin-top: 2px;
+}
+
+@media (min-width: 1024px) {
+  .studio-refinement .review-layout {
+    grid-template-columns: clamp(320px, 24vw, 360px) minmax(0, 1fr);
+  }
+
+  .studio-refinement .review-layout.is-chat-collapsed {
+    grid-template-columns: 52px minmax(0, 1fr);
+  }
+
+  .studio-refinement .review-layout-header,
+  .studio-refinement .review-footer {
+    grid-column: 1 / -1;
+  }
+
+  .studio-refinement .review-chat-pane {
+    min-width: 0;
+    border-right: 1px solid var(--border);
+  }
+
+  /* Open: the toggle sits right-aligned in the Refine toolbar row. */
+  .studio-refinement .review-chat-pane {
+    position: relative;
+    --refine-bar-h: 48px;
+  }
+
+  .studio-refinement .review-rail-bar {
+    position: absolute;
+    top: 0;
+    right: 8px;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    height: var(--refine-bar-h);
+  }
+
+  .studio-refinement .review-chat-pane .studio-chat-toolbar {
+    box-sizing: border-box;
+    min-height: var(--refine-bar-h);
+    padding-right: 48px;
+  }
+
+  .studio-refinement .review-rail-title {
+    display: none;
+  }
+
+  .studio-refinement .review-rail-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+
+  .studio-refinement .review-rail-toggle:hover {
+    border-color: var(--border);
+    color: #0f766e;
+  }
+
+  .studio-refinement .review-rail-toggle:focus-visible {
+    outline: 2px solid #0f766e;
+    outline-offset: 2px;
+  }
+
+  .studio-refinement .review-layout.is-chat-collapsed .review-chat-pane {
+    min-height: 0;
+  }
+
+  .studio-refinement .review-layout.is-chat-collapsed .review-rail-bar {
+    position: static;
+    height: auto;
+    flex-direction: column-reverse;
+    justify-content: flex-start;
+    padding: 10px 0;
+  }
+
+  .studio-refinement .review-layout.is-chat-collapsed .review-rail-title {
+    display: block;
+    writing-mode: vertical-rl;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+
+  .studio-refinement .review-layout.is-chat-collapsed .review-chat-body {
+    display: none;
+  }
+
+  .studio-refinement .review-preview-pane {
+    min-width: 0;
+    padding-inline: var(--space-md);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .studio-refinement .review-layout {
+    transition: grid-template-columns 180ms ease;
+  }
+}
+
+/* Give the review canvas the room real Odoo has at desktop widths. */
+@media (min-width: 1280px) {
+  .studio-page.is-canvas:has(.review-layout) {
+    max-width: 1400px;
+  }
+}

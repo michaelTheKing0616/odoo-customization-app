@@ -78,7 +78,7 @@ describe("StudioOptionAPanel", () => {
       "http://127.0.0.1:8069/web#model=sale.order&view_type=list",
     );
     expect(link).toHaveTextContent("Open Quotation");
-    expect(screen.getByRole("button", { name: "Promote again" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Publish again" })).toBeTruthy();
   });
 
   it("shows quota-oriented copy when authoring failed with Gemini quota finding", () => {

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { PreviewFormView } from "@/lib/draft-form-preview";
+import type { PreviewField, PreviewFormView } from "@/lib/draft-form-preview";
+import type { PreviewDeferredIntegration } from "./OdooFormView";
 import {
   isGoldOptionADraft,
   isOptionAAuthoredDraft,
@@ -25,7 +26,35 @@ type DraftOdooPreviewProps = {
   highlightedFieldIds?: string[];
   /** Direct form preview override (when draft IR not yet stamped). */
   formPreview?: PreviewFormView | null;
+  /** Apps left out / deferred by the integration plan (ghost rows on the sheet). */
+  deferredIntegrations?: PreviewDeferredIntegration[];
+  /** Relation models the plan omitted; matching fields are marked on the form. */
+  omittedModels?: string[];
 };
+
+function markOmitted(
+  form: PreviewFormView | null,
+  omitted: string[],
+  integrations: PreviewDeferredIntegration[] = [],
+): PreviewFormView | null {
+  if (!form || omitted.length === 0) return form;
+  const set = new Set(omitted);
+  // "helpdesk.ticket" -> the Helpdesk integration's status (left out vs install later).
+  const statusFor = (relation: string): "left_out" | "deferred" =>
+    integrations.find((i) => i.label.toLowerCase() === relation.split(".")[0])?.status ?? "deferred";
+  const mark = (f: PreviewField): PreviewField =>
+    f.relation && set.has(f.relation)
+      ? { ...f, deferred: f.deferred ?? statusFor(f.relation) }
+      : f;
+  return {
+    ...form,
+    groups: form.groups.map((g) => ({ ...g, fields: g.fields.map(mark) })),
+    notebooks: (form.notebooks || []).map((nb) => ({
+      ...nb,
+      pages: nb.pages.map((pg) => ({ ...pg, fields: pg.fields.map(mark) })),
+    })),
+  };
+}
 
 function extensionFieldIds(form: PreviewFormView | null): string[] {
   if (!form) return [];
@@ -66,11 +95,17 @@ export function DraftOdooPreview({
   flashFieldId,
   highlightedFieldIds = [],
   formPreview,
+  deferredIntegrations,
+  omittedModels,
 }: DraftOdooPreviewProps) {
   const views = useMemo(() => previewViewsFromDraft(draft), [draft]);
   const form = useMemo(
-    () => normalizeFormPreview(formPreview) || views.form,
-    [formPreview, views.form],
+    () => markOmitted(
+        normalizeFormPreview(formPreview) || views.form,
+        omittedModels || [],
+        deferredIntegrations || [],
+      ),
+    [formPreview, views.form, omittedModels, deferredIntegrations],
   );
   const availableViews = useMemo(() => {
     const tabs: PreviewViewTab[] = [];
@@ -103,13 +138,13 @@ export function DraftOdooPreview({
 
   if (!schema) {
     const emptyReason = isStockReuseDraft(draft)
-      ? "No custom form — this draft uses stock Community apps only. Job Autopilot is the next step, not a new x_* sheet."
+      ? "No custom form. This draft uses stock Community apps only. Job Autopilot is the next step, not a new x_* sheet."
       : isRefuseCloneDraft(draft)
         ? "This prompt was refused (Apps Store clone). Describe the residual process instead."
         : isGoldOptionADraft(draft)
-          ? "No new x_* app. This is an Option A module (Python + cron) — download the zip and sandbox-prove. Live Install will not fetch CBN rates."
+          ? "No new x_* app. This is a custom-code module (Python and cron). Download the zip and sandbox-prove. Live Install will not fetch CBN rates."
         : isOptionAAuthoredDraft(draft)
-          ? "This is an Option A module on a stock form (for example Sales markup). Live Install will not land Python. Download zip → sandbox prove → Promote after the authoring gate passes."
+          ? "This is a custom-code module on a stock form (for example Sales markup). Live Install will not land Python. Download zip → sandbox prove → Promote after the authoring gate passes."
         : isFieldPackDraft(draft)
           ? "This should preview the extra fields on a form people already use (for example vendor bills). Generate again if the canvas is empty."
         : "No custom form in this draft. Start a new app if you expected a new kind of record.";
@@ -136,6 +171,7 @@ export function DraftOdooPreview({
           schema={schema}
           flashFieldId={flashFieldId}
           highlightedFieldIds={mergedHighlights}
+          deferredIntegrations={deferredIntegrations}
         />
       </div>
     </OdooPreviewScope>

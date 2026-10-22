@@ -1,16 +1,17 @@
 "use client";
 
 import { ModelTierBadge } from "./ModelTierBadge";
+import { designAppsToInstall } from "@/lib/design-preview";
+import type { StudioAppDesign } from "@/lib/studio-session";
 import { ReviewRefineLayout } from "./ReviewRefineLayout";
 import { StudioApplyBar } from "./StudioApplyBar";
 import { StudioChatThread } from "./StudioChatThread";
 import { StudioHonestyBanners } from "./StudioHonestyBanners";
-import {
-  StudioOpenInOdoo,
-  StudioOpenInViewDesigner,
-} from "./StudioOpenLinks";
 import { StudioOptionAPanel } from "./StudioOptionAPanel";
+import { StudioCustomCodeEntry } from "./StudioCustomCodeEntry";
 import { StudioPreviewPane } from "./StudioPreviewPane";
+import { integrationPlanFromSession } from "@/lib/integration-plan";
+import { StudioMobileTabs } from "./StudioMobileTabs";
 import { StudioRefineComposer } from "./StudioRefineComposer";
 import type { StudioPageModel } from "./use-studio-page";
 
@@ -61,12 +62,20 @@ export function StudioReviewSection(vm: StudioPageModel) {
         onRepairExpert={() =>
           void vm.submitRefine(
             "Fix surface findings that block Install. Ground the app title in the operator brief " +
-              "(never a placeholder like Contact extras). Keep inherit-only on the named stock host — " +
+              "(never a placeholder like Contact extras). Keep inherit-only on the named built-in form: " +
               "no new home-screen app. Preserve Must-do wiring (reuse existing fields, pickings/transfers " +
               "surface, filters, light automation).",
           )
         }
       />
+
+      {vm.session?.id ? (
+        <StudioCustomCodeEntry
+          connectionId={vm.connectionId}
+          sessionId={vm.session.id}
+          artifact={vm.session.artifact as Record<string, unknown> | null | undefined}
+        />
+      ) : null}
 
       <StudioOptionAPanel
         goldOptionA={vm.goldOptionA}
@@ -100,22 +109,7 @@ export function StudioReviewSection(vm: StudioPageModel) {
         }
       />
 
-      <div className="studio-chip-row studio-mobile-tabs">
-        <button
-          type="button"
-          className={`chip ${vm.mobileTab === "preview" ? "is-selected" : ""}`}
-          onClick={() => vm.setMobileTab("preview")}
-        >
-          Preview
-        </button>
-        <button
-          type="button"
-          className={`chip ${vm.mobileTab === "chat" ? "is-selected" : ""}`}
-          onClick={() => vm.setMobileTab("chat")}
-        >
-          Refine
-        </button>
-      </div>
+      <StudioMobileTabs value={vm.mobileTab} onChange={vm.setMobileTab} />
 
       <ReviewRefineLayout
         mobileTab={vm.mobileTab}
@@ -123,12 +117,11 @@ export function StudioReviewSection(vm: StudioPageModel) {
           <div className="panel-header">
             <div className="breadcrumb">
               <span>{vm.appTitle}</span>
-              <span aria-hidden>›</span>
+              <span className="breadcrumb-sep" aria-hidden>/</span>
               <span className="current">{vm.preview?.title || "Form preview"}</span>
             </div>
             <div className="studio-preview-toolbar">
-              <StudioOpenInViewDesigner {...vm.designerLinkProps} compact />
-              <StudioOpenInOdoo {...vm.openLinkProps} />
+              {/* View Designer and Open in Odoo live once, in the apply bar below. */}
               <ModelTierBadge
                 provider={vm.session?.provider_used}
                 fallbackUsed={vm.session?.fallback_used}
@@ -144,11 +137,12 @@ export function StudioReviewSection(vm: StudioPageModel) {
               breadcrumb={vm.preview?.title || vm.appTitle}
               flashFieldId={vm.flashId}
               highlightedFieldIds={vm.highlightIds}
+              integrationPlan={integrationPlanFromSession(vm.session)}
             />
           ) : (
             <p className="studio-preview-empty" data-testid="studio-canvas-identity-gate">
-              Canvas hidden — draft title does not match the locked Contract. Confirm
-              Diagnosis again or Generate so one IR drives both.
+              Preview hidden: the draft title does not match the locked diagnosis. Confirm the
+              diagnosis again or generate again so the preview and the contract use one draft.
             </p>
           )
         }
@@ -198,6 +192,10 @@ export function StudioReviewSection(vm: StudioPageModel) {
             applyBlocked={vm.applyBlocked}
             busy={vm.busy}
             onApply={() => vm.setApplyOpen(true)}
+            connectionId={vm.connectionId}
+            appsToInstall={designAppsToInstall(
+              ((vm.session?.artifact as { _app_design?: StudioAppDesign } | null | undefined)?._app_design) ?? null,
+            )}
           />
         }
       />

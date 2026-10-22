@@ -8,7 +8,7 @@ const SALE_OFFER = {
   label: "Sales",
   models: ["sale.order", "sale.order.line"],
   message:
-    "This Option A module inherits sale.order, sale.order.line. Those models come from the stock Sales app (sale).",
+    "This custom-code module extends sale.order, sale.order.line. Those models come from the stock Sales app (sale).",
 };
 
 describe("HostInstallPanel", () => {

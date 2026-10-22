@@ -1,6 +1,7 @@
 "use client";
 
 import type { PreviewSmartButton } from "@/lib/draft-form-preview";
+import { BoxIcon } from "./OdooIcons";
 
 type OdooStatButtonProps = {
   button: PreviewSmartButton;
@@ -8,13 +9,12 @@ type OdooStatButtonProps = {
 
 export function OdooStatButton({ button }: OdooStatButtonProps) {
   return (
-    <div className="odoo-stat-button" data-testid={`odoo-stat-${button.id}`}>
-      {button.count != null ? (
-        <span className="odoo-stat-value">{button.count}</span>
-      ) : (
-        <span className="odoo-stat-value">—</span>
-      )}
-      <span className="odoo-stat-text">{button.string}</span>
+    <div className="ofp-stat" data-testid={`odoo-stat-${button.id}`}>
+      <BoxIcon className="ofp-icon ofp-stat-icon" />
+      <span className="ofp-stat-info">
+        <span className="ofp-stat-value">{button.count != null ? button.count : 0}</span>
+        <span className="ofp-stat-text">{button.string}</span>
+      </span>
     </div>
   );
 }

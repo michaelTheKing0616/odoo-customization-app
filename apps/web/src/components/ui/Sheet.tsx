@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { X } from "@/components/ui/icons";
 import { cn } from "@/lib/cn";
+import { useFlickDismiss } from "@/components/ui/useFlickDismiss";
 
 type SheetProps = {
   open: boolean;
@@ -47,12 +48,15 @@ export function Sheet({
   testId,
 }: SheetProps) {
   const previousFocusRef = useReturnFocusOnClose(open);
+  const flick = useFlickDismiss(side, () => onOpenChange(false));
   return (
     <Dialog.Root open={open} onOpenChange={(nextOpen) => onOpenChange(nextOpen)}>
       <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out" />
+        <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/30 backdrop-saturate-50 backdrop-blur-[2px] data-[state=open]:animate-in data-[state=closed]:animate-out" />
         <Dialog.Popup
           data-testid={testId}
+          ref={flick.panel}
+          onWheel={flick.onWheel}
           finalFocus={previousFocusRef}
           className={cn(
             "fixed top-0 z-50 flex h-full w-full max-w-md flex-col border-border-subtle bg-surface-raised shadow-overlay outline-none",
@@ -60,7 +64,7 @@ export function Sheet({
             className,
           )}
         >
-          <div className="flex items-start justify-between gap-3 border-b border-border-subtle px-4 py-3">
+          <div {...flick.handle} className="flex cursor-grab items-start justify-between gap-3 border-b border-border-subtle px-4 py-3 active:cursor-grabbing">
             <div className="min-w-0 flex-1">
               {header ? (
                 <>

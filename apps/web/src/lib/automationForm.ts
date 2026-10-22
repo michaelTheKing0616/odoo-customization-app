@@ -4,7 +4,6 @@ import { connectionSupports } from "@/lib/capabilities";
 export const CONFIRM_PHRASE = "I understand the risks";
 
 export const ADVANCED_ACTION_KINDS = new Set<AutomationActionKind>([
-  "code_live",
   "webhook",
   "sms",
   "followers",
@@ -159,7 +158,7 @@ export const ADVANCED_CONFIRM_COPY: Record<string, { warning: string; risks: str
   },
 };
 
-export const LIBRARY_FINE_SNIPPET = `# Library fine on return — Option A (state=code in generated module / sandbox).
+export const LIBRARY_FINE_SNIPPET = `# Library fine on return — custom code (state=code in generated module / sandbox).
 # Available: env, model, record, records, time, datetime, dateutil, timezone, log, Warning
 for record in records:
     if not record.x_returned or not record.x_due_date:
@@ -340,4 +339,119 @@ export function automationsHref(connectionId: string, model: string): string {
   const base = `/connections/${connectionId}/automations`;
   const trimmed = model.trim();
   return trimmed ? `${base}?model=${encodeURIComponent(trimmed)}` : base;
+}
+
+
+/** Live Python is never offered. Map legacy code_live onto Option A. */
+export function coerceToOptionA(
+  kind: AutomationActionKind,
+): AutomationActionKind {
+  return kind === "code_live" ? "python_module" : kind;
+}
+
+export type PromptDraftHints = {
+  name?: string;
+  model?: string;
+  trigger?: string;
+  action_kind?: AutomationActionKind;
+};
+
+/**
+ * Deterministic prompt → composer hints. No network. Prefer safe actions;
+ * Python language cues become Option A (python_module), never code_live.
+ */
+export function parseAutomationPrompt(raw: string): PromptDraftHints {
+  const text = raw.trim();
+  if (!text) return {};
+  const lower = text.toLowerCase();
+  const out: PromptDraftHints = {};
+
+  const modelMatch = text.match(/\b(x_[a-z0-9_]+|[a-z][a-z0-9_]*\.[a-z0-9_]+)\b/i);
+  if (modelMatch) out.model = modelMatch[1];
+
+  if (/\bon create\b|\bwhen (a |the )?record is created\b/.test(lower)) {
+    out.trigger = "on_create";
+  } else if (/\bon (update|write|edit)\b|\bwhen .+ (is |are )?(updated|changed|written)\b/.test(lower)) {
+    out.trigger = "on_write";
+  } else if (/\bon delete|on unlink|when .+ deleted\b/.test(lower)) {
+    out.trigger = "on_unlink";
+  } else if (/\bafter (creation|create)\b|\bbased on date\b|\bschedule[d]?\b/.test(lower)) {
+    out.trigger = "on_time";
+  }
+
+  if (/\bwebhook\b|\bhttp(s)?:\/\//.test(lower)) {
+    out.action_kind = "webhook";
+  } else if (/\bpython\b|\bcompute\b|\bfor record in records\b|\bstate\s*=\s*code\b/.test(lower)) {
+    out.action_kind = "python_module";
+  } else if (/\bactivit(y|ies)\b|\bschedule (a )?todo\b/.test(lower)) {
+    out.action_kind = "create_activity";
+  } else if (/\bemail\b|\bmail\b|\bnotify\b|\bmessage\b/.test(lower)) {
+    out.action_kind = "mail_post";
+  } else if (/\bcreate (a )?record\b|\bspawn\b/.test(lower)) {
+    out.action_kind = "create_record";
+  } else if (/\bupdate (linked|related)\b|\brelated write\b/.test(lower)) {
+    out.action_kind = "related_write";
+  } else if (/\bset |\bupdate (the )?field\b|\bwrite \w+\b/.test(lower)) {
+    out.action_kind = "update_field";
+  }
+
+  const name = text.split(/[.\n]/)[0]?.trim() ?? "";
+  if (name && name.length <= 80) out.name = name.replace(/\s+/g, " ");
+  return out;
+}
+
+export const OPTION_A_PATH_STEPS = [
+  { title: "Export module", detail: "Generate an installable zip with state=code inside the module." },
+  { title: "Sandbox", detail: "Install and prove the module on a clean sandbox of the same major." },
+  { title: "Promote", detail: "A human promotes to the target. Live Python never runs from this screen." },
+] as const;
+
+export function automationsEmptyGuide(hasFilter: boolean, query: string): {
+  title: string;
+  why: string;
+  next: string;
+} {
+  if (hasFilter) {
+    return {
+      title: `No rule matches "${query}"`,
+      why: "The filter checks rule names, models, and triggers only.",
+      next: "Clear the filter, or create a new automation.",
+    };
+  }
+  return {
+    title: "No automations yet",
+    why: "Automations react to record changes: update fields, send emails, schedule activities.",
+    next: "Create your first automation from the composer.",
+  };
+}
+
+
+export type AutomationStarter = { label: string; name: string; model: string; trigger: string; filter_domain: string };
+
+const STARTER_RECIPES: { model: string; label: (n: string) => string; trigger: string; filter_domain: string }[] = [
+  { model: "sale.order", label: (n) => `When a ${n} is confirmed`, trigger: "on_write", filter_domain: "[('state', '=', 'sale')]" },
+  { model: "crm.lead", label: (n) => `When a new ${n} arrives`, trigger: "on_create", filter_domain: "" },
+  { model: "account.move", label: (n) => `When a ${n} is posted`, trigger: "on_write", filter_domain: "[('state', '=', 'posted')]" },
+  { model: "project.task", label: (n) => `When a ${n} is created`, trigger: "on_create", filter_domain: "" },
+  { model: "helpdesk.ticket", label: (n) => `When a new ${n} arrives`, trigger: "on_create", filter_domain: "" },
+  { model: "res.partner", label: (n) => `When a ${n} is edited`, trigger: "on_write", filter_domain: "" },
+];
+
+/** Touch 67: up to three starters built only from models this database really has (custom models first). Loading one fills the composer; nothing is saved until Create. */
+export function automationStarters(models: { model: string; name: string }[], max = 3): AutomationStarter[] {
+  const byModel = new Map(models.map((m) => [m.model, m.name?.trim() || m.model]));
+  const out: AutomationStarter[] = [];
+  for (const m of models) {
+    if (out.length >= 1) break;
+    if (!m.model.startsWith("x_")) continue;
+    const n = byModel.get(m.model)!;
+    out.push({ label: `When a new ${n} is created`, name: `New ${n}`, model: m.model, trigger: "on_create", filter_domain: "" });
+  }
+  for (const r of STARTER_RECIPES) {
+    if (out.length >= max) break;
+    const n = byModel.get(r.model);
+    if (!n) continue;
+    out.push({ label: r.label(n), name: r.label(n), model: r.model, trigger: r.trigger, filter_domain: r.filter_domain });
+  }
+  return out;
 }

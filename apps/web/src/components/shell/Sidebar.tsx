@@ -25,12 +25,15 @@ import {
 import { cn } from "@/lib/cn";
 import { BrandMark } from "@/components/brand/BrandMark";
 import type { Connection } from "@/lib/api";
+import { ConnectionSwitcher } from "@/components/shell/ConnectionSwitcher";
 
 type Props = {
   connection: Connection;
+  /** Saved connections for the header switcher. */
+  connections?: Connection[];
 };
 
-export function Sidebar({ connection }: Props) {
+export function Sidebar({ connection, connections = [] }: Props) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const search = searchParams.toString();
@@ -65,9 +68,9 @@ export function Sidebar({ connection }: Props) {
           {!sidebarCollapsed ? (
             <div className="min-w-0 flex-1">
               <BrandMark href={`/connections/${connection.id}`} size={22} />
-              <p className="mt-1 truncate text-[11px] text-muted" title={connection.name}>
-                {connection.name}
-              </p>
+              <div className="mt-1">
+                <ConnectionSwitcher current={connection} connections={connections} />
+              </div>
             </div>
           ) : (
             <BrandMark href={`/connections/${connection.id}`} size={22} withWordmark={false} />

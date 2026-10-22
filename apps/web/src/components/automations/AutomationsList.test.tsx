@@ -67,21 +67,25 @@ describe("AutomationsList", () => {
     expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
   });
 
-  it("shows empty state with create action", () => {
+  it("shows what/why/next empty guide with create action", () => {
     const onCreate = vi.fn();
     render(
-      <AutomationsList
-        rows={[]}
-        selectedId={null}
-        modelFilter=""
-        query=""
-        onQueryChange={vi.fn()}
-        onSelect={vi.fn()}
-        onCreate={onCreate}
-      />,
+      <div className="automations-operate">
+        <AutomationsList
+          rows={[]}
+          selectedId={null}
+          modelFilter=""
+          query=""
+          onQueryChange={vi.fn()}
+          onSelect={vi.fn()}
+          onCreate={onCreate}
+        />
+      </div>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Create automation" }));
+    expect(screen.getByTestId("automations-empty-title")).toHaveTextContent("No automations yet");
+    expect(screen.getByTestId("automations-empty-why")).toHaveTextContent("react to record changes");
+    expect(screen.getByTestId("automations-empty-next")).toHaveTextContent("Create your first");
+    fireEvent.click(screen.getByTestId("automations-empty-create"));
     expect(onCreate).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
   });
 });

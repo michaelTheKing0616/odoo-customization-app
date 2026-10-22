@@ -1,10 +1,12 @@
 "use client";
 
+import { ConfidenceMark } from "@/components/ui/craft";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import type { LiveDemoAnswer } from "@/lib/api";
+import { sanitizeLiveDemoCopy } from "@/lib/liveDemoCopilotScreen";
 
 export type PresenterSseStatus = "connecting" | "connected" | "disconnected";
 
@@ -30,6 +32,12 @@ export function PresenterOverlay({
   const [flash, setFlash] = useState(false);
   const [localGuidance, setLocalGuidance] = useState(true);
 
+  // Sounds stay quiet while presenting (design touch 53).
+  useEffect(() => {
+    document.documentElement.setAttribute("data-presenting", "");
+    return () => document.documentElement.removeAttribute("data-presenting");
+  }, []);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (localStorage.getItem(GUIDANCE_STORAGE_KEY) === "1") {
@@ -40,7 +48,7 @@ export function PresenterOverlay({
   const guidanceVisible =
     showShareGuidance !== undefined ? showShareGuidance : localGuidance;
 
-  // Newest answers arrive at index 0 — jump there and flash.
+  // Newest answers arrive at index 0 - jump there and flash.
   useEffect(() => {
     if (answers.length === 0) return;
     setIndex(0);
@@ -66,8 +74,8 @@ export function PresenterOverlay({
   const active = answers[index] ?? null;
   const sseLabel = useMemo(() => {
     if (sseStatus === "connected") return "Live";
-    if (sseStatus === "connecting") return "Connecting…";
-    return "Reconnecting…";
+    if (sseStatus === "connecting") return "Connecting...";
+    return "Reconnecting...";
   }, [sseStatus]);
 
   function dismissGuidance() {
@@ -100,7 +108,7 @@ export function PresenterOverlay({
         {guidanceVisible ? (
           <Callout variant="warning" title="Keep answers off the client screen">
             <ul className="mt-1 list-disc space-y-1 pl-4 text-sm">
-              <li>Share the Zoom / Meet / Teams window, or your Odoo demo tab — not entire screen.</li>
+              <li>Share the Zoom / Meet / Teams window, or your Odoo demo tab - not the entire screen.</li>
               <li>Leave this overlay on another display, or outside the shared window.</li>
               <li>Never share this window while presenting.</li>
             </ul>
@@ -130,6 +138,10 @@ export function PresenterOverlay({
           >
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <span data-testid="presenter-confidence">
+                <ConfidenceMark
+                  level={active.confidence === "high" ? 3 : active.confidence === "medium" ? 2 : 1}
+                  reason={`${active.confidence} confidence`}
+                />{" "}
                 <Badge variant={active.confidence === "high" ? "success" : "warning"}>
                   {active.confidence} confidence
                 </Badge>
@@ -144,15 +156,15 @@ export function PresenterOverlay({
               <span className="font-medium text-accent">
                 {active.speaker_name || "Client"}
               </span>
-              {" — "}
-              {active.question}
+              {" - "}
+              {sanitizeLiveDemoCopy(active.question)}
             </p>
             {active.confidence_flag ? (
               <p
                 className="mt-3 text-sm font-medium text-warning-strong"
                 data-testid="presenter-confidence-flag"
               >
-                {active.confidence_flag}
+                {sanitizeLiveDemoCopy(active.confidence_flag)}
               </p>
             ) : null}
             <ul className="mt-4 space-y-3" data-testid="presenter-bullets">
@@ -161,7 +173,7 @@ export function PresenterOverlay({
                   key={b}
                   className="rounded-lg border border-border-subtle/80 bg-surface px-3 py-2.5 text-[15px] leading-snug text-ink"
                 >
-                  {b}
+                  {sanitizeLiveDemoCopy(b)}
                 </li>
               ))}
             </ul>
@@ -195,10 +207,17 @@ export function PresenterOverlay({
             className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-border-subtle bg-surface-raised/30 px-6 py-16 text-center"
             data-testid="presenter-empty"
           >
-            <p className="text-base font-medium text-ink">Waiting for Odoo questions…</p>
-            <p className="mt-2 max-w-sm text-sm text-muted">
-              When a client asks something Odoo-related, Stage 1→2 will drop 2–3 private bullets here.
-            </p>
+            <p className="text-base font-medium text-ink">Waiting for Odoo questions</p>
+            <dl className="mt-3 max-w-sm space-y-1 text-left text-sm text-muted">
+              <div className="grid grid-cols-[44px_1fr] gap-2">
+                <dt className="font-medium">Why</dt>
+                <dd>Stage 1 only surfaces Odoo-relevant client questions. Answers stay private here.</dd>
+              </div>
+              <div className="grid grid-cols-[44px_1fr] gap-2">
+                <dt className="font-medium">Next</dt>
+                <dd>Keep this window off the shared screen. Ask an Odoo question in the meeting (or inject mock).</dd>
+              </div>
+            </dl>
           </div>
         )}
 
@@ -222,7 +241,7 @@ export function PresenterOverlay({
                   >
                     <span className="font-medium">{a.speaker_name || "Client"}</span>
                     {" · "}
-                    {a.question.length > 72 ? `${a.question.slice(0, 72)}…` : a.question}
+                    {a.question.length > 72 ? `${sanitizeLiveDemoCopy(a.question).slice(0, 72)}...` : sanitizeLiveDemoCopy(a.question)}
                   </button>
                 </li>
               ))}
@@ -246,7 +265,7 @@ export function PresenterOverlay({
           {sseLabel}
         </span>
         <span className="truncate font-mono" title={sessionId ?? undefined}>
-          {sessionId ? `session ${sessionId.slice(0, 8)}…` : "no session"}
+          {sessionId ? `session ${sessionId.slice(0, 8)}...` : "no session"}
         </span>
         <span className="hidden sm:inline">↑↓ / j k</span>
       </footer>

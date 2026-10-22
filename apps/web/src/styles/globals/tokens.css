@@ -69,23 +69,23 @@ html.dark {
 
   --success-1: #ecfdf5;
   --success-2: #d1fae5;
-  --success-3: #059669;
-  --success-4: #047857;
+  --success-3: #047857; /* AA: was #059669 */
+  --success-4: #065f46; /* AA: was #047857 */
   --success-5: #064e3b;
   --warning-1: #fff7ed;
   --warning-2: #ffedd5;
-  --warning-3: #ea580c;
-  --warning-4: #c2410c;
+  --warning-3: #c2410c; /* AA: was #ea580c */
+  --warning-4: #9a3412; /* AA: was #c2410c */
   --warning-5: #7c2d12;
   --danger-1: #fef2f2;
   --danger-2: #fee2e2;
-  --danger-3: #dc2626;
-  --danger-4: #b91c1c;
+  --danger-3: #b91c1c; /* AA: was #dc2626 */
+  --danger-4: #991b1b; /* AA: was #b91c1c */
   --danger-5: #7f1d1d;
   --info-1: #eff6ff;
   --info-2: #dbeafe;
-  --info-3: #2563eb;
-  --info-4: #1d4ed8;
+  --info-3: #1d4ed8; /* AA: was #2563eb */
+  --info-4: #1e40af; /* AA: was #1d4ed8 */
   --info-5: #1e3a8a;
 
   --success-subtle: var(--success-2);
@@ -104,7 +104,7 @@ html.dark {
   --brand: #f97316;
   --brand-hover: #ea580c;
   --brand-subtle: #ffedd5;
-  --on-brand: #ffffff;
+  --on-brand: #1a1c21; /* AA: white on #f97316 was 2.80 */
 
   --surface: var(--n1);
   --surface-raised: #ffffff;
@@ -114,21 +114,70 @@ html.dark {
   --muted: var(--n8);
   --subtle: var(--n6);
   --border-subtle: var(--n3);
-  --border-strong: var(--n5);
+  --border-strong: var(--n6); /* non-text 3:1: light 4.83 on n1, 4.40 on n2; dark 4.12 n1, 3.67 n2, 3.08 n3 */
   --accent: var(--accent7);
   --accent-hover: var(--accent8);
   --accent-subtle: var(--accent1);
   --on-accent: #ffffff;
+  --on-success: #ffffff;
+  --on-danger: #ffffff;
+  --on-warning: #1a1c21;
+  /* Paired on-* ink for every surface. A fill above 0.18 luminance uses dark ink. */
+  --on-surface: var(--ink);
+  --on-surface-raised: var(--ink);
+  --on-surface-overlay: var(--ink);
+  --on-surface-muted: var(--ink);
+  --on-background: var(--ink);
+  --on-brand-hover: var(--on-brand);
+  --on-brand-subtle: var(--ink);
+  --on-accent-hover: var(--on-accent);
+  --on-accent-subtle: var(--ink);
+  --on-success-subtle: var(--ink);
+  --on-success-strong: var(--on-success);
+  --on-warning-subtle: var(--ink);
+  --on-warning-strong: var(--on-danger);
+  --on-danger-subtle: var(--ink);
+  --on-danger-strong: var(--on-danger);
+  --on-info: var(--on-success);
+  --on-info-subtle: var(--ink);
+  --on-info-strong: var(--on-success);
+  --on-status-critical: var(--on-danger);
+  --on-status-critical-subtle: var(--on-danger-subtle);
+  --on-status-critical-strong: var(--on-danger-strong);
+  --on-status-warning: var(--on-warning);
+  --on-status-warning-subtle: var(--on-warning-subtle);
+  --on-status-warning-strong: var(--on-warning-strong);
+  --on-status-notice: var(--on-info);
+  --on-status-notice-subtle: var(--on-info-subtle);
+  --on-status-notice-strong: var(--on-info-strong);
+  --on-status-ok: var(--on-success);
 
   --r-sm: 6px;
   --r-md: 10px;
   --r-lg: 16px;
   --shadow-subtle: 0 1px 2px rgb(9 9 11 / 8%);
-  --shadow-raised: 0 4px 12px rgb(9 9 11 / 10%);
-  --shadow-overlay: 0 12px 40px rgb(9 9 11 / 16%);
+  /* Touch 23: three-layer hairline (edge, contact, lift). */
+  --shadow-raised: 0 0 0 1px rgb(9 9 11 / 6%), 0 1px 2px rgb(9 9 11 / 6%), 0 4px 12px rgb(9 9 11 / 7%);
+  --shadow-overlay: 0 0 0 1px rgb(9 9 11 / 7%), 0 2px 4px rgb(9 9 11 / 6%), 0 12px 40px rgb(9 9 11 / 14%);
   --motion-fast: 120ms ease-out;
   --motion-base: 200ms ease-out;
   --motion-slow: 300ms ease-out;
+  /* Motion tokens (design touches 4x): curves + durations; reduced-motion zeroes them in base. */
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-settle: cubic-bezier(0.34, 1.36, 0.64, 1);
+  --dur-press: 100ms;
+  --dur-fast: 150ms;
+  --dur-base: 220ms;
+  --dur-slow: 320ms;
+  --dur-lock-in: 420ms;
+  /* Tracking per size (touch 17). */
+  --tracking-title: -0.022em;
+  --tracking-heading: -0.012em;
+  --tracking-body: 0;
+  --tracking-label: 0.04em;
+  /* Sound (touches 50-53): opt-in, off by default; volume cap. */
+  --sound-volume: 0.35;
   --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent6);
 
   --text-xs: 0.75rem;
@@ -143,13 +192,13 @@ html.dark {
   --background: var(--surface);
   --foreground: var(--ink);
 
-  /* Local stacks — next/font/google 500s the app when fonts.gstatic.com is blocked. */
-  --font-sans-stack: "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI",
+  /* Self-hosted (@fontsource-variable, bundled; no runtime Google fetch). Design touch 12. */
+  --font-sans-stack: "Geist Variable", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, "Helvetica Neue", Arial, sans-serif;
-  /* Product chrome is Inter/system sans only (UI DESIGN BOT freeze). */
-  --font-display-stack: var(--font-sans-stack);
+  /* Titles: Libre Franklin, the wordmark's family. */
+  --font-display-stack: "Libre Franklin Variable", var(--font-sans-stack);
   --font-marketing-serif-stack: "Iowan Old Style", Palatino, "Palatino Linotype", Georgia, serif;
-  --font-mono-stack: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-mono-stack: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   --font-sans: var(--font-sans-stack);
   --font-display: var(--font-display-stack);
   --font-mono: var(--font-mono-stack);
@@ -203,26 +252,26 @@ html.dark {
   --muted: var(--n8);
   --subtle: var(--n7);
   --border-subtle: var(--n3);
-  --border-strong: var(--n5);
+  --border-strong: var(--n6); /* non-text 3:1: light 4.83 on n1, 4.40 on n2; dark 4.12 n1, 3.67 n2, 3.08 n3 */
   --accent-subtle: var(--accent2);
 
   --success-1: #022c22;
-  --success-2: #064e3b;
+  --success-2: #053d2e; /* AA: was #064e3b */
   --success-3: #34d399;
   --success-4: #6ee7b7;
   --success-5: #a7f3d0;
   --warning-1: #431407;
-  --warning-2: #7c2d12;
+  --warning-2: #4a1d0b; /* AA: was #7c2d12 */
   --warning-3: #fb923c;
   --warning-4: #fdba74;
   --warning-5: #fed7aa;
   --danger-1: #450a0a;
-  --danger-2: #7f1d1d;
+  --danger-2: #4c1313; /* AA: was #7f1d1d */
   --danger-3: #f87171;
   --danger-4: #fca5a5;
   --danger-5: #fecaca;
   --info-1: #172554;
-  --info-2: #1e3a8a;
+  --info-2: #172554; /* AA: was #1e3a8a */
   --info-3: #60a5fa;
   --info-4: #93c5fd;
   --info-5: #bfdbfe;
@@ -243,11 +292,43 @@ html.dark {
   --brand: #fb923c;
   --brand-hover: #f97316;
   --brand-subtle: #431407;
-  --on-brand: #ffffff;
-  --accent: var(--accent4);
-  --accent-hover: var(--accent3);
-  --odoo-primary: var(--accent4);
-  --odoo-primary-hover: var(--accent3);
+  --on-brand: #1a1c21; /* AA: white on the orange was 2.26 */
+  --accent: var(--accent6); /* AA: accent4 text on dark surfaces was 3.6 */
+  --on-accent: var(--accent1); /* AA: dark text on the lighter dark-mode teal */
+  --on-success: #1a1c21; /* dark-mode success/danger fills are light; dark text keeps AA */
+  --on-danger: #1a1c21;
+  --on-warning: #1a1c21;
+  --on-surface: var(--ink);
+  --on-surface-raised: var(--ink);
+  --on-surface-overlay: var(--ink);
+  --on-surface-muted: var(--ink);
+  --on-background: var(--ink);
+  --on-brand-hover: var(--on-brand);
+  --on-brand-subtle: var(--ink);
+  --on-accent-hover: var(--on-accent);
+  --on-accent-subtle: var(--ink);
+  --on-success-subtle: var(--ink);
+  --on-success-strong: var(--on-success);
+  --on-warning-subtle: var(--ink);
+  --on-warning-strong: var(--on-danger);
+  --on-danger-subtle: var(--ink);
+  --on-danger-strong: var(--on-danger);
+  --on-info: var(--on-success);
+  --on-info-subtle: var(--ink);
+  --on-info-strong: var(--on-success);
+  --on-status-critical: var(--on-danger);
+  --on-status-critical-subtle: var(--on-danger-subtle);
+  --on-status-critical-strong: var(--on-danger-strong);
+  --on-status-warning: var(--on-warning);
+  --on-status-warning-subtle: var(--on-warning-subtle);
+  --on-status-warning-strong: var(--on-warning-strong);
+  --on-status-notice: var(--on-info);
+  --on-status-notice-subtle: var(--on-info-subtle);
+  --on-status-notice-strong: var(--on-info-strong);
+  --on-status-ok: var(--on-success);
+  --accent-hover: var(--accent7);
+  --odoo-primary: var(--accent6);
+  --odoo-primary-hover: var(--accent7);
 
   --shadow-subtle: 0 1px 2px rgb(0 0 0 / 35%);
   --shadow-raised: 0 4px 12px rgb(0 0 0 / 40%);
@@ -261,4 +342,57 @@ html.dark {
   --odoo-button-box: var(--n2);
 }
 
-
+/* Brand (brand/ingenium-v2): cinnabar is the keystone only, same value in both themes. */
+:root {
+  --brand-basalt: #1a1c21;
+  --brand-limestone: #f3f4f6;
+  --brand-cinnabar: #cf4527;
+  --bot-tile: var(--brand-basalt);
+  --bot-arch: var(--brand-limestone);
+  --bot-keystone: var(--brand-cinnabar);
+  /* Basalt designer chrome hairline: 4.18 on #1a1c21, 3.85 on #212329, 3.33 on #2b2e35. */
+  --chrome-border-strong: #787e8a;
+  /* Designer canvas (View Designer pasteboard + paper), light. */
+  --canvas-basalt: #1a1c21;
+  --canvas-limestone: #f3f4f6;
+  --canvas-desk: #e4e5e8;
+  --canvas-desk-dot: rgb(26 28 33 / 0.1);
+  --canvas-paper: #fcfcfb;
+  --canvas-paper-ink: #1a1c21;
+  --canvas-paper-muted: #5b606b;
+  --canvas-paper-edge: rgb(26 28 33 / 0.08);
+  --canvas-paper-rule: rgb(26 28 33 / 0.09);
+  --canvas-paper-lift: 0 1px 1px rgb(26 28 33 / 0.04),
+    0 2px 6px -2px rgb(26 28 33 / 0.06),
+    0 24px 48px -28px rgb(26 28 33 / 0.3);
+  --canvas-lane: rgb(26 28 33 / 0.035);
+  --canvas-select: #0f766e;
+  --canvas-select-tint: rgb(15 118 110 / 0.06);
+  --canvas-hover-edge: rgb(26 28 33 / 0.16);
+  --canvas-warn: #b45309;
+  --canvas-danger: #dc2626;
+  --canvas-ghost-dot: #2dd4bf;
+  --canvas-ghost-meta: #8b919c;
+}
+html.dark, .dark {
+  --bot-tile: var(--brand-limestone);
+  --bot-arch: var(--brand-basalt);
+}
+/* Designer canvas, dark (page theme only; the chrome's own .dark scope must not flip the paper). */
+html.dark {
+  --canvas-desk: #0e0f12;
+  --canvas-desk-dot: rgb(243 244 246 / 0.06);
+  --canvas-paper: #1f2127;
+  --canvas-paper-ink: #f3f4f6;
+  --canvas-paper-muted: #a8adb7;
+  --canvas-paper-edge: rgb(243 244 246 / 0.09);
+  --canvas-paper-rule: rgb(243 244 246 / 0.08);
+  --canvas-paper-lift: inset 0 1px 0 rgb(243 244 246 / 0.04),
+    0 24px 48px -24px rgb(0 0 0 / 0.65);
+  --canvas-lane: rgb(243 244 246 / 0.04);
+  --canvas-select: #2dd4bf;
+  --canvas-select-tint: rgb(45 212 191 / 0.08);
+  --canvas-hover-edge: rgb(243 244 246 / 0.2);
+  --canvas-warn: #fbbf24;
+  --canvas-danger: #f87171;
+}
