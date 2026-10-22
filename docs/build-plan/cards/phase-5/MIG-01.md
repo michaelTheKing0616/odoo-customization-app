@@ -39,7 +39,7 @@ Acceptance criteria:
 - AC1: Pydantic models in `apps/api/app/migration_studio/contract.py` carry exactly the fields listed in the epic doc §6, or in `00_BASELINE.md` B5 for the shared scan types, for: MigrationJob, EntityMapping, DryRunResult, ReconcileReport (a test compares each model's field set to that list).
 - AC2: Routes exist: `POST /api/connections/{id}/migrations`; `POST …/migrations/{mid}/files`; `GET …/migrations/{mid}/mapping`; `PUT …/migrations/{mid}/mapping`; `POST …/migrations/{mid}/dry-run`; `POST …/migrations/{mid}/import`; `GET …/migrations/{mid}/reconcile`. Each returns the B5 error envelope on 403, 404 and 422.
 - AC3: Workspace B calling any route with workspace A's ids gets 404, and every route is listed in `app/security/idor_registry.py` (registry test).
-- AC4: `apps/web/src/lib/api/migration.ts` mirrors the field names (a test compares `app.openapi()` component keys with a TS key fixture); `pnpm typecheck` is green.
+- AC4: `apps/web/src/lib/api/migration.ts` mirrors the field names (a test compares `app.openapi()` component keys with a TS key fixture); `pnpm typecheck` reports no error in this card's allow-list files (errors that already exist elsewhere, such as `b0_dist.test.ts`, are listed in the Tester packet, not fixed here).
 - AC5: Handlers call one injected engine function each; with a fake engine every route returns the documented shape; this card makes no Odoo call.
 Decision table:
 
@@ -51,7 +51,7 @@ Decision table:
 
 Test plan:
 - `cd apps/api && uv run pytest -q tests/test_nf_migration_studio_contract.py` → all pass
-- `cd apps/web && pnpm typecheck` → 0 errors
+- `cd apps/web && pnpm typecheck` → no error in this card's allow-list files; baseline errors elsewhere listed, not fixed
 Gate: none. Narrowest named test green → Tester PASS (separate session; runs the oracle tests unmodified) → Reviewer PASS (separate session; INV-01..18, the allow-list and the ACs line by line).
 Evidence to log: One line in `apps/api/evals/v2/PROGRESS.md`: date · card ID · command · result counts · label ([Done, code], or [Done, live] for live cards). Tester packet and Reviewer verdict summary in `docs/build-plan/STATE.md` token ledger.
 Rollback: Revert this card's diff (allow-list files only). No Odoo writes outside dropped `ingenium_*` DBs.

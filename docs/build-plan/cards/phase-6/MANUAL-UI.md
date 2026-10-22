@@ -46,7 +46,7 @@ Decision table:
 
 Test plan:
 - `cd apps/web && pnpm vitest run src/components/manuals` → all pass
-- `cd apps/web && pnpm typecheck && pnpm lint` → 0 errors
+- `cd apps/web && pnpm typecheck; pnpm lint` → no error in this card's allow-list files; baseline errors elsewhere listed, not fixed
 Gate: B (contact sheet in `docs/vision-verify/manuals/`; Tope reviews before close). Tester runs the named tests; Reviewer runs the `07` §6 checklist.
 Evidence to log: One line in `apps/api/evals/v2/PROGRESS.md`: date · card ID · command · result counts · label ([Done, code], or [Done, live] for live cards). Tester packet and Reviewer verdict summary in `docs/build-plan/STATE.md` token ledger.
 Rollback: Revert this card's diff (allow-list files only). No Odoo writes outside dropped `ingenium_*` DBs.

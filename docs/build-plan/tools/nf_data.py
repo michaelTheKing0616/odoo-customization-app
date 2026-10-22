@@ -27,7 +27,7 @@ def contract(types: str, router: str, web: str, models: list[str], endpoints: li
             f"Pydantic models in `{types}` carry exactly the fields listed in the epic doc §6, or in `00_BASELINE.md` B5 for the shared scan types, for: {', '.join(models)} (a test compares each model's field set to that list).",
             "Routes exist: " + "; ".join(f"`{e}`" for e in endpoints) + ". Each returns the B5 error envelope on 403, 404 and 422.",
             "Workspace B calling any route with workspace A's ids gets 404, and every route is listed in `app/security/idor_registry.py` (registry test).",
-            f"`{web}` mirrors the field names (a test compares `app.openapi()` component keys with a TS key fixture); `pnpm typecheck` is green.",
+            f"`{web}` mirrors the field names (a test compares `app.openapi()` component keys with a TS key fixture); `pnpm typecheck` reports no error in this card's allow-list files (errors that already exist elsewhere, such as `b0_dist.test.ts`, are listed in the Tester packet, not fixed here).",
             "Handlers call one injected engine function each; with a fake engine every route returns the documented shape; this card makes no Odoo call.",
         ] + (extra_acs or []),
         "table": [
@@ -35,7 +35,7 @@ def contract(types: str, router: str, web: str, models: list[str], endpoints: li
             ("body misses a required field", "422 `VALIDATION` envelope with the field name"),
             ("fake engine returns the documented shape", "200; response model validates"),
         ],
-        "tests": [pt("{T}/test_nf_{py}_contract.py"), ("cd apps/web && pnpm typecheck", "0 errors")],
+        "tests": [pt("{T}/test_nf_{py}_contract.py"), ("cd apps/web && pnpm typecheck", "no error in this card's allow-list files; baseline errors elsewhere listed, not fixed")],
         "context": ["apps/api/app/routers/suite_insights.py (router pattern)", "apps/api/app/security/idor_registry.py"],
     }
 
@@ -155,7 +155,7 @@ def expand(epic: dict) -> list[dict]:
                    ("API returns 503 `ODOO_UNREACHABLE`", "last results stamped with their time; write buttons off"),
                    ("API returns 403 `ROLE_DENIED`", "role message; no run button")],
          "tests": [(f"cd apps/web && pnpm vitest run src/components/{slug}", "all pass"),
-                   ("cd apps/web && pnpm typecheck && pnpm lint", "0 errors")],
+                   ("cd apps/web && pnpm typecheck; pnpm lint", "no error in this card's allow-list files; baseline errors elsewhere listed, not fixed")],
          "context": [f"docs/design/specs/{slug}.md", "apps/web/src/components/ui/ (existing components)"]},
         {"id": e2e_id, "kind": "e2e", "type": "test", "owner": "UI", "budget": "S",
          "score": (1, 0, 0, 1, 1, 0), "deps": [ui_id],
