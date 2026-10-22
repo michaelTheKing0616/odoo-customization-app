@@ -11,6 +11,8 @@ venv/
 # Node
 node_modules/
 .next/
+.next-build
+.next-e2e
 dist/
 .turbo/
 
@@ -46,3 +48,12 @@ docker/**/pgdata/
 # Odoo local addons mounts (keep empty dir via .gitkeep)
 docker/extra-addons/*
 !docker/extra-addons/.gitkeep
+
+# API rotating logs
+apps/api/logs/
+docker/ingenium-sandbox-addons/
+
+# UI reference pack (~212 MB of vendor media; keep the .md notes in git)
+docs/design/references/ingenium-ui/**
+!docs/design/references/ingenium-ui/**/
+!docs/design/references/ingenium-ui/**/*.md

@@ -82,6 +82,7 @@
   Implementation-job scorecard is separate from ModuleSpec 10.0. **Promote to another
   connection stays human.** Refuse `write_mode=production`. Do not clone a customer
   production database.
+- **Live schema before any LLM call that names Odoo structure.** The connected instance is introspected first (installed modules, models, fields, and view order). That slice is what the model sees. The engine rejects a model, field, method, or placement that is not in the slice. GenerateIR already gates invent. The other LLM surfaces are cards GND-PKT through GND-GATE in `docs/plans/next-phase/cards/T1_LIVE_CONTEXT.md`. A call with no connection (copy, billing) is out of scope.
 - **Generation Engine** (Draft Studio): classify before pack/LLM **and before component
   grain**. Residual → stock-first pack or unpacked seed. Explicit `stock_first` + residual
   none → `stock_reuse` (empty spec; Job Autopilot is the done-bar) **only when residual
@@ -92,9 +93,7 @@
   Option A only if we ask” must not select gold POS or invoice Pay/QR. Option A gold
   (`pos_receipt_options` / `invoice_qweb` / `currency_rate_cbn`) is a shortcut when the
   prompt matches. Any other Python/QWeb/HTTP/OWL ask is LLM-authored (`option_a_authored`);
-  zip and sandbox stay locked until the authoring gate passes. Missing inherit hosts
-  (`sale.order` not on the connection) offer to install the stock CE app (Sales / `sale`);
-  that is not Live Install of the zip — re-verify the gate, then zip → sandbox → Promote.
+  zip and sandbox stay locked until the authoring gate passes. Missing inherit hosts (`sale.order` not on the connection) offer to install the stock Community app (Sales / `sale`), explain why, wait for one confirmation, install, re-read the schema, and continue the same request. That is any mode, including a fresh database. It is not Live Install of a generated zip. The user is not asked to pick the app. See GND-MOD.
   App Studio skips pack/stock chips when classify is gold or authored; inherit seeds `sale.order` for sales markup/WHT
   (not a new home tile). Intent LLM may extract `host_model` / `needs_module`. App Studio
   shows a locked diagnosis card (host, inherit vs new app, Option A vs fields) and generate
@@ -107,6 +106,15 @@
   screenshot denylists — new Odoo failures add a property, never `if display_name == "…"`.
   Local uvicorn on `:8001` is started **without `--reload`** — routing fixes are not live
   until that process is killed and restarted.
+- **UI bar (2026-10-04, Tope):** excellent UI is part of done on every screen this app
+  ships, not a later restyle. Before editing a screen, load the Prime skills for that
+  surface (taste, motion, copy, accessibility). Operate screens stay dense and calm,
+  on the existing studio tokens, Base UI, and Sonner. Motion is interruptible,
+  transform/opacity, under 300ms, and reduced-motion safe. A card is not done while
+  the screen is a plain form with a generic spinner, a missing empty/error/loading
+  state, or copy that does not say what will happen. Marketing pages may be more
+  expressive. They still use the same type, color, and motion rules. Do not invent a
+  second visual language.
 - Credentials encrypted at rest; prefer Odoo API keys over passwords.
 - **App API auth (Phase 7):** `AUTH_MODE=api_key` + `APP_API_KEY` or hashed keys in
   `app_api_keys`. Send `Authorization: Bearer …` or `X-API-Key`. Default `AUTH_MODE=off`

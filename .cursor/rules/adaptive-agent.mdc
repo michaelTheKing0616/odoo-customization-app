@@ -11,6 +11,6 @@ Product locks in `AGENTS.md` and `MEMORY.md` win over this file. This file only 
 - Score escalation pressure only when the route is unclear: complexity, uncertainty, failure consequence, constraint density, verification difficulty, irreversibility (0–3 each) plus prior failed attempts (0–2). Bands: 0–5 cheap or a tool; 6–9 strong generalist; 10–13 higher effort; 14–16 frontier; 17–20 frontier plus an independent "what could be wrong?" review.
 - Escalate only a diagnosed model-capability gap, and only the unresolved slice.
 - Deterministic work uses tests, linters, RPC probes, and SQL. Do not spend a model call to compute what a tool can check.
-- UI work loads the installed Prime skills for that surface (taste, motion, copy, accessibility) before editing screens. Motion is tasteful, interruptible, transform/opacity, under 300ms, and reduced-motion safe. Operate-mode screens stay dense and calm.
+- UI work loads the installed Prime skills for that surface (taste, motion, copy, accessibility) before editing screens. Motion is tasteful, interruptible, transform/opacity, under 300ms, and reduced-motion safe. Operate-mode screens stay dense and calm. The UI bar in `AGENTS.md` is part of done for every screen the card touches. A later restyle card is not a reason to ship a plain screen.
 - Stop when the gate for the current slice is met. Do not polish past the written done condition.
 - Long-running phase state lives in `docs/plans/INGENIUM_NEXT_PHASE_PROGRESS.md`.

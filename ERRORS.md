@@ -11,6 +11,11 @@
 **Note for next time:** one line, generalized if possible
 ```
 
+### 2026-10-04 — DEV-SR Script Runner sandbox still reaches os
+**Didn't work:** Two repairs. First dropped the stored Odoo client so `odoo._client._dispatch_execute` could not send `res.users` unlink. Second rebuilt `execute_kw` with `types.FunctionType` onto a clean globals dict so `execute_kw.__globals__["os"]` was absent. The re-check only looked at the top-level keys of that dict.
+**Worked instead:** Not fixed. Card stopped at the repair cap. `_script_builtins()` still stores the live `_guarded_import` and `_blocked_open` functions, and those functions' `__globals__` are `child_main`, which imports `os` and `builtins`.
+**Note for next time:** A clean globals dict is not a sandbox if any function in it was defined in the module that imports `os`. Rebuild those guards the same way, or the walk `["__builtins__"]["__import__"].__globals__["os"]` stays open.
+
 ### 2026-09-16 — implied_ids false-positive blocked Option A zip
 **Didn't work:** View↔Python gate scanned all XML `<field name>` including `res.groups` `implied_ids` in security data → structural_zip fail, zip/sandbox/Promote disabled.
 **Worked instead:** Only scan `ir.ui.view` arch/xpath widgets; skip `/security/` unless it embeds a view.

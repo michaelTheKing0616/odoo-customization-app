@@ -1,3 +1,9 @@
+# UI bar on every screen (2026-10-04)
+**Decided:** Tope. Excellent, current, and tasteful UI is part of done throughout the app, including Code Studio, Script Runner, and Power Ops when those cards run. A later restyle card is not a reason to ship a plain screen. Operate screens stay dense and calm on the existing studio tokens, Base UI, and Sonner. Motion stays interruptible, transform/opacity, under 300ms, and reduced-motion safe. Recorded in `AGENTS.md` and `cards/DEV_MODES_PRODUCTION.md`.
+
+# R3 is one approval; the two-person gate moves to heavy R4 (2026-10-04)
+**Decided:** Tope. Everyday consultant work (security, money, modules, a real group grant) is R3: one approval on staging and production, and the approver may be the requester. Heavy R4 (module uninstall, data delete, granting admin/system/service, fiscal year, currency, chart of accounts, accounting or legal sequences) keeps the old production R3 gate: two distinct people, domain owner when elevated, simulation, backup, and an allowed window. The same person through two identities counts once. Hard stop stays on raw SQL, `rpc.write`, payment secrets, posted accounting entries, lock dates, and a group-less access rule. L4 still never applies R3 or R4. Recorded in `docs/plans/next-phase/01_LOCKS_DECISIONS_CONFLICTS.md` and `02_APPROVAL_FLOW.md`.
+
 # Waiting items closed (2026-10-03)
 **Decided:** Tope accepted the recommendations.
 - D8 / ADR-02: thin in-house gateway in `apps/api/app/llm_gateway`. LiteLLM stays out. T4-LLM3 may use that gateway when its card is reached. Do not add LiteLLM.
@@ -7,6 +13,15 @@
 - BL-08: a later pass may propose small commits by directory. Those commits wait for a second yes. Caches, the pnpm store, patch files, and recaptured token screenshots stay out.
 - Push: `premium-local-tip` stays local until a later explicit yes.
 - Mac §9 stays open. Only an operator paste in the product UI closes it.
+
+# Every structural LLM call sees the live schema first (2026-10-04)
+**Decided:** A model that names a module, model, field, method, or view placement receives a packet built from the connected instance, including form/list/search field order. The engine rejects names outside that packet. GenerateIR already does the reject step for invent. Cards GND-PKT through GND-GATE in `docs/plans/next-phase/cards/T1_LIVE_CONTEXT.md` extend it to Draft Studio, Expert, Live Demo, Autopilot, ingest, workflow, and the bot tools. Calls with no Odoo connection are out of scope.
+
+# Harness is a cross-cutting queue, not a PR live-model gate (2026-10-03)
+**Decided:** Continuous eval, LLM-as-judge, and shadow/canary are cards H1–H8 in `docs/plans/next-phase/cards/HARNESS.md`. Categories stay `golden`, `adversarial`, `ambiguity`, `version_drift`, `cost`, `safety`. A candidate never gates CI. PR runs of the active set use property checks and cassettes. Live judging and shadow calls are nightly and cost-capped. This does not replace inline self-critique or the T8 scenario runner.
+
+# Bridge connectors are not frozen at six methods (2026-10-03)
+**Decided:** Ingenium Bridge must target any platform to Odoo. The stable boundary is the engine above the connector (contract, queue, idempotency, tiers I–III, catalog gate). `ShopifyConnector`'s six methods are the REST-plus-webhook shape that exists in code, not the ceiling. Connectors declare capabilities, including search, cancel, and poll. Webhook signatures are required only when the platform sends webhooks. Auth stays on the Connection. The connector does not write Odoo. Recorded in `docs/plans/next-phase/T3_BRIDGE.md`.
 
 # L4 autonomy, Odoo 20 GA, Prime UI stack (2026-10-02)
 **Decided:** D10 — L4 production allow-list autonomy is in this phase. It amends the agent spec's "No L4". Gates GATE-L4-01–12 in `docs/plans/next-phase/01_LOCKS_DECISIONS_CONFLICTS.md`. The numeric thresholds (200 L3 applies, 60 days, ≤1% rollback, 30-day standing rules, daily cap 20, blast radius 50) were set in that file and still need a confirm before L4 is turned on. D11 — Community 20 is GA beside 17, 18, and 19. 16 stays experimental. ≤15 stays refused. 20 writes `ir.access`, not `ir.rule`. D12 — UI moves to Base UI, Sonner, and `motion/react`. `cmdk` stays. One component family per card. The working spec is `docs/plans/next-phase/00_INDEX.md`. The older consolidated spec stays, with a redirect header. No product code in this pass.
@@ -1710,3 +1725,30 @@ proxied frames), optionally themed from the connected instance's own extracted p
 **Decided:** Top-3 semantic fixes run in `run_apply_readiness_pass` (selection/domain align, branch dedup, inventory reason M2O + search filters); scorecard flags domain/selection drift; `retail_supermarket` pack seeds clean branch (`x_address_id` + `x_country_id`, no char dupes), workflow `state_field`s, and `x_inventory_reason` / `x_inventory_adjustment` with `x_reason_id`.
 **Why:** Honest grade gap was validators green but semantics/UX not — fix at merge source and after enrich, not only in critique.
 **Rejected:** Relying on LLM/critique alone to drop `sent`/`paid` domain allowlists or text `x_reason` fields.
+
+### 2026-10-05 — Ground all 13 ungrounded LLM call sites (GND-GATE)
+**Decided:** Every call site that GND-GATE lists as `ungrounded` gets the live `schema_packet` in its prompt and a post-call filter that drops names not in the packet. That covers the draft pipeline (8), Option A authoring and repair (2), import column mapping (1), and display text (2). Cards: GND-G-PIPE, GND-G-OPTA, GND-G-MAP, GND-G-TEXT. GND-GATE is DONE only when none remain.
+**Why:** The lock is "live schema before any LLM call that names Odoo structure". The finish-step GenerateIR admit and the sandbox catch invented names late; prose can still show invented fields.
+**Rejected:** Counting the draft pipeline as grounded via the finish-step admit; recording display-only text as out of scope.
+
+### 2026-10-21 — App Studio v3 Pack approved; senior-Odoo craft; no pack crutch (DEC-036..041)
+**Decided:** The v3 Brief Ledger (`docs/build-plan/app-studio/00_PACK.md`) supersedes APP_STUDIO_FIX_PLAN (a)/(b) under profile v3 only (DEC-041). Quality comes from a craft stage keyed on the shape of the ledger (`ODOO_CRAFT.md`: K01-K44 always-on idioms verified per major 17-20, U01-U12 opt-in upgrades, Q1-Q4 quality checks). Vertical domain packs are off on the v3 App Studio path. Stock-first app reuse stays (live retrieval + host_fit). The Bridge retries for 24 h by time instead of by attempt count (DEC-036). The live LLM budget for experiments is 1,500 calls / $30 (DEC-040). Tope: "the absolute best design on every screen".
+**Why:** Tope wants output that matches a team of senior Odoo developers, with no pack crutch. Packs guess the industry; craft encodes how Odoo is built.
+**Rejected:** Packs as a structure or fallback source on v3; LLM-written Python for craft (fixed templates only; lane is DEC-042, open).
+**Flag:** AGENTS.md "Generation Engine… stock-first pack" still describes Draft Studio. It is unchanged until Tope decides whether Draft Studio drops packs too.
+
+### 2026-10-21 — Module route for Python idioms; Draft Studio joins v3; live-DB grounding in every v3 stage; Elevate (DEC-042..045)
+**Decided:** DEC-042 module route (Python-backed craft only in the generated module, fixed templates). DEC-043 Draft Studio drops packs and runs v3 once v3 passes AS-RELEASE-BARS (AS-DRAFT-ADOPT, then AS-PACK-RETIRE). DEC-044 upgrade chips uncapped (top 3 inline, rest one click away); the ≤ 3 questions rule stays. Pack §6.7: v3 builds one live schema packet per run for K, L, C, D and A, extended with a view map (containers, labels, smart buttons, owning module), placement by meaning with post-apply re-read, and reuse of what exists (AS-GROUND-*). DEC-045 Elevate program (`docs/build-plan/elevate/`, phase 7).
+**Why:** Tope: build "with a deep, full, contextual knowledge of the actual DB", most of all when extending; the packet today flattens views to field order, so extensions could land in the wrong container or duplicate stock.
+**Rejected:** Live advanced actions for Python idioms; a count cap on upgrade suggestions; a second placement engine for View Designer AI (it reuses AS-GROUND-PLACE).
+**Flag:** AGENTS.md Draft Studio pack sentence changes only when AS-DRAFT-ADOPT ships, with Tope's wording approval.
+
+### 2026-10-21 — Build plan Stage 2 + all card packs (G1 pending; DEC-046..049 proposed)
+**Decided:** Phases 0–7 per `docs/build-plan/04_PHASES.md` (master skeleton plus Phase 7 Elevate; VD and WF in Phase 3; Reports, Code Runner and bots in Phase 4). One Grok model (`grok-4.7-xhigh`) fills L1–L3; tiers differ by briefing, Elite notes, oracles and Reviewer tier. 847 cards (`coverage/phases.md`); 735 generated by `tools/build_cards.py` with verbatim ACs, released per phase only after the G2 Prep check. Five Elevate cards merged into the handover cards they duplicated (SEC-TENANCY, SEC-REDTEAM-EXT, REL-STATIC-WRITE, OBS-HEALTH, V-SEC-CR-SANDBOX). `budget.json` uses `phase_weights` (two active phases at most).
+**Why:** Tope: the plan must be complete enough for a Grok orchestrator in a fresh session to run Worker/Tester/Reviewer without the planner.
+**Rejected:** Hand-writing 735 cards (cost, drift from the source text); a separate Grok tier per role (only one Grok model is visible, DEC-030).
+
+### 2026-10-21 — G1 approved (Tope: "yes to decisions")
+**Decided:** Every G1 default taken: DEC-003, 004, 005, 015, 024, 026–029, 032 and DEC-046 (L3 Oracle sessions; E1 reviews oracles at score ≥ 10), DEC-047 (dev-only `pytest-randomly`, later `hypothesis`; added by B0-GREEN), DEC-048 (phase order in `04_PHASES.md`), DEC-049 (generated cards released per phase after the G2 Prep check).
+**Why:** Plan skeleton and all card packs delivered; lint 0 errors, 0 uncovered.
+**Open:** GATE-A (DEC-006..014, 023, 025, 031, 033, 034) and GATE-C/D (DEC-016..019) are asked when the owning card is next; 18 cards carry Gate A.

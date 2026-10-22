@@ -1,0 +1,49 @@
+# Isolated, disposable Odoo sandbox: one compose project per Odoo version, named ingenium_sandbox_v<N>.
+# NEVER shared with a dev stack (own containers, own Postgres, own volumes, own addons dir, own port).
+# The API sets: ISB_NAME (ingenium_sandbox_v<N>), ISB_PORT (18100+N), ISB_ADDONS (abs path), ODOO_SANDBOX_IMAGE.
+#   docker compose -p ingenium_sandbox_v20 -f docker/docker-compose.ingenium-sandbox.yml up -d
+
+services:
+  db:
+    image: postgres:16
+    container_name: ${ISB_NAME:?set ISB_NAME}_db
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: odoo
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  odoo:
+    image: ${ODOO_SANDBOX_IMAGE:-odoo:19}
+    container_name: ${ISB_NAME:?set ISB_NAME}_odoo
+    depends_on:
+      db:
+        condition: service_healthy
+    # Odoo 20 CE listens on loopback only by default; the published port needs 0.0.0.0 inside the container.
+    command: ["odoo", "--http-interface=0.0.0.0"]
+    ports:
+      - "127.0.0.1:${ISB_PORT:?set ISB_PORT}:8069"
+    environment:
+      HOST: db
+      USER: odoo
+      PASSWORD: odoo
+    volumes:
+      - sandbox-web-data:/var/lib/odoo
+      - ${ISB_ADDONS:?set ISB_ADDONS}:/mnt/extra-addons
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8069/web/login', timeout=5)\"",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 40s
+
+volumes:
+  sandbox-web-data:

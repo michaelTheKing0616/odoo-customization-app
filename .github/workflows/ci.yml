@@ -56,6 +56,12 @@ jobs:
           if [ -f app/request_id.py ]; then
             uv run --extra dev ruff check app/request_id.py app/logging_config.py
           fi
+      - name: AI red-team pack + guards (release gate)
+        env:
+          INGENIUM_AI_CACHE_PATH: ${{ runner.temp }}/ai_cache.sqlite
+          INGENIUM_GUARD_HISTORY: "off"
+          INGENIUM_GUARD_MODEL: "off"
+        run: uv run --directory apps/api pytest -q tests/test_ai_shared_client.py tests/test_power_ops_money_lock.py
       - name: API unit suite
         run: >
           uv run --directory apps/api pytest -q
