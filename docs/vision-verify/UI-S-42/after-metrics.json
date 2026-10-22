@@ -1,0 +1,146 @@
+[
+  {
+    "file": "after-trial-desktop.png",
+    "overflowX": 0,
+    "primaries": 1,
+    "emDash": false
+  },
+  {
+    "file": "after-active-desktop.png",
+    "overflowX": 0,
+    "primaries": 1,
+    "emDash": false
+  },
+  {
+    "file": "after-free-desktop.png",
+    "overflowX": 0,
+    "primaries": 1,
+    "emDash": false
+  },
+  {
+    "file": "after-choose-desktop.png",
+    "overflowX": 0,
+    "primaries": 1,
+    "emDash": false
+  },
+  {
+    "file": "after-past-due-desktop.png",
+    "overflowX": 0,
+    "primaries": 1,
+    "emDash": false
+  },
+  {
+    "file": "after-internal-desktop.png",
+    "overflowX": 0,
+    "primaries": 1,
+    "emDash": false
+  },
+  {
+    "file": "after-upgraded-desktop.png",
+    "overflowX": 0,
+    "primaries": 1,
+    "emDash": false
+  },
+  {
+    "file": "after-portal-error-desktop.png",
+    "overflowX": 0,
+    "primaries": 1,
+    "emDash": false
+  },
+  {
+    "file": "after-at-limit-desktop.png",
+    "overflowX": 0,
+    "primaries": 1,
+    "emDash": false
+  },
+  {
+    "file": "after-loading-desktop.png",
+    "overflowX": 0,
+    "primaries": 0,
+    "emDash": false
+  },
+  {
+    "file": "after-empty-desktop.png",
+    "overflowX": 0,
+    "primaries": 0,
+    "emDash": false
+  },
+  {
+    "file": "after-error-desktop.png",
+    "overflowX": 0,
+    "primaries": 0,
+    "emDash": false
+  },
+  {
+    "file": "after-trial-narrow.png",
+    "overflowX": 0,
+    "primaries": 1,
+    "emDash": false
+  },
+  {
+    "file": "after-active-narrow.png",
+    "overflowX": 0,
+    "primaries": 1,
+    "emDash": false
+  },
+  {
+    "file": "after-free-narrow.png",
+    "overflowX": 0,
+    "primaries": 1,
+    "emDash": false
+  },
+  {
+    "file": "after-choose-narrow.png",
+    "overflowX": 0,
+    "primaries": 1,
+    "emDash": false
+  },
+  {
+    "file": "after-past-due-narrow.png",
+    "overflowX": 0,
+    "primaries": 1,
+    "emDash": false
+  },
+  {
+    "file": "after-internal-narrow.png",
+    "overflowX": 0,
+    "primaries": 1,
+    "emDash": false
+  },
+  {
+    "file": "after-upgraded-narrow.png",
+    "overflowX": 0,
+    "primaries": 1,
+    "emDash": false
+  },
+  {
+    "file": "after-portal-error-narrow.png",
+    "overflowX": 0,
+    "primaries": 1,
+    "emDash": false
+  },
+  {
+    "file": "after-at-limit-narrow.png",
+    "overflowX": 0,
+    "primaries": 1,
+    "emDash": false
+  },
+  {
+    "file": "after-loading-narrow.png",
+    "overflowX": 0,
+    "primaries": 0,
+    "emDash": false
+  },
+  {
+    "file": "after-empty-narrow.png",
+    "overflowX": 0,
+    "primaries": 0,
+    "emDash": false
+  },
+  {
+    "file": "after-error-narrow.png",
+    "overflowX": 0,
+    "primaries": 0,
+    "emDash": false
+  }
+]

@@ -1,0 +1,16 @@
+{"label":"/e2e/kit (tabs, reduced motion) @390","scope":"page","violations":[{"id":"color-contrast","impact":"serious","nodes":5,"targets":[".attr-name.token:nth-child(2)",".attr-value.token:nth-child(3)",".attr-name.token:nth-child(4)",".attr-value.token:nth-child(5)",".text-success"]}]}
+{"label":"/e2e/kit (tabs, reduced motion) @desktop","scope":"page","violations":[{"id":"color-contrast","impact":"serious","nodes":5,"targets":[".attr-name.token:nth-child(2)",".attr-value.token:nth-child(3)",".attr-name.token:nth-child(4)",".attr-value.token:nth-child(5)",".text-success"]}]}
+{"label":"/e2e/kit (tabs, Tab B selected by keyboard) @390","scope":"page","violations":[{"id":"color-contrast","impact":"serious","nodes":5,"targets":[".attr-name.token:nth-child(2)",".attr-value.token:nth-child(3)",".attr-name.token:nth-child(4)",".attr-value.token:nth-child(5)",".text-success"]}]}
+{"label":"/e2e/kit (tabs, Tab B selected by keyboard) @desktop","scope":"page","violations":[{"id":"color-contrast","impact":"serious","nodes":5,"targets":[".attr-name.token:nth-child(2)",".attr-value.token:nth-child(3)",".attr-name.token:nth-child(4)",".attr-value.token:nth-child(5)",".text-success"]}]}
+{"label":"/e2e/kit (tabs, reduced motion) @desktop","scope":"tabs","violations":[]}
+{"label":"/e2e/kit (tabs, reduced motion) @390","scope":"tabs","violations":[]}
+{"label":"/e2e/kit (tabs, Tab B selected by keyboard) @desktop","scope":"tabs","violations":[]}
+{"label":"/e2e/kit (tabs, Tab B selected by keyboard) @390","scope":"tabs","violations":[]}
+{"label":"/e2e/kit (tabs, reduced motion) @desktop","scope":"page","violations":[{"id":"color-contrast","impact":"serious","nodes":5,"targets":[".attr-name.token:nth-child(2)",".attr-value.token:nth-child(3)",".attr-name.token:nth-child(4)",".attr-value.token:nth-child(5)",".text-success"]}]}
+{"label":"/e2e/kit (tabs, reduced motion) @390","scope":"page","violations":[{"id":"color-contrast","impact":"serious","nodes":5,"targets":[".attr-name.token:nth-child(2)",".attr-value.token:nth-child(3)",".attr-name.token:nth-child(4)",".attr-value.token:nth-child(5)",".text-success"]}]}
+{"label":"/e2e/kit (tabs, Tab B selected by keyboard) @390","scope":"page","violations":[{"id":"color-contrast","impact":"serious","nodes":5,"targets":[".attr-name.token:nth-child(2)",".attr-value.token:nth-child(3)",".attr-name.token:nth-child(4)",".attr-value.token:nth-child(5)",".text-success"]}]}
+{"label":"/e2e/kit (tabs, Tab B selected by keyboard) @desktop","scope":"page","violations":[{"id":"color-contrast","impact":"serious","nodes":5,"targets":[".attr-name.token:nth-child(2)",".attr-value.token:nth-child(3)",".attr-name.token:nth-child(4)",".attr-value.token:nth-child(5)",".text-success"]}]}
+{"label":"/e2e/kit (tabs, reduced motion) @desktop","scope":"tabs","violations":[]}
+{"label":"/e2e/kit (tabs, reduced motion) @390","scope":"tabs","violations":[]}
+{"label":"/e2e/kit (tabs, Tab B selected by keyboard) @390","scope":"tabs","violations":[]}
+{"label":"/e2e/kit (tabs, Tab B selected by keyboard) @desktop","scope":"tabs","violations":[]}

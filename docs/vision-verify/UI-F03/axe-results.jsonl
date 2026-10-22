@@ -1,0 +1,102 @@
+{"label":"/admin (loading) @390","violations":[]}
+{"label":"/admin (loading) @desktop","violations":[]}
+{"label":"/admin @390","violations":[]}
+{"label":"/admin @desktop","violations":[]}
+{"label":"/connections/demo-conn (shell loading) @390","violations":[]}
+{"label":"/connections/demo-conn (shell loading) @desktop","violations":[]}
+{"label":"/pipelines (loading) @390","violations":[]}
+{"label":"/pipelines (loading) @desktop","violations":[]}
+{"label":"/pipelines @390","violations":[]}
+{"label":"/pipelines @desktop","violations":[]}
+{"label":"/settings (empty) @390","violations":[]}
+{"label":"/settings (empty) @desktop","violations":[]}
+{"label":"/settings (loading) @390","violations":[]}
+{"label":"/settings (loading) @desktop","violations":[]}
+{"label":"/settings @390","violations":[{"id":"aria-required-children","impact":"critical","nodes":1}]}
+{"label":"/settings @desktop","violations":[{"id":"aria-required-children","impact":"critical","nodes":1}]}
+{"label":"/settings/billing (empty) @390","violations":[]}
+{"label":"/settings/billing (empty) @desktop","violations":[]}
+{"label":"/settings/billing (loading) @390","violations":[]}
+{"label":"/settings/billing (loading) @desktop","violations":[]}
+{"label":"/settings/billing @390","violations":[]}
+{"label":"/settings/billing @desktop","violations":[]}
+{"label":"/settings/trust-safety (loading) @390","violations":[]}
+{"label":"/settings/trust-safety (loading) @desktop","violations":[]}
+{"label":"/settings/trust-safety @390","violations":[]}
+{"label":"/settings/trust-safety @desktop","violations":[]}
+{"label":"/admin (loading) @desktop","violations":[]}
+{"label":"/settings/billing @desktop","violations":[]}
+{"label":"/settings/trust-safety @desktop","violations":[]}
+{"label":"/settings @desktop","violations":[]}
+{"label":"/connections/demo-conn (shell loading) @desktop","violations":[]}
+{"label":"/admin (loading) @390","violations":[]}
+{"label":"/settings/billing @390","violations":[]}
+{"label":"/settings/trust-safety @390","violations":[]}
+{"label":"/settings @390","violations":[]}
+{"label":"/connections/demo-conn (shell loading) @390","violations":[]}
+{"label":"/settings/trust-safety (loading) @desktop","violations":[]}
+{"label":"/settings/billing (loading) @desktop","violations":[]}
+{"label":"/settings (loading) @desktop","violations":[]}
+{"label":"/settings/trust-safety (loading) @390","violations":[]}
+{"label":"/settings/billing (loading) @390","violations":[]}
+{"label":"/settings (loading) @390","violations":[]}
+{"label":"/admin @desktop","violations":[]}
+{"label":"/settings/billing (empty) @desktop","violations":[]}
+{"label":"/settings (empty) @desktop","violations":[]}
+{"label":"/admin @390","violations":[]}
+{"label":"/settings/billing (empty) @390","violations":[]}
+{"label":"/settings (empty) @390","violations":[]}
+{"label":"/pipelines @desktop","violations":[]}
+{"label":"/pipelines @390","violations":[]}
+{"label":"/pipelines (loading) @desktop","violations":[]}
+{"label":"/pipelines (loading) @390","violations":[]}
+{"label":"/settings/trust-safety @desktop","violations":[]}
+{"label":"/admin (loading) @desktop","violations":[]}
+{"label":"/settings/billing @desktop","violations":[]}
+{"label":"/settings @desktop","violations":[]}
+{"label":"/connections/demo-conn (shell loading) @desktop","violations":[]}
+{"label":"/admin (loading) @390","violations":[]}
+{"label":"/settings/billing @390","violations":[]}
+{"label":"/settings/trust-safety @390","violations":[]}
+{"label":"/settings @390","violations":[]}
+{"label":"/connections/demo-conn (shell loading) @390","violations":[]}
+{"label":"/settings/billing (loading) @desktop","violations":[]}
+{"label":"/settings/trust-safety (loading) @desktop","violations":[]}
+{"label":"/settings (loading) @desktop","violations":[]}
+{"label":"/settings/billing (loading) @390","violations":[]}
+{"label":"/settings/trust-safety (loading) @390","violations":[]}
+{"label":"/settings (loading) @390","violations":[]}
+{"label":"/settings/billing (empty) @desktop","violations":[]}
+{"label":"/settings (empty) @desktop","violations":[]}
+{"label":"/settings/billing (empty) @390","violations":[]}
+{"label":"/settings (empty) @390","violations":[]}
+{"label":"/pipelines @desktop","violations":[]}
+{"label":"/pipelines @390","violations":[]}
+{"label":"/pipelines (loading) @desktop","violations":[]}
+{"label":"/pipelines (loading) @390","violations":[]}
+{"label":"/settings/trust-safety @desktop","violations":[]}
+{"label":"/admin (loading) @desktop","violations":[]}
+{"label":"/connections/demo-conn (shell loading) @desktop","violations":[]}
+{"label":"/settings/billing @desktop","violations":[]}
+{"label":"/settings @desktop","violations":[]}
+{"label":"/settings/trust-safety @390","violations":[]}
+{"label":"/admin (loading) @390","violations":[]}
+{"label":"/settings/billing @390","violations":[]}
+{"label":"/connections/demo-conn (shell loading) @390","violations":[]}
+{"label":"/settings @390","violations":[]}
+{"label":"/settings/billing (loading) @desktop","violations":[]}
+{"label":"/settings/trust-safety (loading) @desktop","violations":[]}
+{"label":"/settings (loading) @desktop","violations":[]}
+{"label":"/settings/billing (loading) @390","violations":[]}
+{"label":"/settings/trust-safety (loading) @390","violations":[]}
+{"label":"/settings (loading) @390","violations":[]}
+{"label":"/settings/billing (empty) @desktop","violations":[]}
+{"label":"/admin @desktop","violations":[]}
+{"label":"/settings (empty) @desktop","violations":[]}
+{"label":"/settings/billing (empty) @390","violations":[]}
+{"label":"/admin @390","violations":[]}
+{"label":"/settings (empty) @390","violations":[]}
+{"label":"/pipelines @desktop","violations":[]}
+{"label":"/pipelines @390","violations":[]}
+{"label":"/pipelines (loading) @desktop","violations":[]}
+{"label":"/pipelines (loading) @390","violations":[]}
