@@ -6,7 +6,7 @@ Two modes:
 - **connection-aware**: only optional targets confirmed via live ``ir.model`` catalog
   and/or installed modules.
 
-Never auto-applies to Odoo; only steers ModuleSpec drafts + prompts.
+Never auto-applies to Odoo; only steers App plan drafts + prompts.
 """
 
 from __future__ import annotations

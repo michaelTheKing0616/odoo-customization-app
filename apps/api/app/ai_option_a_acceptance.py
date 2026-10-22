@@ -1,4 +1,4 @@
-"""Option A acceptance contracts — prove operator outcomes, not just install.
+"""custom code acceptance contracts — prove operator outcomes, not just install.
 
 Stamped on authored drafts as ``_option_a_acceptance``. Sandbox RPC smoke
 executes the checks; failures become Failure IR for self-heal repair.
@@ -109,7 +109,7 @@ def report_layout_online_checklist(*, prompt: str = "", host_model: str = "") ->
 
 
 def acceptance_for_draft(draft: dict[str, Any], *, prompt: str = "") -> dict[str, Any]:
-    """Build the acceptance contract for an Option A authored draft."""
+    """Build the acceptance contract for a custom-code authored draft."""
     text = (prompt or str(draft.get("_user_prompt") or "")).strip()
     host = _host_model(draft)
     if is_sales_markup_prompt(text) and (host in {None, "", "sale.order"} or host == "sale.order"):
@@ -478,9 +478,10 @@ def _run_one_check(
         return live
     if cid == "price_effect":
         live = _check_price_effect(execute_kw, host, authored, hint)
-        if live.get("ok"):
+        if live.get("ok") or live.get("measured"):
             return live
-        # Class floor: authored onchange/compute counts when live RPC is unavailable.
+        # Class floor: authored onchange/compute counts only when live RPC is unavailable
+        # (errored before measuring). A measured "no price effect" stays a failure.
         from app.ai_markup_wht_class import (
             is_markup_wht_class_brief,
             static_markup_wht_findings,
@@ -893,6 +894,8 @@ def _check_price_effect(
             "ok": passed,
             "detail": detail if passed else f"no price/markup effect — {detail}",
             "repair_hint": hint,
+            # Live RPC ran and measured the price: the static class floor must not override it.
+            "measured": True,
         }
     except Exception as exc:  # noqa: BLE001
         return {

@@ -1,6 +1,6 @@
-"""Re-run the Option A authoring gate after a stock host app is installed.
+"""Re-run the custom-code authoring gate after a stock host app is installed.
 
-No LLM. Zip stays locked until the gate passes. Promote stays human.
+No LLM. Zip stays locked until the gate passes. Publishing stays a step you confirm.
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ def run_option_a_reverify(
     if not is_option_a_authored_draft(payload_draft) and not requires_authoring_gate(payload_draft):
         raise HTTPException(
             status_code=409,
-            detail="Not an LLM-authored Option A draft — nothing to re-verify",
+            detail="Not an AI-authored custom-code draft — nothing to re-verify",
         )
     if not conn_id:
         raise HTTPException(status_code=422, detail="Pick a connection first")
@@ -87,7 +87,7 @@ def run_option_a_reverify(
         "message": (
             "Authoring gate passed — zip and sandbox unlocked."
             if payload.get("status") == "pass"
-            else "Authoring gate still has findings. Zip stays locked. Promote stays human."
+            else "Authoring gate still has findings. Zip stays locked. Publishing stays a step you confirm."
         ),
     }
     if row is not None:

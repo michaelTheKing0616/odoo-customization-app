@@ -64,7 +64,7 @@ _CONSTRAINT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"(?i)\bgift\s*/\s*basic receipt\b"),
     re.compile(r"(?i)\bstandard (?:odoo )?receipt keeps working\b"),
     re.compile(r"(?i)\bstandard odoo receipt remains the fallback\b"),
-    re.compile(r"(?i)\bcustom residual is the [^.\n]+"),
+    re.compile(r"(?i)\bcustom code is the [^.\n]+"),
 )
 _LEGAL_ENTITY_SPLIT_RE = re.compile(
     r"\b(multi[\s-]?compan(?:y|ies)|separate\s+legal\s+entit|"
@@ -84,7 +84,7 @@ _RESIDUAL_NONE_RE = re.compile(
     r"(?i)("
     r"custom\s+residual\s*:?\s*none|"
     r"residual\s*:?\s*none|"
-    r"custom residual is none"
+    r"custom code is none"
     r")"
 )
 _SECTION_HEADING_RE = re.compile(r"^(#{1,3})\s+(.+?)\s*$")
@@ -212,7 +212,7 @@ _PROCESS_HINTS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(?i)\bpayslip|payroll\b"), "payroll"),
     (re.compile(r"(?i)\bmatter file|conflict check\b"), "matter workflow"),
 )
-# "custom residual is a visitor log" / "Residual is the punch card, not a new POS".
+# "custom code is a visitor log" / "Residual is the punch card, not a new POS".
 _EXPLICIT_RESIDUAL_RE = re.compile(
     r"(?i)\b(?:custom\s+)?residual\s*(?:is|:)\s*"
     r"(?:a|an|the|just|simply|only)?\s*"
@@ -304,9 +304,9 @@ def _section_body(text: str, titles: tuple[str, ...]) -> str:
 
 
 def intent_corpus(prompt: str) -> str:
-    """Stated asks only — drop Out of scope / Unknowns / deferred Option A slots.
+    """Stated asks only — drop Out of scope / Unknowns / deferred custom code slots.
 
-    Out-of-scope 'receipt designer' and 'later Option A only if we ask for QWeb'
+    Out-of-scope 'receipt designer' and 'later custom code only if we ask for QWeb'
     must not become a POS/PDF capability hit.
     """
     text = (prompt or "").strip()
@@ -335,6 +335,74 @@ def is_residual_none(prompt: str) -> bool:
     return stated_residual_kind(prompt)[0] == "none"
 
 
+
+# Stated app name: "called X" / "named X" / **X** / "X" / markdown H1-H2 title.
+_APP_CUE_ONLY_RE = re.compile(
+    r"(?i)^(?:(?:a|an|the|complete|full|fully|new|custom|simple|tiny|small|basic|"
+    r"odoo|application|app|module|system|platform|solution|tool|residual|prefer|extend)\b[\s,-]*)+$"
+)
+# Document titles ("Operator brief", "Business Requirements ... Brief") are not app names.
+_DOC_TITLE_RE = re.compile(
+    r"(?i)\b(?:brief|requirements?|specifications?|spec|proposal|rfp|prd|document|"
+    r"scope of work|statement of work|sow|memo|notes)\b"
+)
+_GENERIC_HEADING_RE = re.compile(
+    r"(?i)^(?:domain|overview|summary|brief|requirements?|context|background|goal|goals|"
+    r"scope|features?|introduction|description|notes?|deliverables?)\s*:?$"
+)
+_NAME_AFTER_RE = re.compile(
+    r"""(?ix)(?:\b(?:app|application|module|system|tool|platform|workspace|suite|portal)\b
+       [^.\n]{0,30}?\b(?:called|named|titled)|\b(?:name|call)\s+it)\s*[:\-]?\s*
+    (?:\*\*(?P<b>[^*\n]{2,80})\*\*
+      |"(?P<q>[^"\n]{2,80})"
+      |\u201c(?P<cq>[^\u201d\n]{2,80})\u201d
+      |'(?P<sq>[^'\n]{2,80})'
+      |(?P<plain>(?-i:[A-Z][\w&'/-]*(?:[ \t]+(?:(?:&|and|of|for)[ \t]+)?[A-Z0-9][\w&'/-]*)*))
+    )"""
+)
+_LEAD_HEADING_RE = re.compile(r"\A\s*#{1,2}\s+(?P<h>[^\n#]{2,80}?)\s*#*\s*$", re.M)
+_LEAD_BOLD_RE = re.compile(
+    r"(?i)\b(?:app|application|module|system|tool|platform|workspace)\b[^\n*]{0,40}\*\*(?P<b>[^*\n]{2,80})\*\*"
+)
+
+
+def _clean_app_name(raw: str) -> str:
+    name = re.sub(r"[*_`]+", "", raw or "").strip()
+    name = re.sub(r"\s+", " ", name).strip(" .:;,-\"'\u201c\u201d")
+    if not name or len(name) > 60 or len(name) < 2:
+        return ""
+    if _APP_CUE_ONLY_RE.match(name) or _GENERIC_HEADING_RE.match(name):
+        return ""
+    if _DOC_TITLE_RE.search(name):
+        return ""
+    if re.match(r"^\d+[.)]?\s", name):
+        return ""
+    # Headings like "Add priority to Sales" are instructions, not names.
+    if re.match(r"(?i)^(?:add|create|build|make|extend|inherit|put|show|track|need|i\s+want)\b", name):
+        return ""
+    return name
+
+
+def stated_app_name(prompt: str) -> str:
+    """App name the operator stated (class-wide). Never cue words like 'complete custom app'."""
+    text = prompt or ""
+    m = _NAME_AFTER_RE.search(text)
+    if m:
+        name = _clean_app_name(next(g for g in m.groups() if g))
+        if name:
+            return name
+    first_line = next((ln for ln in text.splitlines() if ln.strip()), "")
+    h = _LEAD_HEADING_RE.match(first_line)
+    if h:
+        name = _clean_app_name(h.group("h"))
+        if name:
+            return name
+    b = _LEAD_BOLD_RE.search(first_line)
+    if b:
+        return _clean_app_name(b.group("b"))
+    return ""
+
+
 def stated_residual_kind(prompt: str) -> tuple[str, str]:
     """Return ('none'|'named'|'unstated', text). 'Do not invent x_invoice' is not none."""
     text = prompt or ""
@@ -345,9 +413,9 @@ def stated_residual_kind(prompt: str) -> tuple[str, str]:
             return "none", first
         if re.match(r"(?i)^named\s+in\s+brief\b", first):
             # Clarification placeholder — residual exists, title comes from the original brief.
-            return "named", ""
+            return "named", stated_app_name(text)
         if first:
-            return "named", first
+            return "named", stated_app_name(first) or first
     none_m = _RESIDUAL_NONE_RE.search(text)
     if none_m and not span_is_negated(text, none_m.start()):
         return "none", "None"
@@ -357,8 +425,8 @@ def stated_residual_kind(prompt: str) -> tuple[str, str]:
         if re.match(r"(?i)^none\b", value):
             return "none", value
         if re.match(r"(?i)^named\s+in\s+brief\b", value):
-            return "named", ""
-        return "named", value
+            return "named", stated_app_name(text)
+        return "named", stated_app_name(value) or value
     want = _I_WANT_RESIDUAL_RE.search(text)
     if want and not span_is_negated(text, want.start()):
         noun = re.sub(r"\s+", " ", want.group(1)).strip(" .")
@@ -377,6 +445,9 @@ def stated_residual_kind(prompt: str) -> tuple[str, str]:
         noun = re.sub(r"\s+", " ", add_on.group(1)).strip(" .")
         if noun and noun.lower() not in {"field", "fields", "column"}:
             return "named", noun
+    stated = stated_app_name(text)
+    if stated:
+        return "named", stated
     return "unstated", ""
 
 
@@ -524,10 +595,10 @@ def brief_llm_contract(prompt: str, *, draft: dict[str, Any] | None = None) -> s
     if confidence == "low":
         lines.append(
             "- IR confidence is low (inferred). Do not invent a full ERP or hotel/PMS "
-            "workspace. Prefer one residual document linked to named stock hosts."
+            "workspace. Prefer one residual document linked to named built-in forms."
         )
     if residual:
-        lines.append(f"- Custom residual (only this x_* document): {residual}")
+        lines.append(f"- Custom code (only this x_* document): {residual}")
     if oos:
         lines.append("- Out of scope — do not implement: " + ", ".join(oos))
     if forbidden:
@@ -624,7 +695,7 @@ def build_operator_brief(prompt: str) -> OperatorBrief:
         brief.capability_path = "residual_app"
         brief.capability_notes.append(
             "Named residual — custom x_* only for that document. "
-            "Do not clone invoice/partner/employee. Completeness ≠ Cert. Promote stays human."
+            "Do not clone invoice/partner/employee. A complete draft is not the same as certified. Publishing stays a step you confirm."
         )
         if is_explicit_stock_first(text):
             brief.capability_notes.append(
@@ -649,7 +720,7 @@ def build_operator_brief(prompt: str) -> OperatorBrief:
         brief.capability_path = "option_a"
         brief.capability_notes.append(
             "POS receipt layout is Community `point_of_sale` OWL/QWeb (Option A: "
-            "module → sandbox prove → human Promote). It is not a live `x_*` residual "
+            "module → sandbox prove → you publish). It is not a live `x_*` residual "
             "and not a back-office form designer."
         )
         if "point_of_sale" not in brief.stock_reuse:
@@ -676,7 +747,7 @@ def build_operator_brief(prompt: str) -> OperatorBrief:
         )
         if brief.custom_residual:
             brief.capability_notes.append(
-                "Custom residual only for what stock Community apps do not cover."
+                "Custom code only for what stock Community apps do not cover."
             )
 
     brief.residual_kind = residual_kind
@@ -690,7 +761,7 @@ def build_operator_brief(prompt: str) -> OperatorBrief:
     )
     if brief.ir_confidence == "low":
         brief.capability_notes.append(
-            "IR confidence low — verify Custom residual / Capability path against "
+            "IR confidence low — verify Custom code / Capability path against "
             "the Original operator message before inventing models."
         )
 
@@ -970,7 +1041,7 @@ def _format_brief(brief: OperatorBrief) -> str:
     notes = (
         "\n".join(f"- {n}" for n in brief.capability_notes)
         if brief.capability_notes
-        else "- Stock-first residual; Completeness ≠ Certification; Promote stays human."
+        else "- Built-in apps first, then custom code; a complete draft is not certification; publishing stays a step you confirm."
     )
     return "\n".join(
         [
@@ -984,7 +1055,7 @@ def _format_brief(brief: OperatorBrief) -> str:
             bullets("Actors", brief.actors),
             bullets("Processes", brief.processes),
             bullets("Stock reuse (named)", brief.stock_reuse),
-            "## Custom residual",
+            "## Custom code",
             residual,
             bullets("Constraints (stated)", brief.constraints),
             bullets("Out of scope (stated)", brief.out_of_scope),

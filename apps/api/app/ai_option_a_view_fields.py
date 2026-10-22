@@ -1,4 +1,4 @@
-"""View ↔ Python field consistency for LLM-authored Option A modules.
+"""View ↔ Python field consistency for LLM-authored Custom-code modules.
 
 Catches the OWL killer: form arch references ``markup_percentage`` while the
 registry only has ``x_markup_percent`` (or nothing). Fail closed before zip;

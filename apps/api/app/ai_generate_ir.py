@@ -287,6 +287,26 @@ def build_ir(
     return ir
 
 
+# Word forms for compound model cues ("matter_document" ~ "matter files").
+_CUE_PART_FORMS: dict[str, tuple[str, ...]] = {
+    "document": ("documents?", "files?", "docs?"),
+    "party": ("party", "parties"),
+}
+
+
+def _compound_cue_hit(cue: str, tokens: set[str]) -> bool:
+    """Multi-word model cue whose words appear adjacent in the brief (plural-tolerant)."""
+    parts = [p for p in re.split(r"[_\s.]+", (cue or "").lower()) if p]
+    if len(parts) < 2 or any(len(p) < 3 for p in parts):
+        return False
+    def _forms(part: str) -> str:
+        forms = _CUE_PART_FORMS.get(part) or (re.escape(part) + r"(?:s|es)?",)
+        return "(?:" + "|".join(forms) + ")"
+    pat = re.compile(r"\b" + r"[\s-]+".join(_forms(p) for p in parts) + r"\b", re.I)
+    text = " ".join(t for t in tokens if " " in t or len(t) > 24)
+    return bool(pat.search(text))
+
+
 def proposal_allowed(
     proposal: Proposal,
     *,
@@ -322,6 +342,33 @@ def proposal_allowed(
     }:
         return True, "must_do_constraint"
 
+    # AI-suggested supporting model for a named residual: allowed but flagged
+    # (``suggested``) — never counted as brief-named.
+    if (
+        proposal.kind == "model"
+        and proposal.proposer == "ai_design.suggest"
+        and proposal.payload.get("suggested") is True
+    ):
+        return True, "suggested_support"
+
+    # Curated pack with code-verified provenance: the registry body must declare it.
+    prov = proposal.payload.get("pack_provenance")
+    if isinstance(prov, dict) and prov.get("curated"):
+        from app.ai_domain_packs import curated_pack_has
+
+        mid = name if proposal.kind == "model" else str(proposal.payload.get("model") or "")
+        if curated_pack_has(str(prov.get("pack") or ""), mid, None if proposal.kind == "model" else name):
+            return True, "curated_pack"
+
+    # Matched pack's anchor document when the brief strongly names the pack's
+    # product (cue set by admit_pack_models). Satellites still need a cue.
+    if (
+        proposal.kind == "model"
+        and proposal.payload.get("pack_anchor")
+        and proposal.payload.get("pack_cued")
+    ):
+        return True, "pack_anchor_cued"
+
     # Named Rate-Line class: maintenance/service lexical ≠ O2M cue.
     if _looks_like_generic_line_invent(proposal) and not _ast_has_o2m_or_line_cue(ir):
         return False, "uncued_line_invent"
@@ -333,6 +380,9 @@ def proposal_allowed(
     )
     bare = name.lower().removeprefix("x_")
     name_hit = bool(bare and any(bare in t or t in bare for t in tokens))
+
+    if not (cue_hit or name_hit) and proposal.kind == "model":
+        cue_hit = _compound_cue_hit(cue or bare, tokens)
 
     if cue_hit or name_hit:
         if _stale_catalog_rejects_stock_field(proposal, schema_client):

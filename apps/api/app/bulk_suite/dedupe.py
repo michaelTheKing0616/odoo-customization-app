@@ -503,7 +503,7 @@ def merge_duplicates(
             dry_run=False,
             message=(
                 "Odoo's partner merge wizard (base.partner.merge.automatic.wizard) is "
-                "available on this instance — use it for res.partner merges, or set "
+                "available on this instance, use it for res.partner merges, or set "
                 "force_generic_merge=true to run the generic FK-relink engine."
             ),
             winner_id=winner_id,

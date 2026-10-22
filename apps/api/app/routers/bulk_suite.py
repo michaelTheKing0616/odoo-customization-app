@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -246,6 +246,7 @@ class BulkTransitionRunBody(ConfirmAdvancedBody):
     receipt_token: str | None = None
     continue_run_id: str | None = None
     disable_sample_first: bool = False
+    progress_run_id: str | None = Field(default=None, max_length=128)
 
 
 class MassEditRunBody(ConfirmAdvancedBody):
@@ -1179,6 +1180,10 @@ def run_bulk_transitions(
     db: Session = Depends(get_db),
     _: Annotated[None, Depends(require_connection_mutation_lock)] = None,
 ) -> BulkRunOut:
+    from app.progress.emit import stage_emit
+
+    progress_run_id = body.progress_run_id
+    stage_emit(progress_run_id, "bulk_resolve", detail="Resolving record set")
     row, client = _client(connection_id, db)
     model = body.model.strip()
     method = body.method.strip()
@@ -1310,6 +1315,13 @@ def run_bulk_transitions(
 
     should_abort = bulk_run_abort_checker(db, run_id) if run_id else None
 
+    if body.dry_run:
+        stage_emit(progress_run_id, "bulk_sample", detail="Dry-run preview")
+    elif sample_status == "sample_paused":
+        stage_emit(progress_run_id, "bulk_sample", detail="Sample batch")
+    else:
+        stage_emit(progress_run_id, "bulk_execute", detail=f"{method} on {model}")
+
     try:
         result = run_bulk_transition(
             client,
@@ -1357,6 +1369,7 @@ def run_bulk_transitions(
             operation=BULK_TRANSITIONS_OPERATION,
             params=receipt_params,
         )
+    stage_emit(progress_run_id or result.run_id, "bulk_report", detail=result.message)
     return _to_out(result, receipt_token=issued)
 
 
@@ -1364,6 +1377,7 @@ def run_bulk_transitions(
 def run_mass_edit_route(
     connection_id: str,
     body: MassEditRunBody,
+    request: Request,
     db: Session = Depends(get_db),
     _: Annotated[None, Depends(require_connection_mutation_lock)] = None,
 ) -> BulkRunOut:
@@ -1422,6 +1436,18 @@ def run_mass_edit_route(
             )
         except ConfirmationRequired as exc:
             raise _confirm_http(exc) from exc
+
+    if not body.dry_run:
+        # A5: the shared Run sheet guards (money guard, approval rule, undo point in History).
+        from app import write_gate as wg
+
+        try:
+            wg.check_record_write(model, record_ids, threshold=10**9, approved=True)  # money guard + undo cap
+            approved = wg.approval_status(db, request, connection_id, model=model, ids=record_ids, vals=body.values, source="Bulk Suite mass edit")
+            wg.guard_record_write(db, client, connection_id, model=model, ids=record_ids, vals=body.values,
+                                  source="Bulk Suite mass edit", approved=approved)
+        except (wg.WriteRefused, wg.WriteNeedsApproval) as exc:
+            raise wg.http_error(exc) from exc
 
     try:
         result = run_mass_edit(
@@ -1492,6 +1518,7 @@ def dedupe_merge(
     body: DedupeMergeBody,
     db: Session = Depends(get_db),
     _: Annotated[None, Depends(require_connection_mutation_lock)] = None,
+    request: Request = None,  # type: ignore[assignment]
 ) -> BulkRunOut:
     row, client = _client(connection_id, db)
     model = body.model.strip()
@@ -1535,6 +1562,16 @@ def dedupe_merge(
             )
         except ConfirmationRequired as exc:
             raise _confirm_http(exc) from exc
+
+    if not body.dry_run:
+        # A5: shared guards (money guard + approval rule); the merge keeps its own undo snapshot.
+        from app import write_gate as wg
+
+        try:
+            wg.run_guards(db, request, connection_id, client, model=model, ids=[int(body.winner_id), *losers],
+                          vals={"merge_into": int(body.winner_id), "mode": body.archive_or_delete}, source="Merge duplicates", undo=False)
+        except (wg.WriteRefused, wg.WriteNeedsApproval) as exc:
+            raise wg.http_error(exc) from exc
 
     snapshot_id: str | None = None
     references = discover_inbound_references(client, model)
@@ -1860,6 +1897,7 @@ def bulk_portal_route(
     body: BulkPortalBody,
     db: Session = Depends(get_db),
     _: Annotated[None, Depends(require_connection_mutation_lock)] = None,
+    request: Request = None,  # type: ignore[assignment]
 ) -> BulkRunOut:
     row, client = _client(connection_id, db)
     receipt_params = {
@@ -1891,6 +1929,22 @@ def bulk_portal_route(
             )
         except ConfirmationRequired as exc:
             raise _confirm_http(exc) from exc
+    portal_snap = None
+    if not body.dry_run:
+        # A5: approval rule + an undo point in History (undo runs the opposite portal action).
+        from app import write_gate as wg
+        from app.snapshots import save_snapshot as _save
+
+        try:
+            wg.run_guards(db, request, connection_id, client, model="res.partner", ids=[int(i) for i in body.partner_ids],
+                          vals={"portal": body.action}, source="Portal access", undo=False)
+        except (wg.WriteRefused, wg.WriteNeedsApproval) as exc:
+            raise wg.http_error(exc) from exc
+        portal_snap = (_save, dict(connection_id=connection_id, resource_type="portal_access",
+                                   resource_key=f"portal:{body.action}:{len(body.partner_ids)}",
+                                   label=f"Portal access: {body.action} for {len(body.partner_ids)} contact(s)",
+                                   payload={"model": "res.partner", "action": body.action, "partner_ids": [int(i) for i in body.partner_ids]},
+                                   reversible="partial"))
     try:
         result = run_bulk_portal(
             client,
@@ -1902,6 +1956,11 @@ def bulk_portal_route(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except OdooClientError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    if portal_snap is not None and getattr(result, "succeeded", 0):
+        try:
+            portal_snap[0](db, **portal_snap[1])
+        except Exception:  # noqa: BLE001 - never fail a finished run over the History entry
+            pass
     save_bulk_run(db, connection_id=connection_id, result=result)
     return _to_out(result, receipt_token=issued)
 
@@ -1912,10 +1971,11 @@ def bulk_recompute_route(
     body: BulkRecomputeBody,
     db: Session = Depends(get_db),
     _: Annotated[None, Depends(require_connection_mutation_lock)] = None,
+    request: Request = None,  # type: ignore[assignment]
 ) -> BulkRunOut:
     row, client = _client(connection_id, db)
     model = body.model.strip()
-    hint = hosting_hint_from_url(row.url)
+    hint = hosting_hint_from_url(row.url, row.server_version, getattr(row, "hosting", None))
     try:
         record_ids = resolve_record_ids(
             client,
@@ -1960,6 +2020,16 @@ def bulk_recompute_route(
             )
         except ConfirmationRequired as exc:
             raise _confirm_http(exc) from exc
+
+    if not body.dry_run:
+        # A5: money guard + approval rule. Recompute refreshes computed values, so there is nothing to put back.
+        from app import write_gate as wg
+
+        try:
+            wg.run_guards(db, request, connection_id, client, model=model, ids=record_ids,
+                          vals={"recompute": body.field}, source="Recompute", undo=False)
+        except (wg.WriteRefused, wg.WriteNeedsApproval) as exc:
+            raise wg.http_error(exc) from exc
 
     try:
         result = run_recompute(

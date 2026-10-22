@@ -172,6 +172,18 @@ def _chose_simple_document(answers: dict[str, str]) -> bool:
     )
 
 
+def _norm_ws(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "").strip().lower())
+
+
+def _is_brief_repaste(prompt: str, answer: str) -> bool:
+    """True when a clarification answer is (mostly) the original brief again."""
+    a, p = _norm_ws(answer), _norm_ws(prompt)
+    if len(a) < 200 or len(p) < 200:
+        return False
+    return a == p or p[:300] in a or a[:300] in p
+
+
 def apply_clarification_answer(
     prompt: str,
     *,
@@ -184,6 +196,9 @@ def apply_clarification_answer(
     """Merge chip or free-text answer into resolved answers and prompt."""
     answers = dict(resolved_answers or {})
     label = (answer_text or answer_id or "").strip()
+    if _is_brief_repaste(prompt, label):
+        # The whole brief pasted back as an answer must not double the prompt.
+        label = "named in brief" if merge_key == "residual" else (answer_id or "").strip()
     answers[merge_key] = label
 
     extra_lines: list[str] = []
@@ -194,17 +209,17 @@ def apply_clarification_answer(
             extra_lines.append("Inherit an existing Odoo form people already use.")
             extra_lines.append("Do not create a new home-screen app.")
         elif answer_id == "stock_first" and not _chose_simple_document(answers):
-            extra_lines.append("Custom residual: None — stock Community apps only.")
+            extra_lines.append("Custom code: None — stock Community apps only.")
             extra_lines.append("Capability path: stock_first")
         else:
-            extra_lines.append("Custom residual: named in brief.")
+            extra_lines.append("Custom code: named in brief.")
             extra_lines.append("Capability path: residual_app")
             answers["ir_confidence"] = "residual_app"
     elif merge_key == "pack_conflict" and answer_id == "thin_ticket":
-        extra_lines.append("Custom residual: tickets.")
+        extra_lines.append("Custom code: tickets.")
         extra_lines.append("Out of scope: project, timesheet, ITSM.")
     elif merge_key == "pack_conflict" and answer_id in {"transactional", "new_document"}:
-        extra_lines.append("Custom residual: named in brief.")
+        extra_lines.append("Custom code: named in brief.")
         extra_lines.append("Capability path: residual_app")
         answers["ir_confidence"] = "residual_app"
     elif merge_key == "rental_domain":
@@ -220,12 +235,12 @@ def apply_clarification_answer(
         elif answer_id == "log":
             extra_lines.append("I want a simple log in Odoo.")
         elif label:
-            extra_lines.append(f"Custom residual: {label}")
+            extra_lines.append(f"Custom code: {label}")
     elif merge_key == "pack_choice" and answer_id == "helpdesk_tickets":
         extra_lines.append("Helpdesk tickets — internal support, not project management.")
         answers["ir_confidence"] = "residual_app"
     elif merge_key == "pack_choice" and answer_id in {"transactional", "new_document"}:
-        extra_lines.append("Custom residual: named in brief.")
+        extra_lines.append("Custom code: named in brief.")
         extra_lines.append("Capability path: residual_app")
         answers["ir_confidence"] = "residual_app"
     elif merge_key == "pack_choice" and answer_id == "on_existing_form":

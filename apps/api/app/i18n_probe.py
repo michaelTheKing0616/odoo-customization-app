@@ -48,7 +48,7 @@ def probe_i18n(client: OdooClient, *, major: int | None = None) -> dict[str, Any
             "Field/menu translations via context lang reads (Odoo 17–19 GA path)."
             if context_lang
             else (
-                "ir.translation model available — verify write API on this major."
+                "ir.translation model available, verify write API on this major."
                 if has_ir_translation
                 else "No supported translation RPC path detected."
             )

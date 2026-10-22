@@ -107,7 +107,7 @@ def _sandbox_honesty(
             "approximation_label": None,
             "sh_staging_suggestion": None,
         }
-    ctx = gating_context_for_connection(url=row.url, server_version=row.server_version)
+    ctx = gating_context_for_connection(saved_hosting=getattr(row, "hosting", None), url=row.url, server_version=row.server_version)
     approximation = ctx.hosting == "online"
     approx_label = sandbox_approximation_label(odoo_major) if approximation else None
     sh_sibling = (
@@ -116,7 +116,7 @@ def _sandbox_honesty(
         .all()
     )
     other_sh = next(
-        (r for r in sh_sibling if hosting_hint_from_url(r.url) == "odoo_sh"),
+        (r for r in sh_sibling if hosting_hint_from_url(r.url, r.server_version, getattr(r, "hosting", None)) == "odoo_sh"),
         None,
     )
     staging_hint = None
@@ -144,7 +144,7 @@ def _sandbox_honesty(
             "approximation_label": None,
             "sh_staging_suggestion": None,
         }
-    ctx = gating_context_for_connection(url=row.url, server_version=row.server_version)
+    ctx = gating_context_for_connection(saved_hosting=getattr(row, "hosting", None), url=row.url, server_version=row.server_version)
     approximation = ctx.hosting == "online"
     approx_label = sandbox_approximation_label(odoo_major) if approximation else None
     sh_sibling = (
@@ -153,7 +153,7 @@ def _sandbox_honesty(
         .all()
     )
     other_sh = next(
-        (r for r in sh_sibling if hosting_hint_from_url(r.url) == "odoo_sh"),
+        (r for r in sh_sibling if hosting_hint_from_url(r.url, r.server_version, getattr(r, "hosting", None)) == "odoo_sh"),
         None,
     )
     staging_hint = None
@@ -326,7 +326,7 @@ def export_module(
         )
 
     major = int(getattr(client.capabilities, "major", 19) or 19)
-    ctx = gating_context_for_connection(url=row.url, server_version=row.server_version)
+    ctx = gating_context_for_connection(saved_hosting=getattr(row, "hosting", None), url=row.url, server_version=row.server_version)
     panel_data = deployment_panel(ctx, technical_name=spec.technical_name)
     if ctx.hosting == "sh":
         doc = deploy_odoo_sh_markdown(
@@ -367,7 +367,7 @@ def export_module(
             f"Installable Odoo {major} addon zip (manifest {spec.version}, "
             f"mode={spec.install_mode}). One zip per connection major — "
             "validate via sandbox/run (matching-major ephemeral Docker on :18069) "
-            "before promote."
+            "before publish."
         ),
         model_count=len(spec.models),
         view_count=len(spec.views),
@@ -550,7 +550,7 @@ def promote_module(
         row = get_connection_or_404(db, connection_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    ctx = gating_context_for_connection(url=row.url, server_version=row.server_version)
+    ctx = gating_context_for_connection(saved_hosting=getattr(row, "hosting", None), url=row.url, server_version=row.server_version)
     if ctx.hosting == "online" and body.install_mode == "python":
         gating = online_python_promote_gating()
         raise HTTPException(status_code=403, detail={"gating": gating.to_dict()})
@@ -684,15 +684,29 @@ def install_community_module(
     name = (body.module_name or "").strip()
     if not name or name.startswith("x_") or "/" in name or "\\" in name:
         raise HTTPException(status_code=400, detail="Invalid community module name")
-    ce = load_vendored_community_modules("19.0")
-    if name not in ce and name not in {"l10n_ng", "l10n_generic_coa"}:
-        # Allow official l10n_* even if not in the vendored sample set
-        if not name.startswith("l10n_"):
-            raise HTTPException(
-                status_code=400,
-                detail=f"{name!r} is not a known Community app — refuse non-CE install here",
-            )
     client = _client(connection_id, db)
+    try:
+        major = int(client.capabilities.major)
+    except Exception:  # noqa: BLE001
+        major = 0
+    ce = load_vendored_community_modules(f"{major}.0") if major else []
+    live = client.execute_kw("ir.module.module", "search_read", [[["name", "=", name]]],
+                             {"fields": ["name", "state", "license"], "limit": 1}) or []
+    live_row = live[0] if live else None
+    # Community = in this major's vendored CE list, or (no list for this major, e.g. 20) the live
+    # module is LGPL. OEEL (Enterprise) is always refused here.
+    is_ce = name in ce or name in {"l10n_ng", "l10n_generic_coa"} or name.startswith("l10n_") or (
+        not ce and live_row is not None and str(live_row.get("license") or "").upper().startswith("LGPL"))
+    if live_row is not None and str(live_row.get("license") or "").upper().startswith("OEEL"):
+        is_ce = False
+    if not is_ce:
+        raise HTTPException(status_code=400, detail=f"{name!r} is not a known Community app — refuse non-CE install here")
+    if live_row is None:
+        raise HTTPException(status_code=404, detail=f"{name!r} isn't available on this database.")
+    if body.dry_run:
+        state = str(live_row.get("state") or "")
+        return InstallCommunityModuleOut(ok=True, module=name, module_state=state or None,
+                                         message=f"Would install {name} (now {state or 'unknown'}). Nothing was changed.")
     try:
         row = client.install_module_by_name(name)
     except OdooClientError as exc:

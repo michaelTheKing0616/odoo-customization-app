@@ -1,4 +1,4 @@
-"""Hand-written Option A gold artifacts — selected, not LLM-invented OWL."""
+"""Hand-written custom-code gold artifacts — selected, not LLM-invented OWL."""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ def apply_gold_template(
                             "name": "x_qr_payload",
                             "ttype": "char",
                             "string": "QR payload",
-                            "help": "Raw payload for a report QR. PDF wiring is Option A.",
+                            "help": "Raw payload for a report QR. PDF wiring is custom code.",
                         }
                     ],
                 }

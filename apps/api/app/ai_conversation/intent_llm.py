@@ -14,6 +14,7 @@ import re
 from typing import Any
 
 from app.ai_conversation.intent_gate import IntentAssessment
+from app.live_schema_context import SchemaPacket, model_in_packet, prepend_schema_packet
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,9 @@ def _coerce_host_model(raw: str) -> str | None:
 _intent_llm_override: contextvars.ContextVar[bool | None] = contextvars.ContextVar(
     "intent_llm_override", default=None
 )
+_schema_packet_override: contextvars.ContextVar[SchemaPacket | None] = contextvars.ContextVar(
+    "schema_packet_override", default=None
+)
 
 
 def set_intent_llm_override(value: bool | None) -> contextvars.Token[bool | None]:
@@ -79,6 +83,48 @@ def reset_intent_llm_override(token: contextvars.Token[bool | None]) -> None:
 
 def intent_llm_override() -> bool | None:
     return _intent_llm_override.get()
+
+
+def set_schema_packet(packet: SchemaPacket | None) -> contextvars.Token[SchemaPacket | None]:
+    """Bind the live schema packet for this Draft Studio request."""
+    return _schema_packet_override.set(packet)
+
+
+def reset_schema_packet(token: contextvars.Token[SchemaPacket | None]) -> None:
+    _schema_packet_override.reset(token)
+
+
+def current_schema_packet() -> SchemaPacket | None:
+    return _schema_packet_override.get()
+
+
+def _resolve_schema_packet(schema_packet: SchemaPacket | None) -> SchemaPacket | None:
+    if schema_packet is not None:
+        return schema_packet
+    return current_schema_packet()
+
+
+def admit_host_from_packet(
+    raw: str,
+    packet: SchemaPacket | None,
+) -> str | None:
+    """Admit a host only when the packet contains it.
+
+    Inputs: LLM/operator host text and the live packet. Output: coerced
+    technical name, or None when the slice does not have that model.
+    ``packet is None`` (no connection) keeps coerce-only behavior.
+    Side effects: none. Does not invent a residual app.
+    """
+
+    host = _coerce_host_model(raw)
+    text = (raw or "").strip()
+    if host is None and packet is not None and text and text in packet.models:
+        host = text
+    if host is None:
+        return None
+    if not model_in_packet(packet, host):
+        return None
+    return host
 
 
 def intent_llm_enabled() -> bool:
@@ -126,6 +172,7 @@ def maybe_llm_refine_assessment(
     assessment: IntentAssessment,
     *,
     ranked: list[tuple[str, float]] | None = None,
+    schema_packet: SchemaPacket | None = None,
 ) -> IntentAssessment:
     """Return assessment unchanged, or LLM-cleared when tie-break is high confidence."""
     if assessment.clear or not intent_llm_enabled():
@@ -137,6 +184,7 @@ def maybe_llm_refine_assessment(
 
     ranked = ranked or []
     pack_options = [pid for pid, _ in ranked[:4]]
+    packet = _resolve_schema_packet(schema_packet)
 
     from app.llm_provider import LLMError, get_llm_provider_for_tier
 
@@ -151,18 +199,23 @@ def maybe_llm_refine_assessment(
         "If the operator is extending a stock document (Sales, invoices, delivery slip), "
         "set inherit_existing=true and host_model to an Odoo model like sale.order. "
         "Set needs_module=true when Python, QWeb, HTTP, OWL, markup lines, or withholding tax "
-        "cannot be live metadata. Do not invent a new home-screen app for those."
+        "cannot be live metadata. Do not invent a new home-screen app for those. "
+        "host_model must be a model in the live schema packet when one is provided."
     )
-    user = (
-        f"Operator prompt:\n{prompt}\n\n"
-        f"Trigger: {trigger}\n"
-        f"IR confidence: {assessment.ir_confidence}\n"
-        f"Capability path: {assessment.capability_path}\n"
-        f"Ranked packs: {pack_options}\n\n"
-        "If intent is clear, set clear=true, confidence=high. "
-        "Prefer host_model + inherit_existing over pack_id when this extends Sales/Invoices/"
-        "Delivery. Set needs_module when Python/QWeb is required. "
-        "If still ambiguous, set clear=false, confidence=low."
+    user = prepend_schema_packet(
+        (
+            f"Operator prompt:\n{prompt}\n\n"
+            f"Trigger: {trigger}\n"
+            f"IR confidence: {assessment.ir_confidence}\n"
+            f"Capability path: {assessment.capability_path}\n"
+            f"Ranked packs: {pack_options}\n\n"
+            "If intent is clear, set clear=true, confidence=high. "
+            "Prefer host_model + inherit_existing over pack_id when this extends Sales/Invoices/"
+            "Delivery. Set needs_module when Python/QWeb is required. "
+            "If still ambiguous, set clear=false, confidence=low. "
+            "Do not name a model that is not in the live schema packet."
+        ),
+        packet,
     )
 
     try:
@@ -187,9 +240,20 @@ def maybe_llm_refine_assessment(
     rationale = str(parsed.get("rationale") or "").strip()
     pack_id = str(parsed.get("pack_id") or "").strip()
     residual = str(parsed.get("residual") or "").strip()
-    host_model = _coerce_host_model(str(parsed.get("host_model") or ""))
+    raw_host = str(parsed.get("host_model") or "").strip()
+    host_model = admit_host_from_packet(raw_host, packet)
     inherit_existing = bool(parsed.get("inherit_existing"))
     needs_module = bool(parsed.get("needs_module"))
+    discarded_unknown_host = bool(raw_host) and host_model is None
+
+    if discarded_unknown_host:
+        # Packet miss is a discard, not a residual-app repair.
+        assessment.notes.append(
+            f"LLM intent host {raw_host} discarded — not in live schema packet; "
+            "not repaired into a new app"
+        )
+        if not (trigger == "pack_ambiguity" and pack_id and pack_id in pack_options):
+            return assessment
 
     if host_model and (inherit_existing or needs_module):
         assessment.clear = True
@@ -213,6 +277,9 @@ def maybe_llm_refine_assessment(
         assessment.llm_resolved = {"pack_id": pack_id, "rationale": rationale}
         return assessment
 
+    if discarded_unknown_host:
+        return assessment
+
     if trigger == "material_ambiguity" and residual:
         assessment.clear = True
         assessment.triggers = []
@@ -225,7 +292,7 @@ def maybe_llm_refine_assessment(
         assessment.clear = True
         assessment.triggers = []
         assessment.capability_path = "stock_first"
-        assessment.notes.append(f"LLM intent tie-break: stock-first — {rationale}")
+        assessment.notes.append(f"LLM intent tie-break: built-in apps first — {rationale}")
         assessment.llm_resolved = {"capability_path": "stock_first", "rationale": rationale}
         return assessment
 
@@ -242,4 +309,11 @@ def maybe_llm_refine_assessment(
     return assessment
 
 
-__all__ = ["intent_llm_enabled", "maybe_llm_refine_assessment"]
+__all__ = [
+    "admit_host_from_packet",
+    "current_schema_packet",
+    "intent_llm_enabled",
+    "maybe_llm_refine_assessment",
+    "reset_schema_packet",
+    "set_schema_packet",
+]

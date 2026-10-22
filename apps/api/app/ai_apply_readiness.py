@@ -807,7 +807,7 @@ def demote_parallel_billing_models(draft: dict[str, Any]) -> list[str]:
         return notes
 
     _purge_draft_models(draft, removed)
-    notes.append(f"apply: demoted parallel billing model(s) {', '.join(sorted(removed))}")
+    notes.append(f"apply: demoted parallel billing models {', '.join(sorted(removed))}")
 
     line_drop = {"x_bill_id", "x_invoice_id"}
     for model in draft.get("models") or []:
@@ -1265,7 +1265,10 @@ def prepare_spec_for_live_apply(spec: dict[str, Any]) -> tuple[dict[str, Any], l
     """Normalize draft JSON before live Odoo RPC apply (readiness + live company naming)."""
     import copy
 
+    from app.wireframe.review import require_wireframe_stage_h
+
     out = copy.deepcopy(spec)
+    require_wireframe_stage_h(out)
     notes = run_apply_readiness_pass(out)
     # Re-author inherit xpath from the current slot compiler so Apply is not
     # stuck on a stale session arch (e.g. TIN inside the Vendor widget).
@@ -1725,7 +1728,7 @@ def ensure_model_access_stubs(draft: dict[str, Any]) -> list[str]:
         added += 1
     if added:
         draft["access_rules"] = rules
-        notes.append(f"apply: added access stubs for {added} model(s)")
+        notes.append(f"apply: added access stubs for {added} models")
     return notes
 
 
@@ -3709,7 +3712,7 @@ def reconcile_completeness_metadata(draft: dict[str, Any]) -> list[str]:
             if not isinstance(row, dict):
                 continue
             if row.get("id") == "has_models":
-                expected = f"{count} model(s)"
+                expected = f"{count} models"
                 if str(row.get("detail") or "") != expected:
                     row["detail"] = expected
                     row["ok"] = count > 0

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import json
+import os
 import re
 import threading
 import time
@@ -131,7 +133,7 @@ _PROVIDER_DEFAULT_MODELS: dict[str, tuple[str, str]] = {
     # (bulk, reasoning) — override with AI_MODEL_BULK / AI_MODEL_REASONING or provider MODEL env
     "openai": ("gpt-4.1", "gpt-4.1"),
     "anthropic": ("claude-sonnet-4-5", "claude-sonnet-4-5"),
-    "gemini": ("gemini-2.5-flash", "gemini-2.5-flash"),
+    "gemini": ("gemini-3.6-flash", "gemini-3.6-flash"),
     "openai-compatible": ("gpt-4o-mini", "gpt-4o-mini"),
     "ollama": ("qwen3:8b", "qwen3:8b"),
 }
@@ -854,6 +856,26 @@ class OpenAICompatibleProvider(LLMProvider):
         return strip_thinking_trace(text)
 
 
+def _gemini_inline_image(image_bytes: bytes, mime_type: str) -> dict[str, Any]:
+    return {
+        "inlineData": {
+            "mimeType": mime_type,
+            "data": base64.b64encode(image_bytes).decode("ascii"),
+        }
+    }
+
+
+def _anthropic_image_block(image_bytes: bytes, mime_type: str) -> dict[str, Any]:
+    return {
+        "type": "image",
+        "source": {
+            "type": "base64",
+            "media_type": mime_type,
+            "data": base64.b64encode(image_bytes).decode("ascii"),
+        },
+    }
+
+
 class AnthropicProvider(LLMProvider):
     """Anthropic Messages API (Claude)."""
 
@@ -907,15 +929,23 @@ class AnthropicProvider(LLMProvider):
         temperature: float | None = None,
         format_schema: dict[str, Any] | None = None,
         model: str | None = None,
+        image_bytes: bytes | None = None,
+        mime_type: str | None = None,
     ) -> str:
         if not self.api_key.strip():
             raise LLMError("ANTHROPIC_API_KEY is not set")
         chosen = _chosen_cloud_model(
             self.model, model=model, reasoning=reasoning, family="anthropic"
         )
-        user_content = prompt
+        user_text = prompt
         if reasoning:
-            user_content = _MANUAL_COT_PREFIX + prompt
+            user_text = _MANUAL_COT_PREFIX + prompt
+        user_content: Any = user_text
+        if image_bytes and (mime_type or "").strip():
+            user_content = [
+                _anthropic_image_block(image_bytes, mime_type.strip()),
+                {"type": "text", "text": user_text},
+            ]
         sys_parts = [system or "", "Respond with valid JSON only. No markdown fences."]
         if format_schema:
             sys_parts.append("Match this JSON schema: " + json.dumps(format_schema)[:2000])
@@ -993,6 +1023,44 @@ class AnthropicProvider(LLMProvider):
         return strip_thinking_trace(text)
 
 
+def _gemini_uses_interactions(model: str) -> bool:
+    """Gemini 3.x+ (and new projects) are served via the Interactions API."""
+    m = (model or "").strip().lower()
+    return not m.startswith(("gemini-1", "gemini-2"))
+
+
+_GEMINI_RETIRED_HINT = "The AI model in settings is no longer offered by Google"
+VERTEX_DEFAULT_HOST = "https://aiplatform.googleapis.com"
+
+
+def _vertex_plain_error(code: int, detail: str) -> str:
+    low = (detail or "").lower()
+    if code == 403 and "billing" in low:
+        return "Billing isn't turned on for this Google Cloud project, so Vertex AI can't run"
+    if code == 403 and ("has not been used" in low or "disabled" in low or "service_disabled" in low):
+        return "Vertex AI isn't switched on for this Google Cloud project"
+    if code in (401, 403):
+        return "Vertex AI rejected the key or service account"
+    if code == 404:
+        return _GEMINI_RETIRED_HINT
+    return ""
+
+
+def _vertex_access_token() -> str:
+    """ADC / service-account token (GOOGLE_APPLICATION_CREDENTIALS). Optional dependency."""
+    try:
+        import google.auth  # type: ignore[import-not-found]
+        import google.auth.transport.requests  # type: ignore[import-not-found]
+    except ImportError as exc:
+        raise LLMError(
+            "Vertex AI service-account sign-in needs the google-auth package (uv add google-auth)",
+            status_code=502,
+        ) from exc
+    creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+    creds.refresh(google.auth.transport.requests.Request())
+    return str(creds.token or "")
+
+
 class GeminiProvider(LLMProvider):
     """Google Gemini generateContent API."""
 
@@ -1006,17 +1074,50 @@ class GeminiProvider(LLMProvider):
         self.api_key = (
             api_key if api_key is not None else settings.resolved_gemini_api_key()
         ) or ""
-        self.model = model or (settings.gemini_model or "").strip() or "gemini-2.5-flash"
+        self.model = model or (settings.gemini_model or "").strip() or "gemini-3.6-flash"
         self.base_url = (base_url or GEMINI_DEFAULT_BASE).rstrip("/")
+        self.backend = (getattr(settings, "gemini_backend", "") or "studio").strip().lower()
+        self.vertex_project = (getattr(settings, "vertex_project", "") or "").strip()
+        self.vertex_location = (getattr(settings, "vertex_location", "") or "global").strip()
+        self.vertex_host = VERTEX_DEFAULT_HOST
 
     @property
     def name(self) -> str:
         return "gemini"
 
+    @property
+    def is_vertex(self) -> bool:
+        return self.backend == "vertex"
+
+    def _target(self, chosen: str) -> tuple[str, dict[str, str]]:
+        """generateContent URL + headers for the selected backend."""
+        if not self.is_vertex:
+            return f"{self.base_url}/models/{chosen}:generateContent", self._headers()
+        path = f"publishers/google/models/{chosen}:generateContent"
+        if self.vertex_project:
+            loc = self.vertex_location or "global"
+            host = self.vertex_host if loc == "global" else f"https://{loc}-aiplatform.googleapis.com"
+            url = f"{host}/v1/projects/{self.vertex_project}/locations/{loc}/{path}"
+            if self.api_key.strip():
+                return url, self._headers()  # API key bound to the project (x-goog-api-key)
+            return url, {"Content-Type": "application/json",
+                         "Authorization": f"Bearer {_vertex_access_token()}"}
+        # Express mode: API key on the global endpoint.
+        return f"{self.vertex_host}/v1/{path}", self._headers()
+
+    @staticmethod
+    def _thinking(chosen: str) -> dict[str, Any]:
+        if _gemini_uses_interactions(chosen):
+            return {"thinkingLevel": "LOW"}
+        return {"thinkingBudget": 1024} if "2.5" in chosen else {}
+
     def _headers(self) -> dict[str, str]:
         return {"Content-Type": "application/json", "x-goog-api-key": self.api_key}
 
     def reachable(self, *, timeout_s: float = 2.0) -> tuple[bool, str]:
+        if self.is_vertex:
+            ok = bool(self.api_key.strip() or self.vertex_project)
+            return ok, f"Vertex AI configured model={self.model}" if ok else "Vertex AI: no key or project"
         if not self.api_key.strip():
             return False, "GEMINI_API_KEY empty"
         url = f"{self.base_url}/models"
@@ -1031,6 +1132,62 @@ class GeminiProvider(LLMProvider):
         except Exception as exc:  # noqa: BLE001
             return False, f"unreachable: {exc}"
 
+    def _interactions(
+        self,
+        chosen: str,
+        *,
+        text: str,
+        system: str,
+        gen_cfg: dict[str, Any],
+        timeout_s: float,
+        image_parts: list[dict[str, Any]] | None = None,
+    ) -> str:
+        inp: Any = text
+        if image_parts:
+            inp = [{"type": "text", "text": text}, *image_parts]
+        payload: dict[str, Any] = {
+            "model": chosen,
+            "input": inp,
+            "store": False,
+            "generation_config": gen_cfg,
+        }
+        if system:
+            payload["system_instruction"] = system
+        req = request.Request(
+            f"{self.base_url}/interactions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers=self._headers(),
+            method="POST",
+        )
+        try:
+            with request.urlopen(req, timeout=timeout_s) as resp:
+                raw = json.loads(resp.read().decode("utf-8"))
+        except error.HTTPError as exc:
+            if exc.code == 404:
+                raise LLMError(f"{_GEMINI_RETIRED_HINT} ({chosen})", status_code=502) from exc
+            _raise_http_llm_error("Gemini", exc)
+        except error.URLError as exc:
+            raise LLMError(f"Gemini unreachable: {exc.reason}") from exc
+        except TimeoutError as exc:
+            raise LLMError("Gemini request timed out") from exc
+        if isinstance(raw, list) and raw:
+            raw = raw[0]
+        if isinstance(raw, dict) and raw.get("error"):
+            err = raw["error"] if isinstance(raw["error"], dict) else {"message": str(raw["error"])}
+            code = str(err.get("code") or "")
+            sc = {"too_many_requests": 429, "service_unavailable": 503}.get(code, 502)
+            raise LLMError(f"Gemini error: {err.get('message')}", status_code=sc)
+        out: list[str] = []
+        for step in raw.get("steps") or []:
+            if isinstance(step, dict) and step.get("type") == "model_output":
+                for c in step.get("content") or []:
+                    if isinstance(c, dict) and c.get("type") == "text":
+                        out.append(str(c.get("text") or ""))
+        text_out = "".join(out) or str(raw.get("output_text") or "")
+        if not text_out.strip():
+            raise LLMError("Empty Gemini content", status_code=502)
+        return strip_thinking_trace(text_out)
+
     def generate_json(
         self,
         prompt: str,
@@ -1041,8 +1198,10 @@ class GeminiProvider(LLMProvider):
         temperature: float | None = None,
         format_schema: dict[str, Any] | None = None,
         model: str | None = None,
+        image_bytes: bytes | None = None,
+        mime_type: str | None = None,
     ) -> str:
-        if not self.api_key.strip():
+        if not self.api_key.strip() and not (self.is_vertex and self.vertex_project):
             raise LLMError("GEMINI_API_KEY is not set")
         chosen = _chosen_cloud_model(
             self.model, model=model, reasoning=reasoning, family="gemini"
@@ -1058,26 +1217,62 @@ class GeminiProvider(LLMProvider):
         gen_cfg: dict[str, Any] = {
             "temperature": 0.2 if temperature is None else temperature,
             "responseMimeType": "application/json",
-            "maxOutputTokens": 16384,
+            "maxOutputTokens": 32768,
         }
         _ = format_schema  # Gemini responseSchema is a subset; mime-type JSON is enough
+        parts: list[dict[str, Any]] = [{"text": user_content}]
+        if image_bytes and (mime_type or "").strip():
+            parts.append(_gemini_inline_image(image_bytes, mime_type.strip()))
         payload: dict[str, Any] = {
             "systemInstruction": {"parts": [{"text": sys_text}]},
-            "contents": [{"role": "user", "parts": [{"text": user_content}]}],
+            "contents": [{"role": "user", "parts": parts}],
             "generationConfig": gen_cfg,
         }
-        url = f"{self.base_url}/models/{chosen}:generateContent"
+        if not _gemini_uses_interactions(chosen) or self.is_vertex:
+            from app.ai_client.context_cache import apply_context_cache
+
+            payload = apply_context_cache(self, chosen, payload)
+        if self.is_vertex:
+            think = self._thinking(chosen)
+            if think:
+                gen_cfg["thinkingConfig"] = think
+        if _gemini_uses_interactions(chosen) and not self.is_vertex:
+            imgs = [
+                {"type": "image", "data": p["inlineData"]["data"], "mime_type": p["inlineData"]["mimeType"]}
+                for p in parts[1:]
+                if isinstance(p, dict) and "inlineData" in p
+            ]
+            return self._interactions(
+                chosen,
+                text=user_content,
+                system=sys_text,
+                gen_cfg={
+                    "temperature": gen_cfg["temperature"],
+                    "max_output_tokens": 32768,
+                    "thinking_level": "low",
+                },
+                timeout_s=timeout_s,
+                image_parts=imgs,
+            )
+        url, hdrs = self._target(chosen)
         body = json.dumps(payload).encode("utf-8")
         req = request.Request(
             url,
             data=body,
-            headers=self._headers(),
+            headers=hdrs,
             method="POST",
         )
         try:
             with request.urlopen(req, timeout=timeout_s) as resp:
                 raw = json.loads(resp.read().decode("utf-8"))
         except error.HTTPError as exc:
+            if self.is_vertex:
+                detail = _http_error_detail(exc)
+                plain = _vertex_plain_error(int(exc.code), detail)
+                if plain:
+                    raise LLMError(f"{plain} (Vertex HTTP {exc.code})", status_code=int(exc.code)) from exc
+            if exc.code == 404:
+                raise LLMError(f"{_GEMINI_RETIRED_HINT} ({chosen})", status_code=502) from exc
             _raise_http_llm_error("Gemini", exc)
         except error.URLError as exc:
             raise LLMError(f"Gemini unreachable: {exc.reason}") from exc
@@ -1118,7 +1313,7 @@ class GeminiProvider(LLMProvider):
         temperature: float | None = None,
         model: str | None = None,
     ) -> str:
-        if not self.api_key.strip():
+        if not self.api_key.strip() and not (self.is_vertex and self.vertex_project):
             raise LLMError("GEMINI_API_KEY is not set")
         chosen = _chosen_cloud_model(
             self.model, model=model, reasoning=False, family="gemini"
@@ -1135,9 +1330,21 @@ class GeminiProvider(LLMProvider):
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": gen_cfg,
         }
-        url = f"{self.base_url}/models/{chosen}:generateContent"
+        if not _gemini_uses_interactions(chosen) or self.is_vertex:
+            from app.ai_client.context_cache import apply_context_cache
+
+            payload = apply_context_cache(self, chosen, payload)
+        if _gemini_uses_interactions(chosen) and not self.is_vertex:
+            return self._interactions(
+                chosen,
+                text=prompt,
+                system=system or "",
+                gen_cfg={"temperature": gen_cfg["temperature"], "max_output_tokens": 4096, "thinking_level": "low"},
+                timeout_s=max(timeout_s, 120.0),
+            )
+        url, hdrs = self._target(chosen)
         body = json.dumps(payload).encode("utf-8")
-        req = request.Request(url, data=body, headers=self._headers(), method="POST")
+        req = request.Request(url, data=body, headers=hdrs, method="POST")
         with request.urlopen(req, timeout=timeout_s) as resp:
             raw = json.loads(resp.read().decode("utf-8"))
         parts = raw["candidates"][0]["content"]["parts"]
@@ -1206,7 +1413,7 @@ def _kwargs_for_fallback(prov: LLMProvider, kwargs: dict[str, Any]) -> dict[str,
     out = dict(kwargs)
     out["model"] = None
     name = getattr(prov, "name", "") or ""
-    if name == "ollama" or isinstance(prov, OllamaProvider):
+    if name == "ollama" or isinstance(getattr(prov, "inner", prov), OllamaProvider):
         out["model"] = _ollama_local_model(getattr(prov, "model", None))
         # Cloud → local fallback must not burn the draft job on a hung Ollama generate.
         prior = float(out.get("timeout_s") or _OLLAMA_FALLBACK_TIMEOUT_S)
@@ -1272,7 +1479,9 @@ def list_configured_fallback_providers(primary: LLMProvider) -> list[LLMProvider
         ok, _reason = ollama.reachable(timeout_s=1.5)
         if ok:
             _add(ollama)
-    return out
+    from app.ai_client.shared_client import wrap
+
+    return [wrap(p) for p in out]
 
 
 def generate_json_with_timeout_retry(
@@ -1354,7 +1563,7 @@ def generate_json_with_timeout_retry(
     except LLMError as exc:
         if _is_timeout_error(exc):
             retry_model = resolve_bulk_model()
-            if isinstance(provider, OllamaProvider):
+            if isinstance(getattr(provider, "inner", provider), OllamaProvider):
                 retry_model = _ollama_local_model(retry_model)
             kwargs: dict[str, Any] = {
                 **kwargs_base,
@@ -1362,7 +1571,7 @@ def generate_json_with_timeout_retry(
                 "reasoning": False,
                 "model": retry_model,
             }
-            if isinstance(provider, OllamaProvider):
+            if isinstance(getattr(provider, "inner", provider), OllamaProvider):
                 kwargs["num_predict"] = 2048
             return _call(provider, kwargs)
         if _is_rate_limit_error(exc) or _is_unavailable_error(exc):
@@ -1446,8 +1655,18 @@ def resolve_tier_provider_mode(tier: str = "fast") -> str:
 
 
 def get_llm_provider_for_tier(tier: str = "fast") -> LLMProvider | None:
-    """Provider for fast generation or refine-tier chat — swappable by config."""
+    """Provider for fast generation or refine-tier chat, always behind the shared AI client."""
+    from app.ai_client.shared_client import wrap
+
+    return wrap(_raw_provider_for_tier(tier))
+
+
+def _raw_provider_for_tier(tier: str = "fast") -> LLMProvider | None:
     mode = resolve_tier_provider_mode(tier)
+    # AI_ASSIST=off is the master switch. The tier default ("gemini") must not turn real AI back on;
+    # since the Vertex switch it did, so "offline" requests reached Vertex. Only the test mock passes.
+    if mode != "mock" and resolve_provider_mode() == "off":
+        return None
     if mode == "off":
         return None
     if mode == "mock":
@@ -1486,11 +1705,17 @@ def get_llm_provider_for_tier(tier: str = "fast") -> LLMProvider | None:
         return GeminiProvider()
     if mode == "openai-compatible":
         return OpenAICompatibleProvider()
-    return get_llm_provider_legacy()
+    return _raw_provider_legacy()
 
 
 def get_llm_provider_legacy() -> LLMProvider | None:
     """Original AI_ASSIST resolution (used when tier mode is auto)."""
+    from app.ai_client.shared_client import wrap
+
+    return wrap(_raw_provider_legacy())
+
+
+def _raw_provider_legacy() -> LLMProvider | None:
     mode = resolve_provider_mode()
     if mode == "off":
         return None

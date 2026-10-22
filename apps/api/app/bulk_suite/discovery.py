@@ -88,7 +88,7 @@ def parse_object_buttons(arch: str) -> list[dict[str, Any]]:
 def classify_button(btn: dict[str, Any], *, has_state_field: bool) -> tuple[bool, str]:
     """Return (bulk_safe, reason). Conservative on wizard patterns."""
     if btn.get("special"):
-        return False, "button has special= (cancel/save — not a bulk workflow action)"
+        return False, "button has special= (cancel/save, not a bulk workflow action)"
     name = str(btn["name"])
     ctx = str(btn.get("context") or "")
     if _WIZARD_NAME.search(name):
@@ -96,7 +96,7 @@ def classify_button(btn: dict[str, Any], *, has_state_field: bool) -> tuple[bool
     if _WIZARD_CONTEXT.search(ctx.replace(" ", "")):
         return False, "context suggests wizard/dialog opener"
     if not has_state_field:
-        return False, "no state/x_status selection field on model — review manually"
+        return False, "no state/x_status selection field on model, review manually"
     if btn.get("in_header"):
         return True, "header/statusbar object button on workflow model"
     if name.startswith(("action_", "button_")):

@@ -67,7 +67,7 @@ PATTERN_LIBRARY: dict[str, dict[str, Any]] = {
     },
     "qweb_commercial_host": {
         "id": "qweb_commercial_host",
-        "title": "Pay/QR QWeb on invoice/order/picking — never calendar",
+        "title": "Pay/QR QWeb on invoice/order/picking, never calendar",
         "tags": ["qweb", "invoice", "pay", "qr", "account.move"],
         "snippet": (
             "inherit_id=account.report_invoice_document (or sale/purchase/picking). "

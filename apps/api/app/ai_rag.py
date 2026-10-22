@@ -152,7 +152,7 @@ def score_packs_with_embeddings(
     """Return [(pack_id, cosine_score)] sorted desc, or None if embeddings unavailable.
 
     Under ``AI_RAG=auto``, never trigger a cold model download on the request path —
-    that previously froze the wizard (status) and Draft ModuleSpec for minutes.
+    that previously froze the wizard (status) and Draft app plan for minutes.
     Use Jaccard until the model is already loaded, or set ``AI_RAG=on`` to force load.
     """
     if not rag_enabled() or not prompt.strip():

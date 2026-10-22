@@ -1,10 +1,10 @@
-"""Live UI apply contract for ModuleSpec drafts.
+"""Live UI apply contract for App plan drafts.
 
 Generation must stamp every field Community live-apply needs. Apply stays
 defensive, but a finished draft is not 10.0-complete unless this contract is empty.
 
-Domain-agnostic. Python / OWL / QWeb stay Option A (module → sandbox → promote). Elite tests and
-i18n templates are zip hygiene, not a live-apply Option A surface.
+Domain-agnostic. Python / OWL / QWeb stay custom code (module → sandbox → promote). Elite tests and
+i18n templates are zip hygiene, not a live-apply custom code surface.
 """
 
 from __future__ import annotations
@@ -570,6 +570,11 @@ def live_apply_contract_findings(draft: dict[str, Any]) -> list[dict[str, Any]]:
         findings.extend(premium_surface_findings(draft))
     except Exception:  # noqa: BLE001
         pass
+    # Flagged design admission (INGENIUM_DESIGN_ADMISSION): each error blocks Install by name.
+    adm = draft.get("_admission") if isinstance(draft.get("_admission"), dict) else None
+    for e in (adm or {}).get("errors") or []:
+        findings.append({"dimension": "admission", "element": str(e.get("item") or ""),
+                         "detail": f"design admission [{e.get('code')}]: {e.get('message')}"})
     return findings
 
 

@@ -200,7 +200,7 @@ def safe_alternative_for(model_or_module: str) -> str:
     alternatives = {
         "accounting_core": (
             "Link custom models to account.move / account.payment via many2one; "
-            "use Odoo's standard invoicing or Power Ops recipes that call Odoo methods — "
+            "use Odoo's standard invoicing or Power Ops recipes that call Odoo methods, "
             "do not generate posting, tax, or state-mutation logic."
         ),
         "payment_processing": (
@@ -240,12 +240,12 @@ def guardrail_prompt(manifest: dict[str, Any]) -> str:
     active_cats = [k for k, mods in t1.items() if isinstance(mods, list) and mods]
     cats = ", ".join(active_cats) if active_cats else ", ".join(sorted(TIER_1_KEYS))
     return (
-        "PROTECTED MODULES (mandatory — do not violate):\n"
+        "PROTECTED MODULES (mandatory, do not violate):\n"
         f"Tier-1 categories present: {cats}.\n"
         "Never generate business logic against tier-1 modules/models: no automations, "
         "server actions, related_write, or field mutations that change protected records. "
         "Do not recreate accounting, payroll, payments, subscriptions, e-sign, or IAP flows.\n"
-        "Tier-2 modules (localization, framework, auth, mail) — extend via inheritance only; "
+        "Tier-2 modules (localization, framework, auth, mail), extend via inheritance only; "
         "do not replace core behaviour.\n"
         f"{_GUARDAIL_EFFECT_CLOSING}"
     )

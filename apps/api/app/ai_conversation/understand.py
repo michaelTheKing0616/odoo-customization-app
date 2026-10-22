@@ -16,13 +16,27 @@ and an allowlisted host the det path already named are never overridden.
 
 from __future__ import annotations
 
+import contextvars
 import json
 import logging
 import re
+import time
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from app.ai_conversation.intent_llm import _coerce_host_model, intent_llm_enabled
+from app.ai_conversation.intent_llm import (
+    _coerce_host_model,
+    admit_host_from_packet,
+    current_schema_packet,
+    intent_llm_enabled,
+)
+from app.live_schema_context import (
+    SchemaPacket,
+    drop_unknown_technical_names,
+    field_in_packet,
+    prepend_schema_packet,
+    resolve_form_anchor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,8 +89,11 @@ def _enrich_cache_put(key: str, payload: dict[str, Any]) -> None:
 
 
 def clear_enrich_cache() -> None:
-    """Test helper — wipe Flash enrich cache."""
+    """Test helper — wipe Flash enrich + app design caches."""
     _ENRICH_CACHE.clear()
+    from app.ai_conversation.app_design import clear_design_cache
+
+    clear_design_cache()
 
 
 def _coerce_craft_list(raw) -> list[dict]:
@@ -152,7 +169,7 @@ def brief_implies_option_a(prompt: str) -> bool:
 
 
 def _force_live_fields_for_residual(understanding: "Understanding", prompt: str) -> "Understanding":
-    """Residual full_app create/read/list/form → Live fields; never Option A from pack/LLM noise."""
+    """Residual full_app create/read/list/form → Live fields; never custom code from pack/LLM noise."""
     if understanding.grain != "full_app":
         return understanding
     if understanding.inherit_existing:
@@ -216,6 +233,12 @@ class Understanding:
     approved_craft: dict[str, bool] = field(default_factory=default_approved_craft)
     source: str = "deterministic"
     confidence: str = "high"
+    # Internal engine policy (plan.honesty). Never shown as the user summary.
+    policy_note: str = ""
+    # AI step outcome: called / skipped(reason) / failed / timed_out, model, latency.
+    llm_outcome: dict[str, Any] | None = None
+    # Full-app design (new models, stock extensions, integrations, groups) — step 2A.
+    app_design: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -226,6 +249,9 @@ class Understanding:
         score = getattr(self, "_must_do_score", None)
         if isinstance(score, dict):
             data["_must_do_score"] = score
+        anchor = getattr(self, "_placement_anchor", None)
+        if anchor:
+            data["placement_anchor"] = anchor
         stamp = resolve_class_stamp(
             prompt=str(getattr(self, "_source_prompt", "") or ""),
             capability=self.capability,
@@ -260,6 +286,9 @@ class Understanding:
             approved_craft=coerce_approved_craft(raw.get("approved_craft")),
             source=str(raw.get("source") or "deterministic"),
             confidence="low" if raw.get("confidence") == "low" else "high",
+            policy_note=str(raw.get("policy_note") or ""),
+            llm_outcome=raw.get("llm_outcome") if isinstance(raw.get("llm_outcome"), dict) else None,
+            app_design=raw.get("app_design") if isinstance(raw.get("app_design"), dict) else None,
         )
 
 
@@ -376,7 +405,26 @@ def apply_understanding_edits(
         approved_craft=approved,
         source="operator",
         confidence="high",
+        # An "add to an existing app" design (checklist flag) is the build plan: keep it.
+        app_design=(_edited_design(base.app_design, edits)
+                    if not inherit or (base.app_design or {}).get("_extension_flow") else None),
     )
+
+
+def _edited_design(base: dict[str, Any] | None, edits: dict[str, Any]) -> dict[str, Any] | None:
+    """Operator-edited app design from the diagnosis screen, re-validated."""
+    if not isinstance(edits.get("app_design"), dict) or not isinstance(base, dict):
+        return base
+    try:
+        from app.ai_conversation.app_design import apply_design_edits
+        from app.ai_conversation.grounding import current_grounding
+
+        edited = apply_design_edits(base, edits["app_design"], current_grounding())
+        if isinstance(edited, dict) and base.get("_extension_flow"):
+            edited["_extension_flow"] = True
+        return edited
+    except Exception:  # noqa: BLE001 - a bad edit never loses the confirmed design
+        return base
 
 
 def diagnosis_confirmed(answers: dict[str, str] | None) -> bool:
@@ -938,7 +986,7 @@ def score_must_do_constraints(
         honesty_bits = ("option a", "module", "sandbox", "promote", "not install this app", "zip")
         if not any(bit in joined for bit in honesty_bits):
             score -= 0.1
-            reasons.append("Option A honesty missing (module/sandbox/Promote)")
+            reasons.append("custom code honesty missing (module/sandbox/Promote)")
 
     # Min length / quality
     short = [r for r in rows if len(r) < 8]
@@ -999,9 +1047,145 @@ def _stamp_must_do_score(understanding: Understanding, score: dict[str, Any]) ->
 
 def _stamp_source_prompt(understanding: Understanding, prompt: str) -> Understanding:
     """Keep the brief on the IR so class-wide stamps stay class-aware."""
-    object.__setattr__(understanding, "_source_prompt", (prompt or "")[:4000])
+    object.__setattr__(understanding, "_source_prompt", prompt or "")
     return understanding
 
+
+def _design_allow(understanding: Understanding) -> frozenset[str]:
+    """Names the same app design creates (x_* models/fields) or extends (stock models)."""
+    design = getattr(understanding, "app_design", None)
+    if not isinstance(design, dict):
+        return frozenset()
+    from app.ai_conversation.app_design import design_technical_names
+
+    names = design_technical_names(design)
+    names.update(str(e.get("model") or "") for e in design.get("stock_extensions") or [])
+    names.discard("")
+    return frozenset(names)
+
+
+def _drop_unknown(text: str, packet: SchemaPacket | None, allow: frozenset[str] = frozenset()) -> str:
+    if not allow or packet is None or not text:
+        return drop_unknown_technical_names(text, packet)
+    from app.live_schema_context import _TECH_NAME_RE
+
+    kept: dict[str, str] = {}
+
+    def _mask(match: re.Match[str]) -> str:
+        token = match.group(0)
+        if token not in allow:
+            return token
+        key = f"\u00a7{len(kept)}\u00a7"
+        kept[key] = token
+        return key
+
+    out = drop_unknown_technical_names(_TECH_NAME_RE.sub(_mask, text), packet)
+    for key, token in kept.items():
+        out = out.replace(key, token)
+    return out
+
+
+def _constraint_row_admits_packet(
+    row: str, packet: SchemaPacket | None, allow: frozenset[str] = frozenset()
+) -> bool:
+    if packet is None:
+        return True
+    cleaned = _drop_unknown(row, packet, allow)
+    if re.search(r"\bx_[a-z0-9_]+\b", (row or "").lower()) and "x_" not in cleaned:
+        return False
+    return True
+
+
+def _ground_understanding_to_packet(
+    understanding: Understanding,
+    prompt: str,
+    packet: SchemaPacket | None,
+) -> Understanding:
+    """Drop packet-unknown names; resolve form anchors. Does not flip grain."""
+    if packet is None or packet.is_empty():
+        return understanding
+    if understanding.host_model and not admit_host_from_packet(
+        understanding.host_model, packet
+    ):
+        understanding.host_model = None
+    understanding.title = drop_unknown_technical_names(understanding.title, packet) or understanding.title
+    understanding.summary = drop_unknown_technical_names(understanding.summary, packet)
+    allow = _design_allow(understanding)
+    understanding.constraints = [
+        _drop_unknown(row, packet, allow)
+        for row in understanding.constraints
+        if _constraint_row_admits_packet(row, packet, allow)
+    ]
+    understanding.constraints = [row for row in understanding.constraints if row]
+    understanding.out_of_scope = [
+        drop_unknown_technical_names(row, packet)
+        for row in understanding.out_of_scope
+        if row
+    ]
+    host = understanding.host_model
+    anchor = resolve_form_anchor(packet, prompt, model=host)
+    if anchor:
+        object.__setattr__(understanding, "_placement_anchor", anchor)
+        rewritten: list[str] = []
+        for row in understanding.constraints:
+            rewritten.append(
+                re.sub(r"(?i)after the customer", f"after {anchor}", row)
+            )
+        understanding.constraints = rewritten
+        if re.search(r"(?i)after the customer", prompt or "") and not any(
+            anchor in row for row in understanding.constraints
+        ):
+            understanding.constraints.append(f"Place after {anchor}")
+    return understanding
+
+
+
+_PURPOSE_RES = (
+    re.compile(r"(?i)\bgoal of (?:this|the) (?:app|application|module|system|tool)\s+is\s+to\s+([^.\n]{8,220})"),
+    re.compile(r"(?i)\b(?:so that|in order to)\s+([^.\n]{8,160})"),
+)
+
+
+def _brief_purpose(text: str) -> str:
+    for rx in _PURPOSE_RES:
+        m = rx.search(text or "")
+        if m:
+            clause = re.sub(r"[*_`]+", "", m.group(1)).strip(" ,;:")
+            return re.sub(r"\s+", " ", clause)
+    return ""
+
+
+def _join_names(names: Any) -> str:
+    items = [str(n) for n in names if str(n).strip()]
+    if len(items) <= 1:
+        return "".join(items)
+    return ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def _plain_summary(text: str, *, title: str, host: str | None, inherit: bool, needs: bool) -> str:
+    """User-facing diagnosis summary: what App Studio understood, in plain words."""
+    from app.ai_conversation.grounding import current_grounding
+    from app.ai_grain import HOST_LABELS
+
+    label = HOST_LABELS.get(host or "", host or "")
+    if needs:
+        first = f"{title}: an installable module" + (f" for {label}" if label else "") + "."
+    elif inherit and label:
+        first = f"Adds {title} to the {label} form people already use."
+    else:
+        first = f"{title}: a new app people open from the Odoo home screen."
+    bits = [first]
+    purpose = _brief_purpose(text)
+    if purpose:
+        bits.append(f"It is meant to {purpose.rstrip('.')}.")
+    g = current_grounding()
+    if g is not None and g.apps_installed:
+        bits.append(f"Links to {_join_names(g.apps_installed)}.")
+    if g is not None and g.apps_missing:
+        verb = "is" if len(g.apps_missing) == 1 else "are"
+        bits.append(f"{_join_names(g.apps_missing)} {verb} not installed yet, so those links wait.")
+    out = " ".join(bits).replace("\u2014", ",")
+    return out[:400]
 
 
 def _deterministic_understanding(prompt: str) -> Understanding:
@@ -1028,13 +1212,14 @@ def _deterministic_understanding(prompt: str) -> Understanding:
     constraints: list[str] = []
     out_of_scope: list[str] = ["new home-screen app"] if inherit or needs else []
     title = _authored_display_name(text, host) if needs else ""
-    summary = (plan.honesty or "").strip()
+    policy_note = (plan.honesty or "").strip()
+    summary = ""
     confidence = "high"
 
     if plan.gold_artifact_id == "currency_rate_cbn":
         title = "CBN currency rates"
         out_of_scope.extend(["new app tile", "x_fx model", "live Install of Python"])
-        constraints.append("Module zip → sandbox prove → human Promote")
+        constraints.append("Module zip → sandbox prove → you publish")
     elif plan.gold_artifact_id == "pos_receipt_options":
         title = "POS receipt options"
         out_of_scope.extend(["x_receipt app", "live thermal studio"])
@@ -1057,13 +1242,13 @@ def _deterministic_understanding(prompt: str) -> Understanding:
         if not summary:
             summary = (
                 "Installable module on a stock form. Zip and sandbox stay locked "
-                "until the authoring gate passes. Promote stays human."
+                "until the authoring gate passes. Publishing stays a step you confirm."
             )
     elif plan.capability == "stock_reuse":
         title = "Stock Community apps"
         inherit = False
         needs = False
-        summary = summary or "No custom residual. Job Autopilot is the done-bar."
+        summary = summary or "No custom code. Job Autopilot is the done-bar."
         out_of_scope = ["new x_* document", "Install this app"]
     elif plan.capability == "refuse_clone":
         title = "Clone refused"
@@ -1172,6 +1357,13 @@ def _deterministic_understanding(prompt: str) -> Understanding:
             if nice:
                 title = nice.title() if nice.islower() or nice.lower() == nice else nice
 
+    if summary in {
+        "",
+        policy_note,
+        f"{title}.",
+        "A custom record people will open from the home screen.",
+    }:
+        summary = _plain_summary(text, title=title, host=host, inherit=inherit, needs=needs)
     result = Understanding(
         capability=plan.capability,
         grain=grain,
@@ -1185,6 +1377,7 @@ def _deterministic_understanding(prompt: str) -> Understanding:
         out_of_scope=_dedupe(out_of_scope),
         source="deterministic",
         confidence=confidence,
+        policy_note=policy_note,
     )
     return _stamp_source_prompt(result, text)
 
@@ -1204,13 +1397,17 @@ def _should_llm_enrich(prompt: str, det: Understanding) -> bool:
 
 
 def _must_do_system_prompt() -> str:
+    from app.ai_conversation.grounding import ONLINE_LIMITS, current_grounding, odoo_phrase
+
+    g = current_grounding()
+    online = (" " + ONLINE_LIMITS) if g is not None and g.online else ""
     return (
-        "You diagnose an Odoo Community customization brief for App Studio. "
+        f"You diagnose an {odoo_phrase(g)} customization brief for App Studio. "
         "Reply JSON only. Prefer filling constraint_ast "
         "(fields[{label,ttype,relation?}], host, hints[], non_goals[], grain) "
         "plus operator-facing constraints bullets. Cover: (1) host/placement "
         "(model + form/group when named), (2) fields with types when stated, "
-        "(3) workflows/states if implied, (4) live Install vs Option A module "
+        "(3) workflows/states if implied, (4) live Install vs Custom-code module "
         "delivery when Python/QWeb/HTTP is needed, (5) non-goals, (6) Online "
         "honesty when Python cannot Install live (module zip → sandbox → human "
         "Promote). Prefer Date over Datetime unless time is stated/implied. "
@@ -1219,6 +1416,7 @@ def _must_do_system_prompt() -> str:
         "never contradict inherit vs new home-screen tile. "
         "host_model must be an Odoo model like sale.order / res.partner when "
         "inheriting. Do not override gold or refuse_clone."
+        + online
     )
 
 
@@ -1227,8 +1425,9 @@ def _must_do_user_prompt(
     det: Understanding,
     *,
     repair_reasons: list[str] | None = None,
+    schema_packet: SchemaPacket | None = None,
 ) -> str:
-    seed = det.constraints[:8]
+    seed = det.constraints[: (30 if det.app_design else 8)]
     base = (
         f"Operator brief:\n{prompt}\n\n"
         f"Deterministic draft (seed/backstop only): capability={det.capability} "
@@ -1240,7 +1439,13 @@ def _must_do_user_prompt(
         "possible constraint_ast "
         "(fields[{label,ttype,relation?}], host, hints[], non_goals[], grain). "
         "constraints must be concrete Must-do bullets for this brief's complexity. "
-        "You may set host_model only if missing. Do not change gold or refuse."
+        "You may set host_model only if missing. Do not change gold or refuse. "
+        + (
+            "New x_* models and fields from the App design in the Must-do seed are "
+            "allowed; any other model or field must be in the live schema packet."
+            if det.app_design
+            else "Do not name a model or field that is not in the live schema packet."
+        )
     )
     if repair_reasons:
         base += (
@@ -1249,14 +1454,50 @@ def _must_do_user_prompt(
             + ". Rewrite constraints to fix those gaps. Keep host consistent "
             "with the deterministic host when set. Stay compact (≤10 bullets)."
         )
-    return base
+    from app.ai_conversation.grounding import grounding_prompt_block
+
+    block = grounding_prompt_block()
+    if block:
+        base = block + "\n\n" + base
+    return prepend_schema_packet(base, schema_packet)
 
 
-def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
+_LLM_OUTCOME: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
+    "understand_llm_outcome", default=None
+)
+
+
+def _provider_model(provider: Any) -> str | None:
+    for attr in ("model", "model_name", "name"):
+        val = getattr(provider, attr, None)
+        if isinstance(val, str) and val:
+            return val
+    return None
+
+
+def _record_llm_outcome(payload: dict[str, Any], *, repair: bool = False) -> None:
+    if repair:
+        cur = dict(_LLM_OUTCOME.get() or {})
+        cur["repair_status"] = payload.get("status")
+        _LLM_OUTCOME.set(cur)
+        return
+    _LLM_OUTCOME.set(payload)
+    level = logging.INFO if payload.get("status") == "called" else logging.WARNING
+    logger.log(level, "Understanding LLM outcome: %s", payload)
+
+
+def _llm_enrich(
+    prompt: str,
+    det: Understanding,
+    *,
+    schema_packet: SchemaPacket | None = None,
+) -> Understanding:
     from app.llm_provider import LLMError, get_llm_provider_for_tier
 
+    packet = schema_packet if schema_packet is not None else current_schema_packet()
     provider = get_llm_provider_for_tier("fast")
     if provider is None:
+        _record_llm_outcome({"status": "skipped", "reason": "no_provider"})
         scored = score_must_do_constraints(
             prompt,
             det.constraints,
@@ -1268,29 +1509,69 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
 
     cache_key = _enrich_cache_key(prompt, det)
 
-    def _call(*, repair_reasons: list[str] | None = None) -> dict[str, Any] | None:
+    def _call(*, repair_reasons: list[str] | None = None, timeout_scale: float = 1.0) -> dict[str, Any] | None:
         # Cache only the primary (non-repair) fill — repairs are one-shot.
         if not repair_reasons:
             hit = _enrich_cache_get(cache_key)
             if hit is not None:
+                _record_llm_outcome(
+                    {"status": "called", "cached": True, "model": _provider_model(provider)}
+                )
                 return hit
+        from app.ai_conversation.grounding import llm_timeout_for
+
+        user_text = _must_do_user_prompt(
+            prompt, det, repair_reasons=repair_reasons, schema_packet=packet
+        )
+        timeout_s = llm_timeout_for(prompt) * timeout_scale
+        meta: dict[str, Any] = {
+            "model": _provider_model(provider),
+            "prompt_chars": len(user_text),
+            "timeout_s": timeout_s,
+        }
+        started = time.monotonic()
         try:
             raw = provider.generate_json(
-                _must_do_user_prompt(prompt, det, repair_reasons=repair_reasons),
+                user_text,
                 system=_must_do_system_prompt(),
-                timeout_s=20.0,
+                timeout_s=timeout_s,
                 temperature=0.0,
                 format_schema=_UNDERSTAND_SCHEMA,
             )
-        except LLMError as exc:
-            logger.info("Understanding LLM skipped: %s", exc)
+        except (LLMError, TimeoutError) as exc:
+            msg = str(exc)
+            status = (
+                "timed_out"
+                if isinstance(exc, TimeoutError) or re.search(r"(?i)time[sd]?\s*out|timeout|deadline", msg)
+                else "failed"
+            )
+            _record_llm_outcome(
+                {
+                    **meta,
+                    "status": status,
+                    "error": msg[:200],
+                    "latency_ms": int((time.monotonic() - started) * 1000),
+                },
+                repair=bool(repair_reasons),
+            )
             return None
         parsed_local = _parse_enrich_payload(raw)
+        _record_llm_outcome(
+            {
+                **meta,
+                "status": "called" if parsed_local else "failed",
+                **({} if parsed_local else {"error": "unparseable JSON"}),
+                "latency_ms": int((time.monotonic() - started) * 1000),
+            },
+            repair=bool(repair_reasons),
+        )
         if parsed_local and not repair_reasons:
             _enrich_cache_put(cache_key, parsed_local)
         return parsed_local
 
-    parsed = _call()
+    parsed = _call(timeout_scale=0.7)  # tighter first attempt; the retry keeps total near 1.4x
+    if not parsed:
+        parsed = _call(timeout_scale=0.7)  # one retry: a transient timeout must not lose the app design
     if not parsed:
         scored = score_must_do_constraints(
             prompt,
@@ -1302,7 +1583,7 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
         return _stamp_must_do_score(det, scored)
 
     host = det.host_model
-    coerced = _coerce_host_model(str(parsed.get("host_model") or ""))
+    coerced = admit_host_from_packet(str(parsed.get("host_model") or ""), packet)
     # Residual full_app already cleared stock hosts (calendar.event / hr.employee…).
     # LLM must not re-inject alias noise into Contract host_model.
     residual_full = (
@@ -1315,7 +1596,8 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
     if coerced and not host and not residual_full:
         host = coerced
     if residual_full:
-        host = None
+        # A full-app design that extends stock models keeps its stock host.
+        host = det.host_model if det.app_design else None
 
     llm_constraints: list[str] = []
     extra = parsed.get("constraints")
@@ -1348,6 +1630,22 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
                 llm_ast = scrub_uncued_invent_from_llm_ast(llm_ast, prompt=prompt)
             except Exception:  # noqa: BLE001
                 pass
+            if packet is not None:
+                kept = []
+                design_names = _design_allow(det)
+                for field in llm_ast.fields or []:
+                    label = str(getattr(field, "label", "") or "")
+                    token = label.strip()
+                    if (
+                        token.startswith("x_")
+                        and not field_in_packet(packet, token)
+                        and token not in design_names
+                    ):
+                        continue
+                    kept.append(field)
+                llm_ast.fields = kept
+                if llm_ast.host and not admit_host_from_packet(str(llm_ast.host), packet):
+                    llm_ast.host = None
             llm_constraints = _dedupe(ast_to_must_do(llm_ast) + llm_constraints)
             try:
                 from app.ai_brief_cues import scrub_uncued_invent_must_do_rows
@@ -1466,6 +1764,13 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
     if isinstance(extra_out, list):
         out.extend(str(x) for x in extra_out if str(x).strip())
     title = str(parsed.get("title") or "").strip()[:80] or det.title
+    try:
+        from app.ai_operator_brief import stated_app_name
+
+        if stated_app_name(prompt) and det.title:
+            title = det.title  # operator-stated app name wins over the model's retitle
+    except Exception:  # noqa: BLE001
+        pass
     if title.lower().startswith("the client"):
         title = det.title
     # Prefer/inherit: keep AST-derived Diagnosis Name over thin host slugs
@@ -1483,14 +1788,14 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
         title = det.title
     summary = str(parsed.get("summary") or "").strip()[:400] or det.summary
     inherit = det.inherit_existing or bool(parsed.get("inherit_existing"))
-    # Option A only from det (capability/gold) or an explicit Option A brief — never
+    # custom code only from det (capability/gold) or an explicit custom code brief — never
     # from LLM boolean noise or pack depends keywords.
     needs = det.needs_module
     if brief_implies_option_a(prompt) and bool(parsed.get("needs_module")):
         needs = True
     # Residual full_app Contract: app name title, no stock host, no inherit, Live fields.
     if residual_full:
-        host = None
+        host = det.host_model if det.app_design else None
         inherit = False
         if not brief_implies_option_a(prompt):
             needs = False
@@ -1510,6 +1815,9 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
     ):
         confidence = "low"
 
+    if det.app_design:
+        # Design rows (every new model + stock extension) lead; LLM extras follow.
+        constraints = list(det.constraints) + list(constraints)
     result = Understanding(
         capability=det.capability,
         grain=det.grain,
@@ -1519,18 +1827,229 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
         gold_artifact_id=det.gold_artifact_id,
         title=title,
         summary=summary,
-        constraints=_dedupe(constraints)[:12],
+        constraints=_dedupe(constraints)[: (24 if det.app_design else 12)],
         out_of_scope=_dedupe(out)[:8],
-        source="mixed" if (coerced or llm_constraints) else "deterministic",
+        source="mixed" if (coerced or llm_constraints or det.source == "mixed") else "deterministic",
         confidence=confidence,
+        app_design=det.app_design,
     )
+    result = _ground_understanding_to_packet(result, prompt, packet)
     return _stamp_source_prompt(_stamp_must_do_score(result, score), prompt)
 
 
-def build_understanding(prompt: str) -> Understanding:
+def _design_applies(prompt: str, det: Understanding) -> bool:
+    """Residual full_app long / structured briefs only; short and Prefer briefs unchanged."""
+    import os
+
+    from app.ai_conversation.grounding import brief_wants_llm
+
+    if os.environ.get("STUDIO_APP_DESIGN", "on").strip().lower() in {"0", "off", "false", "no"}:
+        return False
+    from app.ai_conversation import studio_agent as _agent
+
+    if _agent.mode() == "agent" and not det.gold_artifact_id:
+        # Agent mode: single-model and extend-existing briefs also go through the agent, which
+        # decides reuse / extend / new with a playback (the same code gates authorize it).
+        return True
+    if _extension_flow(prompt, det):
+        return True
+    return (
+        det.grain == "full_app"
+        and not det.inherit_existing
+        and not det.needs_module
+        and (det.capability == "residual_app" or (det.capability == "mixed" and _multi_record_brief(prompt)))
+        and not det.gold_artifact_id
+        and (intent_llm_enabled() or brief_wants_llm(prompt))
+    )
+
+
+def _extension_flow(prompt: str, det: Understanding) -> bool:
+    """Checklist flag: "add to an existing app" briefs go through the authorized design.
+
+    Fields and automations then trace to approved requirements (no sentence-shaped fields),
+    and after a planned app is installed the design is refreshed on its real models."""
+    from app.ai_conversation import brief_checklist as bc
+    from app.ai_conversation.grounding import brief_wants_llm
+
+    return (
+        bc.enabled()
+        and bool(det.inherit_existing)
+        and bool(det.host_model)
+        and not det.needs_module
+        and not det.gold_artifact_id
+        and (intent_llm_enabled() or brief_wants_llm(prompt))
+    )
+
+
+def _multi_record_brief(prompt: str) -> bool:
+    """A brief that names two or more new records is a full app, even if it also extends stock apps."""
+    try:
+        from app.ai_conversation.app_design import outline_from_brief
+
+        return len(outline_from_brief(prompt).new_models) >= 2
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _suggest_applies(prompt: str, det: Understanding) -> bool:
+    """Named-residual brief (one main record): AI may suggest supporting models.
+
+    Prefer / inherit, built-in apps only, gold and custom code briefs never get suggestions.
+    """
+    import os
+
+    if os.environ.get("STUDIO_SUGGEST_MODELS", "on").strip().lower() in {"0", "off", "false", "no"}:
+        return False
+    if not (
+        det.grain == "full_app"
+        and det.capability == "residual_app"
+        and not det.inherit_existing
+        and not det.needs_module
+        and not det.gold_artifact_id
+        and not det.host_model
+    ):
+        return False
+    try:
+        from app.ai_document_shape import _named_residual
+
+        kind, residual = _named_residual(prompt)
+    except Exception:  # noqa: BLE001
+        return False
+    return kind == "named" and bool(residual)
+
+
+def _apply_suggested_design(prompt: str, det: Understanding) -> Understanding:
+    """Main record + suggested supporting models. Must-do stays brief-named only."""
+    if not _suggest_applies(prompt, det):
+        return det
+    try:
+        from app.ai_conversation.app_design import named_residual_design
+        from app.ai_conversation.grounding import current_grounding
+
+        design = named_residual_design(
+            prompt, title=det.title, grounding=current_grounding(), use_llm=intent_llm_enabled()
+        )
+    except Exception:  # noqa: BLE001 — suggestions are optional
+        logger.exception("Supporting-model suggestions failed")
+        return det
+    if design is not None:
+        det.app_design = design.to_dict()
+    return det
+
+
+def _apply_app_design(
+    prompt: str,
+    det: Understanding,
+    packet: SchemaPacket | None,
+    *,
+    resolved_answers: dict[str, str] | None = None,
+) -> Understanding:
+    """LLM designs the full app (guardrails repair; outline fallback) → Must-do + host."""
+    if not _design_applies(prompt, det):
+        return _apply_suggested_design(prompt, det)
+    try:
+        from app.ai_conversation.app_design import build_app_design, design_must_do
+        from app.ai_conversation.grounding import current_grounding
+        from app.odoo_snapshot import current_snapshot
+
+        design = build_app_design(
+            prompt,
+            grounding=current_grounding(),
+            schema_packet=packet,
+            use_llm=intent_llm_enabled(),
+            title=det.title,
+            purpose=det.summary,
+            resolved_answers=resolved_answers,
+            snapshot=current_snapshot(),
+        )
+    except Exception:  # noqa: BLE001 — design is additive; never break understand
+        logger.exception("App design failed; keeping deterministic Must-do")
+        return det
+    if design is None:
+        # One-model brief: fall back to the named-residual suggestion path.
+        return _apply_suggested_design(prompt, det)
+    det.app_design = design.to_dict()
+    agent_extend = bool(design.playback) and bool(design.stock_extensions) and not design.new_models
+    if _extension_flow(prompt, det) or agent_extend:
+        # Built from the design (stock extensions + automations), not the field-pack grammar.
+        det.app_design["_extension_flow"] = True
+    det.constraints = _dedupe(design_must_do(design))
+    if design.stock_extensions:
+        det.host_model = max(design.stock_extensions, key=lambda e: len(e.fields)).model
+    if design.source.startswith("llm"):
+        det.source = "mixed"
+    return det
+
+
+_NEG_CUE = re.compile(r"(?i)\b(without|don'?t|do not|no|never|not|avoid|exclud\w*|out of scope)\b")
+_COND_CLAUSE = re.compile(r"(?i)\b(?:when|whenever|if|unless|until|once|where)\b")
+_EXCL_ROW = re.compile(r"(?i)^\s*(no|without|don'?t|do not|avoid|never|exclude[ds]?)\b|\bbefore\b.*\binstall")
+
+
+def drop_exclusions(rows: list[str], prompt: str) -> list[str]:
+    """'Don't do X' in the brief must never become a Must-do row."""
+    from app.ai_conversation.intent_contract import _stems
+
+    negated: list[set[str]] = []
+    for sent in re.split(r"(?<=[.!?])\s+|\n", prompt or ""):
+        # A negation inside a condition ("show a hint when ... no document is attached")
+        # describes when something happens; it is not the owner saying "don't build it".
+        sent = _COND_CLAUSE.split(sent, maxsplit=1)[0]
+        m = _NEG_CUE.search(sent)
+        if m:
+            negated.append(_stems(re.split(r"[:;,]", sent[m.end():])[0][:120]))
+    out = []
+    for row in rows or []:
+        text = str(row)
+        st = _stems(text)
+        if _EXCL_ROW.search(text) or any(len(st & n) >= 2 and len(st & n) * 3 >= len(st) for n in negated):
+            continue
+        out.append(row)
+    return out
+
+
+def _host_from_approved_decision(resolved_answers: dict[str, str] | None) -> str:
+    """The stock record the approved checklist built on, once its app is installed ('' otherwise).
+
+    Checklist flag only. Every stock choice in the stored decision must name the same model, and
+    the live database must have it, so code (not wording) authorizes the host."""
+    from app.ai_conversation import brief_checklist as bc
+    from app.odoo_snapshot import current_snapshot
+
+    if not bc.enabled() or not resolved_answers:
+        return ""
+    try:
+        decision = json.loads(resolved_answers.get("_diagnosis_decision_json") or "null") or {}
+    except (TypeError, ValueError):
+        return ""
+    models = {
+        str((c.get("use") or {}).get("model") or "")
+        for c in decision.get("stock_checks") or []
+        if isinstance(c, dict) and c.get("choice") == "stock" and isinstance(c.get("use"), dict)
+    }
+    models.discard("")
+    snap = current_snapshot()
+    if len(models) != 1 or snap is None or not getattr(snap, "ok", False):
+        return ""
+    model = next(iter(models))
+    return model if model in (getattr(snap, "index", None) or {}) else ""
+
+
+def build_understanding(
+    prompt: str,
+    *,
+    schema_packet: SchemaPacket | None = None,
+    resolved_answers: dict[str, str] | None = None,
+) -> Understanding:
+    packet = schema_packet if schema_packet is not None else current_schema_packet()
     det = _deterministic_understanding(prompt)
+    if det.inherit_existing and not det.host_model and not det.needs_module:
+        det.host_model = _host_from_approved_decision(resolved_answers) or None
+    det = _apply_app_design(prompt, det, packet, resolved_answers=resolved_answers)
+    det = _ground_understanding_to_packet(det, prompt, packet)
+    _LLM_OUTCOME.set(None)
     if _should_llm_enrich(prompt, det):
-        understanding = _llm_enrich(prompt, det)
+        understanding = _llm_enrich(prompt, det, schema_packet=packet)
     else:
         scored = score_must_do_constraints(
             prompt,
@@ -1541,7 +2060,35 @@ def build_understanding(prompt: str) -> Understanding:
         )
         understanding = _stamp_must_do_score(det, scored)
     understanding = _force_live_fields_for_residual(understanding, prompt)
+    if isinstance(understanding.app_design, dict) and understanding.app_design.get("new_models"):
+        # The app design is the source of truth for Must do: no raw AI implementation lines,
+        # no single-field rows repeating an extension, no exclusions.
+        from app.ai_conversation.app_design import AppDesign, design_must_do
+
+        raw = dict(understanding.app_design)
+        extra = {m.get("name") for m in raw.get("new_models") or [] if isinstance(m, dict) and m.get("suggested")}
+        raw["new_models"] = [
+            dict(m, fields=[f for f in m.get("fields") or [] if not (isinstance(f, dict) and f.get("relation") in extra)])
+            for m in raw.get("new_models") or [] if isinstance(m, dict) and m.get("name") not in extra
+        ]
+        understanding.constraints = _dedupe(design_must_do(AppDesign.from_dict(raw)))
+    understanding.constraints = drop_exclusions(understanding.constraints, prompt)
     understanding = _attach_craft_proposals(prompt, understanding)
+    understanding = _ground_understanding_to_packet(understanding, prompt, packet)
+    outcome = _LLM_OUTCOME.get()
+    if outcome is None:
+        if not intent_llm_enabled():
+            reason = "ai_step_off"
+        elif det.capability == "refuse_clone":
+            reason = "refuse_clone"
+        else:
+            reason = "not_needed"
+        outcome = {"status": "skipped", "reason": reason}
+    understanding.llm_outcome = dict(outcome)
+    if isinstance(understanding.app_design, dict):
+        understanding.llm_outcome["design"] = understanding.app_design.get("llm_outcome")
+    if not understanding.policy_note:
+        understanding.policy_note = det.policy_note
     return _stamp_source_prompt(understanding, prompt)
 
 
@@ -1556,13 +2103,16 @@ def diagnosis_clarification(understanding: Understanding) -> dict[str, Any]:
         label = HOST_LABELS.get(understanding.host_model, understanding.host_model)
         help_bits.append(f"Lives on {label} ({understanding.host_model}).")
     if understanding.needs_module:
-        help_bits.append("This is an Option A module — not Install this app.")
+        help_bits.append("This is a custom-code module, not Install this app.")
     elif understanding.inherit_existing:
-        help_bits.append("Extra fields on a form people already use — not a new Apps tile.")
+        help_bits.append("Extra fields on a form people already use, not a new Apps tile.")
     stamp_lane = getattr(understanding, "delivery_lane", None)
     u_dict = understanding.to_dict()
-    if u_dict.get("delivery_lane_copy"):
-        help_bits.append(str(u_dict["delivery_lane_copy"]))
+    from app.ai_conversation.grounding import current_grounding, plain_lane_copy
+
+    grounding = current_grounding()
+    if u_dict.get("delivery_lane_copy") or u_dict.get("delivery_lane"):
+        help_bits.append(plain_lane_copy(u_dict.get("delivery_lane"), grounding))
     _ = stamp_lane
     return {
         "id": "diagnosis",
@@ -1571,6 +2121,9 @@ def diagnosis_clarification(understanding: Understanding) -> dict[str, Any]:
         "question": f"We'll build: {understanding.title}",
         "help": " ".join(bit for bit in help_bits if bit).strip(),
         "understanding": u_dict,
+        "grounding": grounding.as_dict() if grounding is not None else None,
+        "llm_outcome": u_dict.get("llm_outcome"),
+        "app_design": u_dict.get("app_design"),
         "host_choices": [
             {"id": model, "label": label} for model, label in HOST_LABELS.items()
         ],
@@ -1627,7 +2180,7 @@ def understanding_contradictions(
     option_a = {"option_a_authored", "option_a_standalone"}
     if understanding.needs_module and cap not in option_a and not draft.get("custom_code_blocks"):
         findings.append(
-            f"Locked as Option A ({understanding.capability}); draft capability is {cap or 'empty'}."
+            f"Locked as custom code ({understanding.capability}); draft capability is {cap or 'empty'}."
         )
     if understanding.gold_artifact_id:
         gold = ir.get("gold_artifact_id") if isinstance(ir, dict) else None

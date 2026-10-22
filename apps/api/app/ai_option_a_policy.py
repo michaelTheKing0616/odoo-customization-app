@@ -1,4 +1,4 @@
-"""Fail-closed policy for LLM-authored Option A modules.
+"""Fail-closed policy for LLM-authored Custom-code modules.
 
 Gold templates skip this module. Authored drafts must not ship secrets, SSRF,
 invented taxes, or live ``state=code``.
@@ -155,7 +155,7 @@ def policy_findings(draft: dict[str, Any]) -> list[dict[str, str]]:
             findings.append(
                 {
                     "code": "secret_in_module",
-                    "message": "API keys / passwords must not be written into the module. Operator pastes them in Odoo after Promote.",
+                    "message": "API keys / passwords must not be written into the module. Operator pastes them in Odoo after you publish.",
                     "file": path,
                 }
             )

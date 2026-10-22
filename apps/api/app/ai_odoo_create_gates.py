@@ -9,7 +9,7 @@ Policies (expand when UAT hits a new hard block — do not invent entries):
               already has PoS tickets.
   strip — relation is not a useful form FK for our residuals; drop the field.
 
-Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm.
 """
 
 from __future__ import annotations

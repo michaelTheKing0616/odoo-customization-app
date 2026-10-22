@@ -7,6 +7,8 @@ returns that result. ``apply`` does not call it. WAL rows still live in ``_JOURN
 The Alembic revision ``s9t0u1v2w3x4`` declares ``journal_entry``,
 ``before_image``, and ``apply_database_lock``; this process does not write
 those tables. ``recover_stale_applying`` reads a journal list, not Postgres.
+When ``odoo_database`` is set, ``apply`` waits on the per-database lock
+(queued, not fail-fast) and heartbeats until release.
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ from app.changeset.inbox import Inbox
 from app.changeset.ops import OP_CATALOG, get_op
 from app.changeset.policy import apply_blocked, policy_decision, policy_for_op, risk_of
 from app.changeset.protected_registry import protected_denial, reset_detections
-from app.changeset.recovery import DatabaseApplyLock, recover
+from app.changeset.recovery import DatabaseApplyLock, recover, start_lock_heartbeat
 from app.changeset.rollback import undo as rollback_undo
 from app.changeset.simulate import guard_production_apply
 from app.changeset.verify import verify
@@ -252,6 +254,7 @@ def apply(
     record_count: int | None = None,
     odoo_database: str = "",
     apply_lock: DatabaseApplyLock | None = None,
+    lock_wait: bool | float | None = True,
     frozen: bool = False,
     approvers: list[Mapping[str, Any]] | None = None,
     observation: Mapping[str, Any] | None = None,
@@ -265,9 +268,12 @@ def apply(
     ``verify`` after the in-memory writes succeed. ``model_success`` is passed
     through and does not decide the outcome.
     Outputs: the journal decision. A freeze or a missing domain owner raises
-    before any journal or port write.
-    Side effects: may append journal rows. Does not call Odoo and does not
-    render a live view.
+    before any journal or port write. When ``odoo_database`` is set, the
+    per-database apply lock is acquired before any port write; a second
+    caller waits up to ``lock_wait`` (default: the lock's wait bound) and
+    returns ``lock_wait_exceeded`` if the bound elapses.
+    Side effects: may append journal rows and hold the apply lock with a
+    heartbeat. Does not call Odoo and does not render a live view.
     """
     if mode not in {"T", "C"}:
         raise ValueError("mode must be T or C")
@@ -313,9 +319,16 @@ def apply(
 
     lock_held = False
     active_lock: DatabaseApplyLock | None = None
+    heartbeat_stop = None
+    heartbeat_thread = None
     if odoo_database:
         active_lock = apply_lock if apply_lock is not None else _APPLY_LOCK
-        if not active_lock.acquire(odoo_database, fp, now=datetime.now(timezone.utc)):
+        if not active_lock.acquire(
+            odoo_database,
+            fp,
+            now=datetime.now(timezone.utc),
+            wait=lock_wait,
+        ):
             return {
                 "status": "NEEDS_HUMAN",
                 "plan_hash": fp,
@@ -324,7 +337,7 @@ def apply(
                 "risk_bump": 0,
                 "applied_count": 0,
                 "report": {
-                    "reason": "database_busy",
+                    "reason": "lock_wait_exceeded",
                     "odoo_database": odoo_database,
                     "results": [],
                     "missing": [],
@@ -332,6 +345,7 @@ def apply(
                 },
             }
         lock_held = True
+        heartbeat_stop, heartbeat_thread = start_lock_heartbeat(active_lock, odoo_database, fp)
 
     try:
         return _apply_journaled(
@@ -345,6 +359,10 @@ def apply(
             model_success=model_success,
         )
     finally:
+        if heartbeat_stop is not None:
+            heartbeat_stop.set()
+        if heartbeat_thread is not None:
+            heartbeat_thread.join(timeout=1.0)
         if lock_held and active_lock is not None:
             active_lock.release(odoo_database, fp)
 

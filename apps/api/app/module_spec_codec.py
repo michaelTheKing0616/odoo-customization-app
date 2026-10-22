@@ -40,7 +40,7 @@ def merge_module_spec_fragment(
     base: dict[str, Any],
     fragment: dict[str, Any],
 ) -> dict[str, Any]:
-    """Deep-merge a product fragment (e.g. invoicing §19) into a ModuleSpec-like draft."""
+    """Deep-merge a product fragment (e.g. invoicing §19) into an app plan-like draft."""
     out = copy.deepcopy(base)
 
     deps = list(out.get("depends") or ["base"])
@@ -174,7 +174,7 @@ def _draft_company_fields_for_module_export(draft: dict[str, Any]) -> dict[str, 
 
 
 def draft_dict_to_module_spec(draft: dict[str, Any]) -> ModuleSpec:
-    """Build ModuleSpec from ModuleSpec-like JSON (projects / AI draft / import)."""
+    """Build app plan from ModuleSpec-like JSON (projects / AI draft / import)."""
     draft = _draft_company_fields_for_module_export(copy.deepcopy(draft))
     technical_name = str(draft.get("technical_name") or "custom_module")
 
@@ -241,12 +241,13 @@ def draft_dict_to_module_spec(draft: dict[str, Any]) -> ModuleSpec:
 
     actions: list[ActionSpec] = []
     for a in draft.get("actions") or []:
-        if not isinstance(a, dict) or not a.get("model"):
+        model = (a.get("model") or a.get("res_model")) if isinstance(a, dict) else None  # design drafts use res_model
+        if not model:
             continue
         actions.append(
             ActionSpec(
-                name=str(a.get("name") or a["model"]),
-                model=str(a["model"]),
+                name=str(a.get("name") or model),
+                model=str(model),
                 view_mode=str(a.get("view_mode") or "list,form"),
                 domain=a.get("domain"),
                 context=a.get("context"),
@@ -264,7 +265,9 @@ def draft_dict_to_module_spec(draft: dict[str, Any]) -> ModuleSpec:
                 action_xml_id=mu.get("action_xml_id"),
                 parent_xml_id=mu.get("parent_xml_id"),
                 sequence=int(mu.get("sequence") or 10),
-                technical_name=mu.get("technical_name"),
+                # draft menus carry xml_id; keep it so parent references resolve (menu_x_root ...).
+                technical_name=mu.get("technical_name") or (
+                    str(mu["xml_id"])[5:] if str(mu.get("xml_id") or "").startswith("menu_") else mu.get("xml_id")),
                 group_xml_ids=[
                     str(g)
                     for g in (mu.get("groups") or mu.get("group_xml_ids") or [])

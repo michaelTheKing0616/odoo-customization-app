@@ -1,4 +1,4 @@
-"""Job Autopilot — sandbox stock-first implementation from NL + documents."""
+"""Job Autopilot — sandbox built-in apps first implementation from NL + documents."""
 
 from app.job_autopilot.executor import run_autopilot_job
 from app.job_autopilot.packet import AutopilotResult, JobPacket, JobScorecard

@@ -37,7 +37,7 @@ class LockDatesRecipe:
             filename=filename or "lock_dates",
             headers=list(headers or []),
             raw_rows=list(rows or []),
-            message="Lock dates recipe ready — supply dates in extras",
+            message="Lock dates recipe ready, supply dates in extras",
             honesty="Lock dates block posting in closed periods. Preview shows current vs proposed.",
             extras={"model": "res.company", **extras},
         )

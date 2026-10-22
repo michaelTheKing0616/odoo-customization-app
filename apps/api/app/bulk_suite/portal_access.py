@@ -84,7 +84,7 @@ def run_bulk_portal(
 
     if action == "grant" and not client.model_exists("portal.wizard"):
         raise PortalValidationError(
-            "portal module is not installed — portal.wizard unavailable"
+            "portal module is not installed, portal.wizard unavailable"
         )
 
     rows = client.execute_kw(
@@ -120,7 +120,7 @@ def run_bulk_portal(
                         id=pid,
                         display_name=label,
                         ok=False,
-                        error="Partner has no email — portal grant skipped",
+                        error="Partner has no email, portal grant skipped",
                     )
                 )
                 continue

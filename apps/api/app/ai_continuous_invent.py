@@ -11,7 +11,7 @@ Class-wide (not Vehicle-only). Any residual / Prefer brief must stay honest:
 7. Date default (not Datetime) unless time stated/implied
 
 Flash-free / ``AI_INTENT_LLM=off`` must fully deliver Apply guarantees.
-Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm.
 """
 
 from __future__ import annotations

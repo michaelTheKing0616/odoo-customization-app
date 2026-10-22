@@ -52,4 +52,4 @@ def decrypt_secret(token: str) -> str:
     try:
         return _fernet().decrypt(token.encode("utf-8")).decode("utf-8")
     except InvalidToken as exc:
-        raise CryptoError("Failed to decrypt credential — wrong FERNET_KEY?") from exc
+        raise CryptoError("Failed to decrypt credential, wrong FERNET_KEY?") from exc

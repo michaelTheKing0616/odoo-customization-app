@@ -132,13 +132,13 @@ def retail_supermarket_pack() -> dict[str, Any]:
         },
         "display_prefix": "Super Market",
         "anti_patterns": [
-            "Do NOT duplicate product.template as x_product — reuse stock Products",
-            "Do NOT implement payment capture — link purchase/sale documents only",
-            "Branch is x_branch — not a selection on orders alone",
-            "Supplier is res.partner with supplier rank — not x_supplier mini-CRM",
+            "Do NOT duplicate product.template as x_product, reuse stock Products",
+            "Do NOT implement payment capture, link purchase/sale documents only",
+            "Branch is x_branch, not a selection on orders alone",
+            "Supplier is res.partner with supplier rank, not x_supplier mini-CRM",
             "Do NOT set x_status field.domain to keys outside the selection list (sent/paid vs confirmed/delivered)",
-            "Do NOT duplicate x_country char when x_country_id exists — use res.country M2O only",
-            "Wire inventory adjustments to x_inventory_reason via x_reason_id — not free-text x_reason",
+            "Do NOT duplicate x_country char when x_country_id exists, use res.country M2O only",
+            "Wire inventory adjustments to x_inventory_reason via x_reason_id, not free-text x_reason",
         ],
         "models": [
             {

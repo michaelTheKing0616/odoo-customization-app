@@ -35,6 +35,12 @@ class OdooConnection(Base):
     # Fernet ciphertext of password or API key
     secret_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     server_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # online | odoo_sh | self_hosted (confirmed on Connect); None = detect from version + URL
+    hosting: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Agency grouping on Connect (free text, e.g. client or team name)
+    group_label: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # Saved "This is a test copy" flag. None = never set (older connections).
+    is_test_copy: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     last_seen_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
     upgrade_detected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     upgrade_detected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -307,7 +313,7 @@ class BackgroundJob(Base):
 
 
 class AiDraftCache(Base):
-    """Cached AI ModuleSpec drafts — auto-saved after generation for recovery."""
+    """Cached AI App plan drafts — auto-saved after generation for recovery."""
 
     __tablename__ = "ai_draft_cache"
 
@@ -563,6 +569,7 @@ class ScriptRun(Base):
     stderr: Mapped[str | None] = mapped_column(Text, nullable=True)
     write_counts_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    snapshot_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -765,7 +772,7 @@ class PlanCardRecord(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     connection_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     requester_id: Mapped[str] = mapped_column(String(36), nullable=False)
-    plan_hash: Mapped[str] = mapped_column(String(16), nullable=False)
+    plan_hash: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
     card_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -788,6 +795,11 @@ class IntegrationEvent(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Delivery engine (bridge/delivery.py): events with the same ordering key go one at a time, oldest first.
+    ordering_key: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class IdempotencyKey(Base):
@@ -800,3 +812,122 @@ class IdempotencyKey(Base):
     result_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+
+class DryRunSeen(Base):
+    """Structural dry-run hash shared by API workers. Rows expire after one hour.
+
+    ``expires_at`` is naive UTC. Workers read and write this table; nothing is
+    kept only in process memory.
+    """
+
+    __tablename__ = "dry_run_seen"
+
+    digest: Mapped[str] = mapped_column(String(64), primary_key=True)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+
+class ViewLayerVersion(Base):
+    """One saved state of an Ingenium layer (View/Report Designer history).
+
+    Holds the layer arch Odoo was given and the combined screen Odoo returned
+    afterwards, so versions can be compared, scrubbed and restored. No record
+    contents are stored."""
+
+    __tablename__ = "view_layer_versions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    connection_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, default="view")  # view | report
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    view_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    layer_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    layer_view_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    action: Mapped[str] = mapped_column(String(16), nullable=False)  # publish | undo | restore | remove
+    label: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    summary: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    layer_arch: Mapped[str | None] = mapped_column(Text, nullable=True)
+    layer_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    combined_arch: Mapped[str | None] = mapped_column(Text, nullable=True)
+    odoo_major: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class ViewBuilderItem(Base):
+    """Builders stage 2b items kept in Ingenium, never Odoo: reusable sections
+    (kind="section") and upgrade-guard baselines (kind="guard", key=layer name)."""
+
+    __tablename__ = "view_builder_items"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    connection_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    key: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    name: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    payload: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ViewComment(Base):
+    """Comment pinned to a node of a screen (by stable node id). Ingenium DB only, never Odoo."""
+
+    __tablename__ = "view_comments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    connection_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    view_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    node_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    parent_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    author: Mapped[str] = mapped_column(String(120), nullable=False, default="You")
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    resolved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# Apply journal (write-ahead log) tables, created by alembic s9t0u1v2w3x4 and written with raw SQL.
+# Mapped here so the drift check matches the migrations; no ORM code path writes them.
+class JournalEntry(Base):
+    __tablename__ = "journal_entry"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    odoo_database: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    op_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    op_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    plan_hash: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    mode: Mapped[str | None] = mapped_column(String(1), nullable=True)
+    run_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class BeforeImage(Base):
+    __tablename__ = "before_image"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    journal_entry_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("journal_entry.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    op_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    risk: Mapped[str] = mapped_column(String(8), nullable=False)
+    snapshot_json: Mapped[str] = mapped_column(Text, nullable=False)
+    retain_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ApplyDatabaseLock(Base):
+    __tablename__ = "apply_database_lock"
+
+    odoo_database: Mapped[str] = mapped_column(String(200), primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    acquired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

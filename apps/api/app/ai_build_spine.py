@@ -4,7 +4,7 @@ Unifies App Studio / Draft Studio / Job Autopilot as modes of one Build entry
 (not rival homes). Expert routes into the same spine. Carries brief + Diagnosis
 / Contract + delivery_lane stamps across surfaces.
 
-Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm.
 """
 
 from __future__ import annotations
@@ -37,12 +37,12 @@ MODE_META: dict[str, dict[str, str]] = {
     "option_a": {
         "label": "Option A",
         "surface": "studio",
-        "blurb": "Installable module (Python / QWeb / OWL) — sandbox prove, human Promote.",
+        "blurb": "Installable module (Python / QWeb / OWL) — sandbox prove, you publish.",
     },
     "stock_autopilot": {
         "label": "Stock Autopilot",
         "surface": "job",
-        "blurb": "Stock-first Job Autopilot — no custom residual invent.",
+        "blurb": "Stock-first Job Autopilot — no custom code invent.",
     },
     "report_layout": {
         "label": "Report layout",
@@ -52,7 +52,7 @@ MODE_META: dict[str, dict[str, str]] = {
     "connector": {
         "label": "Connector",
         "surface": "studio",
-        "blurb": "FX / HTTP provider — gold Option A or external connector lane.",
+        "blurb": "FX / HTTP provider — gold custom code or an external connector path.",
     },
 }
 
@@ -300,7 +300,7 @@ def build_spine_payload(
         },
         "honesty": (
             "One Build entry — App Studio, Draft Studio, and Job Autopilot share this "
-            "brief and stamps. Completeness ≠ Cert ≠ Autopilot. Promote stays human."
+            "brief and stamps. A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm."
         ),
         "atlas_class": (atlas or {}).get("atlas_class") if atlas else None,
         "recipe_id": (atlas or {}).get("recipe_id") if atlas else None,
@@ -311,7 +311,7 @@ def build_spine_payload(
 
 
 def capability_gap_option_a_proposals(draft: dict[str, Any] | None) -> list[dict[str, Any]]:
-    """Read stamped gap → Option A scaffold proposals (domain-agnostic)."""
+    """Read stamped gap → custom code scaffold proposals (domain-agnostic)."""
     if not isinstance(draft, dict):
         return []
     gaps = draft.get("_capability_gaps")

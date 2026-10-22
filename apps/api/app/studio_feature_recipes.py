@@ -1,7 +1,7 @@
 """Studio-doc feature recipes → public ORM honesty (M2-P0c).
 
 Maps the 14 Studio "suggested features" to what this app can do via
-``ir.model.fields`` / ``ir.ui.view`` / Option A — never Studio source.
+``ir.model.fields`` / ``ir.ui.view`` / custom code — never Studio source.
 """
 
 from __future__ import annotations

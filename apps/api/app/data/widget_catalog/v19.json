@@ -1,0 +1,654 @@
+{
+"registered": [
+"account_json_checkboxes",
+"ace",
+"activity_exception",
+"activity_model_selector",
+"attachment_image",
+"badge",
+"binary",
+"boolean",
+"boolean_favorite",
+"boolean_icon",
+"boolean_toggle",
+"char",
+"char_emojis",
+"code",
+"code_ir_ui_view",
+"color",
+"color_picker",
+"contact_image",
+"contact_statistics",
+"dashboard_graph",
+"date",
+"datetime_scheduled_date",
+"domain",
+"email",
+"field_selector",
+"filterable_selection",
+"float",
+"float_factor",
+"float_time",
+"float_toggle",
+"gauge",
+"google_slide_viewer",
+"handle",
+"html",
+"html_composer_message",
+"html_mail",
+"iframe_wrapper",
+"image",
+"image_url",
+"integer",
+"json",
+"json_checkboxes",
+"kanban_activity",
+"kanban_color_picker",
+"label_selection",
+"list_activity",
+"mail_composer_attachment_list",
+"mail_composer_attachment_selector",
+"mail_composer_template_selector",
+"mail_server_configurator_selection",
+"many2many",
+"many2many_avatar_user",
+"many2many_binary",
+"many2many_checkboxes",
+"many2many_tags",
+"many2many_tags_avatar",
+"many2many_tags_avatar_popover",
+"many2many_tags_email",
+"many2one",
+"many2one_avatar",
+"many2one_avatar_user",
+"many2one_barcode",
+"many2one_reference",
+"many2one_reference_integer",
+"monetary",
+"one2many",
+"password",
+"pdf_viewer",
+"percentage",
+"percentpie",
+"phone",
+"priority",
+"profiling_qweb_view",
+"progressbar",
+"properties",
+"property_tags",
+"radio",
+"reference",
+"remaining_days",
+"res_user_group_ids",
+"res_user_group_ids_privilege",
+"rotting_statusbar_duration",
+"selection",
+"selection_badge",
+"selection_badge_icons",
+"selection_badge_with_filter",
+"shortcut",
+"signature",
+"state_selection",
+"statinfo",
+"statusbar",
+"statusbar_duration",
+"text",
+"text_emojis",
+"text_scheduled_date",
+"timezone_mismatch",
+"upgrade_boolean",
+"url"
+],
+"source": "Field widgets registered with a display name in Odoo 19 (web, mail)",
+"version": 19,
+"widgets": {
+"ace": {
+"label": "Ace Editor",
+"module": "web",
+"types": [
+"html",
+"text"
+]
+},
+"attachment_image": {
+"label": "Attachment Image",
+"module": "web",
+"types": [
+"many2one"
+]
+},
+"badge": {
+"label": "Badge",
+"module": "web",
+"types": [
+"char",
+"many2one",
+"selection"
+]
+},
+"binary": {
+"label": "File",
+"module": "web",
+"types": [
+"binary"
+]
+},
+"boolean": {
+"label": "Checkbox",
+"module": "web",
+"types": [
+"boolean"
+]
+},
+"boolean_favorite": {
+"label": "Favorite",
+"module": "web",
+"types": [
+"boolean"
+]
+},
+"boolean_icon": {
+"label": "Boolean Icon",
+"module": "web",
+"types": [
+"boolean"
+]
+},
+"boolean_toggle": {
+"label": "Toggle",
+"module": "web",
+"types": [
+"boolean"
+]
+},
+"char": {
+"label": "Text",
+"module": "web",
+"types": [
+"char",
+"text"
+]
+},
+"char_emojis": {
+"label": "Text",
+"module": "mail",
+"types": [
+"char",
+"text"
+]
+},
+"code": {
+"label": "Ace Editor",
+"module": "web",
+"types": [
+"html",
+"text"
+]
+},
+"code_ir_ui_view": {
+"label": "Ace Editor",
+"module": "web",
+"types": [
+"html",
+"text"
+]
+},
+"contact_image": {
+"label": "Image",
+"module": "web",
+"types": [
+"binary",
+"many2one"
+]
+},
+"contact_statistics": {
+"label": "Contact Statistics",
+"module": "web",
+"types": [
+"json"
+]
+},
+"date": {
+"label": "Date",
+"module": "web",
+"types": [
+"date"
+]
+},
+"domain": {
+"label": "Domain",
+"module": "web",
+"types": [
+"char",
+"text"
+]
+},
+"email": {
+"label": "Email",
+"module": "web",
+"types": [
+"char"
+]
+},
+"field_selector": {
+"label": "Field Selector",
+"module": "web",
+"types": [
+"char"
+]
+},
+"filterable_selection": {
+"label": "Selection",
+"module": "web",
+"types": [
+"many2one",
+"selection"
+]
+},
+"float": {
+"label": "Float",
+"module": "web",
+"types": [
+"float",
+"monetary"
+]
+},
+"float_factor": {
+"label": "Float",
+"module": "web",
+"types": [
+"float",
+"monetary"
+]
+},
+"float_time": {
+"label": "Time",
+"module": "web",
+"types": [
+"float"
+]
+},
+"google_slide_viewer": {
+"label": "Google Slide Viewer",
+"module": "web",
+"types": [
+"char",
+"text"
+]
+},
+"handle": {
+"label": "Handle",
+"module": "web",
+"types": [
+"integer"
+]
+},
+"html": {
+"label": "Multiline Text",
+"module": "web",
+"types": [
+"char",
+"html",
+"text"
+]
+},
+"html_composer_message": {
+"label": "Multiline Text",
+"module": "mail",
+"types": [
+"char",
+"html",
+"text"
+]
+},
+"html_mail": {
+"label": "Multiline Text",
+"module": "mail",
+"types": [
+"char",
+"html",
+"text"
+]
+},
+"iframe_wrapper": {
+"label": "Wrap raw html within an iframe",
+"module": "web",
+"types": [
+"html",
+"text"
+]
+},
+"image": {
+"label": "Image",
+"module": "web",
+"types": [
+"binary",
+"many2one"
+]
+},
+"image_url": {
+"label": "Image",
+"module": "web",
+"types": [
+"char"
+]
+},
+"integer": {
+"label": "Integer",
+"module": "web",
+"types": [
+"integer"
+]
+},
+"json": {
+"label": "Json",
+"module": "web",
+"types": [
+"json"
+]
+},
+"label_selection": {
+"label": "Label Selection",
+"module": "web",
+"types": [
+"selection"
+]
+},
+"list_activity": {
+"label": "List Activity",
+"module": "mail",
+"types": [
+"one2many"
+]
+},
+"mail_server_configurator_selection": {
+"label": "Selection",
+"module": "mail",
+"types": [
+"many2one",
+"selection"
+]
+},
+"many2many": {
+"label": "Relational table",
+"module": "web",
+"types": [
+"many2many",
+"one2many"
+]
+},
+"many2many_avatar_user": {
+"label": "Tags",
+"module": "mail",
+"types": [
+"many2many",
+"one2many"
+]
+},
+"many2many_checkboxes": {
+"label": "Checkboxes",
+"module": "web",
+"types": [
+"many2many"
+]
+},
+"many2many_tags": {
+"label": "Tags",
+"module": "web",
+"types": [
+"many2many",
+"one2many"
+]
+},
+"many2many_tags_avatar": {
+"label": "Tags",
+"module": "web",
+"types": [
+"many2many",
+"one2many"
+]
+},
+"many2many_tags_avatar_popover": {
+"label": "Tags",
+"module": "web",
+"types": [
+"many2many",
+"one2many"
+]
+},
+"many2many_tags_email": {
+"label": "Tags",
+"module": "mail",
+"types": [
+"many2many",
+"one2many"
+]
+},
+"many2one_reference": {
+"label": "Many2OneReference",
+"module": "web",
+"types": [
+"many2one_reference"
+]
+},
+"many2one_reference_integer": {
+"label": "Many2OneReferenceInteger",
+"module": "web",
+"types": [
+"many2one_reference"
+]
+},
+"monetary": {
+"label": "Monetary",
+"module": "web",
+"types": [
+"float",
+"integer",
+"monetary"
+]
+},
+"one2many": {
+"label": "Relational table",
+"module": "web",
+"types": [
+"many2many",
+"one2many"
+]
+},
+"password": {
+"label": "Password",
+"module": "web",
+"types": [
+"char",
+"text"
+]
+},
+"pdf_viewer": {
+"label": "PDF Viewer",
+"module": "web",
+"types": [
+"binary"
+]
+},
+"percentage": {
+"label": "Percentage",
+"module": "web",
+"types": [
+"float",
+"integer"
+]
+},
+"percentpie": {
+"label": "PercentPie",
+"module": "web",
+"types": [
+"float",
+"integer"
+]
+},
+"phone": {
+"label": "Phone",
+"module": "web",
+"types": [
+"char"
+]
+},
+"priority": {
+"label": "Priority",
+"module": "web",
+"types": [
+"selection"
+]
+},
+"progressbar": {
+"label": "Progress Bar",
+"module": "web",
+"types": [
+"float",
+"integer"
+]
+},
+"properties": {
+"label": "Properties",
+"module": "web",
+"types": [
+"properties"
+]
+},
+"radio": {
+"label": "Radio",
+"module": "web",
+"types": [
+"many2one",
+"selection"
+]
+},
+"reference": {
+"label": "Reference",
+"module": "web",
+"types": [
+"char",
+"reference"
+]
+},
+"remaining_days": {
+"label": "Remaining Days",
+"module": "web",
+"types": [
+"date",
+"datetime"
+]
+},
+"rotting_statusbar_duration": {
+"label": "Status with time",
+"module": "mail",
+"types": [
+"many2one"
+]
+},
+"selection": {
+"label": "Selection",
+"module": "web",
+"types": [
+"many2one",
+"selection"
+]
+},
+"selection_badge": {
+"label": "Badges",
+"module": "web",
+"types": [
+"many2one",
+"selection"
+]
+},
+"selection_badge_icons": {
+"label": "Badges with Icons",
+"module": "mail",
+"types": [
+"many2one"
+]
+},
+"selection_badge_with_filter": {
+"label": "Badges for Selection With Filter",
+"module": "web",
+"types": [
+"selection"
+]
+},
+"state_selection": {
+"label": "Label Selection",
+"module": "web",
+"types": [
+"selection"
+]
+},
+"statinfo": {
+"label": "Stat Info",
+"module": "web",
+"types": [
+"char",
+"float",
+"integer",
+"many2one",
+"monetary",
+"one2many"
+]
+},
+"statusbar": {
+"label": "Status",
+"module": "web",
+"types": [
+"many2one",
+"selection"
+]
+},
+"statusbar_duration": {
+"label": "Status with time",
+"module": "mail",
+"types": [
+"many2one"
+]
+},
+"text": {
+"label": "Multiline Text",
+"module": "web",
+"types": [
+"char",
+"html",
+"text"
+]
+},
+"text_emojis": {
+"label": "Multiline Text",
+"module": "mail",
+"types": [
+"char",
+"html",
+"text"
+]
+},
+"timezone_mismatch": {
+"label": "Selection",
+"module": "web",
+"types": [
+"many2one",
+"selection"
+]
+},
+"upgrade_boolean": {
+"label": "Checkbox",
+"module": "web",
+"types": [
+"boolean"
+]
+},
+"url": {
+"label": "URL",
+"module": "web",
+"types": [
+"char"
+]
+}
+}
+}

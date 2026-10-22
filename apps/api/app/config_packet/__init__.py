@@ -1,4 +1,4 @@
-"""Config Packet: intended-state stock configuration (sandbox Autopilot → client delta)."""
+"""config summary: intended-state stock configuration (sandbox Autopilot → client delta)."""
 
 from app.config_packet.apply import apply_config_packet
 from app.config_packet.capture import capture_config_packet

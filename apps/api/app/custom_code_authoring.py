@@ -62,7 +62,7 @@ def lint_python(content: str, *, source_file: str = "block.py") -> list[dict[str
                 issues.append(
                     {
                         "code": "import_forbidden",
-                        "message": f"Import {alias.name} — module code should use Odoo APIs only",
+                        "message": f"Import {alias.name}, module code should use Odoo APIs only",
                         "line": str(node.lineno),
                     }
                 )
@@ -78,7 +78,7 @@ def lint_python(content: str, *, source_file: str = "block.py") -> list[dict[str
             issues.append(
                 {
                     "code": "import_forbidden",
-                    "message": f"Import from {node.module} — prefer Odoo model APIs",
+                    "message": f"Import from {node.module}, prefer Odoo model APIs",
                     "line": str(node.lineno),
                 }
             )

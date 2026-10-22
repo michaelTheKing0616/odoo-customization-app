@@ -26,7 +26,7 @@ def module_spec_fragment(
     return {
         "depends_add": ["account"],
         "review_note": (
-            "Module path adds inverse m2o on account.move — standard Odoo module practice; "
+            "Module path adds inverse m2o on account.move, standard Odoo module practice; "
             "live-metadata path uses many2many on the custom model only."
         ),
         "models": [
@@ -90,7 +90,7 @@ def connect_live_metadata(
     if not model.startswith("x_"):
         raise OdooClientError("Connect-to-Invoicing requires a custom x_* model")
     if not client.model_exists("account.move"):
-        raise OdooClientError("account.move not available — install account module")
+        raise OdooClientError("account.move not available, install account module")
 
     created_field = False
     if not client.field_exists(model, invoice_field):

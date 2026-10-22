@@ -1,4 +1,4 @@
-"""Where to inspect Option A gold on the *connected* Odoo — not the ephemeral sandbox.
+"""Where to inspect custom-code gold on the *connected* Odoo — not the ephemeral sandbox.
 
 Sandbox prove may install ``account`` only on a throwaway container. Opening
 ``res.config.settings`` on a connection without Invoicing looks like “no Accounting”.
@@ -132,7 +132,7 @@ def probe_gold_inspect(
         else:
             message = (
                 f"This connection has no {install_label} app. Sandbox prove used a throwaway Odoo. "
-                f"Install {install_label} here, then Promote."
+                f"Install {install_label} here, then publish."
             )
     elif target and gid == "currency_rate_cbn":
         message = (

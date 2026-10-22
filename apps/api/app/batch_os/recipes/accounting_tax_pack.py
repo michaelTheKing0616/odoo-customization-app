@@ -37,7 +37,7 @@ class TaxPackRecipe:
     title = "Tax pack"
     blurb = (
         "Propose account.tax rows via RPC (NG/generic starter). "
-        "Prefer l10n localization — never invent a full fiscal pack."
+        "Prefer l10n localization, never invent a full fiscal pack."
     )
     atlas_class = "accounting"
 
@@ -98,7 +98,7 @@ class TaxPackRecipe:
                 RowError(
                     row_index=0,
                     code="blocking",
-                    message="account.tax missing — install Accounting",
+                    message="account.tax missing, install Accounting",
                 )
             )
             state.phase = "failed"

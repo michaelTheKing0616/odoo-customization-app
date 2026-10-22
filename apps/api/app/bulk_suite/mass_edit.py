@@ -74,7 +74,7 @@ def check_mass_edit_policy(
         if field_names and all(name in _CHATTER_MASS_EDIT_FIELDS for name in field_names):
             return
         raise MassEditValidationError(
-            f"Mass edit on tier-1 model {model!r} is blocked — "
+            f"Mass edit on tier-1 model {model!r} is blocked, "
             "only whitelisted chatter fields are allowed."
         )
     if tier == "tier_2" and not is_custom_model(model):
@@ -98,7 +98,7 @@ def _coerce_value(
         raise MassEditValidationError(f"Field {field_name!r} is readonly")
     if ftype in {"one2many", "many2many"}:
         raise MassEditValidationError(
-            f"Field {field_name!r} ({ftype}) is not supported for mass edit — use Odoo UI or server actions."
+            f"Field {field_name!r} ({ftype}) is not supported for mass edit, use Odoo UI or server actions."
         )
     if ftype == "selection":
         selection = meta.get("selection") or []

@@ -1,6 +1,7 @@
 """PDF text extraction + LLM structured parse (ING-4). Vision deferred to extract_vision.py."""
 
 from __future__ import annotations
+from app.ai_client.guards import fence_untrusted as _fence
 
 import hashlib
 import json
@@ -32,7 +33,7 @@ def extract_text_from_pdf(raw: bytes) -> str:
         parts.append(page.extract_text() or "")
     text = "\n".join(parts).strip()
     if not text:
-        raise ValueError("PDF contains no extractable text — enable vision (qwen3-vl) for scans")
+        raise ValueError("PDF contains no extractable text, enable vision (qwen3-vl) for scans")
     return text
 
 
@@ -157,7 +158,7 @@ def _llm_extract(doc_type: DocType, text: str) -> dict[str, Any]:
     schema = _schema_for_doc_type(doc_type)
     prompt = (
         f"Extract structured rows from this {doc_type} document for Odoo import.\n"
-        f"Document text (truncated):\n{text[:6000]}\n"
+        "Document text (truncated):\n" + _fence(text[:6000], "upload") + "\n"
         "Return JSON matching the schema exactly. Do not invent account codes."
     )
     raw = provider.generate_json(
@@ -235,7 +236,7 @@ def _tables_from_bom_payload(
                         to_model="product.template",
                         to_value=comp,
                         resolved=False,
-                        note="nested sub-assembly — child bom table emitted separately",
+                        note="nested sub-assembly, child bom table emitted separately",
                     )
                 )
             line_rows.append(
@@ -371,7 +372,7 @@ def extract_pdf_from_text(
             if db is not None:
                 save_cached_extraction(db, fingerprint=fp, doc_type=doc_type, payload=payload)
         except (LLMError, json.JSONDecodeError, ValueError, TypeError):
-            warnings.append("LLM unavailable — deterministic PDF parser")
+            warnings.append("LLM unavailable, deterministic PDF parser")
             return _deterministic_extract(doc_type, text, filename=filename), [], warnings
 
     refs: list[IngestRef] = []

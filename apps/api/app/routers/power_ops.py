@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -108,12 +108,18 @@ def run_power_ops(
     body: PowerOpsRunBody,
     db: Session = Depends(get_db),
     _: Annotated[None, Depends(require_connection_mutation_lock)] = None,
+    request: Request = None,  # type: ignore[assignment]  # FastAPI injects it; direct calls may omit it
 ) -> PowerOpsRunOut:
     from app.power_ops_recipes import get_recipe
 
     recipe = get_recipe(body.recipe_id)
     if recipe is None:
         raise HTTPException(status_code=404, detail=f"Unknown recipe {body.recipe_id}")
+    from app.power_ops_recipes import recipe_lock_reason
+
+    _locked = recipe_lock_reason(body.recipe_id, getattr(body, "model", None) or recipe.model)
+    if _locked:
+        raise HTTPException(status_code=403, detail={"code": "money_guard", "message": _locked})
 
     if not body.dry_run:
         try:
@@ -126,7 +132,7 @@ def run_power_ops(
                 ),
                 risks=list(recipe.risks)
                 + [
-                    "Online UI limits do not apply — you are explicitly opting into bulk power",
+                    "Online UI limits do not apply, you are explicitly opting into bulk power",
                     "Failed rows are reported; successful destructive steps are not auto-undone",
                 ],
             )
@@ -134,6 +140,19 @@ def run_power_ops(
             raise _confirm_http(exc) from exc
 
     client = _client(connection_id, db)
+    if not body.dry_run:
+        # A5: the shared approval rule (same threshold and approvals list as the Run sheet).
+        from app import write_gate as wg
+        from app.power_ops_recipes import resolve_recipe_record_ids
+
+        try:
+            target, ids_for_approval = resolve_recipe_record_ids(client, recipe, model=body.model, domain=body.domain, ids=body.ids)
+            wg.approval_status(db, request, connection_id, model=target, ids=list(ids_for_approval or []),
+                               vals={"recipe": body.recipe_id}, source=f"Power Ops: {recipe.name}")
+        except wg.WriteNeedsApproval as exc:
+            raise wg.http_error(exc) from exc
+        except Exception:  # noqa: BLE001 - recipes without a record selection: the run's own checks apply
+            pass
     snapshot_id: str | None = None
     artifact_url: str | None = None
     export_record_count: int | None = None

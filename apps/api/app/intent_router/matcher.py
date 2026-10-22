@@ -123,7 +123,7 @@ def _why(entry: FeatureEntry, matched: list[str], can: CanHandle) -> str:
     if entry.recipe:
         base += f" Recipe `{entry.recipe}`."
     if can == "partial" and entry.status != "complete":
-        base += f" Status is {entry.status} — not a full path yet."
+        base += f" Status is {entry.status}, not a full path yet."
     elif can == "partial":
         base += " Closest fit; confirm this is what you meant."
     if "preview" in (entry.blurb or "").lower() or "≠" in (entry.blurb or ""):
@@ -258,11 +258,11 @@ def build_route_result(
         if ambiguous:
             message = (
                 f"Several features could fit (top: {top.title}). "
-                "Pick the closest below — ingenium will not guess past shipped routes."
+                "Pick the closest below, ingenium will not guess past shipped routes."
             )
         elif top.status != "complete":
             message = (
-                f"Closest feature is {top.title}, but it is {top.status} — "
+                f"Closest feature is {top.title}, but it is {top.status}, "
                 "not a complete path yet."
             )
         else:

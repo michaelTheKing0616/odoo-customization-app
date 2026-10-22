@@ -292,7 +292,7 @@ def run_bulk_transition(
     elif status == "sample_paused" and all_pending:
         final_status = "sample_paused"
         msg = (
-            f"Sample phase: {method} on {processed_count} record(s) — "
+            f"Sample phase: {method} on {processed_count} record(s), "
             f"{succeeded} ok, {failed} failed. Review results, then continue for "
             f"{len(all_pending)} remaining record(s)."
         )

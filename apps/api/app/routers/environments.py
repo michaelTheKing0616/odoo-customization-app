@@ -200,8 +200,8 @@ def promote_hop(
             risks=[
                 "Installs/upgrades code or data modules on the target database",
                 "Prod hop requires a prior successful staging hop for the same zip sha256",
-                "Sandbox hop uses ephemeral Docker (or sandbox connection) — not customer prod",
-                "Failed mid-hop leaves partial state — check Odoo Apps / Change journal",
+                "Sandbox hop uses ephemeral Docker (or sandbox connection), not customer prod",
+                "Failed mid-hop leaves partial state, check Odoo Apps / Change journal",
             ],
         )
     except ConfirmationRequired as exc:

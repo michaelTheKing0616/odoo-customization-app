@@ -86,9 +86,9 @@ def normalize_raw_state(raw: str | None) -> str:
 def bot_status_view(raw: str | None) -> BotStatusView:
     norm = normalize_raw_state(raw)
     table: dict[str, BotStatusView] = {
-        "idle": BotStatusView(norm, "idle", "Idle", "Session created — complete consent, then launch.", "neutral"),
+        "idle": BotStatusView(norm, "idle", "Idle", "Session created, complete consent, then launch.", "neutral"),
         "declined": BotStatusView(
-            norm, "declined", "Declined", "Consent declined — create a new session to continue.", "danger", is_terminal=True
+            norm, "declined", "Declined", "Consent declined, create a new session to continue.", "danger", is_terminal=True
         ),
         "ready": BotStatusView(norm, "joining", "Ready", "Bot reserved; joining shortly.", "info"),
         "scheduled": BotStatusView(norm, "joining", "Scheduled", "Bot is scheduled to join.", "info"),
@@ -131,7 +131,7 @@ def bot_status_view(raw: str | None) -> BotStatusView:
             norm,
             "error",
             "Join failed",
-            "Attendee reported a fatal error — check Zoom SDK credentials, meeting URL, and Attendee logs.",
+            "Attendee reported a fatal error, check Zoom SDK credentials, meeting URL, and Attendee logs.",
             "danger",
             is_terminal=True,
         ),
@@ -142,6 +142,6 @@ def bot_status_view(raw: str | None) -> BotStatusView:
         raw=norm,
         phase="unknown",
         label=raw or "Unknown",
-        hint="Unrecognized bot state — refresh status or check Attendee.",
+        hint="Unrecognized bot state, refresh status or check Attendee.",
         severity="warning",
     )

@@ -1,4 +1,4 @@
-"""Custom residual only: pack/skeleton seed + closer + live apply + zip."""
+"""Custom code only: pack/skeleton seed + closer + live apply + zip."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ ProgressFn = Callable[[str], None]
 
 def _residual_prompt(packet: JobPacket) -> str:
     lines = [
-        "Custom residual only. Do not create parallel invoices, partners, employees, "
+        "Custom code only. Do not create parallel invoices, partners, employees, "
         "warehouses, or products — those are stock Odoo.",
         f"Original brief: {packet.prompt}",
     ]
@@ -109,7 +109,7 @@ def _keep_stock_inherit(model: dict[str, Any], wanted: set[str]) -> bool:
 
 
 def seed_residual_spec(packet: JobPacket) -> dict[str, Any]:
-    """Deterministic ModuleSpec for packet residuals — never the full-app LLM pipeline."""
+    """Deterministic app plan for packet residuals — never the full-app LLM pipeline."""
     technical = "x_autopilot_residual"
     display = packet.domain_label or "Operations"
     depends = ["mail", "contacts"]
@@ -223,7 +223,7 @@ def apply_custom_residual(
     skip_expert: bool = False,
     on_progress: ProgressFn | None = None,
 ) -> CustomApplyReport:
-    """Apply ModuleSpec only when the packet has a custom residual.
+    """Apply app plan only when the packet has a custom code.
 
     Default path seeds from the domain pack / a skeleton. It does **not** run
     ``draft_module_from_prompt`` (full-app LLM). Pass ``draft_fn`` only in tests.
@@ -231,7 +231,7 @@ def apply_custom_residual(
     if not packet.has_custom_residual:
         return CustomApplyReport(
             skipped=True,
-            reason="Packet has no custom residual — stock + data only.",
+            reason="Packet has no custom code — stock + data only.",
         )
     report = CustomApplyReport()
     working = spec
@@ -250,7 +250,7 @@ def apply_custom_residual(
         _ping(on_progress, "custom: seed")
         working = seed_residual_spec(packet)
     if not isinstance(working, dict) or not working.get("models"):
-        report.warnings.append("No ModuleSpec models after residual seed — skip apply.")
+        report.warnings.append("No app plan models after residual seed — skip apply.")
         report.reason = "empty_spec"
         return report
     if not skip_expert:

@@ -100,7 +100,9 @@ def revive_llm_providers(*, timeout_s: float = 3.0) -> tuple[Any | None, list[st
     else:
         # AI_ASSIST may still leave Ollama usable as a local revive target.
         try:
-            ollama = OllamaProvider()
+            from app.ai_client.shared_client import wrap
+
+            ollama = wrap(OllamaProvider())
             candidates.append(ollama)
         except Exception:  # noqa: BLE001
             pass
@@ -120,7 +122,7 @@ def revive_llm_providers(*, timeout_s: float = 3.0) -> tuple[Any | None, list[st
         if ok:
             return prov, notes
 
-    notes.append("revive: no LLM reachable — residual recovery still applies")
+    notes.append("revive: no LLM reachable, residual recovery still applies")
     return None, notes
 
 

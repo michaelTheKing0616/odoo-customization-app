@@ -69,7 +69,7 @@ def validate_opening_tb_table(
                 model="account.move",
                 field="*",
                 value="",
-                message="Accounting not installed — cannot import opening trial balance",
+                message="Accounting not installed, cannot import opening trial balance",
             )
         )
         return gaps, warnings
@@ -108,7 +108,7 @@ def validate_opening_tb_table(
                 value=str(account_count),
                 message=(
                     f"Chart of accounts has {account_count} codes (need ≥ {COA_THRESHOLD}). "
-                    "Install l10n / import CoA before opening trial balance — do not guess."
+                    "Install l10n / import CoA before opening trial balance, do not guess."
                 ),
             )
         )
@@ -138,7 +138,7 @@ def validate_opening_tb_table(
                     model="account.account",
                     field="code",
                     value=code,
-                    message=f"Account code {code!r} not on instance — import CoA first",
+                    message=f"Account code {code!r} not on instance, import CoA first",
                 )
             )
             row.flags.append(f"tb_account_missing:{code}")
@@ -156,7 +156,7 @@ def validate_opening_tb_table(
         row.values["debit"] = debit
         row.values["credit"] = credit
     warnings.append(
-        "Opening TB commits as a single DRAFT journal entry on the Opening journal — "
+        "Opening TB commits as a single DRAFT journal entry on the Opening journal, "
         "never auto-posted; human must review and post in Odoo."
     )
     _append_lock_date_gaps(client, table, gaps)
@@ -217,7 +217,7 @@ def _append_lock_date_gaps(client: Any, table: IngestTable, gaps: list[IngestGap
                     value=str(lock),
                     message=(
                         f"Opening TB date {tb_date.isoformat()} is on or before {field}={lock.isoformat()}. "
-                        "Clear or move the lock in Odoo before ingest — still never auto-posted."
+                        "Clear or move the lock in Odoo before ingest, still never auto-posted."
                     ),
                 )
             )
@@ -287,7 +287,7 @@ def commit_opening_tb(
 
     vals = {
         "journal_id": int(journal["id"]),
-        "ref": "Universal ingest — opening trial balance",
+        "ref": "Universal ingest, opening trial balance",
         "move_type": "entry",
         "line_ids": line_cmds,
     }
@@ -323,7 +323,7 @@ def commit_opening_tb(
         "ok": True,
         "message": (
             f"Created DRAFT opening move id={move_id} "
-            f"({len(line_cmds)} lines) — post manually in Odoo after review"
+            f"({len(line_cmds)} lines), post manually in Odoo after review"
         ),
         "move_id": int(move_id),
     }

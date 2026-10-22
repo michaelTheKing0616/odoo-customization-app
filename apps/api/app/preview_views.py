@@ -1,4 +1,4 @@
-"""Build PreviewViewSchema slices from draft ModuleSpec for Studio / Wizard previews."""
+"""Build PreviewViewSchema slices from draft app plan for Studio / Wizard previews."""
 
 from __future__ import annotations
 

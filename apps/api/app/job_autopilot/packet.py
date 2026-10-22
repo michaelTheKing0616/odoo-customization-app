@@ -1,4 +1,4 @@
-"""Typed Job Packet — stock stack vs custom residual (not a ModuleSpec)."""
+"""Typed Job Packet — stock stack vs custom code (not an app plan)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Any
 SCORECARD_IS_NOT_GOLIVE = (
     "ModuleSpec completeness 10.0 and Certification (Quality/Evidence/Risk) are "
     "draft artifacts — not Apps Store / go-live. Autopilot done-bar is RPC process "
-    "smoke on a sandbox (quote→confirm→invoice + custom Confirm), then a human Promote. "
+    "smoke on a sandbox (quote→confirm→invoice + custom Confirm), then a you publish. "
     "Never treat Certification Production as Autopilot smoke pass."
 )
 
@@ -136,7 +136,7 @@ class SmokeReport(BaseModel):
 
 
 class JobScorecard(BaseModel):
-    """Implementation-job scorecard — not ModuleSpec completeness."""
+    """Implementation-job scorecard — not app plan completeness."""
 
     stack_fit: float = 0.0
     stock_coverage: float = 0.0

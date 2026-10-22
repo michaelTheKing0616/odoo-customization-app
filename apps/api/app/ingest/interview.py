@@ -185,7 +185,7 @@ def build_batch_from_interview(
                     natural_key_fields=["name"],
                     rows=cat_rows,
                     warnings=[
-                        "Expense categories mapped to product.category for structure only — "
+                        "Expense categories mapped to product.category for structure only, "
                         "do not treat as fiscal CoA; align accounts via l10n_* separately"
                     ],
                 )

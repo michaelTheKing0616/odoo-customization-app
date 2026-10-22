@@ -170,7 +170,7 @@ def _entry_out(row: ApprovalEntry) -> ApprovalEntryOut:
 def approvals_gate(connection_id: str, db: Session = Depends(get_db)) -> ApprovalsGateOut:
     row, client = _client_row(connection_id, db)
     info = resolve_engine(client)
-    ctx = gating_context_for_connection(url=row.url, server_version=row.server_version)
+    ctx = gating_context_for_connection(saved_hosting=getattr(row, "hosting", None), url=row.url, server_version=row.server_version)
     gating = approvals_gating(ctx)
     note = None
     if info.studio_verify_state == "pending-live":
@@ -545,7 +545,7 @@ def scaffold_process_template(
             risks=[
                 "Creates x_approval_type and x_approval_request models",
                 "Seeds a two-level demo approval type when missing",
-                "Prefer sandbox before production",
+                "Try a test copy before production",
             ],
         )
     except ConfirmationRequired as exc:
@@ -743,7 +743,7 @@ def scaffold_process_template(
             risks=[
                 "Creates x_approval_type and x_approval_request models",
                 "Seeds a two-level demo approval type when missing",
-                "Prefer sandbox before production",
+                "Try a test copy before production",
             ],
         )
     except ConfirmationRequired as exc:

@@ -1,4 +1,4 @@
-"""Apply ModuleSpec JSON + Code→ModuleSpec import."""
+"""Apply app plan JSON + Code→ModuleSpec import."""
 
 from __future__ import annotations
 
@@ -64,7 +64,7 @@ def _confirm_http(exc: ConfirmationRequired) -> HTTPException:
 async def import_module_spec_file(
     file: UploadFile = File(..., description="Odoo module zip, .meta.json, .py, or .xml"),
 ) -> ModuleSpecImportOut:
-    """Parse third-party / own module code into ModuleSpec (no Odoo writes)."""
+    """Parse third-party / own module code into app plan (no Odoo writes)."""
     if not file.filename:
         raise HTTPException(status_code=422, detail="filename required")
     raw = await file.read()
@@ -92,7 +92,7 @@ async def import_module_spec_file(
 
 @import_router.post("/import-json", response_model=ModuleSpecImportOut)
 def import_module_spec_json(body: ModuleSpecImportJsonBody) -> ModuleSpecImportOut:
-    """Accept pasted ModuleSpec JSON — optional apply-readiness prep, no Odoo writes."""
+    """Accept pasted app plan JSON — optional apply-readiness prep, no Odoo writes."""
     if not isinstance(body.spec, dict) or not body.spec.get("models"):
         raise HTTPException(
             status_code=422,
@@ -112,7 +112,7 @@ def import_module_spec_json(body: ModuleSpecImportJsonBody) -> ModuleSpecImportO
         custom_code_blocks=blocks,
         source="json_paste",
         note=(
-            "JSON loaded into ModuleSpec — click Apply to Odoo on a connection "
+            "JSON loaded into app plan — click Apply to Odoo on a connection "
             "or open the visual editor."
         ),
     )
@@ -278,7 +278,7 @@ def export_sandbox_from_draft(
     db: Session = Depends(get_db),
     auth: WorkspaceAuth = Depends(require_app_auth),
 ) -> dict:
-    """DEV-2 — export draft ModuleSpec zip and run sandbox gate."""
+    """DEV-2 — export draft app plan zip and run sandbox gate."""
     assert_developer_role(auth)
     assert_code_studio_entitlement(db, auth)
     conn = get_connection_or_404(db, connection_id)
@@ -444,7 +444,7 @@ def option_a_prove(
     db: Session = Depends(get_db),
     auth: WorkspaceAuth = Depends(require_app_auth),
 ) -> dict:
-    """Sandbox-install Option A scaffolds and run surface smoke; restamp scorecard.
+    """Sandbox-install custom code scaffolds and run surface smoke; restamp scorecard.
 
     ``structural_only`` skips Docker (CI / offline) — never lifts score to 10.0.
     Promote to another connection stays human even when ``go_live_ready``.
@@ -510,14 +510,27 @@ def option_a_repair_feedback(
     db: Session = Depends(get_db),
     auth: WorkspaceAuth = Depends(require_app_auth),
 ) -> dict:
-    """Patch LLM-authored Option A files from a sandbox Fault or operator notes.
+    """Patch LLM-authored custom code files from a sandbox Fault or operator notes.
 
     Optional ``retry_sandbox`` re-runs ephemeral install after a passing gate.
-    Never Live Apply. Promote stays human.
+    Never Live Apply. Publishing stays a step you confirm.
     """
     assert_developer_role(auth)
     assert_code_studio_entitlement(db, auth)
     conn = get_connection_or_404(db, connection_id)
+    from app.hosting import hosting_hint_from_url
+
+    if hosting_hint_from_url(conn.url, conn.server_version, getattr(conn, "hosting", None)) == "online":
+        # Option A is a custom Python module; Odoo Online cannot install one.
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Repair with AI is not available on Odoo Online. It patches a custom "
+                "Python module, and Odoo Online cannot install custom modules. Move this "
+                "app to Odoo.sh or a self-hosted server, then repair and prove it in the "
+                "sandbox there. Do not click Install this app."
+            ),
+        )
     spec = copy.deepcopy(body.spec) if isinstance(body.spec, dict) else {}
     from app.ai_option_a_feedback import repair_option_a_from_feedback
     from app.sandbox import sandbox_major_for_connection
@@ -665,7 +678,7 @@ def apply_module_spec(
     db: Session = Depends(get_db),
     _: Annotated[None, Depends(require_connection_mutation_lock)] = None,
 ) -> ModuleSpecApplyOut:
-    """Generate UI from ModuleSpec JSON (models, fields, views, menus, smart buttons)."""
+    """Generate UI from app plan JSON (models, fields, views, menus, smart buttons)."""
     try:
         get_connection_or_404(db, connection_id)
     except LookupError as exc:
@@ -677,12 +690,12 @@ def apply_module_spec(
             confirm_phrase=body.confirm_phrase,
             warning=(
                 "Generate UI from JSON creates models, fields, views, menus, and "
-                "safe automations on the live Odoo database. Prefer a sandbox connection first."
+                "safe automations on the live Odoo database. Try a test copy connection first."
             ),
             risks=[
                 "Creates ir.model / ir.model.fields / ir.ui.view / ir.ui.menu",
                 "May rewrite primary form arches for custom x_* models (statusbars)",
-                "Smart buttons use inherit views (stock forms like Contacts stay intact)",
+                "Smart buttons use extension views (built-in forms like Contacts stay intact)",
                 "Safe automations (update_field / related_write / activity) are created live",
                 "Does not fully roll back if a later step fails",
             ],
@@ -794,7 +807,7 @@ def seed_module_spec_walkthrough(
             confirm_phrase=body.confirm_phrase,
             warning=(
                 "Creates sample records on this live Odoo (site, party, job, "
-                "booking, equipment lines, …). Prefer a sandbox connection."
+                "booking, equipment lines, …). Try a test copy connection."
             ),
             risks=[
                 "Writes data rows on custom x_* models",

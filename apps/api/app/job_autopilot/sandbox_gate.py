@@ -40,7 +40,7 @@ def assert_autopilot_run_allowed(
     if kind == "production":
         raise AutopilotRefused(
             "Job Autopilot refuses write_mode=production. Clone a sandbox, run Autopilot "
-            "there, then Promote with a human confirm."
+            "there, then publish with a human confirm."
         )
     if kind == "observer":
         raise AutopilotRefused(
@@ -54,8 +54,8 @@ def assert_autopilot_run_allowed(
         confirm_phrase=confirm_phrase,
         warning=(
             "This connection is not a local sandbox. Autopilot will install stock apps, "
-            "optionally apply custom residual metadata, and may commit ingest. "
-            "Production remains blocked; Promote stays a separate human step."
+            "optionally apply custom code metadata, and may commit ingest. "
+            "Production remains blocked; Publishing stays a separate step you confirm."
         ),
         risks=[
             "Installs Community modules on this database",

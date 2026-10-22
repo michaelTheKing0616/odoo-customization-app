@@ -218,3 +218,83 @@ def blocks_from_dicts(raw: list[dict[str, Any]]) -> list[WebsiteBlock]:
         )
 
     return [one(b, i) for i, b in enumerate(raw) if isinstance(b, dict)]
+
+
+# --- DOC-WEBSITE unsafe gate (PDF-05 / DOC-MAIL family) ---
+
+_EVENT_ATTR_RE = re.compile(r"\bon[a-z]+\s*=", re.IGNORECASE)
+_JS_URL_RE = re.compile(
+    r"""(?:href|src|formaction|action)\s*=\s*(['"])\s*javascript:""",
+    re.IGNORECASE,
+)
+_DATA_HTML_RE = re.compile(
+    r"""(?:href|src)\s*=\s*(['"])\s*data:\s*text/html""",
+    re.IGNORECASE,
+)
+_BARE_JS_RE = re.compile(r"^\s*javascript:", re.IGNORECASE)
+_BARE_DATA_RE = re.compile(r"^\s*data:\s*text/html", re.IGNORECASE)
+
+
+def refuse_unsafe_website_arch(arch: str) -> None:
+    """Raise ValueError when website arch is unsafe (shared PDF-05 family).
+
+    Inputs: compiled website page arch about to be persisted.
+    Outputs: none.
+    Side effects: raises ValueError with a clear human message.
+    """
+    from app.qweb_unsafe_gate import refuse_unsafe_qweb_arch
+
+    if not arch:
+        return
+    try:
+        refuse_unsafe_qweb_arch(arch)
+    except ValueError as exc:
+        raise ValueError(str(exc).replace("report templates", "website pages")) from exc
+    if _EVENT_ATTR_RE.search(arch):
+        raise ValueError(
+            "Unsafe website HTML refused: inline event handlers (on*) are not allowed"
+        )
+    if _JS_URL_RE.search(arch):
+        raise ValueError(
+            "Unsafe website HTML refused: javascript: URLs are not allowed"
+        )
+    if _DATA_HTML_RE.search(arch):
+        raise ValueError(
+            "Unsafe website HTML refused: data:text/html URLs are not allowed"
+        )
+
+
+def refuse_unsafe_website_blocks(blocks: list[WebsiteBlock]) -> None:
+    """Gate editable fields + locked XML before compile/persist."""
+    for b in blocks:
+        if b.kind == "locked" and b.locked_xml:
+            refuse_unsafe_website_arch(b.locked_xml)
+        if b.href and _BARE_JS_RE.search(b.href):
+            raise ValueError(
+                "Unsafe website href refused: javascript: URLs are not allowed"
+            )
+        if b.src and _BARE_JS_RE.search(b.src):
+            raise ValueError(
+                "Unsafe website src refused: javascript: URLs are not allowed"
+            )
+        if b.href and _BARE_DATA_RE.search(b.href):
+            raise ValueError(
+                "Unsafe website href refused: data:text/html URLs are not allowed"
+            )
+        if b.src and _BARE_DATA_RE.search(b.src):
+            raise ValueError(
+                "Unsafe website src refused: data:text/html URLs are not allowed"
+            )
+        # Editable text must not invent QWeb / script.
+        from app.qweb_unsafe_gate import refuse_unsafe_block_text
+
+        if b.text:
+            refuse_unsafe_block_text({"blocks": [{"type": b.kind, "text": b.text}]})
+        if b.children:
+            refuse_unsafe_website_blocks(b.children)
+
+
+def gate_website_save(blocks: list[WebsiteBlock], arch: str) -> None:
+    """Run block + arch gates before persisting website page arch."""
+    refuse_unsafe_website_blocks(blocks)
+    refuse_unsafe_website_arch(arch)

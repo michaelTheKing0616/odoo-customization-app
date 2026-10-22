@@ -55,7 +55,7 @@ def post_expert_note_to_chatter(
         return ChatterPostResult(ok=False, message="Valid model and res_id are required.")
     body = (body_markdown or "").strip()
     if not body:
-        return ChatterPostResult(ok=False, message="Empty body — nothing to post.")
+        return ChatterPostResult(ok=False, message="Empty body, nothing to post.")
 
     row = get_connection_or_404(db, connection_id)
     client = client_from_connection(row)

@@ -91,7 +91,7 @@ GALLERY: list[dict[str, Any]] = [
     {
         "id": "document_expiry_pack",
         "name": "Document expiry pack",
-        "description": "Document expiry date + status — attaches to any model with a date anchor.",
+        "description": "Document expiry date + status, attaches to any model with a date anchor.",
         "host_slot": "any",
         "host_requires_field": "partner_id",
         "grain": "field_pack",

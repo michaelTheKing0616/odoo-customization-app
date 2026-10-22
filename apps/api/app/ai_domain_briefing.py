@@ -1,6 +1,6 @@
 """Pack-free domain briefing — industry vocabulary for THIS prompt.
 
-Not a ModuleSpec pack. A briefing is computed per request: what this business
+Not a app plan pack. A briefing is computed per request: what this business
 uses, which neighboring industry to avoid, and which stock apps are false friends
 (``production`` ≠ MRP). Deterministic collocations are the source of truth;
 an optional LLM pass may enrich unmatched prompts.
@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.live_schema_context import SchemaPacket
 
 from app.ai_selection import parse_selection_literal, serialize_selection
 from app.text_negation import span_is_negated
@@ -64,7 +67,7 @@ def _pairs(*rows: tuple[str, str]) -> tuple[tuple[str, str], ...]:
 
 @dataclass(frozen=True)
 class _Collocation:
-    """Adjacent-industry confusion pair — not a vertical ModuleSpec."""
+    """Adjacent-industry confusion pair — not a vertical app plan."""
 
     id: str
     industry: str
@@ -458,6 +461,7 @@ def build_domain_briefing(
     prompt: str,
     *,
     provider: Any | None = None,
+    schema_packet: SchemaPacket | None = None,
 ) -> DomainBriefing:
     """Deterministic briefing; optional LLM enrich when no collocation matches."""
     hit = _match_collocation(prompt)
@@ -490,28 +494,38 @@ def build_domain_briefing(
         notes=["no collocation — default catalog gates"],
     )
     if provider is not None:
-        briefing = _enrich_briefing_with_llm(briefing, prompt, provider)
+        briefing = _enrich_briefing_with_llm(
+            briefing, prompt, provider, schema_packet=schema_packet
+        )
     return briefing
 
 
 def _enrich_briefing_with_llm(
-    briefing: DomainBriefing, prompt: str, provider: Any
+    briefing: DomainBriefing,
+    prompt: str,
+    provider: Any,
+    *,
+    schema_packet: SchemaPacket | None = None,
 ) -> DomainBriefing:
+    from app.live_schema_context import draft_grounding
+
+    grounding = draft_grounding(schema_packet)
     try:
         from app.ai_llm_budget import llm_json_with_budget
         from app.ai_prompt_constants import STEP_TEMPERATURES
 
+        user_prompt = (
+            "User business:\n"
+            f"{prompt}\n\n"
+            "Return JSON with keys industry, not_industries (list), "
+            "equipment_types (list of [key,label]), rate_uoms (list of [key,label]), "
+            "banned_selection_keys (list of neighboring-industry keys). "
+            "4-8 equipment types. No manufacturing unless they make goods in a factory."
+        )
         raw, _ = llm_json_with_budget(
             provider,
             "domain_briefing",
-            (
-                "User business:\n"
-                f"{prompt}\n\n"
-                "Return JSON with keys industry, not_industries (list), "
-                "equipment_types (list of [key,label]), rate_uoms (list of [key,label]), "
-                "banned_selection_keys (list of neighboring-industry keys). "
-                "4-8 equipment types. No manufacturing unless they make goods in a factory."
-            ),
+            grounding.prompt(user_prompt),
             system=(
                 "You name THIS business's vocabulary for an Odoo app. "
                 "Reply ONLY JSON. Do not invent a neighboring industry's gear."
@@ -522,6 +536,18 @@ def _enrich_briefing_with_llm(
     except Exception:  # noqa: BLE001
         briefing.notes.append("llm briefing skipped")
         return briefing
+    if isinstance(raw, str):
+        import json
+
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            return briefing
+    raw, dropped = grounding.filter(raw)
+    if dropped:
+        briefing.notes.append(
+            f"dropped field(s) not in the live schema: {', '.join(dropped)}"
+        )
     if not isinstance(raw, dict):
         return briefing
     industry = str(raw.get("industry") or "").strip()

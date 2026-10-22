@@ -38,7 +38,7 @@ class FiscalYearRecipe:
             filename=filename or "fiscal_year",
             headers=list(headers or []),
             raw_rows=list(rows or []),
-            message="Fiscal year recipe — supply name/date_from/date_to in extras",
+            message="Fiscal year recipe, supply name/date_from/date_to in extras",
             honesty=(
                 "Fiscal year writes are L2. Prefer lock_dates for period close. "
                 + HONESTY_PREVIEW_NE_POSTED
@@ -91,7 +91,7 @@ class FiscalYearRecipe:
             state.extras["existing_fiscal_years"] = existing
         else:
             state.extras["existing_fiscal_years"] = []
-            state.warnings.append("account.fiscal.year not installed — report company fiscal fields only")
+            state.warnings.append("account.fiscal.year not installed, report company fiscal fields only")
 
         if not name or not date_from or not date_to:
             # Allow dry-run that only reports current state

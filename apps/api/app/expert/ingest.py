@@ -147,7 +147,7 @@ def ingest_odoo_docs(version: str, *, offline: bool = False, embed: bool = True)
 def ingest_odoo_source(version: str, *, offline: bool = False, embed: bool = True) -> UpsertStats:
     mode = settings.expert_odoo_source.strip().lower()
     if mode in {"off", "false", "0"}:
-        logger.info("EXPERT_ODOO_SOURCE=off — skipping odoo/odoo source ingest")
+        logger.info("EXPERT_ODOO_SOURCE=off, skipping odoo/odoo source ingest")
         return UpsertStats()
     paths = fetch_odoo_source_paths(version, offline=offline)
     chunks = chunks_from_odoo_source_files(paths, version=version)

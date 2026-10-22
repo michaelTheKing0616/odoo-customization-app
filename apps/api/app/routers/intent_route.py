@@ -15,12 +15,19 @@ router = APIRouter(tags=["intent-router"])
 class IntentRouteBody(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=2000)
     limit: int = Field(5, ge=1, le=10)
+    progress_run_id: str | None = Field(default=None, max_length=128)
 
 
 @router.post("/connections/{connection_id}/expert/route")
 def expert_intent_route(connection_id: str, body: IntentRouteBody) -> dict[str, Any]:
     """Expert home: route a plain-language goal to the best-fitting feature."""
-    return route_intent(body.prompt, connection_id=connection_id, limit=body.limit)
+    from app.progress.emit import stage_emit
+
+    run_id = body.progress_run_id or f"intent-{connection_id}"
+    stage_emit(run_id, "expert_classify", detail=body.prompt[:160])
+    out = route_intent(body.prompt, connection_id=connection_id, limit=body.limit)
+    stage_emit(run_id, "expert_answer", detail="Route catalog")
+    return out
 
 
 @router.get("/connections/{connection_id}/expert/route/catalog")

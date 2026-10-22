@@ -8,9 +8,11 @@ from typing import Any, Callable
 from app.changeset.data_ops import (
     STOCK_QUANT_REFUSED,
     data_limit_issues,
+    delete_port_reason,
     targets_stock_quant,
 )
-from app.changeset.logic_ops import safe_eval_issues_in_params
+from app.changeset.logic_ops import safe_eval_issues_in_params, sensitive_sequence
+from app.changeset.policy import heavy_gate_refusal, r4_gate
 from app.changeset.security_ops import (
     GROUP_MUST_NOT_IMPLY_ADMIN,
     PRIVILEGED_ASSIGNMENT,
@@ -27,11 +29,13 @@ from app.changeset.setting_ops import (
     protected_param_issues,
 )
 from app.changeset.schema_ops import (
+    CASCADE_FORBIDDEN,
     CONSTRAINT_X_MODELS_ONLY,
     TYPE_CHANGE_UNSUPPORTED,
     constraint_sql_issues,
     field_update_issues,
     is_x_model,
+    scaffold_issues,
     type_change_requested,
 )
 from app.changeset.ui_ops import (
@@ -67,7 +71,7 @@ def _field_issues(params: dict[str, Any]) -> Issues:
     if ttype == "many2one" and not params.get("relation"):
         issues.append("many2one field requires relation")
     if str(params.get("on_delete") or "") == "cascade":
-        issues.append("on_delete cascade is forbidden")
+        issues.append(CASCADE_FORBIDDEN)
     return issues
 
 
@@ -159,11 +163,16 @@ def _with_data_limits(fn: IssueFn) -> IssueFn:
     return issues
 
 
-_ALWAYS_REFUSE = frozenset({"module.uninstall", "data.delete", "rpc.write"})
+_ALWAYS_REFUSE = frozenset({"module.uninstall", "rpc.write"})
 
 _INVERSE: dict[str, str] = {
+    "model.create": "model.create",
+    "model.scaffold": "model.scaffold",
     "field.create": "field.deprecate",
     "field.update": "field.update",
+    "field.deprecate": "field.update",
+    "selection.update": "selection.update",
+    "constraint.sql": "constraint.sql",
     "view.inherit.create": "view.archive",
     "view.inherit.update": "view.inherit.update",
     "view.create_base": "view.archive",
@@ -183,10 +192,12 @@ _INVERSE: dict[str, str] = {
 }
 
 _ISSUE_FNS: dict[str, IssueFn] = {
+    "model.scaffold": scaffold_issues,
     "field.create": _field_issues,
     "field.update": field_update_issues,
     "field.deprecate": lambda p: _need(p, "model", "name"),
     "field.delete": lambda p: _need(p, "model", "name"),
+    "selection.update": lambda p: _need(p, "model", "name"),
     "constraint.sql": constraint_sql_issues,
     "view.inherit.create": _view_inherit_issues,
     "view.inherit.update": _view_inherit_issues,
@@ -237,24 +248,44 @@ class OpHandler:
         tenant: dict[str, Any] | None = None,
         document: list[dict[str, Any]] | None = None,
     ) -> str | None:
+        body = _params(params)
+        op = {"type": self.op_type, "params": body}
+        if isinstance(document, list):
+            for item in document:
+                if isinstance(item, dict) and item.get("type") == self.op_type:
+                    op = {**item, "type": self.op_type, "params": body}
+                    break
+        if self.op_type == "data.delete":
+            blocked = delete_port_reason(op)
+            return blocked
         if self.op_type in _ALWAYS_REFUSE:
             return f"{self.op_type} is prohibited"
         entry = OP_CATALOG.get(self.op_type)
         if entry is not None and entry.risk_base == "R4":
             return f"{self.op_type} is prohibited"
-        body = _params(params)
         if self.op_type == "company.update":
-            company_reason = company_update_refusal(body)
-            if company_reason:
-                return company_reason
+            gate = r4_gate(op)
+            if gate == "hard_stop":
+                return company_update_refusal(body, heavy_passed=False)
+            if gate == "heavy":
+                heavy_reason = heavy_gate_refusal(op)
+                if heavy_reason:
+                    return heavy_reason
+                return company_update_refusal(body, heavy_passed=True)
         if self.op_type == "user.groups.assign" and body.get("admin"):
             return "admin group assignment is prohibited"
         if self.op_type == "user.groups.assign" and privileged_assignment(body):
             return PRIVILEGED_ASSIGNMENT
         if self.op_type == "group.create" and group_implies_admin(body):
             return GROUP_MUST_NOT_IMPLY_ADMIN
-        if self.op_type.startswith("sequence.") and (body.get("accounting") or body.get("legal")):
-            return "accounting sequences are prohibited"
+        if self.op_type.startswith("sequence.") and sensitive_sequence(body):
+            gate = r4_gate(op)
+            if gate == "hard_stop" or body.get("accounting") or body.get("legal"):
+                return "accounting sequences are prohibited"
+            if gate == "heavy":
+                heavy_reason = heavy_gate_refusal(op)
+                if heavy_reason:
+                    return heavy_reason
         if self.op_type in {"access.create", "access.update"} and not body.get("group"):
             return "group-less access is forbidden"
         if self.op_type == "config_param.set" and protected_config_key(body):
@@ -269,7 +300,6 @@ class OpHandler:
                 return replaced
         if self.op_type == "translation.upsert" and targets_stock_quant(body):
             return STOCK_QUANT_REFUSED
-        op = {"type": self.op_type, "params": body}
         if protected_denial(op, tenant=tenant, document=document if document is not None else [op]):
             return "protected_deny"
         return None
@@ -322,7 +352,7 @@ def apply_memory(store: dict[str, dict[str, Any]], op: dict[str, Any]) -> None:
     op_type = str(op.get("type") or "")
     handler = handler_for(op_type)
     params = op.get("params") if isinstance(op.get("params"), dict) else {}
-    reason = handler.refuse_reason(params)
+    reason = handler.refuse_reason(params, document=[op])
     if reason:
         raise PermissionError(reason)
     issues = handler.issues(params)

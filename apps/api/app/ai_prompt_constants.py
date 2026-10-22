@@ -52,7 +52,7 @@ OPERATOR_UX_BLOCK = (
     "on_model = stock host, related_model = x_* residual, relation_field = the M2O. "
     "Never invent parallel x_customer/x_employee. Skip Contacts buttons on visitor/"
     "key/call logs (not a second Contacts app).\n"
-    "- Tooltips and smart buttons raise usability; Completeness ≠ Certification."
+    "- Tooltips and smart buttons raise usability; A complete draft is not the same as certifiedification."
 )
 
 

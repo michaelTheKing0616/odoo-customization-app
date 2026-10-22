@@ -134,7 +134,7 @@ def normalize_residual_leaf(raw: str) -> str:
 
 
 def extract_explicit_residuals(text: str) -> list[tuple[str, str, str]]:
-    """Parse 'Custom residual is the X' / ## Custom residual into (key, x_model, reason)."""
+    """Parse 'Custom code is the X' / ## Custom code into (key, x_model, reason)."""
     found: list[tuple[str, str, str]] = []
     seen: set[str] = set()
     blob = text or ""

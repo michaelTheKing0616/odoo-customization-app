@@ -69,6 +69,7 @@ def resolve_flash_ast_enrich(
     *,
     connection_pref: bool | None = None,
     request_override: bool | None = None,
+    prompt: str | None = None,
 ) -> bool | None:
     """Return explicit True/False override for intent_llm_enabled, or None to follow env.
 
@@ -78,6 +79,12 @@ def resolve_flash_ast_enrich(
         return bool(request_override)
     if connection_pref is not None:
         return bool(connection_pref)
+    if prompt is not None:
+        from app.ai_conversation.grounding import brief_wants_llm
+
+        # Long / structured briefs: AI step on by default. Short briefs follow env.
+        if brief_wants_llm(prompt):
+            return True
     return None
 
 

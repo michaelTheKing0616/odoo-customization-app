@@ -1,9 +1,9 @@
 """Map missing inherit models to stock Community apps the operator can install.
 
-Option A modules inherit ``sale.order`` / ``account.move`` / ``stock.picking`` —
+Custom-code modules inherit ``sale.order`` / ``account.move`` / ``stock.picking`` —
 they do not create those models. When the connected Odoo lacks the host app, offer
 to install the CE module. That write is not Live Apply of the authored zip.
-Promote stays human.
+Publishing stays a step you confirm.
 
 Coverage: Odoo Community stock apps operators commonly inherit. Models not listed
 fall back to the first dotted segment when it matches a known CE module label
@@ -355,10 +355,10 @@ def host_install_offers(findings: list[Any] | None) -> list[dict[str, Any]]:
         module = str(bucket["module"])
         listed = ", ".join(models)
         bucket["message"] = (
-            f"This Option A module inherits {listed}. Those models come from the stock "
+            f"This custom-code module extends {listed}. Those models come from the stock "
             f"{label} app ({module}). Install {label} on this connection so the authoring "
             "gate can verify the inherit. That does not install this custom zip — "
-            "Promote stays human."
+            "Publishing stays a step you confirm."
         )
         offers.append(bucket)
     return offers

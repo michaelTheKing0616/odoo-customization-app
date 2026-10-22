@@ -114,7 +114,7 @@ def trigger_health_check(
             job_id=job_id,
             run_id=run.id if run else None,
             async_job=True,
-            message="Health sweep queued — poll GET /api/jobs/{job_id}",
+            message="Health sweep queued, poll GET /api/jobs/{job_id}",
         )
 
     try:

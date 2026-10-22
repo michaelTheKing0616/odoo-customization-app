@@ -1,4 +1,4 @@
-"""Domain-agnostic ModuleSpec depth: ambition, scoring, deterministic repair, LLM expand.
+"""Domain-agnostic app plan depth: ambition, scoring, deterministic repair, LLM expand.
 
 Domain packs remain a retrieval fallback. Consistent depth must not depend on matching
 a curated pack — every NL draft is scored and expanded to the ambition floor.
@@ -9,7 +9,10 @@ from __future__ import annotations
 import copy
 import json
 import re
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from app.live_schema_context import SchemaPacket
 
 Ambition = Literal["thin", "standard", "comprehensive"]
 
@@ -95,7 +98,7 @@ _GLOBAL_PROMPT_RE = re.compile(
 
 
 def classify_ambition(prompt: str) -> Ambition:
-    """Infer how deep the ModuleSpec should be from the user prompt alone."""
+    """Infer how deep the app plan should be from the user prompt alone."""
     amb, _notes = classify_ambition_with_notes(prompt)
     return amb
 
@@ -1468,10 +1471,13 @@ def llm_expand_depth(
     user_prompt: str,
     ambition: Ambition,
     gaps: list[str],
+    schema_packet: SchemaPacket | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     """Ask the LLM to add models/fields/relations/autos to close depth gaps."""
+    from app.live_schema_context import draft_grounding
     from app.llm_provider import LLMError
 
+    grounding = draft_grounding(schema_packet)
     notes: list[str] = []
     slim_models = [
         {
@@ -1491,7 +1497,6 @@ def llm_expand_depth(
     ]
     from app.ai_model_quality import MODEL_CREATION_RULES
     from app.ai_prompt_constants import STEP_TEMPERATURES, append_prompt_blocks
-    from app.ai_prompt_constants import STEP_TEMPERATURES, append_prompt_blocks
 
     targets = AMBITION_TARGETS[ambition]
     metrics = compute_depth_metrics(draft)
@@ -1501,7 +1506,7 @@ def llm_expand_depth(
         need_models = max(need_models, 2)  # always push at least 2 when under floor
 
     system = append_prompt_blocks(
-        "You deepen an Odoo Community ModuleSpec that is too thin for the user request. "
+        "You deepen an Odoo Community app plan that is too thin for the user request. "
         "Example output:\n"
         '{"missing_models":[{"model":"x_matter_event","description":"Hearing/event",'
         '"is_workflow":false,'
@@ -1549,7 +1554,7 @@ def llm_expand_depth(
         raw, _ = llm_json_with_budget(
             provider,
             "depth",
-            prompt,
+            grounding.prompt(prompt),
             system=system,
             reasoning=False,
             temperature=STEP_TEMPERATURES["depth.expand"],
@@ -1569,6 +1574,9 @@ def llm_expand_depth(
         except ValueError as exc:
             notes.append(f"depth: LLM expand malformed JSON ({exc})")
             return draft, notes
+    data, dropped = grounding.filter(data)
+    if dropped:
+        notes.append(f"depth: dropped field(s) not in the live schema: {', '.join(dropped)}")
 
     from app.ai_critique import apply_critique_repairs
     from app.ai_model_quality import filter_redundant_missing_models

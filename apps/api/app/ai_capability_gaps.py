@@ -1,8 +1,8 @@
-"""Domain-agnostic capability gaps — live metadata vs Option A.
+"""Domain-agnostic capability gaps — live metadata vs custom code.
 
 Stitch-like prompts often ask for PDF/QWeb, QR on documents, click-to-pay,
 website controllers, OWL widgets, or Python. Those are not field packs.
-Detect them without vertical packs; stamp Option A; never invent ``x_dynamic``.
+Detect them without vertical packs; stamp custom code; never invent ``x_dynamic``.
 """
 
 from __future__ import annotations
@@ -147,7 +147,7 @@ _GAP_SPECS: tuple[tuple[str, re.Pattern[str], str, str, str, tuple[dict[str, Any
                 "name": "x_qr_payload",
                 "ttype": "char",
                 "string": "QR payload",
-                "help": "Raw payload for a report QR. PDF wiring is Option A.",
+                "help": "Raw payload for a report QR. PDF wiring is custom code.",
             },
         ),
     ),
@@ -166,7 +166,7 @@ _GAP_SPECS: tuple[tuple[str, re.Pattern[str], str, str, str, tuple[dict[str, Any
                 "name": "x_payment_url",
                 "ttype": "char",
                 "string": "Payment link",
-                "help": "URL for click-to-pay. Embed on the PDF via Option A report inherit.",
+                "help": "URL for click-to-pay. Embed on the PDF via custom code report inherit.",
                 "widget": "url",
             },
         ),
@@ -194,7 +194,7 @@ _GAP_SPECS: tuple[tuple[str, re.Pattern[str], str, str, str, tuple[dict[str, Any
             re.I,
         ),
         "Python / cron logic",
-        "Computes, constraints, and crons are Option A — not live metadata.",
+        "Computes, constraints, and crons are custom code — not live metadata.",
         "models/<host>_logic.py (Option A)",
         (),
     ),
@@ -218,7 +218,7 @@ _GAP_SPECS: tuple[tuple[str, re.Pattern[str], str, str, str, tuple[dict[str, Any
             re.I,
         ),
         "Rich mail template",
-        "Complex HTML mail templates with embedded QR/buttons are Option A.",
+        "Complex HTML mail templates with embedded QR/buttons are custom code.",
         "data/mail_template_<feature>.xml (Option A)",
         (),
     ),
@@ -231,14 +231,14 @@ _GAP_SPECS: tuple[tuple[str, re.Pattern[str], str, str, str, tuple[dict[str, Any
             re.I,
         ),
         "Payment provider wiring",
-        "Provider keys and checkout flows are Option A / Autopilot connectors — not form fields.",
+        "Provider keys and checkout flows are custom code / Autopilot connectors — not form fields.",
         "data/payment_provider_stub.xml (Option A)",
         (
             {
                 "name": "x_payment_url",
                 "ttype": "char",
                 "string": "Payment URL",
-                "help": "Filled by Option A / portal; never store provider secrets here.",
+                "help": "Filled by custom code / portal; never store provider secrets here.",
             },
         ),
     ),
@@ -249,7 +249,7 @@ _GAP_SPECS: tuple[tuple[str, re.Pattern[str], str, str, str, tuple[dict[str, Any
             re.I,
         ),
         "Inbound webhook",
-        "HTTP webhooks need a controller + auth token — Option A module.",
+        "HTTP webhooks need a controller + auth token — Custom-code module.",
         "controllers/webhook_inbound.py (Option A)",
         (),
     ),
@@ -277,7 +277,7 @@ _GAP_SPECS: tuple[tuple[str, re.Pattern[str], str, str, str, tuple[dict[str, Any
         "POS receipt designer",
         "Community POS receipts are OWL/QWeb on point_of_sale — not ir.ui.view "
         "and not a custom x_receipt residual. Visual designers, drag-drop columns, "
-        "thermal mm widths, and cashier print selectors are Option A.",
+        "thermal mm widths, and cashier print selectors are custom code.",
         "static/src/app/screens/receipt_screen/ + xml inherit of OrderReceipt (Option A)",
         (),
     ),
@@ -289,7 +289,7 @@ _GAP_SPECS: tuple[tuple[str, re.Pattern[str], str, str, str, tuple[dict[str, Any
             re.I,
         ),
         "External HTTP integration",
-        "Outbound HTTP belongs in an Option A module (sandbox → promote), not live metadata.",
+        "Outbound HTTP belongs in a custom-code module (sandbox → promote), not live metadata.",
         "models/<host>_http.py (Option A)",
         (),
     ),
@@ -315,7 +315,7 @@ _GAP_SPECS: tuple[tuple[str, re.Pattern[str], str, str, str, tuple[dict[str, Any
 
 
 def assess_capability_gaps(prompt: str) -> CapabilityAssessment:
-    """Classify Option A surfaces in any vertical prompt."""
+    """Classify custom code surfaces in any vertical prompt."""
     from app.ai_operator_brief import intent_corpus
 
     raw = (prompt or "").strip()
@@ -386,7 +386,7 @@ def stub_fields_for_gaps(assessment: CapabilityAssessment) -> list[dict[str, Any
 
 
 def stamp_capability_gaps(draft: dict[str, Any], prompt: str) -> list[str]:
-    """Attach gaps + Option A blocks; strip junk when primary Option A."""
+    """Attach gaps + custom code blocks; strip junk when primary custom code."""
     notes: list[str] = []
     ir = draft.get("_generation_engine")
     if isinstance(ir, dict) and ir.get("capability") == "stock_reuse":
@@ -430,7 +430,7 @@ def stamp_capability_gaps(draft: dict[str, Any], prompt: str) -> list[str]:
         for g in assessment.gaps
     ]
     for gap in assessment.gaps:
-        notes.append(f"capability: Option A proposed — {gap.id}")
+        notes.append(f"capability: custom code proposed — {gap.id}")
 
     if isinstance(ir, dict) and ir.get("capability") == "option_a_authored":
         notes.append("capability: LLM authoring owns custom_code_blocks — skip scaffold attach")
@@ -471,9 +471,9 @@ def stamp_capability_gaps(draft: dict[str, Any], prompt: str) -> list[str]:
             continue
         kept.append(block)
         existing.add(key)
-        notes.append(f"capability: Option A scaffold — {key}")
+        notes.append(f"capability: custom-code scaffold — {key}")
     for gap in assessment.gaps:
-        notes.append(f"capability: Option A — {gap.id}")
+        notes.append(f"capability: custom code — {gap.id}")
     draft["custom_code_blocks"] = kept
 
     # Surface real scaffold paths on the gap stamp for the wizard Callout.
@@ -509,7 +509,7 @@ def _is_stale_document_extras_scaffold(path: str) -> bool:
 def _scaffold_paths_by_gap(
     gap_ids: set[str], blocks: list[dict[str, Any]]
 ) -> dict[str, str]:
-    """Map gap id → primary scaffold path for operator-facing Option A lists."""
+    """Map gap id → primary scaffold path for operator-facing custom code lists."""
     by_path = {
         str(b.get("source_file") or b.get("path") or ""): b
         for b in blocks
@@ -601,7 +601,7 @@ def _ensure_honest_stubs(
         for model in draft.get("models") or []:
             if isinstance(model, dict) and str(model.get("mode")) == "inherit":
                 if not (model.get("fields") or []):
-                    notes.append("capability: no live form fields — report/Option A only")
+                    notes.append("capability: no live form fields — report or custom code only")
         return notes
 
     from app.ai_capability_option_a_scaffold import (
@@ -635,7 +635,7 @@ def rebuild_extension_view_if_needed(draft: dict[str, Any]) -> list[str]:
     """Refresh or drop the inherit form extension after field surgery.
 
     Pay/QR/PDF extras live on the QWeb document, not as form chrome. When the
-    brief is Option A–primary, do not inject a form group for stubs.
+    brief is custom code–primary, do not inject a form group for stubs.
     """
     from app.ai_capability_option_a_scaffold import (
         _NEVER_PAY_QR_HOSTS,
@@ -692,7 +692,7 @@ def rebuild_extension_view_if_needed(draft: dict[str, Any]) -> list[str]:
         )
     ]
     if primary:
-        notes.append("capability: no form chrome for Option A PDF extras")
+        notes.append("capability: no form chrome for custom-code PDF extras")
         return notes
     if inherit is None or not fields:
         notes.append("capability: removed empty form extension")

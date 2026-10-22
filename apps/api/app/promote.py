@@ -116,13 +116,13 @@ def get_valid_validation(
     if row is None or row.connection_id != connection_id:
         raise LookupError("Sandbox validation not found for this connection")
     if row.consumed_at is not None:
-        raise ValueError("Sandbox validation already consumed — re-run sandbox")
+        raise ValueError("Sandbox validation already consumed, re-run sandbox")
     now = datetime.now(timezone.utc)
     expires = row.expires_at
     if expires.tzinfo is None:
         expires = expires.replace(tzinfo=timezone.utc)
     if expires < now:
-        raise ValueError("Sandbox validation expired — re-run sandbox")
+        raise ValueError("Sandbox validation expired, re-run sandbox")
     if row.zip_sha256 != sha256_bytes(zip_bytes):
         raise ValueError("Zip does not match sandbox-validated artifact (sha256 mismatch)")
     return row

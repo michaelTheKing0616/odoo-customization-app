@@ -107,13 +107,13 @@ def ingest_job_files(
     needs_confirm = any(getattr(f, "needs_user_confirm", False) for f in batch.files)
     if report.gaps:
         report.dry_run_only = True
-        report.message = "Dry-run blocked on gaps — not committing."
+        report.message = "Dry-run blocked on gaps, not committing."
         report.warnings.extend(report.gaps)
         return report
     if needs_confirm or low_conf:
         report.dry_run_only = True
         report.message = (
-            "Dry-run complete; classification needs operator confirm — not auto-committing."
+            "Dry-run complete; classification needs operator confirm, not auto-committing."
         )
         return report
     if not allow_commit:

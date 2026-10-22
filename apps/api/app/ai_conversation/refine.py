@@ -23,6 +23,13 @@ from app.ai_conversation.intent_lexicon import (
     split_field_list,
     strip_chat_fluff,
 )
+from app.ai_conversation.intent_llm import current_schema_packet
+from app.live_schema_context import (
+    SchemaPacket,
+    model_in_packet,
+    prepend_schema_packet,
+    resolve_form_anchor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1030,17 +1037,42 @@ def _parse_llm_json(raw: str) -> dict[str, Any] | None:
         return None
 
 
+def _admit_refine_ops(
+    ops: list[dict[str, Any]],
+    packet: SchemaPacket | None,
+) -> list[dict[str, Any]]:
+    """Drop ops whose model is outside the slice, or that invent a live x_*.
+
+    Draft-catalog edits (rename/hide/require) stay. A field the packet does
+    not contain is not admitted as a live name. No second GenerateIR gate.
+    """
+
+    if packet is None:
+        return [op for op in ops if isinstance(op, dict)]
+    admitted: list[dict[str, Any]] = []
+    for raw in ops:
+        if not isinstance(raw, dict):
+            continue
+        model_id = str(raw.get("model") or "").strip()
+        if model_id and not model_in_packet(packet, model_id):
+            continue
+        admitted.append(raw)
+    return admitted
+
+
 def llm_propose_ops(
     draft: dict[str, Any],
     instruction: str,
     *,
     provider: Any | None,
     prompt: str = "",
+    schema_packet: SchemaPacket | None = None,
 ) -> dict[str, Any] | None:
     if provider is None:
         return None
+    packet = schema_packet if schema_packet is not None else current_schema_packet()
     system = (
-        "You edit an Odoo Community ModuleSpec already on screen. "
+        "You edit an Odoo Community app plan already on screen. "
         "Return JSON only. Use only allowlisted ops: remove_field, add_field, "
         "set_attr, rename_label, hide_field, show_field, stamp_approval. "
         "Infer messy English, typos, and synonyms: remove/delete/drop/yeet/"
@@ -1056,12 +1088,16 @@ def llm_propose_ops(
         "If they ask for an approval flow, emit stamp_approval. "
         "If the ask is theme/color/pixel CSS, OWL, or something this no-code "
         "draft cannot do, set ops=[] and impossible=true with a one-line reason. "
-        "Never invent stock apps or Project/Purchase hosts the brief forbade."
+        "Never invent stock apps or Project/Purchase hosts the brief forbade. "
+        "Do not name a model or field that is not in the live schema packet."
     )
-    user = (
-        f"Original brief:\n{(prompt or draft.get('_user_prompt') or '')[:1200]}\n\n"
-        f"Catalog:\n{_catalog_prompt(draft)}\n\n"
-        f"User refinement:\n{instruction}\n"
+    user = prepend_schema_packet(
+        (
+            f"Original brief:\n{(prompt or draft.get('_user_prompt') or '')[:1200]}\n\n"
+            f"Catalog:\n{_catalog_prompt(draft)}\n\n"
+            f"User refinement:\n{instruction}\n"
+        ),
+        packet,
     )
     try:
         raw = provider.generate_json(
@@ -1074,7 +1110,10 @@ def llm_propose_ops(
     except Exception as exc:  # noqa: BLE001
         logger.info("Refine LLM skipped: %s", exc)
         return None
-    return _parse_llm_json(raw)
+    parsed = _parse_llm_json(raw)
+    if parsed and isinstance(parsed.get("ops"), list):
+        parsed["ops"] = _admit_refine_ops(parsed["ops"], packet)
+    return parsed
 
 
 def _restamp_preview(working: dict[str, Any], prompt: str) -> None:
@@ -1561,10 +1600,12 @@ def apply_refinement(
     *,
     prompt: str = "",
     provider: Any | None = None,
+    schema_packet: SchemaPacket | None = None,
 ) -> dict[str, Any]:
     """Apply a natural-language refinement against the current draft catalog."""
     from app.ai_conversation.clarify import vague_refinement_needs_followup
 
+    packet = schema_packet if schema_packet is not None else current_schema_packet()
     text = (instruction or "").strip()
     vague = vague_refinement_needs_followup(text)
     if vague:
@@ -1585,7 +1626,7 @@ def apply_refinement(
         return {
             "ok": False,
             "error": (
-                "That ask is Option A (module zip with Python/cron), not a field on this form. "
+                "That ask is custom code (module zip with Python/cron), not a field on this form. "
                 "Click Start new app and paste it as a new prompt — do not Install it onto "
                 "Purchase Requests. Live Install cannot fetch CBN rates."
             ),
@@ -1602,6 +1643,16 @@ def apply_refinement(
     summaries: list[str] = []
     highlighted: list[str] = []
     undo_acc: list[dict[str, Any]] = []
+    if packet is not None:
+        host = None
+        header = _header_model(working)
+        if header:
+            host = str(header.get("model") or "") or None
+        if host and not model_in_packet(packet, host):
+            host = next(iter(packet.models), None)
+        anchor = resolve_form_anchor(packet, text, model=host)
+        if anchor:
+            working["_placement_anchor"] = anchor
     for intent in classify_intents(text):
         clause_ops = _ops_from_intent(working, intent, intent.remainder or text)
         chunk_summaries, chunk_ids = apply_ops(working, clause_ops)
@@ -1617,6 +1668,7 @@ def apply_refinement(
             text,
             provider=provider,
             prompt=prompt or str(working.get("_user_prompt") or ""),
+            schema_packet=packet,
         )
         if proposed and proposed.get("impossible"):
             return _unmap_error(draft, detail=str(proposed.get("summary") or ""))

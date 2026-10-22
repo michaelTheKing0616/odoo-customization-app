@@ -234,6 +234,24 @@ def enforce_residual_draft_identity(
             return notes
         if locked.get("needs_module"):
             return notes
+        # Stock-only brief (custom residual: none): nothing to rebuild. Never invent
+        # a residual register on a stock_reuse Contract with no custom models.
+        if str(locked.get("capability") or "") == "stock_reuse" and not _custom_x_models(draft):
+            return notes
+        # Locked full-app design (step 2A/3): the identity IS the design. Keep the
+        # draft only when every new x_* model belongs to that design.
+        design = locked.get("app_design")
+        if isinstance(design, dict) and design.get("new_models"):
+            names = {str(m.get("name")) for m in design["new_models"] if isinstance(m, dict)}
+            new = {
+                str(m.get("model"))
+                for m in draft.get("models") or []
+                if isinstance(m, dict)
+                and str(m.get("model") or "").startswith("x_")
+                and str(m.get("mode") or "new") != "inherit"
+            }
+            if new and new <= names:
+                return notes
     if not draft_mismatches_residual_identity(
         draft, prompt=text, locked=locked, prefer_locked=prefer_locked
     ):
@@ -261,8 +279,18 @@ def enforce_residual_draft_identity(
     draft.pop("domain_pack", None)
     draft.pop("_pack_model_ids", None)
     draft.pop("_pack_reuse_stock", None)
-    draft["_document_shape"] = "register"
-    draft["_ambition"] = "thin"
+    # Shape comes from the brief: a named residual reusing two+ stock apps
+    # ("do not collapse this to a one-row register") stays a workspace.
+    brief_shape = "register"
+    try:
+        from app.ai_document_shape import classify_document_shape
+
+        if classify_document_shape(text) == "workspace":
+            brief_shape = "workspace"
+    except Exception:  # noqa: BLE001
+        pass
+    draft["_document_shape"] = brief_shape
+    draft["_ambition"] = "thin" if brief_shape == "register" else "standard"
     draft["grain"] = "full_app"
     draft.pop("_component", None)
 
@@ -334,6 +362,9 @@ def enforce_residual_draft_identity(
                 if key in seed:
                     draft[key] = copy.deepcopy(seed[key])
             draft["grain"] = "full_app"
+            if brief_shape == "workspace":
+                draft["_document_shape"] = "workspace"
+                draft["_ambition"] = "standard"
         else:
             notes.extend(ensure_residual_must_do_fields(draft, prompt=text))
             if title:

@@ -24,6 +24,7 @@ from app.routers import (
     admin,
     ai,
     ai_studio,
+    studio_agent,
     apps,
     audit,
     auth,
@@ -63,12 +64,32 @@ from app.routers import (
     reports,
     id_generator,
     snapshots,
+    history,
+    suite,
+    suite_change,
+    suite_records,
+    suite_upkeep,
+    suite_insights,
     views,
+    view_engine,
+    view_engine_2c,
+    view_engine_2d,
+    view_engine_builder,
+    view_engine_logic,
+    view_engine_reports2,
+    view_engine_studio,
     website,
+    qweb_views,
     workspaces,
     code_studio,
+    command_center,
     script_runner,
     live_demo_copilot,
+    progress,
+    ai_cache as ai_cache_router,
+    dashboard_studio,
+    offline,
+    wireframe,
 )
 from app.settings import settings
 
@@ -113,7 +134,16 @@ async def lifespan(_app: FastAPI):
         warm_expert_rag_model()
     finally:
         db.close()
+    from app import builders_ticker
+
+    ticker = builders_ticker.start()
+    from app.ai_client.ai_cache import start_daily_cleanup
+
+    ai_cleanup = start_daily_cleanup()
     yield
+    ai_cleanup.set()
+    if ticker is not None:
+        ticker.cancel()
 
 
 app = FastAPI(
@@ -135,6 +165,9 @@ app.add_middleware(
 )
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(AuditLogMiddleware)
+from app.ai_client.ai_scope import AIScopeMiddleware  # noqa: E402
+
+app.add_middleware(AIScopeMiddleware)
 app.add_middleware(DryRunHashMiddleware)
 app.add_middleware(RequestIdMiddleware)
 
@@ -145,7 +178,8 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(accounts.router, prefix="/api", dependencies=[Depends(enforce_safety_gate)])
 app.include_router(billing.router, prefix="/api", dependencies=[Depends(enforce_safety_gate)])
 app.include_router(bridge.router, prefix="/api", dependencies=[Depends(enforce_safety_gate)])
-app.include_router(inbox.router, prefix="/api", dependencies=[Depends(enforce_safety_gate)])
+app.include_router(inbox.router, prefix="/api", dependencies=_protected)
+app.include_router(command_center.router, prefix="/api", dependencies=_protected)
 app.include_router(admin.router, prefix="/api", dependencies=[Depends(require_app_auth), Depends(enforce_safety_gate)])
 app.include_router(audit.router, prefix="/api", dependencies=_protected)
 app.include_router(jobs.router, prefix="/api", dependencies=_protected)
@@ -158,6 +192,7 @@ app.include_router(approvals.router, prefix="/api", dependencies=_protected + [D
 app.include_router(apps.router, prefix="/api", dependencies=_protected)
 app.include_router(ai.router, prefix="/api", dependencies=_protected + [Depends(require_feature("ai_draft"))])
 app.include_router(ai_studio.router, prefix="/api", dependencies=_protected + [Depends(require_feature("ai_draft"))])
+app.include_router(studio_agent.router, prefix="/api", dependencies=_protected + [Depends(require_feature("ai_draft"))])
 app.include_router(job_autopilot.router, prefix="/api", dependencies=_protected + [Depends(require_feature("ai_draft"))])
 app.include_router(expert.router, prefix="/api", dependencies=_protected + [Depends(require_feature("expert"))])
 app.include_router(live_demo_copilot.router, prefix="/api", dependencies=_protected + [Depends(require_feature("expert"))])
@@ -168,12 +203,33 @@ app.include_router(introspection.router, prefix="/api", dependencies=_protected)
 app.include_router(builder.router, prefix="/api", dependencies=_protected)
 app.include_router(projects.router, prefix="/api", dependencies=_protected)
 app.include_router(reminders.router, prefix="/api", dependencies=_protected)
+app.include_router(view_engine.router, prefix="/api", dependencies=_protected + [Depends(require_feature("designer"))])
+app.include_router(view_engine.reports_router, prefix="/api", dependencies=_protected + [Depends(require_feature("reports_designer"))])
+app.include_router(view_engine_logic.router, prefix="/api", dependencies=_protected + [Depends(require_feature("designer"))])
+app.include_router(view_engine_logic.reports_router, prefix="/api", dependencies=_protected + [Depends(require_feature("reports_designer"))])
+app.include_router(view_engine_studio.router, prefix="/api", dependencies=_protected + [Depends(require_feature("designer"))])
+app.include_router(view_engine_builder.router, prefix="/api", dependencies=_protected + [Depends(require_feature("designer"))])
+app.include_router(view_engine_reports2.reports_router, prefix="/api", dependencies=_protected + [Depends(require_feature("reports_designer"))])
+app.include_router(view_engine_reports2.emails_router, prefix="/api", dependencies=_protected + [Depends(require_feature("reports_designer"))])
+app.include_router(view_engine_2c.router, prefix="/api", dependencies=_protected + [Depends(require_feature("designer"))])
+app.include_router(view_engine_2c.reports_router, prefix="/api", dependencies=_protected + [Depends(require_feature("reports_designer"))])
+app.include_router(view_engine_2c.emails_router, prefix="/api", dependencies=_protected + [Depends(require_feature("reports_designer"))])
+app.include_router(view_engine_2d.router, prefix="/api", dependencies=_protected + [Depends(require_feature("designer"))])
+app.include_router(view_engine_2d.reports_router, prefix="/api", dependencies=_protected + [Depends(require_feature("reports_designer"))])
+app.include_router(view_engine_2d.emails_router, prefix="/api", dependencies=_protected + [Depends(require_feature("reports_designer"))])
+app.include_router(suite.router, prefix="/api", dependencies=_protected + [Depends(require_feature("bulk_suite"))])
+app.include_router(suite_change.router, prefix="/api", dependencies=_protected + [Depends(require_feature("bulk_suite"))])
+app.include_router(suite_records.router, prefix="/api", dependencies=_protected + [Depends(require_feature("bulk_suite"))])
+app.include_router(suite_upkeep.router, prefix="/api", dependencies=_protected + [Depends(require_feature("bulk_suite"))])
+app.include_router(suite_insights.router, prefix="/api", dependencies=_protected + [Depends(require_feature("bulk_suite"))])
+app.include_router(suite_insights.playbooks, prefix="/api", dependencies=_protected + [Depends(require_feature("bulk_suite"))])
 app.include_router(views.router, prefix="/api", dependencies=_protected + [Depends(require_feature("designer"))])
 app.include_router(actions.router, prefix="/api", dependencies=_protected)
 app.include_router(preview_proxy.router, prefix="/api", dependencies=_protected + [Depends(require_feature("designer"))])
 app.include_router(automations.router, prefix="/api", dependencies=_protected + [Depends(require_feature("automations"))])
 app.include_router(access.router, prefix="/api", dependencies=_protected)
 app.include_router(snapshots.router, prefix="/api", dependencies=_protected)
+app.include_router(history.router, prefix="/api", dependencies=_protected)
 app.include_router(export_sandbox.router, prefix="/api", dependencies=_protected + [Depends(require_feature("module_export"))])
 app.include_router(data_import.router, prefix="/api", dependencies=_protected + [Depends(require_feature("import"))])
 app.include_router(ingest.router, prefix="/api", dependencies=_protected + [Depends(require_feature("import"))])
@@ -191,6 +247,7 @@ app.include_router(reports.router, prefix="/api", dependencies=_protected + [Dep
 app.include_router(id_generator.router, prefix="/api", dependencies=_protected + [Depends(require_feature("id_generator"))])
 app.include_router(environments.router, prefix="/api", dependencies=_protected + [Depends(require_feature("pipelines"))])
 app.include_router(website.router, prefix="/api", dependencies=_protected)
+app.include_router(qweb_views.router, prefix="/api", dependencies=_protected)
 app.include_router(
     code_studio.router,
     prefix="/api",
@@ -201,6 +258,17 @@ app.include_router(
     prefix="/api",
     dependencies=_protected + [Depends(require_feature("dev_tools"))],
 )
+from app.routers import code_runner as code_runner_v2  # noqa: E402
+
+app.include_router(code_runner_v2.router, prefix="/api", dependencies=_protected + [Depends(require_feature("dev_tools"))])
+app.include_router(progress.router, prefix="/api", dependencies=_protected)
+from app.routers import sample_company as sample_company_router  # noqa: E402
+
+app.include_router(sample_company_router.router, prefix="/api", dependencies=_protected)
+app.include_router(ai_cache_router.router, prefix="/api", dependencies=_protected)
+app.include_router(dashboard_studio.router, prefix="/api", dependencies=_protected)
+app.include_router(offline.router, prefix="/api", dependencies=_protected)
+app.include_router(wireframe.router, prefix="/api", dependencies=_protected)
 app.include_router(workspaces.router, prefix="/api", dependencies=_protected)
 
 

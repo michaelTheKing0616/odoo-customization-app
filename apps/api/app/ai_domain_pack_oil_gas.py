@@ -151,9 +151,9 @@ def oil_gas_operations_pack() -> dict[str, Any]:
         },
         "display_prefix": "Oil & Gas",
         "anti_patterns": [
-            "Do NOT duplicate maintenance.equipment as x_asset when reuse is confirmed — link stock CMMS",
-            "Do NOT implement payment capture — link account.move only",
-            "Facility is x_og_facility — not a generic x_branch retail store",
+            "Do NOT duplicate maintenance.equipment as x_asset when reuse is confirmed, link stock CMMS",
+            "Do NOT implement payment capture, link account.move only",
+            "Facility is x_og_facility, not a generic x_branch retail store",
             "Do NOT duplicate res.company as x_company",
             "Do NOT duplicate res.currency as x_currency",
         ],
@@ -516,7 +516,7 @@ def oil_gas_operations_pack() -> dict[str, Any]:
                 "description": "Chatter note when a critical incident is logged.",
                 "filter_domain": "[('x_severity', '=', 'critical')]",
                 "safe_actions": [
-                    {"kind": "mail_post", "body": "Critical incident reported — review immediately."}
+                    {"kind": "mail_post", "body": "Critical incident reported, review immediately."}
                 ],
             },
         ],

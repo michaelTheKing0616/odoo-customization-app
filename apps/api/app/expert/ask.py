@@ -36,7 +36,13 @@ from app.expert.platform_guidance import (
 from app.expert.model_lookup import try_rule_based_model_lookup
 from app.expert.view_guidance import try_rule_based_view_guidance
 from app.expert.view_mode_guidance import try_rule_based_view_mode_guidance
+from app.expert.live_schema_ask import (
+    expert_schema_grounding_block,
+    resolve_expert_schema_packet,
+    try_schema_packet_field_answer,
+)
 from app.expert.retrieval import RetrievedChunk, passes_generation_threshold, retrieve_expert_chunks
+from app.live_schema_context import drop_unknown_technical_names
 from app.expert.stack_inference import try_rule_based_stack_guidance
 from app.expert.vertical_catalog import match_verticals
 from app.llm_provider import LLMError, LLMProvider, get_llm_provider
@@ -225,6 +231,7 @@ def _sanitize_caution_flags(flags: list[str]) -> list[str]:
         if (
             f.startswith("protected_")
             or f.startswith("rule_based_")
+            or f.startswith("schema_")
             or f in _PUBLIC_CAUTION_FLAG_EXACT
         ):
             if f not in out:
@@ -405,9 +412,16 @@ def _build_user_prompt(
     bundle: GroundingBundle,
     conversation: list[dict[str, str]] | None,
     strict_citations: bool = False,
+    schema_grounding: str = "",
 ) -> str:
     sources_text, _ = _format_sources(chunks)
     grounding_text = _format_grounding(bundle)
+    if schema_grounding.strip():
+        grounding_text = (
+            f"{schema_grounding.strip()}\n\n{grounding_text}".strip()
+            if grounding_text.strip()
+            else schema_grounding.strip()
+        )
     history = _cap_conversation(conversation)
     vertical_focus = ""
     vertical_hits = match_verticals(question, limit=1)
@@ -645,8 +659,14 @@ def ask_expert(
     conversation: list[dict[str, str]] | None = None,
     provider: LLMProvider | None = None,
     client: Any | None = None,
+    progress_run_id: str | None = None,
+    schema_client: Any | None = None,
+    schema_graph: Any | None = None,
 ) -> ExpertAskResult:
     """Run retrieval + grounding + generation with structural ground-or-decline."""
+    from app.progress.emit import stage_emit
+
+    stage_emit(progress_run_id, "expert_classify", detail="Routing question")
     q = merge_question_with_pasted_error((question or "").strip(), ui_context)
     if not q:
         return ExpertAskResult(
@@ -659,14 +679,27 @@ def ask_expert(
         effective_conversation = []
 
     manifest: dict[str, Any] = {}
+    conn_row: Any | None = None
     if connection_id:
         from app.odoo_service import get_connection_or_404
 
         try:
-            row = get_connection_or_404(db, connection_id)
-            manifest = manifest_for_connection(row)
+            conn_row = get_connection_or_404(db, connection_id)
+            manifest = manifest_for_connection(conn_row)
         except LookupError:
             pass
+
+    expert_schema = None
+    if conn_row is not None:
+        expert_schema = resolve_expert_schema_packet(
+            conn_row,
+            question=q,
+            ui_context=ui_context,
+            client=client,
+            schema_client=schema_client,
+            schema_graph=schema_graph,
+        )
+    schema_grounding = expert_schema_grounding_block(expert_schema)
 
     tier1 = detect_tier1_logic_request(q, manifest) if manifest else None
     if tier1:
@@ -685,6 +718,7 @@ def ask_expert(
             retrieval_version=_normalize_version_from_manifest(manifest),
         )
 
+    stage_emit(progress_run_id, "expert_ground", detail="Reading what is on this database")
     bundle = assemble_context(
         db,
         connection_id=connection_id,
@@ -692,8 +726,14 @@ def ask_expert(
         question=q,
         client=client,
     )
+    if expert_schema is not None:
+        packet_answer = try_schema_packet_field_answer(q, expert_schema)
+        if packet_answer is not None:
+            packet_answer.suggested_tools = list(bundle.suggested_tools or [])
+            return packet_answer
     version = bundle.retrieval_version
     min_score = float(settings.ai_rag_min_score or 0.35)
+    stage_emit(progress_run_id, "expert_retrieve", detail="Retrieving sources")
     chunks = retrieve_expert_chunks(
         db,
         _expand_error_retrieval_query(q),
@@ -880,6 +920,12 @@ def ask_expert(
         system_parts.append(ERROR_DIAGNOSIS_RULES)
     if manifest:
         system_parts.append(guardrail_prompt(manifest))
+    if schema_grounding.strip():
+        system_parts.append(
+            "When LIVE SCHEMA PACKET is present in INSTANCE GROUNDING, every model and field "
+            "name in answer_markdown must appear in that packet. SOURCE EXCERPTS cannot "
+            "introduce fields absent from the packet."
+        )
 
     system_text = "\n\n".join(system_parts)
 
@@ -890,6 +936,7 @@ def ask_expert(
             bundle=bundle,
             conversation=effective_conversation,
             strict_citations=strict_citations,
+            schema_grounding=schema_grounding,
         )
         raw = llm.generate_json(
             prompt,
@@ -901,6 +948,7 @@ def ask_expert(
         )
         return _parse_llm_response(raw)
 
+    stage_emit(progress_run_id, "expert_answer", detail="Generating answer")
     try:
         data = _generate(use_reasoning=reasoning)
     except (json.JSONDecodeError, ValueError, LLMError):
@@ -909,6 +957,9 @@ def ask_expert(
         raise LLMError(str(exc), status_code=502) from exc
 
     answer = str(data.get("answer_markdown") or "").strip()
+    if answer and expert_schema is not None:
+        answer = drop_unknown_technical_names(answer, expert_schema.packet).strip()
+        data = {**data, "answer_markdown": answer}
     if not answer and reasoning:
         reasoning = False
         caution_flags.append("reasoning_empty_retry_bulk")

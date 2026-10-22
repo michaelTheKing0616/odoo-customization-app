@@ -238,7 +238,7 @@ def apply_document_layout(client: Any, docs: ConfigDocuments) -> str | None:
     if docs.report_footer and rpc.field_exists(client, "res.company", "report_footer"):
         vals["report_footer"] = docs.report_footer[:4000]
     if not vals:
-        return "layout: logo/QWeb remain human / Option A"
+        return "layout: logo/QWeb remain human / custom code"
     try:
         client.execute_kw("res.company", "write", [[cid], vals])
         return f"layout {sorted(vals)}"

@@ -33,6 +33,14 @@ def require_advanced_confirmation(
     raise ConfirmationRequired(warning=warning, risks=risks)
 
 
+_SNAPSHOT_MODELS = {
+    "view": "ir.ui.view", "field": "ir.model.fields", "model": "ir.model", "access": "ir.model.access",
+    "rule": "ir.rule", "menu": "ir.ui.menu", "report": "ir.actions.report", "action": "ir.actions.act_window",
+    "automation": "base.automation", "paperformat": "report.paperformat", "ir_default": "ir.default",
+    "config_parameter": "ir.config_parameter",
+}
+
+
 def save_snapshot(
     db: Session,
     *,
@@ -54,6 +62,12 @@ def save_snapshot(
     db.add(row)
     db.commit()
     db.refresh(row)
+    try:  # this metadata is about to change: stale only AI answers that read it
+        from app.ai_client.ai_cache import mark_changed
+
+        mark_changed(connection_id, [_SNAPSHOT_MODELS.get(resource_type, f"meta:{resource_type}")])
+    except Exception:  # noqa: BLE001
+        pass
     return row
 
 
@@ -762,6 +776,15 @@ def rollback_snapshot(
             client.execute_kw("ir.config_parameter", "write", [[param_id], write_vals])
         return {"restored": "config_parameter", "id": param_id}
 
+    if row.resource_type == "script_run":
+        note = payload.get("restore") or (
+            "Script Runner snapshots record the script hash. "
+            "They do not undo record writes. "
+            "Restore a view, automation, or server action snapshot from the journal "
+            "when the script changed one of those. Dropped columns cannot be restored."
+        )
+        raise OdooClientError(str(note))
+
     if row.resource_type == "ir_cron":
         cron = payload.get("ir_cron") or {}
         cron_id = int(cron["id"])
@@ -771,6 +794,18 @@ def rollback_snapshot(
         if write_vals:
             client.execute_kw("ir.cron", "write", [[cron_id], write_vals])
         return {"restored": "ir_cron", "id": cron_id}
+
+    if row.resource_type == "portal_access":  # A5: undo = the opposite portal action
+        from app.bulk_suite.portal_access import run_bulk_portal
+
+        opposite = "revoke" if payload.get("action") == "grant" else "grant"
+        res = run_bulk_portal(client, partner_ids=[int(i) for i in payload.get("partner_ids") or []], action=opposite, dry_run=False)  # type: ignore[arg-type]
+        return {"restored": "portal_access", "action": opposite, "succeeded": getattr(res, "succeeded", None)}
+
+    if row.resource_type == "record_values":  # A5 shared write gate undo point
+        from app.write_gate import undo_record_values
+
+        return undo_record_values(client, payload)
 
     raise OdooClientError(f"Rollback not implemented for resource_type={row.resource_type}")
 

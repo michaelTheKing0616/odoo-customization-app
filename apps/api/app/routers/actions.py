@@ -445,6 +445,6 @@ def bind_hint(
         note=(
             f'<button name="{action_id}" type="action" string="…"/> — '
             "works for ir.actions.server and ir.actions.act_window ids. "
-            "type=object needs a Python method (Option A module)."
+            "type=object needs a Python method (Custom-code module)."
         ),
     )

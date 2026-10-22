@@ -80,7 +80,7 @@ def export_model_records_json(
 
     overflow: str | None = None
     if truncated:
-        overflow = f"Export capped at {cap} records — database may contain more rows."
+        overflow = f"Export capped at {cap} records, database may contain more rows."
 
     payload = {
         "format": "model_records_json",

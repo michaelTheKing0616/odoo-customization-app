@@ -9,25 +9,25 @@ from app.settings import settings
 logger = logging.getLogger(__name__)
 
 
-def send_email(*, to: str, subject: str, body: str) -> None:
+def send_email(*, to: str, subject: str, body: str, html: str | None = None) -> None:
     """Send email via configured transport. Dev default logs only."""
     transport = settings.email_transport.strip().lower()
     if transport in {"console", "log", ""}:
         logger.info(
-            "[EMAIL console transport — not delivered]\nTo: %s\nSubject: %s\n%s",
+            "[EMAIL console transport, not delivered]\nTo: %s\nSubject: %s\n%s",
             to,
             subject,
             body,
         )
         return
     if transport == "smtp":
-        _send_smtp(to=to, subject=subject, body=body)
+        _send_smtp(to=to, subject=subject, body=body, html=html)
         return
-    logger.warning("Unknown EMAIL_TRANSPORT=%s — logging email instead", transport)
+    logger.warning("Unknown EMAIL_TRANSPORT=%s, logging email instead", transport)
     logger.info("To: %s Subject: %s\n%s", to, subject, body)
 
 
-def _send_smtp(*, to: str, subject: str, body: str) -> None:
+def _send_smtp(*, to: str, subject: str, body: str, html: str | None = None) -> None:
     import smtplib
     from email.message import EmailMessage
 
@@ -39,6 +39,8 @@ def _send_smtp(*, to: str, subject: str, body: str) -> None:
     msg["From"] = settings.smtp_from or settings.smtp_user or "noreply@localhost"
     msg["To"] = to
     msg.set_content(body)
+    if html:
+        msg.add_alternative(html, subtype="html")
 
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as smtp:
         if settings.smtp_use_tls:

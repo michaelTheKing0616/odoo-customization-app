@@ -398,7 +398,7 @@ def check_action(
         return {"allowed": False, "message": "No matching step", "pending_step": pending}
 
     if not _record_matches_domain(client, row.target_model, record_id, step.domain):
-        return {"allowed": True, "message": "Step condition not met — action allowed", "pending_step": None}
+        return {"allowed": True, "message": "Step condition not met, action allowed", "pending_step": None}
 
     msg = f"Approval required (step {pending}) before '{row.button_method}'"
     _sync_odoo_param(

@@ -95,7 +95,7 @@ class InProcessJobRunner:
                 _set_status(
                     job_id,
                     "failed",
-                    error="Job queue full — retry shortly (concurrent cap reached)",
+                    error="Job queue full, retry shortly (concurrent cap reached)",
                 )
                 return
             self._cancel_events[job_id] = cancel_ev
@@ -153,7 +153,7 @@ class InProcessJobRunner:
                     if not isinstance(warnings, list):
                         warnings = []
                     warnings.append(
-                        "Job hit the time cap — returning the last saved draft. "
+                        "Job hit the time cap, returning the last saved draft. "
                         "Open Saved snapshots if the editor is empty."
                     )
                     kept["warnings"] = warnings

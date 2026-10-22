@@ -309,7 +309,7 @@ def generalize_spec_to_pack_candidate(
     pack_slug: str | None = None,
     provider: LLMProvider | None = None,
 ) -> dict[str, Any]:
-    """Generalize a ModuleSpec draft into downloadable candidate pack source."""
+    """Generalize a App plan draft into downloadable candidate pack source."""
     if not isinstance(spec, dict):
         raise ValueError("spec must be a dict")
 
@@ -373,7 +373,7 @@ def generalize_spec_to_component_template(
     host_slot: str = "any",
     pack_slug: str | None = None,
 ) -> dict[str, Any]:
-    """AI-8: generalize a component ModuleSpec into a reusable gallery candidate."""
+    """AI-8: generalize a component app plan into a reusable gallery candidate."""
     base = generalize_spec_to_pack_candidate(spec, pack_slug=pack_slug)
     cp = spec.get("connect_points") if isinstance(spec.get("connect_points"), dict) else {}
     slot = host_slot or cp.get("host_model") or "any"

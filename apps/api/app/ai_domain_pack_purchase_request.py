@@ -34,9 +34,9 @@ def purchase_request_pack() -> dict[str, Any]:
             "procurement",
         ],
         "anti_patterns": [
-            "Do NOT reuse stock purchase.order — this is a lightweight staff approval form",
-            "Do NOT create x_requester or x_manager as standalone models — use hr.employee / res.users relations",
-            "Do NOT add x_agreement, x_expense, or subsidiary models — single document only",
+            "Do NOT reuse stock purchase.order, this is a lightweight staff approval form",
+            "Do NOT create x_requester or x_manager as standalone models, use hr.employee / res.users relations",
+            "Do NOT add x_agreement, x_expense, or subsidiary models, single document only",
             "Requester links to hr.employee, Manager links to res.users for activity assignment",
         ],
         "models": [
@@ -77,7 +77,7 @@ def purchase_request_pack() -> dict[str, Any]:
                         "string": "Requester",
                         "relation": "hr.employee",
                         "required": True,
-                        "help": "Employee who submitted this request — link-only to HR.",
+                        "help": "Employee who submitted this request, link-only to HR.",
                     },
                     {
                         "name": "x_manager_id",
@@ -224,11 +224,11 @@ def purchase_request_pack() -> dict[str, Any]:
         "reuse_hints": [
             {
                 "model": "hr.employee",
-                "reason": "Requester on purchase requests — do not invent x_requester",
+                "reason": "Requester on purchase requests, do not invent x_requester",
             },
             {
                 "model": "res.users",
-                "reason": "Manager for approval — do not invent x_manager model",
+                "reason": "Manager for approval, do not invent x_manager model",
             },
         ],
         "reuse_stock": [

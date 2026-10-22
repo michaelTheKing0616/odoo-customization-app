@@ -18,14 +18,14 @@ from app.snapshots import CONFIRM_PHRASE, require_advanced_confirmation
 PROMOTE_TO_WARNING = (
     "This installs a sandbox-validated module zip onto the TARGET connection. "
     "Job Autopilot does not run on the target. Production Autopilot stays refused; "
-    "this human Promote is the only write path onto another database."
+    "this you publish is the only write path onto another database."
 )
 PROMOTE_TO_RISKS = [
     "Writes a custom module onto the target Odoo database",
     "Does not clone or dump a production database",
     "Does not replace UAT sign-off",
-    "Scorecard 10.0 is ModuleSpec completeness, not go-live",
-    "Stock-only jobs have no zip — refuse rather than fake a promote",
+    "Scorecard 10.0 is app plan completeness, not go-live",
+    "Built-in apps only jobs have no zip — refuse rather than fake a promote",
 ]
 
 
@@ -76,7 +76,7 @@ def promote_to_connection(
             ok=False,
             refused=True,
             refuse_reason=(
-                "No module zip. Stock-only jobs hand off the sandbox + UAT report; "
+                "No module zip. Built-in apps only jobs hand off the sandbox + UAT report; "
                 "Autopilot will not invent a zip or write production."
             ),
             source_connection_id=source_connection_id,

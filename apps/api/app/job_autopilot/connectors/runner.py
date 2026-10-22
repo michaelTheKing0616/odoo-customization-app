@@ -26,7 +26,7 @@ def _payroll_step(packet: JobPacket) -> ProbeResult:
             ok=False,
             detail=(
                 f"No statutory pack for country {cc or 'unknown'}. "
-                "Add a golden-file pack — do not LLM payslip math."
+                "Add a golden-file pack, do not LLM payslip math."
             ),
         )
     result = compute(cc, 500_000.0)

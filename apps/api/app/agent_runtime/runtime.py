@@ -317,15 +317,22 @@ def _args_tainted(args: dict[str, Any]) -> bool:
 
 
 def _looks_like_instruction(text: str) -> bool:
-    low = text.lower()
-    markers = (
-        "ignore previous",
-        "ignore policy",
-        "grant admin",
-        "system:",
-        "you are now",
-    )
-    return any(marker in low for marker in markers)
+    """Injection classifier from the shared AI guards (meaning-level, plus the small model
+    in the grey zone). Flagged text is never followed; the caller logs and ignores it."""
+    from app.ai_client import guards
+
+    provider = None
+    try:
+        from app.ai_client.shared_client import unwrap
+        from app.llm_provider import get_llm_provider
+
+        provider = unwrap(get_llm_provider())
+    except Exception:  # noqa: BLE001
+        provider = None
+    verdict = guards.classify_injection(text, provider)
+    if verdict.flagged:
+        guards.log_flag("injection", {"source": "agent_runtime", "score": verdict.score, "reasons": verdict.reasons})
+    return verdict.flagged
 
 
 def _combine_memory(book_text: str, supplied: str) -> str:
@@ -353,9 +360,15 @@ class AgentRuntime:
         self,
         grant: Any | None = None,
         requester_ops: frozenset[str] | None = None,
+        *,
+        schema_packet: Any | None = None,
+        schema_graph: Any | None = None,
     ) -> None:
         self.grant = grant
         self.requester_ops = requester_ops
+        # Same packet/graph the request already built — not a second cache.
+        self._schema_packet = schema_packet
+        self._schema_graph = schema_graph
         self._transcripts: dict[int, list[Exchange]] = {}
         self._memory: dict[int, MemoryBook] = {}
 
@@ -646,7 +659,29 @@ class AgentRuntime:
         if name == "submit_changeset":
             return {"ok": True, "pending_approval": True, "writes": 0}
         if name == "describe_model":
-            return {"model": args.get("model"), "fields": []}
+            from app.agent_runtime.schema_tools import describe_model_result, resolve_schema_packet
+
+            return describe_model_result(args, resolve_schema_packet(self._schema_packet))
+        if name == "describe_field":
+            from app.agent_runtime.schema_tools import describe_field_result, resolve_schema_packet
+
+            return describe_field_result(args, resolve_schema_packet(self._schema_packet))
+        if name == "view_get":
+            from app.agent_runtime.schema_tools import resolve_schema_packet, view_get_result
+
+            return view_get_result(
+                args,
+                packet=resolve_schema_packet(self._schema_packet),
+                schema_graph=self._schema_graph,
+            )
+        if name == "view_test_xpath":
+            from app.agent_runtime.schema_tools import resolve_schema_packet, view_test_xpath_result
+
+            return view_test_xpath_result(
+                args,
+                packet=resolve_schema_packet(self._schema_packet),
+                schema_graph=self._schema_graph,
+            )
         if name == "schema_search":
             return {"hits": []}
         if name == "env_info":

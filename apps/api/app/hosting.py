@@ -8,11 +8,22 @@ from urllib.parse import urlparse
 LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "0.0.0.0", "host.docker.internal", "::1"})
 
 
-def hosting_hint_from_url(url: str | None) -> str:
-    """Heuristic hosting tier for operator honesty (not a hard security boundary).
+HOSTING_CHOICES = ("online", "odoo_sh", "self_hosted")
+
+
+def hosting_hint_from_url(
+    url: str | None, server_version: str | None = None, saved: str | None = None
+) -> str:
+    """Saved choice wins; else server version (saas~ = Online); else the URL.
+
+    Heuristic hosting tier for operator honesty (not a hard security boundary).
 
     Returns: online | odoo_sh | self_hosted | unknown
     """
+    if saved in HOSTING_CHOICES:
+        return str(saved)
+    if server_version and "saas" in str(server_version).lower():
+        return "online"
     if not url or not str(url).strip():
         return "unknown"
     raw = str(url).strip()
@@ -23,7 +34,7 @@ def hosting_hint_from_url(url: str | None) -> str:
     if host in LOCAL_HOSTS or host.endswith(".local"):
         return "self_hosted"
     # Odoo.sh build/platform hostnames
-    if host == "odoo.sh" or host.endswith(".odoo.sh") or "odoo.sh" in host:
+    if host == "odoo.sh" or host.endswith(".odoo.sh") or "odoo.sh" in host or host.endswith(".dev.odoo.com"):
         return "odoo_sh"
     # Odoo Online SaaS databases are typically <db>.odoo.com
     if host == "odoo.com" or host.endswith(".odoo.com"):
@@ -37,12 +48,12 @@ def hosting_operator_message(hosting_hint: str, *, edition: str) -> str:
         parts.append(
             "Hosting looks like Odoo Online: metadata customization and data/XML "
             "module import are OK; custom Python modules cannot be installed on Online — "
-            "export install_mode=data or use Odoo.sh / self-host for Option A Python."
+            "export install_mode=data or use Odoo.sh / self-host for custom-code Python."
         )
     elif hosting_hint == "odoo_sh":
         parts.append(
             "Hosting looks like Odoo.sh: Git/filesystem module install and staging "
-            "branches are first-class; use matching-major sandbox before promote."
+            "branches are first-class; use matching-major sandbox before publish."
         )
     elif hosting_hint == "self_hosted":
         parts.append(
@@ -64,12 +75,12 @@ def python_modules_allowed(hosting_hint: str) -> bool:
 
 
 def online_option_a_python_blocked(hosting_hint: str) -> bool:
-    """True when this host cannot install Option A Python modules."""
+    """True when this host cannot install custom-code Python modules."""
     return hosting_hint == "online" or not python_modules_allowed(hosting_hint)
 
 
 def online_python_promote_block(*, hosting_hint: str | None = None) -> dict[str, Any]:
-    """Honest block payload for Online + Python Option A promote.
+    """Honest block payload for Online + Python custom code promote.
 
     Reuses tier_gating / class-stamp alternatives — do not fork copy.
     """
@@ -94,3 +105,12 @@ def online_python_promote_block(*, hosting_hint: str | None = None) -> dict[str,
             f"{callout.why} Alternatives: (1) {alts[0]} (2) {alts[1]} (3) {alts[2]}"
         ),
     }
+
+
+def connection_hosting(conn: Any) -> str:
+    """Effective hosting for a saved connection (saved choice, version, then URL)."""
+    return hosting_hint_from_url(
+        getattr(conn, "url", None),
+        getattr(conn, "server_version", None),
+        getattr(conn, "hosting", None),
+    )

@@ -1,4 +1,4 @@
-"""RPC helpers shared by Config Packet capture / apply (no LLM)."""
+"""RPC helpers shared by config summary capture / apply (no LLM)."""
 
 from __future__ import annotations
 

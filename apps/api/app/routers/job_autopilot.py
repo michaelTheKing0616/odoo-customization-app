@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -14,9 +16,13 @@ from app.db import get_db
 from app.job_autopilot.client_index import retrieve_grounding, upsert_client_docs
 from app.job_autopilot.executor import run_autopilot_job
 from app.job_autopilot.packet import AutopilotResult, JobPacket, SCORECARD_IS_NOT_GOLIVE
-from app.job_autopilot.planner import build_job_packet, file_excerpts_from_bytes
+from app.job_autopilot.planner import (
+    build_job_packet_for_connection,
+    file_excerpts_from_bytes,
+)
+from app.live_schema_context import bind_schema_rpc
 from app.job_autopilot.promote_target import PromoteToResult, promote_to_connection
-from app.job_autopilot.report import render_markdown, render_pdf_bytes
+from app.job_autopilot.report import render_markdown, render_pdf_bytes, render_sealed_pdf_bytes
 from app.config_packet.apply import APPLY_RISKS, APPLY_WARNING, apply_config_packet
 from app.config_packet.diff import diff_packet
 from app.config_packet.fingerprint import fingerprint_instance
@@ -57,6 +63,37 @@ def _row(connection_id: str, db: Session):
         return get_connection_or_404(db, connection_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+def _bound_connection(row: Any, *, client: Any | None = None) -> Any:
+    live = client
+    if live is None:
+        try:
+            live = client_from_connection(row)
+        except (OdooClientError, CryptoError, Exception):  # noqa: BLE001
+            live = None
+    return bind_schema_rpc(row, live)
+
+
+def _plan_job_packet(
+    row: Any,
+    prompt: str,
+    *,
+    file_excerpts: list[tuple[str, str]] | None = None,
+    country_code: str | None = None,
+    company_name: str | None = None,
+    use_llm: bool | None = None,
+    client: Any | None = None,
+) -> Any:
+    """Route entry: packet from the connection, not from a test-supplied slice."""
+    return build_job_packet_for_connection(
+        prompt,
+        _bound_connection(row, client=client),
+        file_excerpts=file_excerpts,
+        country_code=country_code,
+        company_name=company_name,
+        use_llm=use_llm,
+    )
 
 
 def _ground_packet(connection_id: str, packet: JobPacket, excerpts: list[tuple[str, str]]) -> None:
@@ -157,7 +194,8 @@ def post_packet(
     assessment = intent_assessment_payload(body.prompt)
     clarification = intent_clarification_for_prompt(body.prompt)
     try:
-        packet = build_job_packet(
+        packet = _plan_job_packet(
+            row,
             body.prompt,
             file_excerpts=excerpts,
             country_code=body.country_code,
@@ -303,7 +341,13 @@ async def post_run_files(
         raw = await f.read()
         uploaded.append((f.filename or "upload.bin", raw, f.content_type))
     excerpts = file_excerpts_from_bytes([(n, b) for n, b, _m in uploaded])
-    packet = build_job_packet(prompt, file_excerpts=excerpts, use_llm=use_llm)
+    row = _row(connection_id, db)
+    packet = _plan_job_packet(
+        row,
+        prompt,
+        file_excerpts=excerpts,
+        use_llm=use_llm,
+    )
     return _queue_autopilot(
         connection_id=connection_id,
         db=db,
@@ -352,7 +396,7 @@ def get_fingerprint(connection_id: str, db: Session = Depends(get_db)) -> dict[s
         "sandbox": sandbox,
         "message": (
             "Read-only fingerprint. Use Job Autopilot on a sandbox, then dry-run / apply "
-            "the Config Packet here. Autopilot still refuses write_mode=production."
+            "the config summary here. Autopilot still refuses write_mode=production."
         ),
     }
 
@@ -385,7 +429,7 @@ def post_config_packet_dry_run(
     try:
         packet = ConfigPacket.model_validate(body.packet)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=422, detail=f"Invalid Config Packet: {exc}") from exc
+        raise HTTPException(status_code=422, detail=f"Invalid config summary: {exc}") from exc
     try:
         client = client_from_connection(row)
     except (OdooClientError, CryptoError) as exc:
@@ -414,7 +458,7 @@ def post_config_packet_apply(
     try:
         packet = ConfigPacket.model_validate(body.packet)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=422, detail=f"Invalid Config Packet: {exc}") from exc
+        raise HTTPException(status_code=422, detail=f"Invalid config summary: {exc}") from exc
     try:
         client = client_from_connection(row)
         report = apply_config_packet(
@@ -436,12 +480,13 @@ def post_config_packet_apply(
 def post_report_pdf(
     connection_id: str,
     body: AutopilotResult,
+    sealed: bool = True,
     db: Session = Depends(get_db),
 ) -> Response:
     _row(connection_id, db)
     markdown = body.report_markdown or render_markdown(body)
     return Response(
-        content=render_pdf_bytes(markdown),
+        content=render_sealed_pdf_bytes(markdown, title="UAT delivery report", prepared=f"Prepared {datetime.now().strftime('%d %B %Y')} by Ingenium") if sealed else render_pdf_bytes(markdown),
         media_type="application/pdf",
         headers={"Content-Disposition": 'attachment; filename="job-autopilot-uat.pdf"'},
     )

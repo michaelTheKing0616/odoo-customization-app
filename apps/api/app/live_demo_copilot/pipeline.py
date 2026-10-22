@@ -60,6 +60,37 @@ def list_answers(db, session_id: str, *, limit: int = 20) -> list[dict[str, Any]
     return [_answer_payload(r) for r in rows]
 
 
+def answer_with_guards(db, session, question: str, *, fresh: bool = False):
+    """Background threads have no request scope: set the client-facing one here."""
+    from app.ai_client.ai_scope import ai_scope
+    from app.live_demo_copilot.db_grounding import claim_verifier, installed_modules
+
+    installed = installed_modules(db, session.connection_id)
+    with ai_scope(db=session.connection_id or "", surface="demo_copilot", fresh=fresh,
+                  claim_verifier=claim_verifier(installed)):
+        return generate_live_answer(db, question=question, connection_id=session.connection_id)
+
+
+def refresh_answer(db, session, answer: LiveDemoAnswer) -> dict[str, Any]:
+    """'Fresh answer': regenerate one answer without the cache."""
+    live = answer_with_guards(db, session, answer.question or "", fresh=True)
+    answer.bullets_json = json.dumps(live.bullets)
+    answer.confidence = live.confidence
+    answer.confidence_flag = live.confidence_flag
+    answer.grounded = live.grounded
+    answer.declined = live.declined
+    answer.citations_json = json.dumps(live.citations)
+    answer.answer_markdown = live.answer_markdown or ""
+    answer.model_used = live.model_used
+    answer.status = "ready"
+    db.add(answer)
+    db.commit()
+    db.refresh(answer)
+    payload = _answer_payload(answer)
+    EVENT_BUS.publish(session.id, {"type": "answer", "data": payload})
+    return payload
+
+
 def process_transcript_line(session_id: str, line_id: str) -> None:
     db = SessionLocal()
     try:
@@ -103,11 +134,7 @@ def process_transcript_line(session_id: str, line_id: str) -> None:
         db.refresh(pending)
         EVENT_BUS.publish(session.id, {"type": "answer", "data": _answer_payload(pending)})
 
-        live = generate_live_answer(
-            db,
-            question=line.text.strip(),
-            connection_id=session.connection_id,
-        )
+        live = answer_with_guards(db, session, line.text.strip())
         pending.bullets_json = json.dumps(live.bullets)
         pending.confidence = live.confidence
         pending.confidence_flag = live.confidence_flag

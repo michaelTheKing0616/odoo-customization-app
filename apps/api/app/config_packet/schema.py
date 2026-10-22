@@ -1,4 +1,4 @@
-"""Config Packet — intended-state for stock Odoo configuration (not ModuleSpec)."""
+"""config summary — intended-state for stock Odoo configuration (not ModuleSpec)."""
 
 from __future__ import annotations
 

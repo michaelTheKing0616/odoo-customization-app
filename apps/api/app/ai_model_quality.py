@@ -9,7 +9,10 @@ from __future__ import annotations
 import copy
 import json
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.live_schema_context import SchemaPacket
 
 # Shared with system / staged / expand prompts so every path says the same thing.
 MODEL_CREATION_RULES = """
@@ -60,7 +63,7 @@ WORLD-CLASS OPS DEPTH (comprehensive / world-class prompts — meet this bar):
     intake/open/billed/closed) — NEVER specialty_a, option_a, area_b placeholders.
 14) Automations only on models that exist in the draft; safe_actions only
     (object_write / related_write / next_activity). Values must be valid selection keys.
-15) When a domain scaffold is provided, match its stock-first residual — do not pad
+15) When a domain scaffold is provided, match its built-in apps first residual — do not pad
     model count with a second ERP. Deepen fields and stock links instead.
 16) Staff/fee-earner/counsel many2ones relation hr.employee when HR is in depends.
     res.users is only the login (x_user_id). Do not invent x_attorney / x_doctor / x_staff.
@@ -440,12 +443,12 @@ def llm_emit_missing_scaffold_models(
     scaffold: dict[str, Any],
     *,
     user_prompt: str,
+    schema_packet: SchemaPacket | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     """Ask the LLM to emit scaffold models it omitted — pack merge is the fallback only."""
     from app.ai_prompt_constants import STEP_TEMPERATURES, append_prompt_blocks
+    from app.live_schema_context import draft_grounding
     from app.llm_provider import LLMError
-    from app.ai_prompt_constants import STEP_TEMPERATURES, append_prompt_blocks
-    from app.ai_prompt_constants import STEP_TEMPERATURES, append_prompt_blocks
 
     notes: list[str] = []
     have = {
@@ -495,7 +498,7 @@ def llm_emit_missing_scaffold_models(
             }
         )
     system = append_prompt_blocks(
-        "You repair a ModuleSpec that omitted required ops models. "
+        "You repair a app plan that omitted required ops models. "
         "Example output:\n"
         '{"models":[{"model":"x_matter_bill","description":"Client bill",'
         '"fields":[{"name":"x_name","ttype":"char","string":"Reference","required":true},'
@@ -514,13 +517,14 @@ def llm_emit_missing_scaffold_models(
         f"Field hints from the world-class scaffold (adapt/deepen, do not thin):\n"
         f"{json.dumps(sketches)[:5000]}"
     )
+    grounding = draft_grounding(schema_packet)
     try:
         from app.ai_llm_budget import llm_json_with_budget
 
         raw, _ = llm_json_with_budget(
             provider,
             "quality",
-            prompt,
+            grounding.prompt(prompt),
             system=system,
             reasoning=False,
             temperature=STEP_TEMPERATURES["quality.scaffold_gap"],
@@ -529,6 +533,12 @@ def llm_emit_missing_scaffold_models(
     except (LLMError, TypeError, ValueError, json.JSONDecodeError) as exc:
         notes.append(f"quality: scaffold-gap LLM repair failed ({exc})")
         return draft, notes
+    data, dropped = grounding.filter(data)
+    if not isinstance(data, dict):
+        notes.append("quality: scaffold-gap LLM repair not an object")
+        return draft, notes
+    if dropped:
+        notes.append(f"quality: dropped field(s) not in the live schema: {', '.join(dropped)}")
 
     added = 0
     for m in data.get("models") or []:
@@ -551,7 +561,7 @@ def llm_emit_missing_scaffold_models(
         notes.append(f"quality: LLM emitted missing scaffold model {mid}")
     if added:
         notes.append(
-            f"quality: scaffold-gap repair added {added}/{len(missing_ids)} model(s)"
+            f"quality: scaffold-gap repair added {added}/{len(missing_ids)} models"
         )
     elif missing_ids:
         notes.append(
@@ -756,7 +766,7 @@ def collapse_hollow_catalogs_to_selections(draft: dict[str, Any]) -> list[str]:
 
     draft["models"] = [m for m in models if str(m["model"]) not in hollow_ids]
     if hollow_ids:
-        notes.append(f"quality: removed {len(hollow_ids)} hollow catalog model(s)")
+        notes.append(f"quality: removed {len(hollow_ids)} hollow catalog models")
     buttons = draft.get("smart_buttons")
     if isinstance(buttons, list):
         draft["smart_buttons"] = [
@@ -776,13 +786,16 @@ def llm_deepen_model_fields(
     user_prompt: str,
     ambition: str,
     min_fields: int,
+    schema_packet: SchemaPacket | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     """Ask the LLM to add fields (and only substantive models) to thin drafts."""
     from app.ai_critique import apply_critique_repairs
     from app.ai_depth import _is_hollow_model, _models, compute_depth_metrics
     from app.ai_prompt_constants import STEP_TEMPERATURES, append_prompt_blocks
+    from app.live_schema_context import draft_grounding
     from app.llm_provider import LLMError
 
+    grounding = draft_grounding(schema_packet)
     notes: list[str] = []
     thin = []
     for m in _models(draft):
@@ -810,7 +823,7 @@ def llm_deepen_model_fields(
         return draft, notes
 
     system = append_prompt_blocks(
-        "You improve ModuleSpec MODEL QUALITY for Odoo Community. Example output:\n"
+        "You improve app plan MODEL QUALITY for Odoo Community. Example output:\n"
         '{"missing_fields":[{"model":"x_matter","name":"x_client_id","ttype":"many2one",'
         '"relation":"res.partner","string":"Client"}],'
         '"missing_models":[{"model":"x_matter_task","description":"Task line","is_workflow":false,'
@@ -848,7 +861,7 @@ def llm_deepen_model_fields(
         raw, _ = llm_json_with_budget(
             provider,
             "quality",
-            prompt,
+            grounding.prompt(prompt),
             system=system,
             reasoning=False,
             temperature=STEP_TEMPERATURES["quality.field_deepen"],
@@ -875,6 +888,9 @@ def llm_deepen_model_fields(
         except json.JSONDecodeError as exc:
             notes.append(f"quality: field-deepen malformed JSON ({exc})")
             return draft, notes
+    data, dropped = grounding.filter(data)
+    if dropped:
+        notes.append(f"quality: dropped field(s) not in the live schema: {', '.join(dropped)}")
     if not isinstance(data, dict):
         notes.append("quality: field-deepen not an object")
         return draft, notes
@@ -1503,7 +1519,7 @@ def collapse_thin_padding_models(draft: dict[str, Any]) -> list[str]:
         for m in (draft.get("models") or [])
         if not (isinstance(m, dict) and str(m.get("model")) in remove)
     ]
-    notes.append(f"quality: removed thin padding model(s) {', '.join(remove)}")
+    notes.append(f"quality: removed thin padding models {', '.join(remove)}")
     for key in ("actions", "views", "access_rules"):
         rows = draft.get(key)
         if not isinstance(rows, list):
@@ -2715,7 +2731,7 @@ def deepen_thin_rate_models(draft: dict[str, Any]) -> list[str]:
         _, gate = admit_and_apply(draft, proposals)
         notes.extend(gate)
         if any("admitted" in g for g in gate):
-            notes.append("quality: deepened rate model(s) via admit")
+            notes.append("quality: deepened rate models via admit")
         trace_ir(draft, stage="deepen_thin_rate_models:after_admit")
     return notes
 

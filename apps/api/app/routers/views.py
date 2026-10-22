@@ -278,7 +278,7 @@ def repair_designer_inherit(
     if body.model.startswith("x_"):
         raise HTTPException(
             status_code=422,
-            detail="Repair is for stock models with a Designer inherit child — custom x_* models own their primary.",
+            detail="Repair is for stock models with a Designer extension view — custom x_* models own their primary.",
         )
     vt = "list" if body.view_type == "tree" else body.view_type
     if vt != "form":
@@ -297,7 +297,7 @@ def repair_designer_inherit(
             view_type=vt,
             view_name=child_name,
             remaining_custom_injects=injects,
-            detail=f"No view named {child_name!r} — chrome may already be stock, or the inherit used another name.",
+            detail=f"No view named {child_name!r} — chrome may already be stock, or the extension used another name.",
         )
 
     row = rows[0]
@@ -307,7 +307,7 @@ def repair_designer_inherit(
         raise HTTPException(
             status_code=409,
             detail=(
-                f"{child_name!r} is a primary view, not an inherit child — "
+                f"{child_name!r} is a primary view, not an extension view — "
                 "refusing repair/unlink. Fix manually in Odoo Technical → Views."
             ),
         )
@@ -325,7 +325,7 @@ def repair_designer_inherit(
             view_name=str(row.get("name") or child_name),
             snapshot_id=snapshot_id,
             remaining_custom_injects=injects,
-            detail="Designer inherit is already additive (no full form replace) — hard-refresh Odoo if duplicates persist.",
+            detail="Designer extension is already additive (no full form replace) — hard-refresh Odoo if duplicates persist.",
         )
 
     dumped = extract_replaced_form_arch(arch) or arch
@@ -564,7 +564,7 @@ def polish_form(
                 confirm_phrase=body.confirm_phrase,
                 warning=(
                     f"Polish will rewrite the primary form layout for stock model "
-                    f"{body.model}. Prefer inherit Designer saves unless you intend this."
+                    f"{body.model}. Prefer Designer extension saves unless you intend this."
                 ),
                 risks=[
                     "Can break stock xpath inherits (e.g. Contacts phone field)",
@@ -736,6 +736,17 @@ def _build_overlay_fragment(body: OverlayApplyBody) -> str:
     )
 
 
+def _fragment_already_applied(existing_arch: str, fragment: str) -> bool:
+    """True when every xpath of ``fragment`` is already in the overlay view (whitespace-insensitive)."""
+    import re as _re
+
+    def flat(text: str) -> str:
+        return _re.sub(r">\s+<", "><", _re.sub(r"\s+", " ", text or "")).strip()
+
+    inner = _re.sub(r"^\s*<data>|</data>\s*$", "", fragment or "").strip()
+    return bool(inner) and flat(inner) in flat(existing_arch)
+
+
 def _stock_field_names_only(names: set[str] | list[str]) -> set[str]:
     return {n for n in names if n and not str(n).startswith("x_")}
 
@@ -849,7 +860,9 @@ def overlay_apply(
     snap = snapshot_view(db, connection_id, client, primary.id)
     child_name = _overlay_child_name(body.model, vt)
     existing = client._find_view_by_exact_name(child_name)
-    if existing is not None and existing.arch:
+    if existing is not None and existing.arch and _fragment_already_applied(existing.arch, fragment):
+        view = existing  # same change pressed twice: keep one copy
+    elif existing is not None and existing.arch:
         merged = merge_inherit_data_arch(existing.arch, fragment)
         view = client.update_view_arch(existing.id, merged)
     else:
@@ -917,8 +930,8 @@ def save_view(
     row = get_connection_or_404(db, connection_id)
     vt_check = "list" if body.view_type == "tree" else body.view_type
     if vt_check in EE_VIEW_TYPES:
-        ctx = build_tier_context(url=row.url, server_version=row.server_version)
-        if not ctx.is_enterprise:
+        ctx = build_tier_context(url=row.url, server_version=row.server_version, saved_hosting=getattr(row, "hosting", None))
+        if ctx.edition == "community":
             raise HTTPException(
                 status_code=409,
                 detail={
@@ -954,7 +967,7 @@ def save_view(
                     confirm_phrase=body.confirm_phrase,
                     warning=(
                         f"Overwrite will mutate the live form/list arch for {body.model} "
-                        "(not an inherit child). Prefer inherit unless you need a primary rewrite."
+                        "(not an extension view). Prefer an extension view unless you need a primary rewrite."
                     ),
                     risks=[
                         "Can break stock module xpath inherits",

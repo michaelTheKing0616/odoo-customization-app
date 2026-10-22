@@ -327,7 +327,7 @@ def run_elite_integration_pass(draft: dict[str, Any], *, user_prompt: str = "") 
                         "string": "Invoice",
                         "relation": "account.move",
                         "readonly": True,
-                        "help": "Link-only — post invoices in Accounting, link here.",
+                        "help": "Link-only, post invoices in Accounting, link here.",
                     }
                 )
                 deps = list(draft.get("depends") or ["base"])
@@ -549,7 +549,7 @@ def elite_promote_gate(draft: dict[str, Any]) -> tuple[bool, list[str]]:
     sc = draft.get("_scorecard") if isinstance(draft.get("_scorecard"), dict) else {}
     meta = draft.get("_meta") if isinstance(draft.get("_meta"), dict) else {}
     if not sc:
-        reasons.append("missing _scorecard — run draft generation first")
+        reasons.append("missing _scorecard, run draft generation first")
     else:
         ok, floor_reasons = check_elite_scorecard_floors(sc)
         meta_score = meta.get("score_0_10")

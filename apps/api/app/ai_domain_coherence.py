@@ -111,7 +111,8 @@ _PACK_ADOPTION_CUE_RES: dict[str, re.Pattern[str]] = {
         r"operating\s+theatre|radiology|pharmacy)\b"
     ),
     "law_firm": re.compile(
-        r"(?i)\b(?:law\s*firm|attorney|lawyer|litigation|counsel|"
+        r"(?i)\b(?:law[\s-]*firms?|law\s+(?:practice|office|chambers)|legal\s+practice|"
+        r"attorneys?|lawyers?|solicitors?|barristers?|litigation|counsel|"
         r"matter\s+management|billable\s+hour|retainer|trust\s+account)\b"
     ),
     "oil_gas_operations": re.compile(
@@ -359,6 +360,12 @@ def pack_adoption_cues_present(prompt: str, pack_id: str) -> bool:
         # Unknown pack: require residual title overlap handled elsewhere; allow.
         return True
     return bool(cue.search(prompt or ""))
+
+
+def pack_strongly_cued(prompt: str, pack_id: str) -> bool:
+    """True only when this pack has an adoption cue AND the brief hits it (unknown pack: False)."""
+    cue = _PACK_ADOPTION_CUE_RES.get(pack_id)
+    return bool(cue is not None and cue.search(prompt or ""))
 
 
 def residual_noun_conflicts_pack(

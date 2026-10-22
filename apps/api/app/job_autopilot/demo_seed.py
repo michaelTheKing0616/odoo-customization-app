@@ -114,7 +114,7 @@ def probe_leftover_stock_form_fields(client: Any) -> list[ProbeResult]:
             name="sandbox_form",
             ok=True,
             detail=(
-                "Invoice/quotation form is not stock Community — leftover custom fields "
+                "Invoice/quotation form is not stock Community, leftover custom fields "
                 f"from prior Apply jobs: {', '.join(labels)}{extra}. "
                 "This Autopilot job did not add them. Use a fresh DB for a clean UAT. "
                 "Due date “or Pay…” is stock payment terms (no label by design)."
@@ -146,7 +146,7 @@ def probe_leftover_verticals(client: Any) -> list[ProbeResult]:
                 "This sandbox DB was reused and still has "
                 + ", ".join(hits)
                 + ". Autopilot does not wipe other verticals. "
-                "Open the smoke invoice by id — do not treat leftover invoices as this job. "
+                "Open the smoke invoice by id, do not treat leftover invoices as this job. "
                 "Use a fresh DB for a clean UAT."
             ),
         )

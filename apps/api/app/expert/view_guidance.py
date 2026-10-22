@@ -130,7 +130,7 @@ def try_rule_based_view_guidance(
     if connection_id:
         lines.append(
             f"\nBuilder: `/connections/{connection_id}/designer?model={model}` — add the field, "
-            "then inspect generated xpath before promote."
+            "then inspect generated xpath before publish."
         )
 
     return {

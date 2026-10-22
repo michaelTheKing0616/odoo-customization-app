@@ -794,7 +794,7 @@ def run_health_sweep(
         report.add(_check_applied_project(client, connection_id, project))
 
     if report.broken_count == 0:
-        report.message = f"Health sweep complete — {report.ok_count} artifacts OK"
+        report.message = f"Health sweep complete, {report.ok_count} artifacts OK"
     else:
         report.message = (
             f"Health sweep found {report.broken_count} broken artifact(s) "

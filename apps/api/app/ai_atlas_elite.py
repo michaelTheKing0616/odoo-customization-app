@@ -1,9 +1,9 @@
 """P4 Config Atlas elite — class-wide Stock/Config/Batch detection + handoff.
 
 Resolves plain-language config/batch briefs onto Atlas class + recipe + risk
-without Prefer-stealing Prefer field packs or Option A invent classes.
+without Prefer-stealing Prefer field packs or custom code invent classes.
 
-Completeness ≠ Cert ≠ Autopilot. Promote stays human. Preview ≠ posted/confirmed.
+A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm. Preview ≠ posted/confirmed.
 """
 
 from __future__ import annotations
@@ -184,7 +184,7 @@ def resolve_atlas_handoff(prompt: str) -> dict[str, Any] | None:
             out["prove_status"] = "not_required"
             out["honesty"] = (
                 "Preview ≠ posted/confirmed. L3 lock dates require confirm. "
-                "Completeness ≠ Cert ≠ Autopilot. Promote stays human."
+                "A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm."
             )
             return out
     # Generic Atlas hub
@@ -198,8 +198,8 @@ def resolve_atlas_handoff(prompt: str) -> dict[str, Any] | None:
         "artifact_kind": "stock_config",
         "prove_status": "not_required",
         "honesty": (
-            "Preview ≠ posted/confirmed. Completeness ≠ Cert ≠ Autopilot. "
-            "Promote stays human."
+            "Preview ≠ posted/confirmed. A complete draft is not the same as certified, and neither means Autopilot-ready. "
+            "Publishing stays a step you confirm."
         ),
     }
 

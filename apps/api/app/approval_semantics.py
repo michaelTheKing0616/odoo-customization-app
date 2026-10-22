@@ -118,7 +118,7 @@ def can_approve_step(
     if not step_applies_to_user(step, user_id=user_id, user_group_ids=user_group_ids):
         return False, "User is not an approver for this step"
     if exclusive_violation(step=step, user_id=user_id, entries=entries, all_steps=all_steps):
-        return False, "Exclusive approval — you already approved another step on this record"
+        return False, "Exclusive approval, you already approved another step on this record"
     pending = pending_step_order(all_steps, entries)
     if pending is None:
         return False, "Approval was rejected or no pending step"

@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Callable
 
+from app.progress.stage_registry import KNOWN_STAGES
+
 
 class StageBus:
     def __init__(self) -> None:
@@ -14,6 +16,8 @@ class StageBus:
     def emit(self, run_id: str, stage: str, *, detail: str = "") -> None:
         if not stage or stage == "spinner":
             raise ValueError("stage must name the work")
+        if stage not in KNOWN_STAGES:
+            raise ValueError(f"unknown stage: {stage}")
         event = {"run_id": run_id, "stage": stage, "detail": detail}
         self.events.append(event)
         for listener in self._listeners[run_id]:

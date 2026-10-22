@@ -56,28 +56,28 @@ _PRODUCT_TOOL_ROUTES: tuple[dict[str, Any], ...] = (
         "keywords": ("draft studio", "wizard", "natural language", "create draft"),
         "label": "Draft Studio",
         "web_path": "/connections/{connection_id}/wizard",
-        "hint": "NL to ModuleSpec. Option A PDF/QR needs Sandbox install & smoke.",
+        "hint": "NL to app plan. custom code PDF/QR needs Sandbox install & smoke.",
     },
     {
         "id": "job",
         "keywords": ("job autopilot", "autopilot"),
         "label": "Job Autopilot",
         "web_path": "/connections/{connection_id}/job",
-        "hint": "Sandbox-only stock-first delivery; promote stays human.",
+        "hint": "Sandbox-only built-in apps first delivery; promote stays human.",
     },
     {
         "id": "modulespec",
         "keywords": ("modulespec", "module spec", "json spec"),
         "label": "ModuleSpec",
         "web_path": "/connections/{connection_id}/modulespec",
-        "hint": "Inspect/apply/export the ModuleSpec JSON contract.",
+        "hint": "Inspect/apply/export the app plan JSON contract.",
     },
     {
         "id": "code-studio",
         "keywords": ("code studio", "custom code", "option a"),
         "label": "Code Studio",
         "web_path": "/connections/{connection_id}/code-studio",
-        "hint": "Lint and sandbox Option A Python/XML blocks.",
+        "hint": "Lint and sandbox custom-code Python/XML blocks.",
     },
     {
         "id": "website",
@@ -91,7 +91,7 @@ _PRODUCT_TOOL_ROUTES: tuple[dict[str, Any], ...] = (
         "keywords": ("automation", "automations"),
         "label": "Automations",
         "web_path": "/connections/{connection_id}/automations",
-        "hint": "Safe base.automation triggers; Python stays Option A.",
+        "hint": "Safe base.automation triggers; Python stays on the custom-code path.",
     },
     {
         "id": "approvals",
@@ -105,7 +105,7 @@ _PRODUCT_TOOL_ROUTES: tuple[dict[str, Any], ...] = (
         "keywords": ("report", "reports", "pdf", "qweb"),
         "label": "Reports",
         "web_path": "/connections/{connection_id}/reports",
-        "hint": "Report layout lite; Pay-now/QR on PDF is Draft Studio Option A.",
+        "hint": "Report layout lite; Pay-now/QR on PDF is Draft Studio custom code.",
     },
     {
         "id": "projects",
@@ -246,7 +246,7 @@ _ANSWERS: tuple[tuple[re.Pattern[str], str, tuple[str, ...]], ...] = (
             "2. Enter the model, for example:\n"
             "   - Invoices / bills → **`account.move`** (not `account`)\n"
             "   - Sales orders → **`sale.order`**\n"
-            "   - Custom residual → **`x_matter`**, **`x_booking`**, etc.\n"
+            "   - Custom code → **`x_matter`**, **`x_booking`**, etc.\n"
             "3. Set view type to **form** (or list/search).\n"
             "4. **Load existing view** so **Form layout (primary)** shows the real Odoo "
             "structure (groups, notebook, buttons). Preview is optional.\n"
@@ -257,7 +257,7 @@ _ANSWERS: tuple[tuple[re.Pattern[str], str, tuple[str, ...]], ...] = (
             "**Why `account` looked wrong:** `account` is a **module**. The Designer "
             "loads an ORM **model** arch — for invoices that is `account.move`.\n\n"
             "**PDF / QR / click-to-pay on the invoice PDF** is not Designer — use "
-            "**Draft Studio** Option A → **Sandbox install & smoke**.\n\n"
+            "**Draft Studio** custom code → **Sandbox install & smoke**.\n\n"
             "Full matrices: `docs/OPERATOR-FEATURE-DEMO-GUIDE.md` §2."
         ),
         ("designer", "builder"),
@@ -287,10 +287,10 @@ _ANSWERS: tuple[tuple[re.Pattern[str], str, tuple[str, ...]], ...] = (
             "### Draft Studio\n\n"
             "1. Open **AI Studio → Draft Studio**.\n"
             "2. Enter a prompt (e.g. “Add SLA due date on invoices”).\n"
-            "3. **Create draft** → review scorecard, done-bar, and Option A callout.\n"
+            "3. **Create draft** → review scorecard, done-bar, and custom code callout.\n"
             "4. **Apply** for live metadata (fields/views/stubs).\n"
             "5. If the ask is **PDF / QR / click-to-pay / Python / OWL**, the draft is "
-            "**Option A primary**: score is capped (~7.0) with `option_a_unproven` until "
+            "**custom code primary**: score is capped (~7.0) with `option_a_unproven` until "
             "you run **Sandbox install & smoke**. Then `go_live_ready` may flip — "
             "**promote to another connection stays human**.\n\n"
             "Completeness 10.0 is not Apps Store / go-live.\n\n"
@@ -307,7 +307,7 @@ _ANSWERS: tuple[tuple[re.Pattern[str], str, tuple[str, ...]], ...] = (
             "1. Use a **local sandbox** connection (e.g. `127.0.0.1:8069`).\n"
             "2. Paste a business brief → Run.\n"
             "3. Poll until terminal; read the Autopilot scorecard "
-            "(separate from ModuleSpec 10.0).\n"
+            "(separate from app plan 10.0).\n"
             "4. **Refuse production write mode.** Promote is a human confirm.\n\n"
             "See `docs/OPERATOR-FEATURE-DEMO-GUIDE.md` §10."
         ),
@@ -331,7 +331,7 @@ _ANSWERS: tuple[tuple[re.Pattern[str], str, tuple[str, ...]], ...] = (
         re.compile(r"(?i)code\s+studio"),
         (
             "### Code Studio\n\n"
-            "Developer path for Option A Python/XML: lint → sandbox zip → promote.\n\n"
+            "Developer path for custom-code Python/XML: lint → sandbox zip → promote.\n\n"
             "1. Open **Build → Code Studio** with a draft that has `custom_code_blocks`.\n"
             "2. Lint (relative Odoo imports OK; bare `import os` flagged).\n"
             "3. Export / sandbox install before any customer promote.\n\n"
@@ -346,7 +346,7 @@ _ANSWERS: tuple[tuple[re.Pattern[str], str, tuple[str, ...]], ...] = (
             "Requires the Odoo **`website`** module installed on the connection.\n\n"
             "1. Open **Build → Website**.\n"
             "2. Pick a page → edit → save → verify on the public site URL.\n\n"
-            "Portal pay / PDF QR is **Draft Studio Option A**, not the Website editor.\n\n"
+            "Portal pay / PDF QR is **Draft Studio custom code**, not the Website editor.\n\n"
             "See `docs/OPERATOR-FEATURE-DEMO-GUIDE.md` §4."
         ),
         ("website", "wizard"),
@@ -356,7 +356,7 @@ _ANSWERS: tuple[tuple[re.Pattern[str], str, tuple[str, ...]], ...] = (
         (
             "### Automations\n\n"
             "Safe `base.automation` triggers (object_write, activities). "
-            "**Python `state=code` is Option A** (module → sandbox → promote).\n\n"
+            "**Python `state=code` is custom code** (module → sandbox → promote).\n\n"
             "1. Open **Build → Automations**.\n"
             "2. Pick model + trigger + safe action → Apply → test in Odoo.\n\n"
             "See `docs/OPERATOR-FEATURE-DEMO-GUIDE.md` §5."
@@ -380,7 +380,7 @@ _ANSWERS: tuple[tuple[re.Pattern[str], str, tuple[str, ...]], ...] = (
             "### Reports\n\n"
             "Report layout lite under **Build → Reports**.\n\n"
             "For **Pay now + QR on the invoice PDF**, prefer "
-            "**Draft Studio** Option A scaffolds → **Sandbox install & smoke**, "
+            "**Draft Studio** custom code scaffolds → **Sandbox install & smoke**, "
             "then Print in Odoo.\n\n"
             "See `docs/OPERATOR-FEATURE-DEMO-GUIDE.md` §7 and §9."
         ),

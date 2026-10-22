@@ -198,7 +198,7 @@ def budget_exhausted_message(reason: str) -> str:
         )
     return (
         "LLM Repair budget for this draft is used up. "
-        "Try Sandbox install & smoke once more — free Community fixes (tax_ids, xpaths, "
+        "Try Sandbox install & smoke once more, free Community fixes (tax_ids, xpaths, "
         "stock _compute_amount strip) still run without Repair. "
         "Or Download module zip / Start a new app for a fresh LLM repair budget. "
         "Do not click Install this app."

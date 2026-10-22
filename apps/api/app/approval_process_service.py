@@ -179,7 +179,7 @@ def create_type(
     chain: list[dict[str, Any]],
 ) -> dict[str, Any]:
     if not client.model_exists(TYPE_MODEL):
-        raise OdooClientError(f"{TYPE_MODEL} not installed — scaffold Approval Requests first")
+        raise OdooClientError(f"{TYPE_MODEL} not installed, scaffold Approval Requests first")
     type_id = int(
         client.execute_kw(
             TYPE_MODEL,
@@ -270,7 +270,7 @@ def create_request(
     requester_id: int,
 ) -> dict[str, Any]:
     if not client.model_exists(REQUEST_MODEL):
-        raise OdooClientError(f"{REQUEST_MODEL} not installed — scaffold Approval Requests first")
+        raise OdooClientError(f"{REQUEST_MODEL} not installed, scaffold Approval Requests first")
     req_id = int(
         client.execute_kw(
             REQUEST_MODEL,

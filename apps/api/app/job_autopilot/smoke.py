@@ -1,7 +1,7 @@
-"""RPC process smoke — Autopilot done-bar (not ModuleSpec scorecard 10.0).
+"""RPC process smoke — Autopilot done-bar (not app plan scorecard 10.0).
 
 Client flow: partner → product → quotation with line → confirm → invoice from SO.
-Custom residual: header + line child + Confirm ir.actions.server.run (not a field write).
+Custom code: header + line child + Confirm ir.actions.server.run (not a field write).
 """
 
 from __future__ import annotations

@@ -386,3 +386,44 @@ __all__ = [
     "score_model_for_prompt",
     "stock_entry",
 ]
+
+
+# ---------------------------------------------------------------- built-in app suggestions
+# Built-in Odoo apps a brief can use instead of (or next to) custom records.
+# enterprise=True: only on Odoo Enterprise (Odoo Online is Enterprise).
+STOCK_APP_SUGGESTIONS: tuple[dict[str, Any], ...] = (
+    {"module": "sale_renting", "name": "Rental", "enterprise": True,
+     "cue": r"\b(rent(al|als|ing)?|hire out|lease)\b",
+     "why": "Handles rental bookings, pickup and return dates, and rental pricing out of the box."},
+    {"module": "maintenance", "name": "Maintenance", "enterprise": False,
+     "cue": r"\b(servic(e|ing)|maintenance|maintain|repair|breakdown|preventive)\b",
+     "why": "Tracks equipment, regular servicing and repair requests, with reminders."},
+    {"module": "helpdesk", "name": "Helpdesk", "enterprise": True,
+     "cue": r"\b(complain\w*|tickets?|support requests?|help ?desk|customer issues?)\b",
+     "why": "Gives you a ticket inbox with teams, response targets and customer replies."},
+    {"module": "hr", "name": "Employees", "enterprise": False,
+     "cue": r"\b(employees?|staff (list|records?|members?)|departments?|trainings?|onboarding)\b",
+     "why": "Keeps one list of your people and departments that other apps can use."},
+    {"module": "project", "name": "Project", "enterprise": False,
+     "cue": r"\b(projects?|milestones?)\b", "why": "Plans work as projects and tasks with stages."},
+    {"module": "account", "name": "Invoicing", "enterprise": False,
+     "cue": r"\b(invoic\w*|bill(ing)? (customers?|clients?)|payments? from customers?)\b",
+     "why": "Sends invoices and tracks what customers have paid."},
+)
+
+
+def suggest_stock_apps(prompt: str, installed: set[str] | None = None, edition: str = "unknown",
+                       limit: int = 3) -> list[dict[str, Any]]:
+    """Built-in apps the brief's own words point to. Installed apps are marked, not re-offered."""
+    out: list[dict[str, Any]] = []
+    for app in STOCK_APP_SUGGESTIONS:
+        m = re.search(app["cue"], prompt or "", re.I)
+        if not m:
+            continue
+        has = bool(installed) and app["module"] in installed
+        available = not app["enterprise"] or edition in {"enterprise", "online", "unknown"}
+        out.append({"module": app["module"], "name": app["name"], "why": app["why"],
+                    "quote": m.group(0), "installed": has, "enterprise_only": app["enterprise"],
+                    "available": available})
+    out.sort(key=lambda a: (a["installed"], not a["available"]))
+    return out[:limit]

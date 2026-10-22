@@ -197,7 +197,7 @@ def build_checklist(
             ChecklistItem(
                 id="brand",
                 label=(
-                    "Upload company logo; custom invoice/POS QWeb is Option A module zip"
+                    "Upload company logo; custom invoice/POS QWeb is Custom-code module zip"
                     if packet.documents.option_a_qweb_needed
                     else "Upload company logo in Odoo; stock letterhead is in the packet"
                 ),
@@ -230,7 +230,7 @@ def build_checklist(
                 ),
                 status="todo",
                 surface="job_autopilot",
-                href_hint="Job Autopilot → Promote to target (zip) or App Studio → Install",
+                href_hint="Job Autopilot → Publish to target (zip) or App Studio → Install",
             )
         )
 

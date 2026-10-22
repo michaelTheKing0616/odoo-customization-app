@@ -1,4 +1,4 @@
-"""Deterministic validation + enrichment rules for ModuleSpec drafts.
+"""Deterministic validation + enrichment rules for App plan drafts.
 
 LLM proposes; this layer disposes — referential integrity, statusbar/sequence
 hints, partner back-refs, overdue automation safety net.
@@ -561,7 +561,7 @@ def apply_pattern_rules(draft: dict[str, Any]) -> list[str]:
     if added_acl:
         out["access_rules"] = rules
         notes.append(
-            f"rules: added {added_acl // 2} model(s) with user (no unlink) + manager access"
+            f"rules: added {added_acl // 2} models with user (no unlink) + manager access"
         )
     elif not out.get("access_rules") and out.get("models"):
         rules = []
@@ -636,7 +636,7 @@ def completeness_checklist(
     def add(key: str, ok: bool, detail: str = "") -> None:
         items.append({"id": key, "ok": ok, "detail": detail})
 
-    add("has_models", bool(models), f"{len(models)} model(s)")
+    add("has_models", bool(models), f"{len(models)} models")
     try:
         from app.ai_document_shape import document_shape_of
 

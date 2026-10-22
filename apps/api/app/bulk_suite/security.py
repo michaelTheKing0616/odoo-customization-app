@@ -228,7 +228,7 @@ def apply_security_changes(
 ) -> SecurityApplyResult:
     if not preview_acknowledged and not dry_run:
         raise SecurityValidationError(
-            "preview_acknowledged=true is required — call /bulk/security/preview first "
+            "preview_acknowledged=true is required, call /bulk/security/preview first "
             "and review the diff before apply"
         )
 

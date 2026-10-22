@@ -32,17 +32,17 @@ def _version_note(version: str | None) -> str:
     v = (version or "").strip()
     if v.startswith("16"):
         return (
-            "**Odoo 16.0:** Jordan governorates are **not** preloaded in `base` — expect an "
+            "**Odoo 16.0:** Jordan governorates are **not** preloaded in `base`, expect an "
             "empty State dropdown until you add `res.country.state` rows manually."
         )
     if v.startswith(("17", "18", "19")):
         return (
             f"**Odoo {v}:** Jordan has **12 preloaded governorates** in `res.country.state` "
-            "(Amman, Zarqa, Irbid, …). **Capital Governorate** is **not** a separate label — "
+            "(Amman, Zarqa, Irbid, …). **Capital Governorate** is **not** a separate label, "
             "use **Amman** (`JO-AM`) for the capital region."
         )
     return (
-        "**Version note:** Connect an Odoo instance so Expert filters to your server version — "
+        "**Version note:** Connect an Odoo instance so Expert filters to your server version, "
         "Jordan states were added in base from 17.0 onward."
     )
 
@@ -73,10 +73,10 @@ def try_rule_based_l10n_guidance(
         lines.extend(
             [
                 "**Capital Governorate:**",
-                "- **Jordan** — not shipped under that name. Default data uses **Amman** "
+                "- **Jordan**, not shipped under that name. Default data uses **Amman** "
                 "for the capital governorate. Add a custom state if your integration requires "
                 "the literal label *Capital Governorate*.",
-                "- **Kuwait** — not in default `base` state data; create **Capital** / "
+                "- **Kuwait**, not in default `base` state data; create **Capital** / "
                 "**Al Asimah** manually under Fed. States if needed.",
             ]
         )
@@ -110,7 +110,7 @@ def try_rule_based_l10n_guidance(
         notable = (bundle.instance_summary or {}).get("notable_flags") or {}
         if notable.get("l10n_installed"):
             lines.append(
-                "\nYour connection has **`l10n_*` modules** installed — verify live states under "
+                "\nYour connection has **`l10n_*` modules** installed, verify live states under "
                 "Developer Mode → Settings → Technical → **Countries** / **Country States**."
             )
         lines.append(

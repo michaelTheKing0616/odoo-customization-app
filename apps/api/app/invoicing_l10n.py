@@ -53,7 +53,7 @@ def detect_l10n(client: OdooClient) -> dict[str, Any]:
             f"No fiscal localization module detected for country {country_code or 'unknown'}. "
             "Install the matching l10n_* module before generating invoices."
             if country_code
-            else "No l10n_* modules installed — fiscal localization unknown."
+            else "No l10n_* modules installed, fiscal localization unknown."
         )
         return {
             "ok": False,

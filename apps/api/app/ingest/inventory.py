@@ -90,7 +90,7 @@ def validate_inventory_table(
                 model="stock.quant",
                 field="*",
                 value="",
-                message="Inventory (stock) module not installed — cannot import counts",
+                message="Inventory (stock) module not installed, cannot import counts",
             )
         )
         return gaps, warnings
@@ -125,7 +125,7 @@ def validate_inventory_table(
                     model="product.product",
                     field="default_code",
                     value=product_raw,
-                    message=f"Product {product_raw!r} not found — import catalog first",
+                    message=f"Product {product_raw!r} not found, import catalog first",
                 )
             )
             row.flags.append(f"inv_product_missing:{product_raw}")
@@ -158,7 +158,7 @@ def validate_inventory_table(
 
     warnings.append(
         "Inventory count applies via stock.quant inventory_quantity "
-        "(action_apply_inventory) — creates stock moves; review dry-run carefully."
+        "(action_apply_inventory), creates stock moves; review dry-run carefully."
     )
     return gaps, warnings
 

@@ -551,7 +551,7 @@ class JournalBatchRecipe:
         state.phase = "dry_run"
         state.dry_run = True
         state.message = (
-            f"Dry-run OK — would create {len(state.moves)} DRAFT move(s). "
+            f"Dry-run OK, would create {len(state.moves)} DRAFT move(s). "
             f"{HONESTY_PREVIEW_NE_POSTED}"
         )
         return state

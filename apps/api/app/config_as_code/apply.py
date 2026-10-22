@@ -140,6 +140,11 @@ class FakeConfigPort:
             current.update(values)
             self.rows[key] = current
 
+    def execute_kw(self, model: str, method: str, args: list[Any], kwargs: dict[str, Any] | None = None) -> Any:
+        """Model-method calls (settings execute, set_param, module buttons): recorded, no network."""
+        self.calls.append(("call", model, method, list(args or []), dict(kwargs or {})))
+        return True
+
 
 def _string_fields_for(op_type: str) -> tuple[str, ...]:
     if op_type == "field.create":

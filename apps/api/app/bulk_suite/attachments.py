@@ -501,7 +501,7 @@ def clean_attachments(
         else f"Dry-run: would delete {len(ids)} attachment(s) ({reclaimable} bytes)"
     )
     if tier1_models and not dry_run:
-        msg += f"; includes tier-1 parent model(s): {', '.join(sorted(tier1_models))}"
+        msg += f"; includes tier-1 parent models: {', '.join(sorted(tier1_models))}"
 
     return AttachmentCleanResult(
         run_id=run_id,

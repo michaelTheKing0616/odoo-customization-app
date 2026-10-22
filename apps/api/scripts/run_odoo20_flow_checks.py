@@ -11,7 +11,6 @@ import json
 import os
 import sys
 import time
-import xmlrpc.client
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
@@ -19,6 +18,7 @@ from urllib.parse import urlparse
 
 from odoo_client import ConnectionConfig, OdooClient
 from odoo_client.client import OdooClientError
+from odoo_client.rpc_transport_errors import XmlRpcFault
 
 PREFIX = "ingenium_o20_"
 DEFAULT_URL = "http://127.0.0.1:8073"
@@ -107,7 +107,7 @@ def _connect(url: str, db: str, user: str, password: str) -> OdooClient:
 def _call(client: OdooClient, model: str, method: str, args: list[Any] | None = None, kwargs: dict[str, Any] | None = None) -> Any:
     try:
         return client.execute_kw(model, method, args or [], kwargs or {})
-    except xmlrpc.client.Fault as exc:
+    except XmlRpcFault as exc:
         if "cannot marshal None" in str(exc):
             return None
         raise

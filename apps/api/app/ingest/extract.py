@@ -42,7 +42,7 @@ def extract_upload_file(
     if _is_image(filename, raw):
         if not ingest_vision_enabled():
             raise ValueError(
-                "Image upload requires vision OCR — set INGEST_VISION=ollama "
+                "Image upload requires vision OCR, set INGEST_VISION=ollama "
                 "and install qwen3-vl (see docs/research/ingest_vision_enable.md)"
             )
         try:
@@ -57,7 +57,7 @@ def extract_upload_file(
         if pdf_needs_vision(raw):
             if not ingest_vision_enabled():
                 raise ValueError(
-                    "Scanned PDF has no extractable text — enable vision "
+                    "Scanned PDF has no extractable text, enable vision "
                     "(INGEST_VISION=ollama + qwen3-vl) for OCR"
                 )
             try:

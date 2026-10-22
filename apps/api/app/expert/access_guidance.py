@@ -76,14 +76,14 @@ def try_rule_based_access_guidance(
             [
                 "Odoo checks permissions in roughly this order for an ORM operation:",
                 "",
-                "1. **`ir.model.access` (model ACL)** — per group, per model: `perm_read`, "
+                "1. **`ir.model.access` (model ACL)**, per group, per model: `perm_read`, "
                 "`perm_write`, `perm_create`, `perm_unlink`. If write is off here, you get "
                 "**AccessError on every write**, regardless of record rules.",
-                "2. **`ir.rule` (record rules)** — domain filters applied per operation "
+                "2. **`ir.rule` (record rules)**, domain filters applied per operation "
                 "(separate read / write / create / unlink rules). You can **read** rows that "
                 "match the read rule but **fail write** on specific records when the write "
                 "rule domain excludes them.",
-                "3. **Field-level groups & view attrs** — `groups` on fields, `readonly`, "
+                "3. **Field-level groups & view attrs**, `groups` on fields, `readonly`, "
                 "`force_save`, etc. These gate the **UI/form** (what users see or edit). They "
                 "are not a substitute for ACL, but a readonly required field can block saving "
                 "even when ORM write would otherwise pass.",
@@ -98,7 +98,7 @@ def try_rule_based_access_guidance(
     lines.extend(
         [
             "",
-            f"**Read works but write fails on `{model_hint}` — usual causes:**",
+            f"**Read works but write fails on `{model_hint}`, usual causes:**",
             f"- Missing **`perm_write`** on `ir.model.access` for the user's groups on `{model_hint}`.",
             f"- A **write record rule** domain on `{model_hint}` that excludes the target row "
             "(read rule is wider than write rule).",
@@ -112,10 +112,10 @@ def try_rule_based_access_guidance(
         [
             "",
             "**Where to fix (Community, public ORM/RPC):**",
-            "1. Odoo → **Settings → Users & Companies → Groups** — confirm the user has a group "
+            "1. Odoo → **Settings → Users & Companies → Groups**, confirm the user has a group "
             "with the right access.",
             f"2. Inspect **`ir.model.access`** rows for `{model_hint}` (read/write/create/unlink).",
-            f"3. Inspect **`ir.rule`** on `{model_hint}` — compare read vs write domains.",
+            f"3. Inspect **`ir.rule`** on `{model_hint}`, compare read vs write domains.",
             "4. In this app → **Access Matrix** on the connection to review/adjust ACLs safely.",
         ]
     )

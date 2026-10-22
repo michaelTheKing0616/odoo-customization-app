@@ -502,7 +502,7 @@ def fulfill_studio_contract(draft: dict[str, Any], prompt: str) -> list[str]:
         contract["host_label"] = None
         draft["_studio_contract"] = contract
         draft["grain"] = "full_app"
-        notes.append("contract: kept residual full_app — skipped Prefer inherit reshape")
+        notes.append("contract: kept residual full_app, skipped Prefer inherit reshape")
     elif contract.get("inherit_only"):
         draft["grain"] = "field_pack"
         draft["menus"] = []
@@ -635,7 +635,7 @@ def fulfill_studio_contract(draft: dict[str, Any], prompt: str) -> list[str]:
             if not has_auto:
                 draft.setdefault("automations", []).append(
                     {
-                        "name": "Preferred for delivery — follow up",
+                        "name": "Preferred for delivery, follow up",
                         "model": "res.partner",
                         "trigger": "on_write",
                         "trigger_field_names": [fname],
@@ -871,7 +871,7 @@ def evaluate_studio_contract(draft: dict[str, Any]) -> dict[str, Any]:
                         "detail": f"Inherit-only contract but residual model {mid}",
                     }
                 )
-                repairs.append("Repair with Expert — reshape residual → inherit-only")
+                repairs.append("Repair with Expert, reshape residual → inherit-only")
         if draft.get("menus"):
             findings.append(
                 {
@@ -953,23 +953,23 @@ def evaluate_studio_contract(draft: dict[str, Any]) -> dict[str, Any]:
         code = str(gap.get("code") or "")
         if code == "literal_satellite_stamp":
             repairs.append(
-                "Repair with Expert — expand Satellite O2M stamps into real Checklist/Parts lines"
+                "Repair with Expert, expand Satellite O2M stamps into real Checklist/Parts lines"
             )
         elif code == "duplicate_identity_m2o":
             repairs.append(
-                "Repair with Expert — collapse duplicate Identity M2Os (keep brief-cued link)"
+                "Repair with Expert, collapse duplicate Identity M2Os (keep brief-cued link)"
             )
         elif code == "signoff_as_text":
             repairs.append(
-                "Repair with Expert — replace Sign-off text with Customer signed + attachment"
+                "Repair with Expert, replace Sign-off text with Customer signed + attachment"
             )
         elif code == "missing_checklist_o2m":
             repairs.append(
-                "Repair with Expert — materialize Checklist lines One2many (item + done)"
+                "Repair with Expert, materialize Checklist lines One2many (item + done)"
             )
         elif code == "missing_parts_o2m":
             repairs.append(
-                "Repair with Expert — materialize Parts used One2many (product + qty)"
+                "Repair with Expert, materialize Parts used One2many (product + qty)"
             )
         else:
             repairs.append(str(gap.get("detail") or "Repair with Expert"))
@@ -1023,7 +1023,7 @@ def stamp_studio_contract_pipeline(draft: dict[str, Any], prompt: str) -> list[s
         notes.append("contract: scorecard pass")
     else:
         notes.append(
-            "contract: scorecard blockers — "
+            "contract: scorecard blockers, "
             + "; ".join(score.get("repairs") or ["see findings"])
         )
     sync_honesty_meta(draft)

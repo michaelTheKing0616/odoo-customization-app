@@ -52,7 +52,7 @@ _FIELD_TYPE_ANSWERS: tuple[tuple[re.Pattern[str], str], ...] = (
         re.compile(r"(?i)onchange"),
         (
             "**Onchange** methods (`@api.onchange`) update form UI client-side before save. "
-            "Use them for UX hints and defaults — not for durable business invariants "
+            "Use them for UX hints and defaults, not for durable business invariants "
             "(use constraints, automations, or write logic instead)."
         ),
     ),
@@ -86,7 +86,7 @@ def try_rule_based_bulk_routing(
         label = tool.get("label") or tool.get("id") or "Tool"
         link = tool.get("deep_link") or ""
         hint = tool.get("hint") or ""
-        bit = f" — {hint}" if hint else ""
+        bit = f", {hint}" if hint else ""
         if link:
             lines.append(f"{idx}. **{label}**: `{link}`{bit}")
         else:
@@ -145,7 +145,7 @@ def try_rule_based_protected_guidance(
 
     lines = [
         "Protected tier-1 models on your connection require **link-only** customization "
-        "from custom models — do not mutate core accounting logic via metadata or ad-hoc code."
+        "from custom models, do not mutate core accounting logic via metadata or ad-hoc code."
     ]
     for flag in flags[:4]:
         model = str(flag.get("model") or "")

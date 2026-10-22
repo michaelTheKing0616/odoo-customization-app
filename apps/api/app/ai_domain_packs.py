@@ -1,4 +1,4 @@
-"""Curated ModuleSpec packs for robust NL drafts when the LLM is thin or offline.
+"""Curated app plan packs for robust NL drafts when the LLM is thin or offline.
 
 Public ORM/RPC shapes only — no Studio Enterprise. Packs are merged into drafts
 after Ollama (or used alone when AI is off and the prompt matches).
@@ -19,7 +19,7 @@ def _sel(*pairs: tuple[str, str]) -> str:
 
 
 def car_rental_pack() -> dict[str, Any]:
-    """Stock-first rental residual: vehicle + contract + damage. Contacts/invoices reused."""
+    """Stock-first rental residual: contract + damage on stock Fleet vehicles. Contacts/invoices/services reused."""
     vehicle_status = _sel(
         ("available", "Available"),
         ("rented", "Rented"),
@@ -47,17 +47,11 @@ def car_rental_pack() -> dict[str, Any]:
         ("repaired", "Repaired"),
         ("waived", "Waived"),
     )
-    maint_status = _sel(
-        ("planned", "Planned"),
-        ("in_progress", "In progress"),
-        ("done", "Done"),
-        ("cancelled", "Cancelled"),
-    )
 
     return {
         "technical_name": "car_rental",
         "display_name": "Car Rental",
-        "depends": ["base", "contacts", "mail", "sale", "account"],
+        "depends": ["base", "contacts", "mail", "sale", "account", "fleet"],
         "domain_pack": "car_rental",
         "document_shape": "workspace",
         "models": [
@@ -73,27 +67,22 @@ def car_rental_pack() -> dict[str, Any]:
                 ],
             },
             {
-                "model": "x_rent_vehicle",
+                # Stock Fleet already holds make/model, plate (license_plate), VIN (vin_sn), year,
+                # odometer and colour: extend it, never a parallel x_rent_vehicle.
+                "model": "fleet.vehicle",
                 "description": "Vehicle",
-                "mode": "new",
+                "mode": "inherit",
                 "fields": [
-                    {"name": "x_name", "ttype": "char", "string": "Display Name", "required": True},
-                    {"name": "x_make", "ttype": "char", "string": "Make", "required": True},
-                    {"name": "x_model", "ttype": "char", "string": "Model", "required": True},
-                    {"name": "x_year", "ttype": "integer", "string": "Year"},
-                    {"name": "x_plate", "ttype": "char", "string": "License Plate", "required": True},
-                    {"name": "x_vin", "ttype": "char", "string": "VIN"},
                     {
                         "name": "x_status",
                         "ttype": "selection",
-                        "string": "Status",
+                        "string": "Rental Status",
                         "selection": vehicle_status,
-                        "required": True,
                     },
                     {
                         "name": "x_category",
                         "ttype": "selection",
-                        "string": "Category",
+                        "string": "Rental Category",
                         "selection": category_sel,
                     },
                     {
@@ -102,8 +91,6 @@ def car_rental_pack() -> dict[str, Any]:
                         "string": "Branch",
                         "relation": "x_rent_branch",
                     },
-                    {"name": "x_odometer", "ttype": "integer", "string": "Odometer"},
-                    {"name": "x_color", "ttype": "char", "string": "Color"},
                     {
                         "name": "x_contract_ids",
                         "ttype": "one2many",
@@ -181,7 +168,7 @@ def car_rental_pack() -> dict[str, Any]:
                         "name": "x_vehicle_id",
                         "ttype": "many2one",
                         "string": "Vehicle",
-                        "relation": "x_rent_vehicle",
+                        "relation": "fleet.vehicle",
                         "required": True,
                     },
                     {
@@ -258,7 +245,7 @@ def car_rental_pack() -> dict[str, Any]:
                         "name": "x_vehicle_id",
                         "ttype": "many2one",
                         "string": "Vehicle",
-                        "relation": "x_rent_vehicle",
+                        "relation": "fleet.vehicle",
                         "required": True,
                     },
                     {
@@ -272,36 +259,10 @@ def car_rental_pack() -> dict[str, Any]:
                     {"name": "x_reported_date", "ttype": "date", "string": "Reported"},
                 ],
             },
-            {
-                "model": "x_rent_maintenance",
-                "description": "Maintenance",
-                "mode": "new",
-                "fields": [
-                    {"name": "x_name", "ttype": "char", "string": "Title", "required": True},
-                    {
-                        "name": "x_vehicle_id",
-                        "ttype": "many2one",
-                        "string": "Vehicle",
-                        "relation": "x_rent_vehicle",
-                        "required": True,
-                    },
-                    {
-                        "name": "x_status",
-                        "ttype": "selection",
-                        "string": "Status",
-                        "selection": maint_status,
-                    },
-                    {"name": "x_scheduled_date", "ttype": "date", "string": "Scheduled"},
-                    {"name": "x_completed_date", "ttype": "date", "string": "Completed"},
-                    {"name": "x_odometer", "ttype": "integer", "string": "Odometer"},
-                    {"name": "x_cost", "ttype": "float", "string": "Cost"},
-                    {"name": "x_notes", "ttype": "text", "string": "Notes"},
-                ],
-            },
         ],
         "smart_buttons": [
             {
-                "on_model": "x_rent_vehicle",
+                "on_model": "fleet.vehicle",
                 "label": "Rentals",
                 "related_model": "x_rent_contract",
                 "relation_field": "x_vehicle_id",
@@ -374,6 +335,8 @@ def car_rental_pack() -> dict[str, Any]:
             {"model": "res.partner", "reason": "Renter is a Contact"},
             {"model": "sale.order", "reason": "Quote the rental (link-only)"},
             {"model": "account.move", "reason": "Invoice the contract (link-only)"},
+            {"model": "fleet.vehicle", "reason": "Rental cars are stock Fleet vehicles"},
+            {"model": "fleet.vehicle.log.services", "reason": "Maintenance is stock Fleet services"},
         ],
         "reuse_hints": [
             {
@@ -383,6 +346,10 @@ def car_rental_pack() -> dict[str, Any]:
             {
                 "model": "account.move",
                 "reason": "Stock invoice — never x_rent_payment",
+            },
+            {
+                "model": "fleet.vehicle",
+                "reason": "Stock Fleet vehicle — never a parallel x_rent_vehicle",
             },
         ],
         "tags": [
@@ -399,6 +366,12 @@ def car_rental_pack() -> dict[str, Any]:
 
 
 def clinic_pack() -> dict[str, Any]:
+    from app.ai_pack_stock_first import stock_first_rework
+
+    return stock_first_rework(_clinic_pack_body(), {'x_clinic_practitioner': 'hr.employee'}, depends=['hr'])
+
+
+def _clinic_pack_body() -> dict[str, Any]:
     """Clinic / appointment booking scaffold."""
     appt_status = _sel(
         ("draft", "Draft"),
@@ -519,6 +492,12 @@ def clinic_pack() -> dict[str, Any]:
 
 
 def field_service_pack() -> dict[str, Any]:
+    from app.ai_pack_stock_first import stock_first_rework
+
+    return stock_first_rework(_field_service_pack_body(), {'x_fs_technician': 'hr.employee'}, depends=['hr'])
+
+
+def _field_service_pack_body() -> dict[str, Any]:
     """Field service / job dispatch scaffold."""
     job_status = _sel(
         ("draft", "Draft"),
@@ -618,9 +597,10 @@ def field_service_pack() -> dict[str, Any]:
 
 
 def _hospital_pack() -> dict[str, Any]:
+    from app.ai_pack_stock_first import stock_first_rework
     from app.ai_domain_pack_hospital import hospital_pack
 
-    return hospital_pack()
+    return stock_first_rework(hospital_pack(), {'x_doctor': 'hr.employee', 'x_nurse': 'hr.employee', 'x_department': 'hr.department', 'x_payment': 'account.payment'}, depends=['hr', 'account'])
 
 
 def _law_firm_pack() -> dict[str, Any]:
@@ -632,37 +612,55 @@ def _law_firm_pack() -> dict[str, Any]:
 def _restaurant_pack() -> dict[str, Any]:
     from app.ai_domain_pack_restaurant import restaurant_pack
 
-    return restaurant_pack()
+    # Not curated (Oct 20 review): a stock app covers this business. Recommend it instead of a custom app.
+    pack = restaurant_pack()
+    pack["stock_app_recommendation"] = {
+        "app": 'Point of Sale with Restaurant',
+        "modules": ['point_of_sale', 'pos_restaurant'],
+        "message": "Use stock Point of Sale with Restaurant. " + "Odoo's Point of Sale with the Restaurant option already covers tables, floors, menus, orders and bills.",
+    }
+    return pack
 
 
 def _real_estate_pack() -> dict[str, Any]:
+    from app.ai_pack_stock_first import stock_first_rework
     from app.ai_domain_pack_real_estate import real_estate_pack
 
-    return real_estate_pack()
+    return stock_first_rework(real_estate_pack(), {'x_bill': 'account.move', 'x_maintenance_request': 'maintenance.request', 'x_agent': 'hr.employee'}, depends=['account', 'maintenance', 'hr'])
 
 
 def _hotel_pack() -> dict[str, Any]:
+    from app.ai_pack_stock_first import stock_first_rework
     from app.ai_domain_pack_hotel import hotel_pack
 
-    return hotel_pack()
+    return stock_first_rework(hotel_pack(), {'x_bill': 'account.move', 'x_hotel_staff': 'hr.employee'}, depends=['account', 'hr'])
 
 
 def _subscription_pack() -> dict[str, Any]:
+    from app.ai_pack_stock_first import stock_first_rework
     from app.ai_domain_pack_subscription import subscription_pack
 
-    return subscription_pack()
+    return stock_first_rework(subscription_pack(), {'x_bill': 'account.move'}, depends=['account'])
 
 
 def _project_tracker_pack() -> dict[str, Any]:
     from app.ai_domain_pack_project_tracker import project_tracker_pack
 
-    return project_tracker_pack()
+    # Not curated (Oct 20 review): a stock app covers this business. Recommend it instead of a custom app.
+    pack = project_tracker_pack()
+    pack["stock_app_recommendation"] = {
+        "app": 'Project with Timesheets',
+        "modules": ['project', 'hr_timesheet'],
+        "message": "Use stock Project with Timesheets. " + "Odoo's Project app with Timesheets already covers projects, tasks, milestones and time entries.",
+    }
+    return pack
 
 
 def _helpdesk_tickets_pack() -> dict[str, Any]:
+    from app.ai_pack_stock_first import stock_first_rework
     from app.ai_domain_pack_helpdesk import helpdesk_tickets_pack
 
-    return helpdesk_tickets_pack()
+    return stock_first_rework(helpdesk_tickets_pack(), {'x_ticket_time_line': 'account.analytic.line'}, depends=['hr_timesheet'])
 
 
 def _purchase_request_pack() -> dict[str, Any]:
@@ -674,13 +672,25 @@ def _purchase_request_pack() -> dict[str, Any]:
 def _retail_supermarket_pack() -> dict[str, Any]:
     from app.ai_domain_pack_retail_supermarket import retail_supermarket_pack
 
-    return retail_supermarket_pack()
+    # Not curated (Oct 20 review): a stock app covers this business. Recommend it instead of a custom app.
+    pack = retail_supermarket_pack()
+    pack["stock_app_recommendation"] = {
+        "app": 'Point of Sale, Inventory and Purchase',
+        "modules": ['point_of_sale', 'stock', 'purchase'],
+        "message": "Use stock Point of Sale, Inventory and Purchase. " + "Odoo's Point of Sale, Inventory and Purchase already cover tills, stock counts, transfers and supplier orders.",
+    }
+    return pack
 
 
 def _oil_gas_operations_pack() -> dict[str, Any]:
     from app.ai_domain_pack_oil_gas import oil_gas_operations_pack
+    from app.ai_pack_stock_first import stock_first_rework
 
-    return oil_gas_operations_pack()
+    return stock_first_rework(
+        oil_gas_operations_pack(),
+        {"x_og_asset": "maintenance.equipment", "x_og_work_order": "maintenance.request"},
+        depends=["maintenance"],
+    )
 
 
 _PACK_FACTORIES: list[tuple[str, Any, re.Pattern[str]]] = [
@@ -708,8 +718,9 @@ _PACK_FACTORIES: list[tuple[str, Any, re.Pattern[str]]] = [
         "law_firm",
         _law_firm_pack,
         re.compile(
-            r"\b(law\s*firm|legal\s+practice|practice\s+management|attorney|"
-            r"lawyer|litigation|counsel|matter\s+management|legal\s+ops|"
+            r"\b(law[\s-]*firms?|law\s+(?:practice|office|chambers)|legal\s+practice|"
+            r"practice\s+management|attorneys?|lawyers?|solicitors?|barristers?|"
+            r"litigation|counsel|matter\s+management|legal\s+ops|"
             r"world[\s-]?class\s+law|billable\s+hour|retainer|trust\s+account)\b",
             re.I,
         ),
@@ -1296,6 +1307,34 @@ def pack_model_proposals(
 
     proposals: list[Any] = []
     only_fields_on = only_fields_on or {}
+    # The pack's anchor document: the workflow hub among its new x_* models
+    # (state/workflow first, then most incoming many2one links), e.g. law_firm
+    # x_matter, car_rental x_rent_contract.
+    pack_models = [
+        pm
+        for pm in pack.get("models") or []
+        if isinstance(pm, dict)
+        and str(pm.get("model") or "").startswith("x_")
+        and (pm.get("mode") or "new") == "new"
+    ]
+    incoming: dict[str, int] = {}
+    for pm in pack.get("models") or []:
+        for f in (pm.get("fields") or []) if isinstance(pm, dict) else []:
+            if isinstance(f, dict) and f.get("ttype") == "many2one":
+                rel = str(f.get("relation") or "")
+                if rel != pm.get("model"):
+                    incoming[rel] = incoming.get(rel, 0) + 1
+    anchor = None
+    if pack_models:
+        best = max(
+            enumerate(pack_models),
+            key=lambda ip: (
+                bool(ip[1].get("is_workflow") or isinstance(ip[1].get("state_field"), dict)),
+                incoming.get(str(ip[1]["model"]), 0),
+                -ip[0],
+            ),
+        )[1]
+        anchor = str(best["model"])
 
     for pm in pack.get("models") or []:
         if not isinstance(pm, dict) or not pm.get("model"):
@@ -1338,6 +1377,8 @@ def pack_model_proposals(
                 payload["state_field"] = copy.deepcopy(pm["state_field"])
             if pm.get("mixins"):
                 payload["mixins"] = copy.deepcopy(pm["mixins"])
+            if mid == anchor:
+                payload["pack_anchor"] = True
             proposals.append(
                 Proposal(
                     kind="model",
@@ -1392,6 +1433,40 @@ def _pack_field_proposal(
         confidence=0.85,
     )
 
+# Curated packs: hand-reviewed bodies admitted by code with pack provenance (the gate
+# re-reads the pack from this registry; a payload alone can never claim curation).
+# Hand-reviewed (Oct 20, stock-first): no supporting model may duplicate a stock model. Packs that
+# duplicated one are reworked onto stock via ai_pack_stock_first.stock_first_rework.
+# Not curated: restaurant (stock Point of Sale + Restaurant covers the vertical), project_tracker
+# (stock Project + Timesheets), retail_supermarket (stock Inventory + Point of Sale + Purchase).
+CURATED_PACKS: dict[str, Any] = {
+    "library_management": library_management_pack,
+    "car_rental": car_rental_pack,
+    "law_firm": _law_firm_pack,
+    "hospital": _hospital_pack,
+    "real_estate": _real_estate_pack,
+    "hotel": _hotel_pack,
+    "subscription": _subscription_pack,
+    "helpdesk_tickets": _helpdesk_tickets_pack,
+    "clinic": clinic_pack,
+    "field_service": field_service_pack,
+    "oil_gas_operations": _oil_gas_operations_pack,
+}
+
+
+def curated_pack_has(pack_id: str, model: str, field: str | None = None) -> bool:
+    """True only if the registered curated pack body really declares model (and field)."""
+    factory = CURATED_PACKS.get(pack_id)
+    if factory is None:
+        return False
+    for pm in factory().get("models") or []:
+        if isinstance(pm, dict) and str(pm.get("model")) == model:
+            if field is None:
+                return True
+            return any(isinstance(f, dict) and str(f.get("name")) == field for f in pm.get("fields") or [])
+    return False
+
+
 def admit_pack_models(
     draft: dict[str, Any],
     pack: dict[str, Any],
@@ -1412,6 +1487,23 @@ def admit_pack_models(
     )
     if not proposals:
         return []
+    # A brief that strongly names this pack's product (law firm, hotel PMS…) cues
+    # the pack's anchor document; satellites and spray still need their own cue.
+    try:
+        from app.ai_domain_coherence import pack_strongly_cued
+
+        pack_id = str(draft.get("domain_pack") or pack.get("domain_pack") or "")
+        if pack_id and pack_strongly_cued(str(draft.get("_user_prompt") or ""), pack_id):
+            for prop in proposals:
+                if prop.kind == "model" and prop.payload.get("pack_anchor"):
+                    prop.payload["pack_cued"] = True
+    except Exception:  # noqa: BLE001
+        pass
+    pack_id = str(pack.get("domain_pack") or "")
+    if pack_id in CURATED_PACKS:
+        for prop in proposals:
+            if prop.kind == "model" or not _pack_field_is_spray({"name": prop.name, **prop.payload}):
+                prop.payload["pack_provenance"] = {"pack": pack_id, "curated": True}
     trace_ir(draft, stage="merge_domain_pack:before_admit")
     _, gate = admit_and_apply(draft, proposals)
     trace_ir(draft, stage="merge_domain_pack:after_admit", notes=gate[-12:])
@@ -1745,3 +1837,6 @@ def helpdesk_tickets_pack() -> dict[str, Any]:
 def purchase_request_pack() -> dict[str, Any]:
     return _purchase_request_pack()
 
+
+# Registered here because purchase_request_pack is defined below CURATED_PACKS.
+CURATED_PACKS["purchase_request"] = purchase_request_pack

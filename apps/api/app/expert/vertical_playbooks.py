@@ -65,7 +65,7 @@ def render_domain_pack_section(entry: VerticalEntry) -> str:
                 for f in fields[:8]
                 if isinstance(f, dict)
             ]
-            lines.append(f"- **{name}** — {desc}")
+            lines.append(f"- **{name}**, {desc}")
             if field_names:
                 lines.append(f"  Fields: {', '.join(field_names)}.")
         if len(models) > 12:
@@ -85,7 +85,7 @@ def render_domain_pack_section(entry: VerticalEntry) -> str:
         lines.append("")
         for hint in hints[:6]:
             if isinstance(hint, dict):
-                lines.append(f"- `{hint.get('model')}` — {hint.get('reason')}")
+                lines.append(f"- `{hint.get('model')}`, {hint.get('reason')}")
         lines.append("")
     return "\n".join(lines)
 
@@ -112,7 +112,7 @@ Install via Apps on your Odoo instance or include in generated module `depends`:
 
 Start with **Contacts**, **Mail**, and **Website** when you need portals or public forms.
 Add **Sales** and **Accounting** when you invoice. Add **Inventory**, **Manufacturing**,
-or **Project** only when the workflow truly needs them — fewer apps means simpler maintenance.
+or **Project** only when the workflow truly needs them, fewer apps means simpler maintenance.
 
 ## Custom modules vs stock apps
 
@@ -134,13 +134,13 @@ Never bypass protected tier-1 areas (accounting postings, payroll, payments) wit
 
 ## Rollout phases
 
-**Phase 1 — Foundation:** Contacts structure (tags/categories), core security groups, one
+**Phase 1, Foundation:** Contacts structure (tags/categories), core security groups, one
 primary custom model, basic form/list views, menus.
 
-**Phase 2 — Operations:** Automations (`base.automation`), scheduled actions, email templates,
+**Phase 2, Operations:** Automations (`base.automation`), scheduled actions, email templates,
 portal/website pages where needed.
 
-**Phase 3 — Scale:** Bulk import, reporting, optional module export for repeat deployments.
+**Phase 3, Scale:** Bulk import, reporting, optional module export for repeat deployments.
 
 {pack_section}
 ## How to ask Expert follow-ups

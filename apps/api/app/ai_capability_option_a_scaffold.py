@@ -1,4 +1,4 @@
-"""Option A scaffolds — QWeb report inherit + payment/QR wiring.
+"""custom code scaffolds — QWeb report inherit + payment/QR wiring.
 
 Live Apply keeps honest Char stubs. The installable module (sandbox → promote)
 ships the report inherit and a host ``_inherit`` that fills payment URL / QR
@@ -157,7 +157,7 @@ def _ensure_host_inherit_and_stubs(draft: dict[str, Any], host: str) -> None:
             "name": "x_qr_payload",
             "ttype": "char",
             "string": "QR payload",
-            "help": "Raw payload for a report QR. PDF wiring is Option A.",
+            "help": "Raw payload for a report QR. PDF wiring is custom code.",
             "source": "capability_gap_stub",
         },
     )
@@ -297,11 +297,11 @@ def payment_link_python(host: str) -> str:
         return f"{base}/web#id={move.id}&model={move._name}" if move.id else False'''
 
     return f'''# -*- coding: utf-8 -*-
-"""Option A — payment link + QR payload for document PDF extras.
+"""custom code — payment link + QR payload for document PDF extras.
 
 Fields x_payment_url / x_qr_payload are expected as Char (live stubs or this
 module). Sync fills them from the portal/share URL when empty.
-Sandbox-install before promote. Do not enable payment.provider secrets here.
+Sandbox-install before publish. Do not enable payment.provider secrets here.
 """
 from odoo import api, fields, models
 
@@ -361,7 +361,7 @@ class {cls}(models.Model):
 
 def website_controller_python() -> str:
     return '''# -*- coding: utf-8 -*-
-"""Option A — website/portal controller skeleton (sandbox → promote)."""
+"""custom code — website/portal controller skeleton (sandbox → promote)."""
 from odoo import http
 from odoo.http import request
 
@@ -382,7 +382,7 @@ class DocumentExtrasPortal(http.Controller):
 
 def owl_widget_js() -> str:
     return '''/** @odoo-module **/
-/** Option A — OWL field/widget skeleton (sandbox → promote). */
+/** custom code — OWL field/widget skeleton (sandbox → promote). */
 import { Component } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 
@@ -400,7 +400,7 @@ registry.category("fields").add("document_extras_widget", {
 def python_logic_skeleton(host: str) -> str:
     cls = _class_name(host).replace("DocumentExtras", "Logic")
     return f'''# -*- coding: utf-8 -*-
-"""Option A — Python compute / constraint skeleton for {host}."""
+"""custom code — Python compute / constraint skeleton for {host}."""
 from odoo import api, models
 
 
@@ -470,7 +470,7 @@ def scaffold_blocks_for_gaps(
                 "path": "models/__init__.py",
                 "kind": "python",
                 "filename": "__init__.py",
-                "reason": f"Import {py_mod} for Option A document extras",
+                "reason": f"Import {py_mod} for custom code document extras",
                 "source": "capability_gap_scaffold",
                 "option_a": True,
                 "content": f"from . import {py_mod}\n",
@@ -502,7 +502,7 @@ def scaffold_blocks_for_gaps(
                     "<odoo>\n"
                     f'    <template id="{xml_id}" inherit_id="{inherit_id}">\n'
                     '        <xpath expr="//div[contains(@class,\'page\')]" position="inside">\n'
-                    "            <!-- Option A QWeb inherit placeholder -->\n"
+                    "            <!-- custom code QWeb inherit placeholder -->\n"
                     "        </xpath>\n"
                     "    </template>\n"
                     "</odoo>\n"
@@ -561,7 +561,7 @@ def scaffold_blocks_for_gaps(
                 "path": path,
                 "kind": "javascript",
                 "filename": "document_extras_widget.js",
-                "reason": "OWL widget skeleton (Option A assets)",
+                "reason": "OWL widget skeleton (custom code assets)",
                 "source": "capability_gap_scaffold",
                 "option_a": True,
                 "content": owl_widget_js(),
@@ -656,7 +656,7 @@ def scaffold_blocks_for_gaps(
                 "source": "capability_gap_scaffold",
                 "option_a": True,
                 "content": '''# -*- coding: utf-8 -*-
-"""Option A — inbound webhook skeleton (auth token required before go-live)."""
+"""custom code — inbound webhook skeleton (auth token required before go-live)."""
 from odoo import http
 from odoo.http import request
 

@@ -146,5 +146,5 @@ def parse_llm_json(text: str) -> Any:
 def parse_llm_json_object(text: str) -> dict[str, Any]:
     data = parse_llm_json(text)
     if not isinstance(data, dict):
-        raise ValueError("AI response was JSON but not an object (expected a ModuleSpec draft).")
+        raise ValueError("AI response was JSON but not an object (expected a App plan draft).")
     return data

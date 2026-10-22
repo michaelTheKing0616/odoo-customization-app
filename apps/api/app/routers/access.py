@@ -458,7 +458,7 @@ APPLY_LIVE_PACK_WARNING = (
 )
 APPLY_LIVE_PACK_RISKS = [
     "Writes live Odoo metadata on this connection",
-    "Creates a global ir.rule — it applies to every user unless other rules restrict rows",
+    "Creates a global ir.rule, it applies to every user unless other rules restrict rows",
     "Field and record-rule creates are only partially recoverable",
 ]
 

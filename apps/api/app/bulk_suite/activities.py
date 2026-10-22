@@ -45,7 +45,7 @@ def probe_activity_model(client: OdooClient, model: str) -> ActivityProbeResult:
             major=major,
             mail_installed=False,
             supports_model=False,
-            message="mail module is not installed — activities unavailable",
+            message="mail module is not installed, activities unavailable",
         )
     try:
         fg = client.execute_kw(model, "fields_get", [], {"attributes": []})
@@ -62,7 +62,7 @@ def probe_activity_model(client: OdooClient, model: str) -> ActivityProbeResult:
             mail_installed=True,
             supports_model=False,
             message=(
-                f"Model {model!r} does not expose activity_ids — enable mail.activity.mixin "
+                f"Model {model!r} does not expose activity_ids, enable mail.activity.mixin "
                 "(ir.model is_mail_activity) or use a mail.activity.mixin model."
             ),
         )

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.bulk_suite.domain_util import DomainParseError, parse_domain
 from app.bulk_suite.transitions import BulkSuiteError, DEFAULT_RECORD_CAP, resolve_record_ids
 from app.data_import import parse_tabular
+from app import write_gate as wg
 from app.db import get_db
 from app.id_generator import (
     IdGeneratorConfig,
@@ -219,6 +220,7 @@ def csv_download(body: CsvDownloadBody) -> StreamingResponse:
 def live_id_generator(
     connection_id: str,
     body: LiveIdGeneratorBody,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> IdGeneratorRunOut:
     client = _client(connection_id, db)
@@ -262,7 +264,10 @@ def live_id_generator(
             config=cfg,
             record_ids=record_ids,
             dry_run=body.dry_run,
+            before_write=None if body.dry_run else _shared_guards(db, request, connection_id, client, model),
         )
+    except (wg.WriteRefused, wg.WriteNeedsApproval) as exc:
+        raise wg.http_error(exc) from exc
     except IdGeneratorError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except OdooClientError as exc:
@@ -303,3 +308,15 @@ def create_sequence_bridge(
     except OdooClientError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {"ok": True, "sequence": row}
+
+
+def _shared_guards(db: Session, request: Request, connection_id: str, client: Any, model: str) -> Any:
+    """A5: money guard, approval rule and an undo point in History before codes are written."""
+
+    def run(ids: list[int], vals: dict[str, Any]) -> None:
+        wg.check_record_write(model, ids, threshold=10**9, approved=True)
+        approved = wg.approval_status(db, request, connection_id, model=model, ids=ids, vals=vals, source="ID generator")
+        wg.guard_record_write(db, client, connection_id, model=model, ids=ids, vals=vals, source="ID generator", approved=approved)
+
+    return run
+

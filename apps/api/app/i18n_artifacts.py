@@ -1,4 +1,4 @@
-"""Export/import translations for ModuleSpec artifact lists (CMP-11)."""
+"""Export/import translations for app plan artifact lists (CMP-11)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ def export_spec_translations_csv(
     spec: dict[str, Any],
     lang: str = "fr_FR",
 ) -> str:
-    """CSV for all fields on models declared in a ModuleSpec-like draft."""
+    """CSV for all fields on models declared in an app plan-like draft."""
     models = [
         str(m["model"])
         for m in (spec.get("models") or [])

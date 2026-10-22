@@ -61,24 +61,25 @@ def car_rental_seed() -> dict[str, Any]:
     return _pack(
         "car_rental",
         name="Car rental fleet",
-        description="Branches, vehicles, and draft contracts for x_rent_* models",
+        description="Branches, Fleet vehicles, and draft rental contracts",
         models={
             "x_rent_branch": (
                 "x_name,x_code,x_address,x_phone\n"
                 "Lagos Island,LOS,12 Marina Lagos,+2348011110001\n"
                 "Abuja Central,ABJ,1 Shehu Shagari Way,+2348011110002\n"
             ),
-            "x_rent_vehicle": (
-                "x_name,x_plate,x_status,x_daily_rate,x_category\n"
-                "Toyota Corolla 2022,ABC-101-LA,available,45.00,economy\n"
-                "Honda CR-V 2023,XYZ-202-LA,available,75.00,suv\n"
-                "Mercedes E-Class,LUX-303-AB,maintenance,150.00,luxury\n"
-                "Toyota Hiace,VAN-404-LA,available,95.00,van\n"
+            # Rental cars are stock Fleet vehicles. A missing "Brand Model" is created on import (brand too).
+            "fleet.vehicle": (
+                "model_id,license_plate,x_status,x_category\n"
+                "Toyota Corolla,ABC-101-LA,available,economy\n"
+                "Honda CR-V,XYZ-202-LA,available,suv\n"
+                "Mercedes E-Class,LUX-303-AB,maintenance,luxury\n"
+                "Toyota Hiace,VAN-404-LA,available,van\n"
             ),
             "x_rent_contract": (
-                "x_name,x_start_date,x_end_date,x_status\n"
-                "CNT-2026-0001,2026-08-01,2026-08-05,draft\n"
-                "CNT-2026-0002,2026-08-10,2026-08-17,draft\n"
+                "x_name,x_pickup_datetime,x_return_datetime,x_status\n"
+                "CNT-2026-0001,2026-08-01 09:00:00,2026-08-05 09:00:00,draft\n"
+                "CNT-2026-0002,2026-08-10 09:00:00,2026-08-17 09:00:00,draft\n"
             ),
         },
     )
@@ -130,9 +131,9 @@ def field_service_seed() -> dict[str, Any]:
         models={
             "x_fs_ticket": (
                 "x_name,x_priority,x_status,x_scheduled_date\n"
-                "Install router — Ikeja,high,open,2026-08-03\n"
-                "Replace POS printer — VI,normal,open,2026-08-04\n"
-                "Annual HVAC check — Abuja,low,planned,2026-08-10\n"
+                "Install router, Ikeja,high,open,2026-08-03\n"
+                "Replace POS printer, VI,normal,open,2026-08-04\n"
+                "Annual HVAC check, Abuja,low,planned,2026-08-10\n"
             ),
         },
     )
@@ -177,8 +178,9 @@ def template_csv_for_model(model: str) -> str | None:
                 return entry["csv"]
     # Aliases used in older templates
     aliases = {
-        "x_rental_vehicle": "x_rent_vehicle",
-        "x_vehicle": "x_rent_vehicle",
+        "x_rental_vehicle": "fleet.vehicle",
+        "x_vehicle": "fleet.vehicle",
+        "x_rent_vehicle": "fleet.vehicle",
         "x_rental_contract": "x_rent_contract",
         "x_contract": "x_rent_contract",
         "x_book": "x_lib_book",

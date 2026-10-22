@@ -61,7 +61,7 @@ def try_rule_based_view_mode_guidance(
         "customization and Studio-like extensions.",
         "",
         "**Primary form (`mode=\"primary\"`)** creates a new root view for the model. It does "
-        "not patch the standard form — it competes to become (or be selected as) the form "
+        "not patch the standard form, it competes to become (or be selected as) the form "
         "view for that model. Use only when you intentionally replace the whole layout or "
         "ship a standalone app UI.",
         "",
@@ -73,10 +73,10 @@ def try_rule_based_view_mode_guidance(
         "",
         "**When each breaks on upgrade:**",
         "",
-        "- **Extension** — parent arch changed upstream: your xpath anchor disappears → "
+        "- **Extension**, parent arch changed upstream: your xpath anchor disappears → "
         "**view validation error** on `-u`. Studio or another module removed/moved the node "
         "you target.",
-        "- **Primary** — Odoo or another module still opens the **old** default form action → "
+        "- **Primary**, Odoo or another module still opens the **old** default form action → "
         "users never see your primary view. Duplicate primaries with similar priority cause "
         "unpredictable default selection. Module uninstall can leave orphaned actions.",
         "",

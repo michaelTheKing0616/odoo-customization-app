@@ -1,4 +1,4 @@
-"""Production NL lexicon for ModuleSpec refine.
+"""Production NL lexicon for app plan refine.
 
 Deterministic intent is matched anywhere in the utterance (not only at the start),
 covers informal verbs and common typos, and strips chat fluff so field labels remain.

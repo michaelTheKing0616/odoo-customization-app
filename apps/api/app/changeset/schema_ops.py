@@ -13,6 +13,7 @@ from typing import Any
 
 TYPE_CHANGE_UNSUPPORTED = "field type change is unsupported"
 CONSTRAINT_X_MODELS_ONLY = "constraint.sql is allowed on x_ models only"
+CASCADE_FORBIDDEN = "on_delete cascade is forbidden"
 
 SCHEMA_OP_TYPES: tuple[str, ...] = (
     "model.create",
@@ -204,6 +205,37 @@ def record_count_of(params: dict[str, Any]) -> int | None:
     return count
 
 
+def cascade_requested(params: dict[str, Any]) -> bool:
+    """True when params ask for ``on_delete=cascade``.
+
+    Inputs: op params, or one nested field dict. ``fields`` is walked when it
+    is a list of dicts so a scaffold cannot hide cascade on a child.
+    Outputs: True when this dict or a child field sets cascade.
+    Side effects: none.
+    """
+    if str(params.get("on_delete") or "") == "cascade":
+        return True
+    fields = params.get("fields")
+    if isinstance(fields, list):
+        for field in fields:
+            if isinstance(field, dict) and str(field.get("on_delete") or "") == "cascade":
+                return True
+    return False
+
+
+def cascade_issues(params: dict[str, Any]) -> list[str]:
+    """Issue list when cascade is requested.
+
+    Inputs: op params.
+    Outputs: one cascade issue, or an empty list. Cascade stays forbidden
+    unless the caller names a different on_delete.
+    Side effects: none.
+    """
+    if cascade_requested(params):
+        return [CASCADE_FORBIDDEN]
+    return []
+
+
 def nonempty_sensitive_delete(params: dict[str, Any]) -> bool:
     """True when deleting a field from a non-empty financial, HR, or stock model.
 
@@ -227,7 +259,18 @@ def field_update_issues(params: dict[str, Any]) -> list[str]:
     issues = [f"missing {key}" for key in ("model", "name") if not params.get(key)]
     if type_change_requested(params):
         issues.append(TYPE_CHANGE_UNSUPPORTED)
+    issues.extend(item for item in cascade_issues(params) if item not in issues)
     return issues
+
+
+def scaffold_issues(params: dict[str, Any]) -> list[str]:
+    """Preconditions for ``model.scaffold``.
+
+    Inputs: op params, including optional nested ``fields``.
+    Outputs: a cascade issue when the scaffold or a child field asks for it.
+    Side effects: none.
+    """
+    return cascade_issues(params)
 
 
 def constraint_sql_issues(params: dict[str, Any]) -> list[str]:

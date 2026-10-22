@@ -1,9 +1,10 @@
-"""UI-family inherit checks that the view handler does not already enforce.
+"""UI-family inherit checks and the public ORM payload for the executor.
 
 ``_view_issues`` still owns the view-inherit anchor count and the blanket
 ban on ``position=replace``. This module adds RT-22 (an XPath that replaces
-the root or a large subtree) and the same one-anchor rule for
-``report.inherit``. It does not call Odoo.
+the root or a large subtree), the same one-anchor rule for
+``report.inherit``, and the create/write values the existing change-set
+dispatcher sends. It does not call Odoo.
 """
 
 from __future__ import annotations
@@ -174,3 +175,159 @@ def inherit_op(op_type: str) -> bool:
     Side effects: none.
     """
     return op_type in _INHERIT_OPS
+
+
+UI_OP_TYPES: tuple[str, ...] = (
+    "view.inherit.create",
+    "view.inherit.update",
+    "view.archive",
+    "view.create_base",
+    "action.window.create",
+    "action.window.update",
+    "menu.create",
+    "menu.update",
+    "menu.archive",
+    "filter.create",
+    "filter.update",
+    "report.inherit",
+    "report.action.create",
+    "report.action.update",
+)
+
+_WRITE_OPS = frozenset(
+    {
+        "view.inherit.update",
+        "view.archive",
+        "action.window.update",
+        "menu.update",
+        "menu.archive",
+        "filter.update",
+        "report.action.update",
+    }
+)
+
+_TARGET_MODELS: dict[str, str] = {
+    "view.inherit.create": "ir.ui.view",
+    "view.inherit.update": "ir.ui.view",
+    "view.archive": "ir.ui.view",
+    "view.create_base": "ir.ui.view",
+    "action.window.create": "ir.actions.act_window",
+    "action.window.update": "ir.actions.act_window",
+    "menu.create": "ir.ui.menu",
+    "menu.update": "ir.ui.menu",
+    "menu.archive": "ir.ui.menu",
+    "filter.create": "ir.filters",
+    "filter.update": "ir.filters",
+    "report.inherit": "ir.ui.view",
+    "report.action.create": "ir.actions.report",
+    "report.action.update": "ir.actions.report",
+}
+
+
+def ui_write_op(op_type: str) -> bool:
+    """True when the op writes an existing row instead of creating one.
+
+    Inputs: catalog op type.
+    Outputs: True for the update and archive UI ops.
+    Side effects: none.
+    """
+    return op_type in _WRITE_OPS
+
+
+def ui_target_model(op_type: str) -> str:
+    """Public ORM model the executor writes for one UI op.
+
+    Inputs: catalog op type.
+    Outputs: ``ir.ui.view``, ``ir.actions.act_window``, ``ir.ui.menu``,
+    ``ir.filters``, or ``ir.actions.report``.
+    Side effects: none.
+    """
+    return _TARGET_MODELS[op_type]
+
+
+def ui_write_ids(params: dict[str, Any]) -> list[int]:
+    """Read write ids from UI-op params.
+
+    Inputs: op params. ``ids`` is a list of ints. ``id`` is one int. Bools
+    are ignored.
+    Outputs: the ids, or an empty list when none are usable.
+    Side effects: none.
+    """
+    raw = params.get("ids")
+    if isinstance(raw, list) and raw:
+        ids: list[int] = []
+        for item in raw:
+            if isinstance(item, bool) or not isinstance(item, int):
+                return []
+            ids.append(item)
+        return ids
+    item = params.get("id")
+    if isinstance(item, bool) or not isinstance(item, int):
+        return []
+    return [item] if item else []
+
+
+def ui_values(op_type: str, params: dict[str, Any]) -> dict[str, Any]:
+    """Public ORM values for one UI-family op.
+
+    Inputs: catalog type and resolved params.
+    Outputs: a values dict the existing port can create or write. Archive
+    ops write ``active`` false. Inherit create writes ``mode`` extension.
+    Side effects: none. Does not call Odoo.
+    """
+    if op_type in {"view.archive", "menu.archive"}:
+        return {"active": False}
+    values: dict[str, Any] = {}
+    name = params.get("name")
+    if name:
+        values["name"] = name
+    model = params.get("model")
+    if op_type.startswith("view.") or op_type == "report.inherit":
+        if model:
+            values["model"] = model
+        if op_type in {"view.inherit.create", "report.inherit"}:
+            values["mode"] = "extension"
+            inherit_id = params.get("inherit_id")
+            if inherit_id:
+                values["inherit_id"] = inherit_id
+        if op_type == "view.create_base":
+            values["mode"] = "primary"
+        if op_type == "report.inherit":
+            values["type"] = "qweb"
+        arch = _arch_for(op_type, params)
+        if arch:
+            values["arch"] = arch
+    if op_type.startswith("action.window.") and model:
+        values["res_model"] = model
+    if op_type.startswith("filter.") and model:
+        values["model_id"] = model
+    if op_type.startswith("report.action.") and model:
+        values["model"] = model
+    if params.get("domain") is not None and op_type.startswith(("action.window.", "filter.")):
+        values["domain"] = params["domain"]
+    if not values:
+        values["name"] = name or op_type
+    return values
+
+
+def _arch_for(op_type: str, params: dict[str, Any]) -> str | None:
+    """Arch string for a view or report inherit, or None when unused.
+
+    Inputs: op type and params. ``arch`` or ``arch_db`` wins. Inherit ops
+    without one get a single xpath node from ``xpath`` or ``anchor``.
+    Outputs: the arch, or None for ops that do not write arch.
+    Side effects: none.
+    """
+    for key in ("arch", "arch_db"):
+        raw = params.get(key)
+        if isinstance(raw, str) and raw.strip():
+            return raw
+    if op_type not in _INHERIT_OPS and op_type != "view.create_base":
+        return None
+    if op_type == "view.create_base":
+        return None
+    expr = params.get("xpath") or params.get("anchor")
+    if not isinstance(expr, str) or not expr.strip():
+        return None
+    position = params.get("position") or "after"
+    return f'<data><xpath expr="{expr}" position="{position}"/></data>'

@@ -1,8 +1,8 @@
-"""DEV-3 — script run orchestration, journal, saved scripts."""
+"""DEV-3 / DEV-SR — script run orchestration, journal, saved scripts."""
 
 from __future__ import annotations
 
-import base64
+import ast
 import hashlib
 import uuid
 from datetime import datetime, timezone
@@ -11,11 +11,33 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.crypto import decrypt_secret
-from app.db_models import OdooConnection, SavedScript, ScriptRun
+from app.db_models import OdooConnection, ScriptRun
 from app.jobs import create_job, enqueue
 from app.script_runner.executor import run_script_in_subprocess
 from app.script_runner.templates import SCRIPT_TEMPLATES
-from app.snapshots import CONFIRM_PHRASE, ConfirmationRequired, require_advanced_confirmation
+from app.snapshots import require_advanced_confirmation, save_snapshot
+
+_READ_METHODS = frozenset(
+    {
+        "search",
+        "search_read",
+        "read",
+        "search_count",
+        "fields_get",
+        "name_search",
+        "default_get",
+        "read_group",
+        "formatted_read_group",
+        "context_get",
+        "exists",
+        "get_views",
+    }
+)
+
+RESTORE_NOTE = (
+    "Open the journal and restore a view, automation, or server action if this script changed one. "
+    "This snapshot does not undo record writes. Dropped columns cannot be restored."
+)
 
 
 def script_hash(content: str) -> str:
@@ -30,6 +52,89 @@ def connection_config_dict(row: OdooConnection) -> dict[str, Any]:
         "password": decrypt_secret(row.secret_encrypted),
         "write_mode": row.write_mode or "standard",
     }
+
+
+def script_performs_write(script: str) -> bool:
+    """True when the script calls a non-read ``execute_kw`` or the method is dynamic."""
+    try:
+        tree = ast.parse(script)
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not isinstance(func, ast.Attribute) or func.attr != "execute_kw":
+            continue
+        if len(node.args) < 2 or not isinstance(node.args[1], ast.Constant):
+            return True
+        method = node.args[1].value
+        if not isinstance(method, str) or method not in _READ_METHODS:
+            return True
+    return False
+
+
+def total_write_count(counts: dict[str, Any] | None) -> int:
+    total = 0
+    if not isinstance(counts, dict):
+        return 0
+    for bucket in counts.values():
+        if not isinstance(bucket, dict):
+            continue
+        for key in ("create", "write", "unlink"):
+            value = bucket.get(key)
+            if isinstance(value, int):
+                total += value
+    return total
+
+
+def _crash_error(exc: BaseException) -> str:
+    return f"Script runner crashed ({type(exc).__name__})"
+
+
+def _attach_write_snapshot(db: Session, run: ScriptRun, script: str) -> None:
+    if not script_performs_write(script):
+        return
+    snap = save_snapshot(
+        db,
+        connection_id=run.connection_id,
+        resource_type="script_run",
+        resource_key=f"script:{run.id}",
+        label="Script Runner write",
+        payload={
+            "script_hash": run.script_hash,
+            "run_id": run.id,
+            "restore": RESTORE_NOTE,
+        },
+        reversible="partial",
+    )
+    run.snapshot_id = snap.id
+    db.add(run)
+    db.commit()
+
+
+def _run_or_fail(
+    *,
+    script: str,
+    connection_config: dict[str, Any],
+    job_id: str,
+    count_writes: bool,
+) -> dict[str, Any]:
+    try:
+        return run_script_in_subprocess(
+            script=script,
+            connection_config=connection_config,
+            job_id=job_id,
+            count_writes=count_writes,
+        )
+    except Exception as exc:  # noqa: BLE001 — a crash must become a failed journal row
+        return {
+            "ok": False,
+            "stdout": "",
+            "stderr": "",
+            "error": _crash_error(exc),
+            "write_counts": {},
+        }
 
 
 def require_script_confirm(
@@ -114,12 +219,13 @@ def enqueue_script_run(
         saved_script_id=saved_script_id,
         job_id=job.id,
     )
+    _attach_write_snapshot(db, run, script)
     config = connection_config_dict(connection)
 
     def _work() -> dict[str, Any]:
         from app.db import SessionLocal
 
-        result = run_script_in_subprocess(
+        result = _run_or_fail(
             script=script,
             connection_config=config,
             job_id=job.id,
@@ -157,7 +263,8 @@ def run_script_sync(
         workspace_id=workspace_id,
         script=script,
     )
-    result = run_script_in_subprocess(
+    _attach_write_snapshot(db, run, script)
+    result = _run_or_fail(
         script=script,
         connection_config=connection_config_dict(connection),
         job_id=run.id,

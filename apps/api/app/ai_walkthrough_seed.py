@@ -354,6 +354,6 @@ def seed_walkthrough(client: _SeedClient, spec: dict[str, Any]) -> dict[str, Any
         "warnings": warnings,
         "message": (
             f"Walkthrough: {len(created)} linked record(s).{extra} "
-            "Open the app — Operations shows the job/booking with lines filled in."
+            "Open the app, Operations shows the job/booking with lines filled in."
         ),
     }

@@ -45,7 +45,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     content={
                         "detail": {
                             "error": "rate_limited",
-                            "message": f"Too many mutating requests — max {self.limit}/min",
+                            "message": f"Too many mutating requests, max {self.limit}/min",
                         }
                     },
                 )

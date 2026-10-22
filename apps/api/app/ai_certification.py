@@ -1,9 +1,9 @@
-"""Evidence-backed Certification — separate from ModuleSpec completeness 10.0
+"""Evidence-backed Certification — separate from app plan completeness 10.0
 and from Job Autopilot process smoke.
 
 Quality ≈ scorecard. Evidence ≈ checks run. Risk ≈ unknowns.
 Tiers: Reject | ReviewRequired | Production | Gold.
-Promote stays human even at Gold.
+Publishing stays a step you confirm even at Gold.
 Autopilot job scorecard is never this artifact.
 """
 
@@ -103,7 +103,7 @@ def _option_a_pending(draft: dict[str, Any]) -> bool:
         return True
     gaps = draft.get("_capability_gaps") or []
     if gaps and not smoke.get("ok"):
-        # Mixed briefs still need Option A prove for QR/pay surfaces
+        # Mixed briefs still need custom code prove for QR/pay surfaces
         gap_ids = {
             str(g.get("id") if isinstance(g, dict) else getattr(g, "id", "") or "")
             for g in gaps
@@ -182,7 +182,7 @@ def build_certification(draft: dict[str, Any]) -> dict[str, Any]:
             _ledger_entry(
                 "option_a_sandbox_smoke",
                 status="SKIP",
-                detail="no Option A surfaces pending",
+                detail="no custom-code surfaces pending",
             )
         )
 
@@ -403,7 +403,7 @@ def build_certification(draft: dict[str, Any]) -> dict[str, Any]:
             _ledger_entry(
                 "stock_reuse_modulespec",
                 status="SKIP",
-                detail="Empty spec — no custom ModuleSpec to certify. Job Autopilot is the done-bar.",
+                detail="Empty spec — no custom app plan to certify. Job Autopilot is the done-bar.",
             )
         )
         if tier in {"Production", "Gold"}:
@@ -435,14 +435,14 @@ def build_certification(draft: dict[str, Any]) -> dict[str, Any]:
         )
 
     note = (
-        "This brief has no custom residual. Completeness 10.0 is empty-spec hygiene, "
-        "not a shippable ModuleSpec. Run Job Autopilot for sandbox install and "
-        "quote→invoice smoke. Promote stays human."
+        "This brief has no custom code. Completeness 10.0 is empty-spec hygiene, "
+        "not a shippable app plan. Run Job Autopilot for sandbox install and "
+        "quote→invoice smoke. Publishing stays a step you confirm."
         if stock_reuse
         else (
             "ModuleSpec completeness (_scorecard) is separate from Certification. "
             "Certification is separate from Job Autopilot process smoke. "
-            "Promote stays human even at Gold."
+            "Publishing stays a step you confirm even at Gold."
         )
     )
 

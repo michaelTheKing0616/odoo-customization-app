@@ -1,4 +1,4 @@
-"""Apply a Config Packet delta onto a connection — never Autopilot-on-prod."""
+"""Apply a config summary delta onto a connection — never Autopilot-on-prod."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from app.job_autopilot.sandbox_gate import classify_connection
 from app.snapshots import CONFIRM_PHRASE, require_advanced_confirmation, save_snapshot
 
 APPLY_WARNING = (
-    "This applies a sandbox-proven Config Packet onto THIS connection: missing "
+    "This applies a sandbox-proven config summary onto THIS connection: missing "
     "Community modules, named journals, warehouse steps, allowlisted Settings, "
     "and user logins (no passwords). It is not Job Autopilot. Production Autopilot "
     "stays refused. Secrets (SMTP, Paystack) stay a paste-in-Odoo checklist."
@@ -65,7 +65,7 @@ def apply_config_packet(
             connection_id=connection_id,
             resource_type="config_packet",
             resource_key=f"config_packet:{packet.sha256 or 'na'}",
-            label="Config Packet apply (pre-write fingerprint)",
+            label="config summary apply (pre-write fingerprint)",
             payload={"fingerprint": fingerprint.model_dump(mode="json")},
             reversible="partial",
         )
@@ -151,7 +151,7 @@ def apply_config_packet(
         checklist=delta.checklist,
         target_kind=kind,
         message=(
-            f"Config Packet apply on {kind}: {len(applied)} write(s). "
+            f"config summary apply on {kind}: {len(applied)} write(s). "
             f"Confirm phrase was {CONFIRM_PHRASE!r}. Autopilot was not run."
         ),
     )

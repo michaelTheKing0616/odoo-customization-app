@@ -1,4 +1,4 @@
-"""Automation builder — safe defaults + advanced (confirmed) + Option A Python module export."""
+"""Automation builder — safe defaults + advanced (confirmed) + custom-code Python module export."""
 
 from __future__ import annotations
 
@@ -257,6 +257,7 @@ def _tier_context_for_connection(connection_id: str, db: Session):
     except OdooClientError:
         pass
     return gating_context_for_connection(
+        saved_hosting=getattr(row, "hosting", None),
         url=row.url,
         server_version=row.server_version,
         installed_modules=mods,
@@ -311,6 +312,7 @@ def _tier_context_for_connection(connection_id: str, db: Session):
     except OdooClientError:
         pass
     return gating_context_for_connection(
+        saved_hosting=getattr(row, "hosting", None),
         url=row.url,
         server_version=row.server_version,
         installed_modules=mods,
@@ -417,7 +419,7 @@ def create_automation(
             filename=f"{tech}.zip",
             content_base64=base64.b64encode(zip_bytes).decode("ascii"),
             note=(
-                "Option A: module generated. Test in sandbox, then install on the target "
+                "Custom-code module generated. Test on a test copy, then install on the target "
                 "instance to make the Python automation live. It is not applied yet."
             ),
         )

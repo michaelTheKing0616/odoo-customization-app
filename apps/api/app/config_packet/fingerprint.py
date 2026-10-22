@@ -31,7 +31,7 @@ def probe_mail_health(client: Any) -> ConfigMailHealth:
         if smtp == 0:
             warnings.append(
                 "No outgoing mail server. Paste SMTP on the client in Odoo Settings → "
-                "Technical → Outgoing Mail Servers. Config Packet never stores the password."
+                "Technical → Outgoing Mail Servers. config summary never stores the password."
             )
     else:
         warnings.append("ir.mail_server missing — mail module not installed.")

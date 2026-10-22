@@ -193,7 +193,7 @@ def _match_catalog(
                 "**Fix:**",
                 "1. Retarget the xpath to a node that exists on **this** parent arch "
                 "(Sales: `//field[@name='tax_totals']`, not `amount_tax`).",
-                "2. If this was **Sandbox Install** of an Option A zip: retry sandbox after "
+                "2. If this was **Sandbox Install** of an custom-code zip: retry sandbox after "
                 "the zip rewrite — do **not** Live Install. Zip → sandbox → human **Promote**.",
                 "3. Designer is for live metadata inherits, not this module zip.",
             ]
@@ -204,7 +204,7 @@ def _match_catalog(
                     "studio",
                     "App Studio",
                     "/connections/{connection_id}/studio",
-                    "Retry Sandbox Install after xpath rewrite. Promote stays human.",
+                    "Retry Sandbox Install after xpath rewrite. Publishing stays a step you confirm.",
                     connection_id,
                 )
             )
@@ -213,7 +213,7 @@ def _match_catalog(
                 "designer",
                 "View Designer",
                 "/connections/{connection_id}/designer",
-                "Only for live inherit edits — not Option A zip install.",
+                "Only for live inherit edits — not custom-code zip install.",
                 connection_id,
             )
         )

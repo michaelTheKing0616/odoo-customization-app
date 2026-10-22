@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Literal
@@ -154,21 +155,43 @@ def normalize_hosting_hint(hint: str | None) -> HostingTier:
 def detect_edition(
     server_version: str | None,
     installed_modules: set[str] | frozenset[str] | None = None,
+    *,
+    server_version_info: Any = None,
+    url: str | None = None,
 ) -> EditionTier:
+    """Community vs Enterprise from every signal we have; ``unknown`` when none.
+
+    Enterprise when any of: ``web_enterprise`` installed; ``server_version``
+    carries the ``+e`` suffix (``20.0+e``, ``saas~19.2+e``, ``19.0+e-20250802``)
+    or says "enterprise"; ``server_version_info`` ends with ``'e'``; the host is
+    Odoo Online (``*.odoo.com`` is always Enterprise). A plain parseable version
+    with none of those is Community. No version and no other signal is
+    ``unknown`` — callers must not treat that as Community.
+    """
     mods = set(installed_modules or [])
     if "web_enterprise" in mods or "enterprise" in mods:
         return "enterprise"
-    if server_version:
-        low = server_version.lower()
-        if "+e" in low or "enterprise" in low:
+    if server_version_info and isinstance(server_version_info, (list, tuple)):
+        if str(server_version_info[-1]).strip().lower() == "e":
             return "enterprise"
-    if server_version:
+    low = str(server_version or "").strip().lower()
+    if "+e" in low or "enterprise" in low:
+        return "enterprise"
+    if (url or server_version) and hosting_hint_from_url(url, server_version) == "online":
+        return "enterprise"
+    if low and re.search(r"\d+\.\d+", low):
         return "community"
     return "unknown"
 
 
-def detect_hosting(url: str | None, *, web_base_url: str | None = None) -> tuple[HostingTier, str]:
-    hint = hosting_hint_from_url(url)
+def detect_hosting(
+    url: str | None,
+    *,
+    web_base_url: str | None = None,
+    server_version: str | None = None,
+    saved: str | None = None,
+) -> tuple[HostingTier, str]:
+    hint = hosting_hint_from_url(url, server_version, saved)
     tier = normalize_hosting_hint(hint)
     if web_base_url:
         extra_hint = hosting_hint_from_url(web_base_url)
@@ -191,10 +214,13 @@ def build_tier_context(
     server_version: str | None,
     installed_modules: list[str] | None = None,
     web_base_url: str | None = None,
+    saved_hosting: str | None = None,
 ) -> TierContext:
     mods = frozenset(installed_modules or [])
-    hosting, hint = detect_hosting(url, web_base_url=web_base_url)
-    edition = detect_edition(server_version, mods)
+    hosting, hint = detect_hosting(
+        url, web_base_url=web_base_url, server_version=server_version, saved=saved_hosting
+    )
+    edition = detect_edition(server_version, mods, url=url or web_base_url)
     major: int | None = None
     if server_version:
         try:
@@ -238,7 +264,7 @@ def _rule_module_deploy(ctx: TierContext) -> TierCapabilityResult:
             reason="Odoo Online cannot install custom Python/modules on the filesystem.",
             options=(
                 "Use metadata/XML data import for safe customizations (Online lane)",
-                "Move to Odoo.sh or self-host for Option A module deploy",
+                "Move to Odoo.sh or self-host for Custom-code module deploy",
                 "Use an external connector for FX/HTTP providers instead of Online Python",
             ),
         )
@@ -586,12 +612,17 @@ def _legacy_matrix(ctx: TierContext) -> tuple[list[str], list[dict[str, str]], b
     if ctx.hosting == "online":
         warnings.append(
             "Custom Python module install is not available on Odoo Online — "
-            "use data/XML export, move to Odoo.sh / self-host for Option A, "
+            "use data/XML export, move to Odoo.sh / self-host for custom code, "
             "or use an external connector for FX/HTTP providers."
         )
     if any(m in ctx.installed for m in ("web_studio", "studio_customization")):
         warnings.append(
             "Studio-related modules detected — public ORM/RPC only; Studio source is never used."
+        )
+    if ctx.edition == "unknown":
+        warnings.append(
+            "Edition not detected — Enterprise-only features are not blocked; they "
+            "fail at install time if this database turns out to be Community."
         )
     if ctx.major is None:
         unsupported = [
@@ -604,7 +635,7 @@ def _legacy_matrix(ctx: TierContext) -> tuple[list[str], list[dict[str, str]], b
         ]
         return [], unsupported, False, warnings
     try:
-        caps = for_major(ctx.major, edition=ctx.edition if ctx.edition != "unknown" else "community")
+        caps = for_major(ctx.major, edition=ctx.edition)
     except UnsupportedOdooMajorError:
         return [], [], False, warnings
     supported = sorted(c.value for c in caps.enabled)

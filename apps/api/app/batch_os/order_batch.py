@@ -536,7 +536,7 @@ class OrderBatchRecipe:
         state.phase = "dry_run"
         state.dry_run = True
         state.message = (
-            f"Dry-run OK — would create {len(state.moves)} DRAFT order(s). "
+            f"Dry-run OK, would create {len(state.moves)} DRAFT order(s). "
             f"{HONESTY_PREVIEW_NE_CONFIRMED}"
         )
         return state

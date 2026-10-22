@@ -105,6 +105,9 @@ ROUTE_OVERRIDES: dict[str, SafetySpec] = {
     "DELETE:/api/connections/{connection_id}/fields/{field_id}": SafetySpec(
         risk="destructive", snapshot=True, confirm="phrase", odoo_mutation=True
     ),
+    "POST:/api/connections/{connection_id}/code-studio/option-a": SafetySpec(
+        risk="read", odoo_mutation=False, confirm="none"
+    ),
     "POST:/api/connections/{connection_id}/code-studio/bind": SafetySpec(
         risk="code", snapshot=True, confirm="phrase", odoo_mutation=True
     ),

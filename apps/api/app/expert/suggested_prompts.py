@@ -80,7 +80,7 @@ def suggested_prompts_for_context(
                 {
                     "id": "explain-model",
                     "label": f"Explain {m}",
-                    "question": f"Explain model `{m}` — fields, workflow, and how it fits this connection.",
+                    "question": f"Explain model `{m}`, fields, workflow, and how it fits this connection.",
                 },
             )
         elif m in {"sale.order", "purchase.order", "stock.picking", "account.move"}:

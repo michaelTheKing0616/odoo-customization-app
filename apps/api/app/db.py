@@ -4,8 +4,7 @@ Migration policy (PROD-2):
 - **Tests / empty local DB:** ``init_db()`` runs ``create_all`` (fast fixtures).
 - **Deploy / shared hosts:** set ``DB_MIGRATIONS=auto`` so startup runs
   ``alembic upgrade head`` before serving.
-- ``_ensure_schema_columns`` remains as a dev safety net until all columns are
-  captured in Alembic revisions; new columns must add a migration.
+- Startup does not issue ``ALTER TABLE``. New columns ship as Alembic revisions.
 """
 
 from __future__ import annotations
@@ -13,7 +12,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, inspect  # noqa: F401 — startup tests patch app.db.inspect
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -92,214 +91,11 @@ def init_db(*, bootstrap: bool = True) -> None:
 
 
 def _ensure_schema_columns() -> None:
-    """Add columns create_all will not add on existing tables (dev-friendly)."""
-    inspector = inspect(engine)
-    if "promoted_modules" in inspector.get_table_names():
-        cols = {c["name"] for c in inspector.get_columns("promoted_modules")}
-        if "models_json" not in cols:
-            with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE promoted_modules ADD COLUMN models_json TEXT"))
-
-    if "odoo_connections" in inspector.get_table_names():
-        cols = {c["name"] for c in inspector.get_columns("odoo_connections")}
-        with engine.begin() as conn:
-            if "protected_manifest_json" not in cols:
-                conn.execute(
-                    text("ALTER TABLE odoo_connections ADD COLUMN protected_manifest_json TEXT")
-                )
-            if "protected_manifest_version" not in cols:
-                conn.execute(
-                    text(
-                        "ALTER TABLE odoo_connections ADD COLUMN protected_manifest_version VARCHAR(20)"
-                    )
-                )
-            if "last_seen_version" not in cols:
-                conn.execute(text("ALTER TABLE odoo_connections ADD COLUMN last_seen_version VARCHAR(50)"))
-            if "upgrade_detected" not in cols:
-                conn.execute(
-                    text(
-                        "ALTER TABLE odoo_connections ADD COLUMN upgrade_detected BOOLEAN NOT NULL DEFAULT FALSE"
-                    )
-                )
-            if "upgrade_detected_at" not in cols:
-                conn.execute(
-                    text("ALTER TABLE odoo_connections ADD COLUMN upgrade_detected_at TIMESTAMPTZ")
-                )
-            if "preview_theme_json" not in cols:
-                conn.execute(text("ALTER TABLE odoo_connections ADD COLUMN preview_theme_json TEXT"))
-            if "workspace_id" not in cols:
-                conn.execute(text("ALTER TABLE odoo_connections ADD COLUMN workspace_id VARCHAR(36)"))
-
-    if "customization_projects" in inspector.get_table_names():
-        cols = {c["name"] for c in inspector.get_columns("customization_projects")}
-        with engine.begin() as conn:
-            if "workspace_id" not in cols:
-                conn.execute(
-                    text("ALTER TABLE customization_projects ADD COLUMN workspace_id VARCHAR(36)")
-                )
-            if "lifecycle_status" not in cols:
-                conn.execute(
-                    text(
-                        "ALTER TABLE customization_projects ADD COLUMN lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'active'"
-                    )
-                )
-
-    _ensure_connection_fks(inspector)
-
-    if "users" in inspector.get_table_names():
-        cols = {c["name"] for c in inspector.get_columns("users")}
-        if "password_login_enabled" not in cols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text(
-                        "ALTER TABLE users ADD COLUMN password_login_enabled BOOLEAN NOT NULL DEFAULT TRUE"
-                    )
-                )
-
-    if "odoo_connections" in inspector.get_table_names():
-        cols = {c["name"] for c in inspector.get_columns("odoo_connections")}
-        if "write_mode" not in cols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text(
-                        "ALTER TABLE odoo_connections ADD COLUMN write_mode VARCHAR(20) NOT NULL DEFAULT 'standard'"
-                    )
-                )
-        cols = {c["name"] for c in inspector.get_columns("odoo_connections")}
-        if "writes_paused" not in cols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text(
-                        "ALTER TABLE odoo_connections ADD COLUMN writes_paused BOOLEAN NOT NULL DEFAULT FALSE"
-                    )
-                )
-        cols = {c["name"] for c in inspector.get_columns("odoo_connections")}
-        if "code_studio_probe_json" not in cols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text("ALTER TABLE odoo_connections ADD COLUMN code_studio_probe_json TEXT")
-                )
-
-    if "workspaces" in inspector.get_table_names():
-        cols = {c["name"] for c in inspector.get_columns("workspaces")}
-        if "writes_paused" not in cols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text(
-                        "ALTER TABLE workspaces ADD COLUMN writes_paused BOOLEAN NOT NULL DEFAULT FALSE"
-                    )
-                )
-        cols = {c["name"] for c in inspector.get_columns("workspaces")}
-        if "beta_partner" not in cols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text(
-                        "ALTER TABLE workspaces ADD COLUMN beta_partner BOOLEAN NOT NULL DEFAULT FALSE"
-                    )
-                )
-
-    if "audit_logs" in inspector.get_table_names():
-        cols = {c["name"] for c in inspector.get_columns("audit_logs")}
-        if "detail_json" not in cols:
-            with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE audit_logs ADD COLUMN detail_json TEXT"))
-
-    if "live_demo_copilot_sessions" in inspector.get_table_names():
-        cols = {c["name"] for c in inspector.get_columns("live_demo_copilot_sessions")}
-        with engine.begin() as conn:
-            if "leave_purge_status" not in cols:
-                conn.execute(
-                    text(
-                        "ALTER TABLE live_demo_copilot_sessions "
-                        "ADD COLUMN leave_purge_status VARCHAR(24) NOT NULL DEFAULT 'idle'"
-                    )
-                )
-            if "last_ops_error" not in cols:
-                conn.execute(
-                    text("ALTER TABLE live_demo_copilot_sessions ADD COLUMN last_ops_error TEXT")
-                )
-            if "leave_purge_job_id" not in cols:
-                conn.execute(
-                    text(
-                        "ALTER TABLE live_demo_copilot_sessions "
-                        "ADD COLUMN leave_purge_job_id VARCHAR(36)"
-                    )
-                )
-            if "presenter_speakers_json" not in cols:
-                conn.execute(
-                    text(
-                        "ALTER TABLE live_demo_copilot_sessions "
-                        "ADD COLUMN presenter_speakers_json TEXT NOT NULL DEFAULT '[]'"
-                    )
-                )
-
-    # DEV-3 script runner tables — created by metadata.create_all if missing
+    """No-op. Alembic owns every column this used to ALTER."""
+    return
 
 
 def _ensure_connection_fks(inspector) -> None:
-    """Add ON DELETE CASCADE FKs for connection-scoped tables when missing (Postgres)."""
-    tables = {
-        "metadata_snapshots": "fk_metadata_snapshots_connection_id",
-        "sandbox_validations": "fk_sandbox_validations_connection_id",
-        "promoted_modules": "fk_promoted_modules_connection_id",
-        "background_jobs": "fk_background_jobs_connection_id",
-        "customization_projects": "fk_customization_projects_connection_id",
-        "health_check_runs": "fk_health_check_runs_connection_id",
-        "approval_rules": "fk_approval_rules_connection_id",
-        "approval_entries": "fk_approval_entries_connection_id",
-    }
-    existing = {t for t in tables if t in inspector.get_table_names()}
-    if not existing:
+    """Connection ON DELETE FKs already come from Alembic revisions."""
+    if inspector is None:
         return
-
-    dialect = engine.dialect.name
-    if dialect != "postgresql":
-        return
-
-    with engine.begin() as conn:
-        for table, constraint in tables.items():
-            if table not in existing:
-                continue
-            conn.execute(
-                text(
-                    f"""
-                    DELETE FROM {table}
-                    WHERE connection_id IS NOT NULL
-                      AND connection_id NOT IN (SELECT id FROM odoo_connections)
-                    """
-                )
-            )
-            has_fk = conn.execute(
-                text(
-                    """
-                    SELECT 1 FROM information_schema.table_constraints
-                    WHERE table_name = :table
-                      AND constraint_type = 'FOREIGN KEY'
-                      AND constraint_name = :name
-                    """
-                ),
-                {"table": table, "name": constraint},
-            ).scalar()
-            if has_fk:
-                continue
-            old = conn.execute(
-                text(
-                    """
-                    SELECT constraint_name FROM information_schema.table_constraints
-                    WHERE table_name = :table AND constraint_type = 'FOREIGN KEY'
-                    """
-                ),
-                {"table": table},
-            ).scalars().all()
-            for name in old:
-                conn.execute(text(f'ALTER TABLE {table} DROP CONSTRAINT IF EXISTS "{name}"'))
-            conn.execute(
-                text(
-                    f"""
-                    ALTER TABLE {table}
-                    ADD CONSTRAINT {constraint}
-                    FOREIGN KEY (connection_id) REFERENCES odoo_connections(id)
-                    ON DELETE CASCADE
-                    """
-                )
-            )

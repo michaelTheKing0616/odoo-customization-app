@@ -281,7 +281,7 @@ def apply_project_spec(client: OdooClient, spec: dict[str, Any]) -> ApplyResult:
             _create_one_field(client, model_name, field_entry, result)
 
     result.message = (
-        f"Applied: {len(result.models_created)} model(s), "
+        f"Applied: {len(result.models_created)} models, "
         f"{result.fields_created} field(s); skipped {len(result.skipped)}"
     )
     return result
@@ -340,8 +340,8 @@ def diff_project_spec(client: OdooClient, spec: dict[str, Any]) -> dict[str, Any
     return {
         "ok": True,
         "message": (
-            f"{len(to_create_models)} model(s) to create, "
-            f"{len(existing_models)} model(s) exist, "
+            f"{len(to_create_models)} models to create, "
+            f"{len(existing_models)} models exist, "
             f"{len(to_create_fields)} field(s) to create, "
             f"{len(existing_fields)} field(s) already live"
         ),

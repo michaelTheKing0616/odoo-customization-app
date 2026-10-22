@@ -52,7 +52,7 @@ def chunk_res_country_state_csv(path: Path, *, version: str) -> list[DocChunk]:
             "",
         ]
         for name, code, ext_id in rows:
-            lines.append(f"- **{name}** — xml id `{ext_id}`, code `{code}`")
+            lines.append(f"- **{name}**, xml id `{ext_id}`, code `{code}`")
         lines.extend(
             [
                 "",
@@ -61,7 +61,7 @@ def chunk_res_country_state_csv(path: Path, *, version: str) -> list[DocChunk]:
                 "when states exist for the selected country.",
                 "",
                 "Governorates and administrative regions are modeled as `res.country.state` rows "
-                "linked to `res.country`. Names follow Odoo's shipped CSV — they may differ from "
+                "linked to `res.country`. Names follow Odoo's shipped CSV, they may differ from "
                 "local official names (e.g. **Amman** rather than **Capital Governorate** for Jordan).",
             ]
         )
@@ -89,7 +89,7 @@ def chunk_l10n_manifest(path: Path, *, version: str) -> list[DocChunk]:
     summary = summary_match.group(1) if summary_match else ""
     description = (desc_match.group(1).strip() if desc_match else "").strip()
     body_parts = [
-        f"**{title}** (`{module}`) — Odoo {version} Community localization module.",
+        f"**{title}** (`{module}`), Odoo {version} Community localization module.",
     ]
     if summary:
         body_parts.append(summary)

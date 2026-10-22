@@ -1,4 +1,4 @@
-"""Persist AI-generated ModuleSpec drafts for recovery."""
+"""Persist AI-generated App plan drafts for recovery."""
 
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ def save_draft_cache(
         id=str(uuid.uuid4()),
         connection_id=connection_id,
         prompt_hash=ph,
-        prompt_text=prompt.strip()[:4000],
+        prompt_text=prompt.strip(),
         summary=summary[:200],
         draft_json=payload,
         raw_response=raw_response,

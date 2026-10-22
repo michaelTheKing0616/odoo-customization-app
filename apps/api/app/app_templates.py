@@ -405,7 +405,7 @@ def scaffold_models(
     created_n = len(result.models_created)
     skipped_n = len(result.models_skipped)
     result.message = (
-        f"Scaffolded {label}: {created_n} model(s) created, "
+        f"Scaffolded {label}: {created_n} models created, "
         f"{skipped_n} skipped, {result.fields_created} field(s) added, "
         f"{result.view_injects} view inject(s), {result.menus_created} menu(s)"
         + (" · multi-company" if multi_company else "")
@@ -930,7 +930,7 @@ def scaffold_approval_requests(
     display_name: str | None = None,
     technical_prefix: str | None = None,
 ) -> ScaffoldResult:
-    """Approval Requests mini-app via ModuleSpec apply (CMP-10)."""
+    """Approval Requests mini-app via app plan apply (CMP-10)."""
     from app.approval_process_service import seed_demo_type
     from app.approval_requests_pack import approval_requests_draft
     from app.spec_apply_ui import apply_module_spec_ui

@@ -46,7 +46,7 @@ def render_markdown(result: AutopilotResult) -> str:
             "## Stock apps",
             ", ".join(packet.stock_apps) or "(none)",
             "",
-            "## Custom residual",
+            "## Custom code",
         ]
     )
     if packet.custom_residuals:
@@ -54,7 +54,7 @@ def render_markdown(result: AutopilotResult) -> str:
     else:
         lines.append("none — stock + data only")
     if packet.grounding:
-        lines.extend(["", "## Client-doc grounding", *[f"- {g[:300]}" for g in packet.grounding[:8]]])
+        lines.extend(["", "## Matched from your documents", *[f"- {g[:300]}" for g in packet.grounding[:8]]])
     lines.extend(
         [
             "",
@@ -94,7 +94,7 @@ def render_markdown(result: AutopilotResult) -> str:
                 f"Expert-fix score {custom.expert_score_before} → {custom.expert_score_after}"
             )
         if custom.zip_base64:
-            lines.append("Module zip attached (human Promote-to may use it).")
+            lines.append("Module zip attached (you publish-to may use it).")
     ingest = result.ingest
     lines.extend(["", "## Ingest"])
     if ingest is None or ingest.skipped:
@@ -113,7 +113,7 @@ def render_markdown(result: AutopilotResult) -> str:
         lines.extend(f"- {'ok' if s.ok else 'fail'} {s.name}: {s.detail}" for s in smoke.steps)
     packet = result.config_packet if isinstance(result.config_packet, dict) else None
     if packet:
-        lines.extend(["", "## Config Packet (client replay)", f"sha256: {packet.get('sha256')}"])
+        lines.extend(["", "## config summary (client replay)", f"sha256: {packet.get('sha256')}"])
         for item in (packet.get("checklist") or [])[:24]:
             if isinstance(item, dict):
                 lines.append(
@@ -144,10 +144,82 @@ def _wrap_lines(markdown: str, width: int = 92) -> list[str]:
     return raw_lines
 
 
-def render_pdf_bytes(markdown: str) -> bytes:
+# Touch 134: the keystone seal, drawn in PDF path operators (arch in ink, keystone in cinnabar). 256-grid mark scaled to 72 pt.
+def _seal_ops(x: float, y: float, size: float = 72) -> list[str]:
+    k = size / 256
+
+    def P(px: float, py: float) -> str:
+        return f"{x + px * k:.2f} {y + (256 - py) * k:.2f}"
+
+    import math
+
+    def arc(cx: float, cy: float, r: float, a0: float, a1: float, n: int = 16) -> list[tuple[float, float]]:
+        return [(cx + r * math.cos(math.radians(a0 + (a1 - a0) * t / n)), cy + r * math.sin(math.radians(a0 + (a1 - a0) * t / n))) for t in range(n + 1)]
+
+    def ang(cx: float, cy: float, px: float, py: float) -> float:
+        return math.degrees(math.atan2(py - cy, px - cx))
+
+    # Extrados R100 about (128,151); intrados r46 about (128,148), from directions/A ingenium-mark-color.svg.
+    left = arc(128, 151, 100, ang(128, 151, 93.53, 57.13), -180) + [(28, 208), (82, 208)] + arc(128, 148, 46, -180, ang(128, 148, 106.92, 107.11))
+    right = arc(128, 151, 100, ang(128, 151, 162.47, 57.13), 0) + [(228, 208), (174, 208)] + arc(128, 148, 46, 0, ang(128, 148, 149.08, 107.11))
+    legs = [[("m" if i == 0 else "l", a, b) for i, (a, b) in enumerate(pts)] for pts in (left, right)]
+    ops = ["q", "0.10 0.11 0.13 rg"]
+    for leg in legs:
+        ops += [f"{P(a, b)} {c}" for c, a, b in leg] + ["h f"]
+    ops += ["0.81 0.27 0.15 rg", f"{P(102.12, 54.41)} m", f"{P(153.88, 54.41)} l", f"{P(140.65, 103.77)} l", f"{P(115.35, 103.77)} l", "h f"]
+    ops += ["0.10 0.11 0.13 RG", "0.6 w", f"{x - 6:.2f} {y - 6:.2f} {size + 12:.2f} {size + 12:.2f} re S", "Q"]
+    return ops
+
+
+def _qr_ops(data: str, x: float, y: float, size: float = 96) -> list[str]:
+    """Verification QR drawn as filled squares (segno, MIT). Encodes the document fingerprint."""
+    import segno
+
+    rows = [list(r) for r in segno.make(data, error="m", micro=False).matrix]
+    n = len(rows) + 8  # 4-module quiet zone each side
+    m = size / n
+    ops = ["q", "1 1 1 rg", f"{x:.2f} {y:.2f} {size:.2f} {size:.2f} re f", "0 0 0 rg"]
+    for r, row in enumerate(rows):
+        for c, on in enumerate(row):
+            if on:
+                ops.append(f"{x + (c + 4) * m:.2f} {y + size - (r + 5) * m:.2f} {m:.3f} {m:.3f} re")
+    ops += ["f", "Q"]
+    return ops
+
+
+def sealed_pages(markdown: str, *, title: str, prepared: str) -> tuple[list[list[str]], dict[int, list[str]], str]:
+    """Cover, contents, body, and a last page with the keystone seal and the document fingerprint."""
+    import hashlib
+
+    fp = hashlib.sha256((markdown or "").encode("utf-8")).hexdigest()
+    body = _wrap_lines(markdown)
+    body_pages = [body[i : i + 58] for i in range(0, max(len(body), 1), 58)]
+    heads: list[tuple[str, int]] = []
+    for n, pg in enumerate(body_pages):
+        for line in pg:
+            if line.startswith("#"):
+                heads.append((line.lstrip("#").strip(), n + 3))
+    cover = ["", "", "", "", "", title, "", prepared, "", "Fingerprint (SHA-256 of the contents):", fp[:32], fp[32:]]
+    contents = ["Contents", ""] + [f"{h[:70]:<74}{pg:>4}" for h, pg in heads[:52]]
+    seal = ["Seal", "", "This document was prepared and sealed by Ingenium.", "Its fingerprint is the SHA-256 of its contents:", fp[:32], fp[32:],
+            "", "To verify: hash the contents again and compare. Any change gives a different fingerprint."]
+    pages = [cover, contents, *body_pages, seal]
+    seal.append("The QR code holds the same fingerprint.")
+    extra = {len(pages) - 1: _seal_ops(200, 420) + _qr_ops(f"ingenium:sha256:{fp}", 320, 408)}
+    return pages, extra, fp
+
+
+def render_sealed_pdf_bytes(markdown: str, *, title: str, prepared: str) -> bytes:
+    pages, extra, _ = sealed_pages(markdown, title=title, prepared=prepared)
+    return render_pdf_bytes(markdown, pages=pages, extra_ops=extra)
+
+
+def render_pdf_bytes(markdown: str, *, pages: list[list[str]] | None = None, extra_ops: dict[int, list[str]] | None = None) -> bytes:
     """Minimal multi-page PDF using Helvetica. Non-ASCII becomes '?'."""
-    wrapped = _wrap_lines(markdown)
-    pages = [wrapped[i : i + 58] for i in range(0, max(len(wrapped), 1), 58)]
+    if pages is None:
+        wrapped = _wrap_lines(markdown)
+        pages = [wrapped[i : i + 58] for i in range(0, max(len(wrapped), 1), 58)]
+    extra_ops = extra_ops or {}
     page_ids = list(range(3, 3 + 2 * len(pages), 2))
     content_ids = [pid + 1 for pid in page_ids]
     font_id = page_ids[-1] + 2
@@ -159,10 +231,10 @@ def render_pdf_bytes(markdown: str) -> bytes:
     kids = b" ".join(b"%d 0 R" % i for i in page_ids)
     put(1, b"<< /Type /Catalog /Pages 2 0 R >>")
     put(2, b"<< /Type /Pages /Kids [" + kids + b"] /Count %d >>" % len(page_ids))
-    for page_id, content_id, page_lines in zip(page_ids, content_ids, pages, strict=True):
-        cmds = ["BT", "/F1 9 Tf", "36 760 Td", "11 TL"]
+    for idx, (page_id, content_id, page_lines) in enumerate(zip(page_ids, content_ids, pages, strict=True)):
+        cmds = [*extra_ops.get(idx, []), "BT", "/F1 9 Tf", "36 760 Td", "11 TL"]
         for i, line in enumerate(page_lines):
-            esc = _pdf_escape(line)
+            esc = _pdf_escape(line.encode("latin-1", "replace").decode("latin-1"))
             if i == 0:
                 cmds.append(f"({esc}) Tj")
             else:
@@ -205,4 +277,4 @@ def attach_reports(result: AutopilotResult) -> AutopilotResult:
     return result
 
 
-__all__ = ["attach_reports", "render_markdown", "render_pdf_bytes"]
+__all__ = ["attach_reports", "render_markdown", "render_pdf_bytes", "render_sealed_pdf_bytes", "sealed_pages"]

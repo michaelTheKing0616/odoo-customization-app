@@ -1,4 +1,4 @@
-"""Feed sandbox / operator errors back to the Option A author LLM.
+"""Feed sandbox / operator errors back to the custom-code author LLM.
 
 Constrained patches only (implicated custom_code_blocks). Never invent account.tax.
 Never live ir.actions.server state=code. Gold templates are locked.
@@ -179,11 +179,18 @@ def _repair_user_prompt(
 
 
 def _default_repair_blocks(prompt: str, draft: dict[str, Any]) -> list[dict[str, Any]]:
+    from app.ai_option_a_packet_ground import (
+        ensure_option_a_schema_packet,
+        user_prompt_with_schema_packet,
+    )
     from app.llm_provider import generate_json_with_timeout_retry, get_llm_provider_for_tier
 
     provider = get_llm_provider_for_tier("fast")
     if provider is None:
         return []
+    # GND-G-OPTA: host-model schema_packet slice goes in the repair prompt.
+    ensure_option_a_schema_packet(draft, prompt=str(draft.get("_user_prompt") or ""))
+    grounded_prompt = user_prompt_with_schema_packet(prompt, draft)
 
     def _call(text: str) -> str:
         return generate_json_with_timeout_retry(
@@ -196,7 +203,7 @@ def _default_repair_blocks(prompt: str, draft: dict[str, Any]) -> list[dict[str,
         )
 
     try:
-        raw = _call(prompt)
+        raw = _call(grounded_prompt)
         data = coerce_author_payload(raw) if isinstance(raw, (dict, list)) else None
         if data is None:
             from app.llm_json import parse_llm_json
@@ -244,7 +251,7 @@ def repair_option_a_from_feedback(
                 "applied": False,
                 "reason": "gold_locked",
                 "message": (
-                    "Gold Option A templates are not LLM-patched. "
+                    "Gold custom code templates are not LLM-patched. "
                     "Retry sandbox after restart, or re-export the zip. Do not Install this app."
                 ),
             },
@@ -256,7 +263,7 @@ def repair_option_a_from_feedback(
                 "ok": False,
                 "applied": False,
                 "reason": "not_authored",
-                "message": "Feedback repair applies to LLM-authored Option A modules only.",
+                "message": "Feedback repair applies to LLM-authored Custom-code modules only.",
             },
         )
 
@@ -374,13 +381,13 @@ def repair_option_a_from_feedback(
         if llm_files:
             message = (
                 "AI patched the module from the sandbox error. "
-                "Retry Sandbox install & smoke. Do not click Install this app. Promote stays human."
+                "Retry Sandbox install & smoke. Do not click Install this app. Publishing stays a step you confirm."
             )
         else:
             message = (
                 "Applied free Community fixes (tax_ids / xpaths / stock _compute_amount strip). "
                 "Retry Sandbox install & smoke — this did not use Repair budget. "
-                "Do not Install this app. Promote stays human."
+                "Do not Install this app. Publishing stays a step you confirm."
             )
     elif applied:
         message = (

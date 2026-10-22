@@ -253,7 +253,7 @@ def confirm_least_privilege(
 ) -> None:
     if _is_admin_username(connection.username) and not acknowledge_admin:
         raise ValueError(
-            "Connection uses an admin-style Odoo user — acknowledge the least-privilege warning."
+            "Connection uses an admin-style Odoo user, acknowledge the least-privilege warning."
         )
     state = _get_or_create_state(db, connection.id)
     now = datetime.now(timezone.utc)
@@ -269,7 +269,7 @@ def verify_backup_artifact(db: Session, connection_id: str) -> None:
         raise ValueError("Run the snapshot drill before verifying backup artifact download.")
     snap = db.get(MetadataSnapshot, state.snapshot_drill_id)
     if snap is None or snap.connection_id != connection_id:
-        raise ValueError("Drill snapshot missing — re-run the snapshot drill.")
+        raise ValueError("Drill snapshot missing, re-run the snapshot drill.")
     validate_drill_snapshot(snap)
     now = datetime.now(timezone.utc)
     state.backup_artifact_verified_at = now
@@ -323,7 +323,7 @@ def evaluate_production_readiness(db: Session, connection: OdooConnection) -> Pr
                     key="snapshot_restore_drill",
                     label="Snapshot + restore drill",
                     status="fail",
-                    detail="Drill snapshot record missing — re-run drill.",
+                    detail="Drill snapshot record missing, re-run drill.",
                 )
             )
     else:
@@ -352,7 +352,7 @@ def evaluate_production_readiness(db: Session, connection: OdooConnection) -> Pr
                 key="health_check_green",
                 label="Health check passed",
                 status="fail",
-                detail="Health check still running — wait for completion.",
+                detail="Health check still running, wait for completion.",
             )
         )
     elif hc and (hc.broken_count or 0) > 0:
@@ -401,7 +401,7 @@ def evaluate_production_readiness(db: Session, connection: OdooConnection) -> Pr
                     label="Least-privilege credential",
                     status="warn",
                     detail=(
-                        f"Confirmed, but Odoo user '{connection.username}' looks like admin — "
+                        f"Confirmed, but Odoo user '{connection.username}' looks like admin, "
                         "prefer a dedicated scoped user."
                     ),
                 )
@@ -418,7 +418,7 @@ def evaluate_production_readiness(db: Session, connection: OdooConnection) -> Pr
     else:
         admin_hint = ""
         if _is_admin_username(connection.username):
-            admin_hint = f" User '{connection.username}' looks like admin — acknowledge the warning."
+            admin_hint = f" User '{connection.username}' looks like admin, acknowledge the warning."
         items.append(
             ChecklistItem(
                 key="least_privilege_confirmed",

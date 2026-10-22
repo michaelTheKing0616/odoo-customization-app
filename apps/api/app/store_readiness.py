@@ -12,7 +12,7 @@ from typing import Any, Literal
 CheckStatus = Literal["pass", "warn", "fail"]
 
 STORE_REVIEW_DISCLAIMER = (
-    "Review and approval are Odoo's process, on Odoo's timeline — this checklist "
+    "Review and approval are Odoo's process, on Odoo's timeline, this checklist "
     "only helps you prepare the package."
 )
 
@@ -155,7 +155,7 @@ def check_store_readiness(
                 "description",
                 "Description",
                 "warn",
-                f"Description is only {len(description)} characters — Apps listing usually needs more",
+                f"Description is only {len(description)} characters, Apps listing usually needs more",
             )
         )
     else:
@@ -229,7 +229,7 @@ def check_store_readiness(
     icon_path = f"{technical_name}/static/description/icon.png"
     if icon_path in zip_members:
         status: CheckStatus = "warn" if icon_is_placeholder else "pass"
-        msg = "Placeholder icon included — replace before submission" if icon_is_placeholder else "icon.png present"
+        msg = "Placeholder icon included, replace before submission" if icon_is_placeholder else "icon.png present"
         report.add(StoreCheckItem("icon", "Module icon", status, msg))
     else:
         report.add(StoreCheckItem("icon", "Module icon", "fail", "Missing static/description/icon.png"))

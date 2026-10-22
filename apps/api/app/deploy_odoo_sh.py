@@ -50,7 +50,7 @@ Upgrade the module on the production database after the build completes.
 
 ## Notes
 
-- Branch names above are suggestions — match your Odoo.sh project conventions.
+- Branch names above are suggestions, match your Odoo.sh project conventions.
 - Never skip staging when the module adds models, fields, or access rules.
 - Python code requires Odoo.sh filesystem install (not Odoo Online).
 """

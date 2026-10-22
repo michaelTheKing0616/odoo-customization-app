@@ -1502,7 +1502,7 @@ def stamp_online_stock_honesty(draft: dict[str, Any], *, prompt: str = "") -> li
         "note": (
             "Online-honest on stock moves — Parts used stay structured product+qty; "
             "do not invent deep stock.move / Purchase Order as a substitute. "
-            "Completeness ≠ Cert ≠ Autopilot. Promote stays human."
+            "A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm."
         ),
     }
     draft["_honesty"] = meta
@@ -2193,7 +2193,12 @@ def prune_generic_loop_models(draft: dict[str, Any], *, user_prompt: str = "") -
         if raw_b is not None:
             floor = min(floor, int(raw_b))
         else:
-            floor = min(floor, shape_budget(shape, x_models=len(remaining)))
+            from app.ai_document_shape import design_model_count
+
+            floor = min(
+                floor,
+                shape_budget(shape, x_models=len(remaining), design_n=design_model_count(draft)),
+            )
         if shape == "register":
             floor = 1
     except Exception:  # noqa: BLE001
@@ -2214,7 +2219,7 @@ def prune_generic_loop_models(draft: dict[str, Any], *, user_prompt: str = "") -
     _purge_draft_artifacts_for_models(draft, removed)
     pruned = list(draft.get("_app_bar_pruned") or [])
     draft["_app_bar_pruned"] = sorted({*pruned, *removed})
-    notes.append(f"app_bar: pruned generic-loop model(s) {', '.join(sorted(removed))}")
+    notes.append(f"app_bar: pruned generic-loop models {', '.join(sorted(removed))}")
     return notes
 
 
@@ -2362,7 +2367,7 @@ def prune_leftover_specialty_satellites(draft: dict[str, Any]) -> list[str]:
     notes.extend(_retarget_removed_relations(draft, removed))
     _purge_draft_artifacts_for_models(draft, removed)
     notes.append(
-        f"app_bar: pruned leftover specialty model(s) {', '.join(sorted(removed))}"
+        f"app_bar: pruned leftover specialty models {', '.join(sorted(removed))}"
     )
     return notes
 
@@ -2453,7 +2458,7 @@ def prune_stock_clone_models(draft: dict[str, Any], *, user_prompt: str = "") ->
     _purge_draft_artifacts_for_models(draft, removed)
     pruned = list(draft.get("_app_bar_pruned") or [])
     draft["_app_bar_pruned"] = sorted({*pruned, *removed})
-    notes.append(f"app_bar: pruned stock-clone model(s) {', '.join(sorted(removed))}")
+    notes.append(f"app_bar: pruned stock-clone models {', '.join(sorted(removed))}")
     return notes
 
 
@@ -4121,7 +4126,7 @@ def drop_orphan_line_models(draft: dict[str, Any]) -> list[str]:
 
     notes.extend(_retarget_removed_relations(draft, removed))
     _purge_draft_artifacts_for_models(draft, removed)
-    notes.append(f"app_bar: dropped orphan line model(s) {', '.join(sorted(removed))}")
+    notes.append(f"app_bar: dropped orphan line models {', '.join(sorted(removed))}")
     return notes
 
 

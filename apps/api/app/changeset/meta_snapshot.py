@@ -6,13 +6,17 @@ blob, written through a database session. That shape is a single rollback
 payload. It is not this export, so it is not reused and nothing here is
 persisted.
 
-The snapshot is built from a caller-supplied mapping. It does not open a
-database connection and it does not call Odoo.
+``build`` and ``from_memory`` take a caller-supplied mapping and do not call
+Odoo. ``capture`` reads a port with public ``fields_get`` and ``search_read``
+only. It never writes. It reads with the default ``active_test``, so archived
+rows are not part of the export.
 
 Equality ignores key order and list order at every level, using the same
-comparison as undo (``snapshots_match``). Config parameters are kept only
-when their key is on the caller allowlist, and never when the key is
-protected or secret-shaped. Xmlids are kept only for the ``ingenium`` module.
+comparison as undo (``snapshots_match``). Values such as ``sequence`` and
+``priority`` are still compared. Config parameters are kept only when their
+key is on the caller allowlist, and never when the key is protected or
+secret-shaped. ``capture`` does not read any other key. Xmlids are kept only
+for the ``ingenium`` module.
 """
 
 from __future__ import annotations
@@ -87,6 +91,7 @@ _ALIASES: dict[str, str] = {
 _MEMORY_BUCKETS: dict[str, str] = {
     "model.create": "models",
     "model.scaffold": "models",
+    "constraint.sql": "models",
     "field.create": "fields",
     "field.update": "fields",
     "field.deprecate": "fields",
@@ -138,6 +143,180 @@ _VOLATILE = frozenset(
 _XMLID_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _INGENIUM_MODULE = "ingenium"
 
+_GROUP_FIELDS = ("groups_id", "group_ids")
+
+# Export key, Odoo model, and the fields asked for. ``capture`` keeps only
+# the fields ``fields_get`` reports, so one list serves Odoo 16 to 20. A
+# model that is not in ``ir.model`` is skipped (``ir.rule`` on 20, or
+# ``base.automation`` when that module is not installed). Counters and run
+# timestamps (``number_next``, ``nextcall``, ``last_run``) are not asked for.
+CAPTURE_SOURCES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("models", "ir.model", ("model", "name", "state", "transient")),
+    (
+        "fields",
+        "ir.model.fields",
+        (
+            "model",
+            "name",
+            "ttype",
+            "relation",
+            "relation_field",
+            "required",
+            "readonly",
+            "store",
+            "state",
+            "field_description",
+            "help",
+            "related",
+            "compute",
+            "depends",
+        ),
+    ),
+    (
+        "views",
+        "ir.ui.view",
+        (
+            "name",
+            "model",
+            "type",
+            "mode",
+            "priority",
+            "inherit_id",
+            "key",
+            "arch_db",
+            *_GROUP_FIELDS,
+        ),
+    ),
+    (
+        "actions",
+        "ir.actions.act_window",
+        ("name", "type", "res_model", "view_mode", "domain", "context", "target", *_GROUP_FIELDS),
+    ),
+    (
+        "actions",
+        "ir.actions.server",
+        ("name", "type", "model_id", "state", "code", "binding_model_id", *_GROUP_FIELDS),
+    ),
+    (
+        "actions",
+        "ir.actions.report",
+        ("name", "type", "model", "report_name", "report_type", "binding_model_id", *_GROUP_FIELDS),
+    ),
+    (
+        "menus",
+        "ir.ui.menu",
+        ("name", "parent_id", "action", "sequence", "web_icon", *_GROUP_FIELDS),
+    ),
+    (
+        "acl",
+        "ir.model.access",
+        ("name", "model_id", "group_id", "perm_read", "perm_write", "perm_create", "perm_unlink"),
+    ),
+    ("acl", "ir.access", ("name", "model_id", "group_id", "operation", "domain")),
+    (
+        "rules",
+        "ir.rule",
+        (
+            "name",
+            "model_id",
+            "domain_force",
+            "groups",
+            "global",
+            "perm_read",
+            "perm_write",
+            "perm_create",
+            "perm_unlink",
+        ),
+    ),
+    ("groups", "res.groups", ("name", "category_id", "privilege_id", "implied_ids", "share")),
+    (
+        "automations",
+        "base.automation",
+        (
+            "name",
+            "model_id",
+            "trigger",
+            "filter_domain",
+            "filter_pre_domain",
+            "trigger_field_ids",
+            "action_server_id",
+            "action_server_ids",
+        ),
+    ),
+    (
+        "crons",
+        "ir.cron",
+        (
+            "name",
+            "cron_name",
+            "model_id",
+            "ir_actions_server_id",
+            "interval_number",
+            "interval_type",
+            "priority",
+            "code",
+            "user_id",
+        ),
+    ),
+    (
+        "templates",
+        "mail.template",
+        (
+            "name",
+            "model_id",
+            "model",
+            "subject",
+            "email_from",
+            "email_to",
+            "partner_to",
+            "body_html",
+            "lang",
+        ),
+    ),
+    (
+        "sequences",
+        "ir.sequence",
+        (
+            "name",
+            "code",
+            "prefix",
+            "suffix",
+            "padding",
+            "number_increment",
+            "implementation",
+            "use_date_range",
+            "company_id",
+        ),
+    ),
+    ("config_params", "ir.config_parameter", ("key", "value")),
+    (
+        "filters",
+        "ir.filters",
+        ("name", "model_id", "domain", "context", "sort", "user_id", "is_default", "action_id"),
+    ),
+    ("xmlids", "ir.model.data", ("module", "name", "model", "res_id", "noupdate")),
+)
+
+# Fields that name one record inside a category, for ``diff`` reports.
+_KEY_FIELDS: dict[str, tuple[str, ...]] = {
+    "models": ("model",),
+    "fields": ("model", "name"),
+    "views": ("model", "name", "type", "key"),
+    "actions": ("type", "name", "res_model", "model_id", "model"),
+    "menus": ("name", "parent_id"),
+    "acl": ("name", "model_id", "group_id", "model", "group"),
+    "rules": ("name", "model_id", "model"),
+    "groups": ("name", "category_id"),
+    "automations": ("name", "model_id", "model"),
+    "crons": ("name", "cron_name", "model_id", "model"),
+    "templates": ("name", "model_id", "model"),
+    "sequences": ("code", "name"),
+    "config_params": ("key",),
+    "filters": ("name", "model_id", "model", "user_id"),
+    "xmlids": ("module", "name"),
+}
+_RELATION_TYPES = frozenset({"many2many", "one2many"})
+
 
 class MetaSnapshot:
     """Canonical export of the metadata categories T8-META compares.
@@ -174,8 +353,7 @@ class MetaSnapshot:
                 continue
             buckets[bucket].extend(_records_for(bucket, value))
         body = {
-            key: _canonicalize(_export_bucket(key, buckets[key], allowlist))
-            for key in EXPORT_KEYS
+            key: _canonicalize(_export_bucket(key, buckets[key], allowlist)) for key in EXPORT_KEYS
         }
         return cls(body)
 
@@ -220,6 +398,36 @@ class MetaSnapshot:
         """
         return copy.deepcopy(self._body)
 
+    def diff(self, other: MetaSnapshot) -> list[dict[str, Any]]:
+        """Which category and record key differ from ``other``.
+
+        Inputs: another snapshot.
+        Outputs: one entry per differing key, in export order, with
+        ``category``, ``key``, ``before`` (records here), and ``after``
+        (records in ``other``). Empty when the snapshots are equal.
+        Side effects: none.
+        """
+        if not isinstance(other, MetaSnapshot):
+            raise TypeError("diff needs a MetaSnapshot")
+        changes: list[dict[str, Any]] = []
+        for category in EXPORT_KEYS:
+            left = _keyed(category, self._body[category])
+            right = _keyed(category, other._body[category])
+            for key in sorted(set(left) | set(right)):
+                before = left.get(key, [])
+                after = right.get(key, [])
+                if before == after:
+                    continue
+                changes.append(
+                    {
+                        "category": category,
+                        "key": json.loads(key),
+                        "before": copy.deepcopy(before),
+                        "after": copy.deepcopy(after),
+                    }
+                )
+        return changes
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, MetaSnapshot):
             return NotImplemented
@@ -245,6 +453,96 @@ def equal(
     return MetaSnapshot.build(left, config_allowlist=config_allowlist) == MetaSnapshot.build(
         right, config_allowlist=config_allowlist
     )
+
+
+def capture(port: Any, *, config_allowlist: Collection[str] = ()) -> MetaSnapshot:
+    """Read every export category from a port into a snapshot.
+
+    Inputs: a port with ``execute_kw(model, method, args, kwargs)`` and the
+    config-parameter allowlist.
+    Outputs: the snapshot. Many2one values become the id. A model that is not
+    in ``ir.model`` contributes no records.
+    Side effects: public ``fields_get`` and ``search_read`` calls only, with
+    the default ``active_test``. Config parameters are read by allowlisted
+    key only. Xmlids are read for the ``ingenium`` module only. No write.
+    A port error is raised to the caller.
+    """
+    if not callable(getattr(port, "execute_kw", None)):
+        raise TypeError("capture needs a port with execute_kw")
+    allowlist = _allowlist(config_allowlist)
+    payload: dict[str, list[Any]] = {key: [] for key in EXPORT_KEYS}
+    installed: frozenset[str] | None = None
+    for category, model, wanted in CAPTURE_SOURCES:
+        if installed is not None and model not in installed:
+            continue
+        domain = _capture_domain(category, allowlist)
+        if domain is None:
+            continue
+        rows = _search_read(port, model, wanted, domain)
+        payload[category].extend(rows)
+        if model == "ir.model":
+            installed = frozenset(
+                str(row["model"]) for row in rows if isinstance(row.get("model"), str)
+            )
+    return MetaSnapshot.build(payload, config_allowlist=allowlist)
+
+
+def _capture_domain(category: str, allowlist: frozenset[str]) -> list[list[Any]] | None:
+    if category == "config_params":
+        keys = sorted(key for key in allowlist if _config_kept({"key": key}, allowlist))
+        return [["key", "in", keys]] if keys else None
+    if category == "xmlids":
+        return [["module", "=", _INGENIUM_MODULE]]
+    return []
+
+
+def _search_read(
+    port: Any, model: str, wanted: tuple[str, ...], domain: list[list[Any]]
+) -> list[dict[str, Any]]:
+    described = port.execute_kw(model, "fields_get", [], {"attributes": ["type"]})
+    if not isinstance(described, Mapping):
+        raise TypeError(f"{model} fields_get did not return a mapping")
+    fields = [name for name in wanted if name in described]
+    if not fields:
+        return []
+    rows = port.execute_kw(model, "search_read", [domain], {"fields": fields})
+    if not isinstance(rows, list):
+        raise TypeError(f"{model} search_read did not return a list")
+    types = {
+        name: str(meta.get("type") or "") if isinstance(meta, Mapping) else ""
+        for name, meta in described.items()
+    }
+    return [_read_row(model, row, fields, types) for row in rows]
+
+
+def _read_row(model: str, row: Any, fields: list[str], types: Mapping[str, str]) -> dict[str, Any]:
+    if not isinstance(row, Mapping):
+        raise TypeError(f"{model} search_read row is not a mapping")
+    record: dict[str, Any] = {}
+    for name in fields:
+        if name not in row:
+            continue
+        value = row[name]
+        kind = types.get(name, "")
+        if kind == "many2one" and isinstance(value, (list, tuple)) and value:
+            value = value[0]
+        elif kind in _RELATION_TYPES and isinstance(value, (list, tuple)):
+            value = list(value)
+        record[name] = value
+    return record
+
+
+def _keyed(category: str, records: list[Any]) -> dict[str, list[Any]]:
+    grouped: dict[str, list[Any]] = {}
+    for record in records:
+        if isinstance(record, Mapping):
+            key = {name: record[name] for name in _KEY_FIELDS[category] if name in record}
+            if not key:
+                key = {"record": record}
+        else:
+            key = {"record": record}
+        grouped.setdefault(_sort_key(key), []).append(record)
+    return grouped
 
 
 def _allowlist(values: Collection[str]) -> frozenset[str]:

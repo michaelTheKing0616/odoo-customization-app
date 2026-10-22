@@ -84,9 +84,9 @@ def restaurant_pack() -> dict[str, Any]:
             "bistro",
         ],
         "anti_patterns": [
-            "Do NOT implement payment gateways or card capture — x_bill is link-only",
-            "Do NOT invent x_customer mini-CRM — use res.partner + x_partner_id",
-            "Kitchen tickets are order lines — do not add a separate payment model",
+            "Do NOT implement payment gateways or card capture, x_bill is link-only",
+            "Do NOT invent x_customer mini-CRM, use res.partner + x_partner_id",
+            "Kitchen tickets are order lines, do not add a separate payment model",
             "Party/guest role rows are NOT is_workflow",
         ],
         "models": [
@@ -392,7 +392,7 @@ def restaurant_pack() -> dict[str, Any]:
                         "name": "x_invoice_ref",
                         "ttype": "char",
                         "string": "External Invoice Ref",
-                        "help": "Link-only — wire to account.move manually",
+                        "help": "Link-only, wire to account.move manually",
                     },
                 ],
             },

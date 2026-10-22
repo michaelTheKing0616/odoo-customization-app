@@ -79,7 +79,7 @@ def module_spec_fragment(*, model: str, folder_id: int) -> dict[str, Any]:
         "depends_add": ["documents"],
         "review_note": (
             "Module path: attach business documents to Documents folder via server action / "
-            "automation — our suggestion only; verify field names on your Odoo major."
+            "automation, our suggestion only; verify field names on your Odoo major."
         ),
         "automations": [
             {

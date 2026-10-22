@@ -115,3 +115,37 @@ def list_views(
 ) -> list[ViewOut]:
     client = _client(connection_id, db)
     return [ViewOut.model_validate(v.model_dump()) for v in client.list_views(model_name)]
+
+
+FILL_MAX_FIELDS = 40
+
+
+def field_fill_rates(client, model_name: str, fields: list[str]) -> dict:
+    """Q2 touch 56: how full each field is in real data. Read-only counts, no record contents."""
+    names = [f for f in dict.fromkeys(fields) if f and f.replace("_", "").isalnum()][:FILL_MAX_FIELDS]
+    total = int(client.execute_kw(model_name, "search_count", [[]]))
+    fill: dict[str, float | None] = {}
+    for name in names:
+        if total == 0:
+            fill[name] = None
+            continue
+        try:
+            n = int(client.execute_kw(model_name, "search_count", [[(name, "!=", False)]]))
+            fill[name] = round(n / total, 3)
+        except Exception:  # non-stored or non-searchable field: say nothing rather than guess
+            fill[name] = None
+    return {"model": model_name, "total": total, "fill": fill}
+
+
+@router.get("/models/{model_name}/fill")
+def get_field_fill(
+    connection_id: str,
+    model_name: str,
+    fields: str = Query(..., description="Comma-separated field names, up to 40"),
+    db: Session = Depends(get_db),
+) -> dict:
+    client = _client(connection_id, db)
+    try:
+        return field_fill_rates(client, model_name, fields.split(","))
+    except OdooClientError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc

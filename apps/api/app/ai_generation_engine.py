@@ -231,10 +231,10 @@ def classify_generation(prompt: str) -> GenerationPlan:
                 honesty=(
                     "FX / rate-provider CLASS — Online cannot promote Python. "
                     "Use external_connector runbook to write stock res.currency.rate "
-                    "(parameterized currencies), or promote Option A on Odoo.sh / "
+                    "(parameterized currencies), or promote custom code on Odoo.sh / "
                     "self-host after sandbox prove. Never Prefer / Nigeria Autopilot "
-                    "stock_reuse alone for live HTTP fetch. Completeness ≠ Cert. "
-                    "Promote stays human."
+                    "stock_reuse alone for live HTTP fetch. A complete draft is not the same as certified. "
+                    "Publishing stays a step you confirm."
                 ),
                 notes=["option_a_authored: fx_rate_external_connector"],
             )
@@ -244,12 +244,12 @@ def classify_generation(prompt: str) -> GenerationPlan:
             module_delivery=True,
             needs_clarification=clarify,
             honesty=(
-                "FX / rate-provider CLASS — Option A module writes stock "
+                "FX / rate-provider CLASS — Custom-code module writes stock "
                 "res.currency.rate (parameterized currencies). CBN is the earned "
                 "gold shortcut inside this class; generic providers are LLM/scaffold "
                 "authored under gates. Never Prefer / Nigeria Autopilot stock_reuse "
                 "alone for live HTTP. Online → connector/.sh alternatives. "
-                "Completeness ≠ Cert. Promote stays human."
+                "A complete draft is not the same as certified. Publishing stays a step you confirm."
             ),
             notes=["option_a_authored: fx_rate_provider_sync"],
         )
@@ -266,10 +266,10 @@ def classify_generation(prompt: str) -> GenerationPlan:
             module_delivery=True,
             needs_clarification=clarify,
             honesty=(
-                "Report/document layout address scrub CLASS — Option A QWeb inherit "
+                "Report/document layout address scrub CLASS — custom code QWeb inherit "
                 "on stock delivery slip / picking / invoice / sale reports. "
                 "Strip commercial partner name; keep address. Not Contacts Prefer "
-                "delivery-notes. Module → sandbox prove → human Promote."
+                "delivery-notes. Module → sandbox prove → you publish."
             ),
             notes=["option_a_authored: report_layout_address_scrub"],
         )
@@ -283,11 +283,11 @@ def classify_generation(prompt: str) -> GenerationPlan:
             module_delivery=False,
             needs_clarification=clarify,
             honesty=(
-                f"This brief is stock-first with no custom residual. "
+                f"This brief is built-in apps first with no custom code. "
                 f"Community {apps} already cover cashiers, quotations, and invoices. "
                 "Draft Studio will not invent x_receipt, invoice Pay/QR, or a POS print "
                 "module until you explicitly ask. Use Job Autopilot for sandbox install "
-                "and quote→invoice RPC smoke. Completeness ≠ Cert. Promote stays human."
+                "and quote→invoice RPC smoke. A complete draft is not the same as certified. Publishing stays a step you confirm."
             ),
             notes=["stock_reuse: residual none"],
         )
@@ -319,7 +319,7 @@ def classify_generation(prompt: str) -> GenerationPlan:
             honesty=(
                 "This ask needs an installable module (Python / QWeb / HTTP / OWL). "
                 "The LLM authors the module; zip and sandbox stay locked until the "
-                "authoring gate passes. Completeness ≠ Cert. Promote stays human."
+                "authoring gate passes. A complete draft is not the same as certified. Publishing stays a step you confirm."
             ),
             notes=["option_a_authored"],
         )
@@ -334,8 +334,8 @@ def classify_generation(prompt: str) -> GenerationPlan:
                 module_delivery=True,
                 needs_clarification=clarify,
                 honesty=(
-                    "This ask is Option A gold invoice extras (Pay now + QR). "
-                    "Module → sandbox prove → human Promote."
+                    "This ask is custom-code gold invoice extras (Pay now + QR). "
+                    "Module → sandbox prove → you publish."
                 ),
                 notes=["gold: invoice_qweb"],
             )
@@ -345,7 +345,7 @@ def classify_generation(prompt: str) -> GenerationPlan:
             module_delivery=True,
             needs_clarification=clarify,
             honesty=(
-                "This ask is Option A (module → sandbox prove → human Promote). "
+                "This ask is custom code (module → sandbox prove → you publish). "
                 "Live Apply will not finish OWL/QWeb/Python by itself. "
                 "Zip stays locked until the authoring gate passes."
             ),
@@ -371,7 +371,7 @@ def classify_generation(prompt: str) -> GenerationPlan:
             gold_artifact_id="invoice_qweb" if invoice_gold else None,
             module_delivery=module or invoice_gold,
             needs_clarification=clarify,
-            honesty="Custom residual plus Option A surfaces. Completeness can be 10.0; Cert stays Reject until sandbox prove.",
+            honesty="Custom code plus custom code surfaces. Completeness can be 10.0; Cert stays Reject until sandbox prove.",
             notes=["mixed live+option_a"],
         )
 
@@ -380,16 +380,16 @@ def classify_generation(prompt: str) -> GenerationPlan:
     notes = ["residual_app"]
     if residual_kind == "named":
         honesty = (
-            f"Stock Community apps first; custom residual is {residual_text}. "
+            f"{_stock_apps_phrase()} first; custom code is {residual_text}. "
             "Inherit stock hosts when a field/process fits; new x_* only when stock "
             "cannot carry the document. No parallel invoice/partner/employee. "
-            "Completeness ≠ Cert. Promote stays human."
+            "A complete draft is not the same as certified. Publishing stays a step you confirm."
         )
         notes = ["residual_app: named residual"]
     elif grain in {"field_pack", "feature_slice"}:
         honesty = (
             "This is an inherit-and-wire ask on a stock host (not a new app). "
-            "Live Apply lands metadata; Option A stays module → sandbox → promote."
+            "Live Apply lands metadata; custom code stays module → sandbox → promote."
         )
         notes = [f"residual_app: {grain}"]
     return GenerationPlan(
@@ -590,7 +590,7 @@ def _seed_stock_reuse(prompt: str, plan: GenerationPlan) -> dict[str, Any]:
         "automations": [],
         "smart_buttons": [],
         "grain": "full_app",
-        "grain_label": "Stock-first — no custom residual",
+        "grain_label": "Stock-first — no custom code",
         "_component": False,
         "_ambition": "thin",
         "_user_prompt": prompt,
@@ -629,7 +629,7 @@ def _seed_stock_reuse(prompt: str, plan: GenerationPlan) -> dict[str, Any]:
 
 
 def option_a_settings_from_draft(draft: dict[str, Any]) -> dict[str, Any] | None:
-    """Inherit-host fields for the Option A honesty pane (not an x_receipt form)."""
+    """Inherit-host fields for the custom-code honesty pane (not an x_receipt form)."""
     ir = draft.get("_generation_engine")
     if not isinstance(ir, dict):
         return None
@@ -662,3 +662,10 @@ def residual_form_preview(draft: dict[str, Any]) -> dict[str, Any] | None:
     from app.preview_views import residual_form_preview as _build
 
     return _build(draft)
+
+
+def _stock_apps_phrase() -> str:
+    """Edition-aware lead for the internal honesty note (no Community assumption)."""
+    from app.ai_conversation.grounding import stock_apps_phrase
+
+    return stock_apps_phrase()

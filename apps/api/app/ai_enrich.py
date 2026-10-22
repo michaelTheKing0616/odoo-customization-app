@@ -1,4 +1,4 @@
-"""Post-process ModuleSpec drafts: menus, actions, default views, statusbar hints."""
+"""Post-process App plan drafts: menus, actions, default views, statusbar hints."""
 
 from __future__ import annotations
 

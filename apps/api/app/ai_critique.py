@@ -1,4 +1,4 @@
-"""Self-critique pass — evaluate ModuleSpec against production checklist, then repair.
+"""Self-critique pass — evaluate app plan against production checklist, then repair.
 
 Small models are more reliable at yes/no evaluation than open-ended generation.
 Deterministic completeness gaps always run; LLM critique is optional enrichment.
@@ -15,6 +15,7 @@ from typing import Any
 from app.ai_rules import completeness_checklist
 from app.ai_depth import classify_ambition, depth_gaps
 from app.ai_prompt_constants import STEP_TEMPERATURES, append_prompt_blocks
+from app.live_schema_context import SchemaPacket, draft_grounding
 from app.llm_provider import LLMError, LLMProvider, get_llm_provider
 from app.settings import settings
 
@@ -57,8 +58,10 @@ def llm_critique(
     draft: dict[str, Any],
     *,
     user_prompt: str = "",
+    schema_packet: SchemaPacket | None = None,
 ) -> dict[str, Any]:
     """Ask the model to score readiness and list concrete missing pieces."""
+    grounding = draft_grounding(schema_packet)
     slim = {
         "technical_name": draft.get("technical_name"),
         "display_name": draft.get("display_name"),
@@ -90,7 +93,7 @@ def llm_critique(
         "completeness": draft.get("_completeness"),
     }
     system = (
-        "You evaluate Odoo Community ModuleSpec drafts for PRODUCTION DEPTH, not just "
+        "You evaluate Odoo Community App plan drafts for PRODUCTION DEPTH, not just "
         "whether menus exist. Reply ONLY with JSON:\n"
         "{"
         '"ready": false, '
@@ -160,12 +163,12 @@ def llm_critique(
     raw, _ = llm_json_with_budget(
         provider,
         "critique",
-        prompt,
+        grounding.prompt(prompt),
         system=system,
         reasoning=False,
         temperature=STEP_TEMPERATURES["critique"],
     )
-    data = _extract_json(raw)
+    data, _dropped = grounding.filter(_extract_json(raw))
     if not isinstance(data, dict):
         raise ValueError("critique response was not a JSON object")
     return data
@@ -339,7 +342,7 @@ def _apply_missing_automations(draft: dict[str, Any], missing: list[Any]) -> lis
 
 
 def _verify_repair_in_spec(draft: dict[str, Any], repair: str) -> bool:
-    """Return True when a logged repair is present in the final ModuleSpec."""
+    """Return True when a logged repair is present in the final app plan."""
     m = _REPAIR_ADDED_FIELD.match(repair)
     if m:
         mid, fname = m.group(1), m.group(2)
@@ -539,7 +542,7 @@ def apply_critique_repairs(
     skipped = len(critique.get("missing_models") or []) - len(filtered)
     if skipped:
         suggestions.append(
-            f"critique: skipped {skipped} hollow/thin/redundant missing_model(s)"
+            f"critique: skipped {skipped} hollow/thin/redundant missing_models"
         )
     applied.extend(_apply_missing_models(out, filtered))
     applied.extend(_apply_missing_automations(out, critique.get("missing_automations") or []))

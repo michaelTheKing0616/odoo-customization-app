@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import os
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
+from app.hosting import connection_hosting
 from app.account_service import AccountError
 from app.capabilities import capabilities_from_version, probe_web_base_url, sample_installed_modules, tier_matrix_response
 from app.crypto import encrypt_secret
@@ -65,6 +68,9 @@ def _connection_out(row: OdooConnection) -> ConnectionOut:
         db_name=row.db_name,
         username=row.username,
         server_version=row.server_version,
+        hosting=connection_hosting(row),
+        group_label=getattr(row, "group_label", None),
+        is_test_copy=getattr(row, "is_test_copy", None),
         last_seen_version=row.last_seen_version,
         upgrade_detected=bool(row.upgrade_detected),
         upgrade_detected_at=row.upgrade_detected_at,
@@ -72,7 +78,9 @@ def _connection_out(row: OdooConnection) -> ConnectionOut:
         writes_paused=bool(row.writes_paused),
         created_at=row.created_at,
         updated_at=row.updated_at,
-        capabilities=capabilities_from_version(row.server_version, url=row.url),
+        capabilities=capabilities_from_version(
+            row.server_version, url=row.url, saved_hosting=getattr(row, "hosting", None)
+        ),
     )
 
 
@@ -137,6 +145,9 @@ def create_connection(
         username=body.username,
         secret_encrypted=encrypt_secret(body.password),
         server_version=server_version,
+        hosting=body.hosting,
+        group_label=(body.group_label or None),
+        is_test_copy=body.is_test_copy,
         last_seen_version=server_version,
         write_mode=os.environ.get("TEST_DEFAULT_WRITE_MODE", "observer"),
         workspace_id=auth.workspace_id if auth.workspace_scoped else None,
@@ -200,6 +211,12 @@ def update_connection(
         row.url = normalize_odoo_base_url(body.url)
     if body.db_name is not None:
         row.db_name = body.db_name
+    if body.hosting is not None:
+        row.hosting = body.hosting
+    if body.group_label is not None:
+        row.group_label = body.group_label.strip() or None
+    if body.is_test_copy is not None:
+        row.is_test_copy = body.is_test_copy
     if body.username is not None:
         row.username = body.username
     if body.password is not None:
@@ -369,7 +386,8 @@ def probe_connection(connection_id: str, db: Session = Depends(get_db)) -> Probe
             uid=uid,
             server_version=row.server_version,
             capabilities=capabilities_from_version(
-                row.server_version, url=row.url, installed_modules=mods
+                row.server_version, url=row.url, installed_modules=mods,
+                saved_hosting=getattr(row, "hosting", None),
             ),
             upgrade_detected=watch.upgrade_detected,
             health_job_id=watch.health_job_id,
@@ -569,3 +587,181 @@ def patch_studio_prefs_route(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     prefs = set_studio_prefs(db, row, flash_ast_enrich=body.flash_ast_enrich)
     return StudioPrefsOut(**prefs)
+
+
+# ---------------------------------------------------------------- live snapshot (read-only)
+
+_CHANGE_KEYS = (
+    "custom_fields",
+    "custom_models",
+    "views_community",
+    "views_enterprise_types",
+    "menus_actions",
+    "security_acl_rules",
+    "xpath_inherit",
+    "base_automation",
+    "python_module_install",
+    "module_deploy",
+    "code_server_actions",
+)
+
+
+_LIMIT_LABELS = {
+    "python_module_install": "custom code modules",
+    "module_deploy": "installing your own modules",
+    "code_server_actions": "code-based server actions",
+}
+
+
+def _snapshot_call(row: OdooConnection, db: Session):
+    client = client_from_connection(row, db=db)
+
+    def call(model: str, method: str, args: list, kwargs: dict):
+        return client.execute_kw(model, method, args, kwargs)
+
+    return call
+
+
+def _unreachable(exc: Exception) -> HTTPException:
+    return HTTPException(
+        status_code=502,
+        detail="Couldn't reach your database. Check that Odoo is running and the connection details are still valid.",
+    )
+
+
+@router.get("/{connection_id}/snapshot")
+def get_connection_snapshot(
+    connection_id: str,
+    db: Session = Depends(get_db),
+    auth: WorkspaceAuth = Depends(get_workspace_auth),
+    refresh: bool = Query(False, description="Drop this connection's cached snapshot first (after an Apply)."),
+) -> dict:
+    """Read-only, metadata-only picture of the connected database (cached per connection)."""
+    from app.odoo_snapshot import clear_snapshot_cache, connection_overview
+
+    row = get_scoped_connection_or_404(db, connection_id, auth)
+    if refresh is True:
+        clear_snapshot_cache(str(row.id))
+    try:
+        _call = _snapshot_call(row, db)
+        overview = connection_overview(_call, str(row.id))
+    except OdooClientError as exc:
+        raise _unreachable(exc) from exc
+    if not overview["ok"]:
+        raise HTTPException(status_code=502, detail="Couldn't read your database's model list.")
+    matrix = None
+    if row.server_version:
+        try:
+            matrix = tier_matrix_response(
+                connection_id=connection_id,
+                url=row.url,
+                server_version=row.server_version,
+                installed_modules=overview["modules"],
+                use_cache=True,
+            )
+        except Exception:  # noqa: BLE001 - capability summary is additive
+            matrix = None
+    caps = {c.key: c for c in (matrix.capabilities if matrix else [])}
+    overview["hosting"] = matrix.hosting if matrix else "unknown"
+    overview["edition"] = matrix.edition if matrix and matrix.edition != "unknown" else overview["edition"]
+    overview["server_version"] = row.server_version or overview["series"]
+    overview["can_change"] = [
+        {"key": k, "available": caps[k].available, "reason": caps[k].reason}
+        for k in _CHANGE_KEYS
+        if k in caps
+    ]
+    # A plan limit is "being hit" only when this database is already customised
+    # (custom models or automations) and a code lane is closed on this plan.
+    customising = overview["counts"]["custom_models"] or overview["counts"]["automations"]
+    limits = [
+        {"key": k, "label": _LIMIT_LABELS[k]}
+        for k in _LIMIT_LABELS
+        if customising and k in caps and caps[k].available in {"no", "plan_gated"}
+    ]
+    from app.odoo_snapshot import overview_attention
+
+    overview["attention"] = overview_attention(_call, str(row.id), limits)
+    return overview
+
+
+@router.get("/{connection_id}/snapshot/models/{model}")
+def get_connection_snapshot_model(
+    connection_id: str,
+    model: str,
+    db: Session = Depends(get_db),
+    auth: WorkspaceAuth = Depends(get_workspace_auth),
+    refresh: bool = Query(False),
+) -> dict:
+    """Lazy per-model metadata: fields, view summary, server actions, rules, menus."""
+    import re as _re
+
+    from app.odoo_snapshot import model_detail
+
+    if not _re.fullmatch(r"[a-z_][a-z0-9_.]{0,63}", model):
+        raise HTTPException(status_code=422, detail="Invalid model name.")
+    row = get_scoped_connection_or_404(db, connection_id, auth)
+    if refresh is True:
+        from app.odoo_snapshot import clear_snapshot_cache
+
+        clear_snapshot_cache(str(row.id))
+    try:
+        detail = model_detail(_snapshot_call(row, db), str(row.id), model)
+    except OdooClientError as exc:
+        raise _unreachable(exc) from exc
+    if detail is None:
+        raise HTTPException(status_code=404, detail=f"{model} isn't in this database.")
+    return detail
+
+
+@router.get("/{connection_id}/live-check")
+def live_check(connection_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Connect page check list: version, sign-in rights, apps, outgoing mail (read-only)."""
+    row = db.get(OdooConnection, connection_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Connection not found")
+    rows: list[dict[str, Any]] = []
+
+    def add(key: str, label: str, ok: bool | None, detail: str) -> None:
+        rows.append({"key": key, "label": label, "ok": ok, "detail": detail})
+
+    try:
+        client = client_from_connection(row)
+    except Exception as exc:  # noqa: BLE001
+        add("version", "Odoo version", False, f"Could not sign in: {exc}"[:200])
+        return {"rows": rows, "hosting": connection_hosting(row)}
+    add("version", "Odoo version", bool(row.server_version), row.server_version or "Unknown, run a check again")
+    try:
+        is_admin = bool(
+            client.execute_kw("res.users", "has_group", [[client.uid], "base.group_system"])
+            if hasattr(client, "uid")
+            else False
+        )
+    except Exception:  # noqa: BLE001 - older signature takes the group only
+        try:
+            is_admin = bool(client.execute_kw("res.users", "has_group", ["base.group_system"]))
+        except Exception:  # noqa: BLE001
+            is_admin = False
+    add(
+        "rights",
+        "Sign-in rights",
+        is_admin,
+        "Administrator, so setup changes can be made" if is_admin else "Not an administrator: Ingenium can read but most setup changes will be refused",
+    )
+    try:
+        n = client.execute_kw("ir.module.module", "search_count", [[("state", "=", "installed"), ("application", "=", True)]])
+        add("apps", "Installed apps", True, f"{n} app{'s' if n != 1 else ''} installed")
+    except Exception:  # noqa: BLE001
+        add("apps", "Installed apps", None, "Could not read the app list")
+    try:
+        m = client.execute_kw("ir.mail_server", "search_count", [[]])
+        hosted = connection_hosting(row) == "online"
+        ok = bool(m) or hosted
+        add(
+            "mail",
+            "Outgoing email",
+            ok,
+            "Odoo Online sends email for you" if hosted and not m else (f"{m} outgoing mail server{'s' if m != 1 else ''} set up" if m else "No outgoing mail server, so emails won't send"),
+        )
+    except Exception:  # noqa: BLE001
+        add("mail", "Outgoing email", None, "Could not read mail settings")
+    return {"rows": rows, "hosting": connection_hosting(row)}

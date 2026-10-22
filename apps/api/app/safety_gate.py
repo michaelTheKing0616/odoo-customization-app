@@ -187,7 +187,7 @@ class SafetyGate:
             raise SafetyGateError(
                 SafetyRefusal(
                     code="observer_mode",
-                    message="Connection is in Observer mode — unlock write mode before mutating Odoo.",
+                    message="Connection is in Observer mode, unlock write mode before mutating Odoo.",
                     options=["Enable standard write mode (admin+)", "Continue read-only analysis"],
                 )
             )

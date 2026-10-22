@@ -3,7 +3,9 @@
 The catalog in ``ops.py`` stays the source for base risk. This module raises
 that base for the logic rules and rejects the RT-25 patterns named in the
 engine spec: obfuscated imports, ``__class__``, ``__globals__``, getattr
-chains, and bombs. It does not execute the snippet and it does not call Odoo.
+chains, and bombs. It also builds the allowlisted public ORM values the
+existing change-set dispatcher sends for the logic family. It does not
+execute the snippet and it does not call Odoo.
 """
 
 from __future__ import annotations
@@ -160,6 +162,17 @@ def _outbound_or_mass(params: dict[str, Any], depth: int = 0) -> bool:
             if isinstance(item, dict) and _outbound_or_mass(item, depth + 1):
                 return True
     return False
+
+
+def sensitive_sequence(params: dict[str, Any] | None) -> bool:
+    """True when a sequence op is accounting, journal, or legal.
+
+    Inputs: op params. A missing dict is empty.
+    Outputs: True when an accounting, journal, or legal marker is set.
+    Side effects: none.
+    """
+    body = params if isinstance(params, dict) else {}
+    return _sensitive_sequence(body)
 
 
 def _sensitive_sequence(params: dict[str, Any]) -> bool:
@@ -338,6 +351,257 @@ def _bytecode_reasons(code: types.CodeType) -> set[str]:
             if instr.opname in {"IMPORT_NAME", "IMPORT_FROM"}:
                 reasons.add(OBFUSCATED_IMPORT)
     return reasons
+
+
+LOGIC_OP_TYPES: tuple[str, ...] = (
+    "server_action.create",
+    "server_action.update",
+    "automation.create",
+    "automation.update",
+    "automation.disable",
+    "cron.create",
+    "cron.update",
+    "cron.disable",
+    "sequence.create",
+    "sequence.update",
+    "mail_template.create",
+    "mail_template.update",
+    "activity_type.create",
+    "activity_type.update",
+    "stage.upsert",
+    "stage.reorder",
+    "stage.archive",
+    "config_record.upsert",
+)
+
+STAGE_MODEL_REQUIRED = "stage ops need a stage model"
+MODEL_REQUIRED = "model is required"
+STAGE_SEQUENCE_STEP = 10
+
+_LOGIC_TARGETS: dict[str, str] = {
+    "server_action": "ir.actions.server",
+    "automation": "base.automation",
+    "cron": "ir.cron",
+    "sequence": "ir.sequence",
+    "mail_template": "mail.template",
+    "activity_type": "mail.activity.type",
+}
+_LOGIC_WRITE_OPS = frozenset(
+    {
+        "server_action.update",
+        "automation.update",
+        "automation.disable",
+        "cron.update",
+        "cron.disable",
+        "sequence.update",
+        "mail_template.update",
+        "activity_type.update",
+        "stage.reorder",
+        "stage.archive",
+    }
+)
+_DISABLE_OPS = frozenset({"automation.disable", "cron.disable", "stage.archive"})
+_NEEDS_MODEL = frozenset({"server_action.create", "automation.create", "cron.create"})
+# Public fields copied from params. Anything else in params is not written.
+_LOGIC_KEYS: dict[str, tuple[str, ...]] = {
+    "server_action": ("name", "state", "code", "sequence"),
+    "automation": ("name", "trigger", "filter_domain", "filter_pre_domain", "active"),
+    "cron": (
+        "name",
+        "state",
+        "code",
+        "interval_number",
+        "interval_type",
+        "nextcall",
+        "priority",
+        "active",
+    ),
+    "sequence": (
+        "name",
+        "code",
+        "prefix",
+        "suffix",
+        "padding",
+        "number_increment",
+        "number_next",
+        "implementation",
+        "active",
+    ),
+    "mail_template": (
+        "name",
+        "subject",
+        "body_html",
+        "email_from",
+        "email_to",
+        "email_cc",
+        "partner_to",
+        "reply_to",
+        "lang",
+        "auto_delete",
+    ),
+    "activity_type": (
+        "name",
+        "summary",
+        "category",
+        "delay_count",
+        "delay_unit",
+        "icon",
+        "sequence",
+        "active",
+    ),
+    "stage": ("name", "sequence", "fold", "active", "description"),
+}
+_STAGE_MODELS = frozenset({"project.task.type"})
+
+
+def is_stage_model(model: str) -> bool:
+    """True when ``model`` names a stage table the stage ops may write.
+
+    Inputs: a technical model name.
+    Outputs: True for ``*.stage``, ``*_stage``, ``project.task.type``, or a
+    custom ``x_`` model whose name contains ``stage``. Anything else is False,
+    so a stage op cannot become a generic write on another model.
+    Side effects: none.
+    """
+    name = model.strip()
+    if not name:
+        return False
+    if name in _STAGE_MODELS or name.endswith((".stage", "_stage")):
+        return True
+    return name.startswith("x_") and "stage" in name
+
+
+def logic_target_model(op_type: str, params: dict[str, Any]) -> str:
+    """Public ORM model the executor writes for one logic op.
+
+    Inputs: catalog op type and resolved params. Stage and config_record
+    ops read ``model``. Stage defaults to ``project.task.type`` when omitted
+    (document choice: CRM/helpdesk stages must name their model explicitly).
+    Outputs: ``ir.actions.server``, ``base.automation``, ``ir.cron``,
+    ``ir.sequence``, ``mail.template``, ``mail.activity.type``, the stage
+    model, or ``params["model"]`` for config_record.
+    Side effects: none.
+    """
+    family = op_type.split(".", 1)[0]
+    if family == "stage":
+        return str(params.get("model") or "project.task.type").strip()
+    if op_type == "config_record.upsert":
+        return str(params.get("model") or "").strip()
+    return _LOGIC_TARGETS[family]
+
+
+def logic_write_op(op_type: str) -> bool:
+    """True when the op writes existing rows instead of creating one.
+
+    Inputs: catalog op type. ``stage.upsert`` and ``config_record.upsert``
+    are neither and are handled by the dispatcher.
+    Outputs: True for update, disable, reorder, and archive logic ops.
+    Side effects: none.
+    """
+    return op_type in _LOGIC_WRITE_OPS
+
+
+def logic_write_ids(params: dict[str, Any]) -> list[int]:
+    """Read write ids from logic-op params.
+
+    Inputs: op params. ``ids`` is a list of ints. ``id`` is one int. Bools
+    are rejected.
+    Outputs: the ids in the given order, or an empty list when none are usable.
+    Side effects: none.
+    """
+    raw = params.get("ids")
+    if isinstance(raw, list) and raw:
+        ids: list[int] = []
+        for item in raw:
+            if isinstance(item, bool) or not isinstance(item, int) or item <= 0:
+                return []
+            ids.append(item)
+        return ids
+    item = params.get("id")
+    if isinstance(item, bool) or not isinstance(item, int) or item <= 0:
+        return []
+    return [item]
+
+
+def logic_payload_issues(op_type: str, params: dict[str, Any]) -> list[str]:
+    """Payload preconditions the dispatcher checks before any port call.
+
+    Inputs: catalog op type and resolved params.
+    Outputs: ``model is required`` for server action, automation, and cron
+    create without a model, and for ``config_record.upsert`` without a model.
+    ``stage ops need a stage model`` when a stage op targets anything
+    ``is_stage_model`` refuses (after the ``project.task.type`` default).
+    Otherwise an empty list.
+    Side effects: none.
+    """
+    issues: list[str] = []
+    if op_type in _NEEDS_MODEL and not str(params.get("model") or "").strip():
+        issues.append(MODEL_REQUIRED)
+    if op_type == "config_record.upsert" and not str(params.get("model") or "").strip():
+        issues.append(MODEL_REQUIRED)
+    if op_type.startswith("stage.") and not is_stage_model(
+        str(params.get("model") or "project.task.type")
+    ):
+        issues.append(STAGE_MODEL_REQUIRED)
+    return issues
+
+
+def logic_values(op_type: str, params: dict[str, Any]) -> dict[str, Any]:
+    """Public ORM values for one logic op.
+
+    Inputs: catalog type and resolved params. Only the allowlisted public
+    fields for the target are copied. ``model`` becomes ``model_id`` (or
+    ``res_model`` on activity types). Stage ops also read a ``values`` dict.
+    ``config_record.upsert`` copies ``params["values"]`` as-is.
+    Outputs: a values dict the existing port can create or write. Disable and
+    archive ops write ``active`` false. Cron or server action code with no
+    state gets ``state`` code, so the row matches the R3 risk it was gated at.
+    Side effects: none. Does not call Odoo.
+    """
+    if op_type in _DISABLE_OPS:
+        return {"active": False}
+    if op_type == "config_record.upsert":
+        return dict(params.get("values") or {})
+    family = op_type.split(".", 1)[0]
+    keys = _LOGIC_KEYS[family]
+    values: dict[str, Any] = {key: params[key] for key in keys if params.get(key) is not None}
+    if family == "stage":
+        extra = params.get("values")
+        if isinstance(extra, dict):
+            for key in keys:
+                if extra.get(key) is not None:
+                    values[key] = extra[key]
+        return values
+    model = str(params.get("model") or "").strip()
+    if model:
+        values["res_model" if family == "activity_type" else "model_id"] = model
+    if family in {"server_action", "cron"} and values.get("code") and "state" not in values:
+        values["state"] = "code"
+    if family == "automation":
+        linked = params.get("action_server_ids")
+        if isinstance(linked, list) and linked and all(
+            isinstance(item, int) and not isinstance(item, bool) for item in linked
+        ):
+            values["action_server_ids"] = [(6, 0, list(linked))]
+    if op_type == "mail_template.create" and "name" not in values:
+        values["name"] = "template"
+    if not values:
+        values["name"] = params.get("name") or op_type
+    return values
+
+
+def stage_reorder_writes(params: dict[str, Any]) -> list[tuple[int, dict[str, Any]]]:
+    """One ``sequence`` write per stage id, in the order given.
+
+    Inputs: ``stage.reorder`` params with ``ids`` (or one ``id``).
+    Outputs: ``(id, {"sequence": n})`` pairs, stepping by
+    ``STAGE_SEQUENCE_STEP`` from the first id. Empty when no id is usable.
+    Side effects: none.
+    """
+    return [
+        (stage_id, {"sequence": (index + 1) * STAGE_SEQUENCE_STEP})
+        for index, stage_id in enumerate(logic_write_ids(params))
+    ]
 
 
 def _snippets(value: Any, depth: int = 0) -> list[str]:

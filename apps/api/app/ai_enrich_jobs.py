@@ -57,7 +57,7 @@ def needs_draft_llm_retry(
     prompt: str = "",
     failed_steps: list[str] | None = None,
 ) -> bool:
-    """True when Create draft never got a full LLM ModuleSpec (or staged steps failed)."""
+    """True when Create draft never got a full LLM app plan (or staged steps failed)."""
     from app.ai_document_shape import draft_needs_residual_recovery
 
     status = draft.get("_llm_status") if isinstance(draft.get("_llm_status"), dict) else {}
@@ -123,7 +123,7 @@ def _merge_llm_draft_retry(
     *,
     prompt: str,
 ) -> tuple[dict[str, Any], list[str]]:
-    """Prefer a richer LLM ModuleSpec when Retry succeeded; keep residual otherwise."""
+    """Prefer a richer LLM app plan when Retry succeeded; keep residual otherwise."""
     notes: list[str] = []
     llm_fields = _field_count(llm_draft)
     base_fields = _field_count(working)
@@ -148,7 +148,7 @@ def _merge_llm_draft_retry(
     if prompt and not llm_draft.get("_user_prompt"):
         llm_draft["_user_prompt"] = prompt
     notes.append(
-        f"enrich: draft_llm replaced residual with LLM ModuleSpec ({llm_fields} fields)"
+        f"enrich: draft_llm replaced residual with LLM app plan ({llm_fields} fields)"
     )
     return llm_draft, notes
 
@@ -161,7 +161,7 @@ def _run_draft_llm_retry(
     db_factory: Callable[[], Session],
     progress: Callable[[dict[str, Any]], None],
 ) -> tuple[dict[str, Any], list[str]]:
-    """Re-attempt full ModuleSpec LLM path that Create draft missed."""
+    """Re-attempt full app plan LLM path that Create draft missed."""
     from app.ai_draft_jobs import _load_catalog_for_connection, _resolve_odoo_client
     from app.ai_ollama import draft_module_from_prompt
 

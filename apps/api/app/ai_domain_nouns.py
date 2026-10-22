@@ -116,6 +116,14 @@ def extract_prompt_nouns(user_prompt: str) -> list[str]:
     return out
 
 
+def _brief_models(draft: dict[str, Any]) -> list[Any]:
+    """Draft models minus AI-suggested supporting models (never brief-named coverage)."""
+    return [
+        m for m in (draft.get("models") or [])
+        if not (isinstance(m, dict) and m.get("suggested"))
+    ]
+
+
 def _model_text_blob(draft: dict[str, Any]) -> str:
     cp = draft.get("connect_points") if isinstance(draft.get("connect_points"), dict) else {}
     parts: list[str] = [
@@ -123,7 +131,7 @@ def _model_text_blob(draft: dict[str, Any]) -> str:
         str(cp.get("host_model") or ""),
         str(cp.get("host_label") or ""),
     ]
-    for m in draft.get("models") or []:
+    for m in _brief_models(draft):
         if not isinstance(m, dict):
             continue
         parts.append(str(m.get("model") or ""))
@@ -195,7 +203,7 @@ def _noun_resolved(
     )
     known_models = {
         str(m.get("model"))
-        for m in (draft.get("models") or [])
+        for m in _brief_models(draft)
         if isinstance(m, dict) and m.get("model")
     }
     if mapped and mapped in known_models:
@@ -204,7 +212,7 @@ def _noun_resolved(
         return True
     # Contacts/customer covered by any res.partner M2O on the residual.
     if noun in {"contact", "customer", "client", "partner", "vendor", "supplier"}:
-        for model in draft.get("models") or []:
+        for model in _brief_models(draft):
             if not isinstance(model, dict):
                 continue
             for field in model.get("fields") or []:
@@ -218,7 +226,7 @@ def _noun_resolved(
         depends = {str(d).lower() for d in (draft.get("depends") or [])}
         if "mail" in depends:
             return True
-        for model in draft.get("models") or []:
+        for model in _brief_models(draft):
             if not isinstance(model, dict):
                 continue
             mixins = {str(x) for x in (model.get("mixins") or [])}

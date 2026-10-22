@@ -9,7 +9,7 @@ from app.db import get_db
 from app.expert.ask import ask_expert, expert_assist_enabled
 from app.expert.chatter_bridge import post_expert_note_to_chatter
 from app.expert.explain import explain_model_or_field
-from app.expert.nl_search import nl_search
+from app.expert.nl_search import find_records, nl_search
 from app.expert.suggested_prompts import suggested_prompts_for_context
 from app.llm_provider import LLMError
 from app.schemas import ExpertAskBody, ExpertAskOut, ExpertCitationOut
@@ -78,6 +78,7 @@ def expert_ask(body: ExpertAskBody, db: Session = Depends(get_db)) -> ExpertAskO
             ui_context=body.ui_context,
             conversation=[t.model_dump() for t in body.conversation],
             client=client,
+            progress_run_id=body.progress_run_id,
         )
     except LLMError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
@@ -153,6 +154,8 @@ def expert_suggested_prompts(
 @router.post("/nl-search", response_model=ExpertNLSearchOut)
 def expert_nl_search(body: ExpertNLSearchBody, db: Session = Depends(get_db)) -> ExpertNLSearchOut:
     models: list[dict] = []
+    client = None
+    row = None
     try:
         from app.odoo_service import client_from_connection, get_connection_or_404
 
@@ -164,7 +167,12 @@ def expert_nl_search(body: ExpertNLSearchBody, db: Session = Depends(get_db)) ->
         ]
     except Exception:  # noqa: BLE001
         models = []
-    result = nl_search(body.query, connection_id=body.connection_id, models=models)
+        client = None
+        row = None
+    records: list[dict] = []
+    if client is not None and len((body.query or "").strip()) >= 2:
+        records = find_records(client, body.query, base_url=str(getattr(row, "url", "") or ""), available={m["model"] for m in models})
+    result = nl_search(body.query, connection_id=body.connection_id, models=models, records=records)
     return ExpertNLSearchOut(
         query=result.query,
         hits=[

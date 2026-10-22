@@ -1,4 +1,4 @@
-"""Serialize a proven sandbox Autopilot run into a Config Packet."""
+"""Serialize a proven sandbox Autopilot run into a config summary."""
 
 from __future__ import annotations
 

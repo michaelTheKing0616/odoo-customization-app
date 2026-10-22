@@ -5,25 +5,37 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ConnectionCreate(BaseModel):
+    # Pasted keys often carry a trailing newline/space; Odoo then rejects them.
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     name: str = Field(..., min_length=1, max_length=200)
     url: str = Field(..., min_length=1, max_length=500, examples=["http://127.0.0.1:8069"])
     db_name: str = Field(..., min_length=1, max_length=200)
     username: str = Field(..., min_length=1, max_length=200)
     password: str = Field(..., min_length=1, description="Password or API key")
     verify: bool = Field(True, description="Probe Odoo 19 before saving")
+    hosting: Literal["online", "odoo_sh", "self_hosted"] | None = None
+    group_label: str | None = Field(None, max_length=80)
+    is_test_copy: bool | None = None
 
 
 class ConnectionUpdate(BaseModel):
+    # Pasted keys often carry a trailing newline/space; Odoo then rejects them.
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     name: str | None = Field(None, min_length=1, max_length=200)
     url: str | None = Field(None, min_length=1, max_length=500)
     db_name: str | None = Field(None, min_length=1, max_length=200)
     username: str | None = Field(None, min_length=1, max_length=200)
     password: str | None = Field(None, min_length=1)
     verify: bool = True
+    hosting: Literal["online", "odoo_sh", "self_hosted"] | None = None
+    group_label: str | None = Field(None, max_length=80)
+    is_test_copy: bool | None = None
 
 
 class UnsupportedCapabilityOut(BaseModel):
@@ -285,6 +297,9 @@ class ConnectionOut(BaseModel):
     db_name: str
     username: str
     server_version: str | None
+    hosting: str | None = None
+    group_label: str | None = None
+    is_test_copy: bool | None = None
     last_seen_version: str | None = None
     upgrade_detected: bool = False
     upgrade_detected_at: datetime | None = None
@@ -730,7 +745,7 @@ class PromoteModuleBody(BaseModel):
         None, description="From sandbox/run — required unless run_sandbox=true"
     )
     run_sandbox: bool = Field(
-        False, description="If true, run sandbox first then promote on success"
+        False, description="If true, run sandbox first then publish on success"
     )
     confirm_advanced: bool = False
     confirm_phrase: str | None = None
@@ -765,6 +780,8 @@ class InstallCommunityModuleBody(BaseModel):
     """Install a stock Community app (sale, product, …) for Draft Studio reuse."""
 
     module_name: str = Field(..., min_length=1, max_length=120)
+    # Preview only: report whether it can install and what it is, without installing.
+    dry_run: bool = False
 
 
 class InstallCommunityModuleOut(BaseModel):
@@ -1173,7 +1190,7 @@ class LibraryStatsOut(BaseModel):
 class LibraryExportBody(BaseModel):
     technical_name: str = Field("library_mgmt", min_length=2, max_length=64, pattern=r"^[a-z][a-z0-9_]*$")
     display_name: str = Field("Library Management", min_length=1, max_length=200)
-    fines: bool = Field(True, description="Include Option A fine automation + model methods")
+    fines: bool = Field(True, description="Include custom code fine automation + model methods")
     reminders: bool = Field(True, description="Include mail template + overdue ir.cron")
     multi_company: bool = Field(
         False,
@@ -1193,7 +1210,7 @@ class ProtectedModuleRefusal(BaseModel):
 
 
 class AiDraftModuleBody(BaseModel):
-    prompt: str = Field(..., min_length=3, max_length=4000)
+    prompt: str = Field(..., min_length=3, max_length=50000)
     connection_id: str | None = Field(
         None,
         description="Optional connection — loads sample models for reuse context",
@@ -1232,7 +1249,7 @@ class AiDraftModuleBody(BaseModel):
     )
     host_model: str | None = Field(
         None,
-        description="Override detected host model for component grain",
+        description="Override detected existing form for component grain",
     )
     connect_points: dict | None = Field(
         None,
@@ -1336,8 +1353,8 @@ class AiEnrichDraftBody(BaseModel):
 
 
 class AiReapplyReuseBody(BaseModel):
-    prompt: str = Field(..., min_length=3, max_length=4000)
-    draft: dict = Field(..., description="Existing ModuleSpec draft JSON")
+    prompt: str = Field(..., min_length=3, max_length=50000)
+    draft: dict = Field(..., description="Existing App plan draft JSON")
     connection_id: str | None = None
     reuse_models: list[str] = Field(default_factory=list)
     rejected_reuse_models: list[str] = Field(default_factory=list)
@@ -1380,7 +1397,7 @@ class ModuleSpecApplyOut(BaseModel):
 
 
 class ModuleSpecWalkthroughBody(BaseModel):
-    spec: dict = Field(..., description="Applied ModuleSpec (models + fields)")
+    spec: dict = Field(..., description="Applied app plan (models + fields)")
     confirm_advanced: bool = False
     confirm_phrase: str | None = None
 
@@ -1402,7 +1419,7 @@ class ModuleSpecImportOut(BaseModel):
     custom_code_blocks: list[dict] = Field(default_factory=list)
     source: str = ""
     note: str = (
-        "Imported into ModuleSpec — review in visual editor before Generate UI / Apply."
+        "Imported into app plan — review in visual editor before Generate UI / Apply."
     )
 
 
@@ -1424,6 +1441,11 @@ class ExpertAskBody(BaseModel):
     connection_id: str | None = None
     ui_context: dict | None = None
     conversation: list[ExpertConversationTurn] = Field(default_factory=list)
+    progress_run_id: str | None = Field(
+        default=None,
+        max_length=128,
+        description="Client run id for stage-accurate progress (T4-PROG)",
+    )
 
 
 class ExpertCitationOut(BaseModel):
@@ -1448,7 +1470,7 @@ class ExpertAskOut(BaseModel):
 
 
 class ExpertDraftReviewBody(BaseModel):
-    draft: dict = Field(..., description="ModuleSpec draft JSON")
+    draft: dict = Field(..., description="App plan draft JSON")
     user_prompt: str = ""
     connection_id: str | None = None
     apply_fixes: bool = False

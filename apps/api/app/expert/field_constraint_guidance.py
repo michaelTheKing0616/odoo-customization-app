@@ -70,22 +70,22 @@ def try_rule_based_required_field_guidance(
         "",
         "**When dependencies are met** (model exists, comodel exists, user has write access):",
         "",
-        f"1. **Empty table (no rows on `{src}` yet)** — install / metadata save usually succeeds. "
+        f"1. **Empty table (no rows on `{src}` yet)**, install / metadata save usually succeeds. "
         "PostgreSQL adds a nullable FK column first; Odoo enforces `required` at the **ORM/form** "
         "layer on create/write. Existing-record pressure is low.",
         "",
-        "2. **Table already has rows** — this is where it breaks:",
+        "2. **Table already has rows**, this is where it breaks:",
         "   - **Module `-i` / column add with `NOT NULL` and no default** → database migration "
         "error (`column contains null values`) unless Odoo/your module supplies a default or "
         "staged migration.",
-        "   - **Metadata save in Designer / Models & Fields** — Odoo typically **blocks** marking "
+        "   - **Metadata save in Designer / Models & Fields**, Odoo typically **blocks** marking "
         "the field required until you provide a **default** or backfill existing rows (platform UI "
         "may prompt for a default value).",
-        "   - **View save alone** does not create the required constraint on the column — but the "
+        "   - **View save alone** does not create the required constraint on the column, but the "
         "form will refuse create/save when the required field is empty.",
         "",
         "3. **Existing records do not auto-block module install** if the field is added as "
-        "nullable first and required only at UI/ORM level — but they **will block** promoting a "
+        "nullable first and required only at UI/ORM level, but they **will block** promoting a "
         "DB-level NOT NULL without backfill.",
         "",
         "**Recommended safe sequence:**",
@@ -94,13 +94,13 @@ def try_rule_based_required_field_guidance(
         "3. Set `required=True` (and optionally `ondelete` policy) once every row has a value.",
         "",
         "**View save vs module install:** view XML can show the field as required in the form "
-        "(`required=\"1\"`) even when the field definition is not required — that affects UI "
+        "(`required=\"1\"`) even when the field definition is not required, that affects UI "
         "validation only. Module/field metadata `required=True` affects ORM create/write.",
     ]
 
     if connection_id:
         lines.append(
-            f"\nBuilder: `/connections/{connection_id}/designer?model={src}` — add the field "
+            f"\nBuilder: `/connections/{connection_id}/designer?model={src}`, add the field "
             "optional first, backfill, then toggle required."
         )
 

@@ -1,4 +1,4 @@
-"""Diff a Config Packet against a client fingerprint (dry-run, no writes)."""
+"""Diff a config summary against a client fingerprint (dry-run, no writes)."""
 
 from __future__ import annotations
 
@@ -187,7 +187,7 @@ def diff_packet(packet: ConfigPacket, fingerprint: InstanceFingerprint) -> Confi
                 target="res.company",
                 detail=(
                     "Paperformat / colors / stock report_header+footer "
-                    "(logo stays a human upload; custom QWeb is Option A)"
+                    "(logo stays a human upload; custom QWeb is custom code)"
                 ),
                 risky=False,
             )

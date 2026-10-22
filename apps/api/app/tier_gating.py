@@ -187,7 +187,7 @@ def online_python_promote_gating() -> GatingCallout:
         title="Python module promote isn't available on Odoo Online",
         why=(
             "Odoo Online cannot install custom Python modules on the filesystem — only "
-            "metadata/data import paths are supported. Option A Python needs .sh / "
+            "metadata/data import paths are supported. custom-code Python needs .sh / "
             "self-host; FX/HTTP providers can use an external connector instead."
         ),
         options=alts,
@@ -236,11 +236,11 @@ def deployment_panel(ctx: TierContext, *, technical_name: str = "custom_module")
         "tier": "onprem",
         "title": "Self-hosted promote path",
         "body": (
-            "Validate in sandbox, then promote to this connection's filesystem or use the "
+            "Validate in sandbox, then publish to this connection's filesystem or use the "
             "existing hub promote flow."
         ),
         "options": [
-            "Run sandbox validation before promote.",
+            "Run sandbox validation before publish.",
             "Prefer a matching-major sandbox (same Odoo major as this connection).",
         ],
         "include_deploy_doc": False,
@@ -267,10 +267,12 @@ def gating_context_for_connection(
     server_version: str | None,
     installed_modules: list[str] | None = None,
     web_base_url: str | None = None,
+    saved_hosting: str | None = None,
 ) -> TierContext:
     return build_tier_context(
         url=url,
         server_version=server_version,
         installed_modules=installed_modules,
         web_base_url=web_base_url,
+        saved_hosting=saved_hosting,
     )

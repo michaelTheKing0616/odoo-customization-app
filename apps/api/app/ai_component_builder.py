@@ -1,4 +1,4 @@
-"""Build component-grain ModuleSpec drafts (AI-8)."""
+"""Build component-grain App plan drafts (AI-8)."""
 
 from __future__ import annotations
 
@@ -273,7 +273,7 @@ def draft_component_from_prompt(
         return (
             {
                 "technical_name": "component_needs_host",
-                "display_name": "Select a host model",
+                "display_name": "Select a existing form",
                 "depends": ["base"],
                 "models": [],
                 "grain": resolved_grain,
@@ -282,7 +282,7 @@ def draft_component_from_prompt(
                 "_needs_host_selection": True,
             },
             [],
-            ["No host model candidates — connect to Odoo or specify host in prompt."],
+            ["No existing form candidates — connect to Odoo or specify host in prompt."],
         )
 
     host = hosts[0]
@@ -390,7 +390,7 @@ def preview_connect_points(
             "host_candidates": [],
             "requires_review": True,
             "warnings": [
-                "No host model candidates — connect to Odoo or specify host in prompt."
+                "No existing form candidates — connect to Odoo or specify host in prompt."
             ],
             "gallery_id": resolved_gallery_id,
         }

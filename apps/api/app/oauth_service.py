@@ -23,6 +23,7 @@ from app.account_service import (
     normalize_email,
     validate_email,
 )
+from app.auth_audit import record_auth_event
 from app.settings import settings
 
 SUPPORTED_PROVIDERS = frozenset({"google", "microsoft", "github"})
@@ -47,6 +48,7 @@ class OAuthProfile:
     provider: str
     subject: str
     email: str
+    email_verified: bool = True
 
 
 @dataclass(frozen=True)
@@ -195,11 +197,13 @@ def _fetch_profile(
             raise AccountError("oauth_profile", "Provider profile missing subject.", 502)
 
         email = ""
+        email_verified = False
         if cfg.email_from_userinfo:
             raw_email = str(data.get("email") or "")
             if not raw_email and "@" in str(data.get("preferred_username") or ""):
                 raw_email = str(data.get("preferred_username"))
             email = normalize_email(raw_email) if raw_email else ""
+            email_verified = _provider_email_verified(data.get("email_verified"), provider=cfg.name)
         else:
             emails_resp = client.get(
                 "https://api.github.com/user/emails",
@@ -207,16 +211,25 @@ def _fetch_profile(
             )
             emails_resp.raise_for_status()
             emails = emails_resp.json()
-            primary = next((e for e in emails if e.get("primary")), None)
+            verified_primary = next(
+                (e for e in emails if e.get("primary") and e.get("verified")),
+                None,
+            )
             verified = next((e for e in emails if e.get("verified")), None)
-            picked = primary or verified or (emails[0] if emails else None)
+            picked = verified_primary or verified
             if picked:
                 email = normalize_email(str(picked.get("email") or ""))
+                email_verified = bool(picked.get("verified"))
 
         if not email:
             raise AccountError("oauth_profile", "Provider did not return a verified email.", 502)
         validate_email(email)
-        return OAuthProfile(provider=cfg.name, subject=subject, email=email)
+        return OAuthProfile(
+            provider=cfg.name,
+            subject=subject,
+            email=email,
+            email_verified=email_verified,
+        )
     finally:
         if own_client:
             client.close()
@@ -252,9 +265,36 @@ def exchange_oauth_code(
             http.close()
 
 
+def _provider_email_verified(raw: Any, *, provider: str = "") -> bool:
+    # Graph OIDC userinfo returns the signed-in account email and omits email_verified.
+    if raw is None:
+        return provider == "microsoft"
+    return raw is True or raw == "true"
+
+
 def resolve_oauth_login(db: Session, profile: OAuthProfile) -> OAuthLoginResult:
+    try:
+        return _resolve_oauth_login(db, profile)
+    except AccountError:
+        record_auth_event(
+            db,
+            kind="login",
+            actor="anonymous",
+            target_user=None,
+            provider=profile.provider,
+            result="failure",
+        )
+        raise
+
+
+def _resolve_oauth_login(db: Session, profile: OAuthProfile) -> OAuthLoginResult:
     email = normalize_email(profile.email)
-    profile = OAuthProfile(provider=profile.provider, subject=profile.subject, email=email)
+    profile = OAuthProfile(
+        provider=profile.provider,
+        subject=profile.subject,
+        email=email,
+        email_verified=profile.email_verified,
+    )
     identity = (
         db.query(OAuthIdentity)
         .filter(
@@ -271,6 +311,12 @@ def resolve_oauth_login(db: Session, profile: OAuthProfile) -> OAuthLoginResult:
 
     existing = db.query(User).filter(User.email == profile.email).first()
     if existing is not None:
+        if not profile.email_verified:
+            raise AccountError(
+                "oauth_unverified_email",
+                "The provider did not verify this email — it cannot be linked to an existing account.",
+                409,
+            )
         if not existing.email_verified:
             raise AccountError(
                 "oauth_unverified_collision",
@@ -288,6 +334,13 @@ def resolve_oauth_login(db: Session, profile: OAuthProfile) -> OAuthLoginResult:
         db.commit()
         db.refresh(existing)
         return _maybe_totp_pending(db, existing)
+
+    if not profile.email_verified:
+        raise AccountError(
+            "oauth_unverified_email",
+            "The provider did not verify this email — it cannot be used to create an account.",
+            409,
+        )
 
     user = User(
         email=profile.email,
@@ -338,6 +391,21 @@ def _maybe_totp_pending(db: Session, user: User) -> OAuthLoginResult:
 
 
 def complete_oauth_totp(db: Session, *, raw_token: str, totp_code: str) -> User:
+    try:
+        return _complete_oauth_totp(db, raw_token=raw_token, totp_code=totp_code)
+    except AccountError:
+        record_auth_event(
+            db,
+            kind="login",
+            actor="anonymous",
+            target_user=None,
+            provider="oauth",
+            result="failure",
+        )
+        raise
+
+
+def _complete_oauth_totp(db: Session, *, raw_token: str, totp_code: str) -> User:
     import pyotp
 
     row = (

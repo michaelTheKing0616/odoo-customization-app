@@ -1,4 +1,4 @@
-"""Gold ModuleSpec shape for a comprehensive law-firm ops app (reference / tests).
+"""Gold app plan shape for a comprehensive law-firm ops app (reference / tests).
 
 Selections for taxonomy; substantive models for the operational loop. Not a domain pack —
 documents what depth-first generation should aim for on world-class prompts.

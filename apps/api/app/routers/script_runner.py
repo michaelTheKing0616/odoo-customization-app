@@ -20,6 +20,7 @@ from app.script_runner.service import (
     require_script_confirm,
     run_script_sync,
     script_hash,
+    total_write_count,
 )
 from app.snapshots import CONFIRM_PHRASE, ConfirmationRequired
 from app.workspace_auth import WorkspaceAuth, require_app_auth
@@ -63,7 +64,9 @@ class ScriptRunOut(BaseModel):
     stdout: str | None
     stderr: str | None
     write_counts: dict[str, Any] = Field(default_factory=dict)
+    write_count: int = 0
     error: str | None
+    snapshot_id: str | None = None
     created_at: datetime | None
     finished_at: datetime | None
 
@@ -98,7 +101,9 @@ def _run_out(row: ScriptRun) -> ScriptRunOut:
         stdout=row.stdout,
         stderr=row.stderr,
         write_counts=counts,
+        write_count=total_write_count(counts),
         error=row.error,
+        snapshot_id=row.snapshot_id,
         created_at=row.created_at,
         finished_at=row.finished_at,
     )

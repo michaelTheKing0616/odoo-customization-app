@@ -3,7 +3,7 @@
 ingenium owns ANY Odoo customization (LLM + hard gates). CBN / markup+WHT /
 delivery-note QWeb scrub are proof exemplars of classes — never one-offs.
 
-Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm.
 """
 
 from __future__ import annotations
@@ -30,21 +30,21 @@ LANE_COPY: dict[str, str] = {
         "install on Odoo Online."
     ),
     "module_sh_or_self": (
-        "Module lane: Odoo.sh or self-host. Sandbox prove first; human Promote."
+        "Module lane: Odoo.sh or self-host. Sandbox prove first; you publish."
     ),
     "external_connector": (
         "External connector lane: rate/HTTP provider outside Online Python promote "
-        "(or Option A module on .sh / self-host)."
+        "(or Custom-code module on .sh / self-host)."
     ),
 }
 
 ARTIFACT_COPY: dict[str, str] = {
     "field_pack": "Prefer / field pack on a stock host — not a new Apps tile.",
     "full_app": "Residual full app — new model/menu; promote stays human.",
-    "option_a_module": "Option A installable module — Python/QWeb/OWL under gates.",
+    "option_a_module": "custom code installable module — Python/QWeb/OWL under gates.",
     "report_layout": "Report / QWeb layout class — scrub or reshape document blocks.",
     "stock_config": "Stock / Config / Batch — Atlas or Batch OS, not Prefer.",
-    "external_connector": "FX / HTTP provider class — gold Option A or external connector.",
+    "external_connector": "FX / HTTP provider class — gold custom code or external connector.",
     "refuse": "Refuse / escalate — ingenium will not invent an unsupported feature.",
 }
 
@@ -117,7 +117,7 @@ def is_report_layout_class(prompt: str) -> bool:
 
 
 def is_atlas_config_batch_class(prompt: str) -> bool:
-    """Stock/Config/Batch Atlas grain — not Prefer / Option A invent."""
+    """Stock/Config/Batch Atlas grain — not Prefer / custom code invent."""
     try:
         from app.ai_atlas_elite import is_atlas_config_batch_brief
 
@@ -225,10 +225,10 @@ def apply_class_stamp(target: dict[str, Any], stamp: dict[str, Any]) -> dict[str
 
 
 def online_python_block_alternatives() -> tuple[str, ...]:
-    """Operator alternatives when Online + Python Option A cannot promote."""
+    """Operator alternatives when Online + Python custom code cannot promote."""
     return (
         "Re-export with install_mode=data for Online metadata-only import.",
-        "Promote on Odoo.sh or self-hosted Docker where Option A Python installs.",
+        "Publish on Odoo.sh or self-hosted Docker where custom-code Python installs.",
         "Use an external connector for FX/HTTP providers instead of Online Python.",
     )
 

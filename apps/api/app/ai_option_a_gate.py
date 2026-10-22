@@ -1,4 +1,4 @@
-"""Blocking Option A authoring gate — zip and sandbox stay locked until pass."""
+"""Blocking custom code authoring gate — zip and sandbox stay locked until pass."""
 
 from __future__ import annotations
 
@@ -82,6 +82,13 @@ def evaluate_authoring_gate(
         findings.append(row)
     for row in rpc_verify_findings(draft, client):
         findings.append(row)
+    try:
+        from app.ai_option_a_packet_ground import packet_ground_findings
+
+        for row in packet_ground_findings(draft):
+            findings.append(row)
+    except Exception:  # noqa: BLE001
+        pass
 
     if not (draft.get("custom_code_blocks") or []):
         findings.append(
@@ -146,7 +153,7 @@ def authoring_block_detail(draft: dict[str, Any]) -> dict[str, Any]:
         "findings": rec.get("findings") or [
             {
                 "code": "not_evaluated",
-                "message": "Option A authoring gate has not passed. Zip and sandbox stay locked.",
+                "message": "custom code authoring gate has not passed. Zip and sandbox stay locked.",
             }
         ],
         "http_hosts": rec.get("http_hosts") or [],

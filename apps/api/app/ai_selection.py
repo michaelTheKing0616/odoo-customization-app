@@ -1,4 +1,4 @@
-"""Parse, normalize, and dedupe Odoo selection field literals on ModuleSpec drafts."""
+"""Parse, normalize, and dedupe Odoo selection field literals on App plan drafts."""
 
 from __future__ import annotations
 

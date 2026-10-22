@@ -13,14 +13,14 @@ from app.expert.grounding import GroundingBundle, looks_like_platform_error
 PLATFORM_GROUNDING = """
 PRODUCT FACTS (this customization app — not Odoo Community RPC):
 - Local API is uvicorn on :8001 started WITHOUT --reload. New routes are dead until that
-  process is killed and restarted. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+  process is killed and restarted. A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm.
 - App Studio **Install Sales** installs stock Community `sale` on the connected Odoo
-  (sale.order / sale.order.line). That is not Live Install of the Option A zip.
+  (sale.order / sale.order.line). That is not Live Install of the custom-code zip.
 - After install, the UI re-checks the authoring gate via POST /api/ai/option-a/reverify
   (or POST /api/ai/sessions/{id}/reverify-authoring). A FastAPI 404 "Not Found" on that
   path means the running API is an older process — not that Sales failed in Odoo.
 - Next: kill/restart :8001 without --reload, hard-refresh App Studio, **Re-check authoring
-  gate**. Then zip → sandbox → human Promote. Do not click Install this app.
+  gate**. Then zip → sandbox → you publish. Do not click Install this app.
 - Empty "Error log:" under Diagnose this error means the paste was blank — ask for the
   banner text (Something went wrong + the line under it).
 """.strip()
@@ -32,7 +32,7 @@ THIS-APP FAULT (FastAPI / App Studio — not an Odoo RPC Fault):
    not a missing sale.order view, and not an ACL bug.
 3. Do NOT recommend View Designer, Access Matrix, xpath inherit, or Models & Fields.
 4. Empty Error log: ask for the banner under Something went wrong (include METHOD /api/…).
-5. Completeness ≠ Cert ≠ Autopilot. Promote stays human. Do not click Install this app.
+5. A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm. Do not click Install this app.
 """.strip()
 
 
@@ -64,14 +64,14 @@ def try_rule_based_platform_guidance(
         "`POST /api/ai/option-a/reverify` hit an API process that does not have that route yet. "
         "Local uvicorn on **:8001** is started **without `--reload`**, so authoring-gate re-check "
         "code is not live until you kill and restart that process. Stock **Sales** (`sale`) may "
-        "already be installing or installed on the connection — that is not Live Apply of the Option A zip.\n\n"
+        "already be installing or installed on the connection — that is not Live Apply of the custom-code zip.\n\n"
         "**Fix:**\n"
         "1. Kill/restart uvicorn on `:8001` without `--reload`. Hard-refresh App Studio.\n"
         "2. Click **Re-check authoring gate** (do not re-author; do not click **Install this app**).\n"
         "3. If Sales is still missing, **Install Sales** again, then re-check. Zip → sandbox → **Promote**.\n"
         "4. If Diagnose shows a blank Error log, paste the banner line under **Something went wrong** "
         "(for example `Not Found (POST /api/ai/option-a/reverify)`).\n\n"
-        "Completeness ≠ Cert ≠ Autopilot. Promote stays human.\n"
+        "A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm.\n"
     )
     if connection_id:
         answer += f"\nOpen [App Studio](/connections/{connection_id}/studio) on this connection."

@@ -412,7 +412,7 @@ def bootstrap_stock(client: Any, packet: JobPacket) -> BootstrapReport:
 
 
 def install_named_modules(client: Any, names: list[str]) -> BootstrapReport:
-    """Install a module list (Config Packet delta). Same busy retries as Autopilot."""
+    """Install a module list (config summary delta). Same busy retries as Autopilot."""
     report = BootstrapReport(recipe_version=RECIPE_VERSION)
     _refresh_module_list(client)
     for name in names:

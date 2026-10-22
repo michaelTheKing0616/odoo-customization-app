@@ -1,6 +1,7 @@
 """Stage F structural zip gate — unit-testable without Docker.
 
-Fail-closed on missing ACL for new x_* models and Python syntax errors.
+Fail-closed on missing ACL for new x_* models, Python syntax errors, and
+browser-agent view-arch defects (unparseable arch / nameless field / empty xpath).
 Does not prove install; sandbox `--test-enable` remains a follow-up when Docker is up.
 """
 
@@ -104,16 +105,26 @@ def structural_zip_gate(
                 "tests/__init__.py does not import: " + ", ".join(sorted(missing))
             )
 
+    text_files = {
+        p: blob[p].decode("utf-8", errors="replace")
+        for p in blob
+        if p.endswith((".py", ".xml"))
+    }
     try:
         from app.ai_option_a_view_fields import files_view_field_findings
 
-        text_files = {
-            p: blob[p].decode("utf-8", errors="replace")
-            for p in blob
-            if p.endswith((".py", ".xml"))
-        }
         findings.extend(files_view_field_findings(text_files))
     except Exception:  # noqa: BLE001
         pass
 
-    return {"ok": not findings, "findings": findings, "new_x_models": sorted(set(new_x_models))}
+    from app.ai_browser_agent import run_browser_agent
+
+    browser = run_browser_agent(text_files)
+    findings.extend(browser.get("findings") or [])
+
+    return {
+        "ok": not findings,
+        "findings": findings,
+        "new_x_models": sorted(set(new_x_models)),
+        "browser_agent": browser,
+    }

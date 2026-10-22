@@ -85,11 +85,18 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-sonnet-4-5"
     gemini_api_key: str | None = None
     google_api_key: str | None = None
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.6-flash"
+    # studio = Google AI Studio key; vertex = Vertex AI (bills to the GCP project).
+    gemini_backend: str = "studio"
+    vertex_project: str = ""
+    vertex_location: str = "global"
     # Optional upgrades — empty = use gemini_model. Studio correctness is
     # model-agnostic (Contract Compiler); premium models only help chat/ambiguity.
     gemini_contract_model: str = ""  # e.g. gemini-2.5-pro when funded
     gemini_refine_model: str = ""  # Expert chat; falls back to gemini_model
+    # Wireframe photo reader. Empty = DEFAULT_VISION_PROVIDER (gemini).
+    # Set to FRONTIER_PROVIDER ("anthropic") to select Claude later.
+    ai_vision_provider: str = ""
     # Conversational refinement tiers — fast (generate/clarify) vs refine (chat patches)
     ai_llm_tier_fast: str = "gemini"
     ai_llm_tier_refine: str = "gemini"
@@ -209,6 +216,10 @@ class Settings(BaseSettings):
 
     # Live Demo Co-Pilot — Attendee meeting capture (Phase 0–1)
     # Self-host: http://127.0.0.1:8000  Hosted: https://app.attendee.dev
+    # Q7: meeting bot. Vexa (Apache-2.0, self-hosted) by default; "attendee" only for legacy internal setups.
+    meeting_bot_provider: str = "vexa"
+    vexa_api_base: str = "http://127.0.0.1:18056"
+    vexa_api_key: str = ""
     attendee_api_base: str = "http://127.0.0.1:8000"
     attendee_api_key: str = ""
     attendee_webhook_secret: str = ""  # base64 secret from Attendee Settings → Webhooks

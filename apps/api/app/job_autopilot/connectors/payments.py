@@ -20,10 +20,10 @@ def _env_secret_note() -> str:
         secret = token = ""
     if secret or token:
         return (
-            " Partner secret/token is in env — Autopilot does not write it into "
+            " Partner secret/token is in env, Autopilot does not write it into "
             "Odoo, ir.config_parameter, or the packet. Live capture stays off."
         )
-    return " No AUTOPILOT_PAYMENT_SECRET — fixture provider only."
+    return " No AUTOPILOT_PAYMENT_SECRET, fixture provider only."
 
 
 def run_payments(client: Any, prompt: str) -> ProbeResult:
@@ -36,7 +36,7 @@ def run_payments(client: Any, prompt: str) -> ProbeResult:
             ok=False,
             detail=(
                 f"Need payment.provider for {label}. Install Accounting/POS payments, "
-                "then set the acquirer secret in Odoo — Autopilot never writes API keys."
+                "then set the acquirer secret in Odoo, Autopilot never writes API keys."
                 + note
             ),
         )
@@ -67,7 +67,7 @@ def run_payments(client: Any, prompt: str) -> ProbeResult:
             ok=True,
             detail=(
                 f"created payment.provider id={rid} ({label}) state=disabled. "
-                "Operator enables test/prod and pastes keys in Odoo — not in the packet."
+                "Operator enables test/prod and pastes keys in Odoo, not in the packet."
                 + note
             ),
         )
@@ -80,7 +80,7 @@ def run_payments(client: Any, prompt: str) -> ProbeResult:
             name="payments",
             ok=True,
             detail=(
-                f"payment.provider present ({names}). Create skipped — configure {label} "
+                f"payment.provider present ({names}). Create skipped, configure {label} "
                 "on an existing provider. Secrets stay out of Autopilot.{note}"
             ),
         )

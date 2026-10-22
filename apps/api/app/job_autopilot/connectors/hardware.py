@@ -38,7 +38,7 @@ def run_hardware(client: Any, report: BootstrapReport) -> ProbeResult:
             ok=True,
             detail=(
                 f"modules={attempted or 'none-new'} models={found_models or ['pos.config missing']}. "
-                "KDS/IoT Box are hardware — Autopilot installs Community modules when present."
+                "KDS/IoT Box are hardware, Autopilot installs Community modules when present."
             ),
         )
     return ProbeResult(

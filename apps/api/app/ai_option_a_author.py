@@ -1,4 +1,4 @@
-"""LLM-authored Option A modules — gold is a shortcut, this is the general path."""
+"""LLM-authored Custom-code modules — gold is a shortcut, this is the general path."""
 
 from __future__ import annotations
 
@@ -162,7 +162,7 @@ def seed_option_a_authored(prompt: str, plan: Any) -> dict[str, Any]:
         "menus": [],
         "custom_code_blocks": [],
         "grain": "full_app",
-        "grain_label": "Option A — LLM module (gated)",
+        "grain_label": "custom code — LLM module (gated)",
         "_user_prompt": prompt,
         "_pipeline": "option_a_authored",
         "_capability_primary_option_a": True,
@@ -340,7 +340,7 @@ def _author_fail_message(exc: BaseException) -> str:
     low = detail.lower()
     if "quota" in low or "free_tier" in low or "plan and billing" in low:
         return (
-            "Gemini free-tier quota is exhausted, so Option A authoring could not finish. "
+            "Gemini free-tier quota is exhausted, so custom code authoring could not finish. "
             "Wait for reset, enable Gemini billing, or switch the API to a warm local "
             "Ollama model (AI_ASSIST=ollama). Then click Retry authoring. "
             f"Detail: {detail}"
@@ -432,12 +432,18 @@ _COMPACT_JSON_HINT = (
 
 
 def _default_generate_blocks(prompt: str, draft: dict[str, Any]) -> list[dict[str, Any]]:
+    from app.ai_option_a_packet_ground import (
+        ensure_option_a_schema_packet,
+        user_prompt_with_schema_packet,
+    )
     from app.llm_provider import generate_json_with_timeout_retry, get_llm_provider_for_tier
 
     provider = get_llm_provider_for_tier("fast")
     if provider is None:
         raise RuntimeError("llm_unavailable")
-    user = _author_user_prompt(prompt, draft)
+    # GND-G-OPTA: host-model schema_packet slice goes in the prompt before the call.
+    ensure_option_a_schema_packet(draft, prompt=prompt)
+    user = user_prompt_with_schema_packet(_author_user_prompt(prompt, draft), draft)
 
     def _call(text: str) -> str:
         return generate_json_with_timeout_retry(
@@ -497,9 +503,25 @@ def author_option_a_module(
     generate_blocks: GenerateBlocks | None = None,
     client: Any | None = None,
     odoo_major: int = 19,
+    schema_packet: Any | None = None,
+    schema_client: Any | None = None,
+    schema_graph: Any | None = None,
 ) -> dict[str, Any]:
     """Fill custom_code_blocks, evaluate gate, constrained repair up to 3."""
     text = (prompt or str(draft.get("_user_prompt") or "")).strip()
+    from app.ai_option_a_packet_ground import ensure_option_a_schema_packet
+
+    if schema_packet is not None:
+        draft["_schema_packet"] = schema_packet
+    else:
+        ensure_option_a_schema_packet(
+            draft,
+            prompt=text,
+            client=client,
+            odoo_major=odoo_major,
+            schema_client=schema_client,
+            schema_graph=schema_graph,
+        )
     gen = generate_blocks or _default_generate_blocks
     try:
         blocks = gen(text, draft)

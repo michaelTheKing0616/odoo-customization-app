@@ -17,7 +17,7 @@ from app.workspace_auth import WorkspaceAuth
 
 MODULE_PATH_OPTIONS = [
     "Export Python as an installable module (Option A)",
-    "Sandbox-test the module, then promote explicitly",
+    "Sandbox-test the module, then publish explicitly",
     "Use Automations → Python module export for scheduled logic",
 ]
 

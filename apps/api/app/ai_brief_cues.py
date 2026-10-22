@@ -1349,9 +1349,8 @@ def _scrub_uncued_invent_must_do_partition(
 
 
 def scrub_uncued_invent_must_do_rows(rows: list[str], *, prompt: str = "") -> list[str]:
-    """T1-RET — assert-only; uncued invent Must-do must not reach this path."""
-    kept, removed = _scrub_uncued_invent_must_do_partition(rows, prompt=prompt)
-    assert removed == []
+    """Drop uncued invent Must-do rows (severity/channel/stage/type… the brief never asked for)."""
+    kept, _removed = _scrub_uncued_invent_must_do_partition(rows, prompt=prompt)
     return kept
 
 
@@ -1375,11 +1374,18 @@ def _scrub_uncued_invent_from_llm_ast_partition(
 
 
 def scrub_uncued_invent_from_llm_ast(llm_ast: Any, *, prompt: str = "") -> Any:
-    """T1-RET — assert-only; uncued invent AST fields must not reach this path."""
+    """Drop uncued invent fields from a Flash ConstraintAST before the Must-do merge."""
     if llm_ast is None:
         return None
-    _, removed = _scrub_uncued_invent_from_llm_ast_partition(llm_ast, prompt=prompt)
-    assert removed == []
+    kept, removed = _scrub_uncued_invent_from_llm_ast_partition(llm_ast, prompt=prompt)
+    if not removed:
+        return llm_ast
+    try:
+        llm_ast.fields = kept
+    except (AttributeError, TypeError):  # frozen dataclass
+        import dataclasses
+
+        llm_ast = dataclasses.replace(llm_ast, fields=kept)
     return llm_ast
 
 

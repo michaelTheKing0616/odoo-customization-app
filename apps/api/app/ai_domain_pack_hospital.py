@@ -1,4 +1,4 @@
-"""World-class hospital ModuleSpec domain pack (public ORM/RPC only).
+"""World-class hospital app plan domain pack (public ORM/RPC only).
 
 Used when NL prompts mention hospital / inpatient / wards / pharmacy / ER / ICU.
 Clinic booking remains a thinner outpatient pack.

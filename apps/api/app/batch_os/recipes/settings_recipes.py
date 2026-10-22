@@ -129,10 +129,10 @@ class PricelistRecipe:
 
     def validate(self, state: BatchJobState, client: Any) -> BatchJobState:
         if not client.model_exists("product.pricelist"):
-            state.warnings.append("product.pricelist missing — Sales pricelists not installed; skipping")
+            state.warnings.append("product.pricelist missing, Sales pricelists not installed; skipping")
             state.extras["would_create"] = []
             state.phase = "validated"
-            state.message = "Pricelists unavailable — graceful skip"
+            state.message = "Pricelists unavailable, graceful skip"
             return state
         names = [r.get("name") or "Public Pricelist" for r in state.raw_rows] if state.raw_rows else ["Public Pricelist", "USD Pricelist"]
         existing = set()
@@ -389,7 +389,7 @@ class SettingsBoardRecipe:
         state = self._run_children(state, client, dry=True)
         state.phase = "dry_run"
         state.dry_run = True
-        state.message = "Dry-run settings board complete — Preview ≠ written"
+        state.message = "Dry-run settings board complete, Preview ≠ written"
         return state
 
     def apply(self, state: BatchJobState, client: Any, *, post_after_create: bool = False) -> BatchJobState:

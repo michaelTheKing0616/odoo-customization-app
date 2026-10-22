@@ -59,10 +59,10 @@ def project_tracker_pack() -> dict[str, Any]:
             "sprint",
         ],
         "anti_patterns": [
-            "Do NOT assign tasks directly to res.users — use x_team_member with x_user_id for login",
+            "Do NOT assign tasks directly to res.users, use x_team_member with x_user_id for login",
             "Do NOT spawn generic x_project filler trees unrelated to user request",
-            "Milestones are not workflows — status selection only",
-            "Billing/rates are optional floats — no invoicing engine",
+            "Milestones are not workflows, status selection only",
+            "Billing/rates are optional floats, no invoicing engine",
         ],
         "models": [
             {

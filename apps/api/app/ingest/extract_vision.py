@@ -53,7 +53,7 @@ def _ollama_tags() -> list[str]:
 
 def check_vision_model() -> tuple[bool, str]:
     if not ingest_vision_enabled():
-        return False, "INGEST_VISION=off — text PDF / CSV path only"
+        return False, "INGEST_VISION=off, text PDF / CSV path only"
     target = settings.ingest_vision_model.strip()
     names = _ollama_tags()
     if any(target in n or n.startswith("qwen3-vl") for n in names):
@@ -80,7 +80,7 @@ def _vision_ocr_text(*, raw: bytes, doc_type: DocType, prompt_extra: str = "") -
     base = settings.ollama_base_url.rstrip("/")
     model = settings.ingest_vision_model
     prompt = (
-        f"OCR this {doc_type} business document. Return plain text tables only — "
+        f"OCR this {doc_type} business document. Return plain text tables only, "
         "preserve columns and qty-break tiers for price lists. "
         "For BoMs keep parent product and component lines distinct. "
         f"{prompt_extra}"

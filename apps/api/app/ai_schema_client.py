@@ -10,8 +10,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
-# Catalog older than this at confirm-time → deny schema_verified path (stale).
-SCHEMA_CATALOG_TTL_S = 15 * 60
+# Catalog older than this at confirm-time → deny schema_verified path (stale). Shared rule.
+from app.schema_freshness import SCHEMA_TTL_S as SCHEMA_CATALOG_TTL_S, is_fresh  # noqa: E402
 
 
 @runtime_checkable
@@ -50,6 +50,9 @@ class DenySchemaClient:
     def view_has_field(self, model: str, field: str) -> bool:
         return False
 
+    def method_exists(self, model: str, method: str) -> bool:
+        return False
+
 
 @dataclass
 class FakeSchemaClient:
@@ -60,6 +63,8 @@ class FakeSchemaClient:
     fields: dict[str, dict[str, dict[str, Any]]] = field(default_factory=dict)
     # model -> set of field names present on form/list arch (Wave 6)
     view_fields: dict[str, set[str]] = field(default_factory=dict)
+    # model -> public method names the client will admit
+    methods: dict[str, set[str]] = field(default_factory=dict)
 
     def model_exists(self, model: str) -> bool:
         return model in self.models or model in self.fields
@@ -97,6 +102,11 @@ class FakeSchemaClient:
             return False
         return field in listed
 
+    def method_exists(self, model: str, method: str) -> bool:
+        if not model or not method or not self.model_exists(model):
+            return False
+        return method in (self.methods.get(model) or set())
+
 
 @dataclass
 class CatalogSchemaClient:
@@ -106,6 +116,7 @@ class CatalogSchemaClient:
     loaded_at: float
     # Optional field map when tests or live enrichment stamped it
     fields: dict[str, dict[str, dict[str, Any]]] = field(default_factory=dict)
+    methods: dict[str, set[str]] = field(default_factory=dict)
 
     def model_exists(self, model: str) -> bool:
         return model in self.models
@@ -138,6 +149,11 @@ class CatalogSchemaClient:
 
     def view_has_field(self, model: str, field: str) -> bool:
         return False
+
+    def method_exists(self, model: str, method: str) -> bool:
+        if not model or not method or not self.model_exists(model):
+            return False
+        return method in (self.methods.get(model) or set())
 
 
 class LiveSchemaClient:
@@ -246,6 +262,27 @@ class LiveSchemaClient:
         except Exception:  # noqa: BLE001
             return False
 
+    def method_exists(self, model: str, method: str) -> bool:
+        """Admit only when the wrapped client already knows the method.
+
+        Public ORM has no safe methods_get. Unknown methods fail closed.
+        """
+        if not model or not method:
+            return False
+        if not self.model_exists(model):
+            return False
+        checker = getattr(self._client, "method_exists", None)
+        if callable(checker):
+            try:
+                return bool(checker(model, method))
+            except Exception:  # noqa: BLE001
+                return False
+        listed = getattr(self._client, "methods", None)
+        if isinstance(listed, dict):
+            names = listed.get(model) or []
+            return method in {str(name) for name in names}
+        return False
+
 
 def _catalog_models(draft: dict[str, Any]) -> tuple[set[str], float | None]:
     cat = draft.get("_connection_catalog")
@@ -264,6 +301,17 @@ def _catalog_models(draft: dict[str, Any]) -> tuple[set[str], float | None]:
     except (TypeError, ValueError):
         loaded_f = None
     return models, loaded_f
+
+
+def _fresh_request_snapshot(*, now: float | None, ttl_s: float) -> Any:
+    try:
+        from app.odoo_snapshot import current_snapshot
+    except Exception:  # noqa: BLE001
+        return None
+    snap = current_snapshot()
+    if snap is None or not getattr(snap, "ok", False):
+        return None
+    return snap if is_fresh(getattr(snap, "captured_at", None), now=now, ttl_s=ttl_s) else None
 
 
 def schema_client_for_draft(
@@ -287,11 +335,14 @@ def schema_client_for_draft(
     if isinstance(injected, SchemaClient):
         return injected
     models, loaded_at = _catalog_models(draft)
-    if not models:
-        return DenySchemaClient(reason="no_catalog")
-    clock = time.time() if now is None else now
-    if loaded_at is None or (clock - loaded_at) > ttl_s:
-        return DenySchemaClient(reason="stale_or_missing_catalog_ts")
+    if not models or not is_fresh(loaded_at, now=now, ttl_s=ttl_s):
+        # One cache: a fresh request snapshot (odoo_snapshot) beats a stale/missing catalog copy.
+        snap = _fresh_request_snapshot(now=now, ttl_s=ttl_s)
+        if snap is not None:
+            from app.design_admission import SnapshotSchemaClient
+
+            return SnapshotSchemaClient(snap)  # type: ignore[return-value]
+        return DenySchemaClient(reason="no_catalog" if not models else "stale_or_missing_catalog_ts")
     field_map = draft.get("_schema_fields")
     fields = field_map if isinstance(field_map, dict) else {}
     return CatalogSchemaClient(models=models, loaded_at=loaded_at, fields=fields)

@@ -13,12 +13,76 @@ from app.ai_self_consistency import (
     selection_literal_from_states,
     self_consistency_enabled,
 )
+from app.live_schema_context import (
+    SchemaPacket,
+    model_in_packet,
+    prepend_schema_packet,
+)
 from app.llm_provider import FORMAT_SCHEMA_WORKFLOW, LLMError, LLMProvider
 
 TEMP_WORKFLOW = STEP_TEMPERATURES["pipeline.relationships"]  # 0.15
 TERMINAL_STATES = frozenset(
     {"done", "cancelled", "canceled", "closed", "lost", "retired", "archived", "paid"}
 )
+
+
+def _resolve_schema_packet(schema_packet: SchemaPacket | None) -> SchemaPacket | None:
+    if schema_packet is not None:
+        return schema_packet
+    try:
+        from app.ai_conversation.intent_llm import current_schema_packet
+
+        return current_schema_packet()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _is_stock_model(name: str) -> bool:
+    return "." in name and not name.startswith("x_")
+
+
+def _method_in_packet(
+    packet: SchemaPacket | None,
+    method: str,
+    *,
+    model: str | None = None,
+) -> bool:
+    name = str(method or "").strip()
+    if not name:
+        return False
+    if packet is None:
+        return True
+    if model:
+        row = packet.models.get(model)
+        return bool(row and name in row.methods)
+    return any(name in row.methods for row in packet.models.values())
+
+
+def _workflow_method_allowed(
+    packet: SchemaPacket | None,
+    model_name: str,
+    method: str,
+) -> bool:
+    if packet is None:
+        return True
+    if not _is_stock_model(model_name):
+        return True
+    return _method_in_packet(packet, method, model=model_name)
+
+
+def _admit_workflow_methods(
+    raw: Any,
+    packet: SchemaPacket | None,
+    model_name: str,
+) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    kept: list[str] = []
+    for item in raw:
+        name = str(item or "").strip()
+        if name and name not in kept and _workflow_method_allowed(packet, model_name, name):
+            kept.append(name)
+    return kept
 
 
 def _extract_json(text: str) -> Any:
@@ -190,6 +254,7 @@ def _llm_workflow_sample(
     model: dict[str, Any],
     user_prompt: str,
     guardrail: str,
+    schema_packet: SchemaPacket | None = None,
 ) -> dict[str, Any] | None:
     mid = str(model.get("model") or "")
     system = append_prompt_blocks(
@@ -198,15 +263,19 @@ def _llm_workflow_sample(
         '{"states":[{"value":"draft","label":"Draft"},{"value":"open","label":"Open"},'
         '{"value":"done","label":"Done"}],'
         '"transitions":[["draft","open"],["open","done"]]}\n'
-        "Terminal states (done/cancelled) should not require outgoing transitions.",
+        "Terminal states (done/cancelled) should not require outgoing transitions. "
+        "Do not name a model or method that is not in the live schema packet.",
         guardrail=guardrail,
         user_prompt=user_prompt,
     )
-    prompt = (
-        f"User app request:\n{user_prompt}\n\n"
-        f"Workflow model: {mid}\n"
-        f"Purpose: {model.get('description') or mid}\n"
-        f"Existing fields: {[f.get('name') for f in (model.get('fields') or []) if isinstance(f, dict)]}"
+    prompt = prepend_schema_packet(
+        (
+            f"User app request:\n{user_prompt}\n\n"
+            f"Workflow model: {mid}\n"
+            f"Purpose: {model.get('description') or mid}\n"
+            f"Existing fields: {[f.get('name') for f in (model.get('fields') or []) if isinstance(f, dict)]}"
+        ),
+        schema_packet,
     )
     raw = provider.generate_json(
         prompt,
@@ -225,9 +294,20 @@ def step4_workflow_entity(
     *,
     user_prompt: str,
     guardrail: str = "",
-) -> tuple[dict[str, Any], list[str]]:
-    """Step 4 — reasoning model defines states + transitions for one workflow entity."""
+    schema_packet: SchemaPacket | None = None,
+) -> tuple[dict[str, Any] | None, list[str]]:
+    """Step 4 — reasoning model defines states + transitions for one workflow entity.
+
+    A stock model or method absent from the live schema packet is dropped
+    before any later sandbox apply. Custom ``x_*`` models stay.
+    """
     warnings: list[str] = []
+    packet = _resolve_schema_packet(schema_packet)
+    mid = str(model.get("model") or "")
+    if packet is not None and _is_stock_model(mid) and not model_in_packet(packet, mid):
+        return None, [f"step4: dropped {mid} — not in schema packet"]
+    if isinstance(model.get("methods"), list):
+        model["methods"] = _admit_workflow_methods(model.get("methods"), packet, mid)
     if not (
         model.get("is_workflow")
         or any(
@@ -242,7 +322,11 @@ def step4_workflow_entity(
     for i in range(n):
         try:
             data = _llm_workflow_sample(
-                provider, model=model, user_prompt=user_prompt, guardrail=guardrail
+                provider,
+                model=model,
+                user_prompt=user_prompt,
+                guardrail=guardrail,
+                schema_packet=packet,
             )
             if data:
                 samples.append(data)
@@ -291,6 +375,13 @@ def step4_workflow_entity(
         states=merged.get("states") or state_keys,
         transitions=transitions,
     )
+    methods = _admit_workflow_methods(
+        list(model.get("methods") or []) + list(merged.get("methods") or []),
+        packet,
+        mid,
+    )
+    if methods or model.get("methods") or merged.get("methods"):
+        out["methods"] = methods
     return out, warnings
 
 
@@ -300,29 +391,49 @@ def step4_workflow_models(
     *,
     user_prompt: str,
     guardrail: str = "",
+    schema_packet: SchemaPacket | None = None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     warnings: list[str] = []
     out: list[dict[str, Any]] = []
+    packet = _resolve_schema_packet(schema_packet)
     for m in models:
         if not isinstance(m, dict):
             continue
         updated, w = step4_workflow_entity(
-            provider, m, user_prompt=user_prompt, guardrail=guardrail
+            provider,
+            m,
+            user_prompt=user_prompt,
+            guardrail=guardrail,
+            schema_packet=packet,
         )
-        out.append(updated)
+        if updated is not None:
+            out.append(updated)
         warnings.extend(w)
     return out, warnings
 
 
-def ensure_workflow_transitions_on_draft(draft: dict[str, Any]) -> list[str]:
+def ensure_workflow_transitions_on_draft(
+    draft: dict[str, Any],
+    *,
+    schema_packet: SchemaPacket | None = None,
+) -> list[str]:
     """Single pipeline: derive/validate transitions from x_status when state_field missing."""
     notes: list[str] = []
     from app.ai_odoo_app_bar import looks_like_register
 
+    packet = _resolve_schema_packet(schema_packet)
+    kept_models: list[Any] = []
     for model in draft.get("models") or []:
         if not isinstance(model, dict):
+            kept_models.append(model)
             continue
         mid = str(model.get("model") or "")
+        if packet is not None and _is_stock_model(mid) and not model_in_packet(packet, mid):
+            notes.append(f"workflow: dropped {mid} — not in schema packet")
+            continue
+        if isinstance(model.get("methods"), list):
+            model["methods"] = _admit_workflow_methods(model.get("methods"), packet, mid)
+        kept_models.append(model)
         if looks_like_register(mid) or mid.endswith("_line"):
             continue
         sf = model.get("state_field")
@@ -354,6 +465,7 @@ def ensure_workflow_transitions_on_draft(draft: dict[str, Any]) -> list[str]:
             f"quality: derived default transitions for {model.get('model')} ({len(transitions)} edges)"
         )
         notes.extend(validate_workflow_definition(keys, transitions))
+    draft["models"] = kept_models
     return notes
 
 
@@ -387,7 +499,7 @@ def build_transition_header_buttons(
 
     Emits ``type=object`` + ``data-transition-to`` as a marker. Live apply rewrites
     those tags to ``type=action`` + ``ir.actions.server`` object_write. Custom
-    ``x_*`` models have no Python methods unless an Option A module is installed.
+    ``x_*`` models have no Python methods unless a custom-code module is installed.
     Manager dests (Approve/Refuse) stamp ``data-approval-role="manager"`` so Apply
     can restrict the bound server action to the app Manager group.
     """

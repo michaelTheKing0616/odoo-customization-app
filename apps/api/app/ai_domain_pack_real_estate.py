@@ -86,10 +86,10 @@ def real_estate_pack() -> dict[str, Any]:
             "listing",
         ],
         "anti_patterns": [
-            "Do NOT implement rent collection or payment gateways — x_bill is link-only",
-            "Do NOT invent x_tenant customer model — use res.partner + x_tenant_party roles",
+            "Do NOT implement rent collection or payment gateways, x_bill is link-only",
+            "Do NOT invent x_tenant customer model, use res.partner + x_tenant_party roles",
             "x_tenant_party is NOT is_workflow",
-            "Lease type / property class are selections — not separate models",
+            "Lease type / property class are selections, not separate models",
         ],
         "models": [
             {
@@ -410,7 +410,7 @@ def real_estate_pack() -> dict[str, Any]:
                         "name": "x_invoice_ref",
                         "ttype": "char",
                         "string": "External Invoice Ref",
-                        "help": "Link-only — wire to account.move manually",
+                        "help": "Link-only, wire to account.move manually",
                     },
                 ],
             },

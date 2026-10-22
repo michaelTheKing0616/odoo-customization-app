@@ -29,7 +29,7 @@ def parse_domain(value: list[Any] | str | None) -> list[Any]:
             parsed = ast.literal_eval(text)
         except (SyntaxError, ValueError) as exc:
             raise DomainParseError(
-                "Invalid domain — use Odoo domain list, e.g. [('state','=','draft')]"
+                "Invalid domain, use Odoo domain list, e.g. [('state','=','draft')]"
             ) from exc
     if not isinstance(parsed, list):
         raise DomainParseError("domain must evaluate to a list")

@@ -149,7 +149,7 @@ def run_commit_plan(
     if not batch.plan or not batch.plan.steps:
         return IngestCommitLog(
             dry_run=dry_run,
-            messages=["No ingest plan — run map/plan stages first"],
+            messages=["No ingest plan, run map/plan stages first"],
         )
 
     # Surface blocking plan gaps as hard fail for non-dry-run

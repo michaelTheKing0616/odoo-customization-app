@@ -1,9 +1,17 @@
-"""Rollback tiers: snapshot restore (named only), compensating plan, changelog.
+"""Rollback tiers: named snapshot restore, compensating plan, changelog.
 
-Tier 1 is a /web/database restore where that service exists. This card does not
-implement a live restore and does not rely on it for Odoo Online, Odoo.sh, or
-Odoo 20. Tier 2 builds a compensating change-set from audit ``change`` rows and
-runs it through validate / policy / apply. Tier 3 is the manual changelog.
+Tier 1 is a ``/web/database`` restore where that service exists. This module
+does not implement a live restore and does not rely on it for Odoo Online,
+Odoo.sh, or Odoo 20. It calls ``request_database_backup``, which never opens
+those endpoints.
+
+Tier 2 builds a compensating change-set from audit ``change`` rows
+(created → unlink, updated → write old values) and submits it through the
+existing change-set pipeline (``approve_field_data_deletion``:
+validate / policy / approval). It does not raw-RPC the undo.
+
+Tier 3 is the manual changelog. Module installs and posted accounting
+entries are listed as not reversible by this tier and are not inverted.
 """
 
 from __future__ import annotations
@@ -11,9 +19,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from app.changeset.executor import apply
-from app.changeset.policy import policy_decision, risk_of
-from app.changeset.validate import validate
+from app.changeset.inbox import Inbox
+from app.changeset.rollback import PIPELINE, approve_field_data_deletion
+from app.database_backup import request_database_backup
 from app.rpc_classify import classify_rpc
 
 NOT_REVERSIBLE_BY_THIS_TIER = "not reversible by this tier"
@@ -41,6 +49,7 @@ _MODULE_INSTALL_ACTIONS = frozenset(
 _POSTED_ACTIONS = frozenset({"posted", "action_post", "post"})
 _CREATED = frozenset({"created", "create"})
 _UPDATED = frozenset({"updated", "update", "write"})
+_CHANGE_KINDS = frozenset({None, "", "change"})
 
 ROLLBACK_TIERS: tuple[dict[str, Any], ...] = (
     {
@@ -56,7 +65,7 @@ ROLLBACK_TIERS: tuple[dict[str, Any], ...] = (
         "id": "compensating",
         "name": "Compensating plan from change rows",
         "rule": "created → unlink, updated → write old values",
-        "pipeline": ("validate", "policy", "apply"),
+        "pipeline": PIPELINE,
     },
     {
         "tier": 3,
@@ -79,6 +88,11 @@ class CompensatingPlan:
     not_reversible_by_this_tier: list[dict[str, Any]]
     refused: bool = False
     reason: str = ""
+
+    @property
+    def changelog(self) -> list[dict[str, Any]]:
+        """Tier 3 listing: rows this compensating tier will not invert."""
+        return list(self.not_reversible_by_this_tier)
 
 
 def _payload(row: dict[str, Any]) -> dict[str, Any]:
@@ -142,12 +156,10 @@ def _action_token(payload: dict[str, Any]) -> str:
 def _is_module_install(payload: dict[str, Any]) -> bool:
     model = str(payload.get("model") or "")
     token = _action_token(payload)
-    if token in _MODULE_INSTALL_ACTIONS or token == "module.install":
+    if token in _MODULE_INSTALL_ACTIONS:
         return True
     if model != "ir.module.module":
         return False
-    if token in _MODULE_INSTALL_ACTIONS:
-        return True
     return _new_state(_changes_map(payload)) in _MODULE_INSTALL_STATES
 
 
@@ -198,14 +210,55 @@ def _id_list(raw: object) -> list[int]:
     return [int(item) for item in raw if isinstance(item, int)]
 
 
+def _known_models(
+    plan: CompensatingPlan,
+    known_models: set[str] | frozenset[str] | None,
+) -> set[str]:
+    models = set(known_models or ())
+    if models:
+        return models
+    for op in plan.changeset:
+        hinted = _op_params(op).get("model")
+        if isinstance(hinted, str) and hinted:
+            models.add(hinted)
+    return models
+
+
+def describe_database_snapshot_tier(
+    *,
+    odoo_major: int | None = None,
+    hosting_hint: str | None = None,
+    client: Any = None,
+) -> dict[str, Any]:
+    """Name tier 1 and refuse a live ``/web/database`` restore.
+
+    Inputs: optional major, hosting hint, and a client that must not be
+    dispatched. Outputs: the tier-1 record plus the backup refusal.
+    ``live_restore`` stays False. Side effects: none. Does not call Odoo.
+    """
+    backup = request_database_backup(
+        odoo_major=odoo_major,
+        hosting_hint=hosting_hint,
+        client=client,
+    )
+    return {
+        **ROLLBACK_TIERS[0],
+        "backup": backup,
+        "live_restore": False,
+        "called_db_service": bool(backup.get("called_db_service")),
+    }
+
+
 def build_compensating_plan(change_rows: list[dict[str, Any]]) -> CompensatingPlan:
     """Build a compensating change-set from audit ``change`` rows.
 
-    created → data.unlink; updated → data.update_batch of old values.
+    Inputs: audit rows. ``kind`` other than ``change`` (or omitted) is not
+    inverted unless it is a module install, which is listed instead.
+    created → ``data.unlink``; updated → ``data.update_batch`` of old values.
     Module installs and posted/unknown-state accounting entries are listed,
-    not inverted. Draft/cancel on those models may compensate; missing
-    ``changes.state.new`` is not reversible.
+    not inverted. Draft/cancel on those models may compensate.
     A plan that would unlink a never-allowed model is refused.
+    Outputs: the plan. Side effects: none. Does not call Odoo.
     """
     changeset: list[dict[str, Any]] = []
     not_reversible: list[dict[str, Any]] = []
@@ -215,11 +268,14 @@ def build_compensating_plan(change_rows: list[dict[str, Any]]) -> CompensatingPl
         if not isinstance(row, dict):
             continue
         payload = _payload(row)
-        if _is_module_install(payload):
+        kind = row.get("kind")
+        if _is_module_install(payload) or kind == "module":
             not_reversible.append(_not_reversible("module_install", payload))
             continue
         if _is_posted_entry(payload):
             not_reversible.append(_not_reversible("posted_entry", payload))
+            continue
+        if kind not in _CHANGE_KINDS:
             continue
 
         model = payload.get("model")
@@ -266,9 +322,19 @@ def run_compensating_pipeline(
     *,
     known_models: set[str] | frozenset[str] | None = None,
     environment: str = "staging",
-    mode: str = "T",
+    requester_id: str = "rollback-tiers",
+    connection_id: str = "rollback-tiers",
+    approvals: list[dict[str, str]] | None = None,
+    inbox: Inbox | None = None,
 ) -> dict[str, Any]:
-    """Send the compensating change-set through validate / policy / apply."""
+    """Submit the compensating change-set through validate / policy / approval.
+
+    Inputs: the plan from ``build_compensating_plan``, known models, environment,
+    requester, connection, optional approvals, and optional inbox.
+    Outputs: the change-set pipeline result. ``applied`` stays False.
+    Side effects: ``Inbox.submit`` (and ``Inbox.decide`` when approvals are
+    supplied). Does not call Odoo and does not write a customer database.
+    """
     if plan.refused:
         raise CompensatingRefused(plan.reason or "never_allowed")
     for op in plan.changeset:
@@ -279,42 +345,14 @@ def run_compensating_pipeline(
         if _never_allowed_unlink(model, _id_list(params.get("ids"))):
             raise CompensatingRefused("never_allowed")
 
-    models = set(known_models or ())
-    if not models:
-        for op in plan.changeset:
-            hinted = _op_params(op).get("model")
-            if isinstance(hinted, str):
-                models.add(hinted)
-
-    validation = validate(plan.changeset, known_models=models)
-    if not validation["valid"]:
-        return {
-            "ok": False,
-            "stage": "validate",
-            "validation": validation,
-            "policy": None,
-            "apply": None,
-        }
-
-    decisions: list[dict[str, Any]] = []
-    for op in plan.changeset:
-        risk = risk_of(op, document=plan.changeset)
-        decision = policy_decision(risk, environment)
-        decisions.append({"op": op.get("type"), "risk": risk, **decision})
-        if decision["deny"]:
-            return {
-                "ok": False,
-                "stage": "policy",
-                "validation": validation,
-                "policy": decisions,
-                "apply": None,
-            }
-
-    applied = apply(plan.changeset, mode=mode)
-    return {
-        "ok": True,
-        "stage": "apply",
-        "validation": validation,
-        "policy": decisions,
-        "apply": applied,
-    }
+    return approve_field_data_deletion(
+        plan.changeset,
+        known_models=_known_models(plan, known_models),
+        environment=environment,
+        requester_id=requester_id,
+        connection_id=connection_id,
+        approvals=approvals,
+        inbox=inbox,
+        goal="Compensate audit change rows",
+        assumptions=["The inverse was computed from audit change rows."],
+    )

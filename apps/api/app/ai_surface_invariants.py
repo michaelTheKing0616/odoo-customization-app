@@ -66,6 +66,13 @@ _TITLE_STOP = NOUN_STOPWORDS | frozenset(
 )
 
 _SPRAY_RELATIONS = frozenset({"res.partner", "hr.employee", "res.company"})
+# Plain words for identity relations; "contact" is a noun stopword, so lemmas alone miss it.
+_RELATION_WORDS: dict[str, tuple[str, ...]] = {
+    "res.partner": ("contact", "customer", "client", "partner", "supplier", "vendor"),
+    "hr.employee": ("employee", "staff member"),
+    "res.company": ("company", "companies"),
+}
+_NEG_CLAUSE = re.compile(r"\b(?:not|no|never|don'?t|do not|without|avoid)\b")
 
 
 @dataclass(frozen=True)
@@ -85,6 +92,8 @@ class BriefSlots:
     wants_todo: bool = False
     people: list[PersonSlot] = field(default_factory=list)
     prompt_lemmas: frozenset[str] = field(default_factory=frozenset)
+    # Identity relations the brief names in a positive clause ("unless they're already a contact").
+    mentioned_relations: frozenset[str] = field(default_factory=frozenset)
 
 
 def extract_brief_slots(prompt: str) -> BriefSlots:
@@ -96,6 +105,12 @@ def extract_brief_slots(prompt: str) -> BriefSlots:
     people: list[PersonSlot] = []
     seen_rel: set[str] = set()
     lower = blob.lower()
+    mentioned = frozenset(
+        rel
+        for rel, words in _RELATION_WORDS.items()
+        for clause in re.split(r"[.;:!?\u2014]|\s-\s", lower)
+        if not _NEG_CLAUSE.search(clause) and re.search(rf"\b(?:{'|'.join(words)})s?\b", clause)
+    )
     for lemma, relation, fname, string in _PERSON_SLOTS:
         if not re.search(rf"\b{re.escape(lemma)}\b", lower):
             continue
@@ -109,6 +124,7 @@ def extract_brief_slots(prompt: str) -> BriefSlots:
         wants_todo=bool(_TODO_RE.search(blob)),
         people=people,
         prompt_lemmas=frozenset(extract_prompt_nouns(blob)),
+        mentioned_relations=mentioned,
     )
 
 
@@ -414,7 +430,7 @@ def surface_invariant_findings(draft: Any) -> list[str]:
             if arch_pages > o2m:
                 findings.append(
                     f"Form arch has {arch_pages} notebook page(s) but the header has "
-                    f"{o2m} one2many field(s) — preview/Odoo would show empty clone tabs."
+                    f"{o2m} one2many field(s), preview/Odoo would show empty clone tabs."
                 )
             if preview_pages > o2m:
                 findings.append(
@@ -453,13 +469,13 @@ def surface_invariant_findings(draft: Any) -> list[str]:
             for f in _field_list(header):
                 if str(f.get("ttype")) != "many2one" or str(f.get("relation")) not in _SPRAY_RELATIONS:
                     continue
-                if str(f.get("relation")) in asked_rels:
+                if str(f.get("relation")) in asked_rels or str(f.get("relation")) in slots.mentioned_relations:
                     continue
                 blob = f"{f.get('name')} {f.get('string')} {f.get('relation')}".lower()
                 if not any(lem in blob for lem in lemmas if len(lem) > 3):
                     findings.append(
                         f"Unmentioned identity field {f.get('name')} ({f.get('relation')}) "
-                        "is identity spray — not a brief slot."
+                        "is identity spray, not a brief slot."
                     )
             for person in slots.people:
                 if not any(

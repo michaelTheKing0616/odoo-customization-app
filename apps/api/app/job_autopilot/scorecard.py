@@ -1,4 +1,4 @@
-"""Implementation-job scorecard — not ModuleSpec completeness 10.0."""
+"""Implementation-job scorecard — not app plan completeness 10.0."""
 
 from __future__ import annotations
 
@@ -30,11 +30,11 @@ def score_job(result: AutopilotResult) -> JobScorecard:
     if packet.has_custom_residual:
         stack = min(stack, 8.5)
         findings.append(
-            f"Custom residual {', '.join(r.model for r in packet.custom_residuals)} — "
+            f"Custom code {', '.join(r.model for r in packet.custom_residuals)} — "
             "stock apps do not cover this document."
         )
     else:
-        findings.append("Stock-only packet — no custom x_* residual.")
+        findings.append("Built-in apps only packet — no custom x_* residual.")
     if not packet.stock_apps:
         findings.append("No stock apps inferred — stack fit is weak.")
 

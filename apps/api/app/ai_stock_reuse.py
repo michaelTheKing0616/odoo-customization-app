@@ -224,19 +224,19 @@ def infer_stock_reuse(
                     }
                 )
                 notes.append(
-                    f"reuse: {model} available via module '{mod}' — "
+                    f"reuse: {model} available via module '{mod}', "
                     f"install and reuse vs generate custom x_ model"
                 )
             else:
                 notes.append(
-                    f"reuse: {model} not on instance — will generate custom model if needed"
+                    f"reuse: {model} not on instance, will generate custom model if needed"
                 )
         else:
             seen_models.add(model)
             decisions.append(
                 {
                     "model": model,
-                    "reason": f"{reason} (offline — confirm on connection)",
+                    "reason": f"{reason} (offline, confirm on connection)",
                     "source": source_tag,
                     "confirmed": False,
                     "forbid_parallel": list(forbid_parallel),

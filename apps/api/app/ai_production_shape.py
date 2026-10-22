@@ -284,7 +284,7 @@ def ensure_multi_company_record_rules(draft: dict[str, Any]) -> list[str]:
     if draft_explicitly_rejects_multi_company(draft):
         notes.extend(strip_multi_company_record_rules(draft))
         if notes:
-            return ["production: single-company — no isolation rules"] + notes[-3:]
+            return ["production: single-company, no isolation rules"] + notes[-3:]
     return notes
 
 

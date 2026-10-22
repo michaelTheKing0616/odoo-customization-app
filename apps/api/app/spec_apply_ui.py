@@ -47,6 +47,28 @@ class UiApplyResult(ApplyResult):
     fields_relaxed: int = 0
 
 
+
+_LIST_OPEN_RE = re.compile(r"^(\s*)<list\b")
+_LIST_CLOSE_RE = re.compile(r"</list>(\s*)$")
+
+
+def _list_root_for_major(client: Any, vtype: str, arch: str) -> tuple[str, str]:
+    """Odoo <=17 stores listing views as <tree>; 18+ uses <list>."""
+    if vtype not in ("list", "tree"):
+        return vtype, arch
+    try:
+        major = int(getattr(getattr(client, "capabilities", None), "major", None) or 19)
+    except (TypeError, ValueError):
+        major = 19
+    from app.compat.odoo_versions import list_view_tag
+
+    if list_view_tag(major) == "list":
+        return "list", arch
+    arch = _LIST_OPEN_RE.sub(r"\1<tree", arch, count=1)
+    arch = _LIST_CLOSE_RE.sub(r"</tree>\1", arch, count=1)
+    return "tree", arch
+
+
 def _selection_keys(selection: Any) -> list[str]:
     if not isinstance(selection, str):
         return []
@@ -68,6 +90,8 @@ def _apply_explicit_views(client: OdooClient, spec: dict[str, Any], result: UiAp
         name = view.get("name") or f"{model}.{vtype}"
         if not model or not vtype or not isinstance(arch, str) or not arch.strip():
             continue
+        if str(view.get("mode") or "") == "extension":
+            continue  # placed by the extension (inherit) pass, not a primary rewrite: no warning
         # Never overwrite stock module primary arches (Contacts phone xpath, etc.).
         if not str(model).startswith("x_"):
             result.warnings.append(
@@ -78,6 +102,7 @@ def _apply_explicit_views(client: OdooClient, spec: dict[str, Any], result: UiAp
         if not client.model_exists(str(model)):
             result.warnings.append(f"Skip view {name}: model {model} missing")
             continue
+        vtype, arch = _list_root_for_major(client, str(vtype), arch)
         try:
             existing = client.find_view(str(model), str(vtype), primary_only=True)
             if existing is None:
@@ -264,7 +289,7 @@ def _bind_workflow_transition_buttons(
     """Bind Confirm/Cancel header buttons to object_write server actions.
 
     Draft arches use ``type=object`` + ``data-transition-to`` as a marker. Live
-    ``x_*`` models have no Python methods — Option A is the only path for
+    ``x_*`` models have no Python methods — custom code is the only path for
     ``type=object``. MEMORY: form buttons are ``type=action`` + numeric id.
     """
     if not _object_write_supported(client):
@@ -620,7 +645,8 @@ def _ensure_spec_menu_tree(
                         existing_action_id = None
             if action_ref and existing_action_id is None:
                 action = _find_spec_action(spec, action_ref)
-                model = str((action or {}).get("model") or "")
+                # Spec actions carry ``res_model`` (Odoo's own key); older drafts used ``model``.
+                model = str((action or {}).get("res_model") or (action or {}).get("model") or "")
                 if model.endswith("_line"):
                     continue
                 if not action or not model:
@@ -629,7 +655,15 @@ def _ensure_spec_menu_tree(
                     )
                     continue
                 label = str(menu.get("name") or action.get("name") or model)
-                action_id = int(
+                # Re-Apply reuses the action it made last time (same name + model).
+                try:
+                    found = client.execute_kw(
+                        "ir.actions.act_window", "search",
+                        [[("res_model", "=", model), ("name", "=", label)]], {"limit": 1},
+                    )
+                except Exception:  # noqa: BLE001
+                    found = []
+                action_id = int(found[0]) if found else int(
                     client.create_window_action(
                         name=label,
                         model=model,
@@ -789,6 +823,36 @@ def _resolve_or_create_group_id(
     return int(client.execute_kw("res.groups", "create", [{"name": name}]))
 
 
+def _ensure_spec_groups(client: OdooClient, spec: dict[str, Any], result: UiApplyResult) -> None:
+    """Create design groups (idempotent by name), then link implied groups.
+
+    Only groups that declare ``implied`` (App design) are handled here; older
+    drafts keep the lazy create-on-access path.
+    """
+    rows = [g for g in spec.get("groups") or [] if isinstance(g, dict) and isinstance(g.get("implied"), list)]
+    if not rows:
+        return
+    ids: dict[str, int] = {}
+    for g in rows:
+        ref = str(g.get("id") or "")
+        try:
+            gid = _resolve_or_create_group_id(client, spec, ref)
+        except Exception as exc:  # noqa: BLE001
+            result.warnings.append(f"Group {g.get('name')!r} failed: {exc}")
+            continue
+        if gid:
+            ids[ref] = gid
+    for g in rows:
+        gid = ids.get(str(g.get("id") or ""))
+        implied = [ids[r] for r in g.get("implied") or [] if r in ids]
+        if not gid or not implied:
+            continue
+        try:
+            client.execute_kw("res.groups", "write", [[gid], {"implied_ids": [(4, i) for i in implied]}])
+        except Exception as exc:  # noqa: BLE001
+            result.warnings.append(f"Implied groups for {g.get('name')!r} failed: {exc}")
+
+
 def _menu_group_m2m_field(client: OdooClient) -> str | None:
     """Odoo 19 renamed ir.ui.menu.groups_id → group_ids (17/18 keep groups_id)."""
     if client.field_exists("ir.ui.menu", "group_ids"):
@@ -847,8 +911,9 @@ def _ensure_apply_user_in_app_groups(
         return
     group_ids: list[int] = []
     for ref in refs:
-        # Skip Internal User — already implied for the applying login.
-        if str(ref).endswith("group_user") and str(ref).startswith("base."):
+        # Only the app's own groups: Odoo's built-in base.* groups (Internal User, Portal,
+        # Administrator) are never added to the applying login (Portal would be refused).
+        if str(ref).startswith("base."):
             continue
         gid = _resolve_or_create_group_id(client, spec, str(ref))
         if gid is not None:
@@ -1196,7 +1261,7 @@ def _inject_button_box(
 
 
 def _iter_safe_actions(auto: dict[str, Any]) -> list[dict[str, Any]]:
-    """Normalize ModuleSpec automation shapes into action dicts."""
+    """Normalize app plan automation shapes into action dicts."""
     actions: list[dict[str, Any]] = []
     for key in ("safe_actions", "actions"):
         raw = auto.get(key)
@@ -1223,6 +1288,36 @@ def _infer_trg_date_field(
             return False
 
     return infer_trg_date_field(spec, auto, field_exists=_exists)
+
+
+def expand_group_notices(actions: list[dict[str, Any]], group_users: Any) -> tuple[list[dict[str, Any]], list[str]]:
+    """'notify_group' -> one to-do per member of the named role (specific user), so the whole
+    group hears about it, not just the record's owner. ``group_users(name) -> [user ids]``."""
+    out: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    for a in actions:
+        if str(a.get("kind") or "") != "notify_group":
+            out.append(a)
+            continue
+        group = str(a.get("group") or "")
+        try:
+            uids = [int(u) for u in (group_users(group) or [])][:25]
+        except Exception:  # noqa: BLE001
+            uids = []
+        if not uids:
+            warnings.append(f"Nobody is in the role '{group}' yet, so its notice goes to the record's owner.")
+            out.append({k: v for k, v in a.items() if k not in {"kind", "group"}} | {"kind": "next_activity"})
+            continue
+        for uid in uids:
+            out.append({"kind": "next_activity", "summary": a.get("summary") or "Please check",
+                        "activity_type_xml_id": a.get("activity_type_xml_id"),
+                        "user_type": "specific", "user_id": uid})
+    return out, warnings
+
+
+def _group_user_ids(client: Any, name: str) -> list[int]:
+    rows = client.execute_kw("res.groups", "search_read", [[["name", "=", name]]], {"fields": ["users"], "limit": 1})
+    return list((rows[0].get("users") if rows else None) or [])
 
 
 def _action_from_spec(action: dict[str, Any]) -> Any | None:
@@ -1518,7 +1613,7 @@ def _reuse_or_collapse_live_automation(
 def _apply_safe_automations(
     client: OdooClient, spec: dict[str, Any], result: UiApplyResult
 ) -> None:
-    """Create safe automations from ModuleSpec (related_write, update_field, activity)."""
+    """Create safe automations from app plan (related_write, update_field, activity)."""
     from odoo_client import CreateAutomationRequest
     from odoo_client.automation import AutomationTrigger
 
@@ -1573,6 +1668,8 @@ def _apply_safe_automations(
             result.automations_noted += 1
             continue
 
+        actions, notes_ = expand_group_notices(actions, lambda g: _group_user_ids(client, g))
+        result.warnings.extend(notes_)
         created_any = False
         default_activity_type: int | None | str = ""
         for idx, action_spec in enumerate(actions):
@@ -1633,12 +1730,28 @@ def _apply_safe_automations(
                         kwargs["trg_date_range_type"] = str(auto["trg_date_range_type"])
                     if auto.get("trg_date_range_mode"):
                         kwargs["trg_date_range_mode"] = str(auto["trg_date_range_mode"])
-                if _reuse_or_collapse_live_automation(
+                from app.design_admission import admission_enabled, find_by_xmlid, requirement_xmlid, tag_xmlid
+
+                xmlid = (
+                    requirement_xmlid(str(auto.get("external_id") or ""), idx)
+                    if admission_enabled() else ""
+                )
+                if xmlid:
+                    existing = find_by_xmlid(client, xmlid, "base.automation")
+                    if existing:
+                        # Same requirement applied before: update that record, never duplicate.
+                        client.execute_kw("base.automation", "write", [[existing], {"name": auto_name}])
+                        result.automations_reused += 1
+                        created_any = True
+                        continue
+                elif _reuse_or_collapse_live_automation(
                     client, name=auto_name, model=str(model), result=result
                 ):
                     created_any = True
                     continue
-                client.create_automation(CreateAutomationRequest(**kwargs))
+                info = client.create_automation(CreateAutomationRequest(**kwargs))
+                if xmlid and getattr(info, "id", None):
+                    tag_xmlid(client, xmlid, "base.automation", int(info.id))
                 result.automations_created += 1
                 created_any = True
             except Exception as exc:  # noqa: BLE001
@@ -1678,45 +1791,75 @@ def _emit_access_ops(
     )
 
 
+_OPEN_DOMAINS = (False, None, "", "[]")
+
+
+def _retire_open_access_v20(
+    client: OdooClient, model: str, group_id: int, keep_name: str, result: UiApplyResult
+) -> None:
+    """Odoo 20 grants are additive: an open row for the same group would cancel a new
+    domain-restricted one. Switch those open rows off (or remove them if ``ir.access``
+    has no ``active`` field) so the restriction takes effect."""
+    rows = client.execute_kw(
+        "ir.access",
+        "search_read",
+        [[("model_id.model", "=", model), ("group_id", "=", int(group_id)), ("name", "!=", keep_name)]],
+        {"fields": ["name", "domain"]},
+    ) or []
+    open_rows = [r for r in rows if r.get("domain") in _OPEN_DOMAINS]
+    if not open_rows:
+        return
+    ids = [int(r["id"]) for r in open_rows]
+    fields = client.execute_kw("ir.access", "fields_get", [], {"attributes": ["type"]}) or {}
+    if "active" in fields:
+        client.execute_kw("ir.access", "write", [ids, {"active": False}])
+        verb = "Turned off"
+    else:
+        client.execute_kw("ir.access", "unlink", [ids])
+        verb = "Removed"
+    names = ", ".join(repr(str(r.get("name") or r["id"])) for r in open_rows)
+    result.warnings.append(
+        f"Note: {verb} the open access {names} for the same group so the restriction on {model} takes effect."
+    )
+
+
 def _apply_one_access_rule_v20(
     client: OdooClient,
+    spec: dict[str, Any],
     rule: dict[str, Any],
     model: str,
     name: str,
     domain: Any,
     result: UiApplyResult,
 ) -> None:
-    """Major 20 access right: ir.access rows, including an optional domain."""
-    from app.odoo20.access_compiler import access_rights_from_perms
+    """Major 20 access right: one ``ir.access`` row via the client's v20 adapter
+    (``model_id`` / ``group_id`` / letter-code ``operation`` / optional ``domain``)."""
+    from odoo_client.security import CreateAccessRightRequest
 
-    group = rule.get("group") or rule.get("group_xml_id") or "base.group_user"
-    rights = access_rights_from_perms(
-        name=name,
-        model=model,
-        group=group,
-        perms=rule,
-        domain=None if domain in (None, False, "") else str(domain),
-    )
-    if not rights:
+    perms = {k: bool(rule.get(k, True)) for k in ("perm_read", "perm_write", "perm_create", "perm_unlink")}
+    if not any(perms.values()):
         result.warnings.append(f"Access rule {name!r} skipped: no permissions")
         return
-    pending: list[dict[str, Any]] = []
-    for right in rights:
-        operation = right.get("operation") or "read"
-        existing = client.execute_kw(
-            "ir.access",
-            "search",
-            [[("name", "=", name), ("operation", "=", operation)]],
-            {"limit": 1},
-        )
-        if existing:
-            continue
-        pending.append(right)
-    if not pending:
+    if client.execute_kw("ir.access", "search", [[("name", "=", name)]], {"limit": 1}):
+        result.skipped.append(f"access:{model}:{name}")
         return
-    ops = _emit_access_ops(client, 20, pending, None)
-    if ops:
-        result.access_rights_created += 1
+    group_ref = str(rule.get("group") or rule.get("group_xml_id") or "base.group_user")
+    group_id = _resolve_or_create_group_id(client, spec, group_ref)
+    if group_id is None:
+        result.warnings.append(f"Access {name!r}: group {group_ref!r} unresolved; creating without group")
+    restricted = domain not in _OPEN_DOMAINS
+    client.create_access_right(
+        CreateAccessRightRequest(
+            model=model,
+            name=name,
+            group_id=group_id,
+            domain=str(domain) if restricted else None,
+            **perms,
+        )
+    )
+    result.access_rights_created += 1
+    if restricted and group_id is not None:
+        _retire_open_access_v20(client, model, int(group_id), name, result)
 
 
 def _apply_one_record_rule_v20(
@@ -1770,24 +1913,8 @@ def _apply_access_rules(
             from app.odoo20.access_compiler import major_of
 
             if major_of(client) >= 20:
-                _apply_one_access_rule_v20(client, rule, model, name, domain, result)
+                _apply_one_access_rule_v20(client, spec, rule, model, name, domain, result)
                 continue
-            if domain not in (None, False, ""):
-                client.create_record_rule(
-                    CreateRecordRuleRequest(
-                        model=model,
-                        name=name,
-                        domain_force=str(domain),
-                        perm_read=bool(rule.get("perm_read", True)),
-                        perm_write=bool(rule.get("perm_write", True)),
-                        perm_create=bool(rule.get("perm_create", True)),
-                        perm_unlink=bool(rule.get("perm_unlink", True)),
-                        active=bool(rule.get("active", True)),
-                    )
-                )
-                result.record_rules_created += 1
-                continue
-
             group_ref = str(rule.get("group") or rule.get("group_xml_id") or "base.group_user")
             group_id = None
             if group_ref:
@@ -1797,6 +1924,27 @@ def _apply_access_rules(
                         f"Access {name!r}: group {group_ref!r} unresolved; "
                         "creating without group"
                     )
+            if domain not in (None, False, ""):
+                # A domain limits this group only: bind the rule to the group (a rule without
+                # groups is global and would limit every user, administrators included).
+                rule_name = f"{name} limit"
+                if not any(r.name == rule_name for r in client.list_record_rules(model=model, limit=200)):
+                    client.create_record_rule(
+                        CreateRecordRuleRequest(
+                            model=model,
+                            name=rule_name,
+                            domain_force=str(domain),
+                            group_ids=[group_id] if group_id else [],
+                            perm_read=bool(rule.get("perm_read", True)),
+                            perm_write=bool(rule.get("perm_write", True)),
+                            perm_create=bool(rule.get("perm_create", True)),
+                            perm_unlink=bool(rule.get("perm_unlink", True)),
+                            active=bool(rule.get("active", True)),
+                        )
+                    )
+                    result.record_rules_created += 1
+                else:
+                    result.skipped.append(f"record_rule:{model}:{rule_name}")
             # Idempotent: skip if same group already has a row
             existing = client.execute_kw(
                 "ir.model.access",
@@ -1810,6 +1958,7 @@ def _apply_access_rules(
                 {"limit": 1},
             )
             if existing:
+                result.skipped.append(f"access:{model}:{group_ref} (kept the existing access row)")
                 continue
             client.create_access_right(
                 CreateAccessRightRequest(
@@ -2053,9 +2202,37 @@ def _apply_component_inherit(client: OdooClient, spec: dict[str, Any], result: U
                 )
                 result.views_created += 1
         except Exception as exc:  # noqa: BLE001
+            if "cannot be located in parent view" in str(exc):
+                # S12: a stock form changed between Odoo versions (e.g. crm.lead on 20 has no
+                # page "lead"). The fields still belong on the form: place each one with the
+                # generic inherit inject, which reads the live form instead of a fixed anchor.
+                placed = _inject_extension_fields(client, model, arch, result)
+                if placed:
+                    result.warnings.append(
+                        f"Inherit view {vname}: its anchor is not on this Odoo version's form; "
+                        f"placed {len(placed)} field(s) with the standard inject instead."
+                    )
+                    continue
             detail = f"Inherit view {vname} failed: {exc}"
             result.warnings.append(detail)
             result.skipped.append(detail)
+
+
+def _inject_extension_fields(client: Any, model: str, arch: str, result: Any) -> list[str]:
+    """Place the x_ fields of a failed extension arch with the generic inherit inject."""
+    placed: list[str] = []
+    for fname in dict.fromkeys(re.findall(r'name="(x_[^"]+)"', arch or "")):
+        try:
+            if not client.field_exists(model, fname):
+                continue
+            updated = client.inject_field_into_views(model, fname, strategy="inherit")
+        except Exception as exc:  # noqa: BLE001
+            result.warnings.append(f"Inherit inject {model}.{fname} failed: {exc}")
+            continue
+        if updated:
+            result.views_created += len(updated)
+            placed.append(fname)
+    return placed
 
 
 def inherit_host_model_from_spec(spec: dict[str, Any]) -> str | None:
@@ -2066,6 +2243,8 @@ def inherit_host_model_from_spec(spec: dict[str, Any]) -> str | None:
         mid = str(row.get("model") or "").strip()
         if not mid or mid.endswith("_line") or mid.endswith("_party"):
             continue
+        if row.get("stock_extension"):
+            continue  # App design extension of a stock model, not a Prefer host
         mode = str(row.get("mode") or "new")
         if mode == "inherit" or not mid.startswith("x_"):
             return mid
@@ -2136,7 +2315,16 @@ def apply_module_spec_ui(
     apply_automations: bool = True,
     apply_access: bool = True,
 ) -> UiApplyResult:
-    """Create models/fields then generate UI from ModuleSpec JSON."""
+    """Create models/fields then generate UI from app plan JSON."""
+    from app.wireframe.review import require_wireframe_stage_h
+
+    require_wireframe_stage_h(spec)
+    from app.design_admission import admit_before_apply
+
+    admission = admit_before_apply(client, spec)  # None unless INGENIUM_DESIGN_ADMISSION is on
+    if admission is not None and not admission.ok:
+        # Fail closed before any write; every reason is named.
+        raise ValueError("Design not admitted: " + " | ".join(f"[{e.code}] {e.message}" for e in admission.errors))
     base = apply_project_spec(client, spec)
     result = UiApplyResult(
         models_created=base.models_created,
@@ -2147,6 +2335,8 @@ def apply_module_spec_ui(
     )
 
     _warn_custom_code_blocks(spec, result)
+    if apply_access or apply_menus:
+        _ensure_spec_groups(client, spec, result)
     _apply_workflow_sequences(client, spec, result)
 
     if apply_views:
@@ -2171,7 +2361,7 @@ def apply_module_spec_ui(
         _ensure_apply_user_in_app_groups(client, spec, result)
 
     result.message = (
-        f"UI apply: {len(result.models_created)} model(s), {result.fields_created} field(s), "
+        f"UI apply: {len(result.models_created)} models, {result.fields_created} field(s), "
         f"{result.views_created} view(s) created, {result.views_updated} updated, "
         f"{result.menus_created} menu(s), {result.smart_buttons} smart button(s), "
         f"{result.automations_created} automation(s)"

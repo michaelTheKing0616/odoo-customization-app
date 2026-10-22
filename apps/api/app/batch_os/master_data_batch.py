@@ -18,7 +18,7 @@ from app.batch_os.types import (
 )
 
 HONESTY_MASTER = (
-    "Preview ≠ written. Dry-run only proposes create/update — "
+    "Preview ≠ written. Dry-run only proposes create/update, "
     "Apply writes via public RPC."
 )
 
@@ -302,7 +302,7 @@ class PartnersBatchRecipe:
         if not state.extras.get("records"):
             state = self.map(state)
         if not client.model_exists("res.partner"):
-            state.errors.append(RowError(row_index=0, code="blocking", message="res.partner missing — Contacts not available"))
+            state.errors.append(RowError(row_index=0, code="blocking", message="res.partner missing, Contacts not available"))
             state.phase = "failed"
             return state
         would_create: list[dict[str, Any]] = []
@@ -439,7 +439,7 @@ class ProductsBatchRecipe:
         if not state.extras.get("records"):
             state = self.map(state)
         if not client.model_exists("product.template"):
-            state.errors.append(RowError(row_index=0, code="blocking", message="product.template missing — install Product"))
+            state.errors.append(RowError(row_index=0, code="blocking", message="product.template missing, install Product"))
             state.phase = "failed"
             return state
         would_create: list[dict[str, Any]] = []

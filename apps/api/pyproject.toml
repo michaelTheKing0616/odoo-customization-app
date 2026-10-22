@@ -24,6 +24,8 @@ dependencies = [
   "pyyaml>=6",
   # Runtime: OAuth callbacks, ingest vision OCR, outbound HTTP probes
   "httpx>=0.28",
+  "pypdfium2>=4.30",
+  "segno>=1.6.6",
 ]
 
 [project.optional-dependencies]
@@ -59,6 +61,7 @@ dev = [
 markers = [
     "integration: needs local Odoo 16–19 (+ app-db for apps/api)",
     "no_app_db: unit tests that must not open app Postgres",
+    "odoo_live: real disposable Odoo 17-20 containers (ODOO_LIVE=1); skipped by default",
     "sandbox: slow ephemeral Docker sandbox (PR-D/E prove); excluded from fast CI",
     "slow: long-running sandbox prove suite; excluded from fast CI",
 ]

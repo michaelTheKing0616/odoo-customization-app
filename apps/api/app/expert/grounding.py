@@ -296,11 +296,10 @@ def _normalize_version(server_version: str | None) -> str | None:
     return m.group(1) if m else None
 
 
-def _edition_from_version(server_version: str | None) -> str:
-    raw = (server_version or "").lower()
-    if "+e" in raw or "enterprise" in raw:
-        return "enterprise"
-    return "community"
+def _edition_from_version(server_version: str | None, url: str | None = None) -> str:
+    from app.tier_matrix import detect_edition
+
+    return detect_edition(server_version, url=url)
 
 
 def _installed_from_manifest(manifest: dict[str, Any]) -> list[str]:
@@ -828,7 +827,7 @@ def assemble_context(
                 "connection_id": connection_id,
                 "server_version": row.server_version,
                 "retrieval_version": bundle.retrieval_version,
-                "edition": _edition_from_version(row.server_version),
+                "edition": _edition_from_version(row.server_version, row.url),
                 "hosting": hosting_hint_from_url(row.url),
                 "module_count": (manifest.get("module_counts") or {}).get("union")
                 or len(installed),

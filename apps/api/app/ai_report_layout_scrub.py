@@ -5,7 +5,7 @@ reports (delivery slip, picking, invoice / sale address blocks) when the brief
 asks. Parameterized by host + stock report xmlid. Prefer Contacts “delivery
 notes” must never steal this class.
 
-Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm.
 """
 
 from __future__ import annotations
@@ -225,7 +225,7 @@ def scaffold_address_scrub_blocks(
     prompt: str = "",
     host: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Attach parameterized QWeb scrub blocks onto an Option A draft."""
+    """Attach parameterized QWeb scrub blocks onto a custom-code draft."""
     text = prompt or str(draft.get("_user_prompt") or "")
     if not is_report_layout_scrub_brief(text):
         return []
@@ -243,7 +243,7 @@ def scaffold_address_scrub_blocks(
             "model": resolved,
             "reason": (
                 "QWeb address scrub CLASS — drop commercial partner name on "
-                f"{resolved} stock reports (module → sandbox → human Promote)"
+                f"{resolved} stock reports (module → sandbox → you publish)"
             ),
             "source": "report_layout_scrub_scaffold",
             "option_a": True,

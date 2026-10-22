@@ -34,7 +34,7 @@ def _model_supports_message_post(client: OdooClient, model: str) -> None:
     fg = client.execute_kw(model, "fields_get", [], {"attributes": []})
     if "message_ids" not in fg:
         raise SendMessageValidationError(
-            f"Model {model!r} has no message_ids — enable mail.thread mixin before bulk send."
+            f"Model {model!r} has no message_ids, enable mail.thread mixin before bulk send."
         )
 
 

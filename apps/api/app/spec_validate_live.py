@@ -1,4 +1,4 @@
-"""Read-only ModuleSpec validation against a live Odoo connection (TIER-2)."""
+"""Read-only app plan validation against a live Odoo connection (TIER-2)."""
 
 from __future__ import annotations
 
@@ -101,7 +101,7 @@ def validate_module_spec_live(client: OdooClient, spec: dict[str, Any]) -> Valid
                 item_id="spec.models",
                 category="spec",
                 status="pass",
-                message=f"{len(models)} model(s) in draft",
+                message=f"{len(models)} models in draft",
             )
         )
 

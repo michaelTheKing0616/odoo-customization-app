@@ -54,7 +54,7 @@ APPROVAL_RULE_FIELDS_DOC: dict[str, str] = {
     "domain": "Conditional domain for when the step applies",
     "user_ids": "Approver users (res.users)",
     "group_id": "Approver group (res.groups)",
-    "exclusive_user": "Exclusive approval — approver cannot approve other steps",
+    "exclusive_user": "Exclusive approval, approver cannot approve other steps",
     "notification_order": "Approval order (1 = first step)",
     "active": "Active flag",
 }
@@ -127,7 +127,7 @@ def probe_approval_rules_driver(client: OdooClient) -> DriverCapabilityStatus:
             verify_state="unavailable",
             reason=(
                 f"Model {APPROVAL_RULE_MODEL} not found"
-                + (" — Studio modules not installed." if not has_studio else ".")
+                + (", Studio modules not installed." if not has_studio else ".")
             ),
             requires_modules=requires,
         )
@@ -154,9 +154,9 @@ def probe_approval_rules_driver(client: OdooClient) -> DriverCapabilityStatus:
         available=True,
         verify_state=verify_state,
         reason=(
-            "Approval rule RPC available — fields probed live."
+            "Approval rule RPC available, fields probed live."
             if verify_state == "live"
-            else "Model exists — some doc fields absent; RPC uses probed subset only."
+            else "Model exists, some doc fields absent; RPC uses probed subset only."
         ),
         verified_fields=verified,
         pending_fields=pending,
@@ -311,14 +311,14 @@ def probe_all_drivers(client: OdooClient) -> list[DriverCapabilityStatus]:
         probe_ee_playbook_driver(
             client,
             driver_id="ee_playbook_sign",
-            label="Sign — create request",
+            label="Sign, create request",
             modules=["sign"],
             model="sign.request",
         ),
         probe_ee_playbook_driver(
             client,
             driver_id="ee_playbook_documents",
-            label="Documents — attach to folder",
+            label="Documents, attach to folder",
             modules=["documents"],
             model="documents.document",
         ),
@@ -383,7 +383,7 @@ def create_approval_rule(client: OdooClient, payload: dict[str, Any]) -> tuple[i
     vals = _pick_write_fields(payload, status.verified_fields)
     if not vals:
         raise EeDriverError(
-            "No writable approval-rule fields matched live probe — "
+            "No writable approval-rule fields matched live probe, "
             f"verified={status.verified_fields}, pending={status.pending_fields}"
         )
     rule_id = client.execute_kw(APPROVAL_RULE_MODEL, "create", [vals])

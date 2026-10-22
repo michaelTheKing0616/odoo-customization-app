@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -242,6 +242,7 @@ def commit_import(
     connection_id: str,
     body: DataImportCommitBody,
     db: Session = Depends(get_db),
+    request: Request = None,  # type: ignore[assignment]  # injected by FastAPI
 ) -> DataImportCommitOut:
     if not body.rows:
         raise HTTPException(status_code=422, detail="rows required")
@@ -267,6 +268,30 @@ def commit_import(
             raise _confirm_http(exc) from exc
 
     client = _client(connection_id, db)
+    old_values: list[dict] = []
+
+    def _remember_old(rid: int, vals: dict) -> None:
+        from app import write_gate as wg
+
+        got = wg.read_before(client, body.model, rid, vals)
+        if got:
+            old_values.append(got)
+
+    if not body.dry_run:
+        # A5: shared Run sheet guards — money guard and the approval rule before anything is written.
+        import hashlib
+        import json as _json
+
+        from app import write_gate as wg
+
+        try:
+            wg.guard_record_create(db, connection_id, model=body.model, source="Import")
+            rows_hash = hashlib.sha256(_json.dumps(body.rows, sort_keys=True, default=str).encode()).hexdigest()[:24]
+            wg.approval_status(db, request, connection_id, model=body.model, ids=list(range(1, len(body.rows) + 1)),
+                               vals={"import_rows": rows_hash, "mode": body.mode}, source="Import",
+                               always=wg.is_accounting_setup(body.model))
+        except (wg.WriteRefused, wg.WriteNeedsApproval) as exc:
+            raise wg.http_error(exc) from exc
     try:
         result = dry_run_or_commit(
             client,
@@ -277,12 +302,29 @@ def commit_import(
             match_fields=body.match_fields,
             dry_run=body.dry_run,
             batch_size=body.batch_size,
+            before_update=None if body.dry_run else _remember_old,
         )
     except OdooClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    if not body.dry_run:
+        new_ids = [r.record_id for r in result.results if r.ok and r.action == "create" and r.record_id]
+        if new_ids:  # undo point in History: undo removes the records this import added
+            from app import write_gate as wg
+
+            try:
+                wg.record_created(db, connection_id, model=body.model, ids=new_ids, source="Import")
+            except Exception:  # noqa: BLE001 - never fail a finished import over the History entry
+                pass
+        if old_values:  # undo point for updated rows: their old values
+            from app import write_gate as wg
+
+            try:
+                wg.save_before_values(db, connection_id, model=body.model, before=old_values, source="Import")
+            except Exception:  # noqa: BLE001
+                pass
     err_csv = results_to_error_csv(result.results) if result.failed else None
     return DataImportCommitOut(
         ok=result.ok,

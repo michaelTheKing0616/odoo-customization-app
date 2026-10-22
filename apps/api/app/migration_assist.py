@@ -134,7 +134,7 @@ def migration_assist_panel(ctx: TierContext) -> MigrationAssistPanel:
         title="What moving to Odoo.sh unlocks for this connection",
         body=(
             "Odoo Online limits filesystem module deploy and true staging parity. "
-            "Odoo.sh adds Git-based module deploy, staging branches, and Option A Python paths."
+            "Odoo.sh adds Git-based module deploy, staging branches, and custom-code Python paths."
         ),
         unlocks=unlocks,
         docs_links=[

@@ -42,7 +42,7 @@ def run_elite_autopilot(
             "ok": False,
             "gate_passed": False,
             "gate_reasons": gate_reasons,
-            "message": "Elite promote gate failed — improve draft scorecard or fix lint.",
+            "message": "Elite promote gate failed, improve draft scorecard or fix lint.",
         }
 
     lint = lint_custom_code_blocks(spec)
@@ -142,7 +142,7 @@ def run_elite_autopilot(
         "certified_artifacts": spec.get("_certified_artifacts"),
         "score_0_10": scorecard.get("score_0_10"),
         "technical_name": tech,
-        "message": "Sandbox validation passed — ready to promote.",
+        "message": "Sandbox validation passed, ready to promote.",
     }
 
 

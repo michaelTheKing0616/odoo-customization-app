@@ -19,12 +19,12 @@ BatchPhase = Literal[
 
 # Honesty: dry-run / preview never equals posted accounting.
 HONESTY_PREVIEW_NE_POSTED = (
-    "Preview is not posted. Dry-run only validates shape and balance — "
+    "Preview is not posted. Dry-run only validates shape and balance, "
     "Apply creates drafts; posting (if requested) is a separate L2 step."
 )
 
 HONESTY_PREVIEW_NE_CONFIRMED = (
-    "Preview is not confirmed. Dry-run only validates shape — "
+    "Preview is not confirmed. Dry-run only validates shape, "
     "Apply creates draft sale/purchase orders; confirmation is a separate step."
 )
 
@@ -32,7 +32,7 @@ RISK_LABELS: dict[RiskTier, str] = {
     "L0": "Read / preview only",
     "L1": "Draft creates (reversible via draft unlink)",
     "L2": "Post / irreversible accounting effects",
-    "L3": "Fiscal locks / period close — confirm required",
+    "L3": "Fiscal locks / period close, confirm required",
 }
 
 

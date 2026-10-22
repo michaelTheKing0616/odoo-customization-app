@@ -1,4 +1,4 @@
-"""NL → ModuleSpec draft via optional Ollama + domain packs. Never auto-applies."""
+"""NL → App plan draft via optional Ollama + domain packs. Never auto-applies."""
 
 from __future__ import annotations
 
@@ -717,9 +717,9 @@ class OptionAReverifyBody(BaseModel):
 def reverify_option_a_authoring(
     body: OptionAReverifyBody, db: Session = Depends(get_db)
 ) -> dict[str, Any]:
-    """Re-run the Option A authoring gate after a stock host app is installed.
+    """Re-run the custom-code authoring gate after a stock host app is installed.
 
-    Does not call the LLM. Zip stays locked until the gate passes. Promote stays human.
+    Does not call the LLM. Zip stays locked until the gate passes. Publishing stays a step you confirm.
     """
     from app.ai_option_a_reverify import run_option_a_reverify
 

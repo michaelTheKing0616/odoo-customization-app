@@ -133,7 +133,7 @@ def _probe_coa(client: Any, report: BootstrapReport) -> None:
         )
     )
     if not ok:
-        report.warnings.append("Chart of accounts is thin — install l10n before ingesting CoA/TB.")
+        report.warnings.append("Chart of accounts is thin, install l10n before ingesting CoA/TB.")
 
 
 def _probe_journals(client: Any, report: BootstrapReport) -> None:
@@ -296,7 +296,7 @@ def _probe_users(client: Any, packet: JobPacket, report: BootstrapReport) -> Non
     emails = [e for e in emails if e not in _SKIP_USER_LOGINS][:8]
     if not emails and not roster:
         report.probes.append(
-            ProbeResult(name="users", ok=True, detail="no org emails in packet — skipped create")
+            ProbeResult(name="users", ok=True, detail="no org emails in packet, skipped create")
         )
         return
     if not _exists(client, "res.users"):

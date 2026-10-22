@@ -394,7 +394,7 @@ def commit_job(
                 warning="Financial ingest (CoA / opening balances) can alter accounting data.",
                 risks=[
                     "Incorrect accounts may break fiscal reports",
-                    "Opening balances create a DRAFT journal entry — never auto-posted",
+                    "Opening balances create a DRAFT journal entry, never auto-posted",
                     "Legacy CoA codes may diverge from l10n_* package",
                 ],
             )

@@ -77,7 +77,7 @@ VERTICAL_CATALOG: tuple[VerticalEntry, ...] = (
         domain_pack_id="car_rental",
         stock_modules=("base", "contacts", "mail", "fleet", "sale", "account"),
         keywords=("car rental", "vehicle", "fleet", "contract", "branch", "odometer"),
-        summary="Fleet + Contacts + rental contracts; stock invoices — never x_customer / x_payment.",
+        summary="Fleet + Contacts + rental contracts; stock invoices, never x_customer / x_payment.",
     ),
     VerticalEntry(
         id="library_management",
@@ -108,7 +108,7 @@ VERTICAL_CATALOG: tuple[VerticalEntry, ...] = (
             "res.partner",
         ),
         summary=(
-            "No stock Library app on Community — Contacts for members (res.partner link-only), "
+            "No stock Library app on Community, Contacts for members (res.partner link-only), "
             "custom x_lib_* models for catalog/circulation; Wizard Library template or "
             "library_management domain pack with fines, reminders, and QWeb receipt."
         ),
@@ -147,7 +147,7 @@ VERTICAL_CATALOG: tuple[VerticalEntry, ...] = (
         domain_pack_id="law_firm",
         stock_modules=("base", "contacts", "mail", "crm", "project", "sale", "account", "hr_timesheet"),
         keywords=("law firm", "matter", "billable", "retainer", "trust account", "legal"),
-        summary="Matters, time entries, and billing — law_firm domain pack plus Project/Timesheet/Accounting.",
+        summary="Matters, time entries, and billing, law_firm domain pack plus Project/Timesheet/Accounting.",
     ),
     VerticalEntry(
         id="hotel",
@@ -163,7 +163,7 @@ VERTICAL_CATALOG: tuple[VerticalEntry, ...] = (
         domain_pack_id="hotel",
         stock_modules=("base", "contacts", "mail", "sale", "account", "website"),
         keywords=("hotel", "room", "reservation", "folio", "housekeeping", "guest"),
-        summary="Room inventory, reservations, and folios — hotel domain pack on Sales/Contacts.",
+        summary="Room inventory, reservations, and folios, hotel domain pack on Sales/Contacts.",
     ),
     VerticalEntry(
         id="restaurant",
@@ -189,7 +189,7 @@ VERTICAL_CATALOG: tuple[VerticalEntry, ...] = (
         domain_pack_id="real_estate",
         stock_modules=("base", "contacts", "mail", "crm", "sale", "account", "website"),
         keywords=("real estate", "property", "lease", "tenant", "unit", "listing"),
-        summary="Listings, leases, and rent invoicing — real_estate pack plus CRM/Sales.",
+        summary="Listings, leases, and rent invoicing, real_estate pack plus CRM/Sales.",
     ),
     VerticalEntry(
         id="subscription",
@@ -201,7 +201,7 @@ VERTICAL_CATALOG: tuple[VerticalEntry, ...] = (
         domain_pack_id="subscription",
         stock_modules=("base", "contacts", "mail", "sale", "account", "website"),
         keywords=("subscription", "membership", "renewal", "recurring", "plan"),
-        summary="Recurring plans and member portal — subscription pack; verify billing features on Community.",
+        summary="Recurring plans and member portal, subscription pack; verify billing features on Community.",
     ),
     VerticalEntry(
         id="project_tracker",
@@ -225,7 +225,7 @@ VERTICAL_CATALOG: tuple[VerticalEntry, ...] = (
         domain_pack_id="field_service",
         stock_modules=("base", "contacts", "mail", "project", "calendar", "sale", "stock"),
         keywords=("field service", "dispatch", "technician", "work order", "job"),
-        summary="Dispatch jobs to technicians — field_service pack plus Project/Calendar.",
+        summary="Dispatch jobs to technicians, field_service pack plus Project/Calendar.",
     ),
     VerticalEntry(
         id="retail_ecommerce",
@@ -355,7 +355,7 @@ VERTICAL_CATALOG: tuple[VerticalEntry, ...] = (
         ),
         summary=(
             "Internal ops stack: maintenance + stock/purchase (MRO) + project (jobs/TA) + HR/fleet; "
-            "custom x_og_* for facilities/assets/work orders — not real estate or website/CRM defaults."
+            "custom x_og_* for facilities/assets/work orders, not real estate or website/CRM defaults."
         ),
     ),
 )

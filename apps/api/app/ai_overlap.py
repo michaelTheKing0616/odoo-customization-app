@@ -164,7 +164,7 @@ def _scan_instance_fields(
             if score < 0.55:
                 continue
             proj = project_name_by_field.get(f"{model}.{fname}")
-            evidence = f"Field {fname} already on {model.replace('.', ' ').title()} — {label}"
+            evidence = f"Field {fname} already on {model.replace('.', ' ').title()}, {label}"
             if proj:
                 evidence += f" (project {proj!r})"
             findings.append(
@@ -274,7 +274,7 @@ def _scan_workspace_and_gallery(
                 source="workspace_project",
                 title=f"Workspace project {name!r}",
                 evidence=f"Project {name!r} may already cover this ask"
-                + (f" — updated {when}" if when else ""),
+                + (f", updated {when}" if when else ""),
                 confidence=min(0.9, score),
                 artifact_type="project",
                 artifact_ref={"project_id": proj.get("id"), "name": name},

@@ -10,7 +10,7 @@ from app.db import SessionLocal
 from app.db_models import LiveDemoCopilotSession
 from app.jobs import create_job, enqueue
 from app.job_runner import JOB_TIMEOUTS
-from app.live_demo_copilot.attendee_client import leave_and_purge_with_retries
+from app.live_demo_copilot.bot_backend import leave_and_purge_with_retries
 from app.live_demo_copilot.events import EVENT_BUS
 from app.live_demo_copilot import service as ldc
 

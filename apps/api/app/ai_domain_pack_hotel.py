@@ -68,10 +68,10 @@ def hotel_pack() -> dict[str, Any]:
             "lodging",
         ],
         "anti_patterns": [
-            "Do NOT implement payment capture or folio settlement — x_bill is link-only",
-            "Do NOT invent x_guest customer model — use res.partner + x_guest_party",
+            "Do NOT implement payment capture or folio settlement, x_bill is link-only",
+            "Do NOT invent x_guest customer model, use res.partner + x_guest_party",
             "x_guest_party is NOT is_workflow",
-            "Room amenities are selections/char fields — not separate models",
+            "Room amenities are selections/char fields, not separate models",
         ],
         "models": [
             {
@@ -365,7 +365,7 @@ def hotel_pack() -> dict[str, Any]:
                         "name": "x_invoice_ref",
                         "ttype": "char",
                         "string": "External Invoice Ref",
-                        "help": "Link-only — wire to account.move manually",
+                        "help": "Link-only, wire to account.move manually",
                     },
                 ],
             },

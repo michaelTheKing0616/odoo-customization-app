@@ -342,7 +342,7 @@ def validate_method_name(method: str) -> str:
     name = (method or "").strip()
     if not re.match(r"^[a-zA-Z_]\w*$", name):
         raise CronManagerError(
-            f"Invalid method name {method!r} — use an existing public method on the model"
+            f"Invalid method name {method!r}, use an existing public method on the model"
         )
     return name
 

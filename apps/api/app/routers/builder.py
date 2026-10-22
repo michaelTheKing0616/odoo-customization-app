@@ -410,7 +410,7 @@ def create_field(
                 confirm_phrase=body.confirm_phrase,
                 warning=(
                     "Mutating parent view arch overwrites existing module XML. "
-                    "Prefer inherit (default) for interop with installed modules."
+                    "Use an extension view (the default) so installed apps keep working together."
                 ),
                 risks=[
                     "Parent ir.ui.view arch is rewritten in place",
@@ -505,6 +505,21 @@ def update_field(
     attrs = body.model_dump(exclude_none=True)
     if not attrs:
         raise HTTPException(status_code=422, detail="No fields to update")
+    try:
+        existing = client.get_field(field_id)
+    except OdooClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    name = str(getattr(existing, "name", "") or "")
+    state = str(getattr(existing, "state", "") or "")
+    is_custom = name.startswith("x_") or state == "manual"
+    if not is_custom:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"{name!r} is one of Odoo's own fields, so it can't be changed in place. "
+                "Add your own field instead, or extend this one with custom code."
+            ),
+        )
     try:
         updated = client.update_field(field_id, **attrs)
     except OdooClientError as exc:

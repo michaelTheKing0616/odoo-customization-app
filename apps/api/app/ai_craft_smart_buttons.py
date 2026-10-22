@@ -67,6 +67,8 @@ def _button_label(*, title: str, prompt: str, on_model: str) -> str:
     if on_model == "hr.employee" and re.search(r"\bhost\b", blob):
         return "Visits"
     name = (title or "Records").strip()
+    if re.search(r"&|\band\b|/", name) or len(name.split()) > 3:
+        return name  # an app title, not one record name: never pluralise it
     if name.lower().endswith("y") and not name.lower().endswith(("ay", "ey", "oy", "uy")):
         return name[:-1] + "ies"
     if name.lower().endswith("s"):

@@ -16,6 +16,12 @@ from app.expert.ask import (
 )
 from app.expert.draft_review import DraftReviewFinding
 from app.expert.retrieval import RetrievedChunk, retrieve_expert_chunks
+from app.live_schema_context import (
+    SchemaPacket,
+    prepend_schema_packet,
+    technical_names,
+    unknown_technical_names,
+)
 from app.llm_provider import LLMError, get_llm_provider
 from app.settings import settings
 
@@ -48,6 +54,8 @@ Rules:
 - Use inline citation markers [1], [2], … matching SOURCE EXCERPT numbers exactly.
 - Every paragraph MUST end with at least one [n] marker.
 - Be specific to the finding detail; do not invent fixes not supported by sources.
+- Name an Odoo model or field technical name only if it appears in FINDINGS or the
+  LIVE SCHEMA PACKET; otherwise describe it in plain words.
 - Plain tone; no bullet lists inside paragraphs.
 """.strip()
 
@@ -113,11 +121,22 @@ def generate_finding_narratives(
     user_prompt: str = "",
     version: str | None = None,
     top_n: int = 5,
+    schema_packet: SchemaPacket | None = None,
 ) -> list[FindingNarrative]:
-    """Generate one cited paragraph per top finding; template fallback when LLM unavailable."""
+    """Generate one cited paragraph per top finding; template fallback when LLM unavailable.
+
+    The live packet (explicit, else the request's bound packet) is prepended to the
+    prompt. A paragraph naming a model or field that is neither in the packet nor in
+    its own finding text is replaced by the template fallback. No packet → only the
+    finding's own names are allowed.
+    """
     ranked = sorted(findings, key=lambda f: f.priority)[:top_n]
     if not ranked:
         return []
+    if schema_packet is None:
+        from app.ai_conversation.intent_llm import current_schema_packet
+
+        schema_packet = current_schema_packet()
 
     if db is None or not expert_assist_enabled():
         return [
@@ -157,13 +176,17 @@ def generate_finding_narratives(
     finding_lines = "\n".join(
         f"{f.priority}. [{f.summary}] {f.detail}" for f in ranked
     )
-    prompt = (
-        f"USER PROMPT CONTEXT:\n{user_prompt[:400] or '(none)'}\n\n"
-        f"FINDINGS:\n{finding_lines}\n\n"
-        f"SOURCE EXCERPTS:\n{sources_text}\n\n"
-        f"{_NARRATIVE_RULES}\n\n"
-        "Return JSON with narratives array — one entry per finding priority."
+    prompt = prepend_schema_packet(
+        (
+            f"USER PROMPT CONTEXT:\n{user_prompt[:400] or '(none)'}\n\n"
+            f"FINDINGS:\n{finding_lines}\n\n"
+            f"SOURCE EXCERPTS:\n{sources_text}\n\n"
+            f"{_NARRATIVE_RULES}\n\n"
+            "Return JSON with narratives array — one entry per finding priority."
+        ),
+        schema_packet,
     )
+    finding_by_priority = {f.priority: f for f in ranked}
 
     try:
         raw = llm.generate_json(
@@ -193,6 +216,22 @@ def generate_finding_narratives(
                 continue
             paragraph = str(row.get("paragraph") or "").strip()
             if not paragraph:
+                continue
+            finding = finding_by_priority.get(priority)
+            if finding is None or unknown_technical_names(
+                paragraph,
+                schema_packet,
+                allowed=technical_names(
+                    " ".join(
+                        (
+                            finding.summary,
+                            finding.detail,
+                            finding.element,
+                            finding.repair_hint or "",
+                        )
+                    )
+                ),
+            ):
                 continue
             raw_ids = row.get("citation_ids") or []
             ids: list[int] = []

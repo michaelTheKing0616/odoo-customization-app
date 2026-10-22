@@ -208,7 +208,7 @@ def suggest_line_total_compute(draft: dict[str, Any]) -> list[str]:
                     "model": mid,
                     "message": (
                         f"Line model {mid} has {qty} × {price} → consider equation compute "
-                        f"for {total} (advanced action — confirm before apply)."
+                        f"for {total} (advanced action, confirm before apply)."
                     ),
                 }
             )

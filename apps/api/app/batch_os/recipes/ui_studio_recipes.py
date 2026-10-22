@@ -36,7 +36,7 @@ class ViewPackPointerRecipe:
     def validate(self, state: BatchJobState, client: Any) -> BatchJobState:
         del client
         state.phase = "validated"
-        state.message = "Catalog pointer — App Studio owns ir.ui.view"
+        state.message = "Catalog pointer, App Studio owns ir.ui.view"
         return state
 
     def dry_run(self, state: BatchJobState, client: Any) -> BatchJobState:
@@ -50,7 +50,7 @@ class ViewPackPointerRecipe:
         del post_after_create, client
         state.phase = "applied"
         state.dry_run = False
-        state.message = "No-op — use App Studio / View Designer"
+        state.message = "No-op, use App Studio / View Designer"
         return state
 
 
@@ -77,7 +77,7 @@ class MenuPackPointerRecipe:
     def validate(self, state: BatchJobState, client: Any) -> BatchJobState:
         del client
         state.phase = "validated"
-        state.message = "Catalog pointer — App Studio owns ir.ui.menu"
+        state.message = "Catalog pointer, App Studio owns ir.ui.menu"
         return state
 
     def dry_run(self, state: BatchJobState, client: Any) -> BatchJobState:
@@ -91,5 +91,5 @@ class MenuPackPointerRecipe:
         del post_after_create, client
         state.phase = "applied"
         state.dry_run = False
-        state.message = "No-op — use App Studio for menus"
+        state.message = "No-op, use App Studio for menus"
         return state

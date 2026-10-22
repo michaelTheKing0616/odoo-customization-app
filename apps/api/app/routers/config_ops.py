@@ -16,7 +16,9 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app import write_gate as _wg
 from app.db import get_db
+from app.qweb_unsafe_gate import refuse_unsafe_qweb_arch
 from app.odoo_service import OdooClientError, client_from_connection, get_connection_or_404
 from app.schemas import ConfirmAdvancedBody
 from app.snapshots import (
@@ -189,6 +191,7 @@ def update_company(
     if not vals:
         raise HTTPException(status_code=400, detail="No fields to update")
     try:
+        _wg.guard_one(db, connection_id, client, "res.company", [company_id], vals, "Company settings")
         client.execute_kw("res.company", "write", [[company_id], vals])
         rows = client.execute_kw(
             "res.company", "read", [[company_id]], {"fields": _COMPANY_FIELDS}
@@ -566,6 +569,17 @@ def create_sequence(
 # --- Mail templates ---
 
 
+def _gate_mail_html(label: str, html: str | None) -> None:
+    """DOC-MAIL — apply PDF-05 family gate to mail.template HTML fields."""
+    if not html:
+        return
+    try:
+        refuse_unsafe_qweb_arch(html)
+    except ValueError as exc:
+        msg = str(exc).replace("report templates", "mail templates")
+        raise HTTPException(status_code=400, detail=f"{label}: {msg}") from exc
+
+
 class MailTemplateOut(BaseModel):
     id: int
     name: str
@@ -627,6 +641,8 @@ def create_mail_template_config(
     connection_id: str, body: CreateMailTemplateBody, db: Session = Depends(get_db)
 ) -> MailTemplateOut:
     client = _client(connection_id, db)
+    _gate_mail_html("subject", body.subject)
+    _gate_mail_html("body_html", body.body_html)
     try:
         tid = client.create_mail_template(
             name=body.name,
@@ -667,7 +683,12 @@ def update_mail_template_config(
     vals = {k: v for k, v in body.model_dump().items() if v is not None}
     if not vals:
         raise HTTPException(status_code=400, detail="No fields to update")
+    if "subject" in vals:
+        _gate_mail_html("subject", vals.get("subject"))
+    if "body_html" in vals:
+        _gate_mail_html("body_html", vals.get("body_html"))
     try:
+        _wg.guard_one(db, connection_id, client, "mail.template", [template_id], vals, "Email template settings")
         client.execute_kw("mail.template", "write", [[template_id], vals])
         rows = client.execute_kw(
             "mail.template",
@@ -754,7 +775,9 @@ def create_activity_type(
     if body.category:
         vals["category"] = body.category
     try:
+        _wg.guard_one(db, connection_id, client, "mail.activity.type", [], vals, "Activity types")
         tid = int(client.execute_kw("mail.activity.type", "create", [vals]))
+        _wg.record_created(db, connection_id, model="mail.activity.type", ids=[tid], source="Activity types")
         rows = client.execute_kw(
             "mail.activity.type",
             "read",

@@ -73,3 +73,37 @@ def install_json_logging() -> None:
     handler.addFilter(SensitiveLogFilter())
     handler.setFormatter(JsonLogFormatter())
     root.addHandler(handler)
+    _install_file_handler(root)
+
+
+_FILE_HANDLER_MARKER = "_ingenium_file_handler"
+
+
+def _install_file_handler(root: logging.Logger) -> None:
+    """Also write JSON logs to apps/api/logs/api.log (rotating, gitignored).
+
+    Off under pytest or with INGENIUM_LOG_FILE=0. Path override: INGENIUM_LOG_FILE_PATH.
+    """
+    import os
+    import sys
+    from logging.handlers import RotatingFileHandler
+    from pathlib import Path
+
+    if "pytest" in sys.modules or os.environ.get("INGENIUM_LOG_FILE", "1").lower() in {"0", "off", "false"}:
+        return
+    if any(getattr(h, _FILE_HANDLER_MARKER, False) for h in root.handlers):
+        return
+    path = Path(
+        os.environ.get("INGENIUM_LOG_FILE_PATH")
+        or Path(__file__).resolve().parents[1] / "logs" / "api.log"
+    )
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fh = RotatingFileHandler(path, maxBytes=5_000_000, backupCount=5, encoding="utf-8")
+    except OSError:
+        return
+    setattr(fh, _FILE_HANDLER_MARKER, True)
+    fh.setLevel(logging.INFO)
+    fh.addFilter(SensitiveLogFilter())
+    fh.setFormatter(JsonLogFormatter())
+    root.addHandler(fh)

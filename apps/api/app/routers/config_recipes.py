@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app import write_gate as _wg
 from app.config_packet.settings import SETTINGS_ALLOWLIST, apply_settings, capture_settings
 from app.db import get_db
 from app.odoo_service import OdooClientError, client_from_connection, get_connection_or_404
@@ -82,7 +83,7 @@ def list_recipes(connection_id: str) -> list[RecipeCard]:
             id="day1",
             phase="p0",
             title="Day-1 setup",
-            blurb="Company name, currency, country, language — one apply.",
+            blurb="Company name, currency, country, language, one apply.",
             clicks="3 clicks",
         ),
         RecipeCard(
@@ -206,7 +207,7 @@ def run_day1(
             )
         )
     else:
-        warnings.append(f"Currency {body.currency_code} not found — skipped")
+        warnings.append(f"Currency {body.currency_code} not found, skipped")
 
     country = _country_id(client, body.country_code)
     if country:
@@ -218,7 +219,7 @@ def run_day1(
             )
         )
     elif body.country_code:
-        warnings.append(f"Country {body.country_code} not found — skipped")
+        warnings.append(f"Country {body.country_code} not found, skipped")
 
     lang_id: int | None = None
     if body.language_code:
@@ -239,7 +240,7 @@ def run_day1(
                     )
                 )
             else:
-                warnings.append(f"Language {body.language_code} missing — skipped")
+                warnings.append(f"Language {body.language_code} missing, skipped")
         except OdooClientError as exc:
             warnings.append(f"Language probe failed: {exc}")
 
@@ -279,6 +280,7 @@ def run_day1(
 
     applied: list[str] = []
     try:
+        _wg.guard_one(db, connection_id, client, "res.company", [company_id], vals, "Day-1 setup")
         client.execute_kw("res.company", "write", [[company_id], vals])
         applied.append(f"company {company_id} {sorted(vals)}")
         if country:
@@ -754,7 +756,9 @@ def run_multi_company(
     if cur:
         vals["currency_id"] = cur
     try:
+        _wg.guard_one(db, connection_id, client, "res.company", [], vals, "Multi-company setup")
         new_id = int(client.execute_kw("res.company", "create", [vals]))
+        _wg.record_created(db, connection_id, model="res.company", ids=[new_id], source="Multi-company setup")
         country = _country_id(client, body.country_code)
         if country:
             rows = client.execute_kw(
@@ -823,7 +827,7 @@ def run_master_pack(
         try:
             client.execute_kw("uom.category", "fields_get", [], {"attributes": ["string"]})
         except OdooClientError:
-            warnings.append("uom.category unavailable — install Inventory/UoM first")
+            warnings.append("uom.category unavailable, install Inventory/UoM first")
             return RecipePlanOut(
                 ok=False,
                 dry_run=body.dry_run,
@@ -849,7 +853,7 @@ def run_master_pack(
                 "account.fiscal.position", "fields_get", [], {"attributes": ["string"]}
             )
         except OdooClientError:
-            warnings.append("account.fiscal.position unavailable — install Accounting")
+            warnings.append("account.fiscal.position unavailable, install Accounting")
             return RecipePlanOut(
                 ok=False,
                 dry_run=body.dry_run,

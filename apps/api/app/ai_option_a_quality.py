@@ -1,4 +1,4 @@
-"""Option A quality bar — done-bar, score caps, structural + RPC smoke.
+"""custom code quality bar — done-bar, score caps, structural + RPC smoke.
 
 Senior 10.0 for capability-primary drafts requires sandbox proof.
 Promote to another connection stays human (go_live_ready != auto-prod).
@@ -15,7 +15,7 @@ OPTION_A_SCORE_CAP = 7.0
 
 
 def is_option_a_runtime_block(block: dict[str, Any]) -> bool:
-    """Elite tests/i18n are zip hygiene, not Pay/QR/OWL Option A.
+    """Elite tests/i18n are zip hygiene, not Pay/QR/OWL custom code.
 
     Custom Python/XML/QWeb still counts (including elite computes). Only the
     ``tests/`` and ``i18n/`` installable-module extras are excluded.
@@ -52,7 +52,7 @@ def done_bar_for_draft(draft: dict[str, Any], *, prompt: str = "") -> dict[str, 
             "go_live_ready": False,
             "next_step": (
                 "Job Autopilot RPC smoke on sandbox (quote→confirm→invoice). "
-                "Completeness ≠ Certification. Promote stays human."
+                "A complete draft is not the same as certifiedification. Publishing stays a step you confirm."
             ),
         }
     assessment = assess_capability_gaps(prompt or str(draft.get("_user_prompt") or ""))
@@ -81,7 +81,7 @@ def done_bar_for_draft(draft: dict[str, Any], *, prompt: str = "") -> dict[str, 
         mode = "mixed"
         live_ok = "metadata_apply"
         option_a_ok = "sandbox_smoke" if smoke_ok else "scaffold_pending_smoke"
-        next_step = "Apply live fields, then sandbox Option A surfaces"
+        next_step = "Apply live fields, then sandbox custom code surfaces"
     else:
         mode = "live"
         live_ok = "metadata_apply"
@@ -100,7 +100,7 @@ def done_bar_for_draft(draft: dict[str, Any], *, prompt: str = "") -> dict[str, 
 
 
 def apply_option_a_grain_label(draft: dict[str, Any]) -> None:
-    """Override misleading Field pack when the ask is Option A-primary."""
+    """Override misleading Field pack when the ask is custom code-primary."""
     if not draft.get("_capability_primary_option_a"):
         return
     host = "host"
@@ -110,7 +110,7 @@ def apply_option_a_grain_label(draft: dict[str, Any]) -> None:
             break
     cp = draft.get("connect_points") if isinstance(draft.get("connect_points"), dict) else {}
     host_label = str(cp.get("host_label") or host)
-    draft["grain_label"] = f"Option A document extras for {host_label}"
+    draft["grain_label"] = f"custom code document extras for {host_label}"
     draft["_grain_display_kind"] = "option_a_document"
 
 
@@ -140,7 +140,7 @@ def dedupe_option_a_items(items: list[str]) -> list[str]:
 
 
 def apply_option_a_score_cap(scorecard: dict[str, Any], draft: dict[str, Any]) -> None:
-    """Cap completeness when Option A is primary and sandbox smoke has not passed."""
+    """Cap completeness when custom code is primary and sandbox smoke has not passed."""
     if not draft.get("_capability_primary_option_a"):
         return
     smoke = draft.get("_option_a_smoke") if isinstance(draft.get("_option_a_smoke"), dict) else {}
@@ -165,7 +165,7 @@ def apply_option_a_score_cap(scorecard: dict[str, Any], draft: dict[str, Any]) -
                 "dimension": "hygiene",
                 "element": "option_a_unproven",
                 "detail": (
-                    "Option A primary: score capped until sandbox install & surface smoke "
+                    "Custom-code primary: score capped until sandbox install & surface smoke "
                     "(PDF Pay now / QR). Spec completeness != go-live."
                 ),
             }
@@ -879,7 +879,7 @@ def prove_option_a_in_sandbox(
             },
             "score_0_10": (draft.get("_scorecard") or {}).get("score_0_10"),
             "go_live_ready": draft.get("_go_live_ready"),
-            "message": str(smoke.get("message") or "Acceptance / Option A smoke failed"),
+            "message": str(smoke.get("message") or "Acceptance / custom code smoke failed"),
             "prove_status": status,
             "promote_eligible": False,
         }
@@ -929,11 +929,11 @@ def prove_option_a_in_sandbox(
         payload["feedback_repair"] = feedback_repair
         payload["message"] = (
             "Sandbox proved after AI repaired the previous error. "
-            "Promote stays human. Do not click Install this app."
+            "Publishing stays a step you confirm. Do not click Install this app."
             if prove_status == "proved"
             else (
                 "Sandbox installed after AI repair (smoke only — run_tests=True "
-                "required before prove_status=proved). Promote stays human."
+                "required before prove_status=proved). Publishing stays a step you confirm."
             )
         )
     if payload["ok"]:

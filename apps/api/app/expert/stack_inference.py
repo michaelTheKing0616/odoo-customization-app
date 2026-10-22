@@ -162,14 +162,14 @@ def _suggest_custom_models(prefix: str, modules: set[str], question: str) -> tup
 
 def _reuse_stock_lines(pack: dict[str, Any] | None) -> tuple[str, ...]:
     if not pack:
-        return ("res.partner — people, contractors, members (link-only; no parallel x_* member model)",)
+        return ("res.partner, people, contractors, members (link-only; no parallel x_* member model)",)
     lines: list[str] = []
     for hint in pack.get("reuse_stock") or []:
         if isinstance(hint, dict):
             model = hint.get("model") or "res.partner"
             reason = hint.get("reason") or "link-only"
-            lines.append(f"{model} — {reason}")
-    return tuple(lines) or ("res.partner — contacts (link-only)",)
+            lines.append(f"{model}, {reason}")
+    return tuple(lines) or ("res.partner, contacts (link-only)",)
 
 
 def _stack_from_catalog(entry: VerticalEntry, pack: dict[str, Any] | None) -> InferredStack:
@@ -234,7 +234,7 @@ def _stack_from_domain_pack(pack_id: str, pack: dict[str, Any], question: str) -
         phase_2="Automations from the domain pack; mail templates; sandbox-test.",
         phase_3="Export module zip; promote after sandbox gate.",
         honesty=(
-            f"Uses the `{pack_id}` domain pack scaffold — verify on your Odoo version.",
+            f"Uses the `{pack_id}` domain pack scaffold, verify on your Odoo version.",
             "Protected tier-1 models remain link-only.",
         ),
         source="domain_pack",
@@ -277,7 +277,7 @@ def _stack_from_keywords(question: str) -> InferredStack:
         phase_2="Automations, mail templates, stock/purchase/project flows as needed.",
         phase_3="Reporting, bulk import, module export after sandbox validation.",
         honesty=(
-            "No curated vertical playbook matched — stack inferred from your question keywords.",
+            "No curated vertical playbook matched, stack inferred from your question keywords.",
             "Sandbox-test before production; adjust modules to what you actually operate.",
             "Do not substitute unrelated verticals (real estate, hotel, library, etc.).",
         ),
@@ -346,7 +346,7 @@ def compose_setup_stack_answer(stack: InferredStack) -> str:
     intro = (
         f"For **{stack.domain_label}** on Odoo Community, start with this module stack and scaffold:"
         if stack.source != "inferred"
-        else f"For **{stack.domain_label}** (inferred stack — no exact playbook match), use:"
+        else f"For **{stack.domain_label}** (inferred stack, no exact playbook match), use:"
     )
     wizard = (
         "Open **App Wizard** (`/connections/{{connection_id}}/wizard`) or **Models & Fields** "
@@ -355,7 +355,7 @@ def compose_setup_stack_answer(stack: InferredStack) -> str:
     return (
         f"{intro} [1]\n\n"
         f"1. **Install / depends:** {mods}. [1]\n"
-        f"2. **Custom models:** {models or 'one primary `x_*` model'} — via Wizard or Draft Studio. [1]\n"
+        f"2. **Custom models:** {models or 'one primary `x_*` model'}, via Wizard or Draft Studio. [1]\n"
         f"3. **Reuse stock (link-only):** {reuse_inline} [1]\n"
         f"4. **Phase 1:** {stack.phase_1} [1]\n"
         f"5. **Phase 2:** {stack.phase_2} [1]\n"

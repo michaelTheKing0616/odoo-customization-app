@@ -42,7 +42,7 @@ def vote_pack_id(
     warnings: list[str] = []
     cleaned = [v.strip() for v in votes if isinstance(v, str) and v.strip()]
     if not cleaned:
-        return None, ["self_consistency: no pack votes — using baseline retrieval"]
+        return None, ["self_consistency: no pack votes, using baseline retrieval"]
 
     counts = Counter(cleaned)
     top_count = counts.most_common(1)[0][1]
@@ -111,7 +111,7 @@ def merge_workflow_states(
             if norm:
                 kept.append(norm[0])
                 state_labels.setdefault(norm[0], norm[1])
-        warnings.append("workflow merge: no state ≥2 votes — using first sample states")
+        warnings.append("workflow merge: no state ≥2 votes, using first sample states")
 
     kept.sort(
         key=lambda k: sum(state_positions.get(k, [0])) / max(len(state_positions.get(k, [1])), 1)
@@ -354,7 +354,7 @@ def retrieve_scaffold_with_consistency(
 
     pack = next((copy.deepcopy(p) for pid, p in packs if pid == winner), None)
     if pack is None:
-        warnings.append(f"self_consistency: voted pack {winner} not found — baseline kept")
+        warnings.append(f"self_consistency: voted pack {winner} not found, baseline kept")
         return baseline, warnings
 
     score = scores.get(winner, baseline[2] if baseline else 0.0)

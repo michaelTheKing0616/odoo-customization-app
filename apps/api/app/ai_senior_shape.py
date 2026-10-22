@@ -214,6 +214,9 @@ def _typed_fields_from_brief(prompt: str) -> list[dict[str, Any]]:
     return out
 
 
+_SEMANTIC_NOUN_RE = re.compile(r"\b(?:warranty|inspection|checklist|compliance|expir\w*|sla)\b")
+
+
 def infer_extension_fields(prompt: str, *, pad: bool = True) -> list[dict[str, Any]]:
     """Deterministic inherit fields from NL — never a lone x_extension_note stub.
 
@@ -243,7 +246,10 @@ def infer_extension_fields(prompt: str, *, pad: bool = True) -> list[dict[str, A
     from app.ai_field_ir import extract_field_ir
 
     typed = extract_field_ir(text)
-    if typed:
+    # A known domain noun (SLA, warranty, inspection, compliance) names its fields from the
+    # noun's own pack. The generic Add-clause parse would mint an identifier from the whole
+    # sentence ("x_sla_due_date_on_invoices"), so it only wins for single-field or other briefs.
+    if typed and (single_field or not _SEMANTIC_NOUN_RE.search(low)):
         return typed[:12]
 
     fields: list[dict[str, Any]] = []
@@ -899,6 +905,26 @@ def _ensure_host_smart_button(draft: dict[str, Any]) -> list[str]:
     return notes
 
 
+def _stated_timing(prompt: str, label: str) -> dict[str, Any]:
+    """Offset the brief states for this date ("a week before the decision date" -> 7 days before).
+
+    Sentences naming the date field are read first, then the whole brief; nothing stated -> {}."""
+    from app.ai_conversation.intent_contract import stated_day_offset
+
+    sentences = [s for s in re.split(r"(?<=[.!?])\s+|\n", prompt or "") if s.strip()]
+    low = label.lower().strip()
+    named = [s for s in sentences if low and low in s.lower()]
+    off = None
+    for chunk in (named, sentences):
+        off = stated_day_offset(" ".join(chunk)) if chunk else None
+        if off is not None:
+            break
+    if off is None:
+        return {}
+    return {"trg_date_range": abs(off), "trg_date_range_type": "day",
+            "trg_date_range_mode": "before" if off < 0 else "after"}
+
+
 def _ensure_date_activity(draft: dict[str, Any], *, grain: Grain = "feature_slice") -> list[str]:
     notes: list[str] = []
     autos = [a for a in (draft.get("automations") or []) if isinstance(a, dict)]
@@ -912,12 +938,14 @@ def _ensure_date_activity(draft: dict[str, Any], *, grain: Grain = "feature_slic
             fname = str(field.get("name") or "")
             if not fname:
                 continue
+            timing = _stated_timing(str(draft.get("_user_prompt") or ""), str(field.get("string") or ""))
             draft.setdefault("automations", []).append(
                 {
                     "name": f"Activity before {field.get('string') or fname}",
                     "model": mid,
                     "trigger": "on_time",
                     "trg_date_field_name": fname,
+                    **timing,
                     "description": "Senior default — remind before the date",
                     "safe_actions": [
                         {

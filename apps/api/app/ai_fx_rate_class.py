@@ -2,11 +2,11 @@
 
 Class-wide: live HTTP rate providers sync into ``res.currency.rate`` (or
 equivalent stock rate model). CBN is the earned gold shortcut inside the class
-(``currency_rate_cbn``), not the only member. Generic providers → Option A
+(``currency_rate_cbn``), not the only member. Generic providers → custom code
 author scaffold or ``external_connector`` lane when Online cannot run Python.
 
 Never Prefer / Nigeria Autopilot ``stock_reuse`` alone for live HTTP fetch.
-Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm.
 """
 
 from __future__ import annotations
@@ -119,7 +119,7 @@ def is_cbn_class_match(prompt: str) -> bool:
 
 
 def resolve_fx_member(prompt: str) -> FxMember:
-    """Pick class member: CBN gold vs generic Option A vs connector honesty."""
+    """Pick class member: CBN gold vs generic custom code vs connector honesty."""
     text = prompt or ""
     if is_cbn_class_match(text):
         return "cbn_gold"
@@ -212,10 +212,10 @@ def online_connector_runbook(*, prompt: str = "") -> dict[str, Any]:
             {"id": "module_lane_or_sh_alternative", "required": True, "status": "pending"},
         ],
         "operator_copy": (
-            "Online cannot install Option A Python. Use an external connector to "
+            "Online cannot install custom-code Python. Use an external connector to "
             f"POST/write stock {RATE_MODEL} for {', '.join(currencies)} (company NGN), "
             "or promote the gold/authored module on Odoo.sh / self-host after sandbox "
-            "prove. Completeness ≠ Cert ≠ Autopilot. Promote stays human."
+            "prove. A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm."
         ),
         "alternatives": list(online_python_block_alternatives()),
         "online_block": block,
@@ -253,7 +253,7 @@ def resolve_fx_host_stamp(
             "prove_status": "pending",
             "delivery_lane_copy": LANE_COPY["external_connector"],
             "artifact_kind_copy": (
-                "FX / HTTP provider class — gold Option A or external connector."
+                "FX / HTTP provider class — gold custom code or external connector."
             ),
             "promote_human": True,
             "completeness_is_not_cert": True,
@@ -317,7 +317,7 @@ def scaffold_generic_fx_blocks(
     *,
     prompt: str = "",
 ) -> list[dict[str, Any]]:
-    """CE-safe Option A scaffold for generic (non-CBN-gold) FX members."""
+    """CE-safe custom code scaffold for generic (non-CBN-gold) FX members."""
     text = prompt or str(draft.get("_user_prompt") or "")
     if resolve_fx_member(text) == "cbn_gold":
         return []
@@ -529,7 +529,7 @@ class ResConfigSettings(models.TransientModel):
 
 
 def apply_generic_fx_scaffold(draft: dict[str, Any], *, prompt: str = "") -> dict[str, Any]:
-    """Attach generic FX scaffold onto an Option A authored draft."""
+    """Attach generic FX scaffold onto a custom-code authored draft."""
     text = prompt or str(draft.get("_user_prompt") or "")
     blocks = scaffold_generic_fx_blocks(draft, prompt=text)
     if not blocks:

@@ -346,7 +346,7 @@ def apply_project(
             confirm_phrase=body.confirm_phrase,
             warning=(
                 "Applying a draft project creates models and fields on the live "
-                "Odoo database. Prefer a sandbox connection."
+                "Odoo database. Try a test copy connection."
             ),
             risks=[
                 "Creates ir.model / ir.model.fields metadata on the target",

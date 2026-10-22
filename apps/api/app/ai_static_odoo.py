@@ -65,7 +65,7 @@ def analyze_python_ast(content: str, *, source_file: str = "models/custom.py") -
                     findings.append(
                         _finding(
                             "sudo_call",
-                            "sudo() without documented justification — ACL bypass risk",
+                            "sudo() without documented justification, ACL bypass risk",
                             severity="high",
                             file=source_file,
                             line=getattr(node, "lineno", None),
@@ -76,7 +76,7 @@ def analyze_python_ast(content: str, *, source_file: str = "models/custom.py") -
                 findings.append(
                     _finding(
                         "raw_sql",
-                        "cr.execute / raw SQL — prefer ORM; justify if required",
+                        "cr.execute / raw SQL, prefer ORM; justify if required",
                         severity="critical",
                         file=source_file,
                         line=getattr(node, "lineno", None),
@@ -101,7 +101,7 @@ def analyze_python_ast(content: str, *, source_file: str = "models/custom.py") -
                 findings.append(
                     _finding(
                         "orm_in_loop",
-                        f"{func.attr}() inside loop — possible N+1",
+                        f"{func.attr}() inside loop, possible N+1",
                         severity="medium",
                         file=source_file,
                         line=getattr(child, "lineno", None),

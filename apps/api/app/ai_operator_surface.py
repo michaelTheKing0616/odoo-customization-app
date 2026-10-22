@@ -3,7 +3,7 @@
 Stamps ``_operator_surface`` so Draft Studio can show a production-style placement
 panel without inventing Contact/PoS stat buttons next to existing many2ones.
 
-Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm.
 """
 
 from __future__ import annotations
@@ -414,20 +414,20 @@ def build_operator_surface(draft: dict[str, Any]) -> dict[str, Any]:
             if qweb_only and host == "stock.picking":
                 parts.append(
                     f"«{display}» changes the printed Delivery slip / Delivery note "
-                    f"(QWeb on {host}) via an Option A module — not new form fields on "
+                    f"(QWeb on {host}) via a custom-code module — not new form fields on "
                     "Transfers. Zip → sandbox → Promote. Install Inventory if stock.picking "
                     "is missing. Not a new Apps tile. Do not click Install this app."
                 )
             elif qweb_only:
                 parts.append(
                     f"«{display}» changes a printed document (QWeb inherit on "
-                    f"{_host_label(host)} / {host}) via an Option A module — the form "
+                    f"{_host_label(host)} / {host}) via a custom-code module — the form "
                     "canvas may show no new fields. Zip → sandbox → Promote. Not a new "
                     "Apps tile. Do not click Install this app."
                 )
             else:
                 parts.append(
-                    f"«{display}» extends {_host_label(host)} ({host}) via an Option A module — "
+                    f"«{display}» extends {_host_label(host)} ({host}) via a custom-code module — "
                     "zip → sandbox → Promote. Not a new Apps tile. Do not click Install this app."
                 )
         else:

@@ -69,6 +69,7 @@ class SimulationReport:
     """Full simulation. `recorded` is true only after every selected mode passes."""
 
     plan_id: str
+    plan_hash: str
     risk: str
     passed: bool
     phase: str
@@ -103,6 +104,18 @@ def plan_key(ops: list[dict[str, Any]], risk: str) -> str:
     """
     payload = {"ops": ops, "risk": risk}
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def plan_hash(ops: list[dict[str, Any]]) -> str:
+    """Ops fingerprint used as the recorded simulation plan hash.
+
+    Inputs: the change-set ops list.
+    Outputs: 16 hex characters. Same shape the executor stores as plan_hash
+    (canonical JSON of the ops). Risk and assumptions are not included.
+    Side effects: none.
+    """
+    raw = json.dumps(ops, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
@@ -177,11 +190,14 @@ def run_mode(
     *,
     records: dict[str, Any] | None = None,
     fail: bool = False,
+    staging_port: Any | None = None,
 ) -> ModeResult:
     """Run one mode against copies of `records`.
 
-    Inputs: mode name, ops, an optional in-memory record dict, and whether the
-    mode should fail after it is entered.
+    Inputs: mode name, ops, an optional in-memory record dict, whether the
+    mode should fail after it is entered, and an optional fake staging port.
+    The staging port is only used by the staging mode. It must not open a
+    socket or create a real database.
     Outputs: a ModeResult. Bridge in-place with a DDL op returns `path_taken`
     false and `ddl_no_inplace` without mutating `records`.
     Side effects: none on `records` or on the ledger. Does not open a socket.
@@ -191,7 +207,7 @@ def run_mode(
         raise ValueError(f"unknown simulation mode: {mode}")
     store = deepcopy(records) if records is not None else {}
     snapshot = deepcopy(store)
-    outcome = _dispatch(mode, ops, store, fail=fail)
+    outcome = _dispatch(mode, ops, store, fail=fail, staging_port=staging_port)
     if store != snapshot:
         return _result(
             mode,
@@ -210,13 +226,16 @@ def simulate(
     risk: str | None = None,
     records: dict[str, Any] | None = None,
     fail_mode: str | None = None,
+    staging_port: Any | None = None,
 ) -> SimulationReport:
     """Run every selected mode. Stop on the first failure and return to planning.
 
     Inputs: ops, an optional risk (raised to the catalog risk when lower),
-    an optional in-memory record dict, and an optional mode name to fail.
+    an optional in-memory record dict, an optional mode name to fail, and an
+    optional fake staging port for the staging mode (tests only; no real DB).
     Outputs: a report. `phase` is `PLAN` when a mode fails and `PRESENT` when
-    every selected mode passes. `live` is false.
+    every selected mode passes. `plan_hash` is the ops fingerprint. `live` is
+    false.
     Side effects: stores the report on success and drops any prior record for
     this plan on failure. Does not open a socket or call Odoo.
     Raises ValueError when `fail_mode` is not one of the selected modes, or
@@ -227,6 +246,7 @@ def simulate(
     if fail_mode is not None and fail_mode not in selected:
         raise ValueError(f"fail_mode {fail_mode!r} is not selected")
     key = plan_key(ops, resolved)
+    fingerprint = plan_hash(ops)
     executed: list[ModeResult] = []
     for mode in selected:
         subset = _ops_for_mode(mode, ops, resolved)
@@ -235,12 +255,14 @@ def simulate(
             subset,
             records=records,
             fail=fail_mode == mode,
+            staging_port=staging_port if mode == MODE_STAGING else None,
         )
         executed.append(outcome)
         if not outcome.passed:
             _LEDGER.pop(key, None)
             return _report(
                 plan_id=key,
+                plan_hash=fingerprint,
                 risk=resolved,
                 passed=False,
                 phase=PLANNING_PHASE,
@@ -251,6 +273,7 @@ def simulate(
             )
     report = _report(
         plan_id=key,
+        plan_hash=fingerprint,
         risk=resolved,
         passed=True,
         phase=PRESENT_PHASE,
@@ -278,16 +301,23 @@ def guard_production_apply(
     Outputs: None when this gate allows the apply to proceed. This function
     does not apply the plan.
     Side effects: none. Raises SimulationRequired for production when there is
-    no recorded success, the decision is not an R1 direct allowance, and the
-    plan is not an R0 plan whose decision does not require a simulation.
+    no recorded success for this exact plan hash at the resolved risk, the
+    decision is not an R1 direct allowance, and the plan is not an R0 plan
+    whose decision does not require a simulation (INV-06).
     Does not open a socket or call Odoo.
     """
     if environment.strip().lower() != "production":
         return
     resolved = resolve_risk(ops, risk)
     key = plan_key(ops, resolved)
+    fingerprint = plan_hash(ops)
     found = recorded_simulation(key)
-    if found is not None and found.risk == resolved:
+    if (
+        found is not None
+        and found.passed
+        and found.risk == resolved
+        and found.plan_hash == fingerprint
+    ):
         return
     chosen = decision if decision is not None else policy_decision(resolved, "production")
     if policy_allows_r1_direct(resolved, chosen):
@@ -319,6 +349,7 @@ def _dispatch(
     store: dict[str, Any],
     *,
     fail: bool,
+    staging_port: Any | None = None,
 ) -> ModeResult:
     if mode == MODE_BRIDGE_INPLACE and any(_is_ddl(op) for op in ops):
         return _result(
@@ -344,7 +375,7 @@ def _dispatch(
     if mode == MODE_BRIDGE_INPLACE:
         return _bridge(ops, store)
     if mode == MODE_STAGING:
-        return _staging(ops, store)
+        return _staging(ops, store, staging_port=staging_port)
     return _synthetic(ops)
 
 
@@ -393,12 +424,36 @@ def _bridge(ops: list[dict[str, Any]], store: dict[str, Any]) -> ModeResult:
     )
 
 
-def _staging(ops: list[dict[str, Any]], store: dict[str, Any]) -> ModeResult:
+def _staging(
+    ops: list[dict[str, Any]],
+    store: dict[str, Any],
+    *,
+    staging_port: Any | None = None,
+) -> ModeResult:
     before = deepcopy(store)
-    clone = deepcopy(store)
-    clone["_neutralized"] = True
-    clone["_target"] = "staging"
-    clone["_applied"] = [_op_type(op) for op in ops]
+    detail = "neutralized_clone"
+    if staging_port is not None:
+        # Fake staging port only. Never create a real staging database.
+        apply_cs = getattr(staging_port, "apply_changeset", None)
+        if callable(apply_cs):
+            apply_cs(
+                ops,
+                mode="apply",
+                environment="staging",
+                neutralized_clone=True,
+                max_risk="R4",
+            )
+            detail = "fake_staging_port"
+        else:
+            runs = getattr(staging_port, "staging_runs", None)
+            if isinstance(runs, list):
+                runs.append([_op_type(op) for op in ops])
+            detail = "fake_staging_port"
+    else:
+        clone = deepcopy(store)
+        clone["_neutralized"] = True
+        clone["_target"] = "staging"
+        clone["_applied"] = [_op_type(op) for op in ops]
     if store != before:
         return _result(
             MODE_STAGING,
@@ -412,7 +467,7 @@ def _staging(ops: list[dict[str, Any]], store: dict[str, Any]) -> ModeResult:
         MODE_STAGING,
         passed=True,
         path_taken=True,
-        detail="neutralized_clone",
+        detail=detail,
         target="staging",
         op_types=tuple(_op_type(op) for op in ops),
     )
@@ -508,6 +563,7 @@ def _result(
 def _report(
     *,
     plan_id: str,
+    plan_hash: str,
     risk: str,
     passed: bool,
     phase: str,
@@ -518,6 +574,7 @@ def _report(
 ) -> SimulationReport:
     return SimulationReport(
         plan_id=plan_id,
+        plan_hash=plan_hash,
         risk=risk,
         passed=passed,
         phase=phase,

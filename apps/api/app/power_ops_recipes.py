@@ -58,7 +58,7 @@ class PowerOpsResult:
 
 _ACCOUNT_MOVE_PCM_NOTE = (
     "Power Ops exemption: operator-initiated batch of Odoo's own account.move "
-    "methods — not generated tier-1 business logic (PCM Doc 7)."
+    "methods, not generated tier-1 business logic (PCM Doc 7)."
 )
 
 
@@ -68,7 +68,7 @@ def _recipes() -> dict[str, PowerRecipe]:
             id="purge_journal_entries",
             name="Purge journal entries",
             description=(
-                "Reset posted account.move rows to draft, then unlink — "
+                "Reset posted account.move rows to draft, then unlink, "
                 "the Online one-by-one pain killer."
             ),
             model="account.move",
@@ -80,7 +80,7 @@ def _recipes() -> dict[str, PowerRecipe]:
             risks=[
                 "Permanently deletes journal entries matching your domain",
                 "Locked fiscal periods / reconciled items may fail per row",
-                "Does not bypass accounting locks — failures are reported",
+                "Does not bypass accounting locks, failures are reported",
                 "Irreversible data loss for successfully deleted rows",
             ],
             steps=[
@@ -133,7 +133,7 @@ def _recipes() -> dict[str, PowerRecipe]:
             tags=["generic", "destructive"],
             risks=[
                 "Permanent deletion",
-                "May fail on constrained / posted documents — use purge recipes instead",
+                "May fail on constrained / posted documents, use purge recipes instead",
             ],
             steps=[RecipeStep(kind="unlink", label="Delete")],
         ),
@@ -154,7 +154,7 @@ def _recipes() -> dict[str, PowerRecipe]:
         "reset_and_cancel_moves": PowerRecipe(
             id="reset_and_cancel_moves",
             name="Reset to draft then cancel",
-            description="button_draft then button_cancel on account.move — for stubborn Online UI flows.",
+            description="button_draft then button_cancel on account.move, for stubborn Online UI flows.",
             model="account.move",
             destructive=True,
             requires_modules=["account"],
@@ -191,7 +191,7 @@ def _recipes() -> dict[str, PowerRecipe]:
             requires_modules=["account"],
             tags=["accounting", "destructive"],
             protected_tier_note=_ACCOUNT_MOVE_PCM_NOTE,
-            risks=["May fail on reconciled/locked moves — failures reported per row"],
+            risks=["May fail on reconciled/locked moves, failures reported per row"],
             steps=[
                 RecipeStep(kind="method", method="button_draft", label="Reset to draft"),
             ],
@@ -267,7 +267,7 @@ def _recipes() -> dict[str, PowerRecipe]:
         "reset_sequences_next": PowerRecipe(
             id="reset_sequences_next",
             name="Bump sequence number_next",
-            description="Write number_next on ir.sequence (admin pack — confirm carefully).",
+            description="Write number_next on ir.sequence (admin pack, confirm carefully).",
             model="ir.sequence",
             destructive=True,
             tags=["admin", "pack", "destructive"],
@@ -331,6 +331,8 @@ def list_recipes() -> list[dict[str, Any]]:
                 "description": r.description,
                 "model": r.model,
                 "destructive": r.destructive,
+                "locked": r.id in LOCKED_RECIPES,
+                "locked_reason": LOCKED_COPY if r.id in LOCKED_RECIPES else None,
                 "risks": r.risks,
                 "requires_modules": r.requires_modules,
                 "tags": list(r.tags),
@@ -351,6 +353,33 @@ def list_recipes() -> list[dict[str, Any]]:
 
 def get_recipe(recipe_id: str) -> PowerRecipe | None:
     return _recipes().get(recipe_id)
+
+
+# Money guard: bulk accounting and bulk delete recipes are locked server-side.
+LOCKED_RECIPES: frozenset[str] = frozenset({
+    "purge_journal_entries", "mass_unlink", "cancel_account_moves",
+    "reset_and_cancel_moves", "post_account_moves", "unreconcile_and_draft",
+})
+MONEY_MODEL_PREFIXES = ("account.", "account_")
+LOCKED_COPY = (
+    "This is switched off to keep your books safe. Ingenium does not change, post, cancel or delete "
+    "accounting entries in bulk, and does not delete records in bulk. Make accounting changes in "
+    "Odoo's Accounting screens, or use Bulk Setup, where each change is checked, approved and can be undone."
+)
+
+
+class RecipeLocked(OdooClientError):
+    """Refused by the money guard; never reaches Odoo."""
+
+
+def recipe_lock_reason(recipe_id: str, model: str | None = None) -> str | None:
+    if recipe_id in LOCKED_RECIPES:
+        return LOCKED_COPY
+    if model and str(model).startswith(MONEY_MODEL_PREFIXES):
+        r = get_recipe(recipe_id)
+        if r is None or any(s.kind in {"unlink", "write", "method"} for s in r.steps):
+            return LOCKED_COPY
+    return None
 
 
 def probe_recipe(client: OdooClient, recipe: PowerRecipe, model: str) -> tuple[bool, str]:
@@ -427,6 +456,9 @@ def run_recipe(
     recipe = get_recipe(recipe_id)
     if recipe is None:
         raise OdooClientError(f"Unknown recipe {recipe_id}")
+    locked = recipe_lock_reason(recipe_id, model or recipe.model)
+    if locked:
+        raise RecipeLocked(locked)
     target_model, record_ids = resolve_recipe_record_ids(
         client, recipe, model=model, domain=domain, ids=ids
     )
@@ -592,6 +624,8 @@ def _exec_step(
         )
         if classification.forbidden:
             raise OdooClientError(f"forbidden RPC {model}.{method}")
+        if str(model).startswith(MONEY_MODEL_PREFIXES):
+            raise RecipeLocked(LOCKED_COPY)
 
     if step.kind == "method":
         if not step.method:

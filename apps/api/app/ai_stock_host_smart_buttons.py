@@ -4,7 +4,7 @@ When an x_* residual many2one points at a stock host (Contacts, Employees, Order
 and the brief (or field presence) makes navigation useful, ensure a smart button on that
 host. Visitor-style paper logs stay off Contacts (not a second Contacts app).
 
-Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm.
 """
 
 from __future__ import annotations

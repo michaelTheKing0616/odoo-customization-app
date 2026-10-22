@@ -30,7 +30,8 @@ ACCOUNTING_RETENTION_YEARS = 7
 
 _REDACT_KEY = re.compile(
     r"(?i)(pass|password|secret|token|api[_-]?key|smtp_pass|authorization|"
-    r"private_key|ssh_key|encryption_key|signing_key)",
+    r"private_key|ssh_key|encryption_key|signing_key|"
+    r"recovery[_-]?code|totp[_-]?code|oauth[_-]?code|totp[_-]?secret)",
 )
 
 

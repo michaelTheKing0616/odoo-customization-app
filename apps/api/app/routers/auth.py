@@ -45,7 +45,7 @@ class CreateKeyOut(BaseModel):
     name: str
     key_prefix: str
     api_key: str
-    note: str = "Store this key now — it will not be shown again."
+    note: str = "Store this key now, it will not be shown again."
 
 
 class ApiKeyOut(BaseModel):
@@ -86,19 +86,19 @@ def bootstrap_first_key(db: Session = Depends(get_db)) -> BootstrapOut:
         ensure_env_bootstrap_key(db)
         raise HTTPException(
             status_code=400,
-            detail="APP_API_KEY is already configured in the environment — use that key.",
+            detail="APP_API_KEY is already configured in the environment, use that key.",
         )
     if count_active_keys(db) > 0:
         raise HTTPException(
             status_code=409,
-            detail="Keys already exist — bootstrap is only for the first key.",
+            detail="Keys already exist, bootstrap is only for the first key.",
         )
     row, plaintext = create_api_key_record(db, name="bootstrap")
     return BootstrapOut(
         api_key=plaintext,
         key_id=row.id,
         name=row.name,
-        note="Store this key now — it will not be shown again.",
+        note="Store this key now, it will not be shown again.",
     )
 
 

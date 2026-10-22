@@ -12,7 +12,12 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.odoo_service import OdooClientError, client_from_connection, get_connection_or_404
 from app.snapshots import snapshot_view
-from app.website_blocks import blocks_from_dicts, parse_website_arch, render_website_arch
+from app.website_blocks import (
+    blocks_from_dicts,
+    gate_website_save,
+    parse_website_arch,
+    render_website_arch,
+)
 
 router = APIRouter(prefix="/connections/{connection_id}/website", tags=["website"])
 
@@ -120,6 +125,10 @@ def save_page_blocks(
 
     blocks = blocks_from_dicts(body.blocks)
     new_arch = render_website_arch(blocks)
+    try:
+        gate_website_save(blocks, new_arch)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     snapshot_view(db, connection_id, client, body.view_id)
     client.execute_kw(
         "ir.ui.view",

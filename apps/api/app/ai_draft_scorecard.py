@@ -157,7 +157,7 @@ def _score_domain_fit(draft: dict[str, Any], prompt: str) -> tuple[float, list[d
                 "dimension": "domain_fit",
                 "element": mid,
                 "detail": (
-                    "stock clone on packed/reuse residual — "
+                    "stock clone on packed/reuse residual, "
                     "use Community Accounting/HR/Calendar/Project, not a parallel x_*"
                 ),
             }
@@ -400,7 +400,7 @@ def _score_structure(draft: dict[str, Any]) -> tuple[float, list[dict[str, Any]]
                 {
                     "dimension": "structure",
                     "element": ",".join(sorted(headers)),
-                    "detail": "parallel job headers (engagement/project/matter/case) — keep one",
+                    "detail": "parallel job headers (engagement/project/matter/case), keep one",
                 }
             )
         header_set = set(headers)
@@ -448,7 +448,7 @@ def _score_structure(draft: dict[str, Any]) -> tuple[float, list[dict[str, Any]]
             {
                 "dimension": "structure",
                 "element": ",".join(unique),
-                "detail": f"duplicate line models on {parent} — keep one",
+                "detail": f"duplicate line models on {parent}, keep one",
             }
         )
     depends = {str(d) for d in (draft.get("depends") or [])}
@@ -491,7 +491,7 @@ def _score_structure(draft: dict[str, Any]) -> tuple[float, list[dict[str, Any]]
                 {
                     "dimension": "structure",
                     "element": ",".join(sorted(hollow)),
-                    "detail": "hollow duplicate cost header (no line child) — collapse into the lined cost document",
+                    "detail": "hollow duplicate cost header (no line child), collapse into the lined cost document",
                 }
             )
         assets = [mid for mid in by_id if _is_asset_catalog(mid)]
@@ -522,7 +522,7 @@ def _score_structure(draft: dict[str, Any]) -> tuple[float, list[dict[str, Any]]
                     {
                         "dimension": "structure",
                         "element": f"{mid},{line_id}",
-                        "detail": "parallel asset usage and line — keep the booking-parented line",
+                        "detail": "parallel asset usage and line, keep the booking-parented line",
                     }
                 )
         cards = [mid for mid in by_id if _is_rate_card_model(mid)]
@@ -542,7 +542,7 @@ def _score_structure(draft: dict[str, Any]) -> tuple[float, list[dict[str, Any]]
                     "element": f"{units[0]},{keep_card}",
                     "detail": (
                         "duplicate UOM register beside a rate card that already "
-                        "has a unit selection — fold the register into the card"
+                        "has a unit selection, fold the register into the card"
                     ),
                 }
             )
@@ -575,7 +575,7 @@ def _score_structure(draft: dict[str, Any]) -> tuple[float, list[dict[str, Any]]
                     {
                         "dimension": "structure",
                         "element": f"{mid}.{field.get('name')}",
-                        "detail": "parent M2O plus O2M to the same model — drop the M2O",
+                        "detail": "parent M2O plus O2M to the same model, drop the M2O",
                     }
                 )
             raw = str(field.get("string") or "")
@@ -596,7 +596,7 @@ def _score_structure(draft: dict[str, Any]) -> tuple[float, list[dict[str, Any]]
                     {
                         "dimension": "structure",
                         "element": mid,
-                        "detail": "line model has chatter chrome — demote to a line",
+                        "detail": "line model has chatter chrome, demote to a line",
                     }
                 )
             for view in draft.get("views") or []:
@@ -709,7 +709,7 @@ def _score_semantics(draft: dict[str, Any]) -> tuple[float, list[dict[str, Any]]
                 {
                     "dimension": "semantics",
                     "element": f"{mid}.x_status",
-                    "detail": "duplicate terminals completed and done — fold to done",
+                    "detail": "duplicate terminals completed and done, fold to done",
                 }
             )
     for auto in draft.get("automations") or []:
@@ -913,7 +913,7 @@ def _score_ux(draft: dict[str, Any]) -> tuple[float, list[dict[str, Any]]]:
                 {
                     "dimension": "ux",
                     "element": model,
-                    "detail": f"sequence prefix {prefix!r} looks truncated — use whole-word token",
+                    "detail": f"sequence prefix {prefix!r} looks truncated, use whole-word token",
                 }
             )
     labels: dict[tuple[str, str], int] = {}
@@ -1101,7 +1101,7 @@ def _score_hygiene(draft: dict[str, Any], *, user_prompt: str = "") -> tuple[flo
                         "element": f"{mid}.{dup_names[0]}",
                         "detail": (
                             "duplicate identical selections "
-                            f"({', '.join(dup_names)}) — keep the unit/uom field"
+                            f"({', '.join(dup_names)}), keep the unit/uom field"
                         ),
                     }
                 )
@@ -1957,7 +1957,7 @@ def scorecard_required_repairs(scorecard: dict[str, Any]) -> list[str]:
         dim = f.get("dimension")
         el = f.get("element")
         detail = f.get("detail")
-        out.append(f"scorecard({dim}): {el} — {detail}")
+        out.append(f"scorecard({dim}): {el}, {detail}")
     return out
 
 

@@ -1,7 +1,7 @@
-"""Law-firm domain pack — stock-first matter workspace (senior Community shape).
+"""Law-firm domain pack — built-in apps first matter workspace (senior Community shape).
 
 Quotations, invoices, timesheets, CRM, calendar, and employees stay stock Odoo.
-Custom residual is the legal matter plus parties, billable narrative, conflict
+Custom code is the legal matter plus parties, billable narrative, conflict
 checks, and a document register. Stock hosts inherit ``x_matter_id`` so the
 matter is the hub — do not clone Accounting / HR / Project / Calendar.
 """

@@ -22,7 +22,7 @@ from typing import Any
 from app.changeset.handlers import apply_memory, compensate_memory, handler_for
 from app.changeset.inbox import Inbox, InboxError
 from app.changeset.ops import op_base_risk
-from app.changeset.policy import policy_decision
+from app.changeset.policy import changeset_r4_posture, policy_decision
 from app.changeset.validate import validate
 
 STATUS_INVALID = "INVALID"
@@ -35,6 +35,17 @@ STATUS_NEEDS_HUMAN = "NEEDS_HUMAN"
 PIPELINE = ("validate", "policy", "approval")
 _DELETE_TYPES = frozenset({"field.delete", "data.delete", "data.unlink"})
 _APPROVAL_DECISIONS = frozenset({"approve", "deny", "deny_and_stop"})
+_EVIDENCE_KEYS = (
+    "user_id",
+    "session_id",
+    "provider",
+    "domain_owner",
+    "role",
+    "simulation_passed",
+    "backup_id",
+    "allowed_window",
+    "now",
+)
 _SAFE_FIELD_NAME = re.compile(r"^x_[A-Za-z0-9_]+$")
 _RISK_ORDER = ("R0", "R1", "R2", "R3", "R4")
 
@@ -185,6 +196,18 @@ def approve_field_data_deletion(
     )
 
 
+def _approval_evidence(item: Mapping[str, Any]) -> dict[str, Any]:
+    """Copy production-R3 evidence from an approval record into ``Inbox.decide``.
+
+    Inputs: one approval dict. Missing keys stay omitted so an older caller
+    that only sends approver_id and decision is unchanged for risks that do
+    not use this evidence.
+    Output: the optional decide arguments that were present and not None.
+    Side effects: none.
+    """
+    return {key: item[key] for key in _EVIDENCE_KEYS if key in item and item[key] is not None}
+
+
 def _run_pipeline(
     changeset: list[dict[str, Any]],
     *,
@@ -218,7 +241,12 @@ def _run_pipeline(
         }
 
     steps.append("policy")
-    decision = policy_decision(str(report["max_risk"]), environment)
+    max_risk = str(report["max_risk"])
+    decision = policy_decision(
+        max_risk,
+        environment,
+        heavy=changeset_r4_posture(changeset) == "heavy" and max_risk == "R4",
+    )
     active = inbox if inbox is not None else Inbox()
     steps.append("approval")
     submitted = active.submit(
@@ -270,9 +298,10 @@ def _run_pipeline(
         try:
             card = active.decide(
                 card["plan_hash"],
-                approver_id=approver_id,
+                approver_id=str(approver_id),
                 decision=decision_name,  # type: ignore[arg-type]
                 connection_id=connection_id,
+                **_approval_evidence(item),
             )
         except InboxError as exc:
             return {

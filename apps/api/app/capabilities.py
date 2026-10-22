@@ -16,7 +16,12 @@ from app.hosting import (
     hosting_hint_from_url,
     hosting_operator_message,
 )
-from app.tier_matrix import build_tier_context, evaluate_full_matrix, python_modules_allowed_from_matrix
+from app.tier_matrix import (
+    build_tier_context,
+    detect_edition,
+    evaluate_full_matrix,
+    python_modules_allowed_from_matrix,
+)
 from app.schemas import CapabilityMatrixOut, TierMatrixOut, TierCapabilityRowOut, UnsupportedCapabilityOut
 
 # Operator-facing labels (kept in API layer so UI stays thin).
@@ -27,19 +32,17 @@ CAPABILITY_LABELS: dict[str, str] = {
     CapabilityId.OBJECT_WRITE_UPDATE_PATH.value: "Update field (object_write)",
     CapabilityId.OBJECT_CREATE_CRUD_MODEL.value: "Create record (object_create)",
     CapabilityId.BASE_AUTOMATION_SAFE_TRIGGERS.value: "Safe automation triggers",
-    CapabilityId.VIEW_INJECT_INHERIT.value: "View inject via inherit",
+    CapabilityId.VIEW_INJECT_INHERIT.value: "View inject via extension",
     CapabilityId.VIEW_INJECT_MUTATE.value: "View inject via mutate (advanced)",
-    CapabilityId.SMART_BUTTON_INHERIT_BOX.value: "Smart buttons (button_box inherit)",
+    CapabilityId.SMART_BUTTON_INHERIT_BOX.value: "Smart buttons (button box extension)",
     CapabilityId.LIST_AS_LIST_TYPE.value: "List views as type=list",
     CapabilityId.LIST_TREE_FALLBACK.value: "List↔tree view type fallback",
 }
 
 
-def _edition_hint(server_version: str) -> str:
-    # Odoo Enterprise often appends +e; Community is plain.
-    if "+e" in server_version.lower() or "enterprise" in server_version.lower():
-        return "enterprise"
-    return "community"
+def _edition_hint(server_version: str, *, url: str | None = None) -> str:
+    """Delegates to ``tier_matrix.detect_edition`` (single source of truth)."""
+    return detect_edition(server_version, url=url)
 
 
 def capabilities_from_version(
@@ -47,19 +50,22 @@ def capabilities_from_version(
     *,
     url: str | None = None,
     installed_modules: list[str] | None = None,
+    saved_hosting: str | None = None,
 ) -> CapabilityMatrixOut | None:
     """Build matrix from stored/probed server_version. None if version unknown."""
     if not server_version:
         return None
     mods = list(installed_modules or [])
-    hosting = hosting_hint_from_url(url)
-    ctx = build_tier_context(url=url, server_version=server_version, installed_modules=mods)
+    hosting = hosting_hint_from_url(url, server_version, saved_hosting)
+    ctx = build_tier_context(
+        url=url, server_version=server_version, installed_modules=mods, saved_hosting=saved_hosting
+    )
     py_ok = python_modules_allowed_from_matrix(ctx)
     warnings: list[str] = []
     if not py_ok:
         warnings.append(
             "Custom Python module install is not available on Odoo Online — "
-            "use data/XML export or move to Odoo.sh / self-host for Option A."
+            "use data/XML export or move to Odoo.sh / self-host for custom code."
         )
     if any(m in {"web_studio", "studio_customization"} for m in mods):
         warnings.append(
@@ -68,9 +74,9 @@ def capabilities_from_version(
         )
     try:
         major = parse_major(server_version)
-        caps = for_major(major, edition=_edition_hint(server_version))
+        caps = for_major(major, edition=ctx.edition)
     except UnsupportedOdooMajorError:
-        edition = _edition_hint(server_version)
+        edition = ctx.edition
         host_msg = hosting_operator_message(hosting, edition=edition)
         return CapabilityMatrixOut(
             major=None,

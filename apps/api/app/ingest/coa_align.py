@@ -192,7 +192,7 @@ def align_coa_table(
     live = load_instance_account_codes(client)
     if not live and client.model_exists("account.account"):
         warnings.append(
-            "No accounts on instance yet — CoA import will create codes; "
+            "No accounts on instance yet, CoA import will create codes; "
             "verify they match your country's fiscal package."
         )
 
@@ -239,7 +239,7 @@ def align_coa_table(
             hint = ""
             if sug and sug.get("suggested_code"):
                 hint = (
-                    f" — suggested l10n align: {sug['suggested_code']} "
+                    f", suggested l10n align: {sug['suggested_code']} "
                     f"({sug.get('suggested_name')}, score={sug.get('score')})"
                 )
             if live and not allow_as_is:

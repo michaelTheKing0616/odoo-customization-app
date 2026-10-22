@@ -10,7 +10,7 @@ from typing import Any
 @dataclass
 class NLSearchHit:
     id: str
-    kind: str  # navigate | expert | model
+    kind: str  # navigate | expert | model | record
     label: str
     description: str = ""
     href: str | None = None
@@ -53,11 +53,63 @@ def _score_overlap(query_tokens: set[str], *corpora: str) -> float:
     return best
 
 
+# Everyday record types Find anything looks inside (only those installed are searched).
+RECORD_SEARCH_MODELS: tuple[tuple[str, str], ...] = (
+    ("res.partner", "Contact"),
+    ("product.template", "Product"),
+    ("sale.order", "Sales order"),
+    ("purchase.order", "Purchase order"),
+    ("account.move", "Invoice or bill"),
+    ("crm.lead", "Lead"),
+    ("project.project", "Project"),
+    ("hr.employee", "Employee"),
+)
+
+
+def find_records(
+    client: Any,
+    query: str,
+    *,
+    base_url: str,
+    available: set[str] | None = None,
+    per_model: int = 3,
+) -> list[dict[str, Any]]:
+    """Name-search a few everyday record types; each hit opens the record in Odoo. Read-only."""
+    q = (query or "").strip()[:80]
+    out: list[dict[str, Any]] = []
+    if len(q) < 2:
+        return out
+    root = base_url.rstrip("/")
+    for model, kind in RECORD_SEARCH_MODELS:
+        if available and model not in available:
+            continue
+        try:
+            hits = client.execute_kw(model, "name_search", [], {"name": q, "limit": per_model})
+        except Exception:  # noqa: BLE001 - a missing app or access rule just means no hits
+            continue
+        for hit in hits or []:
+            try:
+                rid, name = int(hit[0]), str(hit[1])
+            except (TypeError, ValueError, IndexError):
+                continue
+            out.append(
+                {
+                    "model": model,
+                    "id": rid,
+                    "name": name,
+                    "kind": kind,
+                    "href": f"{root}/web#id={rid}&model={model}&view_type=form" if root else None,
+                }
+            )
+    return out
+
+
 def nl_search(
     query: str,
     *,
     connection_id: str,
     models: list[dict[str, Any]] | None = None,
+    records: list[dict[str, Any]] | None = None,
 ) -> NLSearchResult:
     """Resolve NL query to in-app navigation and Expert questions."""
     q = (query or "").strip()
@@ -102,6 +154,18 @@ def nl_search(
                 )
             )
 
+    for rec in records or []:
+        hits.append(
+            NLSearchHit(
+                id=f"record-{rec['model']}-{rec['id']}",
+                kind="record",
+                label=str(rec["name"]),
+                description=f"{rec['kind']} · opens in Odoo",
+                href=rec.get("href"),
+                score=0.8,
+            )
+        )
+
     # Expert catch-all when question-shaped
     if "?" in q or re.search(r"\b(how|why|what|when|can i)\b", q_lower):
         hits.append(
@@ -123,10 +187,10 @@ def nl_search(
             continue
         seen.add(hit.id)
         deduped.append(hit)
-        if len(deduped) >= 10:
+        if len(deduped) >= 14:
             break
 
     return NLSearchResult(query=q, hits=deduped)
 
 
-__all__ = ["NLSearchHit", "NLSearchResult", "nl_search"]
+__all__ = ["NLSearchHit", "NLSearchResult", "RECORD_SEARCH_MODELS", "find_records", "nl_search"]

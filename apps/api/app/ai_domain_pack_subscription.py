@@ -55,10 +55,10 @@ def subscription_pack() -> dict[str, Any]:
             "tier",
         ],
         "anti_patterns": [
-            "Do NOT implement recurring billing engines or payment capture — x_bill link-only",
-            "Do NOT copy sale_subscription logic — invoicing is external link pattern only",
+            "Do NOT implement recurring billing engines or payment capture, x_bill link-only",
+            "Do NOT copy sale_subscription logic, invoicing is external link pattern only",
             "x_subscriber_party is NOT is_workflow",
-            "Plan tier/features are selections — not separate tag models",
+            "Plan tier/features are selections, not separate tag models",
         ],
         "models": [
             {
@@ -240,7 +240,7 @@ def subscription_pack() -> dict[str, Any]:
                         "name": "x_invoice_ref",
                         "ttype": "char",
                         "string": "External Invoice Ref",
-                        "help": "Link-only — wire to account.move manually",
+                        "help": "Link-only, wire to account.move manually",
                     },
                 ],
             },

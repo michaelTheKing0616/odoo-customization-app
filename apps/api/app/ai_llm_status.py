@@ -292,7 +292,7 @@ def banner_for_mode(
             )
         if reason in {"timeout", "unavailable", "honesty_seed"}:
             return (
-                "AI was unavailable on Create draft. Click Retry AI enrichment — "
+                "AI was unavailable on Create draft. Click Retry AI enrichment, "
                 "it wakes Flash/local/cloud, re-runs missed AI steps, and still "
                 "completes residual fields from your brief if AI stays down."
             )
@@ -304,7 +304,7 @@ def banner_for_mode(
         if seeded is False:
             return None
         return (
-            "Depth targets were met via generic operational seeds — "
+            "Depth targets were met via generic operational seeds, "
             "review entities before apply."
         )
     return None

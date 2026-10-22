@@ -15,10 +15,13 @@ from app.code_studio_gating import (
     code_studio_gate_payload,
     load_or_probe,
 )
+from app.audit_chain import append_entry
 from app.code_studio_service import (
     SNIPPETS,
+    CodeStudioRuleError,
     bind_code_action,
     context_reference,
+    export_option_a_zip,
     test_run_code,
     validate_code,
 )
@@ -48,6 +51,7 @@ class ValidateCodeOut(BaseModel):
     syntax_ok: bool
     warnings: list[dict[str, str]] = Field(default_factory=list)
     error: str | None = None
+    line: int | None = None
 
 
 class TestRunBody(BaseModel):
@@ -75,6 +79,39 @@ class BindCodeOut(BaseModel):
     snapshot_id: str | None = None
     server_action_id: int | None = None
     automation_id: int | None = None
+
+
+class OptionABody(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    model: str = Field(..., min_length=1, max_length=200)
+    code: str
+    technical_name: str | None = None
+    depends: list[str] | None = None
+    as_extension: bool = False
+
+
+class ExtensionScaffoldBody(BaseModel):
+    model: str = Field(..., min_length=1, max_length=200)
+    kind: Literal["selection_options", "computed_field", "behaviour"]
+    field_name: str | None = None
+    label: str | None = None
+    options: list[dict[str, str]] | None = None
+
+
+class ExtensionScaffoldOut(BaseModel):
+    code: str
+    depends: list[str]
+    technical_name: str
+
+
+class OptionAOut(BaseModel):
+    ok: bool = True
+    installed: bool = False
+    promoted: bool = False
+    technical_name: str
+    filename: str
+    content_base64: str
+    note: str
 
 
 def _connection(db: Session, connection_id: str):
@@ -120,6 +157,23 @@ def _confirm_http(exc: ConfirmationRequired) -> HTTPException:
 
 def _set_audit_detail(request: Request, detail: dict[str, Any]) -> None:
     request.state.audit_detail = detail
+
+
+def _audit_chain(db: Session, auth: WorkspaceAuth, kind: str, payload: dict[str, Any]) -> None:
+    actor = auth.email or auth.user_id or "code_studio"
+    append_entry(db, actor=str(actor), kind=kind, payload=payload)
+
+
+def _rule_http(exc: CodeStudioRuleError) -> HTTPException:
+    return HTTPException(
+        status_code=400,
+        detail={
+            "error": exc.rule,
+            "message": str(exc),
+            "line": exc.line,
+            "snapshot_id": exc.snapshot_id,
+        },
+    )
 
 
 @router.get("/gate", response_model=CodeStudioGateOut)
@@ -197,6 +251,8 @@ def code_studio_test_run(
     client = _client_or_502(row)
     return test_run_code(
         client,
+        db=db,
+        connection_id=connection_id,
         model=body.model,
         record_id=body.record_id,
         code=body.code,
@@ -234,10 +290,16 @@ def code_studio_bind(
         )
     except ConfirmationRequired as exc:
         raise _confirm_http(exc) from exc
+    except CodeStudioRuleError as exc:
+        raise _rule_http(exc) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except OdooClientError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    snapshot_id = result.get("snapshot_id")
+    if not snapshot_id:
+        raise HTTPException(status_code=500, detail="Bind finished without a snapshot id.")
 
     _set_audit_detail(
         request,
@@ -247,7 +309,31 @@ def code_studio_bind(
             "model": body.model,
             "name": body.name,
             "code": body.code,
-            "snapshot_id": result.get("snapshot_id"),
+            "snapshot_id": snapshot_id,
+        },
+    )
+    _audit_chain(
+        db,
+        auth,
+        "change",
+        {
+            "operation": "code_studio_bind",
+            "bind_kind": body.bind_kind,
+            "model": body.model,
+            "name": body.name,
+            "snapshot_id": snapshot_id,
+            "server_action_id": result.get("server_action_id"),
+            "automation_id": result.get("automation_id"),
+        },
+    )
+    _audit_chain(
+        db,
+        auth,
+        "apply",
+        {
+            "operation": "code_studio_bind",
+            "snapshot_id": snapshot_id,
+            "confirm_phrase_accepted": True,
         },
     )
     return BindCodeOut(
@@ -256,4 +342,98 @@ def code_studio_bind(
         snapshot_id=result.get("snapshot_id"),
         server_action_id=result.get("server_action_id"),
         automation_id=result.get("automation_id"),
+    )
+
+
+@router.post("/option-a", response_model=OptionAOut)
+def code_studio_option_a(
+    connection_id: str,
+    body: OptionABody,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: WorkspaceAuth = Depends(require_app_auth),
+) -> OptionAOut:
+    """Package Python as a module zip. Does not install or promote it."""
+    assert_developer_role(auth)
+    assert_code_studio_entitlement(db, auth)
+    row = _connection(db, connection_id)
+    try:
+        major = int(str(getattr(row, "server_version", "") or "").split(".")[0])
+    except ValueError:
+        major = None
+    try:
+        exported = export_option_a_zip(
+            name=body.name,
+            model=body.model,
+            code=body.code,
+            technical_name=body.technical_name,
+            depends=body.depends,
+            as_extension=body.as_extension,
+            odoo_major=major,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _set_audit_detail(
+        request,
+        {
+            "operation": "code_studio_option_a",
+            "technical_name": exported["technical_name"],
+            "filename": exported["filename"],
+            "installed": False,
+            "promoted": False,
+        },
+    )
+    _audit_chain(
+        db,
+        auth,
+        "module",
+        {
+            "operation": "code_studio_option_a",
+            "technical_name": exported["technical_name"],
+            "filename": exported["filename"],
+            "installed": False,
+            "promoted": False,
+        },
+    )
+    return OptionAOut(**exported)
+
+
+def _model_depends(client: Any, model: str) -> list[str]:
+    """Modules that define a built-in model, so the extension installs after them."""
+    try:
+        rows = client.execute_kw("ir.model", "search_read", [[["model", "=", model]]], {"fields": ["modules"], "limit": 1})
+    except Exception:  # noqa: BLE001
+        return ["base"]
+    raw = str((rows[0].get("modules") if rows else "") or "")
+    mods = [m.strip() for m in raw.split(",") if m.strip()]
+    return mods or ["base"]
+
+
+@router.post("/extension-scaffold", response_model=ExtensionScaffoldOut)
+def code_studio_extension_scaffold(
+    connection_id: str,
+    body: ExtensionScaffoldBody,
+    db: Session = Depends(get_db),
+    auth: WorkspaceAuth = Depends(require_app_auth),
+) -> ExtensionScaffoldOut:
+    """Draft a small _inherit module for a built-in model. Writes nothing to Odoo."""
+    from app.code_studio_service import _slug_model, stock_extension_scaffold
+
+    assert_developer_role(auth)
+    assert_code_studio_entitlement(db, auth)
+    row = _connection(db, connection_id)
+    if body.model.startswith("x_"):
+        raise HTTPException(status_code=400, detail="This is for Odoo's own models. Change your own models from the Fields tab.")
+    try:
+        code = stock_extension_scaffold(
+            model=body.model, kind=body.kind, field_name=body.field_name,
+            label=body.label, options=body.options,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    client = _client_or_502(row)
+    return ExtensionScaffoldOut(
+        code=code,
+        depends=_model_depends(client, body.model),
+        technical_name=_slug_model(body.model)[:60],
     )

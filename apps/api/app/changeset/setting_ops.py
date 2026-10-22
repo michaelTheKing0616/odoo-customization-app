@@ -7,11 +7,23 @@ dates, fiscal year, currency, and chart of accounts. It does not call Odoo.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 INSTALL_REVERSAL_WARNING = (
     "install is reversible only by uninstall, which is R4 and prohibited in v1"
 )
+BILLABLE_WARNING = (
+    "this may add a paid app on Enterprise, Odoo Online, or Odoo.sh. "
+    "Community does not bill for it"
+)
+SETTING_OP_TYPES = frozenset(
+    {"setting.set", "config_param.set", "company.update", "module.install", "module.upgrade"}
+)
+_FIELD_NAME = re.compile(r"^[a-z_][a-z0-9_]*$")
+_MODULE_NAME = re.compile(r"^[a-z0-9_]+$")
+_COMPANY_ID_KEYS = frozenset({"id", "ids", "company_id"})
+_SCALAR = (str, int, float, bool)
 
 PROTECTED_CONFIG_KEYS = frozenset(
     {
@@ -88,6 +100,117 @@ def may_be_billable(
         return True
     body = params if isinstance(params, dict) else {}
     return op_type == "setting.set" and module_setting(body)
+
+
+def billable_warning(op_type: str, params: dict[str, Any] | None = None) -> str | None:
+    """Warning for an op that may add a paid app on a paid edition.
+
+    Inputs: op type and optional params.
+    Outputs: ``BILLABLE_WARNING`` when ``may_be_billable`` is True on
+    Enterprise. ``None`` otherwise. The plan card has no edition, so the
+    warning names the paid editions instead of guessing one.
+    Side effects: none.
+    """
+    if may_be_billable(op_type, params, edition="enterprise"):
+        return BILLABLE_WARNING
+    return None
+
+
+def setting_values(params: dict[str, Any]) -> dict[str, Any]:
+    """``res.config.settings`` create values for ``setting.set``.
+
+    Inputs: op params with ``key`` (a settings field name) and ``value``.
+    Outputs: ``{key: value}``.
+    Side effects: none. Raises ``ValueError`` when the key is not a field
+    name, the value is missing, or the value is not a scalar or ``None``.
+    """
+    key = params.get("key")
+    if not isinstance(key, str) or not _FIELD_NAME.match(key.strip()):
+        raise ValueError("setting.set key must be a res.config.settings field name")
+    if "value" not in params:
+        raise ValueError("setting.set requires a value")
+    value = params.get("value")
+    if value is not None and not isinstance(value, _SCALAR):
+        raise ValueError("setting.set value must be a scalar")
+    return {key.strip(): value}
+
+
+def config_param_args(params: dict[str, Any]) -> list[str]:
+    """``ir.config_parameter.set_param`` args for ``config_param.set``.
+
+    Inputs: op params with ``key`` and ``value``.
+    Outputs: ``[key, str(value)]``.
+    Side effects: none. Raises ``ValueError`` for a missing key, a ``None``
+    or ``False`` value (``set_param`` deletes the row for those), or a value
+    that is not a scalar.
+    """
+    key = params.get("key")
+    if not isinstance(key, str) or not key.strip():
+        raise ValueError("missing key")
+    value = params.get("value")
+    if value is None or value is False:
+        raise ValueError(
+            "config_param.set needs a value. An empty value would delete the parameter"
+        )
+    if not isinstance(value, _SCALAR):
+        raise ValueError("config_param.set value must be a scalar")
+    return [key.strip(), str(value)]
+
+
+def company_write(params: dict[str, Any]) -> tuple[list[int], dict[str, Any]]:
+    """``res.company`` write ids and values for ``company.update``.
+
+    Inputs: op params. Ids come from ``ids``, ``id``, or ``company_id``.
+    Values come from ``values`` when it is a dict, else from the other
+    top-level keys.
+    Outputs: ``(ids, values)``.
+    Side effects: none. Raises ``ValueError`` for no id, no values, or a key
+    that is not a field name. R4 fields were already refused by the handler.
+    """
+    ids = _company_ids(params)
+    if not ids:
+        raise ValueError("company.update requires a company id")
+    raw = params.get("values")
+    if isinstance(raw, dict):
+        values = dict(raw)
+    else:
+        values = {key: item for key, item in params.items() if key not in _COMPANY_ID_KEYS}
+    if not values:
+        raise ValueError("company.update requires values")
+    for key in values:
+        if not isinstance(key, str) or not _FIELD_NAME.match(key):
+            raise ValueError("company.update keys must be res.company field names")
+    return ids, values
+
+
+def module_name(params: dict[str, Any]) -> str:
+    """Technical module name for ``module.install`` or ``module.upgrade``.
+
+    Inputs: op params with ``module``.
+    Outputs: the stripped technical name.
+    Side effects: none. Raises ``ValueError`` when the name is missing or is
+    not lowercase letters, digits, and underscores.
+    """
+    name = params.get("module")
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("module name is required")
+    name = name.strip()
+    if not _MODULE_NAME.match(name):
+        raise ValueError("module name must be a technical name")
+    return name
+
+
+def _company_ids(params: dict[str, Any]) -> list[int]:
+    raw = params.get("ids")
+    if isinstance(raw, list) and raw:
+        if any(isinstance(item, bool) or not isinstance(item, int) or item <= 0 for item in raw):
+            raise ValueError("company.update requires a company id")
+        return list(raw)
+    for key in ("id", "company_id"):
+        item = params.get(key)
+        if isinstance(item, int) and not isinstance(item, bool) and item > 0:
+            return [item]
+    return []
 
 
 def install_reversal_warning(op_type: str) -> str | None:
@@ -185,17 +308,26 @@ def company_update_issues(params: dict[str, Any]) -> list[str]:
     return issues
 
 
-def company_update_refusal(params: dict[str, Any]) -> str | None:
+def company_update_refusal(
+    params: dict[str, Any],
+    *,
+    heavy_passed: bool = False,
+) -> str | None:
     """Refusal for an R4 company update, before any port call.
 
-    Inputs: op params.
-    Outputs: the existing lock-date refusal when a lock date is present,
-    otherwise the fiscal year, currency, or chart refusal. ``None`` when the
-    update does not touch those controls.
+    Inputs: op params and whether the change-set already passed the heavy-R4
+    gate. Lock dates are a hard stop and stay refused. Fiscal year, currency,
+    and chart of accounts stay refused until the heavy gate has passed.
+    Outputs: the lock-date refusal when a lock date is present, otherwise the
+    fiscal year, currency, or chart refusal when the heavy gate has not
+    passed. ``None`` when the update does not touch those controls, or when
+    only heavy controls are present and ``heavy_passed`` is True.
     Side effects: none.
     """
     if params.get("lock_date") or _has_named_lock(params):
         return "lock dates are prohibited"
+    if heavy_passed:
+        return None
     if _has_kind(params, _FISCAL_KEYS):
         return "fiscal year changes are prohibited"
     if _has_kind(params, _CURRENCY_KEYS):

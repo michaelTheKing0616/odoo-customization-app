@@ -46,5 +46,5 @@ def bootstrap_superadmin_from_env(db: Session) -> bool:
     sub = WorkspaceSubscription(workspace_id=ws.id, plan_id="internal", status="active")
     db.add(sub)
     db.commit()
-    logger.info("Bootstrapped superadmin account for %s (password from env — not logged)", email)
+    logger.info("Bootstrapped superadmin account for %s (password from env, not logged)", email)
     return True

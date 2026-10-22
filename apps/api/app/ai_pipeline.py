@@ -1,4 +1,4 @@
-"""Staged ModuleSpec generation pipeline (design §3).
+"""Staged app plan generation pipeline (design §3).
 
 Steps 0 + 6 are deterministic. Steps 1–5 call the LLM with small JSON tasks
 when a provider is available; otherwise the retrieved pack is used as the draft.
@@ -30,6 +30,7 @@ from app.llm_provider import (
     _is_timeout_error,
     get_llm_provider,
 )
+from app.live_schema_context import SchemaPacket, draft_grounding
 from app.protected_modules import guardrail_prompt, refresh_connection_protected_manifest
 
 
@@ -244,6 +245,9 @@ def seed_studio_draft(prompt: str) -> dict[str, Any]:
             for key in _STUDIO_SPEC_KEYS
             if key in pack and key != "models"
         }
+        if isinstance(pack.get("stock_app_recommendation"), dict):
+            # Not-curated vertical covered by a stock app: carry the "Use stock X" advice to the UI.
+            draft["stock_app_recommendation"] = copy.deepcopy(pack["stock_app_recommendation"])
         draft["models"] = []
         draft.setdefault("technical_name", re.sub(r"[^a-z0-9_]+", "_", pack_id)[:64])
         draft.setdefault("display_name", str(pack.get("display_name") or pack_id))
@@ -341,19 +345,22 @@ def _llm_json(
     temperature: float | None = None,
     timeout_s: float = 120.0,
     step: str = "draft_json",
+    schema_packet: SchemaPacket | None = None,
 ) -> Any:
     from app.ai_llm_budget import llm_json_with_budget
 
+    grounding = draft_grounding(schema_packet)
     raw, _down = llm_json_with_budget(
         provider,
         step,
-        prompt,
+        grounding.prompt(prompt),
         system=system,
         reasoning=reasoning,
         format_schema=format_schema,
         temperature=temperature,
     )
-    return _extract_json(raw)
+    data, _dropped = grounding.filter(_extract_json(raw))
+    return data
 
 
 def _step1_instruction(shape: str, max_entities: int) -> str:
@@ -361,7 +368,7 @@ def _step1_instruction(shape: str, max_entities: int) -> str:
     if shape == "register":
         return (
             "Reply ONLY with a JSON array of ONE entity — the paper-register residual "
-            "named in the operator brief (Custom residual). name = residual slug; "
+            "named in the operator brief (Custom code). name = residual slug; "
             "purpose = residual display name. Do not copy placeholder wording into "
             "the live description. Example output:\n"
             '[{"name":"named_residual","purpose":"Named residual",'

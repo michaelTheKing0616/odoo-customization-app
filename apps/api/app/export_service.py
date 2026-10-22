@@ -1,4 +1,4 @@
-"""Build ModuleSpec from live Odoo connection metadata (Phase 5 deepen)."""
+"""Build app plan from live Odoo connection metadata (Phase 5 deepen)."""
 
 from __future__ import annotations
 

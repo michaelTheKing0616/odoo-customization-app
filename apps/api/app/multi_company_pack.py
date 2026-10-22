@@ -296,7 +296,7 @@ def apply_multi_company_live(
             rule_name = f"Multi-company ({model})"
             existing = client.list_record_rules(model=model, limit=50)
             if any(r.name == rule_name for r in existing):
-                warnings.append(f"Record rule {rule_name!r} exists — skipped")
+                warnings.append(f"Record rule {rule_name!r} exists, skipped")
                 continue
             client.create_record_rule(
                 CreateRecordRuleRequest(

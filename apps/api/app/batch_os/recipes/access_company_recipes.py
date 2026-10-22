@@ -14,7 +14,7 @@ class UsersGroupsRecipe:
     title = "Users & groups"
     blurb = (
         "Invite/create res.users and assign res.groups via public RPC. "
-        "L2 — dry-run first; never invent passwords in logs."
+        "L2, dry-run first; never invent passwords in logs."
     )
     atlas_class = "access_company"
 
@@ -139,7 +139,7 @@ class UsersGroupsRecipe:
         state.dry_run = False
         state.risk = "L2"
         state.message = f"Created {len(created)} user(s); group assignments applied where requested"
-        state.warnings.append("New user passwords are one-time placeholders — force reset out-of-band.")
+        state.warnings.append("New user passwords are one-time placeholders, force reset out-of-band.")
         return state
 
 

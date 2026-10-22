@@ -194,7 +194,7 @@ def _restore_activity_automations(
 
 
 def apply_deterministic_scorecard_fixes(draft: dict[str, Any], *, user_prompt: str = "") -> tuple[dict[str, Any], list[str]]:
-    """Re-run pack merge + stock-first clip, then post-critique + app-bar + production."""
+    """Re-run pack merge + built-in apps first clip, then post-critique + app-bar + production."""
     if closer_must_not_mutate(draft):
         return copy.deepcopy(draft), [
             "no_repair: stock-reuse / refuse-clone — do not invent x_*; Job Autopilot is the done-bar",
@@ -487,13 +487,13 @@ def review_draft(
         lines.append("")
         lines.append(
             "**Expert closer:** no JSON repair — do not invent x_*. "
-            "Completeness ≠ Cert ≠ Autopilot. Job Autopilot is the done-bar for stock reuse."
+            "A complete draft is not the same as certified, and neither means Autopilot-ready. Job Autopilot is the done-bar for stock reuse."
         )
     elif option_a_pending and tier not in {"Production", "Gold"}:
         lines.append("")
         lines.append(
             f"**Ship bar:** Certification is `{tier or 'missing'}` — "
-            "need Production/Gold (sandbox prove for Option A). Completeness 10.0 alone is not go-live. "
+            "need Production/Gold (sandbox prove for custom code). Completeness 10.0 alone is not go-live. "
             "Expert closer does not raise Certification."
         )
     narrated = [f for f in sorted(findings, key=lambda x: x.priority) if f.narrative_paragraph][:5]

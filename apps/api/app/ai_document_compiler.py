@@ -870,8 +870,58 @@ def compile_document_grammar(draft: dict[str, Any], *, prompt: str = "") -> list
             for p in slots.people
         ],
     }
+    notes.extend(_ensure_clickable_menu(draft))
     draft["_document_grammar"] = build_grammar_card(draft, prompt=text)
     return notes
+
+
+def _ensure_clickable_menu(draft: dict[str, Any]) -> list[str]:
+    """Every generated app root needs at least one menu that opens an action.
+
+    Structural only: points at a custom model already on the draft (no invent).
+    """
+    menus = [m for m in (draft.get("menus") or []) if isinstance(m, dict)]
+    if any(m.get("action_xml_id") for m in menus):
+        return []
+    header = next(
+        (m for m in _custom_models(draft) if not _is_line_model(str(m.get("model") or ""))),
+        None,
+    )
+    if header is None:
+        return []
+    header_id = str(header.get("model"))
+    tech = str(draft.get("technical_name") or "custom_app")
+    display = str(draft.get("display_name") or tech.replace("_", " ").title())
+    slug = re.sub(r"[^a-z0-9]+", "_", tech.lower()).strip("_") or "custom_app"
+    actions = [a for a in (draft.get("actions") or []) if isinstance(a, dict)]
+    action = next((a for a in actions if str(a.get("model") or a.get("res_model") or "") == header_id), None)
+    if action is None:
+        action = {
+            "name": str(header.get("description") or display),
+            "model": header_id,
+            "view_mode": "list,form",
+            "technical_name": f"action_{header_id}",
+        }
+        actions.append(action)
+        draft["actions"] = actions
+    action_tech = str(action.get("technical_name") or action.get("xml_id") or f"action_{header_id}")
+    action["technical_name"] = action_tech
+    root = next((m for m in menus if not m.get("parent_xml_id") and m.get("xml_id")), None)
+    if root is None:
+        root = {"name": display, "sequence": 10, "technical_name": f"root_{slug}", "xml_id": f"menu_root_{slug}"}
+        menus.insert(0, root)
+    label = str(header.get("description") or display)
+    menus.append(
+        {
+            "name": label if label != display else "Records",
+            "action_xml_id": action_tech,
+            "parent_xml_id": root["xml_id"],
+            "sequence": 10,
+            "technical_name": f"menu_{header_id}",
+        }
+    )
+    draft["menus"] = menus
+    return [f"compiler: added clickable menu for {header_id}"]
 
 
 def premium_surface_findings(draft: dict[str, Any]) -> list[dict[str, Any]]:

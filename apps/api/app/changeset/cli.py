@@ -169,7 +169,8 @@ def main(argv: list[str] | None = None) -> int:
     Outputs: 0 when the command succeeded, 2 for usage, 1 when the file or
     the engine rejected the run.
     Side effects: writes one JSON object to stdout, or usage text to stderr.
-    Does not open a socket and does not call Odoo.
+    A rejected file or engine run also writes one ``error: ...`` line to
+    stderr. Does not open a socket and does not call Odoo.
     """
     args = list(sys.argv[1:] if argv is None else argv)
     if len(args) != 2 or args[0] not in COMMANDS:
@@ -180,13 +181,11 @@ def main(argv: list[str] | None = None) -> int:
         loaded = load_changeset(Path(raw_path))
         payload = run_command(command, loaded, FakePort())
     except ChangeSetCLIError as exc:
-        _emit(_failure(command, str(exc)))
-        return 1
+        return _reject(command, exc)
     except Exception as exc:
         if not _engine_error(exc):
             raise
-        _emit(_failure(command, str(exc)))
-        return 1
+        return _reject(command, exc)
     _emit(payload)
     return 0 if payload.get("ok") else 1
 
@@ -378,6 +377,13 @@ def _failure(command: str, message: str) -> dict[str, Any]:
         "live_odoo": False,
         "error": message,
     }
+
+
+def _reject(command: str, exc: Exception) -> int:
+    message = " ".join(str(exc).split()) or type(exc).__name__
+    _emit(_failure(command, message))
+    print(f"error: {message}", file=sys.stderr)
+    return 1
 
 
 def _engine_error(exc: Exception) -> bool:

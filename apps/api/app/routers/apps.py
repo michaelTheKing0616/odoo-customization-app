@@ -92,7 +92,7 @@ def export_library_module(
         f"fines={'on' if body.fines else 'off'}",
         f"reminders={'on' if body.reminders else 'off'}",
         f"multi_company={'on' if body.multi_company else 'off'}",
-        "sandbox before promote (Option A for Python/code)",
+        "test copy before publish (custom code for Python)",
     ]
     return ModuleExportOut(
         technical_name=spec.technical_name,

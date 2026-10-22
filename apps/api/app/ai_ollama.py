@@ -1,11 +1,14 @@
-"""NL → ModuleSpec draft. Uses LLMProvider + domain packs + rules. Never applies."""
+"""NL → App plan draft. Uses LLMProvider + domain packs + rules. Never applies."""
 
 from __future__ import annotations
 
 import copy
 import json
 import re
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
+
+if TYPE_CHECKING:
+    from app.live_schema_context import SchemaPacket
 
 from app.ai_critique import run_self_critique
 from app.ai_depth import run_depth_pass
@@ -157,7 +160,7 @@ def sanitize_draft_module_spec(data: dict[str, Any]) -> list[str]:
     data["technical_name"] = fixed
     return warnings
 
-_SYSTEM_PROMPT = f"""You are a ModuleSpec JSON generator for Odoo Community 19 customizations
+_SYSTEM_PROMPT = f"""You are a app plan JSON generator for Odoo Community 19 customizations
 (public ORM/RPC only — never Studio Enterprise). Your #1 job is to honor the operator
 brief: stated residual only, unknowns omitted, out-of-scope never inherited.
 
@@ -245,8 +248,21 @@ def _extract_json_object(text: str) -> dict[str, Any]:
     return parse_llm_json_object(text)
 
 
-def call_ollama_generate(prompt: str, *, timeout_s: float = 120.0) -> str:
-    """Back-compat wrapper — prefer get_llm_provider().generate_json."""
+def call_ollama_generate(
+    prompt: str,
+    *,
+    timeout_s: float = 120.0,
+    schema_packet: SchemaPacket | None = None,
+) -> str:
+    """Back-compat wrapper — prefer get_llm_provider().generate_json.
+
+    Grounded (GND-G-PIPE): packet in the prompt; app plan JSON filtered after parse.
+    Kept rather than deleted — still exported and listed on the GND-GATE allowlist,
+    even though no in-app callers remain today.
+    """
+    from app.live_schema_context import draft_grounding
+
+    grounding = draft_grounding(schema_packet)
     provider = get_llm_provider()
     if provider is None:
         raise AiAssistUnavailable(
@@ -254,8 +270,8 @@ def call_ollama_generate(prompt: str, *, timeout_s: float = 120.0) -> str:
             "and provide the matching API key, or use a domain-matched prompt."
         )
     try:
-        return provider.generate_json(
-            prompt,
+        raw = provider.generate_json(
+            grounding.prompt(prompt),
             system=module_spec_system_prompt(prompt),
             timeout_s=timeout_s,
             reasoning=True,
@@ -263,6 +279,12 @@ def call_ollama_generate(prompt: str, *, timeout_s: float = 120.0) -> str:
         )
     except LLMError as exc:
         raise AiAssistUnavailable(str(exc), status_code=exc.status_code) from exc
+    try:
+        data = _extract_json_object(raw if isinstance(raw, str) else json.dumps(raw))
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return raw if isinstance(raw, str) else json.dumps(raw)
+    data, _dropped = grounding.filter(data)
+    return json.dumps(data)
 
 
 def validate_draft_module_spec(data: dict[str, Any]) -> list[str]:
@@ -469,7 +491,7 @@ def _emit_partial_progress(
     step: int,
     draft: dict[str, Any],
 ) -> None:
-    """Surface in-progress ModuleSpec JSON to async job pollers.
+    """Surface in-progress app plan JSON to async job pollers.
 
     Tagged incomplete so the wizard never treats a mid-pipeline snapshot as the app.
     """
@@ -617,8 +639,12 @@ def draft_module_from_prompt(
     connect_points_override: dict[str, Any] | None = None,
     client: Any | None = None,
     progress_callback: Callable[[int, str, dict[str, Any] | None], None] | None = None,
+    schema_packet: SchemaPacket | None = None,
 ) -> tuple[dict[str, Any], str, list[str], list[dict[str, Any]]]:
     """Return (draft_dict, raw_response, warnings, refusals). Never mutates Odoo."""
+    from app.live_schema_context import draft_grounding
+
+    grounding = draft_grounding(schema_packet)
     from app.ai_component_builder import draft_component_from_prompt
     from app.ai_generation_engine import maybe_seed_from_capability
     from app.ai_grain import classify_grain
@@ -881,13 +907,18 @@ def draft_module_from_prompt(
             try:
                 raw = generate_json_with_timeout_retry(
                     provider,
-                    enriched_prompt,
+                    grounding.prompt(enriched_prompt),
                     system=module_spec_system_prompt(prompt),
                     reasoning=False,
                     temperature=0.15 if attempt else None,
                     log_step="draft_json",
                 )
                 draft = _extract_json_object(raw)
+                draft, dropped = grounding.filter(draft)
+                if dropped:
+                    warnings.append(
+                        f"draft: dropped field(s) not in the live schema: {', '.join(dropped)}"
+                    )
                 if (
                     locked_seed
                     and plan_blob
@@ -970,7 +1001,7 @@ def draft_module_from_prompt(
     # Pure-AI repair: emit omitted scaffold models before pack merge fills them
     if matched and provider is not None and doc_shape != "register":
         draft, gap_notes = llm_emit_missing_scaffold_models(
-            provider, draft, matched[1], user_prompt=prompt
+            provider, draft, matched[1], user_prompt=prompt, schema_packet=schema_packet
         )
         warnings.extend(gap_notes)
         draft, seed_notes = seed_missing_core_scaffold_models(draft, matched[1])

@@ -40,7 +40,7 @@ if not DRY_RUN:
     odoo.execute_kw(MODEL, "write", [ids, {"comment": "Script runner touch"}])
     log("Write applied")
 else:
-    log("Dry run only — set DRY_RUN=False after review")
+    log("Dry run only, set DRY_RUN=False after review")
 """,
     },
     {
@@ -89,7 +89,7 @@ MODEL = "res.partner"
 ids = odoo.execute_kw(MODEL, "search", [[("active", "=", True)]], {"limit": 3})
 log(f"Targets: {ids}")
 if DRY_RUN:
-    log("DRY_RUN — would schedule mail.mail_activity_data_todo")
+    log("DRY_RUN, would schedule mail.mail_activity_data_todo")
 else:
     for rid in ids:
         odoo.execute_kw(

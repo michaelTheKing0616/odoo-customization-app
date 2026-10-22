@@ -160,7 +160,7 @@ def _prepare_image_bytes(raw: bytes) -> tuple[bytes, str]:
     try:
         from PIL import Image
     except ImportError as exc:
-        raise ValueError("Pillow is required for image import — install API dep pillow") from exc
+        raise ValueError("Pillow is required for image import, install API dep pillow") from exc
 
     with Image.open(io.BytesIO(raw)) as img:
         img = img.convert("RGB")

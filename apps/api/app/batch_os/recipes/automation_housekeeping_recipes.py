@@ -109,7 +109,7 @@ class AutomationBasePointerRecipe:
     id = "automation.base"
     risk = "L2"
     title = "Base automations"
-    blurb = "Catalog pointer — base.automation packs live in Automation Manager / App Studio. No fake RPC."
+    blurb = "Catalog pointer, base.automation packs live in Automation Manager / App Studio. No fake RPC."
     atlas_class = "automation"
 
     def intake(self, *, connection_id: str, filename: str = "", headers=None, rows=None, extras=None) -> BatchJobState:
@@ -128,7 +128,7 @@ class AutomationBasePointerRecipe:
     def validate(self, state: BatchJobState, client: Any) -> BatchJobState:
         del client
         state.phase = "validated"
-        state.message = "Catalog pointer only — no RPC writes"
+        state.message = "Catalog pointer only, no RPC writes"
         state.extras["pointer_status"] = "complete"
         return state
 
@@ -143,7 +143,7 @@ class AutomationBasePointerRecipe:
         del post_after_create, client
         state.phase = "applied"
         state.dry_run = False
-        state.message = "No-op apply — open Automation Manager (pointer)"
+        state.message = "No-op apply, open Automation Manager (pointer)"
         return state
 
 

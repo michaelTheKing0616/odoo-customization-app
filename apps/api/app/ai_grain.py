@@ -559,7 +559,7 @@ _PRIMARY_PROJECT_HOST_RE = re.compile(
 
 
 def preferred_inherit_host(prompt: str) -> str | None:
-    """Host for Option A inherit seeds — prefer the document, not incidental 'customer'."""
+    """Host for custom code inherit seeds — prefer the document, not incidental 'customer'."""
     text = prompt or ""
     # Report/document address scrub CLASS wins over incidental "Customer" → partner.
     # Prefer Contacts delivery-notes stays on res.partner (handled below).
@@ -648,7 +648,7 @@ def discover_hosts(
     available_models: list[str] | None = None,
     saved_specs: list[dict[str, Any]] | None = None,
 ) -> list[HostCandidate]:
-    """Rank candidate host models from prompt + introspection."""
+    """Rank candidate existing forms from prompt + introspection."""
     text = _scrub_host_noise(prompt or "").lower()
     catalog = set(available_models or [])
     for spec in saved_specs or []:
@@ -723,7 +723,7 @@ def grain_display(grain: Grain, host: HostCandidate | None) -> str:
 
 
 def architecture_strategy_for_grain(grain: Grain, *, option_a: bool = False) -> str:
-    """Map grain (+ Option A) to ``_architecture_plan.strategy`` before model expand."""
+    """Map grain (+ custom code) to ``_architecture_plan.strategy`` before model expand."""
     if option_a:
         return "option_a_module"
     if grain == "field_pack":

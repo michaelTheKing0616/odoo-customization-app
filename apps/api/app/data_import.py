@@ -109,7 +109,7 @@ def _parse_xlsx(raw: bytes) -> tuple[list[str], list[dict[str, str]]]:
         from openpyxl import load_workbook
     except ImportError as exc:
         raise ValueError(
-            "XLSX support requires openpyxl — install API deps (openpyxl)"
+            "XLSX support requires openpyxl, install API deps (openpyxl)"
         ) from exc
     wb = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
     ws = wb.active
@@ -219,11 +219,34 @@ def _field_meta(client: OdooClient, model: str) -> dict[str, dict[str, Any]]:
     return {str(r["name"]): r for r in rows}
 
 
+# Relations a seed import may create when the name is missing (demo data only needs a label).
+# fleet.vehicle.model needs a brand: "Toyota Corolla" → brand "Toyota", model "Corolla".
+_CREATABLE_M2O = {"fleet.vehicle.model"}
+
+
+def _create_missing_m2o(client: OdooClient, relation: str, text: str) -> int:
+    if relation == "fleet.vehicle.model":
+        brand_name, _, model_name = text.partition(" ")
+        model_name = model_name.strip() or brand_name
+        found = client.execute_kw("fleet.vehicle.model.brand", "search", [[("name", "=ilike", brand_name)]], {"limit": 1})
+        brand_id = found[0] if found else client.execute_kw("fleet.vehicle.model.brand", "create", [{"name": brand_name}])
+        existing = client.execute_kw(
+            "fleet.vehicle.model", "search", [[("name", "=ilike", model_name), ("brand_id", "=", brand_id)]], {"limit": 1}
+        )
+        if existing:
+            return int(existing[0])
+        return int(client.execute_kw("fleet.vehicle.model", "create", [{"name": model_name, "brand_id": brand_id}]))
+    raise ValueError(f"No {relation} matching {text!r}")
+
+
 def _resolve_m2o(
     client: OdooClient,
     relation: str,
     value: Any,
+    *,
+    create_missing: bool | None = None,
 ) -> int | None:
+    """create_missing: None = never; False = test run (report would-create as 0); True = create."""
     if value is None or value == "":
         return None
     if isinstance(value, int):
@@ -251,6 +274,12 @@ def _resolve_m2o(
         limit=2,
     )
     found = client.execute_kw(relation, "name_search", ns_args, ns_kwargs)
+    if not found and relation == "fleet.vehicle.model" and " " in text:
+        # Seed rows say "Brand Model"; Odoo's display name is "Brand/Model".
+        b, _, m = text.partition(" ")
+        found = client.execute_kw(relation, "name_search", *build_name_search_execute_kw(f"{b}/{m.strip()}", major=client.capabilities.major, limit=2))
+    if not found and create_missing is not None and relation in _CREATABLE_M2O:
+        return 0 if create_missing is False else _create_missing_m2o(client, relation, text)
     if not found:
         raise ValueError(f"No {relation} matching {text!r}")
     if len(found) > 1:
@@ -264,6 +293,8 @@ def _row_to_vals(
     row: dict[str, str],
     mapping: dict[str, str],
     meta: dict[str, dict[str, Any]],
+    *,
+    create_missing: bool | None = None,
 ) -> tuple[dict[str, Any], str | None]:
     """Return (vals, external_id_or_none)."""
     vals: dict[str, Any] = {}
@@ -288,7 +319,7 @@ def _row_to_vals(
             rel = info.get("relation")
             if not rel:
                 raise ValueError(f"{field_name} has no relation")
-            coerced = _resolve_m2o(client, str(rel), coerced if coerced is not None else raw)
+            coerced = _resolve_m2o(client, str(rel), coerced if coerced is not None else raw, create_missing=create_missing)
         if coerced is None and info.get("required"):
             raise ValueError(f"Required field {field_name} is empty")
         if coerced is not None:
@@ -343,7 +374,9 @@ def dry_run_or_commit(
     dry_run: bool = True,
     batch_size: int = 50,
     rpc_context: dict[str, Any] | None = None,
+    before_update: Any = None,
 ) -> ImportCommitResult:
+    """before_update(record_id, vals): called just before an upsert writes an existing record (A5 undo)."""
     if not client.model_exists(model):
         raise OdooClientError(f"Model {model} not found on this Odoo")
     if batch_size < 1 or batch_size > 500:
@@ -441,7 +474,9 @@ def dry_run_or_commit(
 
     for idx, row in enumerate(rows, start=1):
         try:
-            vals, external_id = _row_to_vals(client, model, row, mapping, meta)
+            vals, external_id = _row_to_vals(
+                client, model, row, mapping, meta, create_missing=(not dry_run) if model == "fleet.vehicle" else None
+            )
             if not vals and not external_id:
                 skipped += 1
                 results.append(
@@ -469,6 +504,8 @@ def dry_run_or_commit(
                         )
                     )
                 else:
+                    if before_update is not None:
+                        before_update(existing_id, vals)
                     client.execute_kw(model, "write", [[existing_id], vals], _kw())
                     updated += 1
                     results.append(

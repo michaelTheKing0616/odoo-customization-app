@@ -16,7 +16,7 @@ from app.account_service import (
     resolve_session,
     SESSION_COOKIE,
 )
-from app.client_access import client_request_decision
+from app.client_access import RouteGroup, client_request_decision, role_allows_route_group
 from app.auth import extract_raw_key, key_matches_env, verify_api_key
 from app.db import get_db
 from app.db_models import OdooConnection
@@ -250,3 +250,18 @@ def get_scoped_connection_or_404(
     if row is None:
         raise HTTPException(status_code=404, detail="Connection not found")
     return row
+
+
+def require_route_group(auth: WorkspaceAuth, group: RouteGroup) -> None:
+    """Enforce ROLE_CAPABILITIES for account sessions (workspace and client grants)."""
+    if auth.mode != "accounts" or auth.api_key_authenticated or auth.is_superadmin:
+        return
+    if not role_allows_route_group(auth.role, group):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "forbidden",
+                "message": f"This account is not allowed to use the {group} routes.",
+                "role": auth.role,
+            },
+        )

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -37,7 +39,7 @@ def thin_document_brief(prompt: str) -> bool:
     """Purchase-request class: one named document with money/roles/approval.
 
     These are not stock-vs-custom or pack-choice questions. IR may still be
-    'unstated' because the operator did not write ``Custom residual:``.
+    'unstated' because the operator did not write ``Custom code:``.
     """
     text = (prompt or "").strip()
     if not text:
@@ -126,10 +128,11 @@ def assess_intent(prompt: str, *, resolved_answers: dict[str, str] | None = None
             "option_a_standalone",
         }:
             pack_clear = True
-            notes.append("generation engine Option A — skip pack/stock clarification")
+            notes.append("generation engine custom code — skip pack/stock clarification")
     except Exception:  # noqa: BLE001
         pass
 
+    chips_only_clear = False
     try:
         from app.ai_grain import classify_grain
 
@@ -138,6 +141,17 @@ def assess_intent(prompt: str, *, resolved_answers: dict[str, str] | None = None
         # Otherwise tiny pack noise (restaurant@0.04) asks "Where should this live?"
         # for briefs that already classify as full_app (Visitor Log, Asset Checkout).
         if grain in {"field_pack", "feature_slice", "full_app"}:
+            # full_app is also the default grain: it skips pack/stock chips, but a
+            # «standard apps only» brief with no stated residual still gets the
+            # low-IR question (there is nothing concrete to build yet).
+            if (
+                grain == "full_app"
+                and not pack_clear
+                and residual_kind == "unstated"
+                and brief.capability_path == "stock_first"
+                and _STOCK_ONLY_RE.search(text)
+            ):
+                chips_only_clear = True
             pack_clear = True
             notes.append(
                 f"{grain} — skip pack/stock clarification"
@@ -165,21 +179,25 @@ def assess_intent(prompt: str, *, resolved_answers: dict[str, str] | None = None
                 f"Ambiguous pack fit: {best_id}@{best_score:.2f} vs {ranked[1][0]}@{second_score:.2f}"
             )
 
+    from app.ai_operator_brief import stated_app_name
+
+    app_named = bool(stated_app_name(text))
     if not triggers and residual_kind == "unstated" and brief.ir_confidence != "high":
         if any(tok in text.lower() for tok in ("ticket", "helpdesk", "support")) and "residual" not in answers:
             triggers.append("material_ambiguity")
-            notes.append("Ticket/helpdesk intent — confirm custom residual document")
+            notes.append("Ticket/helpdesk intent — confirm custom code document")
 
     if (
         brief.ir_confidence == "low"
         and "ir_confidence" not in answers
         and "pack_choice" not in answers
         and "pack_conflict" not in answers
-        and not pack_clear
+        and (not pack_clear or chips_only_clear)
         and not triggers
+        and not app_named
     ):
         triggers.append("low_ir_confidence")
-        notes.append("IR confidence low — confirm custom residual vs stock-first")
+        notes.append("IR confidence low — confirm custom code vs built-in apps first")
 
     triggers = _sort_triggers(triggers)
 
@@ -208,6 +226,12 @@ def assess_intent(prompt: str, *, resolved_answers: dict[str, str] | None = None
     from app.ai_conversation.intent_llm import maybe_llm_refine_assessment
 
     return maybe_llm_refine_assessment(text, result, ranked=ranked)
+
+
+_STOCK_ONLY_RE = re.compile(
+    r"(?i)\b(?:standard|stock|default|built[- ]in|out[- ]of[- ]the[- ]box)\s+"
+    r"(?:odoo\s+)?(?:apps?|modules?|features?)\s+only\b|\bno\s+custom(?:isation|ization|izations)?\b"
+)
 
 
 def should_block_generation(assessment: IntentAssessment) -> bool:

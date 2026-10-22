@@ -59,7 +59,7 @@ def compute_ng(gross: float, *, basic: float | None = None) -> StatutoryResult:
     )
     net = round(g - pension_ee - nhf - paye, 2)
     notes = (
-        "Fixture rates — verify FIRS PAYE, PENCOM 8/10, and NHF before filing.",
+        "Fixture rates, verify FIRS PAYE, PENCOM 8/10, and NHF before filing.",
         "NHF here is 0.5% of gross as commonly briefed; some filings use 2.5% of basic.",
         "Does not write hr.payslip (Enterprise / tier-1).",
     )

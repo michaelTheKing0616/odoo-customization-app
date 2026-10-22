@@ -209,7 +209,7 @@ def parse_python_models(source: str, *, filename: str = "<model>") -> tuple[list
     try:
         tree = ast.parse(source, filename=filename)
     except SyntaxError as exc:
-        warnings.append(f"{filename}: syntax error — {exc}")
+        warnings.append(f"{filename}: syntax error, {exc}")
         unmapped.append(
             {
                 "kind": "python_file",
@@ -291,7 +291,7 @@ def parse_python_models(source: str, *, filename: str = "<model>") -> tuple[list
                 inherit = None
 
         if not model_name:
-            warnings.append(f"{filename}: class {node.name} has no _name/_inherit — skipped")
+            warnings.append(f"{filename}: class {node.name} has no _name/_inherit, skipped")
             continue
 
         # Custom models via RPC must be x_*; keep stock inherits as inherit mode
@@ -378,7 +378,7 @@ def parse_xml_views(source: str, *, filename: str = "<view>") -> tuple[list[dict
         cleaned = re.sub(r"&\s+", "&amp; ", source)
         root = ET.fromstring(cleaned)
     except ET.ParseError as exc:
-        warnings.append(f"{filename}: XML parse error — {exc}")
+        warnings.append(f"{filename}: XML parse error, {exc}")
         unmapped.append(
             {
                 "kind": "xml_file",
@@ -401,7 +401,7 @@ def parse_xml_views(source: str, *, filename: str = "<view>") -> tuple[list[dict
                 "mode": "primary",
             }
         )
-        warnings.append(f"{filename}: bare view root — model unknown")
+        warnings.append(f"{filename}: bare view root, model unknown")
 
     for rec in records:
         model_attr = rec.get("model") or ""
@@ -603,7 +603,7 @@ def import_module_archive(content: bytes, *, filename: str = "module.zip") -> Im
                 by_model[mid].setdefault("fields", []).append(f)
 
     if not by_model and not views:
-        warnings.append("No models or views detected — check module layout")
+        warnings.append("No models or views detected, check module layout")
 
     return ImportResult(
         spec={

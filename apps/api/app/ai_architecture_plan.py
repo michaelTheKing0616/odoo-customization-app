@@ -1,6 +1,6 @@
-"""Explicit architecture plan stamp — stock-first before ModuleSpec expand.
+"""Explicit architecture plan stamp — built-in apps first before app plan expand.
 
-Strategy values map grain + Option A + reuse into a scored plan IR.
+Strategy values map grain + custom code + reuse into a scored plan IR.
 """
 
 from __future__ import annotations
@@ -90,8 +90,8 @@ def build_architecture_plan(
     *,
     prompt: str = "",
 ) -> dict[str, Any]:
-    """Derive plan from grain / Option A / reuse (deterministic)."""
-    from app.ai_document_shape import classify_document_shape, shape_budget
+    """Derive plan from grain / custom code / reuse (deterministic)."""
+    from app.ai_document_shape import classify_document_shape, design_model_count, shape_budget
 
     shape = classify_document_shape(prompt or str(draft.get("_user_prompt") or ""), draft)
     grain = str(draft.get("grain") or "full_app")
@@ -157,7 +157,12 @@ def build_architecture_plan(
             ]
         )
         budget = {
-            "new_models": shape_budget(shape, x_models=len(x_models), pack_n=pack_n),
+            "new_models": shape_budget(
+                shape,
+                x_models=len(x_models),
+                pack_n=pack_n,
+                design_n=design_model_count(draft),
+            ),
             "new_js": 0,
             "new_controllers": 0,
         }
@@ -169,9 +174,9 @@ def build_architecture_plan(
         and grain == "full_app"
         and str(draft.get("technical_name") or "") != "stock_reuse"
     ):
-        ambiguities.append("Prompt contains alternatives — confirm residual vs stock-first")
+        ambiguities.append("Prompt contains alternatives — confirm residual vs built-in apps first")
     if option_a and grain == "field_pack":
-        ambiguities.append("Option A primary with field_pack grain — prefer option_a_module")
+        ambiguities.append("custom code primary with field_pack grain — prefer option_a_module")
 
     return {
         "strategy": strategy,
@@ -188,7 +193,7 @@ def build_architecture_plan(
 
 
 def architecture_plan_drift(draft: dict[str, Any], plan: dict[str, Any] | None = None) -> list[str]:
-    """Compare plan budget / forbidden clones to current ModuleSpec."""
+    """Compare plan budget / forbidden clones to current app plan."""
     plan = plan or (
         draft.get("_architecture_plan")
         if isinstance(draft.get("_architecture_plan"), dict)

@@ -44,9 +44,9 @@ def helpdesk_tickets_pack() -> dict[str, Any]:
             "internal support",
         ],
         "anti_patterns": [
-            "Do NOT clone project.task or project.project — tickets are x_ticket only",
+            "Do NOT clone project.task or project.project, tickets are x_ticket only",
             "Do NOT add x_project, x_milestone, x_team_member, or PM workspace models",
-            "Time spent is x_ticket_time_line O2M — not hr_timesheet or a second Timesheet app",
+            "Time spent is x_ticket_time_line O2M, not hr_timesheet or a second Timesheet app",
             "This is internal helpdesk, not ITSM / SLA enterprise helpdesk",
         ],
         "models": [
@@ -86,7 +86,7 @@ def helpdesk_tickets_pack() -> dict[str, Any]:
                         "string": "Requester",
                         "relation": "hr.employee",
                         "required": True,
-                        "help": "Employee who opened the ticket — link-only to HR.",
+                        "help": "Employee who opened the ticket, link-only to HR.",
                     },
                     {
                         "name": "x_asset_tag",
@@ -177,7 +177,7 @@ def helpdesk_tickets_pack() -> dict[str, Any]:
         "reuse_hints": [
             {
                 "model": "hr.employee",
-                "reason": "Requester on tickets — do not invent x_staff",
+                "reason": "Requester on tickets, do not invent x_staff",
             },
         ],
         "reuse_stock": [

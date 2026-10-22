@@ -251,7 +251,7 @@ def journal_apply(
         HONESTY_PREVIEW_NE_POSTED,
     ]
     if body.post_after_create:
-        risks.append("Will call action_post (L2) — posted entries are harder to reverse")
+        risks.append("Will call action_post (L2), posted entries are harder to reverse")
     try:
         require_advanced_confirmation(
             confirm_advanced=body.confirm_advanced,
@@ -422,7 +422,7 @@ def order_apply(
     risks = [
         "Creates draft sale.order / purchase.order on the live database",
         HONESTY_PREVIEW_NE_CONFIRMED,
-        "Never auto-confirms — confirmation is a separate operator step",
+        "Never auto-confirms, confirmation is a separate operator step",
     ]
     try:
         require_advanced_confirmation(
@@ -570,7 +570,7 @@ def document_apply(
         HONESTY_PREVIEW_NE_POSTED,
     ]
     if body.post_after_create:
-        risks.append("Will call action_post (L2) — posted invoices are harder to reverse")
+        risks.append("Will call action_post (L2), posted invoices are harder to reverse")
     try:
         require_advanced_confirmation(
             confirm_advanced=body.confirm_advanced,
@@ -671,7 +671,7 @@ def payment_apply(
 ) -> dict[str, Any]:
     risks = [
         "Registers payments against open invoices/bills (L2)",
-        "Preview ≠ posted — dry-run first",
+        "Preview ≠ posted, dry-run first",
         HONESTY_PREVIEW_NE_POSTED,
     ]
     try:
@@ -832,7 +832,7 @@ def master_apply(
 ) -> dict[str, Any]:
     risks = [
         "Writes res.partner or product.template on the live database",
-        "Dry-run ≠ written — confirm you reviewed the preview",
+        "Dry-run ≠ written, confirm you reviewed the preview",
     ]
     try:
         require_advanced_confirmation(

@@ -26,16 +26,29 @@ from app.zip_safety import safe_extract, validate_zip_bytes
 logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SANDBOX_COMPOSE = REPO_ROOT / "docker" / "docker-compose.sandbox.yml"
+SANDBOX_COMPOSE = REPO_ROOT / "docker" / "docker-compose.ingenium-sandbox.yml"
+# Shared, read-only source of the expert bridge addons (also mounted by dev stacks). Never written here.
 SANDBOX_ADDONS = REPO_ROOT / "docker" / "sandbox-addons"
-SANDBOX_URL = "http://127.0.0.1:18069"
-SANDBOX_DB = "sandbox_test"
+SANDBOX_ADDONS_ROOT = REPO_ROOT / "docker" / "ingenium-sandbox-addons"
+SANDBOX_PREFIX = "ingenium_sandbox_"
+SANDBOX_DB = "ingenium_sandbox_test"
 SANDBOX_USER = "admin"
 SANDBOX_PASSWORD = "admin"
-ODOO_CONTAINER = "odoo-custom-sandbox-odoo"
-DB_CONTAINER = "odoo-custom-sandbox-db"
+SANDBOX_PORT_BASE = 18100
 
 SUPPORTED_SANDBOX_MAJORS = frozenset({16, 17, 18, 19, 20})
+
+# Dev / permanent stacks that a sandbox must never resolve to (compose projects and containers).
+DEV_PROJECTS = frozenset({"odoo20-custom-dev", "odoo-custom", "odoo-custom-dev", "odoo17-custom-dev",
+                          "odoo18-custom-dev", "odoo16-custom-dev", "docker", "odoo-sandbox"})
+DEV_CONTAINERS = frozenset({"odoo20", "odoo20-db", "odoo20-app-db", "odoo-custom-odoo", "odoo-custom-odoo17",
+                            "odoo-custom-odoo18", "odoo-custom-odoo16", "odoo-custom-db", "odoo-custom-app-db",
+                            "odoo-custom-sandbox-odoo", "odoo-custom-sandbox-db"})
+DEV_PORTS = frozenset({8069, 8070, 8071, 8072, 8073, 18069})
+
+
+class SandboxGuardError(RuntimeError):
+    """Refused: the target is not an isolated ingenium_sandbox_* resource this module created."""
 
 
 @dataclass(frozen=True)
@@ -47,33 +60,67 @@ class SandboxStack:
     odoo_container: str
     db_container: str
     db_host: str
+    port: int = 0
+    addons: Path = SANDBOX_ADDONS_ROOT
 
 
 def sandbox_stack_for_major(major: int) -> SandboxStack:
-    """Compose project + service names for ephemeral install (one stack per major band)."""
-    if major == 20:
-        return SandboxStack(
-            compose=REPO_ROOT / "docker" / "docker-compose.odoo20.yml",
-            project="odoo20-custom-dev",
-            url="http://127.0.0.1:8073",
-            odoo_service="odoo20",
-            odoo_container="odoo20",
-            db_container="odoo20-db",
-            db_host="db20",
-        )
-    return SandboxStack(
+    """Isolated compose project per Odoo version. Can never be a dev stack (checked by assert_isolated)."""
+    major = int(major)
+    name = f"{SANDBOX_PREFIX}v{major}"
+    port = SANDBOX_PORT_BASE + major
+    stack = SandboxStack(
         compose=SANDBOX_COMPOSE,
-        project="odoo-sandbox",
-        url=SANDBOX_URL,
+        project=name,
+        url=f"http://127.0.0.1:{port}",
         odoo_service="odoo",
-        odoo_container=ODOO_CONTAINER,
-        db_container=DB_CONTAINER,
+        odoo_container=f"{name}_odoo",
+        db_container=f"{name}_db",
         db_host="db",
+        port=port,
+        addons=SANDBOX_ADDONS_ROOT / f"v{major}",
     )
+    assert_isolated(stack)
+    return stack
+
+
+def assert_isolated(stack: SandboxStack) -> None:
+    """Hard guard before ANY compose/docker/db action, destructive or not."""
+    problems = []
+    if not stack.project.startswith(SANDBOX_PREFIX) or stack.project in DEV_PROJECTS:
+        problems.append(f"project {stack.project!r}")
+    for c in (stack.odoo_container, stack.db_container):
+        if not c.startswith(SANDBOX_PREFIX) or c in DEV_CONTAINERS:
+            problems.append(f"container {c!r}")
+    if stack.compose.resolve() != SANDBOX_COMPOSE.resolve():
+        problems.append(f"compose file {stack.compose.name!r}")
+    if stack.port in DEV_PORTS or not stack.port:
+        problems.append(f"port {stack.port}")
+    try:
+        stack.addons.resolve().relative_to(SANDBOX_ADDONS_ROOT.resolve())
+    except ValueError:
+        problems.append(f"addons dir {stack.addons}")
+    if not SANDBOX_DB.startswith(SANDBOX_PREFIX):
+        problems.append(f"db {SANDBOX_DB!r}")
+    if problems:
+        raise SandboxGuardError("Sandbox refused, target is not an isolated ingenium_sandbox_* resource: " + ", ".join(problems))
+
+
+def _prepare_addons(stack: SandboxStack) -> None:
+    """Fresh per-stack addons dir: copy of the shared bridge addons (the shared dir is only read)."""
+    assert_isolated(stack)
+    if stack.addons.exists():
+        shutil.rmtree(stack.addons)
+    stack.addons.mkdir(parents=True, exist_ok=True)
+    if SANDBOX_ADDONS.exists():
+        for child in SANDBOX_ADDONS.iterdir():
+            if child.is_dir() and (child / "__manifest__.py").exists():
+                shutil.copytree(child, stack.addons / child.name)
 
 # Serialize sandbox runs — shared addons dir + fixed compose project name.
 _sandbox_lock = threading.Lock()
 _active_sandbox_job_id: str | None = None
+_active_sandbox_major: int = 19
 _sandbox_subprocesses: dict[str, subprocess.Popen[str]] = {}
 
 
@@ -91,7 +138,7 @@ def cancel_sandbox_if_running(job_id: str) -> None:
     if _active_sandbox_job_id != job_id:
         return
     try:
-        _compose("down", "--remove-orphans", check=False)
+        _compose("down", "--remove-orphans", check=False, odoo_major=_active_sandbox_major)
     except Exception:  # noqa: BLE001
         logger.warning("sandbox cancel teardown failed", exc_info=True)
     finally:
@@ -247,9 +294,13 @@ def _compose(
     job_id: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     stack = sandbox_stack_for_major(odoo_major)
+    assert_isolated(stack)
     env = {
         **os.environ,
         "ODOO_SANDBOX_IMAGE": sandbox_image_for_major(odoo_major),
+        "ISB_NAME": stack.project,
+        "ISB_PORT": str(stack.port),
+        "ISB_ADDONS": str(stack.addons.resolve()),
     }
     cmd = [
         "docker",
@@ -324,7 +375,9 @@ def _wait_http(url: str, timeout_s: float = 120) -> None:
 
 
 def _drop_sandbox_db(odoo_major: int = 19) -> None:
-    db_container = sandbox_stack_for_major(odoo_major).db_container
+    stack = sandbox_stack_for_major(odoo_major)
+    assert_isolated(stack)
+    db_container = stack.db_container
     subprocess.run(
         [
             "docker",
@@ -667,7 +720,7 @@ def run_sandbox_install(
     If ``None``, use ``settings.sandbox_extra_modules`` / ``SANDBOX_EXTRA_MODULES``.
 
     ``after_install``: optional ``callable(uid, models, odoo_major)`` run while the
-    sandbox is still up (Option A PDF/RPC smoke). Exceptions fail the run.
+    sandbox is still up (custom code PDF/RPC smoke). Exceptions fail the run.
 
     ``run_tests``: when True, after RPC install run ``odoo -u MODULE --test-enable
     --stop-after-init`` (PR-D). Default False so fast CI / in-loop iteration stays
@@ -747,6 +800,8 @@ def _run_sandbox_install_unlocked(
     from app.jobs import job_cancelled
 
     _active_sandbox_job_id = job_id
+    global _active_sandbox_major
+    _active_sandbox_major = int(odoo_major or 19)
     logs: list[str] = []
     technical = module_name or "unknown"
     stack = sandbox_stack_for_major(odoo_major)
@@ -758,9 +813,17 @@ def _run_sandbox_install_unlocked(
                 message="Sandbox cancelled",
                 odoo_major=odoo_major,
             )
-        technical = _extract_zip(zip_bytes, SANDBOX_ADDONS)
+        _prepare_addons(stack)
+        technical = _extract_zip(zip_bytes, stack.addons / "_candidate")
+        # move the candidate next to the bridge addons (one flat addons dir)
+        cand = stack.addons / "_candidate" / technical
+        if cand.exists():
+            if (stack.addons / technical).exists():
+                shutil.rmtree(stack.addons / technical)
+            shutil.move(str(cand), str(stack.addons / technical))
+            shutil.rmtree(stack.addons / "_candidate", ignore_errors=True)
         logs.append(
-            f"extracted {technical} into {SANDBOX_ADDONS} "
+            f"extracted {technical} into {stack.addons} "
             f"(target major={odoo_major}, image={sandbox_image_for_major(odoo_major)})"
         )
 
@@ -854,11 +917,8 @@ def _run_sandbox_install_unlocked(
                 _compose("down", "-v", check=False, odoo_major=odoo_major)
             except Exception:  # noqa: BLE001
                 logger.warning("sandbox teardown failed", exc_info=True)
-            if SANDBOX_ADDONS.exists():
-                for child in SANDBOX_ADDONS.iterdir():
-                    if child.name == ".gitkeep":
-                        continue
-                    if child.is_dir():
-                        shutil.rmtree(child, ignore_errors=True)
-                    else:
-                        child.unlink(missing_ok=True)
+            try:
+                assert_isolated(stack)
+                shutil.rmtree(stack.addons, ignore_errors=True)  # only this sandbox's own dir
+            except SandboxGuardError:
+                logger.error("sandbox addons cleanup refused by guard")

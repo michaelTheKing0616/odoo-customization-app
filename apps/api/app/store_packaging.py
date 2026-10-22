@@ -59,7 +59,7 @@ def _default_description(spec: ModuleSpec) -> str:
     reports = len(getattr(spec, "reports", []) or [])
     parts = [
         f"{spec.display_name} is a custom Odoo module exported from the Odoo Custom platform.",
-        f"It includes {models} custom model(s), {views} view definition(s)",
+        f"It includes {models} custom models, {views} view definition(s)",
     ]
     if reports:
         parts.append(f", and {reports} report(s)")

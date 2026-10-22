@@ -80,9 +80,10 @@ def build_draft_job_kwargs(
         "host_model_override": host_model_override,
         "connect_points_override": connect_points_override,
         "locked_understanding": locked_understanding,
+        # Always present (None when there is no session) so the kwargs cover every
+        # run_draft_job_body parameter; the body treats None as "no session sync".
+        "ai_session_id": ai_session_id or None,
     }
-    if ai_session_id:
-        kwargs["ai_session_id"] = ai_session_id
     return kwargs
 # Headroom under JOB_TIMEOUTS["ai_draft"] (1800s): pack seed must still be returned.
 LLM_ENRICH_BUDGET_S = 900.0
@@ -226,13 +227,13 @@ def complete_matched_pack_draft(
     )
 
     if is_option_a_authored_draft(draft):
-        emit(3, "Authoring Option A module", draft)
+        emit(3, "Authoring Custom-code module", draft)
         from app.ai_option_a_author import author_option_a_module
 
         client = _resolve_odoo_client(connection_id, db_factory)
         author_option_a_module(draft, prompt=prompt, client=client)
         warnings.append(
-            "Option A module is LLM-authored. Zip and sandbox stay locked until the gate passes."
+            "Custom-code module is LLM-authored. Zip and sandbox stay locked until the gate passes."
         )
         attach_llm_status(draft, mode="pack_fallback", reason="option_a_authored")
         emit(len(STEP_LABELS) - 1, STEP_LABELS[-1], draft)
@@ -268,7 +269,7 @@ def complete_matched_pack_draft(
 
     if is_stock_reuse_draft(draft):
         reuse_note = (
-            "No custom residual — use Job Autopilot for sandbox install and process smoke."
+            "No custom code — use Job Autopilot for sandbox install and process smoke."
         )
         warnings.append(reuse_note)
         attach_llm_status(draft, mode="seed_fallback", reason="stock_reuse")
@@ -315,6 +316,84 @@ def complete_matched_pack_draft(
     }
 
 
+def complete_designed_draft(
+    *,
+    prompt: str,
+    design: dict[str, Any],
+    db_factory: Callable[[], Session] | None,
+    connection_id: str | None,
+    progress: ProgressFn | None = None,
+    locked_understanding: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Step 3: compile the locked App design into the draft (no LLM, no clipping).
+
+    Every new model, the stock extensions, groups/access, menus and basic views
+    come from the validated design. Python pieces ride in ``_option_a_batch``
+    (one Custom-code module, single Promote); nothing Python goes into the live spec.
+    """
+    from app.ai_design_compile import compile_design_draft
+
+    emit = progress or (lambda *_a, **_k: None)
+    title = str((locked_understanding or {}).get("title") or "")
+    draft = compile_design_draft(design, prompt=prompt, title=title)
+    from app.design_admission import admit_design_for_connection
+
+    admission = admit_design_for_connection(design, draft)  # None unless INGENIUM_DESIGN_ADMISSION is on
+    if admission is not None:
+        draft["_admission"] = admission.to_dict()
+        if not admission.ok:
+            # Fail closed: Install stays blocked and every reason is shown; nothing is dropped.
+            draft["_install_blocked"] = True
+            draft.setdefault("_design_notes", []).extend(
+                f"Not admitted: {e.message}" for e in admission.errors)
+    emit(1, "App design compiled", draft)
+    try:
+        from app.ai_generation_engine import attach_generation_engine
+
+        attach_generation_engine(draft, prompt, user_phase="review")
+    except Exception:  # noqa: BLE001
+        pass
+    engine = draft.get("_generation_engine") if isinstance(draft.get("_generation_engine"), dict) else {}
+    # Python pieces live in the Option A batch; the app itself is metadata.
+    engine.update({"capability": "residual_app", "grain": "full_app"})
+    draft["_generation_engine"] = engine
+    _stamp_locked_understanding(draft, prompt, locked_understanding=locked_understanding)
+    draft["display_name"] = str(design.get("app_name") or draft.get("display_name"))
+    warnings = list(draft.get("_design_notes") or [])
+    batch = draft.get("_option_a_batch") if isinstance(draft.get("_option_a_batch"), dict) else None
+    if batch:
+        warnings.append(
+            ("Python pieces cannot install on Odoo Online: " if batch.get("online_blocked") else "Python pieces: ")
+            + ", ".join(str(p.get("label")) for p in batch.get("pieces") or [])
+            + ". They are batched into one Custom-code module (author, sandbox prove, then one Promote click)."
+        )
+    attach_llm_status(draft, mode="seed_fallback", reason="app_design")
+    emit(len(STEP_LABELS) - 1, STEP_LABELS[-1], draft)
+    if db_factory is not None:
+        _cache_draft(
+            db_factory,
+            connection_id=connection_id,
+            prompt=prompt,
+            draft=draft,
+            raw="",
+            locked_understanding=locked_understanding,
+        )
+    n_models = len(design.get("new_models") or [])
+    return {
+        "ok": True,
+        "draft": draft,
+        "raw_response": "",
+        "note": f"Built from the confirmed app design: {n_models} new models.",
+        "warnings": warnings,
+        "refusals": [],
+        "domain_pack": None,
+        "grain": "full_app",
+        "grain_label": draft.get("grain_label"),
+        "connect_points": draft.get("connect_points"),
+        "host_candidates": [],
+    }
+
+
 def _resolve_odoo_client(connection_id: str | None, db_factory: Callable[[], Session]) -> Any | None:
     if not connection_id:
         return None
@@ -333,7 +412,10 @@ def _resolve_odoo_client(connection_id: str | None, db_factory: Callable[[], Ses
 def _default_progress(job_id: str) -> ProgressFn:
     def emit(step: int, label: str, partial: dict[str, Any] | None = None) -> None:
         from app.ai_generation_engine import USER_PHASE_LABELS, user_phase_for_step
+        from app.progress.emit import stage_emit
+        from app.progress.stage_registry import generation_stage_for_step
 
+        stage_emit(job_id, generation_stage_for_step(step), detail=label)
         phase = user_phase_for_step(step)
         payload: dict[str, Any] = {
             "step": step,
@@ -470,6 +552,14 @@ def _finish_seed_draft(
         stock_catalog=stock_catalog,
     )
 
+    if not is_stock_reuse_draft(draft) and not is_gold_option_a_draft(draft):
+        try:
+            from app.ai_design_compile import attach_suggested_models
+
+            warnings.extend(attach_suggested_models(draft, prompt, locked=locked_understanding))
+        except Exception as exc:  # noqa: BLE001 — suggestions are optional
+            warnings.append(f"Suggested models skipped: {exc}")
+
     if is_stock_reuse_draft(draft):
         attach_scorecard(
             draft,
@@ -568,6 +658,7 @@ def _finish_seed_draft(
     attach_generation_engine(draft, prompt, user_phase="review")
     draft.pop("_generation_incomplete", None)
     return sanitize_draft_payload(draft)
+
 
 
 def _load_catalog_for_connection(
@@ -779,6 +870,30 @@ def run_draft_job_body(
     if locked_understanding is None and ai_session_id:
         locked_understanding = _load_locked_understanding_from_session(
             ai_session_id, db_factory
+        )
+
+    # Locked full-app design (step 2A) wins: it only exists for residual full_app
+    # briefs (never gold / refuse / Option A / Prefer), so it precedes capability seeds.
+    design = (locked_understanding or {}).get("app_design") if isinstance(locked_understanding, dict) else None
+    from app.ai_design_compile import design_applies
+
+    from app.ai_conversation import brief_checklist as _bc
+
+    extension_design = (
+        isinstance(design, dict)
+        and (bool(design.get("_extension_flow")) or (
+            _bc.enabled() and bool((locked_understanding or {}).get("inherit_existing"))
+            and not design.get("new_models")))
+        and bool(design.get("stock_extensions") or design.get("automations"))
+    )
+    if extension_design or (design_applies(design) and not (locked_understanding or {}).get("inherit_existing")):
+        return complete_designed_draft(
+            prompt=prompt,
+            design=design,
+            db_factory=db_factory,
+            connection_id=connection_id,
+            progress=progress,
+            locked_understanding=locked_understanding,
         )
 
     capability_seed = maybe_seed_from_capability(prompt)

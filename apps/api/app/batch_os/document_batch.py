@@ -681,7 +681,7 @@ class DocumentBatchRecipe:
         state.phase = "dry_run"
         state.dry_run = True
         state.message = (
-            f"Dry-run OK — would create {len(state.moves)} DRAFT invoice/bill(s). "
+            f"Dry-run OK, would create {len(state.moves)} DRAFT invoice/bill(s). "
             f"{HONESTY_PREVIEW_NE_POSTED}"
         )
         return state

@@ -414,7 +414,9 @@ def run_live_id_generator(
     record_ids: list[int],
     dry_run: bool = True,
     run_id: str | None = None,
+    before_write: Any = None,
 ) -> IdGeneratorRunResult:
+    """before_write(ids, vals_template): A5 shared guards run on the exact rows about to change."""
     run_id = run_id or str(uuid.uuid4())
     model = trim_text(model)
     name_field = trim_text(name_field)
@@ -464,6 +466,8 @@ def run_live_id_generator(
     failed = 0
 
     if not dry_run:
+        if before_write is not None and changed:
+            before_write([int(a.row_id) for a in changed], {code_field: "<generated>"})
         for item in changed:
             try:
                 client.execute_kw(

@@ -25,6 +25,8 @@ from app.account_models import (
     WorkspaceInvitation,
     WorkspaceMembership,
 )
+from app.auth_audit import record_auth_event
+from app.email_receipt import receipt_html
 from app.email_transport import send_email
 from app.password_breach import COMMON_PASSWORDS
 from app.settings import settings
@@ -190,8 +192,9 @@ def signup_user(
     verify_url = f"{settings.app_public_url.rstrip('/')}/verify?token={raw_token}"
     send_email(
         to=email,
-        subject="Verify your Odoo Custom account",
+        subject="Verify your Ingenium account",
         body=f"Click to verify your email (expires in {VERIFY_HOURS}h):\n\n{verify_url}\n",
+        html=receipt_html(title="Verify your email", lead=f"Confirm this is your address. The link works for {VERIFY_HOURS} hours.", button_label="Verify email", button_url=verify_url, footnote="If you didn't sign up, ignore this email."),
     )
     return user, workspace, raw_token
 
@@ -301,17 +304,32 @@ def grant_connection_access(
     connection_id: str,
     user_id: str,
     role: str,
+    actor_user_id: str | None = None,
 ) -> ConnectionAccessGrant:
+    actor = actor_user_id or "system"
+
+    def _fail(code: str, message: str, status: int = 400) -> None:
+        record_auth_event(
+            db,
+            kind="grant",
+            actor=actor,
+            target_user=user_id,
+            provider=None,
+            result="failure",
+            extra={"action": "create", "role": role, "connection_id": connection_id},
+        )
+        raise AccountError(code, message, status)
+
     if role not in CLIENT_GRANT_ROLES:
-        raise AccountError("invalid_role", "Client grant role must be client_approver or client_viewer.")
+        _fail("invalid_role", "Client grant role must be client_approver or client_viewer.")
     from app.db_models import OdooConnection
 
     connection = db.get(OdooConnection, connection_id)
     if connection is None or connection.workspace_id != workspace_id:
-        raise AccountError("not_found", "Connection is not in this workspace.", 404)
+        _fail("not_found", "Connection is not in this workspace.", 404)
     user = db.get(User, user_id)
     if user is None:
-        raise AccountError("not_found", "User not found.", 404)
+        _fail("not_found", "User not found.", 404)
     if (
         db.query(WorkspaceMembership)
         .filter(
@@ -321,7 +339,7 @@ def grant_connection_access(
         .first()
         is not None
     ):
-        raise AccountError(
+        _fail(
             "already_member",
             "This person already has a workspace role. Client Approver is a separate grant, not an extra role on a consultant.",
             409,
@@ -338,7 +356,15 @@ def grant_connection_access(
         existing.role = role
         existing.workspace_id = workspace_id
         db.add(existing)
-        db.commit()
+        record_auth_event(
+            db,
+            kind="grant",
+            actor=actor,
+            target_user=user_id,
+            provider=None,
+            result="success",
+            extra={"action": "create", "role": role, "connection_id": connection_id},
+        )
         db.refresh(existing)
         return existing
     row = ConnectionAccessGrant(
@@ -348,9 +374,162 @@ def grant_connection_access(
         role=role,
     )
     db.add(row)
-    db.commit()
+    record_auth_event(
+        db,
+        kind="grant",
+        actor=actor,
+        target_user=user_id,
+        provider=None,
+        result="success",
+        extra={"action": "create", "role": role, "connection_id": connection_id},
+    )
     db.refresh(row)
     return row
+
+
+def revoke_connection_access(
+    db: Session,
+    *,
+    workspace_id: str,
+    grant_id: str,
+    actor_user_id: str | None = None,
+) -> None:
+    actor = actor_user_id or "system"
+    grant = db.get(ConnectionAccessGrant, grant_id)
+    if grant is None or grant.workspace_id != workspace_id:
+        record_auth_event(
+            db,
+            kind="revoke",
+            actor=actor,
+            target_user=None,
+            provider=None,
+            result="failure",
+            extra={"action": "revoke", "grant_id": grant_id},
+        )
+        raise AccountError("not_found", "Grant not found.", 404)
+    target = grant.user_id
+    connection_id = grant.connection_id
+    db.delete(grant)
+    record_auth_event(
+        db,
+        kind="revoke",
+        actor=actor,
+        target_user=target,
+        provider=None,
+        result="success",
+        extra={"action": "revoke", "grant_id": grant_id, "connection_id": connection_id},
+    )
+
+
+def enroll_totp(db: Session, user: User | None, *, actor_user_id: str | None = None) -> tuple[str, str]:
+    import pyotp
+
+    actor = actor_user_id or (user.id if user is not None else "anonymous")
+    if user is None:
+        record_auth_event(
+            db,
+            kind="totp",
+            actor=actor,
+            target_user=None,
+            provider="totp",
+            result="failure",
+            extra={"action": "enroll"},
+        )
+        raise AccountError("not_found", "User not found.", 404)
+    secret = pyotp.random_base32()
+    user.totp_secret = secret
+    user.totp_enabled = False
+    db.add(user)
+    record_auth_event(
+        db,
+        kind="totp",
+        actor=actor,
+        target_user=user.id,
+        provider="totp",
+        result="success",
+        extra={"action": "enroll"},
+    )
+    uri = pyotp.totp.TOTP(secret).provisioning_uri(name=user.email, issuer_name="Odoo Custom")
+    return secret, uri
+
+
+def disable_totp(db: Session, user: User | None, *, actor_user_id: str | None = None) -> None:
+    actor = actor_user_id or (user.id if user is not None else "anonymous")
+    if user is None or not user.totp_enabled:
+        record_auth_event(
+            db,
+            kind="totp",
+            actor=actor,
+            target_user=user.id if user is not None else None,
+            provider="totp",
+            result="failure",
+            extra={"action": "disable"},
+        )
+        raise AccountError("totp_not_enabled", "TOTP is not enabled.", 400)
+    user.totp_enabled = False
+    user.totp_secret = None
+    db.query(TotpRecoveryCode).filter(TotpRecoveryCode.user_id == user.id).delete()
+    db.add(user)
+    record_auth_event(
+        db,
+        kind="totp",
+        actor=actor,
+        target_user=user.id,
+        provider="totp",
+        result="success",
+        extra={"action": "disable"},
+    )
+
+
+def change_membership_role(
+    db: Session,
+    *,
+    workspace_id: str,
+    target_user_id: str,
+    role: str,
+    actor_user_id: str | None = None,
+) -> WorkspaceMembership:
+    actor = actor_user_id or "system"
+
+    def _fail(code: str, message: str, status: int = 400) -> None:
+        record_auth_event(
+            db,
+            kind="grant",
+            actor=actor,
+            target_user=target_user_id,
+            provider=None,
+            result="failure",
+            extra={"action": "role_change", "role": role},
+        )
+        raise AccountError(code, message, status)
+
+    if role not in VALID_ROLES or role == "owner":
+        _fail("invalid_role", "Invalid membership role.")
+    membership = (
+        db.query(WorkspaceMembership)
+        .filter(
+            WorkspaceMembership.workspace_id == workspace_id,
+            WorkspaceMembership.user_id == target_user_id,
+        )
+        .first()
+    )
+    if membership is None:
+        _fail("not_found", "Membership not found.", 404)
+    if membership.role == "owner":
+        _fail("invalid_role", "Owner role cannot be changed here.")
+    membership.role = role
+    db.add(membership)
+    record_auth_event(
+        db,
+        kind="grant",
+        actor=actor,
+        target_user=target_user_id,
+        provider=None,
+        result="success",
+        extra={"action": "role_change", "role": role},
+    )
+    db.refresh(membership)
+    return membership
 
 
 def create_session(
@@ -477,8 +656,9 @@ def request_password_reset(db: Session, email: str) -> None:
     reset_url = f"{settings.app_public_url.rstrip('/')}/reset-password?token={raw}"
     send_email(
         to=email,
-        subject="Reset your Odoo Custom password",
+        subject="Reset your Ingenium password",
         body=f"Reset link (expires in {RESET_HOURS}h):\n\n{reset_url}\n",
+        html=receipt_html(title="Reset your password", lead=f"Choose a new password. The link works for {RESET_HOURS} hours.", button_label="Reset password", button_url=reset_url, footnote="If you didn't ask for this, your password stays as it is."),
     )
 
 
@@ -533,8 +713,9 @@ def create_invitation(
     invite_url = f"{settings.app_public_url.rstrip('/')}/accept-invite?token={raw}"
     send_email(
         to=email,
-        subject="You're invited to an Odoo Custom workspace",
+        subject="You're invited to an Ingenium workspace",
         body=f"Accept invitation (expires in {INVITE_DAYS} days):\n\n{invite_url}\n",
+        html=receipt_html(title="You're invited to a workspace", lead=f"Join the workspace to work on its Odoo databases. The invitation works for {INVITE_DAYS} days.", button_label="Accept invitation", button_url=invite_url),
     )
     return raw
 

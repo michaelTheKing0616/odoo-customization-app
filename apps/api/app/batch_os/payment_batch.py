@@ -582,7 +582,7 @@ class PaymentBatchRecipe:
         state.phase = "dry_run"
         state.dry_run = True
         state.message = (
-            f"Dry-run OK — would register {len(state.moves)} payment(s). "
+            f"Dry-run OK, would register {len(state.moves)} payment(s). "
             "Preview ≠ posted."
         )
         return state

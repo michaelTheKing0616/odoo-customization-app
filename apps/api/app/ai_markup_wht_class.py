@@ -1,10 +1,10 @@
 """Sale fiscal/compute CLASS — markup % + WHT on markup only (P1 Job 2).
 
-Class-wide Option A on sale.order (stock sale host): percentage markup drives
+Class-wide custom code on sale.order (stock sale host): percentage markup drives
 amounts; withholding/tax base = markup only; never purchase.order; never Prefer
 / Studio % field alone as “enough” for automated math on Online.
 
-Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+A complete draft is not the same as certified, and neither means Autopilot-ready. Publishing stays a step you confirm.
 """
 
 from __future__ import annotations
@@ -117,9 +117,9 @@ def online_metadata_incomplete_interim(
         ],
         "operator_copy": (
             "Online lane can add a Markup % metadata field (Prefer / Studio), but "
-            "automated selling-price math and WHT-on-markup require an Option A "
-            "Python module on Odoo.sh / self-host. Completeness ≠ Cert ≠ Autopilot. "
-            "Promote stays human — Online Python promote is blocked."
+            "automated selling-price math and WHT-on-markup require a custom-code "
+            "Python module on Odoo.sh / self-host. A complete draft is not the same as certified, and neither means Autopilot-ready. "
+            "Publishing stays a step you confirm — Online Python promote is blocked."
         ),
     }
     apply_class_stamp(
@@ -233,7 +233,7 @@ def scaffold_markup_wht_blocks(
     *,
     prompt: str = "",
 ) -> list[dict[str, Any]]:
-    """Attach CE-safe Option A blocks for the markup+WHT class."""
+    """Attach CE-safe custom code blocks for the markup+WHT class."""
     text = prompt or str(draft.get("_user_prompt") or "")
     if not is_markup_wht_class_brief(text):
         return []
@@ -247,7 +247,7 @@ def scaffold_markup_wht_blocks(
             "model": host,
             "reason": (
                 "Markup % + WHT-on-markup CLASS — sale.order only "
-                "(module → sandbox → human Promote)"
+                "(module → sandbox → you publish)"
             ),
             "source": "markup_wht_class_scaffold",
             "option_a": True,

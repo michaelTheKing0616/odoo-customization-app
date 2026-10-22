@@ -35,7 +35,7 @@ PLAYBOOKS: list[dict[str, Any]] = [
         "requires_modules": ["web_studio"],
         "models": [],
         "description": (
-            "Detect Studio modules — warn only; this app never uses Studio UI/source."
+            "Detect Studio modules, warn only; this app never uses Studio UI/source."
         ),
         "warn_only": True,
     },
@@ -68,7 +68,7 @@ PLAYBOOKS: list[dict[str, Any]] = [
         "requires_any_modules": ["account_accountant", "accountant"],
         "models": [],
         "description": (
-            "Detect Accounting EE / accountant module — warn/list honesty only; "
+            "Detect Accounting EE / accountant module, warn/list honesty only; "
             "chart of accounts remains Community account.* when present."
         ),
         "warn_only": True,
@@ -78,7 +78,7 @@ PLAYBOOKS: list[dict[str, Any]] = [
         "name": "Payroll presence",
         "requires_modules": ["hr_payroll"],
         "models": [],
-        "description": "Detect hr_payroll — warn only; no payroll mutation via this playbook.",
+        "description": "Detect hr_payroll, warn only; no payroll mutation via this playbook.",
         "warn_only": True,
     },
 ]
@@ -149,18 +149,18 @@ def list_playbooks(connection_id: str, db: Session = Depends(get_db)) -> list[Pl
         if pb.get("warn_only") and available:
             if pb["id"] == "studio_presence":
                 reason = (
-                    "Studio-related module installed — metadata via public ORM only; "
+                    "Studio-related module installed, metadata via public ORM only; "
                     "Studio source never used."
                 )
             elif pb["id"] == "account_accountant":
                 reason = (
-                    "Accounting EE / accountant detected — chart honesty via Community "
+                    "Accounting EE / accountant detected, chart honesty via Community "
                     "account.* models when present; no EE-only mutation here."
                 )
             elif pb["id"] == "hr_payroll":
-                reason = "hr_payroll installed — detect only; no payroll writes via playbook."
+                reason = "hr_payroll installed, detect only; no payroll writes via playbook."
             else:
-                reason = "Module present — warn/detect only"
+                reason = "Module present, warn/detect only"
         out.append(
             PlaybookOut(
                 id=pb["id"],
@@ -188,7 +188,7 @@ def list_sign_templates(
     if _module_state(client, "sign") not in {"installed", "to upgrade", "to remove"}:
         raise HTTPException(
             status_code=404,
-            detail="Sign module not installed — playbook greyed out",
+            detail="Sign module not installed, playbook greyed out",
         )
     if not client.model_exists("sign.template"):
         raise HTTPException(status_code=404, detail="Model sign.template not found")
@@ -217,7 +217,7 @@ def list_documents_folders(
     if _module_state(client, "documents") not in {"installed", "to upgrade", "to remove"}:
         raise HTTPException(
             status_code=404,
-            detail="Documents module not installed — playbook greyed out",
+            detail="Documents module not installed, playbook greyed out",
         )
     model = "documents.folder" if client.model_exists("documents.folder") else None
     if model is None and client.model_exists("documents.document"):
@@ -276,7 +276,7 @@ def _require_any_module(client: Any, modules: list[str], label: str) -> str:
             return mod
     raise HTTPException(
         status_code=404,
-        detail=f"{label} module not installed — playbook greyed out",
+        detail=f"{label} module not installed, playbook greyed out",
     )
 
 
@@ -321,7 +321,7 @@ def create_sign_request(
     """Create a sign.request from a template + record — verified: pending-live field subset."""
     client = _client(connection_id, db)
     if _module_state(client, "sign") not in {"installed", "to upgrade", "to remove"}:
-        raise HTTPException(status_code=404, detail="Sign module not installed — playbook greyed out")
+        raise HTTPException(status_code=404, detail="Sign module not installed, playbook greyed out")
     if not client.model_exists("sign.request"):
         raise HTTPException(status_code=404, detail="Model sign.request not found")
     if not client.model_exists("sign.template"):
@@ -380,7 +380,7 @@ def attach_record_to_documents_folder(
     if _module_state(client, "documents") not in {"installed", "to upgrade", "to remove"}:
         raise HTTPException(
             status_code=404,
-            detail="Documents module not installed — playbook greyed out",
+            detail="Documents module not installed, playbook greyed out",
         )
     folder_model = "documents.folder" if client.model_exists("documents.folder") else None
     if folder_model is None:
@@ -421,7 +421,7 @@ def attach_record_to_documents_folder(
         note=(
             "[SKIPPED-LIVE-VERIFY] documents.document create field map not fully verified on Enterprise."
             if created_ids
-            else "No documents created — field map may differ on this major."
+            else "No documents created, field map may differ on this major."
         ),
     )
 

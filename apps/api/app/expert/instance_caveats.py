@@ -91,7 +91,7 @@ def format_instance_caveats(
         lines.extend(
             [
                 "",
-                f"Designer: `/connections/{connection_id}/designer` — "
+                f"Designer: `/connections/{connection_id}/designer`, "
                 "create missing models/fields, then retry.",
             ]
         )

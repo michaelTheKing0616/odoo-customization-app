@@ -241,6 +241,9 @@ def classify_document_shape(
         "option_a",
     }:
         return stamped  # type: ignore[return-value]
+    # A validated full-app design (several new models) is a workspace without a pack.
+    if design_model_count(draft) >= 2:
+        return "workspace"
     plan = draft.get("_architecture_plan") if isinstance(draft.get("_architecture_plan"), dict) else {}
     planned = plan.get("document_shape")
     if pack_id and planned == "option_a":
@@ -303,6 +306,11 @@ def classify_document_shape(
         from app.ai_domain_packs import match_domain_pack, pack_document_shape
 
         matched = match_domain_pack(text)
+        # Header + lines brief (work order with checklist/parts lines) is a
+        # transactional document even when a lexical pack (field_service) matches;
+        # an adopted pack on the draft or a 2+ model design returned above.
+        if matched and is_transactional_line_document(text):
+            return "transactional_header"
         if matched:
             pack_id, pack = matched
             # Pack lexical match alone is not adoption — require positive product
@@ -405,7 +413,18 @@ def additive_model_growth_blocked(draft: dict[str, Any], *, prompt: str = "") ->
     return document_shape_of(draft, prompt=prompt) in ADDITIVE_BLOCKED
 
 
-def shape_budget(shape: str, *, x_models: int = 0, pack_n: int = 0) -> int:
+def design_model_count(draft: dict[str, Any] | None) -> int:
+    """New models in a validated App design attached to the draft (``_app_design``)."""
+    design = (draft or {}).get("_app_design") if isinstance(draft, dict) else None
+    if not isinstance(design, dict):
+        return 0
+    return len([m for m in design.get("new_models") or [] if isinstance(m, dict)])
+
+
+def shape_budget(shape: str, *, x_models: int = 0, pack_n: int = 0, design_n: int = 0) -> int:
+    """Model budget. A full-app design sets its own budget (capped at 12), not a pack."""
+    if design_n:
+        return max(x_models, pack_n, min(design_n, 12))
     if shape == "workspace":
         return max(x_models, pack_n, 8)
     if shape == "transactional_header":
@@ -685,6 +704,12 @@ def naming_from_residual(prompt: str) -> tuple[str, str]:
     Contract title, display_name, menu, and find-it share one residual app noun
     (Visitor Log) — never «Tiny X App: Model» / «… Models».
     """
+    from app.ai_operator_brief import stated_app_name
+
+    stated = stated_app_name(prompt)
+    if stated:
+        # Operator stated the app name: use it verbatim, never grain cue words.
+        return stated, re.sub(r"[^a-z0-9]+", "_", stated.lower()).strip("_")
     _kind, residual = _named_residual(prompt)
     label = _scrub_residual_title(residual or "")
     if not label:
@@ -727,7 +752,7 @@ _PLACEHOLDER_TITLE_RE = re.compile(
     r"(?i)^(named\s+in\s+brief|named\s+briefs?|custom\s+app|untitled|new\s+app)$"
 )
 _CLARIFY_CHROME_RE = re.compile(
-    r"(?i)^(custom residual|capability path|out of scope|industry|##)\b"
+    r"(?i)^(custom code|capability path|out of scope|industry|##)\b"
 )
 
 
@@ -2224,6 +2249,12 @@ def clip_llm_models_to_plan(
         for x in (plan.get("new_x_models") or [])
         if str(x).strip()
     }
+    # A validated App design locks its own models: never clip them back.
+    from app.ai_design_compile import design_model_names
+
+    design_names = design_model_names(draft)
+    if design_names:
+        allowed |= design_names
     budget = (plan.get("surface_budget") or {}).get("new_models") if isinstance(plan.get("surface_budget"), dict) else None
     shape = str(plan.get("document_shape") or draft.get("_document_shape") or "")
     if shape in ADDITIVE_BLOCKED and not allowed:
@@ -2288,6 +2319,8 @@ def clip_missing_models_to_budget(
         for m in (draft.get("models") or [])
         if isinstance(m, dict) and str(m.get("model") or "").startswith("x_")
     }
+    if design_model_count(draft):
+        budget = max(budget or 0, min(design_model_count(draft), 12))
     out: list[dict[str, Any]] = []
     for row in missing:
         if not isinstance(row, dict):

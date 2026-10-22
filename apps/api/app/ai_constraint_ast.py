@@ -921,9 +921,9 @@ def _parse_det_inherit(text: str, *, host: str | None) -> ConstraintAST:
         r"when\s+phase\s+moves|require\s+a\s+linked|clear\s+warning)\b",
         text or "",
     ):
-        if not any("option a" in (h or "").lower() for h in ast.hints):
+        if not any(k in (h or "").lower() for h in ast.hints for k in ("option a", "custom code")):
             ast.hints.append(
-                "Option A / .sh when Python required (phase warning, hours rollup); "
+                "custom code / .sh when Python required (phase warning, hours rollup); "
                 "phase + cap fields stay Online-safe metadata"
             )
     if re.search(r"(?i)\bno\s+second\s+pm\b|\bno\s+second\s+project\b", text or ""):
@@ -933,6 +933,24 @@ def _parse_det_inherit(text: str, *, host: str | None) -> ConstraintAST:
         ast.uncertain = True
     return ast
 
+
+
+_SENTENCE_END_RE = re.compile(r"\.\s+(?=[A-Z])")
+_NEGATED_CHUNK_RE = re.compile(r"(?i)^\s*(?:not|no|never|without|don'?t|do\s+not)\b")
+
+
+def _enumeration_only(chunks: list[str]) -> list[str]:
+    """A field list ends with its sentence: later prose ("This is not CRM", "not Python")
+    is never a field, and a negated chunk names something the owner does NOT want."""
+    out: list[str] = []
+    for chunk in chunks:
+        parts = _SENTENCE_END_RE.split(chunk or "", maxsplit=1)
+        head = parts[0].strip()
+        if head and not _NEGATED_CHUNK_RE.search(head):
+            out.append(head)
+        if len(parts) > 1:
+            break
+    return out
 
 def _parse_det_full_app(text: str) -> ConstraintAST:
     """Residual full_app floor — clean noun, structured fields, one menu parent."""
@@ -963,7 +981,7 @@ def _parse_det_full_app(text: str) -> ConstraintAST:
             if enum:
                 body = enum.group(1)
 
-        chunks = split_conjunction_chunks(body)
+        chunks = _enumeration_only(split_conjunction_chunks(body))
         for chunk in chunks:
             if not chunk or len(chunk) < 2:
                 continue

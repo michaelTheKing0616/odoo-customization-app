@@ -15,11 +15,12 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.live_demo_copilot import DISCLOSURE_VERSION
-from app.live_demo_copilot.attendee_client import (
-    AttendeeError,
-    attendee_configured,
+from app.live_demo_copilot.bot_backend import (
+    BotError as AttendeeError,
+    bot_configured as attendee_configured,
     create_bot,
     get_bot,
+    pull_segments,
 )
 from app.live_demo_copilot.bot_status import bot_status_view, normalize_raw_state
 from app.live_demo_copilot.leave_purge import enqueue_leave_purge
@@ -145,13 +146,26 @@ def get_disclosure() -> dict[str, Any]:
         "bullets": [
             "A named meeting bot will appear in Zoom, Google Meet, or Microsoft Teams.",
             "All participants must be told the meeting content is being processed for live assistance.",
-            "Answers are private to the presenter — never posted to meeting chat.",
+            "Answers are private to the presenter, never posted to meeting chat.",
             "By default we do not retain transcripts or audio after the session ends.",
             "WhatsApp calls are not supported and will never be.",
         ],
         "opt_out": "Decline stops the session. No bot joins and no audio is processed.",
         "retention_default": "do_not_retain",
+        # Q7: how answers can reach the presenter with the bot chosen today (honest: no fake toggles).
+        "delivery": _delivery_options(),
     }
+
+
+def _delivery_options() -> list[dict[str, Any]]:
+    from app.live_demo_copilot.bot_backend import capabilities
+
+    caps = capabilities()
+    return [
+        {"id": "private_whisper", "label": "Private panel for you", "available": bool(caps.get("private_whisper")), "default": True},
+        {"id": "meeting_chat", "label": "Post in the meeting chat", "available": bool(caps.get("meeting_chat")), "default": False},
+        {"id": "speak_aloud", "label": "Speak the answer aloud", "available": bool(caps.get("speak_aloud")), "default": False},
+    ]
 
 
 @router.post("/sessions", response_model=SessionOut)
@@ -160,7 +174,7 @@ def create_session(body: SessionCreateBody, db: Session = Depends(get_db)) -> Se
     if "whatsapp" in url.lower():
         raise HTTPException(
             status_code=422,
-            detail="WhatsApp is permanently out of scope — use Zoom, Google Meet, or Microsoft Teams.",
+            detail="WhatsApp is permanently out of scope, use Zoom, Google Meet, or Microsoft Teams.",
         )
     try:
         session = ldc.create_session(
@@ -219,7 +233,7 @@ def record_consent(
 def launch_bot(session_id: str, db: Session = Depends(get_db)) -> SessionOut:
     session = _require_session(db, session_id)
     if session.declined:
-        raise HTTPException(status_code=403, detail="Session declined — processing blocked")
+        raise HTTPException(status_code=403, detail="Session declined, processing blocked")
     if not session.disclosure_accepted or not session.attendees_notified:
         raise HTTPException(
             status_code=403,
@@ -235,7 +249,7 @@ def launch_bot(session_id: str, db: Session = Depends(get_db)) -> SessionOut:
             raise HTTPException(
                 status_code=503,
                 detail=(
-                    "Attendee not configured. Set ATTENDEE_API_BASE + ATTENDEE_API_KEY. "
+                    "The meeting bot is not set up. Set VEXA_API_BASE + VEXA_API_KEY (self-hosted Vexa). "
                     "Mock launch is disabled in production (APP_ENVIRONMENT=production)."
                 ),
             )
@@ -291,7 +305,55 @@ def refresh_status(session_id: str, db: Session = Depends(get_db)) -> SessionOut
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     state = str(bot.get("state") or session.bot_state)
     session = ldc.set_bot_state(db, session, state)
+    _ingest_polled_segments(db, session)
     return _session_out(db, session)
+
+
+def _ingest_polled_segments(db: Session, session: Any) -> int:
+    """Vexa: pull completed segments newer than the last stored line and run them through the pipeline."""
+    from app.db_models import LiveDemoTranscriptLine
+
+    try:
+        segments = pull_segments(session.attendee_bot_id)
+    except AttendeeError:
+        return 0
+    if not segments:
+        return 0
+    last = (
+        db.query(LiveDemoTranscriptLine.timestamp_ms)
+        .filter(LiveDemoTranscriptLine.session_id == session.id)
+        .order_by(LiveDemoTranscriptLine.timestamp_ms.desc().nullslast())
+        .limit(1)
+        .scalar()
+    ) or -1
+    added = 0
+    for seg in segments:
+        ts = int(float(seg.get("start") or 0) * 1000)
+        if ts <= last:
+            continue
+        ldc.append_transcript(
+            db,
+            session,
+            speaker_name=str(seg.get("speaker") or "Unknown"),
+            speaker_uuid=None,
+            text=str(seg.get("text") or "").strip(),
+            timestamp_ms=ts,
+        )
+        added += 1
+    if added:
+        db.refresh(session)
+    return added
+
+
+@router.get("/sessions/{session_id}/after-meeting")
+def after_meeting(session_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Summary, Q&A, follow-up email draft (never sent) and starter plan from stored, checked answers."""
+    from app.db_models import LiveDemoTranscriptLine
+    from app.live_demo_copilot.after_meeting import build_after_meeting
+
+    session = _require_session(db, session_id)
+    lines = db.query(LiveDemoTranscriptLine).filter(LiveDemoTranscriptLine.session_id == session.id).count()
+    return build_after_meeting(list_answers(db, session.id, limit=200), lines)
 
 
 @router.post("/sessions/{session_id}/retry-leave-purge", response_model=SessionOut)
@@ -331,6 +393,19 @@ def get_transcript(session_id: str, db: Session = Depends(get_db)) -> dict[str, 
 def get_answers(session_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     session = _require_session(db, session_id)
     return {"session_id": session.id, "answers": list_answers(db, session.id)}
+
+
+@router.post("/sessions/{session_id}/answers/{answer_id}/refresh")
+def refresh_answer_fresh(session_id: str, answer_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """'Fresh answer' button: regenerate this answer, skipping the AI cache."""
+    from app.db_models import LiveDemoAnswer
+    from app.live_demo_copilot.pipeline import refresh_answer
+
+    session = _require_session(db, session_id)
+    row = db.get(LiveDemoAnswer, answer_id)
+    if row is None or row.session_id != session.id:
+        raise HTTPException(status_code=404, detail="Answer not found")
+    return refresh_answer(db, session, row)
 
 
 @router.post("/sessions/{session_id}/stage1-preview")

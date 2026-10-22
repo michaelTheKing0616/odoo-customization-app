@@ -5,7 +5,7 @@ ModuleSpec apply, and Automations with the same effect-not-mechanism rules:
 
 - Tier-1: no **stock** field/model mutations and no write-logic ON protected models.
   Additive Studio-like custom (``x_*``) fields + inherit/extension views are allowed
-  (field packs / stock-first ``x_matter_id`` bridges). Link-only relations FROM
+  (field packs / built-in apps first ``x_matter_id`` bridges). Link-only relations FROM
   custom models INTO protected models remain allowed.
 - Tier-2: additive custom fields allowed; delete/rename of stock (non-``x_*``) fields
   blocked.
@@ -109,7 +109,7 @@ def check_field_create(
 
     Link-only: relational field ON a custom model (any relation target) is allowed.
     Tier-1 / tier-2 stock hosts: additive custom (``x_*``) fields only — Studio parity
-    for field packs and stock-first inherit bridges. Non-``x_*`` names are blocked.
+    for field packs and built-in apps first inherit bridges. Non-``x_*`` names are blocked.
     """
     model = (model or "").strip()
     if not model:
@@ -277,7 +277,7 @@ def scrub_spec_for_protected_apply(
     spec: dict[str, Any],
     manifest: dict[str, Any],
 ) -> tuple[dict[str, Any], list[str]]:
-    """Strip protected mutations from a ModuleSpec; return (cleaned, skip reasons).
+    """Strip protected mutations from an app plan; return (cleaned, skip reasons).
 
     Violations become per-item skips — never a full-apply hard failure.
     """
